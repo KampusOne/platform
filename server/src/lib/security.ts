@@ -1,4 +1,3 @@
-import { argon2id, argon2Verify } from "hash-wasm";
 import { jwtVerify, SignJWT } from "jose";
 
 import type { AuthenticatedUser, Bindings } from "../types";
@@ -6,6 +5,9 @@ import { AppError } from "./errors";
 
 const encoder = new TextEncoder();
 const ACCESS_TOKEN_SECONDS = 15 * 60;
+const PBKDF2_ITERATIONS = 310_000;
+const PBKDF2_HASH_BYTES = 32;
+const PASSWORD_HASH_PREFIX = "$pbkdf2-sha256$";
 export const REFRESH_TOKEN_SECONDS = 30 * 24 * 60 * 60;
 
 function signingKey(env: Bindings) {
@@ -15,22 +17,77 @@ function signingKey(env: Bindings) {
   return encoder.encode(env.JWT_SECRET);
 }
 
+function toBase64Url(value: Uint8Array): string {
+  let binary = "";
+  for (const byte of value) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function fromBase64Url(value: string): Uint8Array {
+  const padded = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function constantTimeBytesEqual(expected: Uint8Array, supplied: Uint8Array): boolean {
+  if (expected.length !== supplied.length) return false;
+  let difference = 0;
+  for (let index = 0; index < expected.length; index += 1) difference |= expected[index]! ^ supplied[index]!;
+  return difference === 0;
+}
+
+async function derivePbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
+  const passwordKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    passwordKey,
+    PBKDF2_HASH_BYTES * 8,
+  );
+  return new Uint8Array(derived);
+}
+
 export async function hashPassword(password: string): Promise<string> {
+  // Cloudflare Workers supports PBKDF2 through Web Crypto natively. Keeping the
+  // password KDF inside crypto.subtle avoids runtime WASM compilation, which
+  // Cloudflare blocks for packages such as hash-wasm.
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  return argon2id({
-    password,
-    salt,
-    iterations: 2,
-    parallelism: 1,
-    memorySize: 19 * 1024,
-    hashLength: 32,
-    outputType: "encoded",
-  });
+  const derived = await derivePbkdf2(password, salt, PBKDF2_ITERATIONS);
+  return `${PASSWORD_HASH_PREFIX}${PBKDF2_ITERATIONS}$${toBase64Url(salt)}$${toBase64Url(derived)}`;
 }
 
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   try {
-    return await argon2Verify({ password, hash });
+    if (hash.startsWith(PASSWORD_HASH_PREFIX)) {
+      const parts = hash.split("$");
+      if (parts.length !== 5 || parts[1] !== "pbkdf2-sha256") return false;
+      const iterations = Number.parseInt(parts[2] ?? "", 10);
+      if (!Number.isSafeInteger(iterations) || iterations < 100_000 || iterations > 2_000_000) return false;
+      const salt = fromBase64Url(parts[3] ?? "");
+      const expected = fromBase64Url(parts[4] ?? "");
+      if (salt.length < 16 || expected.length !== PBKDF2_HASH_BYTES) return false;
+      const supplied = await derivePbkdf2(password, salt, iterations);
+      return constantTimeBytesEqual(expected, supplied);
+    }
+
+    // Legacy accounts may still contain Argon2id hashes created before the
+    // Cloudflare migration. Attempt verification lazily so hash-wasm is never
+    // loaded on registration or for newly-created PBKDF2 accounts. If the
+    // runtime cannot execute the legacy WASM verifier, fail authentication
+    // closed instead of crashing the Worker.
+    if (hash.startsWith("$argon2")) {
+      const { argon2Verify } = await import("hash-wasm");
+      return await argon2Verify({ password, hash });
+    }
+
+    return false;
   } catch {
     return false;
   }
