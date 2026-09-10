@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+.expo/
+dist/
+coverage/
+web-build/
+*.tsbuildinfo
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.dev.vars
+.wrangler/
+
+# Editor and operating-system files
+.DS_Store
+*.swp
+
+# Logs
+*.log
+npm-debug.log*

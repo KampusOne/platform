@@ -1,0 +1,59 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kampusone-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-09",
+  "workers_dev": true,
+  "preview_urls": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "ENVIRONMENT": "local",
+    "ALLOWED_ORIGINS": "http://localhost:3000,http://localhost:8081",
+    "MINIMUM_APP_VERSION": "0.1.0",
+    "MAINTENANCE_MODE": "false",
+    "ACADEMIC_CORE_ENABLED": "true",
+    "SOCIAL_FEED_ENABLED": "false",
+    "MARKETPLACE_ENABLED": "false",
+    "PAYMENTS_ENABLED": "false",
+    "AI_ASSISTANT_ENABLED": "false"
+  },
+  "env": {
+    "preview": {
+      "name": "kampusone-api-preview",
+      "vars": {
+        "ENVIRONMENT": "preview",
+        "ALLOWED_ORIGINS": "https://kampusone-platform.vercel.app",
+        "MINIMUM_APP_VERSION": "0.1.0",
+        "MAINTENANCE_MODE": "false",
+        "ACADEMIC_CORE_ENABLED": "true",
+        "SOCIAL_FEED_ENABLED": "false",
+        "MARKETPLACE_ENABLED": "false",
+        "PAYMENTS_ENABLED": "false",
+        "AI_ASSISTANT_ENABLED": "false"
+      }
+    },
+    "production": {
+      "name": "kampusone-api",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "ALLOWED_ORIGINS": "https://admin.kampusone.app,https://agents.kampusone.app,https://engineering.kampusone.app",
+        "MINIMUM_APP_VERSION": "0.1.0",
+        "MAINTENANCE_MODE": "true",
+        "ACADEMIC_CORE_ENABLED": "false",
+        "SOCIAL_FEED_ENABLED": "false",
+        "MARKETPLACE_ENABLED": "false",
+        "PAYMENTS_ENABLED": "false",
+        "AI_ASSISTANT_ENABLED": "false"
+      },
+      "routes": [
+        {
+          "pattern": "api.kampusone.app",
+          "custom_domain": true
+        }
+      ]
+    }
+  }
+}

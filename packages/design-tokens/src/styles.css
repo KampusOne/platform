@@ -1,0 +1,31 @@
+:root {
+  --k1-brand-50: #fff4ee;
+  --k1-brand-100: #fce6dc;
+  --k1-brand-200: #f6cbb9;
+  --k1-brand-300: #efa98e;
+  --k1-brand-400: #dd7c58;
+  --k1-brand-500: #c35d38;
+  --k1-brand-600: #ab4c2f;
+  --k1-brand-700: #8f3c29;
+  --k1-brand-800: #6f3025;
+  --k1-brand-900: #4c241f;
+  --k1-brand-950: #2e1714;
+  --k1-cream: #fbf7f2;
+  --k1-sand: #f1dfc8;
+  --k1-stone: #9a8d84;
+  --k1-ink: #29231f;
+  --k1-midnight: #211a17;
+  --k1-white: #fff;
+  --k1-success: #2d7d59;
+  --k1-info: #346e8a;
+  --k1-warning: #b76a16;
+  --k1-error: #a63f3f;
+  --k1-radius-sm: 8px;
+  --k1-radius-md: 14px;
+  --k1-radius-lg: 24px;
+  --k1-shadow-soft: 0 12px 36px rgb(41 35 31 / 10%);
+  --k1-motion-fast: 120ms;
+  --k1-motion-standard: 220ms;
+  --k1-motion-slow: 360ms;
+  --k1-ease: cubic-bezier(.2, .8, .2, 1);
+}

@@ -1,0 +1,101 @@
+name: Verify platform
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/contracts/package-lock.json
+      - run: npm ci
+        working-directory: packages/contracts
+      - run: npm run check
+        working-directory: packages/contracts
+      - run: npm test
+        working-directory: packages/contracts
+
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      - run: npm run check
+        working-directory: server
+      - run: npm test
+        working-directory: server
+      - run: npm run build
+        working-directory: server
+
+  portal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+      - run: npm ci
+        working-directory: portal
+      - run: npm run lint
+        working-directory: portal
+      - run: npm run check
+        working-directory: portal
+      - run: npm run build
+        working-directory: portal
+
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run check
+        working-directory: mobile
+      - run: npm run export:web
+        working-directory: mobile
+
+  database-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check migration and verification records
+        run: |
+          test -s database/supabase/migrations/20260909213215_foundation.sql
+          test -s database/verification/phase_0_security.sql
+          ! grep -R --line-number --extended-regexp '(sb_secret_|service_role|SUPABASE_SECRET_KEY=.)' \
+            --exclude='*.example' \
+            --exclude='*.md' \
+            --exclude='*.sql' \
+            .

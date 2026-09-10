@@ -1,0 +1,24 @@
+{
+  "name": "@kampusone/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "deploy:preview": "wrangler deploy --env preview",
+    "deploy:production": "wrangler deploy --env production",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kampusone/contracts": "file:../packages/contracts",
+    "hono": "4.13.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260908.1",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0",
+    "wrangler": "4.130.0"
+  }
+}

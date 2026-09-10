@@ -1,0 +1,26 @@
+{
+  "name": "@kampusone/portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --max-warnings=0",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kampusone/design-tokens": "file:../packages/design-tokens",
+    "next": "16.3.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "eslint": "9.39.2",
+    "eslint-config-next": "16.3.4",
+    "typescript": "6.0.3"
+  }
+}
