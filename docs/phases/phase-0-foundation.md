@@ -45,6 +45,7 @@ The student preview uses the official Lato and Inter product typography. Home, F
 - Added a restrained liquid-glass treatment for the floating navigation and selected high-value surfaces; ordinary content cards remain opaque enough for readability and lower Android rendering cost.
 - Added reusable campus scenery, feed artwork, marketplace product artwork, the animated streak treatment, and purpose-specific map/tutorial illustrations without changing the official logo.
 - Added 180 ms tab cross-fades, active-tab continuity, press feedback, haptics, saved-item animation, basket feedback, and reduced-motion fallbacks.
+- Simplified the dashboard streak into a compact animated three-layer flame; its tap target opens a local timeline sheet with brown shade progression, earned and locked milestones, next-shade progress, and a daily quote.
 - Added a custom dark-brown KampusOne verification rosette with a warm-cream check for trusted vendors, tutors, profiles, and official sources; it is intentionally distinct from routine success feedback.
 - Replaced generic red/green approval styling with brand-led clay, ochre, and brown treatments for live, positive, and time-sensitive states.
 - Added hidden-in-tab Timetable and Profile routes so detail screens retain navigation continuity without increasing the five-item primary tab count.

@@ -7,8 +7,10 @@ import {
   AccessibilityInfo,
   Animated,
   Easing,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -20,6 +22,56 @@ import { theme } from "@/src/theme";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+const streakTiers = [
+  { days: 1, name: "First spark", outer: "#E9D0C3", middle: "#DFAF99" },
+  { days: 7, name: "Warm ember", outer: "#DFB19B", middle: "#CE8768" },
+  { days: 14, name: "Clay flame", outer: "#CF8769", middle: "#B96345" },
+  { days: 30, name: "Terracotta", outer: "#B65D42", middle: "#91402F" },
+  { days: 60, name: "Deep ember", outer: "#8F3C29", middle: "#6F3025" },
+] as const;
+
+const streakQuotes = [
+  "Show up for the day in front of you.",
+  "Small effort, repeated, becomes momentum.",
+  "Your future is built in ordinary days.",
+  "Keep the promise you made to yourself.",
+  "Progress does not need to be loud.",
+  "One focused day can change the next.",
+  "You do not need a perfect day. Just return tomorrow.",
+] as const;
+
+type StreakTier = (typeof streakTiers)[number];
+
+function FlameMark({ size, tier, pulse }: { size: number; tier: StreakTier; pulse?: Animated.Value }) {
+  const motion = pulse
+    ? {
+        transform: [
+          { rotate: pulse.interpolate({ inputRange: [0, 1], outputRange: ["-2deg", "2deg"] }) },
+          { scaleY: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.05] }) },
+          { scaleX: pulse.interpolate({ inputRange: [0, 1], outputRange: [1.02, 0.97] }) },
+        ],
+      }
+    : undefined;
+
+  return (
+    <Animated.View style={[{ height: size, position: "relative", width: size }, motion]}>
+      <Ionicons color={tier.outer} name="flame" size={size} style={{ bottom: 0, left: 0, position: "absolute" }} />
+      <Ionicons
+        color={tier.middle}
+        name="flame"
+        size={size * 0.66}
+        style={{ bottom: size * 0.035, left: size * 0.17, position: "absolute" }}
+      />
+      <Ionicons
+        color="#FFF5EE"
+        name="flame"
+        size={size * 0.32}
+        style={{ bottom: size * 0.07, left: size * 0.34, position: "absolute" }}
+      />
+    </Animated.View>
+  );
+}
 
 export function useReducedMotionPreference() {
   const [reduced, setReduced] = useState(false);
@@ -102,7 +154,13 @@ export function PressScale({
 
 export function StreakCard({ days = 12 }: { days?: number }) {
   const pulse = useRef(new Animated.Value(0)).current;
+  const sheetEntry = useRef(new Animated.Value(0)).current;
+  const [open, setOpen] = useState(false);
   const reducedMotion = useReducedMotionPreference();
+  const tierIndex = streakTiers.reduce((match, tier, index) => (days >= tier.days ? index : match), 0);
+  const currentTier = streakTiers[tierIndex] ?? streakTiers[0]!;
+  const nextTier = streakTiers[tierIndex + 1];
+  const dailyQuote = streakQuotes[(Math.max(days, 1) - 1) % streakQuotes.length] ?? streakQuotes[0]!;
 
   useEffect(() => {
     if (reducedMotion) {
@@ -119,26 +177,142 @@ export function StreakCard({ days = 12 }: { days?: number }) {
     return () => animation.stop();
   }, [pulse, reducedMotion]);
 
-  const starScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1.1] });
-  const starOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.72, 1] });
+  useEffect(() => {
+    if (!open) return;
+    sheetEntry.setValue(reducedMotion ? 1 : 0);
+    if (!reducedMotion) {
+      Animated.spring(sheetEntry, { damping: 17, mass: 0.7, stiffness: 180, toValue: 1, useNativeDriver: true }).start();
+    }
+  }, [open, reducedMotion, sheetEntry]);
+
+  function openTimeline() {
+    void Haptics.selectionAsync();
+    setOpen(true);
+  }
+
+  function closeTimeline() {
+    if (reducedMotion) {
+      setOpen(false);
+      return;
+    }
+    Animated.timing(sheetEntry, {
+      duration: theme.motion.standard,
+      easing: Easing.in(Easing.cubic),
+      toValue: 0,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setOpen(false);
+    });
+  }
+
+  const progress = nextTier ? Math.min(days / nextTier.days, 1) : 1;
 
   return (
-    <GlassCard style={styles.streak}>
-      <View style={styles.shieldWrap}>
-        <Ionicons name="shield" size={43} color={theme.brandPressed} />
-        <Animated.View style={[styles.shieldStar, { opacity: starOpacity, transform: [{ scale: starScale }] }]}> 
-          <Ionicons name="sparkles" size={16} color="#FFFFFF" />
-        </Animated.View>
-      </View>
-      <View style={styles.streakCopy}>
-        <Text style={styles.streakTitle}>{days} day streak</Text>
-        <Text numberOfLines={1} style={styles.streakSub}>Consistent. Brighter you.</Text>
-      </View>
-      <View style={styles.streakBlocks} accessibilityLabel="Three of five streak milestones completed">
-        {[0, 1, 2, 3, 4].map((item) => <View key={item} style={[styles.streakBlock, item < 3 && styles.streakBlockOn]} />)}
-      </View>
-      <Ionicons name="chevron-forward" size={17} color={theme.brandPressed} />
-    </GlassCard>
+    <>
+      <Pressable
+        accessibilityHint="Opens your streak timeline"
+        accessibilityLabel={`${days} day streak`}
+        accessibilityRole="button"
+        onPress={openTimeline}
+        style={({ pressed }) => [styles.streakPill, pressed && styles.streakPillPressed]}
+      >
+        <FlameMark pulse={pulse} size={32} tier={currentTier} />
+        <Text style={styles.streakPillText}>{days} day streak</Text>
+      </Pressable>
+
+      <Modal animationType="none" onRequestClose={closeTimeline} statusBarTranslucent transparent visible={open}>
+        <View style={styles.streakModalRoot}>
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.streakBackdrop, { opacity: sheetEntry.interpolate({ inputRange: [0, 1], outputRange: [0, 0.42] }) }]}
+          />
+          <Pressable accessibilityLabel="Close streak timeline" onPress={closeTimeline} style={StyleSheet.absoluteFill} />
+          <Animated.View
+            style={[
+              styles.streakSheet,
+              {
+                opacity: sheetEntry,
+                transform: [{ translateY: sheetEntry.interpolate({ inputRange: [0, 1], outputRange: [64, 0] }) }],
+              },
+            ]}
+          >
+            <View style={styles.streakHandle} />
+            <ScrollView contentContainerStyle={styles.streakSheetContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.streakSheetTop}>
+                <View>
+                  <Text style={styles.streakSheetEyebrow}>YOUR STREAK</Text>
+                  <Text style={styles.streakSheetTitle}>{days} days strong</Text>
+                </View>
+                <Pressable accessibilityLabel="Close" hitSlop={8} onPress={closeTimeline} style={styles.streakClose}>
+                  <Ionicons color={theme.text} name="close" size={20} />
+                </Pressable>
+              </View>
+
+              <View style={styles.streakHero}>
+                <View style={styles.streakHeroGlow} />
+                <FlameMark pulse={pulse} size={82} tier={currentTier} />
+                <View style={styles.streakHeroCopy}>
+                  <Text style={styles.streakCurrentLabel}>CURRENT FLAME</Text>
+                  <Text style={styles.streakCurrentName}>{currentTier.name}</Text>
+                  <Text style={styles.streakCurrentBody}>
+                    {nextTier ? `${nextTier.days - days} days until your flame deepens.` : "You have unlocked every flame shade."}
+                  </Text>
+                </View>
+              </View>
+
+              {nextTier ? (
+                <View style={styles.streakProgressCard}>
+                  <View style={styles.streakProgressTop}>
+                    <Text style={styles.streakProgressLabel}>NEXT SHADE · {nextTier.name.toUpperCase()}</Text>
+                    <Text style={styles.streakProgressCount}>{days}/{nextTier.days}</Text>
+                  </View>
+                  <View style={styles.streakProgressTrack}><View style={[styles.streakProgressFill, { width: `${progress * 100}%` }]} /></View>
+                </View>
+              ) : null}
+
+              <Text style={styles.streakTimelineTitle}>Flame timeline</Text>
+              <View style={styles.streakTimeline}>
+                <View pointerEvents="none" style={styles.streakTimelineRail} />
+                {streakTiers.map((tier, index) => {
+                  const earned = days >= tier.days;
+                  const active = index === tierIndex;
+                  const remaining = tier.days - days;
+                  return (
+                    <View key={tier.days} style={[styles.streakTierRow, !earned && styles.streakTierLocked]}>
+                      <View style={[styles.streakTierIcon, active && styles.streakTierIconActive]}>
+                        <FlameMark size={28} tier={tier} />
+                      </View>
+                      <View style={styles.streakTierCopy}>
+                        <Text style={styles.streakTierName}>{tier.name}</Text>
+                        <Text style={styles.streakTierMeta}>{tier.days} day milestone</Text>
+                      </View>
+                      {active ? (
+                        <View style={styles.streakCurrentChip}><Text style={styles.streakCurrentChipText}>Current</Text></View>
+                      ) : earned ? (
+                        <Ionicons color={theme.statusPositive} name="checkmark-done" size={18} />
+                      ) : (
+                        <View style={styles.streakLockedMeta}>
+                          <Ionicons color={theme.textSubtle} name="lock-closed" size={13} />
+                          <Text style={styles.streakLockedText}>{remaining}d</Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View style={styles.streakQuote}>
+                <Ionicons color={theme.brandPressed} name="sparkles" size={18} />
+                <View style={styles.streakQuoteCopy}>
+                  <Text style={styles.streakQuoteLabel}>TODAY'S REMINDER</Text>
+                  <Text style={styles.streakQuoteText}>“{dailyQuote}”</Text>
+                </View>
+              </View>
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -394,15 +568,48 @@ const styles = StyleSheet.create({
     width: "72%",
   },
   glassEdge: { backgroundColor: "rgba(255,255,255,0.78)", height: 1, left: 16, position: "absolute", right: 16, top: 1 },
-  streak: { alignItems: "center", flex: 1, flexDirection: "row", minHeight: 66, paddingHorizontal: 12 },
-  shieldWrap: { alignItems: "center", height: 48, justifyContent: "center", marginLeft: -4, width: 48 },
-  shieldStar: { alignItems: "center", justifyContent: "center", position: "absolute" },
-  streakCopy: { flex: 1, marginLeft: 5 },
-  streakTitle: { color: theme.text, fontFamily: theme.font.bold, fontSize: 14.5 },
-  streakSub: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 10.5, marginTop: 2 },
-  streakBlocks: { flexDirection: "row", gap: 3, marginRight: 7 },
-  streakBlock: { backgroundColor: "#E6DED8", borderRadius: 3, height: 9, transform: [{ skewX: "-10deg" }], width: 12 },
-  streakBlockOn: { backgroundColor: theme.brand },
+  streakPill: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "rgba(255,253,252,0.84)", borderColor: "rgba(255,255,255,0.96)", borderRadius: 18, borderWidth: 1, flexDirection: "row", gap: 7, height: 48, paddingHorizontal: 10, ...theme.shadow },
+  streakPillPressed: { opacity: 0.78, transform: [{ scale: 0.97 }] },
+  streakPillText: { color: theme.text, fontFamily: theme.font.bold, fontSize: 13 },
+  streakModalRoot: { flex: 1, justifyContent: "flex-end" },
+  streakBackdrop: { backgroundColor: "#231D1A", bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
+  streakSheet: { backgroundColor: theme.canvas, borderColor: "rgba(255,255,255,0.94)", borderTopLeftRadius: 30, borderTopRightRadius: 30, borderWidth: 1, maxHeight: "88%", overflow: "hidden", ...theme.glassShadow },
+  streakHandle: { alignSelf: "center", backgroundColor: "#D8CCC4", borderRadius: 2, height: 4, marginTop: 9, width: 42 },
+  streakSheetContent: { paddingBottom: 34, paddingHorizontal: 21, paddingTop: 15 },
+  streakSheetTop: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  streakSheetEyebrow: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 9, letterSpacing: 0.9 },
+  streakSheetTitle: { color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 27, letterSpacing: -0.55, marginTop: 3 },
+  streakClose: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderRadius: 17, height: 36, justifyContent: "center", width: 36 },
+  streakHero: { alignItems: "center", backgroundColor: "rgba(255,253,252,0.88)", borderColor: "rgba(255,255,255,0.96)", borderRadius: 22, borderWidth: 1, flexDirection: "row", marginTop: 18, minHeight: 126, overflow: "hidden", padding: 15, position: "relative", ...theme.shadow },
+  streakHeroGlow: { backgroundColor: "rgba(223,177,155,0.20)", borderRadius: 70, height: 138, left: -36, position: "absolute", top: -14, width: 138 },
+  streakHeroCopy: { flex: 1, marginLeft: 14 },
+  streakCurrentLabel: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8.5, letterSpacing: 0.75 },
+  streakCurrentName: { color: theme.text, fontFamily: theme.font.display, fontSize: 20, marginTop: 4 },
+  streakCurrentBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11.5, lineHeight: 17, marginTop: 5 },
+  streakProgressCard: { backgroundColor: "rgba(241,223,200,0.48)", borderRadius: 15, marginTop: 12, padding: 12 },
+  streakProgressTop: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  streakProgressLabel: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8.5, letterSpacing: 0.45 },
+  streakProgressCount: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 10.5 },
+  streakProgressTrack: { backgroundColor: "rgba(111,48,37,0.10)", borderRadius: 5, height: 8, marginTop: 9, overflow: "hidden" },
+  streakProgressFill: { backgroundColor: theme.clay, borderRadius: 5, height: 8 },
+  streakTimelineTitle: { color: theme.text, fontFamily: theme.font.display, fontSize: 18, marginTop: 21 },
+  streakTimeline: { marginTop: 7, position: "relative" },
+  streakTimelineRail: { backgroundColor: "rgba(111,48,37,0.11)", bottom: 28, left: 24, position: "absolute", top: 28, width: 2 },
+  streakTierRow: { alignItems: "center", flexDirection: "row", minHeight: 61, paddingHorizontal: 5 },
+  streakTierLocked: { opacity: 0.52 },
+  streakTierIcon: { alignItems: "center", backgroundColor: theme.surfaceRaised, borderColor: "rgba(111,48,37,0.10)", borderRadius: 19, borderWidth: 1, height: 40, justifyContent: "center", width: 40, zIndex: 2 },
+  streakTierIconActive: { borderColor: "rgba(111,48,37,0.22)", borderWidth: 2, ...theme.shadow },
+  streakTierCopy: { flex: 1, marginLeft: 11 },
+  streakTierName: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 12.5 },
+  streakTierMeta: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 10, marginTop: 2 },
+  streakCurrentChip: { backgroundColor: "rgba(223,177,155,0.32)", borderRadius: 9, paddingHorizontal: 8, paddingVertical: 5 },
+  streakCurrentChipText: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8.5 },
+  streakLockedMeta: { alignItems: "center", flexDirection: "row", gap: 4 },
+  streakLockedText: { color: theme.textSubtle, fontFamily: theme.font.semibold, fontSize: 9.5 },
+  streakQuote: { alignItems: "flex-start", backgroundColor: "rgba(233,177,142,0.20)", borderColor: "rgba(111,48,37,0.10)", borderRadius: 17, borderWidth: 1, flexDirection: "row", gap: 10, marginTop: 15, padding: 13 },
+  streakQuoteCopy: { flex: 1 },
+  streakQuoteLabel: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8, letterSpacing: 0.65 },
+  streakQuoteText: { color: theme.text, fontFamily: theme.font.medium, fontSize: 11.5, lineHeight: 17, marginTop: 4 },
   scape: { bottom: 0, height: 116, left: 0, overflow: "hidden", position: "absolute", right: 0 },
   scapeCompact: { height: 88, opacity: 0.94 },
   sunLarge: { backgroundColor: "rgba(233,177,142,0.52)", borderRadius: 42, height: 84, position: "absolute", right: 65, top: 4, width: 84 },
