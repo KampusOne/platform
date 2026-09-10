@@ -10,9 +10,11 @@ export type Bindings = {
   MARKETPLACE_ENABLED: string;
   PAYMENTS_ENABLED: string;
   AI_ASSISTANT_ENABLED: string;
+  EMAIL_AUTOMATIONS_ENABLED: string;
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SECRET_KEY?: string;
+  RESEND_API_KEY?: string;
 };
 
 export type Variables = {

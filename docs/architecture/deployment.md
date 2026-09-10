@@ -28,7 +28,9 @@ Repository/environment secrets:
 
 - `CLOUDFLARE_API_TOKEN`, scoped to Workers deployment and the intended account;
 - `CLOUDFLARE_ACCOUNT_ID`;
-- Worker runtime secrets `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY`, configured with Wrangler or the Cloudflare dashboard rather than committed files.
+- Worker runtime secrets `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and `RESEND_API_KEY`, configured with Wrangler or the Cloudflare dashboard rather than committed files.
+
+Resend is isolated behind `server/src/lib/email.ts`. Create a `sending_access` API key restricted to `kampusone.app`, then add `RESEND_API_KEY` with `wrangler secret put` in each intended environment. Keep `EMAIL_AUTOMATIONS_ENABLED=false` until the authentication and abuse-control gate is approved; readiness requires the key only after that flag is enabled.
 
 Production begins in maintenance mode with all feature gates off. Activation is a separate reviewed change.
 

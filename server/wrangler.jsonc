@@ -18,7 +18,8 @@
     "SOCIAL_FEED_ENABLED": "false",
     "MARKETPLACE_ENABLED": "false",
     "PAYMENTS_ENABLED": "false",
-    "AI_ASSISTANT_ENABLED": "false"
+    "AI_ASSISTANT_ENABLED": "false",
+    "EMAIL_AUTOMATIONS_ENABLED": "false"
   },
   "env": {
     "preview": {
@@ -32,7 +33,8 @@
         "SOCIAL_FEED_ENABLED": "false",
         "MARKETPLACE_ENABLED": "false",
         "PAYMENTS_ENABLED": "false",
-        "AI_ASSISTANT_ENABLED": "false"
+        "AI_ASSISTANT_ENABLED": "false",
+        "EMAIL_AUTOMATIONS_ENABLED": "false"
       }
     },
     "production": {
@@ -46,7 +48,8 @@
         "SOCIAL_FEED_ENABLED": "false",
         "MARKETPLACE_ENABLED": "false",
         "PAYMENTS_ENABLED": "false",
-        "AI_ASSISTANT_ENABLED": "false"
+        "AI_ASSISTANT_ENABLED": "false",
+        "EMAIL_AUTOMATIONS_ENABLED": "false"
       },
       "routes": [
         {
