@@ -15,6 +15,7 @@ const env: Bindings = {
   MARKETPLACE_ENABLED: "false",
   PAYMENTS_ENABLED: "false",
   AI_ASSISTANT_ENABLED: "false",
+  EMAIL_AUTOMATIONS_ENABLED: "false",
 };
 
 describe("KampusOne Worker", () => {
@@ -41,6 +42,28 @@ describe("KampusOne Worker", () => {
 
     expect(response.status).toBe(503);
     expect(body.status).toBe("not_ready");
+  });
+
+  it("requires a Resend key only when email delivery is enabled", async () => {
+    const response = await app.request(
+      "http://local.test/health/ready",
+      {},
+      {
+        ...env,
+        SUPABASE_URL: "https://example.supabase.co",
+        SUPABASE_PUBLISHABLE_KEY: "publishable",
+        SUPABASE_SECRET_KEY: "secret",
+        EMAIL_AUTOMATIONS_ENABLED: "true",
+      },
+    );
+    const body = (await response.json()) as {
+      status: string;
+      checks: { resendKey: boolean };
+    };
+
+    expect(response.status).toBe(503);
+    expect(body.status).toBe("not_ready");
+    expect(body.checks.resendKey).toBe(false);
   });
 
   it("uses the stable error envelope", async () => {

@@ -28,10 +28,12 @@ export function allowedOrigins(env: Bindings): Set<string> {
 }
 
 export function readiness(env: Bindings) {
+  const emailAutomationsEnabled = enabled(env.EMAIL_AUTOMATIONS_ENABLED);
   const checks = {
     supabaseUrl: Boolean(env.SUPABASE_URL),
     publishableKey: Boolean(env.SUPABASE_PUBLISHABLE_KEY),
     serverSecret: Boolean(env.SUPABASE_SECRET_KEY),
+    resendKey: !emailAutomationsEnabled || Boolean(env.RESEND_API_KEY),
   };
 
   return {

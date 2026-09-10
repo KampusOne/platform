@@ -2,3 +2,4 @@
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_replace_me
 SUPABASE_SECRET_KEY=sb_secret_replace_me
+RESEND_API_KEY=re_replace_me
