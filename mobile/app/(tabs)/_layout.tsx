@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import type { ComponentProps } from "react";
-import { StyleSheet, useWindowDimensions, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { ColorValue } from "react-native";
 
 import { theme } from "@/src/theme";
@@ -17,9 +17,6 @@ function TabIcon({ name, color, focused }: { name: IconName; color: ColorValue; 
 }
 
 export default function TabLayout() {
-  const { width } = useWindowDimensions();
-  const dockWidth = Math.min(Math.max(width - 24, 280), 520);
-
   return (
     <Tabs
       screenOptions={{
@@ -39,11 +36,13 @@ export default function TabLayout() {
           borderTopWidth: 1,
           bottom: 12,
           height: 72,
-          left: (width - dockWidth) / 2,
+          left: 12,
+          marginHorizontal: "auto",
+          maxWidth: 520,
           paddingBottom: 7,
           paddingTop: 5,
           position: "absolute",
-          width: dockWidth,
+          right: 12,
           ...theme.floatingShadow,
         },
       }}
