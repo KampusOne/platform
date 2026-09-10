@@ -11,6 +11,8 @@ type MailInput = {
   idempotencyKey: string;
 };
 
+const DEFAULT_FROM_EMAIL = "KampusOne <hello@kampusone.app>";
+
 const copy = {
   verification: {
     subject: "Verify your KampusOne email",
@@ -74,6 +76,22 @@ function escapeHtml(value: string) {
   })[character] ?? character);
 }
 
+function resolveFromEmail(configured: string) {
+  const trimmed = configured.trim();
+  const bracketed = trimmed.match(/<([^>]+)>$/)?.[1];
+  const address = (bracketed ?? trimmed).trim().toLowerCase();
+  const domain = address.split("@")[1];
+  if (domain === "kampusone.app") return trimmed;
+
+  console.warn(JSON.stringify({
+    level: "warn",
+    event: "email.sender.fallback",
+    configuredDomain: domain ?? "invalid",
+    fallbackDomain: "kampusone.app",
+  }));
+  return DEFAULT_FROM_EMAIL;
+}
+
 function providerUnavailable() {
   return new AppError(503, "PROVIDER_UNAVAILABLE", "We could not send the email. Please try again shortly.");
 }
@@ -91,7 +109,7 @@ export async function sendMail(env: Bindings, input: MailInput) {
         "Idempotency-Key": input.idempotencyKey,
       },
       body: JSON.stringify({
-        from: env.RESEND_FROM_EMAIL,
+        from: resolveFromEmail(env.RESEND_FROM_EMAIL),
         to: [input.to],
         subject: copy[input.kind].subject,
         html: emailHtml(input),
