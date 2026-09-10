@@ -46,6 +46,7 @@ export const buildPhases: BuildPhase[] = [
       { name: "Student welcome and intro", detail: "Branded welcome plus four illustrated, accessible intro stories.", status: "done", evidence: "mobile/app/index.tsx · intro.tsx" },
       { name: "Email authentication", detail: "Create account, password login, OTP verification and recovery with Supabase Auth.", status: "in_progress", evidence: "mobile/app/create-account.tsx · login.tsx" },
       { name: "14-step onboarding", detail: "Academic identity, interests, permissions, privacy choices and review summary.", status: "done", evidence: "mobile/app/onboarding.tsx" },
+      { name: "Production data release", detail: "The migration passed rollback validation; applying its RLS, grants, Storage policies and seed records needs explicit production approval.", status: "needs_input", evidence: "database/supabase/migrations/20260910090000_identity_onboarding_agent_verification.sql" },
       { name: "Agent application", detail: "Application, document checklist, consent and transparent verification timeline.", status: "in_progress", evidence: "portal/app/agents/" },
       { name: "Operations review", detail: "Review queue, document checks, pending/manual outcomes and append-only evidence.", status: "in_progress", evidence: "portal/app/admin/" },
       { name: "Neon isolation", detail: "Existing legacy schema preserved; new analytics work isolated on a development branch.", status: "done", evidence: "Neon: phase-1-platform-foundation" },
@@ -163,7 +164,7 @@ export const buildPhases: BuildPhase[] = [
     status: "planned",
     reviewGate: "Mobile builds, domain/TLS, backup restore, security, accessibility and pilot support drills pass.",
     items: [
-      { name: "Separate production URLs", detail: "ops.kampusone.app, agents.kampusone.app, build.kampusone.app and api.kampusone.app.", status: "in_progress" },
+      { name: "Separate production URLs", detail: "ops.kampusone.app, agents.kampusone.app, build.kampusone.app and api.kampusone.app.", status: "needs_input" },
       { name: "Mobile release", detail: "EAS build profiles, signing, store metadata and staged rollout.", status: "planned" },
       { name: "Observability", detail: "Cloudflare logs, error reporting, Neon/Supabase health and user-safe incident messaging.", status: "planned" },
       { name: "Recovery", detail: "Database restore test, storage recovery, key rotation and rollback runbooks.", status: "planned" },
