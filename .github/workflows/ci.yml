@@ -94,8 +94,10 @@ jobs:
         run: |
           test -s database/supabase/migrations/20260909213215_foundation.sql
           test -s database/verification/phase_0_security.sql
-          ! grep -R --line-number --extended-regexp '(sb_secret_|service_role|SUPABASE_SECRET_KEY=.)' \
+          secret_pattern='sb_''secret_|service_''role|SUPABASE_''SECRET_KEY=.'
+          ! grep -R --line-number --extended-regexp "$secret_pattern" \
             --exclude='*.example' \
             --exclude='*.md' \
             --exclude='*.sql' \
+            --exclude-dir='.git' \
             .
