@@ -14,6 +14,7 @@ export function AgentReview() {
   const [applications, setApplications] = useState(sampleApplications);
   const [selectedId, setSelectedId] = useState(sampleApplications[0]?.id ?? "");
   const [filter, setFilter] = useState<"all" | Decision>("all");
+  const [documentOpen, setDocumentOpen] = useState(false);
   const [audit, setAudit] = useState("No review decision made in this session.");
   const selected = applications.find((item) => item.id === selectedId) ?? applications[0];
   const visible = filter === "all"
@@ -34,7 +35,7 @@ export function AgentReview() {
           {(["all", "pending", "needs_information", "verified"] as const).map((item) => <button aria-pressed={filter === item} key={item} onClick={() => setFilter(item)} type="button">{item === "all" ? "All" : item.replace("_", " ")}</button>)}
         </div>
         <div className="application-list">
-          {visible.map((item) => <button className={item.id === selected?.id ? "selected" : ""} key={item.id} onClick={() => setSelectedId(item.id)} type="button"><span className="applicant-avatar">{item.initials}</span><span className="applicant-copy"><strong>{item.name}</strong><small>{item.type} · {item.department}</small><em>{item.submitted}</em></span><DecisionBadge decision={item.decision} /></button>)}
+          {visible.map((item) => <button className={item.id === selected?.id ? "selected" : ""} key={item.id} onClick={() => { setSelectedId(item.id); setDocumentOpen(false); }} type="button"><span className="applicant-avatar">{item.initials}</span><span className="applicant-copy"><strong>{item.name}</strong><small>{item.type} · {item.department}</small><em>{item.submitted}</em></span><DecisionBadge decision={item.decision} /></button>)}
         </div>
       </div>
 
@@ -50,7 +51,16 @@ export function AgentReview() {
           </div>
           <div className="document-preview">
             <div className="document-sheet"><span>K1</span><div><i /><i /><i /><i /></div><small>Private document preview</small></div>
-            <div><p className="section-kicker">Student identity card</p><h3>Evidence is readable</h3><p>Extracted name is consistent with the application. The issuer cannot be independently confirmed yet, so the case remains pending—not failed.</p><button type="button">Open redacted document</button></div>
+            <div><p className="section-kicker">Student identity card</p><h3>Evidence is readable</h3><p>Extracted name is consistent with the application. The issuer cannot be independently confirmed yet, so the case remains pending—not failed.</p><button aria-expanded={documentOpen} aria-controls="redacted-evidence" onClick={() => setDocumentOpen((current) => !current)} type="button">{documentOpen ? "Close redacted document" : "Open redacted document"}</button></div>
+            {documentOpen ? (
+              <div className="redacted-evidence" id="redacted-evidence" role="region" aria-label="Redacted identity evidence">
+                <div><span>Document name</span><strong>E•• O•••••</strong></div>
+                <div><span>Student number</span><strong>MAT/••••/214</strong></div>
+                <div><span>Claimed issuer</span><strong>University of Benin · pending confirmation</strong></div>
+                <div><span>Integrity reference</span><strong>sha256: 7d9e••••91c2</strong></div>
+                <p>Sample disclosure only. Full files require a trusted reviewer role and every access is audited.</p>
+              </div>
+            ) : null}
           </div>
           <div className="decision-panel">
             <div><p className="section-kicker">Manual decision</p><h3>Choose an outcome with a reason</h3><p>“Verified” activates only after the server confirms your role and writes the audit event.</p></div>

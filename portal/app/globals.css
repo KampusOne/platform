@@ -935,6 +935,11 @@ h3,
 .document-preview h3 { margin: 0; font-size: 1.05rem; }
 .document-preview p:not(.section-kicker) { color: #6f625a; font-size: .68rem; line-height: 1.5; }
 .document-preview button { min-height: 36px; background: transparent; color: var(--k1-brand-700); border: 1px solid #d2b5a5; padding: 7px 10px; }
+.redacted-evidence { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid #dfd2ca; border-radius: 12px; background: #dfd2ca; }
+.redacted-evidence > div { display: flex; flex-direction: column; gap: 5px; min-height: 72px; background: #fffdfa; padding: 14px; }
+.redacted-evidence span { color: #897b72; font-size: .56rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.redacted-evidence strong { color: var(--k1-ink); font-size: .71rem; line-height: 1.45; }
+.redacted-evidence > p { grid-column: 1 / -1; margin: 0; background: #f3e7df; padding: 11px 14px; color: #765e51 !important; }
 .decision-panel { margin-top: 20px; border-top: 1px solid #e0d4cb; padding-top: 20px; }
 .decision-panel h3 { margin: 0; font-size: 1rem; }
 .decision-panel > div > p:not(.section-kicker) { color: #74675f; font-size: .67rem; }
@@ -1032,6 +1037,8 @@ h3,
   .verification-grid,
   .document-preview { grid-template-columns: 1fr; }
   .document-sheet { width: 150px; }
+  .redacted-evidence { grid-template-columns: 1fr; }
+  .redacted-evidence > p { grid-column: 1; }
   .decision-actions { align-items: stretch; flex-direction: column; }
 }
 
