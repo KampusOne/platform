@@ -1,26 +1,23 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
-import { useMemo, useRef, useState } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { useAuth } from "@/src/auth/auth-context";
 import { AppHeader } from "@/src/components/app-header";
-import { InlineFeedback, ProductScreen } from "@/src/components/product-ui";
+import { EmptyResult, ProductScreen } from "@/src/components/product-ui";
 import { SectionHeading } from "@/src/components/section-heading";
-import { GlassCard, MotivationBanner, PressScale, useReducedMotionPreference } from "@/src/components/visual-system";
+import { ApiError, api } from "@/src/lib/api";
 import { theme } from "@/src/theme";
 
-const agenda = [
-  { id: "csc", start: "10:00", end: "12:00", code: "CSC 211 — Data Structures", room: "Lecture Theatre 3", status: "Next" },
-  { id: "edu", start: "13:00", end: "14:00", code: "EDU 201", room: "Faculty of Education", status: "Later" },
-  { id: "mth", start: "15:00", end: "17:00", code: "MTH 213", room: "Hall B", status: "Later" },
-] as const;
-
-const quickActions = [
-  { key: "gpa", icon: "calculator-outline" as const, label: "GPA planner", meta: "3.72 saved" },
-  { key: "files", icon: "folder-open-outline" as const, label: "My files", meta: "12 offline" },
-  { key: "alarm", icon: "alarm-outline" as const, label: "Alarm sounds", meta: "Choose a tone" },
-] as const;
+type AgendaItem = { id: string; title: string; course_code: string | null; venue: string | null; lecturer: string | null; starts_at: string; ends_at: string };
+type Update = { id: string; title: string; summary: string; category: string; source_name: string; urgent: boolean; image_url: string | null };
+type Home = {
+  profile: { first_name: string | null; display_name: string } | null;
+  today: AgendaItem[];
+  updates: Update[];
+  academics: { cgpa: string | number | null; total_units: string | number | null };
+};
 
 function greeting() {
   const hour = new Date().getHours();
@@ -30,270 +27,83 @@ function greeting() {
 }
 
 export default function TodayScreen() {
-  const [reminderOn, setReminderOn] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [feedback, setFeedback] = useState("");
-  const reminderPulse = useRef(new Animated.Value(1)).current;
-  const reducedMotion = useReducedMotionPreference();
-  const date = useMemo(
-    () => new Intl.DateTimeFormat("en-NG", { day: "numeric", month: "long", weekday: "long" }).format(new Date()),
-    [],
-  );
+  const { profile } = useAuth();
+  const [data, setData] = useState<Home | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setError("");
+    try { setData(await api<Home>("/v1/student/home")); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : "Your campus day could not be loaded."); }
+    finally { setLoading(false); }
+  }, []);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  function tap() {
-    void Haptics.selectionAsync();
-  }
-
-  function toggleReminder() {
-    const next = !reminderOn;
-    setReminderOn(next);
-    setFeedback(next ? "Reminder set for 9:40 AM." : "Class reminder removed.");
-    void (next ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success) : Haptics.selectionAsync());
-    if (reducedMotion) {
-      reminderPulse.setValue(1);
-      return;
-    }
-    Animated.sequence([
-      Animated.timing(reminderPulse, { duration: 90, toValue: 0.78, useNativeDriver: true }),
-      Animated.spring(reminderPulse, { damping: 7, stiffness: 260, toValue: 1.14, useNativeDriver: true }),
-      Animated.spring(reminderPulse, { damping: 9, stiffness: 220, toValue: 1, useNativeDriver: true }),
-    ]).start();
-  }
+  const firstName = data?.profile?.first_name ?? profile?.first_name ?? "there";
+  const next = data?.today[0];
+  const date = new Intl.DateTimeFormat("en-NG", { day: "numeric", month: "long", weekday: "long" }).format(new Date());
+  const initials = (profile?.display_name ?? "Kampus One").split(" ").map((word) => word[0]).join("").slice(0, 2).toUpperCase();
 
   return (
     <ProductScreen>
-      <AppHeader
-        onBellPress={() => {
-          tap();
-          setNotificationsOpen((value) => !value);
-        }}
-        showStreak
-        subtitle={date}
-        title={`${greeting()}, Gideon`}
-        unread={!notificationsOpen}
-      />
-
-      {notificationsOpen ? (
-        <GlassCard style={styles.notifications}>
-          <View style={styles.notificationTop}>
-            <Text style={styles.notificationHeading}>Fresh for you</Text>
-            <Text style={styles.notificationCount}>2 new</Text>
-          </View>
-          <NotificationLine icon="alarm-outline" text="CSC 211 begins at 10:00 AM." />
-          <View style={styles.notificationRule} />
-          <NotificationLine icon="school-outline" text="Course registration closes Friday night." />
-        </GlassCard>
+      <AppHeader initials={initials} showStreak={false} subtitle={date} title={`${greeting()}, ${firstName}`} unread={false} />
+      <View style={styles.lifeCard}>
+        <Image source={require("@/assets/brand-scenes/campus-life.png")} style={styles.lifeImage} />
+        <View style={styles.lifeShade} />
+        <View style={styles.lifeCopy}><Text style={styles.lifeEyebrow}>KAMPUSONE · {profile?.university_name ?? "YOUR CAMPUS"}</Text><Text style={styles.lifeTitle}>Everything you need for today.</Text></View>
+      </View>
+      {loading ? <View style={styles.loading}><ActivityIndicator color={theme.brand} /><Text style={styles.loadingText}>Loading your real campus data…</Text></View> : null}
+      {error ? (
+        <Pressable accessibilityRole="button" onPress={() => { setLoading(true); void load(); }} style={styles.error}>
+          <Ionicons name="cloud-offline-outline" size={22} color={theme.deepBrand} />
+          <View style={styles.errorCopy}><Text style={styles.errorTitle}>Couldn’t load your day</Text><Text style={styles.errorBody}>{error} Tap to retry.</Text></View>
+        </Pressable>
       ) : null}
-
-      {feedback ? <InlineFeedback message={feedback} tone={feedback.includes("set") ? "success" : "brand"} /> : null}
-
-      <View style={styles.alertStack}>
-        {reminderOn ? (
-          <AlertCard icon="time-outline" title="Reminder set for 9:40 AM" meta="You’re all set. We’ll remind you." onPress={toggleReminder} />
-        ) : null}
-        <AlertCard
-          icon="megaphone-outline"
-          meta="Works department · 40 minutes ago"
-          onPress={() => {
-            tap();
-            router.push("/feed");
-          }}
-          strong
-          title="Water will be off in Hall 3 from 2 PM"
-        />
-      </View>
-
-      <GlassCard style={styles.nextCard}>
-        <View style={styles.nextTopline}>
-          <View style={styles.nextEyebrowWrap}><View style={styles.nextLine} /><Text style={styles.nextEyebrow}>NEXT CLASS</Text></View>
-          <View style={styles.countdown}><Ionicons name="timer-outline" size={17} color={theme.brandPressed} /><Text style={styles.countdownText}>IN 42 MINUTES</Text></View>
-        </View>
-
-        <View style={styles.courseRow}>
-          <View style={styles.courseBadge}><Text style={styles.courseBadgeText}>CSC{`\n`}211</Text></View>
-          <View style={styles.courseCopy}>
-            <Text style={styles.courseTitle}>Data Structures</Text>
-            <Text style={styles.courseLine}>Time to build something great.</Text>
+      {!loading && !error ? (
+        <>
+          <View style={styles.section}>
+            <SectionHeading meta={`${data?.today.length ?? 0} today`} onPress={() => router.push("/timetable")} title="Your timetable" />
+            {next ? (
+              <Pressable onPress={() => router.push("/timetable")} style={({ pressed }) => [styles.nextCard, pressed && styles.pressed]}>
+                <View style={styles.nextTime}><Text style={styles.nextStart}>{next.starts_at}</Text><Text style={styles.nextEnd}>{next.ends_at}</Text></View>
+                <View style={styles.nextCopy}><Text style={styles.nextTag}>NEXT CLASS</Text><Text style={styles.nextTitle}>{next.course_code ? `${next.course_code} · ` : ""}{next.title}</Text><Text style={styles.nextMeta}>{next.venue ?? "Venue not added"}{next.lecturer ? ` · ${next.lecturer}` : ""}</Text></View>
+                <Ionicons name="arrow-forward-circle" size={30} color={theme.brand} />
+              </Pressable>
+            ) : <EmptyResult body="Add your class schedule once and KampusOne will build your Today view from it." title="No classes added for today" />}
+            {data?.today.slice(1).map((item) => (
+              <View key={item.id} style={styles.agendaRow}><Text style={styles.agendaTime}>{item.starts_at}</Text><View style={styles.agendaDot} /><View style={styles.agendaCopy}><Text style={styles.agendaTitle}>{item.course_code ?? item.title}</Text><Text style={styles.agendaMeta}>{item.venue ?? "Venue not added"}</Text></View></View>
+            ))}
           </View>
-          <BookStack />
-        </View>
-
-        <View style={styles.metaRow}>
-          <MetaChip icon="time-outline" text="10:00 – 12:00" />
-          <MetaChip icon="location-outline" text="Lecture Theatre 3" />
-          <MetaChip icon="person-outline" text="Dr Ehiaguina" />
-        </View>
-
-        <View style={styles.actions}>
-          <PressScale
-            accessibilityLabel="Get directions to Lecture Theatre 3"
-            onPress={() => {
-              tap();
-              router.push("/campus");
-            }}
-            style={styles.primaryAction}
-          >
-            <Ionicons name="navigate-outline" size={21} color="#FFFFFF" />
-            <Text style={styles.primaryActionText}>Get directions</Text>
-            <Ionicons name="arrow-forward" size={19} color="#FFFFFF" />
-          </PressScale>
-          <PressScale accessibilityLabel="Set class reminder" onPress={toggleReminder} style={[styles.secondaryAction, reminderOn && styles.secondaryActionOn]}>
-            <Animated.View style={{ transform: [{ scale: reminderPulse }] }}>
-              <Ionicons name={reminderOn ? "checkmark-done" : "calendar-outline"} size={20} color={reminderOn ? theme.statusPositive : theme.brandPressed} />
-            </Animated.View>
-            <Text style={[styles.secondaryActionText, reminderOn && styles.secondaryActionTextOn]}>{reminderOn ? "Reminder set" : "Set reminder"}</Text>
-          </PressScale>
-        </View>
-      </GlassCard>
-
-      <View style={styles.section}>
-        <SectionHeading meta="Full timetable" onPress={() => router.push("/timetable")} title="Today" />
-        <View style={styles.timeline}>
-          <View pointerEvents="none" style={styles.timelineRail} />
-          {agenda.map((item, index) => (
-            <View key={item.id} style={styles.scheduleRow}>
-              <View style={styles.timeBlock}>
-                <Text style={styles.startTime}>{item.start}</Text>
-                <Text style={styles.endTime}>{item.end}</Text>
-              </View>
-              <View style={[styles.timelineDot, index === 0 && styles.timelineDotActive]} />
-              <View style={styles.scheduleCard}>
-                <View style={styles.scheduleCopy}>
-                  <Text numberOfLines={1} style={styles.scheduleTitle}>{item.code}</Text>
-                  <View style={styles.roomRow}><Ionicons name="location-outline" size={15} color={theme.brandPressed} /><Text style={styles.scheduleRoom}>{item.room}</Text></View>
-                </View>
-                <View style={[styles.status, index === 0 && styles.statusActive]}><Text style={[styles.statusText, index === 0 && styles.statusTextActive]}>{item.status}</Text></View>
-              </View>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <MotivationBanner body="You’ve got this, Gideon." title="Same campus. Brighter futures." />
-
-      <View style={styles.section}>
-        <SectionHeading title="Ready when you are" />
-        <View style={styles.quickRow}>
-          {quickActions.map((action) => (
-            <PressScale
-              accessibilityLabel={action.label}
-              key={action.key}
-              onPress={() => {
-                tap();
-                setFeedback(`${action.label} preview selected.`);
-              }}
-              style={styles.quickCard}
-            >
-              <View style={styles.quickIcon}><Ionicons name={action.icon} size={20} color={theme.brandPressed} /></View>
-              <Text style={styles.quickLabel}>{action.label}</Text>
-              <Text style={styles.quickMeta}>{action.meta}</Text>
-            </PressScale>
-          ))}
-        </View>
-      </View>
-
-      <Text style={styles.disclaimer}>Preview data only. Your real timetable appears after sign-in.</Text>
+          <View style={styles.actionRow}>
+            <QuickAction icon="calendar-outline" label="Add class" onPress={() => router.push("/timetable")} />
+            <QuickAction icon="calculator-outline" label={data?.academics.cgpa ? `CGPA ${data.academics.cgpa}` : "Add results"} onPress={() => router.push("/profile")} />
+            <QuickAction icon="map-outline" label="Find a place" onPress={() => router.push("/campus")} />
+          </View>
+          <View style={styles.section}>
+            <SectionHeading meta="Verified sources" onPress={() => router.push("/feed")} title="Campus updates" />
+            {data?.updates.length ? data.updates.slice(0, 3).map((update) => (
+              <Pressable key={update.id} onPress={() => router.push("/feed")} style={({ pressed }) => [styles.update, pressed && styles.pressed]}>
+                {update.image_url ? <Image source={{ uri: update.image_url }} style={styles.updateImage} /> : <View style={styles.updateIcon}><Ionicons name={update.urgent ? "warning-outline" : "newspaper-outline"} size={22} color={theme.brandPressed} /></View>}
+                <View style={styles.updateCopy}><Text style={styles.updateSource}>{update.source_name} · {update.category}</Text><Text numberOfLines={2} style={styles.updateTitle}>{update.title}</Text><Text numberOfLines={2} style={styles.updateBody}>{update.summary}</Text></View>
+              </Pressable>
+            )) : <EmptyResult body="Approved university updates will appear here as soon as your content team publishes them." title="No published updates yet" />}
+          </View>
+        </>
+      ) : null}
     </ProductScreen>
   );
 }
 
-function NotificationLine({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
-  return <View style={styles.notificationLine}><Ionicons name={icon} size={17} color={theme.brand} /><Text style={styles.notificationText}>{text}</Text></View>;
-}
-
-function AlertCard({ icon, title, meta, onPress, strong = false }: { icon: keyof typeof Ionicons.glyphMap; title: string; meta: string; onPress: () => void; strong?: boolean }) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.alert, strong && styles.alertStrong, pressed && styles.pressed]}>
-      <View style={[styles.alertIcon, strong && styles.alertIconStrong]}><Ionicons name={icon} size={22} color={strong ? theme.deepBrand : theme.brandPressed} /></View>
-      <View style={styles.alertCopy}><Text style={[styles.alertTitle, strong && styles.alertTitleStrong]}>{title}</Text><Text style={styles.alertMeta}>{meta}</Text></View>
-      <Ionicons name="chevron-forward" size={19} color={theme.brandPressed} />
-    </Pressable>
-  );
-}
-
-function MetaChip({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
-  return <View style={styles.metaChip}><Ionicons name={icon} size={15} color={theme.textMuted} /><Text numberOfLines={1} style={styles.metaChipText}>{text}</Text></View>;
-}
-
-function BookStack() {
-  return (
-    <View pointerEvents="none" style={styles.books}>
-      <View style={[styles.book, styles.bookBack]} />
-      <View style={[styles.book, styles.bookMiddle]} />
-      <View style={[styles.book, styles.bookFront]}><Text style={styles.bookQuote}>Small{`\n`}steps.{`\n`}Big futures.</Text></View>
-    </View>
-  );
+function QuickAction({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.quick, pressed && styles.pressed]}><View style={styles.quickIcon}><Ionicons name={icon} size={22} color={theme.brandPressed} /></View><Text numberOfLines={2} style={styles.quickText}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({
-  notifications: { marginBottom: 12, marginTop: -4, padding: 15 },
-  notificationTop: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 10 },
-  notificationHeading: { color: theme.text, fontFamily: theme.font.display, fontSize: 16 },
-  notificationCount: { color: theme.brand, fontFamily: theme.font.semibold, fontSize: 11.5 },
-  notificationLine: { alignItems: "center", flexDirection: "row", gap: 9 },
-  notificationText: { color: theme.textMuted, flex: 1, fontFamily: theme.font.body, fontSize: 12.5 },
-  notificationRule: { backgroundColor: theme.border, height: StyleSheet.hairlineWidth, marginVertical: 10 },
-  alertStack: { gap: 10, marginTop: 2 },
-  alert: { alignItems: "center", backgroundColor: "rgba(255,253,252,0.80)", borderColor: "rgba(195,93,56,0.13)", borderRadius: 18, borderWidth: 1, flexDirection: "row", minHeight: 70, padding: 11, ...theme.shadow },
-  alertStrong: { backgroundColor: "rgba(252,230,220,0.62)", borderColor: "rgba(168,70,46,0.17)" },
-  alertIcon: { alignItems: "center", backgroundColor: "rgba(233,177,142,0.28)", borderRadius: 14, height: 46, justifyContent: "center", width: 46 },
-  alertIconStrong: { backgroundColor: "rgba(233,177,142,0.42)" },
-  alertCopy: { flex: 1, marginLeft: 11 },
-  alertTitle: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 13.5 },
-  alertTitleStrong: { color: theme.deepBrand },
-  alertMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11.5, marginTop: 3 },
-  nextCard: { marginTop: 17, padding: 17 },
-  nextTopline: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-  nextEyebrowWrap: { alignItems: "center", flexDirection: "row", gap: 9 },
-  nextLine: { backgroundColor: theme.brand, borderRadius: 3, height: 23, width: 4 },
-  nextEyebrow: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 11.5, letterSpacing: 0.65 },
-  countdown: { alignItems: "center", backgroundColor: "rgba(233,177,142,0.28)", borderRadius: 12, flexDirection: "row", gap: 6, paddingHorizontal: 10, paddingVertical: 7 },
-  countdownText: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 10.5, letterSpacing: 0.25 },
-  courseRow: { alignItems: "center", flexDirection: "row", marginTop: 14, minHeight: 80 },
-  courseBadge: { alignItems: "center", backgroundColor: theme.brand, borderRadius: 17, height: 72, justifyContent: "center", width: 72, ...theme.shadow },
-  courseBadgeText: { color: "#FFFFFF", fontFamily: theme.font.displayStrong, fontSize: 20, lineHeight: 21, textAlign: "center" },
-  courseCopy: { flex: 1, marginLeft: 13, zIndex: 2 },
-  courseTitle: { color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 23, letterSpacing: -0.45, lineHeight: 27 },
-  courseLine: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12.5, lineHeight: 18, marginTop: 3 },
-  books: { alignItems: "flex-end", height: 84, justifyContent: "flex-end", marginRight: -16, width: 61 },
-  book: { backgroundColor: "#C67A59", borderColor: "rgba(111,48,37,0.25)", borderRadius: 3, borderWidth: 1, bottom: 0, position: "absolute" },
-  bookBack: { height: 62, right: 0, transform: [{ rotate: "-4deg" }], width: 25 },
-  bookMiddle: { backgroundColor: "#D49173", height: 69, right: 13, transform: [{ rotate: "-2deg" }], width: 27 },
-  bookFront: { alignItems: "center", backgroundColor: "#E1AA8C", height: 76, justifyContent: "center", right: 28, width: 31 },
-  bookQuote: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 6.5, lineHeight: 9, textAlign: "center" },
-  metaRow: { flexDirection: "row", gap: 7, marginTop: 14 },
-  metaChip: { alignItems: "center", backgroundColor: "rgba(251,247,242,0.76)", borderColor: "rgba(41,35,31,0.08)", borderRadius: 12, borderWidth: 1, flex: 1, flexDirection: "row", gap: 5, justifyContent: "center", minHeight: 38, paddingHorizontal: 7 },
-  metaChipText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 10.5 },
-  actions: { flexDirection: "row", gap: 9, marginTop: 14 },
-  primaryAction: { alignItems: "center", backgroundColor: theme.brand, borderRadius: 14, flex: 1, flexDirection: "row", gap: 7, justifyContent: "center", minHeight: 52, paddingHorizontal: 13 },
-  primaryActionText: { color: "#FFFFFF", fontFamily: theme.font.semibold, fontSize: 13 },
-  secondaryAction: { alignItems: "center", backgroundColor: "rgba(241,223,200,0.49)", borderColor: "rgba(195,93,56,0.10)", borderRadius: 14, borderWidth: 1, flex: 1, flexDirection: "row", gap: 7, justifyContent: "center", minHeight: 52, paddingHorizontal: 13 },
-  secondaryActionOn: { backgroundColor: "rgba(241,223,200,0.62)", borderColor: "rgba(111,48,37,0.16)" },
-  secondaryActionText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 12.5 },
-  secondaryActionTextOn: { color: theme.statusPositive },
-  section: { marginTop: 27 },
-  timeline: { position: "relative" },
-  timelineRail: { backgroundColor: "rgba(195,93,56,0.42)", bottom: 25, left: 87, position: "absolute", top: 25, width: 2 },
-  scheduleRow: { alignItems: "center", flexDirection: "row", minHeight: 84 },
-  timeBlock: { width: 72 },
-  startTime: { color: theme.text, fontFamily: theme.font.bold, fontSize: 14 },
-  endTime: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 12, marginTop: 3 },
-  timelineDot: { backgroundColor: theme.peach, borderColor: theme.canvas, borderRadius: 8, borderWidth: 3, height: 16, marginHorizontal: 8, width: 16, zIndex: 2 },
-  timelineDotActive: { backgroundColor: theme.brandPressed },
-  scheduleCard: { alignItems: "center", backgroundColor: "rgba(255,253,252,0.92)", borderColor: "rgba(255,255,255,0.96)", borderRadius: 16, borderWidth: 1, flex: 1, flexDirection: "row", minHeight: 72, padding: 12, ...theme.shadow },
-  scheduleCopy: { flex: 1 },
-  scheduleTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13.5 },
-  roomRow: { alignItems: "center", flexDirection: "row", gap: 4, marginTop: 5 },
-  scheduleRoom: { color: theme.textMuted, flex: 1, fontFamily: theme.font.body, fontSize: 11.5 },
-  status: { backgroundColor: "rgba(241,223,200,0.45)", borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6 },
-  statusActive: { backgroundColor: "rgba(233,177,142,0.31)" },
-  statusText: { color: theme.textMuted, fontFamily: theme.font.semibold, fontSize: 10.5 },
-  statusTextActive: { color: theme.brandPressed },
-  quickRow: { flexDirection: "row", gap: 9 },
-  quickCard: { backgroundColor: "rgba(255,253,252,0.90)", borderColor: "rgba(255,255,255,0.96)", borderRadius: 17, borderWidth: 1, flex: 1, minHeight: 123, padding: 12, ...theme.shadow },
-  quickIcon: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderRadius: 13, height: 40, justifyContent: "center", width: 40 },
-  quickLabel: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 12, marginTop: 11 },
-  quickMeta: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 10.5, lineHeight: 15, marginTop: 3 },
-  disclaimer: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 10.5, lineHeight: 16, marginTop: 24, textAlign: "center" },
-  pressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
+  lifeCard: { borderRadius: 25, height: 190, marginBottom: 20, overflow: "hidden", position: "relative" }, lifeImage: { height: "100%", width: "100%" }, lifeShade: { backgroundColor: "rgba(41,35,31,0.34)", bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }, lifeCopy: { bottom: 18, left: 18, position: "absolute", right: 18 }, lifeEyebrow: { color: "#FFF8F2", fontFamily: theme.font.bold, fontSize: 9.5, letterSpacing: 1 }, lifeTitle: { color: "#FFFFFF", fontFamily: theme.font.displayStrong, fontSize: 25, marginTop: 5 },
+  loading: { alignItems: "center", gap: 10, paddingVertical: 32 }, loadingText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13 },
+  error: { alignItems: "center", backgroundColor: "#FFF0EB", borderColor: "#F1C5B5", borderRadius: 19, borderWidth: 1, flexDirection: "row", gap: 12, padding: 15 }, errorCopy: { flex: 1 }, errorTitle: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 14 }, errorBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11.5, lineHeight: 17, marginTop: 3 },
+  section: { marginTop: 24 }, nextCard: { alignItems: "center", backgroundColor: theme.text, borderRadius: 23, flexDirection: "row", minHeight: 112, padding: 16 }, nextTime: { borderRightColor: "rgba(255,255,255,.18)", borderRightWidth: 1, paddingRight: 14 }, nextStart: { color: "#FFFFFF", fontFamily: theme.font.displayStrong, fontSize: 19 }, nextEnd: { color: "#CFC5BE", fontFamily: theme.font.body, fontSize: 11, marginTop: 3 }, nextCopy: { flex: 1, paddingHorizontal: 14 }, nextTag: { color: theme.peach, fontFamily: theme.font.bold, fontSize: 9, letterSpacing: 1 }, nextTitle: { color: "#FFFFFF", fontFamily: theme.font.semibold, fontSize: 15, marginTop: 5 }, nextMeta: { color: "#CFC5BE", fontFamily: theme.font.body, fontSize: 11, marginTop: 4 },
+  agendaRow: { alignItems: "center", flexDirection: "row", minHeight: 62, paddingHorizontal: 8 }, agendaTime: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 12, width: 48 }, agendaDot: { backgroundColor: theme.clay, borderRadius: 4, height: 8, marginHorizontal: 9, width: 8 }, agendaCopy: { borderBottomColor: theme.border, borderBottomWidth: 1, flex: 1, paddingVertical: 12 }, agendaTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13 }, agendaMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11, marginTop: 3 },
+  actionRow: { flexDirection: "row", gap: 9, marginTop: 24 }, quick: { backgroundColor: theme.surfaceRaised, borderColor: theme.border, borderRadius: 18, borderWidth: 1, flex: 1, minHeight: 105, padding: 12 }, quickIcon: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderRadius: 13, height: 40, justifyContent: "center", width: 40 }, quickText: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 11.5, lineHeight: 16, marginTop: 9 },
+  update: { alignItems: "center", backgroundColor: theme.surfaceRaised, borderColor: theme.border, borderRadius: 19, borderWidth: 1, flexDirection: "row", marginBottom: 10, minHeight: 105, padding: 10 }, updateImage: { borderRadius: 14, height: 82, width: 82 }, updateIcon: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderRadius: 14, height: 62, justifyContent: "center", width: 62 }, updateCopy: { flex: 1, marginLeft: 12 }, updateSource: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8.5, letterSpacing: .4 }, updateTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13.5, marginTop: 4 }, updateBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10.5, lineHeight: 15, marginTop: 3 }, pressed: { opacity: 0.82, transform: [{ scale: 0.99 }] },
 });

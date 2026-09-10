@@ -5,7 +5,7 @@ import { apiErrorSchema, publicConfigSchema } from "./index";
 describe("shared API contracts", () => {
   it("accepts a deliberately gated public configuration", () => {
     const value = publicConfigSchema.parse({
-      environment: "preview",
+      environment: "staging",
       maintenance: false,
       minimumAppVersion: "0.1.0",
       features: {

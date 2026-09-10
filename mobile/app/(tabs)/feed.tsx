@@ -1,177 +1,93 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Image, Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader } from "@/src/components/app-header";
-import { EmptyResult, FilterRow, InlineFeedback, ProductScreen, SearchField } from "@/src/components/product-ui";
-import { FavoriteButton, IllustrationTile, VerifiedBadge } from "@/src/components/visual-system";
+import { EmptyResult, FilterRow, ProductScreen, SearchField } from "@/src/components/product-ui";
+import { ApiError, api } from "@/src/lib/api";
 import { theme } from "@/src/theme";
 
-const categories = ["All", "Updates", "Events", "Sports"] as const;
-
-const updates = [
-  {
-    id: "library",
-    category: "Updates",
-    source: "Campus Facilities",
-    title: "New Library Wing Officially Opens",
-    body: "More study spaces, group rooms and extended hours are now available.",
-    time: "2 hours ago",
-    art: "library" as const,
-    icon: "business-outline" as const,
-  },
-  {
-    id: "lecture",
-    category: "Updates",
-    source: "Academic Office",
-    title: "CSC 211 Lecture Shift",
-    body: "Tomorrow’s class moves to Lecture Theatre 2 during maintenance in LT 3.",
-    time: "4 hours ago",
-    art: "notice" as const,
-    icon: "person-outline" as const,
-    urgent: true,
-  },
-  {
-    id: "scholarship",
-    category: "Updates",
-    source: "Student Affairs",
-    title: "Merit Scholarship Applications Now Open",
-    body: "Applications close on 30 September. Check eligibility before you apply.",
-    time: "1 day ago",
-    art: "scholarship" as const,
-    icon: "school-outline" as const,
-  },
-  {
-    id: "lecture-event",
-    category: "Events",
-    source: "Main Auditorium",
-    title: "Guest Lecture: Building for a Better Tomorrow",
-    body: "Join Dr Amina Yusuf for a practical conversation on sustainable innovation.",
-    time: "1 day ago",
-    art: "event" as const,
-    icon: "location-outline" as const,
-  },
-  {
-    id: "football",
-    category: "Sports",
-    source: "Campus Sports",
-    title: "Match Day: CPE 250 vs Electrical Engineering",
-    body: "Warm-up starts at 4:30 PM at the main sports complex.",
-    time: "2 days ago",
-    art: "sports" as const,
-    icon: "trophy-outline" as const,
-  },
-] as const;
+const categories = ["All", "Update", "Event", "Sports", "Opportunity", "Emergency"] as const;
+type Post = {
+  id: string; category: string; title: string; summary: string; body: string;
+  image_url: string | null; urgent: boolean; sponsored: boolean; published_at: string;
+  correction_note: string | null; source_name: string; source_verified: boolean; bookmarked: boolean;
+};
 
 export default function FeedScreen() {
-  const [selected, setSelected] = useState<(typeof categories)[number]>("All");
+  const [posts, setPosts] = useState<Post[]>([]);
   const [query, setQuery] = useState("");
-  const [saved, setSaved] = useState<string[]>([]);
-  const [feedback, setFeedback] = useState("");
+  const [selected, setSelected] = useState<(typeof categories)[number]>("All");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const filtered = useMemo(() => {
+  const load = useCallback(async () => {
+    try { setError(""); setPosts((await api<{ posts: Post[] }>("/v1/student/feed")).posts); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : "Campus updates could not be loaded."); }
+    finally { setLoading(false); }
+  }, []);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  const filtered = useMemo(() => posts.filter((post) => {
+    const matchesCategory = selected === "All" || post.category === selected.toUpperCase();
     const needle = query.trim().toLowerCase();
-    return updates.filter((update) => {
-      const categoryMatch = selected === "All" || update.category === selected;
-      const searchMatch = !needle || `${update.title} ${update.body} ${update.source}`.toLowerCase().includes(needle);
-      return categoryMatch && searchMatch;
-    });
-  }, [query, selected]);
+    return matchesCategory && (!needle || `${post.title} ${post.summary} ${post.body} ${post.source_name}`.toLowerCase().includes(needle));
+  }), [posts, query, selected]);
 
-  function selectCategory(item: string) {
+  async function toggleBookmark(post: Post) {
     void Haptics.selectionAsync();
-    setSelected(item as (typeof categories)[number]);
-  }
-
-  function toggleSaved(id: string) {
-    const alreadySaved = saved.includes(id);
-    setSaved((items) => (alreadySaved ? items.filter((item) => item !== id) : [...items, id]));
-    setFeedback(alreadySaved ? "Removed from your saved updates." : "Saved for later.");
+    const next = !post.bookmarked;
+    setPosts((items) => items.map((item) => item.id === post.id ? { ...item, bookmarked: next } : item));
+    try { await api(`/v1/student/feed/${post.id}/bookmark`, { method: next ? "PUT" : "DELETE" }); }
+    catch { setPosts((items) => items.map((item) => item.id === post.id ? { ...item, bookmarked: !next } : item)); }
   }
 
   return (
     <ProductScreen>
-      <AppHeader
-        badge={{ icon: "notifications", text: "5 new updates" }}
-        showBell={false}
-        subtitle="Stay updated. Be part of it."
-        title="Campus feed"
-        unread={false}
-      />
-      <SearchField onChangeText={setQuery} placeholder="Search campus updates" value={query} />
-      <View style={styles.filters}><FilterRow items={categories} onSelect={selectCategory} selected={selected} /></View>
-      {feedback ? <InlineFeedback message={feedback} tone={feedback.includes("Saved") ? "success" : "brand"} /> : null}
-
-      {filtered.length ? (
-        <View style={styles.list}>
-          {filtered.map((update) => {
-            const isSaved = saved.includes(update.id);
-            const urgent = "urgent" in update && update.urgent;
-            return (
-              <Pressable
-                accessibilityLabel={`Open ${update.title}`}
-                accessibilityRole="button"
-                key={update.id}
-                onPress={() => {
-                  void Haptics.selectionAsync();
-                  setFeedback(`Opened “${update.title}”.`);
-                }}
-                style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-              >
-                <IllustrationTile type={update.art} />
-                <View style={styles.cardCopy}>
-                  <View style={styles.cardTopline}>
-                    <View style={[styles.tag, urgent && styles.urgentTag]}>
-                      <Text style={[styles.tagText, urgent && styles.urgentTagText]}>{urgent ? "TIME-SENSITIVE" : update.category.toUpperCase()}</Text>
-                    </View>
-                    <Text style={styles.time}>{update.time}</Text>
-                  </View>
-                  <Text numberOfLines={2} style={styles.title}>{update.title}</Text>
-                  <Text numberOfLines={3} style={styles.body}>{update.body}</Text>
-                  <View style={styles.sourceRow}>
-                    <Ionicons name={update.icon} size={14} color={theme.brandPressed} />
-                    <Text numberOfLines={1} style={styles.source}>{update.source}</Text>
-                    <VerifiedBadge label={`${update.source} is a verified source`} size={13} />
-                  </View>
-                </View>
-                <View style={styles.cardActions}>
-                  <FavoriteButton active={isSaved} label={isSaved ? "Remove saved update" : "Save update"} onPress={() => toggleSaved(update.id)} />
-                  <Ionicons name="chevron-forward" size={19} color={theme.brandPressed} />
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : (
-        <EmptyResult body="Try another word or choose a different update category." title="No updates found" />
-      )}
-
-      <View style={styles.safetyNote}>
-        <Ionicons name="shield-outline" size={17} color={theme.verification} />
-        <Text style={styles.safetyText}>Official updates are source-labelled and verified before they reach students.</Text>
+      <AppHeader badge={{ icon: "shield-checkmark", text: "Source-checked campus news", verified: true }} showBell={false} subtitle="Updates, events and opportunities" title="Campus feed" unread={false} />
+      <SearchField onChangeText={setQuery} placeholder="Search updates, sources or events" value={query} />
+      <View style={styles.filters}><FilterRow items={categories} onSelect={(item) => setSelected(item as typeof selected)} selected={selected} /></View>
+      {loading ? <View style={styles.loading}><ActivityIndicator color={theme.brand} /><Text style={styles.loadingText}>Checking the latest verified posts…</Text></View> : null}
+      {error ? <Pressable onPress={() => { setLoading(true); void load(); }} style={styles.error}><Ionicons name="cloud-offline-outline" size={20} color={theme.deepBrand} /><Text style={styles.errorText}>{error} Tap to retry.</Text></Pressable> : null}
+      {!loading && !error && !filtered.length ? <EmptyResult body="Your content team has not published a matching campus update yet." title="No posts here yet" /> : null}
+      <View style={styles.feed}>
+        {filtered.map((post) => (
+          <View key={post.id} style={styles.post}>
+            <View style={styles.postHeader}>
+              <View style={styles.sourceAvatar}><Text style={styles.sourceAvatarText}>{post.source_name.slice(0, 2).toUpperCase()}</Text></View>
+              <View style={styles.sourceCopy}>
+                <View style={styles.sourceNameRow}><Text numberOfLines={1} style={styles.sourceName}>{post.source_name}</Text>{post.source_verified ? <Ionicons name="checkmark-circle" size={15} color={theme.brand} /> : null}</View>
+                <Text style={styles.postTime}>{new Intl.DateTimeFormat("en-NG", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(post.published_at))}</Text>
+              </View>
+              <View style={[styles.category, post.urgent && styles.urgent]}><Text style={[styles.categoryText, post.urgent && styles.urgentText]}>{post.urgent ? "URGENT" : post.category}</Text></View>
+            </View>
+            {post.image_url ? <Image accessibilityLabel={`Image for ${post.title}`} resizeMode="cover" source={{ uri: post.image_url }} style={styles.postImage} /> : null}
+            <View style={styles.postBody}>
+              <Text style={styles.postTitle}>{post.title}</Text>
+              <Text style={styles.postSummary}>{post.summary}</Text>
+              {post.body !== post.summary ? <Text style={styles.postText}>{post.body}</Text> : null}
+              {post.correction_note ? <View style={styles.correction}><Ionicons name="information-circle-outline" size={16} color={theme.statusAttention} /><Text style={styles.correctionText}>Correction: {post.correction_note}</Text></View> : null}
+            </View>
+            <View style={styles.actions}>
+              <Pressable onPress={() => void toggleBookmark(post)} style={styles.action}><Ionicons name={post.bookmarked ? "bookmark" : "bookmark-outline"} size={20} color={post.bookmarked ? theme.brand : theme.textMuted} /><Text style={[styles.actionText, post.bookmarked && styles.actionTextActive]}>{post.bookmarked ? "Saved" : "Save"}</Text></Pressable>
+              <Pressable onPress={() => void Share.share({ title: post.title, message: `${post.title}\n\n${post.summary}\n\nSource: ${post.source_name}` })} style={styles.action}><Ionicons name="share-social-outline" size={20} color={theme.textMuted} /><Text style={styles.actionText}>Share</Text></Pressable>
+              {post.sponsored ? <Text style={styles.sponsored}>SPONSORED</Text> : <View />}
+            </View>
+          </View>
+        ))}
       </View>
     </ProductScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  filters: { marginBottom: 16, marginTop: 12 },
-  list: { gap: 12 },
-  card: { alignItems: "center", backgroundColor: "rgba(255,253,252,0.93)", borderColor: "rgba(255,255,255,0.98)", borderRadius: 21, borderWidth: 1, flexDirection: "row", minHeight: 142, padding: 10, position: "relative", ...theme.shadow },
-  cardPressed: { opacity: 0.82, transform: [{ scale: 0.985 }] },
-  cardCopy: { flex: 1, marginLeft: 12, minWidth: 0, paddingVertical: 2 },
-  cardTopline: { alignItems: "center", flexDirection: "row", gap: 6, justifyContent: "space-between" },
-  tag: { backgroundColor: "rgba(233,177,142,0.28)", borderRadius: 9, paddingHorizontal: 7, paddingVertical: 4 },
-  urgentTag: { backgroundColor: "rgba(168,104,42,0.13)" },
-  tagText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 8.5, letterSpacing: 0.35 },
-  urgentTagText: { color: theme.statusAttention },
-  time: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 9.5 },
-  title: { color: theme.text, fontFamily: theme.font.display, fontSize: 16.5, lineHeight: 19.5, marginTop: 7 },
-  body: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11.5, lineHeight: 16, marginTop: 4 },
-  sourceRow: { alignItems: "center", flexDirection: "row", gap: 5, marginTop: 7 },
-  source: { color: theme.textSubtle, flexShrink: 1, fontFamily: theme.font.medium, fontSize: 10 },
-  cardActions: { alignItems: "center", alignSelf: "stretch", justifyContent: "space-between", marginLeft: 7, paddingBottom: 7, paddingTop: 1 },
-  safetyNote: { alignItems: "flex-start", flexDirection: "row", gap: 8, marginTop: 22, paddingHorizontal: 7 },
-  safetyText: { color: theme.textSubtle, flex: 1, fontFamily: theme.font.body, fontSize: 10.5, lineHeight: 16 },
+  filters: { marginBottom: 18, marginTop: 12 }, loading: { alignItems: "center", gap: 9, paddingVertical: 34 }, loadingText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12.5 },
+  error: { alignItems: "center", backgroundColor: "#FFF0EB", borderRadius: 16, flexDirection: "row", gap: 9, marginBottom: 15, padding: 13 }, errorText: { color: theme.deepBrand, flex: 1, fontFamily: theme.font.medium, fontSize: 12 },
+  feed: { gap: 16 }, post: { backgroundColor: theme.surfaceRaised, borderColor: theme.border, borderRadius: 23, borderWidth: 1, overflow: "hidden", ...theme.shadow },
+  postHeader: { alignItems: "center", flexDirection: "row", padding: 13 }, sourceAvatar: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderRadius: 18, height: 38, justifyContent: "center", width: 38 }, sourceAvatarText: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 11 }, sourceCopy: { flex: 1, marginLeft: 10 }, sourceNameRow: { alignItems: "center", flexDirection: "row", gap: 4 }, sourceName: { color: theme.text, flexShrink: 1, fontFamily: theme.font.semibold, fontSize: 12.5 }, postTime: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 9.5, marginTop: 2 },
+  category: { backgroundColor: theme.surfaceMuted, borderRadius: 9, paddingHorizontal: 8, paddingVertical: 5 }, urgent: { backgroundColor: "#FFF0E9" }, categoryText: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8, letterSpacing: .5 }, urgentText: { color: theme.statusAttention }, postImage: { aspectRatio: 1.65, width: "100%" },
+  postBody: { padding: 15 }, postTitle: { color: theme.text, fontFamily: theme.font.display, fontSize: 20, lineHeight: 24 }, postSummary: { color: theme.text, fontFamily: theme.font.medium, fontSize: 13, lineHeight: 19, marginTop: 7 }, postText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, lineHeight: 19, marginTop: 8 }, correction: { alignItems: "flex-start", backgroundColor: "#FFF7E9", borderRadius: 12, flexDirection: "row", gap: 7, marginTop: 11, padding: 10 }, correctionText: { color: theme.statusAttention, flex: 1, fontFamily: theme.font.medium, fontSize: 10.5, lineHeight: 15 },
+  actions: { alignItems: "center", borderTopColor: theme.border, borderTopWidth: 1, flexDirection: "row", gap: 22, minHeight: 52, paddingHorizontal: 15 }, action: { alignItems: "center", flexDirection: "row", gap: 6 }, actionText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 11.5 }, actionTextActive: { color: theme.brandPressed }, sponsored: { color: theme.textSubtle, fontFamily: theme.font.bold, fontSize: 7.5, letterSpacing: .8, marginLeft: "auto" },
 });

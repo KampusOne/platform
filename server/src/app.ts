@@ -4,7 +4,12 @@ import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 
 import { allowedOrigins, getPublicConfig, readiness } from "./lib/config";
-import { errorResponse } from "./lib/errors";
+import { AppError, errorResponse } from "./lib/errors";
+import { authRoutes } from "./routes/auth";
+import { studentRoutes } from "./routes/student";
+import { agentRoutes } from "./routes/agents";
+import { adminRoutes } from "./routes/admin";
+import { paymentRoutes } from "./routes/payments";
 import type { Bindings, Variables } from "./types";
 
 export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -15,9 +20,10 @@ app.use("/v1/*", async (context, next) => {
   const origins = allowedOrigins(context.env);
   return cors({
     origin: (origin) => (origins.has(origin) ? origin : undefined),
-    allowMethods: ["GET", "HEAD", "OPTIONS"],
-    allowHeaders: ["Authorization", "Content-Type", "X-Request-Id"],
+    allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"],
+    allowHeaders: ["Authorization", "Content-Type", "X-Request-Id", "X-Device-Label", "X-Admin-Bootstrap-Token"],
     exposeHeaders: ["X-Request-Id"],
+    credentials: true,
     maxAge: 86400,
   })(context, next);
 });
@@ -53,12 +59,21 @@ app.get("/health/ready", (context) => {
 });
 
 app.get("/v1/config/public", (context) => context.json(getPublicConfig(context.env)));
+app.route("/v1/auth", authRoutes);
+app.route("/v1/student", studentRoutes);
+app.route("/v1/agents", agentRoutes);
+app.route("/v1/admin", adminRoutes);
+app.route("/v1/payments", paymentRoutes);
 
 app.notFound((context) =>
   errorResponse(context, 404, "NOT_FOUND", "The requested resource does not exist."),
 );
 
 app.onError((error, context) => {
+  if (error instanceof AppError) {
+    return errorResponse(context, error.status, error.code, error.message, error.details);
+  }
+
   console.error(
     JSON.stringify({
       level: "error",

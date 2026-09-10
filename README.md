@@ -11,7 +11,7 @@ This repository contains the public product platform source. The existing landin
 | `mobile/` | Expo / React Native | Student-facing application, with **Today** as home |
 | `portal/` | Next.js App Router | Separate admin, agent, and engineering surfaces |
 | `server/` | Cloudflare Workers + Hono | Thin privileged API and provider boundary |
-| `database/` | Supabase PostgreSQL | Migrations, seed data, and verification checks |
+| `database/` | Neon PostgreSQL | Forward migrations, transactional functions, and verification checks |
 | `packages/` | TypeScript/CSS | Shared contracts and official design tokens |
 
 ## Local start
@@ -29,6 +29,6 @@ Copy each `.env.example` only when you need that application. Never commit popul
 
 ## Delivery state
 
-Phase 0 establishes the repository, tenant/security contracts, preview shells, deployment configuration, and continuous verification. It is not a production launch and contains no live financial or administrative mutation workflows.
+The repository now contains data-backed Phase 1 student utility, Phase 2 tutorial operations, and Phase 3 controlled store/logistics workflows. Authentication, email verification, administration, agent approval, bookings, inventory, payments, disputes, earnings, payouts, and delivery handoffs fail closed when their required server-side service is unavailable; no client receives a test OTP or fabricated business metric.
 
-Start with [the architecture overview](docs/architecture/README.md) and [the Phase 0 acceptance record](docs/phases/phase-0-foundation.md).
+This source tree is not the same thing as a production release. Production remains gated until the owner supplies provider credentials and policies, the reviewed Neon migrations are promoted, the applications are deployed to their real domains, and acceptance tests pass. See [the Phase 1–3 implementation and launch handoff](docs/phases/phase-1-3-live-handoff.md).

@@ -1,4 +1,17 @@
 # Local-only Worker secrets. Copy to .dev.vars and keep it untracked.
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_PUBLISHABLE_KEY=sb_publishable_replace_me
-SUPABASE_SECRET_KEY=sb_secret_replace_me
+# Use the pooled Neon runtime URL. Never expose it to the mobile or portal clients.
+DATABASE_URL=postgresql://role:password@host-pooler.region.aws.neon.tech/neondb?sslmode=require
+JWT_SECRET=replace-with-at-least-32-random-characters
+OTP_PEPPER=replace-with-at-least-24-random-characters
+
+# Transactional email (required for registration and password reset).
+RESEND_API_KEY=re_replace_me
+RESEND_FROM_EMAIL=KampusOne <hello@notifications.kampusone.app>
+RESEND_REPLY_TO=support@kampusone.app
+
+# One-time operator bootstrap. Remove after the first platform admin is created.
+ADMIN_BOOTSTRAP_TOKEN=replace-with-a-one-time-random-bootstrap-secret
+
+# Phase 2/3 payments. Leave PAYMENTS_ENABLED=false until Paystack approves the flow.
+PAYSTACK_SECRET_KEY=sk_test_replace_me
+PAYSTACK_WEBHOOK_SECRET=sk_test_replace_me

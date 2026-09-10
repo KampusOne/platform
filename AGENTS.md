@@ -15,15 +15,15 @@ These rules apply to the entire repository.
 - Keep one repository, one PostgreSQL database, and a modular-monolith structure.
 - Use npm only. Do not add Turborepo, pnpm, Yarn, Bun, Docker, or a local PostgreSQL requirement.
 - Mobile is Expo/React Native. Portals are Next.js App Router. Privileged API work runs on Cloudflare Workers with Hono.
-- Prefer direct Supabase reads under RLS for ordinary data. Use the Worker only for secrets, privileged writes, provider callbacks, and expensive or coordinated work.
+- Route browser and mobile data access through the Worker. Neon credentials and transaction functions are server-only; clients never connect directly to PostgreSQL.
 - Put provider-specific logic behind adapters. Every paid or externally metered path needs a quota, timeout, idempotency strategy, kill switch, and observable failure state.
 
 ## Security and data
 
-- RLS is mandatory on every table exposed through Supabase Data APIs.
+- Do not expose database tables through a public data API. If a direct data API is introduced later, RLS and automated tenant-isolation tests are mandatory before exposure.
 - Tenant-owned records carry `institution_id`, and access policies must enforce that boundary.
 - Never authorize from user-editable metadata. Verify identity and roles from trusted claims or database records.
-- Never put Supabase secret keys, provider secrets, or Cloudflare tokens in browser or mobile bundles.
+- Never put database credentials, provider secrets, or Cloudflare tokens in browser or mobile bundles.
 - Financial records are append-only double-entry ledger records. No balance-only mutation model.
 - Admin access is least privilege, role-gated, and audited. There is no unrestricted universal admin surface.
 - Private uploads remain private. Use short-lived signed URLs for authorized access.

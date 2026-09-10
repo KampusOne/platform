@@ -1,4 +1,4 @@
-export type RuntimeEnvironment = "local" | "preview" | "production";
+export type RuntimeEnvironment = "local" | "staging" | "production";
 
 export type Bindings = {
   ENVIRONMENT: RuntimeEnvironment;
@@ -10,11 +10,28 @@ export type Bindings = {
   MARKETPLACE_ENABLED: string;
   PAYMENTS_ENABLED: string;
   AI_ASSISTANT_ENABLED: string;
-  SUPABASE_URL?: string;
-  SUPABASE_PUBLISHABLE_KEY?: string;
-  SUPABASE_SECRET_KEY?: string;
+  DATABASE_URL?: string;
+  JWT_SECRET?: string;
+  OTP_PEPPER?: string;
+  RESEND_API_KEY?: string;
+  RESEND_FROM_EMAIL?: string;
+  RESEND_REPLY_TO?: string;
+  COOKIE_DOMAIN?: string;
+  APP_ORIGIN?: string;
+  PAYSTACK_SECRET_KEY?: string;
+  PAYSTACK_WEBHOOK_SECRET?: string;
+  ADMIN_BOOTSTRAP_TOKEN?: string;
+};
+
+export type AuthenticatedUser = {
+  id: string;
+  email: string;
+  roles: string[];
+  universityId: string | null;
+  operatorRoles: string[];
 };
 
 export type Variables = {
   requestId: string;
+  user?: AuthenticatedUser;
 };

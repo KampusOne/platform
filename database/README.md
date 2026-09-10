@@ -1,16 +1,16 @@
 # KampusOne database
 
-The production data layer is one Supabase PostgreSQL project. Migrations are forward-only and live in `supabase/migrations`; local sample data lives separately in `supabase/seed.sql` and must never be treated as production content.
+The active production data target is Neon PostgreSQL. New forward-only migrations live in `neon/migrations`. The earlier `supabase/` foundation is retained as historical source material and must not be applied over the Neon migration chain.
 
 ## Rules
 
-- Apply migrations to a preview branch or project before production.
-- Run `verification/phase_0_security.sql` and Supabase security/performance advisors after every schema change.
-- All client-visible tables use RLS and explicit grants.
-- The `app_private` schema is never added to the Supabase Data API exposed-schema list.
-- Mobile and web receive a publishable key only. Secret keys are restricted to the Worker and controlled operations.
+- Apply migrations to an isolated Neon branch before production.
+- Run rollback-safe transactional tests and `EXPLAIN` checks against that branch.
+- Mobile and web never receive a database connection string; every privileged query goes through the Worker.
+- The `app_private` schema contains server-only transaction functions and is not exposed as a public API.
+- The runtime uses the pooled Neon URL only from a Cloudflare Worker secret.
 - Never edit an applied migration. Add a new migration that safely moves state forward.
 
 ## Current scope
 
-Migration `20260909213215_foundation.sql` creates the tenant, identity, academic, timetable, feature-gate, audit, quota, and idempotency foundations. It does not create social, marketplace, payment, or financial ledger user flows.
+The Neon chain imports the compatible identity foundation and adds live student, content, agent, tutorial, store, logistics, dispute, ledger, reconciliation, and release-gate records. See the launch handoff for the exact promotion order.

@@ -6,8 +6,8 @@ import { app } from "./app";
 import type { Bindings } from "./types";
 
 const env: Bindings = {
-  ENVIRONMENT: "preview",
-  ALLOWED_ORIGINS: "https://preview.kampusone.app",
+  ENVIRONMENT: "staging",
+  ALLOWED_ORIGINS: "https://staging.kampusone.app",
   MINIMUM_APP_VERSION: "0.1.0",
   MAINTENANCE_MODE: "false",
   ACADEMIC_CORE_ENABLED: "true",
@@ -23,7 +23,7 @@ describe("KampusOne Worker", () => {
     const body = liveHealthSchema.parse(await response.json());
 
     expect(response.status).toBe(200);
-    expect(body.environment).toBe("preview");
+    expect(body.environment).toBe("staging");
   });
 
   it("keeps unreleased features disabled", async () => {

@@ -11,6 +11,7 @@ import { Lato_700Bold, Lato_700Bold_Italic, Lato_900Black } from "@expo-google-f
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { theme } from "@/src/theme";
+import { AuthProvider } from "@/src/auth/auth-context";
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -32,10 +33,10 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <AuthProvider>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.canvas } }} />
-    </>
+    </AuthProvider>
   );
 }
 

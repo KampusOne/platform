@@ -2,52 +2,49 @@
 
 ## Decision
 
-KampusOne begins as a modular monolith: one public source repository, one Supabase PostgreSQL database, one student mobile app, one portal deployment, and one thin privileged API. Runtime secrets and production data remain outside Git. Feature modules own their schema, contracts, and UI, without becoming separate services prematurely.
+KampusOne is a modular monolith: one Expo student app, one Next.js portal deployment with role-separated surfaces, one Cloudflare Worker API, and one Neon PostgreSQL database. Runtime secrets and production data stay outside Git. Every browser/mobile data request crosses the Worker; clients never hold a database credential.
 
 ```mermaid
 flowchart TD
-  Mobile["Student mobile app"] -->|"RLS-safe reads and writes"| Supabase["Supabase: Auth, Postgres, Storage"]
-  Portal["Admin / Agent / Engineering portal"] -->|"RLS-safe reads"| Supabase
-  Mobile -->|"Privileged operations"| Worker["Cloudflare Worker API"]
-  Portal -->|"Privileged operations"| Worker
-  Worker -->|"Verified service access"| Supabase
-  Worker -->|"Adapter + quota + kill switch"| Providers["Email, AI, payments, notifications"]
+  Mobile["Student mobile app"] -->|"HTTPS + access token"| Worker["Cloudflare Worker API"]
+  Portal["Admin / Agent / Engineering"] -->|"HTTPS + HttpOnly refresh session"| Worker
+  Worker -->|"Pooled server-only connection"| Neon["Neon PostgreSQL"]
+  Worker -->|"Signed provider calls"| Providers["Email, KYC, payments, notifications"]
 ```
 
 ## Deployable units
 
-- `mobile`: Expo application. Development uses a physical device or web export; distributable Android builds use EAS once the Expo project is connected.
-- `portal`: a single Next.js deployment. Host-aware routing maps `admin`, `agents`, and `engineering` subdomains to separate route trees and authorization policies.
-- `server`: Hono Worker. It owns secrets, provider callbacks, coordinated writes, and operations that must never run with a publishable client key.
-- `database`: one Supabase project. All exposed tables use RLS; private operational data stays in a non-exposed schema or behind the Worker.
+- `mobile`: Expo application with Today as home and authenticated student routes.
+- `portal`: one Next.js deployment. Host-aware routing maps the admin, agent, and engineering domains to separately guarded workspaces.
+- `server`: Hono Worker. It owns sessions, permissions, cross-record transactions, provider callbacks, scheduled expiry, and audit events.
+- `database`: Neon PostgreSQL with forward migrations and private transaction functions.
 
 ## Feature boundaries
 
-1. Identity and institution membership
-2. Academic structure and Today
-3. Timetable and course coordination
-4. Results and GPA planning
-5. Campus directory, safety, and transport information
-6. Tutorials and trusted campus services
-7. Notifications and provider delivery
-8. Agent operations and support
-9. Administration, moderation, and audit
-10. Social, marketplace, payments, and AI—independently gated behind readiness criteria
+1. Identity, sessions, and institution membership
+2. Academic structure, Today, timetable, and GPA
+3. Campus directory and trusted editorial Feed
+4. Tutorial listings, availability, bookings, completion, and disputes
+5. Vendor catalogue, controlled checkout, inventory, and orders
+6. Rider presence, assignments, handoff codes, and earnings
+7. Payments, reconciliation, ledger, and payouts
+8. Administration, moderation, release gates, and audit
+9. Notifications, media, analytics, and later campus automation
 
-Feature boundaries are module boundaries, not service boundaries. A split is justified only by measured scale, security isolation, or independent delivery needs.
+Feature boundaries are module boundaries, not separate services. A split is justified only by measured scale, security isolation, or independent delivery needs.
 
-## Request paths
+## Request path
 
-Ordinary user-scoped data can travel directly between a client and Supabase when RLS fully represents the rule. Requests go through the Worker when they require a secret, cross-record transaction, idempotency key, provider call, elevated permission, cost guard, or server-side audit event.
+The Worker validates each access token, resolves active university and operator roles, validates every referenced record, checks feature/provider gates, performs consistency-sensitive work in PostgreSQL transactions, and records privileged activity. Provider webhooks are signature-verified and idempotent. Missing credentials cause an explicit unavailable response; they never activate a test path.
 
 ## Domain and environment plan
 
-| Surface | Preview | Production target |
+| Surface | Staging route | Production target |
 | --- | --- | --- |
-| Student mobile | Expo development build / EAS artifact | App stores and managed update channel |
-| Admin | Vercel preview `/admin` | `admin.kampusone.app` |
-| Agents | Vercel preview `/agents` | `agents.kampusone.app` |
-| Engineering | Vercel preview `/engineering` | `engineering.kampusone.app` |
-| API | Wrangler preview URL | `api.kampusone.app` |
+| Student mobile | Signed EAS internal build | App stores and production update channel |
+| Admin | Staging portal `/admin` | `admin.kampusone.app` |
+| Agents | Staging portal `/agents` | `agents.kampusone.app` |
+| Engineering | Staging portal `/engineering` | `engineering.kampusone.app` |
+| API | Staging Worker custom route | `api.kampusone.app` |
 
-Production hostnames are not attached until authentication, role enforcement, audit logging, and a deployment review are complete.
+Production activation follows the gates in [the live-launch handoff](../phases/phase-1-3-live-handoff.md).

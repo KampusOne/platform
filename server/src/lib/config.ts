@@ -29,9 +29,10 @@ export function allowedOrigins(env: Bindings): Set<string> {
 
 export function readiness(env: Bindings) {
   const checks = {
-    supabaseUrl: Boolean(env.SUPABASE_URL),
-    publishableKey: Boolean(env.SUPABASE_PUBLISHABLE_KEY),
-    serverSecret: Boolean(env.SUPABASE_SECRET_KEY),
+    database: Boolean(env.DATABASE_URL),
+    signingKey: Boolean(env.JWT_SECRET && env.JWT_SECRET.length >= 32),
+    otpPepper: Boolean(env.OTP_PEPPER && env.OTP_PEPPER.length >= 24),
+    emailProvider: Boolean(env.RESEND_API_KEY && env.RESEND_FROM_EMAIL),
   };
 
   return {

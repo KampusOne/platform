@@ -1,229 +1,71 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
-import { useMemo, useState } from "react";
-import { LayoutAnimation, Pressable, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader } from "@/src/components/app-header";
-import { EmptyResult, FilterRow, InlineFeedback, ProductScreen, SearchField } from "@/src/components/product-ui";
-import { SectionHeading } from "@/src/components/section-heading";
-import { GlassCard, PressScale, useReducedMotionPreference, VerifiedBadge } from "@/src/components/visual-system";
+import { EmptyResult, ProductScreen, SearchField } from "@/src/components/product-ui";
+import { ApiError, api } from "@/src/lib/api";
 import { theme } from "@/src/theme";
 
-const categories = ["Recommended", "My courses", "This week"] as const;
+type Availability = { id: string; starts_at: string; ends_at: string; capacity: number; booked_spaces: number };
+type Listing = { id: string; course_code: string; title: string; description: string; format: string; price_kobo: number; capacity: number; tutor_name: string; tutor_biography: string | null; availability: Availability[] };
 
-const tutors = [
-  { id: "osaze", initials: "OB", name: "Osaze Bello", course: "MTH 213", topic: "Linear algebra revision", rating: "4.8", sessions: "62 sessions", price: "₦2,500/hr", slots: ["Thu 4:00 PM", "Fri 2:00 PM"], tone: "#D9855F" },
-  { id: "ada", initials: "AN", name: "Ada Nwosu", course: "CSC 211", topic: "Data structures clinic", rating: "4.9", sessions: "41 sessions", price: "₦3,000/hr", slots: ["Fri 11:00 AM", "Sat 10:00 AM"], tone: "#346E8A" },
-  { id: "efe", initials: "EO", name: "Efe Osagie", course: "EDU 201", topic: "Exam prep group", rating: "4.7", sessions: "35 sessions", price: "₦1,500/hr", slots: ["Thu 6:00 PM", "Sun 3:00 PM"], tone: "#2D7D59" },
-] as const;
+function naira(kobo: number) { return new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(kobo / 100); }
 
 export default function TutorialsScreen() {
-  const [selectedCategory, setSelectedCategory] = useState<(typeof categories)[number]>("Recommended");
-  const [query, setQuery] = useState("");
-  const [openTutor, setOpenTutor] = useState("");
-  const [selectedSlot, setSelectedSlot] = useState("");
-  const reducedMotion = useReducedMotionPreference();
+  const [listings, setListings] = useState<Listing[]>([]); const [query, setQuery] = useState(""); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(""); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [selectedWindows, setSelectedWindows] = useState<Record<string, string>>({});
+  const load = useCallback(async () => {
+    try { setError(""); setListings((await api<{ listings: Listing[] }>("/v1/student/tutorials")).listings); }
+    catch (caught) { setError(caught instanceof ApiError ? caught.message : "Tutorials could not be loaded."); }
+    finally { setLoading(false); }
+  }, []);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  const filtered = useMemo(() => listings.filter((item) => `${item.course_code} ${item.title} ${item.description} ${item.tutor_name}`.toLowerCase().includes(query.trim().toLowerCase())), [listings, query]);
 
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return tutors.filter((tutor) => !needle || `${tutor.name} ${tutor.course} ${tutor.topic}`.toLowerCase().includes(needle));
-  }, [query]);
-
-  function tap() {
-    void Haptics.selectionAsync();
-  }
-
-  function toggleTutor(id: string) {
-    tap();
-    if (!reducedMotion) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpenTutor((current) => (current === id ? "" : id));
-    setSelectedSlot("");
+  async function book(listing: Listing) {
+    setBusy(listing.id); setError(""); setNotice("");
+    try {
+      const availabilityWindowId = selectedWindows[listing.id] ?? listing.availability[0]?.id;
+      if (!availabilityWindowId) throw new ApiError(409, "CONFLICT", "Choose an available tutorial time.");
+      const booking = await api<{ id: string }>("/v1/student/tutorial-bookings", { method: "POST", body: JSON.stringify({ listingId: listing.id, availabilityWindowId }) });
+      const payment = await api<{ authorizationUrl: string }>("/v1/payments/initialize", { method: "POST", body: JSON.stringify({ resourceType: "TUTORIAL_BOOKING", resourceId: booking.id }) });
+      await Linking.openURL(payment.authorizationUrl);
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "PROVIDER_UNAVAILABLE") setNotice("Your booking was saved, but secure payment is not configured yet. It remains unpaid and no money was taken.");
+      else setError(caught instanceof ApiError ? caught.message : "The tutorial could not be booked.");
+    } finally { setBusy(""); }
   }
 
   return (
     <ProductScreen>
-      <AppHeader
-        badge={{ text: "Verified academic help", verified: true }}
-        showBell={false}
-        subtitle="Understand it. Practise it. Own it."
-        title="Tutorials"
-        unread={false}
-      />
-      <SearchField onChangeText={setQuery} placeholder="Search tutors, courses or topics" value={query} />
-      <View style={styles.filters}>
-        <FilterRow
-          items={categories}
-          onSelect={(item) => {
-            tap();
-            setSelectedCategory(item as (typeof categories)[number]);
-          }}
-          selected={selectedCategory}
-        />
-      </View>
-
-      {selectedSlot ? <InlineFeedback message={`${selectedSlot} selected. Booking is disabled in preview mode.`} tone="success" /> : null}
-
-      <GlassCard style={styles.heroCard}>
-        <View style={styles.heroCopy}>
-          <View style={styles.heroEyebrow}><Ionicons name="sparkles" size={14} color={theme.brandPressed} /><Text style={styles.heroEyebrowText}>PICKED FOR YOUR COURSES</Text></View>
-          <Text style={styles.heroTitle}>A clearer path through the hard topics.</Text>
-          <Text style={styles.heroBody}>Meet verified student tutors who already know the course.</Text>
-          <View style={styles.trustRow}>
-            <View style={styles.avatarStack}>
-              {tutors.map((tutor, index) => <View key={tutor.id} style={[styles.miniAvatar, { backgroundColor: tutor.tone, marginLeft: index ? -7 : 0 }]}><Text style={styles.miniAvatarText}>{tutor.initials}</Text></View>)}
-            </View>
-            <Text style={styles.trustText}>140+ helpful sessions</Text>
-          </View>
-        </View>
-        <TutorIllustration />
-      </GlassCard>
-
-      <View style={styles.section}>
-        <SectionHeading meta={`${filtered.length} available`} title={selectedCategory} />
-        {filtered.length ? (
-          <View style={styles.list}>
-            {filtered.map((tutor) => {
-              const open = openTutor === tutor.id;
-              return (
-                <View key={tutor.id} style={[styles.card, open && styles.cardOpen]}>
-                  <Pressable accessibilityRole="button" onPress={() => toggleTutor(tutor.id)} style={({ pressed }) => [styles.cardHeader, pressed && styles.pressed]}>
-                    <View style={[styles.avatar, { backgroundColor: tutor.tone }]}>
-                      <Text style={styles.avatarText}>{tutor.initials}</Text>
-                      <View style={styles.onlineDot} />
-                    </View>
-                    <View style={styles.cardCopy}>
-                      <View style={styles.nameRow}>
-                        <Text style={styles.name}>{tutor.name}</Text>
-                        <VerifiedBadge label={`${tutor.name} is a verified tutor`} size={15} />
-                      </View>
-                      <Text style={styles.topic}>{tutor.topic}</Text>
-                      <View style={styles.ratingRow}>
-                        <Ionicons name="star" size={13} color="#C97824" />
-                        <Text style={styles.rating}>{tutor.rating}</Text>
-                        <Text style={styles.sessions}>· {tutor.sessions}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.cardRight}>
-                      <View style={styles.courseChip}><Text style={styles.courseChipText}>{tutor.course}</Text></View>
-                      <Text style={styles.price}>{tutor.price}</Text>
-                      <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={theme.brandPressed} />
-                    </View>
-                  </Pressable>
-
-                  {open ? (
-                    <View style={styles.bookingPanel}>
-                      <View style={styles.panelRule} />
-                      <Text style={styles.slotLabel}>NEXT AVAILABLE</Text>
-                      <View style={styles.slotRow}>
-                        {tutor.slots.map((slot) => {
-                          const selected = selectedSlot === `${tutor.name} · ${slot}`;
-                          return (
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityState={{ selected }}
-                              key={slot}
-                              onPress={() => {
-                                tap();
-                                setSelectedSlot(`${tutor.name} · ${slot}`);
-                              }}
-                              style={({ pressed }) => [styles.slot, selected && styles.slotSelected, pressed && styles.pressed]}
-                            >
-                              <Ionicons name="time-outline" size={14} color={selected ? "#FFFFFF" : theme.brandPressed} />
-                              <Text style={[styles.slotText, selected && styles.slotTextSelected]}>{slot}</Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                      <PressScale disabled accessibilityLabel="Request tutorial session" style={styles.requestButton}>
-                        <Text style={styles.requestButtonText}>Request a session</Text>
-                        <Ionicons name="arrow-forward" size={17} color="#FFFFFF" />
-                      </PressScale>
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })}
-          </View>
-        ) : (
-          <EmptyResult body="Try a course code, topic or tutor name." title="No tutors found" />
-        )}
-      </View>
-
-      <View style={styles.safety}>
-        <Ionicons name="shield-outline" size={18} color={theme.verification} />
-        <Text style={styles.safetyText}>Identity, course relevance, ratings, reporting and session safeguards will be checked before live booking opens.</Text>
-      </View>
+      <AppHeader badge={{ icon: "shield-checkmark", text: "Approved campus tutors", verified: true }} showBell={false} subtitle="Learn from students who know the course" title="Tutorials" unread={false} />
+      <View style={styles.hero}><Image source={require("@/assets/brand-scenes/tutorials.png")} style={styles.heroImage} /><View style={styles.heroShade} /><View style={styles.heroCopy}><Text style={styles.heroEyebrow}>STUDY TOGETHER</Text><Text style={styles.heroTitle}>Understand it. Practise it. Own it.</Text></View></View>
+      <SearchField onChangeText={setQuery} placeholder="Search a course, topic or tutor" value={query} />
+      {notice ? <View style={styles.notice}><Ionicons name="information-circle-outline" size={19} color={theme.statusAttention} /><Text style={styles.noticeText}>{notice}</Text></View> : null}
+      {loading ? <View style={styles.loading}><ActivityIndicator color={theme.brand} /><Text style={styles.loadingText}>Finding approved tutors…</Text></View> : null}
+      {error ? <Pressable onPress={() => { setLoading(true); void load(); }} style={styles.error}><Ionicons name="alert-circle-outline" size={20} color={theme.deepBrand} /><Text style={styles.errorText}>{error} Tap to retry.</Text></Pressable> : null}
+      {!loading && !error && !filtered.length ? <EmptyResult body="Approved tutor listings for your university will appear here. Tutors can apply from the agent portal." title="No tutorials published yet" /> : null}
+      <View style={styles.list}>{filtered.map((listing, index) => <TutorialCard busy={busy === listing.id} index={index} key={listing.id} listing={listing} onBook={() => void book(listing)} onSelect={(id) => setSelectedWindows((current) => ({ ...current, [listing.id]: id }))} selectedId={selectedWindows[listing.id] ?? listing.availability[0]?.id} />)}</View>
     </ProductScreen>
   );
 }
 
-function TutorIllustration() {
-  return (
-    <View pointerEvents="none" style={styles.illustration}>
-      <View style={styles.illustrationOrb} />
-      <View style={styles.personHead}><View style={styles.personHair} /></View>
-      <View style={styles.personBody}><View style={styles.personBook}><Text style={styles.personBookText}>CSC</Text></View></View>
-      <View style={styles.desk} />
-      <View style={[styles.floatingNote, styles.noteOne]}><Ionicons name="code-slash" size={15} color={theme.brandPressed} /></View>
-      <View style={[styles.floatingNote, styles.noteTwo]}><Ionicons name="bulb-outline" size={15} color={theme.info} /></View>
-    </View>
-  );
+function TutorialCard({ listing, index, selectedId, busy, onSelect, onBook }: { listing: Listing; index: number; selectedId: string | undefined; busy: boolean; onSelect(id: string): void; onBook(): void }) {
+  const selected = listing.availability.find((window) => window.id === selectedId) ?? listing.availability[0];
+  const formatWindow = (window: Availability) => new Intl.DateTimeFormat("en-NG", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(window.starts_at));
+  return <View style={styles.card}>
+    <View style={styles.cardTop}><View style={[styles.courseTile, index % 2 ? styles.courseTileAlt : null]}><Text style={styles.courseCode}>{listing.course_code}</Text><Ionicons name="school-outline" size={24} color="#FFFFFF" /></View><View style={styles.cardCopy}><View style={styles.format}><Text style={styles.formatText}>{listing.format.replace("_", " ")}</Text></View><Text style={styles.title}>{listing.title}</Text><Text numberOfLines={3} style={styles.description}>{listing.description}</Text></View></View>
+    <View style={styles.tutorRow}><View style={styles.avatar}><Text style={styles.avatarText}>{listing.tutor_name.slice(0, 2).toUpperCase()}</Text></View><View style={styles.tutorCopy}><Text style={styles.tutorName}>{listing.tutor_name}</Text><Text numberOfLines={1} style={styles.tutorBio}>{listing.tutor_biography ?? "Approved KampusOne tutor"}</Text></View><Ionicons name="checkmark-circle" size={18} color={theme.brand} /></View>
+    <Text style={styles.timeLabel}>CHOOSE A BOOKABLE TIME</Text><View style={styles.windows}>{listing.availability.map((window) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected?.id === window.id }} key={window.id} onPress={() => onSelect(window.id)} style={[styles.window, selected?.id === window.id && styles.windowSelected]}><Text style={[styles.windowText, selected?.id === window.id && styles.windowTextSelected]}>{formatWindow(window)}</Text></Pressable>)}</View>
+    <View style={styles.footer}><View><Text style={styles.price}>{naira(Number(listing.price_kobo))}</Text><Text style={styles.spaces}>{selected ? Math.max(0, selected.capacity - selected.booked_spaces) : 0} spaces at this time</Text></View><Pressable disabled={busy || !selected} onPress={onBook} style={[styles.book, (busy || !selected) && styles.disabled]}>{busy ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.bookText}>Book tutorial</Text><Ionicons name="arrow-forward" size={17} color="#FFFFFF" /></>}</Pressable></View>
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  filters: { marginBottom: 16, marginTop: 12 },
-  heroCard: { flexDirection: "row", minHeight: 208, padding: 17 },
-  heroCopy: { flex: 1, zIndex: 2 },
-  heroEyebrow: { alignItems: "center", flexDirection: "row", gap: 5 },
-  heroEyebrowText: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8.5, letterSpacing: 0.55 },
-  heroTitle: { color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 22, letterSpacing: -0.45, lineHeight: 26, marginTop: 10, maxWidth: 225 },
-  heroBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11.5, lineHeight: 17, marginTop: 7, maxWidth: 210 },
-  trustRow: { alignItems: "center", flexDirection: "row", marginTop: 15 },
-  avatarStack: { flexDirection: "row" },
-  miniAvatar: { alignItems: "center", borderColor: theme.warmWhite, borderRadius: 14, borderWidth: 2, height: 28, justifyContent: "center", width: 28 },
-  miniAvatarText: { color: "#FFFFFF", fontFamily: theme.font.bold, fontSize: 7 },
-  trustText: { color: theme.textSubtle, fontFamily: theme.font.medium, fontSize: 9.5, marginLeft: 7 },
-  illustration: { bottom: 0, height: 188, overflow: "hidden", position: "absolute", right: 0, width: 159 },
-  illustrationOrb: { backgroundColor: "rgba(233,177,142,0.37)", borderRadius: 70, height: 140, position: "absolute", right: -31, top: 10, width: 140 },
-  personHead: { backgroundColor: "#8A513A", borderRadius: 24, height: 46, position: "absolute", right: 47, top: 33, width: 43 },
-  personHair: { backgroundColor: "#29231F", borderBottomLeftRadius: 12, borderBottomRightRadius: 9, borderTopLeftRadius: 22, borderTopRightRadius: 22, height: 20, width: 43 },
-  personBody: { alignItems: "center", backgroundColor: theme.deepBrand, borderTopLeftRadius: 27, borderTopRightRadius: 27, bottom: 20, height: 94, position: "absolute", right: 25, width: 89 },
-  personBook: { alignItems: "center", backgroundColor: theme.sand, borderRadius: 5, bottom: 13, height: 47, justifyContent: "center", position: "absolute", transform: [{ rotate: "-5deg" }], width: 55 },
-  personBookText: { color: theme.brandPressed, fontFamily: theme.font.displayStrong, fontSize: 13 },
-  desk: { backgroundColor: "#B66C4A", bottom: 11, height: 12, position: "absolute", right: 2, transform: [{ rotate: "-3deg" }], width: 145 },
-  floatingNote: { alignItems: "center", backgroundColor: "rgba(255,255,255,0.89)", borderRadius: 12, height: 34, justifyContent: "center", position: "absolute", width: 34, ...theme.shadow },
-  noteOne: { right: 9, top: 22, transform: [{ rotate: "8deg" }] },
-  noteTwo: { right: 111, top: 69, transform: [{ rotate: "-8deg" }] },
-  section: { marginTop: 27 },
-  list: { gap: 11 },
-  card: { backgroundColor: "rgba(255,253,252,0.92)", borderColor: "rgba(255,255,255,0.98)", borderRadius: 20, borderWidth: 1, overflow: "hidden", padding: 13, ...theme.shadow },
-  cardOpen: { borderColor: "rgba(195,93,56,0.18)" },
-  cardHeader: { alignItems: "center", flexDirection: "row" },
-  avatar: { alignItems: "center", borderRadius: 20, height: 58, justifyContent: "center", position: "relative", width: 58 },
-  avatarText: { color: "#FFFFFF", fontFamily: theme.font.displayStrong, fontSize: 17 },
-  onlineDot: { backgroundColor: theme.clay, borderColor: theme.warmWhite, borderRadius: 6, borderWidth: 2, bottom: 1, height: 12, position: "absolute", right: 1, width: 12 },
-  cardCopy: { flex: 1, marginLeft: 11 },
-  nameRow: { alignItems: "center", flexDirection: "row", gap: 5 },
-  name: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14 },
-  topic: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11, marginTop: 3 },
-  ratingRow: { alignItems: "center", flexDirection: "row", marginTop: 6 },
-  rating: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 10.5, marginLeft: 3 },
-  sessions: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 10 },
-  cardRight: { alignItems: "flex-end", gap: 6, marginLeft: 7 },
-  courseChip: { backgroundColor: "rgba(233,177,142,0.27)", borderRadius: 9, paddingHorizontal: 8, paddingVertical: 5 },
-  courseChipText: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 9.5 },
-  price: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 10.5 },
-  bookingPanel: { paddingTop: 2 },
-  panelRule: { backgroundColor: theme.border, height: StyleSheet.hairlineWidth, marginVertical: 13 },
-  slotLabel: { color: theme.textSubtle, fontFamily: theme.font.bold, fontSize: 8.5, letterSpacing: 0.6 },
-  slotRow: { flexDirection: "row", gap: 8, marginTop: 9 },
-  slot: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderColor: "rgba(195,93,56,0.13)", borderRadius: 12, borderWidth: 1, flex: 1, flexDirection: "row", gap: 5, justifyContent: "center", minHeight: 39, paddingHorizontal: 8 },
-  slotSelected: { backgroundColor: theme.brand, borderColor: theme.brand },
-  slotText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 10 },
-  slotTextSelected: { color: "#FFFFFF" },
-  requestButton: { alignItems: "center", backgroundColor: theme.brand, borderRadius: 13, flexDirection: "row", gap: 7, justifyContent: "center", marginTop: 10, minHeight: 44 },
-  requestButtonText: { color: "#FFFFFF", fontFamily: theme.font.semibold, fontSize: 12 },
-  safety: { alignItems: "flex-start", flexDirection: "row", gap: 8, marginTop: 22, paddingHorizontal: 7 },
-  safetyText: { color: theme.textSubtle, flex: 1, fontFamily: theme.font.body, fontSize: 10.5, lineHeight: 16 },
-  pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
+  hero: { borderRadius: 25, height: 205, marginBottom: 16, overflow: "hidden", position: "relative" }, heroImage: { height: "100%", width: "100%" }, heroShade: { backgroundColor: "rgba(41,35,31,.35)", bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }, heroCopy: { bottom: 17, left: 17, position: "absolute", right: 17 }, heroEyebrow: { color: theme.peach, fontFamily: theme.font.bold, fontSize: 9, letterSpacing: 1.1 }, heroTitle: { color: "#FFFFFF", fontFamily: theme.font.displayStrong, fontSize: 24, marginTop: 5 },
+  notice: { alignItems: "flex-start", backgroundColor: "#FFF7E9", borderRadius: 15, flexDirection: "row", gap: 8, marginTop: 13, padding: 13 }, noticeText: { color: theme.statusAttention, flex: 1, fontFamily: theme.font.medium, fontSize: 11.5, lineHeight: 17 }, loading: { alignItems: "center", gap: 9, paddingVertical: 34 }, loadingText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12.5 }, error: { alignItems: "center", backgroundColor: "#FFF0EB", borderRadius: 16, flexDirection: "row", gap: 9, marginTop: 14, padding: 13 }, errorText: { color: theme.deepBrand, flex: 1, fontFamily: theme.font.medium, fontSize: 12 }, list: { gap: 14, marginTop: 17 },
+  card: { backgroundColor: theme.surfaceRaised, borderColor: theme.border, borderRadius: 23, borderWidth: 1, overflow: "hidden", padding: 13, ...theme.shadow }, cardTop: { flexDirection: "row" }, courseTile: { backgroundColor: theme.brand, borderRadius: 17, height: 112, justifyContent: "space-between", padding: 13, width: 105 }, courseTileAlt: { backgroundColor: theme.text }, courseCode: { color: "#FFFFFF", fontFamily: theme.font.displayStrong, fontSize: 18 }, cardCopy: { flex: 1, marginLeft: 13 }, format: { alignSelf: "flex-start", backgroundColor: theme.surfaceMuted, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 4 }, formatText: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 7.5, letterSpacing: .6 }, title: { color: theme.text, fontFamily: theme.font.display, fontSize: 18, lineHeight: 22, marginTop: 6 }, description: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10.5, lineHeight: 15, marginTop: 4 },
+  tutorRow: { alignItems: "center", borderBottomColor: theme.border, borderBottomWidth: 1, flexDirection: "row", marginTop: 13, paddingBottom: 12 }, avatar: { alignItems: "center", backgroundColor: theme.sand, borderRadius: 15, height: 34, justifyContent: "center", width: 34 }, avatarText: { color: theme.deepBrand, fontFamily: theme.font.bold, fontSize: 9 }, tutorCopy: { flex: 1, marginLeft: 9 }, tutorName: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 11.5 }, tutorBio: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 9.5, marginTop: 2 }, footer: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", paddingTop: 12 }, price: { color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 18 }, spaces: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 9.5, marginTop: 2 }, book: { alignItems: "center", backgroundColor: theme.brand, borderRadius: 14, flexDirection: "row", gap: 7, height: 46, justifyContent: "center", paddingHorizontal: 15 }, bookText: { color: "#FFFFFF", fontFamily: theme.font.bold, fontSize: 11.5 }, disabled: { opacity: .55 },
+  timeLabel: { color: theme.textSubtle, fontFamily: theme.font.bold, fontSize: 8, letterSpacing: .75, marginTop: 12 }, windows: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 7 }, window: { backgroundColor: theme.surfaceMuted, borderColor: theme.border, borderRadius: 10, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 7 }, windowSelected: { backgroundColor: theme.brand, borderColor: theme.brand }, windowText: { color: theme.textMuted, fontFamily: theme.font.semibold, fontSize: 8.5 }, windowTextSelected: { color: "#FFFFFF" },
 });

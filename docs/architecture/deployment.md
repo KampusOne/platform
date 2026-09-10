@@ -4,44 +4,34 @@
 
 | Environment | Purpose | Data | Deployment rule |
 | --- | --- | --- | --- |
-| Local | Fast implementation and tests | Fixtures only | No external provider credentials required |
-| Preview | Reviewable builds per phase | Synthetic/pilot-safe data | Auth and writes remain disabled until their gate passes |
-| Production | Student and operator traffic | Production tenant data | Protected branch, explicit environment approval, rollback ready |
+| Local | Development and automated checks | Disposable developer data | Providers may be disabled, but each dependent action fails closed |
+| Staging | Release candidate and provider acceptance | Isolated pilot-safe Neon branch | Same authentication and mutation code paths as production |
+| Production | Student and operator traffic | Protected production Neon branch | Explicit migration, secret, domain, acceptance, and rollback approval |
+
+“Staging” describes an isolated release environment; it does not enable permissive codes, fake dashboards, or alternate business logic.
 
 ## Portal on Vercel
 
-Create one Vercel project with repository root directory `portal`. Preview URLs expose `/admin`, `/agents`, and `/engineering`. After Phase 1 security acceptance, attach the three production hosts to the same project; `proxy.ts` maps each root hostname to its surface.
+Create one Vercel project with repository root `portal`. Attach `admin.kampusone.app`, `agents.kampusone.app`, and `engineering.kampusone.app`; `proxy.ts` maps each hostname to its role-specific surface. Set only:
 
-Required public variables:
+- `NEXT_PUBLIC_KAMPUSONE_API_URL=https://api.kampusone.app`
 
-- `NEXT_PUBLIC_KAMPUSONE_API_URL`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+The browser receives no database or provider secret.
 
-No secret key belongs in the Vercel client environment.
+## API on Cloudflare Workers
 
-## Worker on Cloudflare
+`server/wrangler.jsonc` disables `workers.dev` and generated preview URLs and declares `api.kampusone.app` as the production custom domain. Configure the runtime secrets listed in the live handoff. The five-minute scheduled handler expires unpaid bookings and orders and restores held inventory.
 
-The Worker is configured in `server/wrangler.jsonc`. Preview and production are distinct Wrangler environments. The GitHub deployment workflow is manual and verifies the Worker before release.
-
-Repository/environment secrets:
-
-- `CLOUDFLARE_API_TOKEN`, scoped to Workers deployment and the intended account;
-- `CLOUDFLARE_ACCOUNT_ID`;
-- Worker runtime secrets `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY`, configured with Wrangler or the Cloudflare dashboard rather than committed files.
-
-Production begins in maintenance mode with all feature gates off. Activation is a separate reviewed change.
+Keep `PAYMENTS_ENABLED=false` until Paystack test and live webhooks, refund ownership, settlement, and reconciliation have been approved. Enabling the flag without its secret still fails closed.
 
 ## Mobile with Expo/EAS
 
-The `preview` EAS profile produces an internally distributed Android APK. A downloadable artifact requires the KampusOne Expo organization/project to be linked and an authenticated EAS build. Store builds are not created from unreviewed preview code.
+The `internal` EAS profile is for signed acceptance builds; the `production` profile is for store submission. Set:
 
-Required public variables:
+- `EXPO_PUBLIC_KAMPUSONE_API_URL=https://api.kampusone.app`
 
-- `EXPO_PUBLIC_KAMPUSONE_API_URL`
-- `EXPO_PUBLIC_SUPABASE_URL`
-- `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+Configure Expo project ownership, Apple/Google signing, secure native refresh-token storage, push credentials, privacy declarations, and store metadata before submission.
 
-## Database on Supabase
+## Database on Neon
 
-Apply forward migrations to a preview branch/project first. Run the repository verification SQL plus Supabase security and performance advisors. Promote only the same reviewed migration to production; never repair drift by editing an applied file.
+Apply `database/neon/migrations` in filename order to an isolated branch, run the acceptance SQL and end-to-end tests, then promote the exact reviewed migrations to the protected production branch. Do not use the historical Supabase seed as production content.

@@ -3,13 +3,14 @@
 | Variable | Mobile | Portal | Worker | Secret |
 | --- | ---: | ---: | ---: | ---: |
 | KampusOne API URL | Yes | Yes | — | No |
-| Supabase URL | Yes | Yes | Yes | No |
-| Supabase publishable key | Yes | Yes | Yes | No |
-| Supabase secret key | Never | Never | Yes | **Yes** |
-| Resend key | Never | Never | Later | **Yes** |
-| AI/provider keys | Never | Never | Later | **Yes** |
-| Payment webhook secrets | Never | Never | Later | **Yes** |
+| Pooled Neon `DATABASE_URL` | Never | Never | Yes | **Yes** |
+| `JWT_SECRET` | Never | Never | Yes | **Yes** |
+| `OTP_PEPPER` | Never | Never | Yes | **Yes** |
+| Resend API/from/reply-to | Never | Never | Yes | **Yes** |
+| Paystack secret/webhook key | Never | Never | Yes | **Yes** |
+| One-time admin bootstrap token | Never | Never | Temporary | **Yes** |
+| KYC, storage, push, analytics keys | Never | Never | When selected | **Yes** |
 
-Public variables are safe to reveal but still environment-specific. Secret variables are encrypted runtime configuration and must not appear in logs, error payloads, screenshots, client bundles, or committed files.
+Public client configuration contains only the API origin. Secrets are encrypted runtime configuration and must not appear in logs, error payloads, screenshots, client bundles, or committed files.
 
-Supabase authentication email uses a connected SMTP provider in production. The default Supabase SMTP service is not the production plan because brand templates and reliable external delivery require provider configuration.
+Local, staging, and production use the same verification and authorization code. Provider-backed actions fail closed when their credential is absent. Production registration requires a verified Resend sending domain; payments remain disabled until signed webhook and reconciliation acceptance tests pass.

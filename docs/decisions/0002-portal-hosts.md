@@ -5,7 +5,7 @@
 
 ## Decision
 
-Serve admin, agent, and engineering experiences from one Next.js application, with host-aware routing and independent role gates. Preview routes are `/admin`, `/agents`, and `/engineering`; production hostnames will be `admin.kampusone.app`, `agents.kampusone.app`, and `engineering.kampusone.app`.
+Serve admin, agent, and engineering experiences from one Next.js application, with host-aware routing and independent role gates. Local and staging paths are `/admin`, `/agents`, and `/engineering`; production hostnames will be `admin.kampusone.app`, `agents.kampusone.app`, and `engineering.kampusone.app`.
 
 ## Guardrails
 

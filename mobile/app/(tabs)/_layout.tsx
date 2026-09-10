@@ -1,12 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { type ComponentProps, useEffect, useRef } from "react";
 import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useReducedMotionPreference } from "@/src/components/visual-system";
+import { useAuth } from "@/src/auth/auth-context";
 import { theme } from "@/src/theme";
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -132,6 +133,10 @@ function KampusTabBar({ state, navigation }: KampusTabBarProps) {
 }
 
 export default function TabLayout() {
+  const { state, profile } = useAuth();
+  if (state === "anonymous") return <Redirect href="/(auth)/welcome" />;
+  if (state === "authenticated" && !profile?.onboarding_completed_at) return <Redirect href="/(auth)/onboarding" />;
+
   return (
     <Tabs
       tabBar={(props) => <KampusTabBar {...props} />}
@@ -150,6 +155,8 @@ export default function TabLayout() {
       <Tabs.Screen name="store" />
       <Tabs.Screen name="timetable" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
+      <Tabs.Screen name="gpa" options={{ href: null }} />
+      <Tabs.Screen name="purchases" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -13,16 +13,20 @@ type AppHeaderProps = {
   showBell?: boolean;
   showStreak?: boolean;
   badge?: { icon?: keyof typeof Ionicons.glyphMap; text: string; verified?: boolean };
+  initials?: string;
+  avatarUrl?: string | null | undefined;
 };
 
 export function AppHeader({
-  title = "Good morning, Gideon",
+  title = "Welcome back",
   subtitle = "Thursday, 10 September",
   onBellPress,
   unread = true,
   showBell = true,
   showStreak = false,
   badge,
+  initials = "K1",
+  avatarUrl,
 }: AppHeaderProps) {
   return (
     <View style={[styles.hero, showStreak && styles.heroWithStreak]}>
@@ -31,11 +35,11 @@ export function AppHeader({
       {showStreak ? (
         <View style={styles.streakRow}>
           <StreakCard />
-          <HeaderActions onBellPress={onBellPress} showBell={showBell} unread={unread} />
+          <HeaderActions avatarUrl={avatarUrl} initials={initials} onBellPress={onBellPress} showBell={showBell} unread={unread} />
         </View>
       ) : (
         <View style={styles.floatingActions}>
-          <HeaderActions onBellPress={onBellPress} showBell={showBell} unread={unread} />
+          <HeaderActions avatarUrl={avatarUrl} initials={initials} onBellPress={onBellPress} showBell={showBell} unread={unread} />
         </View>
       )}
 
@@ -52,10 +56,14 @@ function HeaderActions({
   onBellPress,
   showBell,
   unread,
+  initials,
+  avatarUrl,
 }: {
   onBellPress: (() => void) | undefined;
   showBell: boolean;
   unread: boolean;
+  initials: string;
+  avatarUrl?: string | null | undefined;
 }) {
   return (
     <View style={styles.actions}>
@@ -73,18 +81,14 @@ function HeaderActions({
         </Pressable>
       ) : null}
       <Pressable
-        accessibilityLabel="Open Gideon's profile"
+        accessibilityLabel="Open your profile"
         accessibilityRole="button"
         hitSlop={8}
         onPress={() => router.push("/profile")}
         style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}
       >
-        <View style={styles.avatarFallback}><Text style={styles.avatarFallbackText}>GI</Text></View>
-        <Image
-          accessibilityIgnoresInvertColors
-          source={{ uri: "https://avatars.githubusercontent.com/u/167391941?v=4" }}
-          style={styles.avatar}
-        />
+        <View style={styles.avatarFallback}><Text style={styles.avatarFallbackText}>{initials}</Text></View>
+        {avatarUrl ? <Image accessibilityIgnoresInvertColors source={{ uri: avatarUrl }} style={styles.avatar} /> : null}
       </Pressable>
     </View>
   );
