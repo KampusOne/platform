@@ -9,8 +9,11 @@ type AppHeaderProps = {
   title?: string;
   subtitle?: string;
   onBellPress?: () => void;
+  onInboxPress?: () => void;
   unread?: boolean;
+  inboxUnread?: boolean;
   showBell?: boolean;
+  showInbox?: boolean;
   showStreak?: boolean;
   badge?: { icon?: keyof typeof Ionicons.glyphMap; text: string; verified?: boolean };
 };
@@ -19,8 +22,11 @@ export function AppHeader({
   title = "Good morning, Gideon",
   subtitle = "Thursday, 10 September",
   onBellPress,
+  onInboxPress,
   unread = true,
+  inboxUnread = true,
   showBell = true,
+  showInbox = true,
   showStreak = false,
   badge,
 }: AppHeaderProps) {
@@ -31,11 +37,11 @@ export function AppHeader({
       {showStreak ? (
         <View style={styles.streakRow}>
           <StreakCard />
-          <HeaderActions onBellPress={onBellPress} showBell={showBell} unread={unread} />
+          <HeaderActions inboxUnread={inboxUnread} onBellPress={onBellPress} onInboxPress={onInboxPress} showBell={showBell} showInbox={showInbox} unread={unread} />
         </View>
       ) : (
         <View style={styles.floatingActions}>
-          <HeaderActions onBellPress={onBellPress} showBell={showBell} unread={unread} />
+          <HeaderActions inboxUnread={inboxUnread} onBellPress={onBellPress} onInboxPress={onInboxPress} showBell={showBell} showInbox={showInbox} unread={unread} />
         </View>
       )}
 
@@ -50,15 +56,34 @@ export function AppHeader({
 
 function HeaderActions({
   onBellPress,
+  onInboxPress,
   showBell,
+  showInbox,
   unread,
+  inboxUnread,
 }: {
   onBellPress: (() => void) | undefined;
+  onInboxPress: (() => void) | undefined;
   showBell: boolean;
+  showInbox: boolean;
   unread: boolean;
+  inboxUnread: boolean;
 }) {
   return (
     <View style={styles.actions}>
+      {showInbox ? (
+        <Pressable
+          accessibilityLabel="Open inbox"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={onInboxPress ?? (() => router.push("/inbox"))}
+          style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
+        >
+          <View pointerEvents="none" style={styles.buttonShine} />
+          <Ionicons name="chatbubble-ellipses-outline" size={22} color={theme.text} />
+          {inboxUnread ? <View style={styles.unread} /> : null}
+        </Pressable>
+      ) : null}
       {showBell ? (
         <Pressable
           accessibilityLabel="Open notifications"

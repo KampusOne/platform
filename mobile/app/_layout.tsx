@@ -10,6 +10,7 @@ import {
 import { Lato_700Bold, Lato_700Bold_Italic, Lato_900Black } from "@expo-google-fonts/lato";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
+import { SessionProvider } from "@/src/auth/session-context";
 import { theme } from "@/src/theme";
 
 export default function RootLayout() {
@@ -32,10 +33,17 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <SessionProvider>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.canvas } }} />
-    </>
+      <Stack
+        screenOptions={{
+          animation: "fade_from_bottom",
+          animationDuration: 260,
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.canvas },
+        }}
+      />
+    </SessionProvider>
   );
 }
 

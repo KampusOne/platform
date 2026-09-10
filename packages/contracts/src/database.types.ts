@@ -58,6 +58,142 @@ export type Database = {
           },
         ]
       }
+      agent_application_documents: {
+        Row: {
+          application_id: string
+          checked_at: string | null
+          created_at: string
+          extracted_name: string | null
+          id: string
+          institution_id: string
+          kind: string
+          mime_type: string
+          name_match_score: number | null
+          object_path: string
+          original_filename: string
+          sha256: string | null
+          size_bytes: number
+          updated_at: string
+          upload_status: string
+          verification_status: string
+        }
+        Insert: {
+          application_id: string
+          checked_at?: string | null
+          created_at?: string
+          extracted_name?: string | null
+          id?: string
+          institution_id: string
+          kind: string
+          mime_type: string
+          name_match_score?: number | null
+          object_path: string
+          original_filename: string
+          sha256?: string | null
+          size_bytes: number
+          updated_at?: string
+          upload_status?: string
+          verification_status?: string
+        }
+        Update: {
+          application_id?: string
+          checked_at?: string | null
+          created_at?: string
+          extracted_name?: string | null
+          id?: string
+          institution_id?: string
+          kind?: string
+          mime_type?: string
+          name_match_score?: number | null
+          object_path?: string
+          original_filename?: string
+          sha256?: string | null
+          size_bytes?: number
+          updated_at?: string
+          upload_status?: string
+          verification_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_application_documents_institution_id_application_id_fkey"
+            columns: ["institution_id", "application_id"]
+            isOneToOne: false
+            referencedRelation: "agent_applications"
+            referencedColumns: ["institution_id", "id"]
+          },
+        ]
+      }
+      agent_applications: {
+        Row: {
+          applicant_type: string
+          applicant_user_id: string
+          created_at: string
+          current_level: number | null
+          desired_roles: string[]
+          email: string
+          full_name: string
+          id: string
+          institution_id: string
+          last_reviewed_at: string | null
+          matriculation_number: string | null
+          phone: string
+          programme: string | null
+          statement: string
+          status: string
+          status_reason: string | null
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          applicant_type: string
+          applicant_user_id: string
+          created_at?: string
+          current_level?: number | null
+          desired_roles: string[]
+          email: string
+          full_name: string
+          id?: string
+          institution_id: string
+          last_reviewed_at?: string | null
+          matriculation_number?: string | null
+          phone: string
+          programme?: string | null
+          statement: string
+          status?: string
+          status_reason?: string | null
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          applicant_type?: string
+          applicant_user_id?: string
+          created_at?: string
+          current_level?: number | null
+          desired_roles?: string[]
+          email?: string
+          full_name?: string
+          id?: string
+          institution_id?: string
+          last_reviewed_at?: string | null
+          matriculation_number?: string | null
+          phone?: string
+          programme?: string | null
+          statement?: string
+          status?: string
+          status_reason?: string | null
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_applications_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campuses: {
         Row: {
           created_at: string
@@ -716,7 +852,72 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      review_agent_application: {
+        Args: {
+          actor_id: string
+          review_decision: string
+          review_reason: string
+          target_application_id: string
+        }
+        Returns: {
+          applicant_type: string
+          applicant_user_id: string
+          created_at: string
+          current_level: number | null
+          desired_roles: string[]
+          email: string
+          full_name: string
+          id: string
+          institution_id: string
+          last_reviewed_at: string | null
+          matriculation_number: string | null
+          phone: string
+          programme: string | null
+          statement: string
+          status: string
+          status_reason: string | null
+          submitted_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      review_agent_document: {
+        Args: {
+          actor_id: string
+          review_outcome: string
+          review_reason: string
+          target_document_id: string
+        }
+        Returns: {
+          application_id: string
+          checked_at: string | null
+          created_at: string
+          extracted_name: string | null
+          id: string
+          institution_id: string
+          kind: string
+          mime_type: string
+          name_match_score: number | null
+          object_path: string
+          original_filename: string
+          sha256: string | null
+          size_bytes: number
+          updated_at: string
+          upload_status: string
+          verification_status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agent_application_documents"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       [_ in never]: never

@@ -4,11 +4,33 @@ import type { ReactNode } from "react";
 
 export type SurfaceKey = "admin" | "agents" | "engineering";
 
-const navigation: Array<{ key: SurfaceKey; href: string; label: string }> = [
-  { key: "admin", href: "/admin", label: "Admin" },
-  { key: "agents", href: "/agents", label: "Agents" },
-  { key: "engineering", href: "/engineering", label: "Engineering" },
-];
+const navigation: Record<SurfaceKey, Array<{ href: string; label: string; marker: string }>> = {
+  admin: [
+    { href: "#overview", label: "Overview", marker: "01" },
+    { href: "#applications", label: "Applications", marker: "02" },
+    { href: "#verification", label: "Verification", marker: "03" },
+    { href: "#publishing", label: "Publishing", marker: "04" },
+    { href: "#safety", label: "Safety", marker: "05" },
+  ],
+  agents: [
+    { href: "#application", label: "Application", marker: "01" },
+    { href: "#requirements", label: "Requirements", marker: "02" },
+    { href: "#documents", label: "Documents", marker: "03" },
+    { href: "#status", label: "Status", marker: "04" },
+  ],
+  engineering: [
+    { href: "#roadmap", label: "Roadmap", marker: "01" },
+    { href: "#requirements", label: "Requirements", marker: "02" },
+    { href: "#architecture", label: "Architecture", marker: "03" },
+    { href: "#notes", label: "Builder notes", marker: "04" },
+  ],
+};
+
+const surfaceMeta: Record<SurfaceKey, { label: string; state: string; notice: string }> = {
+  admin: { label: "Operations", state: "Operator gate pending", notice: "The operational controls are structured previews. Live student and applicant records stay disconnected until operator authentication and tenant policy pass." },
+  agents: { label: "Agent portal", state: "Application preview", notice: "The application journey is reviewable now. Private document upload remains locked until storage policy and review ownership are approved." },
+  engineering: { label: "Build tracker", state: "Read-only tracker", notice: "This is the delivery source of truth: finished work includes evidence, blockers name their required input, and planned work is not presented as complete." },
+};
 
 type PortalShellProps = {
   active: SurfaceKey;
@@ -25,6 +47,7 @@ export function PortalShell({
   description,
   children,
 }: PortalShellProps) {
+  const meta = surfaceMeta[active];
   return (
     <div className="portal-frame">
       <aside className="sidebar">
@@ -38,16 +61,16 @@ export function PortalShell({
           />
         </Link>
 
-        <nav className="portal-nav" aria-label="Operational surfaces">
-          <p className="nav-label">Workspaces</p>
-          {navigation.map((item) => (
+        <nav className="portal-nav" aria-label={`${meta.label} sections`}>
+          <p className="nav-label">{meta.label}</p>
+          {navigation[active].map((item, index) => (
             <Link
               href={item.href}
-              key={item.key}
+              key={item.href}
               className="nav-item"
-              aria-current={active === item.key ? "page" : undefined}
+              aria-current={index === 0 ? "page" : undefined}
             >
-              <span className="nav-item__signal" aria-hidden="true" />
+              <span className="nav-item__marker" aria-hidden="true">{item.marker}</span>
               {item.label}
             </Link>
           ))}
@@ -56,8 +79,8 @@ export function PortalShell({
         <div className="sidebar__foot">
           <span className="status-dot" aria-hidden="true" />
           <span>
-            <strong>Preview mode</strong>
-            Live mutations are locked
+            <strong>{meta.state}</strong>
+            {active === "engineering" ? "No secrets shown" : "Sensitive writes locked"}
           </span>
         </div>
       </aside>
@@ -72,8 +95,8 @@ export function PortalShell({
           <div className="operator-placeholder" aria-label="Authentication status">
             <span aria-hidden="true">K1</span>
             <div>
-              <strong>Identity gate pending</strong>
-              <small>No operator signed in</small>
+              <strong>{meta.state}</strong>
+              <small>{active === "engineering" ? "Updated with build evidence" : "No privileged session"}</small>
             </div>
           </div>
         </header>
@@ -83,8 +106,8 @@ export function PortalShell({
             i
           </span>
           <p>
-            <strong>Architecture preview.</strong> All records shown here are structural examples;
-            no live student or institution data is connected.
+            <strong>{active === "engineering" ? "Delivery record." : "Protected preview."}</strong>{" "}
+            {meta.notice}
           </p>
         </div>
 

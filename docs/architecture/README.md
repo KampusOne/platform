@@ -2,7 +2,7 @@
 
 ## Decision
 
-KampusOne begins as a modular monolith: one public source repository, one Supabase PostgreSQL database, one student mobile app, one portal deployment, and one thin privileged API. Runtime secrets and production data remain outside Git. Feature modules own their schema, contracts, and UI, without becoming separate services prematurely.
+KampusOne begins as a modular monolith: one public source repository, one Supabase PostgreSQL database, one student app, three separately released portal surfaces, and one thin privileged API. Runtime secrets and production data remain outside Git. Feature modules own their schema, contracts, and UI, without becoming separate services prematurely.
 
 ```mermaid
 flowchart TD
@@ -17,7 +17,7 @@ flowchart TD
 ## Deployable units
 
 - `mobile`: Expo application. Development uses a physical device or web export; distributable Android builds use EAS once the Expo project is connected.
-- `portal`: a single Next.js deployment. Host-aware routing maps `admin`, `agents`, and `engineering` subdomains to separate route trees and authorization policies.
+- `portal`: one Next.js codebase released as three Vercel projects. `ops`, `agents`, and `build` have separate root experiences, environment configuration, approvals and authorization policies.
 - `server`: Hono Worker. It owns secrets, provider callbacks, coordinated writes, and operations that must never run with a publishable client key.
 - `database`: one Supabase project. All exposed tables use RLS; private operational data stays in a non-exposed schema or behind the Worker.
 
@@ -44,10 +44,10 @@ Ordinary user-scoped data can travel directly between a client and Supabase when
 
 | Surface | Preview | Production target |
 | --- | --- | --- |
-| Student mobile | Expo development build / EAS artifact | App stores and managed update channel |
-| Admin | Vercel preview `/admin` | `admin.kampusone.app` |
+| Student app | Expo development build / EAS artifact | Native stores plus `app.kampusone.app` on Cloudflare |
+| Operations | Vercel preview | `ops.kampusone.app` |
 | Agents | Vercel preview `/agents` | `agents.kampusone.app` |
-| Engineering | Vercel preview `/engineering` | `engineering.kampusone.app` |
+| Build tracker | Vercel preview | `build.kampusone.app` |
 | API | Wrangler preview URL | `api.kampusone.app` |
 
 Production hostnames are not attached until authentication, role enforcement, audit logging, and a deployment review are complete.
