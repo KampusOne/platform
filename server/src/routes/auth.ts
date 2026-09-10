@@ -13,7 +13,7 @@ import {
 
 import type { Bindings, Variables } from "../types";
 import { clearSessionCookies, refreshCookie, setSessionCookies } from "../middleware/auth";
-import { database, firstRow, sqlClient } from "../lib/database";
+import { database, firstRow } from "../lib/database";
 import { requireEmailProvider, sendMail } from "../lib/email";
 import { AppError } from "../lib/errors";
 import { generateOtp, hashOtp, hashPassword, sha256, validatePassword, verifyPassword } from "../lib/security";
@@ -29,6 +29,12 @@ export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>;
 
+type RegistrationStage =
+  | "password_hash"
+  | "verification_hash"
+  | "account_insert"
+  | "verification_delivery";
+
 async function body(context: AppContext) {
   return context.req.json().catch(() => null) as Promise<unknown>;
 }
@@ -42,6 +48,19 @@ function requestMetadata(context: { req: { header(name: string): string | undefi
     ...(ipAddress ? { ipAddress } : {}),
     ...(userAgent ? { userAgent } : {}),
   };
+}
+
+function logRegistrationFailure(context: AppContext, stage: RegistrationStage, caught: unknown) {
+  const error = caught instanceof Error ? caught : new Error(String(caught));
+  console.error(JSON.stringify({
+    level: "error",
+    event: "auth.register.failed",
+    stage,
+    requestId: context.get("requestId"),
+    errorName: error.name,
+    message: error.message,
+    stack: error.stack?.slice(0, 2_000),
+  }));
 }
 
 async function consumeAuthRateLimit(
@@ -131,12 +150,6 @@ async function createVerification(
   return { code, tokenId };
 }
 
-async function discardVerification(env: Bindings, tokenId: string) {
-  await database(env).execute(sql`
-    delete from public.verification_tokens where id = ${tokenId}::uuid and used_at is null
-  `);
-}
-
 async function supersedeOlderVerifications(
   env: Bindings,
   userId: string,
@@ -148,6 +161,30 @@ async function supersedeOlderVerifications(
     where user_id = ${userId}::uuid and type::text = ${type}
       and id <> ${keepTokenId}::uuid and used_at is null
   `);
+}
+
+async function sendFreshEmailVerification(
+  env: Bindings,
+  user: { id: string; email: string; first_name: string | null },
+) {
+  const latest = await latestVerification(env, user.email, "EMAIL_VERIFICATION");
+  if (latest && Date.now() - new Date(latest.last_sent_at).getTime() < 60_000) return;
+
+  const verification = await createVerification(env, user.id, "EMAIL_VERIFICATION");
+  try {
+    await sendMail(env, {
+      to: user.email,
+      firstName: user.first_name,
+      code: verification.code,
+      kind: "verification",
+      idempotencyKey: `verify-${verification.tokenId}`,
+    });
+  } catch (caught) {
+    // Keep the token if delivery fails or times out. The provider may have
+    // accepted the message even when its response did not reach the Worker.
+    throw caught;
+  }
+  await supersedeOlderVerifications(env, user.id, "EMAIL_VERIFICATION", verification.tokenId);
 }
 
 function verificationFailure(result: string): never {
@@ -162,54 +199,150 @@ authRoutes.post("/register", async (context) => {
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the account details and try again.");
   validatePassword(parsed.data.password);
   requireEmailProvider(context.env);
-  await consumeAuthRateLimit(context, "REGISTER", parsed.data.email, 5, 900);
+  const rateLimitKey = await consumeAuthRateLimit(context, "REGISTER", parsed.data.email, 5, 900);
 
   const existing = await findUserByEmail(context.env, parsed.data.email);
   if (existing) {
-    return context.json({ status: "accepted", email: parsed.data.email }, 202);
+    if (!existing.email_verified_at) {
+      try {
+        await sendFreshEmailVerification(context.env, existing);
+      } catch (caught) {
+        logRegistrationFailure(context, "verification_delivery", caught);
+        throw caught;
+      }
+    }
+    await clearAuthRateLimit(context.env, "REGISTER", rateLimitKey);
+    return context.json({
+      status: existing.email_verified_at ? "already_registered" : "verification_required",
+      email: parsed.data.email,
+    }, 202);
   }
 
   const userId = crypto.randomUUID();
   const profileId = crypto.randomUUID();
-  const passwordHash = await hashPassword(parsed.data.password);
-  const verificationCode = generateOtp();
-  const verificationHash = await hashOtp(context.env, verificationCode);
   const verificationId = crypto.randomUUID();
+  const termsAcceptanceId = crypto.randomUUID();
+  const privacyAcceptanceId = crypto.randomUUID();
+  const verificationCode = generateOtp();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   const username = `student_${userId.replaceAll("-", "").slice(0, 10)}`;
   const displayName = `${parsed.data.firstName} ${parsed.data.lastName}`;
-  const client = sqlClient(context.env);
 
-  await client.transaction([
-    client`
-      insert into public.users (id, email, password_hash, created_at, updated_at)
-      values (${userId}::uuid, ${parsed.data.email}, ${passwordHash}, now(), now())
-    `,
-    client`
-      insert into public.profiles (
-        id, user_id, username, display_name, first_name, last_name,
-        onboarding_step, created_at, updated_at
-      ) values (
-        ${profileId}::uuid, ${userId}::uuid, ${username}, ${displayName},
-        ${parsed.data.firstName}, ${parsed.data.lastName}, 'EMAIL_VERIFICATION', now(), now()
+  if (parsed.data.firstName.length > 40 || parsed.data.lastName.length > 40 || displayName.length > 80) {
+    throw new AppError(400, "BAD_REQUEST", "Use a shorter first or last name and try again.");
+  }
+
+  let passwordHash: string;
+  try {
+    passwordHash = await hashPassword(parsed.data.password);
+  } catch (caught) {
+    logRegistrationFailure(context, "password_hash", caught);
+    throw new AppError(500, "INTERNAL_ERROR", "We could not secure the account credentials. Please try again.");
+  }
+
+  let verificationHash: string;
+  try {
+    verificationHash = await hashOtp(context.env, verificationCode);
+  } catch (caught) {
+    logRegistrationFailure(context, "verification_hash", caught);
+    throw caught;
+  }
+
+  let created: {
+    user_id: string | null;
+    verification_id: string | null;
+    profile_created: boolean;
+    terms_created: boolean;
+    privacy_created: boolean;
+  } | undefined;
+
+  try {
+    const result = await database(context.env).execute<{
+      user_id: string | null;
+      verification_id: string | null;
+      profile_created: boolean;
+      terms_created: boolean;
+      privacy_created: boolean;
+    }>(sql`
+      with inserted_user as (
+        insert into public.users (id, email, password_hash, created_at, updated_at)
+        values (${userId}::uuid, ${parsed.data.email}, ${passwordHash}, now(), now())
+        on conflict (email) do nothing
+        returning id
+      ), inserted_profile as (
+        insert into public.profiles (
+          id, user_id, username, display_name, first_name, last_name,
+          onboarding_step, created_at, updated_at
+        )
+        select
+          ${profileId}::uuid, inserted_user.id, ${username}, ${displayName},
+          ${parsed.data.firstName}, ${parsed.data.lastName}, 'EMAIL_VERIFICATION', now(), now()
+        from inserted_user
+        returning id
+      ), inserted_terms as (
+        insert into public.legal_acceptances (id, user_id, document, version)
+        select
+          ${termsAcceptanceId}::uuid, inserted_user.id,
+          'TERMS_OF_SERVICE'::"LegalDocument", ${parsed.data.legalVersion}
+        from inserted_user
+        returning id
+      ), inserted_privacy as (
+        insert into public.legal_acceptances (id, user_id, document, version)
+        select
+          ${privacyAcceptanceId}::uuid, inserted_user.id,
+          'PRIVACY_POLICY'::"LegalDocument", ${parsed.data.legalVersion}
+        from inserted_user
+        returning id
+      ), inserted_token as (
+        insert into public.verification_tokens (
+          id, user_id, token_hash, type, expires_at, attempts, last_sent_at
+        )
+        select
+          ${verificationId}::uuid, inserted_user.id, ${verificationHash},
+          'EMAIL_VERIFICATION'::"VerificationTokenType", ${expiresAt}::timestamptz, 0, now()
+        from inserted_user
+        returning id
       )
-    `,
-    client`
-      insert into public.legal_acceptances (id, user_id, document, version)
-      values (${crypto.randomUUID()}::uuid, ${userId}::uuid, 'TERMS_OF_SERVICE'::"LegalDocument", ${parsed.data.legalVersion})
-    `,
-    client`
-      insert into public.legal_acceptances (id, user_id, document, version)
-      values (${crypto.randomUUID()}::uuid, ${userId}::uuid, 'PRIVACY_POLICY'::"LegalDocument", ${parsed.data.legalVersion})
-    `,
-    client`
-      insert into public.verification_tokens (id, user_id, token_hash, type, expires_at, attempts, last_sent_at)
-      values (
-        ${verificationId}::uuid, ${userId}::uuid, ${verificationHash},
-        'EMAIL_VERIFICATION'::"VerificationTokenType", ${expiresAt}::timestamptz, 0, now()
-      )
-    `,
-  ]);
+      select
+        (select id::text from inserted_user) as user_id,
+        (select id::text from inserted_token) as verification_id,
+        exists(select 1 from inserted_profile) as profile_created,
+        exists(select 1 from inserted_terms) as terms_created,
+        exists(select 1 from inserted_privacy) as privacy_created
+    `);
+    created = firstRow(result);
+  } catch (caught) {
+    logRegistrationFailure(context, "account_insert", caught);
+    throw new AppError(500, "INTERNAL_ERROR", "We could not finish creating the account. Please try again.");
+  }
+
+  if (!created?.user_id) {
+    const raced = await findUserByEmail(context.env, parsed.data.email);
+    if (!raced) {
+      const error = new Error("Registration insert returned no user after an email conflict.");
+      logRegistrationFailure(context, "account_insert", error);
+      throw new AppError(500, "INTERNAL_ERROR", "We could not finish creating the account. Please try again.");
+    }
+    if (!raced.email_verified_at) {
+      try {
+        await sendFreshEmailVerification(context.env, raced);
+      } catch (caught) {
+        logRegistrationFailure(context, "verification_delivery", caught);
+        throw caught;
+      }
+    }
+    await clearAuthRateLimit(context.env, "REGISTER", rateLimitKey);
+    return context.json({
+      status: raced.email_verified_at ? "already_registered" : "verification_required",
+      email: parsed.data.email,
+    }, 202);
+  }
+
+  if (!created.verification_id || !created.profile_created || !created.terms_created || !created.privacy_created) {
+    const error = new Error("Atomic registration did not create every required account record.");
+    logRegistrationFailure(context, "account_insert", error);
+    throw new AppError(500, "INTERNAL_ERROR", "We could not finish creating the account. Please try again.");
+  }
 
   try {
     await sendMail(context.env, {
@@ -220,10 +353,14 @@ authRoutes.post("/register", async (context) => {
       idempotencyKey: `verify-${verificationId}`,
     });
   } catch (caught) {
-    await discardVerification(context.env, verificationId);
+    // Keep the pending verification token. If the provider accepted the message
+    // but its response timed out, deleting the token would make that delivered
+    // code unusable. A retry/resend can safely supersede it later.
+    logRegistrationFailure(context, "verification_delivery", caught);
     throw caught;
   }
 
+  await clearAuthRateLimit(context.env, "REGISTER", rateLimitKey);
   return context.json({ status: "verification_required", email: parsed.data.email }, 201);
 });
 
@@ -235,25 +372,7 @@ authRoutes.post("/resend-verification", async (context) => {
   const user = await findUserByEmail(context.env, parsed.data.email);
   if (!user || user.email_verified_at) return context.json({ status: "accepted" }, 202);
 
-  const latest = await latestVerification(context.env, parsed.data.email, "EMAIL_VERIFICATION");
-  if (latest && Date.now() - new Date(latest.last_sent_at).getTime() < 60_000) {
-    return context.json({ status: "accepted" }, 202);
-  }
-
-  const verification = await createVerification(context.env, user.id, "EMAIL_VERIFICATION");
-  try {
-    await sendMail(context.env, {
-      to: user.email,
-      firstName: user.first_name,
-      code: verification.code,
-      kind: "verification",
-      idempotencyKey: `verify-${verification.tokenId}`,
-    });
-  } catch (caught) {
-    await discardVerification(context.env, verification.tokenId);
-    throw caught;
-  }
-  await supersedeOlderVerifications(context.env, user.id, "EMAIL_VERIFICATION", verification.tokenId);
+  await sendFreshEmailVerification(context.env, user);
   return context.json({ status: "accepted" }, 202);
 });
 
@@ -358,7 +477,8 @@ authRoutes.post("/forgot-password", async (context) => {
       idempotencyKey: `reset-${verification.tokenId}`,
     });
   } catch (caught) {
-    await discardVerification(context.env, verification.tokenId);
+    // Preserve the token on a provider timeout so a message that was actually
+    // accepted by Resend still contains a usable reset code.
     throw caught;
   }
   await supersedeOlderVerifications(context.env, user.id, "PASSWORD_RESET", verification.tokenId);
