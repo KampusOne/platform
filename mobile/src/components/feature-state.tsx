@@ -47,14 +47,14 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     color: theme.brand,
-    fontFamily: "Manrope-ExtraBold",
+    fontFamily: theme.font.bold,
     fontSize: 11,
     letterSpacing: 1.3,
     marginBottom: theme.spacing[3],
   },
   title: {
     color: theme.text,
-    fontFamily: "Manrope-ExtraBold",
+    fontFamily: theme.font.display,
     fontSize: 34,
     letterSpacing: -1.5,
     lineHeight: 38,
@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
   },
   description: {
     color: theme.textMuted,
-    fontFamily: "Manrope-Regular",
+    fontFamily: theme.font.body,
     fontSize: 15,
     lineHeight: 23,
     marginTop: theme.spacing[4],
@@ -76,13 +76,13 @@ const styles = StyleSheet.create({
   },
   nextLabel: {
     color: theme.textMuted,
-    fontFamily: "Manrope-ExtraBold",
+    fontFamily: theme.font.bold,
     fontSize: 9,
     letterSpacing: 1.2,
   },
   next: {
     color: theme.text,
-    fontFamily: "Manrope-SemiBold",
+    fontFamily: theme.font.semibold,
     fontSize: 13,
     marginTop: 5,
   },

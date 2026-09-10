@@ -1,28 +1,34 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppHeader } from "@/src/components/app-header";
-import { PreviewBanner } from "@/src/components/preview-banner";
+import { InlineFeedback, ProductScreen } from "@/src/components/product-ui";
 import { SectionHeading } from "@/src/components/section-heading";
 import { theme } from "@/src/theme";
 
-const sampleAgenda = [
-  { time: "10:00", meridiem: "AM", title: "CSC 211 · Data Structures", place: "LT 3", current: true },
-  { time: "02:00", meridiem: "PM", title: "MTH 213 · Linear Algebra", place: "Hall B", current: false },
-  { time: "04:30", meridiem: "PM", title: "Course rep check-in", place: "Online", current: false },
-];
+const agenda = [
+  { id: "csc", start: "10:00", end: "12:00", code: "CSC 211", room: "Lecture Theatre 3", status: "Next", tone: "brand" },
+  { id: "edu", start: "13:00", end: "14:00", code: "EDU 201", room: "Faculty of Education", status: "Later", tone: "neutral" },
+  { id: "mth", start: "15:00", end: "17:00", code: "MTH 213", room: "Hall B", status: "Later", tone: "neutral" },
+  { id: "group", start: "18:30", end: "19:00", code: "Project check-in", room: "Online", status: "Personal", tone: "success" },
+] as const;
 
-function currentGreeting() {
+const quickActions = [
+  { key: "timetable", icon: "calendar-outline", name: "Timetable", detail: "4 things today" },
+  { key: "campus", icon: "navigate-outline", name: "Campus map", detail: "LT 3 is 7 min away" },
+  { key: "gpa", icon: "calculator-outline", name: "GPA planner", detail: "Last saved 3.72" },
+  { key: "files", icon: "folder-open-outline", name: "Saved files", detail: "12 available offline" },
+] as const;
+
+const deadlines = [
+  { id: "assignment", title: "CSC 211 assignment", due: "Due tomorrow · 18:00", icon: "document-text-outline" },
+  { id: "registration", title: "Course registration", due: "Closes Friday · 23:59", icon: "school-outline" },
+] as const;
+
+function greeting() {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
@@ -30,135 +36,258 @@ function currentGreeting() {
 }
 
 export default function TodayScreen() {
-  const [acknowledged, setAcknowledged] = useState(false);
-  const { width } = useWindowDimensions();
-  const maxWidth = Math.min(width, 680);
+  const [reminderOn, setReminderOn] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [completed, setCompleted] = useState<string[]>([]);
   const date = useMemo(
-    () =>
-      new Intl.DateTimeFormat("en-NG", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-      }).format(new Date()),
+    () => new Intl.DateTimeFormat("en-NG", { weekday: "long", day: "numeric", month: "long" }).format(new Date()),
     [],
   );
 
-  async function acknowledgePreview() {
-    await Haptics.selectionAsync();
-    setAcknowledged(true);
+  function tap() {
+    void Haptics.selectionAsync();
+  }
+
+  function toggleReminder() {
+    tap();
+    setReminderOn((value) => !value);
+    setFeedback(reminderOn ? "Class reminder removed." : "Reminder set for 9:40 AM.");
+  }
+
+  function handleQuickAction(key: (typeof quickActions)[number]["key"]) {
+    tap();
+    if (key === "campus") {
+      router.push("/campus");
+      return;
+    }
+    if (key === "timetable") {
+      setShowAll(true);
+      setFeedback("Today’s full timetable is open below.");
+      return;
+    }
+    setFeedback(key === "gpa" ? "GPA planner preview selected." : "Your offline files preview is ready.");
+  }
+
+  function toggleDeadline(id: string) {
+    tap();
+    setCompleted((items) => (items.includes(id) ? items.filter((item) => item !== id) : [...items, id]));
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={[styles.content, { width: maxWidth }]} showsVerticalScrollIndicator={false}>
-        <AppHeader />
-        <PreviewBanner>FOUNDATION PREVIEW · SAMPLE SCHEDULE</PreviewBanner>
+    <ProductScreen>
+      <AppHeader
+        onBellPress={() => {
+          tap();
+          setNotificationsOpen((value) => !value);
+        }}
+        subtitle={`${date} · Preview`}
+        title={`${greeting()}, Gideon`}
+        unread={!notificationsOpen}
+      />
 
-        <View style={styles.hero}>
-          <Text style={styles.date}>{date.toUpperCase()}</Text>
-          <Text style={styles.title}>{currentGreeting()}.</Text>
-          <Text style={styles.accent}>You&apos;re on track.</Text>
+      {notificationsOpen ? (
+        <View style={styles.notifications}>
+          <View style={styles.notificationTop}>
+            <Text style={styles.notificationTitle}>Notifications</Text>
+            <Text style={styles.notificationCount}>2 new</Text>
+          </View>
+          <Text style={styles.notificationBody}>Your CSC 211 class starts at 10:00 AM.</Text>
+          <View style={styles.notificationRule} />
+          <Text style={styles.notificationBody}>Course registration closes Friday night.</Text>
         </View>
+      ) : null}
 
-        <View style={styles.nowPanel}>
-          <View style={styles.nowTopline}>
-            <View style={styles.liveLabel}><View style={styles.liveDot} /><Text style={styles.liveText}>NEXT UP · SAMPLE</Text></View>
-            <Text style={styles.startsIn}>Starts in 42 min</Text>
+      {feedback ? <InlineFeedback message={feedback} tone={feedback.includes("set") ? "success" : "brand"} /> : null}
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setFeedback("The Hall 3 notice is open in Feed.")}
+        style={({ pressed }) => [styles.notice, pressed && styles.pressed]}
+      >
+        <Ionicons name="megaphone-outline" size={20} color={theme.brandPressed} />
+        <View style={styles.noticeCopy}>
+          <Text style={styles.noticeTitle}>Water will be off in Hall 3 from 2 PM</Text>
+          <Text style={styles.noticeMeta}>Works department · 40 minutes ago</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={theme.brandPressed} />
+      </Pressable>
+
+      <View style={styles.nextCard}>
+        <View style={styles.nextMain}>
+          <View style={styles.nextBar} />
+          <View style={styles.nextCopy}>
+            <View style={styles.nextTopline}>
+              <Text style={styles.nextLabel}>Next class · in 42 minutes</Text>
+              <View style={styles.previewBadge}><Text style={styles.previewBadgeText}>Sample</Text></View>
+            </View>
+            <Text style={styles.courseTitle}>CSC 211 — Data Structures</Text>
+            <Text style={styles.courseMeta}>10:00–12:00 · Lecture Theatre 3</Text>
+            <Text style={styles.courseMeta}>Dr Ehiaguina</Text>
           </View>
-          <Text style={styles.courseCode}>CSC 211</Text>
-          <Text style={styles.courseTitle}>Data Structures</Text>
-          <View style={styles.locationRow}>
-            <Ionicons name="location-outline" size={17} color="#EBC7B5" />
-            <Text style={styles.location}>Lecture Theatre 3 · Main campus</Text>
-          </View>
+        </View>
+        <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Acknowledge the timetable preview"
-            onPress={acknowledgePreview}
-            style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+            onPress={() => {
+              tap();
+              router.push("/campus");
+            }}
+            style={({ pressed }) => [styles.softAction, pressed && styles.pressed]}
           >
-            <Text style={styles.primaryActionText}>{acknowledged ? "Preview checked" : "Check timetable preview"}</Text>
-            <Ionicons name={acknowledged ? "checkmark" : "arrow-forward"} size={17} color={theme.text} />
+            <Ionicons name="navigate-outline" size={18} color={theme.brandPressed} />
+            <Text style={styles.softActionText}>Directions</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: reminderOn }}
+            onPress={toggleReminder}
+            style={({ pressed }) => [styles.outlineAction, reminderOn && styles.outlineActionSelected, pressed && styles.pressed]}
+          >
+            <Ionicons name={reminderOn ? "checkmark-circle" : "alarm-outline"} size={18} color={reminderOn ? theme.success : theme.text} />
+            <Text style={[styles.outlineActionText, reminderOn && styles.reminderText]}>{reminderOn ? "Reminder on" : "Remind me"}</Text>
           </Pressable>
         </View>
+      </View>
 
-        <View style={styles.section}>
-          <SectionHeading title="Your day" meta="3 sample items" />
-          <View style={styles.agenda}>
-            {sampleAgenda.map((item) => (
-              <View style={styles.agendaRow} key={`${item.time}-${item.title}`}>
-                <View style={styles.timeBlock}>
-                  <Text style={styles.time}>{item.time}</Text>
-                  <Text style={styles.meridiem}>{item.meridiem}</Text>
-                </View>
-                <View style={[styles.timeline, item.current && styles.timelineCurrent]} />
-                <View style={styles.agendaText}>
-                  <Text style={styles.agendaTitle}>{item.title}</Text>
-                  <Text style={styles.agendaPlace}>{item.place}</Text>
-                </View>
+      <View style={styles.section}>
+        <SectionHeading
+          meta={showAll ? "Show less" : "Full timetable"}
+          onPress={() => {
+            tap();
+            setShowAll((value) => !value);
+          }}
+          title="Today"
+        />
+        <View style={styles.scheduleList}>
+          {agenda.slice(0, showAll ? agenda.length : 3).map((item) => (
+            <View style={styles.scheduleRow} key={item.id}>
+              <View style={styles.timeBlock}>
+                <Text style={styles.startTime}>{item.start}</Text>
+                <Text style={styles.endTime}>{item.end}</Text>
               </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <SectionHeading title="Useful now" />
-          <View style={styles.utilityList}>
-            <View style={styles.utilityRow}>
-              <View style={styles.utilityIcon}><Ionicons name="calculator-outline" size={20} color={theme.brand} /></View>
-              <View style={styles.utilityText}><Text style={styles.utilityTitle}>GPA planner</Text><Text style={styles.utilityMeta}>Structure ready · results not connected</Text></View>
-              <Ionicons name="lock-closed-outline" size={16} color={theme.textMuted} />
+              <View style={[styles.scheduleBar, item.tone === "success" && styles.scheduleBarSuccess]} />
+              <View style={styles.scheduleCopy}>
+                <Text style={styles.scheduleTitle}>{item.code}</Text>
+                <Text style={styles.scheduleRoom}>{item.room}</Text>
+              </View>
+              <View style={[styles.status, item.tone === "success" && styles.statusSuccess]}>
+                <Text style={[styles.statusText, item.tone === "success" && styles.statusTextSuccess]}>{item.status}</Text>
+              </View>
             </View>
-            <View style={styles.utilityRow}>
-              <View style={styles.utilityIcon}><Ionicons name="navigate-outline" size={20} color={theme.brand} /></View>
-              <View style={styles.utilityText}><Text style={styles.utilityTitle}>Find a campus place</Text><Text style={styles.utilityMeta}>Directory foundation in progress</Text></View>
-              <Ionicons name="chevron-forward" size={17} color={theme.textMuted} />
-            </View>
-          </View>
+          ))}
         </View>
+      </View>
 
-        <Text style={styles.disclaimer}>Preview data only. Nothing on this screen is a real class or student record.</Text>
-      </ScrollView>
-    </SafeAreaView>
+      <View style={styles.section}>
+        <SectionHeading title="Quick actions" />
+        <View style={styles.quickGrid}>
+          {quickActions.map((action) => (
+            <Pressable
+              accessibilityRole="button"
+              key={action.key}
+              onPress={() => handleQuickAction(action.key)}
+              style={({ pressed }) => [styles.quickCard, pressed && styles.cardPressed]}
+            >
+              <View style={styles.quickTop}>
+                <View style={styles.quickIcon}><Ionicons name={action.icon} size={21} color={theme.brand} /></View>
+                <Ionicons name="chevron-forward" size={17} color={theme.textSubtle} />
+              </View>
+              <Text style={styles.quickTitle}>{action.name}</Text>
+              <Text style={styles.quickDetail}>{action.detail}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeading meta="2 due soon" title="Deadlines" />
+        <View style={styles.deadlineList}>
+          {deadlines.map((deadline) => {
+            const isDone = completed.includes(deadline.id);
+            return (
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: isDone }}
+                key={deadline.id}
+                onPress={() => toggleDeadline(deadline.id)}
+                style={({ pressed }) => [styles.deadlineRow, pressed && styles.pressed]}
+              >
+                <View style={styles.deadlineIcon}><Ionicons name={deadline.icon} size={20} color={theme.brand} /></View>
+                <View style={styles.deadlineCopy}>
+                  <Text style={[styles.deadlineTitle, isDone && styles.doneText]}>{deadline.title}</Text>
+                  <Text style={styles.deadlineDue}>{isDone ? "Marked complete" : deadline.due}</Text>
+                </View>
+                <Ionicons name={isDone ? "checkmark-circle" : "ellipse-outline"} size={23} color={isDone ? theme.success : theme.textSubtle} />
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <Text style={styles.disclaimer}>Preview data only. Your real timetable and records will appear after sign-in.</Text>
+    </ProductScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { backgroundColor: theme.canvas, flex: 1 },
-  content: { alignSelf: "center", paddingBottom: 50, paddingHorizontal: theme.spacing[5] },
-  hero: { marginBottom: theme.spacing[8] },
-  date: { color: theme.brand, fontFamily: "Manrope-ExtraBold", fontSize: 10, letterSpacing: 1.3, marginBottom: 8 },
-  title: { color: theme.text, fontFamily: "Manrope-ExtraBold", fontSize: 38, letterSpacing: -1.8, lineHeight: 42 },
-  accent: { color: theme.brand, fontFamily: "Caveat-SemiBold", fontSize: 26, marginTop: -1 },
-  nowPanel: { backgroundColor: theme.text, borderRadius: theme.radius.large, padding: theme.spacing[6], ...theme.shadow },
-  nowTopline: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: theme.spacing[6] },
-  liveLabel: { alignItems: "center", flexDirection: "row", gap: 7 },
-  liveDot: { backgroundColor: "#EFA98E", borderRadius: 4, height: 7, width: 7 },
-  liveText: { color: "#E8C9BA", fontFamily: "Manrope-ExtraBold", fontSize: 9, letterSpacing: 1.1 },
-  startsIn: { color: "#CDBFB7", fontFamily: "Manrope-SemiBold", fontSize: 10 },
-  courseCode: { color: "#EFA98E", fontFamily: "Manrope-ExtraBold", fontSize: 12, letterSpacing: 0.7 },
-  courseTitle: { color: "#FFFFFF", fontFamily: "Manrope-ExtraBold", fontSize: 27, letterSpacing: -1, marginTop: 4 },
-  locationRow: { alignItems: "center", flexDirection: "row", gap: 6, marginTop: 10 },
-  location: { color: "#D5C9C1", fontFamily: "Manrope-Regular", fontSize: 12 },
-  primaryAction: { alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: theme.radius.medium, flexDirection: "row", justifyContent: "space-between", marginTop: theme.spacing[6], minHeight: 50, paddingHorizontal: theme.spacing[4] },
-  primaryActionPressed: { backgroundColor: "#F1DFC8", transform: [{ scale: 0.99 }] },
-  primaryActionText: { color: theme.text, fontFamily: "Manrope-ExtraBold", fontSize: 13 },
-  section: { marginTop: theme.spacing[8] },
-  agenda: { borderBottomColor: theme.border, borderBottomWidth: 1, borderTopColor: theme.border, borderTopWidth: 1 },
-  agendaRow: { alignItems: "center", flexDirection: "row", minHeight: 70 },
-  timeBlock: { alignItems: "flex-end", flexDirection: "row", gap: 3, width: 66 },
-  time: { color: theme.text, fontFamily: "Manrope-ExtraBold", fontSize: 14 },
-  meridiem: { color: theme.textMuted, fontFamily: "Manrope-SemiBold", fontSize: 8, marginBottom: 2 },
-  timeline: { backgroundColor: theme.border, height: 70, marginHorizontal: theme.spacing[4], width: 2 },
-  timelineCurrent: { backgroundColor: theme.brand },
-  agendaText: { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, flex: 1, justifyContent: "center", minHeight: 70 },
-  agendaTitle: { color: theme.text, fontFamily: "Manrope-SemiBold", fontSize: 13 },
-  agendaPlace: { color: theme.textMuted, fontFamily: "Manrope-Regular", fontSize: 11, marginTop: 3 },
-  utilityList: { backgroundColor: "rgba(255,255,255,0.72)", borderColor: theme.border, borderRadius: theme.radius.medium, borderWidth: 1, overflow: "hidden" },
-  utilityRow: { alignItems: "center", flexDirection: "row", minHeight: 70, paddingHorizontal: theme.spacing[4] },
-  utilityIcon: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderRadius: 10, height: 38, justifyContent: "center", marginRight: theme.spacing[3], width: 38 },
-  utilityText: { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, flex: 1, justifyContent: "center", minHeight: 70 },
-  utilityTitle: { color: theme.text, fontFamily: "Manrope-SemiBold", fontSize: 13 },
-  utilityMeta: { color: theme.textMuted, fontFamily: "Manrope-Regular", fontSize: 10, marginTop: 3 },
-  disclaimer: { color: theme.textMuted, fontFamily: "Manrope-Regular", fontSize: 10, lineHeight: 16, marginTop: theme.spacing[8], textAlign: "center" },
+  notifications: { backgroundColor: theme.surfaceRaised, borderColor: theme.border, borderRadius: 18, borderWidth: 1, marginBottom: 14, padding: 16, ...theme.shadow },
+  notificationTop: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 10 },
+  notificationTitle: { color: theme.text, fontFamily: theme.font.display, fontSize: 17 },
+  notificationCount: { color: theme.brand, fontFamily: theme.font.semibold, fontSize: 12 },
+  notificationBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13.5, lineHeight: 19 },
+  notificationRule: { backgroundColor: theme.border, height: StyleSheet.hairlineWidth, marginVertical: 10 },
+  notice: { alignItems: "center", backgroundColor: "rgba(168,70,46,0.08)", borderColor: "rgba(168,70,46,0.24)", borderRadius: 16, borderWidth: 1, flexDirection: "row", gap: 11, marginTop: 14, padding: 14 },
+  noticeCopy: { flex: 1 },
+  noticeTitle: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 13.5, lineHeight: 19 },
+  noticeMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, marginTop: 2 },
+  nextCard: { backgroundColor: theme.surfaceRaised, borderColor: theme.border, borderRadius: 22, borderWidth: 1, marginTop: 18, padding: 18, ...theme.shadow },
+  nextMain: { flexDirection: "row", gap: 12 },
+  nextBar: { backgroundColor: theme.brand, borderRadius: 3, width: 4 },
+  nextCopy: { flex: 1 },
+  nextTopline: { alignItems: "center", flexDirection: "row", gap: 8, justifyContent: "space-between" },
+  nextLabel: { color: theme.brand, flex: 1, fontFamily: theme.font.bold, fontSize: 11.5, letterSpacing: 0.45, textTransform: "uppercase" },
+  previewBadge: { backgroundColor: theme.surfaceMuted, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 4 },
+  previewBadgeText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 10.5 },
+  courseTitle: { color: theme.text, fontFamily: theme.font.display, fontSize: 21, lineHeight: 25, marginTop: 7 },
+  courseMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13, lineHeight: 19, marginTop: 4 },
+  actions: { flexDirection: "row", gap: 9, marginTop: 16 },
+  softAction: { alignItems: "center", backgroundColor: "rgba(233,177,142,0.3)", borderRadius: 12, flex: 1, flexDirection: "row", gap: 7, justifyContent: "center", minHeight: 45 },
+  softActionText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 13 },
+  outlineAction: { alignItems: "center", borderColor: theme.border, borderRadius: 12, borderWidth: 1.5, flex: 1, flexDirection: "row", gap: 7, justifyContent: "center", minHeight: 45 },
+  outlineActionSelected: { backgroundColor: "rgba(45,125,89,0.08)", borderColor: "rgba(45,125,89,0.24)" },
+  outlineActionText: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13 },
+  reminderText: { color: theme.success },
+  section: { marginTop: 27 },
+  scheduleList: { gap: 9 },
+  scheduleRow: { alignItems: "center", backgroundColor: theme.surfaceRaised, borderColor: "rgba(41,35,31,0.07)", borderRadius: 16, borderWidth: 1, flexDirection: "row", minHeight: 70, padding: 13 },
+  timeBlock: { alignItems: "center", width: 52 },
+  startTime: { color: theme.text, fontFamily: theme.font.bold, fontSize: 13.5 },
+  endTime: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 11.5, marginTop: 2 },
+  scheduleBar: { backgroundColor: theme.brand, borderRadius: 3, height: 36, marginHorizontal: 11, width: 3 },
+  scheduleBarSuccess: { backgroundColor: theme.success },
+  scheduleCopy: { flex: 1 },
+  scheduleTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14.5 },
+  scheduleRoom: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 12, marginTop: 3 },
+  status: { backgroundColor: theme.surfaceMuted, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 6 },
+  statusSuccess: { backgroundColor: "rgba(45,125,89,0.1)" },
+  statusText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 11 },
+  statusTextSuccess: { color: theme.success },
+  quickGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  quickCard: { backgroundColor: theme.surfaceRaised, borderColor: theme.border, borderRadius: 18, borderWidth: 1, minHeight: 126, padding: 14, width: "48.5%" },
+  quickTop: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  quickIcon: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderRadius: 13, height: 42, justifyContent: "center", width: 42 },
+  quickTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14, marginTop: 12 },
+  quickDetail: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  deadlineList: { gap: 9 },
+  deadlineRow: { alignItems: "center", backgroundColor: theme.surfaceRaised, borderColor: theme.border, borderRadius: 16, borderWidth: 1, flexDirection: "row", gap: 12, minHeight: 70, padding: 13 },
+  deadlineIcon: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderRadius: 13, height: 42, justifyContent: "center", width: 42 },
+  deadlineCopy: { flex: 1 },
+  deadlineTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14 },
+  deadlineDue: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 12, marginTop: 3 },
+  doneText: { color: theme.textSubtle, textDecorationLine: "line-through" },
+  disclaimer: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 11.5, lineHeight: 17, marginTop: 28, textAlign: "center" },
+  pressed: { opacity: 0.74, transform: [{ scale: 0.99 }] },
+  cardPressed: { opacity: 0.78, transform: [{ scale: 0.985 }] },
 });

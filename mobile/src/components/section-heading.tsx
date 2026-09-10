@@ -1,12 +1,16 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { theme } from "@/src/theme";
 
-export function SectionHeading({ title, meta }: { title: string; meta?: string }) {
+export function SectionHeading({ title, meta, onPress }: { title: string; meta?: string; onPress?: () => void }) {
   return (
     <View style={styles.row}>
       <Text style={styles.title}>{title}</Text>
-      {meta ? <Text style={styles.meta}>{meta}</Text> : null}
+      {meta ? (
+        <Pressable accessibilityRole={onPress ? "button" : undefined} disabled={!onPress} hitSlop={8} onPress={onPress}>
+          {({ pressed }) => <Text style={[styles.meta, pressed && styles.pressed]}>{meta}</Text>}
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -20,13 +24,14 @@ const styles = StyleSheet.create({
   },
   title: {
     color: theme.text,
-    fontFamily: "Manrope-ExtraBold",
+    fontFamily: theme.font.display,
     fontSize: 19,
-    letterSpacing: -0.7,
+    letterSpacing: -0.2,
   },
   meta: {
-    color: theme.textMuted,
-    fontFamily: "Manrope-SemiBold",
-    fontSize: 11,
+    color: theme.brand,
+    fontFamily: theme.font.semibold,
+    fontSize: 13,
   },
+  pressed: { opacity: 0.58 },
 });

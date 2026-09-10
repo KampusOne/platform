@@ -1,16 +1,25 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from "@expo-google-fonts/inter";
+import { Lato_700Bold, Lato_900Black } from "@expo-google-fonts/lato";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { theme } from "@/src/theme";
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    "Manrope-Regular": require("@/assets/fonts/manrope-400.ttf"),
-    "Manrope-SemiBold": require("@/assets/fonts/manrope-600.ttf"),
-    "Manrope-ExtraBold": require("@/assets/fonts/manrope-800.ttf"),
-    "Caveat-SemiBold": require("@/assets/fonts/caveat-600.ttf"),
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Lato_700Bold,
+    Lato_900Black,
   });
 
   if (!fontsLoaded && !fontError) {

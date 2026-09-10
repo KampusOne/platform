@@ -35,8 +35,8 @@ export const kampusOne = {
     },
   },
   typography: {
-    family: { display: "Manrope", body: "Manrope", accent: "Caveat" },
-    weight: { regular: 400, semibold: 600, extrabold: 800 },
+    family: { display: "Lato", body: "Inter" },
+    weight: { regular: 400, medium: 500, semibold: 600, bold: 700, black: 900 },
     scale: {
       displayXL: 72,
       displayL: 56,

@@ -32,7 +32,7 @@ These rules apply to the entire repository.
 
 - Every user-facing feature must account for loading, empty, error, offline, success, focus, disabled, and reduced-motion states.
 - Preserve the official outlined KampusOne logo assets. Do not redraw the K1 mark.
-- Use Manrope for display and body; Caveat may appear once as a brief accent, never for controls or long text.
+- Use Lato for display headings and Inter for product UI, body, forms, labels, and numbers. Do not introduce decorative script typography into functional screens.
 - Avoid generic SaaS visual tropes: purple gradients, excessive glow, glass everywhere, pill-shaped everything, and decorative card grids.
 - Motion communicates state or continuity. Respect reduced motion and avoid blocking interaction for animation.
 - Optimize for real Nigerian campus networks and mid-range Android phones before adding visual weight.

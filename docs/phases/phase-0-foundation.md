@@ -7,8 +7,8 @@ Create a verifiable, deployable product skeleton without implying that authentic
 ## Included
 
 - public platform repository with documented secret and data boundaries;
-- official KampusOne design tokens, typefaces, and outlined logo assets;
-- Expo student preview centered on Today;
+- official KampusOne design tokens, Lato display typography, Inter product typography, and outlined logo assets;
+- Expo student preview centered on Today, with a consistent consumer-product layout and interactive sample states;
 - separate admin, agent, and engineering preview surfaces;
 - thin Cloudflare Worker with health and public-configuration endpoints;
 - tenant-aware Supabase foundation migration with explicit grants and RLS;
@@ -27,13 +27,17 @@ Create a verifiable, deployable product skeleton without implying that authentic
 
 ## Acceptance checks
 
-- [ ] Contracts package type-checks and tests pass.
-- [ ] Worker type-checks, tests, and dry-run deployment build pass.
-- [ ] Portal lints, type-checks, and builds for production.
-- [ ] Mobile type-checks and exports for web.
-- [ ] SQL migration passes review and Supabase security/performance advisors after application.
-- [ ] Preview surfaces clearly label simulated data and disabled operations.
-- [ ] No secret or populated environment file is tracked.
+- [x] Contracts package type-checks and tests pass.
+- [x] Worker type-checks, tests, and dry-run deployment build pass.
+- [x] Portal lints, type-checks, and builds for production.
+- [x] Mobile type-checks and exports for web.
+- [x] SQL migration passes review and Supabase security/performance advisors after application.
+- [x] Preview surfaces clearly label simulated data and disabled operations.
+- [x] No secret or populated environment file is tracked.
+
+## Interface baseline correction
+
+The student preview uses the official Lato and Inter product typography. Home, Feed, Campus, Tutorials, and Store share the same compact header, search/filter language, content-card rhythm, touch feedback, and floating navigation. Reference products may inform layout discipline, but KampusOne colors, assets, copy, and product hierarchy remain authoritative.
 
 ## Inputs required for Phase 1
 

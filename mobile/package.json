@@ -12,6 +12,8 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/lato": "^0.4.1",
     "@expo/vector-icons": "~15.0.3",
     "@kampusone/design-tokens": "file:../packages/design-tokens",
     "expo": "~57.0.21",

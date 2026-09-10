@@ -1,72 +1,101 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import type { ComponentProps } from "react";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
 import type { ColorValue } from "react-native";
 
 import { theme } from "@/src/theme";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
-function TabIcon({ name, color }: { name: IconName; color: ColorValue }) {
-  return <Ionicons name={name} size={21} color={color} />;
+function TabIcon({ name, color, focused }: { name: IconName; color: ColorValue; focused: boolean }) {
+  return (
+    <View style={[styles.iconShell, focused && styles.iconShellActive]}>
+      <Ionicons name={focused ? name.replace("-outline", "") as IconName : name} size={20} color={color} />
+    </View>
+  );
 }
 
 export default function TabLayout() {
+  const { width } = useWindowDimensions();
+  const dockWidth = Math.min(Math.max(width - 24, 280), 520);
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: theme.brand,
-        tabBarInactiveTintColor: "#82756D",
+        tabBarInactiveTintColor: theme.textSubtle,
+        tabBarHideOnKeyboard: true,
         tabBarLabelStyle: {
-          fontFamily: "Manrope-SemiBold",
-          fontSize: 10,
-          marginTop: 1,
+          fontFamily: theme.font.medium,
+          fontSize: 11,
+          marginTop: -1,
         },
         tabBarStyle: {
-          backgroundColor: "#FFFDFC",
-          borderTopColor: "#E7DDD5",
+          backgroundColor: "rgba(255,253,252,0.97)",
+          borderColor: "rgba(255,255,255,0.92)",
+          borderRadius: 28,
+          borderTopWidth: 1,
+          bottom: 12,
           height: 72,
-          paddingBottom: 11,
-          paddingTop: 8,
+          left: (width - dockWidth) / 2,
+          paddingBottom: 7,
+          paddingTop: 5,
+          position: "absolute",
+          width: dockWidth,
+          ...theme.floatingShadow,
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: "Today",
-          tabBarIcon: ({ color }) => <TabIcon name="sunny-outline" color={color} />,
+          title: "Home",
+          tabBarIcon: ({ color, focused }) => <TabIcon name="home-outline" color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="feed"
         options={{
           title: "Feed",
-          tabBarIcon: ({ color }) => <TabIcon name="newspaper-outline" color={color} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon name="newspaper-outline" color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="campus"
         options={{
           title: "Campus",
-          tabBarIcon: ({ color }) => <TabIcon name="map-outline" color={color} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon name="map-outline" color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="tutorials"
         options={{
           title: "Tutorials",
-          tabBarIcon: ({ color }) => <TabIcon name="school-outline" color={color} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon name="school-outline" color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="store"
         options={{
           title: "Store",
-          tabBarIcon: ({ color }) => <TabIcon name="bag-handle-outline" color={color} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon name="bag-handle-outline" color={color} focused={focused} />,
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  iconShell: {
+    alignItems: "center",
+    borderRadius: 12,
+    height: 29,
+    justifyContent: "center",
+    width: 44,
+  },
+  iconShellActive: {
+    backgroundColor: "rgba(233,177,142,0.34)",
+  },
+});

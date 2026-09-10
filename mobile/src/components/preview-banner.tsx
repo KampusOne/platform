@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
   },
   text: {
     color: "#755C50",
-    fontFamily: "Manrope-SemiBold",
+    fontFamily: theme.font.semibold,
     fontSize: 11,
   },
 });
