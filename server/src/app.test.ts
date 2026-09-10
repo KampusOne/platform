@@ -43,6 +43,26 @@ describe("KampusOne Worker", () => {
     expect(body.status).toBe("not_ready");
   });
 
+  it("returns a provider error before registration touches the database when email is not configured", async () => {
+    const response = await app.request("http://local.test/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "student@example.com",
+        password: "correct horse battery staple",
+        firstName: "Ada",
+        lastName: "Student",
+        acceptedTerms: true,
+        legalVersion: "2026-09-10",
+      }),
+    }, env);
+    const body = (await response.json()) as { error: { code: string; message: string } };
+
+    expect(response.status).toBe(503);
+    expect(body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(body.error.message).toContain("Email delivery");
+  });
+
   it("uses the stable error envelope", async () => {
     const response = await app.request("http://local.test/missing", {}, env);
     const body = (await response.json()) as {
