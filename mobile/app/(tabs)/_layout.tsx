@@ -14,7 +14,7 @@ type TabBarRenderer = NonNullable<ComponentProps<typeof Tabs>["tabBar"]>;
 type KampusTabBarProps = Parameters<TabBarRenderer>[0];
 
 const primaryItems = [
-  { name: "index", label: "Home", icon: "home-outline" as IconName },
+  { name: "today", label: "Home", icon: "home-outline" as IconName },
   { name: "feed", label: "Feed", icon: "newspaper-outline" as IconName },
   { name: "campus", label: "Campus", icon: "map-outline" as IconName },
   { name: "tutorials", label: "Tutorials", icon: "school-outline" as IconName },
@@ -85,12 +85,12 @@ function NavItem({
 
 function KampusTabBar({ state, navigation }: KampusTabBarProps) {
   const insets = useSafeAreaInsets();
-  const activeName = state.routes[state.index]?.name ?? "index";
+  const activeName = state.routes[state.index]?.name ?? "today";
   const profileOpen = activeName === "profile";
   const displayItems = profileOpen
     ? [...primaryItems.slice(0, 4), { name: "profile", label: "Profile", icon: "person-outline" as IconName }]
     : primaryItems;
-  const normalizedActive = activeName === "timetable" ? "index" : activeName;
+  const normalizedActive = activeName === "timetable" ? "today" : activeName;
 
   return (
     <View pointerEvents="box-none" style={[styles.navPosition, { bottom: Math.max(insets.bottom, 10) }]}>
@@ -143,7 +143,7 @@ export default function TabLayout() {
         transitionSpec: { animation: "timing", config: { duration: 180 } },
       }}
     >
-      <Tabs.Screen name="index" />
+      <Tabs.Screen name="today" />
       <Tabs.Screen name="feed" />
       <Tabs.Screen name="campus" />
       <Tabs.Screen name="tutorials" />

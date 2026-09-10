@@ -17,9 +17,9 @@ const agenda = [
 ] as const;
 
 const quickActions = [
-  { key: "gpa", icon: "calculator-outline" as const, label: "GPA planner", meta: "3.72 saved" },
-  { key: "files", icon: "folder-open-outline" as const, label: "My files", meta: "12 offline" },
-  { key: "alarm", icon: "alarm-outline" as const, label: "Alarm sounds", meta: "Choose a tone" },
+  { key: "gpa", href: "/gpa" as const, icon: "calculator-outline" as const, label: "GPA planner", meta: "3.72 saved" },
+  { key: "files", href: "/study-tools" as const, icon: "folder-open-outline" as const, label: "Study tools", meta: "Notes & files" },
+  { key: "alarm", href: "/permissions" as const, icon: "alarm-outline" as const, label: "Alarm test", meta: "Check this device" },
 ] as const;
 
 function greeting() {
@@ -180,7 +180,7 @@ export default function TodayScreen() {
               key={action.key}
               onPress={() => {
                 tap();
-                setFeedback(`${action.label} preview selected.`);
+                router.push(action.href);
               }}
               style={styles.quickCard}
             >

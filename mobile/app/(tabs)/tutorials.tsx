@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { LayoutAnimation, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -15,6 +16,13 @@ const tutors = [
   { id: "osaze", initials: "OB", name: "Osaze Bello", course: "MTH 213", topic: "Linear algebra revision", rating: "4.8", sessions: "62 sessions", price: "₦2,500/hr", slots: ["Thu 4:00 PM", "Fri 2:00 PM"], tone: "#D9855F" },
   { id: "ada", initials: "AN", name: "Ada Nwosu", course: "CSC 211", topic: "Data structures clinic", rating: "4.9", sessions: "41 sessions", price: "₦3,000/hr", slots: ["Fri 11:00 AM", "Sat 10:00 AM"], tone: "#346E8A" },
   { id: "efe", initials: "EO", name: "Efe Osagie", course: "EDU 201", topic: "Exam prep group", rating: "4.7", sessions: "35 sessions", price: "₦1,500/hr", slots: ["Thu 6:00 PM", "Sun 3:00 PM"], tone: "#2D7D59" },
+] as const;
+
+const studyTools = [
+  { href: "/timetable" as const, icon: "calendar-outline" as const, title: "Timetable", body: "Classes and reminders" },
+  { href: "/gpa" as const, icon: "calculator-outline" as const, title: "GPA & CGPA", body: "Plan every semester" },
+  { href: "/ai-summary" as const, icon: "sparkles-outline" as const, title: "AI summary", body: "Notes to study guide" },
+  { href: "/study-tools" as const, icon: "grid-outline" as const, title: "All tools", body: "Your academic workspace" },
 ] as const;
 
 export default function TutorialsScreen() {
@@ -49,6 +57,15 @@ export default function TutorialsScreen() {
         title="Tutorials"
         unread={false}
       />
+      <View style={styles.toolGrid}>
+        {studyTools.map((tool) => (
+          <PressScale accessibilityLabel={tool.title} key={tool.title} onPress={() => router.push(tool.href)} style={styles.toolCard}>
+            <View style={styles.toolIcon}><Ionicons name={tool.icon} size={20} color={theme.brandPressed} /></View>
+            <Text style={styles.toolTitle}>{tool.title}</Text>
+            <Text style={styles.toolBody}>{tool.body}</Text>
+          </PressScale>
+        ))}
+      </View>
       <SearchField onChangeText={setQuery} placeholder="Search tutors, courses or topics" value={query} />
       <View style={styles.filters}>
         <FilterRow
@@ -171,6 +188,11 @@ function TutorIllustration() {
 }
 
 const styles = StyleSheet.create({
+  toolGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9, marginBottom: 19 },
+  toolCard: { backgroundColor: "rgba(255,253,252,0.91)", borderColor: "rgba(255,255,255,0.98)", borderRadius: 17, borderWidth: 1, minHeight: 116, padding: 12, width: "48.7%", ...theme.shadow },
+  toolIcon: { alignItems: "center", backgroundColor: "rgba(233,177,142,0.27)", borderRadius: 12, height: 38, justifyContent: "center", width: 38 },
+  toolTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13, marginTop: 10 },
+  toolBody: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 10.5, marginTop: 3 },
   filters: { marginBottom: 16, marginTop: 12 },
   heroCard: { flexDirection: "row", minHeight: 208, padding: 17 },
   heroCopy: { flex: 1, zIndex: 2 },

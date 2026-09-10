@@ -8,19 +8,20 @@
 | Preview | Reviewable builds per phase | Synthetic/pilot-safe data | Auth and writes remain disabled until their gate passes |
 | Production | Student and operator traffic | Production tenant data | Protected branch, explicit environment approval, rollback ready |
 
-## Portal on Vercel
+## Portals on Vercel
 
-Create one Vercel project with repository root directory `portal`. Preview URLs expose `/admin`, `/agents`, and `/engineering`. After Phase 1 security acceptance, attach the three production hosts to the same project; `proxy.ts` maps each root hostname to its surface.
+Create three Vercel projects from the same repository with root directory `portal`. Set `KAMPUSONE_PORTAL_SURFACE` to `admin`, `agents`, or `engineering` respectively, then attach `ops.kampusone.app`, `agents.kampusone.app`, and `build.kampusone.app`. Each host renders its own surface at `/`; there is no production workspace switcher.
 
 Required public variables:
 
 - `NEXT_PUBLIC_KAMPUSONE_API_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `KAMPUSONE_PORTAL_SURFACE` (server-only routing selector, one value per project)
 
 No secret key belongs in the Vercel client environment.
 
-## Worker on Cloudflare
+## API Worker on Cloudflare
 
 The Worker is configured in `server/wrangler.jsonc`. Preview and production are distinct Wrangler environments. The GitHub deployment workflow is manual and verifies the Worker before release.
 
@@ -31,6 +32,10 @@ Repository/environment secrets:
 - Worker runtime secrets `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY`, configured with Wrangler or the Cloudflare dashboard rather than committed files.
 
 Production begins in maintenance mode with all feature gates off. Activation is a separate reviewed change.
+
+## Student web app on Cloudflare
+
+The Expo web export is deployed as a separate Cloudflare static-assets Worker at `app.kampusone.app`. The SPA fallback serves Expo Router routes without moving privileged logic into the client. Native Android/iOS builds continue through EAS and use the same Cloudflare API host.
 
 ## Mobile with Expo/EAS
 

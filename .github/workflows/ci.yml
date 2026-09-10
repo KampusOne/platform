@@ -97,7 +97,11 @@ jobs:
       - name: Check migration and verification records
         run: |
           test -s database/supabase/migrations/20260909213215_foundation.sql
+          test -s database/supabase/migrations/20260910093000_agent_applications.sql
+          test -s database/supabase/migrations/20260910094500_agent_application_hardening.sql
+          test -s database/supabase/migrations/20260910100500_agent_review_state_guards.sql
           test -s database/verification/phase_0_security.sql
+          test -s database/verification/phase_1_agent_security.sql
           secret_pattern='sb_''secret_|service_''role|SUPABASE_''SECRET_KEY=.'
           ! grep -R --line-number --extended-regexp "$secret_pattern" \
             --exclude='*.example' \
