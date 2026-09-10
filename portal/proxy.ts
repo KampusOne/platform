@@ -3,8 +3,11 @@ import { NextResponse } from "next/server";
 
 const surfaceBySubdomain: Record<string, string> = {
   admin: "/admin",
+  ops: "/admin",
   agents: "/agents",
   engineering: "/engineering",
+  build: "/engineering",
+  tracker: "/engineering",
 };
 
 export function proxy(request: NextRequest) {

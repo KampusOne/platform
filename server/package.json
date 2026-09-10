@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@kampusone/contracts": "file:../packages/contracts",
+    "@neondatabase/serverless": "^1.1.0",
     "hono": "4.13.7"
   },
   "devDependencies": {

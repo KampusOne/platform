@@ -1,4 +1,5 @@
 import { Stack } from "expo-router";
+import Head from "expo-router/head";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import {
@@ -33,6 +34,11 @@ export default function RootLayout() {
 
   return (
     <>
+      <Head>
+        <title>KampusOne · Your campus, in rhythm</title>
+        <meta name="description" content="Campus utility, timetable, study tools and trusted campus services in one place." />
+        <meta name="theme-color" content={theme.canvas} />
+      </Head>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.canvas } }} />
     </>

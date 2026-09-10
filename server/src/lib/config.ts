@@ -32,6 +32,8 @@ export function readiness(env: Bindings) {
     supabaseUrl: Boolean(env.SUPABASE_URL),
     publishableKey: Boolean(env.SUPABASE_PUBLISHABLE_KEY),
     serverSecret: Boolean(env.SUPABASE_SECRET_KEY),
+    analyticsStore:
+      !enabled(env.ANALYTICS_INGEST_ENABLED) || Boolean(env.NEON_DATABASE_URL),
   };
 
   return {

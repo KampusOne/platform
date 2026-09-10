@@ -18,7 +18,8 @@
     "SOCIAL_FEED_ENABLED": "false",
     "MARKETPLACE_ENABLED": "false",
     "PAYMENTS_ENABLED": "false",
-    "AI_ASSISTANT_ENABLED": "false"
+    "AI_ASSISTANT_ENABLED": "false",
+    "ANALYTICS_INGEST_ENABLED": "false"
   },
   "env": {
     "preview": {
@@ -32,21 +33,23 @@
         "SOCIAL_FEED_ENABLED": "false",
         "MARKETPLACE_ENABLED": "false",
         "PAYMENTS_ENABLED": "false",
-        "AI_ASSISTANT_ENABLED": "false"
+        "AI_ASSISTANT_ENABLED": "false",
+        "ANALYTICS_INGEST_ENABLED": "false"
       }
     },
     "production": {
       "name": "kampusone-api",
       "vars": {
         "ENVIRONMENT": "production",
-        "ALLOWED_ORIGINS": "https://admin.kampusone.app,https://agents.kampusone.app,https://engineering.kampusone.app",
+        "ALLOWED_ORIGINS": "https://ops.kampusone.app,https://agents.kampusone.app,https://build.kampusone.app",
         "MINIMUM_APP_VERSION": "0.1.0",
         "MAINTENANCE_MODE": "true",
         "ACADEMIC_CORE_ENABLED": "false",
         "SOCIAL_FEED_ENABLED": "false",
         "MARKETPLACE_ENABLED": "false",
         "PAYMENTS_ENABLED": "false",
-        "AI_ASSISTANT_ENABLED": "false"
+        "AI_ASSISTANT_ENABLED": "false",
+        "ANALYTICS_INGEST_ENABLED": "false"
       },
       "routes": [
         {

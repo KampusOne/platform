@@ -29,6 +29,7 @@ export const theme = {
   statusPositive: "#9A5B3E",
   statusAttention: "#8C5A25",
   warmWhite: "#FFFDFC",
+  white: "#FFFFFF",
   motion: {
     micro: 120,
     standard: 200,
