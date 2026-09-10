@@ -50,6 +50,27 @@ jobs:
         working-directory: server
       - run: npm test
         working-directory: server
+      - name: Verify password hashing in Workers runtime
+        working-directory: server
+        run: |
+          set -euo pipefail
+          npx wrangler dev --local --port 8799 --var ENVIRONMENT:local > /tmp/kampusone-worker.log 2>&1 &
+          worker_pid=$!
+          cleanup() {
+            kill "$worker_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if response=$(curl --silent --show-error --fail --max-time 15 http://127.0.0.1:8799/health/crypto); then
+              echo "$response"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat /tmp/kampusone-worker.log
+          exit 1
       - run: npm run build
         working-directory: server
 

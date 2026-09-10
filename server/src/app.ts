@@ -5,6 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 
 import { allowedOrigins, getPublicConfig, readiness } from "./lib/config";
 import { AppError, errorResponse } from "./lib/errors";
+import { hashPassword, verifyPassword } from "./lib/security";
 import { authRoutes } from "./routes/auth";
 import { studentRoutes } from "./routes/student";
 import { agentRoutes } from "./routes/agents";
@@ -56,6 +57,25 @@ app.get("/health/ready", (context) => {
     },
     state.ready ? 200 : 503,
   );
+});
+
+app.get("/health/crypto", async (context) => {
+  if (context.env.ENVIRONMENT !== "local") {
+    return errorResponse(context, 404, "NOT_FOUND", "The requested resource does not exist.");
+  }
+
+  const probePassword = "KampusOne Worker runtime crypto probe";
+  const hash = await hashPassword(probePassword);
+  const verified = await verifyPassword(probePassword, hash);
+  if (!verified) {
+    return errorResponse(context, 500, "INTERNAL_ERROR", "Password hashing runtime verification failed.");
+  }
+
+  return context.json({
+    status: "ok" as const,
+    algorithm: "pbkdf2-sha256" as const,
+    requestId: context.get("requestId"),
+  });
 });
 
 app.get("/v1/config/public", (context) => context.json(getPublicConfig(context.env)));
