@@ -30,6 +30,9 @@
       "favicon": "./assets/adaptive-icon.png"
     },
     "plugins": ["expo-router"],
+    "extra": {
+      "apiUrl": "https://platformp.divine-haze-54eb.workers.dev"
+    },
     "experiments": {
       "typedRoutes": true
     }

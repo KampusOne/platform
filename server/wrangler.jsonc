@@ -1,9 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "kampusone-api",
+  "name": "platformp",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-09",
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
   "observability": {
     "enabled": true,
@@ -13,8 +13,8 @@
     "crons": ["*/5 * * * *"]
   },
   "vars": {
-    "ENVIRONMENT": "local",
-    "ALLOWED_ORIGINS": "http://localhost:3000,http://localhost:8081",
+    "ENVIRONMENT": "production",
+    "ALLOWED_ORIGINS": "https://kampusone-mobile-preview.vercel.app,https://kampusone-platform-preview.vercel.app,https://admin.kampusone.app,https://agents.kampusone.app,https://engineering.kampusone.app",
     "MINIMUM_APP_VERSION": "0.2.0",
     "MAINTENANCE_MODE": "false",
     "ACADEMIC_CORE_ENABLED": "true",
@@ -37,26 +37,6 @@
         "PAYMENTS_ENABLED": "false",
         "AI_ASSISTANT_ENABLED": "false"
       }
-    },
-    "production": {
-      "name": "kampusone-api",
-      "vars": {
-        "ENVIRONMENT": "production",
-        "ALLOWED_ORIGINS": "https://admin.kampusone.app,https://agents.kampusone.app,https://engineering.kampusone.app",
-        "MINIMUM_APP_VERSION": "0.2.0",
-        "MAINTENANCE_MODE": "false",
-        "ACADEMIC_CORE_ENABLED": "true",
-        "SOCIAL_FEED_ENABLED": "true",
-        "MARKETPLACE_ENABLED": "true",
-        "PAYMENTS_ENABLED": "false",
-        "AI_ASSISTANT_ENABLED": "false"
-      },
-      "routes": [
-        {
-          "pattern": "api.kampusone.app",
-          "custom_domain": true
-        }
-      ]
     }
   }
 }

@@ -1,16 +1,13 @@
 name: Deploy Worker
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-worker.yml"
+      - "packages/contracts/**"
+      - "server/**"
   workflow_dispatch:
-    inputs:
-      environment:
-        description: Deployment environment
-        required: true
-        type: choice
-        default: preview
-        options:
-          - preview
-          - production
 
 permissions:
   contents: read
@@ -19,7 +16,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    environment: ${{ inputs.environment }}
+    environment: production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,4 +38,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: server
-          command: deploy --env ${{ inputs.environment }}
+          command: deploy
