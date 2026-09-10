@@ -13,8 +13,7 @@
   },
   "dependencies": {
     "@kampusone/contracts": "file:../packages/contracts",
-    "hono": "4.13.7",
-    "zod": "4.6.0"
+    "hono": "4.13.7"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260908.1",

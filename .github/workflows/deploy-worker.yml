@@ -26,7 +26,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: server/package-lock.json
+          cache-dependency-path: |
+            packages/contracts/package-lock.json
+            server/package-lock.json
+      - run: npm ci
+        working-directory: packages/contracts
       - run: npm ci
         working-directory: server
       - run: npm run check && npm test && npm run build
