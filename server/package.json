@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "build": "tsc --noEmit",
+    "prepare:contracts": "node scripts/ensure-contracts-deps.mjs",
+    "build": "npm run prepare:contracts && tsc --noEmit",
     "deploy:staging": "wrangler deploy --env staging",
     "deploy:production": "wrangler deploy",
     "check": "tsc --noEmit",
