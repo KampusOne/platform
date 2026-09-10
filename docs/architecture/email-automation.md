@@ -1,6 +1,6 @@
 # Email automation
 
-KampusOne uses Resend for account and security email. Templates and workflows live in Resend; the Cloudflare Worker sends typed events through one provider adapter. Mobile and portal clients never receive the Resend key and never send provider events directly.
+KampusOne uses Resend for account and security email. Published templates live in Resend; the Cloudflare Worker sends them through one typed provider adapter. Mobile and portal clients never receive the Resend key and never call the provider directly.
 
 ## Provisioned Resend resources
 
@@ -16,25 +16,29 @@ The `kampusone.app` sending domain is verified in `eu-west-1`. Transactional mai
 | New sign-in alert | `auth.new_login.detected` | `k1-new-login` |
 | Account deletion notice | `account.deletion.requested` | `k1-account-deletion` |
 
-All seven templates are published and all seven event workflows are enabled in Resend. The HTML is table-based and includes a plain-text alternative. Account codes remain selectable text rather than images or script-based copy controls.
+All seven templates are published. The HTML is table-based and includes a plain-text alternative. Account codes remain selectable text rather than images or script-based copy controls, which makes them copyable across major mail clients.
+
+Matching event definitions and dashboard workflows are retained in Resend as disabled references. They must stay disabled while the Worker is the sending path; enabling both paths would create duplicate email. Direct template sends let the runtime use a domain-scoped, send-only key and Resend's email idempotency header.
 
 ## Worker integration
 
 `server/src/lib/email.ts` is the only provider boundary. It:
 
 - exposes a compile-time payload contract for every event;
+- maps every event to an explicit published template alias and variable allowlist;
 - validates six-digit codes, short expiry windows, email addresses and text lengths;
 - permits action links only on `https://kampusone.app` or its subdomains;
 - rejects HTML-like input before it reaches a template;
+- requires a stable business-event idempotency key on every send;
 - has a five-second provider timeout and classifies retryable provider failures;
 - supports an immediate `EMAIL_AUTOMATIONS_ENABLED` kill switch;
 - never logs the recipient, code, event payload or Resend key.
 
-Auth services call `sendEmailAutomationEvent` only after the corresponding database state change succeeds. Email dispatch should be driven from an outbox row with a unique business-event key before automatic retries are enabled; Resend's event endpoint does not document the email idempotency header supported by its direct email endpoint.
+Auth services call `sendEmailAutomationEvent` only after the corresponding database state change succeeds. Dispatch should be driven from an outbox row whose immutable ID becomes the idempotency key. Retries must reuse that same key and payload.
 
 ## Secret and activation contract
 
-`RESEND_API_KEY` is a Cloudflare Worker secret. Add it separately to preview and production; never put the value in Wrangler variables, GitHub files, Expo variables or Vercel client variables.
+`RESEND_API_KEY` is a Cloudflare Worker secret. Use a Resend `sending_access` key restricted to `kampusone.app`, and add it separately to preview and production. Never put the value in Wrangler variables, GitHub files, Expo variables or Vercel client variables.
 
 ```bash
 cd server

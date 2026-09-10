@@ -9,15 +9,15 @@ Provision the branded transactional-email layer and a safe provider boundary wit
 - [x] Verified `kampusone.app` sending domain confirmed in Resend.
 - [x] Seven branded, plain-text-backed account templates published.
 - [x] Seven typed Resend events created.
-- [x] Seven event automations enabled.
-- [x] Cloudflare Worker provider adapter implemented without a client-side SDK or secret.
-- [x] Payload validation, KampusOne-only action links, timeout handling and a delivery kill switch added.
-- [x] Unit tests cover disabled delivery, successful dispatch, missing configuration, malformed OTPs, unsafe links and provider rate limits.
+- [x] Seven matching dashboard automations retained disabled as implementation references.
+- [x] Cloudflare Worker direct-template adapter implemented without a client-side SDK or secret.
+- [x] Payload validation, idempotency, KampusOne-only action links, timeout handling and a delivery kill switch added.
+- [x] Unit tests cover disabled delivery, template dispatch, idempotency, missing configuration, malformed OTPs, unsafe links and provider rate limits.
 - [x] Environment and deployment documentation updated.
 
 ## Still gated
 
-- [ ] Set `RESEND_API_KEY` as a preview Worker secret.
+- [ ] Set the domain-scoped, send-only `RESEND_API_KEY` as a preview Worker secret.
 - [ ] Implement database-backed signup and password-reset OTP lifecycle.
 - [ ] Add account/IP/device rate limits and resend cooldowns.
 - [ ] Connect successful auth state changes to the typed email adapter through an outbox.
@@ -26,4 +26,4 @@ Provision the branded transactional-email layer and a safe provider boundary wit
 
 ## Acceptance rule
 
-Resend dashboard resources being enabled does not mean public auth is live. The Worker delivery flag stays off until OTP storage, expiry, one-time use, enumeration resistance, rate limiting and session revocation pass tests.
+Published Resend templates do not mean public auth is live. The Worker delivery flag stays off until OTP storage, expiry, one-time use, enumeration resistance, rate limiting and session revocation pass tests. Resend dashboard workflows stay disabled while direct Worker sending is active.
