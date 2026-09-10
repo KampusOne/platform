@@ -5,7 +5,10 @@ import { AppError } from "./errors";
 
 const encoder = new TextEncoder();
 const ACCESS_TOKEN_SECONDS = 15 * 60;
-const PBKDF2_ITERATIONS = 310_000;
+// Cloudflare Workers production enforces a hard PBKDF2 iteration ceiling of
+// 100,000. Local workerd/wrangler dev does not enforce that production-only
+// limit, so keep the runtime work factor pinned to the platform maximum.
+const PBKDF2_ITERATIONS = 100_000;
 const PBKDF2_HASH_BYTES = 32;
 const PASSWORD_HASH_PREFIX = "$pbkdf2-sha256$";
 export const REFRESH_TOKEN_SECONDS = 30 * 24 * 60 * 60;

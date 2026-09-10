@@ -10,8 +10,10 @@ const env = {
 describe("password security", () => {
   it("creates a Cloudflare-compatible PBKDF2 hash that verifies", async () => {
     const hash = await hashPassword("correct horse battery staple");
+    const iterations = Number.parseInt(hash.split("$")[2] ?? "", 10);
 
-    expect(hash).toMatch(/^\$pbkdf2-sha256\$310000\$/);
+    expect(hash).toMatch(/^\$pbkdf2-sha256\$100000\$/);
+    expect(iterations).toBeLessThanOrEqual(100_000);
     await expect(verifyPassword("correct horse battery staple", hash)).resolves.toBe(true);
     await expect(verifyPassword("wrong password", hash)).resolves.toBe(false);
   });
