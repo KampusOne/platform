@@ -6,7 +6,7 @@ OTP_PEPPER=replace-with-at-least-24-random-characters
 
 # Transactional email (required for registration and password reset).
 RESEND_API_KEY=re_replace_me
-RESEND_FROM_EMAIL=KampusOne <hello@notifications.kampusone.app>
+RESEND_FROM_EMAIL=KampusOne <hello@kampusone.app>
 RESEND_REPLY_TO=support@kampusone.app
 
 # One-time operator bootstrap. Remove after the first platform admin is created.
