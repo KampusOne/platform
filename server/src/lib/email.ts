@@ -74,28 +74,55 @@ function escapeHtml(value: string) {
   })[character] ?? character);
 }
 
+function providerUnavailable() {
+  return new AppError(503, "PROVIDER_UNAVAILABLE", "We could not send the email. Please try again shortly.");
+}
+
 export async function sendMail(env: Bindings, input: MailInput) {
   requireEmailProvider(env);
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-      "Idempotency-Key": input.idempotencyKey,
-    },
-    body: JSON.stringify({
-      from: env.RESEND_FROM_EMAIL,
-      to: [input.to],
-      subject: copy[input.kind].subject,
-      html: emailHtml(input),
-      ...(env.RESEND_REPLY_TO ? { reply_to: env.RESEND_REPLY_TO } : {}),
-    }),
-    signal: AbortSignal.timeout(8_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": input.idempotencyKey,
+      },
+      body: JSON.stringify({
+        from: env.RESEND_FROM_EMAIL,
+        to: [input.to],
+        subject: copy[input.kind].subject,
+        html: emailHtml(input),
+        ...(env.RESEND_REPLY_TO ? { reply_to: env.RESEND_REPLY_TO } : {}),
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+  } catch (caught) {
+    const error = caught instanceof Error ? caught : new Error(String(caught));
+    console.error(JSON.stringify({
+      level: "error",
+      event: "email.provider.request_failed",
+      kind: input.kind,
+      errorName: error.name,
+      message: error.message,
+    }));
+    throw providerUnavailable();
+  }
 
   if (!response.ok) {
-    throw new AppError(503, "PROVIDER_UNAVAILABLE", "We could not send the email. Please try again shortly.");
+    const providerRequestId = response.headers.get("x-request-id") ?? response.headers.get("cf-ray");
+    const providerMessage = await response.text().catch(() => "");
+    console.error(JSON.stringify({
+      level: "error",
+      event: "email.provider.rejected",
+      kind: input.kind,
+      status: response.status,
+      providerRequestId,
+      providerMessage: providerMessage.slice(0, 500),
+    }));
+    throw providerUnavailable();
   }
 }
 
