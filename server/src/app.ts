@@ -74,6 +74,12 @@ app.onError((error, context) => {
     return errorResponse(context, error.status, error.code, error.message, error.details);
   }
 
+  const cause = error.cause instanceof Error
+    ? { name: error.cause.name, message: error.cause.message }
+    : typeof error.cause === "string"
+      ? error.cause
+      : undefined;
+
   console.error(
     JSON.stringify({
       level: "error",
@@ -81,7 +87,10 @@ app.onError((error, context) => {
       requestId: context.get("requestId"),
       method: context.req.method,
       path: context.req.path,
+      errorName: error.name,
       message: error.message,
+      cause,
+      stack: error.stack?.slice(0, 4_000),
     }),
   );
 

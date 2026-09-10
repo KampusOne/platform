@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import type { Bindings } from "../types";
-import { deriveHandoffCode, equalHash, hashOtp } from "./security";
+import { deriveHandoffCode, equalHash, hashOtp, hashPassword, verifyPassword } from "./security";
 
 const env = {
   OTP_PEPPER: "test-only-pepper-with-at-least-24-characters",
 } as Bindings;
+
+describe("password security", () => {
+  it("creates a Cloudflare-compatible PBKDF2 hash that verifies", async () => {
+    const hash = await hashPassword("correct horse battery staple");
+
+    expect(hash).toMatch(/^\$pbkdf2-sha256\$310000\$/);
+    await expect(verifyPassword("correct horse battery staple", hash)).resolves.toBe(true);
+    await expect(verifyPassword("wrong password", hash)).resolves.toBe(false);
+  });
+});
 
 describe("one-time code security", () => {
   it("rejects a different verification code hash", async () => {
