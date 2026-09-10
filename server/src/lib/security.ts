@@ -17,6 +17,16 @@ function signingKey(env: Bindings) {
   return encoder.encode(env.JWT_SECRET);
 }
 
+function toArrayBuffer(value: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(value);
+  return copy.buffer;
+}
+
+function encodedBuffer(value: string): ArrayBuffer {
+  return toArrayBuffer(encoder.encode(value));
+}
+
 function toBase64Url(value: Uint8Array): string {
   let binary = "";
   for (const byte of value) binary += String.fromCharCode(byte);
@@ -39,16 +49,23 @@ function constantTimeBytesEqual(expected: Uint8Array, supplied: Uint8Array): boo
 }
 
 async function derivePbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
+  // workerd is stricter than Node's WebCrypto shim about BufferSource backing
+  // stores. Give both operations owned ArrayBuffers rather than typed-array
+  // views so production and local Worker runtimes execute the same path.
   const passwordKey = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(password),
-    "PBKDF2",
+    encodedBuffer(password),
+    { name: "PBKDF2" },
     false,
     ["deriveBits"],
   );
-  const saltBuffer = salt.buffer.slice(salt.byteOffset, salt.byteOffset + salt.byteLength) as ArrayBuffer;
   const derived = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt: saltBuffer, iterations },
+    {
+      name: "PBKDF2",
+      hash: { name: "SHA-256" },
+      salt: toArrayBuffer(salt),
+      iterations,
+    },
     passwordKey,
     PBKDF2_HASH_BYTES * 8,
   );
@@ -56,9 +73,6 @@ async function derivePbkdf2(password: string, salt: Uint8Array, iterations: numb
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  // Cloudflare Workers supports PBKDF2 through Web Crypto natively. Keeping the
-  // password KDF inside crypto.subtle avoids runtime WASM compilation, which
-  // Cloudflare blocks for packages such as hash-wasm.
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const derived = await derivePbkdf2(password, salt, PBKDF2_ITERATIONS);
   return `${PASSWORD_HASH_PREFIX}${PBKDF2_ITERATIONS}$${toBase64Url(salt)}$${toBase64Url(derived)}`;
@@ -110,7 +124,7 @@ export function randomToken(bytes = 32): string {
 }
 
 export async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(value));
+  const digest = await crypto.subtle.digest("SHA-256", encodedBuffer(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
