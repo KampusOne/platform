@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { CampusScape, HeaderBadge, StreakCard } from "@/src/components/visual-system";
 import { theme } from "@/src/theme";
 
 type AppHeaderProps = {
@@ -9,119 +11,120 @@ type AppHeaderProps = {
   onBellPress?: () => void;
   unread?: boolean;
   showBell?: boolean;
+  showStreak?: boolean;
+  badge?: { icon?: keyof typeof Ionicons.glyphMap; text: string; verified?: boolean };
 };
 
 export function AppHeader({
   title = "Good morning, Gideon",
-  subtitle = "Thursday 10 September · Week 2",
+  subtitle = "Thursday, 10 September · Preview",
   onBellPress,
   unread = true,
   showBell = true,
+  showStreak = false,
+  badge,
 }: AppHeaderProps) {
   return (
-    <View style={styles.header}>
-      <View style={styles.brand} accessible accessibilityLabel={`KampusOne. ${title}. ${subtitle}`}>
-        <Image source={require("@/assets/icon.png")} style={styles.mark} resizeMode="contain" />
-        <View style={styles.copy}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
+    <View style={[styles.hero, showStreak && styles.heroWithStreak]}>
+      <CampusScape compact={!showStreak} />
+
+      {showStreak ? (
+        <View style={styles.streakRow}>
+          <StreakCard />
+          <HeaderActions onBellPress={onBellPress} showBell={showBell} unread={unread} />
         </View>
-      </View>
-      <View style={styles.actions}>
-        {showBell ? (
-          <Pressable
-            accessibilityLabel="Open notifications"
-            accessibilityRole="button"
-            hitSlop={8}
-            onPress={onBellPress}
-            style={({ pressed }) => [styles.bell, pressed && styles.pressed]}
-          >
-            <Ionicons name="notifications-outline" size={21} color={theme.text} />
-            {unread ? <View style={styles.unread} /> : null}
-          </Pressable>
-        ) : null}
-        <View style={styles.avatar} accessibilityLabel="Gideon profile preview">
-          <Text style={styles.avatarText}>GI</Text>
+      ) : (
+        <View style={styles.floatingActions}>
+          <HeaderActions onBellPress={onBellPress} showBell={showBell} unread={unread} />
         </View>
+      )}
+
+      <View style={[styles.copy, showStreak && styles.copyWithStreak]} accessible accessibilityLabel={`${title}. ${subtitle}`}>
+        <Text style={[styles.title, showStreak && styles.homeTitle]}>{title}</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
+        {badge ? <HeaderBadge {...badge} /> : null}
       </View>
     </View>
   );
 }
 
+function HeaderActions({
+  onBellPress,
+  showBell,
+  unread,
+}: {
+  onBellPress: (() => void) | undefined;
+  showBell: boolean;
+  unread: boolean;
+}) {
+  return (
+    <View style={styles.actions}>
+      {showBell ? (
+        <Pressable
+          accessibilityLabel="Open notifications"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={onBellPress}
+          style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
+        >
+          <View pointerEvents="none" style={styles.buttonShine} />
+          <Ionicons name="notifications-outline" size={23} color={theme.text} />
+          {unread ? <View style={styles.unread} /> : null}
+        </Pressable>
+      ) : null}
+      <Pressable
+        accessibilityLabel="Open Gideon's profile"
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={() => router.push("/profile")}
+        style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}
+      >
+        <View style={styles.avatarFallback}><Text style={styles.avatarFallbackText}>GI</Text></View>
+        <Image
+          accessibilityIgnoresInvertColors
+          source={{ uri: "https://avatars.githubusercontent.com/u/167391941?v=4" }}
+          style={styles.avatar}
+        />
+      </Pressable>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingBottom: theme.spacing[4],
-    paddingTop: 4,
-  },
-  brand: {
-    alignItems: "center",
-    flex: 1,
-    flexDirection: "row",
-    gap: 11,
-  },
-  mark: {
-    borderRadius: 10,
-    height: 34,
-    width: 34,
-  },
-  copy: { flex: 1 },
-  title: {
-    color: theme.text,
-    fontFamily: theme.font.display,
-    fontSize: 18,
-    letterSpacing: -0.2,
-    lineHeight: 22,
-  },
-  subtitle: {
-    color: theme.textSubtle,
-    fontFamily: theme.font.body,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 1,
-  },
-  actions: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 9,
-    marginLeft: 10,
-  },
-  bell: {
-    alignItems: "center",
-    backgroundColor: theme.surfaceRaised,
-    borderColor: theme.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    height: 44,
-    justifyContent: "center",
+  hero: {
+    height: 184,
+    marginHorizontal: -theme.spacing[5],
+    overflow: "hidden",
+    paddingHorizontal: theme.spacing[5],
     position: "relative",
-    width: 44,
   },
-  unread: {
-    backgroundColor: theme.brand,
-    borderColor: theme.canvas,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    height: 9,
-    position: "absolute",
-    right: 8,
-    top: 8,
-    width: 9,
-  },
-  avatar: {
+  heroWithStreak: { height: 205 },
+  streakRow: { alignItems: "center", flexDirection: "row", gap: 11, paddingTop: 4 },
+  floatingActions: { position: "absolute", right: theme.spacing[5], top: 4, zIndex: 4 },
+  actions: { alignItems: "center", flexDirection: "row", gap: 9 },
+  roundButton: {
     alignItems: "center",
-    backgroundColor: theme.surfaceMuted,
-    borderRadius: 22,
-    height: 44,
+    backgroundColor: "rgba(255,255,255,0.90)",
+    borderColor: "rgba(255,255,255,0.96)",
+    borderRadius: 25,
+    borderWidth: 1,
+    height: 50,
     justifyContent: "center",
-    width: 44,
+    overflow: "hidden",
+    position: "relative",
+    width: 50,
+    ...theme.shadow,
   },
-  avatarText: {
-    color: theme.brandPressed,
-    fontFamily: theme.font.display,
-    fontSize: 14,
-  },
-  pressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
+  buttonShine: { backgroundColor: "rgba(255,255,255,0.78)", borderRadius: 20, height: 20, left: 4, position: "absolute", right: 4, top: -8 },
+  unread: { backgroundColor: theme.brand, borderColor: theme.warmWhite, borderRadius: 5, borderWidth: 1.5, height: 10, position: "absolute", right: 8, top: 8, width: 10 },
+  avatarButton: { borderColor: "rgba(255,255,255,0.96)", borderRadius: 25, borderWidth: 2, height: 50, overflow: "hidden", width: 50, ...theme.shadow },
+  avatarFallback: { alignItems: "center", backgroundColor: theme.surfaceMuted, bottom: 0, justifyContent: "center", left: 0, position: "absolute", right: 0, top: 0 },
+  avatarFallbackText: { color: theme.brandPressed, fontFamily: theme.font.display, fontSize: 14 },
+  avatar: { bottom: 0, height: "100%", left: 0, position: "absolute", right: 0, top: 0, width: "100%" },
+  copy: { maxWidth: "72%", paddingTop: 18, position: "relative", zIndex: 2 },
+  copyWithStreak: { maxWidth: "75%", paddingTop: 14 },
+  title: { color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 34, letterSpacing: -1.2, lineHeight: 38 },
+  homeTitle: { fontSize: 31, letterSpacing: -1, lineHeight: 36 },
+  subtitle: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 14, lineHeight: 20, marginTop: 3 },
+  pressed: { opacity: 0.72, transform: [{ scale: 0.95 }] },
 });

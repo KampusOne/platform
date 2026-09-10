@@ -39,6 +39,17 @@ Create a verifiable, deployable product skeleton without implying that authentic
 
 The student preview uses the official Lato and Inter product typography. Home, Feed, Campus, Tutorials, and Store share the same compact header, search/filter language, content-card rhythm, touch feedback, and floating navigation. Reference products may inform layout discipline, but KampusOne colors, assets, copy, and product hierarchy remain authoritative.
 
+## Student visual-system refresh — 10 September 2026
+
+- Rebuilt the mobile preview around the official warm-cream, terracotta, sand, and Campus Ink system with Lato display type and Inter product type.
+- Added a restrained liquid-glass treatment for the floating navigation and selected high-value surfaces; ordinary content cards remain opaque enough for readability and lower Android rendering cost.
+- Added reusable campus scenery, feed artwork, marketplace product artwork, the animated streak treatment, and purpose-specific map/tutorial illustrations without changing the official logo.
+- Added 180 ms tab cross-fades, active-tab continuity, press feedback, haptics, saved-item animation, basket feedback, and reduced-motion fallbacks.
+- Added a custom dark-brown KampusOne verification rosette with a warm-cream check for trusted vendors, tutors, profiles, and official sources; it is intentionally distinct from routine success feedback.
+- Replaced generic red/green approval styling with brand-led clay, ochre, and brown treatments for live, positive, and time-sensitive states.
+- Added hidden-in-tab Timetable and Profile routes so detail screens retain navigation continuity without increasing the five-item primary tab count.
+- Preserved preview-only boundaries: no authentication, marketplace payment, live booking, real routing, or production data mutation was enabled by this interface work.
+
 ## Inputs required for Phase 1
 
 - confirmed production and preview domain ownership in Cloudflare;
