@@ -7,6 +7,7 @@ export const theme = {
   font: {
     display: "Lato_700Bold",
     displayStrong: "Lato_900Black",
+    calligraphy: "Lato_700Bold_Italic",
     body: "Inter_400Regular",
     medium: "Inter_500Medium",
     semibold: "Inter_600SemiBold",

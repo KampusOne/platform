@@ -68,7 +68,7 @@ export default function TodayScreen() {
           setNotificationsOpen((value) => !value);
         }}
         showStreak
-        subtitle={`${date} · Preview`}
+        subtitle={date}
         title={`${greeting()}, Gideon`}
         unread={!notificationsOpen}
       />

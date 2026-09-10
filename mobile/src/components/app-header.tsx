@@ -17,7 +17,7 @@ type AppHeaderProps = {
 
 export function AppHeader({
   title = "Good morning, Gideon",
-  subtitle = "Thursday, 10 September · Preview",
+  subtitle = "Thursday, 10 September",
   onBellPress,
   unread = true,
   showBell = true,
@@ -41,7 +41,7 @@ export function AppHeader({
 
       <View style={[styles.copy, showStreak && styles.copyWithStreak]} accessible accessibilityLabel={`${title}. ${subtitle}`}>
         <Text style={[styles.title, showStreak && styles.homeTitle]}>{title}</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        <Text style={[styles.subtitle, showStreak && styles.homeSubtitle]}>{subtitle}</Text>
         {badge ? <HeaderBadge {...badge} /> : null}
       </View>
     </View>
@@ -126,5 +126,16 @@ const styles = StyleSheet.create({
   title: { color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 34, letterSpacing: -1.2, lineHeight: 38 },
   homeTitle: { fontSize: 31, letterSpacing: -1, lineHeight: 36 },
   subtitle: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 14, lineHeight: 20, marginTop: 3 },
+  homeSubtitle: {
+    color: theme.brandPressed,
+    fontFamily: theme.font.calligraphy,
+    fontSize: 15.5,
+    letterSpacing: 0.08,
+    lineHeight: 22,
+    marginTop: 2,
+    textShadowColor: "rgba(255,253,252,0.96)",
+    textShadowOffset: { height: 1, width: 0 },
+    textShadowRadius: 6,
+  },
   pressed: { opacity: 0.72, transform: [{ scale: 0.95 }] },
 });

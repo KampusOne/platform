@@ -339,11 +339,18 @@ export function CampusScape({ compact = false }: { compact?: boolean }) {
 }
 
 export function HeaderBadge({ icon, text, verified = false }: { icon?: IconName; text: string; verified?: boolean }) {
+  const hasMark = verified || Boolean(icon);
+
   return (
-    <View style={styles.headerBadge}>
-      {verified ? <VerifiedBadge label={`${text} is verified`} size={16} /> : icon ? <Ionicons name={icon} size={16} color={theme.brand} /> : null}
-      <Text style={styles.headerBadgeText}>{text}</Text>
-      <Ionicons name="chevron-forward" size={15} color={theme.brandPressed} />
+    <View accessibilityLabel={text} accessible style={styles.headerBadge}>
+      <View style={styles.headerBadgeContent}>
+        {verified ? <VerifiedBadge label={`${text} is verified`} size={15} /> : icon ? <Ionicons name={icon} size={15} color={theme.deepBrand} /> : null}
+        <Text style={styles.headerBadgeText}>{text}</Text>
+      </View>
+      <View pointerEvents="none" style={[styles.headerBadgeFlourish, hasMark && styles.headerBadgeFlourishIndented]}>
+        <View style={styles.headerBadgeLine} />
+        <View style={styles.headerBadgeFlick} />
+      </View>
     </View>
   );
 }
@@ -568,9 +575,9 @@ const styles = StyleSheet.create({
     width: "72%",
   },
   glassEdge: { backgroundColor: "rgba(255,255,255,0.78)", height: 1, left: 16, position: "absolute", right: 16, top: 1 },
-  streakPill: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "rgba(255,253,252,0.84)", borderColor: "rgba(255,255,255,0.96)", borderRadius: 18, borderWidth: 1, flexDirection: "row", gap: 7, height: 48, paddingHorizontal: 10, ...theme.shadow },
-  streakPillPressed: { opacity: 0.78, transform: [{ scale: 0.97 }] },
-  streakPillText: { color: theme.text, fontFamily: theme.font.bold, fontSize: 13 },
+  streakPill: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 6, height: 48, paddingRight: 4 },
+  streakPillPressed: { opacity: 0.68, transform: [{ scale: 0.96 }] },
+  streakPillText: { color: theme.text, fontFamily: theme.font.bold, fontSize: 13.5 },
   streakModalRoot: { flex: 1, justifyContent: "flex-end" },
   streakBackdrop: { backgroundColor: "#231D1A", bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
   streakSheet: { backgroundColor: theme.canvas, borderColor: "rgba(255,255,255,0.94)", borderTopLeftRadius: 30, borderTopRightRadius: 30, borderWidth: 1, maxHeight: "88%", overflow: "hidden", ...theme.glassShadow },
@@ -609,7 +616,7 @@ const styles = StyleSheet.create({
   streakQuote: { alignItems: "flex-start", backgroundColor: "rgba(233,177,142,0.20)", borderColor: "rgba(111,48,37,0.10)", borderRadius: 17, borderWidth: 1, flexDirection: "row", gap: 10, marginTop: 15, padding: 13 },
   streakQuoteCopy: { flex: 1 },
   streakQuoteLabel: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8, letterSpacing: 0.65 },
-  streakQuoteText: { color: theme.text, fontFamily: theme.font.medium, fontSize: 11.5, lineHeight: 17, marginTop: 4 },
+  streakQuoteText: { color: theme.text, fontFamily: theme.font.calligraphy, fontSize: 13, lineHeight: 18, marginTop: 4 },
   scape: { bottom: 0, height: 116, left: 0, overflow: "hidden", position: "absolute", right: 0 },
   scapeCompact: { height: 88, opacity: 0.94 },
   sunLarge: { backgroundColor: "rgba(233,177,142,0.52)", borderRadius: 42, height: 84, position: "absolute", right: 65, top: 4, width: 84 },
@@ -629,8 +636,13 @@ const styles = StyleSheet.create({
   windowRow: { flexDirection: "row", gap: 9, paddingLeft: 12, paddingTop: 12 },
   window: { backgroundColor: "#F8E6D9", height: 12, width: 13 },
   road: { backgroundColor: "rgba(251,247,242,0.72)", borderRadius: 70, bottom: -62, height: 96, position: "absolute", right: 76, transform: [{ rotate: "-17deg" }], width: 31 },
-  headerBadge: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "rgba(255,253,252,0.76)", borderColor: "rgba(195,93,56,0.14)", borderRadius: 16, borderWidth: 1, flexDirection: "row", gap: 7, marginTop: 12, minHeight: 36, paddingHorizontal: 12 },
-  headerBadgeText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 12.5 },
+  headerBadge: { alignSelf: "flex-start", marginTop: 11, paddingBottom: 3 },
+  headerBadgeContent: { alignItems: "center", flexDirection: "row", gap: 7, minHeight: 21 },
+  headerBadgeText: { color: theme.brandPressed, fontFamily: theme.font.calligraphy, fontSize: 14.5, letterSpacing: 0.06, lineHeight: 20 },
+  headerBadgeFlourish: { alignItems: "flex-end", flexDirection: "row", height: 4, marginTop: -1, width: "82%" },
+  headerBadgeFlourishIndented: { marginLeft: 22 },
+  headerBadgeLine: { backgroundColor: "rgba(143,60,41,0.48)", borderRadius: 2, height: 1.5, width: "89%" },
+  headerBadgeFlick: { backgroundColor: "rgba(143,60,41,0.48)", borderRadius: 2, height: 1.5, marginBottom: 0.5, marginLeft: -1, transform: [{ rotate: "-9deg" }], width: 13 },
   favorite: { alignItems: "center", backgroundColor: "rgba(255,255,255,0.93)", borderColor: "rgba(255,255,255,0.96)", borderRadius: 16, borderWidth: 1, height: 34, justifyContent: "center", width: 34, ...theme.shadow },
   favoritePressed: { opacity: 0.72 },
   artTile: { alignItems: "center", borderRadius: 16, height: 112, justifyContent: "center", overflow: "hidden", position: "relative", width: 112 },
@@ -684,7 +696,7 @@ const styles = StyleSheet.create({
   motivationIcon: { alignItems: "center", backgroundColor: "rgba(233,177,142,0.34)", borderRadius: 24, height: 50, justifyContent: "center", width: 50, zIndex: 2 },
   motivationCopy: { flex: 1, marginHorizontal: 12, zIndex: 2 },
   motivationTitle: { color: theme.text, fontFamily: theme.font.bold, fontSize: 13.5 },
-  motivationBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  motivationBody: { color: theme.brandPressed, fontFamily: theme.font.calligraphy, fontSize: 13, lineHeight: 18, marginTop: 3 },
   motivationHillOne: { backgroundColor: "rgba(233,177,142,0.34)", borderRadius: 52, bottom: -42, height: 80, position: "absolute", right: 15, transform: [{ rotate: "-8deg" }], width: 139 },
   motivationHillTwo: { backgroundColor: "rgba(241,223,200,0.72)", borderRadius: 44, bottom: -46, height: 78, position: "absolute", right: 84, transform: [{ rotate: "12deg" }], width: 128 },
 });

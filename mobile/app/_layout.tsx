@@ -7,7 +7,7 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
-import { Lato_700Bold, Lato_900Black } from "@expo-google-fonts/lato";
+import { Lato_700Bold, Lato_700Bold_Italic, Lato_900Black } from "@expo-google-fonts/lato";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { theme } from "@/src/theme";
@@ -19,6 +19,7 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
     Lato_700Bold,
+    Lato_700Bold_Italic,
     Lato_900Black,
   });
 
