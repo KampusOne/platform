@@ -6,7 +6,7 @@ Create a verifiable, deployable product skeleton without implying that authentic
 
 ## Included
 
-- private platform repository and documented boundaries;
+- public platform repository with documented secret and data boundaries;
 - official KampusOne design tokens, typefaces, and outlined logo assets;
 - Expo student preview centered on Today;
 - separate admin, agent, and engineering preview surfaces;

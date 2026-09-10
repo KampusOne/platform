@@ -2,7 +2,7 @@
 
 KampusOne is a campus operating layer that helps students know what matters now, complete academic tasks, and navigate campus life with less friction.
 
-This repository contains the private product platform. The existing public landing repository is intentionally separate and is not changed here.
+This repository contains the public product platform source. The existing landing repository remains intentionally separate and is not changed here. Runtime secrets, production data, and operator credentials never belong in this repository.
 
 ## Applications
 

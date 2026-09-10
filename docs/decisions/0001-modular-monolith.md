@@ -9,7 +9,7 @@ KampusOne has a broad eventual product surface but is beginning with one institu
 
 ## Decision
 
-Use one private repository and one Supabase PostgreSQL database. Keep mobile, portal, Worker, database, contracts, and design tokens as clear directories. Treat product areas as internal modules and deploy only three runtime units: mobile, portal, and Worker.
+Use one public source repository and one Supabase PostgreSQL database, with runtime secrets and production data kept outside Git. Keep mobile, portal, Worker, database, contracts, and design tokens as clear directories. Treat product areas as internal modules and deploy only three runtime units: mobile, portal, and Worker.
 
 ## Consequences
 

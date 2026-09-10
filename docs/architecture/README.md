@@ -2,7 +2,7 @@
 
 ## Decision
 
-KampusOne begins as a modular monolith: one private repository, one Supabase PostgreSQL database, one student mobile app, one portal deployment, and one thin privileged API. Feature modules own their schema, contracts, and UI, without becoming separate services prematurely.
+KampusOne begins as a modular monolith: one public source repository, one Supabase PostgreSQL database, one student mobile app, one portal deployment, and one thin privileged API. Runtime secrets and production data remain outside Git. Feature modules own their schema, contracts, and UI, without becoming separate services prematurely.
 
 ```mermaid
 flowchart TD
