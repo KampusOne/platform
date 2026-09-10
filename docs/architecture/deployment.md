@@ -10,7 +10,9 @@
 
 ## Portal on Vercel
 
-Create one Vercel project with repository root directory `portal`. Preview URLs expose `/admin`, `/agents`, and `/engineering`. After Phase 1 security acceptance, attach the three production hosts to the same project; `proxy.ts` maps each root hostname to its surface.
+Create one Vercel project with repository root directory `portal`. Preview URLs expose `/admin`, `/agents`, and `/engineering`. After Phase 1 security acceptance, attach the production hosts `ops.kampusone.app`, `agents.kampusone.app`, and `build.kampusone.app`; `proxy.ts` maps each root hostname to its surface. Navigation stays inside the current surface.
+
+The less obvious operations hostname is only a discovery reduction. Supabase Auth, trusted role assignments, tenant-scoped RLS and server-side capability checks are the security boundary.
 
 Required public variables:
 
@@ -28,7 +30,7 @@ Repository/environment secrets:
 
 - `CLOUDFLARE_API_TOKEN`, scoped to Workers deployment and the intended account;
 - `CLOUDFLARE_ACCOUNT_ID`;
-- Worker runtime secrets `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY`, configured with Wrangler or the Cloudflare dashboard rather than committed files.
+- Worker runtime secrets `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and `NEON_DATABASE_URL`, configured with Wrangler or the Cloudflare dashboard rather than committed files.
 
 Production begins in maintenance mode with all feature gates off. Activation is a separate reviewed change.
 
@@ -45,3 +47,11 @@ Required public variables:
 ## Database on Supabase
 
 Apply forward migrations to a preview branch/project first. Run the repository verification SQL plus Supabase security and performance advisors. Promote only the same reviewed migration to production; never repair drift by editing an applied file.
+
+Supabase owns authentication, trusted roles, transactional campus records and private verification files.
+
+## Analytics on Neon
+
+Use a Neon development branch and the separate `kampusone_analytics` schema. Only the Cloudflare Worker connects. It derives the subject from a verified Supabase token, confirms optional analytics consent, rejects sensitive property keys and writes idempotent events.
+
+The existing Neon production branch contains legacy schemas and remains untouched. Preview points to `phase-1-platform-foundation`; production promotion needs a reviewed migration and a least-privilege writer role.

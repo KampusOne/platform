@@ -4,11 +4,26 @@ import type { ReactNode } from "react";
 
 export type SurfaceKey = "admin" | "agents" | "engineering";
 
-const navigation: Array<{ key: SurfaceKey; href: string; label: string }> = [
-  { key: "admin", href: "/admin", label: "Admin" },
-  { key: "agents", href: "/agents", label: "Agents" },
-  { key: "engineering", href: "/engineering", label: "Engineering" },
-];
+const navigation: Record<SurfaceKey, Array<{ href: string; label: string }>> = {
+  admin: [
+    { href: "/admin#overview", label: "Overview" },
+    { href: "/admin#applications", label: "Applications" },
+    { href: "/admin#verification", label: "Verification" },
+    { href: "/admin#audit", label: "Audit trail" },
+  ],
+  agents: [
+    { href: "/agents#apply", label: "Apply" },
+    { href: "/agents#documents", label: "Documents" },
+    { href: "/agents#status", label: "Application status" },
+    { href: "/agents#support", label: "Help" },
+  ],
+  engineering: [
+    { href: "/engineering#overview", label: "Overview" },
+    { href: "/engineering#phases", label: "Build phases" },
+    { href: "/engineering#requirements", label: "Requirements" },
+    { href: "/engineering#notes", label: "Build notes" },
+  ],
+};
 
 type PortalShellProps = {
   active: SurfaceKey;
@@ -28,7 +43,7 @@ export function PortalShell({
   return (
     <div className="portal-frame">
       <aside className="sidebar">
-        <Link href="/" className="brand-link" aria-label="KampusOne platform preview home">
+        <Link href={`/${active}`} className="brand-link" aria-label="KampusOne workspace home">
           <Image
             src="/brand/kampusone-horizontal-ink.svg"
             width={153}
@@ -39,13 +54,13 @@ export function PortalShell({
         </Link>
 
         <nav className="portal-nav" aria-label="Operational surfaces">
-          <p className="nav-label">Workspaces</p>
-          {navigation.map((item) => (
+          <p className="nav-label">Workspace</p>
+          {navigation[active].map((item, index) => (
             <Link
               href={item.href}
-              key={item.key}
+              key={item.href}
               className="nav-item"
-              aria-current={active === item.key ? "page" : undefined}
+              aria-current={index === 0 ? "page" : undefined}
             >
               <span className="nav-item__signal" aria-hidden="true" />
               {item.label}
@@ -56,8 +71,8 @@ export function PortalShell({
         <div className="sidebar__foot">
           <span className="status-dot" aria-hidden="true" />
           <span>
-            <strong>Preview mode</strong>
-            Live mutations are locked
+            <strong>Phase 1 build</strong>
+            Sensitive providers remain gated
           </span>
         </div>
       </aside>
@@ -72,8 +87,8 @@ export function PortalShell({
           <div className="operator-placeholder" aria-label="Authentication status">
             <span aria-hidden="true">K1</span>
             <div>
-              <strong>Identity gate pending</strong>
-              <small>No operator signed in</small>
+              <strong>Protected workspace</strong>
+              <small>Role enforcement is the release gate</small>
             </div>
           </div>
         </header>
@@ -83,8 +98,8 @@ export function PortalShell({
             i
           </span>
           <p>
-            <strong>Architecture preview.</strong> All records shown here are structural examples;
-            no live student or institution data is connected.
+            <strong>Review environment.</strong> Sample records are labelled. Production writes stay
+            off until identity, role and audit checks pass.
           </p>
         </div>
 

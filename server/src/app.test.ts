@@ -15,6 +15,7 @@ const env: Bindings = {
   MARKETPLACE_ENABLED: "false",
   PAYMENTS_ENABLED: "false",
   AI_ASSISTANT_ENABLED: "false",
+  ANALYTICS_INGEST_ENABLED: "false",
 };
 
 describe("KampusOne Worker", () => {
@@ -52,5 +53,17 @@ describe("KampusOne Worker", () => {
     expect(response.status).toBe(404);
     expect(body.error.code).toBe("NOT_FOUND");
     expect(body.error.requestId).toBeTruthy();
+  });
+
+  it("keeps analytics ingestion fail-closed", async () => {
+    const response = await app.request(
+      "http://local.test/v1/analytics/events",
+      { method: "POST", body: JSON.stringify({ events: [] }), headers: { "content-type": "application/json" } },
+      env,
+    );
+    const body = (await response.json()) as { error: { code: string } };
+
+    expect(response.status).toBe(503);
+    expect(body.error.code).toBe("FEATURE_DISABLED");
   });
 });

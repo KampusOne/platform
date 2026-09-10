@@ -11,7 +11,7 @@ This repository contains the public product platform source. The existing landin
 | `mobile/` | Expo / React Native | Student-facing application, with **Today** as home |
 | `portal/` | Next.js App Router | Separate admin, agent, and engineering surfaces |
 | `server/` | Cloudflare Workers + Hono | Thin privileged API and provider boundary |
-| `database/` | Supabase PostgreSQL | Migrations, seed data, and verification checks |
+| `database/` | Supabase + Neon PostgreSQL | Transactional/RLS migrations plus isolated analytics migrations |
 | `packages/` | TypeScript/CSS | Shared contracts and official design tokens |
 
 ## Local start
@@ -29,6 +29,6 @@ Copy each `.env.example` only when you need that application. Never commit popul
 
 ## Delivery state
 
-Phase 0 establishes the repository, tenant/security contracts, preview shells, deployment configuration, and continuous verification. It is not a production launch and contains no live financial or administrative mutation workflows.
+Phase 0 established the repository, tenant/security contracts, preview shells, deployment configuration, and continuous verification. Phase 1 now contains the mobile welcome/auth/onboarding flow, controlled inbox entry points, agent application and operator-review UI, the full build tracker, Supabase verification schema, and a consent-gated Cloudflare-to-Neon analytics boundary. Financial and broad social workflows remain gated.
 
-Start with [the architecture overview](docs/architecture/README.md) and [the Phase 0 acceptance record](docs/phases/phase-0-foundation.md).
+Start with [the architecture overview](docs/architecture/README.md), [the Phase 0 acceptance record](docs/phases/phase-0-foundation.md), and [the current Phase 1 handoff](docs/phases/phase-1-identity-agent-foundation.md).

@@ -1,32 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import localFont from "next/font/local";
 
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/inter/700.css";
+import "@fontsource/lato/700.css";
+import "@fontsource/lato/900.css";
 import "@kampusone/design-tokens/styles.css";
 import "./globals.css";
 
-const manrope = localFont({
-  src: [
-    { path: "./fonts/manrope-400.ttf", weight: "400", style: "normal" },
-    { path: "./fonts/manrope-600.ttf", weight: "600", style: "normal" },
-    { path: "./fonts/manrope-800.ttf", weight: "800", style: "normal" },
-  ],
-  display: "swap",
-  variable: "--font-manrope",
-});
-
-const caveat = localFont({
-  src: "./fonts/caveat-600.ttf",
-  weight: "600",
-  display: "swap",
-  variable: "--font-caveat",
-});
-
 export const metadata: Metadata = {
   title: {
-    default: "KampusOne Platform Preview",
+    default: "KampusOne Operations",
     template: "%s · KampusOne",
   },
-  description: "Internal platform foundation preview for KampusOne.",
+  description: "KampusOne operations, agent and build tracking surfaces.",
   robots: { index: false, follow: false },
 };
 
@@ -37,7 +25,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${manrope.variable} ${caveat.variable}`}>
+    <html lang="en">
       <body>{children}</body>
     </html>
   );

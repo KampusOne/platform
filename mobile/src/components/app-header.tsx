@@ -59,12 +59,23 @@ function HeaderActions({
 }) {
   return (
     <View style={styles.actions}>
+      <Pressable
+        accessibilityLabel="Open inbox"
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={() => router.push("/inbox")}
+        style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
+      >
+        <View pointerEvents="none" style={styles.buttonShine} />
+        <Ionicons name="chatbubble-ellipses-outline" size={22} color={theme.text} />
+        <View style={styles.inboxCount}><Text style={styles.inboxCountText}>2</Text></View>
+      </Pressable>
       {showBell ? (
         <Pressable
           accessibilityLabel="Open notifications"
           accessibilityRole="button"
           hitSlop={8}
-          onPress={onBellPress}
+          onPress={onBellPress ?? (() => router.push("/notifications"))}
           style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
         >
           <View pointerEvents="none" style={styles.buttonShine} />
@@ -117,6 +128,8 @@ const styles = StyleSheet.create({
   },
   buttonShine: { backgroundColor: "rgba(255,255,255,0.78)", borderRadius: 20, height: 20, left: 4, position: "absolute", right: 4, top: -8 },
   unread: { backgroundColor: theme.brand, borderColor: theme.warmWhite, borderRadius: 5, borderWidth: 1.5, height: 10, position: "absolute", right: 8, top: 8, width: 10 },
+  inboxCount: { alignItems: "center", backgroundColor: theme.brand, borderColor: theme.warmWhite, borderRadius: 8, borderWidth: 1.5, height: 16, justifyContent: "center", minWidth: 16, paddingHorizontal: 3, position: "absolute", right: 5, top: 5 },
+  inboxCountText: { color: theme.white, fontFamily: theme.font.bold, fontSize: 8 },
   avatarButton: { borderColor: "rgba(255,255,255,0.96)", borderRadius: 25, borderWidth: 2, height: 50, overflow: "hidden", width: 50, ...theme.shadow },
   avatarFallback: { alignItems: "center", backgroundColor: theme.surfaceMuted, bottom: 0, justifyContent: "center", left: 0, position: "absolute", right: 0, top: 0 },
   avatarFallbackText: { color: theme.brandPressed, fontFamily: theme.font.display, fontSize: 14 },
