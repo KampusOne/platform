@@ -8,6 +8,7 @@ export type Bindings = {
   ACADEMIC_CORE_ENABLED: string;
   SOCIAL_FEED_ENABLED: string;
   MARKETPLACE_ENABLED: string;
+  PHASE_2_SCHEMA_READY?: string;
   TUTORIALS_ENABLED?: string;
   STORE_ENABLED?: string;
   LOGISTICS_ENABLED?: string;

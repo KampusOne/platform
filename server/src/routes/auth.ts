@@ -171,6 +171,19 @@ async function sendFreshEmailVerification(
   const latest = await latestVerification(env, user.email, "EMAIL_VERIFICATION");
   if (latest && Date.now() - new Date(latest.last_sent_at).getTime() < 60_000) return;
 
+  if (env.PHASE_2_SCHEMA_READY?.toLowerCase() !== "true") {
+    const verification = await createVerification(env, user.id, "EMAIL_VERIFICATION");
+    await sendMail(env, {
+      to: user.email,
+      firstName: user.first_name,
+      code: verification.code,
+      kind: "verification",
+      idempotencyKey: `verify-${verification.tokenId}`,
+    });
+    await supersedeOlderVerifications(env, user.id, "EMAIL_VERIFICATION", verification.tokenId);
+    return;
+  }
+
   const code = generateOtp();
   const tokenId = crypto.randomUUID();
   const tokenHash = await hashOtp(env, code);
@@ -262,6 +275,18 @@ async function stagePendingRegistration(
   });
 }
 
+async function sendRegistrationVerification(
+  context: AppContext,
+  user: { id: string; email: string; first_name: string | null },
+  input: RegisterInput,
+) {
+  if (context.env.PHASE_2_SCHEMA_READY?.toLowerCase() === "true") {
+    await stagePendingRegistration(context, user, input);
+    return;
+  }
+  await sendFreshEmailVerification(context.env, user);
+}
+
 function verificationFailure(result: string): never {
   if (result === "LOCKED") {
     throw new AppError(429, "RATE_LIMITED", "Too many attempts. Request a new code.");
@@ -280,7 +305,7 @@ authRoutes.post("/register", async (context) => {
   if (existing) {
     if (!existing.email_verified_at) {
       try {
-        await stagePendingRegistration(context, existing, parsed.data);
+        await sendRegistrationVerification(context, existing, parsed.data);
       } catch (caught) {
         logRegistrationFailure(context, "verification_delivery", caught);
         throw caught;
@@ -399,7 +424,7 @@ authRoutes.post("/register", async (context) => {
     }
     if (!raced.email_verified_at) {
       try {
-        await stagePendingRegistration(context, raced, parsed.data);
+        await sendRegistrationVerification(context, raced, parsed.data);
       } catch (caught) {
         logRegistrationFailure(context, "verification_delivery", caught);
         throw caught;

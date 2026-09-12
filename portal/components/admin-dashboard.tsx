@@ -369,7 +369,10 @@ export function AdminDashboard() {
       portalApi<{ phases: ReleasePhase[] }>("/v1/admin/release-phases"),
       portalApi<ContentContext>("/v1/admin/content/context"),
       portalApi<TutorialAdmin>("/v1/admin/tutorials").catch((caught) => {
-        if (caught instanceof PortalApiError && caught.status === 404) {
+        if (
+          caught instanceof PortalApiError &&
+          (caught.status === 404 || caught.code === "FEATURE_DISABLED")
+        ) {
           return {
             listings: [],
             resources: [],
