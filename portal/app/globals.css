@@ -84,6 +84,14 @@ button { color: inherit; }
 .auth-panel__kicker { margin-bottom: 16px; color: var(--k1-brand-600); font-size: .73rem; font-weight: 700; }
 .auth-panel h2 { margin-bottom: 12px; font-size: clamp(2.1rem, 4vw, 3.4rem); letter-spacing: -.045em; }
 .auth-switch { display: flex; gap: 8px; justify-content: center; margin-top: 25px; color: #766a62; font-size: .8rem; }
+.agent-auth-story { background: var(--k1-sand); }
+.agent-auth-panel { background: linear-gradient(160deg, #fff 0%, var(--k1-cream) 100%); }
+.agent-auth-steps { display: flex; align-items: center; gap: 0; margin: 0 0 34px; padding: 0; color: #9a8d84; font-size: .67rem; font-weight: 700; letter-spacing: .04em; list-style: none; text-transform: uppercase; }
+.agent-auth-steps li { display: flex; align-items: center; }
+.agent-auth-steps li + li::before { width: 30px; height: 1px; margin: 0 10px; background: #dccfc6; content: ""; }
+.agent-auth-steps li[aria-current="step"] { color: var(--k1-brand-600); }
+.agent-auth-actions { display: flex; justify-content: space-between; gap: 20px; margin-top: 18px; }
+.agent-auth-help { margin: 34px 0 0; border-top: 1px solid #e6dbd3; padding-top: 22px; color: #887b72; font-size: .72rem; line-height: 1.65; }
 .form-stack { display: grid; gap: 16px; margin-top: 28px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .form-stack label { display: grid; gap: 7px; color: #5e554f; font-size: .73rem; font-weight: 650; }
@@ -406,6 +414,7 @@ button { color: inherit; }
   .auth-story__copy { right: 22px; bottom: 20px; left: 22px; }
   .auth-story__copy h1 { font-size: 2.25rem; }
   .auth-panel { padding: 42px 22px; }
+  .agent-auth-steps { margin-bottom: 26px; }
   .form-grid { grid-template-columns: 1fr; }
   .sidebar { align-items: flex-start; flex-direction: column; }
   .brand-link img { width: 145px; }
@@ -431,4 +440,8 @@ button { color: inherit; }
   .check-list { grid-template-columns: 1fr; }
   .evidence-note { grid-template-columns: 1fr; gap: 10px; }
   .table-panel { overflow-x: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }

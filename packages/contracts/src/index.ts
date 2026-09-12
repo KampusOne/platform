@@ -66,6 +66,14 @@ export const verifyEmailSchema = z.object({
   deviceLabel: z.string().trim().min(1).max(120).optional(),
 });
 
+export const emailCodeRequestSchema = z.object({ email: emailSchema });
+
+export const emailCodeVerifySchema = z.object({
+  email: emailSchema,
+  code: z.string().regex(/^\d{6}$/),
+  deviceLabel: z.string().trim().min(1).max(120).optional(),
+});
+
 export const resendVerificationSchema = z.object({ email: emailSchema });
 
 export const loginSchema = z.object({

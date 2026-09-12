@@ -4,6 +4,7 @@ import Image from "next/image";
 import { type FormEvent, type ReactNode, useState } from "react";
 
 import { usePortalAuth } from "@/components/auth-provider";
+import { AgentAccess } from "@/components/agent-access";
 import { PortalApiError, portalApi, webAuth } from "@/lib/api";
 
 type AuthMode = "login" | "register" | "verify" | "forgot" | "reset";
@@ -263,6 +264,10 @@ export function AccessGate({
         </section>
       </main>
     );
+  }
+
+  if (surface === "agents") {
+    return <AgentAccess onAuthenticated={start} />;
   }
 
   return (

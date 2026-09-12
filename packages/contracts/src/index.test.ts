@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   apiErrorSchema,
+  emailCodeRequestSchema,
+  emailCodeVerifySchema,
   paymentInitializationSchema,
   publicConfigSchema,
   tutorialListingSchema,
@@ -10,6 +12,21 @@ import {
 } from "./index";
 
 describe("shared API contracts", () => {
+  it("normalizes existing-account email-code requests", () => {
+    expect(emailCodeRequestSchema.parse({ email: "  Student@Example.COM " })).toEqual({
+      email: "student@example.com",
+    });
+    expect(emailCodeVerifySchema.parse({
+      email: "student@example.com",
+      code: "123456",
+      deviceLabel: "KampusOne agent portal",
+    }).code).toBe("123456");
+    expect(() => emailCodeVerifySchema.parse({
+      email: "student@example.com",
+      code: "12345",
+    })).toThrow();
+  });
+
   it("accepts a deliberately gated public configuration", () => {
     const value = publicConfigSchema.parse({
       environment: "staging",

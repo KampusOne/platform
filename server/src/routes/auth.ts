@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 
 import {
+  emailCodeRequestSchema,
+  emailCodeVerifySchema,
   forgotPasswordSchema,
   loginSchema,
   refreshSessionSchema,
@@ -67,7 +69,15 @@ function logRegistrationFailure(context: AppContext, stage: RegistrationStage, c
 
 async function consumeAuthRateLimit(
   context: AppContext,
-  scope: "REGISTER" | "LOGIN" | "RESEND_OTP" | "VERIFY_OTP" | "FORGOT_PASSWORD" | "RESET_PASSWORD",
+  scope:
+    | "REGISTER"
+    | "LOGIN"
+    | "RESEND_OTP"
+    | "VERIFY_OTP"
+    | "EMAIL_CODE_REQUEST"
+    | "EMAIL_CODE_VERIFY"
+    | "FORGOT_PASSWORD"
+    | "RESET_PASSWORD",
   identifier: string,
   limit: number,
   blockSeconds: number,
@@ -163,6 +173,56 @@ async function supersedeOlderVerifications(
     where user_id = ${userId}::uuid and type::text = ${type}
       and id <> ${keepTokenId}::uuid and used_at is null
   `);
+}
+
+async function latestEmailLoginCode(env: Bindings, email: string) {
+  const result = await database(env).execute<{
+    id: string;
+    user_id: string;
+    expires_at: string;
+    used_at: string | null;
+    attempts: number;
+    last_sent_at: string;
+  }>(sql`
+    select
+      codes.id,
+      codes.user_id,
+      codes.expires_at::text,
+      codes.used_at::text,
+      codes.attempts,
+      codes.last_sent_at::text
+    from app_private.email_login_codes codes
+    join public.users users on users.id = codes.user_id
+    where users.email = ${email}
+      and users.deleted_at is null
+      and users.status::text = 'ACTIVE'
+      and users.email_verified_at is not null
+    order by codes.created_at desc
+    limit 1
+  `);
+  return firstRow(result);
+}
+
+async function createEmailLoginCode(env: Bindings, userId: string) {
+  const code = generateOtp();
+  const tokenId = crypto.randomUUID();
+  const tokenHash = await hashOtp(env, code);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  await database(env).execute(sql`
+    insert into app_private.email_login_codes (
+      id, user_id, token_hash, expires_at, attempts, last_sent_at
+    ) values (
+      ${tokenId}::uuid, ${userId}::uuid, ${tokenHash},
+      ${expiresAt}::timestamptz, 0, now()
+    )
+    on conflict (user_id) where used_at is null do update set
+      token_hash = excluded.token_hash,
+      expires_at = excluded.expires_at,
+      attempts = 0,
+      last_sent_at = now(),
+      created_at = now()
+  `);
+  return { code, tokenId };
 }
 
 async function sendFreshEmailVerification(
@@ -503,6 +563,86 @@ authRoutes.post("/verify-email", async (context) => {
     idempotencyKey: `welcome-${userRecord.id}`,
   }).catch(() => undefined));
 
+  return context.json(session);
+});
+
+authRoutes.post("/email-code/request", async (context) => {
+  const parsed = emailCodeRequestSchema.safeParse(await body(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter a valid email address.");
+  requireEmailProvider(context.env);
+  await consumeAuthRateLimit(context, "EMAIL_CODE_REQUEST", parsed.data.email, 5, 900);
+
+  const user = await findUserByEmail(context.env, parsed.data.email);
+  if (!user?.email_verified_at) return context.json({ status: "accepted" }, 202);
+
+  const latest = await latestEmailLoginCode(context.env, parsed.data.email);
+  if (latest && Date.now() - new Date(latest.last_sent_at).getTime() < 60_000) {
+    return context.json({ status: "accepted" }, 202);
+  }
+
+  const loginCode = await createEmailLoginCode(context.env, user.id);
+  await sendMail(context.env, {
+    to: user.email,
+    firstName: user.first_name,
+    code: loginCode.code,
+    kind: "agent-login",
+    idempotencyKey: `agent-login-${loginCode.tokenId}`,
+  }).catch(() => undefined);
+  return context.json({ status: "accepted" }, 202);
+});
+
+authRoutes.post("/email-code/verify", async (context) => {
+  const parsed = emailCodeVerifySchema.safeParse(await body(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter the six-digit code from your email.");
+  const rateLimitKey = await consumeAuthRateLimit(
+    context,
+    "EMAIL_CODE_VERIFY",
+    parsed.data.email,
+    20,
+    900,
+  );
+  const token = await latestEmailLoginCode(context.env, parsed.data.email);
+  if (!token) verificationFailure("INVALID");
+
+  const suppliedHash = await hashOtp(context.env, parsed.data.code);
+  const consumed = await database(context.env).execute<{ result: string }>(sql`
+    update app_private.email_login_codes
+    set
+      attempts = case
+        when token_hash = ${suppliedHash} then attempts
+        else attempts + 1
+      end,
+      used_at = case
+        when token_hash = ${suppliedHash} then now()
+        else used_at
+      end
+    where id = ${token.id}::uuid
+      and used_at is null
+      and expires_at > now()
+      and attempts < 5
+    returning case
+      when token_hash = ${suppliedHash} then 'VERIFIED'
+      when attempts >= 5 then 'LOCKED'
+      else 'INCORRECT'
+    end as result
+  `);
+  const verificationResult = firstRow(consumed)?.result ?? "INVALID";
+  if (verificationResult !== "VERIFIED") verificationFailure(verificationResult);
+
+  const userRecord = await findUserByEmail(context.env, parsed.data.email);
+  if (!userRecord?.email_verified_at) {
+    throw new AppError(401, "UNAUTHENTICATED", "That code is incorrect, expired, or already used.");
+  }
+  await database(context.env).execute(sql`
+    update public.users set last_login_at = now(), updated_at = now()
+    where id = ${userRecord.id}::uuid
+  `);
+  const session = await createSession(context.env, toAuthenticatedUser(userRecord), {
+    ...requestMetadata(context),
+    ...(parsed.data.deviceLabel ? { deviceLabel: parsed.data.deviceLabel } : {}),
+  });
+  await clearAuthRateLimit(context.env, "EMAIL_CODE_VERIFY", rateLimitKey);
+  maybeSetWebCookies(context, context.env, session);
   return context.json(session);
 });
 

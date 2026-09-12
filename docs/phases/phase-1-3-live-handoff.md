@@ -22,7 +22,7 @@ No phase should be labelled `LIVE` merely because its screens compile. A phase b
 
 ### Phase 2 — controlled tutorial pilot
 
-- Separate agent signup/login/session flow using the shared verified identity.
+- Agent web sessions use a six-digit email code against the existing verified KampusOne identity; the portal never creates a separate agent account or password.
 - Tutor application fields, role terms, layered manual-review records, identity/phone/bank result fields, approval guard, and an audit trail.
 - Tutor listings and learning materials with submission, administrator moderation, publishing, pause/archive, and safe removal transitions.
 - Future availability windows; the database locks a selected window, enforces server-calculated price and capacity, and rejects duplicate/late bookings.

@@ -80,6 +80,19 @@ describe("KampusOne Worker", () => {
     expect(body.error.message).toContain("Email delivery");
   });
 
+  it("requires email delivery before starting passwordless agent access", async () => {
+    const response = await app.request("http://local.test/v1/auth/email-code/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "student@example.com" }),
+    }, env);
+    const body = (await response.json()) as { error: { code: string; message: string } };
+
+    expect(response.status).toBe(503);
+    expect(body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(body.error.message).toContain("Email delivery");
+  });
+
   it("uses the stable error envelope", async () => {
     const response = await app.request("http://local.test/missing", {}, env);
     const body = (await response.json()) as {

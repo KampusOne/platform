@@ -1,7 +1,7 @@
 import type { Bindings } from "../types";
 import { AppError } from "./errors";
 
-type MailKind = "verification" | "password-reset" | "welcome";
+type MailKind = "verification" | "password-reset" | "agent-login" | "welcome";
 
 type MailInput = {
   to: string;
@@ -23,6 +23,11 @@ const copy = {
     subject: "Reset your KampusOne password",
     heading: "Reset your password safely.",
     intro: "Use this code to choose a new password. If you did not request this, you can ignore this email.",
+  },
+  "agent-login": {
+    subject: "Your KampusOne agent sign-in code",
+    heading: "Continue to your agent workspace.",
+    intro: "Use this one-time code to continue as an agent with your existing KampusOne account.",
   },
   welcome: {
     subject: "Welcome to KampusOne",

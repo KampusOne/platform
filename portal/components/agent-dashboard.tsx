@@ -247,6 +247,12 @@ export function AgentDashboard() {
         if (active) {
           setDashboard(nextDashboard);
           setCatalog(nextCatalog);
+          if (
+            nextDashboard.applications.length === 0 &&
+            nextDashboard.profiles.length === 0
+          ) {
+            setView("apply");
+          }
         }
       })
       .catch((caught) => {

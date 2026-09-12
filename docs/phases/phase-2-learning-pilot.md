@@ -16,6 +16,8 @@ Support owner: existing platform administrator (`igiehongideon52@gmail.com`)
 - Tutorial, Store, Logistics, and Payments are independently gated. Tutorials are enabled for the controlled production pilot; Store, Logistics, Marketplace, and Payments remain off.
 - Payment attempts are idempotent and auditable for later activation; free pilot bookings bypass Paystack entirely.
 - Native rotating refresh tokens are persisted with encrypted device storage; web sessions continue to use secure HttpOnly cookies.
+- The agent portal now uses the student’s existing KampusOne identity: email, a six-digit one-time code, then a separate revocable agent-web session. It never creates a second agent account or password.
+- First-time verified users are taken directly to role onboarding; returning applicants and approved agents return to the same data-backed dashboard.
 
 ## Zero-cost pilot boundary
 
@@ -34,7 +36,7 @@ Tutor approval during this pilot is manual and must remain limited to the named 
 ## First administrator access
 
 - Current portal URL: `https://kampusone-platform-preview.vercel.app/admin`.
-- Current agent URL: `https://agents.kampusone.app`; the hostname routes directly to agent registration, applications, and the authenticated workspace.
+- Current agent URL: `https://agents.kampusone.app`; the hostname routes directly to shared-account email-code access, role applications, and the authenticated workspace.
 - Intended custom URL: `https://admin.kampusone.app` after its route is attached; it is not the current sign-in URL.
 - Sign-in identifier: email; there is no separate username.
 - Existing deployment: use the already provisioned platform-administrator email. If its password is unknown, choose **Forgot your password?** and use the code delivered to that mailbox.
@@ -49,6 +51,7 @@ Tutor approval during this pilot is manual and must remain limited to the named 
 4. Seeded four free demo tutorials and five preview-only demo materials for UNIBEN under the platform administrator, with an audit event.
 5. Recorded `PHASE_2_MIGRATION_20260912_READY=true` as a GitHub repository variable and enabled the production schema/tutorial bindings in the reviewed release.
 6. Kept `PAYMENTS_ENABLED=false`, `STORE_ENABLED=false`, `LOGISTICS_ENABLED=false`, and `MARKETPLACE_ENABLED=false` for the free pilot.
+7. Rehearsed `database/neon/migrations/20260912010000_shared_agent_email_login.sql` on a production branch, proved replacement, expiry, five-attempt locking, one-time consumption, and private grants, then applied the exact additive migration to production.
 
 ## Remaining owner requirements
 
@@ -67,6 +70,7 @@ Tutor approval during this pilot is manual and must remain limited to the named 
 - The actual Phase 2 migration passes an isolated PostgreSQL-compatible acceptance harness covering demo seed/removal, immediate free booking, staged email verification, and duplicate live-checkout prevention.
 - The same reviewed migration is applied to production. Production contains four free demo tutorials, five preview-only demo resources, and no Phase 2 payment attempts.
 - The live readiness check reports a healthy database, signing key, OTP pepper, and email provider. Public configuration reports Tutorials enabled while Store, Logistics, Marketplace, and Payments remain disabled.
-- `agents.kampusone.app` is attached to the production portal deployment with valid configuration. Its host rewrite serves `/agents`, the Worker accepts its credentialed CORS requests, registration reaches server validation, and the agent dashboard rejects unauthenticated access as expected.
+- `agents.kampusone.app` is attached to the production portal deployment with valid configuration. Its host rewrite serves `/agents`, the Worker accepts its credentialed CORS requests, email-code access reaches server validation, and the agent dashboard rejects unauthenticated access as expected.
+- Passwordless agent codes are hashed with the existing OTP pepper, expire after ten minutes, are rate-limited, reveal no account-existence result at the request endpoint, and cannot interfere with registration-verification or password-reset codes.
 
 Activation commit: [`56dc95f`](https://github.com/KampusOne/platform/commit/56dc95ff9efdba8be945742a5914f8a8849e2fe3). Hosted evidence: [Deploy Worker #17](https://github.com/KampusOne/platform/actions/runs/34688771693) and [Verify platform #41](https://github.com/KampusOne/platform/actions/runs/34688771604), both successful. Physical-device Android acceptance and the remaining admin/engineering custom-domain routes remain separate deployment evidence; the current administrator URL stays `https://kampusone-platform-preview.vercel.app/admin` until its custom domain is attached.

@@ -72,6 +72,8 @@ async function requestPasswordReset(email: string) {
 export const webAuth = {
   refresh,
   async login(email: string, password: string) { const session = await portalApi<Session>("/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password, deviceLabel: "KampusOne web portal" }) }, false); applySession(session); return session; },
+  requestEmailCode(email: string) { return portalApi<{ status: string }>("/v1/auth/email-code/request", { method: "POST", body: JSON.stringify({ email }) }, false); },
+  async verifyEmailCode(email: string, code: string) { const session = await portalApi<Session>("/v1/auth/email-code/verify", { method: "POST", body: JSON.stringify({ email, code, deviceLabel: "KampusOne agent portal" }) }, false); applySession(session); return session; },
   register(input: { email: string; password: string; firstName: string; lastName: string }) { return portalApi<{ status: string }>("/v1/auth/register", { method: "POST", body: JSON.stringify({ ...input, acceptedTerms: true, legalVersion: "2026-09-10" }) }, false); },
   async verify(email: string, code: string) { const session = await portalApi<Session>("/v1/auth/verify-email", { method: "POST", body: JSON.stringify({ email, code, deviceLabel: "KampusOne web portal" }) }, false); applySession(session); return session; },
   resend(email: string) { return portalApi("/v1/auth/resend-verification", { method: "POST", body: JSON.stringify({ email }) }, false); },
