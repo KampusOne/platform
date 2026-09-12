@@ -12,12 +12,17 @@ export class PortalApiError extends Error {
 const connectionError = () => new PortalApiError(
   0,
   "NETWORK_UNAVAILABLE",
-  "The connection was interrupted. Check your internet and try again.",
+  "KampusOne could not reach its server. Your internet may still be working; please try again shortly.",
 );
 
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-const baseUrl = (process.env.NEXT_PUBLIC_KAMPUSONE_API_URL ?? "http://localhost:8787").replace(/\/$/, "");
+const localApiUrl = "http://localhost:8787";
+const deployedApiUrl = "https://platformp.divine-haze-54eb.workers.dev";
+const configuredApiUrl = process.env.NEXT_PUBLIC_KAMPUSONE_API_URL?.trim();
+const isLocalBrowser = typeof window !== "undefined"
+  && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const baseUrl = (configuredApiUrl || (isLocalBrowser ? localApiUrl : deployedApiUrl)).replace(/\/$/, "");
 let accessToken: string | null = null;
 let refreshPromise: Promise<Session | null> | null = null;
 let listener: ((session: Session | null) => void) | null = null;
