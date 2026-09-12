@@ -5,7 +5,6 @@ import {
   agentApplicationSchema,
   completionConfirmationSchema,
   handoffCodeSchema,
-  listingStateSchema,
   orderStateSchema,
   payoutRequestSchema,
   riderPresenceSchema,
@@ -16,6 +15,7 @@ import {
   tutorialResourceSchema,
   tutorialResourceStateSchema,
   vendorProductSchema,
+  vendorProductStateSchema,
 } from "@kampusone/contracts";
 
 import { recordAudit } from "../lib/audit";
@@ -486,7 +486,10 @@ agentRoutes.get("/products", async (context) => {
   const result = await database(context.env).execute(sql`
     select products.id, products.name, products.description, products.category,
       products.price_kobo, products.stock_quantity, products.image_url,
-      products.status, products.created_at, products.updated_at
+      products.status, products.submitted_at, products.moderation_note,
+      products.preparation_minutes, products.package_weight_grams,
+      products.package_length_cm, products.package_width_cm, products.package_height_cm,
+      products.bicycle_delivery_eligible, products.created_at, products.updated_at
     from public.vendor_products products
     join public.agent_profiles profiles on profiles.id = products.vendor_profile_id
     where profiles.user_id = ${user.id}::uuid order by products.updated_at desc
@@ -511,34 +514,72 @@ agentRoutes.post("/products", async (context) => {
   await database(context.env).execute(sql`
     insert into public.vendor_products (
       id, university_id, vendor_profile_id, name, description,
-      category, category_id, price_kobo, stock_quantity, image_url
+      category, category_id, price_kobo, stock_quantity, image_url,
+      preparation_minutes, package_weight_grams, package_length_cm,
+      package_width_cm, package_height_cm, bicycle_delivery_eligible
     ) values (
       ${id}::uuid, ${profile.university_id}::uuid, ${profile.id}::uuid,
       ${parsed.data.name}, ${parsed.data.description}, ${category.name}, ${category.id}::uuid,
-      ${parsed.data.priceKobo}, ${parsed.data.stockQuantity}, ${parsed.data.imageUrl ?? null}
+      ${parsed.data.priceKobo}, ${parsed.data.stockQuantity}, ${parsed.data.imageUrl ?? null},
+      ${parsed.data.preparationMinutes}, ${parsed.data.packageWeightGrams ?? null},
+      ${parsed.data.packageLengthCm ?? null}, ${parsed.data.packageWidthCm ?? null},
+      ${parsed.data.packageHeightCm ?? null}, ${parsed.data.bicycleDeliveryEligible}
     )
   `);
   return context.json({ id, status: "DRAFT" }, 201);
 });
 
 agentRoutes.patch("/products/:id/status", async (context) => {
+  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
   const user = currentUser(context);
-  const parsed = listingStateSchema.safeParse(await body(context));
+  const parsed = vendorProductStateSchema.safeParse(await body(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a valid product status.");
-  const result = await database(context.env).execute<{ id: string }>(sql`
-    update public.vendor_products products set status = ${parsed.data.status}, updated_at = now()
+  const result = await database(context.env).execute<{ id: string; university_id: string }>(sql`
+    update public.vendor_products products set
+      status = ${parsed.data.status},
+      submitted_at = case when ${parsed.data.status} = 'SUBMITTED' then now() else products.submitted_at end,
+      moderation_note = case when ${parsed.data.status} = 'SUBMITTED' then null else products.moderation_note end,
+      reviewed_by_user_id = case when ${parsed.data.status} = 'SUBMITTED' then null else products.reviewed_by_user_id end,
+      reviewed_at = case when ${parsed.data.status} = 'SUBMITTED' then null else products.reviewed_at end,
+      moderated_revision = case when ${parsed.data.status} = 'SUBMITTED' then null else products.moderated_revision end,
+      updated_at = now()
     from public.agent_profiles profiles, public.product_categories categories
     where products.id = ${context.req.param("id")}::uuid and products.vendor_profile_id = profiles.id
       and profiles.user_id = ${user.id}::uuid and profiles.agent_type = 'VENDOR'
       and profiles.status = 'ACTIVE' and categories.id = products.category_id
       and categories.status = 'APPROVED'
       and (products.status = ${parsed.data.status}
-        or (products.status = 'DRAFT' and ${parsed.data.status} in ('PUBLISHED','ARCHIVED'))
+        or (products.status in ('DRAFT','NEEDS_CORRECTION') and ${parsed.data.status} = 'SUBMITTED'
+          and products.package_weight_grams is not null
+          and products.package_length_cm is not null
+          and products.package_width_cm is not null
+          and products.package_height_cm is not null
+          and products.bicycle_delivery_eligible = true)
+        or (products.status in ('DRAFT','NEEDS_CORRECTION','SUBMITTED','REJECTED') and ${parsed.data.status} = 'ARCHIVED')
         or (products.status = 'PUBLISHED' and ${parsed.data.status} in ('PAUSED','ARCHIVED'))
-        or (products.status = 'PAUSED' and ${parsed.data.status} in ('PUBLISHED','ARCHIVED')))
-    returning products.id
+        or (products.status = 'PAUSED' and ${parsed.data.status} in ('PUBLISHED','ARCHIVED')
+          and products.reviewed_at is not null
+          and products.moderated_revision = products.listing_revision))
+    returning products.id, products.university_id
   `);
-  if (!firstRow(result)) throw new AppError(409, "CONFLICT", "That product status change is not allowed.");
+  const product = firstRow(result);
+  if (!product) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      parsed.data.status === "SUBMITTED"
+        ? "Add complete bicycle-package details before submitting this product for review."
+        : "That product status change is not allowed.",
+    );
+  }
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: product.university_id,
+    action: `product.${parsed.data.status.toLowerCase()}`,
+    targetType: "vendor_product",
+    targetId: product.id,
+    requestId: context.get("requestId"),
+  });
   return context.json({ status: parsed.data.status });
 });
 

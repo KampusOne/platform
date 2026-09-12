@@ -34,3 +34,5 @@ The repository now contains data-backed Phase 1 student utility, Phase 2 tutoria
 This source tree is not the same thing as a production release. Production remains gated until the owner supplies provider credentials and policies, the reviewed Neon migrations are promoted, the applications are deployed to their real domains, and acceptance tests pass. See [the Phase 1–3 implementation and launch handoff](docs/phases/phase-1-3-live-handoff.md).
 
 Phase 2 can run first as a free, controlled tutorial pilot without SMS, WhatsApp, paid KYC, Paystack, or managed file storage. See the [Phase 2 learning pilot handoff](docs/phases/phase-2-learning-pilot.md) for the exact activation order and remaining owner inputs.
+
+Phase 3 has begun with a dark commerce foundation. Its migration, contracts and transactional controls are rehearsed, but production Store, Logistics, Marketplace and Payments remain disabled while the vendor UI, checkout quote, delivery policy and finance controls are completed. See the [Phase 3 commerce foundation handoff](docs/phases/phase-3-commerce-foundation.md).

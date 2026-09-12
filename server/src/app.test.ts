@@ -14,6 +14,7 @@ const env: Bindings = {
   SOCIAL_FEED_ENABLED: "false",
   MARKETPLACE_ENABLED: "false",
   PHASE_2_SCHEMA_READY: "true",
+  PHASE_3_SCHEMA_READY: "false",
   TUTORIALS_ENABLED: "true",
   STORE_ENABLED: "false",
   LOGISTICS_ENABLED: "false",
@@ -50,6 +51,51 @@ describe("KampusOne Worker", () => {
     const body = publicConfigSchema.parse(await response.json());
 
     expect(body.features.tutorials).toBe(false);
+  });
+
+  it("keeps Store and Logistics off until the Phase 3 schema is ready", async () => {
+    const response = await app.request("http://local.test/v1/config/public", {}, {
+      ...env,
+      MARKETPLACE_ENABLED: "true",
+      PHASE_3_SCHEMA_READY: "false",
+      STORE_ENABLED: "true",
+      LOGISTICS_ENABLED: "true",
+    });
+    const body = publicConfigSchema.parse(await response.json());
+
+    expect(body.features.store).toBe(false);
+    expect(body.features.logistics).toBe(false);
+    expect(body.features.marketplace).toBe(false);
+  });
+
+  it("allows Store and Logistics only after their flags and Phase 3 schema gate are ready", async () => {
+    const response = await app.request("http://local.test/v1/config/public", {}, {
+      ...env,
+      PHASE_3_SCHEMA_READY: "true",
+      STORE_ENABLED: "true",
+      LOGISTICS_ENABLED: "true",
+      MARKETPLACE_ENABLED: "true",
+    });
+    const body = publicConfigSchema.parse(await response.json());
+
+    expect(body.features.store).toBe(true);
+    expect(body.features.logistics).toBe(true);
+    expect(body.features.marketplace).toBe(true);
+  });
+
+  it("does not let the legacy Marketplace flag enable Store or Logistics", async () => {
+    const response = await app.request("http://local.test/v1/config/public", {}, {
+      ...env,
+      PHASE_3_SCHEMA_READY: "true",
+      STORE_ENABLED: undefined,
+      LOGISTICS_ENABLED: undefined,
+      MARKETPLACE_ENABLED: "true",
+    });
+    const body = publicConfigSchema.parse(await response.json());
+
+    expect(body.features.store).toBe(false);
+    expect(body.features.logistics).toBe(false);
+    expect(body.features.marketplace).toBe(true);
   });
 
   it("does not report ready until server-only configuration exists", async () => {

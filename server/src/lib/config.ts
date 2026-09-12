@@ -16,7 +16,7 @@ export function getPublicConfig(env: Bindings): PublicConfig {
       tutorials: featureEnabled(env, "TUTORIALS_ENABLED"),
       store: featureEnabled(env, "STORE_ENABLED"),
       logistics: featureEnabled(env, "LOGISTICS_ENABLED"),
-      marketplace: featureEnabled(env, "STORE_ENABLED"),
+      marketplace: featureEnabled(env, "MARKETPLACE_ENABLED"),
       payments: enabled(env.PAYMENTS_ENABLED),
       aiAssistant: enabled(env.AI_ASSISTANT_ENABLED),
     },

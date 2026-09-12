@@ -11,6 +11,7 @@ import {
   paymentEventReviewSchema,
   payoutReviewSchema,
   productCategorySchema,
+  productModerationSchema,
   reviewAgentApplicationSchema,
   tutorialDemoSeedSchema,
   tutorialModerationSchema,
@@ -19,7 +20,7 @@ import {
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { featureEnabled, requireFeature } from "../lib/features";
+import { featureEnabled, phase3SchemaReady, requireFeature } from "../lib/features";
 import { equalHash, sha256 } from "../lib/security";
 import { currentUser, requireAuth, requireOperator } from "../middleware/auth";
 import type { AuthenticatedUser, Bindings, Variables } from "../types";
@@ -713,17 +714,45 @@ adminRoutes.get("/audit", async (context) => {
 adminRoutes.get("/operations", async (context) => {
   const user = currentUser(context);
   const scope = await adminScope(context.env, user, context.req.query("universityId"));
-  const [categories, zones, disputes, payouts, paymentEvents] = await Promise.all([
+  const [categories, products, zones, disputes, payouts, paymentEvents] = await Promise.all([
     database(context.env).execute(sql`
       select id, university_id, name, status, listing_rules, reviewed_at, updated_at
       from public.product_categories where ${scope}::uuid is null or university_id = ${scope}::uuid
       order by status, name
     `),
-    database(context.env).execute(sql`
-      select id, university_id, name, base_fee_kobo, active, created_at
-      from public.delivery_zones where ${scope}::uuid is null or university_id = ${scope}::uuid
-      order by active desc, name
-    `),
+    phase3SchemaReady(context.env)
+      ? database(context.env).execute(sql`
+          select products.id, products.university_id, products.name, products.description,
+            products.category, products.price_kobo, products.stock_quantity, products.image_url,
+            products.status, products.submitted_at, products.moderation_note,
+            products.preparation_minutes, products.package_weight_grams,
+            products.package_length_cm, products.package_width_cm, products.package_height_cm,
+            products.bicycle_delivery_eligible, products.listing_revision,
+            profiles.display_name as vendor_name
+          from public.vendor_products products
+          join public.agent_profiles profiles on profiles.id = products.vendor_profile_id
+          where (${scope}::uuid is null or products.university_id = ${scope}::uuid)
+            and products.status in ('SUBMITTED', 'NEEDS_CORRECTION', 'REJECTED', 'PUBLISHED', 'PAUSED')
+          order by case products.status when 'SUBMITTED' then 0 else 1 end,
+            products.submitted_at desc nulls last, products.updated_at desc
+          limit 250
+        `)
+      : Promise.resolve({ rows: [] }),
+    phase3SchemaReady(context.env)
+      ? database(context.env).execute(sql`
+          select id, university_id, name, base_fee_kobo, active, operating_hours,
+            max_package_weight_grams, max_package_dimension_cm, rider_earning_kobo,
+            earning_formula_version, reservation_timeout_minutes, created_at, updated_at
+          from public.delivery_zones
+          where ${scope}::uuid is null or university_id = ${scope}::uuid
+          order by active desc, name
+        `)
+      : database(context.env).execute(sql`
+          select id, university_id, name, base_fee_kobo, active, created_at
+          from public.delivery_zones
+          where ${scope}::uuid is null or university_id = ${scope}::uuid
+          order by active desc, name
+        `),
     database(context.env).execute(sql`
       select disputes.id, disputes.category, disputes.reason, disputes.status,
         disputes.tutorial_booking_id, disputes.order_id, disputes.resolution_code,
@@ -761,7 +790,7 @@ adminRoutes.get("/operations", async (context) => {
         events.received_at desc limit 200
     `),
   ]);
-  return context.json({ categories: categories.rows, zones: zones.rows,
+  return context.json({ categories: categories.rows, products: products.rows, zones: zones.rows,
     disputes: disputes.rows, payoutRequests: payouts.rows, paymentEvents: paymentEvents.rows });
 });
 
@@ -841,7 +870,83 @@ adminRoutes.post("/operations/categories", async (context) => {
   return context.json({ id: categoryId, status: parsed.data.status }, 201);
 });
 
+adminRoutes.post("/operations/products/:id/review", async (context) => {
+  if (!phase3SchemaReady(context.env)) {
+    throw new AppError(503, "FEATURE_DISABLED", "Product moderation is waiting for the reviewed Phase 3 schema migration.");
+  }
+  const user = currentUser(context);
+  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role))) {
+    throw new AppError(403, "FORBIDDEN", "An institution administrator role is required.");
+  }
+  const parsed = productModerationSchema.safeParse(await body(context));
+  if (!parsed.success) {
+    throw new AppError(400, "BAD_REQUEST", "Document a valid product-review decision.");
+  }
+  const existingResult = await database(context.env).execute<{
+    id: string; university_id: string; status: string;
+  }>(sql`
+    select id, university_id, status from public.vendor_products
+    where id = ${context.req.param("id")}::uuid limit 1
+  `);
+  const existing = firstRow(existingResult);
+  if (!existing) throw new AppError(404, "NOT_FOUND", "That product does not exist.");
+  await adminScope(context.env, user, existing.university_id);
+
+  const updated = await database(context.env).execute<{ id: string; university_id: string }>(sql`
+    update public.vendor_products products set
+      status = ${parsed.data.status},
+      moderation_note = ${parsed.data.note},
+      reviewed_by_user_id = ${user.id}::uuid,
+      reviewed_at = now(),
+      moderated_revision = case
+        when ${parsed.data.status} = 'PUBLISHED' then products.listing_revision
+        else null
+      end,
+      updated_at = now()
+    from public.agent_profiles profiles, public.product_categories categories
+    where products.id = ${existing.id}::uuid
+      and products.status = 'SUBMITTED'
+      and profiles.id = products.vendor_profile_id
+      and profiles.agent_type = 'VENDOR'
+      and profiles.status = 'ACTIVE'
+      and categories.id = products.category_id
+      and categories.status = 'APPROVED'
+      and (
+        ${parsed.data.status} <> 'PUBLISHED'
+        or (
+          products.package_weight_grams is not null
+          and products.package_length_cm is not null
+          and products.package_width_cm is not null
+          and products.package_height_cm is not null
+          and products.bicycle_delivery_eligible = true
+        )
+      )
+    returning products.id, products.university_id
+  `);
+  const product = firstRow(updated);
+  if (!product) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Only a submitted product from an active vendor in an approved category can be reviewed.",
+    );
+  }
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: product.university_id,
+    action: "product.reviewed",
+    targetType: "vendor_product",
+    targetId: product.id,
+    requestId: context.get("requestId"),
+    metadata: { decision: parsed.data.status, note: parsed.data.note },
+  });
+  return context.json({ id: product.id, status: parsed.data.status });
+});
+
 adminRoutes.post("/operations/zones", async (context) => {
+  if (!phase3SchemaReady(context.env)) {
+    throw new AppError(503, "FEATURE_DISABLED", "Delivery-zone policy is waiting for the reviewed Phase 3 schema migration.");
+  }
   const user = currentUser(context);
   if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role))) {
     throw new AppError(403, "FORBIDDEN", "An institution administrator role is required.");
@@ -851,16 +956,43 @@ adminRoutes.post("/operations/zones", async (context) => {
   await adminScope(context.env, user, parsed.data.universityId);
   const id = crypto.randomUUID();
   const result = await database(context.env).execute<{ id: string }>(sql`
-    insert into public.delivery_zones (id, university_id, name, base_fee_kobo, active)
+    insert into public.delivery_zones (
+      id, university_id, name, base_fee_kobo, active, operating_hours,
+      max_package_weight_grams, max_package_dimension_cm, rider_earning_kobo,
+      earning_formula_version, reservation_timeout_minutes
+    )
     values (${id}::uuid, ${parsed.data.universityId}::uuid, ${parsed.data.name},
-      ${parsed.data.baseFeeKobo}, ${parsed.data.active})
+      ${parsed.data.baseFeeKobo}, ${parsed.data.active},
+      coalesce(${parsed.data.operatingHours === undefined ? null : JSON.stringify(parsed.data.operatingHours)}::jsonb, '{}'::jsonb),
+      ${parsed.data.maxPackageWeightGrams ?? null}, ${parsed.data.maxPackageDimensionCm ?? null},
+      ${parsed.data.riderEarningKobo ?? null}, ${parsed.data.earningFormulaVersion ?? "UNCONFIGURED"},
+      ${parsed.data.reservationTimeoutMinutes ?? 10})
     on conflict (university_id, name) do update set base_fee_kobo = excluded.base_fee_kobo,
-      active = excluded.active returning id
+      active = excluded.active,
+      operating_hours = case when ${parsed.data.operatingHours !== undefined}
+        then excluded.operating_hours else delivery_zones.operating_hours end,
+      max_package_weight_grams = case when ${parsed.data.maxPackageWeightGrams !== undefined}
+        then excluded.max_package_weight_grams else delivery_zones.max_package_weight_grams end,
+      max_package_dimension_cm = case when ${parsed.data.maxPackageDimensionCm !== undefined}
+        then excluded.max_package_dimension_cm else delivery_zones.max_package_dimension_cm end,
+      rider_earning_kobo = case when ${parsed.data.riderEarningKobo !== undefined}
+        then excluded.rider_earning_kobo else delivery_zones.rider_earning_kobo end,
+      earning_formula_version = case when ${parsed.data.earningFormulaVersion !== undefined}
+        then excluded.earning_formula_version else delivery_zones.earning_formula_version end,
+      reservation_timeout_minutes = case when ${parsed.data.reservationTimeoutMinutes !== undefined}
+        then excluded.reservation_timeout_minutes else delivery_zones.reservation_timeout_minutes end,
+      updated_at = now() returning id
   `);
   const zoneId = firstRow(result)?.id ?? id;
   await recordAudit(context.env, { actorUserId: user.id, universityId: parsed.data.universityId,
     action: "delivery.zone.saved", targetType: "delivery_zone", targetId: zoneId,
-    requestId: context.get("requestId"), metadata: { baseFeeKobo: parsed.data.baseFeeKobo, active: parsed.data.active } });
+    requestId: context.get("requestId"), metadata: {
+      baseFeeKobo: parsed.data.baseFeeKobo,
+      active: parsed.data.active,
+      ...(parsed.data.earningFormulaVersion
+        ? { earningFormulaVersion: parsed.data.earningFormulaVersion }
+        : {}),
+    } });
   return context.json({ id: zoneId, active: parsed.data.active }, 201);
 });
 

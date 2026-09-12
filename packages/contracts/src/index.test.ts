@@ -5,7 +5,9 @@ import {
   emailCodeRequestSchema,
   emailCodeVerifySchema,
   paymentInitializationSchema,
+  productModerationSchema,
   publicConfigSchema,
+  storeOrderSchema,
   tutorialListingSchema,
   tutorialResourceSchema,
   tutorialReviewSchema,
@@ -111,6 +113,39 @@ describe("shared API contracts", () => {
     expect(() => paymentInitializationSchema.parse({
       resourceType: "TUTORIAL_BOOKING",
       resourceId: "00000000-0000-4000-8000-000000000001",
+    })).toThrow();
+  });
+
+  it("requires an immutable Phase 3 delivery snapshot", () => {
+    const order = storeOrderSchema.parse({
+      vendorProfileId: "00000000-0000-4000-8000-000000000001",
+      deliveryZoneId: "00000000-0000-4000-8000-000000000002",
+      recipientName: "Ada Student",
+      recipientPhoneE164: "+2348031234567",
+      deliveryLocation: "Hall 2 main entrance",
+      deliveryLandmark: "Beside the porter lodge",
+      items: [{ productId: "00000000-0000-4000-8000-000000000003", quantity: 2 }],
+    });
+
+    expect(order.recipientPhoneE164).toBe("+2348031234567");
+    expect(() => storeOrderSchema.parse({
+      ...order,
+      recipientPhoneE164: "08031234567",
+    })).toThrow();
+    expect(() => storeOrderSchema.parse({
+      ...order,
+      deliveryLatitude: 6.335,
+    })).toThrow();
+  });
+
+  it("requires a documented product moderation decision", () => {
+    expect(productModerationSchema.parse({
+      status: "PUBLISHED",
+      note: "Approved for the low-risk pilot catalogue.",
+    }).status).toBe("PUBLISHED");
+    expect(() => productModerationSchema.parse({
+      status: "PUBLISHED",
+      note: "",
     })).toThrow();
   });
 });
