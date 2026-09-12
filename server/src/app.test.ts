@@ -13,6 +13,7 @@ const env: Bindings = {
   ACADEMIC_CORE_ENABLED: "true",
   SOCIAL_FEED_ENABLED: "false",
   MARKETPLACE_ENABLED: "false",
+  PHASE_2_SCHEMA_READY: "true",
   TUTORIALS_ENABLED: "true",
   STORE_ENABLED: "false",
   LOGISTICS_ENABLED: "false",

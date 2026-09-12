@@ -6,7 +6,7 @@ import { paymentInitializationSchema } from "@kampusone/contracts";
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { requireFeature } from "../lib/features";
+import { phase2SchemaReady, requireFeature } from "../lib/features";
 import { initializePaystack, validPaystackSignature } from "../lib/paystack";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
@@ -15,6 +15,9 @@ export const paymentRoutes = new Hono<{ Bindings: Bindings; Variables: Variables
 
 paymentRoutes.post("/initialize", requireAuth, async (context) => {
   requireFeature(context.env, "PAYMENTS_ENABLED", "Payments are not enabled in this environment.");
+  if (!phase2SchemaReady(context.env)) {
+    throw new AppError(503, "FEATURE_DISABLED", "Payments are waiting for the reviewed Phase 2 schema migration.");
+  }
   const parsed = paymentInitializationSchema.safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "The payment request is invalid.");
   const user = currentUser(context);
@@ -134,6 +137,10 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
 });
 
 paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
+  requireFeature(context.env, "PAYMENTS_ENABLED", "Payments are not enabled in this environment.");
+  if (!phase2SchemaReady(context.env)) {
+    throw new AppError(503, "FEATURE_DISABLED", "Payment status is waiting for the reviewed Phase 2 schema migration.");
+  }
   const user = currentUser(context);
   const result = await database(context.env).execute<{
     provider_reference: string; status: string; resource_type: string; resource_id: string;
@@ -152,6 +159,9 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
   const raw = await context.req.text();
   if (!await validPaystackSignature(context.env, raw, context.req.header("X-Paystack-Signature"))) {
     throw new AppError(401, "UNAUTHENTICATED", "The payment event signature is invalid.");
+  }
+  if (!phase2SchemaReady(context.env)) {
+    return context.json({ status: "schema_not_ready" }, 202);
   }
   const event = JSON.parse(raw) as {
     event?: string;

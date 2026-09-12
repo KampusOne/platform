@@ -15,7 +15,7 @@ import {
 
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { featureEnabled, requireFeature } from "../lib/features";
+import { featureEnabled, phase2SchemaReady, requireFeature } from "../lib/features";
 import { deriveHandoffCode } from "../lib/security";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
@@ -756,21 +756,36 @@ studentRoutes.post("/orders", async (context) => {
 
 studentRoutes.get("/purchases", async (context) => {
   const user = currentUser(context);
+  const bookingRecords = phase2SchemaReady(context.env)
+    ? database(context.env).execute(sql`
+        select bookings.id, bookings.status, bookings.amount_kobo, bookings.scheduled_for,
+          windows.ends_at as completion_available_at,
+          bookings.created_at, listings.title, listings.course_code,
+          coalesce(profiles.display_name, listings.publisher_name, 'KampusOne tutor') as tutor_name,
+          reviews.id as review_id, reviews.rating as review_rating
+        from public.tutorial_bookings bookings
+        join public.tutorial_listings listings on listings.id = bookings.listing_id
+        left join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
+        left join public.tutorial_reviews reviews on reviews.booking_id = bookings.id
+        left join public.tutorial_availability_windows windows
+          on windows.id = bookings.availability_window_id and windows.listing_id = bookings.listing_id
+        where bookings.student_user_id = ${user.id}::uuid order by bookings.created_at desc limit 100
+      `)
+    : database(context.env).execute(sql`
+        select bookings.id, bookings.status, bookings.amount_kobo, bookings.scheduled_for,
+          windows.ends_at as completion_available_at,
+          bookings.created_at, listings.title, listings.course_code,
+          profiles.display_name as tutor_name,
+          null::uuid as review_id, null::smallint as review_rating
+        from public.tutorial_bookings bookings
+        join public.tutorial_listings listings on listings.id = bookings.listing_id
+        join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
+        left join public.tutorial_availability_windows windows
+          on windows.id = bookings.availability_window_id and windows.listing_id = bookings.listing_id
+        where bookings.student_user_id = ${user.id}::uuid order by bookings.created_at desc limit 100
+      `);
   const [bookings, orders] = await Promise.all([
-    database(context.env).execute(sql`
-      select bookings.id, bookings.status, bookings.amount_kobo, bookings.scheduled_for,
-        windows.ends_at as completion_available_at,
-        bookings.created_at, listings.title, listings.course_code,
-        coalesce(profiles.display_name, listings.publisher_name, 'KampusOne tutor') as tutor_name,
-        reviews.id as review_id, reviews.rating as review_rating
-      from public.tutorial_bookings bookings
-      join public.tutorial_listings listings on listings.id = bookings.listing_id
-      left join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
-      left join public.tutorial_reviews reviews on reviews.booking_id = bookings.id
-      left join public.tutorial_availability_windows windows
-        on windows.id = bookings.availability_window_id and windows.listing_id = bookings.listing_id
-      where bookings.student_user_id = ${user.id}::uuid order by bookings.created_at desc limit 100
-    `),
+    bookingRecords,
     database(context.env).execute(sql`
       select orders.id, orders.status, orders.subtotal_kobo, orders.delivery_fee_kobo,
         orders.total_kobo, orders.created_at, profiles.display_name as vendor_name

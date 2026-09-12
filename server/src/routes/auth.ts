@@ -17,6 +17,7 @@ import { clearSessionCookies, refreshCookie, setSessionCookies } from "../middle
 import { database, firstRow } from "../lib/database";
 import { requireEmailProvider, sendMail } from "../lib/email";
 import { AppError } from "../lib/errors";
+import { phase2SchemaReady } from "../lib/features";
 import { generateOtp, hashOtp, hashPassword, sha256, validatePassword, verifyPassword } from "../lib/security";
 import {
   createSession,
@@ -171,7 +172,7 @@ async function sendFreshEmailVerification(
   const latest = await latestVerification(env, user.email, "EMAIL_VERIFICATION");
   if (latest && Date.now() - new Date(latest.last_sent_at).getTime() < 60_000) return;
 
-  if (env.PHASE_2_SCHEMA_READY?.toLowerCase() !== "true") {
+  if (!phase2SchemaReady(env)) {
     const verification = await createVerification(env, user.id, "EMAIL_VERIFICATION");
     await sendMail(env, {
       to: user.email,
@@ -280,7 +281,7 @@ async function sendRegistrationVerification(
   user: { id: string; email: string; first_name: string | null },
   input: RegisterInput,
 ) {
-  if (context.env.PHASE_2_SCHEMA_READY?.toLowerCase() === "true") {
+  if (phase2SchemaReady(context.env)) {
     await stagePendingRegistration(context, user, input);
     return;
   }
