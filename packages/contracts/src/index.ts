@@ -269,6 +269,31 @@ export const vendorProductSchema = z.object({
   priceKobo: z.number().int().min(0).max(100_000_000),
   stockQuantity: z.number().int().min(0).max(1_000_000),
   imageUrl: z.string().url().nullable().optional(),
+  preparationMinutes: z.number().int().min(10).max(1440).default(60),
+  packageWeightGrams: z.number().int().min(1).max(50_000).nullable().optional(),
+  packageLengthCm: z.number().min(1).max(200).nullable().optional(),
+  packageWidthCm: z.number().min(1).max(200).nullable().optional(),
+  packageHeightCm: z.number().min(1).max(200).nullable().optional(),
+  bicycleDeliveryEligible: z.boolean().default(false),
+}).superRefine((value, context) => {
+  const dimensions = [value.packageLengthCm, value.packageWidthCm, value.packageHeightCm];
+  const supplied = dimensions.filter((dimension) => dimension != null).length;
+  if (supplied !== 0 && supplied !== dimensions.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Supply all package dimensions or leave all three empty.",
+      path: ["packageLengthCm"],
+    });
+  }
+});
+
+export const productModerationSchema = z.object({
+  status: z.enum(["PUBLISHED", "NEEDS_CORRECTION", "REJECTED"]),
+  note: z.string().trim().min(3).max(2000),
+});
+
+export const vendorProductStateSchema = z.object({
+  status: z.enum(["SUBMITTED", "PUBLISHED", "PAUSED", "ARCHIVED"]),
 });
 
 export const contentSourceSchema = z.object({
@@ -289,6 +314,12 @@ export const deliveryZoneSchema = z.object({
   name: z.string().trim().min(2).max(100),
   baseFeeKobo: z.number().int().min(0).max(10_000_000),
   active: z.boolean().default(true),
+  operatingHours: z.record(z.string(), z.unknown()).optional(),
+  maxPackageWeightGrams: z.number().int().min(1).max(50_000).nullable().optional(),
+  maxPackageDimensionCm: z.number().min(1).max(200).nullable().optional(),
+  riderEarningKobo: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  earningFormulaVersion: z.string().trim().min(3).max(80).optional(),
+  reservationTimeoutMinutes: z.number().int().min(2).max(60).optional(),
 });
 
 export const feedPostSchema = z.object({
@@ -333,11 +364,32 @@ export const disputeSchema = z.object({
 export const storeOrderSchema = z.object({
   vendorProfileId: z.string().uuid(),
   deliveryZoneId: z.string().uuid(),
+  recipientName: z.string().trim().min(2).max(120),
+  recipientPhoneE164: z.string().trim().regex(/^\+234[789][0-9]{9}$/),
+  deliveryLocation: z.string().trim().min(5).max(500),
+  deliveryLandmark: z.string().trim().min(2).max(200).nullable().optional(),
+  deliveryLatitude: z.number().min(-90).max(90).nullable().optional(),
+  deliveryLongitude: z.number().min(-180).max(180).nullable().optional(),
   deliveryNote: z.string().trim().max(500).nullable().optional(),
   items: z.array(z.object({
     productId: z.string().uuid(),
     quantity: z.number().int().min(1).max(100),
   })).min(1).max(30),
+}).superRefine((value, context) => {
+  if ((value.deliveryLatitude == null) !== (value.deliveryLongitude == null)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Delivery coordinates must include both latitude and longitude.",
+      path: ["deliveryLatitude"],
+    });
+  }
+});
+
+export const productReviewSchema = z.object({
+  orderId: z.string().uuid(),
+  productId: z.string().uuid(),
+  rating: z.number().int().min(1).max(5),
+  body: z.string().trim().min(3).max(1000).nullable().optional(),
 });
 
 export const orderStateSchema = z.object({

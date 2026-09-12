@@ -9,6 +9,7 @@ export type Bindings = {
   SOCIAL_FEED_ENABLED: string;
   MARKETPLACE_ENABLED: string;
   PHASE_2_SCHEMA_READY?: string;
+  PHASE_3_SCHEMA_READY?: string;
   TUTORIALS_ENABLED?: string;
   STORE_ENABLED?: string;
   LOGISTICS_ENABLED?: string;

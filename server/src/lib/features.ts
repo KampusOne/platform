@@ -12,16 +12,18 @@ type Feature =
 
 export function featureEnabled(env: Bindings, feature: Feature) {
   if (feature === "TUTORIALS_ENABLED" && !phase2SchemaReady(env)) return false;
+  if (["STORE_ENABLED", "LOGISTICS_ENABLED", "MARKETPLACE_ENABLED"].includes(feature)
+    && !phase3SchemaReady(env)) return false;
   const configured = env[feature];
-  if (configured !== undefined) return configured.toLowerCase() === "true";
-  if (["TUTORIALS_ENABLED", "STORE_ENABLED", "LOGISTICS_ENABLED"].includes(feature)) {
-    return env.MARKETPLACE_ENABLED?.toLowerCase() === "true";
-  }
-  return false;
+  return configured?.toLowerCase() === "true";
 }
 
 export function phase2SchemaReady(env: Bindings) {
   return env.PHASE_2_SCHEMA_READY?.toLowerCase() === "true";
+}
+
+export function phase3SchemaReady(env: Bindings) {
+  return env.PHASE_3_SCHEMA_READY?.toLowerCase() === "true";
 }
 
 export function requireFeature(env: Bindings, feature: Feature, message: string) {

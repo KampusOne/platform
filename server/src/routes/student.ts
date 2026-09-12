@@ -6,6 +6,7 @@ import {
   disputeSchema,
   gpaTermSchema,
   onboardingProfileSchema,
+  productReviewSchema,
   storeOrderSchema,
   timetableEntrySchema,
   tutorialBookingSchema,
@@ -15,7 +16,7 @@ import {
 
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { featureEnabled, phase2SchemaReady, requireFeature } from "../lib/features";
+import { featureEnabled, phase2SchemaReady, phase3SchemaReady, requireFeature } from "../lib/features";
 import { deriveHandoffCode } from "../lib/security";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
@@ -700,9 +701,26 @@ studentRoutes.get("/store", async (context) => {
     database(context.env).execute(sql`
       select products.id, products.vendor_profile_id, products.name, products.description,
         products.category, products.price_kobo, products.stock_quantity, products.image_url,
-        profiles.display_name as vendor_name
+        products.preparation_minutes, storefronts.display_name as vendor_name,
+        coalesce(reviews.rating, 0) as rating, coalesce(reviews.review_count, 0)::int as review_count
       from public.vendor_products products
-      join public.agent_profiles profiles on profiles.id = products.vendor_profile_id and profiles.status = 'ACTIVE'
+      join public.agent_profiles profiles
+        on profiles.id = products.vendor_profile_id
+        and profiles.agent_type = 'VENDOR'
+        and profiles.status = 'ACTIVE'
+      join public.vendor_storefronts storefronts
+        on storefronts.vendor_profile_id = products.vendor_profile_id
+        and storefronts.university_id = products.university_id
+        and storefronts.status = 'APPROVED'
+      join public.product_categories categories
+        on categories.id = products.category_id
+        and categories.university_id = products.university_id
+        and categories.status = 'APPROVED'
+      left join lateral (
+        select avg(product_reviews.rating)::numeric(3,2) as rating, count(*)::int as review_count
+        from public.product_reviews product_reviews
+        where product_reviews.product_id = products.id and product_reviews.status = 'PUBLISHED'
+      ) reviews on true
       where products.university_id = ${requireUniversity(user)}::uuid and products.status = 'PUBLISHED'
         and products.stock_quantity > 0
         and (${category ?? null}::text is null or products.category = ${category ?? null})
@@ -710,7 +728,9 @@ studentRoutes.get("/store", async (context) => {
       order by products.updated_at desc limit 200
     `),
     database(context.env).execute(sql`
-      select id, name, base_fee_kobo from public.delivery_zones
+      select id, name, base_fee_kobo, operating_hours, max_package_weight_grams,
+        max_package_dimension_cm, earning_formula_version
+      from public.delivery_zones
       where university_id = ${requireUniversity(user)}::uuid and active = true order by base_fee_kobo, name
     `),
   ]);
@@ -735,10 +755,14 @@ studentRoutes.post("/orders", async (context) => {
     const result = await database(context.env).execute<{
       id: string; subtotal_kobo: number; delivery_fee_kobo: number; total_kobo: number;
     }>(sql`
-      select * from app_private.create_store_order(
+      select * from app_private.create_store_order_v2(
         ${orderId}::uuid, ${universityId}::uuid, ${user.id}::uuid,
         ${parsed.data.vendorProfileId}::uuid, ${parsed.data.deliveryZoneId}::uuid,
-        ${parsed.data.deliveryNote ?? null}, ${JSON.stringify(parsed.data.items.map((item) => ({ product_id: item.productId, quantity: item.quantity })))}::jsonb,
+        ${parsed.data.recipientName}, ${parsed.data.recipientPhoneE164},
+        ${parsed.data.deliveryLocation}, ${parsed.data.deliveryLandmark ?? null},
+        ${parsed.data.deliveryLatitude ?? null}, ${parsed.data.deliveryLongitude ?? null},
+        ${parsed.data.deliveryNote ?? null},
+        ${JSON.stringify(parsed.data.items.map((item) => ({ product_id: item.productId, quantity: item.quantity })))}::jsonb,
         ${pickup.hash}, ${delivery.hash}
       )
     `);
@@ -750,8 +774,99 @@ studentRoutes.post("/orders", async (context) => {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("PRODUCT_UNAVAILABLE_OR_STOCK_LOW")) throw new AppError(409, "CONFLICT", "A product is unavailable or there is not enough stock.");
     if (message.includes("DELIVERY_ZONE_UNAVAILABLE")) throw new AppError(400, "BAD_REQUEST", "Choose an active delivery zone.");
+    if (message.includes("BUYER_TENANT_MISMATCH")) {
+      throw new AppError(403, "FORBIDDEN", "Your student profile does not belong to this order's university.");
+    }
+    if (message.includes("VENDOR_STOREFRONT_UNAVAILABLE")) {
+      throw new AppError(409, "CONFLICT", "This vendor is not currently approved to receive store orders.");
+    }
     throw error;
   }
+});
+
+studentRoutes.get("/orders/:id", async (context) => {
+  if (!phase3SchemaReady(context.env)) {
+    throw new AppError(503, "FEATURE_DISABLED", "Order details are waiting for the reviewed Phase 3 schema migration.");
+  }
+  const user = currentUser(context);
+  const result = await database(context.env).execute<{
+    id: string; status: string; university_id: string;
+  }>(sql`
+    select orders.id, orders.status, orders.university_id,
+      orders.subtotal_kobo, orders.delivery_fee_kobo, orders.total_kobo,
+      orders.delivery_note, orders.pricing_formula_version,
+      orders.created_at, orders.updated_at, profiles.display_name as vendor_name,
+      zones.name as zone_name,
+      snapshots.recipient_name, snapshots.recipient_phone_e164,
+      snapshots.delivery_location, snapshots.delivery_landmark,
+      snapshots.latitude, snapshots.longitude
+    from public.orders orders
+    join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
+    left join public.delivery_zones zones on zones.id = orders.delivery_zone_id
+    left join public.order_delivery_snapshots snapshots on snapshots.order_id = orders.id
+    where orders.id = ${context.req.param("id")}::uuid
+      and orders.buyer_user_id = ${user.id}::uuid
+    limit 1
+  `);
+  const order = firstRow(result);
+  if (!order) throw new AppError(404, "NOT_FOUND", "That store order does not exist.");
+  const [items, timeline, reviews] = await Promise.all([
+    database(context.env).execute(sql`
+      select items.product_id, items.quantity, items.unit_price_kobo,
+        products.name, products.image_url
+      from public.order_items items
+      join public.vendor_products products on products.id = items.product_id
+      where items.order_id = ${order.id}::uuid order by items.created_at, items.id
+    `),
+    database(context.env).execute(sql`
+      select previous_status, status, source, note, metadata, occurred_at
+      from public.order_status_events
+      where order_id = ${order.id}::uuid order by occurred_at, id
+    `),
+    database(context.env).execute(sql`
+      select id, product_id, rating, body, status, created_at
+      from public.product_reviews
+      where order_id = ${order.id}::uuid and buyer_user_id = ${user.id}::uuid
+      order by created_at, id
+    `),
+  ]);
+  const deliveryCode = ["PAID", "ACCEPTED", "READY", "IN_DELIVERY"].includes(order.status)
+    ? (await deriveHandoffCode(context.env, order.id, "delivery")).code
+    : undefined;
+  return context.json({
+    order: { ...order, ...(deliveryCode ? { delivery_code: deliveryCode } : {}) },
+    items: items.rows,
+    timeline: timeline.rows,
+    reviews: reviews.rows,
+  });
+});
+
+studentRoutes.post("/product-reviews", async (context) => {
+  if (!phase3SchemaReady(context.env)) {
+    throw new AppError(503, "FEATURE_DISABLED", "Product reviews are waiting for the reviewed Phase 3 schema migration.");
+  }
+  const user = currentUser(context);
+  const parsed = productReviewSchema.safeParse(await jsonBody(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a rating and add a useful review.");
+  const id = crypto.randomUUID();
+  try {
+    await database(context.env).execute(sql`
+      select * from app_private.create_product_review(
+        ${id}::uuid, ${parsed.data.orderId}::uuid, ${parsed.data.productId}::uuid,
+        ${user.id}::uuid, ${parsed.data.rating}::smallint, ${parsed.data.body ?? null}
+      )
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("VERIFIED_PURCHASE_REQUIRED")) {
+      throw new AppError(403, "FORBIDDEN", "Only the buyer of a delivered product can review it.");
+    }
+    if (message.includes("PRODUCT_ALREADY_REVIEWED")) {
+      throw new AppError(409, "CONFLICT", "You already reviewed this product.");
+    }
+    throw error;
+  }
+  return context.json({ id, status: "PUBLISHED" }, 201);
 });
 
 studentRoutes.get("/purchases", async (context) => {

@@ -8,6 +8,8 @@ Apply files in `migrations/` in filename order with a direct, non-pooled Neon co
 
 `20260912010000_shared_agent_email_login.sql` adds the private, hashed, one-time email challenges used to issue a separate agent-portal session for an existing verified KampusOne account. It is independent from email-verification and password-reset tokens.
 
+`20260912200000_phase_3_commerce_foundation.sql` adds the independently gated Store and bicycle-logistics foundation. Run both Phase 3 verification files on a fresh production branch before promotion; the migration does not authorize feature activation or choose commercial policy values.
+
 The Phase 1–3 migration is additive. It preserves the earlier `kampusone_v12` schema and imports its Argon2id student identities into the current `public.users` table only when that legacy schema exists. Password hashes are copied as hashes; plaintext passwords are never available or created by the migration.
 
 ## Runtime boundaries
