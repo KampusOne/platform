@@ -152,7 +152,7 @@ export function PressScale({
   );
 }
 
-export function StreakCard({ days = 12 }: { days?: number }) {
+export function StreakCard({ days = 0 }: { days?: number }) {
   const pulse = useRef(new Animated.Value(0)).current;
   const sheetEntry = useRef(new Animated.Value(0)).current;
   const [open, setOpen] = useState(false);
@@ -179,9 +179,18 @@ export function StreakCard({ days = 12 }: { days?: number }) {
 
   useEffect(() => {
     if (!open) return;
+    sheetEntry.stopAnimation();
     sheetEntry.setValue(reducedMotion ? 1 : 0);
     if (!reducedMotion) {
-      Animated.spring(sheetEntry, { damping: 17, mass: 0.7, stiffness: 180, toValue: 1, useNativeDriver: true }).start();
+      const animation = Animated.spring(sheetEntry, {
+        damping: 17,
+        mass: 0.7,
+        stiffness: 180,
+        toValue: 1,
+        useNativeDriver: true,
+      });
+      animation.start();
+      return () => animation.stop();
     }
   }, [open, reducedMotion, sheetEntry]);
 
@@ -220,14 +229,28 @@ export function StreakCard({ days = 12 }: { days?: number }) {
         <Text style={styles.streakPillText}>{days} day streak</Text>
       </Pressable>
 
-      <Modal animationType="none" onRequestClose={closeTimeline} statusBarTranslucent transparent visible={open}>
+      <Modal
+        animationType={reducedMotion ? "none" : "fade"}
+        onRequestClose={closeTimeline}
+        statusBarTranslucent
+        transparent
+        visible={open}
+      >
         <View style={styles.streakModalRoot}>
           <Animated.View
             pointerEvents="none"
             style={[styles.streakBackdrop, { opacity: sheetEntry.interpolate({ inputRange: [0, 1], outputRange: [0, 0.42] }) }]}
           />
-          <Pressable accessibilityLabel="Close streak timeline" onPress={closeTimeline} style={StyleSheet.absoluteFill} />
+          <Pressable
+            accessibilityLabel="Close streak timeline"
+            accessibilityRole="button"
+            onPress={closeTimeline}
+            style={StyleSheet.absoluteFill}
+          />
           <Animated.View
+            accessibilityLabel="Streak timeline"
+            accessibilityViewIsModal
+            onAccessibilityEscape={closeTimeline}
             style={[
               styles.streakSheet,
               {
@@ -243,7 +266,13 @@ export function StreakCard({ days = 12 }: { days?: number }) {
                   <Text style={styles.streakSheetEyebrow}>YOUR STREAK</Text>
                   <Text style={styles.streakSheetTitle}>{days} days strong</Text>
                 </View>
-                <Pressable accessibilityLabel="Close" hitSlop={8} onPress={closeTimeline} style={styles.streakClose}>
+                <Pressable
+                  accessibilityLabel="Close streak timeline"
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={closeTimeline}
+                  style={styles.streakClose}
+                >
                   <Ionicons color={theme.text} name="close" size={20} />
                 </Pressable>
               </View>
@@ -517,7 +546,7 @@ export function ProductArtwork({ type }: { type: "books" | "burger" | "earbuds" 
     return (
       <View style={[styles.productArt, styles.productDark]}>
         <View style={styles.hoodieHood} />
-        <View style={styles.hoodieBody}><Text style={styles.hoodieText}>K1</Text></View>
+        <View style={styles.hoodieBody} />
         <View style={[styles.hoodieArm, styles.hoodieArmLeft]} /><View style={[styles.hoodieArm, styles.hoodieArmRight]} />
       </View>
     );

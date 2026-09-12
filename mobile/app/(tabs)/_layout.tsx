@@ -3,11 +3,11 @@ import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { Redirect, Tabs } from "expo-router";
 import { type ComponentProps, useEffect, useRef } from "react";
-import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useReducedMotionPreference } from "@/src/components/visual-system";
 import { useAuth } from "@/src/auth/auth-context";
+import { useReducedMotionPreference } from "@/src/components/visual-system";
 import { theme } from "@/src/theme";
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -15,20 +15,24 @@ type TabBarRenderer = NonNullable<ComponentProps<typeof Tabs>["tabBar"]>;
 type KampusTabBarProps = Parameters<TabBarRenderer>[0];
 
 const primaryItems = [
-  { name: "index", label: "Home", icon: "home-outline" as IconName },
-  { name: "feed", label: "Feed", icon: "newspaper-outline" as IconName },
-  { name: "campus", label: "Campus", icon: "map-outline" as IconName },
-  { name: "tutorials", label: "Tutorials", icon: "school-outline" as IconName },
-  { name: "store", label: "Store", icon: "bag-handle-outline" as IconName },
-];
+  { name: "index", label: "Home", icon: "home-outline" as IconName, activeIcon: "home" as IconName },
+  { name: "feed", label: "Feed", icon: "newspaper-outline" as IconName, activeIcon: "newspaper" as IconName },
+  { name: "explore", label: "Explore", icon: "compass-outline" as IconName, activeIcon: "compass" as IconName },
+  { name: "map", label: "Map", icon: "map-outline" as IconName, activeIcon: "map" as IconName },
+  { name: "profile", label: "Profile", icon: "person-outline" as IconName, activeIcon: "person" as IconName },
+] as const;
 
-function NavItem({
-  focused,
-  icon,
-  label,
-  onLongPress,
-  onPress,
-}: {
+const activeParent: Record<string, (typeof primaryItems)[number]["name"]> = {
+  campus: "map",
+  gpa: "explore",
+  purchases: "profile",
+  store: "explore",
+  timetable: "explore",
+  tutorials: "explore",
+};
+
+function NavItem({ activeIcon, focused, icon, label, onLongPress, onPress }: {
+  activeIcon: IconName;
   focused: boolean;
   icon: IconName;
   label: string;
@@ -44,7 +48,7 @@ function NavItem({
       return;
     }
     Animated.timing(focus, {
-      duration: 200,
+      duration: theme.motion.standard,
       easing: Easing.out(Easing.cubic),
       toValue: focused ? 1 : 0,
       useNativeDriver: true,
@@ -61,10 +65,11 @@ function NavItem({
       style={styles.navItem}
     >
       <Animated.View
+        pointerEvents="none"
         style={[
           styles.navPill,
           {
-            opacity: focus.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
+            opacity: focus,
             transform: [{ scale: focus.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }],
           },
         ]}
@@ -72,12 +77,12 @@ function NavItem({
       <Animated.View
         style={{
           transform: [
-            { translateY: focus.interpolate({ inputRange: [0, 1], outputRange: [0, -2] }) },
-            { scale: focus.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }) },
+            { translateY: focus.interpolate({ inputRange: [0, 1], outputRange: [0, -1] }) },
+            { scale: focus.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) },
           ],
         }}
       >
-        <Ionicons name={focused ? (icon.replace("-outline", "") as IconName) : icon} size={22} color={focused ? theme.brandPressed : "#6F6A66"} />
+        <Ionicons color={focused ? theme.deepBrand : theme.textMuted} name={focused ? activeIcon : icon} size={22} />
       </Animated.View>
       <Text style={[styles.navLabel, focused && styles.navLabelFocused]}>{label}</Text>
     </Pressable>
@@ -86,31 +91,26 @@ function NavItem({
 
 function KampusTabBar({ state, navigation }: KampusTabBarProps) {
   const insets = useSafeAreaInsets();
-  const activeName = state.routes[state.index]?.name ?? "index";
-  const profileOpen = activeName === "profile";
-  const displayItems = profileOpen
-    ? [...primaryItems.slice(0, 4), { name: "profile", label: "Profile", icon: "person-outline" as IconName }]
-    : primaryItems;
-  const normalizedActive = activeName === "timetable" ? "index" : activeName;
+  const routeName = state.routes[state.index]?.name ?? "index";
+  const activeName = activeParent[routeName] ?? routeName;
 
   return (
-    <View pointerEvents="box-none" style={[styles.navPosition, { bottom: Math.max(insets.bottom, 10) }]}>
+    <View pointerEvents="box-none" style={[styles.navPosition, { bottom: Math.max(insets.bottom, 8) }]}>
       <View style={styles.glassDock}>
         <BlurView
           experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : "none"}
-          intensity={48}
+          intensity={30}
           style={StyleSheet.absoluteFill}
           tint="light"
         />
         <View pointerEvents="none" style={styles.dockTint} />
-        <View pointerEvents="none" style={styles.dockGlowLeft} />
-        <View pointerEvents="none" style={styles.dockGlowRight} />
         <View pointerEvents="none" style={styles.dockHighlight} />
-        {displayItems.map((item) => {
+        {primaryItems.map((item) => {
           const route = state.routes.find((candidate) => candidate.name === item.name);
-          const focused = normalizedActive === item.name;
+          const focused = activeName === item.name;
           return (
             <NavItem
+              activeIcon={item.activeIcon}
               focused={focused}
               icon={item.icon}
               key={item.name}
@@ -122,7 +122,7 @@ function KampusTabBar({ state, navigation }: KampusTabBarProps) {
                 if (!route) return;
                 void Haptics.selectionAsync();
                 const event = navigation.emit({ canPreventDefault: true, target: route.key, type: "tabPress" });
-                if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+                if (routeName !== route.name && !event.defaultPrevented) navigation.navigate(route.name);
               }}
             />
           );
@@ -133,28 +133,36 @@ function KampusTabBar({ state, navigation }: KampusTabBarProps) {
 }
 
 export default function TabLayout() {
-  const { state, profile } = useAuth();
+  const { state, profile, profileState } = useAuth();
+  const reducedMotion = useReducedMotionPreference();
+  if (state === "loading" || (state === "authenticated" && profileState === "loading")) {
+    return <View style={styles.loading}><ActivityIndicator color={theme.brand} size="large" /></View>;
+  }
   if (state === "anonymous") return <Redirect href="/(auth)/welcome" />;
-  if (state === "authenticated" && !profile?.onboarding_completed_at) return <Redirect href="/(auth)/onboarding" />;
+  if (state === "authenticated" && profileState === "error") return <Redirect href="/" />;
+  if (state === "authenticated" && profileState === "ready" && !profile?.onboarding_completed_at) return <Redirect href="/(auth)/onboarding" />;
 
   return (
     <Tabs
+      backBehavior="history"
       tabBar={(props) => <KampusTabBar {...props} />}
       screenOptions={{
-        animation: "fade",
+        animation: reducedMotion ? "none" : "fade",
         headerShown: false,
         sceneStyle: { backgroundColor: theme.canvas },
         tabBarHideOnKeyboard: true,
-        transitionSpec: { animation: "timing", config: { duration: 180 } },
+        transitionSpec: { animation: "timing", config: { duration: reducedMotion ? 0 : 180 } },
       }}
     >
       <Tabs.Screen name="index" />
       <Tabs.Screen name="feed" />
-      <Tabs.Screen name="campus" />
-      <Tabs.Screen name="tutorials" />
-      <Tabs.Screen name="store" />
+      <Tabs.Screen name="explore" />
+      <Tabs.Screen name="map" />
+      <Tabs.Screen name="profile" />
+      <Tabs.Screen name="campus" options={{ href: null }} />
+      <Tabs.Screen name="tutorials" options={{ href: null }} />
+      <Tabs.Screen name="store" options={{ href: null }} />
       <Tabs.Screen name="timetable" options={{ href: null }} />
-      <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="gpa" options={{ href: null }} />
       <Tabs.Screen name="purchases" options={{ href: null }} />
     </Tabs>
@@ -162,25 +170,24 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  navPosition: { left: 12, marginHorizontal: "auto", maxWidth: 520, position: "absolute", right: 12 },
+  loading: { alignItems: "center", backgroundColor: theme.canvas, flex: 1, justifyContent: "center" },
+  navPosition: { alignSelf: "center", left: 14, maxWidth: 520, position: "absolute", right: 14 },
   glassDock: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.56)",
-    borderColor: "rgba(255,255,255,0.98)",
-    borderRadius: 29,
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(255,255,255,0.94)",
+    borderRadius: 28,
     borderWidth: 1,
     flexDirection: "row",
-    height: 78,
+    height: 72,
     overflow: "hidden",
-    paddingHorizontal: 6,
-    ...theme.glassShadow,
+    paddingHorizontal: 5,
+    ...theme.floatingShadow,
   },
-  dockTint: { backgroundColor: "rgba(255,255,255,0.44)", bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
-  dockGlowLeft: { backgroundColor: "rgba(233,177,142,0.19)", borderRadius: 55, height: 90, left: -28, position: "absolute", top: -43, width: 132 },
-  dockGlowRight: { backgroundColor: "rgba(241,223,200,0.25)", borderRadius: 48, bottom: -54, height: 90, position: "absolute", right: -12, width: 129 },
-  dockHighlight: { backgroundColor: "rgba(255,255,255,0.92)", height: 1, left: 20, position: "absolute", right: 20, top: 1 },
-  navItem: { alignItems: "center", flex: 1, height: 64, justifyContent: "center", position: "relative" },
-  navPill: { backgroundColor: "rgba(233,177,142,0.31)", borderColor: "rgba(255,255,255,0.76)", borderRadius: 15, borderWidth: 1, height: 38, position: "absolute", top: 4, width: 52 },
-  navLabel: { color: "#726D69", fontFamily: theme.font.medium, fontSize: 10.5, marginTop: 4 },
-  navLabelFocused: { color: theme.brandPressed, fontFamily: theme.font.semibold },
+  dockTint: { backgroundColor: "rgba(251,247,242,0.42)", bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
+  dockHighlight: { backgroundColor: "rgba(255,255,255,0.92)", height: 1, left: 18, position: "absolute", right: 18, top: 1 },
+  navItem: { alignItems: "center", flex: 1, height: 62, justifyContent: "center", minWidth: 54, position: "relative" },
+  navPill: { backgroundColor: "rgba(233,177,142,0.27)", borderRadius: 21, height: 54, position: "absolute", top: 4, width: 62 },
+  navLabel: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 10.5, lineHeight: 14, marginTop: 3 },
+  navLabelFocused: { color: theme.deepBrand, fontFamily: theme.font.semibold },
 });

@@ -20,6 +20,32 @@ import type { Bindings, Variables } from "../types";
 
 export const studentRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+const defaultCampusTimeZone = "Africa/Lagos";
+const weekdayNumber: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+function campusClock(at = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    timeZone: defaultCampusTimeZone,
+    weekday: "short",
+    year: "numeric",
+  }).formatToParts(at).reduce<Record<string, string>>((result, part) => {
+    if (part.type !== "literal") result[part.type] = part.value;
+    return result;
+  }, {});
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+    timeZone: defaultCampusTimeZone,
+    weekday: weekdayNumber[parts.weekday ?? ""] ?? at.getUTCDay(),
+  };
+}
+
 async function jsonBody(context: { req: { json(): Promise<unknown> } }) {
   return context.req.json().catch(() => null);
 }
@@ -154,8 +180,8 @@ studentRoutes.patch("/me/onboarding", async (context) => {
 studentRoutes.get("/home", async (context) => {
   const user = currentUser(context);
   const universityId = requireUniversity(user);
-  const now = new Date();
-  const today = now.getUTCDay();
+  const currentCampusClock = campusClock();
+  const today = currentCampusClock.weekday;
 
   const [profile, timetable, posts, gpa] = await Promise.all([
     database(context.env).execute(sql`
@@ -196,6 +222,7 @@ studentRoutes.get("/home", async (context) => {
     today: timetable.rows,
     updates: posts.rows,
     academics: firstRow(gpa) ?? { cgpa: null, total_units: 0 },
+    campusClock: currentCampusClock,
     generatedAt: new Date().toISOString(),
   });
 });
@@ -385,7 +412,7 @@ studentRoutes.get("/tutorials", async (context) => {
   const query = context.req.query("q")?.trim();
   const search = query ? `%${query}%` : null;
   const result = await database(context.env).execute(sql`
-    select listings.id, listings.course_id, listings.course_code, listings.title,
+    select listings.id, listings.course_id, listings.tutor_profile_id, listings.course_code, listings.title,
       listings.description, listings.format, listings.price_kobo, listings.capacity,
       profiles.display_name as tutor_name, profiles.biography as tutor_biography,
       coalesce((
@@ -460,15 +487,21 @@ studentRoutes.post("/tutorial-bookings/:id/confirm", async (context) => {
   const parsed = completionConfirmationSchema.safeParse(await jsonBody(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Completion confirmation is required.");
   const result = await database(context.env).execute<{ id: string; tutor_confirmed_at: string | null }>(sql`
-    update public.tutorial_bookings set
+    update public.tutorial_bookings bookings set
       student_confirmed_at = coalesce(student_confirmed_at, now()),
       status = case when tutor_confirmed_at is not null then 'COMPLETED' else status end,
       completed_at = case when tutor_confirmed_at is not null then coalesce(completed_at, now()) else completed_at end,
       dispute_deadline = case when tutor_confirmed_at is not null then coalesce(dispute_deadline, now() + interval '48 hours') else dispute_deadline end,
       earnings_state = case when tutor_confirmed_at is not null then 'PENDING' else earnings_state end,
       updated_at = now()
-    where id = ${context.req.param("id")}::uuid and student_user_id = ${user.id}::uuid
-      and status = 'CONFIRMED'
+    where bookings.id = ${context.req.param("id")}::uuid and bookings.student_user_id = ${user.id}::uuid
+      and bookings.status = 'CONFIRMED'
+      and exists (
+        select 1 from public.tutorial_availability_windows windows
+        where windows.id = bookings.availability_window_id
+          and windows.listing_id = bookings.listing_id
+          and windows.ends_at <= now()
+      )
     returning id, tutor_confirmed_at
   `);
   const booking = firstRow(result);
@@ -545,11 +578,14 @@ studentRoutes.get("/purchases", async (context) => {
   const [bookings, orders] = await Promise.all([
     database(context.env).execute(sql`
       select bookings.id, bookings.status, bookings.amount_kobo, bookings.scheduled_for,
+        windows.ends_at as completion_available_at,
         bookings.created_at, listings.title, listings.course_code,
         profiles.display_name as tutor_name
       from public.tutorial_bookings bookings
       join public.tutorial_listings listings on listings.id = bookings.listing_id
       join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
+      left join public.tutorial_availability_windows windows
+        on windows.id = bookings.availability_window_id and windows.listing_id = bookings.listing_id
       where bookings.student_user_id = ${user.id}::uuid order by bookings.created_at desc limit 100
     `),
     database(context.env).execute(sql`
