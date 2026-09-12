@@ -61,9 +61,10 @@ Tutor approval during this pilot is manual and must remain limited to the named 
 
 - Contracts and Worker unit suites pass, including feature-gate and authentication coverage.
 - Contracts, Worker, Expo, and portal TypeScript checks pass; portal lint also passes.
-- The production portal build and Expo web export pass, including Tutorials, Purchases, Agent, Admin, and payment-return routes.
+- The production portal build, Expo web export, and Expo Android bundle export pass, including Tutorials, Purchases, Agent, Admin, and payment-return routes.
 - The Worker production configuration bundles successfully in dry-run mode. Unit coverage proves Tutorials can be enabled only when the schema-ready binding is true; Store, Logistics, Marketplace, and Payments remain safely disabled.
 - The actual Phase 2 migration passes an isolated PostgreSQL-compatible acceptance harness covering demo seed/removal, immediate free booking, staged email verification, and duplicate live-checkout prevention.
 - The same reviewed migration is applied to production. Production contains four free demo tutorials, five preview-only demo resources, and no Phase 2 payment attempts.
+- The live readiness check reports a healthy database, signing key, OTP pepper, and email provider. Public configuration reports Tutorials enabled while Store, Logistics, Marketplace, and Payments remain disabled.
 
-Record the commit SHA and hosted CI run after the push. Custom-domain routing and physical-device Android acceptance remain separate deployment evidence; the current administrator URL stays `https://kampusone-platform-preview.vercel.app/admin` until the custom domain is attached.
+Activation commit: [`56dc95f`](https://github.com/KampusOne/platform/commit/56dc95ff9efdba8be945742a5914f8a8849e2fe3). Hosted evidence: [Deploy Worker #17](https://github.com/KampusOne/platform/actions/runs/34688771693) and [Verify platform #41](https://github.com/KampusOne/platform/actions/runs/34688771604), both successful. Custom-domain routing and physical-device Android acceptance remain separate deployment evidence; the current administrator URL stays `https://kampusone-platform-preview.vercel.app/admin` until the custom domain is attached.
