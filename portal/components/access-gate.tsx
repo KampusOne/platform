@@ -32,7 +32,7 @@ const surfaceCopy = {
 function messageFrom(error: unknown) {
   return error instanceof PortalApiError
     ? error.message
-    : "KampusOne could not complete that request.";
+    : "Something interrupted the request. Please try again.";
 }
 
 export function AccessGate({

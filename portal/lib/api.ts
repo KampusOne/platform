@@ -9,6 +9,14 @@ export class PortalApiError extends Error {
   }
 }
 
+const connectionError = () => new PortalApiError(
+  0,
+  "NETWORK_UNAVAILABLE",
+  "The connection was interrupted. Check your internet and try again.",
+);
+
+const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 const baseUrl = (process.env.NEXT_PUBLIC_KAMPUSONE_API_URL ?? "http://localhost:8787").replace(/\/$/, "");
 let accessToken: string | null = null;
 let refreshPromise: Promise<Session | null> | null = null;
@@ -37,11 +45,23 @@ export async function portalApi<T>(path: string, init: RequestInit = {}, retry =
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  const response = await fetch(`${baseUrl}${path}`, { ...init, credentials: "include", headers });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, { ...init, credentials: "include", headers });
+  } catch {
+    throw connectionError();
+  }
   if (response.status === 401 && retry && path !== "/v1/auth/refresh") {
     if (await refresh()) return portalApi<T>(path, init, false);
   }
   return read<T>(response);
+}
+
+async function requestPasswordReset(email: string) {
+  return portalApi<{ status: string }>("/v1/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  }, false);
 }
 
 export const webAuth = {
@@ -50,7 +70,15 @@ export const webAuth = {
   register(input: { email: string; password: string; firstName: string; lastName: string }) { return portalApi<{ status: string }>("/v1/auth/register", { method: "POST", body: JSON.stringify({ ...input, acceptedTerms: true, legalVersion: "2026-09-10" }) }, false); },
   async verify(email: string, code: string) { const session = await portalApi<Session>("/v1/auth/verify-email", { method: "POST", body: JSON.stringify({ email, code, deviceLabel: "KampusOne web portal" }) }, false); applySession(session); return session; },
   resend(email: string) { return portalApi("/v1/auth/resend-verification", { method: "POST", body: JSON.stringify({ email }) }, false); },
-  forgotPassword(email: string) { return portalApi<{ status: string }>("/v1/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }, false); },
+  async forgotPassword(email: string) {
+    try {
+      return await requestPasswordReset(email);
+    } catch (caught) {
+      if (!(caught instanceof PortalApiError) || caught.code !== "NETWORK_UNAVAILABLE") throw caught;
+      await wait(500);
+      return requestPasswordReset(email);
+    }
+  },
   resetPassword(email: string, code: string, password: string) { return portalApi<{ status: string }>("/v1/auth/reset-password", { method: "POST", body: JSON.stringify({ email, code, password }) }, false); },
   async logout() { try { await portalApi("/v1/auth/logout", { method: "POST", body: "{}" }, false); } finally { applySession(null); } },
 };
