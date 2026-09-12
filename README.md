@@ -32,3 +32,5 @@ Copy each `.env.example` only when you need that application. Never commit popul
 The repository now contains data-backed Phase 1 student utility, Phase 2 tutorial operations, and Phase 3 controlled store/logistics workflows. Authentication, email verification, administration, agent approval, bookings, inventory, payments, disputes, earnings, payouts, and delivery handoffs fail closed when their required server-side service is unavailable; no client receives a test OTP or fabricated business metric.
 
 This source tree is not the same thing as a production release. Production remains gated until the owner supplies provider credentials and policies, the reviewed Neon migrations are promoted, the applications are deployed to their real domains, and acceptance tests pass. See [the Phase 1–3 implementation and launch handoff](docs/phases/phase-1-3-live-handoff.md).
+
+Phase 2 can run first as a free, controlled tutorial pilot without SMS, WhatsApp, paid KYC, Paystack, or managed file storage. See the [Phase 2 learning pilot handoff](docs/phases/phase-2-learning-pilot.md) for the exact activation order and remaining owner inputs.

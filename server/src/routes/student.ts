@@ -9,11 +9,13 @@ import {
   storeOrderSchema,
   timetableEntrySchema,
   tutorialBookingSchema,
+  tutorialCancellationSchema,
+  tutorialReviewSchema,
 } from "@kampusone/contracts";
 
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { requireFeature } from "../lib/features";
+import { featureEnabled, requireFeature } from "../lib/features";
 import { deriveHandoffCode } from "../lib/security";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
@@ -407,61 +409,150 @@ studentRoutes.post("/gpa", async (context) => {
 });
 
 studentRoutes.get("/tutorials", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "Tutorial discovery is not enabled in this environment.");
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial discovery is not enabled in this environment.");
   const user = currentUser(context);
+  const universityId = requireUniversity(user);
+  const paidAccessEnabled = featureEnabled(context.env, "PAYMENTS_ENABLED");
   const query = context.req.query("q")?.trim();
   const search = query ? `%${query}%` : null;
-  const result = await database(context.env).execute(sql`
-    select listings.id, listings.course_id, listings.tutor_profile_id, listings.course_code, listings.title,
-      listings.description, listings.format, listings.price_kobo, listings.capacity,
-      profiles.display_name as tutor_name, profiles.biography as tutor_biography,
-      coalesce((
-        select json_agg(json_build_object(
-          'id', windows.id,
-          'starts_at', windows.starts_at,
-          'ends_at', windows.ends_at,
-          'capacity', least(windows.capacity, listings.capacity),
-          'booked_spaces', (
-            select count(*)::int from public.tutorial_bookings window_bookings
-            where window_bookings.availability_window_id = windows.id and (
-              window_bookings.status in ('CONFIRMED','COMPLETED') or
-              (window_bookings.status = 'PENDING_PAYMENT' and window_bookings.payment_expires_at > now())
+  const resourceType = context.req.query("resourceType")?.trim().toUpperCase();
+  const allowedResourceTypes = new Set(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK"]);
+  if (resourceType && !allowedResourceTypes.has(resourceType)) {
+    throw new AppError(400, "BAD_REQUEST", "Choose a valid learning-resource type.");
+  }
+  const [listings, resources] = await Promise.all([
+    database(context.env).execute(sql`
+      select listings.id, listings.course_id, listings.tutor_profile_id, listings.course_code, listings.title,
+        listings.description, listings.format, listings.price_kobo, listings.capacity,
+        listings.location_text, listings.cancellation_cutoff_hours, listings.is_demo,
+        coalesce(profiles.display_name, listings.publisher_name, 'KampusOne tutor') as tutor_name,
+        profiles.biography as tutor_biography,
+        (profiles.verified_at is not null and not listings.is_demo) as tutor_verified,
+        coalesce((select round(avg(reviews.rating)::numeric, 1) from public.tutorial_reviews reviews
+          where reviews.listing_id = listings.id and reviews.status = 'PUBLISHED'), 0) as rating,
+        (select count(*)::int from public.tutorial_reviews reviews
+          where reviews.listing_id = listings.id and reviews.status = 'PUBLISHED') as review_count,
+        (select count(*)::int from public.tutorial_bookings completed
+          where completed.listing_id = listings.id and completed.status = 'COMPLETED') as completed_sessions,
+        coalesce((
+          select json_agg(json_build_object(
+            'id', windows.id,
+            'starts_at', windows.starts_at,
+            'ends_at', windows.ends_at,
+            'capacity', least(windows.capacity, listings.capacity),
+            'booked_spaces', (
+              select count(*)::int from public.tutorial_bookings window_bookings
+              where window_bookings.availability_window_id = windows.id and (
+                window_bookings.status in ('CONFIRMED','COMPLETED') or
+                (window_bookings.status = 'PENDING_PAYMENT' and window_bookings.payment_expires_at > now())
+              )
             )
-          )
-        ) order by windows.starts_at)
-        from public.tutorial_availability_windows windows
-        where windows.listing_id = listings.id and windows.status = 'OPEN'
-          and windows.starts_at > now()
-          and (select count(*) from public.tutorial_bookings window_bookings
-            where window_bookings.availability_window_id = windows.id and (
-              window_bookings.status in ('CONFIRMED','COMPLETED') or
-              (window_bookings.status = 'PENDING_PAYMENT' and window_bookings.payment_expires_at > now())
-            )) < least(windows.capacity, listings.capacity)
-      ), '[]'::json) as availability
-    from public.tutorial_listings listings
-    join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id and profiles.status = 'ACTIVE'
-    where listings.university_id = ${requireUniversity(user)}::uuid and listings.status = 'PUBLISHED'
-      and (${search}::text is null or listings.title ilike ${search}
-        or listings.course_code ilike ${search} or profiles.display_name ilike ${search})
-      and exists (
-        select 1 from public.tutorial_availability_windows windows
-        where windows.listing_id = listings.id and windows.status = 'OPEN' and windows.starts_at > now()
-          and (select count(*) from public.tutorial_bookings window_bookings
-            where window_bookings.availability_window_id = windows.id and (
-              window_bookings.status in ('CONFIRMED','COMPLETED') or
-              (window_bookings.status = 'PENDING_PAYMENT' and window_bookings.payment_expires_at > now())
-            )) < least(windows.capacity, listings.capacity)
-      )
-    order by listings.updated_at desc limit 100
+          ) order by windows.starts_at)
+          from public.tutorial_availability_windows windows
+          where windows.listing_id = listings.id and windows.status = 'OPEN'
+            and windows.starts_at > now()
+            and (select count(*) from public.tutorial_bookings window_bookings
+              where window_bookings.availability_window_id = windows.id and (
+                window_bookings.status in ('CONFIRMED','COMPLETED') or
+                (window_bookings.status = 'PENDING_PAYMENT' and window_bookings.payment_expires_at > now())
+              )) < least(windows.capacity, listings.capacity)
+        ), '[]'::json) as availability
+      from public.tutorial_listings listings
+      left join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
+      where listings.university_id = ${universityId}::uuid
+        and listings.status = 'PUBLISHED' and listings.review_status = 'APPROVED'
+        and listings.deleted_at is null
+        and (${paidAccessEnabled} or listings.price_kobo = 0)
+        and (listings.is_demo or profiles.status = 'ACTIVE')
+        and (${search}::text is null or listings.title ilike ${search}
+          or listings.course_code ilike ${search}
+          or coalesce(profiles.display_name, listings.publisher_name, '') ilike ${search})
+        and exists (
+          select 1 from public.tutorial_availability_windows windows
+          where windows.listing_id = listings.id and windows.status = 'OPEN' and windows.starts_at > now()
+            and (select count(*) from public.tutorial_bookings window_bookings
+              where window_bookings.availability_window_id = windows.id and (
+                window_bookings.status in ('CONFIRMED','COMPLETED') or
+                (window_bookings.status = 'PENDING_PAYMENT' and window_bookings.payment_expires_at > now())
+              )) < least(windows.capacity, listings.capacity)
+        )
+      order by listings.is_demo desc, listings.updated_at desc limit 100
+    `),
+    database(context.env).execute(sql`
+      select resources.id, resources.listing_id, resources.course_code, resources.title,
+        resources.description, resources.resource_type, resources.access_model,
+        resources.price_kobo, resources.level_code, resources.batch_label,
+        resources.publisher_name, resources.publisher_verified, resources.preview_text,
+        resources.page_count, resources.duration_seconds, resources.download_count,
+        resources.is_demo,
+        case when resources.access_model = 'FREE' then resources.file_url else null end as file_url
+      from public.tutorial_resources resources
+      where resources.university_id = ${universityId}::uuid
+        and resources.status = 'PUBLISHED' and resources.deleted_at is null
+        and (${paidAccessEnabled} or resources.access_model <> 'PAID')
+        and (${resourceType ?? null}::text is null or resources.resource_type = ${resourceType ?? null})
+        and (${search}::text is null or resources.title ilike ${search}
+          or resources.description ilike ${search} or resources.course_code ilike ${search}
+          or resources.publisher_name ilike ${search})
+      order by resources.is_demo desc, resources.updated_at desc limit 150
+    `),
+  ]);
+  return context.json({ listings: listings.rows, resources: resources.rows });
+});
+
+studentRoutes.get("/tutorial-resources/:id", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Learning resources are not enabled in this environment.");
+  const user = currentUser(context);
+  const result = await database(context.env).execute(sql`
+    select resources.id, resources.listing_id, resources.course_code, resources.title,
+      resources.description, resources.resource_type, resources.access_model,
+      resources.price_kobo, resources.level_code, resources.batch_label,
+      resources.publisher_name, resources.publisher_verified, resources.preview_text,
+      resources.page_count, resources.duration_seconds, resources.download_count,
+      resources.is_demo,
+      case when resources.access_model = 'FREE' or exists (
+        select 1 from public.tutorial_bookings bookings
+        join public.tutorial_listings listings on listings.id = bookings.listing_id
+        where bookings.student_user_id = ${user.id}::uuid
+          and bookings.status in ('CONFIRMED','COMPLETED')
+          and (bookings.listing_id = resources.listing_id
+            or (resources.listing_id is null and upper(listings.course_code) = upper(resources.course_code)))
+      ) then resources.file_url else null end as file_url,
+      (resources.access_model = 'FREE' or exists (
+        select 1 from public.tutorial_bookings bookings
+        join public.tutorial_listings listings on listings.id = bookings.listing_id
+        where bookings.student_user_id = ${user.id}::uuid
+          and bookings.status in ('CONFIRMED','COMPLETED')
+          and (bookings.listing_id = resources.listing_id
+            or (resources.listing_id is null and upper(listings.course_code) = upper(resources.course_code)))
+      )) as can_access
+    from public.tutorial_resources resources
+    where resources.id = ${context.req.param("id")}::uuid
+      and resources.university_id = ${requireUniversity(user)}::uuid
+      and resources.status = 'PUBLISHED' and resources.deleted_at is null
+    limit 1
   `);
-  return context.json({ listings: result.rows });
+  const resource = firstRow(result);
+  if (!resource) throw new AppError(404, "NOT_FOUND", "That learning resource is unavailable.");
+  return context.json({ resource });
 });
 
 studentRoutes.post("/tutorial-bookings", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "Tutorial bookings are not enabled in this environment.");
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial bookings are not enabled in this environment.");
   const user = currentUser(context);
   const parsed = tutorialBookingSchema.safeParse(await jsonBody(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "The tutorial booking request is invalid.");
+  if (!featureEnabled(context.env, "PAYMENTS_ENABLED")) {
+    const listing = await database(context.env).execute<{ price_kobo: number }>(sql`
+      select price_kobo from public.tutorial_listings
+      where id = ${parsed.data.listingId}::uuid
+        and university_id = ${requireUniversity(user)}::uuid
+        and deleted_at is null limit 1
+    `);
+    if (Number(firstRow(listing)?.price_kobo ?? 0) > 0) {
+      throw new AppError(409, "CONFLICT", "Paid tutorials are not available during the free pilot.");
+    }
+  }
   const id = crypto.randomUUID();
   try {
     const result = await database(context.env).execute<{ id: string; amount_kobo: number }>(sql`
@@ -471,7 +562,8 @@ studentRoutes.post("/tutorial-bookings", async (context) => {
       )
     `);
     const booking = firstRow(result);
-    return context.json({ id, status: "PENDING_PAYMENT", amountKobo: Number(booking?.amount_kobo ?? 0) }, 201);
+    const amountKobo = Number(booking?.amount_kobo ?? 0);
+    return context.json({ id, status: amountKobo === 0 ? "CONFIRMED" : "PENDING_PAYMENT", amountKobo }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("TUTORIAL_FULL")) throw new AppError(409, "CONFLICT", "That tutorial is full.");
@@ -483,6 +575,7 @@ studentRoutes.post("/tutorial-bookings", async (context) => {
 });
 
 studentRoutes.post("/tutorial-bookings/:id/confirm", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial bookings are not enabled in this environment.");
   const user = currentUser(context);
   const parsed = completionConfirmationSchema.safeParse(await jsonBody(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Completion confirmation is required.");
@@ -509,8 +602,96 @@ studentRoutes.post("/tutorial-bookings/:id/confirm", async (context) => {
   return context.json({ status: booking.tutor_confirmed_at ? "COMPLETED" : "AWAITING_TUTOR" });
 });
 
+studentRoutes.post("/tutorial-bookings/:id/cancel", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial bookings are not enabled in this environment.");
+  const user = currentUser(context);
+  const parsed = tutorialCancellationSchema.safeParse(await jsonBody(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Add a short reason for cancelling the tutorial.");
+  const found = await database(context.env).execute<{
+    id: string; university_id: string; amount_kobo: number; status: string;
+    scheduled_for: string | null; cancellation_cutoff_hours: number;
+  }>(sql`
+    select bookings.id, bookings.university_id, bookings.amount_kobo, bookings.status,
+      bookings.scheduled_for::text, listings.cancellation_cutoff_hours
+    from public.tutorial_bookings bookings
+    join public.tutorial_listings listings on listings.id = bookings.listing_id
+    where bookings.id = ${context.req.param("id")}::uuid
+      and bookings.student_user_id = ${user.id}::uuid
+      and bookings.status in ('PENDING_PAYMENT','CONFIRMED')
+    limit 1
+  `);
+  const booking = firstRow(found);
+  if (!booking) throw new AppError(409, "CONFLICT", "That booking can no longer be cancelled.");
+  const cutoff = booking.scheduled_for
+    ? new Date(booking.scheduled_for).getTime() - Number(booking.cancellation_cutoff_hours) * 60 * 60 * 1000
+    : Number.POSITIVE_INFINITY;
+  if (Date.now() >= cutoff) {
+    throw new AppError(409, "CONFLICT", "The cancellation window has closed. Report a problem so support can review it.");
+  }
+
+  if (Number(booking.amount_kobo) === 0 || booking.status === "PENDING_PAYMENT") {
+    const updated = await database(context.env).execute<{ id: string }>(sql`
+      update public.tutorial_bookings set status = 'CANCELLED',
+        cancellation_reason = ${parsed.data.reason}, cancelled_at = now(),
+        cancelled_by_user_id = ${user.id}::uuid, earnings_state = 'NOT_EARNED', updated_at = now()
+      where id = ${booking.id}::uuid and student_user_id = ${user.id}::uuid
+        and status = ${booking.status}
+      returning id
+    `);
+    if (!firstRow(updated)) throw new AppError(409, "CONFLICT", "This booking changed while it was being cancelled.");
+    return context.json({ status: "CANCELLED", refundReviewRequired: false });
+  }
+
+  const disputeId = crypto.randomUUID();
+  const disputed = await database(context.env).execute<{ id: string }>(sql`
+    with changed as (
+      update public.tutorial_bookings set status = 'DISPUTED',
+      cancellation_reason = ${parsed.data.reason}, cancelled_at = now(),
+      cancelled_by_user_id = ${user.id}::uuid, earnings_state = 'RESERVED', updated_at = now()
+      where id = ${booking.id}::uuid and status = 'CONFIRMED'
+      returning id
+    ), opened as (
+      insert into public.disputes (
+        id, university_id, opened_by_user_id, tutorial_booking_id, category, reason
+      ) select
+        ${disputeId}::uuid, ${booking.university_id}::uuid, ${user.id}::uuid,
+        changed.id, 'OTHER', ${`Cancellation request: ${parsed.data.reason}`}
+      from changed returning id
+    ) select id from opened
+  `);
+  if (!firstRow(disputed)) throw new AppError(409, "CONFLICT", "This booking changed while it was being cancelled.");
+  return context.json({ status: "DISPUTED", refundReviewRequired: true });
+});
+
+studentRoutes.post("/tutorial-reviews", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial reviews are not enabled in this environment.");
+  const user = currentUser(context);
+  const parsed = tutorialReviewSchema.safeParse(await jsonBody(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a rating and add a useful review.");
+  const bookingResult = await database(context.env).execute<{
+    id: string; university_id: string; listing_id: string;
+  }>(sql`
+    select id, university_id, listing_id from public.tutorial_bookings
+    where id = ${parsed.data.bookingId}::uuid and student_user_id = ${user.id}::uuid
+      and status = 'COMPLETED' limit 1
+  `);
+  const booking = firstRow(bookingResult);
+  if (!booking) throw new AppError(403, "FORBIDDEN", "Only a student who completed this tutorial can review it.");
+  const id = crypto.randomUUID();
+  const inserted = await database(context.env).execute<{ id: string }>(sql`
+    insert into public.tutorial_reviews (
+      id, university_id, booking_id, listing_id, student_user_id, rating, body
+    ) values (
+      ${id}::uuid, ${booking.university_id}::uuid, ${booking.id}::uuid,
+      ${booking.listing_id}::uuid, ${user.id}::uuid, ${parsed.data.rating}, ${parsed.data.body ?? null}
+    ) on conflict (booking_id) do nothing returning id
+  `);
+  if (!firstRow(inserted)) throw new AppError(409, "CONFLICT", "You already reviewed this tutorial.");
+  return context.json({ id, status: "PUBLISHED" }, 201);
+});
+
 studentRoutes.get("/store", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "The campus store is not enabled in this environment.");
+  requireFeature(context.env, "STORE_ENABLED", "The campus store is not enabled in this environment.");
   const user = currentUser(context);
   const category = context.req.query("category")?.trim();
   const query = context.req.query("q")?.trim();
@@ -537,7 +718,7 @@ studentRoutes.get("/store", async (context) => {
 });
 
 studentRoutes.post("/orders", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "Store orders are not enabled in this environment.");
+  requireFeature(context.env, "STORE_ENABLED", "Store orders are not enabled in this environment.");
   const user = currentUser(context);
   const parsed = storeOrderSchema.safeParse(await jsonBody(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the order details and try again.");
@@ -580,10 +761,12 @@ studentRoutes.get("/purchases", async (context) => {
       select bookings.id, bookings.status, bookings.amount_kobo, bookings.scheduled_for,
         windows.ends_at as completion_available_at,
         bookings.created_at, listings.title, listings.course_code,
-        profiles.display_name as tutor_name
+        coalesce(profiles.display_name, listings.publisher_name, 'KampusOne tutor') as tutor_name,
+        reviews.id as review_id, reviews.rating as review_rating
       from public.tutorial_bookings bookings
       join public.tutorial_listings listings on listings.id = bookings.listing_id
-      join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
+      left join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
+      left join public.tutorial_reviews reviews on reviews.booking_id = bookings.id
       left join public.tutorial_availability_windows windows
         on windows.id = bookings.availability_window_id and windows.listing_id = bookings.listing_id
       where bookings.student_user_id = ${user.id}::uuid order by bookings.created_at desc limit 100

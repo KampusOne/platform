@@ -8,6 +8,7 @@ import {
   registerSchema,
   resendVerificationSchema,
   resetPasswordSchema,
+  type RegisterInput,
   verifyEmailSchema,
 } from "@kampusone/contracts";
 
@@ -170,21 +171,95 @@ async function sendFreshEmailVerification(
   const latest = await latestVerification(env, user.email, "EMAIL_VERIFICATION");
   if (latest && Date.now() - new Date(latest.last_sent_at).getTime() < 60_000) return;
 
-  const verification = await createVerification(env, user.id, "EMAIL_VERIFICATION");
+  const code = generateOtp();
+  const tokenId = crypto.randomUUID();
+  const tokenHash = await hashOtp(env, code);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  await database(env).execute(sql`
+    with invalidated as (
+      update public.verification_tokens set used_at = coalesce(used_at, now())
+      where user_id = ${user.id}::uuid and type::text = 'EMAIL_VERIFICATION' and used_at is null
+    ), inserted_token as (
+      insert into public.verification_tokens (
+        id, user_id, token_hash, type, expires_at, attempts, last_sent_at
+      ) values (
+        ${tokenId}::uuid, ${user.id}::uuid, ${tokenHash},
+        'EMAIL_VERIFICATION'::"VerificationTokenType", ${expiresAt}::timestamptz, 0, now()
+      ) returning id
+    )
+    update app_private.pending_registrations staged set
+      verification_token_id = inserted_token.id,
+      expires_at = ${expiresAt}::timestamptz,
+      created_at = now()
+    from inserted_token where staged.user_id = ${user.id}::uuid
+  `);
   try {
     await sendMail(env, {
       to: user.email,
       firstName: user.first_name,
-      code: verification.code,
+      code,
       kind: "verification",
-      idempotencyKey: `verify-${verification.tokenId}`,
+      idempotencyKey: `verify-${tokenId}`,
     });
   } catch (caught) {
     // Keep the token if delivery fails or times out. The provider may have
     // accepted the message even when its response did not reach the Worker.
     throw caught;
   }
-  await supersedeOlderVerifications(env, user.id, "EMAIL_VERIFICATION", verification.tokenId);
+}
+
+async function stagePendingRegistration(
+  context: AppContext,
+  user: { id: string; email: string },
+  input: RegisterInput,
+) {
+  const verificationId = crypto.randomUUID();
+  const verificationCode = generateOtp();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const displayName = `${input.firstName} ${input.lastName}`;
+  if (input.firstName.length > 40 || input.lastName.length > 40 || displayName.length > 80) {
+    throw new AppError(400, "BAD_REQUEST", "Use a shorter first or last name and try again.");
+  }
+  const [passwordHash, verificationHash] = await Promise.all([
+    hashPassword(input.password),
+    hashOtp(context.env, verificationCode),
+  ]);
+  await database(context.env).execute(sql`
+    with invalidated as (
+      update public.verification_tokens set used_at = coalesce(used_at, now())
+      where user_id = ${user.id}::uuid and type::text = 'EMAIL_VERIFICATION' and used_at is null
+    ), inserted_token as (
+      insert into public.verification_tokens (
+        id, user_id, token_hash, type, expires_at, attempts, last_sent_at
+      ) values (
+        ${verificationId}::uuid, ${user.id}::uuid, ${verificationHash},
+        'EMAIL_VERIFICATION'::"VerificationTokenType", ${expiresAt}::timestamptz, 0, now()
+      ) returning id
+    )
+    insert into app_private.pending_registrations (
+      user_id, verification_token_id, password_hash, first_name, last_name,
+      display_name, legal_version, expires_at
+    ) select ${user.id}::uuid, inserted_token.id, ${passwordHash},
+      ${input.firstName}, ${input.lastName}, ${displayName},
+      ${input.legalVersion}, ${expiresAt}::timestamptz
+    from inserted_token
+    on conflict (user_id) do update set
+      verification_token_id = excluded.verification_token_id,
+      password_hash = excluded.password_hash,
+      first_name = excluded.first_name,
+      last_name = excluded.last_name,
+      display_name = excluded.display_name,
+      legal_version = excluded.legal_version,
+      expires_at = excluded.expires_at,
+      created_at = now()
+  `);
+  await sendMail(context.env, {
+    to: user.email,
+    firstName: input.firstName,
+    code: verificationCode,
+    kind: "verification",
+    idempotencyKey: `verify-${verificationId}`,
+  });
 }
 
 function verificationFailure(result: string): never {
@@ -199,19 +274,18 @@ authRoutes.post("/register", async (context) => {
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the account details and try again.");
   validatePassword(parsed.data.password);
   requireEmailProvider(context.env);
-  const rateLimitKey = await consumeAuthRateLimit(context, "REGISTER", parsed.data.email, 5, 900);
+  await consumeAuthRateLimit(context, "REGISTER", parsed.data.email, 5, 900);
 
   const existing = await findUserByEmail(context.env, parsed.data.email);
   if (existing) {
     if (!existing.email_verified_at) {
       try {
-        await sendFreshEmailVerification(context.env, existing);
+        await stagePendingRegistration(context, existing, parsed.data);
       } catch (caught) {
         logRegistrationFailure(context, "verification_delivery", caught);
         throw caught;
       }
     }
-    await clearAuthRateLimit(context.env, "REGISTER", rateLimitKey);
     return context.json({
       status: existing.email_verified_at ? "already_registered" : "verification_required",
       email: parsed.data.email,
@@ -325,13 +399,12 @@ authRoutes.post("/register", async (context) => {
     }
     if (!raced.email_verified_at) {
       try {
-        await sendFreshEmailVerification(context.env, raced);
+        await stagePendingRegistration(context, raced, parsed.data);
       } catch (caught) {
         logRegistrationFailure(context, "verification_delivery", caught);
         throw caught;
       }
     }
-    await clearAuthRateLimit(context.env, "REGISTER", rateLimitKey);
     return context.json({
       status: raced.email_verified_at ? "already_registered" : "verification_required",
       email: parsed.data.email,
@@ -360,7 +433,6 @@ authRoutes.post("/register", async (context) => {
     throw caught;
   }
 
-  await clearAuthRateLimit(context.env, "REGISTER", rateLimitKey);
   return context.json({ status: "verification_required", email: parsed.data.email }, 201);
 });
 

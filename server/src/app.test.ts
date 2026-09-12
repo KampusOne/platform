@@ -13,6 +13,9 @@ const env: Bindings = {
   ACADEMIC_CORE_ENABLED: "true",
   SOCIAL_FEED_ENABLED: "false",
   MARKETPLACE_ENABLED: "false",
+  TUTORIALS_ENABLED: "true",
+  STORE_ENABLED: "false",
+  LOGISTICS_ENABLED: "false",
   PAYMENTS_ENABLED: "false",
   AI_ASSISTANT_ENABLED: "false",
 };
@@ -32,6 +35,8 @@ describe("KampusOne Worker", () => {
 
     expect(body.features.academicCore).toBe(true);
     expect(body.features.socialFeed).toBe(false);
+    expect(body.features.tutorials).toBe(true);
+    expect(body.features.store).toBe(false);
     expect(body.features.payments).toBe(false);
   });
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -32,6 +33,8 @@ type Booking = {
   title: string;
   course_code: string;
   tutor_name: string;
+  review_id: string | null;
+  review_rating: number | null;
 };
 
 type Order = {
@@ -159,8 +162,10 @@ function BookingRecord({
   item,
   last,
   onConfirm,
+  onCancel,
   onDispute,
   onPay,
+  onReview,
 }: {
   busyId: string;
   currentTime: number;
@@ -168,11 +173,15 @@ function BookingRecord({
   item: Booking;
   last: boolean;
   onConfirm: () => void;
+  onCancel: () => void;
   onDispute: () => void;
   onPay: () => void;
+  onReview: () => void;
 }) {
   const itemBusy = busyId === item.id;
-  const hasPrimaryAction = item.status === "PENDING_PAYMENT" || item.status === "CONFIRMED";
+  const canCancel = item.status === "CONFIRMED" && Boolean(item.scheduled_for) && Date.parse(item.scheduled_for!) > currentTime;
+  const canReview = item.status === "COMPLETED" && !item.review_id;
+  const hasPrimaryAction = item.status === "PENDING_PAYMENT" || item.status === "CONFIRMED" || canReview;
   const canDispute = BOOKING_DISPUTE_STATUSES.has(item.status);
   const completionAvailableTime = item.completion_available_at
     ? Date.parse(item.completion_available_at)
@@ -229,6 +238,27 @@ function BookingRecord({
               onPress={onConfirm}
             />
           ) : null}
+          {canReview ? (
+            <PrimaryAction
+              accessibilityLabel={`Review ${item.course_code} tutorial`}
+              busy={itemBusy}
+              disabled={Boolean(busyId)}
+              label="Leave a review"
+              onPress={onReview}
+            />
+          ) : null}
+          {canCancel ? (
+            <Pressable
+              accessibilityLabel={`Cancel ${item.course_code} tutorial booking`}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: Boolean(busyId) }}
+              disabled={Boolean(busyId)}
+              onPress={onCancel}
+              style={({ pressed }) => [styles.cancelAction, pressed && !busyId && styles.pressed]}
+            >
+              <Text style={styles.cancelActionText}>Cancel booking</Text>
+            </Pressable>
+          ) : null}
           {canDispute ? (
             <ProblemAction
               disabled={Boolean(busyId)}
@@ -243,6 +273,12 @@ function BookingRecord({
         <View accessible accessibilityLabel={completionHint} style={styles.completionHint}>
           <Ionicons name="time-outline" size={15} color={theme.textMuted} />
           <Text style={styles.completionHintText}>{completionHint}</Text>
+        </View>
+      ) : null}
+      {item.review_id ? (
+        <View style={styles.reviewedRow}>
+          <Ionicons name="star" size={14} color={theme.statusAttention} />
+          <Text style={styles.reviewedText}>You rated this tutorial {item.review_rating}/5</Text>
         </View>
       ) : null}
     </View>
@@ -413,6 +449,9 @@ export default function PurchasesScreen() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [completionTarget, setCompletionTarget] = useState<Booking | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<Booking | null>(null);
+  const [rating, setRating] = useState(5);
+  const [reviewBody, setReviewBody] = useState("");
   const [dispute, setDispute] = useState<DisputeTarget | null>(null);
   const [reason, setReason] = useState("");
   const [reasonFocused, setReasonFocused] = useState(false);
@@ -475,7 +514,11 @@ export default function PurchasesScreen() {
     try {
       const payment = await api<{ authorizationUrl: string }>("/v1/payments/initialize", {
         method: "POST",
-        body: JSON.stringify({ resourceType, resourceId }),
+        body: JSON.stringify({
+          idempotencyKey: `resume-${resourceId}-${Date.now()}`,
+          resourceType,
+          resourceId,
+        }),
       });
       await Linking.openURL(payment.authorizationUrl);
     } catch (caught) {
@@ -500,6 +543,61 @@ export default function PurchasesScreen() {
       setCompletionTarget(null);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Completion could not be confirmed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function cancelBooking(id: string) {
+    setBusy(id);
+    setError("");
+    try {
+      const result = await api<{ status: string; refundReviewRequired: boolean }>(`/v1/student/tutorial-bookings/${id}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ reason: "My plans changed" }),
+      });
+      setNotice(result.refundReviewRequired
+        ? "Your cancellation was sent to support for a refund review."
+        : "Your tutorial booking was cancelled.");
+      await load();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "The booking could not be cancelled.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function requestCancellation(booking: Booking) {
+    Alert.alert(
+      "Cancel this tutorial?",
+      "Your space will be released. Paid bookings may require a support review before any refund.",
+      [
+        { style: "cancel", text: "Keep booking" },
+        { style: "destructive", text: "Cancel tutorial", onPress: () => void cancelBooking(booking.id) },
+      ],
+    );
+  }
+
+  async function submitReview() {
+    if (!reviewTarget) return;
+    setBusy(reviewTarget.id);
+    setError("");
+    try {
+      await api("/v1/student/tutorial-reviews", {
+        method: "POST",
+        body: JSON.stringify({
+          bookingId: reviewTarget.id,
+          rating,
+          body: reviewBody.trim() || null,
+        }),
+      });
+      setNotice("Thanks — your verified tutorial review is now published.");
+      setReviewTarget(null);
+      setReviewBody("");
+      setRating(5);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "Your review could not be published.");
     } finally {
       setBusy("");
     }
@@ -549,6 +647,7 @@ export default function PurchasesScreen() {
   ] : [], [data.orders, data.tutorialBookings, hasPurchases]);
   const reasonLength = reason.trim().length;
   const completionBusy = Boolean(completionTarget && busy === completionTarget.id);
+  const reviewBusy = Boolean(reviewTarget && busy === reviewTarget.id);
   const disputeBusy = Boolean(dispute && busy === dispute.id);
   const disputeDisabled = reasonLength < 10 || Boolean(busy);
 
@@ -653,11 +752,16 @@ export default function PurchasesScreen() {
                   setError("");
                   setCompletionTarget(booking);
                 }}
+                onCancel={() => requestCancellation(booking)}
                 onDispute={() => {
                   setError("");
                   setDispute({ resourceType: "TUTORIAL_BOOKING", id: booking.id, title: booking.title });
                 }}
                 onPay={() => void pay("TUTORIAL_BOOKING", booking.id)}
+                onReview={() => {
+                  setError("");
+                  setReviewTarget(booking);
+                }}
               />
             );
           }
@@ -759,6 +863,73 @@ export default function PurchasesScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        animationType={reducedMotion ? "none" : "slide"}
+        onRequestClose={() => { if (!reviewBusy) setReviewTarget(null); }}
+        statusBarTranslucent
+        transparent
+        visible={Boolean(reviewTarget)}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
+          <Pressable accessibilityLabel="Close tutorial review" accessibilityRole="button" disabled={reviewBusy} onPress={() => setReviewTarget(null)} style={styles.modalDismissArea} />
+          <View accessibilityViewIsModal style={styles.modalSheet}>
+            <View style={styles.sheetHandle} />
+            <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
+              <View style={styles.modalTop}>
+                <View style={styles.modalHeadingCopy}>
+                  <Text style={styles.modalTitle}>Review this tutorial</Text>
+                  <Text numberOfLines={1} style={styles.modalTarget}>{reviewTarget?.course_code} · {reviewTarget?.title}</Text>
+                </View>
+                <Pressable accessibilityLabel="Close review" accessibilityRole="button" disabled={reviewBusy} onPress={() => setReviewTarget(null)} style={styles.modalClose}>
+                  <Ionicons name="close" size={23} color={theme.text} />
+                </Pressable>
+              </View>
+              <Text style={styles.modalBody}>Your rating is tied to a completed booking, which helps other students judge the session fairly.</Text>
+              <Text style={styles.ratingLabel}>Your rating</Text>
+              <View accessibilityRole="radiogroup" style={styles.ratingRow}>
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <Pressable
+                    accessibilityLabel={`${value} out of 5 stars`}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: rating === value, disabled: reviewBusy }}
+                    disabled={reviewBusy}
+                    key={value}
+                    onPress={() => setRating(value)}
+                    style={({ pressed }) => [styles.ratingButton, rating === value && styles.ratingButtonSelected, pressed && styles.pressed]}
+                  >
+                    <Ionicons name={rating >= value ? "star" : "star-outline"} size={23} color={rating >= value ? theme.statusAttention : theme.textMuted} />
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.ratingLabel}>Short note (optional)</Text>
+              <TextInput
+                editable={!reviewBusy}
+                maxLength={1000}
+                multiline
+                onChangeText={setReviewBody}
+                placeholder="What was useful?"
+                placeholderTextColor={theme.textMuted}
+                style={styles.textarea}
+                textAlignVertical="top"
+                value={reviewBody}
+              />
+              {error ? <Text accessibilityRole="alert" style={styles.formReviewError}>{error}</Text> : null}
+              <Pressable
+                accessibilityLabel="Publish tutorial review"
+                accessibilityRole="button"
+                accessibilityState={{ busy: reviewBusy, disabled: reviewBusy }}
+                disabled={reviewBusy}
+                onPress={() => void submitReview()}
+                style={({ pressed }) => [styles.submitAction, reviewBusy && styles.actionDisabled, pressed && !reviewBusy && styles.pressed]}
+              >
+                {reviewBusy ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Ionicons name="send-outline" size={18} color="#FFFFFF" />}
+                <Text style={styles.submitActionText}>{reviewBusy ? "Publishing…" : "Publish review"}</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -891,8 +1062,12 @@ const styles = StyleSheet.create({
   completionHintText: { color: theme.textMuted, flex: 1, fontFamily: theme.font.body, fontSize: 10.5, lineHeight: 15 },
   primaryAction: { alignItems: "center", backgroundColor: theme.deepBrand, borderRadius: 13, flexDirection: "row", gap: 8, justifyContent: "center", minHeight: 46, minWidth: 126, paddingHorizontal: 16 },
   primaryActionText: { color: "#FFFFFF", fontFamily: theme.font.semibold, fontSize: 12.5 },
+  cancelAction: { alignItems: "center", borderColor: theme.border, borderRadius: 13, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: 14 },
+  cancelActionText: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 12 },
   problemAction: { alignItems: "center", flexDirection: "row", gap: 6, minHeight: 44, paddingHorizontal: 2 },
   problemActionText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 12 },
+  reviewedRow: { alignItems: "center", flexDirection: "row", gap: 6, marginLeft: 55, marginTop: 10 },
+  reviewedText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 11.5, lineHeight: 16 },
   orderBreakdown: { alignItems: "center", flexDirection: "row", gap: 7, marginLeft: 55, marginTop: 10 },
   breakdownLabel: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10.5, fontVariant: ["tabular-nums"] },
   breakdownDot: { backgroundColor: theme.textMuted, borderRadius: 2, height: 3, opacity: 0.55, width: 3 },
@@ -959,6 +1134,11 @@ const styles = StyleSheet.create({
   modalTarget: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 12, lineHeight: 17, marginTop: 3 },
   modalClose: { alignItems: "center", height: 44, justifyContent: "center", marginTop: -6, width: 44 },
   modalBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13, lineHeight: 20, marginTop: 13 },
+  ratingLabel: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13, marginBottom: 8, marginTop: 18 },
+  ratingRow: { flexDirection: "row", gap: 8 },
+  ratingButton: { alignItems: "center", borderColor: theme.border, borderRadius: 12, borderWidth: 1, height: 46, justifyContent: "center", width: 46 },
+  ratingButtonSelected: { backgroundColor: "rgba(233,177,142,0.16)", borderColor: theme.brand },
+  formReviewError: { color: theme.deepBrand, fontFamily: theme.font.medium, fontSize: 11.5, lineHeight: 17, marginTop: 10 },
   modalError: { alignItems: "flex-start", backgroundColor: "rgba(168,70,46,0.08)", borderRadius: 13, flexDirection: "row", gap: 8, marginTop: 13, padding: 11 },
   modalErrorText: { color: theme.deepBrand, flex: 1, fontFamily: theme.font.medium, fontSize: 11.5, lineHeight: 17 },
   inputHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 7, marginTop: 18 },

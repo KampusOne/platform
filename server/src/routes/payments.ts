@@ -37,27 +37,87 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
   const item = firstRow(resource);
   if (!item) throw new AppError(404, "NOT_FOUND", "That payable item does not exist.");
   if (item.status !== "PENDING_PAYMENT") throw new AppError(409, "CONFLICT", "This item is not waiting for payment.");
+  if (Number(item.amount_kobo) <= 0) throw new AppError(409, "CONFLICT", "This tutorial is free and does not need a payment.");
+
+  const existingResult = await database(context.env).execute<{
+    status: string; authorization_url: string | null; access_code: string | null; provider_reference: string;
+  }>(sql`
+    select status, authorization_url, access_code, provider_reference
+    from public.payment_attempts
+    where user_id = ${user.id}::uuid and resource_type = ${parsed.data.resourceType}
+      and resource_id = ${item.id}::uuid and idempotency_key = ${parsed.data.idempotencyKey}
+    limit 1
+  `);
+  const existing = firstRow(existingResult);
+  if (existing?.status === "INITIALIZED" && existing.authorization_url && existing.access_code) {
+    return context.json({
+      authorizationUrl: existing.authorization_url,
+      accessCode: existing.access_code,
+      reference: existing.provider_reference,
+      reused: true,
+    });
+  }
+  if (existing) {
+    throw new AppError(409, "CONFLICT", "That payment attempt cannot be reused. Start a new attempt.");
+  }
 
   const reference = `K1-${parsed.data.resourceType === "TUTORIAL_BOOKING" ? "T" : "O"}-${crypto.randomUUID()}`;
+  const attemptId = crypto.randomUUID();
+  const inserted = await database(context.env).execute<{ id: string }>(sql`
+    insert into public.payment_attempts (
+      id, user_id, university_id, resource_type, resource_id, provider_reference,
+      amount_kobo, idempotency_key, status
+    ) values (
+      ${attemptId}::uuid, ${user.id}::uuid, ${user.universityId ?? null}::uuid,
+      ${parsed.data.resourceType}, ${item.id}::uuid, ${reference},
+      ${Number(item.amount_kobo)}, ${parsed.data.idempotencyKey}, 'CREATED'
+    ) on conflict do nothing
+    returning id
+  `);
+  if (!firstRow(inserted)) {
+    throw new AppError(409, "CONFLICT", "A checkout for this item is already active. Resume it from your purchases.");
+  }
   const callbackUrl = context.env.APP_ORIGIN
     ? `${context.env.APP_ORIGIN.replace(/\/$/, "")}/payment/return`
     : undefined;
-  const initialized = await initializePaystack(context.env, {
-    email: user.email,
-    amountKobo: Number(item.amount_kobo),
-    reference,
-    ...(callbackUrl ? { callbackUrl } : {}),
-    metadata: { resourceType: parsed.data.resourceType, resourceId: item.id, userId: user.id },
-  });
+  let initialized: { authorization_url?: string; access_code?: string };
+  try {
+    initialized = await initializePaystack(context.env, {
+      email: user.email,
+      amountKobo: Number(item.amount_kobo),
+      reference,
+      ...(callbackUrl ? { callbackUrl } : {}),
+      metadata: { resourceType: parsed.data.resourceType, resourceId: item.id, userId: user.id },
+    });
+  } catch (caught) {
+    await database(context.env).execute(sql`
+      update public.payment_attempts set status = 'FAILED', failure_code = 'INITIALIZATION_FAILED',
+        updated_at = now() where id = ${attemptId}::uuid and status = 'CREATED'
+    `);
+    throw caught;
+  }
+  if (!initialized.authorization_url || !initialized.access_code) {
+    await database(context.env).execute(sql`
+      update public.payment_attempts set status = 'FAILED', failure_code = 'INCOMPLETE_PROVIDER_SESSION',
+        updated_at = now() where id = ${attemptId}::uuid and status = 'CREATED'
+    `);
+    throw new AppError(503, "PROVIDER_UNAVAILABLE", "The payment provider returned an incomplete checkout session.");
+  }
+  await database(context.env).execute(sql`
+    update public.payment_attempts set status = 'INITIALIZED',
+      authorization_url = ${initialized.authorization_url}, access_code = ${initialized.access_code},
+      initialized_at = now(), updated_at = now()
+    where id = ${attemptId}::uuid and status = 'CREATED'
+  `);
   const table = parsed.data.resourceType === "TUTORIAL_BOOKING" ? "tutorial_bookings" : "orders";
   if (table === "tutorial_bookings") {
     await database(context.env).execute(sql`
-      update public.tutorial_bookings set provider_reference = ${reference}, updated_at = now()
+      update public.tutorial_bookings set provider_reference = coalesce(provider_reference, ${reference}), updated_at = now()
       where id = ${item.id}::uuid and student_user_id = ${user.id}::uuid and status = 'PENDING_PAYMENT'
     `);
   } else {
     await database(context.env).execute(sql`
-      update public.orders set provider_reference = ${reference}, updated_at = now()
+      update public.orders set provider_reference = coalesce(provider_reference, ${reference}), updated_at = now()
       where id = ${item.id}::uuid and buyer_user_id = ${user.id}::uuid and status = 'PENDING_PAYMENT'
     `);
   }
@@ -71,6 +131,21 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
     accessCode: initialized.access_code,
     reference,
   });
+});
+
+paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
+  const user = currentUser(context);
+  const result = await database(context.env).execute<{
+    provider_reference: string; status: string; resource_type: string; resource_id: string;
+  }>(sql`
+    select provider_reference, status, resource_type, resource_id
+    from public.payment_attempts
+    where provider_reference = ${context.req.param("reference")} and user_id = ${user.id}::uuid
+    limit 1
+  `);
+  const attempt = firstRow(result);
+  if (!attempt) throw new AppError(404, "NOT_FOUND", "That payment attempt could not be found.");
+  return context.json({ payment: attempt });
 });
 
 paymentRoutes.post("/paystack/webhook", async (context) => {
@@ -99,10 +174,13 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
   }>(sql`
     select bookings.id, bookings.university_id, bookings.amount_kobo,
       profiles.user_id as tutor_user_id
-    from public.tutorial_bookings bookings
+    from public.payment_attempts attempts
+    join public.tutorial_bookings bookings
+      on attempts.resource_type = 'TUTORIAL_BOOKING' and bookings.id = attempts.resource_id
     join public.tutorial_listings listings on listings.id = bookings.listing_id
     join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
-    where bookings.provider_reference = ${reference} and bookings.status = 'PENDING_PAYMENT'
+    where attempts.provider_reference = ${reference}
+      and attempts.status in ('CREATED','INITIALIZED') and bookings.status = 'PENDING_PAYMENT'
       and bookings.payment_expires_at > now()
     limit 1
   `);
@@ -110,6 +188,11 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
   if (booking) {
     if (Number(event.data.amount) !== Number(booking.amount_kobo)) {
       await database(context.env).execute(sql`
+        with reviewed_attempt as (
+          update public.payment_attempts set status = 'REQUIRES_REVIEW',
+            failure_code = 'AMOUNT_MISMATCH', updated_at = now()
+          where provider_reference = ${reference}
+        )
         update public.payment_provider_events set state = 'REQUIRES_REVIEW',
           resource_type = 'TUTORIAL_BOOKING', resource_id = ${booking.id}::uuid,
           review_reason = 'AMOUNT_MISMATCH', updated_at = now()
@@ -125,6 +208,7 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
       client`insert into public.ledger_transactions (university_id, reference_type, reference_id, idempotency_key, description) values (${booking.university_id}::uuid, 'TUTORIAL_BOOKING', ${booking.id}, ${`paystack:${reference}`}, 'Tutorial booking payment') on conflict do nothing`,
       client`insert into public.ledger_lines (transaction_id, account_id, direction, amount_kobo) select transactions.id, accounts.id, 'DEBIT', ${booking.amount_kobo} from public.ledger_transactions transactions join public.ledger_accounts accounts on accounts.university_id = ${booking.university_id}::uuid and accounts.account_code = 'PAYSTACK_CLEARING' and accounts.owner_user_id is null where transactions.idempotency_key = ${`paystack:${reference}`} and not exists (select 1 from public.ledger_lines lines where lines.transaction_id = transactions.id)`,
       client`insert into public.ledger_lines (transaction_id, account_id, direction, amount_kobo) select transactions.id, accounts.id, 'CREDIT', ${booking.amount_kobo} from public.ledger_transactions transactions join public.ledger_accounts accounts on accounts.university_id = ${booking.university_id}::uuid and accounts.account_code = 'TUTOR_PAYABLE' and accounts.owner_user_id = ${booking.tutor_user_id}::uuid where transactions.idempotency_key = ${`paystack:${reference}`} and (select count(*) from public.ledger_lines lines where lines.transaction_id = transactions.id) = 1`,
+      client`update public.payment_attempts set status = 'SUCCEEDED', completed_at = now(), updated_at = now() where provider_reference = ${reference} and status in ('CREATED','INITIALIZED')`,
       client`update public.payment_provider_events set state = 'PROCESSED', resource_type = 'TUTORIAL_BOOKING', resource_id = ${booking.id}::uuid, processed_at = now(), updated_at = now() where provider = 'PAYSTACK' and provider_reference = ${reference}`,
     ]);
     return context.json({ status: "processed" });
@@ -136,9 +220,12 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
   }>(sql`
     select orders.id, orders.university_id, orders.total_kobo, orders.subtotal_kobo,
       orders.delivery_fee_kobo, profiles.user_id as vendor_user_id
-    from public.orders orders
+    from public.payment_attempts attempts
+    join public.orders orders
+      on attempts.resource_type = 'STORE_ORDER' and orders.id = attempts.resource_id
     join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
-    where orders.provider_reference = ${reference} and orders.status = 'PENDING_PAYMENT'
+    where attempts.provider_reference = ${reference}
+      and attempts.status in ('CREATED','INITIALIZED') and orders.status = 'PENDING_PAYMENT'
       and exists (
         select 1 from public.inventory_reservations reservations
         where reservations.order_id = orders.id and reservations.status = 'HELD'
@@ -151,16 +238,27 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
     const existingResult = await database(context.env).execute<{
       resource_type: string; resource_id: string; status: string;
     }>(sql`
-      select 'TUTORIAL_BOOKING'::text as resource_type, id as resource_id, status
-      from public.tutorial_bookings where provider_reference = ${reference}
-      union all
-      select 'STORE_ORDER'::text as resource_type, id as resource_id, status
-      from public.orders where provider_reference = ${reference}
+      select attempts.resource_type, attempts.resource_id,
+        coalesce(bookings.status, orders.status, attempts.status) as status
+      from public.payment_attempts attempts
+      left join public.tutorial_bookings bookings
+        on attempts.resource_type = 'TUTORIAL_BOOKING' and bookings.id = attempts.resource_id
+      left join public.orders orders
+        on attempts.resource_type = 'STORE_ORDER' and orders.id = attempts.resource_id
+      where attempts.provider_reference = ${reference}
       limit 1
     `);
     const existing = firstRow(existingResult);
     const alreadyProcessed = Boolean(existing && !["PENDING_PAYMENT", "CANCELLED"].includes(existing.status));
     await database(context.env).execute(sql`
+      with reviewed_attempt as (
+        update public.payment_attempts set
+          status = ${alreadyProcessed ? "SUCCEEDED" : "REQUIRES_REVIEW"},
+          failure_code = ${alreadyProcessed ? null : existing ? "PAYMENT_AFTER_EXPIRY_OR_CANCELLATION" : "UNKNOWN_REFERENCE"},
+          completed_at = ${alreadyProcessed ? new Date().toISOString() : null}::timestamptz,
+          updated_at = now()
+        where provider_reference = ${reference}
+      )
       update public.payment_provider_events set
         state = ${alreadyProcessed ? "PROCESSED" : "REQUIRES_REVIEW"},
         resource_type = ${existing?.resource_type ?? null},
@@ -174,6 +272,11 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
   }
   if (Number(event.data.amount) !== Number(order.total_kobo)) {
     await database(context.env).execute(sql`
+      with reviewed_attempt as (
+        update public.payment_attempts set status = 'REQUIRES_REVIEW',
+          failure_code = 'AMOUNT_MISMATCH', updated_at = now()
+        where provider_reference = ${reference}
+      )
       update public.payment_provider_events set state = 'REQUIRES_REVIEW',
         resource_type = 'STORE_ORDER', resource_id = ${order.id}::uuid,
         review_reason = 'AMOUNT_MISMATCH', updated_at = now()
@@ -193,6 +296,7 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
     client`insert into public.ledger_lines (transaction_id, account_id, direction, amount_kobo) select transactions.id, accounts.id, 'DEBIT', ${order.total_kobo} from public.ledger_transactions transactions join public.ledger_accounts accounts on accounts.university_id = ${order.university_id}::uuid and accounts.account_code = 'PAYSTACK_CLEARING' and accounts.owner_user_id is null where transactions.idempotency_key = ${`paystack:${reference}`} and not exists (select 1 from public.ledger_lines lines where lines.transaction_id = transactions.id)`,
     client`insert into public.ledger_lines (transaction_id, account_id, direction, amount_kobo) select transactions.id, accounts.id, 'CREDIT', ${order.subtotal_kobo} from public.ledger_transactions transactions join public.ledger_accounts accounts on accounts.university_id = ${order.university_id}::uuid and accounts.account_code = 'VENDOR_PAYABLE' and accounts.owner_user_id = ${order.vendor_user_id}::uuid where transactions.idempotency_key = ${`paystack:${reference}`} and (select count(*) from public.ledger_lines lines where lines.transaction_id = transactions.id) = 1`,
     ...(Number(order.delivery_fee_kobo) > 0 ? [client`insert into public.ledger_lines (transaction_id, account_id, direction, amount_kobo) select transactions.id, accounts.id, 'CREDIT', ${order.delivery_fee_kobo} from public.ledger_transactions transactions join public.ledger_accounts accounts on accounts.university_id = ${order.university_id}::uuid and accounts.account_code = 'DELIVERY_REVENUE' and accounts.owner_user_id is null where transactions.idempotency_key = ${`paystack:${reference}`} and (select count(*) from public.ledger_lines lines where lines.transaction_id = transactions.id) = 2`] : []),
+    client`update public.payment_attempts set status = 'SUCCEEDED', completed_at = now(), updated_at = now() where provider_reference = ${reference} and status in ('CREATED','INITIALIZED')`,
     client`update public.payment_provider_events set state = 'PROCESSED', resource_type = 'STORE_ORDER', resource_id = ${order.id}::uuid, processed_at = now(), updated_at = now() where provider = 'PAYSTACK' and provider_reference = ${reference}`,
   ]);
   return context.json({ status: "processed" });

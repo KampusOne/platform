@@ -11,13 +11,17 @@ import {
   riderPresenceSchema,
   tutorialAvailabilitySchema,
   tutorialListingSchema,
+  tutorialListingStateSchema,
+  tutorialNoShowSchema,
+  tutorialResourceSchema,
+  tutorialResourceStateSchema,
   vendorProductSchema,
 } from "@kampusone/contracts";
 
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { requireFeature } from "../lib/features";
+import { featureEnabled, requireFeature } from "../lib/features";
 import { deriveHandoffCode, hashOtp } from "../lib/security";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
@@ -176,76 +180,190 @@ agentRoutes.post("/applications", async (context) => {
 });
 
 agentRoutes.get("/tutorials", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
   const user = currentUser(context);
-  const [listings, bookings] = await Promise.all([
+  const [listings, bookings, resources] = await Promise.all([
     database(context.env).execute(sql`
       select listings.id, listings.course_code, listings.title, listings.description,
         listings.format, listings.price_kobo, listings.capacity, listings.status,
-        listings.created_at, listings.updated_at
+        listings.location_text, listings.cancellation_cutoff_hours,
+        listings.review_status, listings.review_note, listings.submitted_at,
+        listings.reviewed_at, listings.created_at, listings.updated_at
       from public.tutorial_listings listings
       join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
-      where profiles.user_id = ${user.id}::uuid order by listings.updated_at desc
+      where profiles.user_id = ${user.id}::uuid and listings.deleted_at is null
+      order by listings.updated_at desc
     `),
     database(context.env).execute(sql`
       select bookings.id, bookings.status, bookings.amount_kobo, bookings.scheduled_for,
+        windows.ends_at as completion_available_at,
+        (windows.ends_at <= now()) as completion_available,
         bookings.student_confirmed_at, bookings.tutor_confirmed_at, bookings.created_at,
         listings.course_code, listings.title,
         coalesce(student_profiles.display_name, student_users.email) as student_name
       from public.tutorial_bookings bookings
       join public.tutorial_listings listings on listings.id = bookings.listing_id
       join public.agent_profiles tutor_profiles on tutor_profiles.id = listings.tutor_profile_id
+      join public.tutorial_availability_windows windows on windows.id = bookings.availability_window_id
       join public.users student_users on student_users.id = bookings.student_user_id
       left join public.profiles student_profiles on student_profiles.user_id = student_users.id
       where tutor_profiles.user_id = ${user.id}::uuid
       order by bookings.created_at desc limit 200
     `),
+    database(context.env).execute(sql`
+      select resources.id, resources.listing_id, resources.course_code, resources.title,
+        resources.description, resources.resource_type, resources.access_model,
+        resources.price_kobo, resources.level_code, resources.batch_label,
+        resources.preview_text, resources.file_url, resources.page_count,
+        resources.duration_seconds, resources.status, resources.review_note,
+        resources.submitted_at, resources.reviewed_at, resources.created_at,
+        resources.updated_at
+      from public.tutorial_resources resources
+      join public.agent_profiles profiles on profiles.id = resources.tutor_profile_id
+      where profiles.user_id = ${user.id}::uuid and resources.deleted_at is null
+      order by resources.updated_at desc
+    `),
   ]);
-  return context.json({ listings: listings.rows, bookings: bookings.rows });
+  return context.json({ listings: listings.rows, bookings: bookings.rows, resources: resources.rows });
 });
 
 agentRoutes.post("/tutorials", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
   const user = currentUser(context);
   const parsed = tutorialListingSchema.safeParse(await body(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the tutorial details and try again.");
+  if (parsed.data.priceKobo > 0 && !featureEnabled(context.env, "PAYMENTS_ENABLED")) {
+    throw new AppError(409, "CONFLICT", "Paid tutorials are not available during the free pilot. Set the price to zero.");
+  }
   const profile = await approvedProfile(context.env, user.id, "TUTOR");
   const id = crypto.randomUUID();
   await database(context.env).execute(sql`
     insert into public.tutorial_listings (
       id, university_id, tutor_profile_id, course_id, course_code,
-      title, description, format, price_kobo, capacity
+      title, description, format, price_kobo, capacity, publisher_name,
+      location_text, cancellation_cutoff_hours
     ) values (
       ${id}::uuid, ${profile.university_id}::uuid, ${profile.id}::uuid,
       ${parsed.data.courseId ?? null}::uuid, ${parsed.data.courseCode}, ${parsed.data.title},
-      ${parsed.data.description}, ${parsed.data.format}, ${parsed.data.priceKobo}, ${parsed.data.capacity}
+      ${parsed.data.description}, ${parsed.data.format}, ${parsed.data.priceKobo}, ${parsed.data.capacity},
+      (select display_name from public.agent_profiles where id = ${profile.id}::uuid),
+      ${parsed.data.locationText ?? null}, ${parsed.data.cancellationCutoffHours}
     )
   `);
   return context.json({ id, status: "DRAFT" }, 201);
 });
 
 agentRoutes.patch("/tutorials/:id/status", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
   const user = currentUser(context);
-  const parsed = listingStateSchema.safeParse(await body(context));
+  const parsed = tutorialListingStateSchema.safeParse(await body(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a valid listing status.");
   const result = await database(context.env).execute<{ id: string }>(sql`
-    update public.tutorial_listings listings set status = ${parsed.data.status}, updated_at = now()
+    update public.tutorial_listings listings set
+      status = ${parsed.data.status},
+      review_status = case when ${parsed.data.status} = 'SUBMITTED' then 'PENDING' else review_status end,
+      submitted_at = case when ${parsed.data.status} = 'SUBMITTED' then now() else submitted_at end,
+      review_note = case when ${parsed.data.status} = 'SUBMITTED' then null else review_note end,
+      updated_at = now()
     from public.agent_profiles profiles
     where listings.id = ${context.req.param("id")}::uuid
       and listings.tutor_profile_id = profiles.id and profiles.user_id = ${user.id}::uuid
       and profiles.agent_type = 'TUTOR' and profiles.status = 'ACTIVE'
+      and listings.deleted_at is null
       and (listings.status = ${parsed.data.status}
-        or (listings.status = 'DRAFT' and ${parsed.data.status} in ('PUBLISHED','ARCHIVED'))
+        or (listings.status in ('DRAFT','REJECTED') and ${parsed.data.status} in ('SUBMITTED','ARCHIVED'))
         or (listings.status = 'PUBLISHED' and ${parsed.data.status} in ('PAUSED','ARCHIVED'))
-        or (listings.status = 'PAUSED' and ${parsed.data.status} in ('PUBLISHED','ARCHIVED')))
+        or (listings.status = 'PAUSED' and ${parsed.data.status} in ('SUBMITTED','ARCHIVED')))
     returning listings.id
   `);
   if (!firstRow(result)) throw new AppError(409, "CONFLICT", "That tutorial status change is not allowed.");
   return context.json({ status: parsed.data.status });
 });
 
+agentRoutes.post("/tutorial-resources", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Learning-resource operations are not enabled in this environment.");
+  const user = currentUser(context);
+  const parsed = tutorialResourceSchema.safeParse(await body(context));
+  if (!parsed.success) {
+    throw new AppError(400, "BAD_REQUEST", "Check the learning-resource details and try again.", {
+      fields: parsed.error.flatten().fieldErrors,
+    });
+  }
+  if (parsed.data.accessModel === "PAID" && !featureEnabled(context.env, "PAYMENTS_ENABLED")) {
+    throw new AppError(409, "CONFLICT", "Paid resources are not available during the free pilot. Choose free access.");
+  }
+  const profile = await approvedProfile(context.env, user.id, "TUTOR");
+  if (parsed.data.listingId) {
+    const listing = await database(context.env).execute<{ id: string }>(sql`
+      select id from public.tutorial_listings
+      where id = ${parsed.data.listingId}::uuid and tutor_profile_id = ${profile.id}::uuid
+        and deleted_at is null limit 1
+    `);
+    if (!firstRow(listing)) throw new AppError(400, "BAD_REQUEST", "Choose one of your active tutorial listings.");
+  }
+  const id = crypto.randomUUID();
+  await database(context.env).execute(sql`
+    insert into public.tutorial_resources (
+      id, university_id, tutor_profile_id, listing_id, course_id, course_code,
+      title, description, resource_type, access_model, price_kobo, level_code,
+      batch_label, publisher_name, publisher_verified, preview_text, file_url,
+      page_count, duration_seconds
+    ) values (
+      ${id}::uuid, ${profile.university_id}::uuid, ${profile.id}::uuid,
+      ${parsed.data.listingId ?? null}::uuid, ${parsed.data.courseId ?? null}::uuid,
+      ${parsed.data.courseCode}, ${parsed.data.title}, ${parsed.data.description},
+      ${parsed.data.resourceType}, ${parsed.data.accessModel}, ${parsed.data.priceKobo},
+      ${parsed.data.levelCode ?? null}, ${parsed.data.batchLabel ?? null},
+      (select display_name from public.agent_profiles where id = ${profile.id}::uuid),
+      true, ${parsed.data.previewText ?? null}, ${parsed.data.fileUrl ?? null},
+      ${parsed.data.pageCount ?? null}, ${parsed.data.durationSeconds ?? null}
+    )
+  `);
+  return context.json({ id, status: "DRAFT" }, 201);
+});
+
+agentRoutes.patch("/tutorial-resources/:id/status", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Learning-resource operations are not enabled in this environment.");
+  const user = currentUser(context);
+  const parsed = tutorialResourceStateSchema.safeParse(await body(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a valid resource status.");
+  const result = await database(context.env).execute<{ id: string }>(sql`
+    update public.tutorial_resources resources set
+      status = ${parsed.data.status},
+      submitted_at = case when ${parsed.data.status} = 'SUBMITTED' then now() else submitted_at end,
+      review_note = case when ${parsed.data.status} = 'SUBMITTED' then null else review_note end,
+      updated_at = now()
+    from public.agent_profiles profiles
+    where resources.id = ${context.req.param("id")}::uuid
+      and resources.tutor_profile_id = profiles.id and profiles.user_id = ${user.id}::uuid
+      and profiles.agent_type = 'TUTOR' and profiles.status = 'ACTIVE'
+      and resources.deleted_at is null
+      and (resources.status = ${parsed.data.status}
+        or (resources.status in ('DRAFT','REJECTED') and ${parsed.data.status} in ('SUBMITTED','ARCHIVED'))
+        or (resources.status = 'PUBLISHED' and ${parsed.data.status} = 'ARCHIVED'))
+    returning resources.id
+  `);
+  if (!firstRow(result)) throw new AppError(409, "CONFLICT", "That resource status change is not allowed.");
+  return context.json({ status: parsed.data.status });
+});
+
+agentRoutes.delete("/tutorial-resources/:id", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Learning-resource operations are not enabled in this environment.");
+  const user = currentUser(context);
+  const result = await database(context.env).execute<{ id: string }>(sql`
+    update public.tutorial_resources resources set status = 'ARCHIVED',
+      deleted_at = coalesce(deleted_at, now()), updated_at = now()
+    from public.agent_profiles profiles
+    where resources.id = ${context.req.param("id")}::uuid
+      and resources.tutor_profile_id = profiles.id and profiles.user_id = ${user.id}::uuid
+      and resources.deleted_at is null returning resources.id
+  `);
+  if (!firstRow(result)) throw new AppError(404, "NOT_FOUND", "That learning resource does not exist.");
+  return context.json({ status: "DELETED" });
+});
+
 agentRoutes.get("/tutorial-availability", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
     select windows.id, windows.listing_id, listings.title, windows.starts_at,
@@ -263,6 +381,7 @@ agentRoutes.get("/tutorial-availability", async (context) => {
 });
 
 agentRoutes.post("/tutorial-availability", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
   const user = currentUser(context);
   const parsed = tutorialAvailabilitySchema.safeParse(await body(context));
   if (!parsed.success || new Date(parsed.data.startsAt) <= new Date()
@@ -273,7 +392,8 @@ agentRoutes.post("/tutorial-availability", async (context) => {
     select listings.id from public.tutorial_listings listings
     join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
     where listings.id = ${parsed.data.listingId}::uuid and profiles.user_id = ${user.id}::uuid
-      and profiles.status = 'ACTIVE' limit 1
+      and profiles.status = 'ACTIVE' and listings.deleted_at is null
+      and listings.status = 'PUBLISHED' and listings.review_status = 'APPROVED' limit 1
   `);
   if (!firstRow(listing)) throw new AppError(404, "NOT_FOUND", "That tutorial listing does not exist.");
   const id = crypto.randomUUID();
@@ -286,6 +406,7 @@ agentRoutes.post("/tutorial-availability", async (context) => {
 });
 
 agentRoutes.post("/tutorial-bookings/:id/confirm", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
   const user = currentUser(context);
   const parsed = completionConfirmationSchema.safeParse(await body(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Completion confirmation is required.");
@@ -301,10 +422,48 @@ agentRoutes.post("/tutorial-bookings/:id/confirm", async (context) => {
     join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
     where bookings.id = ${context.req.param("id")}::uuid and bookings.listing_id = listings.id
       and profiles.user_id = ${user.id}::uuid and bookings.status = 'CONFIRMED'
+      and exists (
+        select 1 from public.tutorial_availability_windows windows
+        where windows.id = bookings.availability_window_id
+          and windows.listing_id = bookings.listing_id
+          and windows.ends_at <= now()
+      )
     returning bookings.id, bookings.student_confirmed_at
   `);
   if (!firstRow(result)) throw new AppError(409, "CONFLICT", "That booking cannot be confirmed.");
   return context.json({ status: firstRow(result)?.student_confirmed_at ? "COMPLETED" : "AWAITING_STUDENT" });
+});
+
+agentRoutes.post("/tutorial-bookings/:id/no-show", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  const user = currentUser(context);
+  const parsed = tutorialNoShowSchema.safeParse(await body(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Describe the no-show so support can review it.");
+  const disputeId = crypto.randomUUID();
+  const reported = await database(context.env).execute<{ id: string }>(sql`
+    with changed as (
+      update public.tutorial_bookings bookings set status = 'DISPUTED',
+        no_show_reported_at = now(), no_show_reported_by_user_id = ${user.id}::uuid,
+        earnings_state = 'RESERVED', updated_at = now()
+      from public.tutorial_listings listings
+      join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
+      join public.tutorial_availability_windows windows on windows.listing_id = listings.id
+      where bookings.id = ${context.req.param("id")}::uuid
+        and bookings.listing_id = listings.id
+        and bookings.availability_window_id = windows.id
+        and profiles.user_id = ${user.id}::uuid
+        and bookings.status = 'CONFIRMED' and windows.ends_at <= now()
+      returning bookings.id, bookings.university_id
+    ), opened as (
+      insert into public.disputes (
+        id, university_id, opened_by_user_id, tutorial_booking_id, category, reason
+      ) select ${disputeId}::uuid, changed.university_id, ${user.id}::uuid,
+        changed.id, 'NO_SHOW', ${parsed.data.reason} from changed
+      returning id
+    ) select id from opened
+  `);
+  if (!firstRow(reported)) throw new AppError(409, "CONFLICT", "A no-show can be reported only once, after a confirmed session ends.");
+  return context.json({ id: disputeId, status: "OPEN" }, 201);
 });
 
 agentRoutes.get("/product-categories", async (context) => {
@@ -322,7 +481,7 @@ agentRoutes.get("/product-categories", async (context) => {
 });
 
 agentRoutes.get("/products", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "Store operations are not enabled in this environment.");
+  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
     select products.id, products.name, products.description, products.category,
@@ -336,7 +495,7 @@ agentRoutes.get("/products", async (context) => {
 });
 
 agentRoutes.post("/products", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "Store operations are not enabled in this environment.");
+  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
   const user = currentUser(context);
   const parsed = vendorProductSchema.safeParse(await body(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the product details and try again.");
@@ -441,7 +600,7 @@ agentRoutes.get("/orders/:id/pickup-code", async (context) => {
 });
 
 agentRoutes.get("/deliveries", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "Delivery operations are not enabled in this environment.");
+  requireFeature(context.env, "LOGISTICS_ENABLED", "Delivery operations are not enabled in this environment.");
   const user = currentUser(context);
   const profile = await approvedProfile(context.env, user.id, "RIDER");
   const [result, presence] = await Promise.all([database(context.env).execute(sql`
@@ -476,7 +635,7 @@ agentRoutes.put("/rider-presence", async (context) => {
 });
 
 agentRoutes.post("/deliveries/:id/reserve", async (context) => {
-  requireFeature(context.env, "MARKETPLACE_ENABLED", "Delivery operations are not enabled in this environment.");
+  requireFeature(context.env, "LOGISTICS_ENABLED", "Delivery operations are not enabled in this environment.");
   const user = currentUser(context);
   const profile = await approvedProfile(context.env, user.id, "RIDER");
   let result;

@@ -1,10 +1,26 @@
 import type { Bindings } from "../types";
 import { AppError } from "./errors";
 
-type Feature = "ACADEMIC_CORE_ENABLED" | "SOCIAL_FEED_ENABLED" | "MARKETPLACE_ENABLED" | "PAYMENTS_ENABLED";
+type Feature =
+  | "ACADEMIC_CORE_ENABLED"
+  | "SOCIAL_FEED_ENABLED"
+  | "TUTORIALS_ENABLED"
+  | "STORE_ENABLED"
+  | "LOGISTICS_ENABLED"
+  | "MARKETPLACE_ENABLED"
+  | "PAYMENTS_ENABLED";
+
+export function featureEnabled(env: Bindings, feature: Feature) {
+  const configured = env[feature];
+  if (configured !== undefined) return configured.toLowerCase() === "true";
+  if (["TUTORIALS_ENABLED", "STORE_ENABLED", "LOGISTICS_ENABLED"].includes(feature)) {
+    return env.MARKETPLACE_ENABLED?.toLowerCase() === "true";
+  }
+  return false;
+}
 
 export function requireFeature(env: Bindings, feature: Feature, message: string) {
-  if (env[feature]?.toLowerCase() !== "true") {
+  if (!featureEnabled(env, feature)) {
     throw new AppError(503, "FEATURE_DISABLED", message);
   }
 }

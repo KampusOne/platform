@@ -1,6 +1,7 @@
 import type { PublicConfig } from "@kampusone/contracts";
 
 import type { Bindings } from "../types";
+import { featureEnabled } from "./features";
 
 const enabled = (value: string | undefined) => value?.toLowerCase() === "true";
 
@@ -12,7 +13,10 @@ export function getPublicConfig(env: Bindings): PublicConfig {
     features: {
       academicCore: enabled(env.ACADEMIC_CORE_ENABLED),
       socialFeed: enabled(env.SOCIAL_FEED_ENABLED),
-      marketplace: enabled(env.MARKETPLACE_ENABLED),
+      tutorials: featureEnabled(env, "TUTORIALS_ENABLED"),
+      store: featureEnabled(env, "STORE_ENABLED"),
+      logistics: featureEnabled(env, "LOGISTICS_ENABLED"),
+      marketplace: featureEnabled(env, "STORE_ENABLED"),
       payments: enabled(env.PAYMENTS_ENABLED),
       aiAssistant: enabled(env.AI_ASSISTANT_ENABLED),
     },

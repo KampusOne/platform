@@ -14,6 +14,9 @@ permissions:
 
 jobs:
   deploy:
+    # Phase 2 reads additive tables and columns. Set this repository variable
+    # only after the reviewed migration has passed on a production branch.
+    if: ${{ vars.PHASE_2_SCHEMA_READY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     environment: production

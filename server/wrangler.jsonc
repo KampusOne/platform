@@ -19,7 +19,10 @@
     "MAINTENANCE_MODE": "false",
     "ACADEMIC_CORE_ENABLED": "true",
     "SOCIAL_FEED_ENABLED": "true",
-    "MARKETPLACE_ENABLED": "true",
+    "MARKETPLACE_ENABLED": "false",
+    "TUTORIALS_ENABLED": "true",
+    "STORE_ENABLED": "false",
+    "LOGISTICS_ENABLED": "false",
     "PAYMENTS_ENABLED": "false",
     "AI_ASSISTANT_ENABLED": "false"
   },
@@ -33,7 +36,10 @@
         "MAINTENANCE_MODE": "false",
         "ACADEMIC_CORE_ENABLED": "true",
         "SOCIAL_FEED_ENABLED": "true",
-        "MARKETPLACE_ENABLED": "true",
+        "MARKETPLACE_ENABLED": "false",
+        "TUTORIALS_ENABLED": "true",
+        "STORE_ENABLED": "false",
+        "LOGISTICS_ENABLED": "false",
         "PAYMENTS_ENABLED": "false",
         "AI_ASSISTANT_ENABLED": "false"
       }

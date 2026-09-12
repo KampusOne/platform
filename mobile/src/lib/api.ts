@@ -1,5 +1,7 @@
 import Constants from "expo-constants";
 
+import { readRefreshToken, removeRefreshToken, saveRefreshToken } from "@/src/lib/session-storage";
+
 export type SessionUser = {
   id: string;
   email: string;
@@ -113,27 +115,33 @@ function runSessionTransition<T>(operation: () => Promise<T>): Promise<T> {
   return pending.finally(() => { queuedSessionTransitions -= 1; });
 }
 
+async function securelyAcceptSession(session: Session) {
+  if (!isSession(session)) {
+    throw new ApiError(200, "INVALID_RESPONSE", "KampusOne returned an incomplete session. Please try again.");
+  }
+  try {
+    await saveRefreshToken(session.refreshToken);
+  } catch {
+    throw new ApiError(503, "SECURE_STORAGE_UNAVAILABLE", "This device could not securely save your session. Unlock the device and try again.");
+  }
+  return session;
+}
+
 async function refreshSession() {
   if (!refreshPromise) {
     if (queuedSessionTransitions > 0) {
       throw new ApiError(409, "SESSION_TRANSITION", "A session change is already in progress. Please try again.");
     }
     const versionAtStart = credentialVersion;
-    refreshPromise = fetch(`${apiUrl}/v1/auth/refresh`, {
+    refreshPromise = readRefreshToken().then((refreshToken) => fetch(`${apiUrl}/v1/auth/refresh`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json", "X-Device-Label": "KampusOne mobile" },
-      body: "{}",
-    })
+      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+    }))
       .then((response) => parse<Session>(response))
+      .then(securelyAcceptSession)
       .then((session) => {
-        if (!isSession(session)) {
-          throw new ApiError(
-            200,
-            "INVALID_RESPONSE",
-            "KampusOne returned an incomplete session. Please try again.",
-          );
-        }
         // Do not let an older refresh overwrite a session established while it
         // was in flight (for example, a fresh interactive sign-in).
         if (credentialVersion === versionAtStart) {
@@ -150,6 +158,7 @@ async function refreshSession() {
         if (credentialVersion === versionAtStart) {
           setAccessToken(null);
           sessionListener?.(null);
+          void removeRefreshToken();
         }
         return null;
       })
@@ -181,7 +190,7 @@ export const authApi = {
     return runSessionTransition(() => api<Session>("/v1/auth/verify-email", {
       method: "POST",
       body: JSON.stringify({ email, code, deviceLabel: "KampusOne mobile" }),
-    }, false));
+    }, false).then(securelyAcceptSession));
   },
   resend(email: string) {
     return api<{ status: string }>("/v1/auth/resend-verification", {
@@ -191,7 +200,7 @@ export const authApi = {
   login(email: string, password: string) {
     return runSessionTransition(() => api<Session>("/v1/auth/login", {
       method: "POST", body: JSON.stringify({ email, password, deviceLabel: "KampusOne mobile" }),
-    }, false));
+    }, false).then(securelyAcceptSession));
   },
   refresh: refreshSession,
   forgotPassword(email: string) {
@@ -205,14 +214,18 @@ export const authApi = {
     }, false);
   },
   async logout() {
-    const result = await runSessionTransition(() => api<{ status: string }>(
-      "/v1/auth/logout",
-      { method: "POST", body: "{}" },
-      false,
-    ));
+    const result = await runSessionTransition(async () => {
+      const refreshToken = await readRefreshToken();
+      return api<{ status: string }>(
+        "/v1/auth/logout",
+        { method: "POST", body: JSON.stringify(refreshToken ? { refreshToken } : {}) },
+        false,
+      );
+    });
     if (result.status !== "signed_out") {
       throw new ApiError(502, "INVALID_RESPONSE", "KampusOne could not confirm that this session was signed out.");
     }
+    await removeRefreshToken();
     return result;
   },
 };

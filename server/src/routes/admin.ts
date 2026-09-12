@@ -12,11 +12,14 @@ import {
   payoutReviewSchema,
   productCategorySchema,
   reviewAgentApplicationSchema,
+  tutorialDemoSeedSchema,
+  tutorialModerationSchema,
 } from "@kampusone/contracts";
 
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
+import { featureEnabled, requireFeature } from "../lib/features";
 import { equalHash, sha256 } from "../lib/security";
 import { currentUser, requireAuth, requireOperator } from "../middleware/auth";
 import type { AuthenticatedUser, Bindings, Variables } from "../types";
@@ -48,13 +51,20 @@ async function adminScope(env: Bindings, user: AuthenticatedUser, requested?: st
   return universityId;
 }
 
+function requireTutorialEditor(user: AuthenticatedUser) {
+  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role))) {
+    throw new AppError(403, "FORBIDDEN", "A content or institution administrator role is required.");
+  }
+}
+
 adminRoutes.post("/bootstrap", requireAuth, async (context) => {
   const user = currentUser(context);
   const supplied = context.req.header("X-Admin-Bootstrap-Token");
-  if (!context.env.ADMIN_BOOTSTRAP_TOKEN || !supplied) {
-    throw new AppError(503, "PROVIDER_UNAVAILABLE", "Administrator bootstrap is not configured.");
-  }
-  if (!equalHash(await sha256(supplied), await sha256(context.env.ADMIN_BOOTSTRAP_TOKEN))) {
+  const initialAdminEmail = context.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
+  const mailboxAuthorized = Boolean(initialAdminEmail && user.email.toLowerCase() === initialAdminEmail);
+  const tokenAuthorized = Boolean(context.env.ADMIN_BOOTSTRAP_TOKEN && supplied)
+    && equalHash(await sha256(supplied!), await sha256(context.env.ADMIN_BOOTSTRAP_TOKEN!));
+  if (!mailboxAuthorized && !tokenAuthorized) {
     throw new AppError(403, "FORBIDDEN", "The bootstrap credential is invalid.");
   }
   try {
@@ -74,6 +84,7 @@ adminRoutes.post("/bootstrap", requireAuth, async (context) => {
   await recordAudit(context.env, {
     actorUserId: user.id, action: "admin.bootstrap.completed", targetType: "user",
     targetId: user.id, requestId: context.get("requestId"),
+    metadata: { method: mailboxAuthorized ? "verified_initial_email" : "one_time_token" },
   });
   return context.json({ status: "platform_admin_created" }, 201);
 });
@@ -315,6 +326,237 @@ adminRoutes.post("/applications/:id/review", async (context) => {
     metadata: { decision: parsed.data.decision, agentType: application.agent_type },
   });
   return context.json({ status: parsed.data.decision });
+});
+
+adminRoutes.get("/tutorials", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  const user = currentUser(context);
+  requireTutorialEditor(user);
+  const scope = await adminScope(context.env, user, context.req.query("universityId"));
+  const [listings, resources] = await Promise.all([
+    database(context.env).execute(sql`
+      select listings.id, listings.university_id, listings.course_code, listings.title,
+        listings.format, listings.price_kobo, listings.capacity, listings.status,
+        listings.review_status, listings.review_note, listings.submitted_at,
+        listings.reviewed_at, listings.is_demo, listings.updated_at,
+        coalesce(profiles.display_name, listings.publisher_name, 'KampusOne tutor') as tutor_name,
+        universities.name as university_name,
+        (select count(*)::int from public.tutorial_bookings bookings
+          where bookings.listing_id = listings.id) as booking_count
+      from public.tutorial_listings listings
+      join public.universities universities on universities.id = listings.university_id
+      left join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
+      where listings.deleted_at is null
+        and (${scope}::uuid is null or listings.university_id = ${scope}::uuid)
+      order by case listings.review_status when 'PENDING' then 0 else 1 end,
+        listings.is_demo desc, listings.updated_at desc
+      limit 300
+    `),
+    database(context.env).execute(sql`
+      select resources.id, resources.university_id, resources.course_code,
+        resources.title, resources.resource_type, resources.access_model,
+        resources.price_kobo, resources.publisher_name, resources.status,
+        resources.review_note, resources.submitted_at, resources.reviewed_at,
+        resources.is_demo, resources.updated_at, universities.name as university_name
+      from public.tutorial_resources resources
+      join public.universities universities on universities.id = resources.university_id
+      where resources.deleted_at is null
+        and (${scope}::uuid is null or resources.university_id = ${scope}::uuid)
+      order by case resources.status when 'SUBMITTED' then 0 else 1 end,
+        resources.is_demo desc, resources.updated_at desc
+      limit 400
+    `),
+  ]);
+  return context.json({
+    listings: listings.rows,
+    resources: resources.rows,
+    summary: {
+      listings: listings.rows.length,
+      resources: resources.rows.length,
+      pending: listings.rows.filter((item) => String(item.review_status) === "PENDING").length
+        + resources.rows.filter((item) => String(item.status) === "SUBMITTED").length,
+      demo: listings.rows.filter((item) => Boolean(item.is_demo)).length
+        + resources.rows.filter((item) => Boolean(item.is_demo)).length,
+    },
+  });
+});
+
+adminRoutes.post("/tutorials/demo", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  const user = currentUser(context);
+  requireTutorialEditor(user);
+  const parsed = tutorialDemoSeedSchema.safeParse(await body(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose the university that should receive demo tutorials.");
+  await adminScope(context.env, user, parsed.data.universityId);
+  const result = await database(context.env).execute<{ seeded: { listings: number; resources: number } }>(sql`
+    select app_private.seed_tutorial_demo(
+      ${parsed.data.universityId}::uuid, ${user.id}::uuid
+    ) as seeded
+  `);
+  const seeded = firstRow(result)?.seeded ?? { listings: 0, resources: 0 };
+  await recordAudit(context.env, {
+    actorUserId: user.id, universityId: parsed.data.universityId,
+    action: "tutorial.demo.seeded", targetType: "tutorial_demo", targetId: parsed.data.universityId,
+    requestId: context.get("requestId"), metadata: seeded,
+  });
+  return context.json({ status: "READY", ...seeded }, 201);
+});
+
+adminRoutes.delete("/tutorials/demo", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  const user = currentUser(context);
+  requireTutorialEditor(user);
+  const universityId = context.req.query("universityId");
+  const parsed = tutorialDemoSeedSchema.safeParse({ universityId });
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose the university whose demo catalogue should be removed.");
+  await adminScope(context.env, user, parsed.data.universityId);
+  const result = await database(context.env).execute<{
+    removed: { listings: number; resources: number; cancelledBookings: number };
+  }>(sql`
+    select app_private.remove_tutorial_demo(
+      ${parsed.data.universityId}::uuid, ${user.id}::uuid
+    ) as removed
+  `);
+  const removed = firstRow(result)?.removed ?? { listings: 0, resources: 0, cancelledBookings: 0 };
+  await recordAudit(context.env, {
+    actorUserId: user.id, universityId: parsed.data.universityId,
+    action: "tutorial.demo.removed", targetType: "tutorial_demo", targetId: parsed.data.universityId,
+    requestId: context.get("requestId"), metadata: removed,
+  });
+  return context.json({ status: "REMOVED", ...removed });
+});
+
+adminRoutes.post("/tutorials/listings/:id/review", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  const user = currentUser(context);
+  requireTutorialEditor(user);
+  const parsed = tutorialModerationSchema.safeParse(await body(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Record a valid tutorial decision and reviewer note.");
+  const found = await database(context.env).execute<{
+    id: string; university_id: string; status: string; price_kobo: number;
+  }>(sql`
+    select id, university_id, status, price_kobo from public.tutorial_listings
+    where id = ${context.req.param("id")}::uuid and deleted_at is null limit 1
+  `);
+  const listing = firstRow(found);
+  if (!listing) throw new AppError(404, "NOT_FOUND", "That tutorial listing does not exist.");
+  await adminScope(context.env, user, listing.university_id);
+  if (parsed.data.decision === "APPROVED" && Number(listing.price_kobo) > 0
+    && !featureEnabled(context.env, "PAYMENTS_ENABLED")) {
+    throw new AppError(409, "CONFLICT", "Paid tutorials cannot be approved while payments are disabled.");
+  }
+  const nextStatus = parsed.data.decision === "APPROVED" ? "PUBLISHED"
+    : parsed.data.decision === "REJECTED" ? "REJECTED" : "DRAFT";
+  await database(context.env).execute(sql`
+    update public.tutorial_listings set status = ${nextStatus},
+      review_status = ${parsed.data.decision}, review_note = ${parsed.data.note},
+      reviewed_at = now(), reviewed_by_user_id = ${user.id}::uuid, updated_at = now()
+    where id = ${listing.id}::uuid
+  `);
+  await recordAudit(context.env, {
+    actorUserId: user.id, universityId: listing.university_id,
+    action: "tutorial.listing.reviewed", targetType: "tutorial_listing", targetId: listing.id,
+    requestId: context.get("requestId"), metadata: { decision: parsed.data.decision, note: parsed.data.note },
+  });
+  return context.json({ status: nextStatus, reviewStatus: parsed.data.decision });
+});
+
+adminRoutes.post("/tutorials/resources/:id/review", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  const user = currentUser(context);
+  requireTutorialEditor(user);
+  const parsed = tutorialModerationSchema.safeParse(await body(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Record a valid resource decision and reviewer note.");
+  const found = await database(context.env).execute<{
+    id: string; university_id: string; access_model: string;
+  }>(sql`
+    select id, university_id, access_model from public.tutorial_resources
+    where id = ${context.req.param("id")}::uuid and deleted_at is null limit 1
+  `);
+  const resource = firstRow(found);
+  if (!resource) throw new AppError(404, "NOT_FOUND", "That learning resource does not exist.");
+  await adminScope(context.env, user, resource.university_id);
+  if (parsed.data.decision === "APPROVED" && resource.access_model === "PAID"
+    && !featureEnabled(context.env, "PAYMENTS_ENABLED")) {
+    throw new AppError(409, "CONFLICT", "Paid resources cannot be approved while payments are disabled.");
+  }
+  const nextStatus = parsed.data.decision === "APPROVED" ? "PUBLISHED"
+    : parsed.data.decision === "REJECTED" ? "REJECTED" : "DRAFT";
+  await database(context.env).execute(sql`
+    update public.tutorial_resources set status = ${nextStatus},
+      review_note = ${parsed.data.note}, reviewed_at = now(),
+      reviewed_by_user_id = ${user.id}::uuid, updated_at = now()
+    where id = ${resource.id}::uuid
+  `);
+  await recordAudit(context.env, {
+    actorUserId: user.id, universityId: resource.university_id,
+    action: "tutorial.resource.reviewed", targetType: "tutorial_resource", targetId: resource.id,
+    requestId: context.get("requestId"), metadata: { decision: parsed.data.decision, note: parsed.data.note },
+  });
+  return context.json({ status: nextStatus });
+});
+
+adminRoutes.delete("/tutorials/listings/:id", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  const user = currentUser(context);
+  requireTutorialEditor(user);
+  const found = await database(context.env).execute<{
+    id: string; university_id: string; paid_active_bookings: number;
+  }>(sql`
+    select listings.id, listings.university_id,
+      count(bookings.id) filter (where bookings.amount_kobo > 0
+        and bookings.status in ('CONFIRMED','DISPUTED'))::int as paid_active_bookings
+    from public.tutorial_listings listings
+    left join public.tutorial_bookings bookings on bookings.listing_id = listings.id
+    where listings.id = ${context.req.param("id")}::uuid and listings.deleted_at is null
+    group by listings.id limit 1
+  `);
+  const listing = firstRow(found);
+  if (!listing) throw new AppError(404, "NOT_FOUND", "That tutorial listing does not exist.");
+  await adminScope(context.env, user, listing.university_id);
+  if (Number(listing.paid_active_bookings) > 0) {
+    throw new AppError(409, "CONFLICT", "Resolve active paid bookings before removing this tutorial.");
+  }
+  const client = sqlClient(context.env);
+  await client.transaction([
+    client`update public.tutorial_bookings set status = 'CANCELLED',
+      cancellation_reason = 'Tutorial removed by an administrator.', cancelled_at = now(),
+      cancelled_by_user_id = ${user.id}::uuid, earnings_state = 'NOT_EARNED', updated_at = now()
+      where listing_id = ${listing.id}::uuid and status in ('PENDING_PAYMENT','CONFIRMED')`,
+    client`update public.tutorial_availability_windows set status = 'CANCELLED', updated_at = now()
+      where listing_id = ${listing.id}::uuid and status = 'OPEN'`,
+    client`update public.tutorial_listings set status = 'ARCHIVED',
+      deleted_at = now(), updated_at = now() where id = ${listing.id}::uuid`,
+  ]);
+  await recordAudit(context.env, {
+    actorUserId: user.id, universityId: listing.university_id,
+    action: "tutorial.listing.removed", targetType: "tutorial_listing", targetId: listing.id,
+    requestId: context.get("requestId"),
+  });
+  return context.json({ status: "DELETED" });
+});
+
+adminRoutes.delete("/tutorials/resources/:id", async (context) => {
+  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  const user = currentUser(context);
+  requireTutorialEditor(user);
+  const found = await database(context.env).execute<{ id: string; university_id: string }>(sql`
+    select id, university_id from public.tutorial_resources
+    where id = ${context.req.param("id")}::uuid and deleted_at is null limit 1
+  `);
+  const resource = firstRow(found);
+  if (!resource) throw new AppError(404, "NOT_FOUND", "That learning resource does not exist.");
+  await adminScope(context.env, user, resource.university_id);
+  await database(context.env).execute(sql`
+    update public.tutorial_resources set status = 'ARCHIVED', deleted_at = now(), updated_at = now()
+    where id = ${resource.id}::uuid
+  `);
+  await recordAudit(context.env, {
+    actorUserId: user.id, universityId: resource.university_id,
+    action: "tutorial.resource.removed", targetType: "tutorial_resource", targetId: resource.id,
+    requestId: context.get("requestId"),
+  });
+  return context.json({ status: "DELETED" });
 });
 
 adminRoutes.get("/content/context", async (context) => {

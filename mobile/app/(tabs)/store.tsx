@@ -185,7 +185,11 @@ export default function StoreScreen() {
       try {
         const payment = await api<{ authorizationUrl: string }>("/v1/payments/initialize", {
           method: "POST",
-          body: JSON.stringify({ resourceType: "STORE_ORDER", resourceId: order.id }),
+          body: JSON.stringify({
+            idempotencyKey: `order-${order.id}-${Date.now()}`,
+            resourceType: "STORE_ORDER",
+            resourceId: order.id,
+          }),
         });
         await Linking.openURL(payment.authorizationUrl);
       } catch (paymentError) {

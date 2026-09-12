@@ -40,6 +40,9 @@ export const publicConfigSchema = z.object({
   features: z.object({
     academicCore: z.boolean(),
     socialFeed: z.boolean(),
+    tutorials: z.boolean(),
+    store: z.boolean(),
+    logistics: z.boolean(),
     marketplace: z.boolean(),
     payments: z.boolean(),
     aiAssistant: z.boolean(),
@@ -178,6 +181,66 @@ export const tutorialListingSchema = z.object({
   format: z.enum(["IN_PERSON", "ONLINE", "HYBRID"]),
   priceKobo: z.number().int().min(0).max(100_000_000),
   capacity: z.number().int().min(1).max(500),
+  locationText: z.string().trim().max(160).nullable().optional(),
+  cancellationCutoffHours: z.number().int().min(0).max(168).default(2),
+});
+
+export const tutorialListingStateSchema = z.object({
+  status: z.enum(["SUBMITTED", "PAUSED", "ARCHIVED"]),
+});
+
+export const tutorialResourceSchema = z.object({
+  listingId: z.string().uuid().nullable().optional(),
+  courseId: z.string().uuid().nullable().optional(),
+  courseCode: z.string().trim().toUpperCase().min(2).max(24),
+  title: z.string().trim().min(3).max(180),
+  description: z.string().trim().min(10).max(2000),
+  resourceType: z.enum(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK"]),
+  accessModel: z.enum(["FREE", "BOOKING_INCLUDED", "PAID"]).default("FREE"),
+  priceKobo: z.number().int().min(0).max(100_000_000).default(0),
+  levelCode: z.string().trim().min(3).max(20).nullable().optional(),
+  batchLabel: z.string().trim().min(2).max(60).nullable().optional(),
+  previewText: z.string().trim().max(5000).nullable().optional(),
+  fileUrl: z.string().url().refine((value) => value.startsWith("https://"), {
+    message: "Learning-resource links must use HTTPS.",
+  }).nullable().optional(),
+  pageCount: z.number().int().positive().max(10_000).nullable().optional(),
+  durationSeconds: z.number().int().positive().max(24 * 60 * 60).nullable().optional(),
+}).superRefine((value, context) => {
+  if (value.accessModel === "PAID" && value.priceKobo === 0) {
+    context.addIssue({ code: "custom", message: "Paid resources need a price.", path: ["priceKobo"] });
+  }
+  if (value.accessModel !== "PAID" && value.priceKobo !== 0) {
+    context.addIssue({ code: "custom", message: "Only paid resources may have a price.", path: ["priceKobo"] });
+  }
+  if (value.resourceType === "AUDIOBOOK" && !value.durationSeconds) {
+    context.addIssue({ code: "custom", message: "Audiobooks need a duration.", path: ["durationSeconds"] });
+  }
+});
+
+export const tutorialResourceStateSchema = z.object({
+  status: z.enum(["SUBMITTED", "ARCHIVED"]),
+});
+
+export const tutorialModerationSchema = z.object({
+  decision: z.enum(["APPROVED", "NEEDS_CORRECTION", "REJECTED"]),
+  note: z.string().trim().min(3).max(1000),
+});
+
+export const tutorialDemoSeedSchema = z.object({ universityId: z.string().uuid() });
+
+export const tutorialCancellationSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
+export const tutorialReviewSchema = z.object({
+  bookingId: z.string().uuid(),
+  rating: z.number().int().min(1).max(5),
+  body: z.string().trim().min(3).max(1000).nullable().optional(),
+});
+
+export const tutorialNoShowSchema = z.object({
+  reason: z.string().trim().min(10).max(1000),
 });
 
 export const listingStateSchema = z.object({
@@ -289,6 +352,7 @@ export const payoutRequestSchema = z.object({
 export const paymentInitializationSchema = z.object({
   resourceType: z.enum(["TUTORIAL_BOOKING", "STORE_ORDER"]),
   resourceId: z.string().uuid(),
+  idempotencyKey: z.string().trim().min(8).max(160),
 });
 
 export const liveHealthSchema = z.object({

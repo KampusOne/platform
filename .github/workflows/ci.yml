@@ -118,6 +118,7 @@ jobs:
       - name: Check migration and verification records
         run: |
           test -s database/supabase/migrations/20260909213215_foundation.sql
+          test -s database/neon/migrations/20260912000000_phase_2_learning_pilot.sql
           test -s database/verification/phase_0_security.sql
           secret_pattern='sb_''secret_|service_''role|SUPABASE_''SECRET_KEY=.'
           ! grep -R --line-number --extended-regexp "$secret_pattern" \

@@ -29,7 +29,7 @@
       "output": "static",
       "favicon": "./assets/adaptive-icon.png"
     },
-    "plugins": ["expo-router"],
+    "plugins": ["expo-router", "expo-secure-store"],
     "extra": {
       "apiUrl": "https://platformp.divine-haze-54eb.workers.dev"
     },

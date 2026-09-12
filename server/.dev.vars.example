@@ -9,6 +9,10 @@ RESEND_API_KEY=re_replace_me
 RESEND_FROM_EMAIL=KampusOne <hello@kampusone.app>
 RESEND_REPLY_TO=support@kampusone.app
 
+# Fresh databases only: a verified account at this address may claim the first
+# platform-admin role. Leave unset when an operator role already exists.
+# INITIAL_ADMIN_EMAIL=admin@example.com
+
 # One-time operator bootstrap. Remove after the first platform admin is created.
 ADMIN_BOOTSTRAP_TOKEN=replace-with-a-one-time-random-bootstrap-secret
 

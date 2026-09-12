@@ -24,9 +24,11 @@ No phase should be labelled `LIVE` merely because its screens compile. A phase b
 
 - Separate agent signup/login/session flow using the shared verified identity.
 - Tutor application fields, role terms, layered manual-review records, identity/phone/bank result fields, approval guard, and an audit trail.
-- Tutor listings with draft/published/paused/archived transitions.
+- Tutor listings and learning materials with submission, administrator moderation, publishing, pause/archive, and safe removal transitions.
 - Future availability windows; the database locks a selected window, enforces server-calculated price and capacity, and rejects duplicate/late bookings.
-- Paystack payment initialization and signed webhook processing, double-entry ledger records, student/tutor completion confirmation, pending/available earnings, a 48-hour dispute window, dispute freezes, manual payout requests, and finance transitions.
+- A no-cost mode confirms free bookings without Paystack; removable demo sessions and preview materials let the pilot operate before paid providers or object storage.
+- Cancellation cutoffs, student/tutor completion confirmation, verified-purchase reviews, no-show review, pending/available earnings, a 48-hour dispute window, dispute freezes, manual payout requests, and finance transitions.
+- Paystack payment initialization, immutable idempotent attempts, signed webhook processing, and double-entry ledger records remain implemented but disabled until the paid-flow gate passes.
 
 ### Phase 3 — controlled store and bicycle logistics
 
@@ -50,7 +52,7 @@ No phase should be labelled `LIVE` merely because its screens compile. A phase b
 
 1. Provide `JWT_SECRET` (at least 32 high-entropy characters) and `OTP_PEPPER` (at least 24 high-entropy characters).
 2. Verify the Resend sending domain and provide `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and `RESEND_REPLY_TO`.
-3. Generate a one-use `ADMIN_BOOTSTRAP_TOKEN`; the first administrator registers normally, verifies the delivered email code, uses the token once, and then the token is removed from Cloudflare.
+3. Provide a working mailbox for `INITIAL_ADMIN_EMAIL`. The first administrator registers normally, verifies the delivered email code, and activates the account once. A one-use `ADMIN_BOOTSTRAP_TOKEN` is an optional deployment recovery path and must be removed after use.
 4. Approve the Terms of Service and Privacy Policy version string now represented as `2026-09-10`.
 5. Select the production MFA/step-up provider for administrators and finance/KYC actions. This is a required security gate before broad operator access.
 
@@ -84,11 +86,11 @@ No phase should be labelled `LIVE` merely because its screens compile. A phase b
 1. Select object storage/CDN and its trusted upload domains. Current brand scenes are bundled; operator content/product media accepts validated URLs until managed uploads are configured.
 2. Select error monitoring, privacy-aware analytics, transactional/push notification providers, retention periods, and alert owners.
 3. Provide Expo/EAS organization access, Apple Developer and Google Play accounts, signing credentials, store listings, privacy disclosures, and push credentials.
-4. Install the Expo-SDK-compatible `expo-secure-store` package and add encrypted native refresh-token persistence before store distribution. The API already accepts a rotating refresh token in the request body; the current browser flow uses secure HttpOnly cookies while the native app keeps the short-lived access token in memory. Never substitute plaintext AsyncStorage.
+4. Verify encrypted refresh-token persistence on physical iOS and Android devices before store distribution. The native app now uses the Expo-SDK-compatible `expo-secure-store`; the browser flow uses secure HttpOnly cookies and no plaintext browser storage.
 
 ## Features deliberately not represented as complete
 
-The following PRD depth is not hidden behind placeholders and must be scheduled after policy/provider selection: automated KYC/liveness, operator MFA and maker-checker role management, managed media uploads and malware scanning, tutorial materials/reviews/cancellation/no-show rules, multi-vendor cart splitting, product variants/reviews/promotions, automated refunds and reversing ledger entries, rider incident/evidence uploads and optional operations assignment, push notifications, product analytics, and the second-campus toolkit.
+The following PRD depth is not hidden behind placeholders and must be scheduled after policy/provider selection: automated KYC/liveness, operator MFA and maker-checker role management, managed media uploads and malware scanning, automated tutorial refunds and paid-resource delivery, multi-vendor cart splitting, product variants/reviews/promotions, automated reversing ledger entries, rider incident/evidence uploads and optional operations assignment, push notifications, product analytics, and the second-campus toolkit.
 
 ## Deployment and acceptance order
 
