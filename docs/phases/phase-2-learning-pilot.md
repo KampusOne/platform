@@ -34,6 +34,7 @@ Tutor approval during this pilot is manual and must remain limited to the named 
 ## First administrator access
 
 - Current portal URL: `https://kampusone-platform-preview.vercel.app/admin`.
+- Current agent URL: `https://agents.kampusone.app`; the hostname routes directly to agent registration, applications, and the authenticated workspace.
 - Intended custom URL: `https://admin.kampusone.app` after its route is attached; it is not the current sign-in URL.
 - Sign-in identifier: email; there is no separate username.
 - Existing deployment: use the already provisioned platform-administrator email. If its password is unknown, choose **Forgot your password?** and use the code delivered to that mailbox.
@@ -66,5 +67,6 @@ Tutor approval during this pilot is manual and must remain limited to the named 
 - The actual Phase 2 migration passes an isolated PostgreSQL-compatible acceptance harness covering demo seed/removal, immediate free booking, staged email verification, and duplicate live-checkout prevention.
 - The same reviewed migration is applied to production. Production contains four free demo tutorials, five preview-only demo resources, and no Phase 2 payment attempts.
 - The live readiness check reports a healthy database, signing key, OTP pepper, and email provider. Public configuration reports Tutorials enabled while Store, Logistics, Marketplace, and Payments remain disabled.
+- `agents.kampusone.app` is attached to the production portal deployment with valid configuration. Its host rewrite serves `/agents`, the Worker accepts its credentialed CORS requests, registration reaches server validation, and the agent dashboard rejects unauthenticated access as expected.
 
-Activation commit: [`56dc95f`](https://github.com/KampusOne/platform/commit/56dc95ff9efdba8be945742a5914f8a8849e2fe3). Hosted evidence: [Deploy Worker #17](https://github.com/KampusOne/platform/actions/runs/34688771693) and [Verify platform #41](https://github.com/KampusOne/platform/actions/runs/34688771604), both successful. Custom-domain routing and physical-device Android acceptance remain separate deployment evidence; the current administrator URL stays `https://kampusone-platform-preview.vercel.app/admin` until the custom domain is attached.
+Activation commit: [`56dc95f`](https://github.com/KampusOne/platform/commit/56dc95ff9efdba8be945742a5914f8a8849e2fe3). Hosted evidence: [Deploy Worker #17](https://github.com/KampusOne/platform/actions/runs/34688771693) and [Verify platform #41](https://github.com/KampusOne/platform/actions/runs/34688771604), both successful. Physical-device Android acceptance and the remaining admin/engineering custom-domain routes remain separate deployment evidence; the current administrator URL stays `https://kampusone-platform-preview.vercel.app/admin` until its custom domain is attached.
