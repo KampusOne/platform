@@ -11,7 +11,7 @@ Release mode: controlled, free tutorial pilot
 - Tutor drafts for tutorials and learning materials, administrator moderation before publishing, availability management, bookings, completion, and reviewed no-show reports.
 - An administrator Tutorials workspace for moderation, individual removal, and one-click creation/removal of four demo tutorials and five demo materials per university.
 - Demo removal is reversible at the catalogue level and preserves audit, booking, review, and payment history. Future demo bookings are cancelled safely.
-- Tutorial, Store, Logistics, and Payments are independently gated. Phase 2 enables Tutorials while Store, Logistics, and Payments remain off.
+- Tutorial, Store, Logistics, and Payments are independently gated. The Phase 2 code is complete, while its production Tutorial switch remains off until the reviewed schema migration is promoted.
 - Payment attempts are idempotent and auditable for later activation; free pilot bookings bypass Paystack entirely.
 - Native rotating refresh tokens are persisted with encrypted device storage; web sessions continue to use secure HttpOnly cookies.
 
@@ -35,7 +35,7 @@ Tutor approval during this pilot is manual and must remain limited to the named 
 1. Create a branch from production and apply `database/neon/migrations/20260912000000_phase_2_learning_pilot.sql` using the direct, non-pooled `DATABASE_URL_UNPOOLED`.
 2. Run the migration and acceptance checks on that isolated branch, including seed → browse → book → cancel/complete → review → remove-demo journeys and cross-university rejection.
 3. Approve and apply the exact migration to production before deploying the new Worker.
-4. Set the GitHub repository variable `PHASE_2_SCHEMA_READY=true`, then manually run **Deploy Worker**. The deployment job deliberately skips while that proof flag is absent.
+4. Set the GitHub repository variable `PHASE_2_MIGRATION_20260912_READY=true`, then change both runtime bindings `PHASE_2_SCHEMA_READY` and `TUTORIALS_ENABLED` to `true` in the reviewed release and run **Deploy Worker**. CI rejects that activation while the migration proof variable is absent.
 5. Confirm Resend email delivery, recover or activate the administrator as appropriate, and load the demo catalogue from **Admin → Tutorials**.
 6. Keep `PAYMENTS_ENABLED=false`, `STORE_ENABLED=false`, and `LOGISTICS_ENABLED=false` for the free pilot.
 
@@ -52,7 +52,7 @@ Tutor approval during this pilot is manual and must remain limited to the named 
 - Contracts and Worker unit suites pass, including feature-gate and authentication coverage.
 - Contracts, Worker, Expo, and portal TypeScript checks pass; portal lint also passes.
 - The production portal build and Expo web export pass, including Tutorials, Purchases, Agent, Admin, and payment-return routes.
-- The Worker production configuration bundles successfully in dry-run mode with Tutorials enabled and Store, Logistics, and Payments disabled.
+- The Worker production configuration bundles successfully in dry-run mode with Phase 2 schema access, Tutorials, Store, Logistics, and Payments safely disabled. Unit coverage also proves Tutorials can be enabled only when the schema-ready binding is true.
 - The actual Phase 2 migration passes an isolated PostgreSQL-compatible acceptance harness covering demo seed/removal, immediate free booking, staged email verification, and duplicate live-checkout prevention.
 
 Record the commit SHA and hosted CI run after the push. Production database migration, live email receipt, custom-domain routing, physical-device secure-storage checks, and authenticated end-to-end acceptance remain deployment evidence and require the corresponding owner accounts.

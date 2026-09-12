@@ -14,9 +14,6 @@ permissions:
 
 jobs:
   deploy:
-    # Phase 2 reads additive tables and columns. Set this repository variable
-    # only after the reviewed migration has passed on a production branch.
-    if: ${{ vars.PHASE_2_SCHEMA_READY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     environment: production
@@ -35,6 +32,15 @@ jobs:
         working-directory: server
       - run: npm run check && npm test && npm run build
         working-directory: server
+      - name: Guard Phase 2 schema activation
+        env:
+          PHASE_2_MIGRATION_READY: ${{ vars.PHASE_2_MIGRATION_20260912_READY }}
+        run: |
+          if grep -q '"PHASE_2_SCHEMA_READY": "true"' server/wrangler.jsonc \
+            && [ "$PHASE_2_MIGRATION_READY" != "true" ]; then
+            echo "Phase 2 cannot be activated until its reviewed migration proof variable is true."
+            exit 1
+          fi
       - name: Deploy verified Worker
         uses: cloudflare/wrangler-action@v3
         with:

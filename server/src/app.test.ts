@@ -41,6 +41,17 @@ describe("KampusOne Worker", () => {
     expect(body.features.payments).toBe(false);
   });
 
+  it("keeps tutorials off until the Phase 2 schema is ready", async () => {
+    const response = await app.request("http://local.test/v1/config/public", {}, {
+      ...env,
+      PHASE_2_SCHEMA_READY: "false",
+      TUTORIALS_ENABLED: "true",
+    });
+    const body = publicConfigSchema.parse(await response.json());
+
+    expect(body.features.tutorials).toBe(false);
+  });
+
   it("does not report ready until server-only configuration exists", async () => {
     const response = await app.request("http://local.test/health/ready", {}, env);
     const body = (await response.json()) as { status: string };
