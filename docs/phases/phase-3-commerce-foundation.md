@@ -11,6 +11,7 @@ Production activation: **not authorized and not performed**
 - Added the independent `PHASE_3_SCHEMA_READY` runtime gate. Store and Logistics now require both their own feature flag and the reviewed Phase 3 schema binding.
 - Kept production and staging `PHASE_3_SCHEMA_READY`, live Store, Logistics, Marketplace and Payments bindings off.
 - Added an independent `STORE_DEMO_ENABLED` kill switch for a server-owned, read-only catalogue with two clearly marked demo sellers and eight demo products. It does not write vendor/product records or enable ordering.
+- Allowed the exact protected Phase 3 mobile preview origin for authenticated acceptance testing; no wildcard preview origin was added.
 - Added a deployment guard that requires `PHASE_3_MIGRATION_20260912_READY=true` before the schema binding can be enabled.
 - Kept existing Phase 2 administration compatible before the Phase 3 migration is applied; new administrative reads and mutations are schema-gated.
 - Replaced direct first publication with `DRAFT → SUBMITTED → PUBLISHED / NEEDS_CORRECTION / REJECTED` moderation. Publication requires an active vendor, approved category, complete bicycle-package data and a documented operator review at the current listing revision.

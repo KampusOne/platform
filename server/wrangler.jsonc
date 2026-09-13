@@ -14,7 +14,7 @@
   },
   "vars": {
     "ENVIRONMENT": "production",
-    "ALLOWED_ORIGINS": "https://kampusone-mobile-preview.vercel.app,https://kampusone-platform-preview.vercel.app,https://admin.kampusone.app,https://agents.kampusone.app,https://engineering.kampusone.app",
+    "ALLOWED_ORIGINS": "https://kampusone-mobile-preview.vercel.app,https://kampusone-mobile-preview-git-phas-1b4dcc-warriorpikins-projects.vercel.app,https://kampusone-platform-preview.vercel.app,https://admin.kampusone.app,https://agents.kampusone.app,https://engineering.kampusone.app",
     "MINIMUM_APP_VERSION": "0.2.0",
     "MAINTENANCE_MODE": "false",
     "ACADEMIC_CORE_ENABLED": "true",
