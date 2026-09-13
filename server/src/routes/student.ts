@@ -16,8 +16,9 @@ import {
 
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { featureEnabled, phase2SchemaReady, phase3SchemaReady, requireFeature } from "../lib/features";
+import { featureEnabled, phase2SchemaReady, phase3SchemaReady, requireFeature, storeDemoEnabled } from "../lib/features";
 import { deriveHandoffCode } from "../lib/security";
+import { demoStoreCatalogue } from "../lib/store-demo";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 
@@ -692,10 +693,24 @@ studentRoutes.post("/tutorial-reviews", async (context) => {
 });
 
 studentRoutes.get("/store", async (context) => {
-  requireFeature(context.env, "STORE_ENABLED", "The campus store is not enabled in this environment.");
   const user = currentUser(context);
+  requireUniversity(user);
   const category = context.req.query("category")?.trim();
   const query = context.req.query("q")?.trim();
+  const liveStoreEnabled = featureEnabled(context.env, "STORE_ENABLED");
+
+  if (!liveStoreEnabled) {
+    if (!storeDemoEnabled(context.env)) {
+      requireFeature(context.env, "STORE_ENABLED", "The campus store is not enabled in this environment.");
+    }
+    return context.json({
+      ...demoStoreCatalogue({ category, query }),
+      catalogueMode: "DEMO" as const,
+      checkoutEnabled: false,
+      deliveryZones: [],
+    });
+  }
+
   const search = query ? `%${query}%` : null;
   const [products, zones] = await Promise.all([
     database(context.env).execute(sql`
@@ -734,7 +749,13 @@ studentRoutes.get("/store", async (context) => {
       where university_id = ${requireUniversity(user)}::uuid and active = true order by base_fee_kobo, name
     `),
   ]);
-  return context.json({ products: products.rows, deliveryZones: zones.rows });
+  return context.json({
+    products: products.rows,
+    sellers: [],
+    catalogueMode: "LIVE" as const,
+    checkoutEnabled: true,
+    deliveryZones: zones.rows,
+  });
 });
 
 studentRoutes.post("/orders", async (context) => {

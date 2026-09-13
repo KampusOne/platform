@@ -12,6 +12,7 @@ export type Bindings = {
   PHASE_3_SCHEMA_READY?: string;
   TUTORIALS_ENABLED?: string;
   STORE_ENABLED?: string;
+  STORE_DEMO_ENABLED?: string;
   LOGISTICS_ENABLED?: string;
   PAYMENTS_ENABLED: string;
   AI_ASSISTANT_ENABLED: string;

@@ -26,6 +26,10 @@ export function phase3SchemaReady(env: Bindings) {
   return env.PHASE_3_SCHEMA_READY?.toLowerCase() === "true";
 }
 
+export function storeDemoEnabled(env: Bindings) {
+  return env.STORE_DEMO_ENABLED?.toLowerCase() === "true";
+}
+
 export function requireFeature(env: Bindings, feature: Feature, message: string) {
   if (!featureEnabled(env, feature)) {
     throw new AppError(503, "FEATURE_DISABLED", message);

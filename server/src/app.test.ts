@@ -17,6 +17,7 @@ const env: Bindings = {
   PHASE_3_SCHEMA_READY: "false",
   TUTORIALS_ENABLED: "true",
   STORE_ENABLED: "false",
+  STORE_DEMO_ENABLED: "true",
   LOGISTICS_ENABLED: "false",
   PAYMENTS_ENABLED: "false",
   AI_ASSISTANT_ENABLED: "false",
@@ -31,7 +32,7 @@ describe("KampusOne Worker", () => {
     expect(body.environment).toBe("staging");
   });
 
-  it("keeps unreleased features disabled", async () => {
+  it("keeps unreleased features disabled while the demo catalogue is available", async () => {
     const response = await app.request("http://local.test/v1/config/public", {}, env);
     const body = publicConfigSchema.parse(await response.json());
 

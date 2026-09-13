@@ -9,7 +9,8 @@ Production activation: **not authorized and not performed**
 ## Delivered in this slice
 
 - Added the independent `PHASE_3_SCHEMA_READY` runtime gate. Store and Logistics now require both their own feature flag and the reviewed Phase 3 schema binding.
-- Kept production and staging `PHASE_3_SCHEMA_READY`, Store, Logistics, Marketplace and Payments bindings off.
+- Kept production and staging `PHASE_3_SCHEMA_READY`, live Store, Logistics, Marketplace and Payments bindings off.
+- Added an independent `STORE_DEMO_ENABLED` kill switch for a server-owned, read-only catalogue with two clearly marked demo sellers and eight demo products. It does not write vendor/product records or enable ordering.
 - Added a deployment guard that requires `PHASE_3_MIGRATION_20260912_READY=true` before the schema binding can be enabled.
 - Kept existing Phase 2 administration compatible before the Phase 3 migration is applied; new administrative reads and mutations are schema-gated.
 - Replaced direct first publication with `DRAFT → SUBMITTED → PUBLISHED / NEEDS_CORRECTION / REJECTED` moderation. Publication requires an active vendor, approved category, complete bicycle-package data and a documented operator review at the current listing revision.
@@ -33,6 +34,7 @@ Production activation: **not authorized and not performed**
 ## API and contract changes
 
 - Store checkout now requires recipient name, Nigerian E.164 phone number, precise delivery location and optional landmark/coordinates.
+- `GET /v1/student/store` can return `catalogueMode: "DEMO"` with `checkoutEnabled: false` while the live Store gate remains closed; the live response declares both fields explicitly as well.
 - `GET /v1/student/orders/:id` returns the buyer's order, immutable delivery snapshot, items, timeline and review records after the schema gate is ready.
 - `POST /v1/student/product-reviews` accepts one review per delivered product and verifies the purchase inside the database transaction.
 - Vendor product submission no longer permits a draft to publish directly.
@@ -60,14 +62,14 @@ Production activation: **not authorized and not performed**
 ## Deliberately still blocked
 
 - The production migration has not been applied and the migration-proof repository variable has not been set.
-- The existing student Store screen does not yet collect the new delivery fields or use a server quote; it must remain disabled until the Phase 3 checkout UI slice lands.
+- The student Store now supports safe browsing and cart testing with the demo catalogue, but does not yet collect the new delivery fields or use a server quote; live checkout must remain disabled until the Phase 3 checkout UI slice lands.
 - Cloudflare R2 upload, validation and image processing are not connected.
 - The vendor image field accepts only a temporary URL workflow; managed upload remains visibly unavailable until R2 credentials, type/size policy and optimization are reviewed.
 - Zone hours and package limits are stored but not yet enforced during quote/job allocation.
 - Reservation timeout/requeue behavior, delivery incidents and support overrides are not implemented.
 - Commission, payment-fee treatment, rider earnings, refund rules and payout rules have no approved values. `UNCONFIGURED` remains a hard payment block.
 - Paystack server-side transaction verification, live reconciliation, refunds and reversing ledger entries remain Phase 3 finance work.
-- No vendor, rider, product, order or payment pilot data was added to production.
+- No persisted vendor, rider, product, order or payment pilot data was added to production; the demo catalogue is deterministic application data and can be removed with one runtime flag.
 - The local portal could not be opened by the isolated cloud browser because localhost navigation is blocked. Production build, strict TypeScript and lint checks passed; a deployed-preview visual pass remains required before activation.
 
 ## Next build slice

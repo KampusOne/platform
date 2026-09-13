@@ -36,11 +36,19 @@ type Product = {
   stock_quantity: number;
   image_url: string | null;
   vendor_name: string;
+  is_demo?: boolean;
 };
 
 type Zone = { id: string; name: string; base_fee_kobo: number };
 type Cart = Record<string, number>;
 type CatalogIssue = { code: string; message: string };
+type CatalogueMode = "DEMO" | "LIVE";
+type CatalogResponse = {
+  products: Product[];
+  deliveryZones: Zone[];
+  catalogueMode?: CatalogueMode;
+  checkoutEnabled?: boolean;
+};
 
 const naira = (kobo: number) => new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -65,6 +73,8 @@ export default function StoreScreen() {
   const [noteFocused, setNoteFocused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [catalogueMode, setCatalogueMode] = useState<CatalogueMode>("LIVE");
+  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [catalogIssue, setCatalogIssue] = useState<CatalogIssue | null>(null);
   const [checkoutError, setCheckoutError] = useState("");
   const [notice, setNotice] = useState("");
@@ -90,9 +100,12 @@ export default function StoreScreen() {
   const load = useCallback(async () => {
     setCatalogIssue(null);
     try {
-      const data = await api<{ products: Product[]; deliveryZones: Zone[] }>("/v1/student/store");
+      const data = await api<CatalogResponse>("/v1/student/store");
+      const mode = data.catalogueMode ?? "LIVE";
       setProducts(data.products);
       setZones(data.deliveryZones);
+      setCatalogueMode(mode);
+      setCheckoutEnabled(data.checkoutEnabled ?? mode === "LIVE");
     } catch (caught) {
       setCatalogIssue(caught instanceof ApiError
         ? { code: caught.code, message: caught.message }
@@ -141,12 +154,18 @@ export default function StoreScreen() {
     if (!busy) setCartOpen(false);
   }
 
+  function openCart() {
+    setCheckoutError("");
+    setCartOpen(true);
+  }
+
   function add(product: Product) {
     const activeVendor = cartItems[0]?.product.vendor_profile_id;
     if (activeVendor && activeVendor !== product.vendor_profile_id) {
+      const activeSeller = cartItems[0]?.product.vendor_name ?? "another seller";
       Alert.alert(
-        "One vendor per order",
-        "Checkout or clear your current cart before adding an item from another campus vendor.",
+        "One seller per cart",
+        `${activeSeller} is already in your cart. Remove those items before adding a product from ${product.vendor_name}.`,
       );
       return;
     }
@@ -167,7 +186,7 @@ export default function StoreScreen() {
   }
 
   async function checkout() {
-    if (!cartItems.length || !selectedZone) return;
+    if (!checkoutEnabled || !cartItems.length || !selectedZone) return;
     setBusy(true);
     setCheckoutError("");
     setNotice("");
@@ -243,7 +262,7 @@ export default function StoreScreen() {
         <FlatList
           accessibilityLabel="Campus store products"
           columnWrapperStyle={styles.productRow}
-          contentContainerStyle={[styles.listContent, cartCount > 0 && styles.listContentWithCart]}
+          contentContainerStyle={styles.listContent}
           data={catalogueData}
           extraData={cart}
           initialNumToRender={8}
@@ -253,6 +272,24 @@ export default function StoreScreen() {
           ListEmptyComponent={catalogueEmpty}
           ListHeaderComponent={(
             <>
+              <View style={styles.topBar}>
+                <Pressable
+                  accessibilityLabel={cartCount
+                    ? `Open cart with ${cartCount} ${cartCount === 1 ? "item" : "items"}`
+                    : "Open cart"}
+                  accessibilityRole="button"
+                  onPress={openCart}
+                  style={({ pressed }) => [styles.cartButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="cart-outline" size={25} color={theme.brandPressed} />
+                  {cartCount ? (
+                    <View style={styles.cartBadge}>
+                      <Text style={styles.cartBadgeText}>{cartCount > 99 ? "99+" : cartCount}</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              </View>
+
               {!featureDisabled ? (
                 <View style={[styles.search, searchFocused && styles.inputFocused]}>
                   <Ionicons name="search-outline" size={20} color={theme.brandPressed} />
@@ -348,7 +385,11 @@ export default function StoreScreen() {
 
               {!loading && !featureDisabled && products.length > 0 ? (
                 <View style={styles.resultsHeader}>
-                  <Text style={styles.resultsTitle}>{selectedCategory === "All" ? "All products" : selectedCategory}</Text>
+                  <Text style={styles.resultsTitle}>
+                    {selectedCategory === "All"
+                      ? catalogueMode === "DEMO" ? "Demo products" : "All products"
+                      : selectedCategory}
+                  </Text>
                   <Text style={styles.resultsCount}>{filtered.length} {filtered.length === 1 ? "item" : "items"}</Text>
                 </View>
               ) : null}
@@ -371,29 +412,6 @@ export default function StoreScreen() {
           windowSize={7}
         />
       </Animated.View>
-
-      {cartCount > 0 && !cartOpen && !featureDisabled ? (
-        <View pointerEvents="box-none" style={styles.cartDockPosition}>
-          <Pressable
-            accessibilityLabel={`View cart with ${cartCount} ${cartCount === 1 ? "item" : "items"}, subtotal ${naira(subtotal)}`}
-            accessibilityRole="button"
-            onPress={() => {
-              setCheckoutError("");
-              setCartOpen(true);
-            }}
-            style={({ pressed }) => [styles.cartDock, { width: contentWidth - 40 }, pressed && styles.buttonPressed]}
-          >
-            <View style={styles.cartDockIcon}>
-              <Ionicons name="bag-handle-outline" size={20} color="#FFFFFF" />
-            </View>
-            <View style={styles.cartDockCopy}>
-              <Text style={styles.cartDockTitle}>View cart</Text>
-              <Text style={styles.cartDockMeta}>{cartCount} {cartCount === 1 ? "item" : "items"} · {naira(subtotal)}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
-          </Pressable>
-        </View>
-      ) : null}
 
       <Modal animationType={reducedMotion ? "none" : "slide"} onRequestClose={closeCart} transparent visible={cartOpen}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalBackdrop}>
@@ -426,7 +444,7 @@ export default function StoreScreen() {
 
             <ScrollView contentContainerStyle={styles.cartContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               {!cartItems.length ? (
-                <StateMessage actionLabel="Continue shopping" body="Choose an item from an approved campus vendor to begin your order." icon="bag-handle-outline" onAction={() => setCartOpen(false)} title="Your cart is empty" />
+                <StateMessage actionLabel="Continue shopping" body="Choose an item from a campus seller to begin your cart." icon="cart-outline" onAction={() => setCartOpen(false)} title="Your cart is empty" />
               ) : null}
 
               {cartItems.map(({ product, quantity }) => (
@@ -434,7 +452,7 @@ export default function StoreScreen() {
                   {product.image_url ? (
                     <Image accessible={false} resizeMode="cover" source={{ uri: product.image_url }} style={styles.cartItemImage} />
                   ) : (
-                    <View style={styles.cartItemFallback}><Ionicons name="bag-handle-outline" size={20} color={theme.brandPressed} /></View>
+                    <View style={styles.cartItemFallback}><Ionicons name={productIcon(product)} size={20} color={theme.brandPressed} /></View>
                   )}
                   <View style={styles.cartItemCopy}>
                     <Text numberOfLines={2} style={styles.cartItemName}>{product.name}</Text>
@@ -444,7 +462,23 @@ export default function StoreScreen() {
                 </View>
               ))}
 
-              {cartItems.length ? (
+              {cartItems.length && !checkoutEnabled ? (
+                <View accessibilityRole="summary" style={styles.demoCheckoutNotice}>
+                  <View style={styles.demoCheckoutHeading}>
+                    <Ionicons name="information-circle-outline" size={21} color={theme.brandPressed} />
+                    <View style={styles.demoCheckoutCopy}>
+                      <Text style={styles.demoCheckoutTitle}>Demo cart</Text>
+                      <Text style={styles.demoCheckoutText}>Ordering and payment are not live yet. You can browse products and test the cart safely.</Text>
+                    </View>
+                  </View>
+                  <View style={styles.demoSubtotal}>
+                    <Text style={styles.totalLabel}>Items subtotal</Text>
+                    <Text style={styles.grandValue}>{naira(subtotal)}</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {cartItems.length && checkoutEnabled ? (
                 <>
                   {checkoutError ? (
                     <View accessibilityRole="alert" style={styles.checkoutError}>
@@ -553,14 +587,17 @@ function ProductCard({
       {product.image_url ? (
         <Image accessible={false} resizeMode="cover" source={{ uri: product.image_url }} style={styles.productImage} />
       ) : (
-        <View style={styles.productFallback}><View style={styles.fallbackDisc}><Ionicons name="bag-handle-outline" size={30} color={theme.brandPressed} /></View></View>
+        <View style={styles.productFallback}><View style={styles.fallbackDisc}><Ionicons name={productIcon(product)} size={30} color={theme.brandPressed} /></View></View>
       )}
       <View style={styles.cardBody}>
-        <Text numberOfLines={1} style={styles.category}>{product.category}</Text>
+        <View style={styles.categoryRow}>
+          <Text numberOfLines={1} style={styles.category}>{product.category}</Text>
+          {product.is_demo ? <Text style={styles.demoLabel}>Demo</Text> : null}
+        </View>
         <Text numberOfLines={2} style={styles.name}>{product.name}</Text>
         <Text numberOfLines={2} style={styles.description}>{product.description}</Text>
         <View style={styles.vendor}>
-          <Ionicons name="checkmark-circle" size={15} color={theme.verification} />
+          <Ionicons name={product.is_demo ? "storefront-outline" : "checkmark-circle"} size={15} color={theme.verification} />
           <Text numberOfLines={1} style={styles.vendorText}>{product.vendor_name}</Text>
         </View>
         <View style={styles.priceRow}>
@@ -585,6 +622,17 @@ function ProductCard({
       </View>
     </View>
   );
+}
+
+function productIcon(product: Product): keyof typeof Ionicons.glyphMap {
+  const name = product.name.toLowerCase();
+  if (name.includes("calculator")) return "calculator-outline";
+  if (name.includes("notebook")) return "book-outline";
+  if (name.includes("bottle")) return "water-outline";
+  if (name.includes("mattress")) return "bed-outline";
+  if (name.includes("lamp")) return "bulb-outline";
+  if (name.includes("cable") || name.includes("power") || name.includes("extension")) return "flash-outline";
+  return "cube-outline";
 }
 
 function QuantityStepper({ compact = false, product, quantity, onChange }: { compact?: boolean; product: Product; quantity: number; onChange: (delta: number) => void }) {
@@ -657,8 +705,11 @@ const styles = StyleSheet.create({
   listFrame: { alignSelf: "center", flex: 1 },
   catalogue: { flex: 1 },
   listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 12 },
-  listContentWithCart: { paddingBottom: 180 },
   productRow: { gap: 12, marginBottom: 12 },
+  topBar: { alignItems: "flex-end", marginBottom: 12 },
+  cartButton: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 14, borderWidth: 1, height: 48, justifyContent: "center", position: "relative", width: 48, ...theme.shadow },
+  cartBadge: { alignItems: "center", backgroundColor: theme.deepBrand, borderColor: theme.surface, borderRadius: 9, borderWidth: 2, justifyContent: "center", minHeight: 18, minWidth: 18, paddingHorizontal: 3, position: "absolute", right: -5, top: -5 },
+  cartBadgeText: { color: "#FFFFFF", fontFamily: theme.font.bold, fontSize: 9.5, fontVariant: ["tabular-nums"], lineHeight: 12 },
   search: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 15, borderWidth: 1, flexDirection: "row", gap: 10, minHeight: 52, paddingLeft: 15, paddingRight: 4 },
   inputFocused: { borderColor: theme.brand, borderWidth: 1.5 },
   searchInput: { color: theme.text, flex: 1, fontFamily: theme.font.body, fontSize: 14.5, height: 50 },
@@ -687,7 +738,9 @@ const styles = StyleSheet.create({
   productFallback: { alignItems: "center", aspectRatio: 1.04, backgroundColor: theme.surfaceMuted, justifyContent: "center", overflow: "hidden", width: "100%" },
   fallbackDisc: { alignItems: "center", backgroundColor: theme.sand, borderRadius: 34, height: 66, justifyContent: "center", transform: [{ rotate: "-7deg" }], width: 66 },
   cardBody: { padding: 12 },
-  category: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 11.5, lineHeight: 15 },
+  categoryRow: { alignItems: "center", flexDirection: "row", gap: 6 },
+  category: { color: theme.brandPressed, flex: 1, fontFamily: theme.font.semibold, fontSize: 11.5, lineHeight: 15 },
+  demoLabel: { backgroundColor: theme.surfaceTint, borderRadius: 6, color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 9, lineHeight: 14, overflow: "hidden", paddingHorizontal: 5, textTransform: "uppercase" },
   name: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14.5, lineHeight: 19, marginTop: 4, minHeight: 38 },
   description: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, lineHeight: 17, marginTop: 4, minHeight: 34 },
   vendor: { alignItems: "center", flexDirection: "row", gap: 5, marginTop: 9 },
@@ -725,12 +778,6 @@ const styles = StyleSheet.create({
   stateBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13.5, lineHeight: 20, marginTop: 6, maxWidth: 330, textAlign: "center" },
   stateAction: { alignItems: "center", justifyContent: "center", marginTop: 12, minHeight: 44, paddingHorizontal: 16 },
   stateActionText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 13.5 },
-  cartDockPosition: { alignItems: "center", bottom: 92, left: 0, position: "absolute", right: 0 },
-  cartDock: { alignItems: "center", backgroundColor: theme.deepBrand, borderColor: "rgba(255,255,255,0.18)", borderRadius: 18, borderWidth: 1, flexDirection: "row", minHeight: 58, paddingHorizontal: 13, ...theme.floatingShadow },
-  cartDockIcon: { alignItems: "center", backgroundColor: "rgba(255,255,255,0.13)", borderRadius: 11, height: 36, justifyContent: "center", width: 36 },
-  cartDockCopy: { flex: 1, paddingHorizontal: 11 },
-  cartDockTitle: { color: "#FFFFFF", fontFamily: theme.font.semibold, fontSize: 13.5, lineHeight: 18 },
-  cartDockMeta: { color: "rgba(255,255,255,0.78)", fontFamily: theme.font.body, fontSize: 11.5, fontVariant: ["tabular-nums"], lineHeight: 16 },
   pressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
   buttonPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
   modalBackdrop: { backgroundColor: "rgba(41,35,31,0.48)", flex: 1, justifyContent: "flex-end" },
@@ -748,6 +795,12 @@ const styles = StyleSheet.create({
   cartItemCopy: { flex: 1, minWidth: 0 },
   cartItemName: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13.5, lineHeight: 18 },
   cartItemMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, fontVariant: ["tabular-nums"], marginTop: 3 },
+  demoCheckoutNotice: { backgroundColor: theme.surfaceMuted, borderColor: theme.border, borderRadius: 16, borderWidth: 1, marginTop: 18, padding: 14 },
+  demoCheckoutHeading: { alignItems: "flex-start", flexDirection: "row", gap: 10 },
+  demoCheckoutCopy: { flex: 1 },
+  demoCheckoutTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14, lineHeight: 19 },
+  demoCheckoutText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12.5, lineHeight: 18, marginTop: 3 },
+  demoSubtotal: { alignItems: "center", borderTopColor: theme.border, borderTopWidth: 1, flexDirection: "row", justifyContent: "space-between", marginTop: 13, paddingTop: 12 },
   checkoutError: { alignItems: "flex-start", backgroundColor: "rgba(233,177,142,0.20)", borderRadius: 14, flexDirection: "row", gap: 9, marginTop: 16, padding: 12 },
   checkoutErrorText: { color: theme.error, flex: 1, fontFamily: theme.font.medium, fontSize: 12.5, lineHeight: 18 },
   sectionLabel: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13.5, marginBottom: 9, marginTop: 22 },
