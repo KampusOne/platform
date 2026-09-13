@@ -262,12 +262,11 @@ export const tutorialAvailabilitySchema = z.object({
   capacity: z.number().int().min(1).max(500),
 });
 
-export const vendorProductSchema = z.object({
+const vendorProductDetailsSchema = z.object({
   name: z.string().trim().min(2).max(160),
   description: z.string().trim().min(10).max(2000),
   categoryId: z.string().uuid(),
   priceKobo: z.number().int().min(0).max(100_000_000),
-  stockQuantity: z.number().int().min(0).max(1_000_000),
   imageUrl: z.string().url().nullable().optional(),
   preparationMinutes: z.number().int().min(10).max(1440).default(60),
   packageWeightGrams: z.number().int().min(1).max(50_000).nullable().optional(),
@@ -275,7 +274,16 @@ export const vendorProductSchema = z.object({
   packageWidthCm: z.number().min(1).max(200).nullable().optional(),
   packageHeightCm: z.number().min(1).max(200).nullable().optional(),
   bicycleDeliveryEligible: z.boolean().default(false),
-}).superRefine((value, context) => {
+});
+
+function validatePackageDimensions(
+  value: {
+    packageLengthCm?: number | null | undefined;
+    packageWidthCm?: number | null | undefined;
+    packageHeightCm?: number | null | undefined;
+  },
+  context: z.RefinementCtx,
+) {
   const dimensions = [value.packageLengthCm, value.packageWidthCm, value.packageHeightCm];
   const supplied = dimensions.filter((dimension) => dimension != null).length;
   if (supplied !== 0 && supplied !== dimensions.length) {
@@ -285,6 +293,39 @@ export const vendorProductSchema = z.object({
       path: ["packageLengthCm"],
     });
   }
+}
+
+export const vendorProductSchema = vendorProductDetailsSchema.extend({
+  stockQuantity: z.number().int().min(0).max(1_000_000),
+}).superRefine(validatePackageDimensions);
+
+export const vendorProductUpdateSchema = vendorProductDetailsSchema
+  .superRefine(validatePackageDimensions);
+
+export const vendorProductStockSchema = z.object({
+  stockQuantity: z.number().int().min(0).max(1_000_000),
+});
+
+export const vendorStorefrontSchema = z.object({
+  displayName: z.string().trim().min(2).max(120),
+  description: z.string().trim().min(10).max(2000),
+  contactPhoneE164: z.string().trim().regex(/^\+234[789][0-9]{9}$/),
+  pickupLocation: z.string().trim().min(5).max(500),
+  pickupInstructions: z.string().trim().max(1000).nullable().optional(),
+  openingHours: z.record(
+    z.string().trim().min(2).max(40),
+    z.string().trim().min(1).max(160),
+  ).default({}),
+  defaultPreparationMinutes: z.number().int().min(10).max(1440).default(60),
+});
+
+export const vendorStorefrontStateSchema = z.object({
+  status: z.literal("SUBMITTED"),
+});
+
+export const storefrontModerationSchema = z.object({
+  status: z.enum(["APPROVED", "NEEDS_CORRECTION", "SUSPENDED"]),
+  note: z.string().trim().min(3).max(2000),
 });
 
 export const productModerationSchema = z.object({

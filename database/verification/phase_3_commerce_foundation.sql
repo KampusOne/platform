@@ -57,6 +57,14 @@ begin
   ) then
     raise exception 'PHASE_3_PRODUCT_REVISION_TRIGGER_MISSING';
   end if;
+  if not exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.vendor_storefronts'::regclass
+      and tgname = 'vendor_storefronts_guard_material_change'
+      and not tgisinternal
+  ) then
+    raise exception 'PHASE_3_STOREFRONT_REVISION_TRIGGER_MISSING';
+  end if;
 
   if (
     select count(*) from pg_constraint
@@ -82,6 +90,22 @@ begin
       )
   ) then
     raise exception 'PHASE_3_UNMODERATED_PUBLISHED_PRODUCT';
+  end if;
+
+  if exists (
+    select 1 from public.vendor_storefronts
+    where status = 'APPROVED'
+      and (
+        reviewed_by_user_id is null
+        or reviewed_at is null
+        or moderated_revision is distinct from listing_revision
+        or description is null
+        or contact_phone_e164 is null
+        or pickup_location is null
+        or opening_hours = '{}'::jsonb
+      )
+  ) then
+    raise exception 'PHASE_3_UNMODERATED_APPROVED_STOREFRONT';
   end if;
 
   if exists (

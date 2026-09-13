@@ -4,6 +4,7 @@ import Image from "next/image";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 import { PortalShell } from "@/components/portal-shell";
+import { VendorStoreWorkspace } from "@/components/vendor-store-workspace";
 import { PortalApiError, portalApi } from "@/lib/api";
 
 type Scalar = string | number | null;
@@ -141,29 +142,6 @@ type TutorialBooking = {
   title: string;
   student_name: string;
 };
-type Product = {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  price_kobo: Scalar;
-  stock_quantity: Scalar;
-  image_url: string | null;
-  status: string;
-  updated_at: string;
-};
-type VendorOrder = {
-  id: string;
-  status: string;
-  subtotal_kobo: Scalar;
-  delivery_fee_kobo: Scalar;
-  total_kobo: Scalar;
-  delivery_note: string | null;
-  zone_name: string | null;
-  item_count: Scalar;
-  created_at: string;
-  updated_at: string;
-};
 type Delivery = {
   id: string;
   order_id: string;
@@ -232,10 +210,10 @@ export function AgentDashboard() {
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const reload = useCallback(() => {
-    setLoading(true);
+    if (!dashboard) setLoading(true);
     setError("");
     setRefreshKey((value) => value + 1);
-  }, []);
+  }, [dashboard]);
 
   useEffect(() => {
     let active = true;
@@ -339,7 +317,7 @@ export function AgentDashboard() {
         </>
       )}
       {!loading && !error && view === "store" && (
-        <StoreWorkspace onChanged={reload} />
+        <VendorStoreWorkspace onChanged={reload} />
       )}
       {!loading && !error && view === "deliveries" && (
         <DeliveryWorkspace onChanged={reload} />
@@ -1513,337 +1491,6 @@ function TutorialBookingPanel({ onChanged }: { onChanged(): void }) {
         </div>
       )}
     </section>
-  );
-}
-
-function StoreWorkspace({ onChanged }: { onChanged(): void }) {
-  const [key, setKey] = useState(0);
-  const { data, loading, error } = useWorkspaceData<{ products: Product[] }>(
-    "/v1/agents/products",
-    key,
-  );
-  const categories = useWorkspaceData<{
-    categories: Array<{
-      id: string;
-      name: string;
-      listing_rules: string | null;
-    }>;
-  }>("/v1/agents/product-categories", key);
-  const orders = useWorkspaceData<{ orders: VendorOrder[] }>(
-    "/v1/agents/orders",
-    key,
-  );
-  const [formError, setFormError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [pickupCode, setPickupCode] = useState<{
-    orderId: string;
-    code: string;
-  } | null>(null);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    setBusy(true);
-    setFormError("");
-    setNotice("");
-    try {
-      await portalApi("/v1/agents/products", {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.get("name"),
-          description: form.get("description"),
-          categoryId: form.get("categoryId"),
-          priceKobo: Math.round(Number(form.get("price")) * 100),
-          stockQuantity: Number(form.get("stockQuantity")),
-          imageUrl: form.get("imageUrl") || null,
-        }),
-      });
-      setNotice("Product saved as a draft.");
-      formElement.reset();
-      setKey((value) => value + 1);
-      onChanged();
-    } catch (caught) {
-      setFormError(
-        caught instanceof PortalApiError
-          ? caught.message
-          : "Product could not be created.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function changeProductStatus(
-    id: string,
-    status: "PUBLISHED" | "PAUSED" | "ARCHIVED",
-  ) {
-    setBusy(true);
-    setFormError("");
-    try {
-      await portalApi(`/v1/agents/products/${id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      });
-      setKey((value) => value + 1);
-    } catch (caught) {
-      setFormError(
-        caught instanceof PortalApiError
-          ? caught.message
-          : "Product status could not be changed.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function changeOrderStatus(
-    id: string,
-    status: "ACCEPTED" | "READY" | "CANCELLED",
-  ) {
-    setBusy(true);
-    setFormError("");
-    try {
-      await portalApi(`/v1/agents/orders/${id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status, note: null }),
-      });
-      setKey((value) => value + 1);
-      onChanged();
-    } catch (caught) {
-      setFormError(
-        caught instanceof PortalApiError
-          ? caught.message
-          : "Order status could not be changed.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function revealPickupCode(id: string) {
-    setBusy(true);
-    setFormError("");
-    try {
-      const result = await portalApi<{ code: string }>(
-        `/v1/agents/orders/${id}/pickup-code`,
-      );
-      setPickupCode({ orderId: id, code: result.code });
-    } catch (caught) {
-      setFormError(
-        caught instanceof PortalApiError
-          ? caught.message
-          : "Pickup code could not be loaded.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <>
-      <section className="dashboard-grid dashboard-grid--content">
-        <article className="panel">
-          <div className="panel-heading">
-            <div>
-              <p className="section-kicker">Vendor catalogue</p>
-              <h2>Your products</h2>
-            </div>
-            <span className="data-label">
-              {data?.products.length ?? 0} products
-            </span>
-          </div>
-          {loading && (
-            <div className="state-panel">
-              <span className="spinner" />
-            </div>
-          )}
-          {error && <WorkspaceGate error={error} />}
-          {data?.products.map((item) => (
-            <div className="product-row" key={item.id}>
-              {item.image_url ? (
-                <Image
-                  src={item.image_url}
-                  alt=""
-                  width={52}
-                  height={52}
-                  unoptimized
-                />
-              ) : (
-                <span className="product-placeholder">
-                  {item.name.slice(0, 1)}
-                </span>
-              )}
-              <span>
-                <strong>{item.name}</strong>
-                <small>
-                  {item.category} · {number(item.stock_quantity)} in stock ·{" "}
-                  {label(item.status)}
-                </small>
-              </span>
-              <span>
-                <strong>{money(item.price_kobo)}</strong>
-                <span className="inline-actions">
-                  {item.status !== "PUBLISHED" &&
-                    item.status !== "ARCHIVED" && (
-                      <button
-                        className="text-button"
-                        onClick={() =>
-                          void changeProductStatus(item.id, "PUBLISHED")
-                        }
-                      >
-                        Publish
-                      </button>
-                    )}
-                  {item.status === "PUBLISHED" && (
-                    <button
-                      className="text-button"
-                      onClick={() =>
-                        void changeProductStatus(item.id, "PAUSED")
-                      }
-                    >
-                      Pause
-                    </button>
-                  )}
-                  <button
-                    className="text-button text-button--danger"
-                    onClick={() =>
-                      void changeProductStatus(item.id, "ARCHIVED")
-                    }
-                  >
-                    Archive
-                  </button>
-                </span>
-              </span>
-            </div>
-          ))}
-          {data && !data.products.length && (
-            <div className="empty-row">
-              <strong>No products yet</strong>
-              <span>Create the first one after vendor approval.</span>
-            </div>
-          )}
-          {formError && <p className="form-error">{formError}</p>}
-        </article>
-        <article className="panel">
-          <p className="section-kicker">New product</p>
-          <h2>Add a campus essential</h2>
-          <form className="form-stack" onSubmit={submit}>
-            <label>
-              Product name
-              <input name="name" minLength={2} required />
-            </label>
-            <div className="form-grid">
-              <label>
-                Approved category
-                <select name="categoryId" defaultValue="" required>
-                  <option value="" disabled>
-                    Select category
-                  </option>
-                  {categories.data?.categories.map((category) => (
-                    <option value={category.id} key={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Stock quantity
-                <input name="stockQuantity" type="number" min="0" required />
-              </label>
-            </div>
-            <label>
-              Description
-              <textarea name="description" minLength={10} required />
-            </label>
-            <div className="form-grid">
-              <label>
-                Price (₦)
-                <input name="price" type="number" min="0" step="1" required />
-              </label>
-              <label>
-                Image URL
-                <input name="imageUrl" type="url" placeholder="https://…" />
-              </label>
-            </div>
-            {!categories.loading && !categories.data?.categories.length && (
-              <p className="form-error">
-                An administrator must approve a product category before you can
-                list an item.
-              </p>
-            )}
-            {notice && <p className="form-notice">{notice}</p>}
-            <button
-              className="button button--primary"
-              disabled={
-                busy || Boolean(error) || !categories.data?.categories.length
-              }
-            >
-              {busy ? "Saving…" : "Save product draft"}
-            </button>
-          </form>
-        </article>
-      </section>
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <p className="section-kicker">Order operations</p>
-            <h2>Customer orders</h2>
-          </div>
-          <span className="data-label">
-            {orders.data?.orders.length ?? 0} orders
-          </span>
-        </div>
-        {orders.error && <WorkspaceGate error={orders.error} />}
-        {orders.data?.orders.map((order) => (
-          <div className="order-row" key={order.id}>
-            <span>
-              <strong>Order #{order.id.slice(0, 8)}</strong>
-              <small>
-                {number(order.item_count)} item(s) ·{" "}
-                {order.zone_name ?? "No delivery zone"} ·{" "}
-                {date(order.created_at)}
-              </small>
-            </span>
-            <span>
-              <strong>{money(order.total_kobo)}</strong>
-              <small>{label(order.status)}</small>
-            </span>
-            <span className="inline-actions">
-              {order.status === "PAID" && (
-                <button
-                  className="button button--small"
-                  onClick={() => void changeOrderStatus(order.id, "ACCEPTED")}
-                >
-                  Accept
-                </button>
-              )}
-              {order.status === "ACCEPTED" && (
-                <button
-                  className="button button--small"
-                  onClick={() => void changeOrderStatus(order.id, "READY")}
-                >
-                  Mark ready
-                </button>
-              )}
-              {order.status === "READY" && (
-                <button
-                  className="button button--small"
-                  onClick={() => void revealPickupCode(order.id)}
-                >
-                  Pickup code
-                </button>
-              )}
-            </span>
-            {pickupCode?.orderId === order.id && (
-              <strong className="handoff-code">{pickupCode.code}</strong>
-            )}
-          </div>
-        ))}
-        {orders.data && !orders.data.orders.length && (
-          <div className="empty-row">
-            <strong>No customer orders</strong>
-            <span>Paid orders will appear here for fulfilment.</span>
-          </div>
-        )}
-      </section>
-    </>
   );
 }
 

@@ -19,6 +19,7 @@ declare
   test_review_id uuid := gen_random_uuid();
   fixture_suffix text := substring(replace(gen_random_uuid()::text, '-', '') from 1 for 12);
   original_revision integer;
+  original_storefront_revision integer;
   created record;
   acceptance_completed boolean := false;
 begin
@@ -94,13 +95,15 @@ begin
 
     insert into public.vendor_storefronts (
       vendor_profile_id, university_id, display_name, description,
-      contact_phone_e164, pickup_location, status,
-      submitted_at, reviewed_by_user_id, reviewed_at, review_note
+      contact_phone_e164, pickup_location, opening_hours, status,
+      submitted_at, listing_revision, moderated_revision,
+      reviewed_by_user_id, reviewed_at, review_note
     ) values (
       vendor, university, 'Phase 3 acceptance vendor',
       'Self-cleaning storefront used only for migration acceptance.',
       '+2348031234567', 'Main Gate acceptance pickup point',
-      'APPROVED', now(), reviewer, now(), 'Approved only for the rehearsal.'
+      '{"summary":"Monday to Friday, 09:00–18:00"}'::jsonb,
+      'APPROVED', now(), 1, 1, reviewer, now(), 'Approved only for the rehearsal.'
     );
 
     insert into public.delivery_zones (
@@ -356,6 +359,25 @@ begin
         and reviewed_at is null
     ) then
       raise exception 'MATERIAL_UPDATE_DID_NOT_REQUIRE_REVIEW';
+    end if;
+
+    select listing_revision into original_storefront_revision
+    from public.vendor_storefronts
+    where vendor_profile_id = vendor;
+
+    update public.vendor_storefronts
+    set pickup_location = 'Hall 2 acceptance pickup point'
+    where vendor_profile_id = vendor;
+
+    if not exists (
+      select 1 from public.vendor_storefronts
+      where vendor_profile_id = vendor
+        and status = 'NEEDS_CORRECTION'
+        and listing_revision = original_storefront_revision + 1
+        and moderated_revision is null
+        and reviewed_at is null
+    ) then
+      raise exception 'STOREFRONT_MATERIAL_UPDATE_DID_NOT_REQUIRE_REVIEW';
     end if;
 
     acceptance_completed := true;

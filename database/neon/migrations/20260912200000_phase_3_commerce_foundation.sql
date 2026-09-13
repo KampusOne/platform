@@ -132,7 +132,7 @@ begin
       new.status := 'NEEDS_CORRECTION';
       new.submitted_at := coalesce(old.submitted_at, now());
       new.moderation_note := 'Material listing changes require a new product review.';
-    elsif old.status = 'SUBMITTED' then
+    elsif old.status in ('SUBMITTED', 'REJECTED') then
       new.status := 'DRAFT';
       new.submitted_at := null;
       new.moderation_note := null;
@@ -248,6 +248,8 @@ create table if not exists public.vendor_storefronts (
   status text not null default 'DRAFT'
     check (status in ('DRAFT', 'SUBMITTED', 'APPROVED', 'NEEDS_CORRECTION', 'SUSPENDED')),
   submitted_at timestamptz,
+  listing_revision integer not null default 1,
+  moderated_revision integer,
   reviewed_by_user_id uuid references public.users(id) on delete set null,
   reviewed_at timestamptz,
   review_note text check (review_note is null or char_length(review_note) <= 2000),
@@ -255,6 +257,12 @@ create table if not exists public.vendor_storefronts (
   updated_at timestamptz not null default now(),
   foreign key (vendor_profile_id, university_id)
     references public.agent_profiles(id, university_id) on delete cascade,
+  constraint vendor_storefronts_listing_revision_check
+  check (listing_revision > 0 and (moderated_revision is null or moderated_revision > 0)),
+  constraint vendor_storefronts_correction_note_check check (
+    status <> 'NEEDS_CORRECTION'
+    or char_length(trim(coalesce(review_note, ''))) between 3 and 2000
+  ),
   check (
     status <> 'APPROVED'
     or (
@@ -267,8 +275,100 @@ create table if not exists public.vendor_storefronts (
   )
 );
 
+-- Keep the migration re-runnable on pre-production branches that rehearsed an
+-- earlier Phase 3 draft before storefront revision fields were added.
+alter table public.vendor_storefronts
+  add column if not exists listing_revision integer not null default 1,
+  add column if not exists moderated_revision integer;
+
+update public.vendor_storefronts
+set moderated_revision = listing_revision
+where status = 'APPROVED' and moderated_revision is null;
+
+alter table public.vendor_storefronts
+  drop constraint if exists vendor_storefronts_listing_revision_check;
+alter table public.vendor_storefronts
+  add constraint vendor_storefronts_listing_revision_check
+  check (listing_revision > 0 and (moderated_revision is null or moderated_revision > 0));
+alter table public.vendor_storefronts
+  drop constraint if exists vendor_storefronts_correction_note_check;
+alter table public.vendor_storefronts
+  add constraint vendor_storefronts_correction_note_check
+  check (
+    status <> 'NEEDS_CORRECTION'
+    or char_length(trim(coalesce(review_note, ''))) between 3 and 2000
+  );
+alter table public.vendor_storefronts
+  drop constraint if exists vendor_storefronts_approval_revision_check;
+alter table public.vendor_storefronts
+  add constraint vendor_storefronts_approval_revision_check
+  check (status <> 'APPROVED' or moderated_revision = listing_revision);
+alter table public.vendor_storefronts
+  drop constraint if exists vendor_storefronts_approval_completeness_check;
+alter table public.vendor_storefronts
+  add constraint vendor_storefronts_approval_completeness_check
+  check (
+    status <> 'APPROVED'
+    or (
+      submitted_at is not null
+      and reviewed_by_user_id is not null
+      and reviewed_at is not null
+      and contact_phone_e164 is not null
+      and pickup_location is not null
+      and description is not null
+      and opening_hours <> '{}'::jsonb
+    )
+  );
+
 create index if not exists vendor_storefronts_review_queue_idx
   on public.vendor_storefronts (university_id, status, submitted_at);
+
+create or replace function app_private.guard_storefront_material_change()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if row(
+    new.display_name,
+    new.description,
+    new.contact_phone_e164,
+    new.pickup_location,
+    new.pickup_instructions,
+    new.opening_hours,
+    new.default_preparation_minutes
+  ) is distinct from row(
+    old.display_name,
+    old.description,
+    old.contact_phone_e164,
+    old.pickup_location,
+    old.pickup_instructions,
+    old.opening_hours,
+    old.default_preparation_minutes
+  ) then
+    new.listing_revision := old.listing_revision + 1;
+    new.reviewed_by_user_id := null;
+    new.reviewed_at := null;
+    new.moderated_revision := null;
+
+    if old.status = 'APPROVED' then
+      new.status := 'NEEDS_CORRECTION';
+      new.submitted_at := coalesce(old.submitted_at, now());
+      new.review_note := 'Material storefront changes require a new review.';
+    elsif old.status = 'SUBMITTED' then
+      new.status := 'DRAFT';
+      new.submitted_at := null;
+      new.review_note := null;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists vendor_storefronts_guard_material_change on public.vendor_storefronts;
+create trigger vendor_storefronts_guard_material_change
+before update on public.vendor_storefronts
+for each row execute function app_private.guard_storefront_material_change();
 
 create table if not exists public.product_media (
   id uuid primary key default gen_random_uuid(),
@@ -407,9 +507,27 @@ create table if not exists public.commerce_refund_events (
   note text check (note is null or char_length(note) <= 2000),
   metadata jsonb not null default '{}'::jsonb check (jsonb_typeof(metadata) = 'object'),
   occurred_at timestamptz not null default now(),
+  constraint commerce_refund_events_refund_tenant_fkey
   foreign key (refund_id, university_id)
     references public.commerce_refunds(id, university_id) on delete restrict
 );
+
+-- An early rehearsal draft created refund events before the tenant column was
+-- included. Backfill it so rerunning the reviewed migration converges safely.
+alter table public.commerce_refund_events
+  add column if not exists university_id uuid;
+update public.commerce_refund_events events
+set university_id = refunds.university_id
+from public.commerce_refunds refunds
+where refunds.id = events.refund_id and events.university_id is null;
+alter table public.commerce_refund_events
+  alter column university_id set not null;
+alter table public.commerce_refund_events
+  drop constraint if exists commerce_refund_events_refund_tenant_fkey;
+alter table public.commerce_refund_events
+  add constraint commerce_refund_events_refund_tenant_fkey
+  foreign key (refund_id, university_id)
+  references public.commerce_refunds(id, university_id) on delete restrict;
 
 create index if not exists commerce_refund_events_timeline_idx
   on public.commerce_refund_events (refund_id, occurred_at, id);

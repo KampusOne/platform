@@ -13,6 +13,7 @@ import {
   productCategorySchema,
   productModerationSchema,
   reviewAgentApplicationSchema,
+  storefrontModerationSchema,
   tutorialDemoSeedSchema,
   tutorialModerationSchema,
 } from "@kampusone/contracts";
@@ -714,7 +715,7 @@ adminRoutes.get("/audit", async (context) => {
 adminRoutes.get("/operations", async (context) => {
   const user = currentUser(context);
   const scope = await adminScope(context.env, user, context.req.query("universityId"));
-  const [categories, products, zones, disputes, payouts, paymentEvents] = await Promise.all([
+  const [categories, products, storefronts, zones, disputes, payouts, paymentEvents] = await Promise.all([
     database(context.env).execute(sql`
       select id, university_id, name, status, listing_rules, reviewed_at, updated_at
       from public.product_categories where ${scope}::uuid is null or university_id = ${scope}::uuid
@@ -728,13 +729,37 @@ adminRoutes.get("/operations", async (context) => {
             products.preparation_minutes, products.package_weight_grams,
             products.package_length_cm, products.package_width_cm, products.package_height_cm,
             products.bicycle_delivery_eligible, products.listing_revision,
-            profiles.display_name as vendor_name
+            products.moderated_revision, products.reviewed_at,
+            profiles.display_name as vendor_name, categories.listing_rules
           from public.vendor_products products
           join public.agent_profiles profiles on profiles.id = products.vendor_profile_id
+          left join public.product_categories categories on categories.id = products.category_id
           where (${scope}::uuid is null or products.university_id = ${scope}::uuid)
             and products.status in ('SUBMITTED', 'NEEDS_CORRECTION', 'REJECTED', 'PUBLISHED', 'PAUSED')
           order by case products.status when 'SUBMITTED' then 0 else 1 end,
             products.submitted_at desc nulls last, products.updated_at desc
+          limit 250
+        `)
+      : Promise.resolve({ rows: [] }),
+    phase3SchemaReady(context.env)
+      ? database(context.env).execute(sql`
+          select storefronts.vendor_profile_id, storefronts.university_id,
+            storefronts.display_name, storefronts.description,
+            storefronts.contact_phone_e164, storefronts.pickup_location,
+            storefronts.pickup_instructions, storefronts.opening_hours,
+            storefronts.default_preparation_minutes, storefronts.status,
+            storefronts.submitted_at, storefronts.listing_revision,
+            storefronts.moderated_revision, storefronts.reviewed_at,
+            storefronts.review_note, storefronts.updated_at,
+            users.email as vendor_email
+          from public.vendor_storefronts storefronts
+          join public.agent_profiles profiles on profiles.id = storefronts.vendor_profile_id
+          join public.users users on users.id = profiles.user_id
+          where (${scope}::uuid is null or storefronts.university_id = ${scope}::uuid)
+            and storefronts.status <> 'DRAFT'
+          order by case storefronts.status
+            when 'SUBMITTED' then 0 when 'SUSPENDED' then 1 else 2 end,
+            storefronts.submitted_at desc nulls last, storefronts.updated_at desc
           limit 250
         `)
       : Promise.resolve({ rows: [] }),
@@ -790,7 +815,8 @@ adminRoutes.get("/operations", async (context) => {
         events.received_at desc limit 200
     `),
   ]);
-  return context.json({ categories: categories.rows, products: products.rows, zones: zones.rows,
+  return context.json({ categories: categories.rows, products: products.rows,
+    storefronts: storefronts.rows, zones: zones.rows,
     disputes: disputes.rows, payoutRequests: payouts.rows, paymentEvents: paymentEvents.rows });
 });
 
@@ -870,6 +896,85 @@ adminRoutes.post("/operations/categories", async (context) => {
   return context.json({ id: categoryId, status: parsed.data.status }, 201);
 });
 
+adminRoutes.post("/operations/storefronts/:id/review", async (context) => {
+  if (!phase3SchemaReady(context.env)) {
+    throw new AppError(503, "FEATURE_DISABLED", "Storefront moderation is waiting for the reviewed Phase 3 schema migration.");
+  }
+  const user = currentUser(context);
+  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role))) {
+    throw new AppError(403, "FORBIDDEN", "An institution administrator role is required.");
+  }
+  const parsed = storefrontModerationSchema.safeParse(await body(context));
+  if (!parsed.success) {
+    throw new AppError(400, "BAD_REQUEST", "Document a valid storefront-review decision.");
+  }
+  const existingResult = await database(context.env).execute<{
+    vendor_profile_id: string;
+    university_id: string;
+    status: string;
+  }>(sql`
+    select vendor_profile_id, university_id, status
+    from public.vendor_storefronts
+    where vendor_profile_id = ${context.req.param("id")}::uuid
+    limit 1
+  `);
+  const existing = firstRow(existingResult);
+  if (!existing) throw new AppError(404, "NOT_FOUND", "That storefront does not exist.");
+  await adminScope(context.env, user, existing.university_id);
+  const result = await database(context.env).execute<{
+    vendor_profile_id: string;
+    university_id: string;
+  }>(sql`
+    update public.vendor_storefronts storefronts set
+      status = ${parsed.data.status}, review_note = ${parsed.data.note},
+      reviewed_by_user_id = ${user.id}::uuid, reviewed_at = now(),
+      moderated_revision = case
+        when ${parsed.data.status} = 'APPROVED' then storefronts.listing_revision
+        else null
+      end,
+      updated_at = now()
+    from public.agent_profiles profiles
+    where storefronts.vendor_profile_id = ${existing.vendor_profile_id}::uuid
+      and profiles.id = storefronts.vendor_profile_id
+      and profiles.agent_type = 'VENDOR'
+      and (
+        (storefronts.status = 'SUBMITTED'
+          and ${parsed.data.status} in ('APPROVED', 'NEEDS_CORRECTION', 'SUSPENDED'))
+        or (storefronts.status = 'APPROVED' and ${parsed.data.status} = 'SUSPENDED')
+        or (storefronts.status = 'SUSPENDED' and ${parsed.data.status} = 'NEEDS_CORRECTION')
+      )
+      and (
+        ${parsed.data.status} <> 'APPROVED'
+        or (
+          profiles.status = 'ACTIVE'
+          and storefronts.contact_phone_e164 is not null
+          and storefronts.pickup_location is not null
+          and storefronts.description is not null
+          and storefronts.opening_hours <> '{}'::jsonb
+        )
+      )
+    returning storefronts.vendor_profile_id, storefronts.university_id
+  `);
+  const storefront = firstRow(result);
+  if (!storefront) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Only a complete submitted storefront from an active vendor can be approved; suspended storefronts must return for correction.",
+    );
+  }
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: storefront.university_id,
+    action: "storefront.reviewed",
+    targetType: "vendor_storefront",
+    targetId: storefront.vendor_profile_id,
+    requestId: context.get("requestId"),
+    metadata: { decision: parsed.data.status, note: parsed.data.note },
+  });
+  return context.json({ id: storefront.vendor_profile_id, status: parsed.data.status });
+});
+
 adminRoutes.post("/operations/products/:id/review", async (context) => {
   if (!phase3SchemaReady(context.env)) {
     throw new AppError(503, "FEATURE_DISABLED", "Product moderation is waiting for the reviewed Phase 3 schema migration.");
@@ -903,12 +1008,16 @@ adminRoutes.post("/operations/products/:id/review", async (context) => {
         else null
       end,
       updated_at = now()
-    from public.agent_profiles profiles, public.product_categories categories
+    from public.agent_profiles profiles, public.product_categories categories,
+      public.vendor_storefronts storefronts
     where products.id = ${existing.id}::uuid
       and products.status = 'SUBMITTED'
       and profiles.id = products.vendor_profile_id
       and profiles.agent_type = 'VENDOR'
       and profiles.status = 'ACTIVE'
+      and storefronts.vendor_profile_id = profiles.id
+      and storefronts.university_id = products.university_id
+      and storefronts.status = 'APPROVED'
       and categories.id = products.category_id
       and categories.status = 'APPROVED'
       and (
@@ -928,7 +1037,7 @@ adminRoutes.post("/operations/products/:id/review", async (context) => {
     throw new AppError(
       409,
       "CONFLICT",
-      "Only a submitted product from an active vendor in an approved category can be reviewed.",
+      "Only a submitted product from an approved storefront in an approved category can be reviewed.",
     );
   }
   await recordAudit(context.env, {
