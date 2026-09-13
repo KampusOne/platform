@@ -272,12 +272,42 @@ export default function StoreScreen() {
           ListEmptyComponent={catalogueEmpty}
           ListHeaderComponent={(
             <>
-              <View style={styles.topBar}>
+              <View style={styles.storeToolbar}>
+                {!featureDisabled ? (
+                  <View style={[styles.search, styles.toolbarSearch, searchFocused && styles.inputFocused]}>
+                    <Ionicons name="search-outline" size={20} color={theme.brandPressed} />
+                    <TextInput
+                      accessibilityLabel="Search products or vendors"
+                      autoCapitalize="none"
+                      onBlur={() => setSearchFocused(false)}
+                      onChangeText={setQuery}
+                      onFocus={() => setSearchFocused(true)}
+                      placeholder="Search products or vendors"
+                      placeholderTextColor={theme.textSubtle}
+                      returnKeyType="search"
+                      style={styles.searchInput}
+                      value={query}
+                    />
+                    {query ? (
+                      <Pressable
+                        accessibilityLabel="Clear search"
+                        accessibilityRole="button"
+                        hitSlop={4}
+                        onPress={() => setQuery("")}
+                        style={({ pressed }) => [styles.clearSearch, pressed && styles.pressed]}
+                      >
+                        <Ionicons name="close" size={20} color={theme.textMuted} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+
                 <Pressable
                   accessibilityLabel={cartCount
                     ? `Open cart with ${cartCount} ${cartCount === 1 ? "item" : "items"}`
                     : "Open cart"}
                   accessibilityRole="button"
+                  hitSlop={4}
                   onPress={openCart}
                   style={({ pressed }) => [styles.cartButton, pressed && styles.pressed]}
                 >
@@ -289,35 +319,6 @@ export default function StoreScreen() {
                   ) : null}
                 </Pressable>
               </View>
-
-              {!featureDisabled ? (
-                <View style={[styles.search, searchFocused && styles.inputFocused]}>
-                  <Ionicons name="search-outline" size={20} color={theme.brandPressed} />
-                  <TextInput
-                    accessibilityLabel="Search products or vendors"
-                    autoCapitalize="none"
-                    onBlur={() => setSearchFocused(false)}
-                    onChangeText={setQuery}
-                    onFocus={() => setSearchFocused(true)}
-                    placeholder="Search products or vendors"
-                    placeholderTextColor={theme.textSubtle}
-                    returnKeyType="search"
-                    style={styles.searchInput}
-                    value={query}
-                  />
-                  {query ? (
-                    <Pressable
-                      accessibilityLabel="Clear search"
-                      accessibilityRole="button"
-                      hitSlop={4}
-                      onPress={() => setQuery("")}
-                      style={({ pressed }) => [styles.clearSearch, pressed && styles.pressed]}
-                    >
-                      <Ionicons name="close" size={20} color={theme.textMuted} />
-                    </Pressable>
-                  ) : null}
-                </View>
-              ) : null}
 
               {!featureDisabled && categories.length > 1 ? (
                 <ScrollView
@@ -704,17 +705,18 @@ const styles = StyleSheet.create({
   ambientBottom: { backgroundColor: "rgba(241,223,200,0.20)", borderRadius: 120, height: 220, left: -170, position: "absolute", top: 620, width: 220 },
   listFrame: { alignSelf: "center", flex: 1 },
   catalogue: { flex: 1 },
-  listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 12 },
+  listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 8 },
   productRow: { gap: 12, marginBottom: 12 },
-  topBar: { alignItems: "flex-end", marginBottom: 12 },
-  cartButton: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 14, borderWidth: 1, height: 48, justifyContent: "center", position: "relative", width: 48, ...theme.shadow },
+  storeToolbar: { alignItems: "center", flexDirection: "row", gap: 10, justifyContent: "flex-end" },
+  toolbarSearch: { flex: 1 },
+  cartButton: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 15, borderWidth: 1, height: 52, justifyContent: "center", position: "relative", width: 52, ...theme.shadow },
   cartBadge: { alignItems: "center", backgroundColor: theme.deepBrand, borderColor: theme.surface, borderRadius: 9, borderWidth: 2, justifyContent: "center", minHeight: 18, minWidth: 18, paddingHorizontal: 3, position: "absolute", right: -5, top: -5 },
   cartBadgeText: { color: "#FFFFFF", fontFamily: theme.font.bold, fontSize: 9.5, fontVariant: ["tabular-nums"], lineHeight: 12 },
   search: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 15, borderWidth: 1, flexDirection: "row", gap: 10, minHeight: 52, paddingLeft: 15, paddingRight: 4 },
   inputFocused: { borderColor: theme.brand, borderWidth: 1.5 },
   searchInput: { color: theme.text, flex: 1, fontFamily: theme.font.body, fontSize: 14.5, height: 50 },
   clearSearch: { alignItems: "center", height: 44, justifyContent: "center", width: 44 },
-  categoryScroller: { marginHorizontal: -20, marginTop: 14 },
+  categoryScroller: { marginHorizontal: -20, marginTop: 12 },
   categories: { gap: 8, paddingHorizontal: 20 },
   categoryChip: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 12, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: 15 },
   categoryChipSelected: { backgroundColor: theme.deepBrand, borderColor: theme.deepBrand },
