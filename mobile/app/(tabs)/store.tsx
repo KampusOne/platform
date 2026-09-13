@@ -36,10 +36,19 @@ type Product = {
   stock_quantity: number;
   image_url: string | null;
   vendor_name: string;
+  is_demo?: boolean;
 };
 
 type Zone = { id: string; name: string; base_fee_kobo: number };
 type Cart = Record<string, number>;
+type CatalogIssue = { code: string; message: string };
+type CatalogueMode = "DEMO" | "LIVE";
+type CatalogResponse = {
+  products: Product[];
+  deliveryZones: Zone[];
+  catalogueMode?: CatalogueMode;
+  checkoutEnabled?: boolean;
+};
 
 const naira = (kobo: number) => new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -64,7 +73,9 @@ export default function StoreScreen() {
   const [noteFocused, setNoteFocused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [catalogError, setCatalogError] = useState("");
+  const [catalogueMode, setCatalogueMode] = useState<CatalogueMode>("LIVE");
+  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
+  const [catalogIssue, setCatalogIssue] = useState<CatalogIssue | null>(null);
   const [checkoutError, setCheckoutError] = useState("");
   const [notice, setNotice] = useState("");
   const reducedMotion = useReducedMotionPreference();
@@ -87,13 +98,18 @@ export default function StoreScreen() {
   }, [entry, reducedMotion]);
 
   const load = useCallback(async () => {
-    setCatalogError("");
+    setCatalogIssue(null);
     try {
-      const data = await api<{ products: Product[]; deliveryZones: Zone[] }>("/v1/student/store");
+      const data = await api<CatalogResponse>("/v1/student/store");
+      const mode = data.catalogueMode ?? "LIVE";
       setProducts(data.products);
       setZones(data.deliveryZones);
+      setCatalogueMode(mode);
+      setCheckoutEnabled(data.checkoutEnabled ?? mode === "LIVE");
     } catch (caught) {
-      setCatalogError(caught instanceof ApiError ? caught.message : "The campus store could not be loaded.");
+      setCatalogIssue(caught instanceof ApiError
+        ? { code: caught.code, message: caught.message }
+        : { code: "NETWORK_UNAVAILABLE", message: "The campus store could not be loaded." });
     } finally {
       setLoading(false);
     }
@@ -122,6 +138,7 @@ export default function StoreScreen() {
   const subtotal = cartItems.reduce((sum, item) => sum + Number(item.product.price_kobo) * item.quantity, 0);
   const selectedZone = zones.find((zone) => zone.id === selectedZoneId);
   const total = subtotal + Number(selectedZone?.base_fee_kobo ?? 0);
+  const featureDisabled = catalogIssue?.code === "FEATURE_DISABLED";
 
   function retryLoad() {
     setLoading(true);
@@ -137,12 +154,18 @@ export default function StoreScreen() {
     if (!busy) setCartOpen(false);
   }
 
+  function openCart() {
+    setCheckoutError("");
+    setCartOpen(true);
+  }
+
   function add(product: Product) {
     const activeVendor = cartItems[0]?.product.vendor_profile_id;
     if (activeVendor && activeVendor !== product.vendor_profile_id) {
+      const activeSeller = cartItems[0]?.product.vendor_name ?? "another seller";
       Alert.alert(
-        "One vendor per order",
-        "Checkout or clear your current cart before adding an item from another campus vendor.",
+        "One seller per cart",
+        `${activeSeller} is already in your cart. Remove those items before adding a product from ${product.vendor_name}.`,
       );
       return;
     }
@@ -163,7 +186,7 @@ export default function StoreScreen() {
   }
 
   async function checkout() {
-    if (!cartItems.length || !selectedZone) return;
+    if (!checkoutEnabled || !cartItems.length || !selectedZone) return;
     setBusy(true);
     setCheckoutError("");
     setNotice("");
@@ -205,12 +228,18 @@ export default function StoreScreen() {
     }
   }
 
-  const catalogueData = !loading && products.length > 0 ? filtered : [];
+  const catalogueData = !loading && !featureDisabled && products.length > 0 ? filtered : [];
   const catalogueEmpty = loading ? (
     <CatalogSkeleton />
-  ) : catalogError && !products.length ? (
-    <StateMessage actionLabel="Try again" body={catalogError} icon="cloud-offline-outline" onAction={retryLoad} title="Store unavailable" tone="error" />
-  ) : !catalogError && !products.length ? (
+  ) : featureDisabled ? (
+    <StateMessage
+      body="We’re finishing vendor verification, delivery safeguards, and secure checkout before opening the campus pilot."
+      icon="storefront-outline"
+      title="The store is opening soon"
+    />
+  ) : catalogIssue && !products.length ? (
+    <StateMessage actionLabel="Try again" body={catalogIssue.message} icon="cloud-offline-outline" onAction={retryLoad} title="Store unavailable" tone="error" />
+  ) : !catalogIssue && !products.length ? (
     <StateMessage actionLabel="Refresh" body="Published products from approved campus vendors will appear here." icon="storefront-outline" onAction={retryLoad} title="No products yet" />
   ) : products.length > 0 && !filtered.length ? (
     <StateMessage actionLabel="Clear filters" body="Try a different product name, seller, or category." icon="search-outline" onAction={clearFilters} title="Nothing matches your search" />
@@ -243,73 +272,54 @@ export default function StoreScreen() {
           ListEmptyComponent={catalogueEmpty}
           ListHeaderComponent={(
             <>
-              <View style={styles.header}>
-                <View style={styles.headerCopy}>
-                  <Text style={styles.title}>Campus store</Text>
-                  <Text style={styles.subtitle}>Essentials from approved campus sellers</Text>
-                  <View style={styles.trustLine}>
-                    <Ionicons name="shield-checkmark" size={15} color={theme.verification} />
-                    <Text style={styles.trustText}>Approved vendors</Text>
-                  </View>
-                </View>
-                <View style={styles.headerActions}>
-                  <Pressable
-                    accessibilityLabel="Open your profile"
-                    accessibilityRole="button"
-                    hitSlop={4}
-                    onPress={() => router.push("/profile")}
-                    style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
-                  >
-                    <Ionicons name="person-outline" size={21} color={theme.text} />
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel={`Open cart with ${cartCount} ${cartCount === 1 ? "item" : "items"}`}
-                    accessibilityRole="button"
-                    hitSlop={4}
-                    onPress={() => {
-                      setCheckoutError("");
-                      setCartOpen(true);
-                    }}
-                    style={({ pressed }) => [styles.headerButton, styles.cartButton, pressed && styles.pressed]}
-                  >
-                    <Ionicons name="bag-handle-outline" size={21} color={theme.brandPressed} />
-                    {cartCount > 0 ? (
-                      <View style={styles.cartBadge}>
-                        <Text style={styles.cartBadgeText}>{cartCount > 99 ? "99+" : cartCount}</Text>
-                      </View>
-                    ) : null}
-                  </Pressable>
-                </View>
+              <View style={styles.topBar}>
+                <Pressable
+                  accessibilityLabel={cartCount
+                    ? `Open cart with ${cartCount} ${cartCount === 1 ? "item" : "items"}`
+                    : "Open cart"}
+                  accessibilityRole="button"
+                  onPress={openCart}
+                  style={({ pressed }) => [styles.cartButton, pressed && styles.pressed]}
+                >
+                  <Ionicons name="cart-outline" size={25} color={theme.brandPressed} />
+                  {cartCount ? (
+                    <View style={styles.cartBadge}>
+                      <Text style={styles.cartBadgeText}>{cartCount > 99 ? "99+" : cartCount}</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
               </View>
 
-              <View style={[styles.search, searchFocused && styles.inputFocused]}>
-                <Ionicons name="search-outline" size={20} color={theme.brandPressed} />
-                <TextInput
-                  accessibilityLabel="Search products or vendors"
-                  autoCapitalize="none"
-                  onBlur={() => setSearchFocused(false)}
-                  onChangeText={setQuery}
-                  onFocus={() => setSearchFocused(true)}
-                  placeholder="Search products or vendors"
-                  placeholderTextColor={theme.textSubtle}
-                  returnKeyType="search"
-                  style={styles.searchInput}
-                  value={query}
-                />
-                {query ? (
-                  <Pressable
-                    accessibilityLabel="Clear search"
-                    accessibilityRole="button"
-                    hitSlop={4}
-                    onPress={() => setQuery("")}
-                    style={({ pressed }) => [styles.clearSearch, pressed && styles.pressed]}
-                  >
-                    <Ionicons name="close" size={20} color={theme.textMuted} />
-                  </Pressable>
-                ) : null}
-              </View>
+              {!featureDisabled ? (
+                <View style={[styles.search, searchFocused && styles.inputFocused]}>
+                  <Ionicons name="search-outline" size={20} color={theme.brandPressed} />
+                  <TextInput
+                    accessibilityLabel="Search products or vendors"
+                    autoCapitalize="none"
+                    onBlur={() => setSearchFocused(false)}
+                    onChangeText={setQuery}
+                    onFocus={() => setSearchFocused(true)}
+                    placeholder="Search products or vendors"
+                    placeholderTextColor={theme.textSubtle}
+                    returnKeyType="search"
+                    style={styles.searchInput}
+                    value={query}
+                  />
+                  {query ? (
+                    <Pressable
+                      accessibilityLabel="Clear search"
+                      accessibilityRole="button"
+                      hitSlop={4}
+                      onPress={() => setQuery("")}
+                      style={({ pressed }) => [styles.clearSearch, pressed && styles.pressed]}
+                    >
+                      <Ionicons name="close" size={20} color={theme.textMuted} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
 
-              {categories.length > 1 ? (
+              {!featureDisabled && categories.length > 1 ? (
                 <ScrollView
                   accessibilityLabel="Product categories"
                   contentContainerStyle={styles.categories}
@@ -338,7 +348,7 @@ export default function StoreScreen() {
                 </ScrollView>
               ) : null}
 
-              {notice ? (
+              {!featureDisabled && notice ? (
                 <View
                   accessibilityLiveRegion="polite"
                   accessibilityRole="alert"
@@ -352,7 +362,7 @@ export default function StoreScreen() {
                   <Text style={styles.noticeText}>{notice}</Text>
                 </View>
               ) : null}
-              {notice.includes("Purchases") ? (
+              {!featureDisabled && notice.includes("Purchases") ? (
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => router.push("/purchases")}
@@ -363,7 +373,7 @@ export default function StoreScreen() {
                 </Pressable>
               ) : null}
 
-              {!loading && catalogError && products.length ? (
+              {!loading && catalogIssue && !featureDisabled && products.length ? (
                 <View accessibilityRole="alert" style={styles.partialError}>
                   <Ionicons name="cloud-offline-outline" size={20} color={theme.error} />
                   <Text style={styles.partialErrorText}>Couldn’t refresh. Showing the last products we loaded.</Text>
@@ -373,9 +383,13 @@ export default function StoreScreen() {
                 </View>
               ) : null}
 
-              {!loading && products.length > 0 ? (
+              {!loading && !featureDisabled && products.length > 0 ? (
                 <View style={styles.resultsHeader}>
-                  <Text style={styles.resultsTitle}>{selectedCategory === "All" ? "All products" : selectedCategory}</Text>
+                  <Text style={styles.resultsTitle}>
+                    {selectedCategory === "All"
+                      ? catalogueMode === "DEMO" ? "Demo products" : "All products"
+                      : selectedCategory}
+                  </Text>
                   <Text style={styles.resultsCount}>{filtered.length} {filtered.length === 1 ? "item" : "items"}</Text>
                 </View>
               ) : null}
@@ -430,7 +444,7 @@ export default function StoreScreen() {
 
             <ScrollView contentContainerStyle={styles.cartContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               {!cartItems.length ? (
-                <StateMessage actionLabel="Continue shopping" body="Choose an item from an approved campus vendor to begin your order." icon="bag-handle-outline" onAction={() => setCartOpen(false)} title="Your cart is empty" />
+                <StateMessage actionLabel="Continue shopping" body="Choose an item from a campus seller to begin your cart." icon="cart-outline" onAction={() => setCartOpen(false)} title="Your cart is empty" />
               ) : null}
 
               {cartItems.map(({ product, quantity }) => (
@@ -438,7 +452,7 @@ export default function StoreScreen() {
                   {product.image_url ? (
                     <Image accessible={false} resizeMode="cover" source={{ uri: product.image_url }} style={styles.cartItemImage} />
                   ) : (
-                    <View style={styles.cartItemFallback}><Ionicons name="bag-handle-outline" size={20} color={theme.brandPressed} /></View>
+                    <View style={styles.cartItemFallback}><Ionicons name={productIcon(product)} size={20} color={theme.brandPressed} /></View>
                   )}
                   <View style={styles.cartItemCopy}>
                     <Text numberOfLines={2} style={styles.cartItemName}>{product.name}</Text>
@@ -448,7 +462,23 @@ export default function StoreScreen() {
                 </View>
               ))}
 
-              {cartItems.length ? (
+              {cartItems.length && !checkoutEnabled ? (
+                <View accessibilityRole="summary" style={styles.demoCheckoutNotice}>
+                  <View style={styles.demoCheckoutHeading}>
+                    <Ionicons name="information-circle-outline" size={21} color={theme.brandPressed} />
+                    <View style={styles.demoCheckoutCopy}>
+                      <Text style={styles.demoCheckoutTitle}>Demo cart</Text>
+                      <Text style={styles.demoCheckoutText}>Ordering and payment are not live yet. You can browse products and test the cart safely.</Text>
+                    </View>
+                  </View>
+                  <View style={styles.demoSubtotal}>
+                    <Text style={styles.totalLabel}>Items subtotal</Text>
+                    <Text style={styles.grandValue}>{naira(subtotal)}</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {cartItems.length && checkoutEnabled ? (
                 <>
                   {checkoutError ? (
                     <View accessibilityRole="alert" style={styles.checkoutError}>
@@ -557,14 +587,17 @@ function ProductCard({
       {product.image_url ? (
         <Image accessible={false} resizeMode="cover" source={{ uri: product.image_url }} style={styles.productImage} />
       ) : (
-        <View style={styles.productFallback}><View style={styles.fallbackDisc}><Ionicons name="bag-handle-outline" size={30} color={theme.brandPressed} /></View></View>
+        <View style={styles.productFallback}><View style={styles.fallbackDisc}><Ionicons name={productIcon(product)} size={30} color={theme.brandPressed} /></View></View>
       )}
       <View style={styles.cardBody}>
-        <Text numberOfLines={1} style={styles.category}>{product.category}</Text>
+        <View style={styles.categoryRow}>
+          <Text numberOfLines={1} style={styles.category}>{product.category}</Text>
+          {product.is_demo ? <Text style={styles.demoLabel}>Demo</Text> : null}
+        </View>
         <Text numberOfLines={2} style={styles.name}>{product.name}</Text>
         <Text numberOfLines={2} style={styles.description}>{product.description}</Text>
         <View style={styles.vendor}>
-          <Ionicons name="checkmark-circle" size={15} color={theme.verification} />
+          <Ionicons name={product.is_demo ? "storefront-outline" : "checkmark-circle"} size={15} color={theme.verification} />
           <Text numberOfLines={1} style={styles.vendorText}>{product.vendor_name}</Text>
         </View>
         <View style={styles.priceRow}>
@@ -589,6 +622,17 @@ function ProductCard({
       </View>
     </View>
   );
+}
+
+function productIcon(product: Product): keyof typeof Ionicons.glyphMap {
+  const name = product.name.toLowerCase();
+  if (name.includes("calculator")) return "calculator-outline";
+  if (name.includes("notebook")) return "book-outline";
+  if (name.includes("bottle")) return "water-outline";
+  if (name.includes("mattress")) return "bed-outline";
+  if (name.includes("lamp")) return "bulb-outline";
+  if (name.includes("cable") || name.includes("power") || name.includes("extension")) return "flash-outline";
+  return "cube-outline";
 }
 
 function QuantityStepper({ compact = false, product, quantity, onChange }: { compact?: boolean; product: Product; quantity: number; onChange: (delta: number) => void }) {
@@ -635,7 +679,7 @@ function CatalogSkeleton() {
   );
 }
 
-function StateMessage({ title, body, icon, actionLabel, onAction, tone = "default" }: { title: string; body: string; icon: keyof typeof Ionicons.glyphMap; actionLabel: string; onAction: () => void; tone?: "default" | "error" }) {
+function StateMessage({ title, body, icon, actionLabel, onAction, tone = "default" }: { title: string; body: string; icon: keyof typeof Ionicons.glyphMap; actionLabel?: string; onAction?: () => void; tone?: "default" | "error" }) {
   return (
     <View accessibilityRole={tone === "error" ? "alert" : undefined} style={styles.state}>
       <View style={[styles.stateIllustration, tone === "error" && styles.stateIllustrationError]}>
@@ -645,9 +689,11 @@ function StateMessage({ title, body, icon, actionLabel, onAction, tone = "defaul
       </View>
       <Text style={styles.stateTitle}>{title}</Text>
       <Text style={styles.stateBody}>{body}</Text>
-      <Pressable accessibilityRole="button" onPress={onAction} style={({ pressed }) => [styles.stateAction, pressed && styles.pressed]}>
-        <Text style={styles.stateActionText}>{actionLabel}</Text>
-      </Pressable>
+      {actionLabel && onAction ? (
+        <Pressable accessibilityRole="button" onPress={onAction} style={({ pressed }) => [styles.stateAction, pressed && styles.pressed]}>
+          <Text style={styles.stateActionText}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -658,19 +704,12 @@ const styles = StyleSheet.create({
   ambientBottom: { backgroundColor: "rgba(241,223,200,0.20)", borderRadius: 120, height: 220, left: -170, position: "absolute", top: 620, width: 220 },
   listFrame: { alignSelf: "center", flex: 1 },
   catalogue: { flex: 1 },
-  listContent: { paddingBottom: 118, paddingHorizontal: 20 },
+  listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 12 },
   productRow: { gap: 12, marginBottom: 12 },
-  header: { alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between", paddingBottom: 22, paddingTop: 10 },
-  headerCopy: { flex: 1, paddingRight: 14 },
-  title: { color: theme.text, fontFamily: theme.font.display, fontSize: 27, letterSpacing: -0.55, lineHeight: 33 },
-  subtitle: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13.5, lineHeight: 19, marginTop: 2 },
-  trustLine: { alignItems: "center", flexDirection: "row", gap: 5, marginTop: 8 },
-  trustText: { color: theme.brandPressed, fontFamily: theme.font.medium, fontSize: 12.5 },
-  headerActions: { flexDirection: "row", gap: 8 },
-  headerButton: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 14, borderWidth: 1, height: 46, justifyContent: "center", position: "relative", width: 46 },
-  cartButton: { borderColor: "rgba(168,70,46,0.22)" },
-  cartBadge: { alignItems: "center", backgroundColor: theme.deepBrand, borderColor: theme.canvas, borderRadius: 9, borderWidth: 1.5, height: 19, justifyContent: "center", minWidth: 19, paddingHorizontal: 4, position: "absolute", right: -5, top: -5 },
-  cartBadgeText: { color: "#FFFFFF", fontFamily: theme.font.bold, fontSize: 9, fontVariant: ["tabular-nums"] },
+  topBar: { alignItems: "flex-end", marginBottom: 12 },
+  cartButton: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 14, borderWidth: 1, height: 48, justifyContent: "center", position: "relative", width: 48, ...theme.shadow },
+  cartBadge: { alignItems: "center", backgroundColor: theme.deepBrand, borderColor: theme.surface, borderRadius: 9, borderWidth: 2, justifyContent: "center", minHeight: 18, minWidth: 18, paddingHorizontal: 3, position: "absolute", right: -5, top: -5 },
+  cartBadgeText: { color: "#FFFFFF", fontFamily: theme.font.bold, fontSize: 9.5, fontVariant: ["tabular-nums"], lineHeight: 12 },
   search: { alignItems: "center", backgroundColor: theme.surface, borderColor: theme.border, borderRadius: 15, borderWidth: 1, flexDirection: "row", gap: 10, minHeight: 52, paddingLeft: 15, paddingRight: 4 },
   inputFocused: { borderColor: theme.brand, borderWidth: 1.5 },
   searchInput: { color: theme.text, flex: 1, fontFamily: theme.font.body, fontSize: 14.5, height: 50 },
@@ -699,7 +738,9 @@ const styles = StyleSheet.create({
   productFallback: { alignItems: "center", aspectRatio: 1.04, backgroundColor: theme.surfaceMuted, justifyContent: "center", overflow: "hidden", width: "100%" },
   fallbackDisc: { alignItems: "center", backgroundColor: theme.sand, borderRadius: 34, height: 66, justifyContent: "center", transform: [{ rotate: "-7deg" }], width: 66 },
   cardBody: { padding: 12 },
-  category: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 11.5, lineHeight: 15 },
+  categoryRow: { alignItems: "center", flexDirection: "row", gap: 6 },
+  category: { color: theme.brandPressed, flex: 1, fontFamily: theme.font.semibold, fontSize: 11.5, lineHeight: 15 },
+  demoLabel: { backgroundColor: theme.surfaceTint, borderRadius: 6, color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 9, lineHeight: 14, overflow: "hidden", paddingHorizontal: 5, textTransform: "uppercase" },
   name: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14.5, lineHeight: 19, marginTop: 4, minHeight: 38 },
   description: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, lineHeight: 17, marginTop: 4, minHeight: 34 },
   vendor: { alignItems: "center", flexDirection: "row", gap: 5, marginTop: 9 },
@@ -754,6 +795,12 @@ const styles = StyleSheet.create({
   cartItemCopy: { flex: 1, minWidth: 0 },
   cartItemName: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13.5, lineHeight: 18 },
   cartItemMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, fontVariant: ["tabular-nums"], marginTop: 3 },
+  demoCheckoutNotice: { backgroundColor: theme.surfaceMuted, borderColor: theme.border, borderRadius: 16, borderWidth: 1, marginTop: 18, padding: 14 },
+  demoCheckoutHeading: { alignItems: "flex-start", flexDirection: "row", gap: 10 },
+  demoCheckoutCopy: { flex: 1 },
+  demoCheckoutTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14, lineHeight: 19 },
+  demoCheckoutText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12.5, lineHeight: 18, marginTop: 3 },
+  demoSubtotal: { alignItems: "center", borderTopColor: theme.border, borderTopWidth: 1, flexDirection: "row", justifyContent: "space-between", marginTop: 13, paddingTop: 12 },
   checkoutError: { alignItems: "flex-start", backgroundColor: "rgba(233,177,142,0.20)", borderRadius: 14, flexDirection: "row", gap: 9, marginTop: 16, padding: 12 },
   checkoutErrorText: { color: theme.error, flex: 1, fontFamily: theme.font.medium, fontSize: 12.5, lineHeight: 18 },
   sectionLabel: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13.5, marginBottom: 9, marginTop: 22 },

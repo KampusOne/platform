@@ -5,10 +5,16 @@ import {
   emailCodeRequestSchema,
   emailCodeVerifySchema,
   paymentInitializationSchema,
+  productModerationSchema,
   publicConfigSchema,
+  storefrontModerationSchema,
+  storeOrderSchema,
   tutorialListingSchema,
   tutorialResourceSchema,
   tutorialReviewSchema,
+  vendorProductStockSchema,
+  vendorProductUpdateSchema,
+  vendorStorefrontSchema,
 } from "./index";
 
 describe("shared API contracts", () => {
@@ -111,6 +117,76 @@ describe("shared API contracts", () => {
     expect(() => paymentInitializationSchema.parse({
       resourceType: "TUTORIAL_BOOKING",
       resourceId: "00000000-0000-4000-8000-000000000001",
+    })).toThrow();
+  });
+
+  it("requires an immutable Phase 3 delivery snapshot", () => {
+    const order = storeOrderSchema.parse({
+      vendorProfileId: "00000000-0000-4000-8000-000000000001",
+      deliveryZoneId: "00000000-0000-4000-8000-000000000002",
+      recipientName: "Ada Student",
+      recipientPhoneE164: "+2348031234567",
+      deliveryLocation: "Hall 2 main entrance",
+      deliveryLandmark: "Beside the porter lodge",
+      items: [{ productId: "00000000-0000-4000-8000-000000000003", quantity: 2 }],
+    });
+
+    expect(order.recipientPhoneE164).toBe("+2348031234567");
+    expect(() => storeOrderSchema.parse({
+      ...order,
+      recipientPhoneE164: "08031234567",
+    })).toThrow();
+    expect(() => storeOrderSchema.parse({
+      ...order,
+      deliveryLatitude: 6.335,
+    })).toThrow();
+  });
+
+  it("requires a documented product moderation decision", () => {
+    expect(productModerationSchema.parse({
+      status: "PUBLISHED",
+      note: "Approved for the low-risk pilot catalogue.",
+    }).status).toBe("PUBLISHED");
+    expect(() => productModerationSchema.parse({
+      status: "PUBLISHED",
+      note: "",
+    })).toThrow();
+  });
+
+  it("validates storefront trust details and stock-only updates", () => {
+    const storefront = vendorStorefrontSchema.parse({
+      displayName: "Ada's campus desk",
+      description: "Everyday stationery prepared near Hall 2.",
+      contactPhoneE164: "+2348031234567",
+      pickupLocation: "Hall 2 main entrance",
+      pickupInstructions: "Ask for Ada at the porter lodge.",
+      openingHours: { summary: "Monday to Friday, 09:00–18:00" },
+      defaultPreparationMinutes: 45,
+    });
+
+    expect(storefront.defaultPreparationMinutes).toBe(45);
+    expect(vendorProductStockSchema.parse({ stockQuantity: 0 })).toEqual({
+      stockQuantity: 0,
+    });
+    expect(vendorProductUpdateSchema.parse({
+      name: "Campus notebook",
+      description: "A ruled notebook for lectures and study groups.",
+      categoryId: "00000000-0000-4000-8000-000000000001",
+      priceKobo: 150000,
+      preparationMinutes: 30,
+      packageWeightGrams: 350,
+      packageLengthCm: 24,
+      packageWidthCm: 18,
+      packageHeightCm: 3,
+      bicycleDeliveryEligible: true,
+    }).name).toBe("Campus notebook");
+    expect(() => vendorStorefrontSchema.parse({
+      ...storefront,
+      contactPhoneE164: "08031234567",
+    })).toThrow();
+    expect(() => storefrontModerationSchema.parse({
+      status: "SUSPENDED",
+      note: "",
     })).toThrow();
   });
 });

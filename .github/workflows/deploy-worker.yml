@@ -41,6 +41,15 @@ jobs:
             echo "Phase 2 cannot be activated until its reviewed migration proof variable is true."
             exit 1
           fi
+      - name: Guard Phase 3 schema activation
+        env:
+          PHASE_3_MIGRATION_READY: ${{ vars.PHASE_3_MIGRATION_20260912_READY }}
+        run: |
+          if grep -q '"PHASE_3_SCHEMA_READY": "true"' server/wrangler.jsonc \
+            && [ "$PHASE_3_MIGRATION_READY" != "true" ]; then
+            echo "Phase 3 cannot be activated until its reviewed migration proof variable is true."
+            exit 1
+          fi
       - name: Deploy verified Worker
         uses: cloudflare/wrangler-action@v3
         with:

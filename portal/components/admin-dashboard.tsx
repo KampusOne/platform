@@ -11,6 +11,11 @@ import {
 } from "react";
 
 import { PortalShell } from "@/components/portal-shell";
+import {
+  CommerceModeration,
+  type CommerceProduct,
+  type CommerceStorefront,
+} from "@/components/commerce-moderation";
 import { PortalApiError, portalApi } from "@/lib/api";
 
 type Scalar = string | number | null;
@@ -121,6 +126,8 @@ type ContentContext = {
   }>;
 };
 type Operations = {
+  products: CommerceProduct[];
+  storefronts: CommerceStorefront[];
   categories: Array<{
     id: string;
     university_id: string;
@@ -134,6 +141,12 @@ type Operations = {
     name: string;
     base_fee_kobo: Scalar;
     active: boolean;
+    operating_hours?: Record<string, unknown>;
+    max_package_weight_grams?: Scalar;
+    max_package_dimension_cm?: Scalar;
+    rider_earning_kobo?: Scalar;
+    earning_formula_version?: string;
+    reservation_timeout_minutes?: Scalar;
   }>;
   disputes: Array<{
     id: string;
@@ -344,6 +357,8 @@ export function AdminDashboard() {
     summary: { listings: 0, resources: 0, pending: 0, demo: 0 },
   });
   const [operations, setOperations] = useState<Operations>({
+    products: [],
+    storefronts: [],
     categories: [],
     zones: [],
     disputes: [],
@@ -355,10 +370,10 @@ export function AdminDashboard() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const load = useCallback(() => {
-    setLoading(true);
+    if (!dashboard) setLoading(true);
     setError(null);
     setRefreshKey((value) => value + 1);
-  }, []);
+  }, [dashboard]);
   useEffect(() => {
     let active = true;
     void Promise.all([
@@ -1801,6 +1816,12 @@ function OperationsView({
           name: form.get("name"),
           baseFeeKobo: Math.round(Number(form.get("fee")) * 100),
           active: form.get("active") === "on",
+          operatingHours: { summary: form.get("operatingHours") },
+          maxPackageWeightGrams: Number(form.get("maxPackageWeightGrams")),
+          maxPackageDimensionCm: Number(form.get("maxPackageDimensionCm")),
+          riderEarningKobo: Math.round(Number(form.get("riderEarning")) * 100),
+          earningFormulaVersion: form.get("earningFormulaVersion"),
+          reservationTimeoutMinutes: Number(form.get("reservationTimeoutMinutes")),
         }),
       });
       setNotice("Delivery zone saved.");
@@ -1923,6 +1944,11 @@ function OperationsView({
   }
   return (
     <>
+      <CommerceModeration
+        products={operations.products}
+        storefronts={operations.storefronts}
+        onChanged={onChanged}
+      />
       <section className="metric-grid">
         <article className="metric-card">
           <span>Product categories</span>
@@ -2069,6 +2095,65 @@ function OperationsView({
                 <input name="fee" type="number" min="0" required />
               </label>
             </div>
+            <label>
+              Operating hours
+              <input
+                name="operatingHours"
+                minLength={3}
+                maxLength={160}
+                required
+                placeholder="Monday to Friday, 08:00–20:00"
+              />
+            </label>
+            <div className="form-grid">
+              <label>
+                Maximum package weight (grams)
+                <input
+                  name="maxPackageWeightGrams"
+                  type="number"
+                  min="1"
+                  max="50000"
+                  required
+                />
+              </label>
+              <label>
+                Maximum package side (cm)
+                <input
+                  name="maxPackageDimensionCm"
+                  type="number"
+                  min="1"
+                  max="200"
+                  step="0.1"
+                  required
+                />
+              </label>
+            </div>
+            <div className="form-grid">
+              <label>
+                Rider earning (₦)
+                <input name="riderEarning" type="number" min="0" required />
+              </label>
+              <label>
+                Reservation timeout (minutes)
+                <input
+                  name="reservationTimeoutMinutes"
+                  type="number"
+                  min="2"
+                  max="60"
+                  required
+                />
+              </label>
+            </div>
+            <label>
+              Approved earning formula version
+              <input
+                name="earningFormulaVersion"
+                minLength={3}
+                maxLength={80}
+                required
+                placeholder="bike-pilot-v1"
+              />
+            </label>
             <label className="checkbox">
               <input type="checkbox" name="active" defaultChecked /> Accept new
               orders in this zone

@@ -21,8 +21,10 @@
     "SOCIAL_FEED_ENABLED": "true",
     "MARKETPLACE_ENABLED": "false",
     "PHASE_2_SCHEMA_READY": "true",
+    "PHASE_3_SCHEMA_READY": "false",
     "TUTORIALS_ENABLED": "true",
     "STORE_ENABLED": "false",
+    "STORE_DEMO_ENABLED": "true",
     "LOGISTICS_ENABLED": "false",
     "PAYMENTS_ENABLED": "false",
     "AI_ASSISTANT_ENABLED": "false"
@@ -39,8 +41,10 @@
         "SOCIAL_FEED_ENABLED": "true",
         "MARKETPLACE_ENABLED": "false",
         "PHASE_2_SCHEMA_READY": "false",
+        "PHASE_3_SCHEMA_READY": "false",
         "TUTORIALS_ENABLED": "false",
         "STORE_ENABLED": "false",
+        "STORE_DEMO_ENABLED": "true",
         "LOGISTICS_ENABLED": "false",
         "PAYMENTS_ENABLED": "false",
         "AI_ASSISTANT_ENABLED": "false"

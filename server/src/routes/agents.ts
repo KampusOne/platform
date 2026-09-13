@@ -5,7 +5,6 @@ import {
   agentApplicationSchema,
   completionConfirmationSchema,
   handoffCodeSchema,
-  listingStateSchema,
   orderStateSchema,
   payoutRequestSchema,
   riderPresenceSchema,
@@ -16,12 +15,17 @@ import {
   tutorialResourceSchema,
   tutorialResourceStateSchema,
   vendorProductSchema,
+  vendorProductStockSchema,
+  vendorProductStateSchema,
+  vendorProductUpdateSchema,
+  vendorStorefrontSchema,
+  vendorStorefrontStateSchema,
 } from "@kampusone/contracts";
 
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { featureEnabled, requireFeature } from "../lib/features";
+import { featureEnabled, phase3SchemaReady, requireFeature } from "../lib/features";
 import { deriveHandoffCode, hashOtp } from "../lib/security";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
@@ -42,6 +46,35 @@ async function approvedProfile(env: Bindings, userId: string, type: "TUTOR" | "V
   const profile = firstRow(result);
   if (!profile) {
     throw new AppError(403, "FORBIDDEN", `Your ${type.toLowerCase()} application must be approved first.`);
+  }
+  return profile;
+}
+
+async function operationalVendorProfile(env: Bindings, userId: string) {
+  const result = await database(env).execute<{
+    id: string;
+    university_id: string;
+    storefront_status: string | null;
+  }>(sql`
+    select profiles.id, profiles.university_id, storefronts.status as storefront_status
+    from public.agent_profiles profiles
+    left join public.vendor_storefronts storefronts
+      on storefronts.vendor_profile_id = profiles.id
+    where profiles.user_id = ${userId}::uuid
+      and profiles.agent_type = 'VENDOR'
+      and profiles.status = 'ACTIVE'
+    limit 1
+  `);
+  const profile = firstRow(result);
+  if (!profile) {
+    throw new AppError(403, "FORBIDDEN", "Your vendor application must be approved first.");
+  }
+  if (profile.storefront_status === "SUSPENDED") {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "This storefront is suspended. Resolve the administrator review before changing store records.",
+    );
   }
   return profile;
 }
@@ -466,6 +499,125 @@ agentRoutes.post("/tutorial-bookings/:id/no-show", async (context) => {
   return context.json({ id: disputeId, status: "OPEN" }, 201);
 });
 
+agentRoutes.get("/storefront", async (context) => {
+  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  const user = currentUser(context);
+  const profile = await approvedProfile(context.env, user.id, "VENDOR");
+  const result = await database(context.env).execute(sql`
+    select storefronts.vendor_profile_id, storefronts.university_id,
+      storefronts.display_name, storefronts.description,
+      storefronts.contact_phone_e164, storefronts.pickup_location,
+      storefronts.pickup_instructions, storefronts.opening_hours,
+      storefronts.default_preparation_minutes, storefronts.status,
+      storefronts.submitted_at, storefronts.listing_revision,
+      storefronts.moderated_revision, storefronts.reviewed_at,
+      storefronts.review_note, storefronts.created_at, storefronts.updated_at
+    from public.vendor_storefronts storefronts
+    where storefronts.vendor_profile_id = ${profile.id}::uuid
+      and storefronts.university_id = ${profile.university_id}::uuid
+    limit 1
+  `);
+  return context.json({ storefront: firstRow(result) ?? null });
+});
+
+agentRoutes.put("/storefront", async (context) => {
+  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  const user = currentUser(context);
+  const parsed = vendorStorefrontSchema.safeParse(await body(context));
+  if (!parsed.success) {
+    throw new AppError(400, "BAD_REQUEST", "Check the storefront trust details and try again.");
+  }
+  const profile = await operationalVendorProfile(context.env, user.id);
+  const result = await database(context.env).execute<{
+    vendor_profile_id: string;
+    status: string;
+    listing_revision: number;
+  }>(sql`
+    insert into public.vendor_storefronts (
+      vendor_profile_id, university_id, display_name, description,
+      contact_phone_e164, pickup_location, pickup_instructions,
+      opening_hours, default_preparation_minutes
+    ) values (
+      ${profile.id}::uuid, ${profile.university_id}::uuid,
+      ${parsed.data.displayName}, ${parsed.data.description},
+      ${parsed.data.contactPhoneE164}, ${parsed.data.pickupLocation},
+      ${parsed.data.pickupInstructions ?? null},
+      ${JSON.stringify(parsed.data.openingHours)}::jsonb,
+      ${parsed.data.defaultPreparationMinutes}
+    )
+    on conflict (vendor_profile_id) do update set
+      display_name = excluded.display_name,
+      description = excluded.description,
+      contact_phone_e164 = excluded.contact_phone_e164,
+      pickup_location = excluded.pickup_location,
+      pickup_instructions = excluded.pickup_instructions,
+      opening_hours = excluded.opening_hours,
+      default_preparation_minutes = excluded.default_preparation_minutes,
+      updated_at = now()
+    where vendor_storefronts.university_id = excluded.university_id
+      and vendor_storefronts.status <> 'SUSPENDED'
+    returning vendor_profile_id, status, listing_revision
+  `);
+  const storefront = firstRow(result);
+  if (!storefront) {
+    throw new AppError(409, "CONFLICT", "That storefront cannot be changed in its current state.");
+  }
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: profile.university_id,
+    action: "storefront.saved",
+    targetType: "vendor_storefront",
+    targetId: profile.id,
+    requestId: context.get("requestId"),
+    metadata: { status: storefront.status, listingRevision: storefront.listing_revision },
+  });
+  return context.json(storefront);
+});
+
+agentRoutes.patch("/storefront/status", async (context) => {
+  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  const user = currentUser(context);
+  const parsed = vendorStorefrontStateSchema.safeParse(await body(context));
+  if (!parsed.success) {
+    throw new AppError(400, "BAD_REQUEST", "Choose a valid storefront action.");
+  }
+  const profile = await operationalVendorProfile(context.env, user.id);
+  const result = await database(context.env).execute<{
+    vendor_profile_id: string;
+    university_id: string;
+  }>(sql`
+    update public.vendor_storefronts set
+      status = 'SUBMITTED', submitted_at = now(), review_note = null,
+      reviewed_by_user_id = null, reviewed_at = null, moderated_revision = null,
+      updated_at = now()
+    where vendor_profile_id = ${profile.id}::uuid
+      and university_id = ${profile.university_id}::uuid
+      and status in ('DRAFT', 'NEEDS_CORRECTION')
+      and contact_phone_e164 is not null
+      and pickup_location is not null
+      and description is not null
+      and opening_hours <> '{}'::jsonb
+    returning vendor_profile_id, university_id
+  `);
+  const storefront = firstRow(result);
+  if (!storefront) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Save complete contact, pickup, description and opening-hour details before submitting the storefront.",
+    );
+  }
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: storefront.university_id,
+    action: "storefront.submitted",
+    targetType: "vendor_storefront",
+    targetId: storefront.vendor_profile_id,
+    requestId: context.get("requestId"),
+  });
+  return context.json({ status: parsed.data.status });
+});
+
 agentRoutes.get("/product-categories", async (context) => {
   const user = currentUser(context);
   const universityIds = await database(context.env).execute<{ university_id: string }>(sql`
@@ -485,10 +637,16 @@ agentRoutes.get("/products", async (context) => {
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
     select products.id, products.name, products.description, products.category,
-      products.price_kobo, products.stock_quantity, products.image_url,
-      products.status, products.created_at, products.updated_at
+      products.category_id, products.price_kobo, products.stock_quantity, products.image_url,
+      products.status, products.submitted_at, products.moderation_note,
+      products.preparation_minutes, products.package_weight_grams,
+      products.package_length_cm, products.package_width_cm, products.package_height_cm,
+      products.bicycle_delivery_eligible, products.listing_revision,
+      products.moderated_revision, products.reviewed_at,
+      categories.listing_rules, products.created_at, products.updated_at
     from public.vendor_products products
     join public.agent_profiles profiles on profiles.id = products.vendor_profile_id
+    left join public.product_categories categories on categories.id = products.category_id
     where profiles.user_id = ${user.id}::uuid order by products.updated_at desc
   `);
   return context.json({ products: result.rows });
@@ -499,7 +657,7 @@ agentRoutes.post("/products", async (context) => {
   const user = currentUser(context);
   const parsed = vendorProductSchema.safeParse(await body(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the product details and try again.");
-  const profile = await approvedProfile(context.env, user.id, "VENDOR");
+  const profile = await operationalVendorProfile(context.env, user.id);
   const categoryResult = await database(context.env).execute<{ id: string; name: string }>(sql`
     select id, name from public.product_categories
     where id = ${parsed.data.categoryId}::uuid and university_id = ${profile.university_id}::uuid
@@ -508,37 +666,215 @@ agentRoutes.post("/products", async (context) => {
   const category = firstRow(categoryResult);
   if (!category) throw new AppError(400, "BAD_REQUEST", "Choose an approved product category.");
   const id = crypto.randomUUID();
-  await database(context.env).execute(sql`
+  const result = await database(context.env).execute<{ id: string }>(sql`
     insert into public.vendor_products (
       id, university_id, vendor_profile_id, name, description,
-      category, category_id, price_kobo, stock_quantity, image_url
-    ) values (
+      category, category_id, price_kobo, stock_quantity, image_url,
+      preparation_minutes, package_weight_grams, package_length_cm,
+      package_width_cm, package_height_cm, bicycle_delivery_eligible
+    ) select
       ${id}::uuid, ${profile.university_id}::uuid, ${profile.id}::uuid,
       ${parsed.data.name}, ${parsed.data.description}, ${category.name}, ${category.id}::uuid,
-      ${parsed.data.priceKobo}, ${parsed.data.stockQuantity}, ${parsed.data.imageUrl ?? null}
+      ${parsed.data.priceKobo}, ${parsed.data.stockQuantity}, ${parsed.data.imageUrl ?? null},
+      ${parsed.data.preparationMinutes}, ${parsed.data.packageWeightGrams ?? null},
+      ${parsed.data.packageLengthCm ?? null}, ${parsed.data.packageWidthCm ?? null},
+      ${parsed.data.packageHeightCm ?? null}, ${parsed.data.bicycleDeliveryEligible}
+    where not exists (
+      select 1 from public.vendor_storefronts storefronts
+      where storefronts.vendor_profile_id = ${profile.id}::uuid
+        and storefronts.status = 'SUSPENDED'
     )
+    returning id
   `);
+  if (!firstRow(result)) {
+    throw new AppError(409, "CONFLICT", "This storefront was suspended before the product could be created.");
+  }
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: profile.university_id,
+    action: "product.created",
+    targetType: "vendor_product",
+    targetId: id,
+    requestId: context.get("requestId"),
+    metadata: { status: "DRAFT" },
+  });
   return context.json({ id, status: "DRAFT" }, 201);
 });
 
-agentRoutes.patch("/products/:id/status", async (context) => {
+agentRoutes.put("/products/:id", async (context) => {
+  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
   const user = currentUser(context);
-  const parsed = listingStateSchema.safeParse(await body(context));
+  const parsed = vendorProductUpdateSchema.safeParse(await body(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the product details and try again.");
+  const profile = await operationalVendorProfile(context.env, user.id);
+  const categoryResult = await database(context.env).execute<{ id: string; name: string }>(sql`
+    select id, name from public.product_categories
+    where id = ${parsed.data.categoryId}::uuid
+      and university_id = ${profile.university_id}::uuid
+      and status = 'APPROVED'
+    limit 1
+  `);
+  const category = firstRow(categoryResult);
+  if (!category) throw new AppError(400, "BAD_REQUEST", "Choose an approved product category.");
+  const result = await database(context.env).execute<{
+    id: string;
+    university_id: string;
+    status: string;
+    listing_revision: number;
+  }>(sql`
+    update public.vendor_products set
+      name = ${parsed.data.name}, description = ${parsed.data.description},
+      category = ${category.name}, category_id = ${category.id}::uuid,
+      price_kobo = ${parsed.data.priceKobo},
+      image_url = ${parsed.data.imageUrl ?? null},
+      preparation_minutes = ${parsed.data.preparationMinutes},
+      package_weight_grams = ${parsed.data.packageWeightGrams ?? null},
+      package_length_cm = ${parsed.data.packageLengthCm ?? null},
+      package_width_cm = ${parsed.data.packageWidthCm ?? null},
+      package_height_cm = ${parsed.data.packageHeightCm ?? null},
+      bicycle_delivery_eligible = ${parsed.data.bicycleDeliveryEligible},
+      updated_at = now()
+    where id = ${context.req.param("id")}::uuid
+      and vendor_profile_id = ${profile.id}::uuid
+      and university_id = ${profile.university_id}::uuid
+      and status <> 'ARCHIVED'
+      and not exists (
+        select 1 from public.vendor_storefronts storefronts
+        where storefronts.vendor_profile_id = ${profile.id}::uuid
+          and storefronts.status = 'SUSPENDED'
+      )
+    returning id, university_id, status, listing_revision
+  `);
+  const product = firstRow(result);
+  if (!product) throw new AppError(404, "NOT_FOUND", "That editable product does not exist.");
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: product.university_id,
+    action: "product.saved",
+    targetType: "vendor_product",
+    targetId: product.id,
+    requestId: context.get("requestId"),
+    metadata: { status: product.status, listingRevision: product.listing_revision },
+  });
+  return context.json(product);
+});
+
+agentRoutes.patch("/products/:id/stock", async (context) => {
+  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  const user = currentUser(context);
+  const parsed = vendorProductStockSchema.safeParse(await body(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter a valid stock quantity.");
+  const profile = await operationalVendorProfile(context.env, user.id);
+  const existingResult = await database(context.env).execute<{
+    id: string;
+    university_id: string;
+    stock_quantity: number;
+  }>(sql`
+    select id, university_id, stock_quantity from public.vendor_products
+    where id = ${context.req.param("id")}::uuid
+      and vendor_profile_id = ${profile.id}::uuid
+      and university_id = ${profile.university_id}::uuid
+      and status <> 'ARCHIVED'
+    limit 1
+  `);
+  const existing = firstRow(existingResult);
+  if (!existing) throw new AppError(404, "NOT_FOUND", "That editable product does not exist.");
+  const result = await database(context.env).execute<{
+    id: string;
+    status: string;
+    stock_quantity: number;
+    listing_revision: number;
+  }>(sql`
+    update public.vendor_products set stock_quantity = ${parsed.data.stockQuantity}, updated_at = now()
+    where id = ${existing.id}::uuid
+      and vendor_profile_id = ${profile.id}::uuid
+      and university_id = ${profile.university_id}::uuid
+      and stock_quantity = ${existing.stock_quantity}
+      and status <> 'ARCHIVED'
+      and not exists (
+        select 1 from public.vendor_storefronts storefronts
+        where storefronts.vendor_profile_id = ${profile.id}::uuid
+          and storefronts.status = 'SUSPENDED'
+      )
+    returning id, status, stock_quantity, listing_revision
+  `);
+  const product = firstRow(result);
+  if (!product) throw new AppError(409, "CONFLICT", "That stock record changed before it could be saved.");
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: existing.university_id,
+    action: "product.stock.updated",
+    targetType: "vendor_product",
+    targetId: product.id,
+    requestId: context.get("requestId"),
+    metadata: { previousQuantity: existing.stock_quantity, stockQuantity: product.stock_quantity },
+  });
+  return context.json(product);
+});
+
+agentRoutes.patch("/products/:id/status", async (context) => {
+  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  const user = currentUser(context);
+  const parsed = vendorProductStateSchema.safeParse(await body(context));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a valid product status.");
-  const result = await database(context.env).execute<{ id: string }>(sql`
-    update public.vendor_products products set status = ${parsed.data.status}, updated_at = now()
+  await operationalVendorProfile(context.env, user.id);
+  const result = await database(context.env).execute<{ id: string; university_id: string }>(sql`
+    update public.vendor_products products set
+      status = ${parsed.data.status},
+      submitted_at = case when ${parsed.data.status} = 'SUBMITTED' then now() else products.submitted_at end,
+      moderation_note = case when ${parsed.data.status} = 'SUBMITTED' then null else products.moderation_note end,
+      reviewed_by_user_id = case when ${parsed.data.status} = 'SUBMITTED' then null else products.reviewed_by_user_id end,
+      reviewed_at = case when ${parsed.data.status} = 'SUBMITTED' then null else products.reviewed_at end,
+      moderated_revision = case when ${parsed.data.status} = 'SUBMITTED' then null else products.moderated_revision end,
+      updated_at = now()
     from public.agent_profiles profiles, public.product_categories categories
     where products.id = ${context.req.param("id")}::uuid and products.vendor_profile_id = profiles.id
       and profiles.user_id = ${user.id}::uuid and profiles.agent_type = 'VENDOR'
       and profiles.status = 'ACTIVE' and categories.id = products.category_id
       and categories.status = 'APPROVED'
+      and not exists (
+        select 1 from public.vendor_storefronts blocked_storefront
+        where blocked_storefront.vendor_profile_id = profiles.id
+          and blocked_storefront.status = 'SUSPENDED'
+      )
       and (products.status = ${parsed.data.status}
-        or (products.status = 'DRAFT' and ${parsed.data.status} in ('PUBLISHED','ARCHIVED'))
+        or (products.status in ('DRAFT','NEEDS_CORRECTION') and ${parsed.data.status} = 'SUBMITTED'
+          and exists (
+            select 1 from public.vendor_storefronts approved_storefront
+            where approved_storefront.vendor_profile_id = profiles.id
+              and approved_storefront.university_id = products.university_id
+              and approved_storefront.status = 'APPROVED'
+          )
+          and products.package_weight_grams is not null
+          and products.package_length_cm is not null
+          and products.package_width_cm is not null
+          and products.package_height_cm is not null
+          and products.bicycle_delivery_eligible = true)
+        or (products.status in ('DRAFT','NEEDS_CORRECTION','SUBMITTED','REJECTED') and ${parsed.data.status} = 'ARCHIVED')
         or (products.status = 'PUBLISHED' and ${parsed.data.status} in ('PAUSED','ARCHIVED'))
-        or (products.status = 'PAUSED' and ${parsed.data.status} in ('PUBLISHED','ARCHIVED')))
-    returning products.id
+        or (products.status = 'PAUSED' and ${parsed.data.status} in ('PUBLISHED','ARCHIVED')
+          and products.reviewed_at is not null
+          and products.moderated_revision = products.listing_revision))
+    returning products.id, products.university_id
   `);
-  if (!firstRow(result)) throw new AppError(409, "CONFLICT", "That product status change is not allowed.");
+  const product = firstRow(result);
+  if (!product) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      parsed.data.status === "SUBMITTED"
+        ? "Approve the storefront and add complete bicycle-package details before submitting this product for review."
+        : "That product status change is not allowed.",
+    );
+  }
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: product.university_id,
+    action: `product.${parsed.data.status.toLowerCase()}`,
+    targetType: "vendor_product",
+    targetId: product.id,
+    requestId: context.get("requestId"),
+  });
   return context.json({ status: parsed.data.status });
 });
 
@@ -546,7 +882,7 @@ agentRoutes.get("/orders", async (context) => {
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
     select orders.id, orders.status, orders.subtotal_kobo, orders.delivery_fee_kobo,
-      orders.total_kobo, orders.delivery_note, orders.created_at, orders.updated_at,
+      orders.total_kobo, orders.created_at, orders.updated_at,
       zones.name as zone_name, count(items.id)::int as item_count
     from public.orders orders
     join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
@@ -556,6 +892,66 @@ agentRoutes.get("/orders", async (context) => {
     group by orders.id, zones.name order by orders.created_at desc limit 200
   `);
   return context.json({ orders: result.rows });
+});
+
+agentRoutes.get("/orders/:id", async (context) => {
+  if (!phase3SchemaReady(context.env)) {
+    throw new AppError(503, "FEATURE_DISABLED", "Order details are waiting for the reviewed Phase 3 schema migration.");
+  }
+  const user = currentUser(context);
+  const result = await database(context.env).execute<{
+    id: string;
+    status: string;
+  }>(sql`
+    select orders.id, orders.status, orders.university_id,
+      orders.subtotal_kobo, orders.delivery_fee_kobo, orders.total_kobo,
+      case when orders.status in (
+        'PAID', 'ACCEPTED', 'READY', 'IN_DELIVERY', 'DELIVERED', 'REFUNDED', 'DISPUTED'
+      ) then orders.delivery_note else null end as delivery_note,
+      orders.pricing_formula_version,
+      orders.created_at, orders.updated_at, zones.name as zone_name,
+      snapshots.recipient_name, snapshots.recipient_phone_e164,
+      snapshots.delivery_location, snapshots.delivery_landmark,
+      snapshots.latitude, snapshots.longitude
+    from public.orders orders
+    join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
+    left join public.delivery_zones zones on zones.id = orders.delivery_zone_id
+    left join public.order_delivery_snapshots snapshots
+      on snapshots.order_id = orders.id
+      and orders.status in (
+        'PAID', 'ACCEPTED', 'READY', 'IN_DELIVERY', 'DELIVERED', 'REFUNDED', 'DISPUTED'
+      )
+    where orders.id = ${context.req.param("id")}::uuid
+      and profiles.user_id = ${user.id}::uuid
+      and profiles.agent_type = 'VENDOR'
+    limit 1
+  `);
+  const order = firstRow(result);
+  if (!order) throw new AppError(404, "NOT_FOUND", "That vendor order does not exist.");
+  const [items, timeline] = await Promise.all([
+    database(context.env).execute(sql`
+      select items.product_id, items.quantity, items.unit_price_kobo,
+        products.name, products.image_url
+      from public.order_items items
+      join public.vendor_products products on products.id = items.product_id
+      where items.order_id = ${order.id}::uuid
+      order by items.created_at, items.id
+    `),
+    database(context.env).execute(sql`
+      select previous_status, status, source, note, occurred_at
+      from public.order_status_events
+      where order_id = ${order.id}::uuid
+      order by occurred_at, id
+    `),
+  ]);
+  return context.json({
+    order,
+    items: items.rows,
+    timeline: timeline.rows,
+    actionDueAt: null,
+    actionPolicyStatus: "UNCONFIGURED",
+    serverTime: new Date().toISOString(),
+  });
 });
 
 agentRoutes.patch("/orders/:id/status", async (context) => {
