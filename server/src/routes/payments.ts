@@ -18,10 +18,10 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
   const parsed = paymentInitializationSchema.safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "The payment request is invalid.");
   if (parsed.data.resourceType === "TUTORIAL_BOOKING" && !phase2SchemaReady(context.env)) {
-    throw new AppError(503, "FEATURE_DISABLED", "Tutorial payments are waiting for the reviewed Phase 2 schema migration.");
+    throw new AppError(503, "FEATURE_DISABLED", "Tutorial payments are temporarily unavailable.");
   }
   if (parsed.data.resourceType === "STORE_ORDER" && !phase3SchemaReady(context.env)) {
-    throw new AppError(503, "FEATURE_DISABLED", "Store payments are waiting for the reviewed Phase 3 schema migration.");
+    throw new AppError(503, "FEATURE_DISABLED", "Store payments are temporarily unavailable.");
   }
   const user = currentUser(context);
   const resource = parsed.data.resourceType === "TUTORIAL_BOOKING"
@@ -160,10 +160,10 @@ paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
   const attempt = firstRow(result);
   if (!attempt) throw new AppError(404, "NOT_FOUND", "That payment attempt could not be found.");
   if (attempt.resource_type === "TUTORIAL_BOOKING" && !phase2SchemaReady(context.env)) {
-    throw new AppError(503, "FEATURE_DISABLED", "Tutorial payment status is waiting for the reviewed Phase 2 schema migration.");
+    throw new AppError(503, "FEATURE_DISABLED", "Tutorial payment status is temporarily unavailable.");
   }
   if (attempt.resource_type === "STORE_ORDER" && !phase3SchemaReady(context.env)) {
-    throw new AppError(503, "FEATURE_DISABLED", "Store payment status is waiting for the reviewed Phase 3 schema migration.");
+    throw new AppError(503, "FEATURE_DISABLED", "Store payment status is temporarily unavailable.");
   }
   return context.json({ payment: attempt });
 });

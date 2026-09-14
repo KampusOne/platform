@@ -1,4 +1,5 @@
 import { z } from "zod";
+export { z };
 
 export type {
   CompositeTypes,
@@ -14,6 +15,11 @@ export const environmentSchema = z.enum(["local", "staging", "production"]);
 
 export const apiErrorCodeSchema = z.enum([
   "BAD_REQUEST",
+  "KYC_REQUIRED",
+  "GUARDIAN_REQUIRED",
+  "ACCOUNT_RESTRICTED",
+  "APPLICATION_UPDATED",
+  "INELIGIBLE",
   "UNAUTHENTICATED",
   "FORBIDDEN",
   "NOT_FOUND",
@@ -98,12 +104,19 @@ export const resetPasswordSchema = z.object({
 export const onboardingProfileSchema = z.object({
   firstName: z.string().trim().min(1).max(60),
   lastName: z.string().trim().min(1).max(60),
-  username: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,30}$/),
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9_]{3,30}$/),
   universityId: z.string().uuid(),
   facultyId: z.string().uuid(),
   departmentId: z.string().uuid(),
   courseId: z.string().uuid().nullable().optional(),
-  currentLevel: z.string().trim().regex(/^[1-9]00$/),
+  currentLevel: z
+    .string()
+    .trim()
+    .regex(/^[1-9]00$/),
   matriculationNumber: z.string().trim().min(3).max(40),
   graduationYear: z.number().int().min(2020).max(2200),
 });
@@ -139,12 +152,18 @@ export const agentApplicationSchema = z.object({
   universityId: z.string().uuid(),
   agentType: z.enum(["TUTOR", "VENDOR", "RIDER"]),
   displayName: z.string().trim().min(2).max(120),
-  phoneE164: z.string().trim().regex(/^\+[1-9]\d{7,14}$/),
+  phoneE164: z
+    .string()
+    .trim()
+    .regex(/^\+[1-9]\d{7,14}$/),
   statement: z.string().trim().min(20).max(1000),
   legalName: z.string().trim().min(2).max(160),
   address: z.string().trim().min(10).max(500),
   emergencyContactName: z.string().trim().min(2).max(120),
-  emergencyContactPhone: z.string().trim().regex(/^\+[1-9]\d{7,14}$/),
+  emergencyContactPhone: z
+    .string()
+    .trim()
+    .regex(/^\+[1-9]\d{7,14}$/),
   acceptedAgentTerms: z.literal(true),
   termsVersion: z.string().trim().min(1).max(40),
 });
@@ -160,24 +179,48 @@ export const agentVerificationReviewSchema = z.object({
   bankStatus: z.enum(["NOT_STARTED", "VERIFIED", "REJECTED"]),
   providerReference: z.string().trim().max(160).nullable().optional(),
   bankAccountName: z.string().trim().max(160).nullable().optional(),
-  bankAccountLast4: z.string().regex(/^\d{4}$/).nullable().optional(),
+  bankAccountLast4: z
+    .string()
+    .regex(/^\d{4}$/)
+    .nullable()
+    .optional(),
   note: z.string().trim().min(10).max(1000),
 });
 
 export const disputeReviewSchema = z.object({
   status: z.enum(["UNDER_REVIEW", "RESOLVED", "CLOSED"]),
-  resolutionCode: z.enum(["RELEASE_EARNINGS", "REFUND_REQUIRED", "NO_ACTION", "PARTIAL_REFUND_REVIEW"]).nullable().optional(),
+  resolutionCode: z
+    .enum([
+      "RELEASE_EARNINGS",
+      "REFUND_REQUIRED",
+      "NO_ACTION",
+      "PARTIAL_REFUND_REVIEW",
+    ])
+    .nullable()
+    .optional(),
   note: z.string().trim().min(10).max(2000),
 });
 
 export const payoutReviewSchema = z.object({
-  status: z.enum(["IN_REVIEW", "APPROVED", "PROCESSING", "PAID", "FAILED", "REJECTED"]),
+  status: z.enum([
+    "IN_REVIEW",
+    "APPROVED",
+    "PROCESSING",
+    "PAID",
+    "FAILED",
+    "REJECTED",
+  ]),
   note: z.string().trim().min(3).max(1000),
   providerReference: z.string().trim().max(160).nullable().optional(),
 });
 
 export const paymentEventReviewSchema = z.object({
-  resolutionCode: z.enum(["REFUNDED", "MATCHED_MANUALLY", "DUPLICATE_CONFIRMED", "REJECTED_AS_INVALID"]),
+  resolutionCode: z.enum([
+    "REFUNDED",
+    "MATCHED_MANUALLY",
+    "DUPLICATE_CONFIRMED",
+    "REJECTED_AS_INVALID",
+  ]),
   note: z.string().trim().min(10).max(2000),
 });
 
@@ -197,34 +240,60 @@ export const tutorialListingStateSchema = z.object({
   status: z.enum(["SUBMITTED", "PAUSED", "ARCHIVED"]),
 });
 
-export const tutorialResourceSchema = z.object({
-  listingId: z.string().uuid().nullable().optional(),
-  courseId: z.string().uuid().nullable().optional(),
-  courseCode: z.string().trim().toUpperCase().min(2).max(24),
-  title: z.string().trim().min(3).max(180),
-  description: z.string().trim().min(10).max(2000),
-  resourceType: z.enum(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK"]),
-  accessModel: z.enum(["FREE", "BOOKING_INCLUDED", "PAID"]).default("FREE"),
-  priceKobo: z.number().int().min(0).max(100_000_000).default(0),
-  levelCode: z.string().trim().min(3).max(20).nullable().optional(),
-  batchLabel: z.string().trim().min(2).max(60).nullable().optional(),
-  previewText: z.string().trim().max(5000).nullable().optional(),
-  fileUrl: z.string().url().refine((value) => value.startsWith("https://"), {
-    message: "Learning-resource links must use HTTPS.",
-  }).nullable().optional(),
-  pageCount: z.number().int().positive().max(10_000).nullable().optional(),
-  durationSeconds: z.number().int().positive().max(24 * 60 * 60).nullable().optional(),
-}).superRefine((value, context) => {
-  if (value.accessModel === "PAID" && value.priceKobo === 0) {
-    context.addIssue({ code: "custom", message: "Paid resources need a price.", path: ["priceKobo"] });
-  }
-  if (value.accessModel !== "PAID" && value.priceKobo !== 0) {
-    context.addIssue({ code: "custom", message: "Only paid resources may have a price.", path: ["priceKobo"] });
-  }
-  if (value.resourceType === "AUDIOBOOK" && !value.durationSeconds) {
-    context.addIssue({ code: "custom", message: "Audiobooks need a duration.", path: ["durationSeconds"] });
-  }
-});
+export const tutorialResourceSchema = z
+  .object({
+    mediaId: z.string().uuid().optional(),
+    listingId: z.string().uuid().nullable().optional(),
+    courseId: z.string().uuid().nullable().optional(),
+    courseCode: z.string().trim().toUpperCase().min(2).max(24),
+    title: z.string().trim().min(3).max(180),
+    description: z.string().trim().min(10).max(2000),
+    resourceType: z.enum(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK"]),
+    accessModel: z.enum(["FREE", "BOOKING_INCLUDED", "PAID"]).default("FREE"),
+    priceKobo: z.number().int().min(0).max(100_000_000).default(0),
+    levelCode: z.string().trim().min(3).max(20).nullable().optional(),
+    batchLabel: z.string().trim().min(2).max(60).nullable().optional(),
+    previewText: z.string().trim().max(5000).nullable().optional(),
+    fileUrl: z
+      .string()
+      .url()
+      .refine((value) => value.startsWith("https://"), {
+        message: "Learning-resource links must use HTTPS.",
+      })
+      .nullable()
+      .optional(),
+    pageCount: z.number().int().positive().max(10_000).nullable().optional(),
+    durationSeconds: z
+      .number()
+      .int()
+      .positive()
+      .max(24 * 60 * 60)
+      .nullable()
+      .optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.accessModel === "PAID" && value.priceKobo === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Paid resources need a price.",
+        path: ["priceKobo"],
+      });
+    }
+    if (value.accessModel !== "PAID" && value.priceKobo !== 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Only paid resources may have a price.",
+        path: ["priceKobo"],
+      });
+    }
+    if (value.resourceType === "AUDIOBOOK" && !value.durationSeconds) {
+      context.addIssue({
+        code: "custom",
+        message: "Audiobooks need a duration.",
+        path: ["durationSeconds"],
+      });
+    }
+  });
 
 export const tutorialResourceStateSchema = z.object({
   status: z.enum(["SUBMITTED", "ARCHIVED"]),
@@ -235,7 +304,9 @@ export const tutorialModerationSchema = z.object({
   note: z.string().trim().min(3).max(1000),
 });
 
-export const tutorialDemoSeedSchema = z.object({ universityId: z.string().uuid() });
+export const tutorialDemoSeedSchema = z.object({
+  universityId: z.string().uuid(),
+});
 
 export const tutorialCancellationSchema = z.object({
   reason: z.string().trim().min(3).max(500),
@@ -284,7 +355,11 @@ function validatePackageDimensions(
   },
   context: z.RefinementCtx,
 ) {
-  const dimensions = [value.packageLengthCm, value.packageWidthCm, value.packageHeightCm];
+  const dimensions = [
+    value.packageLengthCm,
+    value.packageWidthCm,
+    value.packageHeightCm,
+  ];
   const supplied = dimensions.filter((dimension) => dimension != null).length;
   if (supplied !== 0 && supplied !== dimensions.length) {
     context.addIssue({
@@ -295,12 +370,15 @@ function validatePackageDimensions(
   }
 }
 
-export const vendorProductSchema = vendorProductDetailsSchema.extend({
-  stockQuantity: z.number().int().min(0).max(1_000_000),
-}).superRefine(validatePackageDimensions);
-
-export const vendorProductUpdateSchema = vendorProductDetailsSchema
+export const vendorProductSchema = vendorProductDetailsSchema
+  .extend({
+    stockQuantity: z.number().int().min(0).max(1_000_000),
+  })
   .superRefine(validatePackageDimensions);
+
+export const vendorProductUpdateSchema = vendorProductDetailsSchema.superRefine(
+  validatePackageDimensions,
+);
 
 export const vendorProductStockSchema = z.object({
   stockQuantity: z.number().int().min(0).max(1_000_000),
@@ -309,13 +387,15 @@ export const vendorProductStockSchema = z.object({
 export const vendorStorefrontSchema = z.object({
   displayName: z.string().trim().min(2).max(120),
   description: z.string().trim().min(10).max(2000),
-  contactPhoneE164: z.string().trim().regex(/^\+234[789][0-9]{9}$/),
+  contactPhoneE164: z
+    .string()
+    .trim()
+    .regex(/^\+234[789][0-9]{9}$/),
   pickupLocation: z.string().trim().min(5).max(500),
   pickupInstructions: z.string().trim().max(1000).nullable().optional(),
-  openingHours: z.record(
-    z.string().trim().min(2).max(40),
-    z.string().trim().min(1).max(160),
-  ).default({}),
+  openingHours: z
+    .record(z.string().trim().min(2).max(40), z.string().trim().min(1).max(160))
+    .default({}),
   defaultPreparationMinutes: z.number().int().min(10).max(1440).default(60),
 });
 
@@ -347,7 +427,9 @@ export const productCategorySchema = z.object({
   universityId: z.string().uuid(),
   name: z.string().trim().min(2).max(80),
   listingRules: z.string().trim().max(2000).nullable().optional(),
-  status: z.enum(["PENDING", "APPROVED", "RESTRICTED", "PROHIBITED"]).default("PENDING"),
+  status: z
+    .enum(["PENDING", "APPROVED", "RESTRICTED", "PROHIBITED"])
+    .default("PENDING"),
 });
 
 export const deliveryZoneSchema = z.object({
@@ -356,9 +438,21 @@ export const deliveryZoneSchema = z.object({
   baseFeeKobo: z.number().int().min(0).max(10_000_000),
   active: z.boolean().default(true),
   operatingHours: z.record(z.string(), z.unknown()).optional(),
-  maxPackageWeightGrams: z.number().int().min(1).max(50_000).nullable().optional(),
+  maxPackageWeightGrams: z
+    .number()
+    .int()
+    .min(1)
+    .max(50_000)
+    .nullable()
+    .optional(),
   maxPackageDimensionCm: z.number().min(1).max(200).nullable().optional(),
-  riderEarningKobo: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  riderEarningKobo: z
+    .number()
+    .int()
+    .min(0)
+    .max(10_000_000)
+    .nullable()
+    .optional(),
   earningFormulaVersion: z.string().trim().min(3).max(80).optional(),
   reservationTimeoutMinutes: z.number().int().min(2).max(60).optional(),
 });
@@ -379,7 +473,15 @@ export const feedPostSchema = z.object({
 export const campusPlaceSchema = z.object({
   universityId: z.string().uuid(),
   name: z.string().trim().min(2).max(160),
-  category: z.enum(["ACADEMIC", "SERVICE", "TRANSPORT", "HOSTEL", "FOOD", "HEALTH", "SPORT"]),
+  category: z.enum([
+    "ACADEMIC",
+    "SERVICE",
+    "TRANSPORT",
+    "HOSTEL",
+    "FOOD",
+    "HEALTH",
+    "SPORT",
+  ]),
   description: z.string().trim().max(2000).nullable().optional(),
   latitude: z.number().min(-90).max(90).nullable().optional(),
   longitude: z.number().min(-180).max(180).nullable().optional(),
@@ -393,38 +495,61 @@ export const tutorialBookingSchema = z.object({
   availabilityWindowId: z.string().uuid(),
 });
 
-export const completionConfirmationSchema = z.object({ confirmed: z.literal(true) });
+export const completionConfirmationSchema = z.object({
+  confirmed: z.literal(true),
+});
 
 export const disputeSchema = z.object({
   resourceType: z.enum(["TUTORIAL_BOOKING", "STORE_ORDER"]),
   resourceId: z.string().uuid(),
-  category: z.enum(["NOT_DELIVERED", "NOT_AS_DESCRIBED", "SAFETY", "PAYMENT", "NO_SHOW", "OTHER"]),
+  category: z.enum([
+    "NOT_DELIVERED",
+    "NOT_AS_DESCRIBED",
+    "SAFETY",
+    "PAYMENT",
+    "NO_SHOW",
+    "OTHER",
+  ]),
   reason: z.string().trim().min(10).max(1000),
 });
 
-export const storeOrderSchema = z.object({
-  vendorProfileId: z.string().uuid(),
-  deliveryZoneId: z.string().uuid(),
-  recipientName: z.string().trim().min(2).max(120),
-  recipientPhoneE164: z.string().trim().regex(/^\+234[789][0-9]{9}$/),
-  deliveryLocation: z.string().trim().min(5).max(500),
-  deliveryLandmark: z.string().trim().min(2).max(200).nullable().optional(),
-  deliveryLatitude: z.number().min(-90).max(90).nullable().optional(),
-  deliveryLongitude: z.number().min(-180).max(180).nullable().optional(),
-  deliveryNote: z.string().trim().max(500).nullable().optional(),
-  items: z.array(z.object({
-    productId: z.string().uuid(),
-    quantity: z.number().int().min(1).max(100),
-  })).min(1).max(30),
-}).superRefine((value, context) => {
-  if ((value.deliveryLatitude == null) !== (value.deliveryLongitude == null)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Delivery coordinates must include both latitude and longitude.",
-      path: ["deliveryLatitude"],
-    });
-  }
-});
+export const storeOrderSchema = z
+  .object({
+    vendorProfileId: z.string().uuid(),
+    deliveryZoneId: z.string().uuid(),
+    recipientName: z.string().trim().min(2).max(120),
+    recipientPhoneE164: z
+      .string()
+      .trim()
+      .regex(/^\+234[789][0-9]{9}$/),
+    deliveryLocation: z.string().trim().min(5).max(500),
+    deliveryLandmark: z.string().trim().min(2).max(200).nullable().optional(),
+    deliveryLatitude: z.number().min(-90).max(90).nullable().optional(),
+    deliveryLongitude: z.number().min(-180).max(180).nullable().optional(),
+    deliveryNote: z.string().trim().max(500).nullable().optional(),
+    items: z
+      .array(
+        z.object({
+          productId: z.string().uuid(),
+          quantity: z.number().int().min(1).max(100),
+        }),
+      )
+      .min(1)
+      .max(30),
+  })
+  .superRefine((value, context) => {
+    if (
+      (value.deliveryLatitude == null) !==
+      (value.deliveryLongitude == null)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Delivery coordinates must include both latitude and longitude.",
+        path: ["deliveryLatitude"],
+      });
+    }
+  });
 
 export const productReviewSchema = z.object({
   orderId: z.string().uuid(),
@@ -443,11 +568,13 @@ export const riderPresenceSchema = z.object({
   capacityStatus: z.enum(["AVAILABLE", "AT_CAPACITY", "PAUSED"]),
 });
 
-export const handoffCodeSchema = z.object({ code: z.string().regex(/^\d{6}$/) });
+export const handoffCodeSchema = z.object({
+  code: z.string().regex(/^\d{6}$/),
+});
 
 export const payoutRequestSchema = z.object({
   agentProfileId: z.string().uuid(),
-  amountKobo: z.number().int().min(100_00).max(100_000_000_00),
+  amountKobo: z.number().int().min(5000_00).max(100_000_000_00),
 });
 
 export const paymentInitializationSchema = z.object({

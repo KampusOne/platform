@@ -6,10 +6,12 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kampusone",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "backgroundColor": "#FBF7F2"
+      "backgroundColor": "#FBF7F2",
+      "image": "./assets/brand/kampusone-symbol-gradient.png",
+      "resizeMode": "contain"
     },
     "ios": {
       "supportsTablet": true,
@@ -29,7 +31,15 @@
       "output": "static",
       "favicon": "./assets/adaptive-icon.png"
     },
-    "plugins": ["expo-router", "expo-secure-store"],
+    "plugins": [
+      [
+        "expo-router",
+        { "asyncRoutes": { "web": true, "android": false, "ios": false } }
+      ],
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-notifications"
+    ],
     "extra": {
       "apiUrl": "https://platformp.divine-haze-54eb.workers.dev"
     },

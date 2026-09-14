@@ -19,3 +19,20 @@ ADMIN_BOOTSTRAP_TOKEN=replace-with-a-one-time-random-bootstrap-secret
 # Phase 2/3 payments. Leave PAYMENTS_ENABLED=false until Paystack approves the flow.
 PAYSTACK_SECRET_KEY=sk_test_replace_me
 PAYSTACK_WEBHOOK_SECRET=sk_test_replace_me
+
+# Unified application: configure only after additive migrations are rehearsed.
+# These values stay in the Worker. They do not go into EXPO_PUBLIC_* variables.
+PUBLIC_API_ORIGIN=https://platformp.divine-haze-54eb.workers.dev
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_PUBLISHABLE_KEY=replace-with-project-publishable-key
+KYC_FINGERPRINT_SECRET=replace-with-at-least-32-random-characters
+
+# Optional study/timetable AI. Enable the feature only after setting quotas.
+GEMINI_API_KEY=replace-with-provider-key
+GEMINI_MODEL=replace-with-a-supported-model-id
+AI_DAILY_USER_LIMIT=5
+AI_DAILY_GLOBAL_LIMIT=100
+
+# MEDIA_BUCKET and PRIVATE_BUCKET are R2 bindings, not string secrets.
+# Add their existing bucket names in wrangler configuration. PRIVATE_BUCKET
+# must have no public domain / r2.dev access. No service-role key in clients.

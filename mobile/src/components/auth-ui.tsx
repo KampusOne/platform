@@ -1,7 +1,8 @@
+import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,6 +18,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { theme } from "@/src/theme";
+import { useAuth } from "@/src/auth/auth-context";
+import { beginSocialSignIn } from "@/src/lib/social-auth";
+import { useToast } from "./toast";
 
 const DEEP_TERRACOTTA = "#A8462E";
 
@@ -35,16 +39,26 @@ export function AuthShell({
   back?: boolean;
   onBack?: (() => void) | undefined;
 }) {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.safe}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}
+        behavior={
+          Platform.OS === "ios"
+            ? "padding"
+            : Platform.OS === "android"
+              ? "height"
+              : undefined
+        }
         style={styles.safe}
       >
         <ScrollView
           automaticallyAdjustKeyboardInsets
           contentContainerStyle={styles.content}
-          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          keyboardDismissMode={
+            Platform.OS === "ios" ? "interactive" : "on-drag"
+          }
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -55,7 +69,10 @@ export function AuthShell({
                 accessibilityRole="button"
                 hitSlop={4}
                 onPress={onBack ?? (() => router.back())}
-                style={({ pressed }) => [styles.back, pressed && styles.backPressed]}
+                style={({ pressed }) => [
+                  styles.back,
+                  pressed && styles.backPressed,
+                ]}
               >
                 <Ionicons color={theme.text} name="arrow-back" size={27} />
               </Pressable>
@@ -96,6 +113,8 @@ export function AuthField({
   style,
   ...props
 }: AuthFieldProps) {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const [focused, setFocused] = useState(false);
   const [revealed, setRevealed] = useState(false);
 
@@ -110,7 +129,11 @@ export function AuthField({
           !editable && styles.fieldDisabled,
         ]}
       >
-        <Ionicons color={focused ? DEEP_TERRACOTTA : theme.clay} name={icon} size={20} />
+        <Ionicons
+          color={focused ? DEEP_TERRACOTTA : theme.clay}
+          name={icon}
+          size={20}
+        />
         <TextInput
           {...props}
           accessibilityLabel={label}
@@ -131,13 +154,21 @@ export function AuthField({
         />
         {secureTextEntry ? (
           <Pressable
-            accessibilityLabel={revealed ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+            accessibilityLabel={
+              revealed
+                ? `Hide ${label.toLowerCase()}`
+                : `Show ${label.toLowerCase()}`
+            }
             accessibilityRole="button"
             hitSlop={2}
             onPress={() => setRevealed((value) => !value)}
             style={({ pressed }) => [styles.eye, pressed && styles.eyePressed]}
           >
-            <Ionicons color={theme.textMuted} name={revealed ? "eye-off-outline" : "eye-outline"} size={22} />
+            <Ionicons
+              color={theme.textMuted}
+              name={revealed ? "eye-off-outline" : "eye-outline"}
+              size={22}
+            />
           </Pressable>
         ) : null}
       </View>
@@ -156,6 +187,8 @@ export function PrimaryButton({
   loading?: boolean;
   disabled?: boolean;
 }) {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const buttonLabel = typeof children === "string" ? children : "Continue";
   return (
     <Pressable
@@ -170,63 +203,93 @@ export function PrimaryButton({
         pressed && styles.primaryPressed,
       ]}
     >
-      {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>{children}</Text>}
+      {loading ? (
+        <ActivityIndicator color="#FFFFFF" />
+      ) : (
+        <Text style={styles.primaryText}>{children}</Text>
+      )}
     </Pressable>
   );
 }
 
 export function SocialAuthButtons() {
+  const { theme, styles } = useThemeStyles(createStyles);
+  const { beginSession } = useAuth();
+  const toast = useToast();
+  const [pending, setPending] = useState(false);
+  async function signIn(provider: "google" | "apple") {
+    setPending(true);
+    try {
+      const session = await beginSocialSignIn(provider);
+      if (session) {
+        await beginSession(session);
+        router.replace("/");
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Sign-in could not be completed.");
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
-    <View accessibilityLabel="Other sign-in methods" style={styles.socialSection}>
+    <View
+      accessibilityLabel="Other sign-in methods"
+      style={styles.socialSection}
+    >
       <View style={styles.dividerRow}>
         <View style={styles.divider} />
         <Text style={styles.dividerText}>or</Text>
         <View style={styles.divider} />
       </View>
       <Pressable
-        accessibilityLabel="Continue with Google, not available yet"
+        accessibilityLabel="Continue with Google"
         accessibilityRole="button"
-        accessibilityState={{ disabled: true }}
-        disabled
+        accessibilityState={{ disabled: pending }}
+        disabled={pending}
+        onPress={() => void signIn("google")}
         style={styles.socialButton}
       >
         <Ionicons color="#4285F4" name="logo-google" size={21} />
         <Text style={styles.socialButtonText}>Continue with Google</Text>
       </Pressable>
       <Pressable
-        accessibilityLabel="Continue with Apple, not available yet"
+        accessibilityLabel="Continue with Apple"
         accessibilityRole="button"
-        accessibilityState={{ disabled: true }}
-        disabled
+        accessibilityState={{ disabled: pending }}
+        disabled={pending}
+        onPress={() => void signIn("apple")}
         style={styles.socialButton}
       >
         <Ionicons color={theme.text} name="logo-apple" size={23} />
         <Text style={styles.socialButtonText}>Continue with Apple</Text>
       </Pressable>
-      <Text accessibilityLiveRegion="polite" style={styles.socialHelp}>
-        Google and Apple sign-in are not available yet.
-      </Text>
     </View>
   );
 }
 
 export function FormError({ message }: { message: string }) {
-  if (!message) return null;
-  return (
-    <View accessibilityLiveRegion="assertive" accessibilityRole="alert" style={styles.error}>
-      <Ionicons color={DEEP_TERRACOTTA} name="alert-circle-outline" size={18} />
-      <Text style={styles.errorText}>{message}</Text>
-    </View>
-  );
+  const toast = useToast();
+  useEffect(() => {
+    if (message) toast(message, "error");
+  }, [message, toast]);
+  return null;
 }
 
 export function FormNotice({ children }: { children: ReactNode }) {
-  return (
-    <View accessibilityLiveRegion="polite" style={styles.notice}>
-      <Ionicons color={DEEP_TERRACOTTA} name="information-circle-outline" size={18} />
-      <Text style={styles.noticeText}>{children}</Text>
-    </View>
-  );
+  const toast = useToast();
+  const message =
+    typeof children === "string"
+      ? children
+      : Array.isArray(children)
+        ? children
+            .filter((x) => typeof x === "string" || typeof x === "number")
+            .join("")
+        : "";
+  useEffect(() => {
+    if (message) toast(message);
+  }, [message, toast]);
+  return null;
 }
 
 export function TextLink({
@@ -238,253 +301,261 @@ export function TextLink({
   onPress: () => void;
   disabled?: boolean;
 }) {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.linkTarget, pressed && styles.linkPressed, disabled && styles.linkDisabled]}
+      style={({ pressed }) => [
+        styles.linkTarget,
+        pressed && styles.linkPressed,
+        disabled && styles.linkDisabled,
+      ]}
     >
       <Text style={styles.link}>{children}</Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    backgroundColor: theme.canvas,
-    flex: 1,
-  },
-  content: {
-    alignSelf: "center",
-    minHeight: "100%",
-    paddingBottom: 36,
-    paddingHorizontal: 24,
-    width: "100%",
-    maxWidth: 540,
-  },
-  topbar: {
-    alignItems: "center",
-    flexDirection: "row",
-    height: 60,
-  },
-  back: {
-    alignItems: "center",
-    height: 44,
-    justifyContent: "center",
-    marginLeft: -8,
-    width: 44,
-  },
-  backPressed: {
-    opacity: 0.55,
-    transform: [{ translateX: -2 }],
-  },
-  backPlaceholder: {
-    height: 44,
-    width: 44,
-  },
-  heading: {
-    marginBottom: 24,
-    marginTop: 10,
-  },
-  eyebrow: {
-    color: DEEP_TERRACOTTA,
-    fontFamily: theme.font.bold,
-    fontSize: 10,
-    letterSpacing: 1.3,
-    marginBottom: 8,
-    textTransform: "uppercase",
-  },
-  title: {
-    color: theme.text,
-    fontFamily: theme.font.displayStrong,
-    fontSize: 34,
-    letterSpacing: -0.9,
-    lineHeight: 39,
-  },
-  subtitle: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 8,
-    maxWidth: 450,
-  },
-  fieldGroup: {
-    marginBottom: 15,
-  },
-  label: {
-    color: theme.text,
-    fontFamily: theme.font.semibold,
-    fontSize: 13,
-    marginBottom: 7,
-  },
-  field: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,253,252,0.72)",
-    borderColor: "#9A8D84",
-    borderRadius: 14,
-    borderWidth: 1.25,
-    flexDirection: "row",
-    gap: 11,
-    minHeight: 56,
-    paddingLeft: 15,
-    paddingRight: 9,
-  },
-  fieldFocused: {
-    borderColor: DEEP_TERRACOTTA,
-    borderWidth: 2,
-    paddingLeft: 14.25,
-    paddingRight: 8.25,
-  },
-  fieldError: {
-    backgroundColor: "#FFF8F5",
-    borderColor: theme.error,
-  },
-  fieldDisabled: {
-    backgroundColor: "#EFEAE5",
-    borderColor: theme.border,
-    opacity: 0.65,
-  },
-  input: {
-    color: theme.text,
-    flex: 1,
-    fontFamily: theme.font.body,
-    fontSize: 15,
-    minHeight: 53,
-    paddingVertical: 0,
-  },
-  codeInput: {
-    fontFamily: theme.font.semibold,
-    fontSize: 21,
-    letterSpacing: 8,
-  },
-  eye: {
-    alignItems: "center",
-    height: 44,
-    justifyContent: "center",
-    width: 44,
-  },
-  eyePressed: {
-    opacity: 0.55,
-  },
-  primary: {
-    alignItems: "center",
-    backgroundColor: DEEP_TERRACOTTA,
-    borderRadius: 15,
-    height: 56,
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  primaryPressed: {
-    backgroundColor: "#8F3C29",
-    transform: [{ scale: 0.99 }],
-  },
-  primaryText: {
-    color: "#FFFFFF",
-    fontFamily: theme.font.bold,
-    fontSize: 15,
-  },
-  controlDisabled: {
-    backgroundColor: "#C9A99B",
-    opacity: 0.72,
-  },
-  socialSection: {
-    marginTop: 20,
-  },
-  dividerRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 14,
-    marginBottom: 16,
-  },
-  divider: {
-    backgroundColor: "#D8CEC7",
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-  },
-  dividerText: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 13,
-  },
-  socialButton: {
-    alignItems: "center",
-    backgroundColor: "#F1ECE7",
-    borderRadius: 14,
-    flexDirection: "row",
-    gap: 12,
-    height: 54,
-    justifyContent: "center",
-    marginBottom: 10,
-    opacity: 0.68,
-  },
-  socialButtonText: {
-    color: theme.text,
-    fontFamily: theme.font.semibold,
-    fontSize: 14,
-  },
-  socialHelp: {
-    color: theme.textSubtle,
-    fontFamily: theme.font.body,
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 1,
-    textAlign: "center",
-  },
-  error: {
-    alignItems: "flex-start",
-    backgroundColor: "#FFF1EC",
-    borderLeftColor: DEEP_TERRACOTTA,
-    borderLeftWidth: 3,
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  errorText: {
-    color: theme.deepBrand,
-    flex: 1,
-    fontFamily: theme.font.medium,
-    fontSize: 12.5,
-    lineHeight: 18,
-  },
-  notice: {
-    alignItems: "flex-start",
-    backgroundColor: "#F6E8DF",
-    borderLeftColor: theme.clay,
-    borderLeftWidth: 3,
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  noticeText: {
-    color: theme.textMuted,
-    flex: 1,
-    fontFamily: theme.font.medium,
-    fontSize: 12.5,
-    lineHeight: 18,
-  },
-  link: {
-    color: DEEP_TERRACOTTA,
-    fontFamily: theme.font.semibold,
-    fontSize: 13.5,
-  },
-  linkTarget: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    justifyContent: "center",
-    minHeight: 44,
-    minWidth: 44,
-  },
-  linkPressed: {
-    opacity: 0.58,
-  },
-  linkDisabled: {
-    opacity: 0.42,
-  },
-});
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    safe: {
+      backgroundColor: theme.canvas,
+      flex: 1,
+    },
+    content: {
+      alignSelf: "center",
+      minHeight: "100%",
+      paddingBottom: 36,
+      paddingHorizontal: 24,
+      width: "100%",
+      maxWidth: 540,
+    },
+    topbar: {
+      alignItems: "center",
+      flexDirection: "row",
+      height: 60,
+    },
+    back: {
+      alignItems: "center",
+      height: 44,
+      justifyContent: "center",
+      marginLeft: -8,
+      width: 44,
+    },
+    backPressed: {
+      opacity: 0.55,
+      transform: [{ translateX: -2 }],
+    },
+    backPlaceholder: {
+      height: 44,
+      width: 44,
+    },
+    heading: {
+      marginBottom: 24,
+      marginTop: 10,
+    },
+    eyebrow: {
+      color: DEEP_TERRACOTTA,
+      fontFamily: theme.font.bold,
+      fontSize: 10,
+      letterSpacing: 1.3,
+      marginBottom: 8,
+      textTransform: "uppercase",
+    },
+    title: {
+      color: theme.text,
+      fontFamily: theme.font.displayStrong,
+      fontSize: 34,
+      letterSpacing: -0.9,
+      lineHeight: 39,
+    },
+    subtitle: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 15,
+      lineHeight: 22,
+      marginTop: 8,
+      maxWidth: 450,
+    },
+    fieldGroup: {
+      marginBottom: 15,
+    },
+    label: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+      marginBottom: 7,
+    },
+    field: {
+      alignItems: "center",
+      backgroundColor: "rgba(255,253,252,0.72)",
+      borderColor: "#9A8D84",
+      borderRadius: 14,
+      borderWidth: 1.25,
+      flexDirection: "row",
+      gap: 11,
+      minHeight: 56,
+      paddingLeft: 15,
+      paddingRight: 9,
+    },
+    fieldFocused: {
+      borderColor: DEEP_TERRACOTTA,
+      borderWidth: 2,
+      paddingLeft: 14.25,
+      paddingRight: 8.25,
+    },
+    fieldError: {
+      backgroundColor: "#FFF8F5",
+      borderColor: theme.error,
+    },
+    fieldDisabled: {
+      backgroundColor: "#EFEAE5",
+      borderColor: theme.border,
+      opacity: 0.65,
+    },
+    input: {
+      color: theme.text,
+      flex: 1,
+      fontFamily: theme.font.body,
+      fontSize: 15,
+      minHeight: 53,
+      paddingVertical: 0,
+    },
+    codeInput: {
+      fontFamily: theme.font.semibold,
+      fontSize: 21,
+      letterSpacing: 8,
+    },
+    eye: {
+      alignItems: "center",
+      height: 44,
+      justifyContent: "center",
+      width: 44,
+    },
+    eyePressed: {
+      opacity: 0.55,
+    },
+    primary: {
+      alignItems: "center",
+      backgroundColor: DEEP_TERRACOTTA,
+      borderRadius: 15,
+      height: 56,
+      justifyContent: "center",
+      marginTop: 4,
+    },
+    primaryPressed: {
+      backgroundColor: "#8F3C29",
+      transform: [{ scale: 0.99 }],
+    },
+    primaryText: {
+      color: "#FFFFFF",
+      fontFamily: theme.font.bold,
+      fontSize: 15,
+    },
+    controlDisabled: {
+      backgroundColor: "#C9A99B",
+      opacity: 0.72,
+    },
+    socialSection: {
+      marginTop: 20,
+    },
+    dividerRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 14,
+      marginBottom: 16,
+    },
+    divider: {
+      backgroundColor: "#D8CEC7",
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+    },
+    dividerText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 13,
+    },
+    socialButton: {
+      alignItems: "center",
+      backgroundColor: "#F1ECE7",
+      borderRadius: 14,
+      flexDirection: "row",
+      gap: 12,
+      height: 54,
+      justifyContent: "center",
+      marginBottom: 10,
+      opacity: 0.68,
+    },
+    socialButtonText: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 14,
+    },
+    socialHelp: {
+      color: theme.textSubtle,
+      fontFamily: theme.font.body,
+      fontSize: 11,
+      lineHeight: 16,
+      marginTop: 1,
+      textAlign: "center",
+    },
+    error: {
+      alignItems: "flex-start",
+      backgroundColor: "#FFF1EC",
+      borderLeftColor: DEEP_TERRACOTTA,
+      borderLeftWidth: 3,
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 14,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+    },
+    errorText: {
+      color: theme.deepBrand,
+      flex: 1,
+      fontFamily: theme.font.medium,
+      fontSize: 12.5,
+      lineHeight: 18,
+    },
+    notice: {
+      alignItems: "flex-start",
+      backgroundColor: "#F6E8DF",
+      borderLeftColor: theme.clay,
+      borderLeftWidth: 3,
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 16,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+    },
+    noticeText: {
+      color: theme.textMuted,
+      flex: 1,
+      fontFamily: theme.font.medium,
+      fontSize: 12.5,
+      lineHeight: 18,
+    },
+    link: {
+      color: DEEP_TERRACOTTA,
+      fontFamily: theme.font.semibold,
+      fontSize: 13.5,
+    },
+    linkTarget: {
+      alignItems: "center",
+      alignSelf: "flex-start",
+      justifyContent: "center",
+      minHeight: 44,
+      minWidth: 44,
+    },
+    linkPressed: {
+      opacity: 0.58,
+    },
+    linkDisabled: {
+      opacity: 0.42,
+    },
+  });
+const styles = createStyles(theme);

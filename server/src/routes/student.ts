@@ -15,17 +15,37 @@ import {
 } from "@kampusone/contracts";
 
 import { database, firstRow, sqlClient } from "../lib/database";
+import { input as validatedInput } from "../lib/input";
+import { z } from "@kampusone/contracts";
+import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
-import { featureEnabled, phase2SchemaReady, phase3SchemaReady, requireFeature, storeDemoEnabled } from "../lib/features";
+import {
+  featureEnabled,
+  phase2SchemaReady,
+  phase3SchemaReady,
+  requireFeature,
+  storeDemoEnabled,
+} from "../lib/features";
 import { deriveHandoffCode } from "../lib/security";
 import { demoStoreCatalogue } from "../lib/store-demo";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 
-export const studentRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+export const studentRoutes = new Hono<{
+  Bindings: Bindings;
+  Variables: Variables;
+}>();
 
 const defaultCampusTimeZone = "Africa/Lagos";
-const weekdayNumber: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const weekdayNumber: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
 
 function campusClock(at = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -37,10 +57,12 @@ function campusClock(at = new Date()) {
     timeZone: defaultCampusTimeZone,
     weekday: "short",
     year: "numeric",
-  }).formatToParts(at).reduce<Record<string, string>>((result, part) => {
-    if (part.type !== "literal") result[part.type] = part.value;
-    return result;
-  }, {});
+  })
+    .formatToParts(at)
+    .reduce<Record<string, string>>((result, part) => {
+      if (part.type !== "literal") result[part.type] = part.value;
+      return result;
+    }, {});
 
   return {
     date: `${parts.year}-${parts.month}-${parts.day}`,
@@ -56,9 +78,14 @@ async function jsonBody(context: { req: { json(): Promise<unknown> } }) {
 
 function requireUniversity(user: ReturnType<typeof currentUser>) {
   if (!user.universityId) {
-    throw new AppError(409, "CONFLICT", "Complete your student profile before using this feature.", {
-      onboardingRequired: true,
-    });
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Complete your student profile before using this feature.",
+      {
+        onboardingRequired: true,
+      },
+    );
   }
   return user.universityId;
 }
@@ -105,7 +132,8 @@ studentRoutes.get("/me", async (context) => {
       profiles.course_id, courses.name as course_name,
       profiles.current_level, profiles.matriculation_number,
       profiles.graduation_year, profiles.verification_status,
-      profiles.onboarding_step, profiles.onboarding_completed_at
+      profiles.onboarding_step, profiles.onboarding_completed_at,
+      ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`profiles.settings` : sql`'{}'::jsonb`} as settings
     from public.users users
     join public.profiles profiles on profiles.user_id = users.id and profiles.deleted_at is null
     left join public.universities universities on universities.id = profiles.university_id
@@ -116,7 +144,8 @@ studentRoutes.get("/me", async (context) => {
     limit 1
   `);
   const profile = firstRow(result);
-  if (!profile) throw new AppError(404, "NOT_FOUND", "Your profile could not be found.");
+  if (!profile)
+    throw new AppError(404, "NOT_FOUND", "Your profile could not be found.");
   return context.json({ profile, operatorRoles: user.operatorRoles });
 });
 
@@ -124,12 +153,19 @@ studentRoutes.patch("/me/onboarding", async (context) => {
   const user = currentUser(context);
   const parsed = onboardingProfileSchema.safeParse(await jsonBody(context));
   if (!parsed.success) {
-    throw new AppError(400, "BAD_REQUEST", "Check the school and profile details and try again.", {
-      fields: parsed.error.flatten().fieldErrors,
-    });
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the school and profile details and try again.",
+      {
+        fields: parsed.error.flatten().fieldErrors,
+      },
+    );
   }
 
-  const selected = await database(context.env).execute<{ university_id: string }>(sql`
+  const selected = await database(context.env).execute<{
+    university_id: string;
+  }>(sql`
     select universities.id as university_id
     from public.universities universities
     join public.faculties faculties on faculties.university_id = universities.id
@@ -145,7 +181,11 @@ studentRoutes.patch("/me/onboarding", async (context) => {
     limit 1
   `);
   if (!firstRow(selected)) {
-    throw new AppError(400, "BAD_REQUEST", "The selected school details do not belong together.");
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "The selected school details do not belong together.",
+    );
   }
 
   const conflict = await database(context.env).execute(sql`
@@ -157,7 +197,11 @@ studentRoutes.patch("/me/onboarding", async (context) => {
     limit 1
   `);
   if (firstRow(conflict)) {
-    throw new AppError(409, "CONFLICT", "That username or matriculation number is already in use.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That username or matriculation number is already in use.",
+    );
   }
 
   await database(context.env).execute(sql`
@@ -187,7 +231,7 @@ studentRoutes.get("/home", async (context) => {
   const currentCampusClock = campusClock();
   const today = currentCampusClock.weekday;
 
-  const [profile, timetable, posts, gpa] = await Promise.all([
+  const [profile, timetable, posts, gpa, streak] = await Promise.all([
     database(context.env).execute(sql`
       select first_name, display_name, current_level, verification_status
       from public.profiles where user_id = ${user.id}::uuid and deleted_at is null limit 1
@@ -219,6 +263,11 @@ studentRoutes.get("/home", async (context) => {
         sum(earned_units) as total_units
       from public.gpa_terms where user_id = ${user.id}::uuid
     `),
+    context.env.UNIFIED_SCHEMA_READY === "true"
+      ? database(context.env).execute<{ current_days: number }>(
+          sql`select current_days from app_private.check_in_streak(${user.id}::uuid)`,
+        )
+      : Promise.resolve({ rows: [] }),
   ]);
 
   return context.json({
@@ -228,6 +277,7 @@ studentRoutes.get("/home", async (context) => {
     academics: firstRow(gpa) ?? { cgpa: null, total_units: 0 },
     campusClock: currentCampusClock,
     generatedAt: new Date().toISOString(),
+    streak_days: firstRow(streak)?.current_days ?? null,
   });
 });
 
@@ -238,11 +288,14 @@ studentRoutes.get("/feed", async (context) => {
   const result = await database(context.env).execute(sql`
     select posts.id, posts.category, posts.title, posts.summary, posts.body,
       posts.image_url, posts.urgent, posts.sponsored, posts.published_at,
-      posts.correction_note, sources.name as source_name, sources.verified as source_verified,
+      posts.correction_note,
+      case when posts.audience->>'studentPost'='true' then coalesce(author.display_name,sources.name) else sources.name end as source_name,
+      case when posts.audience->>'studentPost'='true' then coalesce(author.verification_status::text='VERIFIED',false) else sources.verified end as source_verified,
       exists(select 1 from public.feed_bookmarks bookmarks
         where bookmarks.post_id = posts.id and bookmarks.user_id = ${user.id}::uuid) as bookmarked
     from public.feed_posts posts
     join public.content_sources sources on sources.id = posts.source_id
+    left join public.profiles author on author.user_id=posts.author_user_id and author.deleted_at is null
     where posts.university_id = ${universityId}::uuid
       and posts.status in ('PUBLISHED', 'CORRECTED')
       and posts.published_at <= now()
@@ -251,6 +304,53 @@ studentRoutes.get("/feed", async (context) => {
     limit 100
   `);
   return context.json({ posts: result.rows });
+});
+
+studentRoutes.post("/feed", async (c) => {
+  if (c.env.UNIFIED_SCHEMA_READY !== "true")
+    throw new AppError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "Posting is being connected. Try again shortly.",
+    );
+  const u = currentUser(c);
+  const d = await validatedInput(
+    c,
+    z.object({
+      body: z.string().trim().min(4).max(5000),
+      mediaId: z.string().uuid().optional(),
+      requestId: z.string().uuid(),
+    }),
+  );
+  const allowed = firstRow(
+    await database(c.env).execute<{ allowed: boolean }>(
+      sql`select app_private.consume_request_rate_limit('STUDENT_POST',${await sha256(u.id)},10,3600,3600) allowed`,
+    ),
+  );
+  if (!allowed?.allowed)
+    throw new AppError(
+      429,
+      "RATE_LIMITED",
+      "Please wait before posting again.",
+    );
+  if (
+    d.mediaId &&
+    !firstRow(
+      await database(c.env).execute(
+        sql`select id from public.media_objects where id=${d.mediaId}::uuid and owner_user_id=${u.id}::uuid and kind='post' and deleted_at is null`,
+      ),
+    )
+  )
+    throw new AppError(400, "BAD_REQUEST", "Choose an image from your device.");
+  const url = d.mediaId
+    ? (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin) +
+      "/v1/media/" +
+      d.mediaId
+    : null;
+  const result = await database(c.env).execute(
+    sql`with source as(insert into public.content_sources(university_id,name,owner_user_id) values(${requireUniversity(u)}::uuid,${"student:" + u.id},${u.id}::uuid) on conflict(university_id,name) do update set owner_user_id=excluded.owner_user_id returning id) insert into public.feed_posts(university_id,source_id,author_user_id,category,title,summary,body,image_url,audience,status,published_at,client_request_id) select ${requireUniversity(u)}::uuid,id,${u.id}::uuid,'UPDATE',${d.body.slice(0, 180)},${d.body.slice(0, 500)},${d.body},${url},'{"studentPost":true}'::jsonb,'PUBLISHED',now(),${d.requestId}::uuid from source on conflict(author_user_id,client_request_id) where client_request_id is not null do update set client_request_id=excluded.client_request_id returning id`,
+  );
+  return c.json(firstRow(result), 201);
 });
 
 studentRoutes.put("/feed/:id/bookmark", async (context) => {
@@ -308,12 +408,21 @@ studentRoutes.post("/timetable", async (context) => {
   const user = currentUser(context);
   const parsed = timetableEntrySchema.safeParse(await jsonBody(context));
   if (!parsed.success) {
-    throw new AppError(400, "BAD_REQUEST", "Check the timetable entry and try again.", {
-      fields: parsed.error.flatten().fieldErrors,
-    });
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the timetable entry and try again.",
+      {
+        fields: parsed.error.flatten().fieldErrors,
+      },
+    );
   }
   if (parsed.data.endsAt <= parsed.data.startsAt) {
-    throw new AppError(400, "BAD_REQUEST", "The class must end after it starts.");
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "The class must end after it starts.",
+    );
   }
   const id = crypto.randomUUID();
   await database(context.env).execute(sql`
@@ -337,7 +446,12 @@ studentRoutes.delete("/timetable/:id", async (context) => {
     where id = ${context.req.param("id")}::uuid and user_id = ${user.id}::uuid
     returning id
   `);
-  if (!firstRow(result)) throw new AppError(404, "NOT_FOUND", "That timetable entry does not exist.");
+  if (!firstRow(result))
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "That timetable entry does not exist.",
+    );
   return context.json({ status: "archived" });
 });
 
@@ -368,16 +482,57 @@ studentRoutes.post("/gpa", async (context) => {
   const user = currentUser(context);
   const parsed = gpaTermSchema.safeParse(await jsonBody(context));
   if (!parsed.success) {
-    throw new AppError(400, "BAD_REQUEST", "Check the semester results and try again.", {
-      fields: parsed.error.flatten().fieldErrors,
-    });
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the semester results and try again.",
+      {
+        fields: parsed.error.flatten().fieldErrors,
+      },
+    );
   }
   const termId = crypto.randomUUID();
-  const units = parsed.data.results.reduce((sum, result) => sum + result.units, 0);
-  const qualityPoints = parsed.data.results.reduce((sum, result) => sum + result.units * result.gradePoint, 0);
+  const scale =
+    context.env.UNIFIED_SCHEMA_READY === "true"
+      ? firstRow(
+          await database(context.env).execute<{
+            grading_scale: Record<string, number>;
+          }>(
+            sql`select grading_scale from public.institution_config where institution_id=${requireUniversity(user)}::uuid`,
+          ),
+        )?.grading_scale
+      : undefined;
+  const gradingScale = scale ?? { A: 5, B: 4, C: 3, D: 2, E: 1, F: 0 };
+  if (
+    new Set(parsed.data.results.map((result) => result.courseCode)).size !==
+    parsed.data.results.length
+  )
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Each course can appear only once in a semester.",
+    );
+  for (const result of parsed.data.results) {
+    if (gradingScale[result.grade] === undefined)
+      throw new AppError(
+        400,
+        "BAD_REQUEST",
+        "Choose a grade in your university scale.",
+      );
+    result.gradePoint = gradingScale[result.grade]!;
+  }
+  const units = parsed.data.results.reduce(
+    (sum, result) => sum + result.units,
+    0,
+  );
+  const qualityPoints = parsed.data.results.reduce(
+    (sum, result) => sum + result.units * result.gradePoint,
+    0,
+  );
   const gpa = qualityPoints / units;
   const client = sqlClient(context.env);
   await client.transaction([
+    client`select pg_advisory_xact_lock(hashtextextended(${user.id + "-gpa"},0))`,
     client`
       insert into public.gpa_terms (
         id, university_id, user_id, session_label, semester, level_code,
@@ -393,7 +548,9 @@ studentRoutes.post("/gpa", async (context) => {
         updated_at = now()
       returning id
     `,
-    ...parsed.data.results.map((result) => client`
+    client`delete from public.gpa_results where term_id=(select id from public.gpa_terms where user_id=${user.id}::uuid and session_label=${parsed.data.sessionLabel} and semester=${parsed.data.semester})`,
+    ...parsed.data.results.map(
+      (result) => client`
       insert into public.gpa_results (
         id, term_id, course_code, course_title, units, grade, grade_point
       ) values (
@@ -405,22 +562,36 @@ studentRoutes.post("/gpa", async (context) => {
       on conflict (term_id, course_code) do update set
         course_title = excluded.course_title, units = excluded.units,
         grade = excluded.grade, grade_point = excluded.grade_point
-    `),
+    `,
+    ),
   ]);
   return context.json({ gpa: Number(gpa.toFixed(3)), earnedUnits: units });
 });
 
 studentRoutes.get("/tutorials", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial discovery is not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial discovery is not enabled in this environment.",
+  );
   const user = currentUser(context);
   const universityId = requireUniversity(user);
   const paidAccessEnabled = featureEnabled(context.env, "PAYMENTS_ENABLED");
   const query = context.req.query("q")?.trim();
   const search = query ? `%${query}%` : null;
   const resourceType = context.req.query("resourceType")?.trim().toUpperCase();
-  const allowedResourceTypes = new Set(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK"]);
+  const allowedResourceTypes = new Set([
+    "PAST_QUESTION",
+    "NOTE",
+    "PDF",
+    "AUDIOBOOK",
+  ]);
   if (resourceType && !allowedResourceTypes.has(resourceType)) {
-    throw new AppError(400, "BAD_REQUEST", "Choose a valid learning-resource type.");
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose a valid learning-resource type.",
+    );
   }
   const [listings, resources] = await Promise.all([
     database(context.env).execute(sql`
@@ -487,6 +658,7 @@ studentRoutes.get("/tutorials", async (context) => {
         resources.publisher_name, resources.publisher_verified, resources.preview_text,
         resources.page_count, resources.duration_seconds, resources.download_count,
         resources.is_demo,
+        ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`resources.media_object_id` : sql`null::uuid`} media_object_id,
         case when resources.access_model = 'FREE' then resources.file_url else null end as file_url
       from public.tutorial_resources resources
       where resources.university_id = ${universityId}::uuid
@@ -503,7 +675,11 @@ studentRoutes.get("/tutorials", async (context) => {
 });
 
 studentRoutes.get("/tutorial-resources/:id", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Learning resources are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Learning resources are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
     select resources.id, resources.listing_id, resources.course_code, resources.title,
@@ -512,22 +688,21 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
       resources.publisher_name, resources.publisher_verified, resources.preview_text,
       resources.page_count, resources.duration_seconds, resources.download_count,
       resources.is_demo,
-      case when resources.access_model = 'FREE' or exists (
+      ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`resources.media_object_id` : sql`null::uuid`} media_object_id,
+      case when resources.access_model = 'FREE' or (resources.access_model='BOOKING_INCLUDED' and exists (
         select 1 from public.tutorial_bookings bookings
         join public.tutorial_listings listings on listings.id = bookings.listing_id
         where bookings.student_user_id = ${user.id}::uuid
           and bookings.status in ('CONFIRMED','COMPLETED')
-          and (bookings.listing_id = resources.listing_id
-            or (resources.listing_id is null and upper(listings.course_code) = upper(resources.course_code)))
-      ) then resources.file_url else null end as file_url,
-      (resources.access_model = 'FREE' or exists (
+          and bookings.listing_id = resources.listing_id
+      )) then resources.file_url else null end as file_url,
+      (resources.access_model = 'FREE' or (resources.access_model='BOOKING_INCLUDED' and exists (
         select 1 from public.tutorial_bookings bookings
         join public.tutorial_listings listings on listings.id = bookings.listing_id
         where bookings.student_user_id = ${user.id}::uuid
           and bookings.status in ('CONFIRMED','COMPLETED')
-          and (bookings.listing_id = resources.listing_id
-            or (resources.listing_id is null and upper(listings.course_code) = upper(resources.course_code)))
-      )) as can_access
+          and bookings.listing_id = resources.listing_id
+      ))) as can_access
     from public.tutorial_resources resources
     where resources.id = ${context.req.param("id")}::uuid
       and resources.university_id = ${requireUniversity(user)}::uuid
@@ -535,29 +710,52 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
     limit 1
   `);
   const resource = firstRow(result);
-  if (!resource) throw new AppError(404, "NOT_FOUND", "That learning resource is unavailable.");
+  if (!resource)
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "That learning resource is unavailable.",
+    );
   return context.json({ resource });
 });
 
 studentRoutes.post("/tutorial-bookings", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial bookings are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial bookings are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = tutorialBookingSchema.safeParse(await jsonBody(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "The tutorial booking request is invalid.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "The tutorial booking request is invalid.",
+    );
   if (!featureEnabled(context.env, "PAYMENTS_ENABLED")) {
-    const listing = await database(context.env).execute<{ price_kobo: number }>(sql`
+    const listing = await database(context.env).execute<{
+      price_kobo: number;
+    }>(sql`
       select price_kobo from public.tutorial_listings
       where id = ${parsed.data.listingId}::uuid
         and university_id = ${requireUniversity(user)}::uuid
         and deleted_at is null limit 1
     `);
     if (Number(firstRow(listing)?.price_kobo ?? 0) > 0) {
-      throw new AppError(409, "CONFLICT", "Paid tutorials are not available during the free pilot.");
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "Payments are not connected yet. Please try again later.",
+      );
     }
   }
   const id = crypto.randomUUID();
   try {
-    const result = await database(context.env).execute<{ id: string; amount_kobo: number }>(sql`
+    const result = await database(context.env).execute<{
+      id: string;
+      amount_kobo: number;
+    }>(sql`
       select * from app_private.create_tutorial_booking(
         ${id}::uuid, ${requireUniversity(user)}::uuid, ${parsed.data.listingId}::uuid,
         ${parsed.data.availabilityWindowId}::uuid, ${user.id}::uuid
@@ -565,23 +763,56 @@ studentRoutes.post("/tutorial-bookings", async (context) => {
     `);
     const booking = firstRow(result);
     const amountKobo = Number(booking?.amount_kobo ?? 0);
-    return context.json({ id, status: amountKobo === 0 ? "CONFIRMED" : "PENDING_PAYMENT", amountKobo }, 201);
+    return context.json(
+      {
+        id,
+        status: amountKobo === 0 ? "CONFIRMED" : "PENDING_PAYMENT",
+        amountKobo,
+      },
+      201,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (message.includes("TUTORIAL_FULL")) throw new AppError(409, "CONFLICT", "That tutorial is full.");
-    if (message.includes("TUTORIAL_ALREADY_BOOKED")) throw new AppError(409, "CONFLICT", "You already have an active booking for that session.");
-    if (message.includes("TUTORIAL_WINDOW_UNAVAILABLE")) throw new AppError(409, "CONFLICT", "That tutorial time is no longer available.");
-    if (message.includes("TUTORIAL_UNAVAILABLE")) throw new AppError(404, "NOT_FOUND", "That tutorial is unavailable.");
+    if (message.includes("TUTORIAL_FULL"))
+      throw new AppError(409, "CONFLICT", "That tutorial is full.");
+    if (message.includes("TUTORIAL_ALREADY_BOOKED"))
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "You already have an active booking for that session.",
+      );
+    if (message.includes("TUTORIAL_WINDOW_UNAVAILABLE"))
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "That tutorial time is no longer available.",
+      );
+    if (message.includes("TUTORIAL_UNAVAILABLE"))
+      throw new AppError(404, "NOT_FOUND", "That tutorial is unavailable.");
     throw error;
   }
 });
 
 studentRoutes.post("/tutorial-bookings/:id/confirm", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial bookings are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial bookings are not enabled in this environment.",
+  );
   const user = currentUser(context);
-  const parsed = completionConfirmationSchema.safeParse(await jsonBody(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Completion confirmation is required.");
-  const result = await database(context.env).execute<{ id: string; tutor_confirmed_at: string | null }>(sql`
+  const parsed = completionConfirmationSchema.safeParse(
+    await jsonBody(context),
+  );
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Completion confirmation is required.",
+    );
+  const result = await database(context.env).execute<{
+    id: string;
+    tutor_confirmed_at: string | null;
+  }>(sql`
     update public.tutorial_bookings bookings set
       student_confirmed_at = coalesce(student_confirmed_at, now()),
       status = case when tutor_confirmed_at is not null then 'COMPLETED' else status end,
@@ -600,18 +831,34 @@ studentRoutes.post("/tutorial-bookings/:id/confirm", async (context) => {
     returning id, tutor_confirmed_at
   `);
   const booking = firstRow(result);
-  if (!booking) throw new AppError(409, "CONFLICT", "That booking cannot be confirmed.");
-  return context.json({ status: booking.tutor_confirmed_at ? "COMPLETED" : "AWAITING_TUTOR" });
+  if (!booking)
+    throw new AppError(409, "CONFLICT", "That booking cannot be confirmed.");
+  return context.json({
+    status: booking.tutor_confirmed_at ? "COMPLETED" : "AWAITING_TUTOR",
+  });
 });
 
 studentRoutes.post("/tutorial-bookings/:id/cancel", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial bookings are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial bookings are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = tutorialCancellationSchema.safeParse(await jsonBody(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Add a short reason for cancelling the tutorial.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Add a short reason for cancelling the tutorial.",
+    );
   const found = await database(context.env).execute<{
-    id: string; university_id: string; amount_kobo: number; status: string;
-    scheduled_for: string | null; cancellation_cutoff_hours: number;
+    id: string;
+    university_id: string;
+    amount_kobo: number;
+    status: string;
+    scheduled_for: string | null;
+    cancellation_cutoff_hours: number;
   }>(sql`
     select bookings.id, bookings.university_id, bookings.amount_kobo, bookings.status,
       bookings.scheduled_for::text, listings.cancellation_cutoff_hours
@@ -623,15 +870,28 @@ studentRoutes.post("/tutorial-bookings/:id/cancel", async (context) => {
     limit 1
   `);
   const booking = firstRow(found);
-  if (!booking) throw new AppError(409, "CONFLICT", "That booking can no longer be cancelled.");
+  if (!booking)
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That booking can no longer be cancelled.",
+    );
   const cutoff = booking.scheduled_for
-    ? new Date(booking.scheduled_for).getTime() - Number(booking.cancellation_cutoff_hours) * 60 * 60 * 1000
+    ? new Date(booking.scheduled_for).getTime() -
+      Number(booking.cancellation_cutoff_hours) * 60 * 60 * 1000
     : Number.POSITIVE_INFINITY;
   if (Date.now() >= cutoff) {
-    throw new AppError(409, "CONFLICT", "The cancellation window has closed. Report a problem so support can review it.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "The cancellation window has closed. Report a problem so support can review it.",
+    );
   }
 
-  if (Number(booking.amount_kobo) === 0 || booking.status === "PENDING_PAYMENT") {
+  if (
+    Number(booking.amount_kobo) === 0 ||
+    booking.status === "PENDING_PAYMENT"
+  ) {
     const updated = await database(context.env).execute<{ id: string }>(sql`
       update public.tutorial_bookings set status = 'CANCELLED',
         cancellation_reason = ${parsed.data.reason}, cancelled_at = now(),
@@ -640,7 +900,12 @@ studentRoutes.post("/tutorial-bookings/:id/cancel", async (context) => {
         and status = ${booking.status}
       returning id
     `);
-    if (!firstRow(updated)) throw new AppError(409, "CONFLICT", "This booking changed while it was being cancelled.");
+    if (!firstRow(updated))
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "This booking changed while it was being cancelled.",
+      );
     return context.json({ status: "CANCELLED", refundReviewRequired: false });
   }
 
@@ -661,24 +926,45 @@ studentRoutes.post("/tutorial-bookings/:id/cancel", async (context) => {
       from changed returning id
     ) select id from opened
   `);
-  if (!firstRow(disputed)) throw new AppError(409, "CONFLICT", "This booking changed while it was being cancelled.");
+  if (!firstRow(disputed))
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "This booking changed while it was being cancelled.",
+    );
   return context.json({ status: "DISPUTED", refundReviewRequired: true });
 });
 
 studentRoutes.post("/tutorial-reviews", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial reviews are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial reviews are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = tutorialReviewSchema.safeParse(await jsonBody(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a rating and add a useful review.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose a rating and add a useful review.",
+    );
   const bookingResult = await database(context.env).execute<{
-    id: string; university_id: string; listing_id: string;
+    id: string;
+    university_id: string;
+    listing_id: string;
   }>(sql`
     select id, university_id, listing_id from public.tutorial_bookings
     where id = ${parsed.data.bookingId}::uuid and student_user_id = ${user.id}::uuid
       and status = 'COMPLETED' limit 1
   `);
   const booking = firstRow(bookingResult);
-  if (!booking) throw new AppError(403, "FORBIDDEN", "Only a student who completed this tutorial can review it.");
+  if (!booking)
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "Only a student who completed this tutorial can review it.",
+    );
   const id = crypto.randomUUID();
   const inserted = await database(context.env).execute<{ id: string }>(sql`
     insert into public.tutorial_reviews (
@@ -688,7 +974,8 @@ studentRoutes.post("/tutorial-reviews", async (context) => {
       ${booking.listing_id}::uuid, ${user.id}::uuid, ${parsed.data.rating}, ${parsed.data.body ?? null}
     ) on conflict (booking_id) do nothing returning id
   `);
-  if (!firstRow(inserted)) throw new AppError(409, "CONFLICT", "You already reviewed this tutorial.");
+  if (!firstRow(inserted))
+    throw new AppError(409, "CONFLICT", "You already reviewed this tutorial.");
   return context.json({ id, status: "PUBLISHED" }, 201);
 });
 
@@ -701,7 +988,11 @@ studentRoutes.get("/store", async (context) => {
 
   if (!liveStoreEnabled) {
     if (!storeDemoEnabled(context.env)) {
-      requireFeature(context.env, "STORE_ENABLED", "The campus store is not enabled in this environment.");
+      requireFeature(
+        context.env,
+        "STORE_ENABLED",
+        "The campus store is not enabled in this environment.",
+      );
     }
     return context.json({
       ...demoStoreCatalogue({ category, query }),
@@ -759,12 +1050,28 @@ studentRoutes.get("/store", async (context) => {
 });
 
 studentRoutes.post("/orders", async (context) => {
-  requireFeature(context.env, "STORE_ENABLED", "Store orders are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "STORE_ENABLED",
+    "Store orders are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = storeOrderSchema.safeParse(await jsonBody(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the order details and try again.");
-  if (new Set(parsed.data.items.map((item) => item.productId)).size !== parsed.data.items.length) {
-    throw new AppError(400, "BAD_REQUEST", "Each product may appear only once in an order.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the order details and try again.",
+    );
+  if (
+    new Set(parsed.data.items.map((item) => item.productId)).size !==
+    parsed.data.items.length
+  ) {
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Each product may appear only once in an order.",
+    );
   }
   const universityId = requireUniversity(user);
   const orderId = crypto.randomUUID();
@@ -774,7 +1081,10 @@ studentRoutes.post("/orders", async (context) => {
   ]);
   try {
     const result = await database(context.env).execute<{
-      id: string; subtotal_kobo: number; delivery_fee_kobo: number; total_kobo: number;
+      id: string;
+      subtotal_kobo: number;
+      delivery_fee_kobo: number;
+      total_kobo: number;
     }>(sql`
       select * from app_private.create_store_order_v2(
         ${orderId}::uuid, ${universityId}::uuid, ${user.id}::uuid,
@@ -788,18 +1098,39 @@ studentRoutes.post("/orders", async (context) => {
       )
     `);
     const order = firstRow(result);
-    return context.json({ id: orderId, status: "PENDING_PAYMENT",
-      subtotalKobo: Number(order?.subtotal_kobo ?? 0), deliveryFeeKobo: Number(order?.delivery_fee_kobo ?? 0),
-      totalKobo: Number(order?.total_kobo ?? 0) }, 201);
+    return context.json(
+      {
+        id: orderId,
+        status: "PENDING_PAYMENT",
+        subtotalKobo: Number(order?.subtotal_kobo ?? 0),
+        deliveryFeeKobo: Number(order?.delivery_fee_kobo ?? 0),
+        totalKobo: Number(order?.total_kobo ?? 0),
+      },
+      201,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (message.includes("PRODUCT_UNAVAILABLE_OR_STOCK_LOW")) throw new AppError(409, "CONFLICT", "A product is unavailable or there is not enough stock.");
-    if (message.includes("DELIVERY_ZONE_UNAVAILABLE")) throw new AppError(400, "BAD_REQUEST", "Choose an active delivery zone.");
+    if (message.includes("PRODUCT_UNAVAILABLE_OR_STOCK_LOW"))
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "A product is unavailable or there is not enough stock.",
+      );
+    if (message.includes("DELIVERY_ZONE_UNAVAILABLE"))
+      throw new AppError(400, "BAD_REQUEST", "Choose an active delivery zone.");
     if (message.includes("BUYER_TENANT_MISMATCH")) {
-      throw new AppError(403, "FORBIDDEN", "Your student profile does not belong to this order's university.");
+      throw new AppError(
+        403,
+        "FORBIDDEN",
+        "Your student profile does not belong to this order's university.",
+      );
     }
     if (message.includes("VENDOR_STOREFRONT_UNAVAILABLE")) {
-      throw new AppError(409, "CONFLICT", "This vendor is not currently approved to receive store orders.");
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "This vendor is not currently approved to receive store orders.",
+      );
     }
     throw error;
   }
@@ -807,11 +1138,17 @@ studentRoutes.post("/orders", async (context) => {
 
 studentRoutes.get("/orders/:id", async (context) => {
   if (!phase3SchemaReady(context.env)) {
-    throw new AppError(503, "FEATURE_DISABLED", "Order details are waiting for the reviewed Phase 3 schema migration.");
+    throw new AppError(
+      503,
+      "FEATURE_DISABLED",
+      "Order details are temporarily unavailable. Please try again shortly.",
+    );
   }
   const user = currentUser(context);
   const result = await database(context.env).execute<{
-    id: string; status: string; university_id: string;
+    id: string;
+    status: string;
+    university_id: string;
   }>(sql`
     select orders.id, orders.status, orders.university_id,
       orders.subtotal_kobo, orders.delivery_fee_kobo, orders.total_kobo,
@@ -830,7 +1167,8 @@ studentRoutes.get("/orders/:id", async (context) => {
     limit 1
   `);
   const order = firstRow(result);
-  if (!order) throw new AppError(404, "NOT_FOUND", "That store order does not exist.");
+  if (!order)
+    throw new AppError(404, "NOT_FOUND", "That store order does not exist.");
   const [items, timeline, reviews] = await Promise.all([
     database(context.env).execute(sql`
       select items.product_id, items.quantity, items.unit_price_kobo,
@@ -851,11 +1189,16 @@ studentRoutes.get("/orders/:id", async (context) => {
       order by created_at, id
     `),
   ]);
-  const deliveryCode = ["PAID", "ACCEPTED", "READY", "IN_DELIVERY"].includes(order.status)
+  const deliveryCode = ["PAID", "ACCEPTED", "READY", "IN_DELIVERY"].includes(
+    order.status,
+  )
     ? (await deriveHandoffCode(context.env, order.id, "delivery")).code
     : undefined;
   return context.json({
-    order: { ...order, ...(deliveryCode ? { delivery_code: deliveryCode } : {}) },
+    order: {
+      ...order,
+      ...(deliveryCode ? { delivery_code: deliveryCode } : {}),
+    },
     items: items.rows,
     timeline: timeline.rows,
     reviews: reviews.rows,
@@ -864,11 +1207,20 @@ studentRoutes.get("/orders/:id", async (context) => {
 
 studentRoutes.post("/product-reviews", async (context) => {
   if (!phase3SchemaReady(context.env)) {
-    throw new AppError(503, "FEATURE_DISABLED", "Product reviews are waiting for the reviewed Phase 3 schema migration.");
+    throw new AppError(
+      503,
+      "FEATURE_DISABLED",
+      "Product reviews are temporarily unavailable. Please try again shortly.",
+    );
   }
   const user = currentUser(context);
   const parsed = productReviewSchema.safeParse(await jsonBody(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a rating and add a useful review.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose a rating and add a useful review.",
+    );
   const id = crypto.randomUUID();
   try {
     await database(context.env).execute(sql`
@@ -880,7 +1232,11 @@ studentRoutes.post("/product-reviews", async (context) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("VERIFIED_PURCHASE_REQUIRED")) {
-      throw new AppError(403, "FORBIDDEN", "Only the buyer of a delivered product can review it.");
+      throw new AppError(
+        403,
+        "FORBIDDEN",
+        "Only the buyer of a delivered product can review it.",
+      );
     }
     if (message.includes("PRODUCT_ALREADY_REVIEWED")) {
       throw new AppError(409, "CONFLICT", "You already reviewed this product.");
@@ -929,31 +1285,54 @@ studentRoutes.get("/purchases", async (context) => {
       where orders.buyer_user_id = ${user.id}::uuid order by orders.created_at desc limit 100
     `),
   ]);
-  const ordersWithCodes = await Promise.all(orders.rows.map(async (order) => ({
-    ...order,
-    ...(["PAID", "ACCEPTED", "READY", "IN_DELIVERY"].includes(String(order.status))
-      ? { delivery_code: (await deriveHandoffCode(context.env, String(order.id), "delivery")).code }
-      : {}),
-  })));
-  return context.json({ tutorialBookings: bookings.rows, orders: ordersWithCodes });
+  const ordersWithCodes = await Promise.all(
+    orders.rows.map(async (order) => ({
+      ...order,
+      ...(["PAID", "ACCEPTED", "READY", "IN_DELIVERY"].includes(
+        String(order.status),
+      )
+        ? {
+            delivery_code: (
+              await deriveHandoffCode(context.env, String(order.id), "delivery")
+            ).code,
+          }
+        : {}),
+    })),
+  );
+  return context.json({
+    tutorialBookings: bookings.rows,
+    orders: ordersWithCodes,
+  });
 });
 
 studentRoutes.post("/disputes", async (context) => {
   const user = currentUser(context);
   const parsed = disputeSchema.safeParse(await jsonBody(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the dispute details and try again.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the dispute details and try again.",
+    );
   const isBooking = parsed.data.resourceType === "TUTORIAL_BOOKING";
   const resource = isBooking
-    ? await database(context.env).execute<{ id: string; university_id: string }>(sql`
+    ? await database(context.env).execute<{
+        id: string;
+        university_id: string;
+      }>(sql`
         select id, university_id from public.tutorial_bookings where id = ${parsed.data.resourceId}::uuid
           and student_user_id = ${user.id}::uuid and status in ('CONFIRMED','COMPLETED') limit 1
       `)
-    : await database(context.env).execute<{ id: string; university_id: string }>(sql`
+    : await database(context.env).execute<{
+        id: string;
+        university_id: string;
+      }>(sql`
         select id, university_id from public.orders where id = ${parsed.data.resourceId}::uuid
           and buyer_user_id = ${user.id}::uuid and status in ('PAID','ACCEPTED','READY','IN_DELIVERY','DELIVERED') limit 1
       `);
   const item = firstRow(resource);
-  if (!item) throw new AppError(404, "NOT_FOUND", "That purchase cannot be disputed.");
+  if (!item)
+    throw new AppError(404, "NOT_FOUND", "That purchase cannot be disputed.");
   const id = crypto.randomUUID();
   const client = sqlClient(context.env);
   await client.transaction([
@@ -961,8 +1340,12 @@ studentRoutes.post("/disputes", async (context) => {
       values (${id}::uuid, ${item.university_id}::uuid, ${user.id}::uuid,
         ${isBooking ? item.id : null}::uuid, ${isBooking ? null : item.id}::uuid, ${parsed.data.category}, ${parsed.data.reason})`,
     ...(isBooking
-      ? [client`update public.tutorial_bookings set status = 'DISPUTED', earnings_state = 'RESERVED', updated_at = now() where id = ${item.id}::uuid`]
-      : [client`update public.orders set status = 'DISPUTED', earnings_state = 'RESERVED', updated_at = now() where id = ${item.id}::uuid`]),
+      ? [
+          client`update public.tutorial_bookings set status = 'DISPUTED', earnings_state = 'RESERVED', updated_at = now() where id = ${item.id}::uuid`,
+        ]
+      : [
+          client`update public.orders set status = 'DISPUTED', earnings_state = 'RESERVED', updated_at = now() where id = ${item.id}::uuid`,
+        ]),
   ]);
   return context.json({ id, status: "OPEN" }, 201);
 });

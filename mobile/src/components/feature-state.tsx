@@ -1,3 +1,4 @@
+import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -11,7 +12,15 @@ type FeatureStateProps = {
   icon: keyof typeof Ionicons.glyphMap;
 };
 
-export function FeatureState({ eyebrow, title, description, next, icon }: FeatureStateProps) {
+export function FeatureState({
+  eyebrow,
+  title,
+  description,
+  next,
+  icon,
+}: FeatureStateProps) {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   return (
     <View style={styles.wrap}>
       <View style={styles.icon}>
@@ -27,63 +36,65 @@ export function FeatureState({ eyebrow, title, description, next, icon }: Featur
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: theme.spacing[6],
-    paddingBottom: 80,
-  },
-  icon: {
-    alignItems: "center",
-    backgroundColor: theme.surfaceMuted,
-    borderColor: "#E7D2C7",
-    borderRadius: 25,
-    borderWidth: 1,
-    height: 50,
-    justifyContent: "center",
-    marginBottom: theme.spacing[6],
-    width: 50,
-  },
-  eyebrow: {
-    color: theme.brand,
-    fontFamily: theme.font.bold,
-    fontSize: 11,
-    letterSpacing: 1.3,
-    marginBottom: theme.spacing[3],
-  },
-  title: {
-    color: theme.text,
-    fontFamily: theme.font.display,
-    fontSize: 34,
-    letterSpacing: -1.5,
-    lineHeight: 38,
-    maxWidth: 330,
-  },
-  description: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 15,
-    lineHeight: 23,
-    marginTop: theme.spacing[4],
-    maxWidth: 420,
-  },
-  rule: {
-    backgroundColor: theme.border,
-    height: 1,
-    marginVertical: theme.spacing[6],
-    maxWidth: 420,
-  },
-  nextLabel: {
-    color: theme.textMuted,
-    fontFamily: theme.font.bold,
-    fontSize: 9,
-    letterSpacing: 1.2,
-  },
-  next: {
-    color: theme.text,
-    fontFamily: theme.font.semibold,
-    fontSize: 13,
-    marginTop: 5,
-  },
-});
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    wrap: {
+      flex: 1,
+      justifyContent: "center",
+      paddingHorizontal: theme.spacing[6],
+      paddingBottom: 80,
+    },
+    icon: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceMuted,
+      borderColor: "#E7D2C7",
+      borderRadius: 25,
+      borderWidth: 1,
+      height: 50,
+      justifyContent: "center",
+      marginBottom: theme.spacing[6],
+      width: 50,
+    },
+    eyebrow: {
+      color: theme.brand,
+      fontFamily: theme.font.bold,
+      fontSize: 11,
+      letterSpacing: 1.3,
+      marginBottom: theme.spacing[3],
+    },
+    title: {
+      color: theme.text,
+      fontFamily: theme.font.display,
+      fontSize: 34,
+      letterSpacing: -1.5,
+      lineHeight: 38,
+      maxWidth: 330,
+    },
+    description: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 15,
+      lineHeight: 23,
+      marginTop: theme.spacing[4],
+      maxWidth: 420,
+    },
+    rule: {
+      backgroundColor: theme.border,
+      height: 1,
+      marginVertical: theme.spacing[6],
+      maxWidth: 420,
+    },
+    nextLabel: {
+      color: theme.textMuted,
+      fontFamily: theme.font.bold,
+      fontSize: 9,
+      letterSpacing: 1.2,
+    },
+    next: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+      marginTop: 5,
+    },
+  });
+const styles = createStyles(theme);

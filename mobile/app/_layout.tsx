@@ -1,4 +1,5 @@
-import { Stack } from "expo-router";
+import { useThemeStyles, type Theme } from "@/src/lib/appearance";
+import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import {
@@ -7,13 +8,34 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
-import { Lato_700Bold, Lato_700Bold_Italic, Lato_900Black } from "@expo-google-fonts/lato";
+import {
+  Lato_700Bold,
+  Lato_700Bold_Italic,
+  Lato_900Black,
+} from "@expo-google-fonts/lato";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { theme } from "@/src/theme";
 import { AuthProvider } from "@/src/auth/auth-context";
+import { ScreenSkeleton } from "@/src/components/skeleton";
+import { ToastProvider } from "@/src/components/toast";
+import { useEffect } from "react";
+import { initializeAppearance } from "@/src/lib/appearance";
+import { listenForSnooze } from "@/src/lib/alarms";
+import { onAccountRestriction } from "@/src/lib/api";
+import { BrandIntro } from "@/src/components/brand-intro";
 
 export default function RootLayout() {
+  const { theme, isDark } = useThemeStyles(createStyles);
+  useEffect(() => {
+    void initializeAppearance();
+  }, []);
+  useEffect(listenForSnooze, []);
+  useEffect(
+    () => onAccountRestriction(() => router.replace("/restricted")),
+    [],
+  );
+
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -25,26 +47,32 @@ export default function RootLayout() {
   });
 
   if (!fontsLoaded && !fontError) {
-    return (
-      <View style={styles.loading} accessibilityLabel="Loading KampusOne">
-        <ActivityIndicator color={theme.brand} />
-      </View>
-    );
+    return <ScreenSkeleton />;
   }
 
   return (
     <AuthProvider>
-      <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.canvas } }} />
+      <ToastProvider>
+        <StatusBar style={isDark ? "light" : "dark"} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: theme.canvas },
+          }}
+        />
+        <BrandIntro />
+      </ToastProvider>
     </AuthProvider>
   );
 }
 
-const styles = StyleSheet.create({
-  loading: {
-    alignItems: "center",
-    backgroundColor: theme.canvas,
-    flex: 1,
-    justifyContent: "center",
-  },
-});
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    loading: {
+      alignItems: "center",
+      backgroundColor: theme.canvas,
+      flex: 1,
+      justifyContent: "center",
+    },
+  });
+const styles = createStyles(theme);

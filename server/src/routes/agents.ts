@@ -25,27 +25,46 @@ import {
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { featureEnabled, phase3SchemaReady, requireFeature } from "../lib/features";
+import {
+  featureEnabled,
+  phase3SchemaReady,
+  requireFeature,
+} from "../lib/features";
 import { deriveHandoffCode, hashOtp } from "../lib/security";
+import { requireFullKyc } from "../lib/kyc";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 
-export const agentRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+export const agentRoutes = new Hono<{
+  Bindings: Bindings;
+  Variables: Variables;
+}>();
 agentRoutes.use("/*", requireAuth);
 
 async function body(context: { req: { json(): Promise<unknown> } }) {
   return context.req.json().catch(() => null);
 }
 
-async function approvedProfile(env: Bindings, userId: string, type: "TUTOR" | "VENDOR" | "RIDER") {
-  const result = await database(env).execute<{ id: string; university_id: string }>(sql`
+async function approvedProfile(
+  env: Bindings,
+  userId: string,
+  type: "TUTOR" | "VENDOR" | "RIDER",
+) {
+  const result = await database(env).execute<{
+    id: string;
+    university_id: string;
+  }>(sql`
     select id, university_id from public.agent_profiles
     where user_id = ${userId}::uuid and agent_type = ${type} and status = 'ACTIVE'
     limit 1
   `);
   const profile = firstRow(result);
   if (!profile) {
-    throw new AppError(403, "FORBIDDEN", `Your ${type.toLowerCase()} application must be approved first.`);
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      `Your ${type.toLowerCase()} application must be approved first.`,
+    );
   }
   return profile;
 }
@@ -67,7 +86,11 @@ async function operationalVendorProfile(env: Bindings, userId: string) {
   `);
   const profile = firstRow(result);
   if (!profile) {
-    throw new AppError(403, "FORBIDDEN", "Your vendor application must be approved first.");
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "Your vendor application must be approved first.",
+    );
   }
   if (profile.storefront_status === "SUSPENDED") {
     throw new AppError(
@@ -81,7 +104,15 @@ async function operationalVendorProfile(env: Bindings, userId: string) {
 
 agentRoutes.get("/dashboard", async (context) => {
   const user = currentUser(context);
-  const [applications, profiles, tutorialStats, vendorStats, deliveryStats, recentBookings, recentOrders] = await Promise.all([
+  const [
+    applications,
+    profiles,
+    tutorialStats,
+    vendorStats,
+    deliveryStats,
+    recentBookings,
+    recentOrders,
+  ] = await Promise.all([
     database(context.env).execute(sql`
       select id, agent_type, display_name, phone_e164, legal_name, kyc_status,
         bank_status, phone_verified_at, status, review_note, submitted_at,
@@ -164,18 +195,36 @@ agentRoutes.get("/dashboard", async (context) => {
 });
 
 agentRoutes.post("/applications", async (context) => {
+  if (context.env.UNIFIED_SCHEMA_READY === "true")
+    throw new AppError(
+      409,
+      "APPLICATION_UPDATED",
+      "Use the current application form to include your verification documents.",
+    );
   const user = currentUser(context);
   const parsed = agentApplicationSchema.safeParse(await body(context));
   if (!parsed.success) {
-    throw new AppError(400, "BAD_REQUEST", "Check the application details and try again.", {
-      fields: parsed.error.flatten().fieldErrors,
-    });
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the application details and try again.",
+      {
+        fields: parsed.error.flatten().fieldErrors,
+      },
+    );
   }
   if (user.universityId && user.universityId !== parsed.data.universityId) {
-    throw new AppError(403, "FORBIDDEN", "Apply through the university attached to your student profile.");
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "Apply through the university attached to your student profile.",
+    );
   }
   const id = crypto.randomUUID();
-  const result = await database(context.env).execute<{ id: string; status: string }>(sql`
+  const result = await database(context.env).execute<{
+    id: string;
+    status: string;
+  }>(sql`
     insert into public.agent_applications (
       id, university_id, user_id, agent_type, display_name, phone_e164, statement,
       legal_name, address_text, emergency_contact_name, emergency_contact_phone,
@@ -198,7 +247,11 @@ agentRoutes.post("/applications", async (context) => {
   `);
   const application = firstRow(result);
   if (!application) {
-    throw new AppError(409, "CONFLICT", "This application is already under review or approved.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "This application is already under review or approved.",
+    );
   }
   await recordAudit(context.env, {
     actorUserId: user.id,
@@ -213,7 +266,11 @@ agentRoutes.post("/applications", async (context) => {
 });
 
 agentRoutes.get("/tutorials", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const [listings, bookings, resources] = await Promise.all([
     database(context.env).execute(sql`
@@ -228,7 +285,7 @@ agentRoutes.get("/tutorials", async (context) => {
       order by listings.updated_at desc
     `),
     database(context.env).execute(sql`
-      select bookings.id, bookings.status, bookings.amount_kobo, bookings.scheduled_for,
+      select bookings.id, bookings.listing_id, bookings.status, bookings.amount_kobo, bookings.scheduled_for,
         windows.ends_at as completion_available_at,
         (windows.ends_at <= now()) as completion_available,
         bookings.student_confirmed_at, bookings.tutor_confirmed_at, bookings.created_at,
@@ -257,16 +314,36 @@ agentRoutes.get("/tutorials", async (context) => {
       order by resources.updated_at desc
     `),
   ]);
-  return context.json({ listings: listings.rows, bookings: bookings.rows, resources: resources.rows });
+  return context.json({
+    listings: listings.rows,
+    bookings: bookings.rows,
+    resources: resources.rows,
+  });
 });
 
 agentRoutes.post("/tutorials", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = tutorialListingSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the tutorial details and try again.");
-  if (parsed.data.priceKobo > 0 && !featureEnabled(context.env, "PAYMENTS_ENABLED")) {
-    throw new AppError(409, "CONFLICT", "Paid tutorials are not available during the free pilot. Set the price to zero.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the tutorial details and try again.",
+    );
+  if (
+    parsed.data.priceKobo > 0 &&
+    !featureEnabled(context.env, "PAYMENTS_ENABLED")
+  ) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Payments are not connected yet. Free tutorials are available.",
+    );
   }
   const profile = await approvedProfile(context.env, user.id, "TUTOR");
   const id = crypto.randomUUID();
@@ -287,10 +364,15 @@ agentRoutes.post("/tutorials", async (context) => {
 });
 
 agentRoutes.patch("/tutorials/:id/status", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = tutorialListingStateSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a valid listing status.");
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Choose a valid listing status.");
   const result = await database(context.env).execute<{ id: string }>(sql`
     update public.tutorial_listings listings set
       status = ${parsed.data.status},
@@ -309,21 +391,64 @@ agentRoutes.patch("/tutorials/:id/status", async (context) => {
         or (listings.status = 'PAUSED' and ${parsed.data.status} in ('SUBMITTED','ARCHIVED')))
     returning listings.id
   `);
-  if (!firstRow(result)) throw new AppError(409, "CONFLICT", "That tutorial status change is not allowed.");
+  if (!firstRow(result))
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That tutorial status change is not allowed.",
+    );
   return context.json({ status: parsed.data.status });
 });
 
 agentRoutes.post("/tutorial-resources", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Learning-resource operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Learning-resource operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = tutorialResourceSchema.safeParse(await body(context));
   if (!parsed.success) {
-    throw new AppError(400, "BAD_REQUEST", "Check the learning-resource details and try again.", {
-      fields: parsed.error.flatten().fieldErrors,
-    });
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the learning-resource details and try again.",
+      {
+        fields: parsed.error.flatten().fieldErrors,
+      },
+    );
   }
-  if (parsed.data.accessModel === "PAID" && !featureEnabled(context.env, "PAYMENTS_ENABLED")) {
-    throw new AppError(409, "CONFLICT", "Paid resources are not available during the free pilot. Choose free access.");
+  if (
+    parsed.data.accessModel === "PAID" &&
+    !featureEnabled(context.env, "PAYMENTS_ENABLED")
+  ) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Payments are not connected yet. Free resources are available.",
+    );
+  }
+  let fileUrl = parsed.data.fileUrl ?? null;
+  if (context.env.UNIFIED_SCHEMA_READY === "true") {
+    if (!parsed.data.mediaId)
+      throw new AppError(
+        400,
+        "BAD_REQUEST",
+        "Upload the resource from your device.",
+      );
+    const owned = firstRow(
+      await database(context.env).execute(
+        sql`select id from public.media_objects where id=${parsed.data.mediaId}::uuid and owner_user_id=${user.id}::uuid and kind='resource' and deleted_at is null`,
+      ),
+    );
+    if (!owned)
+      throw new AppError(403, "FORBIDDEN", "Choose a resource you uploaded.");
+    fileUrl =
+      (
+        context.env.PUBLIC_API_ORIGIN ?? new URL(context.req.url).origin
+      ).replace(/\/$/, "") +
+      "/v1/media/" +
+      parsed.data.mediaId;
   }
   const profile = await approvedProfile(context.env, user.id, "TUTOR");
   if (parsed.data.listingId) {
@@ -332,7 +457,12 @@ agentRoutes.post("/tutorial-resources", async (context) => {
       where id = ${parsed.data.listingId}::uuid and tutor_profile_id = ${profile.id}::uuid
         and deleted_at is null limit 1
     `);
-    if (!firstRow(listing)) throw new AppError(400, "BAD_REQUEST", "Choose one of your active tutorial listings.");
+    if (!firstRow(listing))
+      throw new AppError(
+        400,
+        "BAD_REQUEST",
+        "Choose one of your active tutorial listings.",
+      );
   }
   const id = crypto.randomUUID();
   await database(context.env).execute(sql`
@@ -340,7 +470,7 @@ agentRoutes.post("/tutorial-resources", async (context) => {
       id, university_id, tutor_profile_id, listing_id, course_id, course_code,
       title, description, resource_type, access_model, price_kobo, level_code,
       batch_label, publisher_name, publisher_verified, preview_text, file_url,
-      page_count, duration_seconds
+      page_count, duration_seconds${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`,media_object_id` : sql``}
     ) values (
       ${id}::uuid, ${profile.university_id}::uuid, ${profile.id}::uuid,
       ${parsed.data.listingId ?? null}::uuid, ${parsed.data.courseId ?? null}::uuid,
@@ -348,18 +478,23 @@ agentRoutes.post("/tutorial-resources", async (context) => {
       ${parsed.data.resourceType}, ${parsed.data.accessModel}, ${parsed.data.priceKobo},
       ${parsed.data.levelCode ?? null}, ${parsed.data.batchLabel ?? null},
       (select display_name from public.agent_profiles where id = ${profile.id}::uuid),
-      true, ${parsed.data.previewText ?? null}, ${parsed.data.fileUrl ?? null},
-      ${parsed.data.pageCount ?? null}, ${parsed.data.durationSeconds ?? null}
+      true, ${parsed.data.previewText ?? null}, ${fileUrl},
+      ${parsed.data.pageCount ?? null}, ${parsed.data.durationSeconds ?? null}${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`,${parsed.data.mediaId}::uuid` : sql``}
     )
   `);
   return context.json({ id, status: "DRAFT" }, 201);
 });
 
 agentRoutes.patch("/tutorial-resources/:id/status", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Learning-resource operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Learning-resource operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = tutorialResourceStateSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a valid resource status.");
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Choose a valid resource status.");
   const result = await database(context.env).execute<{ id: string }>(sql`
     update public.tutorial_resources resources set
       status = ${parsed.data.status},
@@ -376,12 +511,21 @@ agentRoutes.patch("/tutorial-resources/:id/status", async (context) => {
         or (resources.status = 'PUBLISHED' and ${parsed.data.status} = 'ARCHIVED'))
     returning resources.id
   `);
-  if (!firstRow(result)) throw new AppError(409, "CONFLICT", "That resource status change is not allowed.");
+  if (!firstRow(result))
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That resource status change is not allowed.",
+    );
   return context.json({ status: parsed.data.status });
 });
 
 agentRoutes.delete("/tutorial-resources/:id", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Learning-resource operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Learning-resource operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const result = await database(context.env).execute<{ id: string }>(sql`
     update public.tutorial_resources resources set status = 'ARCHIVED',
@@ -391,12 +535,21 @@ agentRoutes.delete("/tutorial-resources/:id", async (context) => {
       and resources.tutor_profile_id = profiles.id and profiles.user_id = ${user.id}::uuid
       and resources.deleted_at is null returning resources.id
   `);
-  if (!firstRow(result)) throw new AppError(404, "NOT_FOUND", "That learning resource does not exist.");
+  if (!firstRow(result))
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "That learning resource does not exist.",
+    );
   return context.json({ status: "DELETED" });
 });
 
 agentRoutes.get("/tutorial-availability", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
     select windows.id, windows.listing_id, listings.title, windows.starts_at,
@@ -414,12 +567,23 @@ agentRoutes.get("/tutorial-availability", async (context) => {
 });
 
 agentRoutes.post("/tutorial-availability", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = tutorialAvailabilitySchema.safeParse(await body(context));
-  if (!parsed.success || new Date(parsed.data.startsAt) <= new Date()
-    || new Date(parsed.data.endsAt) <= new Date(parsed.data.startsAt)) {
-    throw new AppError(400, "BAD_REQUEST", "Choose a valid future availability window.");
+  if (
+    !parsed.success ||
+    new Date(parsed.data.startsAt) <= new Date() ||
+    new Date(parsed.data.endsAt) <= new Date(parsed.data.startsAt)
+  ) {
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose a valid future availability window.",
+    );
   }
   const listing = await database(context.env).execute<{ id: string }>(sql`
     select listings.id from public.tutorial_listings listings
@@ -428,7 +592,12 @@ agentRoutes.post("/tutorial-availability", async (context) => {
       and profiles.status = 'ACTIVE' and listings.deleted_at is null
       and listings.status = 'PUBLISHED' and listings.review_status = 'APPROVED' limit 1
   `);
-  if (!firstRow(listing)) throw new AppError(404, "NOT_FOUND", "That tutorial listing does not exist.");
+  if (!firstRow(listing))
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "That tutorial listing does not exist.",
+    );
   const id = crypto.randomUUID();
   await database(context.env).execute(sql`
     insert into public.tutorial_availability_windows (id, listing_id, starts_at, ends_at, capacity)
@@ -439,11 +608,23 @@ agentRoutes.post("/tutorial-availability", async (context) => {
 });
 
 agentRoutes.post("/tutorial-bookings/:id/confirm", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = completionConfirmationSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Completion confirmation is required.");
-  const result = await database(context.env).execute<{ id: string; student_confirmed_at: string | null }>(sql`
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Completion confirmation is required.",
+    );
+  const result = await database(context.env).execute<{
+    id: string;
+    student_confirmed_at: string | null;
+  }>(sql`
     update public.tutorial_bookings bookings set
       tutor_confirmed_at = coalesce(tutor_confirmed_at, now()),
       status = case when student_confirmed_at is not null then 'COMPLETED' else status end,
@@ -463,15 +644,29 @@ agentRoutes.post("/tutorial-bookings/:id/confirm", async (context) => {
       )
     returning bookings.id, bookings.student_confirmed_at
   `);
-  if (!firstRow(result)) throw new AppError(409, "CONFLICT", "That booking cannot be confirmed.");
-  return context.json({ status: firstRow(result)?.student_confirmed_at ? "COMPLETED" : "AWAITING_STUDENT" });
+  if (!firstRow(result))
+    throw new AppError(409, "CONFLICT", "That booking cannot be confirmed.");
+  return context.json({
+    status: firstRow(result)?.student_confirmed_at
+      ? "COMPLETED"
+      : "AWAITING_STUDENT",
+  });
 });
 
 agentRoutes.post("/tutorial-bookings/:id/no-show", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = tutorialNoShowSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Describe the no-show so support can review it.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Describe the no-show so support can review it.",
+    );
   const disputeId = crypto.randomUUID();
   const reported = await database(context.env).execute<{ id: string }>(sql`
     with changed as (
@@ -495,12 +690,21 @@ agentRoutes.post("/tutorial-bookings/:id/no-show", async (context) => {
       returning id
     ) select id from opened
   `);
-  if (!firstRow(reported)) throw new AppError(409, "CONFLICT", "A no-show can be reported only once, after a confirmed session ends.");
+  if (!firstRow(reported))
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "A no-show can be reported only once, after a confirmed session ends.",
+    );
   return context.json({ id: disputeId, status: "OPEN" }, 201);
 });
 
 agentRoutes.get("/storefront", async (context) => {
-  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "STORE_ENABLED",
+    "Store operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const profile = await approvedProfile(context.env, user.id, "VENDOR");
   const result = await database(context.env).execute(sql`
@@ -521,11 +725,19 @@ agentRoutes.get("/storefront", async (context) => {
 });
 
 agentRoutes.put("/storefront", async (context) => {
-  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "STORE_ENABLED",
+    "Store operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = vendorStorefrontSchema.safeParse(await body(context));
   if (!parsed.success) {
-    throw new AppError(400, "BAD_REQUEST", "Check the storefront trust details and try again.");
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the storefront trust details and try again.",
+    );
   }
   const profile = await operationalVendorProfile(context.env, user.id);
   const result = await database(context.env).execute<{
@@ -560,7 +772,11 @@ agentRoutes.put("/storefront", async (context) => {
   `);
   const storefront = firstRow(result);
   if (!storefront) {
-    throw new AppError(409, "CONFLICT", "That storefront cannot be changed in its current state.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That storefront cannot be changed in its current state.",
+    );
   }
   await recordAudit(context.env, {
     actorUserId: user.id,
@@ -569,13 +785,20 @@ agentRoutes.put("/storefront", async (context) => {
     targetType: "vendor_storefront",
     targetId: profile.id,
     requestId: context.get("requestId"),
-    metadata: { status: storefront.status, listingRevision: storefront.listing_revision },
+    metadata: {
+      status: storefront.status,
+      listingRevision: storefront.listing_revision,
+    },
   });
   return context.json(storefront);
 });
 
 agentRoutes.patch("/storefront/status", async (context) => {
-  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "STORE_ENABLED",
+    "Store operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = vendorStorefrontStateSchema.safeParse(await body(context));
   if (!parsed.success) {
@@ -620,20 +843,28 @@ agentRoutes.patch("/storefront/status", async (context) => {
 
 agentRoutes.get("/product-categories", async (context) => {
   const user = currentUser(context);
-  const universityIds = await database(context.env).execute<{ university_id: string }>(sql`
+  const universityIds = await database(context.env).execute<{
+    university_id: string;
+  }>(sql`
     select distinct university_id from public.agent_profiles where user_id = ${user.id}::uuid
     union select university_id from public.agent_applications where user_id = ${user.id}::uuid
   `);
   const ids = universityIds.rows.map((item) => item.university_id);
-  const result = ids.length ? await database(context.env).execute(sql`
+  const result = ids.length
+    ? await database(context.env).execute(sql`
     select id, university_id, name, listing_rules from public.product_categories
-    where university_id = any(${ids}::uuid[]) and status = 'APPROVED' order by name
-  `) : { rows: [] };
+    where university_id = any(${sql.param(ids)}::uuid[]) and status = 'APPROVED' order by name
+  `)
+    : { rows: [] };
   return context.json({ categories: result.rows });
 });
 
 agentRoutes.get("/products", async (context) => {
-  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "STORE_ENABLED",
+    "Store operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
     select products.id, products.name, products.description, products.category,
@@ -653,18 +884,35 @@ agentRoutes.get("/products", async (context) => {
 });
 
 agentRoutes.post("/products", async (context) => {
-  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "STORE_ENABLED",
+    "Store operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = vendorProductSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the product details and try again.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the product details and try again.",
+    );
   const profile = await operationalVendorProfile(context.env, user.id);
-  const categoryResult = await database(context.env).execute<{ id: string; name: string }>(sql`
+  const categoryResult = await database(context.env).execute<{
+    id: string;
+    name: string;
+  }>(sql`
     select id, name from public.product_categories
     where id = ${parsed.data.categoryId}::uuid and university_id = ${profile.university_id}::uuid
       and status = 'APPROVED' limit 1
   `);
   const category = firstRow(categoryResult);
-  if (!category) throw new AppError(400, "BAD_REQUEST", "Choose an approved product category.");
+  if (!category)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose an approved product category.",
+    );
   const id = crypto.randomUUID();
   const result = await database(context.env).execute<{ id: string }>(sql`
     insert into public.vendor_products (
@@ -687,7 +935,11 @@ agentRoutes.post("/products", async (context) => {
     returning id
   `);
   if (!firstRow(result)) {
-    throw new AppError(409, "CONFLICT", "This storefront was suspended before the product could be created.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "This storefront was suspended before the product could be created.",
+    );
   }
   await recordAudit(context.env, {
     actorUserId: user.id,
@@ -702,12 +954,24 @@ agentRoutes.post("/products", async (context) => {
 });
 
 agentRoutes.put("/products/:id", async (context) => {
-  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "STORE_ENABLED",
+    "Store operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = vendorProductUpdateSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the product details and try again.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the product details and try again.",
+    );
   const profile = await operationalVendorProfile(context.env, user.id);
-  const categoryResult = await database(context.env).execute<{ id: string; name: string }>(sql`
+  const categoryResult = await database(context.env).execute<{
+    id: string;
+    name: string;
+  }>(sql`
     select id, name from public.product_categories
     where id = ${parsed.data.categoryId}::uuid
       and university_id = ${profile.university_id}::uuid
@@ -715,7 +979,12 @@ agentRoutes.put("/products/:id", async (context) => {
     limit 1
   `);
   const category = firstRow(categoryResult);
-  if (!category) throw new AppError(400, "BAD_REQUEST", "Choose an approved product category.");
+  if (!category)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose an approved product category.",
+    );
   const result = await database(context.env).execute<{
     id: string;
     university_id: string;
@@ -746,7 +1015,12 @@ agentRoutes.put("/products/:id", async (context) => {
     returning id, university_id, status, listing_revision
   `);
   const product = firstRow(result);
-  if (!product) throw new AppError(404, "NOT_FOUND", "That editable product does not exist.");
+  if (!product)
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "That editable product does not exist.",
+    );
   await recordAudit(context.env, {
     actorUserId: user.id,
     universityId: product.university_id,
@@ -754,16 +1028,24 @@ agentRoutes.put("/products/:id", async (context) => {
     targetType: "vendor_product",
     targetId: product.id,
     requestId: context.get("requestId"),
-    metadata: { status: product.status, listingRevision: product.listing_revision },
+    metadata: {
+      status: product.status,
+      listingRevision: product.listing_revision,
+    },
   });
   return context.json(product);
 });
 
 agentRoutes.patch("/products/:id/stock", async (context) => {
-  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "STORE_ENABLED",
+    "Store operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = vendorProductStockSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter a valid stock quantity.");
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Enter a valid stock quantity.");
   const profile = await operationalVendorProfile(context.env, user.id);
   const existingResult = await database(context.env).execute<{
     id: string;
@@ -778,7 +1060,12 @@ agentRoutes.patch("/products/:id/stock", async (context) => {
     limit 1
   `);
   const existing = firstRow(existingResult);
-  if (!existing) throw new AppError(404, "NOT_FOUND", "That editable product does not exist.");
+  if (!existing)
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "That editable product does not exist.",
+    );
   const result = await database(context.env).execute<{
     id: string;
     status: string;
@@ -799,7 +1086,12 @@ agentRoutes.patch("/products/:id/stock", async (context) => {
     returning id, status, stock_quantity, listing_revision
   `);
   const product = firstRow(result);
-  if (!product) throw new AppError(409, "CONFLICT", "That stock record changed before it could be saved.");
+  if (!product)
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That stock record changed before it could be saved.",
+    );
   await recordAudit(context.env, {
     actorUserId: user.id,
     universityId: existing.university_id,
@@ -807,18 +1099,29 @@ agentRoutes.patch("/products/:id/stock", async (context) => {
     targetType: "vendor_product",
     targetId: product.id,
     requestId: context.get("requestId"),
-    metadata: { previousQuantity: existing.stock_quantity, stockQuantity: product.stock_quantity },
+    metadata: {
+      previousQuantity: existing.stock_quantity,
+      stockQuantity: product.stock_quantity,
+    },
   });
   return context.json(product);
 });
 
 agentRoutes.patch("/products/:id/status", async (context) => {
-  requireFeature(context.env, "STORE_ENABLED", "Store operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "STORE_ENABLED",
+    "Store operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const parsed = vendorProductStateSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a valid product status.");
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Choose a valid product status.");
   await operationalVendorProfile(context.env, user.id);
-  const result = await database(context.env).execute<{ id: string; university_id: string }>(sql`
+  const result = await database(context.env).execute<{
+    id: string;
+    university_id: string;
+  }>(sql`
     update public.vendor_products products set
       status = ${parsed.data.status},
       submitted_at = case when ${parsed.data.status} = 'SUBMITTED' then now() else products.submitted_at end,
@@ -896,7 +1199,11 @@ agentRoutes.get("/orders", async (context) => {
 
 agentRoutes.get("/orders/:id", async (context) => {
   if (!phase3SchemaReady(context.env)) {
-    throw new AppError(503, "FEATURE_DISABLED", "Order details are waiting for the reviewed Phase 3 schema migration.");
+    throw new AppError(
+      503,
+      "FEATURE_DISABLED",
+      "Order details are temporarily unavailable. Please try again shortly.",
+    );
   }
   const user = currentUser(context);
   const result = await database(context.env).execute<{
@@ -927,7 +1234,8 @@ agentRoutes.get("/orders/:id", async (context) => {
     limit 1
   `);
   const order = firstRow(result);
-  if (!order) throw new AppError(404, "NOT_FOUND", "That vendor order does not exist.");
+  if (!order)
+    throw new AppError(404, "NOT_FOUND", "That vendor order does not exist.");
   const [items, timeline] = await Promise.all([
     database(context.env).execute(sql`
       select items.product_id, items.quantity, items.unit_price_kobo,
@@ -957,14 +1265,28 @@ agentRoutes.get("/orders/:id", async (context) => {
 agentRoutes.patch("/orders/:id/status", async (context) => {
   const user = currentUser(context);
   const parsed = orderStateSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a valid order action.");
-  const result = parsed.data.status === "CANCELLED"
-    ? await database(context.env).execute<{ order_id: string; university_id: string }>(sql`
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Choose a valid order action.");
+  const result =
+    parsed.data.status === "CANCELLED"
+      ? await database(context.env)
+          .execute<{ order_id: string; university_id: string }>(
+            sql`
         select * from app_private.cancel_vendor_order(
           ${context.req.param("id")}::uuid, ${user.id}::uuid
         )
-      `).then(({ rows }) => ({ rows: rows.map((row) => ({ id: row.order_id, university_id: row.university_id })) }))
-    : await database(context.env).execute<{ id: string; university_id: string }>(sql`
+      `,
+          )
+          .then(({ rows }) => ({
+            rows: rows.map((row) => ({
+              id: row.order_id,
+              university_id: row.university_id,
+            })),
+          }))
+      : await database(context.env).execute<{
+          id: string;
+          university_id: string;
+        }>(sql`
         update public.orders orders set status = ${parsed.data.status}, updated_at = now()
         from public.agent_profiles profiles
         where orders.id = ${context.req.param("id")}::uuid and orders.vendor_profile_id = profiles.id
@@ -973,10 +1295,21 @@ agentRoutes.patch("/orders/:id/status", async (context) => {
         returning orders.id, orders.university_id
       `);
   const order = firstRow(result);
-  if (!order) throw new AppError(409, "CONFLICT", "That order action is not allowed from its current state.");
-  await recordAudit(context.env, { actorUserId: user.id, universityId: order.university_id,
-    action: `order.${parsed.data.status.toLowerCase()}`, targetType: "order", targetId: order.id,
-    requestId: context.get("requestId"), ...(parsed.data.note ? { metadata: { note: parsed.data.note } } : {}) });
+  if (!order)
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That order action is not allowed from its current state.",
+    );
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: order.university_id,
+    action: `order.${parsed.data.status.toLowerCase()}`,
+    targetType: "order",
+    targetId: order.id,
+    requestId: context.get("requestId"),
+    ...(parsed.data.note ? { metadata: { note: parsed.data.note } } : {}),
+  });
   return context.json({ status: parsed.data.status });
 });
 
@@ -990,16 +1323,26 @@ agentRoutes.get("/orders/:id/pickup-code", async (context) => {
       and orders.status in ('READY','IN_DELIVERY') and jobs.status in ('AVAILABLE','RESERVED') limit 1
   `);
   const order = firstRow(result);
-  if (!order) throw new AppError(409, "CONFLICT", "The pickup code is available only for a ready order.");
+  if (!order)
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "The pickup code is available only for a ready order.",
+    );
   const code = await deriveHandoffCode(context.env, order.id, "pickup");
   return context.json({ code: code.code });
 });
 
 agentRoutes.get("/deliveries", async (context) => {
-  requireFeature(context.env, "LOGISTICS_ENABLED", "Delivery operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "LOGISTICS_ENABLED",
+    "Delivery operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const profile = await approvedProfile(context.env, user.id, "RIDER");
-  const [result, presence] = await Promise.all([database(context.env).execute(sql`
+  const [result, presence] = await Promise.all([
+    database(context.env).execute(sql`
     select jobs.id, jobs.order_id, zones.name as zone_name, jobs.status,
       jobs.rider_earning_kobo, jobs.earning_formula_version,
       jobs.reserved_at, jobs.picked_up_at, jobs.delivered_at, jobs.created_at
@@ -1009,17 +1352,30 @@ agentRoutes.get("/deliveries", async (context) => {
       and (jobs.status = 'AVAILABLE' or jobs.rider_profile_id = ${profile.id}::uuid)
     order by case when jobs.status = 'AVAILABLE' then 0 else 1 end, jobs.created_at
     limit 100
-  `), database(context.env).execute(sql`
+  `),
+    database(context.env).execute(sql`
     select online, capacity_status, last_seen_at from public.rider_presence
     where rider_profile_id = ${profile.id}::uuid limit 1
-  `)]);
-  return context.json({ jobs: result.rows, presence: firstRow(presence) ?? { online: false, capacity_status: "AVAILABLE" } });
+  `),
+  ]);
+  return context.json({
+    jobs: result.rows,
+    presence: firstRow(presence) ?? {
+      online: false,
+      capacity_status: "AVAILABLE",
+    },
+  });
 });
 
 agentRoutes.put("/rider-presence", async (context) => {
   const user = currentUser(context);
   const parsed = riderPresenceSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose a valid rider availability state.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose a valid rider availability state.",
+    );
   const profile = await approvedProfile(context.env, user.id, "RIDER");
   await database(context.env).execute(sql`
     insert into public.rider_presence (rider_profile_id, online, capacity_status, last_seen_at, updated_at)
@@ -1027,11 +1383,18 @@ agentRoutes.put("/rider-presence", async (context) => {
     on conflict (rider_profile_id) do update set online = excluded.online,
       capacity_status = excluded.capacity_status, last_seen_at = now(), updated_at = now()
   `);
-  return context.json({ online: parsed.data.online, capacityStatus: parsed.data.capacityStatus });
+  return context.json({
+    online: parsed.data.online,
+    capacityStatus: parsed.data.capacityStatus,
+  });
 });
 
 agentRoutes.post("/deliveries/:id/reserve", async (context) => {
-  requireFeature(context.env, "LOGISTICS_ENABLED", "Delivery operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "LOGISTICS_ENABLED",
+    "Delivery operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   const profile = await approvedProfile(context.env, user.id, "RIDER");
   let result;
@@ -1043,19 +1406,38 @@ agentRoutes.post("/deliveries/:id/reserve", async (context) => {
     `);
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "";
-    if (message.includes("RIDER_NOT_AVAILABLE") || message.includes("RIDER_AT_CAPACITY")) {
-      throw new AppError(409, "CONFLICT", "Go online with available capacity before reserving one delivery.");
+    if (
+      message.includes("RIDER_NOT_AVAILABLE") ||
+      message.includes("RIDER_AT_CAPACITY")
+    ) {
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "Go online with available capacity before reserving one delivery.",
+      );
     }
     if (message.includes("DELIVERY_UNAVAILABLE")) {
-      throw new AppError(409, "CONFLICT", "That delivery is no longer available.");
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "That delivery is no longer available.",
+      );
     }
     throw caught;
   }
-  if (!firstRow(result)) throw new AppError(409, "CONFLICT", "That delivery is no longer available.");
+  if (!firstRow(result))
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That delivery is no longer available.",
+    );
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: profile.university_id,
-    action: "delivery.reserved", targetType: "delivery_job",
-    targetId: context.req.param("id"), requestId: context.get("requestId"),
+    actorUserId: user.id,
+    universityId: profile.university_id,
+    action: "delivery.reserved",
+    targetType: "delivery_job",
+    targetId: context.req.param("id"),
+    requestId: context.get("requestId"),
   });
   return context.json({ status: "RESERVED" });
 });
@@ -1064,7 +1446,8 @@ agentRoutes.post("/deliveries/:id/pickup", async (context) => {
   const user = currentUser(context);
   const profile = await approvedProfile(context.env, user.id, "RIDER");
   const parsed = handoffCodeSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter the six-digit pickup code.");
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Enter the six-digit pickup code.");
   const result = await database(context.env).execute<{ result: string }>(sql`
     select app_private.confirm_delivery_pickup(
       ${context.req.param("id")}::uuid, ${profile.id}::uuid, ${user.id}::uuid,
@@ -1072,11 +1455,34 @@ agentRoutes.post("/deliveries/:id/pickup", async (context) => {
     ) as result
   `);
   const outcome = firstRow(result)?.result ?? "INVALID_STATE";
-  if (outcome === "LOCKED") throw new AppError(429, "RATE_LIMITED", "The pickup code is locked or expired. Contact support.");
-  if (outcome === "INCORRECT") throw new AppError(400, "BAD_REQUEST", "That pickup code is not correct.");
-  if (outcome === "ORDER_NOT_READY") throw new AppError(409, "CONFLICT", "The vendor has not marked this order ready for pickup.");
-  if (outcome !== "PICKED_UP") throw new AppError(409, "CONFLICT", "That delivery is not waiting for pickup.");
-  await recordAudit(context.env, { actorUserId: user.id, universityId: profile.university_id, action: "delivery.picked_up", targetType: "delivery_job", targetId: context.req.param("id"), requestId: context.get("requestId") });
+  if (outcome === "LOCKED")
+    throw new AppError(
+      429,
+      "RATE_LIMITED",
+      "The pickup code is locked or expired. Contact support.",
+    );
+  if (outcome === "INCORRECT")
+    throw new AppError(400, "BAD_REQUEST", "That pickup code is not correct.");
+  if (outcome === "ORDER_NOT_READY")
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "The vendor has not marked this order ready for pickup.",
+    );
+  if (outcome !== "PICKED_UP")
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That delivery is not waiting for pickup.",
+    );
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: profile.university_id,
+    action: "delivery.picked_up",
+    targetType: "delivery_job",
+    targetId: context.req.param("id"),
+    requestId: context.get("requestId"),
+  });
   return context.json({ status: "PICKED_UP" });
 });
 
@@ -1084,7 +1490,12 @@ agentRoutes.post("/deliveries/:id/complete", async (context) => {
   const user = currentUser(context);
   const profile = await approvedProfile(context.env, user.id, "RIDER");
   const parsed = handoffCodeSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter the six-digit delivery code.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Enter the six-digit delivery code.",
+    );
   const result = await database(context.env).execute<{ result: string }>(sql`
     select app_private.confirm_delivery_completion(
       ${context.req.param("id")}::uuid, ${profile.id}::uuid, ${user.id}::uuid,
@@ -1092,10 +1503,32 @@ agentRoutes.post("/deliveries/:id/complete", async (context) => {
     ) as result
   `);
   const outcome = firstRow(result)?.result ?? "INVALID_STATE";
-  if (outcome === "LOCKED") throw new AppError(429, "RATE_LIMITED", "The delivery code is locked or expired. Contact support.");
-  if (outcome === "INCORRECT") throw new AppError(400, "BAD_REQUEST", "That delivery code is not correct.");
-  if (outcome !== "DELIVERED") throw new AppError(409, "CONFLICT", "That delivery is not ready for completion.");
-  await recordAudit(context.env, { actorUserId: user.id, universityId: profile.university_id, action: "delivery.completed", targetType: "delivery_job", targetId: context.req.param("id"), requestId: context.get("requestId") });
+  if (outcome === "LOCKED")
+    throw new AppError(
+      429,
+      "RATE_LIMITED",
+      "The delivery code is locked or expired. Contact support.",
+    );
+  if (outcome === "INCORRECT")
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "That delivery code is not correct.",
+    );
+  if (outcome !== "DELIVERED")
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That delivery is not ready for completion.",
+    );
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: profile.university_id,
+    action: "delivery.completed",
+    targetType: "delivery_job",
+    targetId: context.req.param("id"),
+    requestId: context.get("requestId"),
+  });
   return context.json({ status: "DELIVERED" });
 });
 
@@ -1156,27 +1589,55 @@ agentRoutes.get("/earnings", async (context) => {
       where requests.requested_by_user_id = ${user.id}::uuid order by requests.requested_at desc limit 100
     `),
   ]);
-  return context.json({ tutorials: firstRow(tutorials), store: firstRow(store),
-    deliveries: firstRow(deliveries), payoutRequests: payouts.rows });
+  return context.json({
+    tutorials: firstRow(tutorials),
+    store: firstRow(store),
+    deliveries: firstRow(deliveries),
+    payoutRequests: payouts.rows,
+  });
 });
 
 agentRoutes.post("/payouts", async (context) => {
+  requireFeature(
+    context.env,
+    "PAYMENTS_ENABLED",
+    "Withdrawals are not connected yet. Your earnings remain in your account.",
+  );
   const user = currentUser(context);
   const parsed = payoutRequestSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the payout amount and account.");
-  const profileResult = await database(context.env).execute<{ id: string; university_id: string; agent_type: string }>(sql`
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the payout amount and account.",
+    );
+  const profileResult = await database(context.env).execute<{
+    id: string;
+    university_id: string;
+    agent_type: string;
+  }>(sql`
     select id, university_id, agent_type from public.agent_profiles
     where id = ${parsed.data.agentProfileId}::uuid and user_id = ${user.id}::uuid and status = 'ACTIVE' limit 1
   `);
   const profile = firstRow(profileResult);
-  if (!profile) throw new AppError(404, "NOT_FOUND", "That agent profile does not exist.");
-  const application = await database(context.env).execute<{ bank_status: string }>(sql`
-    select bank_status from public.agent_applications where user_id = ${user.id}::uuid
+  if (!profile)
+    throw new AppError(404, "NOT_FOUND", "That agent profile does not exist.");
+  const application = await database(context.env).execute<{
+    id: string;
+    bank_status: string;
+  }>(sql`
+    select id,bank_status from public.agent_applications where user_id = ${user.id}::uuid
       and university_id = ${profile.university_id}::uuid and agent_type = ${profile.agent_type} limit 1
   `);
   if (firstRow(application)?.bank_status !== "VERIFIED") {
-    throw new AppError(409, "CONFLICT", "A verified payout account is required before requesting a withdrawal.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "A verified payout account is required before requesting a withdrawal.",
+    );
   }
+  if (context.env.UNIFIED_SCHEMA_READY === "true")
+    await requireFullKyc(context.env, firstRow(application)!.id);
   const id = crypto.randomUUID();
   try {
     await database(context.env).execute(sql`
@@ -1187,16 +1648,36 @@ agentRoutes.post("/payouts", async (context) => {
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "";
     if (message.includes("PAYOUT_BALANCE_INSUFFICIENT")) {
-      throw new AppError(409, "CONFLICT", "The requested amount is more than the available balance.");
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "The requested amount is more than the available balance.",
+      );
     }
     if (message.includes("PAYOUT_ACCOUNT_UNVERIFIED")) {
-      throw new AppError(409, "CONFLICT", "A verified payout account is required before requesting a withdrawal.");
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "A verified payout account is required before requesting a withdrawal.",
+      );
     }
     if (message.includes("PAYOUT_PROFILE_UNAVAILABLE")) {
-      throw new AppError(404, "NOT_FOUND", "That agent profile is no longer available.");
+      throw new AppError(
+        404,
+        "NOT_FOUND",
+        "That agent profile is no longer available.",
+      );
     }
     throw caught;
   }
-  await recordAudit(context.env, { actorUserId: user.id, universityId: profile.university_id, action: "payout.requested", targetType: "payout_request", targetId: id, requestId: context.get("requestId"), metadata: { amountKobo: parsed.data.amountKobo } });
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: profile.university_id,
+    action: "payout.requested",
+    targetType: "payout_request",
+    targetId: id,
+    requestId: context.get("requestId"),
+    metadata: { amountKobo: parsed.data.amountKobo },
+  });
   return context.json({ id, status: "REQUESTED" }, 201);
 });

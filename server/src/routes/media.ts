@@ -1,0 +1,248 @@
+import { Hono } from "hono";
+import { sql } from "drizzle-orm";
+import { database, firstRow } from "../lib/database";
+import { AppError } from "../lib/errors";
+import { currentUser, requireAuth } from "../middleware/auth";
+import { id } from "../lib/input";
+import { recordAudit } from "../lib/audit";
+import type { Bindings, Variables } from "../types";
+import { SignJWT, jwtVerify } from "jose";
+import { findUserById, toAuthenticatedUser } from "../services/sessions";
+import type { AuthenticatedUser } from "../types";
+type Media = {
+  id: string;
+  owner_user_id: string;
+  institution_id: string | null;
+  kind: string;
+  object_key: string;
+  content_type: string;
+};
+function mediaKey(env: Bindings) {
+  if (!env.JWT_SECRET || env.JWT_SECRET.length < 32)
+    throw new AppError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "Secure file access is unavailable.",
+    );
+  return new TextEncoder().encode(env.JWT_SECRET);
+}
+async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
+  if (user.id === media.owner_user_id) return;
+  const role =
+    media.kind === "kyc"
+      ? "VERIFICATION_REVIEWER"
+      : media.kind === "support"
+        ? "SUPPORT"
+        : "CONTENT_EDITOR";
+  const operator = firstRow(
+    await database(env).execute(
+      sql`select id from public.operator_roles where user_id=${user.id}::uuid and ((role='PLATFORM_ADMIN' and university_id is null) or(role=${role} and university_id=${media.institution_id}::uuid)) and(expires_at is null or expires_at>now()) limit 1`,
+    ),
+  );
+  if (operator) return;
+  if (media.kind === "resource" && user.universityId === media.institution_id) {
+    const resource = firstRow(
+      await database(env).execute(
+        sql`select r.id from public.tutorial_resources r where r.media_object_id=${media.id}::uuid and r.university_id=${user.universityId}::uuid and r.deleted_at is null and r.status='PUBLISHED' and (r.access_model='FREE' or(r.access_model='BOOKING_INCLUDED' and r.listing_id is not null and exists(select 1 from public.tutorial_bookings b where b.listing_id=r.listing_id and b.student_user_id=${user.id}::uuid and b.status in ('CONFIRMED','COMPLETED')))) limit 1`,
+      ),
+    );
+    if (resource) return;
+  }
+  throw new AppError(403, "FORBIDDEN", "You do not have access to this file.");
+}
+export const mediaRoutes = new Hono<{
+  Bindings: Bindings;
+  Variables: Variables;
+}>();
+const privateKinds = new Set(["kyc", "support", "resource"]);
+export function detectedMime(bytes: Uint8Array) {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
+    return "image/jpeg";
+  if ([137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => bytes[i] === v))
+    return "image/png";
+  const head = new TextDecoder().decode(bytes.slice(0, 16));
+  if (head.startsWith("RIFF") && head.slice(8, 12) === "WEBP")
+    return "image/webp";
+  if (head.startsWith("%PDF-")) return "application/pdf";
+  return null;
+}
+mediaRoutes.post("/", requireAuth, async (c) => {
+  const user = currentUser(c);
+  if (Number(c.req.header("Content-Length") ?? 0) > 10 * 1024 * 1024 + 4096)
+    throw new AppError(413, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
+  const form = await c.req.formData();
+  const file = form.get("file");
+  const kind = String(form.get("kind"));
+  if (
+    !(file instanceof File) ||
+    ![
+      "avatar",
+      "cover",
+      "product",
+      "post",
+      "resource",
+      "kyc",
+      "support",
+    ].includes(kind)
+  )
+    throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
+  if (file.size < 1 || file.size > 10 * 1024 * 1024)
+    throw new AppError(400, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
+  const recent = await database(c.env).execute<{ allowed: boolean }>(
+    sql`select app_private.consume_request_rate_limit('MEDIA_UPLOAD',${user.id},30,3600,3600) allowed`,
+  );
+  if (!firstRow(recent)?.allowed)
+    throw new AppError(
+      429,
+      "RATE_LIMITED",
+      "Upload limit reached. Try again later.",
+    );
+  const bytes = await file.arrayBuffer();
+  const mime = detectedMime(new Uint8Array(bytes));
+  if (!mime || (!privateKinds.has(kind) && !mime.startsWith("image/")))
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Use a JPG, PNG or WebP image, or a PDF document.",
+    );
+  const bucket = privateKinds.has(kind)
+    ? c.env.PRIVATE_BUCKET
+    : c.env.MEDIA_BUCKET;
+  if (!bucket)
+    throw new AppError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "File storage is not connected yet.",
+    );
+  const mediaId = crypto.randomUUID();
+  const key = `${user.id}/${kind}/${mediaId}`;
+  await bucket.put(key, bytes, { httpMetadata: { contentType: mime } });
+  await database(c.env).execute(
+    sql`insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values(${mediaId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${kind},${key},${mime},${file.size},${file.name.slice(0, 180)})`,
+  );
+  const origin = (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin).replace(
+    /\/$/,
+    "",
+  );
+  const url = `${origin}/v1/media/${mediaId}`;
+  if (kind === "avatar")
+    await database(c.env).execute(
+      sql`update public.profiles set profile_image_url=${url},updated_at=now() where user_id=${user.id}::uuid`,
+    );
+  if (kind === "cover")
+    await database(c.env).execute(
+      sql`update public.profiles set cover_image_url=${url},updated_at=now() where user_id=${user.id}::uuid`,
+    );
+  return c.json(
+    { id: mediaId, url, kind, private: privateKinds.has(kind) },
+    201,
+  );
+});
+mediaRoutes.post("/:id/access", requireAuth, async (c) => {
+  const user = currentUser(c);
+  const media = firstRow(
+    await database(c.env).execute<Media>(
+      sql`select id,owner_user_id,institution_id,kind,object_key,content_type from public.media_objects where id=${id(c.req.param("id"))}::uuid and deleted_at is null`,
+    ),
+  );
+  if (!media) throw new AppError(404, "NOT_FOUND", "File not found.");
+  await canRead(c.env, user, media);
+  const token = await new SignJWT({ viewer: user.id })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(media.id)
+    .setIssuer("kampusone-api")
+    .setAudience("kampusone-private-file")
+    .setIssuedAt()
+    .setExpirationTime("90s")
+    .sign(mediaKey(c.env));
+  const origin = (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin).replace(
+    /\/$/,
+    "",
+  );
+  c.header("Cache-Control", "private, no-store");
+  return c.json({
+    url:
+      origin + "/v1/media/" + media.id + "?access=" + encodeURIComponent(token),
+    expiresIn: 90,
+  });
+});
+mediaRoutes.get("/:id", async (c) => {
+  const result = await database(c.env).execute<{
+    id: string;
+    owner_user_id: string;
+    institution_id: string | null;
+    kind: string;
+    object_key: string;
+    content_type: string;
+  }>(
+    sql`select id,owner_user_id,institution_id,kind,object_key,content_type from public.media_objects where id=${id(c.req.param("id"))}::uuid and deleted_at is null`,
+  );
+  const media = firstRow(result);
+  if (!media) throw new AppError(404, "NOT_FOUND", "File not found.");
+  if (privateKinds.has(media.kind)) {
+    let user: AuthenticatedUser;
+    const signed = c.req.query("access");
+    if (signed) {
+      let viewer: string;
+      try {
+        const { payload } = await jwtVerify(signed, mediaKey(c.env), {
+          issuer: "kampusone-api",
+          audience: "kampusone-private-file",
+          algorithms: ["HS256"],
+        });
+        if (
+          payload.sub !== media.id ||
+          typeof payload.viewer !== "string" ||
+          !/^[0-9a-f-]{36}$/.test(payload.viewer)
+        )
+          throw new Error("Invalid viewer");
+        viewer = payload.viewer;
+      } catch {
+        throw new AppError(
+          401,
+          "UNAUTHENTICATED",
+          "This file link has expired. Open the file again.",
+        );
+      }
+      const record = await findUserById(c.env, viewer);
+      if (!record)
+        throw new AppError(403, "FORBIDDEN", "File access was revoked.");
+      const restricted = firstRow(
+        await database(c.env).execute(
+          sql`select id from public.account_restrictions where user_id=${viewer}::uuid and revoked_at is null and starts_at<=now() and(ends_at is null or ends_at>now()) limit 1`,
+        ),
+      );
+      if (restricted)
+        throw new AppError(403, "FORBIDDEN", "File access was revoked.");
+      user = toAuthenticatedUser(record);
+    } else {
+      await requireAuth(c, async () => {});
+      user = currentUser(c);
+    }
+    await canRead(c.env, user, media);
+    await recordAudit(c.env, {
+      actorUserId: user.id,
+      action: "private.file.read",
+      targetType: "media",
+      targetId: media.id,
+      requestId: c.get("requestId"),
+    });
+  }
+  const bucket = privateKinds.has(media.kind)
+    ? c.env.PRIVATE_BUCKET
+    : c.env.MEDIA_BUCKET;
+  const object = await bucket?.get(media.object_key);
+  if (!object) throw new AppError(404, "NOT_FOUND", "File not found.");
+  c.header("Content-Type", media.content_type);
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("Referrer-Policy", "no-referrer");
+  c.header(
+    "Cache-Control",
+    privateKinds.has(media.kind)
+      ? "private, no-store"
+      : "public, max-age=86400, immutable",
+  );
+  if (media.content_type === "application/pdf")
+    c.header("Content-Disposition", 'attachment; filename="document.pdf"');
+  return c.body(object.body);
+});

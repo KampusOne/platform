@@ -28,6 +28,19 @@ export type Bindings = {
   PAYSTACK_WEBHOOK_SECRET?: string;
   ADMIN_BOOTSTRAP_TOKEN?: string;
   INITIAL_ADMIN_EMAIL?: string;
+  UNIFIED_SCHEMA_READY?: string;
+  MEDIA_BUCKET?: R2Bucket;
+  PRIVATE_BUCKET?: R2Bucket;
+  PUBLIC_API_ORIGIN?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_PUBLISHABLE_KEY?: string;
+  SUPABASE_SECRET_KEY?: string;
+  AUTH_PROVIDER?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
+  KYC_FINGERPRINT_SECRET?: string;
+  AI_DAILY_USER_LIMIT?: string;
+  AI_DAILY_GLOBAL_LIMIT?: string;
 };
 
 export type AuthenticatedUser = {
@@ -36,6 +49,7 @@ export type AuthenticatedUser = {
   roles: string[];
   universityId: string | null;
   operatorRoles: string[];
+  sessionFamilyId?: string;
 };
 
 export type Variables = {

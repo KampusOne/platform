@@ -1,6 +1,15 @@
+import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Image, Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import {
+  Image,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import {
@@ -17,6 +26,8 @@ import { theme } from "@/src/theme";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function SignUpScreen() {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const { width } = useWindowDimensions();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -29,9 +40,17 @@ export default function SignUpScreen() {
 
   const validEmail = emailPattern.test(email.trim());
   const passwordLongEnough = password.length >= 10;
-  const passwordsMatch = Boolean(confirmPassword) && password === confirmPassword;
+  const passwordsMatch =
+    Boolean(confirmPassword) && password === confirmPassword;
   const compactNames = width < 370;
-  const canSubmit = Boolean(firstName.trim() && lastName.trim() && validEmail && passwordLongEnough && passwordsMatch && acceptedTerms);
+  const canSubmit = Boolean(
+    firstName.trim() &&
+      lastName.trim() &&
+      validEmail &&
+      passwordLongEnough &&
+      passwordsMatch &&
+      acceptedTerms,
+  );
 
   async function submit() {
     if (!firstName.trim() || !lastName.trim()) {
@@ -66,19 +85,32 @@ export default function SignUpScreen() {
         acceptedTerms: true,
       });
       if (result.status === "already_registered") {
-        router.replace({ pathname: "/(auth)/sign-in", params: { email: result.email, reason: "already_registered" } });
+        router.replace({
+          pathname: "/(auth)/sign-in",
+          params: { email: result.email, reason: "already_registered" },
+        });
         return;
       }
-      router.replace({ pathname: "/(auth)/verify", params: { email: email.trim().toLowerCase() } });
+      router.replace({
+        pathname: "/(auth)/verify",
+        params: { email: email.trim().toLowerCase() },
+      });
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "We could not create your account.");
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "We could not create your account.",
+      );
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <AuthShell subtitle="Your campus in one place. Join a simpler, more prepared student life." title="Create account">
+    <AuthShell
+      subtitle="Your campus in one place. Join a simpler, more prepared student life."
+      title="Create account"
+    >
       <Image
         accessible={false}
         accessibilityIgnoresInvertColors
@@ -160,7 +192,10 @@ export default function SignUpScreen() {
 
       <Text
         accessibilityLiveRegion="polite"
-        style={[styles.hint, Boolean(confirmPassword) && !passwordsMatch && styles.hintError]}
+        style={[
+          styles.hint,
+          Boolean(confirmPassword) && !passwordsMatch && styles.hintError,
+        ]}
       >
         {Boolean(confirmPassword) && !passwordsMatch
           ? "Your passwords do not match."
@@ -172,21 +207,45 @@ export default function SignUpScreen() {
           accessibilityRole="checkbox"
           accessibilityState={{ checked: acceptedTerms }}
           onPress={() => setAcceptedTerms((value) => !value)}
-          style={({ pressed }) => [styles.checkbox, acceptedTerms && styles.checkboxChecked, pressed && styles.checkboxPressed]}
+          style={({ pressed }) => [
+            styles.checkbox,
+            acceptedTerms && styles.checkboxChecked,
+            pressed && styles.checkboxPressed,
+          ]}
         >
-          {acceptedTerms ? <Ionicons color="#FFFFFF" name="checkmark" size={17} /> : null}
+          {acceptedTerms ? (
+            <Ionicons color="#FFFFFF" name="checkmark" size={17} />
+          ) : null}
         </Pressable>
         <View style={styles.termsCopy}>
-          <Text style={styles.termsText}>I agree to the account terms and data policy.</Text>
+          <Text style={styles.termsText}>
+            I agree to the account terms and data policy.
+          </Text>
           <View style={styles.termsLinks}>
-            <TextLink onPress={() => void Linking.openURL("https://kampusone.app/terms")}>Terms</TextLink>
+            <TextLink
+              onPress={() =>
+                void Linking.openURL("https://kampusone.app/terms")
+              }
+            >
+              Terms
+            </TextLink>
             <Text style={styles.termsAnd}>and</Text>
-            <TextLink onPress={() => void Linking.openURL("https://kampusone.app/privacy")}>Privacy Policy</TextLink>
+            <TextLink
+              onPress={() =>
+                void Linking.openURL("https://kampusone.app/privacy")
+              }
+            >
+              Privacy Policy
+            </TextLink>
           </View>
         </View>
       </View>
       <FormError message={error} />
-      <PrimaryButton disabled={!canSubmit} loading={loading} onPress={() => void submit()}>
+      <PrimaryButton
+        disabled={!canSubmit}
+        loading={loading}
+        onPress={() => void submit()}
+      >
         Create account
       </PrimaryButton>
 
@@ -194,98 +253,102 @@ export default function SignUpScreen() {
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>Already have an account?</Text>
-        <TextLink onPress={() => router.replace("/(auth)/sign-in")}>Sign in</TextLink>
+        <TextLink onPress={() => router.replace("/(auth)/sign-in")}>
+          Sign in
+        </TextLink>
       </View>
     </AuthShell>
   );
 }
 
-const styles = StyleSheet.create({
-  illustration: {
-    alignSelf: "center",
-    height: 190,
-    marginBottom: 18,
-    marginTop: -14,
-    width: "100%",
-  },
-  nameRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  nameRowCompact: {
-    flexDirection: "column",
-    gap: 0,
-  },
-  nameField: {
-    flex: 1,
-  },
-  hint: {
-    color: theme.textSubtle,
-    fontFamily: theme.font.body,
-    fontSize: 11.5,
-    lineHeight: 17,
-    marginBottom: 16,
-    marginTop: -4,
-  },
-  hintError: {
-    color: theme.error,
-    fontFamily: theme.font.medium,
-  },
-  termsRow: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    gap: 11,
-    marginBottom: 16,
-  },
-  checkbox: {
-    alignItems: "center",
-    borderColor: theme.clay,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    height: 44,
-    justifyContent: "center",
-    width: 44,
-  },
-  checkboxChecked: {
-    backgroundColor: theme.deepBrand,
-    borderColor: theme.deepBrand,
-  },
-  checkboxPressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.97 }],
-  },
-  termsCopy: {
-    flex: 1,
-    paddingTop: 2,
-  },
-  termsText: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  termsLinks: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 6,
-    marginTop: 4,
-  },
-  termsAnd: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 12,
-  },
-  footer: {
-    alignItems: "center",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 5,
-    justifyContent: "center",
-    marginTop: 24,
-  },
-  footerText: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 13.5,
-  },
-});
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    illustration: {
+      alignSelf: "center",
+      height: 190,
+      marginBottom: 18,
+      marginTop: -14,
+      width: "100%",
+    },
+    nameRow: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    nameRowCompact: {
+      flexDirection: "column",
+      gap: 0,
+    },
+    nameField: {
+      flex: 1,
+    },
+    hint: {
+      color: theme.textSubtle,
+      fontFamily: theme.font.body,
+      fontSize: 11.5,
+      lineHeight: 17,
+      marginBottom: 16,
+      marginTop: -4,
+    },
+    hintError: {
+      color: theme.error,
+      fontFamily: theme.font.medium,
+    },
+    termsRow: {
+      alignItems: "flex-start",
+      flexDirection: "row",
+      gap: 11,
+      marginBottom: 16,
+    },
+    checkbox: {
+      alignItems: "center",
+      borderColor: theme.clay,
+      borderRadius: 7,
+      borderWidth: 1.5,
+      height: 44,
+      justifyContent: "center",
+      width: 44,
+    },
+    checkboxChecked: {
+      backgroundColor: theme.deepBrand,
+      borderColor: theme.deepBrand,
+    },
+    checkboxPressed: {
+      opacity: 0.72,
+      transform: [{ scale: 0.97 }],
+    },
+    termsCopy: {
+      flex: 1,
+      paddingTop: 2,
+    },
+    termsText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    termsLinks: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 6,
+      marginTop: 4,
+    },
+    termsAnd: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12,
+    },
+    footer: {
+      alignItems: "center",
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 5,
+      justifyContent: "center",
+      marginTop: 24,
+    },
+    footerText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 13.5,
+    },
+  });
+const styles = createStyles(theme);

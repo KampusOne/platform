@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260908.1",
+    "@electric-sql/pglite": "0.5.8",
     "typescript": "6.0.3",
     "vitest": "5.0.0",
     "wrangler": "4.130.0"

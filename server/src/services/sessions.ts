@@ -3,7 +3,12 @@ import { sql } from "drizzle-orm";
 import type { AuthenticatedUser, Bindings } from "../types";
 import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { issueAccessToken, randomToken, REFRESH_TOKEN_SECONDS, sha256 } from "../lib/security";
+import {
+  issueAccessToken,
+  randomToken,
+  REFRESH_TOKEN_SECONDS,
+  sha256,
+} from "../lib/security";
 
 type UserRecord = {
   id: string;
@@ -29,6 +34,7 @@ export async function findUserByEmail(env: Bindings, email: string) {
       coalesce(
         array_agg(distinct operator_roles.role) filter (
           where operator_roles.role is not null
+            and (operator_roles.role <> 'PLATFORM_ADMIN' or operator_roles.university_id is null)
             and (operator_roles.expires_at is null or operator_roles.expires_at > now())
         ),
         '{}'::text[]
@@ -58,6 +64,7 @@ export async function findUserById(env: Bindings, id: string) {
       coalesce(
         array_agg(distinct operator_roles.role) filter (
           where operator_roles.role is not null
+            and (operator_roles.role <> 'PLATFORM_ADMIN' or operator_roles.university_id is null)
             and (operator_roles.expires_at is null or operator_roles.expires_at > now())
         ),
         '{}'::text[]
@@ -87,13 +94,20 @@ export function toAuthenticatedUser(user: UserRecord): AuthenticatedUser {
 export async function createSession(
   env: Bindings,
   user: AuthenticatedUser,
-  metadata: { deviceLabel?: string; ipAddress?: string; userAgent?: string; familyId?: string } = {},
+  metadata: {
+    deviceLabel?: string;
+    ipAddress?: string;
+    userAgent?: string;
+    familyId?: string;
+  } = {},
 ) {
   const refreshToken = randomToken(48);
   const tokenHash = await sha256(refreshToken);
   const id = crypto.randomUUID();
   const familyId = metadata.familyId ?? crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_SECONDS * 1000).toISOString();
+  const expiresAt = new Date(
+    Date.now() + REFRESH_TOKEN_SECONDS * 1000,
+  ).toISOString();
 
   await database(env).execute(sql`
     insert into public.refresh_tokens (
@@ -107,7 +121,10 @@ export async function createSession(
   `);
 
   return {
-    accessToken: await issueAccessToken(env, user),
+    accessToken: await issueAccessToken(env, {
+      ...user,
+      sessionFamilyId: familyId,
+    }),
     refreshToken,
     expiresIn: 15 * 60,
     refreshExpiresIn: REFRESH_TOKEN_SECONDS,
@@ -118,7 +135,11 @@ export async function createSession(
 export async function rotateSession(
   env: Bindings,
   refreshToken: string,
-  metadata: { deviceLabel?: string; ipAddress?: string; userAgent?: string } = {},
+  metadata: {
+    deviceLabel?: string;
+    ipAddress?: string;
+    userAgent?: string;
+  } = {},
 ) {
   const hash = await sha256(refreshToken);
   const found = await database(env).execute<{
@@ -134,7 +155,12 @@ export async function rotateSession(
     limit 1
   `);
   const current = firstRow(found);
-  if (!current) throw new AppError(401, "UNAUTHENTICATED", "Your session is invalid or has expired.");
+  if (!current)
+    throw new AppError(
+      401,
+      "UNAUTHENTICATED",
+      "Your session is invalid or has expired.",
+    );
 
   if (current.revoked_at) {
     await database(env).execute(sql`
@@ -142,21 +168,35 @@ export async function rotateSession(
       set revoked_at = coalesce(revoked_at, now())
       where family_id = ${current.family_id}::uuid
     `);
-    throw new AppError(401, "UNAUTHENTICATED", "This session was already used. Sign in again.");
+    throw new AppError(
+      401,
+      "UNAUTHENTICATED",
+      "This session was already used. Sign in again.",
+    );
   }
   if (new Date(current.expires_at).getTime() <= Date.now()) {
-    throw new AppError(401, "UNAUTHENTICATED", "Your session has expired. Sign in again.");
+    throw new AppError(
+      401,
+      "UNAUTHENTICATED",
+      "Your session has expired. Sign in again.",
+    );
   }
 
   const userRecord = await findUserById(env, current.user_id);
   if (!userRecord || !userRecord.email_verified_at) {
-    throw new AppError(401, "UNAUTHENTICATED", "This account cannot start a session.");
+    throw new AppError(
+      401,
+      "UNAUTHENTICATED",
+      "This account cannot start a session.",
+    );
   }
   const user = toAuthenticatedUser(userRecord);
   const refreshTokenNext = randomToken(48);
   const nextHash = await sha256(refreshTokenNext);
   const nextId = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_SECONDS * 1000).toISOString();
+  const expiresAt = new Date(
+    Date.now() + REFRESH_TOKEN_SECONDS * 1000,
+  ).toISOString();
   const rotated = await database(env).execute<{ id: string }>(sql`
     with locked as (
       select id from public.refresh_tokens
@@ -185,10 +225,17 @@ export async function rotateSession(
       update public.refresh_tokens set revoked_at = coalesce(revoked_at, now())
       where family_id = ${current.family_id}::uuid
     `);
-    throw new AppError(401, "UNAUTHENTICATED", "This session was already used. Sign in again.");
+    throw new AppError(
+      401,
+      "UNAUTHENTICATED",
+      "This session was already used. Sign in again.",
+    );
   }
   return {
-    accessToken: await issueAccessToken(env, user),
+    accessToken: await issueAccessToken(env, {
+      ...user,
+      sessionFamilyId: current.family_id,
+    }),
     refreshToken: refreshTokenNext,
     expiresIn: 15 * 60,
     refreshExpiresIn: REFRESH_TOKEN_SECONDS,
@@ -199,6 +246,6 @@ export async function rotateSession(
 export async function revokeSession(env: Bindings, refreshToken: string) {
   const hash = await sha256(refreshToken);
   await database(env).execute(sql`
-    update public.refresh_tokens set revoked_at = coalesce(revoked_at, now()) where token_hash = ${hash}
+    update public.refresh_tokens set revoked_at = coalesce(revoked_at, now()) where family_id in (select family_id from public.refresh_tokens where token_hash = ${hash})
   `);
 }

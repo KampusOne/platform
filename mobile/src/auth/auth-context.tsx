@@ -1,7 +1,30 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Alert } from "react-native";
 
-import { api, authApi, onSessionChange, setAccessToken, type Session, type SessionUser } from "@/src/lib/api";
+import {
+  api,
+  authApi,
+  onSessionChange,
+  setAccessToken,
+  type Session,
+  type SessionUser,
+} from "@/src/lib/api";
+import {
+  clearDeviceCache,
+  readCache,
+  writeCache,
+} from "@/src/lib/device-cache";
+import { clearScheduledAlarms } from "@/src/lib/alarms";
+import { applyPreferences, type Preferences } from "@/src/lib/preferences";
 
 type Profile = {
   id: string;
@@ -12,6 +35,7 @@ type Profile = {
   university_id: string | null;
   university_name: string | null;
   onboarding_completed_at: string | null;
+  settings?: Partial<Preferences>;
 };
 
 type AuthState = "loading" | "anonymous" | "authenticated";
@@ -39,102 +63,190 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileState, setProfileState] = useState<ProfileState>("idle");
   const [profileError, setProfileError] = useState("");
+  const sessionVersion = useRef(0),
+    sessionUserId = useRef<string | null>(null);
 
   const reloadProfile = useCallback(async () => {
-    setProfileState("loading");
+    const generation = sessionVersion.current,
+      expectedUser = sessionUserId.current;
+    setProfileState((current) => (current === "ready" ? current : "loading"));
     setProfileError("");
     try {
       const response = await api<{ profile: Profile }>("/v1/student/me");
+      if (
+        generation !== sessionVersion.current ||
+        response.profile.id !== expectedUser
+      )
+        return;
       setProfile(response.profile);
+      applyPreferences(response.profile.settings);
       setProfileState("ready");
+      await writeCache(`profile.${response.profile.id}`, response.profile);
     } catch (caught) {
-      setProfile(null);
-      setProfileState("error");
-      setProfileError(caught instanceof Error ? caught.message : "Your student profile could not be loaded.");
+      if (generation !== sessionVersion.current) return;
+      setProfileState((current) => (current === "ready" ? current : "error"));
+      setProfileError(
+        caught instanceof Error
+          ? caught.message
+          : "Your student profile could not be loaded.",
+      );
       throw caught;
     }
   }, []);
 
-  const applySession = useCallback(async (session: Session) => {
-    setAccessToken(session.accessToken);
-    setSessionRestoreError("");
-    setUser(session.user);
-    setState("authenticated");
-    try {
-      await reloadProfile();
-    } catch { /* The signed-in session remains valid; the UI exposes a profile retry state. */ }
-  }, [reloadProfile]);
-
-  useEffect(() => onSessionChange((session) => {
-    if (session) {
-      void applySession(session);
-    } else {
+  const applySession = useCallback(
+    async (session: Session) => {
+      if (sessionUserId.current !== session.user.id) {
+        sessionVersion.current++;
+        sessionUserId.current = session.user.id;
+        setProfile(null);
+        setProfileState("loading");
+      }
+      setAccessToken(session.accessToken);
       setSessionRestoreError("");
-      setUser(null);
-      setProfile(null);
-      setProfileState("idle");
-      setProfileError("");
-      setState("anonymous");
-    }
-  }), [applySession]);
+      setUser(session.user);
+      setState("authenticated");
+      await writeCache("last-session", { user: session.user }, 30 * 86400_000);
+      try {
+        await reloadProfile();
+      } catch {
+        /* The signed-in session remains valid; the UI exposes a profile retry state. */
+      }
+    },
+    [reloadProfile],
+  );
+
+  useEffect(
+    () =>
+      onSessionChange((session) => {
+        if (session) {
+          void applySession(session);
+        } else {
+          sessionVersion.current++;
+          sessionUserId.current = null;
+          setSessionRestoreError("");
+          setUser(null);
+          setProfile(null);
+          setProfileState("idle");
+          setProfileError("");
+          setState("anonymous");
+          void clearDeviceCache().catch(() => undefined);
+          applyPreferences();
+          void clearScheduledAlarms().catch(() => undefined);
+        }
+      }),
+    [applySession],
+  );
 
   const retrySessionRestore = useCallback(async () => {
     setSessionRestoreError("");
     try {
       const session = await authApi.refresh();
       if (!session) {
-        setState((current) => current === "loading" ? "anonymous" : current);
+        setState((current) => (current === "loading" ? "anonymous" : current));
       }
     } catch {
       // An unavailable API does not prove the device's refresh session is
       // invalid. Keep any known credentials untouched and let the entry screen
       // offer an explicit retry or a privacy-safe path to interactive sign-in.
-      setSessionRestoreError("We couldn’t check this device’s session. Check your connection and try again.");
+      setSessionRestoreError(
+        "We couldn’t check this device’s session. Check your connection and try again.",
+      );
     }
   }, []);
 
   useEffect(() => {
-    void retrySessionRestore();
+    let active = true;
+    void (async () => {
+      const snapshot = await readCache<{ user: SessionUser }>("last-session");
+      if (snapshot && active) {
+        const savedProfile = await readCache<Profile>(
+          `profile.${snapshot.user.id}`,
+        );
+        if (savedProfile?.onboarding_completed_at && active) {
+          sessionUserId.current = snapshot.user.id;
+          setUser(snapshot.user);
+          setProfile(savedProfile);
+          setState("authenticated");
+          setProfileState("ready");
+          applyPreferences(savedProfile.settings);
+        }
+      }
+      if (active) await retrySessionRestore();
+    })();
+    return () => {
+      active = false;
+    };
   }, [retrySessionRestore]);
 
-  const signOut = useCallback(async function requestSignOut(): Promise<boolean> {
-    try {
-      await authApi.logout();
-    } catch (caught) {
-      const detail = caught instanceof Error ? caught.message : "The server could not be reached.";
-      Alert.alert(
-        "Couldn’t sign out",
-        `${detail}\n\nYou are still signed in. Check your connection and try again.`,
-        [
-          { style: "cancel", text: "Stay signed in" },
-          { onPress: () => { void requestSignOut(); }, text: "Try again" },
-        ],
-      );
-      return false;
-    }
+  const signOut = useCallback(
+    async function requestSignOut(): Promise<boolean> {
+      try {
+        await authApi.logout();
+      } catch (caught) {
+        const detail =
+          caught instanceof Error
+            ? caught.message
+            : "The server could not be reached.";
+        Alert.alert(
+          "Couldn’t sign out",
+          `${detail}\n\nYou are still signed in. Check your connection and try again.`,
+          [
+            { style: "cancel", text: "Stay signed in" },
+            {
+              onPress: () => {
+                void requestSignOut();
+              },
+              text: "Try again",
+            },
+          ],
+        );
+        return false;
+      }
 
-    setAccessToken(null);
-    setSessionRestoreError("");
-    setUser(null);
-    setProfile(null);
-    setProfileState("idle");
-    setProfileError("");
-    setState("anonymous");
-    return true;
-  }, []);
+      sessionVersion.current++;
+      sessionUserId.current = null;
+      setAccessToken(null);
+      setSessionRestoreError("");
+      setUser(null);
+      setProfile(null);
+      setProfileState("idle");
+      setProfileError("");
+      setState("anonymous");
+      await clearDeviceCache().catch(() => undefined);
+      applyPreferences();
+      await clearScheduledAlarms().catch(() => undefined);
+      return true;
+    },
+    [],
+  );
 
-  const value = useMemo<AuthContextValue>(() => ({
-    state,
-    sessionRestoreError,
-    profileState,
-    profileError,
-    user,
-    profile,
-    beginSession: applySession,
-    retrySessionRestore,
-    reloadProfile,
-    signOut,
-  }), [applySession, profile, profileError, profileState, reloadProfile, retrySessionRestore, sessionRestoreError, signOut, state, user]);
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      state,
+      sessionRestoreError,
+      profileState,
+      profileError,
+      user,
+      profile,
+      beginSession: applySession,
+      retrySessionRestore,
+      reloadProfile,
+      signOut,
+    }),
+    [
+      applySession,
+      profile,
+      profileError,
+      profileState,
+      reloadProfile,
+      retrySessionRestore,
+      sessionRestoreError,
+      signOut,
+      state,
+      user,
+    ],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

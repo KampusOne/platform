@@ -1,3 +1,4 @@
+import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -16,6 +17,8 @@ import { theme } from "@/src/theme";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ForgotPasswordScreen() {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const [step, setStep] = useState<"email" | "reset">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -34,7 +37,8 @@ export default function ForgotPasswordScreen() {
   }, [seconds]);
 
   const validEmail = emailPattern.test(email.trim());
-  const passwordsMatch = Boolean(confirmPassword) && password === confirmPassword;
+  const passwordsMatch =
+    Boolean(confirmPassword) && password === confirmPassword;
 
   async function send() {
     if (!validEmail) {
@@ -50,7 +54,11 @@ export default function ForgotPasswordScreen() {
       setStep("reset");
       setSeconds(60);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "We could not send the reset email.");
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "We could not send the reset email.",
+      );
     } finally {
       setLoading(false);
     }
@@ -64,9 +72,15 @@ export default function ForgotPasswordScreen() {
     try {
       await authApi.forgotPassword(email.trim());
       setSeconds(60);
-      setNotice("A fresh reset code is on its way if an account uses this email.");
+      setNotice(
+        "A fresh reset code is on its way if an account uses this email.",
+      );
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "We could not send another reset code.");
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "We could not send another reset code.",
+      );
     } finally {
       setResending(false);
     }
@@ -93,7 +107,11 @@ export default function ForgotPasswordScreen() {
       await authApi.resetPassword(email.trim(), code, password);
       router.replace("/(auth)/sign-in");
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "We could not reset the password.");
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "We could not reset the password.",
+      );
     } finally {
       setLoading(false);
     }
@@ -110,9 +128,16 @@ export default function ForgotPasswordScreen() {
       }
       title={step === "email" ? "Reset your password" : "Choose a new password"}
     >
-      <View accessibilityLabel={`Password reset step ${step === "email" ? "1" : "2"} of 2`} style={styles.progress}>
+      <View
+        accessibilityLabel={`Password reset step ${step === "email" ? "1" : "2"} of 2`}
+        style={styles.progress}
+      >
         <View style={styles.progressActive} />
-        <View style={step === "reset" ? styles.progressActive : styles.progressInactive} />
+        <View
+          style={
+            step === "reset" ? styles.progressActive : styles.progressInactive
+          }
+        />
       </View>
 
       {step === "email" ? (
@@ -136,7 +161,11 @@ export default function ForgotPasswordScreen() {
       ) : (
         <>
           <FormNotice>
-            Reset instructions were requested for <Text selectable style={styles.email}>{email}</Text>. The code expires in 10 minutes.
+            Reset instructions were requested for{" "}
+            <Text selectable style={styles.email}>
+              {email}
+            </Text>
+            . The code expires in 10 minutes.
           </FormNotice>
           <AuthField
             autoComplete="one-time-code"
@@ -184,7 +213,9 @@ export default function ForgotPasswordScreen() {
           />
           <View style={styles.resendRow}>
             <Text accessibilityLiveRegion="polite" style={styles.resendText}>
-              {seconds > 0 ? `Request another code in ${seconds}s` : "Code missing or expired?"}
+              {seconds > 0
+                ? `Request another code in ${seconds}s`
+                : "Code missing or expired?"}
             </Text>
             {seconds === 0 ? (
               <TextLink disabled={resending} onPress={() => void resend()}>
@@ -212,40 +243,42 @@ export default function ForgotPasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  progress: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 30,
-  },
-  progressActive: {
-    backgroundColor: "#A8462E",
-    borderRadius: 2,
-    flex: 1,
-    height: 4,
-  },
-  progressInactive: {
-    backgroundColor: theme.border,
-    borderRadius: 2,
-    flex: 1,
-    height: 4,
-  },
-  email: {
-    color: theme.text,
-    fontFamily: theme.font.semibold,
-  },
-  resendRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    justifyContent: "flex-end",
-    marginBottom: 18,
-    marginTop: -4,
-  },
-  resendText: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 12.5,
-  },
-});
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    progress: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 30,
+    },
+    progressActive: {
+      backgroundColor: "#A8462E",
+      borderRadius: 2,
+      flex: 1,
+      height: 4,
+    },
+    progressInactive: {
+      backgroundColor: theme.border,
+      borderRadius: 2,
+      flex: 1,
+      height: 4,
+    },
+    email: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+    },
+    resendRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      justifyContent: "flex-end",
+      marginBottom: 18,
+      marginTop: -4,
+    },
+    resendText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12.5,
+    },
+  });
+const styles = createStyles(theme);

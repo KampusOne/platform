@@ -50,6 +50,15 @@ jobs:
             echo "Phase 3 cannot be activated until its reviewed migration proof variable is true."
             exit 1
           fi
+      - name: Guard unified application schema activation
+        env:
+          UNIFIED_MIGRATION_READY: ${{ vars.UNIFIED_MIGRATION_20260913_READY }}
+        run: |
+          if grep -q '"UNIFIED_SCHEMA_READY": "true"' server/wrangler.jsonc \
+            && [ "$UNIFIED_MIGRATION_READY" != "true" ]; then
+            echo "Unified routes require an approved migration rehearsal before activation."
+            exit 1
+          fi
       - name: Deploy verified Worker
         uses: cloudflare/wrangler-action@v3
         with:

@@ -1,0 +1,59 @@
+name: Build Android test APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      [
+        "mobile/**",
+        "packages/design-tokens/**",
+        ".github/workflows/android-apk.yml",
+      ]
+permissions:
+  contents: read
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install dependencies
+        run: npm ci
+        working-directory: mobile
+      - name: Check app types
+        run: npm run check
+        working-directory: mobile
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --no-install
+        working-directory: mobile
+        env:
+          CI: "1"
+          EXPO_NO_TELEMETRY: "1"
+      - name: Build installable APK with bundled JavaScript
+        run: ./gradlew assembleRelease --no-daemon
+        working-directory: mobile/android
+        env:
+          CI: "1"
+          NODE_ENV: production
+          EXPO_PUBLIC_KAMPUSONE_API_URL: https://platformp.divine-haze-54eb.workers.dev
+      - name: Save Android testing artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KampusOne-Android-test-${{ github.sha }}
+          path: mobile/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14
+# Expo's generated test signing is for sideload testing only. A separately
+# provisioned release/upload keystore is required before Play Store publication.

@@ -1,3 +1,4 @@
+import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,7 +17,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth/auth-context";
-import { AuthField, AuthShell, FormError, PrimaryButton, TextLink } from "@/src/components/auth-ui";
+import {
+  AuthField,
+  AuthShell,
+  FormError,
+  PrimaryButton,
+  TextLink,
+} from "@/src/components/auth-ui";
 import { ApiError, api } from "@/src/lib/api";
 import { theme } from "@/src/theme";
 
@@ -31,7 +38,12 @@ type Item = {
   department_id?: string;
   code?: string;
 };
-type Catalog = { universities: Item[]; faculties: Item[]; departments: Item[]; courses: Item[] };
+type Catalog = {
+  universities: Item[];
+  faculties: Item[];
+  departments: Item[];
+  courses: Item[];
+};
 
 function useReducedMotionPreference() {
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -41,7 +53,10 @@ function useReducedMotionPreference() {
     void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
       if (live) setReducedMotion(value);
     });
-    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReducedMotion);
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      setReducedMotion,
+    );
     return () => {
       live = false;
       subscription.remove();
@@ -54,15 +69,18 @@ function useReducedMotionPreference() {
 const stepCopy = [
   {
     title: "Choose your school",
-    subtitle: "We’ll use this to show the right classes, updates and campus places.",
+    subtitle:
+      "We’ll use this to show the right classes, updates and campus places.",
   },
   {
     title: "Your student details",
-    subtitle: "Add the details that connect your account to your academic profile.",
+    subtitle:
+      "Add the details that connect your account to your academic profile.",
   },
   {
     title: "Where are you now?",
-    subtitle: "Set your current level and expected graduation year. You can update these later.",
+    subtitle:
+      "Set your current level and expected graduation year. You can update these later.",
   },
 ] as const;
 
@@ -81,6 +99,8 @@ function Selector({
   disabled?: boolean;
   optional?: boolean;
 }) {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const modalHeadingRef = useRef<View>(null);
@@ -89,7 +109,9 @@ function Selector({
   const filteredItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return items;
-    return items.filter((item) => `${item.code ?? ""} ${item.name}`.toLowerCase().includes(needle));
+    return items.filter((item) =>
+      `${item.code ?? ""} ${item.name}`.toLowerCase().includes(needle),
+    );
   }, [items, query]);
   const close = useCallback(() => {
     setOpen(false);
@@ -115,7 +137,10 @@ function Selector({
         <Pressable
           accessibilityLabel={`${label}: ${activeItem?.name ?? "not selected"}`}
           accessibilityRole="button"
-          accessibilityState={{ disabled: disabled || !items.length, expanded: open }}
+          accessibilityState={{
+            disabled: disabled || !items.length,
+            expanded: open,
+          }}
           disabled={disabled || !items.length}
           onPress={() => setOpen(true)}
           style={({ pressed }) => [
@@ -125,8 +150,16 @@ function Selector({
           ]}
         >
           <View style={styles.selectorCopy}>
-            <Text numberOfLines={1} style={[styles.selectorValue, !activeItem && styles.selectorPlaceholder]}>
-              {activeItem ? `${activeItem.code ? `${activeItem.code} · ` : ""}${activeItem.name}` : `Select ${label.toLowerCase()}`}
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.selectorValue,
+                !activeItem && styles.selectorPlaceholder,
+              ]}
+            >
+              {activeItem
+                ? `${activeItem.code ? `${activeItem.code} · ` : ""}${activeItem.name}`
+                : `Select ${label.toLowerCase()}`}
             </Text>
           </View>
           <Ionicons color={theme.textMuted} name="chevron-down" size={19} />
@@ -147,7 +180,11 @@ function Selector({
             onAccessibilityEscape={close}
             style={styles.sheet}
           >
-            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.sheetHandle} />
+            <View
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={styles.sheetHandle}
+            />
             <View style={styles.sheetHeader}>
               <View
                 accessible
@@ -156,13 +193,18 @@ function Selector({
                 ref={modalHeadingRef}
               >
                 <Text style={styles.sheetEyebrow}>ACADEMIC PROFILE</Text>
-                <Text style={styles.sheetTitle}>Select {label.toLowerCase()}</Text>
+                <Text style={styles.sheetTitle}>
+                  Select {label.toLowerCase()}
+                </Text>
               </View>
               <Pressable
                 accessibilityLabel={`Close ${label.toLowerCase()} choices`}
                 accessibilityRole="button"
                 onPress={close}
-                style={({ pressed }) => [styles.close, pressed && styles.closePressed]}
+                style={({ pressed }) => [
+                  styles.close,
+                  pressed && styles.closePressed,
+                ]}
               >
                 <Ionicons color={theme.text} name="close" size={23} />
               </Pressable>
@@ -182,7 +224,11 @@ function Selector({
               data={filteredItems}
               keyboardShouldPersistTaps="handled"
               keyExtractor={(item) => item.id}
-              ListEmptyComponent={<Text style={styles.noOptions}>No matching option. Try another search.</Text>}
+              ListEmptyComponent={
+                <Text style={styles.noOptions}>
+                  No matching option. Try another search.
+                </Text>
+              }
               renderItem={({ item }) => {
                 const checked = item.id === selected;
                 return (
@@ -193,13 +239,28 @@ function Selector({
                       onSelect(item.id);
                       close();
                     }}
-                    style={({ pressed }) => [styles.option, checked && styles.optionSelected, pressed && styles.optionPressed]}
+                    style={({ pressed }) => [
+                      styles.option,
+                      checked && styles.optionSelected,
+                      pressed && styles.optionPressed,
+                    ]}
                   >
-                    <Text style={[styles.optionText, checked && styles.optionTextSelected]}>
+                    <Text
+                      style={[
+                        styles.optionText,
+                        checked && styles.optionTextSelected,
+                      ]}
+                    >
                       {item.code ? `${item.code} · ` : ""}
                       {item.name}
                     </Text>
-                    {checked ? <Ionicons color={DEEP_TERRACOTTA} name="checkmark-circle" size={21} /> : null}
+                    {checked ? (
+                      <Ionicons
+                        color={DEEP_TERRACOTTA}
+                        name="checkmark-circle"
+                        size={21}
+                      />
+                    ) : null}
                   </Pressable>
                 );
               }}
@@ -213,6 +274,8 @@ function Selector({
 }
 
 export default function OnboardingScreen() {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const { profile, reloadProfile, signOut } = useAuth();
   const [step, setStep] = useState(0);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -224,7 +287,9 @@ export default function OnboardingScreen() {
   const [username, setUsername] = useState("");
   const [matriculationNumber, setMatriculationNumber] = useState("");
   const [currentLevel, setCurrentLevel] = useState("100");
-  const [graduationYear, setGraduationYear] = useState(String(new Date().getFullYear() + 4));
+  const [graduationYear, setGraduationYear] = useState(
+    String(new Date().getFullYear() + 4),
+  );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -235,9 +300,15 @@ export default function OnboardingScreen() {
     try {
       const data = await api<Catalog>("/v1/student/catalog");
       setCatalog(data);
-      setUniversityId((current) => data.universities.some((item) => item.id === current) ? current : "");
+      setUniversityId((current) =>
+        data.universities.some((item) => item.id === current) ? current : "",
+      );
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "School details could not be loaded.");
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "School details could not be loaded.",
+      );
     } finally {
       setCatalogLoading(false);
     }
@@ -248,23 +319,32 @@ export default function OnboardingScreen() {
   }, [loadCatalog]);
 
   const faculties = useMemo(
-    () => catalog?.faculties.filter((item) => item.university_id === universityId) ?? [],
+    () =>
+      catalog?.faculties.filter(
+        (item) => item.university_id === universityId,
+      ) ?? [],
     [catalog, universityId],
   );
   const departments = useMemo(
-    () => catalog?.departments.filter((item) => item.faculty_id === facultyId) ?? [],
+    () =>
+      catalog?.departments.filter((item) => item.faculty_id === facultyId) ??
+      [],
     [catalog, facultyId],
   );
   const courses = useMemo(
-    () => catalog?.courses.filter((item) => item.department_id === departmentId) ?? [],
+    () =>
+      catalog?.courses.filter((item) => item.department_id === departmentId) ??
+      [],
     [catalog, departmentId],
   );
 
   useEffect(() => {
-    if (facultyId && !faculties.some((item) => item.id === facultyId)) setFacultyId("");
+    if (facultyId && !faculties.some((item) => item.id === facultyId))
+      setFacultyId("");
   }, [faculties, facultyId]);
   useEffect(() => {
-    if (departmentId && !departments.some((item) => item.id === departmentId)) setDepartmentId("");
+    if (departmentId && !departments.some((item) => item.id === departmentId))
+      setDepartmentId("");
   }, [departments, departmentId]);
   useEffect(() => {
     if (!courses.some((item) => item.id === courseId)) setCourseId("");
@@ -274,7 +354,9 @@ export default function OnboardingScreen() {
     [courses],
   );
 
-  const university = catalog?.universities.find((item) => item.id === universityId);
+  const university = catalog?.universities.find(
+    (item) => item.id === universityId,
+  );
   const department = departments.find((item) => item.id === departmentId);
   const course = courses.find((item) => item.id === courseId);
   const yearOptions = useMemo<Item[]>(() => {
@@ -286,14 +368,22 @@ export default function OnboardingScreen() {
   }, []);
 
   const schoolStepComplete = Boolean(
-    universityId
-      && facultyId
-      && departmentId
-      && (!courseId || courses.some((item) => item.id === courseId)),
+    universityId &&
+      facultyId &&
+      departmentId &&
+      (!courseId || courses.some((item) => item.id === courseId)),
   );
-  const identityStepComplete = username.trim().length >= 3 && matriculationNumber.trim().length >= 3;
-  const timelineStepComplete = levels.includes(currentLevel as (typeof levels)[number]) && Boolean(graduationYear);
-  const canContinue = step === 0 ? schoolStepComplete : step === 1 ? identityStepComplete : timelineStepComplete;
+  const identityStepComplete =
+    username.trim().length >= 3 && matriculationNumber.trim().length >= 3;
+  const timelineStepComplete =
+    levels.includes(currentLevel as (typeof levels)[number]) &&
+    Boolean(graduationYear);
+  const canContinue =
+    step === 0
+      ? schoolStepComplete
+      : step === 1
+        ? identityStepComplete
+        : timelineStepComplete;
 
   function nextStep() {
     if (!canContinue) return;
@@ -304,7 +394,9 @@ export default function OnboardingScreen() {
   async function submit() {
     if (!canContinue) return;
     if (!profile?.first_name || !profile.last_name) {
-      setError("Your verified account details did not load. Go back, check your connection and try again.");
+      setError(
+        "Your verified account details did not load. Go back, check your connection and try again.",
+      );
       return;
     }
     setLoading(true);
@@ -328,7 +420,11 @@ export default function OnboardingScreen() {
       await reloadProfile();
       router.replace("/(tabs)");
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Your profile could not be completed.");
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "Your profile could not be completed.",
+      );
     } finally {
       setLoading(false);
     }
@@ -342,10 +438,14 @@ export default function OnboardingScreen() {
       if (signedOut) {
         router.replace("/(auth)/sign-in");
       } else {
-        setError("You are still signed in. Check your connection and try switching accounts again.");
+        setError(
+          "You are still signed in. Check your connection and try switching accounts again.",
+        );
       }
     } catch {
-      setError("You are still signed in. Check your connection and try switching accounts again.");
+      setError(
+        "You are still signed in. Check your connection and try switching accounts again.",
+      );
     } finally {
       setSigningOut(false);
     }
@@ -364,9 +464,18 @@ export default function OnboardingScreen() {
       subtitle={copy.subtitle}
       title={copy.title}
     >
-      <View accessibilityLabel={`Academic setup step ${step + 1} of ${stepCopy.length}`} style={styles.progress}>
+      <View
+        accessibilityLabel={`Academic setup step ${step + 1} of ${stepCopy.length}`}
+        style={styles.progress}
+      >
         {stepCopy.map((item, index) => (
-          <View key={item.title} style={[styles.progressBar, index <= step && styles.progressBarActive]} />
+          <View
+            key={item.title}
+            style={[
+              styles.progressBar,
+              index <= step && styles.progressBarActive,
+            ]}
+          />
         ))}
       </View>
 
@@ -384,7 +493,9 @@ export default function OnboardingScreen() {
           {catalogLoading ? (
             <View accessibilityLiveRegion="polite" style={styles.loadingState}>
               <ActivityIndicator color={DEEP_TERRACOTTA} />
-              <Text style={styles.loadingText}>Loading your school choices…</Text>
+              <Text style={styles.loadingText}>
+                Loading your school choices…
+              </Text>
             </View>
           ) : null}
           {!catalogLoading && catalog ? (
@@ -433,7 +544,9 @@ export default function OnboardingScreen() {
           ) : null}
           {!catalogLoading && !catalog ? (
             <View style={styles.retry}>
-              <TextLink onPress={() => void loadCatalog()}>Try loading school choices again</TextLink>
+              <TextLink onPress={() => void loadCatalog()}>
+                Try loading school choices again
+              </TextLink>
             </View>
           ) : null}
         </>
@@ -448,12 +561,17 @@ export default function OnboardingScreen() {
             icon="at-outline"
             label="Username"
             maxLength={30}
-            onChangeText={(value) => setUsername(value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+            onChangeText={(value) =>
+              setUsername(value.toLowerCase().replace(/[^a-z0-9_]/g, ""))
+            }
             placeholder="e.g. warriorpikin"
             textContentType="username"
             value={username}
           />
-          <Text style={styles.help}>Use letters, numbers and underscores. This can be different from your full name.</Text>
+          <Text style={styles.help}>
+            Use letters, numbers and underscores. This can be different from
+            your full name.
+          </Text>
           <AuthField
             autoCapitalize="characters"
             autoCorrect={false}
@@ -463,7 +581,10 @@ export default function OnboardingScreen() {
             placeholder="Enter your matric number"
             value={matriculationNumber}
           />
-          <Text style={styles.privacy}>Your matriculation number is private and only used for account and school verification.</Text>
+          <Text style={styles.privacy}>
+            Your matriculation number is private and only used for account and
+            school verification.
+          </Text>
         </View>
       ) : null}
 
@@ -479,9 +600,20 @@ export default function OnboardingScreen() {
                   accessibilityState={{ checked: selected }}
                   key={level}
                   onPress={() => setCurrentLevel(level)}
-                  style={({ pressed }) => [styles.level, selected && styles.levelSelected, pressed && styles.levelPressed]}
+                  style={({ pressed }) => [
+                    styles.level,
+                    selected && styles.levelSelected,
+                    pressed && styles.levelPressed,
+                  ]}
                 >
-                  <Text style={[styles.levelText, selected && styles.levelTextSelected]}>{level}</Text>
+                  <Text
+                    style={[
+                      styles.levelText,
+                      selected && styles.levelTextSelected,
+                    ]}
+                  >
+                    {level}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -496,12 +628,16 @@ export default function OnboardingScreen() {
           <View style={styles.summary}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>School</Text>
-              <Text numberOfLines={2} style={styles.summaryValue}>{university?.name ?? "Not selected"}</Text>
+              <Text numberOfLines={2} style={styles.summaryValue}>
+                {university?.name ?? "Not selected"}
+              </Text>
             </View>
             <View style={styles.summaryRule} />
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Programme</Text>
-              <Text numberOfLines={2} style={styles.summaryValue}>{course?.name ?? department?.name ?? "Not selected"}</Text>
+              <Text numberOfLines={2} style={styles.summaryValue}>
+                {course?.name ?? department?.name ?? "Not selected"}
+              </Text>
             </View>
           </View>
         </View>
@@ -511,285 +647,299 @@ export default function OnboardingScreen() {
       <PrimaryButton
         disabled={!canContinue || catalogLoading || signingOut}
         loading={loading}
-        onPress={() => void (step === stepCopy.length - 1 ? submit() : nextStep())}
+        onPress={() =>
+          void (step === stepCopy.length - 1 ? submit() : nextStep())
+        }
       >
         {step === stepCopy.length - 1 ? "Finish setup" : "Continue"}
       </PrimaryButton>
       <Pressable
         accessibilityLabel="Switch account or sign out"
         accessibilityRole="button"
-        accessibilityState={{ busy: signingOut, disabled: loading || signingOut }}
+        accessibilityState={{
+          busy: signingOut,
+          disabled: loading || signingOut,
+        }}
         disabled={loading || signingOut}
         onPress={() => void switchAccount()}
-        style={({ pressed }) => [styles.switchAccount, pressed && styles.closePressed]}
+        style={({ pressed }) => [
+          styles.switchAccount,
+          pressed && styles.closePressed,
+        ]}
       >
-        {signingOut ? <ActivityIndicator color={DEEP_TERRACOTTA} size="small" /> : null}
-        <Text style={styles.switchAccountText}>{signingOut ? "Signing out…" : "Switch account / Sign out"}</Text>
+        {signingOut ? (
+          <ActivityIndicator color={DEEP_TERRACOTTA} size="small" />
+        ) : null}
+        <Text style={styles.switchAccountText}>
+          {signingOut ? "Signing out…" : "Switch account / Sign out"}
+        </Text>
       </Pressable>
     </AuthShell>
   );
 }
 
-const styles = StyleSheet.create({
-  progress: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 24,
-  },
-  progressBar: {
-    backgroundColor: theme.border,
-    borderRadius: 2,
-    flex: 1,
-    height: 4,
-  },
-  progressBarActive: {
-    backgroundColor: DEEP_TERRACOTTA,
-  },
-  illustration: {
-    alignSelf: "center",
-    height: 176,
-    marginBottom: 18,
-    marginTop: -14,
-    width: "100%",
-  },
-  loadingState: {
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 42,
-  },
-  loadingText: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 13,
-  },
-  selectorGroup: {
-    marginBottom: 15,
-  },
-  fieldLabel: {
-    color: theme.text,
-    fontFamily: theme.font.semibold,
-    fontSize: 13,
-    marginBottom: 7,
-  },
-  optional: {
-    color: theme.textSubtle,
-    fontFamily: theme.font.body,
-    fontSize: 11.5,
-  },
-  selector: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,253,252,0.72)",
-    borderColor: theme.clay,
-    borderRadius: 14,
-    borderWidth: 1.25,
-    flexDirection: "row",
-    minHeight: 56,
-    paddingHorizontal: 15,
-  },
-  selectorDisabled: {
-    backgroundColor: "#EFEAE5",
-    borderColor: theme.border,
-    opacity: 0.64,
-  },
-  selectorPressed: {
-    backgroundColor: theme.surfaceSoft,
-  },
-  selectorCopy: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  selectorValue: {
-    color: theme.text,
-    fontFamily: theme.font.medium,
-    fontSize: 14,
-  },
-  selectorPlaceholder: {
-    color: theme.textSubtle,
-    fontFamily: theme.font.body,
-  },
-  retry: {
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  help: {
-    color: theme.textSubtle,
-    fontFamily: theme.font.body,
-    fontSize: 11.5,
-    lineHeight: 17,
-    marginBottom: 20,
-    marginTop: -7,
-  },
-  privacy: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 26,
-    marginTop: -6,
-  },
-  levels: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 24,
-  },
-  level: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,253,252,0.72)",
-    borderColor: theme.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    height: 48,
-    justifyContent: "center",
-    minWidth: "30%",
-    paddingHorizontal: 14,
-  },
-  levelSelected: {
-    backgroundColor: DEEP_TERRACOTTA,
-    borderColor: DEEP_TERRACOTTA,
-  },
-  levelPressed: {
-    opacity: 0.75,
-  },
-  levelText: {
-    color: theme.text,
-    fontFamily: theme.font.semibold,
-    fontSize: 13,
-  },
-  levelTextSelected: {
-    color: "#FFFFFF",
-  },
-  summary: {
-    borderBottomColor: theme.border,
-    borderBottomWidth: 1,
-    borderTopColor: theme.border,
-    borderTopWidth: 1,
-    marginBottom: 24,
-    marginTop: 12,
-    paddingVertical: 4,
-  },
-  summaryRow: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    gap: 16,
-    justifyContent: "space-between",
-    paddingVertical: 13,
-  },
-  summaryLabel: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 12.5,
-  },
-  summaryValue: {
-    color: theme.text,
-    flex: 1,
-    fontFamily: theme.font.semibold,
-    fontSize: 12.5,
-    lineHeight: 18,
-    textAlign: "right",
-  },
-  summaryRule: {
-    backgroundColor: theme.border,
-    height: StyleSheet.hairlineWidth,
-  },
-  modalBackdrop: {
-    backgroundColor: "rgba(41,35,31,0.42)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: theme.canvas,
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    maxHeight: "82%",
-    paddingHorizontal: 22,
-    paddingTop: 10,
-  },
-  sheetHandle: {
-    alignSelf: "center",
-    backgroundColor: "#CFC3BB",
-    borderRadius: 2,
-    height: 4,
-    marginBottom: 14,
-    width: 40,
-  },
-  sheetHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 18,
-  },
-  sheetEyebrow: {
-    color: DEEP_TERRACOTTA,
-    fontFamily: theme.font.bold,
-    fontSize: 9,
-    letterSpacing: 1.1,
-  },
-  sheetTitle: {
-    color: theme.text,
-    fontFamily: theme.font.display,
-    fontSize: 22,
-    marginTop: 3,
-  },
-  close: {
-    alignItems: "center",
-    height: 44,
-    justifyContent: "center",
-    width: 44,
-  },
-  closePressed: {
-    opacity: 0.55,
-  },
-  optionList: {
-    flexGrow: 1,
-    paddingBottom: 24,
-  },
-  option: {
-    alignItems: "center",
-    borderBottomColor: theme.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    minHeight: 58,
-    paddingHorizontal: 4,
-    paddingVertical: 10,
-  },
-  optionSelected: {
-    borderBottomColor: theme.clay,
-  },
-  optionPressed: {
-    backgroundColor: theme.surfaceSoft,
-  },
-  optionText: {
-    color: theme.text,
-    flex: 1,
-    fontFamily: theme.font.body,
-    fontSize: 14,
-    lineHeight: 20,
-    paddingRight: 12,
-  },
-  optionTextSelected: {
-    color: DEEP_TERRACOTTA,
-    fontFamily: theme.font.semibold,
-  },
-  noOptions: {
-    color: theme.textMuted,
-    fontFamily: theme.font.body,
-    fontSize: 13,
-    lineHeight: 20,
-    paddingVertical: 32,
-    textAlign: "center",
-  },
-  switchAccount: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    minHeight: 44,
-    paddingHorizontal: 16,
-  },
-  switchAccountText: {
-    color: DEEP_TERRACOTTA,
-    fontFamily: theme.font.semibold,
-    fontSize: 13,
-  },
-});
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    progress: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 24,
+    },
+    progressBar: {
+      backgroundColor: theme.border,
+      borderRadius: 2,
+      flex: 1,
+      height: 4,
+    },
+    progressBarActive: {
+      backgroundColor: DEEP_TERRACOTTA,
+    },
+    illustration: {
+      alignSelf: "center",
+      height: 176,
+      marginBottom: 18,
+      marginTop: -14,
+      width: "100%",
+    },
+    loadingState: {
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 42,
+    },
+    loadingText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 13,
+    },
+    selectorGroup: {
+      marginBottom: 15,
+    },
+    fieldLabel: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+      marginBottom: 7,
+    },
+    optional: {
+      color: theme.textSubtle,
+      fontFamily: theme.font.body,
+      fontSize: 11.5,
+    },
+    selector: {
+      alignItems: "center",
+      backgroundColor: "rgba(255,253,252,0.72)",
+      borderColor: theme.clay,
+      borderRadius: 14,
+      borderWidth: 1.25,
+      flexDirection: "row",
+      minHeight: 56,
+      paddingHorizontal: 15,
+    },
+    selectorDisabled: {
+      backgroundColor: "#EFEAE5",
+      borderColor: theme.border,
+      opacity: 0.64,
+    },
+    selectorPressed: {
+      backgroundColor: theme.surfaceSoft,
+    },
+    selectorCopy: {
+      flex: 1,
+      paddingRight: 10,
+    },
+    selectorValue: {
+      color: theme.text,
+      fontFamily: theme.font.medium,
+      fontSize: 14,
+    },
+    selectorPlaceholder: {
+      color: theme.textSubtle,
+      fontFamily: theme.font.body,
+    },
+    retry: {
+      alignItems: "center",
+      marginBottom: 24,
+    },
+    help: {
+      color: theme.textSubtle,
+      fontFamily: theme.font.body,
+      fontSize: 11.5,
+      lineHeight: 17,
+      marginBottom: 20,
+      marginTop: -7,
+    },
+    privacy: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12,
+      lineHeight: 18,
+      marginBottom: 26,
+      marginTop: -6,
+    },
+    levels: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 24,
+    },
+    level: {
+      alignItems: "center",
+      backgroundColor: "rgba(255,253,252,0.72)",
+      borderColor: theme.border,
+      borderRadius: 12,
+      borderWidth: 1,
+      height: 48,
+      justifyContent: "center",
+      minWidth: "30%",
+      paddingHorizontal: 14,
+    },
+    levelSelected: {
+      backgroundColor: DEEP_TERRACOTTA,
+      borderColor: DEEP_TERRACOTTA,
+    },
+    levelPressed: {
+      opacity: 0.75,
+    },
+    levelText: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+    },
+    levelTextSelected: {
+      color: "#FFFFFF",
+    },
+    summary: {
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      borderTopColor: theme.border,
+      borderTopWidth: 1,
+      marginBottom: 24,
+      marginTop: 12,
+      paddingVertical: 4,
+    },
+    summaryRow: {
+      alignItems: "flex-start",
+      flexDirection: "row",
+      gap: 16,
+      justifyContent: "space-between",
+      paddingVertical: 13,
+    },
+    summaryLabel: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12.5,
+    },
+    summaryValue: {
+      color: theme.text,
+      flex: 1,
+      fontFamily: theme.font.semibold,
+      fontSize: 12.5,
+      lineHeight: 18,
+      textAlign: "right",
+    },
+    summaryRule: {
+      backgroundColor: theme.border,
+      height: StyleSheet.hairlineWidth,
+    },
+    modalBackdrop: {
+      backgroundColor: "rgba(41,35,31,0.42)",
+      flex: 1,
+      justifyContent: "flex-end",
+    },
+    sheet: {
+      backgroundColor: theme.canvas,
+      borderTopLeftRadius: 26,
+      borderTopRightRadius: 26,
+      maxHeight: "82%",
+      paddingHorizontal: 22,
+      paddingTop: 10,
+    },
+    sheetHandle: {
+      alignSelf: "center",
+      backgroundColor: "#CFC3BB",
+      borderRadius: 2,
+      height: 4,
+      marginBottom: 14,
+      width: 40,
+    },
+    sheetHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 18,
+    },
+    sheetEyebrow: {
+      color: DEEP_TERRACOTTA,
+      fontFamily: theme.font.bold,
+      fontSize: 9,
+      letterSpacing: 1.1,
+    },
+    sheetTitle: {
+      color: theme.text,
+      fontFamily: theme.font.display,
+      fontSize: 22,
+      marginTop: 3,
+    },
+    close: {
+      alignItems: "center",
+      height: 44,
+      justifyContent: "center",
+      width: 44,
+    },
+    closePressed: {
+      opacity: 0.55,
+    },
+    optionList: {
+      flexGrow: 1,
+      paddingBottom: 24,
+    },
+    option: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      minHeight: 58,
+      paddingHorizontal: 4,
+      paddingVertical: 10,
+    },
+    optionSelected: {
+      borderBottomColor: theme.clay,
+    },
+    optionPressed: {
+      backgroundColor: theme.surfaceSoft,
+    },
+    optionText: {
+      color: theme.text,
+      flex: 1,
+      fontFamily: theme.font.body,
+      fontSize: 14,
+      lineHeight: 20,
+      paddingRight: 12,
+    },
+    optionTextSelected: {
+      color: DEEP_TERRACOTTA,
+      fontFamily: theme.font.semibold,
+    },
+    noOptions: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 13,
+      lineHeight: 20,
+      paddingVertical: 32,
+      textAlign: "center",
+    },
+    switchAccount: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 8,
+      justifyContent: "center",
+      minHeight: 44,
+      paddingHorizontal: 16,
+    },
+    switchAccountText: {
+      color: DEEP_TERRACOTTA,
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+    },
+  });
+const styles = createStyles(theme);

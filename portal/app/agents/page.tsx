@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 
 import { AccessGate } from "@/components/access-gate";
-import { AgentDashboard } from "@/components/agent-dashboard";
+import { AgentApplication } from "@/components/agent-application";
 
-export const metadata: Metadata = { title: "Agent workspace" };
+export const metadata: Metadata = { title: "Agent application" };
 
 export default function AgentsPage() {
-  return <AccessGate surface="agents"><AgentDashboard /></AccessGate>;
+  return (
+    <AccessGate surface="agents">
+      <AgentApplication />
+    </AccessGate>
+  );
 }

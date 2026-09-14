@@ -1,6 +1,7 @@
+import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
-import { useFocusEffect } from "expo-router";
+import * as Haptics from "@/src/lib/haptics";
+import { useFocusEffect, router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AccessibilityInfo,
@@ -21,7 +22,14 @@ import { FilterRow, SearchField } from "@/src/components/product-ui";
 import { ApiError, api } from "@/src/lib/api";
 import { theme } from "@/src/theme";
 
-const categories = ["All", "Update", "Event", "Sports", "Opportunity", "Emergency"] as const;
+const categories = [
+  "All",
+  "Update",
+  "Event",
+  "Sports",
+  "Opportunity",
+  "Emergency",
+] as const;
 const structuredCategories = new Set(["EVENT", "OPPORTUNITY"]);
 const emptyFeedIllustration = require("@/assets/illustrations/feed-empty-v2.png");
 
@@ -70,6 +78,8 @@ function FeedPost({
   onShare: (post: Post) => void;
   post: Post;
 }) {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const category = post.category.toUpperCase();
   const structured = structuredCategories.has(category);
   const categoryLabel = post.urgent ? "Urgent" : post.category.toLowerCase();
@@ -78,7 +88,9 @@ function FeedPost({
     <View style={styles.post}>
       <View style={styles.postHeader}>
         <View accessibilityElementsHidden style={styles.sourceAvatar}>
-          <Text style={styles.sourceAvatarText}>{post.source_name.slice(0, 2).toUpperCase()}</Text>
+          <Text style={styles.sourceAvatarText}>
+            {post.source_name.slice(0, 2).toUpperCase()}
+          </Text>
         </View>
         <View style={styles.sourceCopy}>
           <View style={styles.sourceNameRow}>
@@ -90,35 +102,62 @@ function FeedPost({
               {post.source_name}
             </Text>
             {post.source_verified ? (
-              <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.verifiedBadge}>
-                <Ionicons color={theme.verificationMark} name="checkmark" size={10} />
+              <View
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={styles.verifiedBadge}
+              >
+                <Ionicons
+                  color={theme.verificationMark}
+                  name="checkmark"
+                  size={10}
+                />
               </View>
             ) : null}
           </View>
-          <Text style={styles.postTime}>{formatPublishedAt(post.published_at)}</Text>
+          <Text style={styles.postTime}>
+            {formatPublishedAt(post.published_at)}
+          </Text>
         </View>
         <View style={[styles.category, post.urgent && styles.urgentCategory]}>
-          <Text style={[styles.categoryText, post.urgent && styles.urgentCategoryText]}>{categoryLabel}</Text>
+          <Text
+            style={[
+              styles.categoryText,
+              post.urgent && styles.urgentCategoryText,
+            ]}
+          >
+            {categoryLabel}
+          </Text>
         </View>
       </View>
 
       {structured ? (
         <View style={styles.structuredPanel}>
           <View style={styles.structuredIcon}>
-            <Ionicons color={theme.deepBrand} name={categoryIcons[category] ?? "newspaper-outline"} size={19} />
+            <Ionicons
+              color={theme.deepBrand}
+              name={categoryIcons[category] ?? "newspaper-outline"}
+              size={19}
+            />
           </View>
           <View style={styles.structuredCopy}>
-            <Text style={styles.structuredEyebrow}>{category === "EVENT" ? "CAMPUS EVENT" : "CAMPUS OPPORTUNITY"}</Text>
+            <Text style={styles.structuredEyebrow}>
+              {category === "EVENT" ? "CAMPUS EVENT" : "CAMPUS OPPORTUNITY"}
+            </Text>
             <Text style={styles.postTitle}>{post.title}</Text>
             <Text style={styles.postSummary}>{post.summary}</Text>
-            {post.body && post.body !== post.summary ? <Text style={styles.postText}>{post.body}</Text> : null}
+            {post.body && post.body !== post.summary ? (
+              <Text style={styles.postText}>{post.body}</Text>
+            ) : null}
           </View>
         </View>
       ) : (
         <View style={styles.postBody}>
           <Text style={styles.postTitle}>{post.title}</Text>
           <Text style={styles.postSummary}>{post.summary}</Text>
-          {post.body && post.body !== post.summary ? <Text style={styles.postText}>{post.body}</Text> : null}
+          {post.body && post.body !== post.summary ? (
+            <Text style={styles.postText}>{post.body}</Text>
+          ) : null}
         </View>
       )}
 
@@ -136,14 +175,24 @@ function FeedPost({
 
       {post.correction_note ? (
         <View accessibilityRole="alert" style={styles.correction}>
-          <Ionicons color={theme.statusAttention} name="information-circle-outline" size={17} />
-          <Text style={styles.correctionText}>Correction: {post.correction_note}</Text>
+          <Ionicons
+            color={theme.statusAttention}
+            name="information-circle-outline"
+            size={17}
+          />
+          <Text style={styles.correctionText}>
+            Correction: {post.correction_note}
+          </Text>
         </View>
       ) : null}
 
       <View style={styles.actions}>
         <Pressable
-          accessibilityLabel={post.bookmarked ? `Remove ${post.title} from saved posts` : `Save ${post.title}`}
+          accessibilityLabel={
+            post.bookmarked
+              ? `Remove ${post.title} from saved posts`
+              : `Save ${post.title}`
+          }
           accessibilityRole="button"
           accessibilityState={{ selected: post.bookmarked }}
           hitSlop={4}
@@ -155,7 +204,14 @@ function FeedPost({
             name={post.bookmarked ? "bookmark" : "bookmark-outline"}
             size={20}
           />
-          <Text style={[styles.actionText, post.bookmarked && styles.actionTextActive]}>{post.bookmarked ? "Saved" : "Save"}</Text>
+          <Text
+            style={[
+              styles.actionText,
+              post.bookmarked && styles.actionTextActive,
+            ]}
+          >
+            {post.bookmarked ? "Saved" : "Save"}
+          </Text>
         </Pressable>
         <Pressable
           accessibilityLabel={`Share ${post.title}`}
@@ -164,16 +220,26 @@ function FeedPost({
           onPress={() => onShare(post)}
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
         >
-          <Ionicons color={theme.textMuted} name="share-social-outline" size={20} />
+          <Ionicons
+            color={theme.textMuted}
+            name="share-social-outline"
+            size={20}
+          />
           <Text style={styles.actionText}>Share</Text>
         </Pressable>
-        {post.sponsored ? <Text style={styles.sponsored}>SPONSORED</Text> : <View />}
+        {post.sponsored ? (
+          <Text style={styles.sponsored}>SPONSORED</Text>
+        ) : (
+          <View />
+        )}
       </View>
     </View>
   );
 }
 
 function FeedEmptyState({ filtered }: { filtered: boolean }) {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   return (
     <View style={styles.emptyState}>
       <Image
@@ -185,7 +251,9 @@ function FeedEmptyState({ filtered }: { filtered: boolean }) {
         source={emptyFeedIllustration}
         style={styles.emptyIllustration}
       />
-      <Text style={styles.emptyTitle}>{filtered ? "No matching posts" : "No posts here yet"}</Text>
+      <Text style={styles.emptyTitle}>
+        {filtered ? "No matching posts" : "No posts here yet"}
+      </Text>
       <Text style={styles.emptyBody}>
         {filtered
           ? "Try another search or choose a different update type."
@@ -196,6 +264,8 @@ function FeedEmptyState({ filtered }: { filtered: boolean }) {
 }
 
 export default function FeedScreen() {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const { width } = useWindowDimensions();
   const [posts, setPosts] = useState<Post[]>([]);
   const [query, setQuery] = useState("");
@@ -209,13 +279,21 @@ export default function FeedScreen() {
       setError("");
       setPosts((await api<{ posts: Post[] }>("/v1/student/feed")).posts);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Campus updates could not be loaded.");
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "Campus updates could not be loaded.",
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   useEffect(() => {
     if (!feedback) return;
@@ -223,21 +301,45 @@ export default function FeedScreen() {
     return () => clearTimeout(timeout);
   }, [feedback]);
 
-  const filtered = useMemo(() => posts.filter((post) => {
-    const matchesCategory = selected === "All" || post.category.toUpperCase() === selected.toUpperCase();
-    const needle = query.trim().toLowerCase();
-    return matchesCategory && (!needle || `${post.title} ${post.summary} ${post.body} ${post.source_name}`.toLowerCase().includes(needle));
-  }), [posts, query, selected]);
+  const filtered = useMemo(
+    () =>
+      posts.filter((post) => {
+        const matchesCategory =
+          selected === "All" ||
+          post.category.toUpperCase() === selected.toUpperCase();
+        const needle = query.trim().toLowerCase();
+        return (
+          matchesCategory &&
+          (!needle ||
+            `${post.title} ${post.summary} ${post.body} ${post.source_name}`
+              .toLowerCase()
+              .includes(needle))
+        );
+      }),
+    [posts, query, selected],
+  );
 
   const toggleBookmark = useCallback(async (post: Post) => {
     void Haptics.selectionAsync();
     const next = !post.bookmarked;
-    setPosts((items) => items.map((item) => item.id === post.id ? { ...item, bookmarked: next } : item));
+    setPosts((items) =>
+      items.map((item) =>
+        item.id === post.id ? { ...item, bookmarked: next } : item,
+      ),
+    );
     try {
-      await api(`/v1/student/feed/${post.id}/bookmark`, { method: next ? "PUT" : "DELETE" });
+      await api(`/v1/student/feed/${post.id}/bookmark`, {
+        method: next ? "PUT" : "DELETE",
+      });
     } catch {
-      setPosts((items) => items.map((item) => item.id === post.id ? { ...item, bookmarked: !next } : item));
-      setFeedback("Saved posts could not be updated. Your previous state was restored.");
+      setPosts((items) =>
+        items.map((item) =>
+          item.id === post.id ? { ...item, bookmarked: !next } : item,
+        ),
+      );
+      setFeedback(
+        "Saved posts could not be updated. Your previous state was restored.",
+      );
     }
   }, []);
 
@@ -254,10 +356,7 @@ export default function FeedScreen() {
   }, []);
 
   const explainComposeAccess = useCallback(() => {
-    const message = "Posting is currently limited to approved campus publishers. Your student account remains read-only and no post was sent.";
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    setFeedback(message);
-    AccessibilityInfo.announceForAccessibility(message);
+    router.push("/compose");
   }, []);
 
   const fabRight = Math.max(22, (width - 540) / 2 + 22);
@@ -272,28 +371,52 @@ export default function FeedScreen() {
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         keyExtractor={(post) => post.id}
-        ListEmptyComponent={!loading && !error ? <FeedEmptyState filtered={hasActiveFilter} /> : null}
-        ListHeaderComponent={(
+        ListEmptyComponent={
+          !loading && !error ? (
+            <FeedEmptyState filtered={hasActiveFilter} />
+          ) : null
+        }
+        ListHeaderComponent={
           <>
-            <SearchField onChangeText={setQuery} placeholder="Search updates, sources or events" value={query} />
+            <SearchField
+              onChangeText={setQuery}
+              placeholder="Search updates, sources or events"
+              value={query}
+            />
             <View style={styles.filters}>
-              <FilterRow items={categories} onSelect={(item) => setSelected(item as typeof selected)} selected={selected} />
+              <FilterRow
+                items={categories}
+                onSelect={(item) => setSelected(item as typeof selected)}
+                selected={selected}
+              />
             </View>
 
             {loading ? (
               <View style={styles.loading}>
                 <ActivityIndicator color={theme.brand} />
-                <Text style={styles.loadingText}>Checking verified campus posts…</Text>
+                <Text style={styles.loadingText}>
+                  Checking verified campus posts…
+                </Text>
               </View>
             ) : null}
 
             {error ? (
               <Pressable
                 accessibilityRole="button"
-                onPress={() => { setLoading(true); void load(); }}
-                style={({ pressed }) => [styles.error, pressed && styles.pressed]}
+                onPress={() => {
+                  setLoading(true);
+                  void load();
+                }}
+                style={({ pressed }) => [
+                  styles.error,
+                  pressed && styles.pressed,
+                ]}
               >
-                <Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={20} />
+                <Ionicons
+                  color={theme.deepBrand}
+                  name="cloud-offline-outline"
+                  size={20}
+                />
                 <View style={styles.errorCopy}>
                   <Text style={styles.errorTitle}>The feed is unavailable</Text>
                   <Text style={styles.errorText}>{error} Tap to retry.</Text>
@@ -301,11 +424,15 @@ export default function FeedScreen() {
               </Pressable>
             ) : null}
           </>
-        )}
+        }
         maxToRenderPerBatch={8}
         removeClippedSubviews={Platform.OS === "android"}
         renderItem={({ item }) => (
-          <FeedPost onBookmark={(post) => void toggleBookmark(post)} onShare={(post) => void sharePost(post)} post={item} />
+          <FeedPost
+            onBookmark={(post) => void toggleBookmark(post)}
+            onShare={(post) => void sharePost(post)}
+            post={item}
+          />
         )}
         showsVerticalScrollIndicator={false}
         style={[styles.list, { width: Math.min(width, 540) }]}
@@ -315,18 +442,26 @@ export default function FeedScreen() {
       {feedback ? (
         <View pointerEvents="none" style={styles.feedbackRail}>
           <View accessibilityRole="alert" style={styles.feedback}>
-            <Ionicons color={theme.deepBrand} name="information-circle" size={20} />
+            <Ionicons
+              color={theme.deepBrand}
+              name="information-circle"
+              size={20}
+            />
             <Text style={styles.feedbackText}>{feedback}</Text>
           </View>
         </View>
       ) : null}
 
       <Pressable
-        accessibilityHint="Explains who can publish to the campus feed"
+        accessibilityHint="Write a post for your campus"
         accessibilityLabel="Create a campus post"
         accessibilityRole="button"
         onPress={explainComposeAccess}
-        style={({ pressed }) => [styles.composeFab, { right: fabRight }, pressed && styles.composeFabPressed]}
+        style={({ pressed }) => [
+          styles.composeFab,
+          { right: fabRight },
+          pressed && styles.composeFabPressed,
+        ]}
       >
         <Ionicons color="#FFFFFF" name="add" size={29} />
       </Pressable>
@@ -334,54 +469,263 @@ export default function FeedScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { backgroundColor: theme.canvas, flex: 1 },
-  list: { alignSelf: "center" },
-  listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 10 },
-  filters: { borderBottomColor: theme.border, borderBottomWidth: 1, marginTop: 13, paddingBottom: 13 },
-  loading: { alignItems: "center", gap: 9, paddingVertical: 54 },
-  loadingText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12.5 },
-  error: { alignItems: "center", backgroundColor: "#FFF0EB", borderRadius: 18, flexDirection: "row", gap: 11, marginTop: 18, minHeight: 72, padding: 14 },
-  errorCopy: { flex: 1 },
-  errorTitle: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 13 },
-  errorText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11.5, lineHeight: 17, marginTop: 2 },
-  post: { borderBottomColor: theme.border, borderBottomWidth: 1, paddingVertical: 17 },
-  postHeader: { alignItems: "center", flexDirection: "row" },
-  sourceAvatar: { alignItems: "center", backgroundColor: theme.sand, borderRadius: 21, height: 42, justifyContent: "center", width: 42 },
-  sourceAvatarText: { color: theme.deepBrand, fontFamily: theme.font.bold, fontSize: 11 },
-  sourceCopy: { flex: 1, marginLeft: 10 },
-  sourceNameRow: { alignItems: "center", flexDirection: "row", gap: 5 },
-  sourceName: { color: theme.text, flexShrink: 1, fontFamily: theme.font.semibold, fontSize: 14 },
-  verifiedBadge: { alignItems: "center", backgroundColor: theme.brand, borderRadius: 8, height: 16, justifyContent: "center", width: 16 },
-  postTime: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 11, marginTop: 2 },
-  category: { backgroundColor: theme.surfaceMuted, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
-  urgentCategory: { backgroundColor: "rgba(168,70,46,.12)" },
-  categoryText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 10.5, textTransform: "capitalize" },
-  urgentCategoryText: { color: theme.deepBrand },
-  postBody: { paddingLeft: 52, paddingTop: 9 },
-  postTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 16, lineHeight: 21 },
-  postSummary: { color: theme.text, fontFamily: theme.font.body, fontSize: 14, lineHeight: 20, marginTop: 4 },
-  postText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13, lineHeight: 19, marginTop: 6 },
-  structuredPanel: { backgroundColor: "rgba(241,223,200,.42)", borderColor: "rgba(168,70,46,.13)", borderRadius: 18, borderWidth: 1, flexDirection: "row", gap: 11, marginLeft: 52, marginTop: 11, padding: 13 },
-  structuredIcon: { alignItems: "center", backgroundColor: "rgba(255,253,252,.82)", borderRadius: 14, height: 40, justifyContent: "center", width: 40 },
-  structuredCopy: { flex: 1 },
-  structuredEyebrow: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8.5, letterSpacing: .8, marginBottom: 5 },
-  postImage: { alignSelf: "stretch", aspectRatio: 1.7, borderRadius: 18, marginLeft: 52, marginTop: 12 },
-  correction: { alignItems: "flex-start", backgroundColor: "#FFF7E9", borderRadius: 12, flexDirection: "row", gap: 7, marginLeft: 52, marginTop: 10, padding: 10 },
-  correctionText: { color: theme.statusAttention, flex: 1, fontFamily: theme.font.medium, fontSize: 10.5, lineHeight: 15 },
-  actions: { alignItems: "center", flexDirection: "row", gap: 22, marginLeft: 52, minHeight: 46, paddingTop: 8 },
-  action: { alignItems: "center", flexDirection: "row", gap: 6, minHeight: 44, minWidth: 60 },
-  actionText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 11.5 },
-  actionTextActive: { color: theme.brandPressed },
-  sponsored: { color: theme.textSubtle, fontFamily: theme.font.bold, fontSize: 8, letterSpacing: .8, marginLeft: "auto" },
-  emptyState: { alignItems: "center", minHeight: 500, paddingHorizontal: 20, paddingTop: 70 },
-  emptyIllustration: { height: 235, width: "100%" },
-  emptyTitle: { color: theme.text, fontFamily: theme.font.display, fontSize: 24, marginTop: 18, textAlign: "center" },
-  emptyBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 14, lineHeight: 21, marginTop: 8, maxWidth: 330, textAlign: "center" },
-  feedbackRail: { alignItems: "center", bottom: 176, left: 18, position: "absolute", right: 18 },
-  feedback: { alignItems: "flex-start", backgroundColor: theme.surfaceGlassStrong, borderColor: "rgba(168,70,46,.18)", borderRadius: 17, borderWidth: 1, flexDirection: "row", gap: 9, maxWidth: 500, padding: 13, width: "100%", ...theme.floatingShadow },
-  feedbackText: { color: theme.text, flex: 1, fontFamily: theme.font.medium, fontSize: 12, lineHeight: 18 },
-  composeFab: { alignItems: "center", backgroundColor: theme.deepBrand, borderRadius: 27, bottom: 106, height: 54, justifyContent: "center", position: "absolute", width: 54, ...theme.floatingShadow },
-  composeFabPressed: { opacity: .84, transform: [{ scale: .97 }] },
-  pressed: { opacity: .72, transform: [{ scale: .97 }] },
-});
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    screen: { backgroundColor: theme.canvas, flex: 1 },
+    list: { alignSelf: "center" },
+    listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 10 },
+    filters: {
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      marginTop: 13,
+      paddingBottom: 13,
+    },
+    loading: { alignItems: "center", gap: 9, paddingVertical: 54 },
+    loadingText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12.5,
+    },
+    error: {
+      alignItems: "center",
+      backgroundColor: "#FFF0EB",
+      borderRadius: 18,
+      flexDirection: "row",
+      gap: 11,
+      marginTop: 18,
+      minHeight: 72,
+      padding: 14,
+    },
+    errorCopy: { flex: 1 },
+    errorTitle: {
+      color: theme.deepBrand,
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+    },
+    errorText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 11.5,
+      lineHeight: 17,
+      marginTop: 2,
+    },
+    post: {
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      paddingVertical: 17,
+    },
+    postHeader: { alignItems: "center", flexDirection: "row" },
+    sourceAvatar: {
+      alignItems: "center",
+      backgroundColor: theme.sand,
+      borderRadius: 21,
+      height: 42,
+      justifyContent: "center",
+      width: 42,
+    },
+    sourceAvatarText: {
+      color: theme.deepBrand,
+      fontFamily: theme.font.bold,
+      fontSize: 11,
+    },
+    sourceCopy: { flex: 1, marginLeft: 10 },
+    sourceNameRow: { alignItems: "center", flexDirection: "row", gap: 5 },
+    sourceName: {
+      color: theme.text,
+      flexShrink: 1,
+      fontFamily: theme.font.semibold,
+      fontSize: 14,
+    },
+    verifiedBadge: {
+      alignItems: "center",
+      backgroundColor: theme.brand,
+      borderRadius: 8,
+      height: 16,
+      justifyContent: "center",
+      width: 16,
+    },
+    postTime: {
+      color: theme.textSubtle,
+      fontFamily: theme.font.body,
+      fontSize: 11,
+      marginTop: 2,
+    },
+    category: {
+      backgroundColor: theme.surfaceMuted,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    urgentCategory: { backgroundColor: "rgba(168,70,46,.12)" },
+    categoryText: {
+      color: theme.brandPressed,
+      fontFamily: theme.font.semibold,
+      fontSize: 10.5,
+      textTransform: "capitalize",
+    },
+    urgentCategoryText: { color: theme.deepBrand },
+    postBody: { paddingLeft: 52, paddingTop: 9 },
+    postTitle: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 16,
+      lineHeight: 21,
+    },
+    postSummary: {
+      color: theme.text,
+      fontFamily: theme.font.body,
+      fontSize: 14,
+      lineHeight: 20,
+      marginTop: 4,
+    },
+    postText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 13,
+      lineHeight: 19,
+      marginTop: 6,
+    },
+    structuredPanel: {
+      backgroundColor: "rgba(241,223,200,.42)",
+      borderColor: "rgba(168,70,46,.13)",
+      borderRadius: 18,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 11,
+      marginLeft: 52,
+      marginTop: 11,
+      padding: 13,
+    },
+    structuredIcon: {
+      alignItems: "center",
+      backgroundColor: "rgba(255,253,252,.82)",
+      borderRadius: 14,
+      height: 40,
+      justifyContent: "center",
+      width: 40,
+    },
+    structuredCopy: { flex: 1 },
+    structuredEyebrow: {
+      color: theme.brandPressed,
+      fontFamily: theme.font.bold,
+      fontSize: 8.5,
+      letterSpacing: 0.8,
+      marginBottom: 5,
+    },
+    postImage: {
+      alignSelf: "stretch",
+      aspectRatio: 1.7,
+      borderRadius: 18,
+      marginLeft: 52,
+      marginTop: 12,
+    },
+    correction: {
+      alignItems: "flex-start",
+      backgroundColor: "#FFF7E9",
+      borderRadius: 12,
+      flexDirection: "row",
+      gap: 7,
+      marginLeft: 52,
+      marginTop: 10,
+      padding: 10,
+    },
+    correctionText: {
+      color: theme.statusAttention,
+      flex: 1,
+      fontFamily: theme.font.medium,
+      fontSize: 10.5,
+      lineHeight: 15,
+    },
+    actions: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 22,
+      marginLeft: 52,
+      minHeight: 46,
+      paddingTop: 8,
+    },
+    action: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 6,
+      minHeight: 44,
+      minWidth: 60,
+    },
+    actionText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.medium,
+      fontSize: 11.5,
+    },
+    actionTextActive: { color: theme.brandPressed },
+    sponsored: {
+      color: theme.textSubtle,
+      fontFamily: theme.font.bold,
+      fontSize: 8,
+      letterSpacing: 0.8,
+      marginLeft: "auto",
+    },
+    emptyState: {
+      alignItems: "center",
+      minHeight: 500,
+      paddingHorizontal: 20,
+      paddingTop: 70,
+    },
+    emptyIllustration: { height: 235, width: "100%" },
+    emptyTitle: {
+      color: theme.text,
+      fontFamily: theme.font.display,
+      fontSize: 24,
+      marginTop: 18,
+      textAlign: "center",
+    },
+    emptyBody: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 14,
+      lineHeight: 21,
+      marginTop: 8,
+      maxWidth: 330,
+      textAlign: "center",
+    },
+    feedbackRail: {
+      alignItems: "center",
+      bottom: 176,
+      left: 18,
+      position: "absolute",
+      right: 18,
+    },
+    feedback: {
+      alignItems: "flex-start",
+      backgroundColor: theme.surfaceGlassStrong,
+      borderColor: "rgba(168,70,46,.18)",
+      borderRadius: 17,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 9,
+      maxWidth: 500,
+      padding: 13,
+      width: "100%",
+      ...theme.floatingShadow,
+    },
+    feedbackText: {
+      color: theme.text,
+      flex: 1,
+      fontFamily: theme.font.medium,
+      fontSize: 12,
+      lineHeight: 18,
+    },
+    composeFab: {
+      alignItems: "center",
+      backgroundColor: theme.deepBrand,
+      borderRadius: 27,
+      bottom: 106,
+      height: 54,
+      justifyContent: "center",
+      position: "absolute",
+      width: 54,
+      ...theme.floatingShadow,
+    },
+    composeFabPressed: { opacity: 0.84, transform: [{ scale: 0.97 }] },
+    pressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
+  });
+const styles = createStyles(theme);

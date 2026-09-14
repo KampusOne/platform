@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   type FormEvent,
   useCallback,
@@ -17,6 +18,8 @@ import {
   type CommerceStorefront,
 } from "@/components/commerce-moderation";
 import { PortalApiError, portalApi } from "@/lib/api";
+import { ApplicationDocuments } from "./application-documents";
+import { TransientNotice } from "./transient-notice";
 
 type Scalar = string | number | null;
 type Dashboard = {
@@ -107,14 +110,6 @@ type AuditEvent = {
   outcome: string;
   request_id: string;
   metadata: Record<string, unknown>;
-};
-type ReleasePhase = {
-  phase_key: string;
-  title: string;
-  status: string;
-  summary: string;
-  requirements: string[] | Record<string, unknown>;
-  updated_at: string;
 };
 type ContentContext = {
   universities: Array<{ id: string; name: string; slug: string }>;
@@ -228,7 +223,7 @@ type TutorialAdmin = {
     demo: number;
   };
 };
-type View =
+export type AdminView =
   | "overview"
   | "users"
   | "applications"
@@ -340,13 +335,20 @@ function BootstrapPanel({ retry }: { retry(): void }) {
   );
 }
 
-export function AdminDashboard() {
-  const [view, setView] = useState<View>("overview");
+export function AdminDashboard({
+  initialView = "overview",
+}: {
+  initialView?: AdminView;
+}) {
+  const view = initialView;
+  const navigate = useRouter();
+  function setView(next: AdminView) {
+    navigate.push(next === "overview" ? "/admin" : "/admin/" + next);
+  }
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [applications, setApplications] = useState<AgentApplication[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
-  const [phases, setPhases] = useState<ReleasePhase[]>([]);
   const [context, setContext] = useState<ContentContext>({
     universities: [],
     sources: [],
@@ -377,13 +379,31 @@ export function AdminDashboard() {
   useEffect(() => {
     let active = true;
     void Promise.all([
-      portalApi<Dashboard>("/v1/admin/dashboard"),
-      portalApi<{ users: UserRecord[] }>("/v1/admin/users"),
-      portalApi<{ applications: AgentApplication[] }>("/v1/admin/applications"),
-      portalApi<{ events: AuditEvent[] }>("/v1/admin/audit"),
-      portalApi<{ phases: ReleasePhase[] }>("/v1/admin/release-phases"),
-      portalApi<ContentContext>("/v1/admin/content/context"),
-      portalApi<TutorialAdmin>("/v1/admin/tutorials").catch((caught) => {
+      view === "overview"
+        ? portalApi<Dashboard>("/v1/admin/dashboard")
+        : Promise.resolve(null),
+      ["overview", "users"].includes(view)
+        ? portalApi<{ users: UserRecord[] }>("/v1/admin/users")
+        : Promise.resolve({ users: [] }),
+      ["overview", "applications"].includes(view)
+        ? portalApi<{ applications: AgentApplication[] }>(
+            "/v1/admin/applications",
+          )
+        : Promise.resolve({ applications: [] }),
+      ["overview", "audit"].includes(view)
+        ? portalApi<{ events: AuditEvent[] }>("/v1/admin/audit")
+        : Promise.resolve({ events: [] }),
+      ["content", "tutorials", "operations"].includes(view)
+        ? portalApi<ContentContext>("/v1/admin/content/context")
+        : Promise.resolve({ universities: [], sources: [] }),
+      (view === "tutorials"
+        ? portalApi<TutorialAdmin>("/v1/admin/tutorials")
+        : Promise.resolve({
+            listings: [],
+            resources: [],
+            summary: { listings: 0, resources: 0, pending: 0, demo: 0 },
+          })
+      ).catch((caught) => {
         if (
           caught instanceof PortalApiError &&
           (caught.status === 404 || caught.code === "FEATURE_DISABLED")
@@ -396,7 +416,17 @@ export function AdminDashboard() {
         }
         throw caught;
       }),
-      portalApi<Operations>("/v1/admin/operations"),
+      view === "operations"
+        ? portalApi<Operations>("/v1/admin/operations")
+        : Promise.resolve({
+            products: [],
+            storefronts: [],
+            categories: [],
+            zones: [],
+            disputes: [],
+            payoutRequests: [],
+            paymentEvents: [],
+          }),
     ])
       .then(
         ([
@@ -404,7 +434,6 @@ export function AdminDashboard() {
           nextUsers,
           nextApplications,
           nextAudit,
-          nextPhases,
           nextContext,
           nextTutorials,
           nextOperations,
@@ -414,7 +443,6 @@ export function AdminDashboard() {
           setUsers(nextUsers.users);
           setApplications(nextApplications.applications);
           setAudit(nextAudit.events);
-          setPhases(nextPhases.phases);
           setContext(nextContext);
           setTutorials(nextTutorials);
           setOperations(nextOperations);
@@ -438,7 +466,7 @@ export function AdminDashboard() {
     return () => {
       active = false;
     };
-  }, [refreshKey]);
+  }, [refreshKey, view]);
 
   const revenue = useMemo(
     () =>
@@ -478,7 +506,7 @@ export function AdminDashboard() {
             "content",
             "operations",
             "audit",
-          ] as View[]
+          ] as AdminView[]
         ).map((item) => (
           <button
             key={item}
@@ -644,25 +672,17 @@ export function AdminDashboard() {
             <article className="panel">
               <div className="panel-heading">
                 <div>
-                  <p className="section-kicker">Delivery readiness</p>
-                  <h2>Release phases</h2>
+                  <p className="section-kicker">Campus operations</p>
+                  <h2>Manage your universities</h2>
                 </div>
-                <Link className="text-button" href="/engineering">
-                  All requirements →
+                <Link className="text-button" href="/admin/universities">
+                  Open universities →
                 </Link>
               </div>
-              <div className="phase-list">
-                {phases.map((phase) => (
-                  <div key={phase.phase_key}>
-                    <span
-                      className={`state-badge state-badge--${phase.status.toLowerCase()}`}
-                    >
-                      {label(phase.status)}
-                    </span>
-                    <strong>{phase.title}</strong>
-                    <small>{phase.summary}</small>
-                  </div>
-                ))}
+              <div className="list-stack">
+                <Link href="/admin/communities">Communities & elections</Link>
+                <Link href="/admin/trials">Free trials</Link>
+                <Link href="/admin/support">Support & appeals</Link>
               </div>
             </article>
           </section>
@@ -751,7 +771,9 @@ function UsersView({ users }: { users: UserRecord[] }) {
         {visible.map((user) => (
           <div className="table-row" key={user.id}>
             <span>
-              <strong>{user.display_name || user.email.split("@")[0]}</strong>
+              <Link href={"/admin/users/" + user.id}>
+                <strong>{user.display_name || user.email.split("@")[0]}</strong>
+              </Link>
               <small>{user.email}</small>
             </span>
             <span>
@@ -929,6 +951,7 @@ function ApplicationInspector({
     <aside className="panel inspector">
       <p className="section-kicker">{label(item.agent_type)} application</p>
       <h2>{item.display_name}</h2>
+      <ApplicationDocuments key={item.id} id={item.id} />
       <dl className="detail-list">
         <div>
           <dt>Legal name</dt>
@@ -967,16 +990,22 @@ function ApplicationInspector({
           <p>{item.review_note}</p>
         </div>
       )}
-      {reviewable &&
-      !["VERIFIED", "MANUALLY_VERIFIED"].includes(item.kyc_status ?? "") ? (
+      {reviewable ? (
         <form className="form-stack sub-form" onSubmit={verify}>
           <div>
             <p className="section-kicker">Layered verification</p>
-            <h3>Record pilot review</h3>
+            <h3>Record verification</h3>
           </div>
           <label>
             Identity decision
-            <select name="identityStatus">
+            <select
+              name="identityStatus"
+              defaultValue={
+                item.kyc_status === "REJECTED"
+                  ? "REJECTED"
+                  : "MANUALLY_VERIFIED"
+              }
+            >
               <option value="MANUALLY_VERIFIED">Manually verified</option>
               <option value="REJECTED">Rejected</option>
             </select>
@@ -987,7 +1016,10 @@ function ApplicationInspector({
           </label>
           <label>
             Bank resolution
-            <select name="bankStatus">
+            <select
+              name="bankStatus"
+              defaultValue={item.bank_status ?? "NOT_STARTED"}
+            >
               <option value="NOT_STARTED">Not started</option>
               <option value="VERIFIED">Verified</option>
               <option value="REJECTED">Rejected</option>
@@ -996,7 +1028,10 @@ function ApplicationInspector({
           <div className="form-grid">
             <label>
               Account name
-              <input name="bankAccountName" />
+              <input
+                name="bankAccountName"
+                defaultValue={item.bank_account_name ?? ""}
+              />
             </label>
             <label>
               Last 4 digits
@@ -1005,6 +1040,7 @@ function ApplicationInspector({
                 inputMode="numeric"
                 pattern="[0-9]{4}"
                 maxLength={4}
+                defaultValue={item.bank_account_last4 ?? ""}
               />
             </label>
           </div>
@@ -1045,7 +1081,7 @@ function ApplicationInspector({
               placeholder="Record the evidence and reason for this decision."
             />
           </label>
-          {error && <p className="form-error">{error}</p>}
+          <TransientNotice message={error} />
           <button className="button button--primary" disabled={busy}>
             {busy ? "Saving…" : "Record decision"}
           </button>
@@ -1821,7 +1857,9 @@ function OperationsView({
           maxPackageDimensionCm: Number(form.get("maxPackageDimensionCm")),
           riderEarningKobo: Math.round(Number(form.get("riderEarning")) * 100),
           earningFormulaVersion: form.get("earningFormulaVersion"),
-          reservationTimeoutMinutes: Number(form.get("reservationTimeoutMinutes")),
+          reservationTimeoutMinutes: Number(
+            form.get("reservationTimeoutMinutes"),
+          ),
         }),
       });
       setNotice("Delivery zone saved.");

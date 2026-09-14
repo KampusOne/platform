@@ -1,5 +1,6 @@
+import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/src/lib/haptics";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -22,12 +23,23 @@ import { FilterRow, SearchField } from "@/src/components/product-ui";
 import { ApiError, api } from "@/src/lib/api";
 import { theme } from "@/src/theme";
 
-const categories = ["All", "Academic", "Service", "Transport", "Hostel", "Food", "Health", "Sport"] as const;
+const categories = [
+  "All",
+  "Academic",
+  "Service",
+  "Transport",
+  "Hostel",
+  "Food",
+  "Health",
+  "Sport",
+] as const;
 const TILE_SIZE = 256;
 const MAP_HEIGHT = 324;
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 19;
-const OSM_TILE_BASE = (process.env.EXPO_PUBLIC_OSM_TILE_URL ?? "https://tile.openstreetmap.org").replace(/\/+$/, "");
+const OSM_TILE_BASE = (
+  process.env.EXPO_PUBLIC_OSM_TILE_URL ?? "https://tile.openstreetmap.org"
+).replace(/\/+$/, "");
 const OSM_ATTRIBUTION_URL = "https://www.openstreetmap.org/copyright";
 const TILE_HEADERS = { "User-Agent": "KampusOne/0.1 (+https://kampusone.app)" };
 
@@ -78,11 +90,23 @@ function wrapTileX(value: number, tileCount: number) {
 }
 
 function coordinatesFor(place: Place) {
-  if (place.latitude === null || place.longitude === null || !place.latitude.trim() || !place.longitude.trim()) return null;
+  if (
+    place.latitude === null ||
+    place.longitude === null ||
+    !place.latitude.trim() ||
+    !place.longitude.trim()
+  )
+    return null;
   const latitude = Number(place.latitude);
   const longitude = Number(place.longitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-  if (latitude < -85.05112878 || latitude > 85.05112878 || longitude < -180 || longitude > 180) return null;
+  if (
+    latitude < -85.05112878 ||
+    latitude > 85.05112878 ||
+    longitude < -180 ||
+    longitude > 180
+  )
+    return null;
   return { latitude, longitude };
 }
 
@@ -99,16 +123,27 @@ function latitudeFromMercatorY(y: number) {
   return (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI;
 }
 
-function worldPixel(latitude: number, longitude: number, zoom: number): PixelPoint {
+function worldPixel(
+  latitude: number,
+  longitude: number,
+  zoom: number,
+): PixelPoint {
   const normalized = normalizedMercator(latitude, longitude);
   const worldSize = TILE_SIZE * 2 ** zoom;
   return { x: normalized.x * worldSize, y: normalized.y * worldSize };
 }
 
-function fitMapView(places: MappedPlace[], width: number, height: number): MapView | null {
+function fitMapView(
+  places: MappedPlace[],
+  width: number,
+  height: number,
+): MapView | null {
   if (!places.length) return null;
 
-  const first = normalizedMercator(places[0]?.latitudeValue ?? 0, places[0]?.longitudeValue ?? 0);
+  const first = normalizedMercator(
+    places[0]?.latitudeValue ?? 0,
+    places[0]?.longitudeValue ?? 0,
+  );
   let minimumX = first.x;
   let maximumX = first.x;
   let minimumY = first.y;
@@ -128,9 +163,12 @@ function fitMapView(places: MappedPlace[], width: number, height: number): MapVi
   const spanY = maximumY - minimumY;
   const innerWidth = Math.max(120, width - 92);
   const innerHeight = Math.max(120, height - 116);
-  const zoomX = spanX > 0 ? Math.log2(innerWidth / (TILE_SIZE * spanX)) : MAX_ZOOM;
-  const zoomY = spanY > 0 ? Math.log2(innerHeight / (TILE_SIZE * spanY)) : MAX_ZOOM;
-  const fittedZoom = places.length === 1 ? 17 : Math.floor(Math.min(zoomX, zoomY));
+  const zoomX =
+    spanX > 0 ? Math.log2(innerWidth / (TILE_SIZE * spanX)) : MAX_ZOOM;
+  const zoomY =
+    spanY > 0 ? Math.log2(innerHeight / (TILE_SIZE * spanY)) : MAX_ZOOM;
+  const fittedZoom =
+    places.length === 1 ? 17 : Math.floor(Math.min(zoomX, zoomY));
 
   return {
     latitude: latitudeFromMercatorY(centerY),
@@ -168,31 +206,60 @@ function visibleTiles(view: MapView, width: number, height: number): MapTile[] {
   return tiles;
 }
 
-function markerPosition(place: MappedPlace, view: MapView, width: number, height: number) {
+function markerPosition(
+  place: MappedPlace,
+  view: MapView,
+  width: number,
+  height: number,
+) {
   const center = worldPixel(view.latitude, view.longitude, view.zoom);
-  const point = worldPixel(place.latitudeValue, place.longitudeValue, view.zoom);
+  const point = worldPixel(
+    place.latitudeValue,
+    place.longitudeValue,
+    view.zoom,
+  );
   const worldSize = TILE_SIZE * 2 ** view.zoom;
   let horizontalOffset = point.x - center.x;
   if (horizontalOffset > worldSize / 2) horizontalOffset -= worldSize;
   if (horizontalOffset < -worldSize / 2) horizontalOffset += worldSize;
-  return { left: width / 2 + horizontalOffset, top: height / 2 + point.y - center.y };
+  return {
+    left: width / 2 + horizontalOffset,
+    top: height / 2 + point.y - center.y,
+  };
 }
 
 function VerificationBadge() {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   return (
-    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.verifiedBadge}>
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={styles.verifiedBadge}
+    >
       <Ionicons color={theme.verificationMark} name="checkmark" size={9} />
     </View>
   );
 }
 
-function RasterTile({ onSettled, tile }: { onSettled: (loaded: boolean) => void; tile: MapTile }) {
+function RasterTile({
+  onSettled,
+  tile,
+}: {
+  onSettled: (loaded: boolean) => void;
+  tile: MapTile;
+}) {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const settled = useRef(false);
-  const settle = useCallback((loaded: boolean) => {
-    if (settled.current) return;
-    settled.current = true;
-    onSettled(loaded);
-  }, [onSettled]);
+  const settle = useCallback(
+    (loaded: boolean) => {
+      if (settled.current) return;
+      settled.current = true;
+      onSettled(loaded);
+    },
+    [onSettled],
+  );
 
   return (
     <Image
@@ -237,27 +304,63 @@ function OpenStreetMap({
   width: number;
   zoomAdjustment: number;
 }) {
-  const fittedView = useMemo(() => fitMapView(viewportPlaces, width, height), [height, viewportPlaces, width]);
-  const view = useMemo(() => fittedView ? {
-    ...fittedView,
-    zoom: clamp(fittedView.zoom + zoomAdjustment, MIN_ZOOM, MAX_ZOOM),
-  } : null, [fittedView, zoomAdjustment]);
-  const tiles = useMemo(() => view ? visibleTiles(view, width, height) : [], [height, view, width]);
-  const tileSetKey = useMemo(() => tiles.map((tile) => tile.key).join("|"), [tiles]);
-  const [tileStatus, setTileStatus] = useState<TileStatus>({ failed: 0, key: "", loaded: 0 });
+  const { theme, styles } = useThemeStyles(createStyles);
 
-  const settleTile = useCallback((loaded: boolean) => {
-    setTileStatus((current) => {
-      const status = current.key === tileSetKey ? current : { failed: 0, key: tileSetKey, loaded: 0 };
-      return loaded
-        ? { ...status, loaded: status.loaded + 1 }
-        : { ...status, failed: status.failed + 1 };
-    });
-  }, [tileSetKey]);
+  const fittedView = useMemo(
+    () => fitMapView(viewportPlaces, width, height),
+    [height, viewportPlaces, width],
+  );
+  const view = useMemo(
+    () =>
+      fittedView
+        ? {
+            ...fittedView,
+            zoom: clamp(fittedView.zoom + zoomAdjustment, MIN_ZOOM, MAX_ZOOM),
+          }
+        : null,
+    [fittedView, zoomAdjustment],
+  );
+  const tiles = useMemo(
+    () => (view ? visibleTiles(view, width, height) : []),
+    [height, view, width],
+  );
+  const tileSetKey = useMemo(
+    () => tiles.map((tile) => tile.key).join("|"),
+    [tiles],
+  );
+  const [tileStatus, setTileStatus] = useState<TileStatus>({
+    failed: 0,
+    key: "",
+    loaded: 0,
+  });
 
-  const currentStatus = tileStatus.key === tileSetKey ? tileStatus : { failed: 0, key: tileSetKey, loaded: 0 };
-  const tilesLoading = Boolean(tiles.length) && currentStatus.loaded === 0 && currentStatus.failed < tiles.length;
-  const tilesUnavailable = Boolean(tiles.length) && currentStatus.loaded === 0 && currentStatus.failed >= tiles.length;
+  const settleTile = useCallback(
+    (loaded: boolean) => {
+      setTileStatus((current) => {
+        const status =
+          current.key === tileSetKey
+            ? current
+            : { failed: 0, key: tileSetKey, loaded: 0 };
+        return loaded
+          ? { ...status, loaded: status.loaded + 1 }
+          : { ...status, failed: status.failed + 1 };
+      });
+    },
+    [tileSetKey],
+  );
+
+  const currentStatus =
+    tileStatus.key === tileSetKey
+      ? tileStatus
+      : { failed: 0, key: tileSetKey, loaded: 0 };
+  const tilesLoading =
+    Boolean(tiles.length) &&
+    currentStatus.loaded === 0 &&
+    currentStatus.failed < tiles.length;
+  const tilesUnavailable =
+    Boolean(tiles.length) &&
+    currentStatus.loaded === 0 &&
+    currentStatus.failed >= tiles.length;
   const partialFailure = currentStatus.loaded > 0 && currentStatus.failed > 0;
   const canZoomIn = view !== null && view.zoom < MAX_ZOOM;
   const canZoomOut = view !== null && view.zoom > MIN_ZOOM;
@@ -265,52 +368,84 @@ function OpenStreetMap({
   return (
     <View style={styles.mapFrame}>
       <View onLayout={onLayout} style={[styles.mapViewport, { height }]}>
-        {tiles.map((tile) => <RasterTile key={tile.key} onSettled={settleTile} tile={tile} />)}
+        {tiles.map((tile) => (
+          <RasterTile key={tile.key} onSettled={settleTile} tile={tile} />
+        ))}
 
-        {view ? places.map((place) => {
-          const position = markerPosition(place, view, width, height);
-          if (position.left < -28 || position.left > width + 28 || position.top < -28 || position.top > height + 28) return null;
-          const active = place.id === selected?.id;
-          return (
-            <Pressable
-              accessibilityLabel={`${place.name}, ${place.category.toLowerCase()}${place.verified_at ? ", verified campus place" : ""}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              hitSlop={4}
-              key={place.id}
-              onPress={() => onSelect(place.id)}
-              style={({ pressed }) => [
-                styles.pin,
-                { backgroundColor: markerColors[place.category] ?? theme.brand, left: position.left, top: position.top },
-                active && styles.pinActive,
-                pressed && styles.pinPressed,
-              ]}
-            >
-              <Ionicons color="#FFFFFF" name={icons[place.category] ?? "location-outline"} size={active ? 19 : 16} />
-            </Pressable>
-          );
-        }) : null}
+        {view
+          ? places.map((place) => {
+              const position = markerPosition(place, view, width, height);
+              if (
+                position.left < -28 ||
+                position.left > width + 28 ||
+                position.top < -28 ||
+                position.top > height + 28
+              )
+                return null;
+              const active = place.id === selected?.id;
+              return (
+                <Pressable
+                  accessibilityLabel={`${place.name}, ${place.category.toLowerCase()}${place.verified_at ? ", verified campus place" : ""}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  hitSlop={4}
+                  key={place.id}
+                  onPress={() => onSelect(place.id)}
+                  style={({ pressed }) => [
+                    styles.pin,
+                    {
+                      backgroundColor:
+                        markerColors[place.category] ?? theme.brand,
+                      left: position.left,
+                      top: position.top,
+                    },
+                    active && styles.pinActive,
+                    pressed && styles.pinPressed,
+                  ]}
+                >
+                  <Ionicons
+                    color="#FFFFFF"
+                    name={icons[place.category] ?? "location-outline"}
+                    size={active ? 19 : 16}
+                  />
+                </Pressable>
+              );
+            })
+          : null}
 
         {!view && !directoryLoading && !directoryError ? (
           <View style={styles.mapFallback}>
             <Ionicons color={theme.textMuted} name="map-outline" size={28} />
-            <Text style={styles.mapFallbackTitle}>No mapped places in this view</Text>
-            <Text style={styles.mapFallbackBody}>A real map can appear after a campus editor saves valid coordinates.</Text>
+            <Text style={styles.mapFallbackTitle}>
+              No mapped places in this view
+            </Text>
+            <Text style={styles.mapFallbackBody}>
+              A real map can appear after a campus editor saves valid
+              coordinates.
+            </Text>
           </View>
         ) : null}
 
         {!view && directoryLoading ? (
           <View pointerEvents="none" style={styles.mapFeedback}>
             <ActivityIndicator color={theme.brand} />
-            <Text style={styles.mapFeedbackText}>Loading campus coordinates…</Text>
+            <Text style={styles.mapFeedbackText}>
+              Loading campus coordinates…
+            </Text>
           </View>
         ) : null}
 
         {!view && directoryError ? (
           <View pointerEvents="none" style={styles.mapFeedback}>
-            <Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={24} />
+            <Ionicons
+              color={theme.deepBrand}
+              name="cloud-offline-outline"
+              size={24}
+            />
             <Text style={styles.mapFeedbackTitle}>Campus map unavailable</Text>
-            <Text style={styles.mapFeedbackText}>Retry the campus directory below to load mapped places.</Text>
+            <Text style={styles.mapFeedbackText}>
+              Retry the campus directory below to load mapped places.
+            </Text>
           </View>
         ) : null}
 
@@ -323,15 +458,28 @@ function OpenStreetMap({
 
         {tilesUnavailable ? (
           <View pointerEvents="none" style={styles.mapFeedback}>
-            <Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={24} />
-            <Text style={styles.mapFeedbackTitle}>Map tiles are unavailable</Text>
-            <Text style={styles.mapFeedbackText}>The directory remains available. Directions can open when your connection returns.</Text>
+            <Ionicons
+              color={theme.deepBrand}
+              name="cloud-offline-outline"
+              size={24}
+            />
+            <Text style={styles.mapFeedbackTitle}>
+              Map tiles are unavailable
+            </Text>
+            <Text style={styles.mapFeedbackText}>
+              The directory remains available. Directions can open when your
+              connection returns.
+            </Text>
           </View>
         ) : null}
 
         {partialFailure ? (
           <View pointerEvents="none" style={styles.partialBadge}>
-            <Ionicons color={theme.statusAttention} name="warning-outline" size={13} />
+            <Ionicons
+              color={theme.statusAttention}
+              name="warning-outline"
+              size={13}
+            />
             <Text style={styles.partialBadgeText}>Some tiles unavailable</Text>
           </View>
         ) : null}
@@ -343,7 +491,11 @@ function OpenStreetMap({
             accessibilityState={{ disabled: !canZoomIn }}
             disabled={!canZoomIn}
             onPress={() => onZoom(1)}
-            style={({ pressed }) => [styles.zoomButton, !canZoomIn && styles.controlDisabled, pressed && styles.controlPressed]}
+            style={({ pressed }) => [
+              styles.zoomButton,
+              !canZoomIn && styles.controlDisabled,
+              pressed && styles.controlPressed,
+            ]}
           >
             <Ionicons color={theme.text} name="add" size={21} />
           </Pressable>
@@ -354,7 +506,11 @@ function OpenStreetMap({
             accessibilityState={{ disabled: !canZoomOut }}
             disabled={!canZoomOut}
             onPress={() => onZoom(-1)}
-            style={({ pressed }) => [styles.zoomButton, !canZoomOut && styles.controlDisabled, pressed && styles.controlPressed]}
+            style={({ pressed }) => [
+              styles.zoomButton,
+              !canZoomOut && styles.controlDisabled,
+              pressed && styles.controlPressed,
+            ]}
           >
             <Ionicons color={theme.text} name="remove" size={21} />
           </Pressable>
@@ -366,7 +522,11 @@ function OpenStreetMap({
             accessibilityState={{ disabled: !view }}
             disabled={!view}
             onPress={onRecenter}
-            style={({ pressed }) => [styles.zoomButton, !view && styles.controlDisabled, pressed && styles.controlPressed]}
+            style={({ pressed }) => [
+              styles.zoomButton,
+              !view && styles.controlDisabled,
+              pressed && styles.controlPressed,
+            ]}
           >
             <Ionicons color={theme.text} name="scan-outline" size={19} />
           </Pressable>
@@ -382,16 +542,32 @@ function OpenStreetMap({
           accessibilityLabel="Open OpenStreetMap copyright and licence information"
           accessibilityRole="link"
           onPress={() => void Linking.openURL(OSM_ATTRIBUTION_URL)}
-          style={({ pressed }) => [styles.attribution, pressed && styles.controlPressed]}
+          style={({ pressed }) => [
+            styles.attribution,
+            pressed && styles.controlPressed,
+          ]}
         >
-          <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
+          <Text style={styles.attributionText}>
+            © OpenStreetMap contributors
+          </Text>
         </Pressable>
       </View>
 
       {selected ? (
         <View style={styles.selectedPlace}>
-          <View style={[styles.selectedPlaceIcon, { backgroundColor: markerColors[selected.category] ?? theme.brand }]}>
-            <Ionicons color="#FFFFFF" name={icons[selected.category] ?? "location-outline"} size={17} />
+          <View
+            style={[
+              styles.selectedPlaceIcon,
+              {
+                backgroundColor: markerColors[selected.category] ?? theme.brand,
+              },
+            ]}
+          >
+            <Ionicons
+              color="#FFFFFF"
+              name={icons[selected.category] ?? "location-outline"}
+              size={17}
+            />
           </View>
           <View style={styles.selectedPlaceCopy}>
             <View style={styles.selectedPlaceNameRow}>
@@ -404,28 +580,48 @@ function OpenStreetMap({
               </Text>
               {selected.verified_at ? <VerificationBadge /> : null}
             </View>
-            <Text numberOfLines={1} style={styles.selectedPlaceMeta}>{selected.category.toLowerCase()} · mapped coordinates</Text>
+            <Text numberOfLines={1} style={styles.selectedPlaceMeta}>
+              {selected.category.toLowerCase()} · mapped coordinates
+            </Text>
           </View>
           <Pressable
             accessibilityLabel={`Open directions to ${selected.name} in Google Maps`}
             accessibilityRole="link"
             onPress={() => onDirections(selected)}
-            style={({ pressed }) => [styles.mapDirection, pressed && styles.controlPressed]}
+            style={({ pressed }) => [
+              styles.mapDirection,
+              pressed && styles.controlPressed,
+            ]}
           >
             <Ionicons color="#FFFFFF" name="navigate" size={17} />
           </Pressable>
         </View>
       ) : (
         <View style={styles.mapCaption}>
-          <Ionicons color={theme.brandPressed} name="information-circle-outline" size={16} />
-          <Text style={styles.mapCaptionText}>This map shows only places with reviewed coordinates. It does not provide live navigation.</Text>
+          <Ionicons
+            color={theme.brandPressed}
+            name="information-circle-outline"
+            size={16}
+          />
+          <Text style={styles.mapCaptionText}>
+            This map shows only places with reviewed coordinates. It does not
+            provide live navigation.
+          </Text>
         </View>
       )}
     </View>
   );
 }
 
-function PlaceRow({ onDirections, place }: { onDirections: (place: Place) => void; place: Place }) {
+function PlaceRow({
+  onDirections,
+  place,
+}: {
+  onDirections: (place: Place) => void;
+  place: Place;
+}) {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const hasCoordinates = coordinatesFor(place) !== null;
   return (
     <View style={styles.placeRow}>
@@ -440,42 +636,72 @@ function PlaceRow({ onDirections, place }: { onDirections: (place: Place) => voi
         />
       ) : (
         <View style={styles.placeIcon}>
-          <Ionicons color={theme.brandPressed} name={icons[place.category] ?? "location-outline"} size={22} />
+          <Ionicons
+            color={theme.brandPressed}
+            name={icons[place.category] ?? "location-outline"}
+            size={22}
+          />
         </View>
       )}
       <View style={styles.placeCopy}>
         <View style={styles.placeCategoryRow}>
-          <Text style={styles.placeCategory}>{place.category.toLowerCase()}</Text>
+          <Text style={styles.placeCategory}>
+            {place.category.toLowerCase()}
+          </Text>
           {place.verified_at ? <VerificationBadge /> : null}
         </View>
-        <Text accessibilityLabel={`${place.name}${place.verified_at ? ", verified campus place" : ""}`} style={styles.placeName}>
+        <Text
+          accessibilityLabel={`${place.name}${place.verified_at ? ", verified campus place" : ""}`}
+          style={styles.placeName}
+        >
           {place.name}
         </Text>
         <Text numberOfLines={2} style={styles.placeDescription}>
-          {place.description ?? "Campus information will be added by a verified editor."}
+          {place.description ??
+            "Campus information will be added by a verified editor."}
         </Text>
         {place.accessibility_notes ? (
           <View style={styles.accessibilityRow}>
-            <Ionicons color={theme.info} name="accessibility-outline" size={13} />
-            <Text numberOfLines={2} style={styles.accessibilityText}>{place.accessibility_notes}</Text>
+            <Ionicons
+              color={theme.info}
+              name="accessibility-outline"
+              size={13}
+            />
+            <Text numberOfLines={2} style={styles.accessibilityText}>
+              {place.accessibility_notes}
+            </Text>
           </View>
         ) : null}
       </View>
       <Pressable
-        accessibilityLabel={hasCoordinates ? `Directions to ${place.name}` : `Directions unavailable for ${place.name}`}
+        accessibilityLabel={
+          hasCoordinates
+            ? `Directions to ${place.name}`
+            : `Directions unavailable for ${place.name}`
+        }
         accessibilityRole="link"
         accessibilityState={{ disabled: !hasCoordinates }}
         disabled={!hasCoordinates}
         onPress={() => onDirections(place)}
-        style={({ pressed }) => [styles.rowDirection, !hasCoordinates && styles.rowDirectionDisabled, pressed && styles.controlPressed]}
+        style={({ pressed }) => [
+          styles.rowDirection,
+          !hasCoordinates && styles.rowDirectionDisabled,
+          pressed && styles.controlPressed,
+        ]}
       >
-        <Ionicons color={hasCoordinates ? theme.deepBrand : theme.textSubtle} name={hasCoordinates ? "navigate-outline" : "location-outline"} size={20} />
+        <Ionicons
+          color={hasCoordinates ? theme.deepBrand : theme.textSubtle}
+          name={hasCoordinates ? "navigate-outline" : "location-outline"}
+          size={20}
+        />
       </Pressable>
     </View>
   );
 }
 
 export default function MapScreen() {
+  const { theme, styles } = useThemeStyles(createStyles);
+
   const { width } = useWindowDimensions();
   const [places, setPlaces] = useState<Place[]>([]);
   const [selected, setSelected] = useState<(typeof categories)[number]>("All");
@@ -490,38 +716,81 @@ export default function MapScreen() {
   const load = useCallback(async () => {
     try {
       setError("");
-      setPlaces((await api<{ places: Place[] }>("/v1/student/campus/places")).places);
+      setPlaces(
+        (await api<{ places: Place[] }>("/v1/student/campus/places")).places,
+      );
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Campus places could not be loaded.");
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "Campus places could not be loaded.",
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
-  const filtered = useMemo(() => places.filter((place) => {
-    const needle = query.trim().toLowerCase();
-    return (selected === "All" || place.category.toUpperCase() === selected.toUpperCase())
-      && (!needle || `${place.name} ${place.description ?? ""}`.toLowerCase().includes(needle));
-  }), [places, query, selected]);
+  const filtered = useMemo(
+    () =>
+      places.filter((place) => {
+        const needle = query.trim().toLowerCase();
+        return (
+          (selected === "All" ||
+            place.category.toUpperCase() === selected.toUpperCase()) &&
+          (!needle ||
+            `${place.name} ${place.description ?? ""}`
+              .toLowerCase()
+              .includes(needle))
+        );
+      }),
+    [places, query, selected],
+  );
 
-  const allMappedPlaces = useMemo<MappedPlace[]>(() => places.flatMap((place) => {
-    const coordinates = coordinatesFor(place);
-    if (!coordinates) return [];
-    return [{ ...place, latitudeValue: coordinates.latitude, longitudeValue: coordinates.longitude }];
-  }), [places]);
-  const mappedPlaces = useMemo<MappedPlace[]>(() => filtered.flatMap((place) => {
-    const coordinates = coordinatesFor(place);
-    if (!coordinates) return [];
-    return [{ ...place, latitudeValue: coordinates.latitude, longitudeValue: coordinates.longitude }];
-  }), [filtered]);
-  const selectedPlace = mappedPlaces.find((place) => place.id === selectedPlaceId) ?? mappedPlaces[0];
+  const allMappedPlaces = useMemo<MappedPlace[]>(
+    () =>
+      places.flatMap((place) => {
+        const coordinates = coordinatesFor(place);
+        if (!coordinates) return [];
+        return [
+          {
+            ...place,
+            latitudeValue: coordinates.latitude,
+            longitudeValue: coordinates.longitude,
+          },
+        ];
+      }),
+    [places],
+  );
+  const mappedPlaces = useMemo<MappedPlace[]>(
+    () =>
+      filtered.flatMap((place) => {
+        const coordinates = coordinatesFor(place);
+        if (!coordinates) return [];
+        return [
+          {
+            ...place,
+            latitudeValue: coordinates.latitude,
+            longitudeValue: coordinates.longitude,
+          },
+        ];
+      }),
+    [filtered],
+  );
+  const selectedPlace =
+    mappedPlaces.find((place) => place.id === selectedPlaceId) ??
+    mappedPlaces[0];
 
   const directions = useCallback(async (place: Place) => {
     const coordinates = coordinatesFor(place);
     if (!coordinates) {
-      const message = "Directions are unavailable until a campus editor adds coordinates for this place.";
+      const message =
+        "Directions are unavailable until a campus editor adds coordinates for this place.";
       setNotice(message);
       AccessibilityInfo.announceForAccessibility(message);
       return;
@@ -533,7 +802,8 @@ export default function MapScreen() {
       void Haptics.selectionAsync();
       await Linking.openURL(url);
     } catch {
-      const message = "Google Maps directions could not be opened on this device.";
+      const message =
+        "Google Maps directions could not be opened on this device.";
       setNotice(message);
       AccessibilityInfo.announceForAccessibility(message);
     }
@@ -554,7 +824,9 @@ export default function MapScreen() {
 
   const updateMapLayout = useCallback((event: LayoutChangeEvent) => {
     const nextWidth = Math.round(event.nativeEvent.layout.width);
-    setMapWidth((current) => Math.abs(current - nextWidth) > 1 ? nextWidth : current);
+    setMapWidth((current) =>
+      Math.abs(current - nextWidth) > 1 ? nextWidth : current,
+    );
   }, []);
 
   const zoomMap = useCallback((change: number) => {
@@ -577,29 +849,55 @@ export default function MapScreen() {
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         keyExtractor={(place) => place.id}
-        ListEmptyComponent={canShowDirectory ? (
-          <View style={styles.directoryEmpty}>
-            <Ionicons color={theme.brand} name="location-outline" size={29} />
-            <Text style={styles.directoryEmptyTitle}>Place not found</Text>
-            <Text style={styles.directoryEmptyBody}>Try another search or choose a different campus category.</Text>
-          </View>
-        ) : null}
-        ListHeaderComponent={(
+        ListEmptyComponent={
+          canShowDirectory ? (
+            <View style={styles.directoryEmpty}>
+              <Ionicons color={theme.brand} name="location-outline" size={29} />
+              <Text style={styles.directoryEmptyTitle}>Place not found</Text>
+              <Text style={styles.directoryEmptyBody}>
+                Try another search or choose a different campus category.
+              </Text>
+            </View>
+          ) : null
+        }
+        ListHeaderComponent={
           <>
-            <SearchField onChangeText={updateSearch} placeholder="Find a building or service" value={query} />
+            <SearchField
+              onChangeText={updateSearch}
+              placeholder="Find a building or service"
+              value={query}
+            />
             <View style={styles.filters}>
-              <FilterRow items={categories} onSelect={updateCategory} selected={selected} />
+              <FilterRow
+                items={categories}
+                onSelect={updateCategory}
+                selected={selected}
+              />
             </View>
 
             {notice ? (
               <View style={styles.notice}>
-                <Ionicons accessible={false} color={theme.deepBrand} name="information-circle-outline" size={18} />
-                <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.noticeText}>{notice}</Text>
+                <Ionicons
+                  accessible={false}
+                  color={theme.deepBrand}
+                  name="information-circle-outline"
+                  size={18}
+                />
+                <Text
+                  accessibilityLiveRegion="polite"
+                  accessibilityRole="alert"
+                  style={styles.noticeText}
+                >
+                  {notice}
+                </Text>
                 <Pressable
                   accessibilityLabel="Dismiss map notice"
                   accessibilityRole="button"
                   onPress={() => setNotice("")}
-                  style={({ pressed }) => [styles.noticeDismiss, pressed && styles.controlPressed]}
+                  style={({ pressed }) => [
+                    styles.noticeDismiss,
+                    pressed && styles.controlPressed,
+                  ]}
                 >
                   <Ionicons color={theme.textSubtle} name="close" size={19} />
                 </Pressable>
@@ -623,9 +921,14 @@ export default function MapScreen() {
             />
 
             {loading ? (
-              <View accessibilityLiveRegion="polite" style={styles.directoryLoading}>
+              <View
+                accessibilityLiveRegion="polite"
+                style={styles.directoryLoading}
+              >
                 <ActivityIndicator color={theme.brand} />
-                <Text style={styles.directoryLoadingText}>Loading reviewed campus places…</Text>
+                <Text style={styles.directoryLoadingText}>
+                  Loading reviewed campus places…
+                </Text>
               </View>
             ) : null}
 
@@ -633,12 +936,24 @@ export default function MapScreen() {
               <Pressable
                 accessibilityLabel={`The campus directory is unavailable. ${error}. Retry`}
                 accessibilityRole="button"
-                onPress={() => { setLoading(true); void load(); }}
-                style={({ pressed }) => [styles.error, pressed && styles.controlPressed]}
+                onPress={() => {
+                  setLoading(true);
+                  void load();
+                }}
+                style={({ pressed }) => [
+                  styles.error,
+                  pressed && styles.controlPressed,
+                ]}
               >
-                <Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={20} />
+                <Ionicons
+                  color={theme.deepBrand}
+                  name="cloud-offline-outline"
+                  size={20}
+                />
                 <View style={styles.errorCopy}>
-                  <Text style={styles.errorTitle}>The campus directory is unavailable</Text>
+                  <Text style={styles.errorTitle}>
+                    The campus directory is unavailable
+                  </Text>
                   <Text style={styles.errorText}>{error} Tap to retry.</Text>
                 </View>
               </Pressable>
@@ -648,19 +963,33 @@ export default function MapScreen() {
               <View style={styles.sectionHeader}>
                 <View>
                   <Text style={styles.sectionTitle}>Campus places</Text>
-                  <Text style={styles.sectionSubtitle}>{filtered.length} {filtered.length === 1 ? "place" : "places"} in this view</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    {filtered.length}{" "}
+                    {filtered.length === 1 ? "place" : "places"} in this view
+                  </Text>
                 </View>
                 <View style={styles.coordinateKey}>
-                  <Ionicons color={theme.brandPressed} name="navigate-outline" size={14} />
-                  <Text style={styles.coordinateKeyText}>Google Maps handoff</Text>
+                  <Ionicons
+                    color={theme.brandPressed}
+                    name="navigate-outline"
+                    size={14}
+                  />
+                  <Text style={styles.coordinateKeyText}>
+                    Google Maps handoff
+                  </Text>
                 </View>
               </View>
             ) : null}
           </>
-        )}
+        }
         maxToRenderPerBatch={9}
         removeClippedSubviews={Platform.OS === "android"}
-        renderItem={({ item: place }) => <PlaceRow onDirections={(item) => void directions(item)} place={place} />}
+        renderItem={({ item: place }) => (
+          <PlaceRow
+            onDirections={(item) => void directions(item)}
+            place={place}
+          />
+        )}
         showsVerticalScrollIndicator={false}
         style={[styles.directory, { width: Math.min(width, 540) }]}
         windowSize={7}
@@ -669,71 +998,405 @@ export default function MapScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { backgroundColor: theme.canvas, flex: 1 },
-  directory: { alignSelf: "center" },
-  listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 10 },
-  filters: { marginBottom: 14, marginTop: 13 },
-  notice: { alignItems: "center", backgroundColor: "rgba(241,223,200,.50)", borderColor: "rgba(168,70,46,.14)", borderRadius: 15, borderWidth: 1, flexDirection: "row", gap: 8, marginBottom: 12, minHeight: 52, paddingLeft: 12, paddingRight: 4, paddingVertical: 4 },
-  noticeText: { color: theme.text, flex: 1, fontFamily: theme.font.medium, fontSize: 11.5, lineHeight: 17 },
-  noticeDismiss: { alignItems: "center", height: 44, justifyContent: "center", width: 44 },
-  mapFrame: { backgroundColor: theme.surfaceRaised, borderColor: theme.border, borderRadius: 25, borderWidth: 1, overflow: "hidden", ...theme.shadow },
-  mapViewport: { backgroundColor: theme.surfaceMuted, overflow: "hidden", position: "relative", width: "100%" },
-  mapTile: { height: TILE_SIZE + 1, position: "absolute", width: TILE_SIZE + 1 },
-  mapFallback: { alignItems: "center", bottom: 0, justifyContent: "center", left: 32, position: "absolute", right: 32, top: 0 },
-  mapFallbackTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14, marginTop: 9, textAlign: "center" },
-  mapFallbackBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11, lineHeight: 16, marginTop: 4, textAlign: "center" },
-  mapFeedback: { alignItems: "center", alignSelf: "center", backgroundColor: "rgba(255,255,255,.94)", borderColor: theme.border, borderRadius: 17, borderWidth: 1, gap: 7, left: 48, padding: 14, position: "absolute", right: 48, top: 110, ...theme.shadow },
-  mapFeedbackTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 12.5, textAlign: "center" },
-  mapFeedbackText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 10.5, lineHeight: 15, textAlign: "center" },
-  partialBadge: { alignItems: "center", backgroundColor: "rgba(255,247,233,.95)", borderRadius: 12, flexDirection: "row", gap: 5, left: 10, paddingHorizontal: 9, paddingVertical: 7, position: "absolute", top: 10 },
-  partialBadgeText: { color: theme.statusAttention, fontFamily: theme.font.semibold, fontSize: 9 },
-  mapControls: { backgroundColor: "rgba(255,255,255,.94)", borderColor: "rgba(255,255,255,.98)", borderRadius: 15, borderWidth: 1, overflow: "hidden", position: "absolute", right: 10, top: 10, ...theme.shadow },
-  zoomButton: { alignItems: "center", height: 44, justifyContent: "center", width: 44 },
-  controlDivider: { backgroundColor: theme.border, height: 1, marginHorizontal: 8 },
-  controlDisabled: { opacity: .35 },
-  controlPressed: { opacity: .72, transform: [{ scale: .97 }] },
-  zoomBadge: { backgroundColor: "rgba(255,255,255,.90)", borderRadius: 9, paddingHorizontal: 7, paddingVertical: 5, position: "absolute", right: 12, top: 151 },
-  zoomBadgeText: { color: theme.textMuted, fontFamily: theme.font.bold, fontSize: 8.5 },
-  attribution: { alignItems: "center", backgroundColor: "rgba(255,255,255,.93)", borderRadius: 8, bottom: 5, justifyContent: "center", minHeight: 44, minWidth: 44, paddingHorizontal: 10, position: "absolute", right: 5 },
-  attributionText: { color: "#34312F", fontFamily: theme.font.medium, fontSize: 9.5, textDecorationLine: "underline" },
-  pin: { alignItems: "center", borderColor: "#FFFFFF", borderRadius: 22, borderWidth: 3, height: 44, justifyContent: "center", marginLeft: -22, marginTop: -22, position: "absolute", width: 44, ...theme.shadow },
-  pinActive: { borderRadius: 25, height: 50, marginLeft: -25, marginTop: -25, width: 50 },
-  pinPressed: { opacity: .82, transform: [{ scale: .96 }] },
-  selectedPlace: { alignItems: "center", flexDirection: "row", minHeight: 68, paddingHorizontal: 11, paddingVertical: 10 },
-  selectedPlaceIcon: { alignItems: "center", borderRadius: 13, height: 40, justifyContent: "center", width: 40 },
-  selectedPlaceCopy: { flex: 1, marginLeft: 9 },
-  selectedPlaceNameRow: { alignItems: "center", flexDirection: "row", gap: 5 },
-  selectedPlaceName: { color: theme.text, flexShrink: 1, fontFamily: theme.font.semibold, fontSize: 12.5 },
-  selectedPlaceMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 9.5, marginTop: 2, textTransform: "capitalize" },
-  mapDirection: { alignItems: "center", backgroundColor: theme.deepBrand, borderRadius: 14, height: 44, justifyContent: "center", width: 44 },
-  mapCaption: { alignItems: "center", flexDirection: "row", gap: 7, minHeight: 58, paddingHorizontal: 12 },
-  mapCaptionText: { color: theme.textMuted, flex: 1, fontFamily: theme.font.body, fontSize: 10, lineHeight: 15 },
-  verifiedBadge: { alignItems: "center", backgroundColor: theme.brand, borderRadius: 7, height: 14, justifyContent: "center", width: 14 },
-  directoryLoading: { alignItems: "center", gap: 8, paddingVertical: 28 },
-  directoryLoadingText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11.5 },
-  error: { alignItems: "center", backgroundColor: "#FFF0EB", borderRadius: 18, flexDirection: "row", gap: 11, marginTop: 16, minHeight: 72, padding: 14 },
-  errorCopy: { flex: 1 },
-  errorTitle: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 13 },
-  errorText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11.5, lineHeight: 17, marginTop: 2 },
-  sectionHeader: { alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between", marginTop: 25 },
-  sectionTitle: { color: theme.text, fontFamily: theme.font.display, fontSize: 21 },
-  sectionSubtitle: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11, marginTop: 3 },
-  coordinateKey: { alignItems: "center", flexDirection: "row", gap: 4, paddingBottom: 2 },
-  coordinateKeyText: { color: theme.brandPressed, fontFamily: theme.font.medium, fontSize: 9.5 },
-  placeRow: { alignItems: "center", borderBottomColor: theme.border, borderBottomWidth: 1, flexDirection: "row", minHeight: 116, paddingVertical: 12 },
-  placeImage: { borderRadius: 15, height: 78, width: 78 },
-  placeIcon: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderRadius: 15, height: 68, justifyContent: "center", width: 68 },
-  placeCopy: { flex: 1, marginLeft: 11 },
-  placeCategoryRow: { alignItems: "center", flexDirection: "row", gap: 5 },
-  placeCategory: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8.5, letterSpacing: .55, textTransform: "uppercase" },
-  placeName: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14.5, marginTop: 4 },
-  placeDescription: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10.5, lineHeight: 15, marginTop: 3 },
-  accessibilityRow: { alignItems: "flex-start", flexDirection: "row", gap: 4, marginTop: 5 },
-  accessibilityText: { color: theme.info, flex: 1, fontFamily: theme.font.medium, fontSize: 9.5, lineHeight: 13 },
-  rowDirection: { alignItems: "center", backgroundColor: theme.surfaceMuted, borderRadius: 14, height: 44, justifyContent: "center", marginLeft: 6, width: 44 },
-  rowDirectionDisabled: { opacity: .52 },
-  directoryEmpty: { alignItems: "center", minHeight: 220, paddingHorizontal: 24, paddingTop: 48 },
-  directoryEmptyTitle: { color: theme.text, fontFamily: theme.font.display, fontSize: 19, marginTop: 10 },
-  directoryEmptyBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12.5, lineHeight: 19, marginTop: 5, textAlign: "center" },
-});
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    screen: { backgroundColor: theme.canvas, flex: 1 },
+    directory: { alignSelf: "center" },
+    listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 10 },
+    filters: { marginBottom: 14, marginTop: 13 },
+    notice: {
+      alignItems: "center",
+      backgroundColor: "rgba(241,223,200,.50)",
+      borderColor: "rgba(168,70,46,.14)",
+      borderRadius: 15,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 12,
+      minHeight: 52,
+      paddingLeft: 12,
+      paddingRight: 4,
+      paddingVertical: 4,
+    },
+    noticeText: {
+      color: theme.text,
+      flex: 1,
+      fontFamily: theme.font.medium,
+      fontSize: 11.5,
+      lineHeight: 17,
+    },
+    noticeDismiss: {
+      alignItems: "center",
+      height: 44,
+      justifyContent: "center",
+      width: 44,
+    },
+    mapFrame: {
+      backgroundColor: theme.surfaceRaised,
+      borderColor: theme.border,
+      borderRadius: 25,
+      borderWidth: 1,
+      overflow: "hidden",
+      ...theme.shadow,
+    },
+    mapViewport: {
+      backgroundColor: theme.surfaceMuted,
+      overflow: "hidden",
+      position: "relative",
+      width: "100%",
+    },
+    mapTile: {
+      height: TILE_SIZE + 1,
+      position: "absolute",
+      width: TILE_SIZE + 1,
+    },
+    mapFallback: {
+      alignItems: "center",
+      bottom: 0,
+      justifyContent: "center",
+      left: 32,
+      position: "absolute",
+      right: 32,
+      top: 0,
+    },
+    mapFallbackTitle: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 14,
+      marginTop: 9,
+      textAlign: "center",
+    },
+    mapFallbackBody: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 11,
+      lineHeight: 16,
+      marginTop: 4,
+      textAlign: "center",
+    },
+    mapFeedback: {
+      alignItems: "center",
+      alignSelf: "center",
+      backgroundColor: theme.surfaceGlassStrong,
+      borderColor: theme.border,
+      borderRadius: 17,
+      borderWidth: 1,
+      gap: 7,
+      left: 48,
+      padding: 14,
+      position: "absolute",
+      right: 48,
+      top: 110,
+      ...theme.shadow,
+    },
+    mapFeedbackTitle: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 12.5,
+      textAlign: "center",
+    },
+    mapFeedbackText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.medium,
+      fontSize: 10.5,
+      lineHeight: 15,
+      textAlign: "center",
+    },
+    partialBadge: {
+      alignItems: "center",
+      backgroundColor: "rgba(255,247,233,.95)",
+      borderRadius: 12,
+      flexDirection: "row",
+      gap: 5,
+      left: 10,
+      paddingHorizontal: 9,
+      paddingVertical: 7,
+      position: "absolute",
+      top: 10,
+    },
+    partialBadgeText: {
+      color: theme.statusAttention,
+      fontFamily: theme.font.semibold,
+      fontSize: 9,
+    },
+    mapControls: {
+      backgroundColor: theme.surfaceGlassStrong,
+      borderColor: "rgba(255,255,255,.98)",
+      borderRadius: 15,
+      borderWidth: 1,
+      overflow: "hidden",
+      position: "absolute",
+      right: 10,
+      top: 10,
+      ...theme.shadow,
+    },
+    zoomButton: {
+      alignItems: "center",
+      height: 44,
+      justifyContent: "center",
+      width: 44,
+    },
+    controlDivider: {
+      backgroundColor: theme.border,
+      height: 1,
+      marginHorizontal: 8,
+    },
+    controlDisabled: { opacity: 0.35 },
+    controlPressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
+    zoomBadge: {
+      backgroundColor: theme.surfaceGlassStrong,
+      borderRadius: 9,
+      paddingHorizontal: 7,
+      paddingVertical: 5,
+      position: "absolute",
+      right: 12,
+      top: 151,
+    },
+    zoomBadgeText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.bold,
+      fontSize: 8.5,
+    },
+    attribution: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceGlassStrong,
+      borderRadius: 8,
+      bottom: 5,
+      justifyContent: "center",
+      minHeight: 44,
+      minWidth: 44,
+      paddingHorizontal: 10,
+      position: "absolute",
+      right: 5,
+    },
+    attributionText: {
+      color: "#34312F",
+      fontFamily: theme.font.medium,
+      fontSize: 9.5,
+      textDecorationLine: "underline",
+    },
+    pin: {
+      alignItems: "center",
+      borderColor: "#FFFFFF",
+      borderRadius: 22,
+      borderWidth: 3,
+      height: 44,
+      justifyContent: "center",
+      marginLeft: -22,
+      marginTop: -22,
+      position: "absolute",
+      width: 44,
+      ...theme.shadow,
+    },
+    pinActive: {
+      borderRadius: 25,
+      height: 50,
+      marginLeft: -25,
+      marginTop: -25,
+      width: 50,
+    },
+    pinPressed: { opacity: 0.82, transform: [{ scale: 0.96 }] },
+    selectedPlace: {
+      alignItems: "center",
+      flexDirection: "row",
+      minHeight: 68,
+      paddingHorizontal: 11,
+      paddingVertical: 10,
+    },
+    selectedPlaceIcon: {
+      alignItems: "center",
+      borderRadius: 13,
+      height: 40,
+      justifyContent: "center",
+      width: 40,
+    },
+    selectedPlaceCopy: { flex: 1, marginLeft: 9 },
+    selectedPlaceNameRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 5,
+    },
+    selectedPlaceName: {
+      color: theme.text,
+      flexShrink: 1,
+      fontFamily: theme.font.semibold,
+      fontSize: 12.5,
+    },
+    selectedPlaceMeta: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 9.5,
+      marginTop: 2,
+      textTransform: "capitalize",
+    },
+    mapDirection: {
+      alignItems: "center",
+      backgroundColor: theme.deepBrand,
+      borderRadius: 14,
+      height: 44,
+      justifyContent: "center",
+      width: 44,
+    },
+    mapCaption: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 7,
+      minHeight: 58,
+      paddingHorizontal: 12,
+    },
+    mapCaptionText: {
+      color: theme.textMuted,
+      flex: 1,
+      fontFamily: theme.font.body,
+      fontSize: 10,
+      lineHeight: 15,
+    },
+    verifiedBadge: {
+      alignItems: "center",
+      backgroundColor: theme.brand,
+      borderRadius: 7,
+      height: 14,
+      justifyContent: "center",
+      width: 14,
+    },
+    directoryLoading: { alignItems: "center", gap: 8, paddingVertical: 28 },
+    directoryLoadingText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 11.5,
+    },
+    error: {
+      alignItems: "center",
+      backgroundColor: "#FFF0EB",
+      borderRadius: 18,
+      flexDirection: "row",
+      gap: 11,
+      marginTop: 16,
+      minHeight: 72,
+      padding: 14,
+    },
+    errorCopy: { flex: 1 },
+    errorTitle: {
+      color: theme.deepBrand,
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+    },
+    errorText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 11.5,
+      lineHeight: 17,
+      marginTop: 2,
+    },
+    sectionHeader: {
+      alignItems: "flex-end",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: 25,
+    },
+    sectionTitle: {
+      color: theme.text,
+      fontFamily: theme.font.display,
+      fontSize: 21,
+    },
+    sectionSubtitle: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 11,
+      marginTop: 3,
+    },
+    coordinateKey: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 4,
+      paddingBottom: 2,
+    },
+    coordinateKeyText: {
+      color: theme.brandPressed,
+      fontFamily: theme.font.medium,
+      fontSize: 9.5,
+    },
+    placeRow: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      flexDirection: "row",
+      minHeight: 116,
+      paddingVertical: 12,
+    },
+    placeImage: { borderRadius: 15, height: 78, width: 78 },
+    placeIcon: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceMuted,
+      borderRadius: 15,
+      height: 68,
+      justifyContent: "center",
+      width: 68,
+    },
+    placeCopy: { flex: 1, marginLeft: 11 },
+    placeCategoryRow: { alignItems: "center", flexDirection: "row", gap: 5 },
+    placeCategory: {
+      color: theme.brandPressed,
+      fontFamily: theme.font.bold,
+      fontSize: 8.5,
+      letterSpacing: 0.55,
+      textTransform: "uppercase",
+    },
+    placeName: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 14.5,
+      marginTop: 4,
+    },
+    placeDescription: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 10.5,
+      lineHeight: 15,
+      marginTop: 3,
+    },
+    accessibilityRow: {
+      alignItems: "flex-start",
+      flexDirection: "row",
+      gap: 4,
+      marginTop: 5,
+    },
+    accessibilityText: {
+      color: theme.info,
+      flex: 1,
+      fontFamily: theme.font.medium,
+      fontSize: 9.5,
+      lineHeight: 13,
+    },
+    rowDirection: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceMuted,
+      borderRadius: 14,
+      height: 44,
+      justifyContent: "center",
+      marginLeft: 6,
+      width: 44,
+    },
+    rowDirectionDisabled: { opacity: 0.52 },
+    directoryEmpty: {
+      alignItems: "center",
+      minHeight: 220,
+      paddingHorizontal: 24,
+      paddingTop: 48,
+    },
+    directoryEmptyTitle: {
+      color: theme.text,
+      fontFamily: theme.font.display,
+      fontSize: 19,
+      marginTop: 10,
+    },
+    directoryEmptyBody: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12.5,
+      lineHeight: 19,
+      marginTop: 5,
+      textAlign: "center",
+    },
+  });
+const styles = createStyles(theme);

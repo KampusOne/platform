@@ -4,7 +4,6 @@ import Image from "next/image";
 import { type FormEvent, type ReactNode, useState } from "react";
 
 import { usePortalAuth } from "@/components/auth-provider";
-import { AgentAccess } from "@/components/agent-access";
 import { PortalApiError, portalApi, webAuth } from "@/lib/api";
 
 type AuthMode = "login" | "register" | "verify" | "forgot" | "reset";
@@ -266,9 +265,8 @@ export function AccessGate({
     );
   }
 
-  if (surface === "agents") {
-    return <AgentAccess onAuthenticated={start} />;
-  }
+  // Agent applicants may be students or non-students. Both use the same
+  // registration and verified-email sign-in, not a separate portal identity.
 
   return (
     <main className="auth-page">

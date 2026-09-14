@@ -21,53 +21,99 @@ import {
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
-import { featureEnabled, phase3SchemaReady, requireFeature } from "../lib/features";
+import {
+  featureEnabled,
+  phase3SchemaReady,
+  requireFeature,
+} from "../lib/features";
 import { equalHash, sha256 } from "../lib/security";
+import { requireFullKyc } from "../lib/kyc";
 import { currentUser, requireAuth, requireOperator } from "../middleware/auth";
 import type { AuthenticatedUser, Bindings, Variables } from "../types";
 
 const ADMIN_ROLES = [
-  "PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR",
-  "VERIFICATION_REVIEWER", "SUPPORT", "FINANCE_REVIEWER",
+  "PLATFORM_ADMIN",
+  "INSTITUTION_ADMIN",
+  "CONTENT_EDITOR",
+  "VERIFICATION_REVIEWER",
+  "SUPPORT",
+  "FINANCE_REVIEWER",
 ] as const;
 
-export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+export const adminRoutes = new Hono<{
+  Bindings: Bindings;
+  Variables: Variables;
+}>();
 
 async function body(context: { req: { json(): Promise<unknown> } }) {
   return context.req.json().catch(() => null);
 }
 
-async function adminScope(env: Bindings, user: AuthenticatedUser, requested?: string) {
+async function adminScope(
+  env: Bindings,
+  user: AuthenticatedUser,
+  requested?: string,
+) {
   if (user.operatorRoles.includes("PLATFORM_ADMIN")) return requested ?? null;
   const result = await database(env).execute<{ university_id: string }>(sql`
     select university_id from public.operator_roles
     where user_id = ${user.id}::uuid and university_id is not null
+      and role=any(${sql.param(user.operatorRoles)}::text[])
+      and (${requested ?? null}::uuid is null or university_id=${requested ?? null}::uuid)
       and (expires_at is null or expires_at > now())
     order by created_at limit 1
   `);
   const universityId = firstRow(result)?.university_id;
-  if (!universityId) throw new AppError(403, "FORBIDDEN", "No university scope is assigned to this account.");
+  if (!universityId)
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "No university scope is assigned to this account.",
+    );
   if (requested && requested !== universityId) {
-    throw new AppError(403, "FORBIDDEN", "You cannot access another university's records.");
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "You cannot access another university's records.",
+    );
   }
   return universityId;
 }
 
 function requireTutorialEditor(user: AuthenticatedUser) {
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "A content or institution administrator role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "A content or institution administrator role is required.",
+    );
   }
 }
 
 adminRoutes.post("/bootstrap", requireAuth, async (context) => {
   const user = currentUser(context);
   const supplied = context.req.header("X-Admin-Bootstrap-Token");
-  const initialAdminEmail = context.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
-  const mailboxAuthorized = Boolean(initialAdminEmail && user.email.toLowerCase() === initialAdminEmail);
-  const tokenAuthorized = Boolean(context.env.ADMIN_BOOTSTRAP_TOKEN && supplied)
-    && equalHash(await sha256(supplied!), await sha256(context.env.ADMIN_BOOTSTRAP_TOKEN!));
+  const initialAdminEmail =
+    context.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
+  const mailboxAuthorized = Boolean(
+    initialAdminEmail && user.email.toLowerCase() === initialAdminEmail,
+  );
+  const tokenAuthorized =
+    Boolean(context.env.ADMIN_BOOTSTRAP_TOKEN && supplied) &&
+    equalHash(
+      await sha256(supplied!),
+      await sha256(context.env.ADMIN_BOOTSTRAP_TOKEN!),
+    );
   if (!mailboxAuthorized && !tokenAuthorized) {
-    throw new AppError(403, "FORBIDDEN", "The bootstrap credential is invalid.");
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "The bootstrap credential is invalid.",
+    );
   }
   try {
     await database(context.env).execute(sql`
@@ -76,28 +122,68 @@ adminRoutes.post("/bootstrap", requireAuth, async (context) => {
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "";
     if (message.includes("ADMIN_BOOTSTRAP_ALREADY_COMPLETED")) {
-      throw new AppError(409, "CONFLICT", "Administrator bootstrap has already been completed.");
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "Administrator bootstrap has already been completed.",
+      );
     }
     if (message.includes("ADMIN_BOOTSTRAP_USER_UNAVAILABLE")) {
-      throw new AppError(403, "FORBIDDEN", "Only a verified active account can become the first administrator.");
+      throw new AppError(
+        403,
+        "FORBIDDEN",
+        "Only a verified active account can become the first administrator.",
+      );
     }
     throw caught;
   }
   await recordAudit(context.env, {
-    actorUserId: user.id, action: "admin.bootstrap.completed", targetType: "user",
-    targetId: user.id, requestId: context.get("requestId"),
-    metadata: { method: mailboxAuthorized ? "verified_initial_email" : "one_time_token" },
+    actorUserId: user.id,
+    action: "admin.bootstrap.completed",
+    targetType: "user",
+    targetId: user.id,
+    requestId: context.get("requestId"),
+    metadata: {
+      method: mailboxAuthorized ? "verified_initial_email" : "one_time_token",
+    },
   });
   return context.json({ status: "platform_admin_created" }, 201);
 });
 
 adminRoutes.use("/*", requireAuth, requireOperator(...ADMIN_ROLES));
+adminRoutes.use("/*", async (c, next) => {
+  const path = c.req.path.replace("/v1/admin", "");
+  const accepted = path.startsWith("/applications")
+    ? ["PLATFORM_ADMIN", "VERIFICATION_REVIEWER"]
+    : path.startsWith("/users")
+      ? ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "SUPPORT"]
+      : /^\/operations\/(payouts|payment-events|disputes)/.test(path)
+        ? ["PLATFORM_ADMIN", "FINANCE_REVIEWER"]
+        : /^\/(content|tutorials|campus-places)/.test(path)
+          ? ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"]
+          : [...ADMIN_ROLES];
+  const user = currentUser(c),
+    filtered = user.operatorRoles.filter((r) => accepted.includes(r));
+  if (!filtered.length)
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "Your administrator role cannot perform this action.",
+    );
+  c.set("user", { ...user, operatorRoles: filtered });
+  await next();
+});
 
 adminRoutes.get("/dashboard", async (context) => {
   const user = currentUser(context);
-  const scope = await adminScope(context.env, user, context.req.query("universityId"));
-  const [users, applications, content, commerce, revenue, trend, queues] = await Promise.all([
-    database(context.env).execute(sql`
+  const scope = await adminScope(
+    context.env,
+    user,
+    context.req.query("universityId"),
+  );
+  const [users, applications, content, commerce, revenue, trend, queues] =
+    await Promise.all([
+      database(context.env).execute(sql`
       select count(*)::int as total,
         count(*) filter (where users.created_at >= now() - interval '30 days')::int as new_30d,
         count(*) filter (where users.email_verified_at is not null)::int as email_verified,
@@ -105,7 +191,7 @@ adminRoutes.get("/dashboard", async (context) => {
       from public.users users left join public.profiles profiles on profiles.user_id = users.id
       where users.deleted_at is null and (${scope}::uuid is null or profiles.university_id = ${scope}::uuid)
     `),
-    database(context.env).execute(sql`
+      database(context.env).execute(sql`
       select count(*) filter (where status in ('SUBMITTED','IN_REVIEW'))::int as pending,
         count(*) filter (where status = 'APPROVED')::int as approved,
         count(*) filter (where agent_type = 'TUTOR')::int as tutors,
@@ -113,14 +199,14 @@ adminRoutes.get("/dashboard", async (context) => {
         count(*) filter (where agent_type = 'RIDER')::int as riders
       from public.agent_applications where (${scope}::uuid is null or university_id = ${scope}::uuid)
     `),
-    database(context.env).execute(sql`
+      database(context.env).execute(sql`
       select count(*) filter (where status in ('PUBLISHED','CORRECTED'))::int as published_posts,
         count(*) filter (where status = 'DRAFT')::int as draft_posts,
         (select count(*)::int from public.campus_places
           where status = 'PUBLISHED' and (${scope}::uuid is null or university_id = ${scope}::uuid)) as published_places
       from public.feed_posts where (${scope}::uuid is null or university_id = ${scope}::uuid)
     `),
-    database(context.env).execute(sql`
+      database(context.env).execute(sql`
       select
         (select count(*)::int from public.tutorial_bookings
           where ${scope}::uuid is null or university_id = ${scope}::uuid) as tutorial_bookings,
@@ -138,7 +224,7 @@ adminRoutes.get("/dashboard", async (context) => {
           where events.state = 'REQUIRES_REVIEW'
             and (${scope}::uuid is null or coalesce(bookings.university_id, orders.university_id) = ${scope}::uuid)) as payment_anomalies
     `),
-    database(context.env).execute(sql`
+      database(context.env).execute(sql`
       select
         coalesce((select sum(amount_kobo) from public.tutorial_bookings
           where (${scope}::uuid is null or university_id = ${scope}::uuid)
@@ -156,7 +242,7 @@ adminRoutes.get("/dashboard", async (context) => {
           where accounts.account_type = 'REVENUE'
             and (${scope}::uuid is null or transactions.university_id = ${scope}::uuid)), 0)::bigint as recognized_revenue_kobo
     `),
-    database(context.env).execute(sql`
+      database(context.env).execute(sql`
       with days as (select generate_series(current_date - 29, current_date, interval '1 day')::date as day),
       income as (
         select created_at::date as day, sum(amount_kobo)::bigint as amount
@@ -172,18 +258,21 @@ adminRoutes.get("/dashboard", async (context) => {
       select days.day, coalesce(sum(income.amount), 0)::bigint as gmv_kobo
       from days left join income on income.day = days.day group by days.day order by days.day
     `),
-    database(context.env).execute(sql`
+      database(context.env).execute(sql`
       select id, agent_type, display_name, status, submitted_at
       from public.agent_applications
       where status in ('SUBMITTED','IN_REVIEW') and (${scope}::uuid is null or university_id = ${scope}::uuid)
       order by submitted_at limit 8
     `),
-  ]);
+    ]);
   return context.json({
     scope: { universityId: scope },
     metrics: {
-      users: firstRow(users), applications: firstRow(applications), content: firstRow(content),
-      commerce: firstRow(commerce), revenue: firstRow(revenue),
+      users: firstRow(users),
+      applications: firstRow(applications),
+      content: firstRow(content),
+      commerce: firstRow(commerce),
+      revenue: firstRow(revenue),
     },
     revenueTrend: trend.rows,
     queues: { applications: queues.rows },
@@ -193,7 +282,11 @@ adminRoutes.get("/dashboard", async (context) => {
 
 adminRoutes.get("/users", async (context) => {
   const user = currentUser(context);
-  const scope = await adminScope(context.env, user, context.req.query("universityId"));
+  const scope = await adminScope(
+    context.env,
+    user,
+    context.req.query("universityId"),
+  );
   const searchText = context.req.query("q")?.trim();
   const search = searchText ? `%${searchText}%` : null;
   const result = await database(context.env).execute(sql`
@@ -213,7 +306,11 @@ adminRoutes.get("/users", async (context) => {
 
 adminRoutes.get("/applications", async (context) => {
   const user = currentUser(context);
-  const scope = await adminScope(context.env, user, context.req.query("universityId"));
+  const scope = await adminScope(
+    context.env,
+    user,
+    context.req.query("universityId"),
+  );
   const result = await database(context.env).execute(sql`
       select applications.id, applications.agent_type, applications.display_name,
       applications.phone_e164, applications.statement, applications.evidence,
@@ -236,19 +333,38 @@ adminRoutes.get("/applications", async (context) => {
 
 adminRoutes.post("/applications/:id/verification", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "VERIFICATION_REVIEWER"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "A verification reviewer role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "VERIFICATION_REVIEWER"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "A verification reviewer role is required.",
+    );
   }
   const parsed = agentVerificationReviewSchema.safeParse(await body(context));
-  if (!parsed.success || (parsed.data.bankStatus === "VERIFIED"
-    && (!parsed.data.bankAccountName || !parsed.data.bankAccountLast4))) {
-    throw new AppError(400, "BAD_REQUEST", "A documented verification decision and resolved bank account are required.");
+  if (
+    !parsed.success ||
+    (parsed.data.bankStatus === "VERIFIED" &&
+      (!parsed.data.bankAccountName || !parsed.data.bankAccountLast4))
+  ) {
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "A documented verification decision and resolved bank account are required.",
+    );
   }
-  const applicationResult = await database(context.env).execute<{ id: string; university_id: string }>(sql`
+  const applicationResult = await database(context.env).execute<{
+    id: string;
+    university_id: string;
+  }>(sql`
     select id, university_id from public.agent_applications where id = ${context.req.param("id")}::uuid limit 1
   `);
   const application = firstRow(applicationResult);
-  if (!application) throw new AppError(404, "NOT_FOUND", "That application does not exist.");
+  if (!application)
+    throw new AppError(404, "NOT_FOUND", "That application does not exist.");
   await adminScope(context.env, user, application.university_id);
   await database(context.env).execute(sql`
     update public.agent_applications set
@@ -264,46 +380,86 @@ adminRoutes.post("/applications/:id/verification", async (context) => {
       updated_at = now()
     where id = ${application.id}::uuid
   `);
-  await recordAudit(context.env, { actorUserId: user.id, universityId: application.university_id,
-    action: "agent.verification.reviewed", targetType: "agent_application", targetId: application.id,
-    requestId: context.get("requestId"), metadata: { identityStatus: parsed.data.identityStatus,
-      phoneVerified: parsed.data.phoneVerified, bankStatus: parsed.data.bankStatus, note: parsed.data.note } });
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: application.university_id,
+    action: "agent.verification.reviewed",
+    targetType: "agent_application",
+    targetId: application.id,
+    requestId: context.get("requestId"),
+    metadata: {
+      identityStatus: parsed.data.identityStatus,
+      phoneVerified: parsed.data.phoneVerified,
+      bankStatus: parsed.data.bankStatus,
+      note: parsed.data.note,
+    },
+  });
   return context.json({ status: "VERIFICATION_RECORDED" });
 });
 
 adminRoutes.post("/applications/:id/review", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "VERIFICATION_REVIEWER"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "A verification reviewer role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "VERIFICATION_REVIEWER"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "A verification reviewer role is required.",
+    );
   }
   const parsed = reviewAgentApplicationSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "A decision and reviewer note are required.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "A decision and reviewer note are required.",
+    );
   const applicationResult = await database(context.env).execute<{
-    id: string; user_id: string; university_id: string; agent_type: string; display_name: string;
-    kyc_status: string; phone_verified_at: string | null; terms_accepted_at: string | null;
+    id: string;
+    user_id: string;
+    university_id: string;
+    agent_type: string;
+    display_name: string;
+    kyc_status: string;
+    phone_verified_at: string | null;
+    terms_accepted_at: string | null;
   }>(sql`
     select id, user_id, university_id, agent_type, display_name,
       kyc_status, phone_verified_at, terms_accepted_at
     from public.agent_applications where id = ${context.req.param("id")}::uuid limit 1
   `);
   const application = firstRow(applicationResult);
-  if (!application) throw new AppError(404, "NOT_FOUND", "That application does not exist.");
+  if (!application)
+    throw new AppError(404, "NOT_FOUND", "That application does not exist.");
   await adminScope(context.env, user, application.university_id);
-  if (parsed.data.decision === "APPROVED" && (
-    !["VERIFIED", "MANUALLY_VERIFIED"].includes(application.kyc_status)
-    || !application.phone_verified_at || !application.terms_accepted_at
-  )) {
-    throw new AppError(409, "CONFLICT", "Identity, phone, and agent terms must be verified before approval.");
+  if (
+    parsed.data.decision === "APPROVED" &&
+    (!["VERIFIED", "MANUALLY_VERIFIED"].includes(application.kyc_status) ||
+      !application.phone_verified_at ||
+      !application.terms_accepted_at)
+  ) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Identity, phone, and agent terms must be verified before approval.",
+    );
   }
 
   const client = sqlClient(context.env);
-  const statements = [client`
+  const statements = [
+    client`
     update public.agent_applications set status = ${parsed.data.decision},
       reviewer_user_id = ${user.id}::uuid, review_note = ${parsed.data.note},
       reviewed_at = now(), updated_at = now()
     where id = ${application.id}::uuid
-  `];
+  `,
+  ];
   if (parsed.data.decision === "APPROVED") {
+    if (context.env.UNIFIED_SCHEMA_READY === "true")
+      await requireFullKyc(context.env, application.id);
     statements.push(client`
       insert into public.agent_profiles (
         university_id, user_id, application_id, agent_type, display_name, verified_at
@@ -314,27 +470,38 @@ adminRoutes.post("/applications/:id/review", async (context) => {
         application_id = excluded.application_id, display_name = excluded.display_name,
         verified_at = now(), status = 'ACTIVE', updated_at = now()
     `);
-    statements.push(client`
-      update public.users set roles = array(
-        select distinct role from unnest(roles || array['AGENT'::"UserRole"]) as role
-      ), updated_at = now() where id = ${application.user_id}::uuid
-    `);
+    // Agent capabilities come from reviewed agent_profiles, never an invented
+    // value in the legacy UserRole enum or a client-controlled role claim.
   }
   await client.transaction(statements);
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: application.university_id,
-    action: "agent.application.reviewed", targetType: "agent_application",
-    targetId: application.id, requestId: context.get("requestId"),
-    metadata: { decision: parsed.data.decision, agentType: application.agent_type },
+    actorUserId: user.id,
+    universityId: application.university_id,
+    action: "agent.application.reviewed",
+    targetType: "agent_application",
+    targetId: application.id,
+    requestId: context.get("requestId"),
+    metadata: {
+      decision: parsed.data.decision,
+      agentType: application.agent_type,
+    },
   });
   return context.json({ status: parsed.data.decision });
 });
 
 adminRoutes.get("/tutorials", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   requireTutorialEditor(user);
-  const scope = await adminScope(context.env, user, context.req.query("universityId"));
+  const scope = await adminScope(
+    context.env,
+    user,
+    context.req.query("universityId"),
+  );
   const [listings, resources] = await Promise.all([
     database(context.env).execute(sql`
       select listings.id, listings.university_id, listings.course_code, listings.title,
@@ -375,42 +542,70 @@ adminRoutes.get("/tutorials", async (context) => {
     summary: {
       listings: listings.rows.length,
       resources: resources.rows.length,
-      pending: listings.rows.filter((item) => String(item.review_status) === "PENDING").length
-        + resources.rows.filter((item) => String(item.status) === "SUBMITTED").length,
-      demo: listings.rows.filter((item) => Boolean(item.is_demo)).length
-        + resources.rows.filter((item) => Boolean(item.is_demo)).length,
+      pending:
+        listings.rows.filter((item) => String(item.review_status) === "PENDING")
+          .length +
+        resources.rows.filter((item) => String(item.status) === "SUBMITTED")
+          .length,
+      demo:
+        listings.rows.filter((item) => Boolean(item.is_demo)).length +
+        resources.rows.filter((item) => Boolean(item.is_demo)).length,
     },
   });
 });
 
 adminRoutes.post("/tutorials/demo", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   requireTutorialEditor(user);
   const parsed = tutorialDemoSeedSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose the university that should receive demo tutorials.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose the university that should receive demo tutorials.",
+    );
   await adminScope(context.env, user, parsed.data.universityId);
-  const result = await database(context.env).execute<{ seeded: { listings: number; resources: number } }>(sql`
+  const result = await database(context.env).execute<{
+    seeded: { listings: number; resources: number };
+  }>(sql`
     select app_private.seed_tutorial_demo(
       ${parsed.data.universityId}::uuid, ${user.id}::uuid
     ) as seeded
   `);
   const seeded = firstRow(result)?.seeded ?? { listings: 0, resources: 0 };
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: parsed.data.universityId,
-    action: "tutorial.demo.seeded", targetType: "tutorial_demo", targetId: parsed.data.universityId,
-    requestId: context.get("requestId"), metadata: seeded,
+    actorUserId: user.id,
+    universityId: parsed.data.universityId,
+    action: "tutorial.demo.seeded",
+    targetType: "tutorial_demo",
+    targetId: parsed.data.universityId,
+    requestId: context.get("requestId"),
+    metadata: seeded,
   });
   return context.json({ status: "READY", ...seeded }, 201);
 });
 
 adminRoutes.delete("/tutorials/demo", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   requireTutorialEditor(user);
   const universityId = context.req.query("universityId");
   const parsed = tutorialDemoSeedSchema.safeParse({ universityId });
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose the university whose demo catalogue should be removed.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose the university whose demo catalogue should be removed.",
+    );
   await adminScope(context.env, user, parsed.data.universityId);
   const result = await database(context.env).execute<{
     removed: { listings: number; resources: number; cancelledBookings: number };
@@ -419,36 +614,72 @@ adminRoutes.delete("/tutorials/demo", async (context) => {
       ${parsed.data.universityId}::uuid, ${user.id}::uuid
     ) as removed
   `);
-  const removed = firstRow(result)?.removed ?? { listings: 0, resources: 0, cancelledBookings: 0 };
+  const removed = firstRow(result)?.removed ?? {
+    listings: 0,
+    resources: 0,
+    cancelledBookings: 0,
+  };
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: parsed.data.universityId,
-    action: "tutorial.demo.removed", targetType: "tutorial_demo", targetId: parsed.data.universityId,
-    requestId: context.get("requestId"), metadata: removed,
+    actorUserId: user.id,
+    universityId: parsed.data.universityId,
+    action: "tutorial.demo.removed",
+    targetType: "tutorial_demo",
+    targetId: parsed.data.universityId,
+    requestId: context.get("requestId"),
+    metadata: removed,
   });
   return context.json({ status: "REMOVED", ...removed });
 });
 
 adminRoutes.post("/tutorials/listings/:id/review", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   requireTutorialEditor(user);
   const parsed = tutorialModerationSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Record a valid tutorial decision and reviewer note.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Record a valid tutorial decision and reviewer note.",
+    );
   const found = await database(context.env).execute<{
-    id: string; university_id: string; status: string; price_kobo: number;
+    id: string;
+    university_id: string;
+    status: string;
+    price_kobo: number;
   }>(sql`
     select id, university_id, status, price_kobo from public.tutorial_listings
     where id = ${context.req.param("id")}::uuid and deleted_at is null limit 1
   `);
   const listing = firstRow(found);
-  if (!listing) throw new AppError(404, "NOT_FOUND", "That tutorial listing does not exist.");
+  if (!listing)
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "That tutorial listing does not exist.",
+    );
   await adminScope(context.env, user, listing.university_id);
-  if (parsed.data.decision === "APPROVED" && Number(listing.price_kobo) > 0
-    && !featureEnabled(context.env, "PAYMENTS_ENABLED")) {
-    throw new AppError(409, "CONFLICT", "Paid tutorials cannot be approved while payments are disabled.");
+  if (
+    parsed.data.decision === "APPROVED" &&
+    Number(listing.price_kobo) > 0 &&
+    !featureEnabled(context.env, "PAYMENTS_ENABLED")
+  ) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Paid tutorials cannot be approved while payments are disabled.",
+    );
   }
-  const nextStatus = parsed.data.decision === "APPROVED" ? "PUBLISHED"
-    : parsed.data.decision === "REJECTED" ? "REJECTED" : "DRAFT";
+  const nextStatus =
+    parsed.data.decision === "APPROVED"
+      ? "PUBLISHED"
+      : parsed.data.decision === "REJECTED"
+        ? "REJECTED"
+        : "DRAFT";
   await database(context.env).execute(sql`
     update public.tutorial_listings set status = ${nextStatus},
       review_status = ${parsed.data.decision}, review_note = ${parsed.data.note},
@@ -456,34 +687,68 @@ adminRoutes.post("/tutorials/listings/:id/review", async (context) => {
     where id = ${listing.id}::uuid
   `);
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: listing.university_id,
-    action: "tutorial.listing.reviewed", targetType: "tutorial_listing", targetId: listing.id,
-    requestId: context.get("requestId"), metadata: { decision: parsed.data.decision, note: parsed.data.note },
+    actorUserId: user.id,
+    universityId: listing.university_id,
+    action: "tutorial.listing.reviewed",
+    targetType: "tutorial_listing",
+    targetId: listing.id,
+    requestId: context.get("requestId"),
+    metadata: { decision: parsed.data.decision, note: parsed.data.note },
   });
-  return context.json({ status: nextStatus, reviewStatus: parsed.data.decision });
+  return context.json({
+    status: nextStatus,
+    reviewStatus: parsed.data.decision,
+  });
 });
 
 adminRoutes.post("/tutorials/resources/:id/review", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   requireTutorialEditor(user);
   const parsed = tutorialModerationSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Record a valid resource decision and reviewer note.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Record a valid resource decision and reviewer note.",
+    );
   const found = await database(context.env).execute<{
-    id: string; university_id: string; access_model: string;
+    id: string;
+    university_id: string;
+    access_model: string;
   }>(sql`
     select id, university_id, access_model from public.tutorial_resources
     where id = ${context.req.param("id")}::uuid and deleted_at is null limit 1
   `);
   const resource = firstRow(found);
-  if (!resource) throw new AppError(404, "NOT_FOUND", "That learning resource does not exist.");
+  if (!resource)
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "That learning resource does not exist.",
+    );
   await adminScope(context.env, user, resource.university_id);
-  if (parsed.data.decision === "APPROVED" && resource.access_model === "PAID"
-    && !featureEnabled(context.env, "PAYMENTS_ENABLED")) {
-    throw new AppError(409, "CONFLICT", "Paid resources cannot be approved while payments are disabled.");
+  if (
+    parsed.data.decision === "APPROVED" &&
+    resource.access_model === "PAID" &&
+    !featureEnabled(context.env, "PAYMENTS_ENABLED")
+  ) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Paid resources cannot be approved while payments are disabled.",
+    );
   }
-  const nextStatus = parsed.data.decision === "APPROVED" ? "PUBLISHED"
-    : parsed.data.decision === "REJECTED" ? "REJECTED" : "DRAFT";
+  const nextStatus =
+    parsed.data.decision === "APPROVED"
+      ? "PUBLISHED"
+      : parsed.data.decision === "REJECTED"
+        ? "REJECTED"
+        : "DRAFT";
   await database(context.env).execute(sql`
     update public.tutorial_resources set status = ${nextStatus},
       review_note = ${parsed.data.note}, reviewed_at = now(),
@@ -491,19 +756,29 @@ adminRoutes.post("/tutorials/resources/:id/review", async (context) => {
     where id = ${resource.id}::uuid
   `);
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: resource.university_id,
-    action: "tutorial.resource.reviewed", targetType: "tutorial_resource", targetId: resource.id,
-    requestId: context.get("requestId"), metadata: { decision: parsed.data.decision, note: parsed.data.note },
+    actorUserId: user.id,
+    universityId: resource.university_id,
+    action: "tutorial.resource.reviewed",
+    targetType: "tutorial_resource",
+    targetId: resource.id,
+    requestId: context.get("requestId"),
+    metadata: { decision: parsed.data.decision, note: parsed.data.note },
   });
   return context.json({ status: nextStatus });
 });
 
 adminRoutes.delete("/tutorials/listings/:id", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   requireTutorialEditor(user);
   const found = await database(context.env).execute<{
-    id: string; university_id: string; paid_active_bookings: number;
+    id: string;
+    university_id: string;
+    paid_active_bookings: number;
   }>(sql`
     select listings.id, listings.university_id,
       count(bookings.id) filter (where bookings.amount_kobo > 0
@@ -514,10 +789,19 @@ adminRoutes.delete("/tutorials/listings/:id", async (context) => {
     group by listings.id limit 1
   `);
   const listing = firstRow(found);
-  if (!listing) throw new AppError(404, "NOT_FOUND", "That tutorial listing does not exist.");
+  if (!listing)
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "That tutorial listing does not exist.",
+    );
   await adminScope(context.env, user, listing.university_id);
   if (Number(listing.paid_active_bookings) > 0) {
-    throw new AppError(409, "CONFLICT", "Resolve active paid bookings before removing this tutorial.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Resolve active paid bookings before removing this tutorial.",
+    );
   }
   const client = sqlClient(context.env);
   await client.transaction([
@@ -531,31 +815,49 @@ adminRoutes.delete("/tutorials/listings/:id", async (context) => {
       deleted_at = now(), updated_at = now() where id = ${listing.id}::uuid`,
   ]);
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: listing.university_id,
-    action: "tutorial.listing.removed", targetType: "tutorial_listing", targetId: listing.id,
+    actorUserId: user.id,
+    universityId: listing.university_id,
+    action: "tutorial.listing.removed",
+    targetType: "tutorial_listing",
+    targetId: listing.id,
     requestId: context.get("requestId"),
   });
   return context.json({ status: "DELETED" });
 });
 
 adminRoutes.delete("/tutorials/resources/:id", async (context) => {
-  requireFeature(context.env, "TUTORIALS_ENABLED", "Tutorial operations are not enabled in this environment.");
+  requireFeature(
+    context.env,
+    "TUTORIALS_ENABLED",
+    "Tutorial operations are not enabled in this environment.",
+  );
   const user = currentUser(context);
   requireTutorialEditor(user);
-  const found = await database(context.env).execute<{ id: string; university_id: string }>(sql`
+  const found = await database(context.env).execute<{
+    id: string;
+    university_id: string;
+  }>(sql`
     select id, university_id from public.tutorial_resources
     where id = ${context.req.param("id")}::uuid and deleted_at is null limit 1
   `);
   const resource = firstRow(found);
-  if (!resource) throw new AppError(404, "NOT_FOUND", "That learning resource does not exist.");
+  if (!resource)
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "That learning resource does not exist.",
+    );
   await adminScope(context.env, user, resource.university_id);
   await database(context.env).execute(sql`
     update public.tutorial_resources set status = 'ARCHIVED', deleted_at = now(), updated_at = now()
     where id = ${resource.id}::uuid
   `);
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: resource.university_id,
-    action: "tutorial.resource.removed", targetType: "tutorial_resource", targetId: resource.id,
+    actorUserId: user.id,
+    universityId: resource.university_id,
+    action: "tutorial.resource.removed",
+    targetType: "tutorial_resource",
+    targetId: resource.id,
     requestId: context.get("requestId"),
   });
   return context.json({ status: "DELETED" });
@@ -563,7 +865,11 @@ adminRoutes.delete("/tutorials/resources/:id", async (context) => {
 
 adminRoutes.get("/content/context", async (context) => {
   const user = currentUser(context);
-  const scope = await adminScope(context.env, user, context.req.query("universityId"));
+  const scope = await adminScope(
+    context.env,
+    user,
+    context.req.query("universityId"),
+  );
   const [universities, sources] = await Promise.all([
     database(context.env).execute(sql`
       select id, name, slug from public.universities
@@ -577,16 +883,28 @@ adminRoutes.get("/content/context", async (context) => {
       order by verified desc, name
     `),
   ]);
-  return context.json({ universities: universities.rows, sources: sources.rows });
+  return context.json({
+    universities: universities.rows,
+    sources: sources.rows,
+  });
 });
 
 adminRoutes.post("/content/sources", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role))) {
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role),
+    )
+  ) {
     throw new AppError(403, "FORBIDDEN", "A content editor role is required.");
   }
   const parsed = contentSourceSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the source details and try again.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the source details and try again.",
+    );
   await adminScope(context.env, user, parsed.data.universityId);
   const id = crypto.randomUUID();
   const result = await database(context.env).execute<{ id: string }>(sql`
@@ -603,51 +921,95 @@ adminRoutes.post("/content/sources", async (context) => {
   `);
   const source = firstRow(result);
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: parsed.data.universityId,
-    action: "content.source.saved", targetType: "content_source",
-    targetId: source?.id ?? id, requestId: context.get("requestId"),
+    actorUserId: user.id,
+    universityId: parsed.data.universityId,
+    action: "content.source.saved",
+    targetType: "content_source",
+    targetId: source?.id ?? id,
+    requestId: context.get("requestId"),
   });
-  return context.json({ id: source?.id ?? id, status: "PENDING_VERIFICATION" }, 201);
+  return context.json(
+    { id: source?.id ?? id, status: "PENDING_VERIFICATION" },
+    201,
+  );
 });
 
 adminRoutes.post("/content/sources/:id/verify", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "An institution administrator role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "An institution administrator role is required.",
+    );
   }
-  const result = await database(context.env).execute<{ id: string; university_id: string }>(sql`
+  const result = await database(context.env).execute<{
+    id: string;
+    university_id: string;
+  }>(sql`
     select id, university_id from public.content_sources
     where id = ${context.req.param("id")}::uuid limit 1
   `);
   const source = firstRow(result);
-  if (!source) throw new AppError(404, "NOT_FOUND", "That content source does not exist.");
+  if (!source)
+    throw new AppError(404, "NOT_FOUND", "That content source does not exist.");
   await adminScope(context.env, user, source.university_id);
   await database(context.env).execute(sql`
     update public.content_sources set verified = true, review_due_at = now() + interval '90 days'
     where id = ${source.id}::uuid
   `);
-  await recordAudit(context.env, { actorUserId: user.id, universityId: source.university_id,
-    action: "content.source.verified", targetType: "content_source", targetId: source.id,
-    requestId: context.get("requestId") });
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: source.university_id,
+    action: "content.source.verified",
+    targetType: "content_source",
+    targetId: source.id,
+    requestId: context.get("requestId"),
+  });
   return context.json({ status: "VERIFIED" });
 });
 
 adminRoutes.post("/content/posts", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role))) {
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role),
+    )
+  ) {
     throw new AppError(403, "FORBIDDEN", "A content editor role is required.");
   }
   const parsed = feedPostSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the post details and try again.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the post details and try again.",
+    );
   await adminScope(context.env, user, parsed.data.universityId);
-  const sourceResult = await database(context.env).execute<{ id: string; verified: boolean }>(sql`
+  const sourceResult = await database(context.env).execute<{
+    id: string;
+    verified: boolean;
+  }>(sql`
     select id, verified from public.content_sources
     where id = ${parsed.data.sourceId}::uuid and university_id = ${parsed.data.universityId}::uuid limit 1
   `);
   const source = firstRow(sourceResult);
-  if (!source) throw new AppError(400, "BAD_REQUEST", "Choose a source belonging to this university.");
+  if (!source)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose a source belonging to this university.",
+    );
   if (parsed.data.publishNow && !source.verified) {
-    throw new AppError(409, "CONFLICT", "Verify the content source before publishing this post.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Verify the content source before publishing this post.",
+    );
   }
   const id = crypto.randomUUID();
   await database(context.env).execute(sql`
@@ -663,20 +1025,37 @@ adminRoutes.post("/content/posts", async (context) => {
     )
   `);
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: parsed.data.universityId,
-    action: parsed.data.publishNow ? "content.post.published" : "content.post.created",
-    targetType: "feed_post", targetId: id, requestId: context.get("requestId"),
+    actorUserId: user.id,
+    universityId: parsed.data.universityId,
+    action: parsed.data.publishNow
+      ? "content.post.published"
+      : "content.post.created",
+    targetType: "feed_post",
+    targetId: id,
+    requestId: context.get("requestId"),
   });
-  return context.json({ id, status: parsed.data.publishNow ? "PUBLISHED" : "DRAFT" }, 201);
+  return context.json(
+    { id, status: parsed.data.publishNow ? "PUBLISHED" : "DRAFT" },
+    201,
+  );
 });
 
 adminRoutes.post("/content/places", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role))) {
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role),
+    )
+  ) {
     throw new AppError(403, "FORBIDDEN", "A content editor role is required.");
   }
   const parsed = campusPlaceSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the campus place details and try again.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the campus place details and try again.",
+    );
   await adminScope(context.env, user, parsed.data.universityId);
   const id = crypto.randomUUID();
   await database(context.env).execute(sql`
@@ -692,16 +1071,27 @@ adminRoutes.post("/content/places", async (context) => {
     )
   `);
   await recordAudit(context.env, {
-    actorUserId: user.id, universityId: parsed.data.universityId,
-    action: "campus.place.created", targetType: "campus_place", targetId: id,
-    requestId: context.get("requestId"), metadata: { published: parsed.data.publishNow },
+    actorUserId: user.id,
+    universityId: parsed.data.universityId,
+    action: "campus.place.created",
+    targetType: "campus_place",
+    targetId: id,
+    requestId: context.get("requestId"),
+    metadata: { published: parsed.data.publishNow },
   });
-  return context.json({ id, status: parsed.data.publishNow ? "PUBLISHED" : "DRAFT" }, 201);
+  return context.json(
+    { id, status: parsed.data.publishNow ? "PUBLISHED" : "DRAFT" },
+    201,
+  );
 });
 
 adminRoutes.get("/audit", async (context) => {
   const user = currentUser(context);
-  const scope = await adminScope(context.env, user, context.req.query("universityId"));
+  const scope = await adminScope(
+    context.env,
+    user,
+    context.req.query("universityId"),
+  );
   const result = await database(context.env).execute(sql`
     select id, occurred_at, actor_user_id, university_id, action, target_type,
       target_id, request_id, outcome, metadata
@@ -714,8 +1104,20 @@ adminRoutes.get("/audit", async (context) => {
 
 adminRoutes.get("/operations", async (context) => {
   const user = currentUser(context);
-  const scope = await adminScope(context.env, user, context.req.query("universityId"));
-  const [categories, products, storefronts, zones, disputes, payouts, paymentEvents] = await Promise.all([
+  const scope = await adminScope(
+    context.env,
+    user,
+    context.req.query("universityId"),
+  );
+  const [
+    categories,
+    products,
+    storefronts,
+    zones,
+    disputes,
+    payouts,
+    paymentEvents,
+  ] = await Promise.all([
     database(context.env).execute(sql`
       select id, university_id, name, status, listing_rules, reviewed_at, updated_at
       from public.product_categories where ${scope}::uuid is null or university_id = ${scope}::uuid
@@ -815,20 +1217,43 @@ adminRoutes.get("/operations", async (context) => {
         events.received_at desc limit 200
     `),
   ]);
-  return context.json({ categories: categories.rows, products: products.rows,
-    storefronts: storefronts.rows, zones: zones.rows,
-    disputes: disputes.rows, payoutRequests: payouts.rows, paymentEvents: paymentEvents.rows });
+  return context.json({
+    categories: categories.rows,
+    products: products.rows,
+    storefronts: storefronts.rows,
+    zones: zones.rows,
+    disputes: disputes.rows,
+    payoutRequests: payouts.rows,
+    paymentEvents: paymentEvents.rows,
+  });
 });
 
 adminRoutes.post("/operations/payment-events/:id/review", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "FINANCE_REVIEWER"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "A finance reviewer role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "FINANCE_REVIEWER"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "A finance reviewer role is required.",
+    );
   }
   const parsed = paymentEventReviewSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Document a valid payment resolution.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Document a valid payment resolution.",
+    );
   const result = await database(context.env).execute<{
-    id: string; state: string; resource_type: string | null; resource_id: string | null; university_id: string | null;
+    id: string;
+    state: string;
+    resource_type: string | null;
+    resource_id: string | null;
+    university_id: string | null;
   }>(sql`
     select events.id, events.state, events.resource_type, events.resource_id,
       coalesce(bookings.university_id, orders.university_id) as university_id
@@ -840,12 +1265,24 @@ adminRoutes.post("/operations/payment-events/:id/review", async (context) => {
     where events.id = ${context.req.param("id")}::uuid limit 1
   `);
   const paymentEvent = firstRow(result);
-  if (!paymentEvent) throw new AppError(404, "NOT_FOUND", "That payment event does not exist.");
+  if (!paymentEvent)
+    throw new AppError(404, "NOT_FOUND", "That payment event does not exist.");
   if (paymentEvent.state !== "REQUIRES_REVIEW") {
-    throw new AppError(409, "CONFLICT", "Only payment events awaiting review can be resolved.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Only payment events awaiting review can be resolved.",
+    );
   }
-  if (!paymentEvent.university_id && !user.operatorRoles.includes("PLATFORM_ADMIN")) {
-    throw new AppError(403, "FORBIDDEN", "Only a platform administrator can resolve an unmatched payment event.");
+  if (
+    !paymentEvent.university_id &&
+    !user.operatorRoles.includes("PLATFORM_ADMIN")
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "Only a platform administrator can resolve an unmatched payment event.",
+    );
   }
   await adminScope(context.env, user, paymentEvent.university_id ?? undefined);
   const updated = await database(context.env).execute<{ id: string }>(sql`
@@ -856,22 +1293,49 @@ adminRoutes.post("/operations/payment-events/:id/review", async (context) => {
     returning id
   `);
   if (!firstRow(updated)) {
-    throw new AppError(409, "CONFLICT", "This payment event was resolved by another reviewer.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "This payment event was resolved by another reviewer.",
+    );
   }
-  await recordAudit(context.env, { actorUserId: user.id, universityId: paymentEvent.university_id,
-    action: "payment.event.resolved", targetType: "payment_provider_event", targetId: paymentEvent.id,
-    requestId: context.get("requestId"), metadata: { resolutionCode: parsed.data.resolutionCode,
-      resourceType: paymentEvent.resource_type, resourceId: paymentEvent.resource_id, note: parsed.data.note } });
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: paymentEvent.university_id,
+    action: "payment.event.resolved",
+    targetType: "payment_provider_event",
+    targetId: paymentEvent.id,
+    requestId: context.get("requestId"),
+    metadata: {
+      resolutionCode: parsed.data.resolutionCode,
+      resourceType: paymentEvent.resource_type,
+      resourceId: paymentEvent.resource_id,
+      note: parsed.data.note,
+    },
+  });
   return context.json({ status: "RESOLVED" });
 });
 
 adminRoutes.post("/operations/categories", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "An institution administrator role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "An institution administrator role is required.",
+    );
   }
   const parsed = productCategorySchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the product category details.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the product category details.",
+    );
   await adminScope(context.env, user, parsed.data.universityId);
   const id = crypto.randomUUID();
   const result = await database(context.env).execute<{ id: string }>(sql`
@@ -890,23 +1354,45 @@ adminRoutes.post("/operations/categories", async (context) => {
     returning id
   `);
   const categoryId = firstRow(result)?.id ?? id;
-  await recordAudit(context.env, { actorUserId: user.id, universityId: parsed.data.universityId,
-    action: "marketplace.category.saved", targetType: "product_category", targetId: categoryId,
-    requestId: context.get("requestId"), metadata: { status: parsed.data.status } });
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: parsed.data.universityId,
+    action: "marketplace.category.saved",
+    targetType: "product_category",
+    targetId: categoryId,
+    requestId: context.get("requestId"),
+    metadata: { status: parsed.data.status },
+  });
   return context.json({ id: categoryId, status: parsed.data.status }, 201);
 });
 
 adminRoutes.post("/operations/storefronts/:id/review", async (context) => {
   if (!phase3SchemaReady(context.env)) {
-    throw new AppError(503, "FEATURE_DISABLED", "Storefront moderation is waiting for the reviewed Phase 3 schema migration.");
+    throw new AppError(
+      503,
+      "FEATURE_DISABLED",
+      "Storefront moderation requires the reviewed commerce migration.",
+    );
   }
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "An institution administrator role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "An institution administrator role is required.",
+    );
   }
   const parsed = storefrontModerationSchema.safeParse(await body(context));
   if (!parsed.success) {
-    throw new AppError(400, "BAD_REQUEST", "Document a valid storefront-review decision.");
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Document a valid storefront-review decision.",
+    );
   }
   const existingResult = await database(context.env).execute<{
     vendor_profile_id: string;
@@ -919,7 +1405,8 @@ adminRoutes.post("/operations/storefronts/:id/review", async (context) => {
     limit 1
   `);
   const existing = firstRow(existingResult);
-  if (!existing) throw new AppError(404, "NOT_FOUND", "That storefront does not exist.");
+  if (!existing)
+    throw new AppError(404, "NOT_FOUND", "That storefront does not exist.");
   await adminScope(context.env, user, existing.university_id);
   const result = await database(context.env).execute<{
     vendor_profile_id: string;
@@ -972,32 +1459,57 @@ adminRoutes.post("/operations/storefronts/:id/review", async (context) => {
     requestId: context.get("requestId"),
     metadata: { decision: parsed.data.status, note: parsed.data.note },
   });
-  return context.json({ id: storefront.vendor_profile_id, status: parsed.data.status });
+  return context.json({
+    id: storefront.vendor_profile_id,
+    status: parsed.data.status,
+  });
 });
 
 adminRoutes.post("/operations/products/:id/review", async (context) => {
   if (!phase3SchemaReady(context.env)) {
-    throw new AppError(503, "FEATURE_DISABLED", "Product moderation is waiting for the reviewed Phase 3 schema migration.");
+    throw new AppError(
+      503,
+      "FEATURE_DISABLED",
+      "Product moderation requires the reviewed commerce migration.",
+    );
   }
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "An institution administrator role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "An institution administrator role is required.",
+    );
   }
   const parsed = productModerationSchema.safeParse(await body(context));
   if (!parsed.success) {
-    throw new AppError(400, "BAD_REQUEST", "Document a valid product-review decision.");
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Document a valid product-review decision.",
+    );
   }
   const existingResult = await database(context.env).execute<{
-    id: string; university_id: string; status: string;
+    id: string;
+    university_id: string;
+    status: string;
   }>(sql`
     select id, university_id, status from public.vendor_products
     where id = ${context.req.param("id")}::uuid limit 1
   `);
   const existing = firstRow(existingResult);
-  if (!existing) throw new AppError(404, "NOT_FOUND", "That product does not exist.");
+  if (!existing)
+    throw new AppError(404, "NOT_FOUND", "That product does not exist.");
   await adminScope(context.env, user, existing.university_id);
 
-  const updated = await database(context.env).execute<{ id: string; university_id: string }>(sql`
+  const updated = await database(context.env).execute<{
+    id: string;
+    university_id: string;
+  }>(sql`
     update public.vendor_products products set
       status = ${parsed.data.status},
       moderation_note = ${parsed.data.note},
@@ -1054,14 +1566,27 @@ adminRoutes.post("/operations/products/:id/review", async (context) => {
 
 adminRoutes.post("/operations/zones", async (context) => {
   if (!phase3SchemaReady(context.env)) {
-    throw new AppError(503, "FEATURE_DISABLED", "Delivery-zone policy is waiting for the reviewed Phase 3 schema migration.");
+    throw new AppError(
+      503,
+      "FEATURE_DISABLED",
+      "Delivery-zone policy requires the reviewed commerce migration.",
+    );
   }
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "An institution administrator role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "An institution administrator role is required.",
+    );
   }
   const parsed = deliveryZoneSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the delivery zone details.");
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Check the delivery zone details.");
   await adminScope(context.env, user, parsed.data.universityId);
   const id = crypto.randomUUID();
   const result = await database(context.env).execute<{ id: string }>(sql`
@@ -1093,76 +1618,146 @@ adminRoutes.post("/operations/zones", async (context) => {
       updated_at = now() returning id
   `);
   const zoneId = firstRow(result)?.id ?? id;
-  await recordAudit(context.env, { actorUserId: user.id, universityId: parsed.data.universityId,
-    action: "delivery.zone.saved", targetType: "delivery_zone", targetId: zoneId,
-    requestId: context.get("requestId"), metadata: {
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: parsed.data.universityId,
+    action: "delivery.zone.saved",
+    targetType: "delivery_zone",
+    targetId: zoneId,
+    requestId: context.get("requestId"),
+    metadata: {
       baseFeeKobo: parsed.data.baseFeeKobo,
       active: parsed.data.active,
       ...(parsed.data.earningFormulaVersion
         ? { earningFormulaVersion: parsed.data.earningFormulaVersion }
         : {}),
-    } });
+    },
+  });
   return context.json({ id: zoneId, active: parsed.data.active }, 201);
 });
 
 adminRoutes.post("/operations/disputes/:id/review", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "SUPPORT", "FINANCE_REVIEWER"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "A support or finance reviewer role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "SUPPORT", "FINANCE_REVIEWER"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "A support or finance reviewer role is required.",
+    );
   }
   const parsed = disputeReviewSchema.safeParse(await body(context));
-  if (!parsed.success || (parsed.data.status === "RESOLVED" && !parsed.data.resolutionCode)) {
-    throw new AppError(400, "BAD_REQUEST", "A documented resolution is required.");
+  if (
+    !parsed.success ||
+    (parsed.data.status === "RESOLVED" && !parsed.data.resolutionCode)
+  ) {
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "A documented resolution is required.",
+    );
   }
   const result = await database(context.env).execute<{
-    id: string; university_id: string; tutorial_booking_id: string | null; order_id: string | null;
+    id: string;
+    university_id: string;
+    tutorial_booking_id: string | null;
+    order_id: string | null;
   }>(sql`select id, university_id, tutorial_booking_id, order_id from public.disputes
     where id = ${context.req.param("id")}::uuid limit 1`);
   const dispute = firstRow(result);
-  if (!dispute) throw new AppError(404, "NOT_FOUND", "That dispute does not exist.");
+  if (!dispute)
+    throw new AppError(404, "NOT_FOUND", "That dispute does not exist.");
   await adminScope(context.env, user, dispute.university_id);
-  const release = parsed.data.status === "RESOLVED"
-    && ["RELEASE_EARNINGS", "NO_ACTION"].includes(parsed.data.resolutionCode ?? "");
+  const release =
+    parsed.data.status === "RESOLVED" &&
+    ["RELEASE_EARNINGS", "NO_ACTION"].includes(
+      parsed.data.resolutionCode ?? "",
+    );
   const client = sqlClient(context.env);
   await client.transaction([
     client`update public.disputes set status = ${parsed.data.status}, resolution_code = ${parsed.data.resolutionCode ?? null},
       resolution_note = ${parsed.data.note}, assigned_to_user_id = ${user.id}::uuid,
       resolved_at = ${parsed.data.status === "RESOLVED" ? new Date().toISOString() : null}::timestamptz,
       updated_at = now() where id = ${dispute.id}::uuid`,
-    ...(release && dispute.tutorial_booking_id ? [client`update public.tutorial_bookings set status = 'COMPLETED',
-      earnings_state = 'AVAILABLE', updated_at = now() where id = ${dispute.tutorial_booking_id}::uuid`] : []),
-    ...(release && dispute.order_id ? [client`update public.orders set status = 'DELIVERED',
-      earnings_state = 'AVAILABLE', updated_at = now() where id = ${dispute.order_id}::uuid`] : []),
+    ...(release && dispute.tutorial_booking_id
+      ? [
+          client`update public.tutorial_bookings set status = 'COMPLETED',
+      earnings_state = 'AVAILABLE', updated_at = now() where id = ${dispute.tutorial_booking_id}::uuid`,
+        ]
+      : []),
+    ...(release && dispute.order_id
+      ? [
+          client`update public.orders set status = 'DELIVERED',
+      earnings_state = 'AVAILABLE', updated_at = now() where id = ${dispute.order_id}::uuid`,
+        ]
+      : []),
   ]);
-  await recordAudit(context.env, { actorUserId: user.id, universityId: dispute.university_id,
-    action: "dispute.reviewed", targetType: "dispute", targetId: dispute.id,
-    requestId: context.get("requestId"), metadata: { status: parsed.data.status,
-      resolutionCode: parsed.data.resolutionCode, note: parsed.data.note } });
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: dispute.university_id,
+    action: "dispute.reviewed",
+    targetType: "dispute",
+    targetId: dispute.id,
+    requestId: context.get("requestId"),
+    metadata: {
+      status: parsed.data.status,
+      resolutionCode: parsed.data.resolutionCode,
+      note: parsed.data.note,
+    },
+  });
   return context.json({ status: parsed.data.status });
 });
 
 adminRoutes.post("/operations/payouts/:id/review", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "FINANCE_REVIEWER"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "A finance reviewer role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "FINANCE_REVIEWER"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "A finance reviewer role is required.",
+    );
   }
   const parsed = payoutReviewSchema.safeParse(await body(context));
-  if (!parsed.success || (parsed.data.status === "PAID" && !parsed.data.providerReference)) {
-    throw new AppError(400, "BAD_REQUEST", "A valid payout decision and provider reference are required.");
+  if (
+    !parsed.success ||
+    (parsed.data.status === "PAID" && !parsed.data.providerReference)
+  ) {
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "A valid payout decision and provider reference are required.",
+    );
   }
   const result = await database(context.env).execute<{
-    id: string; university_id: string; status: string;
+    id: string;
+    university_id: string;
+    status: string;
   }>(sql`select id, university_id, status from public.payout_requests
     where id = ${context.req.param("id")}::uuid limit 1`);
   const payout = firstRow(result);
-  if (!payout) throw new AppError(404, "NOT_FOUND", "That payout request does not exist.");
+  if (!payout)
+    throw new AppError(404, "NOT_FOUND", "That payout request does not exist.");
   await adminScope(context.env, user, payout.university_id);
   const transitions: Record<string, string[]> = {
-    REQUESTED: ["IN_REVIEW", "REJECTED"], IN_REVIEW: ["APPROVED", "REJECTED"],
-    APPROVED: ["PROCESSING", "REJECTED"], PROCESSING: ["PAID", "FAILED"], FAILED: ["PROCESSING", "REJECTED"],
+    REQUESTED: ["IN_REVIEW", "REJECTED"],
+    IN_REVIEW: ["APPROVED", "REJECTED"],
+    APPROVED: ["PROCESSING", "REJECTED"],
+    PROCESSING: ["PAID", "FAILED"],
+    FAILED: ["PROCESSING", "REJECTED"],
   };
   if (!(transitions[payout.status] ?? []).includes(parsed.data.status)) {
-    throw new AppError(409, "CONFLICT", "That payout status change is not allowed.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "That payout status change is not allowed.",
+    );
   }
   const updated = await database(context.env).execute<{ id: string }>(sql`
     update public.payout_requests set status = ${parsed.data.status}, reviewer_user_id = ${user.id}::uuid,
@@ -1172,20 +1767,46 @@ adminRoutes.post("/operations/payouts/:id/review", async (context) => {
     returning id
   `);
   if (!firstRow(updated)) {
-    throw new AppError(409, "CONFLICT", "This payout was changed by another finance reviewer.");
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "This payout was changed by another finance reviewer.",
+    );
   }
-  await recordAudit(context.env, { actorUserId: user.id, universityId: payout.university_id,
-    action: "payout.reviewed", targetType: "payout_request", targetId: payout.id,
-    requestId: context.get("requestId"), metadata: { from: payout.status, to: parsed.data.status, note: parsed.data.note } });
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: payout.university_id,
+    action: "payout.reviewed",
+    targetType: "payout_request",
+    targetId: payout.id,
+    requestId: context.get("requestId"),
+    metadata: {
+      from: payout.status,
+      to: parsed.data.status,
+      note: parsed.data.note,
+    },
+  });
   return context.json({ status: parsed.data.status });
 });
 
 adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.some((role) => ["PLATFORM_ADMIN", "FINANCE_REVIEWER"].includes(role))) {
-    throw new AppError(403, "FORBIDDEN", "A finance reviewer role is required.");
+  if (
+    !user.operatorRoles.some((role) =>
+      ["PLATFORM_ADMIN", "FINANCE_REVIEWER"].includes(role),
+    )
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "A finance reviewer role is required.",
+    );
   }
-  const scope = await adminScope(context.env, user, context.req.query("universityId"));
+  const scope = await adminScope(
+    context.env,
+    user,
+    context.req.query("universityId"),
+  );
   const [bookings, orders, deliveries] = await Promise.all([
     database(context.env).execute<{ id: string }>(sql`
       update public.tutorial_bookings bookings set earnings_state = 'AVAILABLE', updated_at = now()
@@ -1211,18 +1832,36 @@ adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
           where orders.id = jobs.order_id and disputes.status in ('OPEN','UNDER_REVIEW')) returning jobs.id
     `),
   ]);
-  await recordAudit(context.env, { actorUserId: user.id, universityId: scope,
-    action: "earnings.eligible_released", targetType: "finance_batch", targetId: crypto.randomUUID(),
-    requestId: context.get("requestId"), metadata: { bookings: bookings.rows.length,
-      orders: orders.rows.length, deliveries: deliveries.rows.length } });
-  return context.json({ released: { bookings: bookings.rows.length, orders: orders.rows.length,
-    deliveries: deliveries.rows.length } });
+  await recordAudit(context.env, {
+    actorUserId: user.id,
+    universityId: scope,
+    action: "earnings.eligible_released",
+    targetType: "finance_batch",
+    targetId: crypto.randomUUID(),
+    requestId: context.get("requestId"),
+    metadata: {
+      bookings: bookings.rows.length,
+      orders: orders.rows.length,
+      deliveries: deliveries.rows.length,
+    },
+  });
+  return context.json({
+    released: {
+      bookings: bookings.rows.length,
+      orders: orders.rows.length,
+      deliveries: deliveries.rows.length,
+    },
+  });
 });
 
 adminRoutes.get("/release-phases", async (context) => {
   const user = currentUser(context);
   if (!user.operatorRoles.includes("PLATFORM_ADMIN")) {
-    throw new AppError(403, "FORBIDDEN", "A platform administrator role is required.");
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "A platform administrator role is required.",
+    );
   }
   const result = await database(context.env).execute(sql`
     select phase_key, title, status, summary, requirements, updated_at

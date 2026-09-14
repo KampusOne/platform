@@ -12,6 +12,17 @@ export function proxy(request: NextRequest) {
   const subdomain = hostname.split(".")[0] ?? "";
   const surface = surfaceBySubdomain[subdomain];
 
+  if (
+    surface &&
+    Object.values(surfaceBySubdomain).some(
+      (other) =>
+        other !== surface &&
+        (request.nextUrl.pathname === other ||
+          request.nextUrl.pathname.startsWith(other + "/")),
+    )
+  )
+    return new NextResponse("Not found", { status: 404 });
+
   if (!surface || request.nextUrl.pathname !== "/") {
     return NextResponse.next();
   }
