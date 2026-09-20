@@ -34,7 +34,7 @@ export function AuthShell({
 }: {
   children: ReactNode;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   eyebrow?: string;
   back?: boolean;
   onBack?: (() => void) | undefined;
@@ -83,7 +83,7 @@ export function AuthShell({
           <View style={styles.heading}>
             {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
             <Text style={styles.title}>{title}</Text>
-            <Text style={styles.subtitle}>{subtitle}</Text>
+            {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           </View>
           {children}
         </ScrollView>
@@ -329,7 +329,7 @@ const createStyles = (theme: Theme) =>
     content: {
       alignSelf: "center",
       minHeight: "100%",
-      paddingBottom: 36,
+      paddingBottom: 20,
       paddingHorizontal: 24,
       width: "100%",
       maxWidth: 540,
@@ -337,7 +337,7 @@ const createStyles = (theme: Theme) =>
     topbar: {
       alignItems: "center",
       flexDirection: "row",
-      height: 60,
+      height: 48,
     },
     back: {
       alignItems: "center",
@@ -461,7 +461,7 @@ const createStyles = (theme: Theme) =>
       opacity: 0.72,
     },
     socialSection: {
-      marginTop: 20,
+      marginTop: 14,
     },
     dividerRow: {
       alignItems: "center",
