@@ -25,7 +25,7 @@
     "UNIFIED_SCHEMA_READY": "false",
     "TUTORIALS_ENABLED": "true",
     "STORE_ENABLED": "false",
-    "STORE_DEMO_ENABLED": "true",
+    "STORE_DEMO_ENABLED": "false",
     "LOGISTICS_ENABLED": "false",
     "PAYMENTS_ENABLED": "false",
     "AI_ASSISTANT_ENABLED": "false",
