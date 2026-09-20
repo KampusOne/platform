@@ -22,7 +22,7 @@ export default function Guidelines() {
         setItems(r.guidelines);
         setReady(true);
       })
-      .catch((e) => toast(e.message, "error"));
+      .catch(() => setReady(true));
   }, [toast]);
   return (
     <ToolPage title="Campus guidelines">
