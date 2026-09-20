@@ -19,7 +19,7 @@ export default function WelcomeScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { height } = useWindowDimensions();
-  const illustrationHeight = Math.min(Math.max(height * 0.4, 270), 430);
+  const illustrationHeight = Math.min(Math.max(height * 0.3, 220), 300);
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.safe}>
@@ -82,7 +82,7 @@ const createStyles = (theme: Theme) =>
       alignSelf: "center",
       flexGrow: 1,
       maxWidth: 540,
-      paddingBottom: 24,
+      paddingBottom: 16,
       paddingHorizontal: 22,
       width: "100%",
     },
@@ -109,7 +109,7 @@ const createStyles = (theme: Theme) =>
     },
     copy: {
       alignItems: "center",
-      marginTop: 24,
+      marginTop: 8,
     },
     eyebrow: {
       color: DEEP_TERRACOTTA,
@@ -141,7 +141,7 @@ const createStyles = (theme: Theme) =>
     },
     actions: {
       gap: 10,
-      marginTop: 34,
+      marginTop: 22,
     },
     primary: {
       alignItems: "center",
