@@ -7,6 +7,7 @@ on:
       - ".github/workflows/deploy-worker.yml"
       - "packages/contracts/**"
       - "server/**"
+      - "database/verification/production-20260920.json"
   workflow_dispatch:
 
 permissions:
@@ -47,8 +48,7 @@ jobs:
         run: |
           if grep -q '"PHASE_3_SCHEMA_READY": "true"' server/wrangler.jsonc \
             && [ "$PHASE_3_MIGRATION_READY" != "true" ]; then
-            echo "Phase 3 cannot be activated until its reviewed migration proof variable is true."
-            exit 1
+            node server/scripts/verify-schema-proof.mjs phase3
           fi
       - name: Guard unified application schema activation
         env:
@@ -56,8 +56,7 @@ jobs:
         run: |
           if grep -q '"UNIFIED_SCHEMA_READY": "true"' server/wrangler.jsonc \
             && [ "$UNIFIED_MIGRATION_READY" != "true" ]; then
-            echo "Unified routes require an approved migration rehearsal before activation."
-            exit 1
+            node server/scripts/verify-schema-proof.mjs unified
           fi
       - name: Deploy verified Worker
         uses: cloudflare/wrangler-action@v3
@@ -66,3 +65,13 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: server
           command: deploy
+      - name: Verify production health and authenticated route boundary
+        env:
+          API_URL: https://platformp.divine-haze-54eb.workers.dev
+        run: |
+          curl --fail --silent --show-error --retry 2 --max-time 20 "$API_URL/health/ready"
+          status=$(curl --silent --show-error --retry 2 --max-time 20 -o /tmp/kampusone-route-check.json -w '%{http_code}' "$API_URL/v1/account/guidelines")
+          if [ "$status" != "401" ]; then
+            echo "Expected the active route to require authentication (401); received $status."
+            exit 1
+          fi

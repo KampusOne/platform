@@ -1,0 +1,40 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-09-20T17:49:01Z",
+    "scope": "Apply the missing unified and commerce migrations to production"
+  },
+  "verifiedAt": "2026-09-20T17:57:34.067Z",
+  "method": "Approved production transactions; structural checks and self-rolling-back functional acceptance tests",
+  "checks": {
+    "phase3": "passed",
+    "unified": "passed",
+    "fixturesRolledBack": true,
+    "existingAccountCountsPreserved": true,
+    "publicPrivilegesAndTenantConstraints": "passed",
+    "streakIdempotencyAndConsecutiveDays": "passed",
+    "orderTotalsInventoryAndFailedCheckoutRollback": "passed",
+    "immutableSnapshotsAndRefundHistory": "passed",
+    "verifiedPurchaseReviewsAndModeration": "passed"
+  },
+  "migrations": [
+    {"version":"20260912200000_phase_3_commerce_foundation","sourceBlobSha":"515ae32e25a34d18934e623e04955d124657e765"},
+    {"version":"20260913200000_unified_student_platform","sourceBlobSha":"a11789d089540255bc43b2aa7c7b6892a750639c"},
+    {"version":"20260913210000_timetable_course_alarm_sync","sourceBlobSha":"d9fb42c811e938d654d53a5432c6b22b02bd19d6"},
+    {"version":"20260913220000_ai_requests","sourceBlobSha":"a268c541c9a4cc9ef906fbfba3aff9424b9fb585"},
+    {"version":"20260913230000_community_workflows","sourceBlobSha":"e43fb436802ce1ceb740fc5e5dc6e487fcdacfbf"},
+    {"version":"20260913240000_verified_identity_and_resources","sourceBlobSha":"c029c956c8324d352e8011b83eab12d6974e29d1"},
+    {"version":"20260913250000_one_time_alarms","sourceBlobSha":"a57fcb2720ca2aa2fee0bd193664fa4e0cbabb21"}
+  ],
+  "limitations": [
+    "Temporary-branch rehearsal could not be created because of the Neon branch limit.",
+    "A new snapshot could not be created because of the Neon snapshot limit; no old branch or snapshot was deleted.",
+    "This is a dated verification attestation, not a continuous live-database check.",
+    "Payment, store transaction, logistics and AI provider readiness are separate from schema readiness.",
+    "Authenticated mobile end-to-end flows have not been verified by this record."
+  ]
+}
