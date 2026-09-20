@@ -67,33 +67,10 @@ function useReducedMotionPreference() {
 }
 
 const stepCopy = [
-  {
-    title: "Choose your school",
-    subtitle:
-      "We’ll use this to show the right classes, updates and campus places.",
-  },
-  {
-    title: "Your student details",
-    subtitle:
-      "Add the details that connect your account to your academic profile.",
-  },
-  {
-    title: "Where are you now?",
-    subtitle:
-      "Set your current level and expected graduation year. You can update these later.",
-  },
-] as const;
-
-function Selector({
-  label,
-  items,
-  selected,
-  onSelect,
-  disabled = false,
-  optional = false,
-}: {
-  label: string;
-  items: Item[];
+  { title: "Your school", subtitle: "" },
+  { title: "Your identity", subtitle: "" },
+  { title: "Your level", subtitle: "" },
+];
   selected: string;
   onSelect: (id: string) => void;
   disabled?: boolean;
@@ -461,7 +438,7 @@ export default function OnboardingScreen() {
         setError("");
         setStep((current) => Math.max(current - 1, 0));
       }}
-      subtitle={copy.subtitle}
+      subtitle={copy.subtitle || undefined}
       title={copy.title}
     >
       <View
@@ -568,10 +545,6 @@ export default function OnboardingScreen() {
             textContentType="username"
             value={username}
           />
-          <Text style={styles.help}>
-            Use letters, numbers and underscores. This can be different from
-            your full name.
-          </Text>
           <AuthField
             autoCapitalize="characters"
             autoCorrect={false}
@@ -581,10 +554,6 @@ export default function OnboardingScreen() {
             placeholder="Enter your matric number"
             value={matriculationNumber}
           />
-          <Text style={styles.privacy}>
-            Your matriculation number is private and only used for account and
-            school verification.
-          </Text>
         </View>
       ) : null}
 
@@ -683,7 +652,7 @@ const createStyles = (theme: Theme) =>
     progress: {
       flexDirection: "row",
       gap: 8,
-      marginBottom: 24,
+      marginBottom: 14,
     },
     progressBar: {
       backgroundColor: theme.border,
