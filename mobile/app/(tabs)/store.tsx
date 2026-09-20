@@ -669,32 +669,6 @@ export default function StoreScreen() {
                 </View>
               ))}
 
-              {cartItems.length && !checkoutEnabled ? (
-                <View
-                  accessibilityRole="summary"
-                  style={styles.demoCheckoutNotice}
-                >
-                  <View style={styles.demoCheckoutHeading}>
-                    <Ionicons
-                      name="information-circle-outline"
-                      size={21}
-                      color={theme.brandPressed}
-                    />
-                    <View style={styles.demoCheckoutCopy}>
-                      <Text style={styles.demoCheckoutTitle}>Demo cart</Text>
-                      <Text style={styles.demoCheckoutText}>
-                        Ordering and payment are not live yet. You can browse
-                        products and test the cart safely.
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.demoSubtotal}>
-                    <Text style={styles.totalLabel}>Items subtotal</Text>
-                    <Text style={styles.grandValue}>{naira(subtotal)}</Text>
-                  </View>
-                </View>
-              ) : null}
-
               {cartItems.length && checkoutEnabled ? (
                 <>
                   {checkoutError ? (
@@ -909,17 +883,13 @@ function ProductCard({
           <Text numberOfLines={1} style={styles.category}>
             {product.category}
           </Text>
-          {product.is_demo ? <Text style={styles.demoLabel}>Demo</Text> : null}
         </View>
         <Text numberOfLines={2} style={styles.name}>
           {product.name}
         </Text>
-        <Text numberOfLines={2} style={styles.description}>
-          {product.description}
-        </Text>
         <View style={styles.vendor}>
           <Ionicons
-            name={product.is_demo ? "storefront-outline" : "checkmark-circle"}
+            name="checkmark-circle"
             size={15}
             color={theme.verification}
           />
