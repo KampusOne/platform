@@ -18,7 +18,7 @@ export default function StreakScreen() {
         setS(r.streak);
         setGoal(String(r.streak.goal_days));
       })
-      .catch((e) => toast(e.message, "error"));
+      .catch(() => setS(null));
   }, [toast]);
   async function save() {
     setBusy(true);
@@ -36,7 +36,7 @@ export default function StreakScreen() {
   }
   return (
     <ToolPage title="Your streak">
-      <View style={{ alignItems: "center", paddingVertical: 32 }}>
+      <View style={{ alignItems: "center", paddingVertical: 18 }}>
         <Text
           style={{
             fontFamily: theme.font.displayStrong,
