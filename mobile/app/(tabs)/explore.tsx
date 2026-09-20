@@ -278,7 +278,7 @@ export default function ExploreScreen() {
           </View>
 
           <View style={styles.section}>
-            <SectionHeading title="Student Essentials" />
+            <SectionHeading title="Student tools" />
             <View style={styles.essentialGrid}>
               {essentialIds.map((id) => (
                 <FeatureCard
@@ -291,7 +291,7 @@ export default function ExploreScreen() {
           </View>
 
           <View style={styles.section}>
-            <SectionHeading title="AI Tools" />
+            <SectionHeading title="Study tools" />
             <View style={styles.aiRow}>
               {([tools.study, tools.summarize] as const).map((tool) => (
                 <AiCard
@@ -379,9 +379,6 @@ function FeatureCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
       <ToolIcon icon={tool.icon} tone={tool.tone} size={25} />
       <View style={styles.featureCopy}>
         <Text style={styles.featureTitle}>{tool.title}</Text>
-        <Text numberOfLines={3} style={styles.featureBody}>
-          {tool.description}
-        </Text>
       </View>
       <View style={styles.chevronCircle}>
         <Ionicons color={theme.deepBrand} name="chevron-forward" size={17} />
@@ -402,9 +399,6 @@ function AiCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
       <ToolIcon icon={tool.icon} tone={tool.tone} size={25} />
       <View style={styles.aiCopy}>
         <Text style={styles.featureTitle}>{tool.title}</Text>
-        <Text numberOfLines={3} style={styles.featureBody}>
-          {tool.description}
-        </Text>
       </View>
       <Ionicons color={theme.deepBrand} name="chevron-forward" size={18} />
     </Pressable>
@@ -443,9 +437,6 @@ function SearchResult({ tool, onPress }: { tool: Tool; onPress: () => void }) {
       <ToolIcon icon={tool.icon} tone={tool.tone} />
       <View style={styles.resultCopy}>
         <Text style={styles.resultTitle}>{tool.title}</Text>
-        {tool.description ? (
-          <Text style={styles.resultBody}>{tool.description}</Text>
-        ) : null}
       </View>
       <Ionicons color={theme.deepBrand} name="chevron-forward" size={18} />
     </Pressable>
