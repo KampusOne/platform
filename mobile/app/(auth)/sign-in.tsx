@@ -159,7 +159,7 @@ const createStyles = (theme: Theme) =>
       flexWrap: "wrap",
       gap: 5,
       justifyContent: "center",
-      marginTop: 24,
+      marginTop: 14,
     },
     footerText: {
       color: theme.textMuted,
