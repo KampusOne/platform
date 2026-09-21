@@ -1,6 +1,6 @@
-import { test } from "vitest";
+import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PostLikeStore } from "../../mobile/src/lib/post-like-store";
+import { PostLikeStore } from "../mobile/src/lib/post-like-store.ts";
 
 const row = (id: string, liked = false, like_count = 0) => ({ id, liked, like_count });
 function deferred<T>() {
