@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { mergeById, safeCount } from "../mobile/src/lib/feed-social.ts";
+import { commentsPath } from "../mobile/src/lib/comment-replies.ts";
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 test("a refreshed or paginated post is not duplicated", () => {
   assert.deepEqual(mergeById([{ id: "a", count: 1 }], [{ id: "a", count: 2 }, { id: "b", count: 0 }]), [{ id: "a", count: 2 }, { id: "b", count: 0 }]);
@@ -13,7 +14,10 @@ test("engagement counts never render NaN or negative values", () => {
 test("comments preserve retry IDs until the draft changes", () => {
   const source = read("mobile/src/components/comment-thread.tsx");
   assert.match(source, /requestId: requestId.current/); assert.match(source, /mutationLock.current/);
-  assert.match(source, /comment.can_delete/); assert.match(source, /\/comments\/\$\{selected.id\}/);
+  assert.match(source, /comment.can_delete/);
+  assert.match(source, /const commentId = selected\.id/);
+  assert.ok(source.includes('`${commentsPath(postId)}/${encodeURIComponent(commentId)}`'));
+  assert.equal(`${commentsPath("post")}/${encodeURIComponent("selected-comment")}`, "/v1/student/feed/post/comments/selected-comment");
 });
 test("the shared card has comments, reposts, and nested quote previews without duplicating text", () => {
   const source = read("mobile/src/components/feed-post.tsx");
