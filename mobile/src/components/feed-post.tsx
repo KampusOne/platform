@@ -4,6 +4,7 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import type { FeedPostData } from "@/src/lib/feed-posts";
 import { getFeedPostText } from "@/src/lib/feed-post-text";
 import { PostMenu } from "@/src/components/post-menu";
+import { PostLikeButton } from "@/src/components/post-like-button";
 
 const structuredCategories = new Set(["EVENT", "OPPORTUNITY"]);
 const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -65,6 +66,7 @@ export function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback }: {
       {post.image_url ? <Image accessible accessibilityIgnoresInvertColors accessibilityLabel={`Attached image for ${post.title}`} accessibilityRole="image" resizeMode="cover" source={{ uri: post.image_url }} style={styles.postImage} /> : null}
       {post.correction_note ? <View accessibilityRole="alert" style={styles.correction}><Ionicons color={theme.statusAttention} name="information-circle-outline" size={17} /><Text style={styles.correctionText}>Correction: {post.correction_note}</Text></View> : null}
       <View style={styles.actions}>
+        <PostLikeButton postId={post.id} title={post.title} onFeedback={onFeedback} />
         <Pressable accessibilityLabel={post.bookmarked ? `Remove ${post.title} from saved posts` : `Save ${post.title}`} accessibilityRole="button" accessibilityState={{ selected: post.bookmarked }} hitSlop={4} onPress={() => onBookmark(post)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
           <Ionicons color={post.bookmarked ? theme.brandPressed : theme.textMuted} name={post.bookmarked ? "bookmark" : "bookmark-outline"} size={18} />
           <Text style={[styles.actionText, post.bookmarked && styles.actionTextActive]}>{post.bookmarked ? "Saved" : "Save"}</Text>
@@ -105,7 +107,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   postImage: { alignSelf: "stretch", aspectRatio: 1.7, borderRadius: 14, marginLeft: 44, marginTop: 8 },
   correction: { alignItems: "flex-start", backgroundColor: "#FFF7E9", borderRadius: 10, flexDirection: "row", gap: 7, marginLeft: 44, marginTop: 8, padding: 9 },
   correctionText: { color: theme.statusAttention, flex: 1, fontFamily: theme.font.medium, fontSize: 10.5, lineHeight: 15 },
-  actions: { alignItems: "center", flexDirection: "row", gap: 18, marginLeft: 44, minHeight: 44, paddingTop: 2 },
+  actions: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 0, marginLeft: 44, minHeight: 44, paddingTop: 2 },
   action: { alignItems: "center", flexDirection: "row", gap: 5, minHeight: 44, minWidth: 60 },
   actionText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 11 },
   actionTextActive: { color: theme.brandPressed },

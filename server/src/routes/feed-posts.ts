@@ -5,9 +5,12 @@ import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
+import { feedLikeRoutes } from "./feed-likes";
 
 export const feedPostRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 const postIdSchema = z.string().uuid();
+// Literal /likes must precede the generic /:id detail route.
+feedPostRoutes.route("/", feedLikeRoutes);
 
 function postId(value: string) {
   const parsed = postIdSchema.safeParse(value);
