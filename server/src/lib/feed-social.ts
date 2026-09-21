@@ -4,6 +4,7 @@ import { AppError } from "./errors";
 import type { Bindings } from "../types";
 
 const readinessCache = new WeakMap<object, { expires: number; ready: boolean }>();
+const repliesReadinessCache = new WeakMap<object, { expires: number; ready: boolean }>();
 
 // Reads retain the legacy feed until the additive migration exists.
 export async function socialSchemaReady(env: Bindings): Promise<boolean> {
@@ -19,6 +20,18 @@ export async function socialSchemaReady(env: Bindings): Promise<boolean> {
   `);
   const ready = firstRow(result)?.ready === true;
   readinessCache.set(env, { ready, expires: Date.now() + (ready ? 60_000 : 5_000) });
+  return ready;
+}
+
+export async function commentRepliesSchemaReady(env: Bindings): Promise<boolean> {
+  const cached = repliesReadinessCache.get(env);
+  if (cached && cached.expires > Date.now()) return cached.ready;
+  const result = await database(env).execute<{ ready: boolean }>(sql`
+    select exists(select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'feed_comments' and column_name = 'parent_comment_id') as ready
+  `);
+  const ready = firstRow(result)?.ready === true;
+  repliesReadinessCache.set(env, { ready, expires: Date.now() + (ready ? 60_000 : 5_000) });
   return ready;
 }
 
