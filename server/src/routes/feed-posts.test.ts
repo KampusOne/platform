@@ -58,7 +58,7 @@ describe("post detail and author deletion", () => {
     const response = await app.request(`/v1/student/feed/${id}`, { headers }, env);
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
-    expect((await response.json()).post.can_delete).toBe(true);
+    expect(await response.json()).toMatchObject({ post: { can_delete: true } });
     const query = dialect.sqlToQuery(mocks.execute.mock.calls[0]![0]);
     expect(query.params).toEqual([mocks.user.id, mocks.user.id, id, mocks.user.universityId]);
     expect(query.sql).toContain("posts.status in ('PUBLISHED', 'CORRECTED')");
@@ -69,7 +69,7 @@ describe("post detail and author deletion", () => {
     mocks.execute.mockResolvedValue({ rows: [] });
     const response = await app.request(`/v1/student/feed/${id}`, { headers }, env);
     expect(response.status).toBe(404);
-    expect((await response.json()).post).toBeUndefined();
+    expect(await response.json()).not.toHaveProperty("post");
   });
   it("deletes only the authenticated author's post and removes its bookmarks atomically", async () => {
     mocks.execute.mockResolvedValue({ rows: [{ id }] });
@@ -91,7 +91,7 @@ describe("post detail and author deletion", () => {
     mocks.execute.mockResolvedValue({ rows: [] });
     const response = await app.request(`/v1/student/feed/${id}`, { method: "DELETE", headers }, env);
     expect(response.status).toBe(404);
-    expect((await response.json()).deleted).toBeUndefined();
+    expect(await response.json()).not.toHaveProperty("deleted");
   });
   it("allows a safe retry without changing an already archived post's timestamp", async () => {
     mocks.execute.mockResolvedValue({ rows: [{ id }] });
@@ -105,6 +105,6 @@ describe("post detail and author deletion", () => {
     mocks.execute.mockRejectedValue(new Error("database unavailable"));
     const response = await app.request(`/v1/student/feed/${id}`, { method: "DELETE", headers }, env);
     expect(response.status).toBe(500);
-    expect((await response.json()).deleted).toBeUndefined();
+    expect(await response.json()).not.toHaveProperty("deleted");
   });
 });
