@@ -9,6 +9,7 @@ import { AppError, errorResponse } from "./lib/errors";
 import { hashPassword, verifyPassword } from "./lib/security";
 import { authRoutes } from "./routes/auth";
 import { studentRoutes } from "./routes/student";
+import { feedPostRoutes } from "./routes/feed-posts";
 import { agentRoutes } from "./routes/agents";
 import { adminRoutes } from "./routes/admin";
 import { paymentRoutes } from "./routes/payments";
@@ -33,11 +34,7 @@ app.use("/v1/*", async (c, next) =>
         ? 10 * 1024 * 1024 + 4096
         : 256 * 1024,
     onError: () => {
-      throw new AppError(
-        413,
-        "BAD_REQUEST",
-        "This upload or request is too large.",
-      );
+      throw new AppError(413, "BAD_REQUEST", "This upload or request is too large.");
     },
   })(c, next),
 );
@@ -46,96 +43,34 @@ app.use("/v1/*", async (context, next) => {
   return cors({
     origin: (origin) => (origins.has(origin) ? origin : undefined),
     allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"],
-    allowHeaders: [
-      "Authorization",
-      "Content-Type",
-      "X-Request-Id",
-      "X-Device-Label",
-      "X-Admin-Bootstrap-Token",
-    ],
-    exposeHeaders: ["X-Request-Id"],
-    credentials: true,
-    maxAge: 86400,
+    allowHeaders: ["Authorization", "Content-Type", "X-Request-Id", "X-Device-Label", "X-Admin-Bootstrap-Token"],
+    exposeHeaders: ["X-Request-Id"], credentials: true, maxAge: 86400,
   })(context, next);
 });
 
-app.get("/", (context) =>
-  context.json({
-    service: "kampusone-api",
-    message: "KampusOne privileged API boundary",
-    documentation: "/v1/config/public",
-    requestId: context.get("requestId"),
-  }),
-);
-
-app.get("/health/live", (context) =>
-  context.json({
-    status: "ok" as const,
-    service: "kampusone-api" as const,
-    environment: context.env.ENVIRONMENT,
-    requestId: context.get("requestId"),
-  }),
-);
-
+app.get("/", (context) => context.json({ service: "kampusone-api", message: "KampusOne privileged API boundary", documentation: "/v1/config/public", requestId: context.get("requestId") }));
+app.get("/health/live", (context) => context.json({ status: "ok" as const, service: "kampusone-api" as const, environment: context.env.ENVIRONMENT, requestId: context.get("requestId") }));
 app.get("/health/ready", (context) => {
   const state = readiness(context.env);
-  return context.json(
-    {
-      status: state.ready ? "ready" : "not_ready",
-      checks: state.checks,
-      requestId: context.get("requestId"),
-    },
-    state.ready ? 200 : 503,
-  );
+  return context.json({ status: state.ready ? "ready" : "not_ready", checks: state.checks, requestId: context.get("requestId") }, state.ready ? 200 : 503);
 });
-
 app.get("/health/crypto", async (context) => {
-  if (context.env.ENVIRONMENT !== "local") {
-    return errorResponse(
-      context,
-      404,
-      "NOT_FOUND",
-      "The requested resource does not exist.",
-    );
-  }
-
+  if (context.env.ENVIRONMENT !== "local") return errorResponse(context, 404, "NOT_FOUND", "The requested resource does not exist.");
   const probePassword = "KampusOne Worker runtime crypto probe";
   const hash = await hashPassword(probePassword);
   const verified = await verifyPassword(probePassword, hash);
-  if (!verified) {
-    return errorResponse(
-      context,
-      500,
-      "INTERNAL_ERROR",
-      "Password hashing runtime verification failed.",
-    );
-  }
-
-  return context.json({
-    status: "ok" as const,
-    algorithm: "pbkdf2-sha256" as const,
-    requestId: context.get("requestId"),
-  });
+  if (!verified) return errorResponse(context, 500, "INTERNAL_ERROR", "Password hashing runtime verification failed.");
+  return context.json({ status: "ok" as const, algorithm: "pbkdf2-sha256" as const, requestId: context.get("requestId") });
 });
-
-app.get("/v1/config/public", (context) =>
-  context.json(getPublicConfig(context.env)),
-);
+app.get("/v1/config/public", (context) => context.json(getPublicConfig(context.env)));
 app.use("/v1/*", async (c, next) => {
-  if (
-    /^\/v1\/(account|media|learning|applications|manage|communities)(\/|$)/.test(
-      c.req.path,
-    ) &&
-    c.env.UNIFIED_SCHEMA_READY !== "true"
-  )
-    throw new AppError(
-      503,
-      "PROVIDER_UNAVAILABLE",
-      "This service is being connected. Please try again shortly.",
-    );
+  if (/^\/v1\/(account|media|learning|applications|manage|communities)(\/|$)/.test(c.req.path) && c.env.UNIFIED_SCHEMA_READY !== "true")
+    throw new AppError(503, "PROVIDER_UNAVAILABLE", "This service is being connected. Please try again shortly.");
   await next();
 });
 app.route("/v1/auth", authRoutes);
+// Exact post-detail/delete routes precede the existing student route collection.
+app.route("/v1/student/feed", feedPostRoutes);
 app.route("/v1/student", studentRoutes);
 app.route("/v1/agents", agentRoutes);
 app.route("/v1/admin", adminRoutes);
@@ -149,47 +84,15 @@ app.route("/v1/ai", aiRoutes);
 app.route("/v1/communities", communityRoutes);
 app.route("/v1/auth/social", socialAuthRoutes);
 
-app.notFound((context) =>
-  errorResponse(
-    context,
-    404,
-    "NOT_FOUND",
-    "The requested resource does not exist.",
-  ),
-);
-
+app.notFound((context) => errorResponse(context, 404, "NOT_FOUND", "The requested resource does not exist."));
 app.onError((error, context) => {
-  if (error instanceof AppError) {
-    return errorResponse(
-      context,
-      error.status,
-      error.code,
-      error.message,
-      error.details,
-    );
-  }
-
+  if (error instanceof AppError) return errorResponse(context, error.status, error.code, error.message, error.details);
   // Database errors may include SQL parameters containing identity documents,
   // messages or account details. Log correlation and error codes, not payloads.
-  console.error(
-    JSON.stringify({
-      level: "error",
-      event: "request.failed",
-      requestId: context.get("requestId"),
-      method: context.req.method,
-      path: context.req.path,
-      errorName: error.name,
-      errorCode:
-        typeof (error as Error & { code?: unknown }).code === "string"
-          ? (error as Error & { code?: unknown }).code
-          : undefined,
-    }),
-  );
-
-  return errorResponse(
-    context,
-    500,
-    "INTERNAL_ERROR",
-    "The service could not complete this request.",
-  );
+  console.error(JSON.stringify({
+    level: "error", event: "request.failed", requestId: context.get("requestId"), method: context.req.method, path: context.req.path,
+    errorName: error.name,
+    errorCode: typeof (error as Error & { code?: unknown }).code === "string" ? (error as Error & { code?: unknown }).code : undefined,
+  }));
+  return errorResponse(context, 500, "INTERNAL_ERROR", "The service could not complete this request.");
 });
