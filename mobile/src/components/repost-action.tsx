@@ -6,7 +6,7 @@ import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { safeCount, type SocialFeedPost } from "@/src/lib/feed-social";
 
-export function RepostAction({ post, onFeedback, onChanged }: { post: SocialFeedPost; onFeedback(message: string): void; onChanged?(post: SocialFeedPost): void }) {
+export function RepostAction({ post, onFeedback, onChanged }: { post: SocialFeedPost; onFeedback(message: string): void; onChanged?: ((post: SocialFeedPost) => void) | undefined }) {
   const { theme, styles } = useThemeStyles(createStyles);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
