@@ -4,7 +4,7 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 
 /** Use the saved public profile image; never substitute a post attachment. */
 export function ProfileAvatar({ name, imageUrl, size = 36 }: {
-  name: string; imageUrl?: string | null; size?: number;
+  name: string; imageUrl?: string | null | undefined; size?: number;
 }) {
   const { styles } = useThemeStyles(createStyles);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
