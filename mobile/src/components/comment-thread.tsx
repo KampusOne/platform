@@ -6,10 +6,12 @@ import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View 
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { mergeById, type CommentPage, type FeedComment } from "@/src/lib/feed-social";
+import { CommentLikeButton } from "@/src/components/comment-like-button";
 
 export function CommentThread({ postId, focusToken = 0, onUpdated }: { postId: string; focusToken?: number; onUpdated(): void }) {
   const { theme, styles } = useThemeStyles(createStyles);
   const [comments, setComments] = useState<FeedComment[]>([]);
+  const [likesRefresh, setLikesRefresh] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [more, setMore] = useState(false);
@@ -40,6 +42,7 @@ export function CommentThread({ postId, focusToken = 0, onUpdated }: { postId: s
       if (alive.current && version === generation.current) {
         setComments((current) => mergeById(after ? current : [], page.comments).filter((comment) => !removed.current.has(comment.id)).sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)));
         setCursor(page.nextCursor ?? null);
+        setLikesRefresh((value) => value + 1);
       }
     } catch (caught) {
       if (alive.current && version === generation.current) setError(caught instanceof Error ? caught.message : "Could not load comments. Please try again.");
@@ -121,6 +124,7 @@ export function CommentThread({ postId, focusToken = 0, onUpdated }: { postId: s
             {comment.can_delete ? <Pressable accessibilityRole="button" accessibilityLabel="Delete your comment" disabled={sending || deleting} onPress={() => setSelected(comment)} style={styles.iconButton}><Ionicons name="ellipsis-horizontal" size={19} color={theme.textMuted} /></Pressable> : null}
           </View>
           <Text selectable style={styles.body}>{comment.body}</Text>
+          <CommentLikeButton commentId={comment.id} authorName={comment.author_name} refreshToken={likesRefresh} disabled={sending || deleting} onFeedback={setError} />
         </View>
       ))}
       {cursor ? <Pressable accessibilityRole="button" disabled={more || loading || sending || deleting} onPress={() => void load(cursor)} style={styles.loadMore}><Text style={styles.loadMoreText}>{more ? "Loading…" : "More comments"}</Text></Pressable> : null}
