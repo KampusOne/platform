@@ -4,9 +4,12 @@ import { z } from "@kampusone/contracts";
 import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import { currentUser, requireAuth } from "../middleware/auth";
+import { feedSocialRoutes } from "./feed-social";
 import type { Bindings, Variables } from "../types";
 
 export const feedPostRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+// Social routes run first; legacy reads remain available during additive rollout.
+feedPostRoutes.route("/", feedSocialRoutes);
 const postIdSchema = z.string().uuid();
 
 function postId(value: string) {
