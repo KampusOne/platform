@@ -20,24 +20,26 @@ create or replace function app_private.set_feed_post_like(
   target_post uuid, actor uuid, campus uuid, desired boolean
 ) returns table(id uuid, liked boolean, like_count integer)
 language plpgsql volatile security invoker set search_path = '' as $$
+declare post_campus uuid;
 begin
   if target_post is null or actor is null or campus is null or desired is null then
     return;
   end if;
-  perform 1 from public.feed_posts posts
-    where posts.id = target_post and posts.university_id = campus
+  select posts.university_id into post_campus from public.feed_posts posts
+    where posts.id = target_post
+      and (posts.university_id = campus or posts.audience->>'visibility' = 'PUBLIC')
       and posts.status in ('PUBLISHED', 'CORRECTED') and posts.published_at <= now()
     for update;
   if not found then return; end if;
 
   if desired then
     insert into public.feed_likes(post_id, user_id, institution_id)
-      values(target_post, actor, campus)
+      values(target_post, actor, post_campus)
       on conflict(post_id, user_id) do nothing;
   else
     delete from public.feed_likes likes
       where likes.post_id = target_post and likes.user_id = actor
-        and likes.institution_id = campus;
+        and likes.institution_id = post_campus;
   end if;
 
   return query select target_post,

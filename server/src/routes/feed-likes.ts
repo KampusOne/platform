@@ -3,6 +3,7 @@ import { Hono, type Context } from "hono";
 import { z } from "@kampusone/contracts";
 import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
+import { visiblePost } from "../lib/feed-social";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 
@@ -30,8 +31,7 @@ feedLikeRoutes.get("/likes", requireAuth, async (context) => {
       (select count(*)::integer from public.feed_likes likes where likes.post_id = posts.id) as like_count
     from public.feed_posts posts
     where posts.id = any(string_to_array(${ids.join(",")}, ',')::uuid[])
-      and posts.university_id = ${campus}::uuid
-      and posts.status in ('PUBLISHED', 'CORRECTED') and posts.published_at <= now()
+      and ${visiblePost(campus)}
   `);
   return context.json({ likes: result.rows });
 });
