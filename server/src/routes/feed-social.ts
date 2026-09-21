@@ -5,7 +5,7 @@ import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import { input } from "../lib/input";
 import { sha256 } from "../lib/security";
-import { nextFeedCursor, parseFeedCursor, socialSchemaReady, visiblePost } from "../lib/feed-social";
+import { commentRepliesSchemaReady, nextFeedCursor, parseFeedCursor, socialSchemaReady, visiblePost } from "../lib/feed-social";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 
@@ -26,6 +26,10 @@ function campus(user: User) {
 }
 async function requireSocial(c: Context<Env>) {
   if (!await socialSchemaReady(c.env)) throw new AppError(503, "PROVIDER_UNAVAILABLE", "Comments and reposts are being connected. Please try again shortly.");
+}
+async function requireReplies(c: Context<Env>) {
+  await requireSocial(c);
+  if (!await commentRepliesSchemaReady(c.env)) throw new AppError(503, "PROVIDER_UNAVAILABLE", "Comment replies are being connected. Please try again shortly.");
 }
 async function rateLimit(c: Context<Env>, kind: string, limit: number) {
   const result = await database(c.env).execute<{ allowed: boolean }>(sql`
@@ -178,71 +182,108 @@ feedSocialRoutes.delete("/:id", requireAuth, async (c, next) => {
 
 feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
   c.header("Cache-Control", "private, no-store");
-  await requireSocial(c);
+  await requireReplies(c);
   const user = currentUser(c);
   const postId = id(c.req.param("id"));
   await readPost(c, postId);
+  const parentParam = c.req.query("parentCommentId");
+  const parentId = parentParam === undefined ? null : id(parentParam);
+  const parent = parentId ? firstRow(await database(c.env).execute(sql`
+    select deleted_at is not null as is_deleted from public.feed_comments
+    where id = ${parentId}::uuid and post_id = ${postId}::uuid limit 1
+  `)) : null;
+  if (parentId && !parent) throw new AppError(404, "NOT_FOUND", "This comment is unavailable.");
   const cursor = parseFeedCursor(c.req.query("cursor"));
   const result = await database(c.env).execute(sql`
-    select comments.id, comments.body, comments.created_at,
+    select comments.id, case when comments.deleted_at is null then comments.body else '' end as body,
+      comments.created_at, comments.parent_comment_id, comments.deleted_at is not null as is_deleted,
       to_char(comments.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
-      coalesce(author.display_name, 'KampusOne user') as author_name,
+      case when comments.deleted_at is null then coalesce(author.display_name, 'KampusOne user') else 'Comment deleted' end as author_name,
       author.profile_image_url as author_image_url, author.username as author_username,
       coalesce(author.verification_status::text = 'VERIFIED', false) as author_verified,
-      comments.author_user_id = ${user.id}::uuid as can_delete
+      comments.deleted_at is null and comments.author_user_id = ${user.id}::uuid as can_delete,
+      (select count(*)::int from public.feed_comments replies where replies.post_id = comments.post_id and replies.parent_comment_id = comments.id
+        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
     from public.feed_comments comments
     join public.feed_posts posts on posts.id = comments.post_id
-    left join public.profiles author on author.user_id = comments.author_user_id and author.deleted_at is null
-    where comments.post_id = ${postId}::uuid and comments.deleted_at is null and ${visiblePost(campus(user))}
+    left join public.profiles author on author.user_id = comments.author_user_id and author.deleted_at is null and comments.deleted_at is null
+    where comments.post_id = ${postId}::uuid and comments.parent_comment_id is not distinct from ${parentId}::uuid
+      and (comments.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = comments.post_id and child.parent_comment_id = comments.id))
+      and ${visiblePost(campus(user))}
       and (${cursor?.at ?? null}::timestamptz is null or (comments.created_at, comments.id) > (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
     order by comments.created_at, comments.id limit ${pageSize + 1}
   `);
   const comments = result.rows.slice(0, pageSize);
-  return c.json({ comments, nextCursor: result.rows.length > pageSize ? nextFeedCursor(comments[comments.length - 1]!, "created_at") : null });
+  return c.json({ comments, parentDeleted: parent?.is_deleted === true, nextCursor: result.rows.length > pageSize ? nextFeedCursor(comments[comments.length - 1]!, "created_at") : null });
 });
 
 feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
-  await requireSocial(c);
+  c.header("Cache-Control", "private, no-store");
+  await requireReplies(c);
   const user = currentUser(c);
   const university = campus(user);
   const postId = id(c.req.param("id"));
-  const data = await input(c, z.object({ body: z.string().trim().min(1).max(2000), requestId: uuid }));
-  await rateLimit(c, "FEED_COMMENT", 60);
+  const data = await input(c, z.object({ body: z.string().trim().min(1).max(2000), requestId: uuid, parentCommentId: uuid.optional() }));
+  const parentId = data.parentCommentId ?? null;
+  const retry = firstRow(await database(c.env).execute(sql`
+    select id, post_id, body, parent_comment_id, deleted_at from public.feed_comments
+    where author_user_id = ${user.id}::uuid and client_request_id = ${data.requestId}::uuid limit 1
+  `));
+  if (retry && (retry.post_id !== postId || retry.body !== data.body || (retry.parent_comment_id ?? null) !== parentId || retry.deleted_at))
+    throw new AppError(409, "CONFLICT", "This draft or reply target changed. Send it as a new message.");
+  if (!retry) await rateLimit(c, "FEED_COMMENT", 60);
   const result = await database(c.env).execute(sql`
     with target as (
       select posts.id, posts.university_id from public.feed_posts posts
       where posts.id = ${postId}::uuid and ${visiblePost(university)} for update
+    ), parent as (
+      select parents.id from public.feed_comments parents
+      join target on target.id = parents.post_id and target.university_id = parents.institution_id
+      where parents.id = ${parentId}::uuid and (parents.deleted_at is null or ${retry?.id ?? null}::uuid is not null)
+      for update of parents
     ), saved as (
-      insert into public.feed_comments(post_id, institution_id, author_user_id, body, client_request_id)
-      select id, university_id, ${user.id}::uuid, ${data.body}, ${data.requestId}::uuid from target
+      insert into public.feed_comments(post_id, institution_id, author_user_id, body, client_request_id, parent_comment_id)
+      select id, university_id, ${user.id}::uuid, ${data.body}, ${data.requestId}::uuid, ${parentId}::uuid from target
+      where ${parentId}::uuid is null or exists(select 1 from parent)
       on conflict(author_user_id, client_request_id) do update set client_request_id = excluded.client_request_id
         where feed_comments.post_id = excluded.post_id and feed_comments.body = excluded.body and feed_comments.deleted_at is null
-      returning id, body, created_at, author_user_id
+          and feed_comments.parent_comment_id is not distinct from excluded.parent_comment_id
+      returning id, body, created_at, author_user_id, parent_comment_id
     )
-    select saved.id, saved.body, saved.created_at, true as can_delete,
+    select saved.id, saved.body, saved.created_at, saved.parent_comment_id, false as is_deleted, true as can_delete,
       coalesce(author.display_name, 'KampusOne user') as author_name,
       author.profile_image_url as author_image_url, author.username as author_username,
-      coalesce(author.verification_status::text = 'VERIFIED', false) as author_verified
+      coalesce(author.verification_status::text = 'VERIFIED', false) as author_verified,
+      (select count(*)::int from public.feed_comments replies where replies.post_id = ${postId}::uuid and replies.parent_comment_id = saved.id
+        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
     from saved left join public.profiles author on author.user_id = saved.author_user_id and author.deleted_at is null
   `);
   const comment = firstRow(result);
-  if (!comment) throw new AppError(409, "CONFLICT", "The post is unavailable or that comment request has already changed.");
-  return c.json({ comment }, 201);
+  if (!comment) throw new AppError(409, "CONFLICT", "The post or comment is unavailable, or this message request has already changed. Your draft has not been cleared.");
+  return c.json({ comment }, retry ? 200 : 201);
 });
 
 feedSocialRoutes.delete("/:id/comments/:commentId", requireAuth, async (c) => {
-  await requireSocial(c);
+  c.header("Cache-Control", "private, no-store");
+  await requireReplies(c);
   const user = currentUser(c);
   campus(user);
   const postId = id(c.req.param("id"));
   const commentId = id(c.req.param("commentId"));
   // Parent-post ownership does not authorize deleting somebody else's comment.
+  // Soft deletion never cascades to other people's replies.
   const result = await database(c.env).execute(sql`
     update public.feed_comments set deleted_at = coalesce(deleted_at, now())
     where id = ${commentId}::uuid and post_id = ${postId}::uuid and author_user_id = ${user.id}::uuid returning id
   `);
   if (!firstRow(result)) throw new AppError(404, "NOT_FOUND", "This comment is unavailable or you do not have permission to delete it.");
-  return c.json({ id: commentId, deleted: true });
+  // A fresh snapshot sees replies that committed while the delete waited for the parent lock.
+  const thread = firstRow(await database(c.env).execute<{ retained: boolean; reply_count: number }>(sql`
+    select exists(select 1 from public.feed_comments where post_id = ${postId}::uuid and parent_comment_id = ${commentId}::uuid) as retained,
+      (select count(*)::int from public.feed_comments replies where replies.post_id = ${postId}::uuid and replies.parent_comment_id = ${commentId}::uuid
+        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
+  `));
+  return c.json({ id: commentId, deleted: true, retained: thread?.retained ?? false, reply_count: thread?.reply_count ?? 0 });
 });
 
 feedSocialRoutes.put("/:id/repost", requireAuth, async (c) => {

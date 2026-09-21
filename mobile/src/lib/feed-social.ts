@@ -16,9 +16,10 @@ export type FeedComment = {
   id: string; body: string; created_at: string; author_name: string;
   author_verified: boolean; can_delete: boolean;
   author_image_url?: string | null; author_username?: string | null;
+  parent_comment_id?: string | null; reply_count?: number; is_deleted?: boolean;
 };
 export type FeedPage = { posts: SocialFeedPost[]; nextCursor?: string | null };
-export type CommentPage = { comments: FeedComment[]; nextCursor?: string | null };
+export type CommentPage = { comments: FeedComment[]; nextCursor?: string | null; parentDeleted?: boolean };
 
 export function mergeById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
   const items = new Map(current.map((item) => [item.id, item]));

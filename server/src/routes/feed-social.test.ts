@@ -5,12 +5,12 @@ import { AppError } from "../lib/errors";
 import type { Bindings, Variables } from "../types";
 
 const mocks = vi.hoisted(() => ({
-  execute: vi.fn(), ready: vi.fn(),
+  execute: vi.fn(), ready: vi.fn(), repliesReady: vi.fn(),
   user: { id: "11111111-1111-4111-8111-111111111111", universityId: "22222222-2222-4222-8222-222222222222" as string | null },
 }));
 vi.mock("../lib/database", () => ({ database: () => ({ execute: mocks.execute }), firstRow: (result: { rows: unknown[] }) => result.rows[0] }));
 vi.mock("../lib/security", () => ({ sha256: async () => "hashed-session-user" }));
-vi.mock("../lib/feed-social", async (importOriginal) => ({ ...await importOriginal<typeof import("../lib/feed-social")>(), socialSchemaReady: mocks.ready }));
+vi.mock("../lib/feed-social", async (importOriginal) => ({ ...await importOriginal<typeof import("../lib/feed-social")>(), socialSchemaReady: mocks.ready, commentRepliesSchemaReady: mocks.repliesReady }));
 vi.mock("../middleware/auth", () => {
   const requireAuth: MiddlewareHandler = async (c, next) => {
     if (c.req.header("Authorization") !== "Bearer test-session") return c.json({ error: { code: "UNAUTHORIZED" } }, 401);
@@ -33,6 +33,7 @@ const request = (suffix = "", method = "GET", body?: unknown) => app.request(`/v
 
 beforeEach(() => {
   mocks.execute.mockReset(); mocks.ready.mockReset(); mocks.ready.mockResolvedValue(true);
+  mocks.repliesReady.mockReset(); mocks.repliesReady.mockResolvedValue(true);
   mocks.user.universityId = "22222222-2222-4222-8222-222222222222";
 });
 
@@ -71,12 +72,15 @@ describe("shared feed, comments, reposts and quotes", () => {
     expect(query().sql).toContain("delete from public.feed_reposts");
   });
   it("only the comment author can delete, never the parent post's owner", async () => {
-    mocks.execute.mockResolvedValue({ rows: [{ id: commentId }] });
-    expect((await request(`/${id}/comments/${commentId}`, "DELETE", { author_user_id: id })).status).toBe(200);
+    mocks.execute.mockResolvedValueOnce({ rows: [{ id: commentId }] }).mockResolvedValueOnce({ rows: [{ retained: false, reply_count: 0 }] });
+    const response = await request(`/${id}/comments/${commentId}`, "DELETE", { author_user_id: id });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: commentId, deleted: true, retained: false, reply_count: 0 });
     expect(query().params).toEqual([commentId, id, mocks.user.id]);
     expect(query().sql).toContain("author_user_id = $3::uuid");
     expect(query().sql).toContain("coalesce(deleted_at, now())");
     expect(query().sql).not.toContain("posts.author_user_id");
+    expect(query(1).sql).toContain("parent_comment_id");
   });
   it("does not claim deletion success for somebody else's comment", async () => {
     mocks.execute.mockResolvedValue({ rows: [] });
@@ -88,12 +92,20 @@ describe("shared feed, comments, reposts and quotes", () => {
     expect(mocks.execute).not.toHaveBeenCalled();
   });
   it("creates retry-safe comments under a locked visible parent", async () => {
-    mocks.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValueOnce({ rows: [{ id: commentId, body: "Hello", can_delete: true }] });
+    mocks.execute.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValueOnce({ rows: [{ id: commentId, body: "Hello", can_delete: true }] });
     expect((await request(`/${id}/comments`, "POST", { body: " Hello ", requestId, author_user_id: id })).status).toBe(201);
-    expect(query(1).sql).toContain("for update");
-    expect(query(1).sql).toContain("on conflict(author_user_id, client_request_id)");
-    expect(query(1).sql).toContain("feed_comments.deleted_at is null");
-    expect(query(1).params).toContain("Hello"); expect(query(1).params).toContain(mocks.user.id);
+    expect(query(0).sql).toContain("client_request_id");
+    expect(query(2).sql).toContain("for update");
+    expect(query(2).sql).toContain("on conflict(author_user_id, client_request_id)");
+    expect(query(2).sql).toContain("feed_comments.deleted_at is null");
+    expect(query(2).sql).toContain("feed_comments.parent_comment_id is not distinct from excluded.parent_comment_id");
+    expect(query(2).params).toContain("Hello"); expect(query(2).params).toContain(mocks.user.id);
+  });
+  it("fails clearly when reply schema is missing without writing", async () => {
+    mocks.repliesReady.mockResolvedValue(false);
+    const response = await request(`/${id}/comments`, "POST", { body: "Reply", requestId, parentCommentId: commentId });
+    expect(response.status).toBe(503);
+    expect(mocks.execute).not.toHaveBeenCalled();
   });
   it("reposts idempotently with a unique post/user pair", async () => {
     mocks.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValueOnce({ rows: [{ id }] }).mockResolvedValueOnce({ rows: [{ id, reposted: true, repost_count: 1 }] });
