@@ -11,19 +11,33 @@ type Environment = { Bindings: Bindings; Variables: Variables };
 export const feedCommentLikeRoutes = new Hono<Environment>();
 const idSchema = z.string().uuid();
 const idsSchema = z.array(idSchema).min(1).max(50);
+const readinessCache = new WeakMap<object, number>();
 
 function campusId(user: ReturnType<typeof currentUser>): string {
   if (!user.universityId) throw new AppError(409, "CONFLICT", "Complete your student profile before liking comments.", { onboardingRequired: true });
   return user.universityId;
 }
+async function requireCommentLikes(context: Context<Environment>) {
+  const unavailable = () => new AppError(503, "PROVIDER_UNAVAILABLE", "Comment likes are being connected. Please try again shortly.");
+  if (context.env.UNIFIED_SCHEMA_READY !== "true") throw unavailable();
+  if ((readinessCache.get(context.env) ?? 0) > Date.now()) return;
+  const result = await database(context.env).execute<{ ready: boolean }>(sql`
+    select to_regclass('public.feed_comment_likes') is not null
+      and to_regprocedure('app_private.set_feed_comment_like(uuid,uuid,uuid,boolean)') is not null as ready
+  `);
+  if (firstRow(result)?.ready !== true) throw unavailable();
+  readinessCache.set(context.env, Date.now() + 60_000);
+}
 
-// Register before /:id. Batch reads avoid one request per comment.
+// Mount before the generic /:id post route. Counts are batched, not fetched once
+// for every comment. Inaccessible or deleted comments are never returned.
 feedCommentLikeRoutes.get("/comment-likes", requireAuth, async (context) => {
   context.header("Cache-Control", "private, no-store");
   const user = currentUser(context), campus = campusId(user);
   const parsed = idsSchema.safeParse(context.req.query("ids")?.split(","));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose between 1 and 50 valid comments.");
   const ids = [...new Set(parsed.data)];
+  await requireCommentLikes(context);
   const result = await database(context.env).execute(sql`
     select comments.id,
       exists(select 1 from public.feed_comment_likes mine
@@ -42,8 +56,9 @@ async function setLike(context: Context<Environment>, liked: boolean) {
   const user = currentUser(context), campus = campusId(user);
   const parsed = idSchema.safeParse(context.req.param("commentId"));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "This comment link is not valid.");
-  // The server supplies actor/campus. The function rechecks both the comment
-  // and its parent under locks; neither counts nor identity come from the client.
+  await requireCommentLikes(context);
+  // The database derives and locks the real parent post. Neither actor nor
+  // campus nor parent-post authorization comes from a client-supplied body.
   const result = await database(context.env).execute(sql`
     select * from app_private.set_feed_comment_like(
       ${parsed.data}::uuid, ${user.id}::uuid, ${campus}::uuid, ${liked}::boolean
@@ -53,6 +68,5 @@ async function setLike(context: Context<Environment>, liked: boolean) {
   if (!row) throw new AppError(404, "NOT_FOUND", "This comment is unavailable. It or its post may have been deleted or may be campus-restricted.");
   return context.json(row);
 }
-
 feedCommentLikeRoutes.put("/comments/:commentId/like", requireAuth, (context) => setLike(context, true));
 feedCommentLikeRoutes.delete("/comments/:commentId/like", requireAuth, (context) => setLike(context, false));

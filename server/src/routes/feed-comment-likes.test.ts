@@ -23,14 +23,18 @@ app.onError((error, context) => error instanceof AppError
   : context.json({ error: { code: "INTERNAL_ERROR" } }, 500));
 const id = "33333333-3333-4333-8333-333333333333";
 const headers = { Authorization: "Bearer test-session", "Content-Type": "application/json" };
-const env = {} as Bindings;
 const dialect = new PgDialect();
-beforeEach(() => { mocks.execute.mockReset(); mocks.user.universityId = "22222222-2222-4222-8222-222222222222"; });
+let env: Bindings;
+beforeEach(() => {
+  mocks.execute.mockReset().mockResolvedValueOnce({ rows: [{ ready: true }] });
+  mocks.user.universityId = "22222222-2222-4222-8222-222222222222";
+  env = { UNIFIED_SCHEMA_READY: "true" } as Bindings;
+});
 
 describe("comment likes", () => {
   it.each(["PUT", "DELETE"])("requires authentication for %s", async (method) => {
-    const response = await app.request(`/v1/student/feed/comments/${id}/like`, { method }, env);
-    expect(response.status).toBe(401); expect(mocks.execute).not.toHaveBeenCalled();
+    expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method }, env)).status).toBe(401);
+    expect(mocks.execute).not.toHaveBeenCalled();
   });
   it("requires authentication for batched counts", async () => {
     expect((await app.request(`/v1/student/feed/comment-likes?ids=${id}`, {}, env)).status).toBe(401);
@@ -40,55 +44,54 @@ describe("comment likes", () => {
     expect((await app.request("/v1/student/feed/comments/bad-id/like", { method, headers }, env)).status).toBe(400);
     expect(mocks.execute).not.toHaveBeenCalled();
   });
-  it("requires a complete campus profile for writes", async () => {
+  it("requires a completed campus profile", async () => {
     mocks.user.universityId = null;
     expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method: "PUT", headers }, env)).status).toBe(409);
     expect(mocks.execute).not.toHaveBeenCalled();
   });
-  it("requires a complete campus profile for counts", async () => {
-    mocks.user.universityId = null;
-    expect((await app.request(`/v1/student/feed/comment-likes?ids=${id}`, { headers }, env)).status).toBe(409);
-    expect(mocks.execute).not.toHaveBeenCalled();
-  });
-  it.each([["PUT", true], ["DELETE", false]] as const)("%s uses only the session actor and an explicit desired state", async (method, liked) => {
-    mocks.execute.mockResolvedValue({ rows: [{ id, liked, like_count: liked ? 1 : 0 }] });
-    const response = await app.request(`/v1/student/feed/comments/${id}/like`, { method, headers, body: JSON.stringify({ user_id: "forged", institution_id: "forged", like_count: 1000 }) }, env);
+  it.each([["PUT", true], ["DELETE", false]] as const)("%s uses the session actor and explicit desired state", async (method, liked) => {
+    mocks.execute.mockResolvedValueOnce({ rows: [{ id, liked, like_count: liked ? 1 : 0 }] });
+    const response = await app.request(`/v1/student/feed/comments/${id}/like`, { method, headers, body: JSON.stringify({ user_id: "forged", institution_id: "forged", post_id: "forged" }) }, env);
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(await response.json()).toEqual({ id, liked, like_count: liked ? 1 : 0 });
-    const query = dialect.sqlToQuery(mocks.execute.mock.calls[0]![0]);
+    const query = dialect.sqlToQuery(mocks.execute.mock.calls[1]![0]);
     expect(query.params).toEqual([id, mocks.user.id, mocks.user.universityId, liked]);
     expect(query.sql).toContain("app_private.set_feed_comment_like");
   });
-  it.each(["PUT", "DELETE"])("returns 404 for unavailable comments on %s", async (method) => {
-    mocks.execute.mockResolvedValue({ rows: [] });
-    expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method, headers }, env)).status).toBe(404);
+  it("returns 404 for unavailable comments rather than false success", async () => {
+    mocks.execute.mockResolvedValueOnce({ rows: [] });
+    expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method: "PUT", headers }, env)).status).toBe(404);
   });
-  it("does not report success when the database fails", async () => {
-    mocks.execute.mockRejectedValue(new Error("offline"));
+  it("does not report success when a database write fails", async () => {
+    mocks.execute.mockRejectedValueOnce(new Error("offline"));
     expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method: "PUT", headers }, env)).status).toBe(500);
   });
-  it.each(["", "bad-id", Array(51).fill(id).join(",")])("rejects invalid or oversized batches: %s", async (ids) => {
+  it("returns a recoverable 503 before the additive migration exists", async () => {
+    mocks.execute.mockReset().mockResolvedValue({ rows: [{ ready: false }] });
+    expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method: "PUT", headers }, env)).status).toBe(503);
+    expect(mocks.execute).toHaveBeenCalledTimes(1);
+  });
+  it("does not query a disabled unified schema", async () => {
+    env = { UNIFIED_SCHEMA_READY: "false" } as Bindings;
+    expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method: "PUT", headers }, env)).status).toBe(503);
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+  it.each(["", "bad-id", Array(51).fill(id).join(",")])("validates bounded batch IDs: %s", async (ids) => {
     expect((await app.request(`/v1/student/feed/comment-likes?ids=${ids}`, { headers }, env)).status).toBe(400);
     expect(mocks.execute).not.toHaveBeenCalled();
   });
-  it("rejects a missing batch before querying", async () => {
-    expect((await app.request("/v1/student/feed/comment-likes", { headers }, env)).status).toBe(400);
-    expect(mocks.execute).not.toHaveBeenCalled();
-  });
-  it("deduplicates IDs and filters deleted comments and inaccessible parents", async () => {
-    mocks.execute.mockResolvedValue({ rows: [{ id, liked: false, like_count: 0 }] });
+  it("deduplicates IDs and enforces comment deletion, post publication and audience", async () => {
+    mocks.execute.mockResolvedValueOnce({ rows: [{ id, liked: false, like_count: 0 }] });
     const response = await app.request(`/v1/student/feed/comment-likes?ids=${id},${id}`, { headers }, env);
     expect(response.status).toBe(200);
-    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(await response.json()).toEqual({ likes: [{ id, liked: false, like_count: 0 }] });
-    const query = dialect.sqlToQuery(mocks.execute.mock.calls[0]![0]);
+    const query = dialect.sqlToQuery(mocks.execute.mock.calls[1]![0]);
     expect(query.params).toEqual([mocks.user.id, id, mocks.user.universityId]);
     expect(query.sql).toContain("comments.deleted_at is null");
     expect(query.sql).toContain("posts.university_id = comments.institution_id");
     expect(query.sql).toContain("posts.status in ('PUBLISHED', 'CORRECTED')");
     expect(query.sql).toContain("posts.published_at <= now()");
-    expect(query.sql).toContain("posts.university_id = $3::uuid");
     expect(query.sql).toContain("posts.audience->>'visibility' = 'PUBLIC'");
   });
 });

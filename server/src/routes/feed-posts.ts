@@ -10,7 +10,7 @@ import { feedCommentLikeRoutes } from "./feed-comment-likes";
 import type { Bindings, Variables } from "../types";
 
 export const feedPostRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
-// Literal like collections must precede both social and legacy /:id detail routes.
+// Literal like collections must precede both social and legacy /:id routes.
 feedPostRoutes.route("/", feedCommentLikeRoutes);
 feedPostRoutes.route("/", feedLikeRoutes);
 // Social routes run first; legacy reads remain available during additive rollout.
