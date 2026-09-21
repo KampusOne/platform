@@ -18,6 +18,6 @@ Existing comment creation, draft retry IDs, pagination and owner-only comment de
 
 ## Rollout and verification
 
-The production Neon database already contained the compatible comment-like table and four-argument function when inspected. The repeatable migration in this change records that schema for other environments; existing user data is not rewritten. No new API keys or environment variables are needed.
+This change integrates the concurrent `a042b4d` comment-like implementation without duplicating its migration. The canonical migration remains `database/neon/migrations/20260921184500_feed_comment_likes.sql`; its compatible table and four-argument function were confirmed in the production Neon database. No production data was rewritten for the profile identity extension. No new API keys or environment variables are needed.
 
 Automated coverage is in `server/src/routes/feed-comment-likes.test.ts` and `tests/feed-comment-interactions.test.mjs`. The former runs with the Worker tests; the latter has a dedicated read-only CI workflow. Full mobile/Worker type checks and builds remain part of the existing platform workflow. Check actual CI and deployment results for this commit before describing it as live. A signed-in two-account device check is still required for end-to-end visual acceptance.

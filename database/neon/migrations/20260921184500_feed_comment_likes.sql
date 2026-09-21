@@ -1,14 +1,18 @@
 begin;
+set local lock_timeout = '5s';
+set local statement_timeout = '30s';
 
--- Additive and repeatable; preserve existing comments and reactions.
-create unique index if not exists feed_comments_like_scope_idx on public.feed_comments(id, institution_id);
+-- Additive only. Each account gets at most one like per comment.
+create unique index if not exists feed_comments_like_scope_idx
+  on public.feed_comments(id, institution_id);
 create table if not exists public.feed_comment_likes (
   comment_id uuid not null,
   user_id uuid not null references public.users(id) on delete cascade,
   institution_id uuid not null references public.universities(id),
   created_at timestamptz not null default now(),
   primary key(comment_id, user_id),
-  foreign key(comment_id, institution_id) references public.feed_comments(id, institution_id) on delete cascade
+  foreign key(comment_id, institution_id)
+    references public.feed_comments(id, institution_id) on delete cascade
 );
 create index if not exists feed_comment_likes_user_idx on public.feed_comment_likes(user_id, comment_id);
 
@@ -23,8 +27,8 @@ begin
     where comments.id = target_comment and comments.deleted_at is null;
   if not found then return; end if;
 
-  -- Parent before comment: different comments may receive likes concurrently,
-  -- while post archival and comment deletion cannot race past authorization.
+  -- Parent first, then comment: protect visibility/deletion without serializing
+  -- likes on different comments. VOLATILE reads fresh state after lock waits.
   select posts.university_id into post_campus from public.feed_posts posts
     where posts.id = target_post
       and (posts.university_id = campus or posts.audience->>'visibility' = 'PUBLIC')
@@ -52,6 +56,5 @@ begin
 end;
 $$;
 revoke all on public.feed_comment_likes from public;
-revoke all on function app_private.set_feed_comment_like(uuid,uuid,uuid,boolean) from public;
-
+revoke all on function app_private.set_feed_comment_like(uuid, uuid, uuid, boolean) from public;
 commit;
