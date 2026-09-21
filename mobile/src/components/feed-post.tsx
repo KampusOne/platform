@@ -8,6 +8,7 @@ import { getFeedPostText } from "@/src/lib/feed-post-text";
 import { PostMenu } from "@/src/components/post-menu";
 import { QuotedPostPreview } from "@/src/components/quoted-post";
 import { RepostAction } from "@/src/components/repost-action";
+import { PostLikeButton } from "@/src/components/post-like-button";
 
 const structuredCategories = new Set(["EVENT", "OPPORTUNITY"]);
 function publishedAt(value: string) {
@@ -58,6 +59,7 @@ export function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback, onC
           <Pressable accessibilityLabel={`${safeCount(post.comment_count)} comments. Add a comment`} accessibilityRole="button" onPress={openComments} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Ionicons color={theme.textMuted} name="chatbubble-outline" size={18} /><Text style={styles.actionText}>{safeCount(post.comment_count)}</Text></Pressable>
           <RepostAction post={post} onFeedback={onFeedback} onChanged={onChanged} />
         </> : null}
+        <PostLikeButton postId={post.id} title={post.title} onFeedback={onFeedback} />
         <Pressable accessibilityLabel={post.bookmarked ? "Remove from saved posts" : "Save post"} accessibilityRole="button" accessibilityState={{ selected: post.bookmarked }} onPress={() => onBookmark(post)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
           <Ionicons color={post.bookmarked ? theme.brandPressed : theme.textMuted} name={post.bookmarked ? "bookmark" : "bookmark-outline"} size={18} />
           {!post.social_enabled ? <Text style={styles.actionText}>{post.bookmarked ? "Saved" : "Save"}</Text> : null}

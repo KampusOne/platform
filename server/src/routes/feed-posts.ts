@@ -5,9 +5,12 @@ import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import { currentUser, requireAuth } from "../middleware/auth";
 import { feedSocialRoutes } from "./feed-social";
+import { feedLikeRoutes } from "./feed-likes";
 import type { Bindings, Variables } from "../types";
 
 export const feedPostRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+// Literal /likes must precede both social and legacy /:id detail routes.
+feedPostRoutes.route("/", feedLikeRoutes);
 // Social routes run first; legacy reads remain available during additive rollout.
 feedPostRoutes.route("/", feedSocialRoutes);
 const postIdSchema = z.string().uuid();
