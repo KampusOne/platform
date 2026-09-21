@@ -68,8 +68,18 @@ Local TypeScript transpilation/syntax diagnostics: **8 changed TS/TSX files pass
 The expanded `feed-posts.test.ts` covers route authentication, validation, public
 visibility SQL, private/archived exclusions, author predicates, comments, unique
 reposts, undo, quotes, rate limiting, pagination and failure responses.
-These are mocked database SQL-contract tests, not a substitute for live database
-or concurrency testing. Full dependency-based type checks/tests/builds are to be
-verified in repository CI; they were not available in the local execution image.
+The first CI run passed all 38 route/SQL-contract tests, both server and mobile
+type checks, mobile web export, compact-card regressions, contracts, portal checks
+and the database review. Its integration suite caught a missing migration in the
+test bootstrap; the bootstrap now applies this migration.
+
+`server/tests/feed-social-database.test.ts` additionally exercises the real
+authenticated HTTP routes against an isolated PostgreSQL/PGlite schema with the
+migration applied, synthetic users from two campuses, actual inserts and reads.
+It covers visibility, legacy posting, pagination, comment ownership and request
+replay, unique reposts/undo, bookmark cleanup, quote ownership, emoji quotes,
+archived originals and transferred authors. This is not a live Neon branch or
+a concurrency/physical-device test. The latest CI result is recorded on PR #10.
+The local image cannot install project dependencies; full checks run in CI.
 No real user content was deleted, no live migration was applied, and physical-
 device share sheets or complete signed-in browser journeys have not been tested.
