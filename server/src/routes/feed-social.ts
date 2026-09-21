@@ -187,6 +187,7 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
     select comments.id, comments.body, comments.created_at,
       to_char(comments.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       coalesce(author.display_name, 'KampusOne user') as author_name,
+      author.profile_image_url as author_image_url, author.username as author_username,
       coalesce(author.verification_status::text = 'VERIFIED', false) as author_verified,
       comments.author_user_id = ${user.id}::uuid as can_delete
     from public.feed_comments comments
@@ -220,6 +221,7 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
     )
     select saved.id, saved.body, saved.created_at, true as can_delete,
       coalesce(author.display_name, 'KampusOne user') as author_name,
+      author.profile_image_url as author_image_url, author.username as author_username,
       coalesce(author.verification_status::text = 'VERIFIED', false) as author_verified
     from saved left join public.profiles author on author.user_id = saved.author_user_id and author.deleted_at is null
   `);

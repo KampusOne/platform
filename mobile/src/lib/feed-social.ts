@@ -12,7 +12,11 @@ export type SocialFeedPost = FeedPostData & {
   activity_at?: string;
   repost_by?: { user_id: string; name: string } | null;
 };
-export type FeedComment = { id: string; body: string; created_at: string; author_name: string; author_verified: boolean; can_delete: boolean };
+export type FeedComment = {
+  id: string; body: string; created_at: string; author_name: string;
+  author_verified: boolean; can_delete: boolean;
+  author_image_url?: string | null; author_username?: string | null;
+};
 export type FeedPage = { posts: SocialFeedPost[]; nextCursor?: string | null };
 export type CommentPage = { comments: FeedComment[]; nextCursor?: string | null };
 

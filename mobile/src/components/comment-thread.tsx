@@ -6,6 +6,13 @@ import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View 
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { mergeById, type CommentPage, type FeedComment } from "@/src/lib/feed-social";
+import { CommentLikeButton } from "@/src/components/comment-like-button";
+import { ProfileAvatar } from "@/src/components/profile-avatar";
+
+function commentedAt(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Recently" : new Intl.DateTimeFormat("en-NG", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(date);
+}
 
 export function CommentThread({ postId, focusToken = 0, onUpdated }: { postId: string; focusToken?: number; onUpdated(): void }) {
   const { theme, styles } = useThemeStyles(createStyles);
@@ -18,6 +25,7 @@ export function CommentThread({ postId, focusToken = 0, onUpdated }: { postId: s
   const [sending, setSending] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [selected, setSelected] = useState<FeedComment | null>(null);
+  const [likesRefresh, setLikesRefresh] = useState(0);
   const field = useRef<TextInput>(null);
   const requestId = useRef(randomUUID());
   const mutationLock = useRef(false);
@@ -40,6 +48,7 @@ export function CommentThread({ postId, focusToken = 0, onUpdated }: { postId: s
       if (alive.current && version === generation.current) {
         setComments((current) => mergeById(after ? current : [], page.comments).filter((comment) => !removed.current.has(comment.id)).sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)));
         setCursor(page.nextCursor ?? null);
+        setLikesRefresh((value) => value + 1);
       }
     } catch (caught) {
       if (alive.current && version === generation.current) setError(caught instanceof Error ? caught.message : "Could not load comments. Please try again.");
@@ -114,13 +123,21 @@ export function CommentThread({ postId, focusToken = 0, onUpdated }: { postId: s
       {!loading && !error && !comments.length ? <Text style={styles.empty}>No comments yet. Start the conversation.</Text> : null}
       {comments.map((comment) => (
         <View key={comment.id} style={styles.comment}>
-          <View style={styles.commentHeader}>
-            <Text numberOfLines={1} style={styles.author}>{comment.author_name}</Text>
-            {comment.author_verified ? <Ionicons name="checkmark-circle" size={13} color={theme.brand} /> : null}
-            <Text style={styles.time}>{new Date(comment.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</Text>
-            {comment.can_delete ? <Pressable accessibilityRole="button" accessibilityLabel="Delete your comment" disabled={sending || deleting} onPress={() => setSelected(comment)} style={styles.iconButton}><Ionicons name="ellipsis-horizontal" size={19} color={theme.textMuted} /></Pressable> : null}
+          <View style={styles.avatar}><ProfileAvatar name={comment.author_name} imageUrl={comment.author_image_url} /></View>
+          <View style={styles.commentContent}>
+            <View style={styles.commentHeader}>
+              <View style={styles.authorDetails}>
+                <View style={styles.authorRow}>
+                  <Text accessibilityLabel={`${comment.author_name}${comment.author_verified ? ", verified" : ""}`} numberOfLines={1} style={styles.author}>{comment.author_name}</Text>
+                  {comment.author_verified ? <View accessibilityElementsHidden style={styles.verifiedBadge}><Ionicons name="checkmark" size={10} color={theme.verificationMark} /></View> : null}
+                </View>
+                <Text numberOfLines={1} style={styles.time}>{comment.author_username ? `@${comment.author_username} · ` : ""}{commentedAt(comment.created_at)}</Text>
+              </View>
+              {comment.can_delete ? <Pressable accessibilityRole="button" accessibilityLabel="Delete your comment" disabled={sending || deleting} onPress={() => setSelected(comment)} style={styles.iconButton}><Ionicons name="ellipsis-horizontal" size={19} color={theme.textMuted} /></Pressable> : null}
+            </View>
+            <Text selectable style={styles.body}>{comment.body}</Text>
+            <CommentLikeButton commentId={comment.id} authorName={comment.author_name} refreshToken={likesRefresh} disabled={sending || deleting} onFeedback={setError} />
           </View>
-          <Text selectable style={styles.body}>{comment.body}</Text>
         </View>
       ))}
       {cursor ? <Pressable accessibilityRole="button" disabled={more || loading || sending || deleting} onPress={() => void load(cursor)} style={styles.loadMore}><Text style={styles.loadMoreText}>{more ? "Loading…" : "More comments"}</Text></Pressable> : null}
@@ -146,12 +163,15 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   sendText: { color: "#FFFFFF", fontFamily: theme.font.semibold, fontSize: 13 }, disabled: { opacity: 0.5 },
   error: { color: theme.deepBrand, fontFamily: theme.font.medium, fontSize: 13, lineHeight: 19, marginVertical: 10 }, loader: { marginVertical: 20 },
   empty: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13, lineHeight: 20, paddingVertical: 22 },
-  comment: { borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 14, paddingTop: 8 },
-  commentHeader: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 36 },
+  comment: { flexDirection: "row", gap: 8, borderBottomWidth: 1, borderBottomColor: theme.border, paddingTop: 12, paddingBottom: 2 },
+  avatar: { paddingTop: 4 }, commentContent: { flex: 1, minWidth: 0 },
+  commentHeader: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 44 },
+  authorDetails: { flex: 1, minWidth: 0 }, authorRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   author: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13, flexShrink: 1 },
-  time: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 10, marginLeft: "auto" },
+  verifiedBadge: { alignItems: "center", justifyContent: "center", backgroundColor: theme.brand, width: 16, height: 16, borderRadius: 8 },
+  time: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 10.5, marginTop: 2 },
   iconButton: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
-  body: { color: theme.text, fontFamily: theme.font.body, fontSize: 14, lineHeight: 21 },
+  body: { color: theme.text, fontFamily: theme.font.body, fontSize: 13.5, lineHeight: 19, marginTop: 4 },
   loadMore: { minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
   loadMoreText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 13 },
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,.4)", alignItems: "center", justifyContent: "center", padding: 24 },
