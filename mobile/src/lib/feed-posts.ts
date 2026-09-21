@@ -1,7 +1,32 @@
 import { Platform, Share } from "react-native";
 import { clearApiCache } from "@/src/lib/api";
 
-export type FeedPostData = {
+export type FeedSocialStats = {
+  comment_count: number;
+  repost_count: number;
+  quote_count: number;
+  reposted: boolean;
+};
+
+export type QuotedPostData = {
+  id: string;
+  title: string;
+  body: string;
+  image_url: string | null;
+  source_name: string;
+  source_verified: boolean;
+};
+
+export type FeedComment = {
+  id: string;
+  body: string;
+  created_at: string;
+  author_name: string;
+  author_verified: boolean;
+  can_delete: boolean;
+};
+
+export type FeedPostData = Partial<FeedSocialStats> & {
   id: string;
   category: string;
   title: string;
@@ -16,6 +41,11 @@ export type FeedPostData = {
   source_verified: boolean;
   bookmarked: boolean;
   can_delete?: boolean;
+  is_student_post?: boolean;
+  is_quote?: boolean;
+  quoted_post_id?: string | null;
+  quoted_post?: QuotedPostData | null;
+  reposted_by?: string | null;
 };
 
 // This is the student app, not the separately deployed public landing website.

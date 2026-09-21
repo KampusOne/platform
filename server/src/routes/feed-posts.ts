@@ -4,6 +4,7 @@ import { z } from "@kampusone/contracts";
 import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import { currentUser, requireAuth } from "../middleware/auth";
+import { feedSocialRoutes, readVisiblePost } from "./feed-social";
 import type { Bindings, Variables } from "../types";
 
 export const feedPostRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -22,32 +23,13 @@ function universityId(user: ReturnType<typeof currentUser>) {
   return user.universityId;
 }
 
+// Each exact route authenticates once; legacy student POST remains independent.
+feedPostRoutes.route("/", feedSocialRoutes);
+
 feedPostRoutes.get("/:id", requireAuth, async (context) => {
   context.header("Cache-Control", "private, no-store");
-  const user = currentUser(context);
   const id = postId(context.req.param("id"));
-  const campus = universityId(user);
-  const result = await database(context.env).execute(sql`
-    select posts.id, posts.category, posts.title, posts.summary, posts.body,
-      posts.image_url, posts.urgent, posts.sponsored, posts.published_at,
-      posts.correction_note,
-      case when posts.audience->>'studentPost' = 'true'
-        then coalesce(author.display_name, sources.name) else sources.name end as source_name,
-      case when posts.audience->>'studentPost' = 'true'
-        then coalesce(author.verification_status::text = 'VERIFIED', false)
-        else sources.verified end as source_verified,
-      coalesce(posts.author_user_id = ${user.id}::uuid, false) as can_delete,
-      exists(select 1 from public.feed_bookmarks bookmarks
-        where bookmarks.post_id = posts.id and bookmarks.user_id = ${user.id}::uuid) as bookmarked
-    from public.feed_posts posts
-    join public.content_sources sources on sources.id = posts.source_id
-    left join public.profiles author on author.user_id = posts.author_user_id and author.deleted_at is null
-    where posts.id = ${id}::uuid and posts.university_id = ${campus}::uuid
-      and posts.status in ('PUBLISHED', 'CORRECTED') and posts.published_at <= now()
-    limit 1
-  `);
-  const post = firstRow(result);
-  if (!post) throw new AppError(404, "NOT_FOUND", "This post is unavailable. It may have been deleted or may belong to another campus.");
+  const post = await readVisiblePost(context, id);
   return context.json({ post });
 });
 
@@ -56,15 +38,18 @@ feedPostRoutes.delete("/:id", requireAuth, async (context) => {
   const user = currentUser(context);
   const id = postId(context.req.param("id"));
   const campus = universityId(user);
-  // The authenticated author AND tenant are part of the atomic mutation.
-  // Repeating a successful deletion is safe. Retain the row for moderation history.
+  // Only the authenticated author can delete. A transfer between universities
+  // must not stop that author deleting their own public student post or quote.
+  // Archive the original; reposts and quote embeds disappear through visibility
+  // checks. A quote's own text remains owned by its author, not the original author.
   const result = await database(context.env).execute(sql`
     with removed as (
       update public.feed_posts
       set updated_at = case when status = 'ARCHIVED' then updated_at else now() end,
           status = 'ARCHIVED'
       where id = ${id}::uuid and author_user_id = ${user.id}::uuid
-        and university_id = ${campus}::uuid
+        and (university_id = ${campus}::uuid
+          or (audience->>'studentPost' = 'true' and coalesce(audience->>'visibility', 'PUBLIC') = 'PUBLIC'))
       returning id
     ), removed_bookmarks as (
       delete from public.feed_bookmarks where post_id in (select id from removed)

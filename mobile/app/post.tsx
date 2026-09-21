@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { FeedPost } from "@/src/components/feed-post";
@@ -90,14 +90,14 @@ export default function PostScreen() {
         <Pressable accessibilityRole="button" accessibilityLabel="Back to feed" onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/feed")} style={styles.back}>
           <Ionicons name="arrow-back" size={23} color={theme.text} />
         </Pressable>
-        <Text accessibilityRole="header" style={styles.heading}>Campus post</Text>
+        <Text accessibilityRole="header" style={styles.heading}>Post</Text>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         {!valid ? <View style={styles.state}><Text style={styles.title}>Post unavailable</Text><Text style={styles.body}>This post link is not valid.</Text></View>
-          : state === "loading" ? <View style={styles.state}>{sessionRestoreError ? <><Text style={styles.body}>{sessionRestoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retrySessionRestore()} style={styles.button}><Text style={styles.buttonText}>Try again</Text></Pressable></> : <ActivityIndicator color={theme.brand} />}</View>
-          : state === "anonymous" ? <View style={styles.state}><Ionicons name="lock-closed-outline" size={28} color={theme.deepBrand} /><Text style={styles.title}>Sign in to view this post</Text><Text style={styles.body}>Campus posts are available to signed-in students from the same institution.</Text><Pressable accessibilityRole="button" onPress={signIn} style={styles.button}><Text style={styles.buttonText}>Continue with KampusOne</Text></Pressable></View>
-          : loading ? <View style={styles.state}><ActivityIndicator color={theme.brand} /><Text style={styles.body}>Loading post…</Text></View>
-          : post ? <FeedPost post={post} onBookmark={(value) => void bookmark(value)} onShare={(value) => void share(value)} onFeedback={setFeedback} onDeleted={() => { setSnapshot(null); setUnavailable(true); setError("This post was deleted."); }} />
+          : state === "loading" ? <View style={styles.state}>{sessionRestoreError ? <><Text style={styles.body}>{sessionRestoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retrySessionRestore()} style={styles.button}><Text style={styles.buttonText}>Try again</Text></Pressable></> : <View accessibilityLabel="Restoring your session" style={styles.skeleton} />}</View>
+          : state === "anonymous" ? <View style={styles.state}><Ionicons name="lock-closed-outline" size={28} color={theme.deepBrand} /><Text style={styles.title}>Sign in to view this post</Text><Text style={styles.body}>Sign in to KampusOne to view posts and join the conversation.</Text><Pressable accessibilityRole="button" onPress={signIn} style={styles.button}><Text style={styles.buttonText}>Continue with KampusOne</Text></Pressable></View>
+          : loading ? <View accessibilityLabel="Loading post" style={styles.state}><View style={styles.skeleton} /></View>
+          : post ? <FeedPost key={key} post={post} onBookmark={(value) => void bookmark(value)} onShare={(value) => void share(value)} onFeedback={setFeedback} onDeleted={() => { setSnapshot(null); setUnavailable(true); setError("This post was deleted."); }} />
           : <View style={styles.state}><Text style={styles.title}>{unavailable ? "Post unavailable" : "Couldn’t load this post"}</Text><Text style={styles.body}>{error}</Text>{!unavailable ? <Pressable accessibilityRole="button" onPress={() => { if (onboarding && validPostId(id)) { rememberPostLink(id); router.replace("/"); } else setRetry((value) => value + 1); }} style={styles.button}><Text style={styles.buttonText}>{onboarding ? "Complete student profile" : "Try again"}</Text></Pressable> : null}</View>}
         {feedback ? <Text accessibilityRole="alert" style={styles.notice}>{feedback}</Text> : null}
       </ScrollView>
@@ -113,6 +113,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   heading: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 18 },
   content: { padding: 20, paddingBottom: 48, width: "100%", maxWidth: 540, alignSelf: "center" },
   state: { alignItems: "center", paddingVertical: 44, gap: 14 },
+  skeleton: { width: "100%", height: 200, borderRadius: 14, backgroundColor: theme.surfaceMuted },
   title: { color: theme.text, fontFamily: theme.font.display, fontSize: 23, textAlign: "center" },
   body: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 14, lineHeight: 21, textAlign: "center" },
   button: { minHeight: 48, paddingHorizontal: 22, paddingVertical: 14, borderRadius: 14, backgroundColor: theme.deepBrand, marginTop: 8 },

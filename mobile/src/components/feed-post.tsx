@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
-import type { FeedPostData } from "@/src/lib/feed-posts";
+import { wasPostDeleted, type FeedPostData } from "@/src/lib/feed-posts";
 import { getFeedPostText } from "@/src/lib/feed-post-text";
 import { PostMenu } from "@/src/components/post-menu";
+import { FeedSocialActions } from "@/src/components/feed-social-actions";
 
 const structuredCategories = new Set(["EVENT", "OPPORTUNITY"]);
 const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -34,9 +36,10 @@ export function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback }: {
       {text.paragraphs.map((paragraph, index) => <Text key={index} style={styles.postText}>{paragraph}</Text>)}
     </View>
   ) : null;
-
+  const original = post.quoted_post && !wasPostDeleted(post.quoted_post.id) ? post.quoted_post : null;
   return (
     <View style={styles.post}>
+      {post.reposted_by ? <View style={styles.reposted}><Ionicons name="repeat-outline" size={15} color={theme.textMuted} /><Text style={styles.repostedText}>{post.reposted_by} reposted</Text></View> : null}
       <View style={styles.postHeader}>
         <View accessibilityElementsHidden style={styles.sourceAvatar}>
           <Text style={styles.sourceAvatarText}>{post.source_name.slice(0, 2).toUpperCase()}</Text>
@@ -63,8 +66,14 @@ export function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback }: {
         </View>
       ) : copy ? <View style={styles.postBody}>{copy}</View> : null}
       {post.image_url ? <Image accessible accessibilityIgnoresInvertColors accessibilityLabel={`Attached image for ${post.title}`} accessibilityRole="image" resizeMode="cover" source={{ uri: post.image_url }} style={styles.postImage} /> : null}
+      {post.is_quote ? original ? <Pressable accessibilityRole="button" accessibilityLabel={`Open original post by ${original.source_name}`} onPress={() => router.push({ pathname: "/post", params: { id: original.id } })} style={styles.quote}>
+        <View style={styles.sourceNameRow}><Text style={styles.sourceName}>{original.source_name}</Text>{original.source_verified ? <Ionicons name="checkmark-circle" color={theme.brandPressed} size={15} /> : null}</View>
+        <Text numberOfLines={6} style={styles.postSummary}>{original.body || original.title}</Text>
+        {original.image_url ? <Image accessibilityLabel="Original post image" source={{ uri: original.image_url }} resizeMode="cover" style={styles.quoteImage} /> : null}
+      </Pressable> : <View style={styles.quote}><Text style={styles.unavailable}>Original post unavailable</Text></View> : null}
       {post.correction_note ? <View accessibilityRole="alert" style={styles.correction}><Ionicons color={theme.statusAttention} name="information-circle-outline" size={17} /><Text style={styles.correctionText}>Correction: {post.correction_note}</Text></View> : null}
       <View style={styles.actions}>
+        <FeedSocialActions post={post} onFeedback={onFeedback} />
         <Pressable accessibilityLabel={post.bookmarked ? `Remove ${post.title} from saved posts` : `Save ${post.title}`} accessibilityRole="button" accessibilityState={{ selected: post.bookmarked }} hitSlop={4} onPress={() => onBookmark(post)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
           <Ionicons color={post.bookmarked ? theme.brandPressed : theme.textMuted} name={post.bookmarked ? "bookmark" : "bookmark-outline"} size={18} />
           <Text style={[styles.actionText, post.bookmarked && styles.actionTextActive]}>{post.bookmarked ? "Saved" : "Save"}</Text>
@@ -79,9 +88,10 @@ export function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback }: {
   );
 }
 
-// Compact visual spacing; action touch targets remain at least 44 points tall.
 const createStyles = (theme: Theme) => StyleSheet.create({
   post: { borderBottomColor: theme.border, borderBottomWidth: 1, paddingVertical: 12 },
+  reposted: { flexDirection: "row", alignItems: "center", gap: 6, marginLeft: 44, marginBottom: 9 },
+  repostedText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 11 },
   postHeader: { alignItems: "center", flexDirection: "row" },
   sourceAvatar: { alignItems: "center", backgroundColor: theme.sand, borderRadius: 18, height: 36, justifyContent: "center", width: 36 },
   sourceAvatarText: { color: theme.deepBrand, fontFamily: theme.font.bold, fontSize: 10.5 },
@@ -97,16 +107,20 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   postBody: { paddingLeft: 44, paddingTop: 6 },
   postCopy: { gap: 4 },
   postTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 15, lineHeight: 20 },
+  postSummary: { color: theme.text, fontFamily: theme.font.body, fontSize: 14, lineHeight: 20, marginTop: 4 },
   postText: { color: theme.text, fontFamily: theme.font.body, fontSize: 13.5, lineHeight: 19 },
   structuredPanel: { backgroundColor: "rgba(241,223,200,.42)", borderColor: "rgba(168,70,46,.13)", borderRadius: 14, borderWidth: 1, flexDirection: "row", gap: 9, marginLeft: 44, marginTop: 8, padding: 10 },
   structuredIcon: { alignItems: "center", backgroundColor: "rgba(255,253,252,.82)", borderRadius: 11, height: 32, justifyContent: "center", width: 32 },
   structuredCopy: { flex: 1, minWidth: 0 },
   structuredEyebrow: { color: theme.brandPressed, fontFamily: theme.font.bold, fontSize: 8.5, letterSpacing: 0.8, marginBottom: 4 },
   postImage: { alignSelf: "stretch", aspectRatio: 1.7, borderRadius: 14, marginLeft: 44, marginTop: 8 },
+  quote: { marginLeft: 44, marginTop: 12, borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 12 },
+  quoteImage: { aspectRatio: 1.7, borderRadius: 10, marginTop: 10, width: "100%" },
+  unavailable: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13, lineHeight: 19 },
   correction: { alignItems: "flex-start", backgroundColor: "#FFF7E9", borderRadius: 10, flexDirection: "row", gap: 7, marginLeft: 44, marginTop: 8, padding: 9 },
   correctionText: { color: theme.statusAttention, flex: 1, fontFamily: theme.font.medium, fontSize: 10.5, lineHeight: 15 },
-  actions: { alignItems: "center", flexDirection: "row", gap: 18, marginLeft: 44, minHeight: 44, paddingTop: 2 },
-  action: { alignItems: "center", flexDirection: "row", gap: 5, minHeight: 44, minWidth: 60 },
+  actions: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 8, marginLeft: 44, minHeight: 44, paddingTop: 2 },
+  action: { alignItems: "center", flexDirection: "row", gap: 5, minHeight: 44, minWidth: 44 },
   actionText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 11 },
   actionTextActive: { color: theme.brandPressed },
   sponsored: { color: theme.textSubtle, fontFamily: theme.font.bold, fontSize: 8, letterSpacing: 0.8, marginLeft: "auto" },

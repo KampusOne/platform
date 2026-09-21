@@ -3,16 +3,17 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
 import { useFocusEffect, router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Image, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { FlatList, Image, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FilterRow, SearchField } from "@/src/components/product-ui";
 import { FeedPost } from "@/src/components/feed-post";
 import { PostLinkDialog } from "@/src/components/post-menu";
-import { ApiError, api } from "@/src/lib/api";
+import { ApiError, api, clearApiCache } from "@/src/lib/api";
 import { sharePostLink, wasPostDeleted, type FeedPostData } from "@/src/lib/feed-posts";
 
 const categories = ["All", "Update", "Event", "Sports", "Opportunity", "Emergency"] as const;
 const emptyFeedIllustration = require("@/assets/illustrations/feed-empty-v2.png");
+type FeedPage = { posts: FeedPostData[]; nextCursor?: string | null };
 
 function FeedEmptyState({ filtered }: { filtered: boolean }) {
   const { styles } = useThemeStyles(createStyles);
@@ -20,7 +21,7 @@ function FeedEmptyState({ filtered }: { filtered: boolean }) {
     <View style={styles.emptyState}>
       <Image accessible={false} accessibilityElementsHidden accessibilityIgnoresInvertColors importantForAccessibility="no-hide-descendants" resizeMode="contain" source={emptyFeedIllustration} style={styles.emptyIllustration} />
       <Text style={styles.emptyTitle}>{filtered ? "No matching posts" : "No posts here yet"}</Text>
-      <Text style={styles.emptyBody}>{filtered ? "Try another search or choose a different update type." : "Verified campus updates, events and opportunities will appear here."}</Text>
+      {filtered ? <Text style={styles.emptyBody}>Try another search or choose a different update type.</Text> : null}
     </View>
   );
 }
@@ -32,28 +33,39 @@ export default function FeedScreen() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<(typeof categories)[number]>("All");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [copyId, setCopyId] = useState<string | null>(null);
   const loadVersion = useRef(0);
+  const moreVersion = useRef(0);
+  const moreBusy = useRef(false);
   const pendingBookmarks = useRef(new Set<string>());
 
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
+    moreVersion.current++;
+    moreBusy.current = false;
+    setLoadingMore(false);
     try {
       setError("");
-      const response = await api<{ posts: FeedPostData[] }>("/v1/student/feed");
-      if (version === loadVersion.current) setPosts(response.posts.filter((post) => !wasPostDeleted(post.id)));
+      const response = await api<FeedPage>("/v1/student/feed");
+      if (version === loadVersion.current) {
+        setPosts(response.posts.filter((post) => !wasPostDeleted(post.id)));
+        setNextCursor(response.nextCursor ?? null);
+      }
     } catch (caught) {
-      if (version === loadVersion.current) setError(caught instanceof ApiError ? caught.message : "Campus updates could not be loaded.");
+      if (version === loadVersion.current) setError(caught instanceof ApiError ? caught.message : "Posts could not be loaded. Check your connection and try again.");
     } finally {
-      if (version === loadVersion.current) setLoading(false);
+      if (version === loadVersion.current) { setLoading(false); setRefreshing(false); }
     }
   }, []);
 
   useFocusEffect(useCallback(() => {
     void load();
-    return () => { loadVersion.current++; };
+    return () => { loadVersion.current++; moreVersion.current++; moreBusy.current = false; };
   }, [load]));
 
   useEffect(() => {
@@ -67,6 +79,34 @@ export default function FeedScreen() {
     const needle = query.trim().toLowerCase();
     return matchesCategory && (!needle || `${post.title} ${post.summary} ${post.body} ${post.source_name}`.toLowerCase().includes(needle));
   }), [posts, query, selected]);
+
+  async function loadMore() {
+    if (!nextCursor || moreBusy.current || loading || refreshing) return;
+    moreBusy.current = true;
+    const version = ++moreVersion.current;
+    const feedVersion = loadVersion.current;
+    setLoadingMore(true);
+    try {
+      const response = await api<FeedPage>(`/v1/student/feed?cursor=${encodeURIComponent(nextCursor)}`);
+      if (version !== moreVersion.current || feedVersion !== loadVersion.current) return;
+      setPosts((current) => {
+        const merged = new Map(current.map((post) => [post.id, post]));
+        for (const post of response.posts) if (!wasPostDeleted(post.id) && !merged.has(post.id)) merged.set(post.id, post);
+        return [...merged.values()].filter((post) => !wasPostDeleted(post.id));
+      });
+      setNextCursor(response.nextCursor ?? null);
+    } catch (caught) {
+      if (version === moreVersion.current && feedVersion === loadVersion.current) setFeedback(caught instanceof ApiError ? caught.message : "More posts could not be loaded. Try again.");
+    } finally {
+      if (version === moreVersion.current) { moreBusy.current = false; setLoadingMore(false); }
+    }
+  }
+
+  function refresh() {
+    clearApiCache();
+    setRefreshing(true);
+    void load();
+  }
 
   const toggleBookmark = useCallback(async (post: FeedPostData) => {
     if (pendingBookmarks.current.has(post.id)) return;
@@ -106,26 +146,28 @@ export default function FeedScreen() {
       <FlatList
         contentContainerStyle={styles.listContent} data={filtered} initialNumToRender={6}
         keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" keyExtractor={(post) => post.id}
+        refreshing={refreshing} onRefresh={refresh}
         ListEmptyComponent={!loading && !error ? <FeedEmptyState filtered={hasActiveFilter} /> : null}
         ListHeaderComponent={
           <>
             <SearchField onChangeText={setQuery} placeholder="Search updates, sources or events" value={query} />
             <View style={styles.filters}><FilterRow items={categories} onSelect={(item) => setSelected(item as typeof selected)} selected={selected} /></View>
-            {loading ? <View style={styles.loading}><ActivityIndicator color={theme.brand} /><Text style={styles.loadingText}>Checking verified campus posts…</Text></View> : null}
+            {loading ? <View accessibilityLabel="Loading posts" style={styles.loading}>{[0, 1, 2].map((key) => <View key={key} style={styles.skeletonPost} />)}</View> : null}
             {error ? (
-              <Pressable accessibilityRole="button" onPress={() => { setLoading(true); void load(); }} style={({ pressed }) => [styles.error, pressed && styles.pressed]}>
+              <Pressable accessibilityRole="button" onPress={() => { clearApiCache(); setLoading(true); void load(); }} style={({ pressed }) => [styles.error, pressed && styles.pressed]}>
                 <Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={20} />
                 <View style={styles.errorCopy}><Text style={styles.errorTitle}>The feed is unavailable</Text><Text style={styles.errorText}>{error} Tap to retry.</Text></View>
               </Pressable>
             ) : null}
           </>
         }
+        ListFooterComponent={nextCursor ? <Pressable accessibilityRole="button" disabled={loadingMore || refreshing} onPress={() => void loadMore()} style={styles.more}><Text style={styles.moreText}>{loadingMore ? "Loading…" : "More posts"}</Text></Pressable> : null}
         maxToRenderPerBatch={8} removeClippedSubviews={Platform.OS === "android"}
         renderItem={({ item }) => <FeedPost post={item} onBookmark={(post) => void toggleBookmark(post)} onShare={(post) => void sharePost(post)} onDeleted={removePost} onFeedback={setFeedback} />}
         showsVerticalScrollIndicator={false} style={[styles.list, { width: Math.min(width, 540) }]} windowSize={7}
       />
       {feedback ? <View pointerEvents="none" style={styles.feedbackRail}><View accessibilityRole="alert" style={styles.feedback}><Ionicons color={theme.deepBrand} name="information-circle" size={20} /><Text style={styles.feedbackText}>{feedback}</Text></View></View> : null}
-      <Pressable accessibilityHint="Write a post for your campus" accessibilityLabel="Create a campus post" accessibilityRole="button" onPress={() => router.push("/compose")} style={({ pressed }) => [styles.composeFab, { right: fabRight }, pressed && styles.composeFabPressed]}>
+      <Pressable accessibilityHint="Write a public student post for KampusOne" accessibilityLabel="Create a post" accessibilityRole="button" onPress={() => router.push("/compose")} style={({ pressed }) => [styles.composeFab, { right: fabRight }, pressed && styles.composeFabPressed]}>
         <Ionicons color="#FFFFFF" name="add" size={29} />
       </Pressable>
       <PostLinkDialog id={copyId} onClose={() => setCopyId(null)} />
@@ -138,8 +180,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   list: { alignSelf: "center" },
   listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 10 },
   filters: { borderBottomColor: theme.border, borderBottomWidth: 1, marginTop: 13, paddingBottom: 13 },
-  loading: { alignItems: "center", gap: 9, paddingVertical: 54 },
-  loadingText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12.5 },
+  loading: { gap: 16, paddingVertical: 24 },
+  skeletonPost: { height: 130, borderRadius: 14, backgroundColor: theme.surfaceMuted },
+  more: { minHeight: 52, alignItems: "center", justifyContent: "center", marginTop: 12 },
+  moreText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 14 },
   error: { alignItems: "center", backgroundColor: "#FFF0EB", borderRadius: 18, flexDirection: "row", gap: 11, marginTop: 18, minHeight: 72, padding: 14 },
   errorCopy: { flex: 1 },
   errorTitle: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 13 },
