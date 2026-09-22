@@ -25,7 +25,7 @@ import {
 import { AgentShortcuts } from "@/src/components/agent-shortcuts";
 import { usePreferences } from "@/src/lib/preferences";
 import { SectionHeading } from "@/src/components/section-heading";
-import { CampusScape } from "@/src/components/visual-system";
+import { CampusScape, VerifiedBadge } from "@/src/components/visual-system";
 import { ApiError, api } from "@/src/lib/api";
 import { pickAndUpload } from "@/src/lib/uploads";
 import { useToast } from "@/src/components/toast";
@@ -86,6 +86,7 @@ type FeedPost = {
   id: string;
   title: string;
   source_name: string;
+  source_verified?: boolean;
   bookmarked: boolean;
   published_at: string;
 };
@@ -289,6 +290,12 @@ export default function ProfileScreen() {
           </Pressable>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{name}</Text>
+            {profile?.verification_status &&
+            ["VERIFIED", "APPROVED"].includes(
+              profile.verification_status.toUpperCase(),
+            ) ? (
+              <VerifiedMark status={profile.verification_status} />
+            ) : null}
             <Pressable
               accessibilityLabel="Edit name"
               accessibilityRole="button"
@@ -306,12 +313,6 @@ export default function ProfileScreen() {
             <Text style={styles.username}>
               @{profile?.username ?? "student"}
             </Text>
-            {profile?.verification_status &&
-            ["VERIFIED", "APPROVED"].includes(
-              profile.verification_status.toUpperCase(),
-            ) ? (
-              <VerifiedMark status={profile.verification_status} />
-            ) : null}
           </View>
           {profile?.biography ? (
             <Text style={styles.bio}>{profile.biography}</Text>
@@ -489,9 +490,14 @@ export default function ProfileScreen() {
                         <Text numberOfLines={3} style={styles.savedTitle}>
                           {post.title}
                         </Text>
-                        <Text numberOfLines={1} style={styles.savedSource}>
-                          {post.source_name}
-                        </Text>
+                        <View style={styles.savedSourceRow}>
+                          <Text numberOfLines={1} style={styles.savedSource}>
+                            {post.source_name}
+                          </Text>
+                          {post.source_verified ? (
+                            <VerifiedBadge size={14} label={`${post.source_name}, verified`} />
+                          ) : null}
+                        </View>
                       </Pressable>
                     ))}
                   </ScrollView>
@@ -647,21 +653,11 @@ export default function ProfileScreen() {
 }
 
 function VerifiedMark({ status }: { status: string }) {
-  const { theme, styles } = useThemeStyles(createStyles);
-
   const label =
     status.toUpperCase() === "APPROVED"
       ? "Profile approved"
       : "Profile verified";
-  return (
-    <View
-      accessibilityLabel={label}
-      accessibilityRole="image"
-      style={styles.verified}
-    >
-      <Ionicons color="#FFFFFF" name="checkmark" size={10} />
-    </View>
-  );
+  return <VerifiedBadge label={label} size={20} />;
 }
 
 function Meta({
@@ -970,14 +966,6 @@ const createStyles = (theme: Theme) =>
       fontFamily: theme.font.medium,
       fontSize: 13.5,
     },
-    verified: {
-      alignItems: "center",
-      backgroundColor: theme.verification,
-      borderRadius: 7,
-      height: 14,
-      justifyContent: "center",
-      width: 14,
-    },
     bio: {
       color: theme.textMuted,
       fontFamily: theme.font.body,
@@ -1108,11 +1096,12 @@ const createStyles = (theme: Theme) =>
       lineHeight: 18,
       marginTop: 12,
     },
+    savedSourceRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 7 },
     savedSource: {
       color: theme.textMuted,
       fontFamily: theme.font.body,
       fontSize: 10.5,
-      marginTop: 7,
+      flexShrink: 1,
     },
     quietState: {
       color: theme.textMuted,
