@@ -1,0 +1,42 @@
+name: Conversation experience checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: conversation-experience-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  interaction-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --experimental-strip-types --test tests/feed-time.test.mjs tests/public-badges.test.mjs tests/feed-post-text.test.mjs tests/feed-social.test.mjs tests/feed-comment-interactions.test.mjs tests/feed-comment-replies.test.mjs
+  browser-review-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run check
+        working-directory: mobile
+      - run: npm run export:web
+        working-directory: mobile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conversation-web-review
+          path: mobile/dist
+          retention-days: 2
+          if-no-files-found: error

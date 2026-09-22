@@ -1,0 +1,30 @@
+name: Finalize conversation source migration
+on:
+  push:
+    branches: [feat/feed-conversation-ux-20260922]
+    paths: [scripts/finalize-feed-conversation.mjs, .github/workflows/finalize-feed-conversation.yml]
+permissions:
+  contents: read
+jobs:
+  apply:
+    if: github.repository == 'KampusOne/platform' && github.ref == 'refs/heads/feat/feed-conversation-ux-20260922'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/feed-conversation-ux-20260922
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply asserted source-only edits on the review branch
+        run: node scripts/finalize-feed-conversation.mjs
+      - name: Commit only the reviewed source files
+        run: |
+          git add mobile/src/components/visual-system.tsx 'mobile/app/(tabs)/profile.tsx' server/src/routes/feed-social.ts server/src/routes/feed-experience.ts server/src/app.ts portal/components/user-detail.tsx mobile/src/components/reply-composer.tsx mobile/src/lib/comment-replies.ts mobile/src/components/comment-thread.tsx mobile/app/post.tsx mobile/src/components/post-like-button.tsx tests/feed-post-text.test.mjs tests/feed-social.test.mjs tests/feed-comment-interactions.test.mjs tests/feed-comment-replies.test.mjs
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(feed): integrate shared badges and preserve composer regression coverage'
+          git push origin HEAD:refs/heads/feat/feed-conversation-ux-20260922
