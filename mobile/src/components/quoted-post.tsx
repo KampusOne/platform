@@ -1,10 +1,10 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { getFeedPostText } from "@/src/lib/feed-post-text";
 import { wasPostDeleted } from "@/src/lib/feed-posts";
 import type { QuotedPost } from "@/src/lib/feed-social";
+import { VerifiedBadge } from "@/src/components/visual-system";
 
 export function QuotedPostPreview({ post, unavailable = false }: { post: QuotedPost | null; unavailable?: boolean }) {
   const { theme, styles } = useThemeStyles(createStyles);
@@ -12,8 +12,8 @@ export function QuotedPostPreview({ post, unavailable = false }: { post: QuotedP
   if (missing) return <View style={styles.card}><Text style={styles.muted}>Original post unavailable</Text></View>;
   const text = getFeedPostText(post);
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`Open original post by ${post.source_name}`} onPress={() => router.push({ pathname: "/post", params: { id: post.id } })} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
-      <View style={styles.author}><Text numberOfLines={1} style={styles.name}>{post.source_name}</Text>{post.source_verified ? <Ionicons name="checkmark-circle" size={14} color={theme.brand} /> : null}</View>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Open original post by ${post.source_name}${post.source_verified ? ", verified" : ""}`} onPress={() => router.push({ pathname: "/post", params: { id: post.id } })} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
+      <View style={styles.author}><Text numberOfLines={1} style={styles.name}>{post.source_name}</Text>{post.source_verified ? <VerifiedBadge size={14} label={`${post.source_name}, verified`} /> : null}</View>
       {text.title ? <Text numberOfLines={2} style={styles.title}>{text.title}</Text> : null}
       {text.paragraphs.length ? <Text numberOfLines={5} style={styles.body}>{text.paragraphs.join("\n\n")}</Text> : null}
       {post.image_url ? <Image source={{ uri: post.image_url }} accessibilityLabel="Original post attachment" resizeMode="cover" style={styles.image} /> : null}

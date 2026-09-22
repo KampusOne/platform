@@ -9,6 +9,7 @@ import { PostMenu } from "@/src/components/post-menu";
 import { QuotedPostPreview } from "@/src/components/quoted-post";
 import { RepostAction } from "@/src/components/repost-action";
 import { PostLikeButton } from "@/src/components/post-like-button";
+import { VerifiedBadge } from "@/src/components/visual-system";
 
 const structuredCategories = new Set(["EVENT", "OPPORTUNITY"]);
 function publishedAt(value: string) {
@@ -43,7 +44,7 @@ export function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback, onC
         <View style={styles.sourceCopy}>
           <View style={styles.sourceNameRow}>
             <Text accessibilityLabel={`${post.source_name}${post.source_verified ? ", verified" : ""}`} numberOfLines={1} style={styles.sourceName}>{post.source_name}</Text>
-            {post.source_verified ? <View accessibilityElementsHidden style={styles.verifiedBadge}><Ionicons color={theme.verificationMark} name="checkmark" size={10} /></View> : null}
+            {post.source_verified ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><VerifiedBadge size={16} label={`${post.source_name}, verified`} /></View> : null}
           </View>
           <Text style={styles.postTime}>{publishedAt(post.published_at)}</Text>
         </View>
@@ -79,7 +80,6 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   sourceCopy: { flex: 1, marginLeft: 8, minWidth: 0 },
   sourceNameRow: { alignItems: "center", flexDirection: "row", gap: 5 },
   sourceName: { color: theme.text, flexShrink: 1, fontFamily: theme.font.semibold, fontSize: 13 },
-  verifiedBadge: { alignItems: "center", backgroundColor: theme.brand, borderRadius: 8, height: 16, justifyContent: "center", width: 16 },
   postTime: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 10.5, marginTop: 2 },
   category: { backgroundColor: theme.surfaceMuted, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
   urgentCategory: { backgroundColor: "rgba(168,70,46,.12)" },

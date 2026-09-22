@@ -2,6 +2,7 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { VerifiedBadge } from "@/src/components/visual-system";
 
 import { theme } from "@/src/theme";
 
@@ -59,7 +60,7 @@ export function AppHeader({
       <View style={styles.row}>
         <View
           accessible
-          accessibilityLabel={[title, subtitle].filter(Boolean).join(". ")}
+          accessibilityLabel={[title, subtitle, badge?.text, badge?.verified ? "Verified" : ""].filter(Boolean).join(". ")}
           style={styles.copy}
         >
           <Text style={styles.title}>{title}</Text>
@@ -67,9 +68,7 @@ export function AppHeader({
           {badge ? (
             <View style={styles.badge}>
               {badge.verified ? (
-                <View style={styles.verified}>
-                  <Ionicons color="#FFFFFF" name="checkmark" size={10} />
-                </View>
+                <VerifiedBadge size={14} label={`${badge.text}, verified`} />
               ) : badge.icon ? (
                 <Ionicons color={theme.deepBrand} name={badge.icon} size={14} />
               ) : null}
@@ -203,14 +202,6 @@ const createStyles = (theme: Theme) =>
       color: theme.textMuted,
       fontFamily: theme.font.medium,
       fontSize: 11.5,
-    },
-    verified: {
-      alignItems: "center",
-      backgroundColor: theme.verification,
-      borderRadius: 7,
-      height: 14,
-      justifyContent: "center",
-      width: 14,
     },
     streak: {
       alignItems: "center",
