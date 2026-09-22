@@ -13,7 +13,9 @@ test("engagement counts never render NaN or negative values", () => {
 });
 test("comments preserve retry IDs until the draft changes", () => {
   const source = read("mobile/src/components/comment-thread.tsx");
-  assert.match(source, /requestId: requestId.current/); assert.match(source, /mutationLock.current/);
+  const composer = read("mobile/src/components/reply-composer.tsx");
+  assert.match(composer, /requestId: draft.requestId/); assert.match(composer, /requestId: randomUUID\(\)/);
+  assert.match(composer, /lock.current/); assert.match(source, /mutationLock.current/);
   assert.match(source, /comment.can_delete/);
   assert.match(source, /const commentId = selected\.id/);
   assert.ok(source.includes('`${commentsPath(postId)}/${encodeURIComponent(commentId)}`'));
@@ -22,8 +24,8 @@ test("comments preserve retry IDs until the draft changes", () => {
 test("the shared card has comments, reposts, and nested quote previews without duplicating text", () => {
   const source = read("mobile/src/components/feed-post.tsx");
   assert.match(source, /getFeedPostText\(post\)/); assert.match(source, /<RepostAction/);
-  assert.match(source, /<QuotedPostPreview/); assert.match(source, /openComments/);
-  assert.match(source, /action: \{[^\n]*minHeight: 44/); assert.match(source, /post: \{[^\n]*paddingVertical: 12/);
+  assert.match(source, /<QuotedPostPreview/); assert.match(source, /openReply/); assert.match(source, /openPost/);
+  assert.match(source, /action: \{[^\n]*minHeight: 44/); assert.match(source, /post: \{[^\n]*paddingTop: 10[^\n]*paddingBottom: 3/);
 });
 test("quote composition submits a reference, not copied original text", () => {
   const source = read("mobile/app/compose.tsx");

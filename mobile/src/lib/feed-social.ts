@@ -1,9 +1,11 @@
 import type { FeedPostData } from "./feed-posts";
 
-export type QuotedPost = Pick<FeedPostData, "id" | "title" | "summary" | "body" | "image_url" | "published_at" | "source_name" | "source_verified">;
+export type QuotedPost = Pick<FeedPostData, "id" | "title" | "summary" | "body" | "image_url" | "published_at" | "source_name" | "source_verified"> & { source_image_url?: string | null };
 export type SocialFeedPost = FeedPostData & {
   social_enabled?: boolean;
   visibility?: "PUBLIC" | "CAMPUS";
+  source_image_url?: string | null;
+  view_count?: number | null;
   comment_count?: number;
   repost_count?: number;
   reposted?: boolean;
@@ -16,6 +18,7 @@ export type FeedComment = {
   id: string; body: string; created_at: string; author_name: string;
   author_verified: boolean; can_delete: boolean;
   author_image_url?: string | null; author_username?: string | null;
+  image_url?: string | null;
   parent_comment_id?: string | null; reply_count?: number; is_deleted?: boolean;
 };
 export type FeedPage = { posts: SocialFeedPost[]; nextCursor?: string | null };

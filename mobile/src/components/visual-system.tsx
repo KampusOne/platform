@@ -1,3 +1,4 @@
+import { VerifiedBadge } from "./verified-badge";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -560,75 +561,7 @@ export function HeaderBadge({
  * hand-drawn brand sketch. Keep this exclusive to verified identities and
  * sources; ordinary success states use the status palette instead.
  */
-export function VerifiedBadge({
-  size = 16,
-  label = "Verified",
-}: {
-  size?: number;
-  label?: string;
-}) {
-  const { theme, styles } = useThemeStyles(createStyles);
-
-  const entry = useRef(new Animated.Value(0)).current;
-  const reducedMotion = useReducedMotionPreference();
-  const petalSize = size * 0.73;
-  const petalInset = (size - petalSize) / 2;
-
-  useEffect(() => {
-    if (reducedMotion) {
-      entry.setValue(1);
-      return;
-    }
-    Animated.spring(entry, {
-      damping: 11,
-      mass: 0.45,
-      stiffness: 230,
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
-  }, [entry, reducedMotion]);
-
-  return (
-    <Animated.View
-      accessibilityLabel={label}
-      accessibilityRole="image"
-      style={{
-        alignItems: "center",
-        height: size,
-        justifyContent: "center",
-        opacity: entry,
-        shadowColor: theme.verification,
-        shadowOffset: { height: 2, width: 0 },
-        shadowOpacity: 0.16,
-        shadowRadius: 3,
-        transform: [{ scale: entry }],
-        width: size,
-      }}
-    >
-      {[0, 30, 60].map((rotation) => (
-        <View
-          key={rotation}
-          pointerEvents="none"
-          style={{
-            backgroundColor: theme.verification,
-            borderRadius: petalSize * 0.27,
-            height: petalSize,
-            left: petalInset,
-            position: "absolute",
-            top: petalInset,
-            transform: [{ rotate: `${rotation}deg` }],
-            width: petalSize,
-          }}
-        />
-      ))}
-      <Ionicons
-        color={theme.verificationMark}
-        name="checkmark"
-        size={size * 0.67}
-      />
-    </Animated.View>
-  );
-}
+export { VerifiedBadge } from "./verified-badge";
 
 export function FavoriteButton({
   active,

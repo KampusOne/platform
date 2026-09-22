@@ -1,4 +1,5 @@
 "use client";
+import { PublicBadgeControls } from "./public-badge-controls";
 import Link from "next/link";
 import { type FormEvent, useEffect, useState } from "react";
 import { PortalShell } from "./portal-shell";
@@ -96,6 +97,7 @@ export function UserDetail({ id }: { id: string }) {
       <Link href="/admin/users">← Users</Link>
       {data ? (
         <div className="user-detail-grid">
+          <PublicBadgeControls key={id} userId={id} />
           <section>
             <h2>Activity</h2>
             {(["posts", "orders", "applications"] as const).map((key) => (

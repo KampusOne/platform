@@ -44,7 +44,7 @@ function projection(user: User) {
     case when posts.audience->>'studentPost' = 'true'
       then coalesce(author.display_name, sources.name) else sources.name end as source_name,
     case when posts.audience->>'studentPost' = 'true'
-      then coalesce(author.verification_status::text = 'VERIFIED', false) else sources.verified end as source_verified,
+      then coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) else sources.verified end as source_verified,
     coalesce(posts.author_user_id = ${user.id}::uuid, false) as can_delete,
     case when posts.audience->>'visibility' = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end as visibility,
     true as social_enabled,
@@ -57,7 +57,7 @@ function projection(user: User) {
       'id', quoted.id, 'title', quoted.title, 'summary', quoted.summary, 'body', quoted.body,
       'image_url', quoted.image_url, 'published_at', quoted.published_at,
       'source_name', case when quoted.audience->>'studentPost' = 'true' then coalesce(quoted_author.display_name, quoted_source.name) else quoted_source.name end,
-      'source_verified', case when quoted.audience->>'studentPost' = 'true' then coalesce(quoted_author.verification_status::text = 'VERIFIED', false) else quoted_source.verified end
+      'source_verified', case when quoted.audience->>'studentPost' = 'true' then coalesce((to_jsonb(quoted_author)->>'public_badge_verified')::boolean, quoted_author.verification_status::text='VERIFIED', false) else quoted_source.verified end
     ) end as quoted_post`;
 }
 function joins(user: User) {
@@ -200,7 +200,7 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
       to_char(comments.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       case when comments.deleted_at is null then coalesce(author.display_name, 'KampusOne user') else 'Comment deleted' end as author_name,
       author.profile_image_url as author_image_url, author.username as author_username,
-      coalesce(author.verification_status::text = 'VERIFIED', false) as author_verified,
+      coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
       comments.deleted_at is null and comments.author_user_id = ${user.id}::uuid as can_delete,
       (select count(*)::int from public.feed_comments replies where replies.post_id = comments.post_id and replies.parent_comment_id = comments.id
         and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
@@ -253,7 +253,7 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
     select saved.id, saved.body, saved.created_at, saved.parent_comment_id, false as is_deleted, true as can_delete,
       coalesce(author.display_name, 'KampusOne user') as author_name,
       author.profile_image_url as author_image_url, author.username as author_username,
-      coalesce(author.verification_status::text = 'VERIFIED', false) as author_verified,
+      coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
       (select count(*)::int from public.feed_comments replies where replies.post_id = ${postId}::uuid and replies.parent_comment_id = saved.id
         and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
     from saved left join public.profiles author on author.user_id = saved.author_user_id and author.deleted_at is null
