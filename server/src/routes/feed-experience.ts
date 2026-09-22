@@ -144,7 +144,7 @@ feedExperienceRoutes.post("/:id/comments", requireAuth, async (c, next) => {
     )
     select saved.id,saved.body,saved.created_at,saved.parent_comment_id,false as is_deleted,true as can_delete,
       coalesce(author.display_name,'KampusOne user') as author_name,author.profile_image_url as author_image_url,
-      coalesce(author.verification_status::text='VERIFIED',false) as author_verified,
+      coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
       case when media.id is null then null else ${origin(c) + "/v1/media/"} || media.id::text end as image_url,
       (select count(*)::int from public.feed_comments replies where replies.post_id=${postId}::uuid and replies.parent_comment_id=saved.id and replies.deleted_at is null) as reply_count
     from saved left join public.profiles author on author.user_id=saved.author_user_id and author.deleted_at is null

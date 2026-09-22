@@ -1,3 +1,4 @@
+import { useWebKeyboardViewport } from "@/src/lib/web-keyboard-viewport";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
 import { useEffect, useRef, useState } from "react";
@@ -22,10 +23,11 @@ function keep(key: string, draft: Draft) {
   while (drafts.size > 30) drafts.delete(drafts.keys().next().value!);
 }
 export function ReplyComposer({ post, parent, initialPhoto, onClose, onSent }: {
-  post: SocialFeedPost; parent?: FeedComment | null; initialPhoto?: UploadedFile | null;
+  post: SocialFeedPost; parent?: FeedComment | null | undefined; initialPhoto?: UploadedFile | null | undefined;
   onClose(): void; onSent(comment: FeedComment): void;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const keyboardViewport = useWebKeyboardViewport();
   const { user, profile } = useAuth();
   const key = `${user?.id ?? "anonymous"}:${post.id}:${parent?.id ?? "root"}`;
   const [draft, setDraft] = useState<Draft>(() => {
@@ -67,7 +69,7 @@ export function ReplyComposer({ post, parent, initialPhoto, onClose, onSent }: {
   }
   function close() { if (!lock.current) { keep(key, draft); onClose(); } }
   return <Modal visible animationType="none" presentationStyle="fullScreen" onShow={() => field.current?.focus()} onRequestClose={close}>
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={[styles.screen, keyboardViewport]}>
       <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}>
         <View style={styles.header}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close reply, keep draft" disabled={busy} onPress={close} style={styles.icon}><Ionicons name="close" color={theme.text} size={26} /></Pressable>
@@ -87,7 +89,7 @@ export function ReplyComposer({ post, parent, initialPhoto, onClose, onSent }: {
           <View style={styles.writingRow}>
             <ProfileAvatar name={ownName} imageUrl={ownImage} size={38} />
             <View style={styles.writing}>
-              <TextInput ref={field} autoFocus multiline maxLength={2000} editable={!busy} accessibilityLabel={`Reply to ${authorName}`} placeholder="Post your reply" placeholderTextColor={theme.textSubtle} selectionColor={theme.deepBrand} underlineColorAndroid="transparent" value={draft.body} onChangeText={(body) => change({ body })} style={[styles.input, Platform.OS === "web" && ({ outlineStyle: "none" } as TextStyle)]} />
+              <TextInput ref={field} autoFocus multiline maxLength={2000} editable={!busy} accessibilityLabel={`Reply to ${authorName}`} placeholder="Post your reply" placeholderTextColor={theme.textSubtle} selectionColor={theme.deepBrand} underlineColorAndroid="transparent" value={draft.body} onChangeText={(body) => change({ body })} style={[styles.input, Platform.OS === "web" && ({ outlineWidth: 0, outlineColor: "transparent" } as TextStyle)]} />
               {draft.photo ? <View style={styles.photoWrap}><Image accessible accessibilityLabel="Your reply attachment" source={{ uri: draft.photo.url }} resizeMode="cover" style={styles.photo} /><Pressable accessibilityRole="button" accessibilityLabel="Remove photo" disabled={busy} onPress={() => change({ photo: null })} style={styles.remove}><Ionicons name="close" color="#FFFFFF" size={18} /></Pressable></View> : null}
             </View>
           </View>

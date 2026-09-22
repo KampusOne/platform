@@ -1,3 +1,4 @@
+import { publicBadgeAdminRoutes, publicBadgeProfileRoutes } from "./routes/public-badges";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
@@ -67,8 +68,10 @@ app.route("/v1/auth", authRoutes);
 // Additive conversation features preserve the original read/deletion authorization.
 app.route("/v1/student/feed", feedExperienceRoutes);
 app.route("/v1/student/feed", feedPostRoutes);
+app.route("/v1/student", publicBadgeProfileRoutes);
 app.route("/v1/student", studentRoutes);
 app.route("/v1/agents", agentRoutes);
+app.route("/v1/admin/public-badges", publicBadgeAdminRoutes);
 app.route("/v1/admin", adminRoutes);
 app.route("/v1/payments", paymentRoutes);
 app.route("/v1/account", accountRoutes);

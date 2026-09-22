@@ -1,3 +1,4 @@
+import { hasPublicBadge } from "@/src/lib/public-badges";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
@@ -50,6 +51,7 @@ type StudentProfile = {
   current_level: string | null;
   graduation_year: number | null;
   verification_status: string | null;
+  public_badge_verified?: boolean | null;
 };
 
 type AcademicTerm = {
@@ -290,12 +292,7 @@ export default function ProfileScreen() {
           </Pressable>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{name}</Text>
-            {profile?.verification_status &&
-            ["VERIFIED", "APPROVED"].includes(
-              profile.verification_status.toUpperCase(),
-            ) ? (
-              <VerifiedMark status={profile.verification_status} />
-            ) : null}
+            {hasPublicBadge(profile) ? <VerifiedBadge size={16} /> : null}
             <Pressable
               accessibilityLabel="Edit name"
               accessibilityRole="button"
@@ -652,13 +649,6 @@ export default function ProfileScreen() {
   );
 }
 
-function VerifiedMark({ status }: { status: string }) {
-  const label =
-    status.toUpperCase() === "APPROVED"
-      ? "Profile approved"
-      : "Profile verified";
-  return <VerifiedBadge label={label} size={20} />;
-}
 
 function Meta({
   icon,

@@ -1,3 +1,4 @@
+import { compactCount } from "@/src/lib/feed-time";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
@@ -56,7 +57,7 @@ export function PostLikeButton({ postId, title, onFeedback }: {
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
       <Ionicons color={state.liked ? theme.brandPressed : theme.textMuted} name={state.liked ? "heart" : "heart-outline"} size={18} />
       {state.loading ? <ActivityIndicator color={theme.textMuted} size={12} />
-        : <Text style={[styles.count, state.liked && styles.active]}>{state.ready ? state.count.toLocaleString("en-NG") : "Retry"}</Text>}
+        : <Text style={[styles.count, state.liked && styles.active]}>{state.ready ? compactCount(state.count) : "Retry"}</Text>}
     </Pressable>
   );
 }

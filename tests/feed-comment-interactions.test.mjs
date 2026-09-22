@@ -99,7 +99,8 @@ test('comment layout includes identity, photo fallback and its own like control'
   const thread = source('mobile/src/components/comment-thread.tsx');
   assert.match(thread, /comments\.map/);
   assert.match(thread, /<ProfileAvatar name=\{comment\.author_name\} imageUrl=\{comment\.author_image_url\}/);
-  assert.match(thread, /comment\.author_username/);
+  assert.doesNotMatch(thread, /comment\.author_username/);
+  assert.match(thread, /<RelativeTime value=\{comment.created_at\}/);
   assert.match(thread, /<CommentLikeButton commentId=\{comment\.id\}/);
   assert.match(thread, /comment\.can_delete \?/);
   const avatar = source('mobile/src/components/profile-avatar.tsx');

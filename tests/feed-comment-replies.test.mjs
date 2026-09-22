@@ -28,6 +28,7 @@ test('parent deletion keeps its ID but clears text, photo, username, badge and c
   const result = deleteFromThread([comment('root')], 'root', { retained:true, reply_count:2 });
   assert.equal(result[0].id, 'root');
   assert.equal(result[0].body, '');
+  assert.equal(result[0].image_url, null);
   assert.equal(result[0].author_name, 'Comment deleted');
   assert.equal(result[0].author_image_url, null);
   assert.equal(result[0].author_username, null);
@@ -38,11 +39,12 @@ test('parent deletion keeps its ID but clears text, photo, username, badge and c
 });
 test('composer targets its own branch and keeps failed drafts and collapsed trees', () => {
   const ui = source('mobile/src/components/comment-thread.tsx');
-  assert.match(ui, /parentCommentId: parentId/);
-  assert.match(ui, /Replying to/);
-  assert.match(ui, /accessibilityLabel="Cancel reply"/);
+  const composer = source("mobile/src/components/reply-composer.tsx");
+  assert.match(composer, /parentCommentId: parent.id/);
+  assert.match(composer, /Replying to/);
+  assert.match(composer, /accessibilityLabel="Close reply, keep draft"/);
   assert.match(ui, /<CommentList postId=\{postId\} parentComment=\{comment\}/);
-  assert.match(ui, /opened\.has\(comment\.id\)/);
+  assert.match(ui, /expanded\.has\(comment\.id\)/);
   assert.match(ui, /depth === 1 && styles\.replies/);
   assert.match(ui, /mutationLock\.current = true/);
   assert.match(ui, /version === generation\.current/);

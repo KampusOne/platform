@@ -66,5 +66,5 @@ test("the shared card uses deduplicated copy without shrinking action touch targ
   assert.doesNotMatch(source, />\{post\.(title|summary|body)\}<\/Text>/);
   assert.match(source, /<PostMenu post=\{post\}/);
   assert.match(source, /action: \{[^\n]*minHeight: 44/);
-  assert.match(source, /post: \{[^\n]*paddingVertical: 12/);
+  assert.match(source, /post: \{[^\n]*paddingTop: 10[^\n]*paddingBottom: 3/);
 });

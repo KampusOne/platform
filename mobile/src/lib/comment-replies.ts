@@ -20,7 +20,7 @@ export function deleteFromThread(comments: FeedComment[], id: string, result: Co
   return comments.flatMap((comment) => {
     if (comment.id !== id) return [comment];
     if (!result.retained) return [];
-    return [{ ...comment, body: "", author_name: "Comment deleted", author_image_url: null, author_username: null,
+    return [{ ...comment, body: "", image_url: null, author_name: "Comment deleted", author_image_url: null, author_username: null,
       author_verified: false, can_delete: false, is_deleted: true, reply_count: result.reply_count }];
   });
 }
