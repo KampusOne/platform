@@ -1,4 +1,4 @@
-// One-use, branch-scoped source migration. Every edit asserts its exact source anchor.
+// One-use, branch-scoped source migration. Each edit asserts its reviewed source anchor.
 import { readFileSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 const touched = [];
@@ -11,7 +11,6 @@ function once(source, before, after) {
   assert.equal(source.split(before).length - 1, 1, `Expected one source anchor: ${before}`);
   return source.replace(before, after);
 }
-
 edit('mobile/src/components/visual-system.tsx', (source) => {
   const start = source.indexOf('export function VerifiedBadge(');
   const end = source.indexOf('\nexport function FavoriteButton', start);
@@ -21,9 +20,16 @@ edit('mobile/src/components/visual-system.tsx', (source) => {
 edit('mobile/app/(tabs)/profile.tsx', (source) => {
   source = 'import { hasPublicBadge } from "@/src/lib/public-badges";\n' + source;
   source = once(source, '  verification_status: string | null;', '  verification_status: string | null;\n  public_badge_verified?: boolean | null;');
-  const pattern = /profile\??\.verification_status\s*===\s*["']VERIFIED["']/g;
-  assert.ok(pattern.test(source), 'Profile badge display condition changed');
-  return source.replace(pattern, 'hasPublicBadge(profile)');
+  const before = `{profile?.verification_status &&
+            ["VERIFIED", "APPROVED"].includes(
+              profile.verification_status.toUpperCase(),
+            ) ? (
+              <VerifiedMark status={profile.verification_status} />
+            ) : null}`;
+  source = once(source, before, '{hasPublicBadge(profile) ? <VerifiedBadge size={16} /> : null}');
+  const start = source.indexOf('function VerifiedMark('), end = source.indexOf('\nfunction Meta(', start);
+  assert.ok(start > 0 && end > start, 'VerifiedMark boundary changed');
+  return source.slice(0, start) + source.slice(end);
 });
 for (const path of ['server/src/routes/feed-social.ts', 'server/src/routes/feed-experience.ts']) {
   edit(path, (source) => {
@@ -55,8 +61,6 @@ edit('mobile/src/components/post-like-button.tsx', (source) => {
   source = 'import { compactCount } from "@/src/lib/feed-time";\n' + source;
   return once(source, 'state.count.toLocaleString("en-NG")', 'compactCount(state.count)');
 });
-
-// Keep behavior coverage; replace assertions tied to the removed inline form/handles.
 edit('tests/feed-post-text.test.mjs', (source) => once(source,
   '  assert.match(source, /post: \\{[^\\n]*paddingVertical: 12/);',
   '  assert.match(source, /post: \\{[^\\n]*paddingTop: 10[^\\n]*paddingBottom: 3/);'));
