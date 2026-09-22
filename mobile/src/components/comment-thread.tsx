@@ -9,6 +9,7 @@ import { safeCount, type CommentPage, type FeedComment } from "@/src/lib/feed-so
 import { commentsPath, deleteFromThread, mergeComments, type CommentDeletion } from "@/src/lib/comment-replies";
 import { CommentLikeButton } from "@/src/components/comment-like-button";
 import { ProfileAvatar } from "@/src/components/profile-avatar";
+import { VerifiedBadge } from "@/src/components/visual-system";
 
 function commentedAt(value: string): string {
   const date = new Date(value);
@@ -170,7 +171,7 @@ function CommentList({ postId, focusToken = 0, onUpdated, parentComment, depth =
                   <View style={styles.authorDetails}>
                     <View style={styles.authorRow}>
                       <Text accessibilityLabel={`${comment.author_name}${comment.author_verified ? ", verified" : ""}`} numberOfLines={1} style={styles.author}>{comment.author_name}</Text>
-                      {comment.author_verified ? <View accessibilityElementsHidden style={styles.verifiedBadge}><Ionicons name="checkmark" size={10} color={theme.verificationMark} /></View> : null}
+                      {comment.author_verified ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><VerifiedBadge size={16} label={`${comment.author_name}, verified`} /></View> : null}
                     </View>
                     <Text numberOfLines={1} style={styles.time}>{comment.author_username ? `@${comment.author_username} · ` : ""}{commentedAt(comment.created_at)}</Text>
                   </View>
@@ -227,7 +228,6 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   commentHeader: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 44 },
   authorDetails: { flex: 1, minWidth: 0 }, authorRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   author: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13, flexShrink: 1 },
-  verifiedBadge: { alignItems: "center", justifyContent: "center", backgroundColor: theme.brand, width: 16, height: 16, borderRadius: 8 },
   time: { color: theme.textSubtle, fontFamily: theme.font.body, fontSize: 10.5, marginTop: 2 },
   iconButton: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   body: { color: theme.text, fontFamily: theme.font.body, fontSize: 13.5, lineHeight: 19, marginTop: 4 }, deleted: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13, fontStyle: "italic", paddingVertical: 10 },
