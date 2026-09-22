@@ -10,6 +10,7 @@ import { hashPassword, verifyPassword } from "./lib/security";
 import { authRoutes } from "./routes/auth";
 import { studentRoutes } from "./routes/student";
 import { feedPostRoutes } from "./routes/feed-posts";
+import { feedExperienceRoutes } from "./routes/feed-experience";
 import { agentRoutes } from "./routes/agents";
 import { adminRoutes } from "./routes/admin";
 import { paymentRoutes } from "./routes/payments";
@@ -29,13 +30,8 @@ app.use("*", requestId());
 app.use("*", secureHeaders());
 app.use("/v1/*", async (c, next) =>
   bodyLimit({
-    maxSize:
-      c.req.path === "/v1/media" || c.req.path === "/v1/media/"
-        ? 10 * 1024 * 1024 + 4096
-        : 256 * 1024,
-    onError: () => {
-      throw new AppError(413, "BAD_REQUEST", "This upload or request is too large.");
-    },
+    maxSize: c.req.path === "/v1/media" || c.req.path === "/v1/media/" ? 10 * 1024 * 1024 + 4096 : 256 * 1024,
+    onError: () => { throw new AppError(413, "BAD_REQUEST", "This upload or request is too large."); },
   })(c, next),
 );
 app.use("/v1/*", async (context, next) => {
@@ -47,7 +43,6 @@ app.use("/v1/*", async (context, next) => {
     exposeHeaders: ["X-Request-Id"], credentials: true, maxAge: 86400,
   })(context, next);
 });
-
 app.get("/", (context) => context.json({ service: "kampusone-api", message: "KampusOne privileged API boundary", documentation: "/v1/config/public", requestId: context.get("requestId") }));
 app.get("/health/live", (context) => context.json({ status: "ok" as const, service: "kampusone-api" as const, environment: context.env.ENVIRONMENT, requestId: context.get("requestId") }));
 app.get("/health/ready", (context) => {
@@ -69,7 +64,8 @@ app.use("/v1/*", async (c, next) => {
   await next();
 });
 app.route("/v1/auth", authRoutes);
-// Exact post-detail/delete routes precede the existing student route collection.
+// Additive conversation features preserve the original read/deletion authorization.
+app.route("/v1/student/feed", feedExperienceRoutes);
 app.route("/v1/student/feed", feedPostRoutes);
 app.route("/v1/student", studentRoutes);
 app.route("/v1/agents", agentRoutes);
@@ -83,16 +79,10 @@ app.route("/v1/manage", manageRoutes);
 app.route("/v1/ai", aiRoutes);
 app.route("/v1/communities", communityRoutes);
 app.route("/v1/auth/social", socialAuthRoutes);
-
 app.notFound((context) => errorResponse(context, 404, "NOT_FOUND", "The requested resource does not exist."));
 app.onError((error, context) => {
   if (error instanceof AppError) return errorResponse(context, error.status, error.code, error.message, error.details);
-  // Database errors may include SQL parameters containing identity documents,
-  // messages or account details. Log correlation and error codes, not payloads.
-  console.error(JSON.stringify({
-    level: "error", event: "request.failed", requestId: context.get("requestId"), method: context.req.method, path: context.req.path,
-    errorName: error.name,
-    errorCode: typeof (error as Error & { code?: unknown }).code === "string" ? (error as Error & { code?: unknown }).code : undefined,
-  }));
+  // Never log database payloads: they may include private identity or message data.
+  console.error(JSON.stringify({ level: "error", event: "request.failed", requestId: context.get("requestId"), method: context.req.method, path: context.req.path, errorName: error.name, errorCode: typeof (error as Error & { code?: unknown }).code === "string" ? (error as Error & { code?: unknown }).code : undefined }));
   return errorResponse(context, 500, "INTERNAL_ERROR", "The service could not complete this request.");
 });
