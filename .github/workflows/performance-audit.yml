@@ -15,27 +15,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply checksum-verified performance source patch
+      - name: Apply checksum-verified source changes only
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF_NAME" = "fix/performance-skeletons-20260923"
-          python3 - <<'PY'
+          if [ -f .ci/performance-patch.1.b64 ]; then
+            python3 - <<'PY'
           import base64, gzip, hashlib, pathlib
           encoded = ''.join(pathlib.Path(f'.ci/performance-patch.{i}.b64').read_text() for i in (1, 2))
           patch = gzip.decompress(base64.b64decode(encoded, validate=True))
           assert hashlib.sha256(patch).hexdigest() == '4adf3bc26cda49eb49ea35c27b4464b64f616b8077f4e5b5427335f487621a60', 'Patch checksum mismatch'
           pathlib.Path('/tmp/performance.patch').write_bytes(patch)
           PY
-          git apply --check --unidiff-zero /tmp/performance.patch
-          git apply --index --unidiff-zero /tmp/performance.patch
-          git rm .ci/performance-patch.1.b64 .ci/performance-patch.2.b64 .github/workflows/performance-audit.yml
-          git diff --cached --check
-          node --experimental-strip-types --test tests/*.test.mjs tests/post-like-store.test.ts
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'perf: eliminate loading waterfalls and add app-wide skeleton states'
-          git push origin HEAD:fix/performance-skeletons-20260923
+            git apply --check --unidiff-zero --exclude='.github/workflows/*' /tmp/performance.patch
+            git apply --index --unidiff-zero --exclude='.github/workflows/*' /tmp/performance.patch
+            git rm .ci/performance-patch.1.b64 .ci/performance-patch.2.b64
+            git diff --cached --check
+            node --experimental-strip-types --test --test-reporter=dot tests/*.test.mjs tests/post-like-store.test.ts
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'perf: eliminate loading waterfalls and add app-wide skeleton states'
+            git push origin HEAD:fix/performance-skeletons-20260923
+          fi
       - name: Install contracts
         run: npm ci --prefix packages/contracts
       - name: Install and verify Worker
@@ -45,6 +47,7 @@ jobs:
           npm test --prefix server
           npm run build --prefix server
       - name: Install and verify mobile
+        if: success() || failure()
         run: |
           npm ci --prefix mobile
           npm run check --prefix mobile
