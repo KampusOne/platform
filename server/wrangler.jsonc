@@ -12,6 +12,16 @@
   "triggers": {
     "crons": ["*/5 * * * *"],
   },
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "kampusone-media"
+    },
+    {
+      "binding": "PRIVATE_BUCKET",
+      "bucket_name": "kampusone-private"
+    }
+  ],
   "vars": {
     "ENVIRONMENT": "production",
     "ALLOWED_ORIGINS": "https://kampusone-mobile-preview.vercel.app,https://kampusone-platform-preview.vercel.app,https://admin.kampusone.app,https://agents.kampusone.app,https://engineering.kampusone.app",
