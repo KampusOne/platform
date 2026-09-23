@@ -13,6 +13,8 @@ export async function socialSchemaReady(env: Bindings): Promise<boolean> {
   if (cached && cached.expires > Date.now()) return cached.ready;
   const result = await database(env).execute<{ ready: boolean }>(sql`
     select to_regclass('public.feed_comments') is not null
+      and to_regclass('public.feed_likes') is not null
+      and to_regclass('public.feed_comment_likes') is not null
       and to_regclass('public.feed_reposts') is not null
       and exists(select 1 from information_schema.columns
         where table_schema = 'public' and table_name = 'feed_posts'

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {  Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { safeCount, type SocialFeedPost } from "@/src/lib/feed-social";
@@ -22,7 +22,10 @@ export function RepostAction({ post, onFeedback, onChanged }: { post: SocialFeed
     if (locked.current) return;
     locked.current = true;
     setBusy(true);
+    const before = value;
     const next = !value.reposted;
+    setOpen(false);
+    setValue({ reposted: next, count: Math.max(0, value.count + (next ? 1 : -1)) });
     try {
       const result = await api<{ reposted: boolean; post?: SocialFeedPost }>(`/v1/student/feed/${post.id}/repost`, { method: next ? "PUT" : "DELETE" });
       const updated = result.post ?? { ...post, reposted: false, repost_count: Math.max(0, value.count - 1), repost_by: null };
@@ -33,7 +36,7 @@ export function RepostAction({ post, onFeedback, onChanged }: { post: SocialFeed
         onFeedback(next ? (post.visibility === "PUBLIC" ? "Reposted to the shared feed." : "Reposted to this campus feed.") : "Your repost was removed.");
       }
     } catch (error) {
-      if (alive.current) onFeedback(error instanceof Error ? error.message : "Could not update your repost. Please try again.");
+      if (alive.current) { setValue(before); onFeedback(error instanceof Error ? error.message : "Could not update your repost. Please try again."); }
     } finally {
       locked.current = false;
       if (alive.current) setBusy(false);
@@ -42,7 +45,7 @@ export function RepostAction({ post, onFeedback, onChanged }: { post: SocialFeed
   return (
     <>
       <Pressable accessibilityRole="button" accessibilityLabel={`${value.count} reposts. ${value.reposted ? "Reposted" : "Repost or quote post"}`} accessibilityState={{ selected: value.reposted, disabled: busy }} disabled={busy} onPress={() => setOpen(true)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
-        {busy ? <ActivityIndicator size="small" color={theme.brand} /> : <Ionicons name="repeat-outline" size={19} color={value.reposted ? theme.brandPressed : theme.textMuted} />}
+        <Ionicons name="repeat-outline" size={19} color={value.reposted ? theme.brandPressed : theme.textMuted} />
         <Text style={[styles.count, value.reposted && styles.active]}>{value.count}</Text>
       </Pressable>
       <Modal visible={open} transparent animationType="none" onRequestClose={() => { if (!busy) setOpen(false); }}>

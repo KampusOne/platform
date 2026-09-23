@@ -4,7 +4,6 @@ import * as Haptics from "@/src/lib/haptics";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   Image,
   Pressable,
   StyleSheet,

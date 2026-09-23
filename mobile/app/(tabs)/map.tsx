@@ -1,3 +1,4 @@
+import { InlineLoading, SkeletonBlock } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
@@ -5,7 +6,6 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   FlatList,
   Image,
   Linking,
@@ -428,7 +428,7 @@ function OpenStreetMap({
 
         {!view && directoryLoading ? (
           <View pointerEvents="none" style={styles.mapFeedback}>
-            <ActivityIndicator color={theme.brand} />
+            <SkeletonBlock width="90%" height={150} />
             <Text style={styles.mapFeedbackText}>
               Loading campus coordinates…
             </Text>
@@ -451,7 +451,7 @@ function OpenStreetMap({
 
         {tilesLoading ? (
           <View pointerEvents="none" style={styles.mapFeedback}>
-            <ActivityIndicator color={theme.brand} />
+            <SkeletonBlock width="90%" height={150} />
             <Text style={styles.mapFeedbackText}>Loading OpenStreetMap…</Text>
           </View>
         ) : null}
@@ -925,7 +925,7 @@ export default function MapScreen() {
                 accessibilityLiveRegion="polite"
                 style={styles.directoryLoading}
               >
-                <ActivityIndicator color={theme.brand} />
+                <InlineLoading color={theme.brand} />
                 <Text style={styles.directoryLoadingText}>
                   Loading reviewed campus places…
                 </Text>

@@ -1,7 +1,8 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
+import {  Pressable, StyleSheet, Text } from "react-native";
 import { useAuth } from "@/src/auth/auth-context";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -28,8 +29,8 @@ function scopedStore(scope: string): PostLikeStore {
   return current.store;
 }
 
-export function CommentLikeButton({ commentId, authorName, refreshToken = 0, disabled = false, onFeedback }: {
-  commentId: string; authorName: string; refreshToken?: number; disabled?: boolean; onFeedback(message: string): void;
+export function CommentLikeButton({ commentId, authorName, refreshToken = 0, disabled = false, onFeedback, initialLiked, initialCount }: {
+  initialLiked?: boolean | undefined; initialCount?: number | undefined; commentId: string; authorName: string; refreshToken?: number; disabled?: boolean; onFeedback(message: string): void;
 }) {
   const auth = useAuth();
   const signedIn = auth.state === "authenticated" && !!auth.user;
@@ -37,14 +38,20 @@ export function CommentLikeButton({ commentId, authorName, refreshToken = 0, dis
   const store = useMemo(() => scopedStore(scope), [scope]);
   const subscribe = useCallback((listener: () => void) => store.subscribe(commentId, listener), [store, commentId]);
   const snapshot = useCallback(() => store.get(commentId), [store, commentId]);
-  const state = useSyncExternalStore(subscribe, snapshot, () => initialLikeState);
+  const storedState = useSyncExternalStore(subscribe, snapshot, () => initialLikeState);
+  const seed = useMemo(() => typeof initialLiked === "boolean" && Number.isSafeInteger(initialCount) && initialCount! >= 0
+    ? { id: commentId, liked: initialLiked, like_count: initialCount! } : null, [commentId, initialLiked, initialCount]);
+  const state = storedState !== initialLikeState || !seed ? storedState : { ...initialLikeState, liked: seed.liked, count: seed.like_count, ready: true, loading: false };
   const { theme, styles } = useThemeStyles(createStyles);
   useFocusEffect(useCallback(() => {
-    if (signedIn) store.load(commentId);
-  }, [store, commentId, signedIn, refreshToken]));
+    if (!signedIn) return;
+    if (seed) store.seed(seed);
+    store.loadIfMissing(commentId);
+  }, [store, commentId, signedIn, refreshToken, seed]));
 
   async function press() {
     if (!state.ready) { store.load(commentId); return; }
+    if (seed) store.seed(seed);
     try { await store.toggle(commentId); }
     catch (error) { onFeedback(error instanceof Error ? error.message : "Your comment like could not be saved. Please try again."); }
   }
@@ -59,7 +66,7 @@ export function CommentLikeButton({ commentId, authorName, refreshToken = 0, dis
     disabled={unavailable} onPress={() => { void press(); }}
     style={({ pressed }) => [styles.action, pressed && styles.pressed, disabled && styles.disabled]}>
     <Ionicons name={state.liked ? "heart" : "heart-outline"} color={state.liked ? theme.brandPressed : theme.textMuted} size={17} />
-    {state.loading ? <ActivityIndicator color={theme.textMuted} size={12} />
+    {state.loading ? <InlineLoading color={theme.textMuted} size={12} />
       : <Text style={[styles.count, state.liked && styles.active]}>{state.ready ? state.count.toLocaleString("en-NG") : "Retry"}</Text>}
   </Pressable>;
 }

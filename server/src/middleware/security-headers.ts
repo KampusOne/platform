@@ -8,6 +8,9 @@ import type { Bindings, Variables } from "../types";
  */
 export const mediaAwareSecureHeaders: MiddlewareHandler<{ Bindings: Bindings; Variables: Variables }> = async (c, next) => {
   await secureHeaders()(c, next);
+  // Public media routes explicitly opt in. Authenticated JSON and private files default to no-store.
+  if (c.req.path.startsWith("/v1/") && !c.res.headers.has("Cache-Control"))
+    c.header("Cache-Control", "private, no-store");
   if (
     c.res.ok && ["GET", "HEAD"].includes(c.req.method) &&
     /^\/v1\/media\/[0-9a-f-]{36}$/i.test(c.req.path) &&

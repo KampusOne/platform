@@ -1,3 +1,4 @@
+import { checkBuildVersion } from "@/src/lib/build-version";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -13,7 +14,7 @@ import {
   Lato_700Bold_Italic,
   Lato_900Black,
 } from "@expo-google-fonts/lato";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { theme } from "@/src/theme";
 import { AuthProvider } from "@/src/auth/auth-context";
@@ -23,13 +24,13 @@ import { useEffect } from "react";
 import { initializeAppearance } from "@/src/lib/appearance";
 import { listenForSnooze } from "@/src/lib/alarms";
 import { onAccountRestriction } from "@/src/lib/api";
-import { BrandIntro } from "@/src/components/brand-intro";
 import { PhotoEditorHost } from "@/src/components/photo-editor";
 
 export default function RootLayout() {
   const { theme, isDark } = useThemeStyles(createStyles);
   useEffect(() => {
     void initializeAppearance();
+    void checkBuildVersion();
   }, []);
   useEffect(listenForSnooze, []);
   useEffect(
@@ -47,13 +48,9 @@ export default function RootLayout() {
     Lato_900Black,
   });
 
-  if (!fontsLoaded && !fontError) {
-    return <ScreenSkeleton />;
-  }
-
   return (
     <AuthProvider>
-      <ToastProvider>
+      {!fontsLoaded && !fontError ? <ScreenSkeleton /> : <ToastProvider>
         <StatusBar style={isDark ? "light" : "dark"} />
         <Stack
           screenOptions={{
@@ -61,9 +58,8 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: theme.canvas },
           }}
         />
-        <BrandIntro />
         <PhotoEditorHost />
-      </ToastProvider>
+      </ToastProvider>}
     </AuthProvider>
   );
 }

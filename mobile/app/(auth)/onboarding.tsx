@@ -1,10 +1,10 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   FlatList,
   findNodeHandle,
   Image,
@@ -492,7 +492,7 @@ export default function OnboardingScreen() {
           />
           {catalogLoading ? (
             <View accessibilityLiveRegion="polite" style={styles.loadingState}>
-              <ActivityIndicator color={DEEP_TERRACOTTA} />
+              <InlineLoading color={DEEP_TERRACOTTA} />
               <Text style={styles.loadingText}>
                 Loading your school choices…
               </Text>
@@ -668,7 +668,7 @@ export default function OnboardingScreen() {
         ]}
       >
         {signingOut ? (
-          <ActivityIndicator color={DEEP_TERRACOTTA} size="small" />
+          <InlineLoading color={DEEP_TERRACOTTA} size="small" />
         ) : null}
         <Text style={styles.switchAccountText}>
           {signingOut ? "Signing out…" : "Switch account / Sign out"}

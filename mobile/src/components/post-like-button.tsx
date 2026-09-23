@@ -1,8 +1,9 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { compactCount } from "@/src/lib/feed-time";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
+import {  Pressable, StyleSheet, Text } from "react-native";
 import { useAuth } from "@/src/auth/auth-context";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -27,8 +28,8 @@ function scopedStore(scope: string): PostLikeStore {
   return current.store;
 }
 
-export function PostLikeButton({ postId, title, onFeedback }: {
-  postId: string; title: string; onFeedback(message: string): void;
+export function PostLikeButton({ postId, title, onFeedback, initialLiked, initialCount }: {
+  postId: string; title: string; initialLiked?: boolean | undefined; initialCount?: number | undefined; onFeedback(message: string): void;
 }) {
   const auth = useAuth();
   const signedIn = auth.state === "authenticated" && !!auth.user;
@@ -36,12 +37,20 @@ export function PostLikeButton({ postId, title, onFeedback }: {
   const store = useMemo(() => scopedStore(scope), [scope]);
   const subscribe = useCallback((listener: () => void) => store.subscribe(postId, listener), [store, postId]);
   const snapshot = useCallback(() => store.get(postId), [store, postId]);
-  const state = useSyncExternalStore(subscribe, snapshot, () => initialLikeState);
+  const storedState = useSyncExternalStore(subscribe, snapshot, () => initialLikeState);
+  const seed = useMemo(() => typeof initialLiked === "boolean" && Number.isSafeInteger(initialCount) && initialCount! >= 0
+    ? { id: postId, liked: initialLiked, like_count: initialCount! } : null, [postId, initialLiked, initialCount]);
+  const state = storedState !== initialLikeState || !seed ? storedState : { ...initialLikeState, liked: seed.liked, count: seed.like_count, ready: true, loading: false };
   const { theme, styles } = useThemeStyles(createStyles);
-  useFocusEffect(useCallback(() => { if (signedIn) store.load(postId); }, [store, postId, signedIn]));
+  useFocusEffect(useCallback(() => {
+    if (!signedIn) return;
+    if (seed) store.seed(seed);
+    store.loadIfMissing(postId);
+  }, [store, postId, signedIn, seed]));
 
   const press = async () => {
     if (!state.ready) { store.load(postId); return; }
+    if (seed) store.seed(seed);
     try { await store.toggle(postId); }
     catch (error) { onFeedback(error instanceof Error ? error.message : "Your like could not be saved. Please try again."); }
   };
@@ -56,7 +65,7 @@ export function PostLikeButton({ postId, title, onFeedback }: {
       disabled={!signedIn || busy} hitSlop={4} onPress={() => { void press(); }}
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
       <Ionicons color={state.liked ? theme.brandPressed : theme.textMuted} name={state.liked ? "heart" : "heart-outline"} size={18} />
-      {state.loading ? <ActivityIndicator color={theme.textMuted} size={12} />
+      {state.loading ? <InlineLoading color={theme.textMuted} size={12} />
         : <Text style={[styles.count, state.liked && styles.active]}>{state.ready ? compactCount(state.count) : "Retry"}</Text>}
     </Pressable>
   );

@@ -9,7 +9,7 @@ type Transport = {
   read(ids: string[]): Promise<{ likes: PostLike[] }>;
   write(id: string, liked: boolean): Promise<PostLike>;
 };
-type Entry = { state: LikeState; version: number; listeners: Set<() => void> };
+type Entry = { state: LikeState; version: number; checkedAt: number; listeners: Set<() => void> };
 
 function validLike(row: PostLike | undefined, id: string): row is PostLike {
   return !!row && row.id === id && typeof row.liked === "boolean"
@@ -30,7 +30,7 @@ export class PostLikeStore {
   private entry(id: string): Entry {
     let entry = this.entries.get(id);
     if (!entry) {
-      entry = { state: initialLikeState, version: 0, listeners: new Set() };
+      entry = { state: initialLikeState, version: 0, checkedAt: 0, listeners: new Set() };
       this.entries.set(id, entry);
     }
     return entry;
@@ -50,9 +50,23 @@ export class PostLikeStore {
     entry.listeners.forEach((listener) => listener());
   }
 
+  seed(row: PostLike): void {
+    if (!this.active || !validLike(row, row.id)) return;
+    const entry = this.entry(row.id);
+    if (entry.state.ready || entry.state.pending || entry.state.error || entry.version > 0) return;
+    entry.checkedAt = Date.now();
+    this.queued.delete(row.id);
+    this.publish(entry, { liked: row.liked, count: row.like_count, ready: true, loading: false, pending: false, error: "" });
+  }
+
+  loadIfMissing(id: string): void {
+    if (!this.get(id).ready || Date.now() - this.entry(id).checkedAt > 30_000) this.load(id);
+  }
+
   load(id: string): void {
     if (!this.active || this.reading.has(id) || this.get(id).pending) return;
     const entry = this.entry(id);
+    entry.checkedAt = Date.now();
     if (!entry.state.ready) this.publish(entry, { ...entry.state, loading: true, error: "" });
     this.queued.add(id);
     if (!this.timer) this.timer = setTimeout(() => { void this.flush(); }, 0);
@@ -99,6 +113,7 @@ export class PostLikeStore {
     // Synchronous guard also covers repeated taps before React re-renders.
     if (!this.active || !before.ready || before.pending) return;
     const liked = !before.liked, version = ++entry.version;
+    entry.checkedAt = Date.now();
     this.publish(entry, { ...before, liked, count: Math.max(0, before.count + (liked ? 1 : -1)), pending: true, error: "" });
     try {
       // Explicit PUT / DELETE makes retrying an ambiguous network failure safe.

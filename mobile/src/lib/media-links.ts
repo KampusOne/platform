@@ -1,6 +1,6 @@
 const mediaFields = new Set([
   "url", "image_url", "media_url", "file_url", "document_url", "avatar_url",
-  "profile_image_url", "cover_image_url", "imageUrl", "mediaUrl", "profileImageUrl", "coverImageUrl",
+  "source_image_url", "author_image_url", "profile_image_url", "cover_image_url", "imageUrl", "mediaUrl", "profileImageUrl", "coverImageUrl",
 ]);
 const mediaPath = /^\/(?:api\/)?v1\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 /** Resolve stored Worker URLs through the same API origin as this client.

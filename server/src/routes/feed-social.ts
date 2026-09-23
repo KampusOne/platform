@@ -1,3 +1,4 @@
+import { feedExperienceReady } from "../lib/feed-experience";
 import { sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "@kampusone/contracts";
@@ -38,7 +39,8 @@ async function rateLimit(c: Context<Env>, kind: string, limit: number) {
   if (!firstRow(result)?.allowed) throw new AppError(429, "RATE_LIMITED", "Please wait before trying that again.");
 }
 
-function projection(user: User) {
+function projection(user: User, withViews: boolean) {
+  const views = withViews ? sql`(select count(*)::int from public.feed_post_views v where v.post_id = posts.id)` : sql`null::integer`;
   return sql`posts.id, posts.category, posts.title, posts.summary, posts.body,
     posts.image_url, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
     case when posts.audience->>'studentPost' = 'true'
@@ -48,6 +50,10 @@ function projection(user: User) {
     coalesce(posts.author_user_id = ${user.id}::uuid, false) as can_delete,
     case when posts.audience->>'visibility' = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end as visibility,
     true as social_enabled,
+    case when posts.audience->>'studentPost' = 'true' then author.profile_image_url else null end as source_image_url,
+    ${views} as view_count,
+    (select count(*)::int from public.feed_likes likes where likes.post_id = posts.id) as like_count,
+    exists(select 1 from public.feed_likes likes where likes.post_id = posts.id and likes.user_id = ${user.id}::uuid) as liked,
     exists(select 1 from public.feed_bookmarks b where b.post_id = posts.id and b.user_id = ${user.id}::uuid) as bookmarked,
     (select count(*)::int from public.feed_comments comments where comments.post_id = posts.id and comments.deleted_at is null) as comment_count,
     (select count(*)::int from public.feed_reposts r where r.post_id = posts.id) as repost_count,
@@ -56,6 +62,7 @@ function projection(user: User) {
     case when quoted.id is null then null else jsonb_build_object(
       'id', quoted.id, 'title', quoted.title, 'summary', quoted.summary, 'body', quoted.body,
       'image_url', quoted.image_url, 'published_at', quoted.published_at,
+      'source_image_url', case when quoted.audience->>'studentPost' = 'true' then quoted_author.profile_image_url else null end,
       'source_name', case when quoted.audience->>'studentPost' = 'true' then coalesce(quoted_author.display_name, quoted_source.name) else quoted_source.name end,
       'source_verified', case when quoted.audience->>'studentPost' = 'true' then coalesce((to_jsonb(quoted_author)->>'public_badge_verified')::boolean, quoted_author.verification_status::text='VERIFIED', false) else quoted_source.verified end
     ) end as quoted_post`;
@@ -72,7 +79,7 @@ function joins(user: User) {
 async function readPost(c: Context<Env>, postId: string) {
   const user = currentUser(c);
   const result = await database(c.env).execute(sql`
-    select ${projection(user)} from public.feed_posts posts ${joins(user)}
+    select ${projection(user, await feedExperienceReady(c.env))} from public.feed_posts posts ${joins(user)}
     where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} limit 1
   `);
   const post = firstRow(result);
@@ -89,7 +96,7 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   const category = c.req.query("category")?.toUpperCase() || null;
   const search = c.req.query("q")?.trim().slice(0, 200) || null;
   const result = await database(c.env).execute(sql`
-    select ${projection(user)}, greatest(posts.published_at, latest.created_at) as activity_at,
+    select ${projection(user, await feedExperienceReady(c.env))}, greatest(posts.published_at, latest.created_at) as activity_at,
       to_char(greatest(posts.published_at, latest.created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       case when latest.user_id is null then null else jsonb_build_object('user_id', latest.user_id, 'name', latest.display_name) end as repost_by
     from public.feed_posts posts ${joins(user)}
@@ -195,7 +202,10 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
   if (parentId && !parent) throw new AppError(404, "NOT_FOUND", "This comment is unavailable.");
   const cursor = parseFeedCursor(c.req.query("cursor"));
   const result = await database(c.env).execute(sql`
-    select comments.id, case when comments.deleted_at is null then comments.body else '' end as body,
+    select comments.id,
+      (select count(*)::int from public.feed_comment_likes l where l.comment_id=comments.id) as like_count,
+      exists(select 1 from public.feed_comment_likes l where l.comment_id=comments.id and l.user_id=${user.id}::uuid) as liked,
+      case when comments.deleted_at is null then comments.body else '' end as body,
       comments.created_at, comments.parent_comment_id, comments.deleted_at is not null as is_deleted,
       to_char(comments.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       case when comments.deleted_at is null then coalesce(author.display_name, 'KampusOne user') else 'Comment deleted' end as author_name,

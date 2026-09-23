@@ -28,7 +28,8 @@ export async function pickPhoto(kind: PhotoKind, source: PhotoSource = "library"
   const context = ImageManipulator.manipulate(image.uri);
   let prepared: PhotoDimensions;
   try {
-    if (Math.max(image.width, image.height) > 1600) context.resize(image.width >= image.height ? { width: 1600 } : { height: 1600 });
+    const maxEdge = kind === "avatar" || kind === "cover" ? 1600 : 1280;
+    if (Math.max(image.width, image.height) > maxEdge) context.resize(image.width >= image.height ? { width: maxEdge } : { height: maxEdge });
     const rendered = await context.renderAsync();
     try { prepared = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: kind === "avatar" || kind === "cover" ? 0.95 : 0.82 }); }
     finally { rendered.release(); }

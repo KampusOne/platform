@@ -38,6 +38,7 @@ async function comment(parentCommentId?: string, user = userA, post = postA) {
 beforeAll(async () => {
   pg = new PGlite();
   await pg.exec(`
+    create schema app_private;
     create table public.universities(id uuid primary key);
     create table public.users(id uuid primary key);
     create table public.content_sources(id uuid primary key, name text, verified boolean);
@@ -46,6 +47,9 @@ beforeAll(async () => {
     create table public.feed_bookmarks(post_id uuid, user_id uuid);
   `);
   await pg.exec(readFileSync(new URL("../../database/neon/migrations/20260921180000_feed_social_interactions.sql", import.meta.url), "utf8"));
+  // Feed/comment reads now include engagement counts from the existing additive likes migrations.
+  await pg.exec(readFileSync(new URL("../../database/neon/migrations/20260921183000_feed_post_likes.sql", import.meta.url), "utf8"));
+  await pg.exec(readFileSync(new URL("../../database/neon/migrations/20260921184500_feed_comment_likes.sql", import.meta.url), "utf8"));
   await pg.exec(readFileSync(new URL("../../database/neon/migrations/20260921200000_feed_comment_replies.sql", import.meta.url), "utf8"));
   // Reapplying the additive migration must not break an already upgraded database.
   await pg.exec(readFileSync(new URL("../../database/neon/migrations/20260921200000_feed_comment_replies.sql", import.meta.url), "utf8"));

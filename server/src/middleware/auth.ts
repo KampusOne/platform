@@ -8,6 +8,9 @@ import { allowedOrigins } from "../lib/config";
 import { AppError } from "../lib/errors";
 import { verifyAccessToken } from "../lib/security";
 
+// Only successfully checked Context objects, never identities shared across requests.
+const authenticatedRequests = new WeakSet<object>();
+
 type AppEnvironment = { Bindings: Bindings; Variables: Variables };
 
 function bearerToken(header: string | undefined) {
@@ -17,6 +20,7 @@ function bearerToken(header: string | undefined) {
 
 export const requireAuth = createMiddleware<AppEnvironment>(
   async (context, next) => {
+    if (authenticatedRequests.has(context)) return next();
     const bearer = bearerToken(context.req.header("Authorization"));
     const token = bearer ?? getCookie(context, "k1_access");
     if (!token)
@@ -115,6 +119,7 @@ export const requireAuth = createMiddleware<AppEnvironment>(
           restriction,
         );
     }
+    authenticatedRequests.add(context);
     await next();
   },
 );

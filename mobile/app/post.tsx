@@ -1,7 +1,8 @@
+import { InlineLoading, FeedSkeleton } from "@/src/components/skeleton";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {  Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { FeedPost } from "@/src/components/feed-post";
@@ -107,9 +108,9 @@ export default function PostScreen() {
     <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Back to feed" onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/feed")} style={styles.back}><Ionicons name="arrow-back" size={23} color={theme.text} /></Pressable><Text accessibilityRole="header" style={styles.heading}>Post</Text></View>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} style={styles.screen}>
       {!valid ? <View style={styles.state}><Text style={styles.title}>Post unavailable</Text><Text style={styles.body}>This post link is not valid.</Text></View>
-        : state === "loading" ? <View style={styles.state}>{sessionRestoreError ? <><Text style={styles.body}>{sessionRestoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retrySessionRestore()} style={styles.button}><Text style={styles.buttonText}>Try again</Text></Pressable></> : <ActivityIndicator color={theme.brand} />}</View>
+        : state === "loading" ? <View style={styles.state}>{sessionRestoreError ? <><Text style={styles.body}>{sessionRestoreError}</Text><Pressable accessibilityRole="button" onPress={() => void retrySessionRestore()} style={styles.button}><Text style={styles.buttonText}>Try again</Text></Pressable></> : <FeedSkeleton count={1} />}</View>
         : state === "anonymous" ? <View style={styles.state}><Ionicons name="lock-closed-outline" size={28} color={theme.deepBrand} /><Text style={styles.title}>Sign in to view this post</Text><Text style={styles.body}>Join the conversation with your KampusOne account. Campus-restricted posts keep their original audience.</Text><Pressable accessibilityRole="button" onPress={signIn} style={styles.button}><Text style={styles.buttonText}>Continue with KampusOne</Text></Pressable></View>
-        : loading ? <View style={styles.state}><ActivityIndicator color={theme.brand} /><Text style={styles.body}>Loading post…</Text></View>
+        : loading ? <FeedSkeleton count={1} />
         : post ? <>
           <FeedPost detail post={post} onBookmark={(value) => void bookmark(value)} onShare={(value) => void share(value)} onFeedback={setFeedback} onComment={() => setComposer({ key })}
             onChanged={(fresh) => setSnapshot((value) => value?.key === key ? { key, post: fresh } : value)}
@@ -121,7 +122,7 @@ export default function PostScreen() {
     {post?.social_enabled && !loading && state === "authenticated" ? <View style={styles.replyDock}>
       <View style={styles.replyBar}>
         <Pressable accessibilityRole="button" accessibilityLabel="Write a reply" onPress={() => setComposer({ key })} style={styles.replyPrompt}><ProfileAvatar name={ownName} imageUrl={ownImage} size={30} /><Text style={styles.replyPlaceholder}>Post your reply</Text></Pressable>
-        {uploading ? <ActivityIndicator color={theme.deepBrand} style={styles.dockIcon} /> : <><Pressable accessibilityRole="button" accessibilityLabel="Reply with a gallery image" disabled={uploading} onPress={() => void attach("library")} style={styles.dockIcon}><Ionicons name="image-outline" size={22} color={theme.deepBrand} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Reply with a camera photo" disabled={uploading} onPress={() => void attach("camera")} style={styles.dockIcon}><Ionicons name="camera-outline" size={23} color={theme.deepBrand} /></Pressable></>}
+        {uploading ? <InlineLoading color={theme.deepBrand} style={styles.dockIcon} /> : <><Pressable accessibilityRole="button" accessibilityLabel="Reply with a gallery image" disabled={uploading} onPress={() => void attach("library")} style={styles.dockIcon}><Ionicons name="image-outline" size={22} color={theme.deepBrand} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Reply with a camera photo" disabled={uploading} onPress={() => void attach("camera")} style={styles.dockIcon}><Ionicons name="camera-outline" size={23} color={theme.deepBrand} /></Pressable></>}
       </View>
     </View> : null}
     {composer?.key === key && post ? <ReplyComposer key={`${key}:${composer.parent?.id ?? "root"}`} post={post} parent={composer.parent} initialPhoto={composer.photo} onClose={() => setComposer(null)} onSent={() => { updated(); setFeedback("Reply posted."); }} /> : null}

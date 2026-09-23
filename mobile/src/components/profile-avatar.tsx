@@ -8,7 +8,7 @@ export function ProfileAvatar({ name, imageUrl, size = 36 }: {
 }) {
   const { styles } = useThemeStyles(createStyles);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const uri = typeof imageUrl === "string" && /^https?:\/\//i.test(imageUrl) ? imageUrl : null;
+  const uri = typeof imageUrl === "string" && (/^(https?:\/\/|\/api\/v1\/media\/)/i.test(imageUrl)) ? imageUrl : null;
   const initials = name.trim().split(/\s+/).filter(Boolean).slice(0, 2)
     .map((part) => Array.from(part)[0] ?? "").join("").toLocaleUpperCase("en-NG") || "?";
   const dimensions = { width: size, height: size, borderRadius: size / 2 };

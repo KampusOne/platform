@@ -1,8 +1,9 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { useWebKeyboardViewport } from "@/src/lib/web-keyboard-viewport";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
+import {  Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { api } from "@/src/lib/api";
@@ -73,7 +74,7 @@ export function ReplyComposer({ post, parent, initialPhoto, onClose, onSent }: {
       <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}>
         <View style={styles.header}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close reply, keep draft" disabled={busy} onPress={close} style={styles.icon}><Ionicons name="close" color={theme.text} size={26} /></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Post reply" accessibilityState={{ disabled: !canSend, busy: busy && !uploading }} disabled={!canSend} onPress={() => void send()} style={[styles.send, !canSend && styles.disabled]}>{busy && !uploading ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.sendText}>Reply</Text>}</Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Post reply" accessibilityState={{ disabled: !canSend, busy: busy && !uploading }} disabled={!canSend} onPress={() => void send()} style={[styles.send, !canSend && styles.disabled]}>{busy && !uploading ? <InlineLoading size="small" color="#FFFFFF" /> : <Text style={styles.sendText}>Reply</Text>}</Pressable>
         </View>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} style={styles.scroller}>
           {parent ? <Text style={styles.conversation}>In {post.source_name}’s conversation</Text> : null}
@@ -99,7 +100,7 @@ export function ReplyComposer({ post, parent, initialPhoto, onClose, onSent }: {
         <View style={styles.toolbar}>
           <Pressable accessibilityRole="button" accessibilityLabel="Choose an image from gallery" disabled={busy} onPress={() => void attach("library")} style={styles.icon}><Ionicons name="image-outline" color={theme.deepBrand} size={24} /></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Take a photo with camera" disabled={busy} onPress={() => void attach("camera")} style={styles.icon}><Ionicons name="camera-outline" color={theme.deepBrand} size={25} /></Pressable>
-          {uploading ? <ActivityIndicator color={theme.deepBrand} style={styles.uploading} /> : null}
+          {uploading ? <InlineLoading color={theme.deepBrand} style={styles.uploading} /> : null}
           <Text accessibilityLabel={`${draft.body.length} of 2000 characters`} style={styles.counter}>{draft.body.length ? `${draft.body.length}/2000` : ""}</Text>
         </View>
       </KeyboardAvoidingView>

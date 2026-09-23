@@ -1,9 +1,9 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Animated,
   Easing,
@@ -805,7 +805,7 @@ export default function StoreScreen() {
                     ]}
                   >
                     {busy ? (
-                      <ActivityIndicator color="#FFFFFF" />
+                      <InlineLoading color="#FFFFFF" />
                     ) : (
                       <>
                         <Ionicons
@@ -1035,7 +1035,7 @@ function CatalogSkeleton() {
       style={styles.skeletonSection}
     >
       <View style={styles.loadingLine}>
-        <ActivityIndicator color={theme.brand} size="small" />
+        <InlineLoading color={theme.brand} size="small" />
         <Text style={styles.loadingText}>Loading campus products…</Text>
       </View>
       <View style={styles.grid}>

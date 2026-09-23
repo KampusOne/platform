@@ -1,15 +1,16 @@
+import { FeedSkeleton, SkeletonBlock } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
 import { useFocusEffect, router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Image, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View, type ViewToken } from "react-native";
+import { FlatList, Image, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type ViewToken } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { FilterRow, SearchField } from "@/src/components/product-ui";
 import { FeedPost } from "@/src/components/feed-post";
 import { PostLinkDialog } from "@/src/components/post-menu";
-import { ApiError, api } from "@/src/lib/api";
+import { ApiError, api, peekApiCache } from "@/src/lib/api";
 import { sharePostLink, wasPostDeleted, type FeedPostData } from "@/src/lib/feed-posts";
 import { mergeById, type FeedPage, type SocialFeedPost } from "@/src/lib/feed-social";
 import { recordPostView } from "@/src/lib/post-views";
@@ -60,11 +61,15 @@ export default function FeedScreen() {
     const version = ++loadVersion.current;
     paging.current = false; setLoadingMore(false);
     const newScope = loadedScope.current !== scope;
-    if (newScope) { setPosts([]); setCursor(null); }
-    if (refresh) setRefreshing(true); else if (newScope) setLoading(true);
+    const cached = !refresh ? peekApiCache<FeedPage>(path) : undefined;
+    if (newScope) {
+      setPosts(cached?.posts.filter((post) => !wasPostDeleted(post.id)) ?? []);
+      setCursor(cached?.nextCursor ?? null);
+    }
+    if (refresh) setRefreshing(true); else if (newScope) setLoading(!cached);
     setError("");
     try {
-      const response = await api<FeedPage>(path, { signal: AbortSignal.timeout(15_000) });
+      const response = await api<FeedPage>(path, { signal: AbortSignal.timeout(15_000), cache: refresh ? "reload" : "default" });
       if (version === loadVersion.current) {
         const incoming = response.posts.filter((post) => !wasPostDeleted(post.id));
         // Returning from a conversation refreshes visible data without discarding loaded pages.
@@ -107,14 +112,17 @@ export default function FeedScreen() {
     setPosts((items) => items.filter((post) => post.id !== id).map((post) => post.quoted_post_id === id ? { ...post, quoted_post: null } : post));
   }, []);
   const changedPost = useCallback((changed: SocialFeedPost) => { setPosts((items) => items.map((post) => post.id === changed.id ? { ...post, ...changed } : post)); }, []);
+  const bookmarkAction = useCallback((post: FeedPostData) => { void toggleBookmark(post); }, [toggleBookmark]);
+  const shareAction = useCallback((post: FeedPostData) => { void sharePost(post); }, [sharePost]);
+  const renderPost = useCallback(({ item }: { item: SocialFeedPost }) => <FeedPost post={item} onBookmark={bookmarkAction} onShare={shareAction} onDeleted={removePost} onFeedback={setFeedback} onChanged={changedPost} />, [bookmarkAction, shareAction, removePost, changedPost]);
   return <SafeAreaView edges={["top"]} style={styles.screen}>
     <FlatList contentContainerStyle={styles.listContent} data={filtered} initialNumToRender={6} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" keyExtractor={(post) => post.id}
-      refreshing={refreshing} onRefresh={() => void load(true)} viewabilityConfig={viewabilityConfig} onViewableItemsChanged={onViewableItemsChanged}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="transparent" colors={["transparent"]} progressBackgroundColor="transparent" />} viewabilityConfig={viewabilityConfig} onViewableItemsChanged={onViewableItemsChanged}
       ListEmptyComponent={!loading && !error ? <FeedEmptyState filtered={Boolean(search) || selected !== "All"} /> : null}
-      ListHeaderComponent={<><SearchField onChangeText={setQuery} placeholder="Search posts, sources or events" value={query} /><View style={styles.filters}><FilterRow items={categories} onSelect={(item) => setSelected(item as typeof selected)} selected={selected} /></View>{loading ? <View style={styles.loading}><ActivityIndicator color={theme.brand} /><Text style={styles.loadingText}>Loading the feed…</Text></View> : null}{error ? <Pressable accessibilityRole="button" onPress={() => void load()} style={styles.error}><Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={20} /><Text style={styles.errorText}>{error} Tap to retry.</Text></Pressable> : null}</>}
-      ListFooterComponent={cursor ? <Pressable accessibilityRole="button" accessibilityLabel="Load more posts" disabled={loadingMore} onPress={() => void loadMore()} style={styles.more}>{loadingMore ? <ActivityIndicator color={theme.brand} /> : <Text style={styles.moreText}>Load more posts</Text>}</Pressable> : null}
+      ListHeaderComponent={<><View style={{ height: 4, opacity: refreshing ? 1 : 0 }}><SkeletonBlock height={4} /></View><SearchField onChangeText={setQuery} placeholder="Search posts, sources or events" value={query} /><View style={styles.filters}><FilterRow items={categories} onSelect={(item) => setSelected(item as typeof selected)} selected={selected} /></View>{loading ? <FeedSkeleton /> : null}{error ? <Pressable accessibilityRole="button" onPress={() => void load()} style={styles.error}><Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={20} /><Text style={styles.errorText}>{error} Tap to retry.</Text></Pressable> : null}</>}
+      ListFooterComponent={cursor ? <Pressable accessibilityRole="button" accessibilityLabel="Load more posts" disabled={loadingMore} onPress={() => void loadMore()} style={styles.more}>{loadingMore ? <FeedSkeleton count={1} /> : <Text style={styles.moreText}>Load more posts</Text>}</Pressable> : null}
       maxToRenderPerBatch={8} removeClippedSubviews={Platform.OS === "android"}
-      renderItem={({ item }) => <FeedPost post={item} onBookmark={(post) => void toggleBookmark(post)} onShare={(post) => void sharePost(post)} onDeleted={removePost} onFeedback={setFeedback} onChanged={changedPost} />}
+      renderItem={renderPost}
       showsVerticalScrollIndicator={false} style={[styles.list, { width: Math.min(width, 540) }]} windowSize={7} />
     {feedback ? <View pointerEvents="none" style={styles.feedbackRail}><View accessibilityRole="alert" style={styles.feedback}><Text style={styles.feedbackText}>{feedback}</Text></View></View> : null}
     <Pressable accessibilityLabel="Create a post" accessibilityRole="button" onPress={() => router.push("/compose")} style={({ pressed }) => [styles.composeFab, { right: Math.max(22, (width - 540) / 2 + 22) }, pressed && styles.pressed]}><Ionicons color="#FFFFFF" name="add" size={29} /></Pressable>
