@@ -24,6 +24,7 @@ import { initializeAppearance } from "@/src/lib/appearance";
 import { listenForSnooze } from "@/src/lib/alarms";
 import { onAccountRestriction } from "@/src/lib/api";
 import { BrandIntro } from "@/src/components/brand-intro";
+import { PhotoEditorHost } from "@/src/components/photo-editor";
 
 export default function RootLayout() {
   const { theme, isDark } = useThemeStyles(createStyles);
@@ -61,6 +62,7 @@ export default function RootLayout() {
           }}
         />
         <BrandIntro />
+        <PhotoEditorHost />
       </ToastProvider>
     </AuthProvider>
   );

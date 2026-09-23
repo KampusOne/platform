@@ -2,7 +2,7 @@ import { publicBadgeAdminRoutes, publicBadgeProfileRoutes } from "./routes/publi
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
-import { secureHeaders } from "hono/secure-headers";
+import { mediaAwareSecureHeaders } from "./middleware/security-headers";
 import { bodyLimit } from "hono/body-limit";
 
 import { allowedOrigins, getPublicConfig, readiness } from "./lib/config";
@@ -28,7 +28,7 @@ import type { Bindings, Variables } from "./types";
 export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use("*", requestId());
-app.use("*", secureHeaders());
+app.use("*", mediaAwareSecureHeaders);
 app.use("/v1/*", async (c, next) =>
   bodyLimit({
     maxSize: c.req.path === "/v1/media" || c.req.path === "/v1/media/" ? 10 * 1024 * 1024 + 4096 : 256 * 1024,
