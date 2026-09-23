@@ -1,9 +1,9 @@
 import { memo, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View, type ImageProps } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View, type ImageProps, type StyleProp, type ViewStyle } from "react-native";
 import { useThemeStyles } from "@/src/lib/appearance";
 import { SkeletonBlock } from "./skeleton";
 
-type Props = Omit<ImageProps, "source"> & { uri: string };
+type Props = Omit<ImageProps, "source" | "style"> & { uri: string; style?: StyleProp<ViewStyle> };
 export const MediaImage = memo(function MediaImage({ uri, style, accessibilityLabel = "Image", onError, onLoad, ...props }: Props) {
   // Keyed inner state prevents a reused feed cell from showing a previous image's loading state.
   return <ImageFrame key={uri} uri={uri} style={style} accessibilityLabel={accessibilityLabel} onError={onError} onLoad={onLoad} {...props} />;
@@ -20,4 +20,4 @@ function ImageFrame({ uri, style, onError, onLoad, accessibilityLabel, ...props 
     {status === "error" ? <Pressable accessibilityRole="button" accessibilityLabel="Retry loading image" onPress={(event) => { event.stopPropagation(); setStatus("loading"); setAttempt((n) => n + 1); }} style={styles.retry}><Text style={{ color: theme.textMuted, fontSize: 12 }}>Image unavailable · Tap to retry</Text></Pressable> : null}
   </View>;
 }
-const styles = StyleSheet.create({ retry: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", padding: 12 } });
+const styles = StyleSheet.create({ retry: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, alignItems: "center", justifyContent: "center", padding: 12 } });
