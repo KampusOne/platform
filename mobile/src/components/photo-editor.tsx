@@ -49,8 +49,9 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
     if (saving.current || !ready) return;
     saving.current = true;
     setBusy(true); setError("");
-    const context = ImageManipulator.manipulate(request.image.uri);
+    let context: ReturnType<typeof ImageManipulator.manipulate> | undefined;
     try {
+      context = ImageManipulator.manipulate(request.image.uri);
       context.crop(geometry.rect);
       const targetWidth = Math.min(geometry.rect.width, request.kind === "avatar" ? 768 : 1500);
       context.resize({ width: targetWidth });
@@ -62,7 +63,7 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
     } catch {
       if (alive.current) setError("This crop could not be prepared. Try again, or cancel and choose another photo.");
     } finally {
-      context.release();
+      context?.release();
       saving.current = false;
       if (alive.current) setBusy(false);
     }
@@ -88,9 +89,11 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
           <Text style={[text, styles.hint, { color: theme.textMuted }]}>Drag to position. Use − and + to zoom.</Text>
           <View {...pan.panHandlers} testID="photo-crop-preview" accessibilityLabel={request.kind === "avatar" ? "Circular profile photo preview" : "Wide cover photo preview"}
             style={[styles.frame, { width: frameWidth, height: geometry.frameHeight, borderRadius: request.kind === "avatar" ? frameWidth / 2 : 12 }, Platform.OS === "web" ? { touchAction: "none" } as ViewStyle : null]}>
-            <Image source={{ uri: request.image.uri }} resizeMode="stretch" pointerEvents="none"
+            <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <Image source={{ uri: request.image.uri }} resizeMode="stretch"
               onLoad={() => setReady(true)} onError={() => { setReady(false); setError("This photo could not be displayed. Cancel and choose a JPG, PNG or WebP image."); }}
               style={{ position: "absolute", width: geometry.width, height: geometry.height, left: geometry.left, top: geometry.top }} />
+            </View>
             {!ready && !error ? <ActivityIndicator color={theme.brand} style={StyleSheet.absoluteFill} /> : null}
           </View>
           <View style={styles.row}>
