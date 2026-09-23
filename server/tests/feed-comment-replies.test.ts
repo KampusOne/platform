@@ -38,6 +38,7 @@ async function comment(parentCommentId?: string, user = userA, post = postA) {
 beforeAll(async () => {
   pg = new PGlite();
   await pg.exec(`
+    create schema app_private;
     create table public.universities(id uuid primary key);
     create table public.users(id uuid primary key);
     create table public.content_sources(id uuid primary key, name text, verified boolean);
