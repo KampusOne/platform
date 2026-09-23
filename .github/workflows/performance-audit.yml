@@ -1,0 +1,24 @@
+name: Performance audit
+on:
+  push:
+    branches: [fix/performance-skeletons-20260923]
+permissions:
+  contents: read
+jobs:
+  source-and-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export tracked source for inspection
+        run: git archive --format=tar HEAD > source.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: performance-source
+          path: source.tar
+          retention-days: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run existing dependency-free regression tests
+        run: node --test tests/*.test.mjs
