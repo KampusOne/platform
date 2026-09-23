@@ -3,9 +3,8 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Image,
   Linking,
   Modal,
@@ -27,10 +26,10 @@ import { AgentShortcuts } from "@/src/components/agent-shortcuts";
 import { usePreferences } from "@/src/lib/preferences";
 import { SectionHeading } from "@/src/components/section-heading";
 import { CampusScape, VerifiedBadge } from "@/src/components/visual-system";
-import { ApiError, api } from "@/src/lib/api";
+import { ApiError, api, peekApiCache } from "@/src/lib/api";
 import { pickAndUpload } from "@/src/lib/uploads";
 import { useToast } from "@/src/components/toast";
-import { ScreenSkeleton } from "@/src/components/skeleton";
+import { ScreenSkeleton, ProfileSkeleton, ListSkeleton } from "@/src/components/skeleton";
 import { theme } from "@/src/theme";
 
 type StudentProfile = {
@@ -104,7 +103,9 @@ export default function ProfileScreen() {
   const toast = useToast();
   const { hideCgpa } = usePreferences();
   const [uploading, setUploading] = useState(false);
-  const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [profile, setProfile] = useState<StudentProfile | null>(() =>
+    peekApiCache<ProfilePayload>("/v1/student/me")?.profile ?? (sessionProfile as StudentProfile | null));
+  const loadVersion = useRef(0);
   const [academics, setAcademics] = useState<Academic | null>(null);
   const [purchases, setPurchases] = useState<Purchases | null>(null);
   const [bookmarks, setBookmarks] = useState<FeedPost[]>([]);
@@ -120,17 +121,21 @@ export default function ProfileScreen() {
   const reducedMotion = useReducedMotionPreference();
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
     try {
       setError("");
       setDataNotice("");
       const me = await api<ProfilePayload>("/v1/student/me");
+      if (version !== loadVersion.current) return;
       setProfile(me.profile);
+      setLoading(false); // Purchases, GPA and saves must never block the identity/header.
 
       const [gpa, bought, feed] = await Promise.allSettled([
         api<Academic>("/v1/student/gpa"),
         api<Purchases>("/v1/student/purchases"),
         api<Feed>("/v1/student/feed"),
       ]);
+      if (version !== loadVersion.current) return;
       if (gpa.status === "fulfilled") {
         setAcademics(gpa.value);
         setAcademicState("ready");
@@ -166,19 +171,21 @@ export default function ProfileScreen() {
         );
       }
     } catch (caught) {
+      if (version !== loadVersion.current) return;
       setError(
         caught instanceof ApiError
           ? caught.message
           : "Your profile could not be refreshed.",
       );
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       void load();
+      return () => { loadVersion.current++; };
     }, [load]),
   );
 
@@ -240,6 +247,8 @@ export default function ProfileScreen() {
       setUploading(false);
     }
   }
+
+  if (loading && !profile) return <ProductScreen style={styles.screen}><ProfileSkeleton /></ProductScreen>;
 
   return (
     <ProductScreen style={styles.screen}>
@@ -382,7 +391,7 @@ export default function ProfileScreen() {
         </Pressable>
       ) : null}
 
-      {(!loading || Boolean(profile)) && (profile || sessionProfile) ? (
+      {(profile || sessionProfile) ? (
         <>
           <View style={styles.metrics}>
             <Metric
@@ -455,7 +464,7 @@ export default function ProfileScreen() {
                   onPress={() => router.push("/feed")}
                   title="Recently saved"
                 />
-                {!feedKnown ? (
+                {feedState === "idle" ? <ListSkeleton count={2} /> : !feedKnown ? (
                   <Text style={styles.quietState}>
                     Saved posts are unavailable right now. Other profile details
                     remain available.

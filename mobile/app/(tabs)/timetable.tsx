@@ -1,9 +1,9 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -359,7 +359,7 @@ export default function TimetableScreen() {
             ]}
           >
             {saving ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <InlineLoading color="#FFFFFF" />
             ) : (
               <Text style={[styles.saveText, !canSave && styles.disabledText]}>
                 Save class
@@ -415,7 +415,7 @@ export default function TimetableScreen() {
                     ]}
                   >
                     {deletingId === entry.id ? (
-                      <ActivityIndicator color={theme.deepBrand} size="small" />
+                      <InlineLoading color={theme.deepBrand} size="small" />
                     ) : (
                       <Ionicons
                         name="trash-outline"

@@ -1,6 +1,7 @@
+import { MediaImage } from "./media-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import type { FeedPostData } from "@/src/lib/feed-posts";
@@ -18,7 +19,7 @@ import { ReplyComposer } from "./reply-composer";
 import { PostMetrics } from "./post-metrics";
 
 const structuredCategories = new Set(["EVENT", "OPPORTUNITY"]);
-export function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback, onChanged, onComment, detail = false }: {
+export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback, onChanged, onComment, detail = false }: {
   post: SocialFeedPost;
   onBookmark(post: FeedPostData): void;
   onShare(post: FeedPostData): void;
@@ -59,7 +60,7 @@ export function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback, onC
         <View style={[styles.postBody, detail && styles.detailBody]}>
           {structured ? <View style={styles.structuredPanel}><Text style={styles.structuredEyebrow}>{category === "EVENT" ? "CAMPUS EVENT" : "CAMPUS OPPORTUNITY"}</Text>{copy}</View> : copy}
           {post.urgent ? <Text style={styles.urgent}>Urgent campus update</Text> : null}
-          {post.image_url ? <Image accessible accessibilityIgnoresInvertColors accessibilityLabel="Post attachment" resizeMode="cover" source={{ uri: post.image_url }} style={styles.postImage} /> : null}
+          {post.image_url ? <MediaImage accessible accessibilityIgnoresInvertColors accessibilityLabel="Post attachment" resizeMode="cover" uri={post.image_url} style={styles.postImage} /> : null}
           {post.quoted_post_id ? <QuotedPostPreview post={post.quoted_post ?? null} /> : null}
           {post.correction_note ? <View accessibilityRole="alert" style={styles.correction}><Ionicons color={theme.statusAttention} name="information-circle-outline" size={17} /><Text style={styles.correctionText}>Correction: {post.correction_note}</Text></View> : null}
         </View>
@@ -68,7 +69,7 @@ export function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback, onC
     </View>
     {detail ? <View style={styles.detailMeta}><Text style={styles.exactTime}>{feedTime(post.published_at).exact}</Text><PostMetrics post={post} detail /></View> : null}
     <View style={[styles.actions, (detail || width < 390) && styles.fullActions]}>
-      <PostLikeButton postId={post.id} title={post.title} onFeedback={onFeedback} />
+      <PostLikeButton initialLiked={post.liked} initialCount={post.like_count} postId={post.id} title={post.title} onFeedback={onFeedback} />
       {post.social_enabled ? <>
         <Pressable accessibilityLabel={`${safeCount(post.comment_count)} replies. Write a reply`} accessibilityRole="button" onPress={openReply} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Ionicons color={theme.textMuted} name="chatbubble-outline" size={18} /><Text style={styles.actionText}>{compactCount(post.comment_count)}</Text></Pressable>
         <RepostAction post={post} onFeedback={onFeedback} onChanged={onChanged} />
@@ -80,7 +81,7 @@ export function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback, onC
     {post.sponsored ? <Text style={styles.sponsored}>SPONSORED</Text> : null}
     {replyOpen ? <ReplyComposer post={post} onClose={() => setReplyOpen(false)} onSent={() => { onChanged?.({ ...post, comment_count: safeCount(post.comment_count) + 1 }); onFeedback("Reply posted."); }} /> : null}
   </View>;
-}
+});
 const createStyles = (theme: Theme) => StyleSheet.create({
   post: { borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, paddingTop: 10, paddingBottom: 3 }, contentRegion: { position: "relative" }, postContent: { width: "100%" },
   postHeader: { flexDirection: "row", alignItems: "flex-start", gap: 9, paddingRight: 36 }, sourceCopy: { flex: 1, minWidth: 0, paddingTop: 1 }, sourceNameRow: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 22 }, sourceName: { flexShrink: 1, color: theme.text, fontFamily: theme.font.semibold, fontSize: 14 }, postTime: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11.5, flexShrink: 0 }, menu: { position: "absolute", top: -5, right: -5 },

@@ -1,7 +1,8 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { randomUUID } from "expo-crypto";
-import { ActivityIndicator, Image, Text, View } from "react-native";
+import {  Image, Text, View } from "react-native";
 import { ToolPage, ToolButton, ToolField } from "@/src/components/toolkit";
 import { QuotedPostPreview } from "@/src/components/quoted-post";
 import { useToast } from "@/src/components/toast";
@@ -102,13 +103,13 @@ export default function Compose() {
         <Image accessibilityLabel="Selected post photo" source={{ uri: draftPhoto.uri }} resizeMode="contain"
           onLoad={() => setPreviewError(false)} onError={() => setPreviewError(true)}
           style={{ width: "100%", height: 220, borderRadius: 14 }} />
-        {uploading ? <View style={{ flexDirection: "row", gap: 8, alignItems: "center", marginTop: 8 }}><ActivityIndicator color={theme.brand} /><Text style={{ color: theme.textMuted, fontFamily: theme.font.body }}>Uploading and checking photo…</Text></View> : null}
+        {uploading ? <View style={{ flexDirection: "row", gap: 8, alignItems: "center", marginTop: 8 }}><InlineLoading color={theme.brand} /><Text style={{ color: theme.textMuted, fontFamily: theme.font.body }}>Uploading and checking photo…</Text></View> : null}
         {previewError ? <Text accessibilityRole="alert" style={{ color: theme.deepBrand, marginTop: 8 }}>This preview could not load. Replace the photo or remove it before posting.</Text> : null}
         {photoReady && !previewError ? <Text style={{ color: theme.textMuted, fontFamily: theme.font.body, marginTop: 8 }}>Photo ready</Text> : null}
       </View> : null}
       {photoError ? <Text accessibilityRole="alert" style={{ color: theme.deepBrand, fontFamily: theme.font.body, marginBottom: 12 }}>{photoError}</Text> : null}
       {photoError && draftPhoto ? <ToolButton secondary label={photo ? "Retry photo check" : "Retry upload"} disabled={busy} onPress={() => void attach(true)} /> : null}
-      {isQuote && quoteLoading ? <ActivityIndicator color={theme.brand} /> : null}
+      {isQuote && quoteLoading ? <InlineLoading color={theme.brand} /> : null}
       {isQuote && original ? <QuotedPostPreview post={original} /> : null}
       {quoteError ? <><Text accessibilityRole="alert" style={{ color: theme.deepBrand, fontFamily: theme.font.body, marginVertical: 12 }}>{quoteError}</Text>{quoteId ? <ToolButton secondary label="Retry original post" disabled={busy} onPress={() => void loadQuote()} /> : null}</> : null}
       <Text style={{ color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, lineHeight: 18, marginVertical: 16 }}>{isQuote && original?.visibility !== "PUBLIC" ? "This quote keeps the original post’s campus-only audience." : "Visible to everyone signed in to KampusOne."}</Text>

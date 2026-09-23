@@ -1,7 +1,8 @@
+import { InlineLoading, ListSkeleton } from "@/src/components/skeleton";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {  Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { safeCount, type CommentPage, type FeedComment } from "@/src/lib/feed-social";
@@ -69,7 +70,7 @@ function CommentList({ postId, refreshToken = 0, onUpdated, onReply, parentComme
   return <View style={[styles.thread, depth === 1 && styles.replies]}>
     {depth === 0 ? <View style={styles.headingRow}><Text accessibilityRole="header" style={styles.heading}>Replies</Text><Pressable accessibilityRole="button" accessibilityLabel="Refresh replies" disabled={loading || deleting} onPress={() => void load()} style={styles.iconButton}><Ionicons name="refresh-outline" color={theme.textMuted} size={17} /></Pressable></View> : null}
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-    {loading && comments.length === 0 ? <ActivityIndicator color={theme.brand} style={styles.loader} /> : null}
+    {loading && comments.length === 0 ? <ListSkeleton count={3} /> : null}
     {!loading && !error && !comments.length ? <Text style={styles.empty}>{parentId ? "No replies yet." : "No replies yet. Be the first to join in."}</Text> : null}
     {comments.map((comment) => <View key={comment.id} style={styles.commentGroup}>
       <View style={styles.comment}>
@@ -86,7 +87,7 @@ function CommentList({ postId, refreshToken = 0, onUpdated, onReply, parentComme
             </Pressable>
           </>}
           <View style={styles.commentActions}>
-            {!comment.is_deleted ? <><CommentLikeButton commentId={comment.id} authorName={comment.author_name} refreshToken={likesRefresh} disabled={deleting} onFeedback={setError} /><Pressable accessibilityRole="button" accessibilityLabel={`Reply to ${comment.author_name}`} disabled={deleting} onPress={() => onReply(comment)} style={styles.replyButton}><Ionicons name="chatbubble-outline" size={17} color={theme.textMuted} /><Text style={styles.replyText}>{safeCount(comment.reply_count) || ""}</Text></Pressable></> : null}
+            {!comment.is_deleted ? <><CommentLikeButton commentId={comment.id} initialLiked={comment.liked} initialCount={comment.like_count} authorName={comment.author_name} refreshToken={likesRefresh} disabled={deleting} onFeedback={setError} /><Pressable accessibilityRole="button" accessibilityLabel={`Reply to ${comment.author_name}`} disabled={deleting} onPress={() => onReply(comment)} style={styles.replyButton}><Ionicons name="chatbubble-outline" size={17} color={theme.textMuted} /><Text style={styles.replyText}>{safeCount(comment.reply_count) || ""}</Text></Pressable></> : null}
             {safeCount(comment.reply_count) > 0 || expanded.has(comment.id) ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: expanded.has(comment.id) }} accessibilityLabel={expanded.has(comment.id) ? "Hide replies" : `View ${safeCount(comment.reply_count)} replies`} onPress={() => toggleReplies(comment.id)} style={styles.replyButton}><Text style={styles.loadMoreText}>{expanded.has(comment.id) ? "Hide replies" : `View ${safeCount(comment.reply_count)} ${safeCount(comment.reply_count) === 1 ? "reply" : "replies"}`}</Text></Pressable> : null}
           </View>
         </View>

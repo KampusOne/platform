@@ -5,7 +5,6 @@ import * as Haptics from "@/src/lib/haptics";
 import { Redirect, Tabs } from "expo-router";
 import { type ComponentProps, useEffect, useRef } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Easing,
   Platform,
@@ -218,7 +217,7 @@ function KampusTabBar({ state, navigation }: KampusTabBarProps) {
 export default function TabLayout() {
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const { state, profile, profileState } = useAuth();
+  const { state, profile, profileState, user } = useAuth();
   const reducedMotion = useReducedMotionPreference();
   if (
     state === "loading" ||
@@ -238,6 +237,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      key={user?.id ?? "anonymous"}
       backBehavior="history"
       tabBar={(props) => <KampusTabBar {...props} />}
       screenOptions={{

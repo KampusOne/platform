@@ -1,5 +1,6 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ActivityIndicator, Image, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ViewStyle } from "react-native";
+import {  Image, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type ViewStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { useAppearance } from "@/src/lib/appearance";
@@ -53,11 +54,11 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
     try {
       context = ImageManipulator.manipulate(request.image.uri);
       context.crop(geometry.rect);
-      const targetWidth = Math.min(geometry.rect.width, request.kind === "avatar" ? 768 : 1500);
+      const targetWidth = Math.min(geometry.rect.width, request.kind === "avatar" ? 512 : 1200);
       context.resize({ width: targetWidth });
       const rendered = await context.renderAsync();
       try {
-        const result = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.88 });
+        const result = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.82 });
         if (alive.current) finishPhotoEdit(request.id, result);
       } finally { rendered.release(); }
     } catch {
@@ -94,7 +95,7 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
               onLoad={() => setReady(true)} onError={() => { setReady(false); setError("This photo could not be displayed. Cancel and choose a JPG, PNG or WebP image."); }}
               style={{ position: "absolute", width: geometry.width, height: geometry.height, left: geometry.left, top: geometry.top }} />
             </View>
-            {!ready && !error ? <ActivityIndicator color={theme.brand} style={StyleSheet.absoluteFill} /> : null}
+            {!ready && !error ? <InlineLoading color={theme.brand} style={StyleSheet.absoluteFill} /> : null}
           </View>
           <View style={styles.row}>
             {control("Zoom out", "−", () => { setPosition(geometry.position); setZoom((z) => clamp(z - 0.2, 1, 4)); }, zoom <= 1)}
@@ -116,7 +117,7 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
         <View style={styles.footer}>
           <Pressable accessibilityRole="button" accessibilityLabel="Save cropped photo" disabled={busy || !ready} onPress={() => void save()}
             style={({ pressed }) => [styles.save, { backgroundColor: theme.brand, opacity: busy || !ready ? 0.5 : pressed ? 0.8 : 1 }]}>
-            {busy ? <ActivityIndicator color="#FFFFFF" /> : null}
+            {busy ? <InlineLoading color="#FFFFFF" /> : null}
             <Text style={[styles.saveText, { fontFamily: theme.font.body }]}>{busy ? "Preparing photo…" : "Save photo"}</Text>
           </Pressable>
         </View>

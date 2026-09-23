@@ -1,3 +1,5 @@
+import { feedExperienceReady } from "../lib/feed-experience";
+export { feedExperienceReady } from "../lib/feed-experience";
 import { sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "@kampusone/contracts";
@@ -11,20 +13,7 @@ import type { Bindings, Variables } from "../types";
 
 type Env = { Bindings: Bindings; Variables: Variables };
 const uuid = z.string().uuid();
-const cache = new WeakMap<object, { ready: boolean; expires: number }>();
 export const feedExperienceRoutes = new Hono<Env>();
-export async function feedExperienceReady(env: Bindings): Promise<boolean> {
-  if (env.UNIFIED_SCHEMA_READY !== "true") return false;
-  const saved = cache.get(env);
-  if (saved && saved.expires > Date.now()) return saved.ready;
-  const row = firstRow(await database(env).execute<{ ready: boolean }>(sql`
-    select to_regclass('public.feed_post_views') is not null
-      and exists(select 1 from information_schema.columns where table_schema='public' and table_name='feed_comments' and column_name='media_object_id') as ready
-  `));
-  const ready = row?.ready === true;
-  cache.set(env, { ready, expires: Date.now() + (ready ? 60_000 : 5_000) });
-  return ready;
-}
 function identifier(value: string): string {
   const parsed = uuid.safeParse(value);
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "This post or reply link is invalid.");
@@ -54,6 +43,8 @@ async function enrichPosts(c: Context<Env>, next: () => Promise<void>) {
   if (!c.res.ok || c.env.UNIFIED_SCHEMA_READY !== "true") return;
   const payload = await c.res.clone().json() as { posts?: Record<string, unknown>[]; post?: Record<string, unknown> };
   const posts = Array.isArray(payload.posts) ? payload.posts : payload.post ? [payload.post] : [];
+  // Current endpoints project avatars, counts and viewer state in the original read.
+  if (posts.every((post) => "source_image_url" in post && "view_count" in post)) return;
   const ids = posts.map((post) => String(post.id)).filter((id) => uuid.safeParse(id).success);
   if (!ids.length) return;
   const ready = await feedExperienceReady(c.env);

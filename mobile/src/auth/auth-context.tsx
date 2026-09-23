@@ -1,3 +1,4 @@
+import { checkBuildVersion } from "@/src/lib/build-version";
 import {
   createContext,
   type ReactNode,
@@ -106,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionRestoreError("");
       setUser(session.user);
       setState("authenticated");
-      await writeCache("last-session", { user: session.user }, 30 * 86400_000);
+      void writeCache("last-session", { user: session.user }, 30 * 86400_000).catch(() => undefined);
       try {
         await reloadProfile();
       } catch {
@@ -229,7 +230,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileError,
       user,
       profile,
-      beginSession: applySession,
+      beginSession: async (session) => {
+        // The cookie/token has already been securely accepted; update checks never block rendering.
+        void checkBuildVersion();
+        await applySession(session);
+      },
       retrySessionRestore,
       reloadProfile,
       signOut,

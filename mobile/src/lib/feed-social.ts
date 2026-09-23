@@ -3,6 +3,8 @@ import type { FeedPostData } from "./feed-posts";
 export type QuotedPost = Pick<FeedPostData, "id" | "title" | "summary" | "body" | "image_url" | "published_at" | "source_name" | "source_verified"> & { source_image_url?: string | null };
 export type SocialFeedPost = FeedPostData & {
   social_enabled?: boolean;
+  liked?: boolean;
+  like_count?: number;
   visibility?: "PUBLIC" | "CAMPUS";
   source_image_url?: string | null;
   view_count?: number | null;
@@ -15,6 +17,7 @@ export type SocialFeedPost = FeedPostData & {
   repost_by?: { user_id: string; name: string } | null;
 };
 export type FeedComment = {
+  liked?: boolean; like_count?: number;
   id: string; body: string; created_at: string; author_name: string;
   author_verified: boolean; can_delete: boolean;
   author_image_url?: string | null; author_username?: string | null;

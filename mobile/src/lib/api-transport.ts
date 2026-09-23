@@ -1,3 +1,4 @@
+import { invalidationTargets, matchesRead, waitForRequest } from "./request-policy";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
@@ -62,12 +63,28 @@ let queuedSessionTransitions = 0;
 const reads = new Map<string, { expires: number; value: unknown }>();
 const inFlight = new Map<string, Promise<unknown>>();
 const cacheable =
-  /^\/v1\/student\/(me|home|feed|timetable|gpa|catalog|campus\/places)(\?|$)/;
+  /^\/v1\/student\/(me|home|feed|timetable|gpa|catalog|campus\/places)(\/|\?|$)/;
 
 export function clearApiCache() {
   cacheVersion += 1;
   reads.clear();
   inFlight.clear();
+}
+
+
+function invalidateMutation(path: string) {
+  const targets = invalidationTargets(path);
+  if (targets === null) { clearApiCache(); return; }
+  if (!targets.length) return;
+  cacheVersion += 1;
+  for (const key of reads.keys()) if (targets.some((prefix) => matchesRead(key, prefix))) reads.delete(key);
+  for (const key of inFlight.keys()) if (targets.some((prefix) => matchesRead(key, prefix))) inFlight.delete(key);
+}
+
+/** Account-local, bounded in-memory data only. Never persisted or publicly cached. */
+export function peekTransportCache<T>(path: string): T | undefined {
+  const saved = reads.get(path);
+  return saved && saved.expires > Date.now() ? saved.value as T : undefined;
 }
 
 export function setAccessToken(token: string | null) {
@@ -276,23 +293,31 @@ export async function api<T>(
   init: RequestInit = {},
   canRefresh = true,
 ): Promise<T> {
-  const isRead = !init.method || init.method === "GET";
-  if (!isRead) clearApiCache();
-  if (!isRead || !cacheable.test(path) || init.signal)
+  const isRead = !init.method || init.method.toUpperCase() === "GET";
+  if (!isRead) {
+    invalidateMutation(path);
+    try { return await request<T>(path, init, canRefresh); }
+    finally { invalidateMutation(path); }
+  }
+  // Explicit caller headers may alter representation; never share those requests.
+  if (!cacheable.test(path) || init.headers || init.cache === "no-store")
     return request<T>(path, init, canRefresh);
+  if (init.signal?.aborted) throw init.signal.reason ?? new Error("Request cancelled");
   const cached = reads.get(path);
-  if (cached && cached.expires > Date.now()) return cached.value as T;
+  if (init.cache !== "reload" && cached && cached.expires > Date.now()) return cached.value as T;
   const pending = inFlight.get(path);
-  if (pending) return pending as Promise<T>;
+  if (pending) return waitForRequest(pending as Promise<T>, init.signal);
   const version = credentialVersion;
   const cacheAtStart = cacheVersion;
-  const operation = request<T>(path, init, canRefresh)
+  // A single timed network request is shared by independently cancellable consumers.
+  const { signal: _consumerSignal, ...sharedInit } = init;
+  const operation = request<T>(path, sharedInit, canRefresh)
     .then((value) => {
       if (version === credentialVersion && cacheAtStart === cacheVersion) {
-        if (reads.size > 60) reads.clear();
+        if (reads.size >= 60) reads.delete(reads.keys().next().value!);
         reads.set(path, {
           value,
-          expires: Date.now() + (path.endsWith("catalog") ? 300_000 : 20_000),
+          expires: Date.now() + (/\/catalog(?:\?|$)/.test(path) ? 300_000 : 20_000),
         });
       }
       return value;
@@ -301,7 +326,7 @@ export async function api<T>(
       if (inFlight.get(path) === operation) inFlight.delete(path);
     });
   inFlight.set(path, operation);
-  return operation;
+  return waitForRequest(operation, init.signal);
 }
 
 export const authApi = {

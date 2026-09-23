@@ -1,9 +1,9 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -434,7 +434,7 @@ export default function GpaScreen() {
             ]}
           >
             {saving ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <InlineLoading color="#FFFFFF" />
             ) : (
               <Text
                 style={[

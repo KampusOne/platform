@@ -1,3 +1,4 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
@@ -5,7 +6,6 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   FlatList,
   Image,
   Linking,
@@ -522,7 +522,7 @@ function TutorialCard({
         ]}
       >
         {busy ? (
-          <ActivityIndicator color="#FFFFFF" />
+          <InlineLoading color="#FFFFFF" />
         ) : (
           <>
             <Text style={styles.bookButtonText}>Book tutorial</Text>
@@ -896,7 +896,7 @@ export default function TutorialsScreen() {
 
             {loading ? (
               <View accessibilityLiveRegion="polite" style={styles.loading}>
-                <ActivityIndicator color={theme.brand} />
+                <InlineLoading color={theme.brand} />
                 <Text style={styles.loadingText}>Finding approved tutors…</Text>
               </View>
             ) : null}

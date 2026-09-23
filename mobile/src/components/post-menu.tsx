@@ -1,6 +1,7 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {  Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, ApiError } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -155,7 +156,7 @@ export function PostMenu({ post, onBookmark, onShare, onDeleted, onFeedback }: P
                 <>
                   <Text style={styles.body}>It will disappear from the feed and saved posts. You cannot undo this in the app.</Text>
                   <Pressable accessibilityRole="button" accessibilityState={{ disabled: deleting, busy: deleting }} disabled={deleting} onPress={() => void remove()} style={styles.row}>
-                    {deleting ? <ActivityIndicator color="#B3261E" /> : <Ionicons name="trash-outline" size={21} color="#B3261E" />}
+                    {deleting ? <InlineLoading color="#B3261E" /> : <Ionicons name="trash-outline" size={21} color="#B3261E" />}
                     <Text style={[styles.label, styles.danger]}>{deleting ? "Deleting…" : "Delete post"}</Text>
                   </Pressable>
                   <Pressable accessibilityRole="button" disabled={deleting} onPress={close} style={styles.row}>
@@ -167,7 +168,7 @@ export function PostMenu({ post, onBookmark, onShare, onDeleted, onFeedback }: P
                   {row("share-social-outline", "Share post", share)}
                   {row("link-outline", "Copy link", () => void copy())}
                   {row(post.bookmarked ? "bookmark" : "bookmark-outline", post.bookmarked ? "Unsave post" : "Save post", () => { close(); onBookmark(post); })}
-                  {checking ? <View style={styles.row}><ActivityIndicator color={theme.brand} /><Text style={styles.body}>Checking post permissions…</Text></View> : null}
+                  {checking ? <View style={styles.row}><InlineLoading color={theme.brand} /><Text style={styles.body}>Checking post permissions…</Text></View> : null}
                   {!checking && canDelete ? row("trash-outline", "Delete post", () => { setError(""); setConfirm(true); }, true) : null}
                   {error && !checking ? row("refresh-outline", "Retry post options", () => setRetry((value) => value + 1)) : null}
                   {row("close-outline", "Cancel", close)}

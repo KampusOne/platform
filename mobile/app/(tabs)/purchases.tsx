@@ -1,10 +1,10 @@
+import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Linking,
@@ -12,6 +12,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  RefreshControl,
   SectionList,
   StyleSheet,
   Text,
@@ -169,7 +170,7 @@ function PrimaryAction({
         pressed && !disabled && styles.pressed,
       ]}
     >
-      {busy ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}
+      {busy ? <InlineLoading color="#FFFFFF" size="small" /> : null}
       <Text style={styles.primaryActionText}>
         {busy ? "Please wait…" : label}
       </Text>
@@ -567,7 +568,7 @@ function LoadingPurchases() {
       style={styles.loadingState}
     >
       <View style={styles.loadingLead}>
-        <ActivityIndicator color={theme.brandPressed} />
+        <InlineLoading color={theme.brandPressed} />
         <Text style={styles.loadingText}>Loading bookings and orders…</Text>
       </View>
       {[0, 1].map((item) => (
@@ -960,7 +961,7 @@ export default function PurchasesScreen() {
                 ]}
               >
                 {loading ? (
-                  <ActivityIndicator color={theme.brandPressed} size="small" />
+                  <InlineLoading color={theme.brandPressed} size="small" />
                 ) : (
                   <Ionicons
                     name="refresh"
@@ -1011,8 +1012,7 @@ export default function PurchasesScreen() {
           </>
         }
         maxToRenderPerBatch={8}
-        onRefresh={refresh}
-        refreshing={loading && hasPurchases}
+        refreshControl={<RefreshControl refreshing={loading && hasPurchases} onRefresh={refresh} tintColor="transparent" colors={["transparent"]} progressBackgroundColor="transparent" />}
         removeClippedSubviews={Platform.OS === "android"}
         renderItem={({ item, index, section }) => {
           const first = index === 0;
@@ -1174,7 +1174,7 @@ export default function PurchasesScreen() {
                 ]}
               >
                 {completionBusy ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <InlineLoading color="#FFFFFF" size="small" />
                 ) : null}
                 <Text style={styles.completionConfirmText}>
                   {completionBusy ? "Confirming…" : "Yes, confirm"}
@@ -1293,7 +1293,7 @@ export default function PurchasesScreen() {
                 ]}
               >
                 {reviewBusy ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <InlineLoading color="#FFFFFF" size="small" />
                 ) : (
                   <Ionicons name="send-outline" size={18} color="#FFFFFF" />
                 )}
@@ -1426,7 +1426,7 @@ export default function PurchasesScreen() {
                 ]}
               >
                 {disputeBusy ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <InlineLoading color="#FFFFFF" size="small" />
                 ) : (
                   <Ionicons
                     name="shield-checkmark-outline"
