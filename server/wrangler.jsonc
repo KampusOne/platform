@@ -5,22 +5,15 @@
   "compatibility_date": "2026-09-09",
   "workers_dev": true,
   "preview_urls": false,
+  "keep_vars": true,
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1,
+    "head_sampling_rate": 1
   },
-  "triggers": {
-    "crons": ["*/5 * * * *"],
-  },
+  "triggers": { "crons": ["*/5 * * * *"] },
   "r2_buckets": [
-    {
-      "binding": "MEDIA_BUCKET",
-      "bucket_name": "kampusone-media"
-    },
-    {
-      "binding": "PRIVATE_BUCKET",
-      "bucket_name": "kampusone-private"
-    }
+    { "binding": "MEDIA_BUCKET", "bucket_name": "kampusone-media" },
+    { "binding": "PRIVATE_BUCKET", "bucket_name": "kampusone-private" }
   ],
   "vars": {
     "ENVIRONMENT": "production",
@@ -38,7 +31,7 @@
     "STORE_DEMO_ENABLED": "false",
     "LOGISTICS_ENABLED": "false",
     "PAYMENTS_ENABLED": "false",
-    "AI_ASSISTANT_ENABLED": "false",
+    "AI_ASSISTANT_ENABLED": "true"
   },
   "env": {
     "staging": {
@@ -59,8 +52,8 @@
         "STORE_DEMO_ENABLED": "false",
         "LOGISTICS_ENABLED": "false",
         "PAYMENTS_ENABLED": "false",
-        "AI_ASSISTANT_ENABLED": "false",
-      },
-    },
-  },
+        "AI_ASSISTANT_ENABLED": "false"
+      }
+    }
+  }
 }

@@ -38,6 +38,9 @@ export type Bindings = {
   AUTH_PROVIDER?: string;
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
+  HF_TOKEN?: string;
+  HF_CHAT_MODEL?: string;
+  HF_VISION_MODEL?: string;
   KYC_FINGERPRINT_SECRET?: string;
   AI_DAILY_USER_LIMIT?: string;
   AI_DAILY_GLOBAL_LIMIT?: string;
