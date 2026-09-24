@@ -6,7 +6,8 @@ import { input } from "../lib/input";
 import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
 import { requireAuth, currentUser } from "../middleware/auth";
-import { aiDay, aiLimit, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, type AIMedia, type AITurn } from "../lib/ai-provider";
+import { aiDay, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, type AIMedia, type AITurn } from "../lib/ai-provider";
+import { aiAllowance, resolveAIQuota } from "../lib/ai-quota";
 import type { Bindings, Variables } from "../types";
 
 export const aiRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -16,7 +17,6 @@ const modes = z.enum(["study", "summary", "quiz", "notes", "timetable"]);
 const requestSchema = z.object({ mode: modes, prompt: z.string().trim().max(20000), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) });
 type Saved = { version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
-const limits = (env: Bindings) => ({ user: aiLimit(env.AI_DAILY_USER_LIMIT, 5, 100), global: aiLimit(env.AI_DAILY_GLOBAL_LIMIT, 100, 100000) });
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
 }
@@ -43,14 +43,14 @@ function capabilities(env: Bindings) {
   return { study: safe("study"), timetableText: safe("timetable"), timetableImage: safe("timetable", "image/jpeg"), timetablePdf: safe("timetable", "application/pdf") };
 }
 aiRoutes.get("/status", async c => {
-  const caps = capabilities(c.env), quota = limits(c.env), day = aiDay();
+  const caps = capabilities(c.env), quota = await resolveAIQuota(c.env, currentUser(c)), day = aiDay();
   const enabled = c.env.AI_ASSISTANT_ENABLED === "true" && c.env.UNIFIED_SCHEMA_READY === "true";
   let used = 0, globalUsed = 0;
   if (c.env.UNIFIED_SCHEMA_READY === "true") {
     const row = firstRow(await database(c.env).execute<{ used: number; total: number }>(sql`select count(*) filter (where user_id=${currentUser(c).id}::uuid)::int as used,count(*)::int as total from app_private.ai_requests where created_at>=${day.startsAt}::timestamptz and created_at<${day.resetsAt}::timestamptz`));
     used = Number(row?.used ?? 0); globalUsed = Number(row?.total ?? 0);
   }
-  return c.json({ enabled, providers: caps, historyDays: AI_HISTORY_DAYS, maxFileBytes: MAX_AI_MEDIA_BYTES, allowance: { limit: quota.user, used, remaining: Math.max(0, quota.user-used), resetsAt: day.resetsAt, globalAvailable: globalUsed < quota.global, policy: "One reservation per new attempt. Provider failures count; replaying the same request is free. Invalid files, missing configuration and rejected reservations do not count." } });
+  return c.json({ enabled, providers: caps, historyDays: AI_HISTORY_DAYS, maxFileBytes: MAX_AI_MEDIA_BYTES, allowance: aiAllowance(quota, used, globalUsed, day.resetsAt) });
 });
 aiRoutes.get("/history", async c => {
   requireSchema(c.env);
@@ -120,24 +120,25 @@ aiRoutes.post("/", async c => {
     history.push(...turns.rows.reverse());
   }
   if (new TextEncoder().encode(prompt + JSON.stringify(history)).length > 60000) throw new AppError(413, "BAD_REQUEST", "This study context is too long. Use a shorter source or start a new session.");
-  const quota = limits(c.env), day = aiDay();
+  const quota = await resolveAIQuota(c.env, u), day = aiDay();
   const saved: Saved = { version: 2, prompt: d.prompt, threadId, ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}) };
   const client = sqlClient(c.env);
   // The lock is a separate statement: READ COMMITTED obtains a fresh snapshot
   // AFTER any wait. Putting lock + count in one CTE would race on stale snapshots.
   // Both allowance checks and the idempotency claim commit before provider I/O.
+  // Exempt accounts skip only the personal daily cap, never the shared budget.
   const reservation = await client.transaction([
     client`select pg_advisory_xact_lock(734241)`,
     client`insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,result)
       select ${u.id}::uuid,${d.idempotencyKey}::uuid,${hash},${d.mode},${JSON.stringify(saved)}::jsonb
       where (select count(*) from app_private.ai_requests where created_at>=(date_trunc('day',now() at time zone 'Africa/Lagos') at time zone 'Africa/Lagos') and created_at<((date_trunc('day',now() at time zone 'Africa/Lagos') at time zone 'Africa/Lagos') + interval '1 day'))<${quota.global}
-      and (select count(*) from app_private.ai_requests where user_id=${u.id}::uuid and created_at>=(date_trunc('day',now() at time zone 'Africa/Lagos') at time zone 'Africa/Lagos') and created_at<((date_trunc('day',now() at time zone 'Africa/Lagos') at time zone 'Africa/Lagos') + interval '1 day'))<${quota.user}
+      and (${quota.unlimited}::boolean or (select count(*) from app_private.ai_requests where user_id=${u.id}::uuid and created_at>=(date_trunc('day',now() at time zone 'Africa/Lagos') at time zone 'Africa/Lagos') and created_at<((date_trunc('day',now() at time zone 'Africa/Lagos') at time zone 'Africa/Lagos') + interval '1 day'))<${quota.user})
       on conflict do nothing returning idempotency_key`,
   ], { isolationLevel: "ReadCommitted" });
   if (!reservation[1]?.length) {
     const existing = await findRequest();
     if (existing) return c.json(replay(existing, hash));
-    throw new AppError(429, "RATE_LIMITED", "The daily AI allowance has been reached. Your draft is kept.", { reason: "AI_DAILY_LIMIT", resetsAt: day.resetsAt });
+    throw new AppError(429, "RATE_LIMITED", quota.unlimited ? "The shared AI service allowance has been reached. Your account has no personal daily cap, and your draft is kept." : "The daily AI allowance has been reached. Your draft is kept.", { reason: quota.unlimited ? "AI_GLOBAL_LIMIT" : "AI_DAILY_LIMIT", resetsAt: day.resetsAt });
   }
   const job = (async () => {
     try {

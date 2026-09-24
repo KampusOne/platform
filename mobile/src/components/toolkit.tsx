@@ -4,13 +4,14 @@ import { router } from "expo-router";
 import { type ReactNode } from "react";
 import {
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   type TextInputProps,
   View,
 } from "react-native";
-import { ProductScreen } from "./product-ui";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "@/src/theme";
 export function ToolPage({
   title,
@@ -23,24 +24,34 @@ export function ToolPage({
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
 
+  // Use the containing viewport, not a possibly stale window-width measurement.
+  // Both scroll viewport and content need a definite width on React Native Web.
   return (
-    <ProductScreen>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityLabel="Go back"
-          accessibilityRole="button"
-          onPress={() =>
-            router.canGoBack() ? router.back() : router.replace("/explore")
-          }
-          style={styles.icon}
-        >
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
-        </Pressable>
-        <Text style={styles.title}>{title}</Text>
-        {action}
-      </View>
-      {children}
-    </ProductScreen>
+    <SafeAreaView edges={["top"]} style={styles.safe}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Pressable
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+            onPress={() =>
+              router.canGoBack() ? router.back() : router.replace("/explore")
+            }
+            style={styles.icon}
+          >
+            <Ionicons name="arrow-back" size={24} color={theme.text} />
+          </Pressable>
+          <Text style={styles.title}>{title}</Text>
+          {action}
+        </View>
+        {children}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 export function ToolField({
@@ -141,18 +152,31 @@ export const toolStyles = StyleSheet.create({
 });
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
+    safe: { backgroundColor: theme.canvas, flex: 1, width: "100%", minWidth: 0 },
+    scroll: { flex: 1, width: "100%", alignSelf: "stretch" },
+    content: {
+      width: "100%",
+      maxWidth: 540,
+      alignSelf: "center",
+      alignItems: "stretch",
+      paddingBottom: 118,
+      paddingHorizontal: 20,
+    },
     header: {
       flexDirection: "row",
       alignItems: "center",
+      width: "100%",
+      minWidth: 0,
       gap: 8,
       marginBottom: 24,
     },
-    icon: { width: 44, height: 44, justifyContent: "center" },
+    icon: { width: 44, height: 44, justifyContent: "center", flexShrink: 0 },
     title: {
       fontFamily: theme.font.displayStrong,
       fontSize: 25,
       color: theme.text,
       flex: 1,
+      minWidth: 0,
     },
     field: { gap: 8, marginBottom: 18 },
     label: { fontFamily: theme.font.medium, fontSize: 13, color: theme.text },
