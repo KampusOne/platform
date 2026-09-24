@@ -6,7 +6,7 @@ on:
     paths:
       - ".github/workflows/release-live-qa-20260924.yml"
 
-# Retry with safe HTTP and capability diagnostics.
+# Retry with production HTTP calls outside the Cloudflare preview context.
 permissions:
   contents: read
 
