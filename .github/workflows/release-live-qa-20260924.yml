@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/release-live-qa-20260924.yml"
 
+# Retry with safe status diagnostics and post-failure cleanup verification.
 permissions:
   contents: read
 
