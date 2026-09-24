@@ -65,6 +65,12 @@ export default {
     let cleanupPassed = false;
     let textChars = 0;
     let imageChars = 0;
+    let statusHttp = 0;
+    let statusEnabled = false;
+    let statusTextCapability = false;
+    let statusImageCapability = false;
+    let failureStage: string | undefined;
+    let failureReason: string | undefined;
 
     try {
       await sql`
@@ -110,11 +116,15 @@ export default {
         signal: AbortSignal.timeout(30000),
       });
       const statusBody = await jsonResponse(statusResponse);
+      statusHttp = statusResponse.status;
+      statusEnabled = statusBody.enabled === true;
+      statusTextCapability = statusBody.capabilities?.text === true;
+      statusImageCapability = statusBody.capabilities?.images === true;
       statusPassed =
-        statusResponse.status === 200 &&
-        statusBody.enabled === true &&
-        statusBody.capabilities?.text === true &&
-        statusBody.capabilities?.images === true &&
+        statusHttp === 200 &&
+        statusEnabled &&
+        statusTextCapability &&
+        statusImageCapability &&
         !JSON.stringify(statusBody).toLowerCase().includes("hugging face") &&
         !JSON.stringify(statusBody).toLowerCase().includes("qwen");
       if (!statusPassed) throw new Error("status_contract");
@@ -183,20 +193,10 @@ export default {
 
       stage = "cleanup";
     } catch (error) {
-      const safeReason = error instanceof Error && /^[a-z_]+(?:_[1-5][0-9]{2})?$/.test(error.message)
+      failureStage = stage;
+      failureReason = error instanceof Error && /^[a-z_]+(?:_[1-5][0-9]{2})?$/.test(error.message)
         ? error.message
         : "qa_failed";
-      return reply({
-        ok: false,
-        stage,
-        reason: safeReason,
-        status: statusPassed,
-        text: textPassed,
-        image: imagePassed,
-        textChars,
-        imageChars,
-        cleanup: false,
-      }, 500);
     } finally {
       try {
         if (mediaId) await env.PRIVATE_BUCKET.delete(`${userId}/resource/${mediaId}`);
@@ -222,22 +222,31 @@ export default {
       }
     }
 
-    if (!cleanupPassed) {
+    if (failureStage || !cleanupPassed) {
       return reply({
         ok: false,
-        stage: "cleanup",
+        stage: failureStage ?? "cleanup",
+        reason: failureReason ?? "cleanup_failed",
+        statusHttp,
+        statusEnabled,
+        statusTextCapability,
+        statusImageCapability,
         status: statusPassed,
         text: textPassed,
         image: imagePassed,
         textChars,
         imageChars,
-        cleanup: false,
+        cleanup: cleanupPassed,
       }, 500);
     }
 
     return reply({
       ok: statusPassed && textPassed && imagePassed && cleanupPassed,
       stage: "verified",
+      statusHttp,
+      statusEnabled,
+      statusTextCapability,
+      statusImageCapability,
       status: statusPassed,
       text: textPassed,
       image: imagePassed,
