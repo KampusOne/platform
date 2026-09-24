@@ -20,6 +20,8 @@ jobs:
         working-directory: packages/contracts
       - run: npm install --save-exact unpdf@1.8.1
         working-directory: server
+      - run: npm audit --json > ../dependency-audit.json || true
+        working-directory: server
       - name: Read public inference catalogue
         run: |
           node --input-type=module <<'JS'
@@ -31,7 +33,7 @@ jobs:
           writeFileSync('model-catalogue.json',JSON.stringify(models,null,2));
           JS
       - name: Package validation dependencies
-        run: tar -czf student-validation-deps.tar.gz server/node_modules server/package-lock.json packages/contracts/node_modules packages/contracts/dist model-catalogue.json
+        run: tar -czf student-validation-deps.tar.gz server/node_modules server/package-lock.json packages/contracts/node_modules model-catalogue.json dependency-audit.json
       - uses: actions/upload-artifact@v4
         with:
           name: student-validation-deps
