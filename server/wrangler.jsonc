@@ -31,7 +31,8 @@
     "STORE_DEMO_ENABLED": "false",
     "LOGISTICS_ENABLED": "false",
     "PAYMENTS_ENABLED": "false",
-    "AI_ASSISTANT_ENABLED": "true"
+    "AI_ASSISTANT_ENABLED": "true",
+    "GEMINI_MODEL": "gemini-3.5-flash-lite"
   },
   "env": {
     "staging": {
