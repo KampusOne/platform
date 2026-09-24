@@ -1,0 +1,36 @@
+name: Hugging Face connection check
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/hf-connection-check.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hf-connection-check
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    # Run automatically only on initial creation; subsequent checks are explicit.
+    if: github.event_name == 'workflow_dispatch' || github.run_number == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate diagnostic offline
+        run: node scripts/hf-connection-check.mjs --self-test
+      - name: Check one answer without exporting the HF token or user data
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/hf-connection-check.mjs
