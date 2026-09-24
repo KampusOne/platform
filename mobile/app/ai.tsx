@@ -11,11 +11,14 @@ import { readCache, writeCache } from "@/src/lib/device-cache";
 import { pickAndUpload } from "@/src/lib/uploads";
 
 type Mode = "study" | "summary" | "notes" | "quiz";
+type Provider = "gemini" | "huggingface";
 const tabs: { mode: Mode; label: string }[] = [{ mode: "study", label: "Ask" }, { mode: "summary", label: "Summary" }, { mode: "notes", label: "Notes" }, { mode: "quiz", label: "Practice" }];
-type Draft = { prompt: string; mode: Mode; mediaId?: string; fileName?: string; replyTo?: string; key: string };
-type Result = { text: string; requestId: string; mode?: Mode; prompt?: string; mediaId?: string; fileName?: string };
+const providers: { value: Provider; label: string }[] = [{ value: "huggingface", label: "Hugging Face · text" }, { value: "gemini", label: "Gemini · files & text" }];
+type Draft = { prompt: string; mode: Mode; provider?: Provider; mediaId?: string; fileName?: string; replyTo?: string; key: string };
+type Result = { text: string; requestId: string; provider?: Provider; mode?: Mode; prompt?: string; mediaId?: string; fileName?: string };
 type SavedWork = { id: string; mode: Mode; title: string; created_at: string; source_name?: string };
-type Status = { enabled: boolean; historyDays: number; providers: { study: { configured: boolean; missing: string[] } }; allowance: { unlimited?: boolean; remaining: number | null; limit: number | null; resetsAt: string; globalAvailable: boolean; policy: string } };
+type Capability = { configured: boolean; missing: string[] };
+type Status = { enabled: boolean; historyDays: number; providers: { study: Capability; studyHuggingFace?: Capability }; allowance: { unlimited?: boolean; remaining: number | null; limit: number | null; resetsAt: string; globalAvailable: boolean; policy: string } };
 
 export default function StudyAI() {
   const { mode: initial } = useLocalSearchParams<{ mode?: string }>();
@@ -23,6 +26,7 @@ export default function StudyAI() {
   const { theme } = useAppearance();
   const toast = useToast();
   const [mode, setMode] = useState<Mode>(tabs.some(t => t.mode === initial) ? initial as Mode : "study");
+  const [provider, setProvider] = useState<Provider>("huggingface");
   const [prompt, setPrompt] = useState("");
   const [mediaId, setMediaId] = useState<string>();
   const [fileName, setFileName] = useState<string>();
@@ -47,6 +51,12 @@ export default function StudyAI() {
   account.current = user?.id;
   const textStyle = { fontFamily: theme.font.body, color: theme.text, fontSize: 14, lineHeight: 22 };
   const mutedStyle = { ...textStyle, fontSize: 12, color: theme.textMuted };
+  const providerName = provider === "huggingface" ? "Hugging Face" : "Gemini";
+  const selectedStatus = provider === "huggingface" ? status?.providers.studyHuggingFace : status?.providers.study;
+  // An older server would strip the provider field and route to Gemini. Never
+  // send an HF-consented request until the server advertises the new capability.
+  const providerSupported = provider === "gemini" || Boolean(status?.providers.studyHuggingFace);
+  const attachmentBlocked = provider === "huggingface" && Boolean(mediaId);
 
   async function loadStatus() {
     const owner = account.current;
@@ -66,12 +76,18 @@ export default function StudyAI() {
   }
   useEffect(() => {
     let active = true;
-    setLoaded(false); setPrompt(""); setMediaId(undefined); setFileName(undefined); setReplyTo(undefined); setAnswer(""); setQuestion(""); setHistory([]); setStatus(undefined); setBusy(false); action.current = false;
+    setLoaded(false); setProvider("huggingface"); setPrompt(""); setMediaId(undefined); setFileName(undefined); setReplyTo(undefined); setAnswer(""); setQuestion(""); setHistory([]); setStatus(undefined); setError(""); setBusy(false); action.current = false;
     key.current = randomUUID();
     if (!user?.id) return;
     void readCache<Draft>("ai-draft." + user.id).then(d => {
       if (!active) return;
-      if (d) { setPrompt(d.prompt ?? ""); if (tabs.some(t => t.mode === d.mode)) setMode(d.mode); setMediaId(d.mediaId); setFileName(d.fileName); setReplyTo(d.replyTo); key.current = d.key || randomUUID(); }
+      if (d) {
+        setPrompt(d.prompt ?? "");
+        if (tabs.some(t => t.mode === d.mode)) setMode(d.mode);
+        // Legacy drafts/retries were consented to Gemini; keep that boundary.
+        setProvider(d.provider === "huggingface" ? "huggingface" : "gemini");
+        setMediaId(d.mediaId); setFileName(d.fileName); setReplyTo(d.replyTo); key.current = d.key || randomUUID();
+      }
     }).catch(() => undefined).finally(() => { if (active) setLoaded(true); });
     void loadStatus(); void loadHistory();
     return () => { active = false; };
@@ -79,26 +95,32 @@ export default function StudyAI() {
   useEffect(() => {
     if (!loaded || !user?.id) return;
     // Persist only the owner-scoped draft and file ID, never a signed private URL.
-    const timer = setTimeout(() => { void writeCache("ai-draft." + user.id, { prompt, mode, mediaId, fileName, replyTo, key: key.current }).catch(() => undefined); }, 250);
+    const timer = setTimeout(() => { void writeCache("ai-draft." + user.id, { prompt, mode, provider, mediaId, fileName, replyTo, key: key.current }).catch(() => undefined); }, 250);
     return () => clearTimeout(timer);
-  }, [prompt, mode, mediaId, fileName, replyTo, error, loaded, user?.id]);
+  }, [prompt, mode, provider, mediaId, fileName, replyTo, error, loaded, user?.id]);
   function reset(nextMode = mode) {
     setMode(nextMode); setPrompt(""); setMediaId(undefined); setFileName(undefined); setReplyTo(undefined); setAnswer(""); setQuestion(""); setError(""); key.current = randomUUID();
   }
+  function chooseProvider(next: Provider) {
+    if (action.current || next === provider) return;
+    // Changing provider is an explicit new request, never a retry or fallback.
+    // Keep the typed draft and attachment, but do not share the old conversation.
+    setProvider(next); setReplyTo(undefined); setAnswer(""); setQuestion(""); setError(""); key.current = randomUUID();
+  }
   async function attach() {
-    if (action.current) return;
+    if (action.current || provider !== "gemini") return;
     const owner = account.current; action.current = true; setBusy(true); setError("");
     try { const file = await pickAndUpload("resource"); if (file && owner === account.current) { setMediaId(file.id); setFileName("Attached source"); key.current = randomUUID(); } }
     catch (e) { if (owner === account.current) setError(e instanceof Error ? e.message : "Could not attach your file."); }
     finally { if (owner === account.current) { action.current = false; setBusy(false); } }
   }
   async function send() {
-    if (action.current || (!prompt.trim() && !mediaId)) return;
+    if (action.current || !providerSupported || attachmentBlocked || (!prompt.trim() && !mediaId)) return;
     const owner = account.current; action.current = true; setBusy(true); setError("");
-    const draft = { prompt, mode, mediaId, fileName, replyTo, key: key.current };
+    const draft = { prompt, mode, provider, mediaId, fileName, replyTo, key: key.current };
     try {
       await writeCache("ai-draft." + owner, draft).catch(() => undefined);
-      const r = await api<Result>("/v1/ai", { method: "POST", signal: AbortSignal.timeout(45000), body: JSON.stringify({ mode, prompt, mediaId, replyTo, idempotencyKey: draft.key, consent: true }) });
+      const r = await api<Result>("/v1/ai", { method: "POST", signal: AbortSignal.timeout(45000), body: JSON.stringify({ mode, provider, prompt, mediaId, replyTo, idempotencyKey: draft.key, consent: true }) });
       if (owner !== account.current) return;
       setAnswer(r.text); setQuestion(prompt || fileName || "Attached study material"); setReplyTo(r.requestId); setPrompt(""); key.current = randomUUID();
       void loadHistory(); void loadStatus();
@@ -117,6 +139,7 @@ export default function StudyAI() {
     try {
       const r = await api<Result>(`/v1/ai/history/${id}`);
       if (owner !== account.current) return;
+      setProvider(r.provider === "huggingface" ? "huggingface" : "gemini");
       setAnswer(r.text); setQuestion(r.prompt || r.fileName || "Saved work"); setPrompt(""); setMediaId(r.mediaId); setFileName(r.fileName); setReplyTo(r.requestId); if (r.mode && tabs.some(t => t.mode === r.mode)) setMode(r.mode); key.current = randomUUID();
     } catch (e) { if (owner === account.current) setError(e instanceof Error ? e.message : "Could not reopen this work."); }
     finally { if (owner === account.current) { action.current = false; setBusy(false); } }
@@ -137,16 +160,21 @@ export default function StudyAI() {
         {tabs.map(t => <Pressable key={t.mode} accessibilityRole="tab" accessibilityState={{ selected: mode === t.mode, disabled: busy }} disabled={busy} onPress={() => { setMode(t.mode); key.current = randomUUID(); setError(""); }} style={{ flex: 1, paddingVertical: 14, borderRadius: 10, backgroundColor: mode === t.mode ? theme.sand : theme.surface }}><Text style={{ ...textStyle, fontFamily: theme.font.medium, textAlign: "center", fontSize: 12 }}>{t.label}</Text></Pressable>)}
       </View>
       {!loaded ? <Text style={mutedStyle}>Restoring your draft…</Text> : null}
-      {status ? <View style={{ marginBottom: 16 }}><Text style={mutedStyle}>{status.allowance.unlimited ? "Unlimited personal AI usage · no daily account cap" : `${status.allowance.remaining} of ${status.allowance.limit} AI attempts left · resets at ${new Date(status.allowance.resetsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</Text>{!status.enabled ? <Text style={textStyle}>AI tools are paused. Saved work is still available.</Text> : !status.providers.study.configured ? <Text style={textStyle}>Gemini needs setup: {status.providers.study.missing.join(", ")}.</Text> : !status.allowance.globalAvailable ? <Text style={textStyle}>The shared AI allowance has been reached for today.</Text> : null}</View> : null}
-      {statusError ? <><Text style={mutedStyle}>{statusError}</Text><ToolButton secondary label="Refresh availability" disabled={busy} onPress={() => void loadStatus()} /></> : null}
-      {answer ? <View style={{ borderLeftWidth: 3, borderColor: theme.peach, paddingLeft: 16, marginVertical: 18 }}><Text style={{ ...mutedStyle, marginBottom: 10 }}>{question}</Text><Text selectable style={{ ...textStyle, fontSize: 15, lineHeight: 25 }}>{answer}</Text><ToolButton secondary label="Start new study" disabled={busy} onPress={() => reset()} /></View> : <Text style={{ color: theme.text, fontFamily: theme.font.display, fontSize: 24, marginVertical: 24 }}>What are we learning?</Text>}
-      <ToolField label={replyTo ? "Follow-up or instructions" : mode === "study" ? "Your question" : "Study material or instructions"} value={prompt} maxLength={20000} multiline editable={loaded && !busy} placeholder="Ask about a topic, paste notes or attach a source…" onChangeText={v => { setPrompt(v); key.current = randomUUID(); setError(""); }} />
-      <ToolButton secondary label={mediaId ? "Replace attachment" : "Attach PDF or image"} disabled={!loaded || busy} onPress={() => void attach()} />
-      {mediaId ? <><Text style={mutedStyle}>{fileName || "Source attached"} · maximum 8 MB for AI</Text><ToolButton secondary label="Remove attachment" disabled={busy} onPress={() => { setMediaId(undefined); setFileName(undefined); key.current = randomUUID(); }} /></> : null}
-      <Text style={{ ...mutedStyle, marginVertical: 12 }}>Sending shares this question, attached source and relevant recent study context with Gemini. Answers are private to your account and available here for 90 days. Review AI answers; they can be wrong.</Text>
-      <Text style={{ ...mutedStyle, marginBottom: 12 }}>{status?.allowance.unlimited ? "Your account has no personal daily AI cap. Shared service and Gemini/Hugging Face limits still apply. Requests remain recorded; checking an existing attempt does not submit it again." : "A new provider attempt uses one allowance, including failed attempts. Checking an existing attempt or reopening saved work does not."}</Text>
+      <Text style={{ ...mutedStyle, marginBottom: 8 }}>AI provider</Text>
+      <View accessibilityRole="radiogroup" style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+        {providers.map(p => <Pressable key={p.value} accessibilityRole="radio" accessibilityState={{ checked: provider === p.value, disabled: !loaded || busy }} disabled={!loaded || busy} onPress={() => chooseProvider(p.value)} style={{ flex: 1, minHeight: 48, padding: 10, justifyContent: "center", borderRadius: 10, borderWidth: 1, borderColor: provider === p.value ? theme.deepBrand : theme.border, backgroundColor: provider === p.value ? theme.sand : theme.surface }}><Text style={{ ...textStyle, textAlign: "center", fontSize: 12 }}>{p.label}</Text></Pressable>)}
+      </View>
+      <Text style={{ ...mutedStyle, marginBottom: 16 }}>{provider === "huggingface" ? "Use typed questions or pasted notes. PDF and image study remain on Gemini. Provider credits and limits still apply." : "Gemini supports text and files, but the project's Google access must be active. For text study, you can choose Hugging Face above."}</Text>
+      {status ? <View style={{ marginBottom: 16 }}><Text style={mutedStyle}>{status.allowance.unlimited ? "Unlimited personal AI usage · no daily account cap" : `${status.allowance.remaining} of ${status.allowance.limit} AI attempts left · resets at ${new Date(status.allowance.resetsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</Text>{!status.enabled ? <Text style={textStyle}>AI tools are paused. Saved work is still available.</Text> : !providerSupported ? <Text style={textStyle}>The server has not advertised Hugging Face study support yet. Refresh availability before sending.</Text> : selectedStatus && !selectedStatus.configured ? <Text style={textStyle}>{providerName} needs setup: {selectedStatus.missing.join(", ")}.</Text> : !status.allowance.globalAvailable ? <Text style={textStyle}>The shared AI allowance has been reached for today.</Text> : null}</View> : null}
+      {statusError || !providerSupported ? <><Text style={mutedStyle}>{statusError || "Checking provider availability…"}</Text><ToolButton secondary label="Refresh availability" disabled={busy} onPress={() => void loadStatus()} /></> : null}
+      {answer ? <View style={{ borderLeftWidth: 3, borderColor: theme.peach, paddingLeft: 16, marginVertical: 18 }}><Text style={{ ...mutedStyle, marginBottom: 6 }}>{providerName}</Text><Text style={{ ...mutedStyle, marginBottom: 10 }}>{question}</Text><Text selectable style={{ ...textStyle, fontSize: 15, lineHeight: 25 }}>{answer}</Text><ToolButton secondary label="Start new study" disabled={busy} onPress={() => reset()} /></View> : <Text style={{ color: theme.text, fontFamily: theme.font.display, fontSize: 24, marginVertical: 24 }}>What are we learning?</Text>}
+      <ToolField label={replyTo ? "Follow-up or instructions" : mode === "study" ? "Your question" : "Study material or instructions"} value={prompt} maxLength={20000} multiline editable={loaded && !busy} placeholder={provider === "huggingface" ? "Ask about a topic or paste your study notes…" : "Ask about a topic, paste notes or attach a source…"} onChangeText={v => { setPrompt(v); key.current = randomUUID(); setError(""); }} />
+      {provider === "gemini" ? <ToolButton secondary label={mediaId ? "Replace attachment" : "Attach PDF or image"} disabled={!loaded || busy} onPress={() => void attach()} /> : null}
+      {mediaId ? <><Text style={mutedStyle}>{fileName || "Source attached"} · maximum 8 MB for AI</Text>{attachmentBlocked ? <Text accessibilityRole="alert" style={textStyle}>Your attachment is kept. Remove it and paste the relevant text to use Hugging Face, or choose Gemini. It has not been sent.</Text> : null}<ToolButton secondary label="Remove attachment" disabled={busy} onPress={() => { setMediaId(undefined); setFileName(undefined); key.current = randomUUID(); }} /></> : null}
+      <Text style={{ ...mutedStyle, marginVertical: 12 }}>Sending shares this question{provider === "gemini" ? ", attached source" : ""} and relevant recent study context with {provider === "huggingface" ? "Hugging Face and its selected inference provider" : "Gemini"}. Switching providers starts a new conversation without forwarding the previous one. Answers are private to your account and available here for 90 days. Review AI answers; they can be wrong.</Text>
+      <Text style={{ ...mutedStyle, marginBottom: 12 }}>{status?.allowance.unlimited ? "Your account has no personal daily AI cap. Shared service and provider limits still apply. Requests remain recorded; checking an existing attempt does not submit it again." : "A new provider attempt uses one allowance, including failed attempts. Checking an existing attempt or reopening saved work does not."}</Text>
       {error ? <Text accessibilityRole="alert" selectable style={{ ...textStyle, marginBottom: 12 }}>{error}</Text> : null}
-      <ToolButton label={busy ? "Working…" : error ? "Retry request" : mode === "quiz" ? "Create practice questions" : mode === "summary" ? "Summarise" : mode === "notes" ? "Create revision notes" : "Ask"} disabled={!loaded || busy || (!prompt.trim() && !mediaId)} onPress={() => void send()} />
+      <ToolButton label={busy ? "Working…" : error ? "Retry request" : mode === "quiz" ? "Create practice questions" : mode === "summary" ? "Summarise" : mode === "notes" ? "Create revision notes" : "Ask"} disabled={!loaded || busy || !providerSupported || attachmentBlocked || (!prompt.trim() && !mediaId)} onPress={() => void send()} />
       <View style={{ borderTopWidth: 1, borderColor: theme.border, marginTop: 32, paddingTop: 24 }}>
         <Text style={{ color: theme.text, fontFamily: theme.font.display, fontSize: 22, marginBottom: 16 }}>Saved work</Text>
         <ToolField label="Search saved work" value={search} maxLength={120} editable={!historyBusy} onChangeText={setSearch} placeholder="Find a topic, summary or quiz" />

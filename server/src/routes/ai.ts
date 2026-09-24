@@ -6,7 +6,7 @@ import { input } from "../lib/input";
 import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
 import { requireAuth, currentUser } from "../middleware/auth";
-import { aiDay, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, type AIMedia, type AITurn } from "../lib/ai-provider";
+import { aiDay, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, selectAIProvider, type AIMedia, type AITurn, type AIProvider } from "../lib/ai-provider";
 import { aiAllowance, resolveAIQuota } from "../lib/ai-quota";
 import type { Bindings, Variables } from "../types";
 
@@ -14,7 +14,7 @@ export const aiRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "quiz", "notes", "timetable"]);
-const requestSchema = z.object({ mode: modes, prompt: z.string().trim().max(20000), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) });
+const requestSchema = z.object({ mode: modes, provider: z.enum(["gemini", "huggingface"]).optional(), prompt: z.string().trim().max(20000), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) });
 type Saved = { version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
@@ -36,11 +36,11 @@ function providerFailure(error: AIProviderError) {
   return new AppError(error.status, error.status === 429 ? "RATE_LIMITED" : error.status === 400 || error.status === 422 ? "BAD_REQUEST" : "PROVIDER_UNAVAILABLE", error.message, { reason: error.reason, retryWithNewKey: true });
 }
 function capabilities(env: Bindings) {
-  const safe = (mode: "study" | "timetable", mime?: string) => {
-    const { provider, configured, missing } = providerConfiguration(env, mode, mime);
+  const safe = (mode: "study" | "timetable", mime?: string, requested?: AIProvider) => {
+    const { provider, configured, missing } = providerConfiguration(env, mode, mime, requested);
     return { provider, configured, missing };
   };
-  return { study: safe("study"), timetableText: safe("timetable"), timetableImage: safe("timetable", "image/jpeg"), timetablePdf: safe("timetable", "application/pdf") };
+  return { study: safe("study"), studyHuggingFace: safe("study", undefined, "huggingface"), timetableText: safe("timetable"), timetableImage: safe("timetable", "image/jpeg"), timetablePdf: safe("timetable", "application/pdf") };
 }
 aiRoutes.get("/status", async c => {
   const caps = capabilities(c.env), quota = await resolveAIQuota(c.env, currentUser(c)), day = aiDay();
@@ -81,8 +81,11 @@ aiRoutes.post("/", async c => {
   requireSchema(c.env);
   const d = await input(c, requestSchema);
   if (!d.prompt && !d.mediaId) throw new AppError(400, "BAD_REQUEST", "Add a question or document.");
+  if (d.mode === "timetable" && d.provider) throw new AppError(400, "BAD_REQUEST", "Provider selection is only available for study tools.", { reason: "AI_PROVIDER_SELECTION" });
   const u = currentUser(c), db = database(c.env);
-  const hash = await sha256(JSON.stringify([d.mode,d.prompt,d.mediaId ?? null,d.replyTo ?? null]));
+  // Preserve hashes for all legacy requests and explicit Gemini requests. Only
+  // the new, explicitly selected HF study route has an extra hash discriminator.
+  const hash = await sha256(JSON.stringify([d.mode,d.prompt,d.mediaId ?? null,d.replyTo ?? null,...(d.mode !== "timetable" && d.provider === "huggingface" ? ["huggingface"] : [])]));
   const findRequest = async () => firstRow(await db.execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid`));
   const cached = await findRequest();
   if (cached) return c.json(replay(cached, hash));
@@ -93,7 +96,7 @@ aiRoutes.post("/", async c => {
     const mime = (m.content_type.split(";")[0] ?? "").toLowerCase();
     if (!AI_MIME_TYPES.has(mime)) throw new AppError(400, "BAD_REQUEST", "Use a PDF, JPEG, PNG, WebP or plain-text file for AI.");
     if (m.size_bytes > MAX_AI_MEDIA_BYTES) throw new AppError(413, "BAD_REQUEST", "Use a file smaller than 8 MB, or split it into smaller sections.");
-    try { assertAIConfiguration(c.env, d.mode, mime); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
+    try { assertAIConfiguration(c.env, d.mode, mime, d.provider); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
     const obj = await c.env.PRIVATE_BUCKET.get(m.object_key);
     if (!obj) throw new AppError(404, "NOT_FOUND", "The source file could not be found. Reattach it.");
     if (obj.size > MAX_AI_MEDIA_BYTES) throw new AppError(413, "BAD_REQUEST", "Use a file smaller than 8 MB.");
@@ -109,19 +112,21 @@ aiRoutes.post("/", async c => {
       media = { mimeType: mime, data: btoa(binary) };
     }
   }
-  try { assertAIConfiguration(c.env, d.mode, media?.mimeType); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
+  try { assertAIConfiguration(c.env, d.mode, media?.mimeType, d.provider); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
+  const selectedProvider = selectAIProvider(d.mode, media?.mimeType, d.provider);
   let threadId = d.idempotencyKey;
   const history: AITurn[] = [];
   if (d.replyTo && d.mode !== "timetable") {
     const parent = firstRow(await db.execute<{ result: Saved }>(sql`select result from app_private.ai_requests where user_id=${u.id}::uuid and idempotency_key=${d.replyTo}::uuid and mode<>'timetable' and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days'`));
     if (!parent || parent.result.deleted) throw new AppError(404, "NOT_FOUND", "The earlier study session is no longer available. Start a new session.");
+    if ((parent.result.provider ?? "gemini") !== selectedProvider) throw new AppError(400, "BAD_REQUEST", "Start a new study when changing providers. Your previous conversation has not been shared with another provider.", { reason: "AI_PROVIDER_CONTEXT" });
     threadId = parent.result.threadId ?? d.replyTo;
-    const turns = await db.execute<{ prompt: string; text: string }>(sql`select left(coalesce(result->>'prompt',''),2000) as prompt,left(result->>'text',4000) as text from app_private.ai_requests where user_id=${u.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${threadId} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc limit 6`);
+    const turns = await db.execute<{ prompt: string; text: string }>(sql`select left(coalesce(result->>'prompt',''),2000) as prompt,left(result->>'text',4000) as text from app_private.ai_requests where user_id=${u.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${threadId} and coalesce(result->>'provider','gemini')=${selectedProvider} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc limit 6`);
     history.push(...turns.rows.reverse());
   }
   if (new TextEncoder().encode(prompt + JSON.stringify(history)).length > 60000) throw new AppError(413, "BAD_REQUEST", "This study context is too long. Use a shorter source or start a new session.");
   const quota = await resolveAIQuota(c.env, u), day = aiDay();
-  const saved: Saved = { version: 2, prompt: d.prompt, threadId, ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}) };
+  const saved: Saved = { version: 2, provider: selectedProvider, prompt: d.prompt, threadId, ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}) };
   const client = sqlClient(c.env);
   // The lock is a separate statement: READ COMMITTED obtains a fresh snapshot
   // AFTER any wait. Putting lock + count in one CTE would race on stale snapshots.
@@ -142,7 +147,7 @@ aiRoutes.post("/", async c => {
   }
   const job = (async () => {
     try {
-      const generated = await generateAI(c.env, { mode: d.mode, prompt, history, ...(media ? { media } : {}) });
+      const generated = await generateAI(c.env, { mode: d.mode, prompt, history, ...(d.provider ? { provider: d.provider } : {}), ...(media ? { media } : {}) });
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
         const extracted = parseTimetableJSON(generated.text);
