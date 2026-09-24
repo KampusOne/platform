@@ -9,7 +9,7 @@ const serverDir = join(root, "server");
 const migrationPath = join(root, "database/neon/migrations/20260924000000_student_ai_profiles.sql");
 const source = readFileSync(migrationPath);
 const actualBlobSha = createHash("sha1")
-  .update(\`blob \${source.length}\0\`)
+  .update(`blob ${source.length}\0`)
   .update(source)
   .digest("hex");
 
@@ -81,17 +81,17 @@ function splitSql(input) {
 
 const statements = splitSql(source.toString("utf8"));
 if (statements.length !== 14) {
-  throw new Error(\`Expected 14 migration statements, found \${statements.length}; refusing production migration.\`);
+  throw new Error(`Expected 14 migration statements, found ${statements.length}; refusing production migration.`);
 }
 
 const workerPath = join(serverDir, ".approved-ai-migration-worker.ts");
 const configPath = join(serverDir, ".approved-ai-migration-wrangler.jsonc");
 const outDir = join(serverDir, ".approved-ai-migration-dist");
 
-const workerSource = \`
+const workerSource = `
 import { neon } from "@neondatabase/serverless";
 
-const statements = \${JSON.stringify(statements)};
+const statements = ${JSON.stringify(statements)};
 const requiredBase = [
   "app_private.ai_requests",
   "public.users",
@@ -183,7 +183,7 @@ export default {
     return reply({ ok, stage: ok ? "verified" : "verification_failed", after }, ok ? 200 : 500);
   }
 };
-\`;
+`;
 
 writeFileSync(workerPath, workerSource);
 writeFileSync(configPath, JSON.stringify({
@@ -204,7 +204,7 @@ try {
     .filter((entry) => entry.isFile() && /\.(?:m?js)$/.test(entry.name))
     .map((entry) => join(outDir, entry.name));
   if (bundleCandidates.length !== 1) {
-    throw new Error(\`Expected exactly one Worker bundle, found \${bundleCandidates.length}.\`);
+    throw new Error(`Expected exactly one Worker bundle, found ${bundleCandidates.length}.`);
   }
   const bundle = readFileSync(bundleCandidates[0], "utf8");
 
@@ -218,10 +218,10 @@ try {
     fetch(url, { ...options, redirect: "error", signal: AbortSignal.timeout(45000) });
   const cf = async (suffix, options = {}) => {
     const response = await fetchSafe(
-      \`https://api.cloudflare.com/client/v4/accounts/\${account}\${suffix}\`,
-      { ...options, headers: { Authorization: \`Bearer \${token}\`, ...(options.headers ?? {}) } }
+      `https://api.cloudflare.com/client/v4/accounts/${account}${suffix}`,
+      { ...options, headers: { Authorization: `Bearer ${token}`, ...(options.headers ?? {}) } }
     );
-    if (!response.ok) throw new Error(\`Cloudflare HTTP \${response.status}\`);
+    if (!response.ok) throw new Error(`Cloudflare HTTP ${response.status}`);
     const payload = await response.json();
     if (!payload.success) throw new Error("Cloudflare operation failed.");
     return payload.result;
@@ -272,7 +272,7 @@ try {
   });
   if (typeof preview.preview_token !== "string") throw new Error("Missing preview access token.");
 
-  const response = await fetchSafe(\`https://\${host}/__approved_ai_migration\`, {
+  const response = await fetchSafe(`https://${host}/__approved_ai_migration`, {
     method: "POST",
     headers: {
       "cf-workers-preview-token": preview.preview_token,
@@ -281,7 +281,7 @@ try {
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok || result.ok !== true || result.stage !== "verified") {
-    throw new Error(\`Migration verification failed with HTTP \${response.status}; raw database errors withheld.\`);
+    throw new Error(`Migration verification failed with HTTP ${response.status}; raw database errors withheld.`);
   }
 
   console.log("PASS: approved AI/profile migration applied to production and schema verification passed.");
