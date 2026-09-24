@@ -1,0 +1,36 @@
+name: Disposable visual device QA
+
+on:
+  push:
+    branches: [feat/student-ai-profiles-20260924]
+    paths:
+      - ".github/workflows/visual-device-qa-20260924.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Render production AI across device viewports
+        env:
+          VISUAL_BASE_URL: https://kampusone-mobile-preview.vercel.app
+        run: node scripts/visual-device-qa-20260924.mjs
+      - name: Upload visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kampusone-ai-visual-device-qa
+          path: visual-device-artifacts
+          if-no-files-found: warn
+          retention-days: 3
