@@ -1,0 +1,22 @@
+name: Student AI implementation review
+on:
+  push:
+    branches: [feat/student-ai-profiles-20260924]
+permissions:
+  contents: read
+jobs:
+  source-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Package tracked source for implementation review
+        shell: bash
+        run: |
+          git archive --format=tar HEAD > source-review.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: student-ai-source-review
+          path: source-review.tar
+          retention-days: 1
