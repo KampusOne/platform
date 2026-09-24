@@ -33,7 +33,8 @@
     "PAYMENTS_ENABLED": "false",
     "AI_ASSISTANT_ENABLED": "true",
     "AI_UNLIMITED_EMAIL_HASHES": "af83a966d0eb435808a4657fce605b89077ab7369a7d32caea01ccba0276d3fb",
-    "GEMINI_MODEL": "gemini-3.5-flash-lite"
+    "GEMINI_MODEL": "gemini-3.5-flash-lite",
+    "HF_CHAT_MODEL": "Qwen/Qwen3-4B-Instruct-2507:nscale"
   },
   "env": {
     "staging": {
@@ -44,7 +45,7 @@
         "MINIMUM_APP_VERSION": "0.2.0",
         "MAINTENANCE_MODE": "false",
         "ACADEMIC_CORE_ENABLED": "true",
-        "SOCIAL_FEED_ENABLED": "true",
+        "SOCIAL_FEED_ENABLED": "false",
         "MARKETPLACE_ENABLED": "false",
         "PHASE_2_SCHEMA_READY": "false",
         "PHASE_3_SCHEMA_READY": "false",
