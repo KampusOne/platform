@@ -45,7 +45,7 @@
         "MINIMUM_APP_VERSION": "0.2.0",
         "MAINTENANCE_MODE": "false",
         "ACADEMIC_CORE_ENABLED": "true",
-        "SOCIAL_FEED_ENABLED": "false",
+        "SOCIAL_FEED_ENABLED": "true",
         "MARKETPLACE_ENABLED": "false",
         "PHASE_2_SCHEMA_READY": "false",
         "PHASE_3_SCHEMA_READY": "false",
