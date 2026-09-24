@@ -36,6 +36,7 @@ type Entry = {
   venue: string | null;
   lecturer: string | null;
   day_of_week: number;
+  occurs_on?: string | null;
   starts_at: string;
   ends_at: string;
   reminder_minutes: number;
@@ -394,6 +395,7 @@ export default function TimetableScreen() {
                 ) : null}
               </View>
               <View style={styles.classBlock}>
+                {entry.occurs_on?<Text style={{color:theme.textMuted,fontFamily:theme.font.medium,fontSize:11,marginBottom:6}}>One-time · {entry.occurs_on}</Text>:null}
                 <View style={styles.classTopline}>
                   <Text style={styles.code}>
                     {entry.course_code ?? "CLASS"}

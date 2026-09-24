@@ -11,6 +11,7 @@ export const unifiedMigrations = [
   "20260913230000_community_workflows.sql",
   "20260913240000_verified_identity_and_resources.sql",
   "20260913250000_one_time_alarms.sql",
+  "20260924000000_student_ai_profiles.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */

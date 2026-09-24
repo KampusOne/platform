@@ -33,6 +33,7 @@ type Profile = {
   first_name: string | null;
   last_name: string | null;
   display_name: string;
+  profile_image_url?: string | null;
   university_id: string | null;
   university_name: string | null;
   onboarding_completed_at: string | null;

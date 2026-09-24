@@ -23,7 +23,7 @@ export default function ImportTimetable() {
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
-  const [provider, setProvider] = useState("");
+
   const key = useRef(randomUUID());
   const locked = useRef(false);
   const account = useRef(user?.id); account.current = user?.id;
@@ -55,9 +55,9 @@ export default function ImportTimetable() {
     const owner = account.current; locked.current = true; setBusy(true); setError("");
     try {
       await writeCache("timetable-draft." + owner, { entries, text, mediaId, warnings, key: key.current }).catch(() => undefined);
-      const r = await api<{ entries: Entry[]; warnings?: string[]; provider?: string }>("/v1/ai", { method: "POST", signal: AbortSignal.timeout(45000), body: JSON.stringify({ mode: "timetable", prompt: text, mediaId, idempotencyKey: key.current, consent: true }) });
+      const r = await api<{ entries: Entry[]; warnings?: string[] }>("/v1/ai", { method: "POST", signal: AbortSignal.timeout(45000), body: JSON.stringify({ mode: "timetable", prompt: text, mediaId, idempotencyKey: key.current, consent: true }) });
       if (owner !== account.current) return;
-      setEntries(r.entries); setWarnings(r.warnings ?? []); setProvider(r.provider ?? "");
+      setEntries(r.entries); setWarnings(r.warnings ?? []);
       toast(r.entries.length ? "Review every class before saving" : "No readable classes found. You can add them manually.");
     } catch (e) {
       if (owner !== account.current) return;
@@ -96,11 +96,11 @@ export default function ImportTimetable() {
     <ToolField label="Timetable text" multiline value={text} maxLength={20000} editable={loaded && !busy} onChangeText={v => { setText(v); key.current = randomUUID(); setError(""); }} placeholder="Paste your class schedule" />
     <ToolButton secondary label={mediaId ? "Replace timetable file" : "Choose photo or PDF"} disabled={!loaded || busy} onPress={() => void attach()} />
     {mediaId ? <><Text style={muted}>File attached · maximum 8 MB for AI</Text><ToolButton secondary label="Remove timetable file" disabled={busy} onPress={() => { setMediaId(undefined); key.current = randomUUID(); }} /></> : null}
-    <Text style={{ ...muted, marginVertical: 12 }}>Photos and pasted text are sent to Hugging Face. PDF files are sent to Gemini. One new extraction attempt uses one AI allowance, including provider failures. Retrying the same processing request does not use another allowance.</Text>
+    <Text style={{ ...muted, marginVertical: 12 }}>Your source is processed privately by AI. Review the classes before saving. Rechecking the same processing request does not use another allowance.</Text>
     <Text style={{ ...muted, marginBottom: 12 }}>Nothing is added until you review, correct and save the class list. Unreadable times are not guessed.</Text>
     {error ? <Text accessibilityRole="alert" selectable style={{ ...muted, color: theme.text, marginVertical: 12 }}>{error}</Text> : null}
     <ToolButton label={busy ? "Working…" : error ? "Retry extraction" : "Read timetable"} disabled={!loaded || busy || (!mediaId && !text.trim())} onPress={() => void scan()} />
-    {provider ? <Text style={muted}>Extracted with {provider === "huggingface" ? "Hugging Face" : "Gemini"}. Check the result against your original timetable.</Text> : null}
+    {entries.length ? <Text style={muted}>Check these classes against your original timetable before saving.</Text> : null}
     {warnings.map((warning, i) => <Text key={i} style={{ ...muted, marginTop: 8 }}>{warning}</Text>)}
     <ToolButton secondary label="Add a class manually" disabled={!loaded || busy || entries.length >= 40} onPress={() => setEntries(s => [...s, { title: "", courseCode: "", venue: "", lecturer: "", dayOfWeek: 1, startsAt: "08:00", endsAt: "09:00", reminderMinutes: 15, reminderEnabled: true }])} />
     {entries.map((e, i) => <View key={i} style={{ paddingVertical: 22, borderBottomWidth: 1, borderColor: theme.border }}>

@@ -58,7 +58,7 @@ jobs:
                   const get = name => bindings.find(binding => binding.name === name);
                   for (const name of ['AI_ASSISTANT_ENABLED', 'UNIFIED_SCHEMA_READY']) report(name, get(name)?.text === 'true', get(name)?.text === 'true' ? 'enabled' : 'not enabled');
                   report('MAINTENANCE_MODE', get('MAINTENANCE_MODE')?.text !== 'true', get('MAINTENANCE_MODE')?.text === 'true' ? 'active' : 'inactive');
-                  for (const name of ['GEMINI_API_KEY', 'HF_TOKEN']) {
+                  for (const name of ['HF_TOKEN']) {
                     const binding = get(name);
                     report(name, binding?.type === 'secret_text', !binding ? 'missing' : binding.type === 'secret_text' ? 'secret binding present; value never read or logged' : 'bound but not stored as a secret; value withheld');
                   }
@@ -69,7 +69,7 @@ jobs:
                     const ok = Number.isSafeInteger(n) && n > 0;
                     report(name, ok, ok ? `effective cap ${Math.min(n, maximum)}` : 'new requests are blocked by a zero or invalid cap');
                   }
-                  for (const name of ['GEMINI_MODEL', 'HF_CHAT_MODEL', 'HF_VISION_MODEL']) {
+                  for (const name of ['HF_CHAT_MODEL', 'HF_VISION_MODEL']) {
                     const binding = get(name);
                     if (binding?.type === 'secret_text') {
                       report(name, true, 'secret binding present; model ID cannot be inspected');

@@ -41,9 +41,14 @@ accountRoutes.get("/settings", async (c) => {
 accountRoutes.put("/settings", async (c) => {
   const settings = await input(c, settingsSchema);
   await database(c.env).execute(
-    sql`update public.profiles set settings=${JSON.stringify(settings)}::jsonb, updated_at=now() where user_id=${currentUser(c).id}::uuid`,
+    sql`update public.profiles set settings=coalesce(settings,'{}'::jsonb) || ${JSON.stringify(settings)}::jsonb, updated_at=now() where user_id=${currentUser(c).id}::uuid`,
   );
   return c.json({ settings });
+});
+accountRoutes.patch("/profile/roles",async c=>{
+  const publicRoles=await input(c,z.object({vendor:z.boolean(),tutor:z.boolean(),rider:z.boolean()}).strict());
+  await database(c.env).execute(sql`update public.profiles set settings=coalesce(settings,'{}'::jsonb) || jsonb_build_object('publicRoles',${JSON.stringify(publicRoles)}::jsonb),updated_at=now() where user_id=${currentUser(c).id}::uuid`);
+  return c.json({publicRoles});
 });
 accountRoutes.patch("/profile", async (c) => {
   const user = currentUser(c);
@@ -59,6 +64,7 @@ accountRoutes.patch("/profile", async (c) => {
           .toLowerCase()
           .regex(/^[a-z0-9_]{3,30}$/),
         biography: z.string().trim().max(300),
+        publicRoles: z.object({ vendor:z.boolean(), tutor:z.boolean(), rider:z.boolean() }).strict().optional(),
       })
       .strict(),
   );
@@ -68,7 +74,7 @@ accountRoutes.patch("/profile", async (c) => {
   if (firstRow(conflict))
     throw new AppError(409, "CONFLICT", "That username is already in use.");
   await database(c.env).execute(
-    sql`update public.profiles set first_name=${data.firstName},last_name=${data.lastName},display_name=${data.firstName + " " + data.lastName},username=${data.username},biography=${data.biography},updated_at=now() where user_id=${user.id}::uuid`,
+    sql`update public.profiles set first_name=${data.firstName},last_name=${data.lastName},display_name=${data.firstName + " " + data.lastName},username=${data.username},biography=${data.biography},settings=case when ${data.publicRoles !== undefined} then coalesce(settings,'{}'::jsonb) || jsonb_build_object('publicRoles',${JSON.stringify(data.publicRoles ?? {})}::jsonb) else settings end,updated_at=now() where user_id=${user.id}::uuid`,
   );
   await recordAudit(c.env, {
     actorUserId: user.id,

@@ -1,188 +1,191 @@
-import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
+import { Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
-import { useLocalSearchParams } from "expo-router";
-import { ToolPage, ToolButton, ToolField } from "@/src/components/toolkit";
-import { useToast } from "@/src/components/toast";
-import { useAppearance } from "@/src/lib/appearance";
-import { api, ApiError } from "@/src/lib/api";
+import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/src/auth/auth-context";
+import { useAppearance } from "@/src/lib/appearance";
+import { api, ApiError, clearApiCache } from "@/src/lib/api";
 import { readCache, writeCache } from "@/src/lib/device-cache";
-import { pickAndUpload } from "@/src/lib/uploads";
+import { pickAttachment, uploadAttachment, type StagedAttachment } from "@/src/lib/uploads";
+import { AttachmentPreview } from "@/src/components/attachment-preview";
+import { StudyAnswer } from "@/src/components/study-answer";
+import { AIEdgeGlow } from "@/src/components/ai-edge-glow";
+import { SkeletonBlock, ListSkeleton } from "@/src/components/skeleton";
+import { useToast } from "@/src/components/toast";
+import { syncAlarms, type Alarm } from "@/src/lib/alarms";
 
-type Mode = "study" | "summary" | "notes" | "quiz";
-type Provider = "gemini" | "huggingface";
-const tabs: { mode: Mode; label: string }[] = [{ mode: "study", label: "Ask" }, { mode: "summary", label: "Summary" }, { mode: "notes", label: "Notes" }, { mode: "quiz", label: "Practice" }];
-const providers: { value: Provider; label: string }[] = [{ value: "huggingface", label: "Hugging Face · text" }, { value: "gemini", label: "Gemini · files & text" }];
-type Draft = { prompt: string; mode: Mode; provider?: Provider; mediaId?: string; fileName?: string; replyTo?: string; key: string };
-type Result = { text: string; requestId: string; provider?: Provider; mode?: Mode; prompt?: string; mediaId?: string; fileName?: string };
-type SavedWork = { id: string; mode: Mode; title: string; created_at: string; source_name?: string };
-type Capability = { configured: boolean; missing: string[] };
-type Status = { enabled: boolean; historyDays: number; providers: { study: Capability; studyHuggingFace?: Capability }; allowance: { unlimited?: boolean; remaining: number | null; limit: number | null; resetsAt: string; globalAvailable: boolean; policy: string } };
+type Mode="study"|"summary"|"notes"|"quiz";
+type Tier="standard"|"pro";
+type Card={id:string;kind:"product"|"tutor";title:string;subtitle:string;path:string};
+type Action={id:string;type:"timetable";entry:{title:string;courseCode?:string;venue?:string;dayOfWeek:number;date?:string;startsAt:string;endsAt:string};confirmed?:boolean};
+type Turn={requestId:string;text:string;prompt?:string;fileName?:string;mediaId?:string;file?:StagedAttachment;mode?:Mode;cards?:Card[];actions?:Action[]};
+type Draft={prompt:string;mode:Mode;tier:Tier;attachment?:StagedAttachment;replyTo?:string;key:string};
+type Status={enabled:boolean;capabilities:{text:boolean;images:boolean;documents:boolean};tier:Tier;study:{limit:number;remaining:number|null};subscription:{checkoutEnabled:boolean}};
+type SavedWork={id:string;title:string;mode:Mode;created_at:string};
+const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const suggestions=[{icon:"book-outline" as const,label:"Explain a topic",prompt:"Help me understand "},{icon:"calendar-outline" as const,label:"Plan my classes",prompt:"Help me add a class to my timetable."},{icon:"people-outline" as const,label:"Find a tutor",prompt:"Help me find a tutor for "}];
 
-export default function StudyAI() {
-  const { mode: initial } = useLocalSearchParams<{ mode?: string }>();
-  const { user } = useAuth();
-  const { theme } = useAppearance();
-  const toast = useToast();
-  const [mode, setMode] = useState<Mode>(tabs.some(t => t.mode === initial) ? initial as Mode : "study");
-  const [provider, setProvider] = useState<Provider>("huggingface");
-  const [prompt, setPrompt] = useState("");
-  const [mediaId, setMediaId] = useState<string>();
-  const [fileName, setFileName] = useState<string>();
-  const [replyTo, setReplyTo] = useState<string>();
-  const [answer, setAnswer] = useState("");
-  const [question, setQuestion] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState("");
-  const [status, setStatus] = useState<Status>();
-  const [statusError, setStatusError] = useState("");
-  const [history, setHistory] = useState<SavedWork[]>([]);
-  const [search, setSearch] = useState("");
-  const [historyQuery, setHistoryQuery] = useState("");
-  const [nextOffset, setNextOffset] = useState<number | null>(null);
-  const [historyBusy, setHistoryBusy] = useState(false);
-  const [historyError, setHistoryError] = useState("");
-  const [deleting, setDeleting] = useState<string>();
-  const key = useRef(randomUUID());
-  const action = useRef(false);
-  const account = useRef(user?.id);
-  account.current = user?.id;
-  const textStyle = { fontFamily: theme.font.body, color: theme.text, fontSize: 14, lineHeight: 22 };
-  const mutedStyle = { ...textStyle, fontSize: 12, color: theme.textMuted };
-  const providerName = provider === "huggingface" ? "Hugging Face" : "Gemini";
-  const selectedStatus = provider === "huggingface" ? status?.providers.studyHuggingFace : status?.providers.study;
-  // An older server would strip the provider field and route to Gemini. Never
-  // send an HF-consented request until the server advertises the new capability.
-  const providerSupported = provider === "gemini" || Boolean(status?.providers.studyHuggingFace);
-  const attachmentBlocked = provider === "huggingface" && Boolean(mediaId);
-
-  async function loadStatus() {
-    const owner = account.current;
-    try { const s = await api<Status>("/v1/ai/status"); if (owner === account.current) { setStatus(s); setStatusError(""); } }
-    catch { if (owner === account.current) setStatusError("Could not check AI availability. Check your connection and refresh."); }
-  }
-  async function loadHistory(query = "", offset = 0) {
-    const owner = account.current;
-    setHistoryBusy(true); setHistoryError("");
-    try {
-      const r = await api<{ sessions: SavedWork[]; nextOffset: number | null }>(`/v1/ai/history?q=${encodeURIComponent(query)}&offset=${offset}`);
-      if (owner !== account.current) return;
-      setHistory(s => offset ? [...s, ...r.sessions.filter(x => !s.some(y => y.id === x.id))] : r.sessions);
-      setHistoryQuery(query); setNextOffset(r.nextOffset);
-    } catch (e) { if (owner === account.current) setHistoryError(e instanceof Error ? e.message : "Saved work could not load."); }
-    finally { if (owner === account.current) setHistoryBusy(false); }
-  }
-  useEffect(() => {
-    let active = true;
-    setLoaded(false); setProvider("huggingface"); setPrompt(""); setMediaId(undefined); setFileName(undefined); setReplyTo(undefined); setAnswer(""); setQuestion(""); setHistory([]); setStatus(undefined); setError(""); setBusy(false); action.current = false;
-    key.current = randomUUID();
-    if (!user?.id) return;
-    void readCache<Draft>("ai-draft." + user.id).then(d => {
-      if (!active) return;
-      if (d) {
-        setPrompt(d.prompt ?? "");
-        if (tabs.some(t => t.mode === d.mode)) setMode(d.mode);
-        // Legacy drafts/retries were consented to Gemini; keep that boundary.
-        setProvider(d.provider === "huggingface" ? "huggingface" : "gemini");
-        setMediaId(d.mediaId); setFileName(d.fileName); setReplyTo(d.replyTo); key.current = d.key || randomUUID();
+export default function StudentAI() {
+  const {mode:initial}=useLocalSearchParams<{mode?:string}>();
+  const {user,profile}=useAuth();const {theme}=useAppearance();const toast=useToast();
+  const [workspace,setWorkspace]=useState<"ask"|"study">(initial && initial!=="study"?"study":"ask");
+  const [mode,setMode]=useState<Mode>(initial==="notes"?"notes":initial==="summary"?"summary":"study");
+  const [tier,setTier]=useState<Tier>("standard");
+  const [prompt,setPrompt]=useState("");const [attachment,setAttachment]=useState<StagedAttachment>();
+  const [turns,setTurns]=useState<Turn[]>([]);const [replyTo,setReplyTo]=useState<string>();
+  const [pending,setPending]=useState<{prompt:string;file?:StagedAttachment}>();
+  const [busy,setBusy]=useState(false);const [uploading,setUploading]=useState(false);const [loaded,setLoaded]=useState(false);
+  const [error,setError]=useState("");const [status,setStatus]=useState<Status>();
+  const [limit,setLimit]=useState<{resetsAt?:string;upgrade?:boolean}>();const [now,setNow]=useState(Date.now());
+  const [sheet,setSheet]=useState<"history"|"plans"|"info"|null>(null);const [history,setHistory]=useState<SavedWork[]>([]);
+  const [historyBusy,setHistoryBusy]=useState(false);const [historyError,setHistoryError]=useState("");const [search,setSearch]=useState("");
+  const [nextOffset,setNextOffset]=useState<number|null>(null);const [historyQuery,setHistoryQuery]=useState("");
+  const [deleteId,setDeleteId]=useState<string>();const [confirming,setConfirming]=useState<string>();
+  const [preview,setPreview]=useState<{uri:string;name:string}>();
+  const key=useRef(randomUUID()),lock=useRef(false),scroll=useRef<ScrollView>(null);
+  const owner=useRef(user?.id);owner.current=user?.id;
+  const generation=useRef(0),alive=useRef(true),draftOwner=useRef<string | undefined>(undefined);
+  const text={color:theme.text,fontFamily:theme.font.body,fontSize:15,lineHeight:24};
+  const muted={color:theme.textMuted,fontFamily:theme.font.body,fontSize:12,lineHeight:18};
+  const storageKey=`ai-workspace-v3.${user?.id}.${workspace}`;
+  const valid=()=>alive.current;
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;};},[]);
+  const loadStatus=useCallback(async()=>{const account=owner.current;try{const result=await api<Status>("/v1/ai/status");if(valid() && owner.current===account)setStatus(result);}catch{if(valid() && owner.current===account)setStatus(undefined);}},[]);
+  const restoreThread=useCallback(async(id:string,version:number)=>{
+    const result=await api<{turns:Turn[]}>(`/v1/ai/thread/${id}`);
+    if(valid() && version===generation.current)setTurns(result.turns);
+    return result;
+  },[]);
+  useEffect(()=>{
+    const version=++generation.current;const account=user?.id;draftOwner.current=account;
+    setHistory([]);setSheet(null);setPreview(undefined);setDeleteId(undefined);setHistoryError("");setSearch("");setNextOffset(null);setLoaded(false);setTurns([]);setPrompt("");setAttachment(undefined);setReplyTo(undefined);setPending(undefined);setError("");setLimit(undefined);setBusy(false);lock.current=false;key.current=randomUUID();setTier("standard");setStatus(undefined);
+    setMode(workspace==='ask'?'study':initial==='notes'?'notes':'summary');
+    if(!account)return;
+    void (async()=>{
+      const draft=await readCache<Draft>(storageKey);
+      if(!valid() || version!==generation.current)return;
+      if(draft){setPrompt(draft.prompt??"");setMode(workspace==='ask'?'study':draft.mode==='notes'?'notes':'summary');setAttachment(draft.attachment);setReplyTo(draft.replyTo);key.current=draft.key||randomUUID();
+        if(draft.replyTo)try{await restoreThread(draft.replyTo,version);}catch{if(valid()&&version===generation.current){setReplyTo(undefined);setError("Your previous conversation could not be restored. Your draft is kept; open History to try again.");key.current=randomUUID();}}
       }
-    }).catch(() => undefined).finally(() => { if (active) setLoaded(true); });
-    void loadStatus(); void loadHistory();
-    return () => { active = false; };
-  }, [user?.id]);
-  useEffect(() => {
-    if (!loaded || !user?.id) return;
-    // Persist only the owner-scoped draft and file ID, never a signed private URL.
-    const timer = setTimeout(() => { void writeCache("ai-draft." + user.id, { prompt, mode, provider, mediaId, fileName, replyTo, key: key.current }).catch(() => undefined); }, 250);
-    return () => clearTimeout(timer);
-  }, [prompt, mode, provider, mediaId, fileName, replyTo, error, loaded, user?.id]);
-  function reset(nextMode = mode) {
-    setMode(nextMode); setPrompt(""); setMediaId(undefined); setFileName(undefined); setReplyTo(undefined); setAnswer(""); setQuestion(""); setError(""); key.current = randomUUID();
-  }
-  function chooseProvider(next: Provider) {
-    if (action.current || next === provider) return;
-    // Changing provider is an explicit new request, never a retry or fallback.
-    // Keep the typed draft and attachment, but do not share the old conversation.
-    setProvider(next); setReplyTo(undefined); setAnswer(""); setQuestion(""); setError(""); key.current = randomUUID();
-  }
-  async function attach() {
-    if (action.current || provider !== "gemini") return;
-    const owner = account.current; action.current = true; setBusy(true); setError("");
-    try { const file = await pickAndUpload("resource"); if (file && owner === account.current) { setMediaId(file.id); setFileName("Attached source"); key.current = randomUUID(); } }
-    catch (e) { if (owner === account.current) setError(e instanceof Error ? e.message : "Could not attach your file."); }
-    finally { if (owner === account.current) { action.current = false; setBusy(false); } }
-  }
-  async function send() {
-    if (action.current || !providerSupported || attachmentBlocked || (!prompt.trim() && !mediaId)) return;
-    const owner = account.current; action.current = true; setBusy(true); setError("");
-    const draft = { prompt, mode, provider, mediaId, fileName, replyTo, key: key.current };
-    try {
-      await writeCache("ai-draft." + owner, draft).catch(() => undefined);
-      const r = await api<Result>("/v1/ai", { method: "POST", signal: AbortSignal.timeout(45000), body: JSON.stringify({ mode, provider, prompt, mediaId, replyTo, idempotencyKey: draft.key, consent: true }) });
-      if (owner !== account.current) return;
-      setAnswer(r.text); setQuestion(prompt || fileName || "Attached study material"); setReplyTo(r.requestId); setPrompt(""); key.current = randomUUID();
-      void loadHistory(); void loadStatus();
-    } catch (e) {
-      if (owner !== account.current) return;
-      // A network timeout is ambiguous: reuse the same key to recover the result.
-      // Only an explicit terminal server failure allows a new provider attempt.
-      if (e instanceof ApiError && e.details?.retryWithNewKey === true) key.current = randomUUID();
-      setError(e instanceof Error ? e.message : "Could not finish. Retry to check the same attempt.");
+      if(valid()&&version===generation.current)setLoaded(true);
+    })();
+    void loadStatus();
+  },[user?.id,workspace,storageKey,loadStatus,restoreThread]);
+  useEffect(()=>{
+    if(!loaded||busy||!user?.id||draftOwner.current!==user.id)return;
+    const timer=setTimeout(()=>{
+      // Private signed links and image bytes are never persisted. An uploaded file
+      // is re-opened through the permission-checked media endpoint when required.
+      const savedAttachment=attachment?{name:attachment.name,type:attachment.type,...(attachment.size!==undefined?{size:attachment.size}:{}),...(attachment.mediaId?{mediaId:attachment.mediaId}:{})}:undefined;
+      void writeCache(storageKey,{prompt,mode,tier,attachment:savedAttachment,replyTo,key:key.current});
+    },250);return()=>clearTimeout(timer);
+  },[prompt,attachment,mode,tier,replyTo,loaded,busy,user?.id,storageKey]);
+  useEffect(()=>{if(!limit?.resetsAt)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[limit?.resetsAt]);
+  useEffect(()=>{if(limit?.resetsAt && now>=Date.parse(limit.resetsAt)){setLimit(undefined);setError("");void loadStatus();}},[limit,now,loadStatus]);
+  function changePrompt(value:string){setPrompt(value);key.current=randomUUID();setError("");}
+  function newConversation(){if(lock.current)return;setTurns([]);setReplyTo(undefined);setPrompt("");setAttachment(undefined);setError("");key.current=randomUUID();}
+  async function attach(){if(lock.current)return;const version=generation.current;try{const file=await pickAttachment();if(file && valid()&&version===generation.current){setAttachment(file);setError("");key.current=randomUUID();}}catch(e){if(valid()&&version===generation.current)setError(e instanceof Error?e.message:"This file could not be attached.");}}
+  async function openFile(file:StagedAttachment){const version=generation.current;try{let uri=file.uri;if(!uri&&file.mediaId)uri=(await api<{url:string}>(`/v1/media/${file.mediaId}/access`,{method:"POST"})).url;if(!uri)throw new Error("Reattach this file to preview it.");if(!valid()||version!==generation.current)return;if(file.type.startsWith('image/'))setPreview({uri,name:file.name});else await Linking.openURL(uri);}catch(e){if(valid()&&version===generation.current)toast(e instanceof Error?e.message:"Could not open this file.","error");}}
+  async function send(){
+    if(lock.current||!loaded||(!prompt.trim()&&!attachment))return;
+    const version=generation.current;const question=prompt.trim();let file=attachment;
+    lock.current=true;setBusy(true);setError("");setLimit(undefined);
+    try{
+      if(file){setUploading(true);file=await uploadAttachment(file);if(!valid()||version!==generation.current)return;setAttachment(file);setUploading(false);}
+      const savedFile=file?{name:file.name,type:file.type,...(file.mediaId?{mediaId:file.mediaId}:{})}:undefined;
+      await writeCache(storageKey,{prompt:question,mode,tier,attachment:savedFile,replyTo,key:key.current});
+      if(!valid()||version!==generation.current)return;
+      setPending({prompt:question,...(file?{file}:{})});setPrompt("");setAttachment(undefined);
+      const result=await api<Turn>("/v1/ai",{method:"POST",signal:AbortSignal.timeout(75000),body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,replyTo,tier,idempotencyKey:key.current,consent:true})});
+      if(!valid()||version!==generation.current)return;
+      setTurns(current=>[...current.filter(t=>t.requestId!==result.requestId),{...result,prompt:question,...(file?{file}:{})}]);setReplyTo(result.requestId);key.current=randomUUID();
       void loadStatus();
-    } finally { if (owner === account.current) { action.current = false; setBusy(false); } }
+    }catch(e){
+      if(!valid()||version!==generation.current)return;
+      setPrompt(question);setAttachment(file);setError(e instanceof Error?e.message:"The answer could not load. Your draft is kept.");
+      if(e instanceof ApiError){if(e.details?.retryWithNewKey===true)key.current=randomUUID();if(e.status===429||e.details?.upgrade){setLimit({...(typeof e.details?.resetsAt==='string'?{resetsAt:e.details.resetsAt}:{}),upgrade:e.details?.upgrade===true});}}
+      void loadStatus();
+    }finally{if(valid()&&version===generation.current){lock.current=false;setBusy(false);setUploading(false);setPending(undefined);}}
   }
-  async function open(id: string) {
-    if (action.current) return;
-    const owner = account.current; action.current = true; setBusy(true); setError("");
-    try {
-      const r = await api<Result>(`/v1/ai/history/${id}`);
-      if (owner !== account.current) return;
-      setProvider(r.provider === "huggingface" ? "huggingface" : "gemini");
-      setAnswer(r.text); setQuestion(r.prompt || r.fileName || "Saved work"); setPrompt(""); setMediaId(r.mediaId); setFileName(r.fileName); setReplyTo(r.requestId); if (r.mode && tabs.some(t => t.mode === r.mode)) setMode(r.mode); key.current = randomUUID();
-    } catch (e) { if (owner === account.current) setError(e instanceof Error ? e.message : "Could not reopen this work."); }
-    finally { if (owner === account.current) { action.current = false; setBusy(false); } }
-  }
-  async function remove(id: string) {
-    if (action.current) return;
-    const owner = account.current; action.current = true; setBusy(true);
-    try {
-      await api(`/v1/ai/history/${id}`, { method: "DELETE" });
-      if (owner !== account.current) return;
-      setHistory(s => s.filter(x => x.id !== id)); if (replyTo === id) reset(); setDeleting(undefined); toast("Saved answer deleted", "success");
-    } catch (e) { if (owner === account.current) setError(e instanceof Error ? e.message : "Deletion failed. Your saved answer is still available."); }
-    finally { if (owner === account.current) { action.current = false; setBusy(false); } }
-  }
-  return (
-    <ToolPage title="Study space">
-      <View style={{ flexDirection: "row", gap: 6, marginBottom: 16 }}>
-        {tabs.map(t => <Pressable key={t.mode} accessibilityRole="tab" accessibilityState={{ selected: mode === t.mode, disabled: busy }} disabled={busy} onPress={() => { setMode(t.mode); key.current = randomUUID(); setError(""); }} style={{ flex: 1, paddingVertical: 14, borderRadius: 10, backgroundColor: mode === t.mode ? theme.sand : theme.surface }}><Text style={{ ...textStyle, fontFamily: theme.font.medium, textAlign: "center", fontSize: 12 }}>{t.label}</Text></Pressable>)}
+  async function loadHistory(query=search,offset=0){const version=generation.current;setHistoryBusy(true);setHistoryError("");try{const data=await api<{sessions:SavedWork[];nextOffset:number|null}>(`/v1/ai/history?q=${encodeURIComponent(query)}&offset=${offset}`);if(!valid()||version!==generation.current)return;setHistory(current=>offset?[...current,...data.sessions.filter(s=>!current.some(c=>c.id===s.id))]:data.sessions);setNextOffset(data.nextOffset);setHistoryQuery(query);}catch(e){if(valid()&&version===generation.current)setHistoryError(e instanceof Error?e.message:"History could not load.");}finally{if(valid()&&version===generation.current)setHistoryBusy(false);}}
+  async function openHistory(item:SavedWork){if(lock.current)return;lock.current=true;const version=generation.current;setHistoryBusy(true);try{const data=await restoreThread(item.id,version);if(!valid()||version!==generation.current)return;const last=data.turns.at(-1);if(!last)throw new Error("This conversation is no longer available.");
+    const target=item.mode==='study'?'ask':'study';
+    if(target!==workspace){await writeCache(`ai-workspace-v3.${user?.id}.${target}`,{prompt:"",mode:item.mode,tier:"standard",replyTo:last.requestId,key:randomUUID()});setWorkspace(target);}else{setReplyTo(last.requestId);setPrompt("");setAttachment(undefined);setMode(item.mode);key.current=randomUUID();}
+    setSheet(null);setError("");
+  }catch(e){if(valid()&&version===generation.current)setHistoryError(e instanceof Error?e.message:"Could not open this conversation.");}finally{lock.current=false;if(valid()&&version===generation.current)setHistoryBusy(false);}}
+  async function removeHistory(id:string){const version=generation.current;setHistoryBusy(true);try{await api(`/v1/ai/history/${id}`,{method:'DELETE'});if(!valid()||version!==generation.current)return;setHistory(rows=>rows.filter(row=>row.id!==id));setTurns(rows=>rows.filter(row=>row.requestId!==id));if(replyTo===id){setReplyTo(undefined);key.current=randomUUID();}setDeleteId(undefined);}catch(e){if(valid()&&version===generation.current)setHistoryError(e instanceof Error?e.message:'Could not delete this answer.');}finally{if(valid()&&version===generation.current)setHistoryBusy(false);}}
+  async function confirm(turn:Turn,action:Action){if(confirming)return;const version=generation.current;setConfirming(action.id);try{await api('/v1/ai/actions/confirm',{method:'POST',body:JSON.stringify({requestId:turn.requestId,actionId:action.id})});if(!valid()||version!==generation.current)return;clearApiCache();setTurns(rows=>rows.map(row=>row.requestId===turn.requestId?{...row,actions:row.actions?.map(a=>a.id===action.id?{...a,confirmed:true}:a)??[]}:row));toast('Added to your timetable','success');try{const result=await api<{alarms:Alarm[]}>('/v1/learning/alarms');if(valid()&&version===generation.current)await syncAlarms(result.alarms,true);}catch{if(valid()&&version===generation.current)toast('Class saved. Check device reminders in Alarms.');}}catch(e){if(valid()&&version===generation.current)toast(e instanceof Error?e.message:'The class was not added.','error');}finally{if(valid()&&version===generation.current)setConfirming(undefined);}}
+  async function copy(answer:string){try{if(Platform.OS==='web'&&typeof navigator!=='undefined'&&navigator.clipboard){await navigator.clipboard.writeText(answer);toast('Copied','success');}else await Share.share({message:answer});}catch{toast('Select the answer text to copy it.');}}
+  const smallButton=(label:string,onPress:()=>void,disabled=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled}} disabled={disabled} onPress={onPress} style={{paddingVertical:10,paddingHorizontal:12,opacity:disabled?0.5:1}}><Text style={{...muted,color:theme.brand,fontFamily:theme.font.semibold}}>{label}</Text></Pressable>;
+  const iconButton=(name:ComponentProps<typeof Ionicons>['name'],label:string,onPress:()=>void,disabled=false)=><Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{disabled}} disabled={disabled} onPress={onPress} style={{minHeight:44,minWidth:44,alignItems:'center',justifyContent:'center',opacity:disabled?0.4:1}}><Ionicons name={name} size={22} color={theme.text}/></Pressable>;
+  const renderUser=(question:string,file?:StagedAttachment)=><View style={{alignSelf:'flex-end',maxWidth:'90%',marginTop:22,marginBottom:18}}>{file?<AttachmentPreview file={file} onOpen={()=>void openFile(file)}/>:null}{question?<View style={{backgroundColor:theme.sand,borderRadius:19,borderBottomRightRadius:5,paddingHorizontal:16,paddingVertical:12}}><Text selectable style={text}>{question}</Text></View>:null}</View>;
+  return <SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:theme.canvas}}>
+    <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={{flex:1,width:'100%',maxWidth:760,alignSelf:'center'}}>
+      <View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:12,paddingVertical:4,borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:theme.border}}>
+        {iconButton('arrow-back','Go back',()=>router.canGoBack()?router.back():router.replace('/explore'))}
+        <Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:21,flex:1}}>{workspace==='ask'?'Ask':'Study'}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={`AI plan: ${tier==='pro'?'Pro':'Standard'}`} onPress={()=>setSheet('plans')} disabled={busy} style={{flexDirection:'row',alignItems:'center',padding:12,gap:5}}><Text style={{...muted,color:theme.text}}>{tier==='pro'?'Pro':'Standard'}</Text><Ionicons name="chevron-down" size={14} color={theme.textMuted}/></Pressable>
+        {iconButton('time-outline','Conversation history',()=>{setSheet('history');void loadHistory('',0);},busy)}
+        {iconButton('create-outline','New conversation',newConversation,busy)}
       </View>
-      {!loaded ? <Text style={mutedStyle}>Restoring your draft…</Text> : null}
-      <Text style={{ ...mutedStyle, marginBottom: 8 }}>AI provider</Text>
-      <View accessibilityRole="radiogroup" style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
-        {providers.map(p => <Pressable key={p.value} accessibilityRole="radio" accessibilityState={{ checked: provider === p.value, disabled: !loaded || busy }} disabled={!loaded || busy} onPress={() => chooseProvider(p.value)} style={{ flex: 1, minHeight: 48, padding: 10, justifyContent: "center", borderRadius: 10, borderWidth: 1, borderColor: provider === p.value ? theme.deepBrand : theme.border, backgroundColor: provider === p.value ? theme.sand : theme.surface }}><Text style={{ ...textStyle, textAlign: "center", fontSize: 12 }}>{p.label}</Text></Pressable>)}
+      <View style={{flexDirection:'row',paddingHorizontal:24,gap:26}}>{(['ask','study'] as const).map(value=><Pressable key={value} accessibilityRole="tab" accessibilityState={{selected:workspace===value,disabled:busy}} disabled={busy} onPress={()=>setWorkspace(value)} style={{paddingVertical:14,borderBottomWidth:2,borderBottomColor:workspace===value?theme.brand:'transparent'}}><Text style={{...text,fontFamily:workspace===value?theme.font.semibold:theme.font.body,color:workspace===value?theme.text:theme.textMuted}}>{value==='ask'?'Ask':'Summary & Notes'}</Text></Pressable>)}</View>
+      {workspace==='study'?<View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingTop:8}}>{(['summary','notes'] as const).map(value=><Pressable key={value} accessibilityRole="radio" accessibilityState={{checked:mode===value}} disabled={busy} onPress={()=>{setMode(value);key.current=randomUUID();}} style={{paddingVertical:9,paddingHorizontal:13,backgroundColor:mode===value?theme.surfaceMuted:'transparent',borderRadius:8}}><Text style={{...muted,color:theme.text}}>{value==='summary'?'Summary':'Notes'}</Text></Pressable>)}<View style={{flex:1}}/>{status?.study.remaining!==null&&status?.study.remaining!==undefined?<Text style={muted}>{status.study.remaining} free studies left</Text>:null}</View>:null}
+      <ScrollView ref={scroll} style={{flex:1}} contentContainerStyle={{flexGrow:1,paddingHorizontal:24,paddingBottom:16}} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" onContentSizeChange={()=>{if(pending)scroll.current?.scrollToEnd({animated:false});}}>
+        {!loaded||draftOwner.current!==user?.id?<View style={{gap:16,paddingTop:40}}><SkeletonBlock width="55%" height={30}/><SkeletonBlock width="80%"/><ListSkeleton count={2}/></View>:null}
+        {loaded&&draftOwner.current===user?.id&&!turns.length&&!pending?<View style={{flex:1,justifyContent:'center',paddingVertical:35}}>
+          <Image source={require('../assets/brand/kampusone-symbol-gradient.png')} resizeMode="contain" accessibilityLabel="KampusOne" style={{width:48,height:48,marginBottom:25}}/>
+          <Text style={{...muted,fontSize:15,marginBottom:10}}>Hi, {profile?.first_name || 'there'}.</Text>
+          <Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:34,lineHeight:41,maxWidth:430}}>{workspace==='ask'?'What are we\nworking on?':'Make it easier\nto understand.'}</Text>
+          <Text style={{...muted,fontSize:14,lineHeight:22,marginTop:15,maxWidth:410}}>{workspace==='ask'?'Ask a question, plan a class, or find help on campus.':'Add your material. Get a detailed summary or organised revision notes.'}</Text>
+          {workspace==='ask'?<View style={{marginTop:30,gap:3}}>{suggestions.map(s=><Pressable key={s.label} accessibilityRole="button" onPress={()=>changePrompt(s.prompt)} style={{flexDirection:'row',gap:12,alignItems:'center',paddingVertical:13}}><Ionicons name={s.icon} size={20} color={theme.brand}/><Text style={{...text,fontSize:14}}>{s.label}</Text><Ionicons name="arrow-up-outline" size={16} color={theme.textFaint} style={{transform:[{rotate:'45deg'}]}}/></Pressable>)}</View>:null}
+        </View>:null}
+        {loaded&&draftOwner.current===user?.id?turns.map(turn=>{
+          const file=turn.file ?? (turn.fileName?{name:turn.fileName,type:/\.(png|jpe?g|webp)$/i.test(turn.fileName)?'image/jpeg':'application/pdf',...(turn.mediaId?{mediaId:turn.mediaId}:{})}:undefined);
+          return <View key={turn.requestId}>{renderUser(turn.prompt??'',file)}<Text style={{...muted,fontFamily:theme.font.semibold,color:theme.brand,marginBottom:8}}>KampusOne</Text><StudyAnswer value={turn.text}/>
+            {turn.cards?.map(card=><Pressable key={card.id} accessibilityRole="button" onPress={()=>{if(/^\/student-service\?(id|product)=[0-9a-f-]{36}$/i.test(card.path))router.push(card.path as never);}} style={{marginTop:12,padding:16,borderWidth:1,borderColor:theme.border,borderRadius:13,backgroundColor:theme.surface,flexDirection:'row',alignItems:'center',gap:12}}><Ionicons name={card.kind==='tutor'?'person-outline':'bag-outline'} size={23} color={theme.brand}/><View style={{flex:1}}><Text style={{...text,fontFamily:theme.font.semibold,fontSize:14}}>{card.title}</Text><Text style={muted}>{card.subtitle}</Text></View><Ionicons name="chevron-forward" size={17} color={theme.textMuted}/></Pressable>)}
+            {turn.actions?.map(action=><View key={action.id} style={{marginTop:14,padding:17,borderWidth:1,borderColor:theme.border,borderRadius:14,backgroundColor:theme.surface}}><Text style={{...text,fontFamily:theme.font.semibold}}>{action.entry.courseCode || action.entry.title}</Text><Text style={muted}>{action.entry.date || `Every ${days[action.entry.dayOfWeek]}`} · {action.entry.startsAt}–{action.entry.endsAt}{action.entry.venue?`\n${action.entry.venue}`:''}</Text>{smallButton(action.confirmed?'Added to timetable':confirming===action.id?'Adding…':'Add to timetable',()=>void confirm(turn,action),Boolean(confirming)||action.confirmed===true)}</View>)}
+            <View style={{alignSelf:'flex-start',marginTop:7}}>{iconButton('copy-outline','Copy answer',()=>void copy(turn.text))}</View>
+          </View>;
+        }):null}
+        {pending?<View>{renderUser(pending.prompt,pending.file)}<View accessibilityRole="text" accessibilityLabel="KampusOne is working" accessibilityLiveRegion="polite" style={{gap:10,marginTop:8}}><Text style={muted}>Working on it…</Text><SkeletonBlock width="76%"/><SkeletonBlock width="56%"/></View></View>:null}
+      </ScrollView>
+      <View style={{paddingHorizontal:16,paddingTop:8,paddingBottom:6}}>
+        {error?<View accessibilityRole="alert" style={{padding:12,marginBottom:10,backgroundColor:theme.surfaceMuted,borderRadius:10}}><Text style={{...muted,color:theme.text}}>{error}{limit?.resetsAt?` Try again at ${new Date(limit.resetsAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}.`:''}</Text>{limit?.upgrade?smallButton('View Pro',()=>setSheet('plans')):null}</View>:null}
+        {status&&!status.enabled?<Text style={{...muted,marginBottom:8}}>AI is temporarily unavailable. Your draft and saved conversations are kept.</Text>:null}
+        {!status&&loaded?smallButton('Check AI availability',()=>void loadStatus(),busy):null}
+        {attachment?<AttachmentPreview file={attachment} uploading={uploading} onRemove={()=>{setAttachment(undefined);key.current=randomUUID();}} onOpen={()=>void openFile(attachment)}/>:null}
+        <View style={{borderWidth:1,borderColor:theme.border,borderRadius:22,backgroundColor:theme.surface,paddingHorizontal:9,paddingTop:12,paddingBottom:5}}>
+          <TextInput accessibilityLabel="Message KampusOne AI" value={prompt} onChangeText={changePrompt} editable={loaded&&!busy} placeholder={workspace==='ask'?'Ask KampusOne…':'Add instructions or paste your material…'} placeholderTextColor={theme.textMuted} multiline maxLength={20000} textAlignVertical="top" style={{color:theme.text,fontFamily:theme.font.body,fontSize:16,lineHeight:23,minHeight:43,maxHeight:150,paddingHorizontal:7,paddingBottom:8}}/>
+          <View style={{flexDirection:'row',alignItems:'center'}}>{iconButton('add','Attach image or document',()=>void attach(),busy||!loaded)}{iconButton('information-circle-outline','AI privacy and help',()=>setSheet('info'))}<View style={{flex:1}}/>
+            <Pressable accessibilityRole="button" accessibilityLabel={busy?'AI is working':'Send message'} accessibilityState={{disabled:busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment),busy}} disabled={busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment)} onPress={()=>void send()} style={{width:42,height:42,borderRadius:21,alignItems:'center',justifyContent:'center',backgroundColor:theme.deepBrand,opacity:busy||(!prompt.trim()&&!attachment)?0.5:1}}><Ionicons name="arrow-up" size={24} color="#FFFFFF"/></Pressable>
+          </View>
+        </View>
+        <Text style={{...muted,fontSize:10,textAlign:'center',marginTop:7}}>AI can make mistakes. Check important details.</Text>
       </View>
-      <Text style={{ ...mutedStyle, marginBottom: 16 }}>{provider === "huggingface" ? "Use typed questions or pasted notes. PDF and image study remain on Gemini. Provider credits and limits still apply." : "Gemini supports text and files, but the project's Google access must be active. For text study, you can choose Hugging Face above."}</Text>
-      {status ? <View style={{ marginBottom: 16 }}><Text style={mutedStyle}>{status.allowance.unlimited ? "Unlimited personal AI usage · no daily account cap" : `${status.allowance.remaining} of ${status.allowance.limit} AI attempts left · resets at ${new Date(status.allowance.resetsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}</Text>{!status.enabled ? <Text style={textStyle}>AI tools are paused. Saved work is still available.</Text> : !providerSupported ? <Text style={textStyle}>The server has not advertised Hugging Face study support yet. Refresh availability before sending.</Text> : selectedStatus && !selectedStatus.configured ? <Text style={textStyle}>{providerName} needs setup: {selectedStatus.missing.join(", ")}.</Text> : !status.allowance.globalAvailable ? <Text style={textStyle}>The shared AI allowance has been reached for today.</Text> : null}</View> : null}
-      {statusError || !providerSupported ? <><Text style={mutedStyle}>{statusError || "Checking provider availability…"}</Text><ToolButton secondary label="Refresh availability" disabled={busy} onPress={() => void loadStatus()} /></> : null}
-      {answer ? <View style={{ borderLeftWidth: 3, borderColor: theme.peach, paddingLeft: 16, marginVertical: 18 }}><Text style={{ ...mutedStyle, marginBottom: 6 }}>{providerName}</Text><Text style={{ ...mutedStyle, marginBottom: 10 }}>{question}</Text><Text selectable style={{ ...textStyle, fontSize: 15, lineHeight: 25 }}>{answer}</Text><ToolButton secondary label="Start new study" disabled={busy} onPress={() => reset()} /></View> : <Text style={{ color: theme.text, fontFamily: theme.font.display, fontSize: 24, marginVertical: 24 }}>What are we learning?</Text>}
-      <ToolField label={replyTo ? "Follow-up or instructions" : mode === "study" ? "Your question" : "Study material or instructions"} value={prompt} maxLength={20000} multiline editable={loaded && !busy} placeholder={provider === "huggingface" ? "Ask about a topic or paste your study notes…" : "Ask about a topic, paste notes or attach a source…"} onChangeText={v => { setPrompt(v); key.current = randomUUID(); setError(""); }} />
-      {provider === "gemini" ? <ToolButton secondary label={mediaId ? "Replace attachment" : "Attach PDF or image"} disabled={!loaded || busy} onPress={() => void attach()} /> : null}
-      {mediaId ? <><Text style={mutedStyle}>{fileName || "Source attached"} · maximum 8 MB for AI</Text>{attachmentBlocked ? <Text accessibilityRole="alert" style={textStyle}>Your attachment is kept. Remove it and paste the relevant text to use Hugging Face, or choose Gemini. It has not been sent.</Text> : null}<ToolButton secondary label="Remove attachment" disabled={busy} onPress={() => { setMediaId(undefined); setFileName(undefined); key.current = randomUUID(); }} /></> : null}
-      <Text style={{ ...mutedStyle, marginVertical: 12 }}>Sending shares this question{provider === "gemini" ? ", attached source" : ""} and relevant recent study context with {provider === "huggingface" ? "Hugging Face and its selected inference provider" : "Gemini"}. Switching providers starts a new conversation without forwarding the previous one. Answers are private to your account and available here for 90 days. Review AI answers; they can be wrong.</Text>
-      <Text style={{ ...mutedStyle, marginBottom: 12 }}>{status?.allowance.unlimited ? "Your account has no personal daily AI cap. Shared service and provider limits still apply. Requests remain recorded; checking an existing attempt does not submit it again." : "A new provider attempt uses one allowance, including failed attempts. Checking an existing attempt or reopening saved work does not."}</Text>
-      {error ? <Text accessibilityRole="alert" selectable style={{ ...textStyle, marginBottom: 12 }}>{error}</Text> : null}
-      <ToolButton label={busy ? "Working…" : error ? "Retry request" : mode === "quiz" ? "Create practice questions" : mode === "summary" ? "Summarise" : mode === "notes" ? "Create revision notes" : "Ask"} disabled={!loaded || busy || !providerSupported || attachmentBlocked || (!prompt.trim() && !mediaId)} onPress={() => void send()} />
-      <View style={{ borderTopWidth: 1, borderColor: theme.border, marginTop: 32, paddingTop: 24 }}>
-        <Text style={{ color: theme.text, fontFamily: theme.font.display, fontSize: 22, marginBottom: 16 }}>Saved work</Text>
-        <ToolField label="Search saved work" value={search} maxLength={120} editable={!historyBusy} onChangeText={setSearch} placeholder="Find a topic, summary or quiz" />
-        <ToolButton secondary label={historyBusy ? "Loading saved work…" : "Search / refresh"} disabled={historyBusy || busy} onPress={() => void loadHistory(search)} />
-        {historyError ? <Text accessibilityRole="alert" style={mutedStyle}>{historyError}</Text> : !history.length && !historyBusy ? <Text style={mutedStyle}>No saved work yet. Your completed study answers will appear here.</Text> : null}
-        {history.map(item => <View key={item.id} style={{ paddingVertical: 16, borderBottomWidth: 1, borderColor: theme.border }}><Pressable accessibilityRole="button" disabled={busy} onPress={() => void open(item.id)}><Text style={textStyle}>{item.title}</Text><Text style={mutedStyle}>{item.mode} · {new Date(item.created_at).toLocaleDateString()}{item.source_name ? ` · ${item.source_name}` : ""}</Text></Pressable>{deleting === item.id ? <><Text style={mutedStyle}>Delete this saved answer? This cannot be undone. Other answers in the study thread are kept.</Text><ToolButton secondary label="Confirm delete" disabled={busy} onPress={() => void remove(item.id)} /><ToolButton secondary label="Cancel" disabled={busy} onPress={() => setDeleting(undefined)} /></> : <ToolButton secondary label="Delete saved answer" disabled={busy} onPress={() => setDeleting(item.id)} />}</View>)}
-        {nextOffset !== null ? <ToolButton secondary label="Load older work" disabled={busy || historyBusy} onPress={() => void loadHistory(historyQuery, nextOffset)} /> : null}
+    </KeyboardAvoidingView>
+    <AIEdgeGlow active={busy&&!uploading}/>
+    <Modal visible={sheet!==null} transparent animationType="fade" onRequestClose={()=>setSheet(null)}>
+      <View style={{flex:1,justifyContent:'flex-end',backgroundColor:'rgba(0,0,0,0.35)'}}><Pressable accessibilityLabel="Close panel" accessibilityRole="button" onPress={()=>setSheet(null)} style={{flex:1}}/>
+        <SafeAreaView edges={['bottom']} style={{backgroundColor:theme.canvas,borderTopLeftRadius:24,borderTopRightRadius:24,width:'100%',maxWidth:760,alignSelf:'center',maxHeight:'82%',padding:22}}>
+          <View style={{flexDirection:'row',alignItems:'center',marginBottom:12}}><Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:25,flex:1}}>{sheet==='history'?'History':sheet==='plans'?'Choose your plan':'About your AI'}</Text>{iconButton('close','Close panel',()=>setSheet(null))}</View>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            {sheet==='plans'?<View><Pressable accessibilityRole="radio" accessibilityState={{checked:tier==='standard'}} onPress={()=>{setTier('standard');key.current=randomUUID();setSheet(null);}} style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.border,marginBottom:12}}><Text style={{...text,fontFamily:theme.font.semibold}}>Standard</Text><Text style={muted}>Everyday questions and five shared Summary / Notes trials.</Text></Pressable>
+              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.brand,marginBottom:16}}><Text style={{...text,fontFamily:theme.font.semibold}}>Pro · Monthly</Text><Text style={{...muted,marginTop:5}}>More room for learning, longer study use and an upgraded AI option.</Text>{status?.tier==='pro'?smallButton('Use Pro',()=>{setTier('pro');key.current=randomUUID();setSheet(null);}):<Text style={{...muted,marginTop:16,color:theme.brand}}>Subscriptions are not open yet. No payment will be taken.</Text>}</View>
+            </View>:null}
+            {sheet==='info'?<View style={{gap:15}}><Text style={text}>Your chats are private to your account and saved for 90 days. You can remove saved answers from History.</Text><Text style={text}>Questions and attachments are processed by external AI services. Do not include passwords, payment details or other people's confidential information.</Text><Text style={text}>Ask can read your timetable and find published campus services. Timetable changes require you to review a class card and tap Add. It cannot manage accounts or perform admin actions.</Text><Text style={text}>Attach one image, PDF or text file per message, up to 8 MB. Text PDFs support up to 40 pages within the text limit. For scanned PDFs, attach the relevant page as an image.</Text></View>:null}
+            {sheet==='history'?<View>
+              <View style={{flexDirection:'row',alignItems:'center',marginBottom:10,borderWidth:1,borderColor:theme.border,borderRadius:12,paddingLeft:12}}><TextInput accessibilityLabel="Search conversations" value={search} onChangeText={setSearch} placeholder="Search saved work" placeholderTextColor={theme.textMuted} style={{...text,flex:1,paddingVertical:11}} onSubmitEditing={()=>void loadHistory(search,0)}/>{smallButton('Search',()=>void loadHistory(search,0),historyBusy)}</View>
+              {historyError?<Text accessibilityRole="alert" style={muted}>{historyError}</Text>:null}{historyBusy?<ListSkeleton count={3}/>:null}
+              {!historyBusy&&!history.length?<Text style={{...muted,paddingVertical:24}}>No saved conversations yet.</Text>:null}
+              {history.map(item=><View key={item.id} style={{borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:theme.border,paddingVertical:12}}><View style={{flexDirection:'row',alignItems:'center'}}><Pressable accessibilityRole="button" disabled={historyBusy} onPress={()=>void openHistory(item)} style={{flex:1,paddingVertical:5}}><Text numberOfLines={2} style={text}>{item.title}</Text><Text style={muted}>{item.mode==='study'?'Ask':item.mode==='summary'?'Summary':'Notes'} · {new Date(item.created_at).toLocaleDateString()}</Text></Pressable>{iconButton('trash-outline','Delete saved answer',()=>setDeleteId(item.id),historyBusy)}</View>{deleteId===item.id?<View><Text style={muted}>Delete this answer? This cannot be undone and does not reset study trials.</Text><View style={{flexDirection:'row'}}>{smallButton('Delete',()=>void removeHistory(item.id),historyBusy)}{smallButton('Cancel',()=>setDeleteId(undefined),historyBusy)}</View></View>:null}</View>)}
+              {nextOffset!==null?smallButton('Load older work',()=>void loadHistory(historyQuery,nextOffset),historyBusy):null}
+            </View>:null}
+          </ScrollView>
+        </SafeAreaView>
       </View>
-    </ToolPage>
-  );
+    </Modal>
+    <Modal visible={Boolean(preview)} animationType="fade" onRequestClose={()=>setPreview(undefined)}><SafeAreaView style={{flex:1,backgroundColor:theme.canvas}}><View style={{flexDirection:'row',alignItems:'center',padding:14}}><Text numberOfLines={1} style={{...text,flex:1}}>{preview?.name}</Text>{iconButton('close','Close image',()=>setPreview(undefined))}</View>{preview?<Image source={{uri:preview.uri}} resizeMode="contain" style={{flex:1,width:'100%'}}/>:null}</SafeAreaView></Modal>
+  </SafeAreaView>;
 }

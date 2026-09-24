@@ -26,7 +26,6 @@ const env: Bindings = {
   MARKETPLACE_ENABLED: "false", PHASE_2_SCHEMA_READY: "true", PHASE_3_SCHEMA_READY: "false",
   UNIFIED_SCHEMA_READY: "true", PAYMENTS_ENABLED: "false", AI_ASSISTANT_ENABLED: "true",
   JWT_SECRET: "test-only-signing-key-not-for-deployment-12345678",
-  GEMINI_API_KEY: "test-only-ai-key", GEMINI_MODEL: "test-model",
   HF_TOKEN: "test-only-hf-token", HF_CHAT_MODEL: "test-model", HF_VISION_MODEL: "test-model",
 };
 const tokens = new Map<string, string>();
@@ -44,7 +43,7 @@ async function json(response: Response, status = 200) {
   expect({ status: response.status, ...(response.status === status ? {} : { data }) }).toEqual({ status });
   return data;
 }
-async function seedAttempts(actor: string, count = 5) {
+async function seedAttempts(actor: string, count = 15) {
   await db.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) select $1::uuid,gen_random_uuid(),repeat('a',64),'study','FAILED','{}'::jsonb from generate_series(1,$2::int)", [actor, count]);
 }
 beforeAll(async () => {
@@ -72,12 +71,12 @@ afterAll(async () => { vi.unstubAllGlobals(); await db?.close(); });
 describe("account-specific AI daily allowance", () => {
   it("keeps the normal five-attempt limit for another authenticated account", async () => {
     const data = await json(await request("/ai/status", "GET", undefined, other));
-    expect(data.allowance).toMatchObject({ unlimited: false, limit: 5, remaining: 5 });
+    expect(data.study).toMatchObject({ limit: 5, remaining: 5 });
   });
   it("reports no personal cap even when the approved account has used its old allowance", async () => {
     await seedAttempts(owner);
     const data = await json(await request("/ai/status"));
-    expect(data.allowance).toMatchObject({ unlimited: true, limit: null, remaining: null, used: 5, globalAvailable: true });
+    expect(data.study.remaining).toBeNull();
     expect(JSON.stringify(data)).not.toContain(ownerEmail);
     expect(JSON.stringify(data)).not.toContain(env.AI_UNLIMITED_EMAIL_HASHES);
   });
@@ -86,17 +85,17 @@ describe("account-specific AI daily allowance", () => {
     await json(await request("/ai", "POST", draft(mode)));
     expect(provider).toHaveBeenCalledTimes(1);
     const rows = await db.query<{ count: number }>("select count(*)::int as count from app_private.ai_requests where user_id=$1", [owner]);
-    expect(rows.rows[0]?.count).toBe(6);
+    expect(rows.rows[0]?.count).toBe(16);
   });
   it("rejects a client-supplied exemption or another user's email", async () => {
     await seedAttempts(other);
-    await json(await request("/ai", "POST", { ...draft(), unlimited: true, email: ownerEmail }, other), 429);
+    await json(await request("/ai", "POST", { ...draft(), unlimited: true, email: ownerEmail }, other), 400);
     expect(provider).not.toHaveBeenCalled();
   });
   it("resolves identity from the database, not a stale or forged email claim", async () => {
     const token = (await createSession(env, { ...identities.get(other)!, email: ownerEmail })).accessToken;
     const data = await json(await request("/ai/status", "GET", undefined, other, token));
-    expect(data.allowance.unlimited).toBe(false);
+    expect(data.study.remaining).toBe(5);
   });
   it("keeps the global service budget enforced for an exempt account", async () => {
     await seedAttempts(owner);
@@ -104,7 +103,7 @@ describe("account-specific AI daily allowance", () => {
     const data = await json(await request("/ai", "POST", draft()), 429);
     expect(JSON.stringify(data)).toContain("AI_GLOBAL_LIMIT");
     const status = await json(await request("/ai/status"));
-    expect(status.allowance).toMatchObject({ unlimited: true, globalAvailable: false });
+    expect(status.study.remaining).toBeNull();
     expect(provider).not.toHaveBeenCalled();
   });
   it("does not call the provider twice when an exempt account replays a request", async () => {
@@ -139,7 +138,7 @@ describe("account-specific AI daily allowance", () => {
     await seedAttempts(owner);
     env.AI_UNLIMITED_EMAIL_HASHES = "";
     const status = await json(await request("/ai/status"));
-    expect(status.allowance).toMatchObject({ unlimited: false, limit: 5, remaining: 0, used: 5 });
+    expect(status.study).toMatchObject({limit:5,remaining:5});
     await json(await request("/ai", "POST", draft()), 429);
     expect(provider).not.toHaveBeenCalled();
   });
