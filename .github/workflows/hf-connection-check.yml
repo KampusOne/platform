@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths: [".github/workflows/hf-connection-check.yml"]
   workflow_dispatch:
+    inputs:
+      discover_model:
+        description: "Test a catalogue-verified inexpensive model in the preview only"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,8 +20,7 @@ concurrency:
 
 jobs:
   probe:
-    # Run automatically only on initial creation; subsequent checks are explicit.
-    if: github.event_name == 'workflow_dispatch' || github.run_number == 1
+    if: github.event_name == 'workflow_dispatch' || github.run_number == 2
     runs-on: ubuntu-latest
     timeout-minutes: 4
     environment: production
@@ -33,4 +37,5 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROBE_DISCOVER_MODEL: ${{ github.event_name == 'push' || inputs.discover_model }}
         run: node scripts/hf-connection-check.mjs
