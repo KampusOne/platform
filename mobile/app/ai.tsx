@@ -49,6 +49,7 @@ export default function StudentAI() {
   const generation=useRef(0),alive=useRef(true),draftOwner=useRef<string | undefined>(undefined);
   const text={color:theme.text,fontFamily:theme.font.body,fontSize:15,lineHeight:24};
   const muted={color:theme.textMuted,fontFamily:theme.font.body,fontSize:12,lineHeight:18};
+  const webInputStyle=Platform.OS==='web'?({outlineStyle:'none',outlineWidth:0,outlineColor:'transparent',boxShadow:'none',WebkitTapHighlightColor:'transparent'} as any):undefined;
   const storageKey=`ai-workspace-v3.${user?.id}.${workspace}`;
   const valid=()=>alive.current;
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;};},[]);
@@ -135,7 +136,6 @@ export default function StudentAI() {
       <ScrollView ref={scroll} style={{flex:1}} contentContainerStyle={{flexGrow:1,paddingHorizontal:24,paddingBottom:16}} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" onContentSizeChange={()=>{if(pending)scroll.current?.scrollToEnd({animated:false});}}>
         {!loaded||draftOwner.current!==user?.id?<View style={{gap:16,paddingTop:40}}><SkeletonBlock width="55%" height={30}/><SkeletonBlock width="80%"/><ListSkeleton count={2}/></View>:null}
         {loaded&&draftOwner.current===user?.id&&!turns.length&&!pending?<View style={{flex:1,justifyContent:'center',paddingVertical:35}}>
-          <Image source={require('../assets/brand/kampusone-symbol-gradient.png')} resizeMode="contain" accessibilityLabel="KampusOne" style={{width:48,height:48,marginBottom:25}}/>
           <Text style={{...muted,fontSize:15,marginBottom:10}}>Hi, {profile?.first_name || 'there'}.</Text>
           <Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:34,lineHeight:41,maxWidth:430}}>{workspace==='ask'?'What are we\nworking on?':'Make it easier\nto understand.'}</Text>
           <Text style={{...muted,fontSize:14,lineHeight:22,marginTop:15,maxWidth:410}}>{workspace==='ask'?'Ask a question, plan a class, or find help on campus.':'Add your material. Get a detailed summary or organised revision notes.'}</Text>
@@ -143,7 +143,7 @@ export default function StudentAI() {
         </View>:null}
         {loaded&&draftOwner.current===user?.id?turns.map(turn=>{
           const file=turn.file ?? (turn.fileName?{name:turn.fileName,type:/\.(png|jpe?g|webp)$/i.test(turn.fileName)?'image/jpeg':'application/pdf',...(turn.mediaId?{mediaId:turn.mediaId}:{})}:undefined);
-          return <View key={turn.requestId}>{renderUser(turn.prompt??'',file)}<Text style={{...muted,fontFamily:theme.font.semibold,color:theme.brand,marginBottom:8}}>KampusOne</Text><StudyAnswer value={turn.text}/>
+          return <View key={turn.requestId}>{renderUser(turn.prompt??'',file)}<StudyAnswer value={turn.text}/>
             {turn.cards?.map(card=><Pressable key={card.id} accessibilityRole="button" onPress={()=>{if(/^\/student-service\?(id|product)=[0-9a-f-]{36}$/i.test(card.path))router.push(card.path as never);}} style={{marginTop:12,padding:16,borderWidth:1,borderColor:theme.border,borderRadius:13,backgroundColor:theme.surface,flexDirection:'row',alignItems:'center',gap:12}}><Ionicons name={card.kind==='tutor'?'person-outline':'bag-outline'} size={23} color={theme.brand}/><View style={{flex:1}}><Text style={{...text,fontFamily:theme.font.semibold,fontSize:14}}>{card.title}</Text><Text style={muted}>{card.subtitle}</Text></View><Ionicons name="chevron-forward" size={17} color={theme.textMuted}/></Pressable>)}
             {turn.actions?.map(action=><View key={action.id} style={{marginTop:14,padding:17,borderWidth:1,borderColor:theme.border,borderRadius:14,backgroundColor:theme.surface}}><Text style={{...text,fontFamily:theme.font.semibold}}>{action.entry.courseCode || action.entry.title}</Text><Text style={muted}>{action.entry.date || `Every ${days[action.entry.dayOfWeek]}`} · {action.entry.startsAt}–{action.entry.endsAt}{action.entry.venue?`\n${action.entry.venue}`:''}</Text>{smallButton(action.confirmed?'Added to timetable':confirming===action.id?'Adding…':'Add to timetable',()=>void confirm(turn,action),Boolean(confirming)||action.confirmed===true)}</View>)}
             <View style={{alignSelf:'flex-start',marginTop:7}}>{iconButton('copy-outline','Copy answer',()=>void copy(turn.text))}</View>
@@ -157,7 +157,7 @@ export default function StudentAI() {
         {!status&&loaded?smallButton('Check AI availability',()=>void loadStatus(),busy):null}
         {attachment?<AttachmentPreview file={attachment} uploading={uploading} onRemove={()=>{setAttachment(undefined);key.current=randomUUID();}} onOpen={()=>void openFile(attachment)}/>:null}
         <View style={{borderWidth:1,borderColor:theme.border,borderRadius:22,backgroundColor:theme.surface,paddingHorizontal:9,paddingTop:12,paddingBottom:5}}>
-          <TextInput accessibilityLabel="Message KampusOne AI" value={prompt} onChangeText={changePrompt} editable={loaded&&!busy} placeholder={workspace==='ask'?'Ask KampusOne…':'Add instructions or paste your material…'} placeholderTextColor={theme.textMuted} multiline maxLength={20000} textAlignVertical="top" style={{color:theme.text,fontFamily:theme.font.body,fontSize:16,lineHeight:23,minHeight:43,maxHeight:150,paddingHorizontal:7,paddingBottom:8}}/>
+          <TextInput accessibilityLabel="Message KampusOne AI" value={prompt} onChangeText={changePrompt} editable={loaded&&!busy} placeholder={workspace==='ask'?'Ask KampusOne…':'Add instructions or paste your material…'} placeholderTextColor={theme.textMuted} multiline maxLength={20000} textAlignVertical="top" style={[{color:theme.text,fontFamily:theme.font.body,fontSize:16,lineHeight:23,minHeight:43,maxHeight:150,paddingHorizontal:7,paddingBottom:8},webInputStyle]}/>
           <View style={{flexDirection:'row',alignItems:'center'}}>{iconButton('add','Attach image or document',()=>void attach(),busy||!loaded)}{iconButton('information-circle-outline','AI privacy and help',()=>setSheet('info'))}<View style={{flex:1}}/>
             <Pressable accessibilityRole="button" accessibilityLabel={busy?'AI is working':'Send message'} accessibilityState={{disabled:busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment),busy}} disabled={busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment)} onPress={()=>void send()} style={{width:42,height:42,borderRadius:21,alignItems:'center',justifyContent:'center',backgroundColor:theme.deepBrand,opacity:busy||(!prompt.trim()&&!attachment)?0.5:1}}><Ionicons name="arrow-up" size={24} color="#FFFFFF"/></Pressable>
           </View>
@@ -165,7 +165,7 @@ export default function StudentAI() {
         <Text style={{...muted,fontSize:10,textAlign:'center',marginTop:7}}>AI can make mistakes. Check important details.</Text>
       </View>
     </KeyboardAvoidingView>
-    <AIEdgeGlow active={busy&&!uploading}/>
+    <AIEdgeGlow active={busy}/>
     <Modal visible={sheet!==null} transparent animationType="fade" onRequestClose={()=>setSheet(null)}>
       <View style={{flex:1,justifyContent:'flex-end',backgroundColor:'rgba(0,0,0,0.35)'}}><Pressable accessibilityLabel="Close panel" accessibilityRole="button" onPress={()=>setSheet(null)} style={{flex:1}}/>
         <SafeAreaView edges={['bottom']} style={{backgroundColor:theme.canvas,borderTopLeftRadius:24,borderTopRightRadius:24,width:'100%',maxWidth:760,alignSelf:'center',maxHeight:'82%',padding:22}}>
