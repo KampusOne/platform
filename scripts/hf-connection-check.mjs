@@ -115,6 +115,22 @@ try {
   for (const name of names) if (!settings.bindings?.some(binding => binding.name === name)) throw new Error('Required binding missing');
   if (settings.bindings.find(binding => binding.name === 'HF_TOKEN')?.type !== 'secret_text') throw new Error('Token must be a secret');
   report('PASS: required production bindings present; HF token value not read by CI.');
+  let candidate;
+  if (process.env.PROBE_DISCOVER_MODEL === 'true') {
+    stage = 'read public router model catalogue';
+    const catalogueResponse = await fetchSafe('https://router.huggingface.co/v1/models');
+    if (!catalogueResponse.ok) throw new Error(`HTTP ${catalogueResponse.status}`);
+    const catalogue = await catalogueResponse.json();
+    const preferred = ['Qwen/Qwen3-4B-Instruct-2507', 'Qwen/Qwen2.5-7B-Instruct-1M', 'Qwen/Qwen3-30B-A3B-Instruct-2507'];
+    for (const id of preferred) {
+      const entry = Array.isArray(catalogue.data) ? catalogue.data.find(value => value.id === id) : undefined;
+      const providers = (Array.isArray(entry?.providers) ? entry.providers : []).filter(value => value.status === 'live' && /^[a-z0-9-]{1,40}$/.test(value.provider ?? '') && Number.isFinite(value.pricing?.input) && Number.isFinite(value.pricing?.output) && value.pricing.input >= 0 && value.pricing.output >= 0 && value.pricing.input <= 0.5 && value.pricing.output <= 0.5 && value.context_length >= 32000).sort((a, b) => a.pricing.output - b.pricing.output);
+      if (providers[0]) { candidate = id + ':' + providers[0].provider; break; }
+    }
+    if (!candidate) throw new Error('No allowlisted low-cost live model available');
+    report(`Diagnostic candidate (not production setting): ${candidate}`);
+    report('Catalogue lists the candidate live, with input and output each at most USD 0.50 per million tokens. One request only.');
+  }
   stage = 'create isolated remote preview session';
   const session = await cf('/workers/scripts/platformp/subdomain/edge-preview');
   let sessionToken = session.token, host = 'platformp.divine-haze-54eb.workers.dev';
@@ -127,7 +143,7 @@ try {
   }
   if (typeof sessionToken !== 'string') throw new Error('Missing preview session');
   const form = new FormData(), probeToken = randomBytes(32).toString('hex');
-  form.set('metadata', JSON.stringify({ main_module: 'probe.mjs', compatibility_date: '2026-09-09', bindings: [...names.map(name => ({ name, type: 'inherit' })), { name: 'PROBE_TOKEN', type: 'plain_text', text: probeToken }, { name: 'PROBE_EXPIRES_AT', type: 'plain_text', text: String(Date.now() + 180000) }] }));
+  form.set('metadata', JSON.stringify({ main_module: 'probe.mjs', compatibility_date: '2026-09-09', bindings: [...names.map(name => name === 'HF_CHAT_MODEL' && candidate ? { name, type: 'plain_text', text: candidate } : { name, type: 'inherit' }), { name: 'PROBE_TOKEN', type: 'plain_text', text: probeToken }, { name: 'PROBE_EXPIRES_AT', type: 'plain_text', text: String(Date.now() + 180000) }] }));
   form.set('probe.mjs', new Blob([`export default { fetch: ${probe.toString()} };`], { type: 'application/javascript+module' }), 'probe.mjs');
   form.set('wrangler-session-config', JSON.stringify({ workers_dev: true }));
   stage = 'upload isolated preview';
