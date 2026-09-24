@@ -1,0 +1,122 @@
+name: AI runtime configuration check
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/ai-runtime-check.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: production
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check active Worker AI configuration without exposing credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const lines = ['# AI runtime configuration check', '', 'This checks deployed configuration and public model listings, NOT successful authenticated inference.', ''];
+          let failures = 0;
+          const report = (name, ok, detail = '') => {
+            const line = `${ok ? 'PASS' : 'FAIL'}: ${name}${detail ? ' - ' + detail : ''}`;
+            console.log(line);
+            lines.push(line);
+            if (!ok) failures++;
+          };
+          const finish = () => {
+            if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+            if (failures) process.exitCode = 1;
+          };
+          const fetchSafe = (url, options = {}) => fetch(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(15000) });
+          const safeIdentifier = value => typeof value === 'string' && value.length <= 160 && /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value) && !value.startsWith('hf_') && !value.startsWith('AIza');
+          try {
+            const token = process.env.CLOUDFLARE_API_TOKEN;
+            const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+            if (!token || !account || !/^[a-f0-9]{32}$/i.test(account)) {
+              report('GitHub production Cloudflare credentials', false, 'Existing deployment credentials are missing or invalid; no values were logged.');
+            } else {
+              const response = await fetchSafe(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/platformp/settings`, { headers: { Authorization: `Bearer ${token}` } });
+              if (!response.ok) {
+                report('Cloudflare settings read', false, `HTTP ${response.status}; response body withheld.`);
+              } else {
+                const payload = await response.json();
+                const bindings = payload?.result?.bindings;
+                if (!payload.success || !Array.isArray(bindings)) {
+                  report('Cloudflare settings read', false, 'Unexpected response; raw data withheld.');
+                } else {
+                  report('Cloudflare settings read', true);
+                  const get = name => bindings.find(binding => binding.name === name);
+                  for (const name of ['AI_ASSISTANT_ENABLED', 'UNIFIED_SCHEMA_READY']) report(name, get(name)?.text === 'true', get(name)?.text === 'true' ? 'enabled' : 'not enabled');
+                  report('MAINTENANCE_MODE', get('MAINTENANCE_MODE')?.text !== 'true', get('MAINTENANCE_MODE')?.text === 'true' ? 'active' : 'inactive');
+                  for (const name of ['GEMINI_API_KEY', 'HF_TOKEN']) {
+                    const binding = get(name);
+                    report(name, binding?.type === 'secret_text', !binding ? 'missing' : binding.type === 'secret_text' ? 'secret binding present; value never read or logged' : 'bound but not stored as a secret; value withheld');
+                  }
+                  report('PRIVATE_BUCKET', get('PRIVATE_BUCKET')?.type === 'r2_bucket', 'private source-file binding');
+                  for (const [name, fallback, maximum] of [['AI_DAILY_USER_LIMIT', 5, 100], ['AI_DAILY_GLOBAL_LIMIT', 100, 100000]]) {
+                    const raw = get(name)?.text;
+                    const n = raw === undefined || raw.trim() === '' ? fallback : Number(raw);
+                    const ok = Number.isSafeInteger(n) && n > 0;
+                    report(name, ok, ok ? `effective cap ${Math.min(n, maximum)}` : 'new requests are blocked by a zero or invalid cap');
+                  }
+                  for (const name of ['GEMINI_MODEL', 'HF_CHAT_MODEL', 'HF_VISION_MODEL']) {
+                    const binding = get(name);
+                    if (binding?.type === 'secret_text') {
+                      report(name, true, 'secret binding present; model ID cannot be inspected');
+                      continue;
+                    }
+                    const model = binding?.text?.trim();
+                    const valid = safeIdentifier(model);
+                    report(name, valid, valid ? model : 'missing or invalid model ID; raw value withheld');
+                    if (valid && name.startsWith('HF_')) {
+                      const baseModel = model.split(':')[0];
+                      const url = `https://huggingface.co/api/models/${baseModel.split('/').map(encodeURIComponent).join('/')}?expand[]=inferenceProviderMapping`;
+                      try {
+                        const res = await fetchSafe(url);
+                        if (!res.ok) {
+                          report(`${name} hosted listing`, false, `HTTP ${res.status}; response body withheld.`);
+                          continue;
+                        }
+                        const metadata = await res.json();
+                        const mapping = metadata.inferenceProviderMapping;
+                        const live = mapping && typeof mapping === 'object' ? Object.entries(mapping).filter(([, value]) => value && value.status === 'live') : [];
+                        report(`${name} hosted listing`, live.length > 0, `${live.length} live provider listing(s); availability and credits still require an authenticated request`);
+                        for (const [provider, value] of live) {
+                          if (safeIdentifier(provider) && safeIdentifier(value.task)) {
+                            const line = `Hosted option: ${name} / ${provider} / ${value.task}`;
+                            console.log(line); lines.push(line);
+                          }
+                        }
+                      } catch {
+                        report(`${name} hosted listing`, false, 'Listing lookup failed; no raw error or credential logged.');
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            for (const [path, expected] of [['/health/ready', 200], ['/v1/ai/status', 401]]) {
+              try {
+                const res = await fetchSafe(`https://platformp.divine-haze-54eb.workers.dev${path}`);
+                report(`Worker ${path}`, res.status === expected, `HTTP ${res.status}; expected ${expected}`);
+                await res.body?.cancel();
+              } catch {
+                report(`Worker ${path}`, false, 'Network check failed; no raw error logged.');
+              }
+            }
+          } catch {
+            report('Runtime check', false, 'Unexpected check failure; all raw error data withheld.');
+          } finally {
+            finish();
+          }
+          NODE
