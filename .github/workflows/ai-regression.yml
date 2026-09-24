@@ -1,0 +1,19 @@
+name: AI provider regression
+on:
+  pull_request:
+    paths: ["server/**", "mobile/app/ai.tsx", "mobile/app/timetable-import.tsx", "tests/ai-provider.test.mjs", ".github/workflows/ai-regression.yml"]
+  push:
+    branches: [main]
+    paths: ["server/**", "mobile/app/ai.tsx", "mobile/app/timetable-import.tsx", "tests/ai-provider.test.mjs", ".github/workflows/ai-regression.yml"]
+permissions:
+  contents: read
+jobs:
+  adapters:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --experimental-strip-types --test tests/ai-provider.test.mjs
