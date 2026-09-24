@@ -6,7 +6,7 @@ on:
     paths:
       - ".github/workflows/approved-ai-migration-20260924.yml"
 
-# Retry after runner syntax validation.
+# Retry after Wrangler dry-run config validation.
 permissions:
   contents: read
 
