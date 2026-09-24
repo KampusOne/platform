@@ -1,0 +1,39 @@
+name: Student AI validation dependencies
+on:
+  push:
+    branches: [feat/student-ai-profiles-20260924]
+    paths: [.github/workflows/student-ai-dependencies.yml]
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: packages/contracts
+      - run: npm install --save-exact unpdf@1.8.1
+        working-directory: server
+      - name: Read public inference catalogue
+        run: |
+          node --input-type=module <<'JS'
+          import {writeFileSync} from 'node:fs';
+          const r=await fetch('https://router.huggingface.co/v1/models');
+          if(!r.ok) throw new Error('Catalogue unavailable');
+          const data=await r.json();
+          const models=data.data.filter(m=>/Qwen3-VL-(8B|30B)|Qwen2.5-VL-(7B|3B)|Qwen3-4B-Instruct/.test(m.id));
+          writeFileSync('model-catalogue.json',JSON.stringify(models,null,2));
+          JS
+      - name: Package validation dependencies
+        run: tar -czf student-validation-deps.tar.gz server/node_modules server/package-lock.json packages/contracts/node_modules packages/contracts/dist model-catalogue.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: student-validation-deps
+          path: student-validation-deps.tar.gz
+          retention-days: 1
