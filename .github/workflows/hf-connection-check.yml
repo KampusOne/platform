@@ -1,9 +1,6 @@
 name: Hugging Face connection check
 
 on:
-  push:
-    branches: [main]
-    paths: [".github/workflows/hf-connection-check.yml"]
   workflow_dispatch:
     inputs:
       discover_model:
@@ -20,7 +17,6 @@ concurrency:
 
 jobs:
   probe:
-    if: github.event_name == 'workflow_dispatch' || github.run_number == 2
     runs-on: ubuntu-latest
     timeout-minutes: 4
     environment: production
@@ -37,5 +33,5 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PROBE_DISCOVER_MODEL: ${{ github.event_name == 'push' || inputs.discover_model }}
+          PROBE_DISCOVER_MODEL: ${{ inputs.discover_model }}
         run: node scripts/hf-connection-check.mjs
