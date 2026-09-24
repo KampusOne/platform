@@ -50,6 +50,7 @@ function projection(user: User, withViews: boolean) {
     coalesce(posts.author_user_id = ${user.id}::uuid, false) as can_delete,
     case when posts.audience->>'visibility' = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end as visibility,
     true as social_enabled,
+    case when posts.audience->>'studentPost'='true' and author.user_id is not null then posts.author_user_id else null end as source_user_id,
     case when posts.audience->>'studentPost' = 'true' then author.profile_image_url else null end as source_image_url,
     ${views} as view_count,
     (select count(*)::int from public.feed_likes likes where likes.post_id = posts.id) as like_count,
@@ -93,6 +94,7 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   const user = currentUser(c);
   const university = campus(user);
   const cursor = parseFeedCursor(c.req.query("cursor"));
+  const author = c.req.query("author") ? id(c.req.query("author")!) : null;
   const category = c.req.query("category")?.toUpperCase() || null;
   const search = c.req.query("q")?.trim().slice(0, 200) || null;
   const result = await database(c.env).execute(sql`
@@ -104,8 +106,9 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
       select r.created_at, r.user_id, p.display_name from public.feed_reposts r
       join public.profiles p on p.user_id = r.user_id and p.deleted_at is null
       where r.post_id = posts.id order by r.created_at desc, r.user_id desc limit 1
-    ) latest on true
+    ) latest on ${author}::uuid is null
     where ${visiblePost(university)}
+      and (${author}::uuid is null or posts.author_user_id=${author}::uuid)
       and (${category}::text is null or posts.category = ${category})
       and (${search}::text is null or concat_ws(' ', posts.title, posts.summary, posts.body, author.display_name, sources.name) ilike ${search ? `%${search}%` : null})
       and (${cursor?.at ?? null}::timestamptz is null or
@@ -126,7 +129,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
   await requireSocial(c);
   const user = currentUser(c);
   const university = campus(user);
-  const data = await input(c, z.object({ body: z.string().trim().min(4).max(5000).refine((value) => Array.from(value).length >= 4), requestId: uuid, mediaId: uuid.optional(), quotedPostId: uuid.optional() }));
+  const data = await input(c, z.object({ body: z.string().trim().max(5000), requestId: uuid, mediaId: uuid.optional(), quotedPostId: uuid.optional() }).refine(d=>d.body.length>0 || Boolean(d.mediaId),"Add a message or photo."));
   // Retry before quota consumption; a reused key may not change the payload.
   const retry = firstRow(await database(c.env).execute(sql`
     select id, body, image_url, quoted_post_id from public.feed_posts
@@ -153,7 +156,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
       on conflict(university_id, name) do update set owner_user_id = excluded.owner_user_id returning id
     )
     insert into public.feed_posts(university_id, source_id, author_user_id, category, title, summary, body, image_url, audience, status, published_at, client_request_id, quoted_post_id)
-    select ${university}::uuid, source.id, ${user.id}::uuid, 'UPDATE', ${Array.from(data.body).slice(0, 180).join("")}, ${Array.from(data.body).slice(0, 500).join("")}, ${data.body}, ${imageUrl},
+    select ${university}::uuid, source.id, ${user.id}::uuid, 'UPDATE', ${Array.from(data.body.padEnd(4," ")).slice(0, 180).join("")}, ${Array.from(data.body.padEnd(4," ")).slice(0, 500).join("")}, ${data.body}, ${imageUrl},
       jsonb_build_object('studentPost', true, 'visibility', case when ${data.quotedPostId ?? null}::uuid is null or (select audience->>'visibility' from target) = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end),
       'PUBLISHED', now(), ${data.requestId}::uuid, ${data.quotedPostId ?? null}::uuid
     from source where ${data.quotedPostId ?? null}::uuid is null or exists(select 1 from target)

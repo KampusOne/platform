@@ -20,9 +20,13 @@ export default {
           sql`select app_private.cleanup_request_rate_limits() as deleted`,
         ),
         env.UNIFIED_SCHEMA_READY === "true"
-          ? database(env).execute(sql`with removed as (
+          ? database(env).execute(sql`with scrubbed as (
+              update app_private.ai_requests set result='{"deleted":true,"version":3}'::jsonb
+              where mode in ('summary','notes','quiz') and created_at<now()-interval '90 days' and result->>'deleted' is distinct from 'true'
+              returning 1
+            ), removed as (
               delete from app_private.ai_requests
-              where result->>'version'='2'
+              where mode not in ('summary','notes','quiz')
                 and (created_at < now()-interval '90 days'
                   or (result->>'deleted'='true' and created_at < now()-interval '2 days'))
               returning 1

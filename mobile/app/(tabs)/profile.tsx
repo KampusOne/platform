@@ -99,7 +99,7 @@ type ResourceState = "idle" | "ready" | "stale" | "error";
 export default function ProfileScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const { profile: sessionProfile, signOut, reloadProfile } = useAuth();
+  const { user, profile: sessionProfile, signOut, reloadProfile } = useAuth();
   const toast = useToast();
   const { hideCgpa } = usePreferences();
   const [uploading, setUploading] = useState(false);
@@ -315,6 +315,7 @@ export default function ProfileScreen() {
               />
             </Pressable>
           </View>
+          {user?.id?<Pressable accessibilityRole="button" accessibilityLabel="View your public student profile" onPress={()=>router.push({pathname:"/student-profile",params:{id:user.id}})} style={{paddingVertical:10}}><Text style={{color:theme.brand,fontFamily:theme.font.semibold,fontSize:12}}>View public profile →</Text></Pressable>:null}
           <View style={styles.usernameRow}>
             <Text style={styles.username}>
               @{profile?.username ?? "student"}

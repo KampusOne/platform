@@ -237,13 +237,14 @@ studentRoutes.get("/home", async (context) => {
       from public.profiles where user_id = ${user.id}::uuid and deleted_at is null limit 1
     `),
     database(context.env).execute(sql`
-      select id, title, course_code, venue, lecturer, day_of_week,
+      select id, title, course_code, venue, lecturer, day_of_week,to_jsonb(timetable_entries)->>'occurs_on' as occurs_on,
         to_char(starts_at, 'HH24:MI') as starts_at,
         to_char(ends_at, 'HH24:MI') as ends_at,
         reminder_minutes, reminder_enabled
       from public.timetable_entries
       where user_id = ${user.id}::uuid and status = 'ACTIVE'
         and day_of_week = ${today}
+        and (to_jsonb(timetable_entries)->>'occurs_on' is null or to_jsonb(timetable_entries)->>'occurs_on'=to_char(now() at time zone 'Africa/Lagos','YYYY-MM-DD'))
       order by starts_at limit 6
     `),
     database(context.env).execute(sql`
@@ -396,9 +397,10 @@ studentRoutes.get("/timetable", async (context) => {
     select id, course_id, title, course_code, venue, lecturer, day_of_week,
       to_char(starts_at, 'HH24:MI') as starts_at,
       to_char(ends_at, 'HH24:MI') as ends_at,
-      reminder_minutes, reminder_enabled, status
+      reminder_minutes, reminder_enabled, status,to_jsonb(timetable_entries)->>'occurs_on' as occurs_on
     from public.timetable_entries
     where user_id = ${user.id}::uuid and status <> 'ARCHIVED'
+      and (to_jsonb(timetable_entries)->>'occurs_on' is null or (to_jsonb(timetable_entries)->>'occurs_on')::date>=(now() at time zone 'Africa/Lagos')::date)
     order by day_of_week, starts_at
   `);
   return context.json({ entries: result.rows });

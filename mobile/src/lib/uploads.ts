@@ -85,3 +85,19 @@ export async function pickAndUpload(kind: UploadKind, source: PhotoSource = "lib
   await verifyPhoto(saved.url);
   return saved;
 }
+
+export type StagedAttachment = { uri?: string | undefined; name: string; type: string; size?: number | undefined; mediaId?: string | undefined };
+/** Selection is local. Nothing is uploaded until Send/Upload is explicitly tapped. */
+export async function pickAttachment(): Promise<StagedAttachment | null> {
+  const result=await DocumentPicker.getDocumentAsync({type:["image/jpeg","image/png","image/webp","application/pdf","text/plain"],copyToCacheDirectory:true,multiple:false});
+  if(result.canceled) return null;
+  const file=result.assets[0]; if(!file) return null;
+  if((file.size ?? 0)>8*1024*1024) throw new Error("Choose a file smaller than 8 MB.");
+  return {uri:file.uri,name:file.name,type:file.mimeType ?? (file.name.toLowerCase().endsWith('.txt')?'text/plain':'application/pdf'),size:file.size};
+}
+export async function uploadAttachment(file: StagedAttachment): Promise<StagedAttachment> {
+  if(file.mediaId) return file;
+  if(!file.uri) throw new Error("Please reattach this file. Your message is still here.");
+  const saved=await upload("resource",{uri:file.uri,name:file.name,type:file.type});
+  return {...file,mediaId:saved.id};
+}

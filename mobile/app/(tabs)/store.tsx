@@ -1,7 +1,7 @@
 import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -60,6 +60,8 @@ const naira = (kobo: number) =>
   }).format(Number(kobo) / 100);
 
 export default function StoreScreen() {
+  const {product:focusedProduct}=useLocalSearchParams<{product?:string}>();
+  useFocusEffect(useCallback(()=>()=>{if(focusedProduct)router.setParams({product:undefined});},[focusedProduct]));
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { width: windowWidth } = useWindowDimensions();
@@ -145,14 +147,14 @@ export default function StoreScreen() {
     const term = query.trim().toLowerCase();
     return products.filter((item) => {
       const matchesCategory =
-        selectedCategory === "All" || item.category === selectedCategory;
+        Boolean(focusedProduct) || selectedCategory === "All" || item.category === selectedCategory;
       const matchesQuery =
-        `${item.name} ${item.description} ${item.category} ${item.vendor_name}`
+        Boolean(focusedProduct) || `${item.name} ${item.description} ${item.category} ${item.vendor_name}`
           .toLowerCase()
           .includes(term);
-      return matchesCategory && matchesQuery;
+      return (!focusedProduct || item.id===focusedProduct) && matchesCategory && matchesQuery;
     });
-  }, [products, query, selectedCategory]);
+  }, [products, query, selectedCategory, focusedProduct]);
 
   const cartItems = useMemo(
     () =>

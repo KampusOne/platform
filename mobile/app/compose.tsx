@@ -2,8 +2,12 @@ import { InlineLoading } from "@/src/components/skeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { randomUUID } from "expo-crypto";
-import {  Image, Text, View } from "react-native";
-import { ToolPage, ToolButton, ToolField } from "@/src/components/toolkit";
+import { Image, Text, View, Pressable, TextInput, ScrollView, KeyboardAvoidingView, Platform, StyleSheet, Modal } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { ProfileAvatar } from "@/src/components/profile-avatar";
+import { useAuth } from "@/src/auth/auth-context";
+
 import { QuotedPostPreview } from "@/src/components/quoted-post";
 import { useToast } from "@/src/components/toast";
 import { useAppearance } from "@/src/lib/appearance";
@@ -15,6 +19,10 @@ import { pickPhoto, uploadPreparedPhoto, verifyPhoto, type PreparedPhoto, type U
 export default function Compose() {
   const { theme } = useAppearance();
   const toast = useToast();
+  const {user,profile}=useAuth();
+  const [discard,setDiscard]=useState(false);
+  const owner=useRef(user?.id);owner.current=user?.id;
+  const boundOwner=useRef(user?.id);
   const { quote } = useLocalSearchParams<{ quote?: string | string[] }>();
   const isQuote = quote !== undefined;
   const quoteId = validPostId(quote) ? quote : null;
@@ -84,7 +92,7 @@ export default function Compose() {
       if (alive.current) { setBusy(false); setUploading(false); }
     }
   }
-  const canPost = !busy && Array.from(body.trim()).length >= 4 && (!draftPhoto || (photoReady && !previewError)) && (!isQuote || Boolean(original && !quoteLoading));
+  const canPost = owner.current===boundOwner.current && !busy && (body.trim().length > 0 || Boolean(photoReady)) && (!draftPhoto || (photoReady && !previewError)) && (!isQuote || Boolean(original && !quoteLoading));
   async function publish() {
     if (lock.current || !canPost) return;
     lock.current = true; setBusy(true);
@@ -95,27 +103,28 @@ export default function Compose() {
       if (alive.current) toast(error instanceof Error ? error.message : "Could not post. Your draft is still here.", "error");
     } finally { lock.current = false; if (alive.current) setBusy(false); }
   }
-  return (
-    <ToolPage title={isQuote ? "Quote post" : "New post"}>
-      <ToolField label={isQuote ? "Add your thoughts" : "What’s happening?"} value={body} editable={!busy} onChangeText={(value) => { setBody(value); requestId.current = randomUUID(); }} multiline maxLength={5000} style={{ minHeight: 150 }} />
-      <Text style={{ color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, textAlign: "right", marginBottom: 14 }}>{body.length}/5000 · At least 4 characters</Text>
-      {draftPhoto ? <View style={{ width: "100%", marginBottom: 14 }}>
-        <Image accessibilityLabel="Selected post photo" source={{ uri: draftPhoto.uri }} resizeMode="contain"
-          onLoad={() => setPreviewError(false)} onError={() => setPreviewError(true)}
-          style={{ width: "100%", height: 220, borderRadius: 14 }} />
-        {uploading ? <View style={{ flexDirection: "row", gap: 8, alignItems: "center", marginTop: 8 }}><InlineLoading color={theme.brand} /><Text style={{ color: theme.textMuted, fontFamily: theme.font.body }}>Uploading and checking photo…</Text></View> : null}
-        {previewError ? <Text accessibilityRole="alert" style={{ color: theme.deepBrand, marginTop: 8 }}>This preview could not load. Replace the photo or remove it before posting.</Text> : null}
-        {photoReady && !previewError ? <Text style={{ color: theme.textMuted, fontFamily: theme.font.body, marginTop: 8 }}>Photo ready</Text> : null}
-      </View> : null}
-      {photoError ? <Text accessibilityRole="alert" style={{ color: theme.deepBrand, fontFamily: theme.font.body, marginBottom: 12 }}>{photoError}</Text> : null}
-      {photoError && draftPhoto ? <ToolButton secondary label={photo ? "Retry photo check" : "Retry upload"} disabled={busy} onPress={() => void attach(true)} /> : null}
-      {isQuote && quoteLoading ? <InlineLoading color={theme.brand} /> : null}
-      {isQuote && original ? <QuotedPostPreview post={original} /> : null}
-      {quoteError ? <><Text accessibilityRole="alert" style={{ color: theme.deepBrand, fontFamily: theme.font.body, marginVertical: 12 }}>{quoteError}</Text>{quoteId ? <ToolButton secondary label="Retry original post" disabled={busy} onPress={() => void loadQuote()} /> : null}</> : null}
-      <Text style={{ color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, lineHeight: 18, marginVertical: 16 }}>{isQuote && original?.visibility !== "PUBLIC" ? "This quote keeps the original post’s campus-only audience." : "Visible to everyone signed in to KampusOne."}</Text>
-      <ToolButton secondary label={uploading ? "Preparing photo…" : draftPhoto ? "Replace photo" : "Add photo"} disabled={busy} onPress={() => void attach()} />
-      {draftPhoto ? <ToolButton secondary label="Remove photo" disabled={busy} onPress={() => { setPhoto(null); setDraftPhoto(null); setPhotoReady(false); setPhotoError(""); setPreviewError(false); requestId.current = randomUUID(); }} /> : null}
-      <ToolButton label={busy && !uploading ? "Posting…" : isQuote ? "Post quote" : "Post"} disabled={!canPost} onPress={() => void publish()} />
-    </ToolPage>
-  );
+  function close(){if(busy)return;if(body.trim()||draftPhoto)setDiscard(true);else router.canGoBack()?router.back():router.replace("/(tabs)/feed");}
+  const text={fontFamily:theme.font.body,color:theme.text,fontSize:14,lineHeight:20};
+  const remove=()=>{setPhoto(null);setDraftPhoto(null);setPhotoReady(false);setPhotoError("");setPreviewError(false);requestId.current=randomUUID();};
+  if(owner.current!==boundOwner.current)return <SafeAreaView style={{flex:1,backgroundColor:theme.canvas}}><Text style={{...text,padding:24}}>Your account changed. Reopen the composer to start a new post.</Text><Pressable onPress={()=>router.replace("/(tabs)/feed")} accessibilityRole="button" style={{padding:24}}><Text style={text}>Back to feed</Text></Pressable></SafeAreaView>;
+  return <SafeAreaView edges={["top","bottom"]} style={{flex:1,backgroundColor:theme.canvas}}>
+    <KeyboardAvoidingView behavior={Platform.OS==="ios"?"padding":undefined} style={{flex:1,width:"100%",maxWidth:660,alignSelf:"center"}}>
+      <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between",paddingHorizontal:15,paddingVertical:8,borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:theme.border}}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close post composer" disabled={busy} onPress={close} style={{padding:10}}><Ionicons name="close" size={26} color={theme.text}/></Pressable>
+        <Text style={{...text,fontFamily:theme.font.semibold}}>{isQuote?"Quote post":"New post"}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Publish post" accessibilityState={{disabled:!canPost,busy:busy&&!uploading}} disabled={!canPost} onPress={()=>void publish()} style={{paddingHorizontal:20,paddingVertical:10,borderRadius:22,backgroundColor:theme.deepBrand,opacity:canPost?1:0.45}}><Text style={{...text,fontFamily:theme.font.semibold,color:"#FFFFFF"}}>{busy&&!uploading?"Posting…":"Post"}</Text></Pressable>
+      </View>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{flexGrow:1,padding:20}}>
+        <View style={{flexDirection:"row",alignItems:"center",gap:10,marginBottom:18}}><ProfileAvatar name={profile?.display_name??"You"} imageUrl={profile?.profile_image_url} size={42}/><View><Text style={{...text,fontFamily:theme.font.semibold}}>{profile?.display_name??"You"}</Text><Text style={{...text,fontSize:11,color:theme.textMuted}}>{isQuote&&original?.visibility!=="PUBLIC"?"Your campus":"KampusOne community"}</Text></View></View>
+        <TextInput accessibilityLabel={isQuote?"Your thoughts on this post":"Post text"} placeholder={isQuote?"Add your thoughts…":"What’s happening on campus?"} placeholderTextColor={theme.textMuted} value={body} editable={!busy} onChangeText={value=>{setBody(value);requestId.current=randomUUID();}} multiline maxLength={5000} style={{fontFamily:theme.font.body,color:theme.text,fontSize:18,lineHeight:28,minHeight:160,textAlignVertical:"top",padding:0,marginBottom:18}}/>
+        {draftPhoto?<View style={{position:"relative",marginBottom:15}}><Image accessibilityLabel="Selected post photo" source={{uri:draftPhoto.uri}} resizeMode="contain" onLoad={()=>setPreviewError(false)} onError={()=>setPreviewError(true)} style={{width:"100%",height:270,borderRadius:15,backgroundColor:theme.surfaceMuted}}/><Pressable accessibilityRole="button" accessibilityLabel="Remove photo" disabled={busy} onPress={remove} style={{position:"absolute",top:8,right:8,padding:8,borderRadius:22,backgroundColor:"rgba(0,0,0,0.7)"}}><Ionicons name="close" size={20} color="#FFFFFF"/></Pressable>{uploading?<View style={{flexDirection:"row",alignItems:"center",gap:8,marginTop:8}}><InlineLoading/><Text style={{...text,color:theme.textMuted,fontSize:12}}>Preparing photo…</Text></View>:null}</View>:null}
+        {previewError?<Text accessibilityRole="alert" style={{...text,color:theme.error,marginBottom:10}}>The photo preview could not load. Replace or remove it before posting.</Text>:null}
+        {photoError?<View style={{marginBottom:15,gap:8}}><Text accessibilityRole="alert" style={{...text,color:theme.error}}>{photoError}</Text><Pressable accessibilityRole="button" disabled={busy} onPress={()=>void attach(true)} style={{paddingVertical:10}}><Text style={{...text,color:theme.brand,fontFamily:theme.font.semibold}}>Retry photo</Text></Pressable></View>:null}
+        {isQuote&&quoteLoading?<InlineLoading/>:null}{original?<QuotedPostPreview post={original}/>:null}
+        {quoteError?<View style={{gap:10}}><Text accessibilityRole="alert" style={{...text,color:theme.error}}>{quoteError}</Text>{quoteId?<Pressable accessibilityRole="button" onPress={()=>void loadQuote()} disabled={busy} style={{paddingVertical:10}}><Text style={{...text,color:theme.brand}}>Retry original post</Text></Pressable>:null}</View>:null}
+      </ScrollView>
+      <View style={{flexDirection:"row",alignItems:"center",paddingHorizontal:16,paddingVertical:10,borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:theme.border}}><Pressable accessibilityRole="button" accessibilityLabel={draftPhoto?"Replace photo":"Attach photo"} disabled={busy} onPress={()=>void attach()} style={{padding:10}}><Ionicons name="image-outline" size={25} color={theme.brand}/></Pressable><Text style={{...text,color:theme.textMuted,fontSize:11,flex:1}}>Photo</Text><Text accessibilityLabel={`${body.length} of 5000 characters`} style={{...text,fontSize:12,color:theme.textMuted}}>{body.length}/5000</Text></View>
+      <Modal visible={discard} transparent animationType="fade" onRequestClose={()=>setDiscard(false)}><View style={{flex:1,justifyContent:"center",padding:30,backgroundColor:"rgba(0,0,0,0.4)"}}><View style={{padding:24,gap:18,borderRadius:18,backgroundColor:theme.surface}}><Text style={{...text,fontFamily:theme.font.semibold,fontSize:19}}>Discard this draft?</Text><Text style={text}>Your text and selected photo will be removed from this composer.</Text><Pressable accessibilityRole="button" onPress={()=>{setDiscard(false);router.canGoBack()?router.back():router.replace("/(tabs)/feed");}} style={{padding:10}}><Text style={{...text,color:theme.error}}>Discard</Text></Pressable><Pressable accessibilityRole="button" onPress={()=>setDiscard(false)} style={{padding:10}}><Text style={text}>Keep editing</Text></Pressable></View></View></Modal>
+    </KeyboardAvoidingView>
+  </SafeAreaView>;
 }

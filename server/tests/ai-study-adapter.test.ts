@@ -1,58 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { assertAIConfiguration, generateAI, selectAIProvider, type AIEnvironment, type AIMode } from "../src/lib/ai-provider";
-
-const env: AIEnvironment = { AI_ASSISTANT_ENABLED: "true", GEMINI_API_KEY: "synthetic-google-key", GEMINI_MODEL: "gemini-test", HF_TOKEN: "hf_SYNTHETIC", HF_CHAT_MODEL: "test/model:nscale", HF_VISION_MODEL: "test/vision" };
-
-describe("study provider adapter boundaries", () => {
-  it.each(["study", "summary", "notes", "quiz"] as AIMode[])("requires explicit HF selection for %s", mode => {
-    expect(selectAIProvider(mode)).toBe("gemini");
-    expect(selectAIProvider(mode, undefined, "huggingface")).toBe("huggingface");
-  });
-  it.each(["application/pdf", "image/jpeg", "image/png", "image/webp"])("rejects HF study media %s before an outbound call", async mimeType => {
-    const fetcher = vi.fn<typeof fetch>();
-    await expect(generateAI(env, { mode: "study", provider: "huggingface", prompt: "Read this", media: { mimeType, data: "PRIVATE_SOURCE" } }, fetcher)).rejects.toMatchObject({ reason: "AI_UNSUPPORTED_MEDIA", status: 400 });
-    expect(fetcher).not.toHaveBeenCalled();
-  });
-  it("allows the text/plain configuration used before the route extracts UTF-8 text", () => {
-    expect(assertAIConfiguration(env, "summary", "text/plain", "huggingface").provider).toBe("huggingface");
-  });
-  it("keeps timetable image/text on HF and timetable PDF on Gemini", () => {
-    expect(selectAIProvider("timetable")).toBe("huggingface");
-    expect(selectAIProvider("timetable", "image/jpeg")).toBe("huggingface");
-    expect(selectAIProvider("timetable", "application/pdf")).toBe("gemini");
-  });
-  it("pins the selected HF model, limits output and keeps only recent study history", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ choices: [{ finish_reason: "stop", message: { content: "A short answer" } }] }));
-    const history = Array.from({ length: 10 }, (_, i) => ({ prompt: "question-" + i, text: "answer-" + i }));
-    expect(await generateAI(env, { mode: "study", provider: "huggingface", prompt: "New question", history }, fetcher)).toEqual({ text: "A short answer", provider: "huggingface" });
-    const init = fetcher.mock.calls[0]?.[1];
-    const body = JSON.parse(String(init?.body));
-    expect(body.model).toBe("test/model:nscale");
-    expect(body.max_tokens).toBe(4096);
-    expect(body.stream).toBe(false);
-    expect(body.messages).toHaveLength(14);
-    expect(body.messages[1].content).toBe("question-4");
-    expect(init?.signal).toBeDefined();
-    expect(fetcher).toHaveBeenCalledTimes(1);
-  });
-  it.each(["", "not JSON", JSON.stringify({ error: { message: "Permission denied PRIVATE_INPUT" } }), "x".repeat(17000)])("keeps non-project Gemini denials generic and redacted (%#)", async body => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 403 }));
-    await expect(generateAI(env, { mode: "study", prompt: "Question" }, fetcher)).rejects.toMatchObject({ reason: "AI_PROVIDER_AUTH" });
-    expect(fetcher).toHaveBeenCalledTimes(1);
-  });
-  it("does not expose raw Google project IDs, keys or request text", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ error: { message: "Your project has been denied access PRIVATE_INPUT synthetic-google-key" } }, { status: 403 }));
-    const error = await generateAI(env, { mode: "study", prompt: "Question" }, fetcher).catch(value => value as Error & { reason: string });
-    expect(error).toMatchObject({ reason: "AI_PROJECT_ACCESS_DENIED" });
-    expect(String(error)).not.toContain("PRIVATE_INPUT");
-    expect(String(error)).not.toContain("synthetic-google-key");
-  });
-  it("never misclassifies an HF rejection as Google's project restriction", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ error: { message: "project has been denied access" } }, { status: 403 }));
-    await expect(generateAI(env, { mode: "study", provider: "huggingface", prompt: "Question" }, fetcher)).rejects.toMatchObject({ reason: "AI_PROVIDER_AUTH" });
-  });
-  it("rejects truncated HF outputs instead of saving a misleading completed answer", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ choices: [{ finish_reason: "length", message: { content: "Incomplete" } }] }));
-    await expect(generateAI(env, { mode: "study", provider: "huggingface", prompt: "Question" }, fetcher)).rejects.toMatchObject({ reason: "AI_INCOMPLETE" });
-  });
+import { assertAIConfiguration, generateAI, completeAI, aiMessages, selectAIProvider, studentSafeText, type AIEnvironment, type AIMode } from "../src/lib/ai-provider";
+const env:AIEnvironment={AI_ASSISTANT_ENABLED:"true",HF_TOKEN:"hf_SYNTHETIC",HF_CHAT_MODEL:"test/text:nscale",HF_VISION_MODEL:"test/vision:novita",HF_PRO_MODEL:"test/pro"};
+const success=()=>Response.json({choices:[{finish_reason:"stop",message:{content:"A useful answer"}}]});
+describe("Hugging Face-only adapter",()=>{
+  it.each(["study","summary","notes","quiz","timetable"] as AIMode[])("always routes %s through HF",mode=>{for(const mime of [undefined,"application/pdf","image/png"])expect(selectAIProvider(mode,mime)).toBe("huggingface");});
+  it.each(["image/jpeg","image/png","image/webp"])("uses vision model and image_url for %s",async mimeType=>{const fetcher=vi.fn<typeof fetch>().mockResolvedValue(success());await generateAI(env,{mode:"study",prompt:"Explain this",media:{mimeType,data:"SYNTHETIC"}},fetcher);const call=JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));expect(call.model).toBe("test/vision:novita");expect(call.messages.at(-1).content[1]).toEqual({type:"image_url",image_url:{url:`data:${mimeType};base64,SYNTHETIC`}});expect(fetcher).toHaveBeenCalledTimes(1);});
+  it("requires PDF text extraction before provider I/O",async()=>{const fetcher=vi.fn<typeof fetch>();await expect(generateAI(env,{mode:"summary",prompt:"Read",media:{mimeType:"application/pdf",data:"PDF"}},fetcher)).rejects.toMatchObject({reason:"AI_UNSUPPORTED_MEDIA"});expect(fetcher).not.toHaveBeenCalled();});
+  it("bounds context and output, and sets a timeout",async()=>{const fetcher=vi.fn<typeof fetch>().mockResolvedValue(success());const history=Array.from({length:10},(_,i)=>({prompt:`q${i}`,text:`a${i}`}));await generateAI(env,{mode:"study",prompt:"New",history},fetcher);const init=fetcher.mock.calls[0]?.[1];const body=JSON.parse(String(init?.body));expect(body.max_tokens).toBe(2048);expect(body.stream).toBe(false);expect(body.messages).toHaveLength(14);expect(body.messages[1].content).toBe("q4");expect(init?.signal).toBeDefined();});
+  it.each([401,402,403,429,500])("redacts provider %i errors without a fallback",async status=>{const fetcher=vi.fn<typeof fetch>().mockResolvedValue(new Response("PRIVATE_INPUT hf_SECRET",{status}));const error=await generateAI(env,{mode:"study",prompt:"Question"},fetcher).catch(e=>e);expect(error.status).toBe(503);expect(String(error)).not.toContain("PRIVATE_INPUT");expect(fetcher).toHaveBeenCalledTimes(1);expect(fetcher.mock.calls[0]?.[0]).toBe("https://router.huggingface.co/v1/chat/completions");});
+  it("does not return truncated output as success",async()=>{const fetcher=vi.fn<typeof fetch>().mockResolvedValue(Response.json({choices:[{finish_reason:"length",message:{content:"Incomplete"}}]}));await expect(generateAI(env,{mode:"study",prompt:"Q"},fetcher)).rejects.toMatchObject({reason:"AI_INCOMPLETE"});});
+  it("keeps missing configuration generic and enforces the kill switch",()=>{expect(()=>assertAIConfiguration({...env,HF_TOKEN:""},"study")).toThrow("temporarily unavailable");expect(()=>assertAIConfiguration({...env,AI_ASSISTANT_ENABLED:"false"},"study")).toThrow("paused");});
+  it("allows bounded structured calls but rejects excessive calls",async()=>{const input={mode:"study" as const,prompt:"My timetable"};const calls=[{id:"call1",type:"function",function:{name:"get_my_timetable",arguments:"{}"}}];const fetcher=vi.fn<typeof fetch>().mockResolvedValue(Response.json({choices:[{finish_reason:"tool_calls",message:{content:null,tool_calls:calls}}]}));expect((await completeAI(env,input,aiMessages(input),undefined,fetcher)).calls).toEqual(calls);fetcher.mockResolvedValue(Response.json({choices:[{message:{tool_calls:Array(4).fill(calls[0])}}]}));await expect(completeAI(env,input,aiMessages(input),undefined,fetcher)).rejects.toMatchObject({reason:"AI_TOO_MANY_ACTIONS"});});
+  it("removes privileged links and token patterns from display text",()=>{expect(studentSafeText("Visit https://admin.example.com/panel and hf_12345678901234567")).toBe("Visit [restricted link] and [redacted]");});
 });

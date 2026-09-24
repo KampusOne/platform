@@ -36,11 +36,12 @@ export type Bindings = {
   SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SECRET_KEY?: string;
   AUTH_PROVIDER?: string;
-  GEMINI_API_KEY?: string;
-  GEMINI_MODEL?: string;
   HF_TOKEN?: string;
   HF_CHAT_MODEL?: string;
   HF_VISION_MODEL?: string;
+  HF_PRO_MODEL?: string;
+  AI_CHAT_WINDOW_LIMIT?: string;
+  AI_STUDY_TRIAL_LIMIT?: string;
   KYC_FINGERPRINT_SECRET?: string;
   AI_DAILY_USER_LIMIT?: string;
   AI_DAILY_GLOBAL_LIMIT?: string;

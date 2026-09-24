@@ -15,7 +15,7 @@ const env: Bindings = {
   ENVIRONMENT: "local", ALLOWED_ORIGINS: "https://app.example.invalid", MINIMUM_APP_VERSION: "0.1.0", MAINTENANCE_MODE: "false",
   ACADEMIC_CORE_ENABLED: "true", SOCIAL_FEED_ENABLED: "true", MARKETPLACE_ENABLED: "false", PHASE_2_SCHEMA_READY: "true", PHASE_3_SCHEMA_READY: "false",
   UNIFIED_SCHEMA_READY: "true", PAYMENTS_ENABLED: "false", AI_ASSISTANT_ENABLED: "true", JWT_SECRET: "test-only-signing-key-not-for-deployment-12345678",
-  GEMINI_API_KEY: "synthetic-google-secret", GEMINI_MODEL: "gemini-test", HF_TOKEN: "hf_SYNTHETIC", HF_CHAT_MODEL: "test/model:nscale", HF_VISION_MODEL: "test/vision",
+  HF_TOKEN: "hf_SYNTHETIC", HF_CHAT_MODEL: "test/model:nscale", HF_VISION_MODEL: "test/vision",
 };
 const tokens = new Map<string, string>();
 const provider = vi.fn<typeof fetch>();
@@ -41,10 +41,10 @@ beforeAll(async () => {
   }
 }, 60000);
 beforeEach(async () => {
-  await db.exec("delete from app_private.ai_requests");
+  await db.exec("delete from app_private.ai_requests;delete from app_private.request_rate_limits");
   env.AI_UNLIMITED_EMAIL_HASHES = await sha256(ownerEmail);
   env.AI_DAILY_USER_LIMIT = "5"; env.AI_DAILY_GLOBAL_LIMIT = "100"; env.AI_ASSISTANT_ENABLED = "true";
-  env.GEMINI_API_KEY = "synthetic-google-secret"; env.HF_TOKEN = "hf_SYNTHETIC";
+  env.HF_TOKEN = "hf_SYNTHETIC";env.AI_CHAT_WINDOW_LIMIT="15";env.AI_STUDY_TRIAL_LIMIT="5";
   provider.mockReset();
   provider.mockImplementation(async url => String(url).includes("huggingface.co")
     ? Response.json({ choices: [{ finish_reason: "stop", message: { content: "Voltage equals current multiplied by resistance." } }] })
@@ -53,110 +53,16 @@ beforeEach(async () => {
 });
 afterAll(async () => { vi.unstubAllGlobals(); await db?.close(); });
 
-describe("explicit Hugging Face study provider", () => {
-  it.each(["study", "summary", "notes", "quiz"])("saves %s through HF even without a Gemini key", async mode => {
-    delete env.GEMINI_API_KEY;
-    const body = draft(mode);
-    const result = await json(await request("/ai", "POST", body));
-    expect(result).toMatchObject({ provider: "huggingface", requestId: body.idempotencyKey, text: expect.any(String) });
-    expect(provider).toHaveBeenCalledTimes(1);
-    expect(String(provider.mock.calls[0]?.[0])).toBe("https://router.huggingface.co/v1/chat/completions");
-    const saved = await json(await request(`/ai/history/${body.idempotencyKey}`));
-    expect(saved).toMatchObject({ provider: "huggingface", mode, prompt: body.prompt, text: result.text });
-    const history = await json(await request("/ai/history?q=Ohm"));
-    expect(history.sessions).toHaveLength(1);
-    expect(await count()).toBe(1);
-  });
-  it("leaves provider-omitted legacy requests on Gemini and preserves their replay hash", async () => {
-    const { provider: _provider, ...body } = draft();
-    const first = await json(await request("/ai", "POST", body));
-    expect(first.provider).toBe("gemini");
-    const again = await json(await request("/ai", "POST", { ...body, provider: "gemini" }));
-    expect(again).toEqual(first);
-    expect(provider).toHaveBeenCalledTimes(1);
-    const row = (await db.query<{ request_hash: string }>("select request_hash from app_private.ai_requests")).rows[0];
-    expect(row?.request_hash).toBe(await sha256(JSON.stringify([body.mode, body.prompt, null, null])));
-  });
-  it("prevents reusing a request reference with a different provider", async () => {
-    const body = draft();
-    await json(await request("/ai", "POST", body));
-    await json(await request("/ai", "POST", { ...body, provider: "gemini" }), 409);
-    expect(provider).toHaveBeenCalledTimes(1);
-  });
-  it("replays an HF answer without a second provider call", async () => {
-    const body = draft();
-    const first = await json(await request("/ai", "POST", body));
-    expect(await json(await request("/ai", "POST", body))).toEqual(first);
-    expect(provider).toHaveBeenCalledTimes(1);
-  });
-  it("sends same-provider follow-up context in order", async () => {
-    const parent = await json(await request("/ai", "POST", draft()));
-    await json(await request("/ai", "POST", { ...draft(), prompt: "Give an example", replyTo: parent.requestId }));
-    const body = JSON.parse(String(provider.mock.calls[1]?.[1]?.body));
-    expect(body.messages.map((message: { role: string }) => message.role)).toEqual(["system", "user", "assistant", "user"]);
-    expect(body.messages[1].content).toBe("Explain Ohm's law");
-    expect(body.messages[2].content).toBe(parent.text);
-    expect(body.messages[3].content).toBe("Give an example");
-  });
-  it("does not forward a previous Gemini conversation to HF", async () => {
-    const parent = await json(await request("/ai", "POST", { ...draft(), provider: "gemini" }));
-    const result = await json(await request("/ai", "POST", { ...draft(), replyTo: parent.requestId }), 400);
-    expect(JSON.stringify(result)).toContain("AI_PROVIDER_CONTEXT");
-    expect(provider).toHaveBeenCalledTimes(1);
-    expect(await count()).toBe(1);
-  });
-  it("keeps another user's history private", async () => {
-    const parent = await json(await request("/ai", "POST", draft()));
-    await json(await request(`/ai/history/${parent.requestId}`, "GET", undefined, other), 404);
-    await json(await request("/ai", "POST", { ...draft(), replyTo: parent.requestId }, other), 404);
-    expect(provider).toHaveBeenCalledTimes(1);
-  });
-  it("rejects provider override on timetable and invalid provider/consent before reservations", async () => {
-    for (const body of [draft("timetable"), { ...draft(), provider: "unknown" }, { ...draft(), consent: false }]) {
-      await json(await request("/ai", "POST", body), 400);
-    }
-    expect(provider).not.toHaveBeenCalled();
-    expect(await count()).toBe(0);
-  });
-  it("keeps normal personal and shared quotas enforced for HF", async () => {
-    env.AI_DAILY_USER_LIMIT = "0";
-    await json(await request("/ai", "POST", draft(), other), 429);
-    await json(await request("/ai", "POST", draft()));
-    env.AI_DAILY_GLOBAL_LIMIT = "1";
-    await json(await request("/ai", "POST", draft()), 429);
-    expect(provider).toHaveBeenCalledTimes(1);
-  });
-  it("exposes safe capability metadata and enforces missing HF credentials", async () => {
-    const status = await json(await request("/ai/status"));
-    expect(status.providers.studyHuggingFace).toMatchObject({ provider: "huggingface", configured: true });
-    expect(JSON.stringify(status)).not.toContain("hf_SYNTHETIC");
-    delete env.HF_TOKEN;
-    await json(await request("/ai", "POST", draft()), 503);
-    expect(provider).not.toHaveBeenCalled();
-    expect(await count()).toBe(0);
-  });
-  it("reports Google project denial without leaking its raw response or calling HF", async () => {
-    provider.mockResolvedValueOnce(Response.json({ error: { message: "Your project has been denied access. PRIVATE_INPUT synthetic-google-secret" } }, { status: 403 }));
-    const body = { ...draft(), provider: "gemini" };
-    const result = await json(await request("/ai", "POST", body), 503);
-    expect(JSON.stringify(result)).toContain("AI_PROJECT_ACCESS_DENIED");
-    expect(JSON.stringify(result)).not.toContain("PRIVATE_INPUT");
-    expect(JSON.stringify(result)).not.toContain("synthetic-google-secret");
-    await json(await request("/ai", "POST", body), 503);
-    expect(provider).toHaveBeenCalledTimes(1);
-  });
-  it("does not use Gemini as a paid fallback after HF credit or auth failures", async () => {
-    for (const http of [402, 403, 429]) {
-      provider.mockResolvedValueOnce(new Response("PRIVATE_INPUT", { status: http }));
-      await json(await request("/ai", "POST", draft()), http === 403 ? 503 : 429);
-    }
-    expect(provider).toHaveBeenCalledTimes(3);
-    expect(provider.mock.calls.every(([url]) => String(url).includes("router.huggingface.co"))).toBe(true);
-  });
-  it("keeps the kill switch in force", async () => {
-    env.AI_ASSISTANT_ENABLED = "false";
-    await json(await request("/ai", "POST", draft()), 503);
-    expect(provider).not.toHaveBeenCalled();
-    expect(await count()).toBe(0);
-  });
+describe("student AI persistence and quota boundaries",()=>{
+  it.each(["study","summary","notes","quiz"])("saves %s without exposing provider identity",async mode=>{const body=draft(mode);const result=await json(await request("/ai","POST",body));expect(result).toMatchObject({tier:"standard",requestId:body.idempotencyKey,text:expect.any(String)});expect(result.provider).toBeUndefined();expect(provider).toHaveBeenCalledTimes(1);expect(provider.mock.calls[0]?.[0]).toBe("https://router.huggingface.co/v1/chat/completions");const saved=await json(await request(`/ai/history/${body.idempotencyKey}`));expect(saved.provider).toBeUndefined();expect(saved.text).toBe(result.text);expect((await json(await request("/ai/history?q=Ohm"))).sessions).toHaveLength(1);});
+  it("routes omitted provider to HF and replays without another call",async()=>{const {provider:_provider,...body}=draft();const first=await json(await request("/ai","POST",body));expect(await json(await request("/ai","POST",body))).toEqual(first);expect(provider).toHaveBeenCalledTimes(1);await json(await request("/ai","POST",{...body,prompt:"Changed"}),409);});
+  it("rejects provider/tier/exemption/identity forgery",async()=>{for(const extra of [{provider:"gemini"},{provider:"unknown"},{tier:"fast"},{unlimited:true},{userId:owner},{consent:false}])await json(await request("/ai","POST",{...draft(),...extra},other),400);await json(await request("/ai","POST",{...draft(),tier:"pro"},other),403);expect(provider).not.toHaveBeenCalled();expect(await count()).toBe(0);});
+  it("keeps ordered follow-up context and another account's history private",async()=>{const first=await json(await request("/ai","POST",draft()));await json(await request("/ai","POST",{...draft(),prompt:"Example?",replyTo:first.requestId}));const body=JSON.parse(String(provider.mock.calls[1]?.[1]?.body));expect(body.messages.map((m:{role:string})=>m.role)).toEqual(["system","user","assistant","user"]);expect(body.messages[2].content).toBe(first.text);await json(await request(`/ai/history/${first.requestId}`,"GET",undefined,other),404);await json(await request(`/ai/thread/${first.requestId}`,"GET",undefined,other),404);await json(await request("/ai","POST",{...draft(),replyTo:first.requestId},other),404);expect(provider).toHaveBeenCalledTimes(2);});
+  it("never forwards an old provider's private conversation",async()=>{const key=crypto.randomUUID();await db.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) values($1,$2,repeat('a',64),'study','COMPLETED',$3::jsonb)",[owner,key,JSON.stringify({provider:"gemini",text:"Old private answer",prompt:"Old question"})]);await json(await request("/ai","POST",{...draft(),replyTo:key}),400);expect(provider).not.toHaveBeenCalled();});
+  it("shares five study trials across Summary/Notes and retains use after deletion",async()=>{for(let i=0;i<5;i++){const body=draft(i%2?"notes":"summary");await json(await request("/ai","POST",body,other));await json(await request(`/ai/history/${body.idempotencyKey}`,"DELETE",undefined,other));}expect((await json(await request("/ai/status","GET",undefined,other))).study.remaining).toBe(0);await json(await request("/ai","POST",draft("notes"),other),429);expect(provider).toHaveBeenCalledTimes(5);expect(await count()).toBe(5);});
+  it("new conversations and new sessions cannot reset the short Ask window",async()=>{await db.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) select $1,gen_random_uuid(),repeat('a',64),'study','COMPLETED','{\"deleted\":true}'::jsonb from generate_series(1,15)",[other]);const limited=await request("/ai","POST",draft(),other);expect(limited.status).toBe(429);expect(limited.headers.get("Retry-After")).toBeTruthy();const data=await limited.json();expect(data.error.details.resetsAt).toBeTruthy();tokens.set(other,(await createSession(env,{id:other,email:"hf-other@example.invalid",roles:["STUDENT"],operatorRoles:[],universityId:null})).accessToken);await json(await request("/ai","POST",draft(),other),429);await db.query("update app_private.ai_requests set created_at=now()-interval '16 minutes' where user_id=$1",[other]);await json(await request("/ai","POST",draft(),other));expect(provider).toHaveBeenCalledTimes(1);});
+  it("refunds a failed study generation but still records the paid attempt",async()=>{provider.mockResolvedValueOnce(new Response("PRIVATE_SOURCE",{status:402}));const result=await json(await request("/ai","POST",draft("summary"),other),503);expect(JSON.stringify(result)).not.toContain("PRIVATE_SOURCE");expect((await json(await request("/ai/status","GET",undefined,other))).study.remaining).toBe(5);expect(await count()).toBe(1);});
+  it("does not leak provider configuration, secrets, normal-chat counters or billing credentials",async()=>{const result=await json(await request("/ai/status"));expect(result.capabilities).toEqual({text:true,images:true,documents:true});expect(result.subscription.checkoutEnabled).toBe(false);for(const value of ["hf_SYNTHETIC","test/model","huggingface","chat_used","GEMINI","HF_TOKEN"])expect(JSON.stringify(result)).not.toContain(value);});
+  it("keeps shared capacity and kill switch enforced on exempt accounts",async()=>{env.AI_DAILY_GLOBAL_LIMIT="0";await json(await request("/ai","POST",draft()),429);env.AI_DAILY_GLOBAL_LIMIT="100";env.AI_ASSISTANT_ENABLED="false";await json(await request("/ai","POST",draft()),503);expect(provider).not.toHaveBeenCalled();});
+  it("does not use another provider as a fallback",async()=>{for(const status of [401,402,403,429,500]){provider.mockResolvedValueOnce(new Response("PRIVATE_INPUT",{status}));const result=await json(await request("/ai","POST",draft()),503);expect(JSON.stringify(result)).not.toContain("PRIVATE_INPUT");}expect(provider).toHaveBeenCalledTimes(5);expect(provider.mock.calls.every(([url])=>String(url).startsWith("https://router.huggingface.co/"))).toBe(true);});
 });

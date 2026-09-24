@@ -2,7 +2,7 @@ import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -561,6 +561,8 @@ function TutorialsEmptyState({ filtered }: { filtered: boolean }) {
 }
 
 export default function TutorialsScreen() {
+  const {listing:focusedListing}=useLocalSearchParams<{listing?:string}>();
+  useFocusEffect(useCallback(()=>()=>{if(focusedListing)router.setParams({listing:undefined});},[focusedListing]));
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { width } = useWindowDimensions();
@@ -637,9 +639,9 @@ export default function TutorialsScreen() {
             .includes(needle);
         const matchesFormat =
           activeFormat === "All" || displayFormat(item.format) === activeFormat;
-        return matchesQuery && matchesFormat;
+        return focusedListing ? item.id===focusedListing : matchesQuery && matchesFormat;
       }),
-    [activeFormat, listings, query],
+    [activeFormat, listings, query, focusedListing],
   );
 
   const filteredResources = useMemo(
