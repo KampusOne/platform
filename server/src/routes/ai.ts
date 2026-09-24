@@ -90,7 +90,7 @@ aiRoutes.post("/", async c => {
   if (d.mediaId) {
     const m = firstRow(await db.execute<{ object_key: string; content_type: string; size_bytes: number; original_name: string }>(sql`select object_key,content_type,size_bytes,original_name from public.media_objects where id=${d.mediaId}::uuid and owner_user_id=${u.id}::uuid and kind='resource' and deleted_at is null`));
     if (!m || !c.env.PRIVATE_BUCKET) throw new AppError(404, "NOT_FOUND", "The attached document is not available. Reattach your source.");
-    const mime = m.content_type.split(";")[0].toLowerCase();
+    const mime = (m.content_type.split(";")[0] ?? "").toLowerCase();
     if (!AI_MIME_TYPES.has(mime)) throw new AppError(400, "BAD_REQUEST", "Use a PDF, JPEG, PNG, WebP or plain-text file for AI.");
     if (m.size_bytes > MAX_AI_MEDIA_BYTES) throw new AppError(413, "BAD_REQUEST", "Use a file smaller than 8 MB, or split it into smaller sections.");
     try { assertAIConfiguration(c.env, d.mode, mime); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
@@ -121,7 +121,7 @@ aiRoutes.post("/", async c => {
   }
   if (new TextEncoder().encode(prompt + JSON.stringify(history)).length > 60000) throw new AppError(413, "BAD_REQUEST", "This study context is too long. Use a shorter source or start a new session.");
   const quota = limits(c.env), day = aiDay();
-  const saved: Saved = { version: 2, prompt: d.prompt, mediaId: d.mediaId, fileName, threadId };
+  const saved: Saved = { version: 2, prompt: d.prompt, threadId, ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}) };
   const client = sqlClient(c.env);
   // The lock is a separate statement: READ COMMITTED obtains a fresh snapshot
   // AFTER any wait. Putting lock + count in one CTE would race on stale snapshots.
@@ -141,7 +141,7 @@ aiRoutes.post("/", async c => {
   }
   const job = (async () => {
     try {
-      const generated = await generateAI(c.env, { mode: d.mode, prompt, media, history });
+      const generated = await generateAI(c.env, { mode: d.mode, prompt, history, ...(media ? { media } : {}) });
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
         const extracted = parseTimetableJSON(generated.text);

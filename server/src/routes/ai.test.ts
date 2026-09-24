@@ -26,7 +26,9 @@ app.route("/ai", aiRoutes);
 const body = { mode: "study", prompt: "Explain energy", idempotencyKey: key, consent: true };
 const post = (extra = {}, bindings: Bindings = env) => app.request("/ai", { method: "POST", headers: { Authorization: "Bearer test", "Content-Type": "application/json" }, body: JSON.stringify({ ...body, ...extra }) }, bindings);
 const get = (path: string, method = "GET") => app.request(path, { method, headers: { Authorization: "Bearer test" } }, env);
-const query = (index: number) => new PgDialect().sqlToQuery(mocks.execute.mock.calls[index][0] as SQL);
+const query = (index: number) => new PgDialect().sqlToQuery(mocks.execute.mock.calls[index]![0] as SQL);
+type Reply = { error: { details: { reason: string; retryWithNewKey: boolean } }; text: string; entries: Record<string, unknown>[]; warnings: string[]; allowance: { remaining: number }; providers: { study: { configured: boolean } } };
+const read = async (response: Response): Promise<Reply> => await response.json() as Reply;
 function cached(status: string, result: unknown, request_hash = "request-hash") { return { rows: [{ idempotency_key: key, request_hash, status, result, created_at: new Date().toISOString() }] }; }
 beforeEach(() => { vi.clearAllMocks(); mocks.execute.mockResolvedValue({ rows: [] }); mocks.transaction.mockResolvedValue([[], [{ idempotency_key: key }]]); mocks.fetch.mockImplementation(async () => Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "Energy explanation" }] } }] })); vi.stubGlobal("fetch", mocks.fetch); });
 afterEach(() => vi.unstubAllGlobals());
@@ -36,33 +38,33 @@ describe("AI request and private-history boundary", () => {
     expect(mocks.execute).not.toHaveBeenCalled(); expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("does not reserve allowance or call a provider when disabled", async () => {
-    const r = await post({}, { ...env, AI_ASSISTANT_ENABLED: "false" }); expect(r.status).toBe(503); expect((await r.json()).error.details.reason).toBe("AI_DISABLED"); expect(mocks.transaction).not.toHaveBeenCalled(); expect(mocks.fetch).not.toHaveBeenCalled();
+    const r = await post({}, { ...env, AI_ASSISTANT_ENABLED: "false" }); expect(r.status).toBe(503); expect((await read(r)).error.details.reason).toBe("AI_DISABLED"); expect(mocks.transaction).not.toHaveBeenCalled(); expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("reports missing provider configuration without consuming allowance", async () => {
-    const r = await post({}, { ...env, GEMINI_MODEL: undefined }); expect(r.status).toBe(503); expect((await r.json()).error.details.reason).toBe("AI_NOT_CONFIGURED"); expect(mocks.transaction).not.toHaveBeenCalled();
+    const r = await post({}, { ...env, GEMINI_MODEL: "" }); expect(r.status).toBe(503); expect((await read(r)).error.details.reason).toBe("AI_NOT_CONFIGURED"); expect(mocks.transaction).not.toHaveBeenCalled();
   });
   it("claims idempotency and both quotas before one provider call", async () => {
-    const r = await post(); expect(r.status).toBe(200); expect(await r.json()).toMatchObject({ text: "Energy explanation", requestId: key, provider: "gemini" });
-    const [statements, options] = mocks.transaction.mock.calls[0]; expect(options.isolationLevel).toBe("ReadCommitted"); expect(statements[0].text).toContain("pg_advisory_xact_lock"); expect(statements[1].text).toContain("on conflict do nothing"); expect(statements[1].text.match(/select count\(\*\)/g)).toHaveLength(2); expect(statements[1].values).toContain(owner); expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    const r = await post(); expect(r.status).toBe(200); expect(await read(r)).toMatchObject({ text: "Energy explanation", requestId: key, provider: "gemini" });
+    const [statements, options] = mocks.transaction.mock.calls[0]!; expect(options.isolationLevel).toBe("ReadCommitted"); expect(statements[0].text).toContain("pg_advisory_xact_lock"); expect(statements[1].text).toContain("on conflict do nothing"); expect(statements[1].text.match(/select count\(\*\)/g)).toHaveLength(2); expect(statements[1].values).toContain(owner); expect(mocks.fetch).toHaveBeenCalledTimes(1);
     expect(query(1).sql).toContain("status='COMPLETED'"); expect(query(1).params).toContain(owner); expect(r.headers.get("cache-control")).toContain("no-store");
   });
   it("replays a completed request without another provider call or reservation", async () => {
-    mocks.execute.mockResolvedValueOnce(cached("COMPLETED", { text: "Saved answer" })); const r = await post(); expect(r.status).toBe(200); expect((await r.json()).text).toBe("Saved answer"); expect(mocks.transaction).not.toHaveBeenCalled(); expect(mocks.fetch).not.toHaveBeenCalled();
+    mocks.execute.mockResolvedValueOnce(cached("COMPLETED", { text: "Saved answer" })); const r = await post(); expect(r.status).toBe(200); expect((await read(r)).text).toBe("Saved answer"); expect(mocks.transaction).not.toHaveBeenCalled(); expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("rejects a changed draft under an existing request key", async () => {
-    mocks.execute.mockResolvedValueOnce(cached("COMPLETED", { text: "Secret" }, "different-hash")); const r = await post(); expect(r.status).toBe(409); expect(JSON.stringify(await r.json())).not.toContain("Secret"); expect(mocks.fetch).not.toHaveBeenCalled();
+    mocks.execute.mockResolvedValueOnce(cached("COMPLETED", { text: "Secret" }, "different-hash")); const r = await post(); expect(r.status).toBe(409); expect(JSON.stringify(await read(r))).not.toContain("Secret"); expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("processing retries keep the same key", async () => {
-    mocks.execute.mockResolvedValueOnce(cached("PROCESSING", null)); const r = await post(); expect(r.status).toBe(409); expect((await r.json()).error.details.retryWithNewKey).toBe(false); expect(mocks.fetch).not.toHaveBeenCalled();
+    mocks.execute.mockResolvedValueOnce(cached("PROCESSING", null)); const r = await post(); expect(r.status).toBe(409); expect((await read(r)).error.details.retryWithNewKey).toBe(false); expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("a full quota does not reach the provider", async () => {
-    mocks.transaction.mockResolvedValueOnce([[], []]); const r = await post(); expect(r.status).toBe(429); expect((await r.json()).error.details.reason).toBe("AI_DAILY_LIMIT"); expect(mocks.fetch).not.toHaveBeenCalled();
+    mocks.transaction.mockResolvedValueOnce([[], []]); const r = await post(); expect(r.status).toBe(429); expect((await read(r)).error.details.reason).toBe("AI_DAILY_LIMIT"); expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("a competing identical claim can return the completed result", async () => {
-    mocks.transaction.mockResolvedValueOnce([[], []]); mocks.execute.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce(cached("COMPLETED", { text: "Other request finished" })); const r = await post(); expect(r.status).toBe(200); expect((await r.json()).text).toBe("Other request finished"); expect(mocks.fetch).not.toHaveBeenCalled();
+    mocks.transaction.mockResolvedValueOnce([[], []]); mocks.execute.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce(cached("COMPLETED", { text: "Other request finished" })); const r = await post(); expect(r.status).toBe(200); expect((await read(r)).text).toBe("Other request finished"); expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("provider failure records a terminal failure, not success or a paid fallback", async () => {
-    mocks.fetch.mockResolvedValueOnce(new Response("upstream confidential body", { status: 429 })); const r = await post(); expect(r.status).toBe(429); const payload = await r.json(); expect(payload.error.details.reason).toBe("AI_PROVIDER_LIMIT"); expect(JSON.stringify(payload)).not.toContain("confidential"); expect(query(1).sql).toContain("status='FAILED'"); expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    mocks.fetch.mockResolvedValueOnce(new Response("upstream confidential body", { status: 429 })); const r = await post(); expect(r.status).toBe(429); const payload = await read(r); expect(payload.error.details.reason).toBe("AI_PROVIDER_LIMIT"); expect(JSON.stringify(payload)).not.toContain("confidential"); expect(query(1).sql).toContain("status='FAILED'"); expect(mocks.fetch).toHaveBeenCalledTimes(1);
   });
   it("unowned/missing private files are rejected before reservation", async () => {
     const r = await post({ mediaId }); expect(r.status).toBe(404); expect(query(1).sql).toContain("owner_user_id="); expect(query(1).params).toContain(owner); expect(mocks.transaction).not.toHaveBeenCalled(); expect(mocks.fetch).not.toHaveBeenCalled();
@@ -70,7 +72,7 @@ describe("AI request and private-history boundary", () => {
   it("invalid timetable rows are omitted with warnings and never auto-saved", async () => {
     const valid = { title: "Physics", dayOfWeek: 1, startsAt: "08:00", endsAt: "09:00" };
     mocks.fetch.mockResolvedValueOnce(Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ entries: [valid, { ...valid, dayOfWeek: 9 }, { ...valid, endsAt: "07:00" }], warnings: [] }) } }] }));
-    const r = await post({ mode: "timetable" }); expect(r.status).toBe(200); const payload = await r.json(); expect(payload.entries).toHaveLength(1); expect(payload.warnings).toHaveLength(2); expect(payload.entries[0]).toMatchObject({ courseCode: "", venue: "", reminderEnabled: true }); expect(mocks.execute.mock.calls.map((_, i) => query(i).sql).join(" ")).not.toContain("insert into public.timetable");
+    const r = await post({ mode: "timetable" }); expect(r.status).toBe(200); const payload = await read(r); expect(payload.entries).toHaveLength(1); expect(payload.warnings).toHaveLength(2); expect(payload.entries[0]).toMatchObject({ courseCode: "", venue: "", reminderEnabled: true }); expect(mocks.execute.mock.calls.map((_, i) => query(i).sql).join(" ")).not.toContain("insert into public.timetable");
   });
   it("history searches are owner-scoped and parameterised", async () => {
     const r = await get("/ai/history?q=physics"); expect(r.status).toBe(200); expect(query(0).params).toContain(owner); expect(query(0).params).toContain("physics"); expect(query(0).sql).toContain("mode<>'timetable'"); expect(query(0).sql).toContain("limit 50");
@@ -85,6 +87,6 @@ describe("AI request and private-history boundary", () => {
     mocks.execute.mockResolvedValueOnce(cached("COMPLETED", { deleted: true, version: 2 })); expect((await post()).status).toBe(410); expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("status never exposes secrets or upstream response data", async () => {
-    mocks.execute.mockResolvedValueOnce({ rows: [{ used: 2, total: 4 }] }); const r = await get("/ai/status"); expect(r.status).toBe(200); const payload = await r.json(); expect(payload.allowance.remaining).toBe(3); const rendered = JSON.stringify(payload); expect(rendered).not.toContain("test-key"); expect(rendered).not.toContain("test-hf-key"); expect(payload.providers.study.configured).toBe(true);
+    mocks.execute.mockResolvedValueOnce({ rows: [{ used: 2, total: 4 }] }); const r = await get("/ai/status"); expect(r.status).toBe(200); const payload = await read(r); expect(payload.allowance.remaining).toBe(3); const rendered = JSON.stringify(payload); expect(rendered).not.toContain("test-key"); expect(rendered).not.toContain("test-hf-key"); expect(payload.providers.study.configured).toBe(true);
   });
 });
