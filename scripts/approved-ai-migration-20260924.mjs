@@ -187,6 +187,7 @@ export default {
 
 writeFileSync(workerPath, workerSource);
 writeFileSync(configPath, JSON.stringify({
+  name: "approved-ai-migration-preview",
   main: ".approved-ai-migration-worker.ts",
   compatibility_date: "2026-09-09"
 }, null, 2));
