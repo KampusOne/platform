@@ -35,7 +35,7 @@ function normalizeMathText(input: string) {
 
   value = value
     .replace(/\\left|\\right/g, "")
-    .replace(/\\(?:quad|qquad|,|;|:)\b?/g, " ")
+    .replace(/\\(?:quad|qquad|,|;|:)/g, " ")
     .replace(/\\!/g, "")
     .replace(/\\cdot/g, "·")
     .replace(/\\times/g, "×")
