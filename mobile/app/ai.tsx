@@ -49,6 +49,7 @@ export default function StudentAI() {
   const generation=useRef(0),alive=useRef(true),draftOwner=useRef<string | undefined>(undefined);
   const text={color:theme.text,fontFamily:theme.font.body,fontSize:15,lineHeight:24};
   const muted={color:theme.textMuted,fontFamily:theme.font.body,fontSize:12,lineHeight:18};
+  // Keep the AI composer border clean on Expo web; focus remains available to assistive technology.
   const webInputStyle=Platform.OS==='web'?({outlineStyle:'none',outlineWidth:0,outlineColor:'transparent',boxShadow:'none',WebkitTapHighlightColor:'transparent'} as any):undefined;
   const storageKey=`ai-workspace-v3.${user?.id}.${workspace}`;
   const valid=()=>alive.current;
