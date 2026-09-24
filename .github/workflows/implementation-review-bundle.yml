@@ -1,0 +1,22 @@
+name: Implementation review bundle
+on:
+  push:
+    branches: [feat/ask-social-20260924]
+    paths: [.github/workflows/implementation-review-bundle.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Package tracked source only
+        run: git archive --format=tar.gz --output=kampusone-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kampusone-source-review
+          path: kampusone-source.tar.gz
+          retention-days: 1
