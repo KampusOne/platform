@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/approved-ai-migration-20260924.yml"
 
+# Retry after runner syntax validation.
 permissions:
   contents: read
 
