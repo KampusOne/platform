@@ -154,7 +154,7 @@ try {
     !JSON.stringify(status).toLowerCase().includes("qwen");
   if (!summary.status) throw new Error("status_contract");
 
-  const textResponse = await fetchSafe(apiOrigin + "/v1/ai/", {
+  const textResponse = await fetchSafe(apiOrigin + "/v1/ai", {
     method: "POST",
     headers: { ...authHeaders, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -181,7 +181,7 @@ try {
   const uploadForm = new FormData();
   uploadForm.set("kind", "resource");
   uploadForm.set("file", new File([redPng], "release-qa-red.png", { type: "image/png" }));
-  const uploadResponse = await fetchSafe(apiOrigin + "/v1/media/", {
+  const uploadResponse = await fetchSafe(apiOrigin + "/v1/media", {
     method: "POST",
     headers: authHeaders,
     body: uploadForm,
@@ -191,7 +191,7 @@ try {
   mediaId = typeof upload.id === "string" ? upload.id : undefined;
   if (uploadResponse.status !== 201 || !mediaId) throw new Error(`upload_http_${uploadResponse.status}`);
 
-  const imageResponse = await fetchSafe(apiOrigin + "/v1/ai/", {
+  const imageResponse = await fetchSafe(apiOrigin + "/v1/ai", {
     method: "POST",
     headers: { ...authHeaders, "Content-Type": "application/json" },
     body: JSON.stringify({
