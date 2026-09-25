@@ -15,7 +15,7 @@ import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
 import { validPostId } from "@/src/lib/feed-posts";
 import type { SocialFeedPost } from "@/src/lib/feed-social";
-import { pickPostMedia, uploadPostMedia, verifyPhoto, type PostMedia, type UploadedFile, type PhotoSource } from "@/src/lib/uploads";
+import { editPostMedia, pickPostMedia, uploadPostMedia, verifyPhoto, type PostMedia, type UploadedFile, type PhotoSource } from "@/src/lib/uploads";
 
 export default function Compose() {
   const { theme } = useAppearance();
@@ -85,12 +85,44 @@ export default function Compose() {
       await transfer(local, retry ? photo : null);
     } catch (error) {
       if (alive.current) {
-        const message = error instanceof Error ? error.message : "Upload failed. Your photo is still here; retry or replace it.";
+        const message = error instanceof Error ? error.message : "Upload failed. Your media is still here; retry, edit, or replace it.";
         setPhotoError(message); toast(message, "error");
       }
     } finally {
       lock.current = false;
       if (alive.current) { setBusy(false); setUploading(false); }
+    }
+  }
+  async function editCurrentMedia() {
+    if (lock.current || !draftPhoto) return;
+    lock.current = true;
+    setBusy(true);
+    setUploading(true);
+    try {
+      const edited = await editPostMedia(draftPhoto);
+      if (!edited || !alive.current) return;
+      setDraftPhoto(edited);
+      setPhoto(null);
+      setPhotoReady(false);
+      setPhotoError("");
+      setPreviewError(false);
+      requestId.current = randomUUID();
+      await transfer(edited);
+    } catch (error) {
+      if (alive.current) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "The media could not be edited. Your current draft is still here.";
+        setPhotoError(message);
+        toast(message, "error");
+      }
+    } finally {
+      lock.current = false;
+      if (alive.current) {
+        setBusy(false);
+        setUploading(false);
+      }
     }
   }
   const canPost = owner.current===boundOwner.current && !busy && (body.trim().length > 0 || Boolean(photoReady)) && (!draftPhoto || (photoReady && !previewError)) && (!isQuote || Boolean(original && !quoteLoading));
@@ -118,14 +150,14 @@ export default function Compose() {
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{flexGrow:1,padding:20}}>
         <View style={{flexDirection:"row",alignItems:"center",gap:10,marginBottom:18}}><ProfileAvatar name={profile?.display_name??"You"} imageUrl={profile?.profile_image_url} size={42}/><View><Text style={{...text,fontFamily:theme.font.semibold}}>{profile?.display_name??"You"}</Text><Text style={{...text,fontSize:11,color:theme.textMuted}}>{isQuote&&original?.visibility!=="PUBLIC"?"Your campus":"KampusOne community"}</Text></View></View>
         <TextInput accessibilityLabel={isQuote?"Your thoughts on this post":"Post text"} placeholder={isQuote?"Add your thoughts…":"What’s happening on campus?"} placeholderTextColor={theme.textMuted} value={body} editable={!busy} onChangeText={value=>{setBody(value);requestId.current=randomUUID();}} multiline maxLength={5000} style={{fontFamily:theme.font.body,color:theme.text,fontSize:18,lineHeight:28,minHeight:160,textAlignVertical:"top",padding:0,marginBottom:18}}/>
-        {draftPhoto?<View style={{position:"relative",marginBottom:15}}>{draftPhoto.type.startsWith("video/")?<MediaPreview url={draftPhoto.uri} video label="Selected video"/>:<Image accessibilityLabel="Selected post photo" source={{uri:draftPhoto.uri}} resizeMode="contain" onLoad={()=>setPreviewError(false)} onError={()=>setPreviewError(true)} style={{width:"100%",height:270,borderRadius:15,backgroundColor:theme.surfaceMuted}}/>}<Pressable accessibilityRole="button" accessibilityLabel="Remove photo" disabled={busy} onPress={remove} style={{position:"absolute",top:8,right:8,padding:8,borderRadius:22,backgroundColor:"rgba(0,0,0,0.7)"}}><Ionicons name="close" size={20} color="#FFFFFF"/></Pressable>{uploading?<View style={{flexDirection:"row",alignItems:"center",gap:8,marginTop:8}}><InlineLoading/><Text style={{...text,color:theme.textMuted,fontSize:12}}>Preparing media…</Text></View>:null}</View>:null}
-        {previewError?<Text accessibilityRole="alert" style={{...text,color:theme.error,marginBottom:10}}>The photo preview could not load. Replace or remove it before posting.</Text>:null}
+        {draftPhoto?<View style={{position:"relative",marginBottom:15}}>{draftPhoto.type.startsWith("video/")?<MediaPreview url={draftPhoto.uri} video label="Selected video"/>:<Image accessibilityLabel="Selected post photo" source={{uri:draftPhoto.uri}} resizeMode="contain" onLoad={()=>setPreviewError(false)} onError={()=>setPreviewError(true)} style={{width:"100%",height:270,borderRadius:15,backgroundColor:theme.surfaceMuted}}/>}<Pressable accessibilityRole="button" accessibilityLabel="Remove media" disabled={busy} onPress={remove} style={{position:"absolute",top:8,right:8,padding:8,borderRadius:22,backgroundColor:"rgba(0,0,0,0.7)"}}><Ionicons name="close" size={20} color="#FFFFFF"/></Pressable><Pressable accessibilityRole="button" accessibilityLabel={draftPhoto.type.startsWith("video/")?"Edit video trim":"Edit photo crop"} disabled={busy} onPress={()=>void editCurrentMedia()} style={{position:"absolute",top:8,left:8,paddingHorizontal:12,paddingVertical:8,borderRadius:18,backgroundColor:"rgba(0,0,0,0.72)"}}><Text style={{...text,color:"#FFFFFF",fontFamily:theme.font.semibold,fontSize:12}}>Edit</Text></Pressable>{uploading?<View style={{flexDirection:"row",alignItems:"center",gap:8,marginTop:8}}><InlineLoading/><Text style={{...text,color:theme.textMuted,fontSize:12}}>Preparing media…</Text></View>:null}</View>:null}
+        {previewError?<Text accessibilityRole="alert" style={{...text,color:theme.error,marginBottom:10}}>The media preview could not load. Replace or remove it before posting.</Text>:null}
         {photoError?<View style={{marginBottom:15,gap:8}}><Text accessibilityRole="alert" style={{...text,color:theme.error}}>{photoError}</Text><Pressable accessibilityRole="button" disabled={busy} onPress={()=>void attach(true)} style={{paddingVertical:10}}><Text style={{...text,color:theme.brand,fontFamily:theme.font.semibold}}>Retry upload</Text></Pressable></View>:null}
         {isQuote&&quoteLoading?<InlineLoading/>:null}{original?<QuotedPostPreview post={original}/>:null}
         {quoteError?<View style={{gap:10}}><Text accessibilityRole="alert" style={{...text,color:theme.error}}>{quoteError}</Text>{quoteId?<Pressable accessibilityRole="button" onPress={()=>void loadQuote()} disabled={busy} style={{paddingVertical:10}}><Text style={{...text,color:theme.brand}}>Retry original post</Text></Pressable>:null}</View>:null}
       </ScrollView>
       <View style={{flexDirection:"row",alignItems:"center",paddingHorizontal:16,paddingVertical:10,borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:theme.border}}><Pressable accessibilityRole="button" accessibilityLabel={draftPhoto?"Replace image or video":"Attach image or video"} disabled={busy} onPress={()=>void attach()} style={{padding:10}}><Ionicons name="image-outline" size={25} color={theme.brand}/></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Take a photo" disabled={busy} onPress={()=>void attach(false,"camera")} style={{padding:10}}><Ionicons name="camera-outline" size={25} color={theme.brand}/></Pressable><View style={{flex:1}}/><Text accessibilityLabel={`${body.length} of 5000 characters`} style={{...text,fontSize:12,color:theme.textMuted}}>{body.length}/5000</Text></View>
-      <Modal visible={discard} transparent animationType="fade" onRequestClose={()=>setDiscard(false)}><View style={{flex:1,justifyContent:"center",padding:30,backgroundColor:"rgba(0,0,0,0.4)"}}><View style={{padding:24,gap:18,borderRadius:18,backgroundColor:theme.surface}}><Text style={{...text,fontFamily:theme.font.semibold,fontSize:19}}>Discard this draft?</Text><Text style={text}>Your text and selected photo will be removed from this composer.</Text><Pressable accessibilityRole="button" onPress={()=>{setDiscard(false);router.canGoBack()?router.back():router.replace("/(tabs)/feed");}} style={{padding:10}}><Text style={{...text,color:theme.error}}>Discard</Text></Pressable><Pressable accessibilityRole="button" onPress={()=>setDiscard(false)} style={{padding:10}}><Text style={text}>Keep editing</Text></Pressable></View></View></Modal>
+      <Modal visible={discard} transparent animationType="fade" onRequestClose={()=>setDiscard(false)}><View style={{flex:1,justifyContent:"center",padding:30,backgroundColor:"rgba(0,0,0,0.4)"}}><View style={{padding:24,gap:18,borderRadius:18,backgroundColor:theme.surface}}><Text style={{...text,fontFamily:theme.font.semibold,fontSize:19}}>Discard this draft?</Text><Text style={text}>Your text and selected media will be removed from this composer.</Text><Pressable accessibilityRole="button" onPress={()=>{setDiscard(false);router.canGoBack()?router.back():router.replace("/(tabs)/feed");}} style={{padding:10}}><Text style={{...text,color:theme.error}}>Discard</Text></Pressable><Pressable accessibilityRole="button" onPress={()=>setDiscard(false)} style={{padding:10}}><Text style={text}>Keep editing</Text></Pressable></View></View></Modal>
     </KeyboardAvoidingView>
   </SafeAreaView>;
 }
