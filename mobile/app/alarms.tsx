@@ -128,6 +128,11 @@ function WheelColumn({
   label: string;
   onChange: (value: number) => void;
 }) {
+  const { theme, isDark } = useAppearance();
+  const pickerStyles = useMemo(
+    () => createPickerStyles(theme, isDark),
+    [theme, isDark],
+  );
   const count = max - min + 1;
   const values = useMemo(
     () =>
@@ -250,16 +255,13 @@ function PeriodColumn({
   value: "AM" | "PM";
   onChange: (value: "AM" | "PM") => void;
 }) {
-  const values = useMemo(
-    () =>
-      Array.from(
-        { length: WHEEL_CYCLES * 2 },
-        (_, index) => (index % 2 === 0 ? "AM" : "PM") as "AM" | "PM",
-      ),
-    [],
+  const { theme, isDark } = useAppearance();
+  const pickerStyles = useMemo(
+    () => createPickerStyles(theme, isDark),
+    [theme, isDark],
   );
-  const middleCycle = Math.floor(WHEEL_CYCLES / 2);
-  const initialIndex = middleCycle * 2 + (value === "PM" ? 1 : 0);
+  const values = useMemo(() => ["AM", "PM"] as const, []);
+  const initialIndex = value === "PM" ? 1 : 0;
   const scrollRef = useRef<ScrollView>(null);
   const lastIndexRef = useRef(initialIndex);
   const lastValueRef = useRef(value);
@@ -278,8 +280,8 @@ function PeriodColumn({
       });
       return;
     }
-    if (values[selectedIndex] === value) return;
-    const targetIndex = middleCycle * 2 + (value === "PM" ? 1 : 0);
+    const targetIndex = value === "PM" ? 1 : 0;
+    if (targetIndex === selectedIndex) return;
     lastIndexRef.current = targetIndex;
     setSelectedIndex(targetIndex);
     requestAnimationFrame(() => {
@@ -288,11 +290,11 @@ function PeriodColumn({
         animated: false,
       });
     });
-  }, [middleCycle, selectedIndex, value, values]);
+  }, [initialIndex, selectedIndex, value]);
 
   const selectIndex = useCallback(
     (rawIndex: number) => {
-      const index = Math.max(0, Math.min(values.length - 1, rawIndex));
+      const index = Math.max(0, Math.min(1, rawIndex));
       if (index === lastIndexRef.current) return;
       lastIndexRef.current = index;
       setSelectedIndex(index);
@@ -310,8 +312,8 @@ function PeriodColumn({
     <View style={pickerStyles.periodColumn} accessibilityLabel="AM PM time wheel">
       <ScrollView
         ref={scrollRef}
-        style={pickerStyles.wheelViewport}
-        contentContainerStyle={pickerStyles.wheelContent}
+        style={pickerStyles.periodWheelViewport}
+        contentContainerStyle={pickerStyles.periodWheelContent}
         showsVerticalScrollIndicator={false}
         snapToInterval={WHEEL_ITEM_HEIGHT}
         snapToAlignment="start"
@@ -328,13 +330,13 @@ function PeriodColumn({
         }}
       >
         {values.map((period, index) => {
-          const distance = Math.abs(index - selectedIndex);
+          const selected = index === selectedIndex;
           return (
             <Pressable
-              key={"period-" + index}
+              key={period}
               accessibilityRole="button"
               accessibilityLabel={"Set time period to " + period}
-              accessibilityState={{ selected: index === selectedIndex }}
+              accessibilityState={{ selected }}
               onPress={() => {
                 scrollRef.current?.scrollTo({
                   y: index * WHEEL_ITEM_HEIGHT,
@@ -347,9 +349,7 @@ function PeriodColumn({
               <Text
                 style={[
                   pickerStyles.periodText,
-                  distance === 0 && pickerStyles.periodTextSelected,
-                  distance === 1 && pickerStyles.periodTextNear,
-                  distance >= 2 && pickerStyles.periodTextFaint,
+                  selected && pickerStyles.periodTextSelected,
                 ]}
               >
                 {period}
@@ -362,75 +362,76 @@ function PeriodColumn({
   );
 }
 
-const pickerStyles = StyleSheet.create({
-  column: { width: 92, alignItems: "center" },
-  columnLabel: {
-    color: "rgba(255,255,255,0.62)",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    marginBottom: 8,
-  },
-  wheelViewport: {
-    height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
-    width: "100%",
-  },
-  wheelContent: {
-    paddingVertical:
-      (WHEEL_ITEM_HEIGHT * (WHEEL_VISIBLE_ITEMS - 1)) / 2,
-  },
-  numberRow: {
-    height: WHEEL_ITEM_HEIGHT,
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-  },
-  number: {
-    color: "rgba(255,255,255,0.18)",
-    fontFamily: "Lato_900Black",
-    fontSize: 31,
-    lineHeight: 38,
-  },
-  numberNear: {
-    color: "rgba(255,255,255,0.38)",
-    fontSize: 34,
-  },
-  numberSelected: {
-    color: "#FFFFFF",
-    fontSize: 44,
-    lineHeight: 48,
-  },
-  numberFaint: {
-    color: "rgba(255,255,255,0.16)",
-  },
-  periodColumn: {
-    width: 92,
-    alignItems: "center",
-    justifyContent: "flex-end",
-    paddingTop: 27,
-  },
-  periodText: {
-    color: "rgba(255,255,255,0.18)",
-    fontFamily: "Lato_900Black",
-    fontSize: 27,
-    lineHeight: 34,
-  },
-  periodTextNear: {
-    color: "rgba(255,255,255,0.38)",
-    fontSize: 29,
-  },
-  periodTextSelected: {
-    color: "#FFFFFF",
-    fontSize: 36,
-    lineHeight: 44,
-  },
-  periodTextFaint: {
-    color: "rgba(255,255,255,0.14)",
-  },
-});
+const createPickerStyles = (theme: Theme, isDark: boolean) =>
+  StyleSheet.create({
+    column: { width: 92, alignItems: "center" },
+    columnLabel: {
+      color: isDark ? "rgba(255,255,255,0.62)" : theme.textMuted,
+      fontFamily: "Inter_600SemiBold",
+      fontSize: 11,
+      marginBottom: 8,
+    },
+    wheelViewport: {
+      height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
+      width: "100%",
+    },
+    wheelContent: {
+      paddingVertical:
+        (WHEEL_ITEM_HEIGHT * (WHEEL_VISIBLE_ITEMS - 1)) / 2,
+    },
+    numberRow: {
+      height: WHEEL_ITEM_HEIGHT,
+      alignItems: "center",
+      justifyContent: "center",
+      width: "100%",
+    },
+    number: {
+      color: isDark ? "rgba(255,255,255,0.18)" : "rgba(41,35,31,0.18)",
+      fontFamily: "Lato_900Black",
+      fontSize: 31,
+      lineHeight: 38,
+    },
+    numberNear: {
+      color: isDark ? "rgba(255,255,255,0.38)" : "rgba(41,35,31,0.42)",
+      fontSize: 34,
+    },
+    numberSelected: {
+      color: theme.text,
+      fontSize: 44,
+      lineHeight: 48,
+    },
+    numberFaint: {
+      color: isDark ? "rgba(255,255,255,0.16)" : "rgba(41,35,31,0.13)",
+    },
+    periodColumn: {
+      width: 92,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingTop: 27,
+    },
+    periodWheelViewport: {
+      height: WHEEL_ITEM_HEIGHT * 3,
+      width: "100%",
+    },
+    periodWheelContent: {
+      paddingVertical: WHEEL_ITEM_HEIGHT,
+    },
+    periodText: {
+      color: isDark ? "rgba(255,255,255,0.34)" : "rgba(41,35,31,0.38)",
+      fontFamily: "Lato_900Black",
+      fontSize: 29,
+      lineHeight: 36,
+    },
+    periodTextSelected: {
+      color: theme.text,
+      fontSize: 36,
+      lineHeight: 44,
+    },
+  });
 
 export default function Alarms() {
-  const { theme } = useAppearance();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { theme, isDark } = useAppearance();
+  const styles = useMemo(() => createStyles(theme, isDark), [theme, isDark]);
   const toast = useToast();
   const [items, setItems] = useState<Alarm[]>([]);
   const [editing, setEditing] = useState<Alarm | null>(null);
@@ -701,7 +702,7 @@ export default function Alarms() {
           onPress={() => edit(null)}
           style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
         >
-          <Ionicons name="add" size={36} color="#FFFFFF" />
+          <Ionicons name="add" size={36} color={theme.text} />
         </Pressable>
       </View>
 
@@ -729,7 +730,7 @@ export default function Alarms() {
                   onPress={() => setForm(false)}
                   style={[styles.sheetHeaderButton, busy && styles.disabled]}
                 >
-                  <Ionicons name="close" size={30} color="#FFFFFF" />
+                  <Ionicons name="close" size={30} color={theme.text} />
                 </Pressable>
                 <View style={styles.sheetHeaderCopy}>
                   <Text style={styles.sheetTitle}>
@@ -762,7 +763,7 @@ export default function Alarms() {
                   onPress={saveAlarm}
                   style={[styles.sheetHeaderButton, busy && styles.disabled]}
                 >
-                  <Ionicons name="checkmark" size={32} color="#FFFFFF" />
+                  <Ionicons name="checkmark" size={32} color={theme.text} />
                 </Pressable>
               </View>
 
@@ -814,7 +815,7 @@ export default function Alarms() {
                       <Ionicons
                         name={repeatOpen ? "chevron-up" : "chevron-forward"}
                         size={18}
-                        color="rgba(255,255,255,0.48)"
+                        color={theme.textMuted}
                       />
                     </View>
                   </Pressable>
@@ -899,7 +900,7 @@ export default function Alarms() {
                     onChangeText={setLabel}
                     maxLength={120}
                     placeholder="Enter label"
-                    placeholderTextColor="rgba(255,255,255,0.30)"
+                    placeholderTextColor={theme.textFaint}
                     selectionColor={theme.brand}
                     style={styles.labelInput}
                   />
@@ -917,7 +918,7 @@ export default function Alarms() {
                     }
                     style={styles.deleteButton}
                   >
-                    <Ionicons name="trash-outline" size={18} color="#FFB3A0" />
+                    <Ionicons name="trash-outline" size={18} color={theme.error} />
                     <Text style={styles.deleteText}>Delete alarm</Text>
                   </Pressable>
                 ) : null}
@@ -930,7 +931,7 @@ export default function Alarms() {
   );
 }
 
-const createStyles = (theme: Theme) =>
+const createStyles = (theme: Theme, isDark: boolean) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: theme.canvas },
     shell: { flex: 1, width: "100%", maxWidth: 540, alignSelf: "center" },
@@ -1101,14 +1102,14 @@ const createStyles = (theme: Theme) =>
       borderTopLeftRadius: 34,
       borderTopRightRadius: 34,
       overflow: "hidden",
-      backgroundColor: "#24201D",
+      backgroundColor: isDark ? "#24201D" : theme.canvas,
     },
-    sheetSafe: { maxHeight: "100%", backgroundColor: "#24201D" },
+    sheetSafe: { maxHeight: "100%", backgroundColor: isDark ? "#24201D" : theme.canvas },
     sheetHandle: {
       width: 86,
       height: 5,
       borderRadius: 3,
-      backgroundColor: "rgba(255,255,255,0.22)",
+      backgroundColor: isDark ? "rgba(255,255,255,0.22)" : "rgba(41,35,31,0.18)",
       alignSelf: "center",
       marginTop: 12,
     },
@@ -1127,13 +1128,13 @@ const createStyles = (theme: Theme) =>
     disabled: { opacity: 0.5 },
     sheetHeaderCopy: { flex: 1, alignItems: "center", paddingHorizontal: 8 },
     sheetTitle: {
-      color: "#FFFFFF",
+      color: theme.text,
       fontFamily: theme.font.displayStrong,
       fontSize: 24,
     },
     sheetSubtitle: {
       marginTop: 2,
-      color: "rgba(255,255,255,0.50)",
+      color: theme.textMuted,
       fontFamily: theme.font.semibold,
       fontSize: 12,
       textAlign: "center",
@@ -1149,7 +1150,7 @@ const createStyles = (theme: Theme) =>
     },
     settingsCard: {
       borderRadius: 24,
-      backgroundColor: "#34302D",
+      backgroundColor: isDark ? "#34302D" : theme.surface,
       paddingHorizontal: 18,
       overflow: "hidden",
     },
@@ -1161,7 +1162,7 @@ const createStyles = (theme: Theme) =>
     },
     settingTitle: {
       flex: 1,
-      color: "#FFFFFF",
+      color: theme.text,
       fontFamily: theme.font.semibold,
       fontSize: 15,
     },
@@ -1172,12 +1173,12 @@ const createStyles = (theme: Theme) =>
       maxWidth: "55%",
     },
     settingValue: {
-      color: "rgba(255,255,255,0.55)",
+      color: theme.textMuted,
       fontFamily: theme.font.semibold,
       fontSize: 13,
       textAlign: "right",
     },
-    settingDivider: { height: 1, backgroundColor: "rgba(255,255,255,0.07)" },
+    settingDivider: { height: 1, backgroundColor: theme.border },
     dayPicker: {
       flexDirection: "row",
       gap: 6,
@@ -1191,16 +1192,16 @@ const createStyles = (theme: Theme) =>
       borderRadius: 13,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: "rgba(255,255,255,0.06)",
+      backgroundColor: isDark ? "rgba(255,255,255,0.06)" : theme.surfaceMuted,
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.07)",
+      borderColor: theme.border,
     },
     dayButtonSelected: {
       backgroundColor: theme.deepBrand,
       borderColor: theme.deepBrand,
     },
     dayText: {
-      color: "rgba(255,255,255,0.54)",
+      color: theme.textMuted,
       fontFamily: theme.font.semibold,
       fontSize: 13,
     },
@@ -1210,13 +1211,13 @@ const createStyles = (theme: Theme) =>
       width: 44,
       minHeight: 42,
       textAlign: "right",
-      color: "rgba(255,255,255,0.68)",
+      color: theme.textMuted,
       fontFamily: theme.font.semibold,
       fontSize: 14,
       paddingVertical: 0,
     },
     snoozeUnit: {
-      color: "rgba(255,255,255,0.46)",
+      color: theme.textMuted,
       fontFamily: theme.font.body,
       fontSize: 13,
     },
@@ -1231,14 +1232,14 @@ const createStyles = (theme: Theme) =>
       gap: 14,
     },
     labelTitle: {
-      color: "#FFFFFF",
+      color: theme.text,
       fontFamily: theme.font.semibold,
       fontSize: 15,
     },
     labelInput: {
       flex: 1,
       minHeight: 52,
-      color: "rgba(255,255,255,0.78)",
+      color: theme.text,
       fontFamily: theme.font.body,
       fontSize: 15,
       textAlign: "right",
@@ -1254,7 +1255,7 @@ const createStyles = (theme: Theme) =>
       gap: 8,
     },
     deleteText: {
-      color: "#FFB3A0",
+      color: theme.error,
       fontFamily: theme.font.semibold,
       fontSize: 14,
     },
