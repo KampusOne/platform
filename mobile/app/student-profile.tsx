@@ -15,29 +15,35 @@ import { FeedPost } from "@/src/components/feed-post";
 import { FeedSkeleton, ProfileSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
 
-type Person={user_id:string;display_name:string;username:string|null;biography:string|null;profile_image_url:string|null;cover_image_url:string|null;university_name:string|null;department_name:string|null;current_level:number|null;verified:boolean;follower_count:number;post_count:number;followed:boolean;has_events:boolean};
+type Person={user_id:string;display_name:string;username:string|null;biography:string|null;profile_image_url:string|null;cover_image_url:string|null;university_name:string|null;department_name:string|null;current_level:number|null;verified:boolean;can_view_reposts?:boolean;follower_count:number;post_count:number;followed:boolean;has_events:boolean};
 type PersonResponse={profile:Person;roles:{id:string;agent_type:"VENDOR"|"TUTOR"|"RIDER"}[];isOwner:boolean};
 type Page={posts:SocialFeedPost[];nextCursor?:string|null};
 export default function StudentProfile(){
   const {id}=useLocalSearchParams<{id?:string}>();const {user}=useAuth();const {theme}=useAppearance();const toast=useToast();
   const target=validPostId(id)?id:"";const scope=`${user?.id}:${target}`;const current=useRef(scope);current.current=scope;
   const [data,setData]=useState<PersonResponse>();const [loadedScope,setLoadedScope]=useState("");const [posts,setPosts]=useState<SocialFeedPost[]>([]);
-  const [cursor,setCursor]=useState<string|null>(null);const [tab,setTab]=useState<"posts"|"events">("posts");
+  const [cursor,setCursor]=useState<string|null>(null);const [tab,setTab]=useState<"posts"|"reposts"|"events">("posts");
   const [loading,setLoading]=useState(true);const [refreshing,setRefreshing]=useState(false);const [more,setMore]=useState(false);const [error,setError]=useState("");const [following,setFollowing]=useState(false);const [manualLink,setManualLink]=useState("");
   const mounted=useRef(true),version=useRef(0),followLock=useRef(false),moreLock=useRef(false);
   useEffect(()=>()=>{mounted.current=false;version.current++;},[]);
+  const feedPath=useCallback((nextCursor?:string|null)=>{
+    const query=[tab==="reposts"?`repostedBy=${target}`:`author=${target}`];
+    if(tab==="events")query.push("category=EVENT");
+    if(nextCursor)query.push(`cursor=${encodeURIComponent(nextCursor)}`);
+    return `/v1/student/feed?${query.join("&")}`;
+  },[tab,target]);
   const load=useCallback(async(refresh=false)=>{
     const request=++version.current;setError("");if(refresh)setRefreshing(true);else setLoading(true);
-    try{if(!target)throw new Error("This student link is not valid.");const [person,page]=await Promise.all([api<PersonResponse>(`/v1/people/${target}`),api<Page>(`/v1/student/feed?author=${target}${tab==="events"?"&category=EVENT":""}`)]);
+    try{if(!target)throw new Error("This student link is not valid.");const [person,page]=await Promise.all([api<PersonResponse>(`/v1/people/${target}`),api<Page>(feedPath())]);
       if(!mounted.current||current.current!==scope||request!==version.current)return;setData(person);setPosts(page.posts);setCursor(page.nextCursor??null);setLoadedScope(scope);
     }catch(e){if(mounted.current&&current.current===scope&&request===version.current)setError(e instanceof Error?e.message:"This profile could not load.");}
     finally{if(mounted.current&&current.current===scope&&request===version.current){setLoading(false);setRefreshing(false);}}
-  },[scope,target,tab]);
+  },[scope,target,feedPath]);
   useFocusEffect(useCallback(()=>{mounted.current=true;void load();return()=>{version.current++;};},[load]));
   useEffect(()=>{setData(undefined);setPosts([]);setCursor(null);setLoadedScope("");setManualLink("");setFollowing(false);followLock.current=false;},[scope]);
   const person=loadedScope===scope?data?.profile:undefined;
   async function toggleFollow(){if(!person||data?.isOwner||followLock.current)return;followLock.current=true;setFollowing(true);try{const result=await api<{followed:boolean;follower_count:number}>(`/v1/people/${target}/follow`,{method:"PUT",body:JSON.stringify({follow:!person.followed})});if(mounted.current&&current.current===scope)setData(old=>old?{...old,profile:{...old.profile,...result}}:old);}catch(e){if(current.current===scope)toast(e instanceof Error?e.message:"Follow could not be updated.","error");}finally{followLock.current=false;if(mounted.current&&current.current===scope)setFollowing(false);}}
-  async function next(){if(!cursor||moreLock.current||loading)return;const request=version.current;moreLock.current=true;setMore(true);try{const page=await api<Page>(`/v1/student/feed?author=${target}&cursor=${encodeURIComponent(cursor)}${tab==="events"?"&category=EVENT":""}`);if(mounted.current&&current.current===scope&&request===version.current){setPosts(old=>[...old,...page.posts.filter(p=>!old.some(o=>o.id===p.id))]);setCursor(page.nextCursor??null);}}catch(e){if(current.current===scope)toast(e instanceof Error?e.message:"Could not load more posts.","error");}finally{moreLock.current=false;if(mounted.current)setMore(false);}}
+  async function next(){if(!cursor||moreLock.current||loading)return;const request=version.current;moreLock.current=true;setMore(true);try{const page=await api<Page>(feedPath(cursor));if(mounted.current&&current.current===scope&&request===version.current){setPosts(old=>[...old,...page.posts.filter(p=>!old.some(o=>o.id===p.id))]);setCursor(page.nextCursor??null);}}catch(e){if(current.current===scope)toast(e instanceof Error?e.message:"Could not load more posts.","error");}finally{moreLock.current=false;if(mounted.current)setMore(false);}}
   async function bookmark(post:FeedPostData){try{await api(`/v1/student/feed/${post.id}/bookmark`,{method:post.bookmarked?"DELETE":"PUT"});if(current.current===scope)setPosts(rows=>rows.map(p=>p.id===post.id?{...p,bookmarked:!post.bookmarked}:p));}catch(e){toast(e instanceof Error?e.message:"Could not update saved posts.","error");}}
   async function share(post:FeedPostData){try{const result=await sharePostLink(post);if(current.current!==scope)return;if(result==="manual")setManualLink(postUrl(post.id));else if(result==="copied")toast("Post link copied","success");}catch{toast("The post link could not be shared.","error");}}
   const label={fontFamily:theme.font.body,color:theme.text,fontSize:14};
@@ -58,11 +64,11 @@ export default function StudentProfile(){
           <View style={{flexDirection:"row",gap:20,marginTop:13}}><Text style={label}><Text style={{fontFamily:theme.font.semibold}}>{safeCount(person.follower_count)}</Text> followers</Text><Text style={label}><Text style={{fontFamily:theme.font.semibold}}>{safeCount(person.post_count)}</Text> posts</Text></View>
           {data?.roles.length?<View style={{flexDirection:"row",flexWrap:"wrap",gap:8,marginTop:16}}>{data.roles.map(role=><Pressable key={role.id} accessibilityRole="button" onPress={()=>router.push({pathname:"/student-service",params:{id:role.id}})} style={{flexDirection:"row",alignItems:"center",gap:5,borderRadius:9,paddingHorizontal:11,paddingVertical:8,backgroundColor:theme.surfaceMuted}}><Ionicons name={role.agent_type==="VENDOR"?"storefront-outline":role.agent_type==="TUTOR"?"school-outline":"bicycle-outline"} size={15} color={theme.brand}/><Text style={{...label,fontSize:12}}>{role.agent_type==="VENDOR"?"Vendor":role.agent_type==="TUTOR"?"Tutor":"Rider"}</Text><Ionicons name="chevron-forward" size={12} color={theme.textMuted}/></Pressable>)}</View>:null}
         </View>
-        <View style={{flexDirection:"row",borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:theme.border}}>{(["posts",...(person.has_events?["events"]:[])] as ("posts"|"events")[]).map(value=><Pressable accessibilityRole="tab" accessibilityState={{selected:tab===value}} key={value} onPress={()=>setTab(value)} style={{flex:1,padding:15,alignItems:"center",borderBottomWidth:2,borderBottomColor:tab===value?theme.brand:"transparent"}}><Text style={{...label,fontFamily:theme.font.semibold}}>{value==="posts"?"Posts":"Events"}</Text></Pressable>)}</View>
+        <View style={{flexDirection:"row",borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:theme.border}}>{(["posts",...((data?.isOwner||person.can_view_reposts!==false)?["reposts"]:[]),...(person.has_events?["events"]:[])] as ("posts"|"reposts"|"events")[]).map(value=><Pressable accessibilityRole="tab" accessibilityState={{selected:tab===value}} key={value} onPress={()=>setTab(value)} style={{flex:1,padding:15,alignItems:"center",borderBottomWidth:2,borderBottomColor:tab===value?theme.brand:"transparent"}}><Text style={{...label,fontFamily:theme.font.semibold}}>{value==="posts"?"Posts":value==="reposts"?"Reposts":"Events"}</Text></Pressable>)}</View>
         {manualLink?<Text selectable style={{...label,padding:16}}>{manualLink}</Text>:null}{error?<Text accessibilityRole="alert" style={{...label,padding:16,color:theme.error}}>{error}</Text>:null}
       </View>}
       renderItem={({item})=><View style={{paddingHorizontal:16}}><FeedPost post={item} onBookmark={p=>void bookmark(p)} onShare={p=>void share(p)} onFeedback={message=>toast(message)} onChanged={post=>setPosts(rows=>rows.map(p=>p.id===post.id?post:p))} onDeleted={postId=>{setPosts(rows=>rows.filter(p=>p.id!==postId));setData(old=>old?{...old,profile:{...old.profile,post_count:Math.max(0,old.profile.post_count-1)}}:old);}}/></View>}
-      ListEmptyComponent={loading?<View style={{padding:16}}><FeedSkeleton count={2}/></View>:<View style={{padding:30}}><Text style={{...label,color:theme.textMuted,textAlign:"center"}}>{tab==="events"?"No published events yet.":"No posts yet."}</Text></View>}
+      ListEmptyComponent={loading?<View style={{padding:16}}><FeedSkeleton count={2}/></View>:<View style={{padding:30}}><Text style={{...label,color:theme.textMuted,textAlign:"center"}}>{tab==="events"?"No published events yet.":tab==="reposts"?"No reposts yet.":"No posts yet."}</Text></View>}
       ListFooterComponent={<View style={{padding:18,paddingBottom:40}}>{more?<FeedSkeleton count={1}/>:cursor?button("Load more",()=>void next()):null}</View>}/>:null}
   </View></SafeAreaView>;
 }

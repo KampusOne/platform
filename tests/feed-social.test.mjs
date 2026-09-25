@@ -36,3 +36,19 @@ test("quote previews become unavailable when the original is deleted", () => {
   const source = read("mobile/src/components/quoted-post.tsx");
   assert.match(source, /wasPostDeleted/); assert.match(source, /Original post unavailable/);
 });
+
+
+test("student profile repost privacy is enforced end to end", () => {
+  const profile = read("mobile/app/student-profile.tsx");
+  const settings = read("mobile/app/settings.tsx");
+  const account = read("server/src/routes/account.ts");
+  const people = read("server/src/routes/people.ts");
+  const route = read("server/src/routes/feed-social.ts");
+  assert.match(profile, /repostedBy=/);
+  assert.match(profile, /"reposts"/);
+  assert.match(settings, /Hide my reposts on my profile/);
+  assert.match(account, /hideReposts: z\.boolean\(\)\.optional\(\)/);
+  assert.match(people, /can_view_reposts/);
+  assert.match(route, /privacy\.hide_reposts/);
+  assert.match(route, /target_repost\.user_id/);
+});

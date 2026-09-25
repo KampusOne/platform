@@ -54,6 +54,7 @@ peopleRoutes.get("/:id",async c=>{
   const profile=firstRow(await db.execute(sql`select p.user_id,p.display_name,p.username,p.biography,p.profile_image_url,p.cover_image_url,p.current_level,
       uni.name as university_name,d.name as department_name,
       coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,
+      (p.user_id=${u.id}::uuid or not coalesce((p.settings->>'hideReposts')::boolean,false)) as can_view_reposts,
       (select count(*)::int from public.profile_follows f where f.followed_id=p.user_id) as follower_count,
       exists(select 1 from public.profile_follows f where f.followed_id=p.user_id and f.follower_id=${u.id}::uuid) as followed,
       (select count(*)::int from public.feed_posts posts where posts.author_user_id=p.user_id and ${visiblePost(u.universityId ?? '00000000-0000-0000-0000-000000000000')}) as post_count,
