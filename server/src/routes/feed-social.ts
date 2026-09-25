@@ -95,10 +95,49 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   const university = campus(user);
   const cursor = parseFeedCursor(c.req.query("cursor"));
   const author = c.req.query("author") ? id(c.req.query("author")!) : null;
+  const repostedBy = c.req.query("repostedBy") ? id(c.req.query("repostedBy")!) : null;
+  if (author && repostedBy) throw new AppError(400, "BAD_REQUEST", "Choose either posts or reposts for a profile.");
   const category = c.req.query("category")?.toUpperCase() || null;
   const search = c.req.query("q")?.trim().slice(0, 200) || null;
+  const withViews = await feedExperienceReady(c.env);
+  if (repostedBy) {
+    const privacy = firstRow(await database(c.env).execute<{ hide_reposts: boolean }>(sql`
+      select coalesce((p.settings->>'hideReposts')::boolean, false) as hide_reposts
+      from public.profiles p
+      join public.users account on account.id = p.user_id and account.status::text = 'ACTIVE'
+      where p.user_id = ${repostedBy}::uuid and p.deleted_at is null
+      limit 1
+    `));
+    if (!privacy) throw new AppError(404, "NOT_FOUND", "This student profile is not available.");
+    if (repostedBy !== user.id && privacy.hide_reposts)
+      throw new AppError(403, "FORBIDDEN", "This student's reposts are private.");
+
+    const repostResult = await database(c.env).execute(sql`
+      select ${projection(user, withViews)}, target_repost.created_at as activity_at,
+        to_char(target_repost.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
+        jsonb_build_object('user_id', target_repost.user_id, 'name', coalesce(reposter.display_name, 'KampusOne user')) as repost_by
+      from public.feed_reposts target_repost
+      join public.feed_posts posts on posts.id = target_repost.post_id
+      ${joins(user)}
+      left join public.profiles reposter on reposter.user_id = target_repost.user_id and reposter.deleted_at is null
+      where target_repost.user_id = ${repostedBy}::uuid
+        and ${visiblePost(university)}
+        and (${category}::text is null or posts.category = ${category})
+        and (${search}::text is null or concat_ws(' ', posts.title, posts.summary, posts.body, author.display_name, sources.name) ilike ${search ? `%${search}%` : null})
+        and (${cursor?.at ?? null}::timestamptz is null or
+          (target_repost.created_at, posts.id) < (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
+      order by target_repost.created_at desc, posts.id desc
+      limit ${pageSize + 1}
+    `);
+    const reposts = repostResult.rows.slice(0, pageSize);
+    return c.json({
+      posts: reposts,
+      nextCursor: repostResult.rows.length > pageSize ? nextFeedCursor(reposts[reposts.length - 1]!, "activity_at") : null,
+    });
+  }
+
   const result = await database(c.env).execute(sql`
-    select ${projection(user, await feedExperienceReady(c.env))}, greatest(posts.published_at, latest.created_at) as activity_at,
+    select ${projection(user, withViews)}, greatest(posts.published_at, latest.created_at) as activity_at,
       to_char(greatest(posts.published_at, latest.created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       case when latest.user_id is null then null else jsonb_build_object('user_id', latest.user_id, 'name', latest.display_name) end as repost_by
     from public.feed_posts posts ${joins(user)}
