@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
+import { byteRange } from "../lib/http-range";
 import { currentUser, requireAuth } from "../middleware/auth";
 import { id } from "../lib/input";
 import { recordAudit } from "../lib/audit";
@@ -64,6 +65,8 @@ export function detectedMime(bytes: Uint8Array) {
   if (head.startsWith("RIFF") && head.slice(8, 12) === "WEBP")
     return "image/webp";
   if (head.startsWith("%PDF-")) return "application/pdf";
+  // ISO Base Media container: accept MP4 brands, not arbitrary ftyp/HEIC files.
+  if (head.slice(4, 8) === "ftyp" && ["isom", "iso2", "mp41", "mp42", "avc1", "M4V "].includes(head.slice(8, 12))) return "video/mp4";
   return null;
 }
 mediaRoutes.post("/", requireAuth, async (c) => {
@@ -99,11 +102,11 @@ mediaRoutes.post("/", requireAuth, async (c) => {
     );
   const bytes = await file.arrayBuffer();
   const mime = detectedMime(new Uint8Array(bytes));
-  if (!mime || (!privateKinds.has(kind) && !mime.startsWith("image/")))
+  if (!mime || (mime === "video/mp4" ? kind !== "post" : !privateKinds.has(kind) && !mime.startsWith("image/")))
     throw new AppError(
       400,
       "BAD_REQUEST",
-      "Use a JPG, PNG or WebP image, or a PDF document.",
+      "Use a JPG, PNG or WebP image, a PDF document, or an MP4 video for a post.",
     );
   const bucket = privateKinds.has(kind)
     ? c.env.PRIVATE_BUCKET
@@ -174,8 +177,9 @@ mediaRoutes.get("/:id", async (c) => {
     kind: string;
     object_key: string;
     content_type: string;
+    size_bytes: number;
   }>(
-    sql`select id,owner_user_id,institution_id,kind,object_key,content_type from public.media_objects where id=${id(c.req.param("id"))}::uuid and deleted_at is null`,
+    sql`select id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes from public.media_objects where id=${id(c.req.param("id"))}::uuid and deleted_at is null`,
   );
   const media = firstRow(result);
   if (!media) throw new AppError(404, "NOT_FOUND", "File not found.");
@@ -231,7 +235,13 @@ mediaRoutes.get("/:id", async (c) => {
   const bucket = privateKinds.has(media.kind)
     ? c.env.PRIVATE_BUCKET
     : c.env.MEDIA_BUCKET;
-  const object = await bucket?.get(media.object_key);
+  const range = c.req.header("Range");
+  const selected = range ? byteRange(range, Number(media.size_bytes)) : null;
+  if (range && !selected) {
+    c.header("Content-Range", `bytes */${media.size_bytes}`);
+    return c.body(null, 416);
+  }
+  const object = await bucket?.get(media.object_key, selected ? { range: selected } : undefined);
   if (!object) throw new AppError(404, "NOT_FOUND", "File not found.");
   c.header("Content-Type", media.content_type);
   c.header("X-Content-Type-Options", "nosniff");
@@ -244,5 +254,14 @@ mediaRoutes.get("/:id", async (c) => {
   );
   if (media.content_type === "application/pdf")
     c.header("Content-Disposition", 'attachment; filename="document.pdf"');
+  c.header("Accept-Ranges", "bytes");
+  if (object.httpEtag) c.header("ETag", object.httpEtag);
+  if (selected) {
+    const { offset, length } = selected;
+    c.header("Content-Range", `bytes ${offset}-${offset + length - 1}/${object.size}`);
+    c.header("Content-Length", String(length));
+    return c.body(object.body, 206);
+  }
+  c.header("Content-Length", String(object.size));
   return c.body(object.body);
 });

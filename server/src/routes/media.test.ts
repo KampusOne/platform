@@ -32,13 +32,13 @@ app.get("/v1/other", (c) => c.json({ ok: true }));
 app.onError((error, c) => c.json({ error: { message: error.message } }, error instanceof AppError ? error.status : 500));
 const auth = { Authorization: "Bearer fixture" };
 function media(kind = "avatar") {
-  return { id: mediaId, owner_user_id: ownerId, institution_id: campusId, kind, object_key: `${ownerId}/${kind}/${mediaId}`, content_type: kind === "resource" ? "application/pdf" : "image/png" };
+  return { id: mediaId, owner_user_id: ownerId, institution_id: campusId, kind, object_key: `${ownerId}/${kind}/${mediaId}`, content_type: kind === "resource" ? "application/pdf" : "image/png", size_bytes: 8 };
 }
 beforeEach(() => {
   vi.clearAllMocks();
   state.execute.mockReset();
   state.execute.mockResolvedValue({ rows: [media()] });
-  state.get.mockImplementation(async () => ({ body: new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])).body }));
+  state.get.mockImplementation(async () => ({ body: new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])).body, size: 8, httpEtag: '"fixture"' }));
   state.put.mockResolvedValue({}); state.findUser.mockResolvedValue(actor); state.audit.mockResolvedValue(undefined);
 });
 describe("media upload and delivery regression", () => {
@@ -54,6 +54,17 @@ describe("media upload and delivery regression", () => {
     expect(result.kind).toBe("avatar"); expect(result.private).toBe(false);
     expect(state.put).toHaveBeenCalledOnce(); expect(state.execute).toHaveBeenCalledTimes(3);
   });
+  it("accepts an MP4 post upload without changing the media schema", async () => {
+    state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValue({ rows: [] });
+    const form = new FormData();
+    form.append("kind", "post");
+    form.append("file", new File([
+      new Uint8Array([0, 0, 0, 20, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0]),
+    ], "post.mp4", { type: "video/mp4" }));
+    const response = await app.request("https://api.example/v1/media", { method: "POST", headers: auth, body: form }, env);
+    expect(response.status).toBe(201);
+    expect(state.put).toHaveBeenCalledOnce();
+  });
   it.each(["avatar", "cover", "post", "product"])("serves %s images across app and Worker origins without disabling secure headers", async (kind) => {
     state.execute.mockResolvedValue({ rows: [media(kind)] });
     const response = await app.request(`https://api.example/v1/media/${mediaId}`, {}, env);
@@ -62,6 +73,30 @@ describe("media upload and delivery regression", () => {
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Type")).toBe("image/png");
     expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(0);
+  });
+  it("streams public MP4 byte ranges with browser-safe headers", async () => {
+    const size = 12;
+    state.execute.mockResolvedValue({ rows: [{ ...media("post"), content_type: "video/mp4", size_bytes: size }] });
+    state.get.mockResolvedValue({
+      body: new Response(new Uint8Array([1, 2, 3, 4])).body,
+      size,
+      httpEtag: '"video-fixture"',
+    });
+    const response = await app.request(
+      `https://api.example/v1/media/${mediaId}`,
+      { headers: { Range: "bytes=2-5" } },
+      env,
+    );
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Type")).toBe("video/mp4");
+    expect(response.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(response.headers.get("Content-Range")).toBe("bytes 2-5/12");
+    expect(response.headers.get("Content-Length")).toBe("4");
+    expect(response.headers.get("Cross-Origin-Resource-Policy")).toBe("cross-origin");
+    expect(state.get).toHaveBeenCalledWith(
+      `${ownerId}/post/${mediaId}`,
+      { range: { offset: 2, length: 4 } },
+    );
   });
   it("keeps private documents inaccessible without an authenticated or signed request", async () => {
     state.execute.mockResolvedValue({ rows: [media("resource")] });
