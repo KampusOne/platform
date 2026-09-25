@@ -121,6 +121,7 @@ export default function ProfileScreen() {
   const [repostLoadingMore, setRepostLoadingMore] = useState(false);
   const repostLoadVersion = useRef(0);
   const repostPaging = useRef(false);
+  const repostLoaded = useRef(false);
   const [copyId, setCopyId] = useState<string | null>(null);
   const [academicState, setAcademicState] = useState<ResourceState>("idle");
   const [purchasesState, setPurchasesState] = useState<ResourceState>("idle");
@@ -210,6 +211,7 @@ export default function ProfileScreen() {
       if (version !== repostLoadVersion.current) return;
       setReposts(page.posts);
       setRepostCursor(page.nextCursor ?? null);
+      repostLoaded.current = true;
       setRepostState("ready");
     } catch (caught) {
       if (version !== repostLoadVersion.current) return;
@@ -231,9 +233,9 @@ export default function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (activeTab === "Reposts") void loadReposts(repostState !== "idle");
+      if (activeTab === "Reposts") void loadReposts(repostLoaded.current);
       return () => { repostLoadVersion.current++; };
-    }, [activeTab, loadReposts, repostState]),
+    }, [activeTab, loadReposts]),
   );
 
   const name =
