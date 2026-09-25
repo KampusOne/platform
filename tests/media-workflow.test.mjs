@@ -26,9 +26,13 @@ test("extreme dragging and zooming never leave the image or request out-of-bound
 test("invalid dimensions fail before calling a native crop operation", () => {
   for (const width of [0, -1, NaN, Infinity]) assert.throws(() => photoCrop({ width, height: 500 }, 300, 1, 1, { x: 0, y: 0 }));
 });
-test("saved Worker URLs use the web proxy and bypass old blocked cache entries", () => {
-  assert.equal(resolveMediaLink(`https://worker.example/v1/media/${id}`, "/api"), `/api/v1/media/${id}?v=2`);
-  assert.equal(resolveMediaLink(`/api/v1/media/${id}?v=1`, "/api"), `/api/v1/media/${id}?v=2`);
+test("public absolute Worker media streams direct on web while relative media keeps the proxy", () => {
+  assert.equal(resolveMediaLink(`https://worker.example/v1/media/${id}`, "/api"), `https://worker.example/v1/media/${id}?v=3`);
+  assert.equal(resolveMediaLink(`/api/v1/media/${id}?v=1`, "/api"), `/api/v1/media/${id}?v=3`);
+});
+test("signed private media stays same-origin on web", () => {
+  const link = resolveMediaLink(`https://worker.example/v1/media/${id}?access=signed.token`, "/api");
+  assert.equal(link, `/api/v1/media/${id}?access=signed.token&v=3`);
 });
 test("native URLs are absolute; private access tokens and download selection survive", () => {
   const link = resolveMediaLink(`https://old.example/v1/media/${id}?access=signed.token&download=1`, "https://api.example");
@@ -40,7 +44,7 @@ test("native URLs are absolute; private access tokens and download selection sur
 test("unrelated content, external images and signed tokens themselves are unchanged", () => {
   const input = { profile: { profile_image_url: `https://worker.example/v1/media/${id}` }, posts: [{ image_url: "https://images.example/photo.jpg", body: `https://worker.example/v1/media/${id}` }], accessToken: "secret-token" };
   const output = normalizeMediaLinks(input, "/api");
-  assert.equal(output.profile.profile_image_url, `/api/v1/media/${id}?v=2`);
+  assert.equal(output.profile.profile_image_url, `https://worker.example/v1/media/${id}?v=3`);
   assert.equal(output.posts[0].image_url, input.posts[0].image_url);
   assert.equal(output.posts[0].body, input.posts[0].body);
   assert.equal(output.accessToken, input.accessToken);
@@ -84,7 +88,6 @@ test("cancel returns no video; only Save returns the edited clip", async () => {
     await assert.rejects(requestVideoEdit(source), /Finish editing/);
     finishVideoEdit(first, null);
     assert.equal(await cancelled, null);
-
     const saved = requestVideoEdit(source), second = getVideoEdit().id;
     const trimmed = { ...source, uri: "file:///trimmed.mp4", durationMs: 25_000 };
     finishVideoEdit(second, trimmed);
