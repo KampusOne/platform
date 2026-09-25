@@ -4,6 +4,8 @@ import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { Image, Platform } from "react-native";
 import { api, clearApiCache } from "./api";
 import { requestPhotoEdit } from "./photo-edit-session";
+import { requestVideoEdit } from "./video-edit-session";
+import { getPostVideoDurationMs } from "./post-video-processing";
 import type { PhotoDimensions } from "./photo-crop";
 export type UploadedFile = { id: string; url: string; kind: string; private: boolean };
 export type PhotoSource = "library" | "camera";
@@ -34,7 +36,7 @@ export async function pickPhoto(kind: PhotoKind, source: PhotoSource = "library"
     try { prepared = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: kind === "avatar" || kind === "cover" ? 0.95 : 0.82 }); }
     finally { rendered.release(); }
   } finally { context.release(); }
-  if (kind === "avatar" || kind === "cover") {
+  if (kind === "avatar" || kind === "cover" || kind === "post") {
     const edited = await requestPhotoEdit(kind, prepared);
     if (!edited) return null;
     prepared = edited;
@@ -102,21 +104,101 @@ export async function uploadAttachment(file: StagedAttachment): Promise<StagedAt
   return {...file,mediaId:saved.id};
 }
 
-export type PostMedia = { uri:string; name:string; type:string };
-export async function pickPostMedia(source: PhotoSource = "library"): Promise<PostMedia|null> {
-  if(source === "camera") return pickPhoto("post", "camera");
-  const result = await ImagePicker.launchImageLibraryAsync({mediaTypes:["images","videos"],allowsEditing:false,quality:0.8,videoMaxDuration:90});
-  if(result.canceled || !result.assets[0]) return null;
-  const asset=result.assets[0];
-  if(asset.type === "video") {
-    const type=asset.mimeType ?? (asset.uri.toLowerCase().endsWith(".mp4") ? "video/mp4" : "");
-    if(type !== "video/mp4") throw new Error("Choose an MP4 video. Export other formats as MP4 first.");
-    if((asset.fileSize??0)>10*1024*1024) throw new Error("Choose a video smaller than 10 MB.");
-    return {uri:asset.uri,name:asset.fileName??"post.mp4",type};
+export type PostMedia = {
+  uri: string;
+  name: string;
+  type: string;
+  durationMs?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+};
+
+export async function pickPostMedia(
+  source: PhotoSource = "library",
+): Promise<PostMedia | null> {
+  if (source === "camera") {
+    const photo = await pickPhoto("post", "camera");
+    return photo
+      ? {
+          uri: photo.uri,
+          name: photo.name,
+          type: photo.type,
+          width: photo.width,
+          height: photo.height,
+        }
+      : null;
   }
-  const context=ImageManipulator.manipulate(asset.uri);
-  try { if(Math.max(asset.width,asset.height)>1280)context.resize(asset.width>=asset.height?{width:1280}:{height:1280});
-    const image=await context.renderAsync();try {const saved=await image.saveAsync({format:SaveFormat.JPEG,compress:0.82});return {uri:saved.uri,name:"post.jpg",type:"image/jpeg"};}finally{image.release();}
-  }finally{context.release();}
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ["images", "videos"],
+    allowsEditing: false,
+    quality: 1,
+  });
+  if (result.canceled || !result.assets[0]) return null;
+  const asset = result.assets[0];
+
+  if (asset.type === "video") {
+    if ((asset.fileSize ?? 0) > 100 * 1024 * 1024)
+      throw new Error(
+        "Choose a source video smaller than 100 MB, then trim it before posting.",
+      );
+    const type =
+      asset.mimeType ??
+      (asset.uri.toLowerCase().endsWith(".mp4")
+        ? "video/mp4"
+        : "video/quicktime");
+    const durationMs = await getPostVideoDurationMs(
+      asset.uri,
+      asset.duration ?? undefined,
+    );
+    const edited = await requestVideoEdit({
+      uri: asset.uri,
+      name: asset.fileName ?? "post-video",
+      type,
+      durationMs,
+    });
+    if (!edited) return null;
+    return edited;
+  }
+
+  if (!asset.width || !asset.height)
+    throw new Error("This photo could not be read. Choose another image.");
+  if ((asset.fileSize ?? 0) > 15 * 1024 * 1024)
+    throw new Error("Choose a photo smaller than 15 MB.");
+
+  const context = ImageManipulator.manipulate(asset.uri);
+  let prepared: PhotoDimensions;
+  try {
+    if (Math.max(asset.width, asset.height) > 1280)
+      context.resize(
+        asset.width >= asset.height ? { width: 1280 } : { height: 1280 },
+      );
+    const image = await context.renderAsync();
+    try {
+      prepared = await image.saveAsync({
+        format: SaveFormat.JPEG,
+        compress: 0.9,
+      });
+    } finally {
+      image.release();
+    }
+  } finally {
+    context.release();
+  }
+
+  const edited = await requestPhotoEdit("post", prepared);
+  if (!edited) return null;
+  return {
+    uri: edited.uri,
+    name: "post.jpg",
+    type: "image/jpeg",
+    width: edited.width,
+    height: edited.height,
+  };
 }
-export async function uploadPostMedia(file:PostMedia):Promise<UploadedFile>{return upload("post",file);}
+
+export async function uploadPostMedia(
+  file: PostMedia,
+): Promise<UploadedFile> {
+  return upload("post", file);
+}
