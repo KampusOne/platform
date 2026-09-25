@@ -14,4 +14,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci
+        working-directory: packages/contracts
+      - run: npm ci
+        working-directory: server
       - run: node --experimental-strip-types --test tests/*.test.mjs tests/post-like-store.test.ts

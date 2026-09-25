@@ -28,11 +28,15 @@ jobs:
           cache-dependency-path: |
             packages/contracts/package-lock.json
             server/package-lock.json
+            mobile/package-lock.json
       - run: npm ci
         working-directory: packages/contracts
       - run: npm ci
         working-directory: server
-      - run: npm run check && npm test && npm run build
+      - name: Install dependencies for shared mobile session tests
+        run: npm ci
+        working-directory: mobile
+      - run: npm run check && npm test -- --maxWorkers=2 && npm run build
         working-directory: server
       - name: Guard Phase 2 schema activation
         env:

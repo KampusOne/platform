@@ -12,9 +12,9 @@
       "tests": 359
     },
     {
-      "command": "node --experimental-strip-types --test tests/*.test.mjs database/imports/academic-importer.test.mjs",
+      "command": "node --experimental-strip-types --test tests/*.test.mjs tests/post-like-store.test.ts database/imports/academic-importer.test.mjs",
       "result": "passed",
-      "tests": 101
+      "tests": 111
     },
     {
       "command": "cd packages/contracts && npm run check && npm test",

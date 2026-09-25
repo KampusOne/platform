@@ -43,7 +43,7 @@ Local checks on the combined branch:
 | Check | Result |
 | --- | --- |
 | `cd server && npm test -- --maxWorkers=2` | 33 files, 359 tests passed |
-| `node --experimental-strip-types --test tests/*.test.mjs database/imports/academic-importer.test.mjs` | 101 tests passed |
+| `node --experimental-strip-types --test tests/*.test.mjs tests/post-like-store.test.ts database/imports/academic-importer.test.mjs` | 111 tests passed |
 | Contracts typecheck and tests | Passed; 9 tests |
 | Worker typecheck/build and Wrangler dry run | Passed; no deployment performed |
 | Mobile TypeScript and production web export | Passed; 66 HTML routes |
@@ -91,3 +91,7 @@ Before calling the app ready, complete the fourteen master-brief journeys on mat
 Remaining implementation scope is explicit in all 241 register entries. It includes secure staff invitations, fuller domain operations and funnels, all-national reviewed academic coverage, document OCR/readability automation, managed persona governance, entitlement administration, comprehensive dark-mode/route acceptance, genuine commerce/settlement verification, and record-specific demo cleanup review. Google/Apple provider setup, the admin hostname, physical device delivery and unidentified visual references are blocked dependencies. No provider account creation, mass delivery, financial execution or destructive cleanup was performed.
 
 The two PDFs were fully extracted and audited: the 77-page compilation lists 328 institutions and 47 expanded profiles; the 30-page compilation has 22 profiles. The 530 staging claims retain provenance and conflicting BUK, UNIBEN and Babcock claims for human review. They are not a complete, verified national catalogue and were not automatically published.
+
+## Pull request and CI follow-up
+
+Review: [PR #28](https://github.com/KampusOne/platform/pull/28). CI exposed two clean-checkout setup gaps: the broad Node regression job needed the shared contracts/Worker dependencies, and the Worker job’s cross-client session tests needed the mobile Expo dependencies. Both workflows and the matching deployment test setup now install their actual test dependencies. No failing test was removed or relaxed. The initial portal/mobile preview builds passed; the protected portal review URL rendered the provisioned-staff sign-in form using authorized review access. This is public entry coverage only, not an authenticated admin workflow or a backend release.
