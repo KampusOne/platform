@@ -52,3 +52,14 @@ test("student profile repost privacy is enforced end to end", () => {
   assert.match(route, /privacy\.hide_reposts/);
   assert.match(route, /target_repost\.user_id/);
 });
+
+
+test("main profile dashboard shows the signed-in user's repost history", () => {
+  const source = read("mobile/app/(tabs)/profile.tsx");
+  assert.match(source, /"Overview", "Reposts", "Activity", "Classes", "Transactions"/);
+  assert.match(source, /repostedBy=/);
+  assert.match(source, /<FeedPostCard/);
+  assert.match(source, /No reposts yet/);
+  assert.match(source, /Load older reposts/);
+  assert.match(source, /post\.reposted[\s\S]*current\.filter/);
+});
