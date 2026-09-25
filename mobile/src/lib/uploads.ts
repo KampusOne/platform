@@ -197,6 +197,38 @@ export async function pickPostMedia(
   };
 }
 
+export async function editPostMedia(
+  file: PostMedia,
+): Promise<PostMedia | null> {
+  if (file.type.startsWith("video/")) {
+    const durationMs =
+      file.durationMs ?? (await getPostVideoDurationMs(file.uri));
+    return requestVideoEdit({
+      uri: file.uri,
+      name: file.name,
+      type: file.type,
+      durationMs,
+    });
+  }
+
+  if (!file.width || !file.height)
+    throw new Error("This photo can no longer be edited. Replace it and try again.");
+  const edited = await requestPhotoEdit("post", {
+    uri: file.uri,
+    width: file.width,
+    height: file.height,
+  });
+  if (!edited) return null;
+  return {
+    ...file,
+    uri: edited.uri,
+    name: "post.jpg",
+    type: "image/jpeg",
+    width: edited.width,
+    height: edited.height,
+  };
+}
+
 export async function uploadPostMedia(
   file: PostMedia,
 ): Promise<UploadedFile> {
