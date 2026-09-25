@@ -95,3 +95,7 @@ The two PDFs were fully extracted and audited: the 77-page compilation lists 328
 ## Pull request and CI follow-up
 
 Review: [PR #28](https://github.com/KampusOne/platform/pull/28). CI exposed two clean-checkout setup gaps: the broad Node regression job needed the shared contracts/Worker dependencies, and the Worker job’s cross-client session tests needed the mobile Expo dependencies. Both workflows and the matching deployment test setup now install their actual test dependencies. No failing test was removed or relaxed. The initial portal/mobile preview builds passed; the protected portal review URL rendered the provisioned-staff sign-in form using authorized review access. This is public entry coverage only, not an authenticated admin workflow or a backend release.
+
+## Owner-confirmed follow-up
+
+The owner identified Joshua as Anibe David, `@storm_x`, in the supplied screenshot and explicitly requested merging all repairs into main. His profile was updated and verified as 200 level, Mechatronics Engineering, B.Eng, with an atomic audit record retaining the former values. See `database/maintenance/20260925-joshua-profile-correction.sql`. The newer Kira name and multicolor AI glow from main were preserved. Production schema verification and the remaining acceptance work described above are still outstanding.
