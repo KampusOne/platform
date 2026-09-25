@@ -158,11 +158,58 @@ accountRoutes.get("/restrictions", async (c) => {
   );
   return c.json({ restriction: firstRow(result) ?? null });
 });
+type StreakSnapshotRow = {
+  current_days: number;
+  longest_days: number;
+  goal_days: number;
+  last_day: string | null;
+};
+
+async function streakSnapshot(env: Bindings, userId: string) {
+  const db = database(env);
+  const result = await db.execute<StreakSnapshotRow>(sql`select
+    case
+      when last_day >= (now() at time zone 'Africa/Lagos')::date - 1
+        then current_days
+      else 0
+    end as current_days,
+    longest_days,
+    goal_days,
+    last_day::text
+    from public.user_streaks
+    where user_id=${userId}::uuid`);
+  const streak =
+    firstRow(result) ?? {
+      current_days: 0,
+      longest_days: 0,
+      goal_days: 7,
+      last_day: null,
+    };
+  const clock = firstRow(
+    await db.execute<{ today: string }>(
+      sql`select (now() at time zone 'Africa/Lagos')::date::text as today`,
+    ),
+  );
+
+  // This production hotfix deliberately relies only on the already-approved
+  // user_streaks schema. The full activity-day ledger stays behind the newer
+  // migration gate. The genuine last check-in is still safe to surface.
+  return {
+    streak,
+    activityDays: streak.last_day ? [streak.last_day] : [],
+    timezone: "Africa/Lagos",
+    today: clock?.today,
+  };
+}
+
+accountRoutes.get("/streak", async (c) =>
+  c.json(await streakSnapshot(c.env, currentUser(c).id)),
+);
 accountRoutes.post("/streak", async (c) => {
-  const result = await database(c.env).execute(
+  await database(c.env).execute(
     sql`select * from app_private.check_in_streak(${currentUser(c).id}::uuid)`,
   );
-  return c.json({ streak: firstRow(result) });
+  return c.json(await streakSnapshot(c.env, currentUser(c).id));
 });
 accountRoutes.patch("/streak", async (c) => {
   const data = await input(
@@ -170,7 +217,10 @@ accountRoutes.patch("/streak", async (c) => {
     z.object({ goalDays: z.number().int().min(1).max(365) }),
   );
   await database(c.env).execute(
-    sql`update public.user_streaks set goal_days=${data.goalDays} where user_id=${currentUser(c).id}::uuid`,
+    sql`insert into public.user_streaks(user_id,goal_days)
+        values(${currentUser(c).id}::uuid,${data.goalDays})
+        on conflict(user_id) do update
+        set goal_days=excluded.goal_days,updated_at=now()`,
   );
   return c.json({ status: "saved" });
 });
