@@ -35,7 +35,7 @@ export default function RootLayout() {
     void checkBuildVersion();
   }, []);
   useEffect(listenForSnooze, []);
-  useEffect(()=>{if(typeof document==="undefined")return;const style=document.createElement("style");style.textContent="input:focus,textarea:focus{outline:none}input:focus-visible,textarea:focus-visible{box-shadow:0 0 0 2px #C35D3855}button:focus-visible,[role=button]:focus-visible{outline:2px solid #C35D38;outline-offset:2px}";document.head.appendChild(style);return()=>style.remove();},[]);
+  useEffect(()=>{if(typeof document==="undefined")return;const style=document.createElement("style");style.textContent="input:focus,input:focus-visible,textarea:focus,textarea:focus-visible,select:focus,select:focus-visible,[contenteditable=\"true\"]:focus,[contenteditable=\"true\"]:focus-visible{outline:none!important;box-shadow:none!important}button:focus-visible,[role=button]:focus-visible{outline:2px solid #C35D38;outline-offset:2px}";document.head.appendChild(style);return()=>style.remove();},[]);
   useEffect(
     () => onAccountRestriction(() => router.replace("/restricted")),
     [],
