@@ -33,18 +33,15 @@ export default function Guidelines() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
+    setLoading(true);
     setError("");
     try {
-      setItems(
-        (await api<{ guidelines: Guide[] }>("/v1/account/guidelines"))
-          .guidelines,
+      const response = await api<{ guidelines: Guide[] }>(
+        "/v1/account/guidelines",
       );
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Guidelines could not load. Try again.",
-      );
+      setItems(Array.isArray(response.guidelines) ? response.guidelines : []);
+    } catch {
+      setError("Campus guidelines could not load right now. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -66,22 +63,30 @@ export default function Guidelines() {
       {loading ? (
         <ScreenSkeleton variant="learning" compact />
       ) : error ? (
-        <>
+        <View>
           <Text
             accessibilityRole="alert"
-            style={{ color: theme.error, lineHeight: 22 }}
+            style={{
+              color: theme.text,
+              fontFamily: theme.font.display,
+              fontSize: 20,
+              marginBottom: 8,
+            }}
+          >
+            Couldn’t load campus guidelines
+          </Text>
+          <Text
+            style={{
+              color: theme.textMuted,
+              fontFamily: theme.font.body,
+              lineHeight: 22,
+              marginBottom: 14,
+            }}
           >
             {error}
           </Text>
-          <ToolButton
-            secondary
-            label="Retry guidelines"
-            onPress={() => {
-              setLoading(true);
-              void load();
-            }}
-          />
-        </>
+          <ToolButton secondary label="Try again" onPress={() => void load()} />
+        </View>
       ) : !items.length ? (
         <>
           <EmptyResult title="No published guidelines yet" />
