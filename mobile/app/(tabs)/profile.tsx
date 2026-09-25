@@ -3,7 +3,7 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Image,
   Linking,
@@ -225,17 +225,16 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-      if (activeTab === "Reposts") void loadReposts(true);
-      return () => {
-        loadVersion.current++;
-        repostLoadVersion.current++;
-      };
-    }, [activeTab, load, loadReposts]),
+      return () => { loadVersion.current++; };
+    }, [load]),
   );
 
-  useEffect(() => {
-    if (activeTab === "Reposts" && repostState === "idle") void loadReposts();
-  }, [activeTab, loadReposts, repostState]);
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab === "Reposts") void loadReposts(repostState !== "idle");
+      return () => { repostLoadVersion.current++; };
+    }, [activeTab, loadReposts, repostState]),
+  );
 
   const name =
     profile?.display_name ?? sessionProfile?.display_name ?? "Student";
