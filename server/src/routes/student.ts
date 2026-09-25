@@ -129,16 +129,16 @@ studentRoutes.get("/me", async (context) => {
       profiles.username, profiles.display_name, profiles.first_name, profiles.last_name,
       profiles.biography, profiles.profile_image_url, profiles.cover_image_url,
       profiles.university_id, universities.name as university_name,
-      profiles.faculty_id, coalesce(faculties.name,provisional.faculty_name) as faculty_name,
-      profiles.department_id, coalesce(departments.name,provisional.department_name) as department_name,
+      profiles.faculty_id, faculties.name as faculty_name,
+      profiles.department_id, departments.name as department_name,
       profiles.course_id, courses.name as course_name,
       profiles.current_level, profiles.matriculation_number,
       profiles.graduation_year, profiles.verification_status,
-      profiles.onboarding_step, profiles.onboarding_completed_at, profiles.admission_year,profiles.provisional_academic_submission_id, provisional.department_name provisional_department_name,provisional.faculty_name provisional_faculty_name,
+      profiles.onboarding_step, profiles.onboarding_completed_at, (to_jsonb(profiles)->>'admission_year')::integer as admission_year,
+      to_jsonb(profiles)->>'provisional_academic_submission_id' as provisional_academic_submission_id,
       ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`profiles.settings` : sql`'{}'::jsonb`} as settings
     from public.users users
     join public.profiles profiles on profiles.user_id = users.id and profiles.deleted_at is null
-    left join public.academic_missing_submissions provisional on provisional.id=profiles.provisional_academic_submission_id
     left join public.universities universities on universities.id = profiles.university_id
     left join public.faculties faculties on faculties.id = profiles.faculty_id
     left join public.departments departments on departments.id = profiles.department_id
@@ -149,7 +149,24 @@ studentRoutes.get("/me", async (context) => {
   const profile = firstRow(result);
   if (!profile)
     throw new AppError(404, "NOT_FOUND", "Your profile could not be found.");
-  return context.json({ profile, operatorRoles: user.operatorRoles });
+  // JSON projection keeps existing profiles readable before the additive migration.
+  let provisional: { department_name: string | null; faculty_name: string | null } | undefined;
+  if (profile.provisional_academic_submission_id) {
+    provisional = firstRow(await database(context.env).execute<{
+      department_name: string | null; faculty_name: string | null;
+    }>(sql`
+      select department_name, faculty_name from public.academic_missing_submissions
+      where id = ${profile.provisional_academic_submission_id}::uuid
+      limit 1
+    `));
+  }
+  return context.json({ profile: {
+    ...profile,
+    department_name: profile.department_name ?? provisional?.department_name ?? null,
+    faculty_name: profile.faculty_name ?? provisional?.faculty_name ?? null,
+    provisional_department_name: provisional?.department_name ?? null,
+    provisional_faculty_name: provisional?.faculty_name ?? null,
+  }, operatorRoles: user.operatorRoles });
 });
 
 studentRoutes.patch("/me/onboarding", async (context) => {
