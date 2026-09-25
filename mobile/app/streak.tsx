@@ -33,6 +33,18 @@ function calendarDays(today: string) {
     return day.toISOString().slice(0, 10);
   });
 }
+
+function currentStreakDays(streak: Streak) {
+  if (!streak.last_day || streak.current_days <= 0) return new Set<string>();
+  const end = new Date(streak.last_day + "T12:00:00Z");
+  return new Set(
+    Array.from({ length: streak.current_days }, (_, index) => {
+      const day = new Date(end);
+      day.setUTCDate(end.getUTCDate() - index);
+      return day.toISOString().slice(0, 10);
+    }),
+  );
+}
 export default function StreakScreen() {
   const { theme } = useAppearance();
   const toast = useToast();
@@ -80,7 +92,12 @@ export default function StreakScreen() {
   const current = streak?.current_days ?? 0;
   const tier = [...milestones].reverse().find((m) => current >= m.days);
   const next = milestones.find((m) => current < m.days);
-  const checkedIn = Boolean(data && data.activityDays.includes(data.today));
+  const activeDays = streak ? currentStreakDays(streak) : new Set<string>();
+  const checkedIn = Boolean(
+    data &&
+      streak?.last_day === data.today &&
+      (data.activityDays.includes(data.today) || activeDays.has(data.today)),
+  );
   return (
     <ToolPage title="Your streak">
       {loading ? (
@@ -194,7 +211,8 @@ export default function StreakScreen() {
             }}
           >
             {calendarDays(data.today).map((day) => {
-              const done = data.activityDays.includes(day);
+              const active = activeDays.has(day);
+              const done = active || data.activityDays.includes(day);
               const today = day === data.today;
               return (
                 <View
@@ -204,11 +222,14 @@ export default function StreakScreen() {
                     width: "12%",
                     minHeight: 49,
                     borderRadius: 10,
-                    backgroundColor: done
-                      ? theme.deepBrand
-                      : theme.surfaceMuted,
-                    borderWidth: today ? 2 : 0,
-                    borderColor: theme.brand,
+                    backgroundColor:
+                      today && done
+                        ? theme.deepBrand
+                        : done
+                          ? theme.brand
+                          : theme.surfaceMuted,
+                    borderWidth: today && done ? 2 : 0,
+                    borderColor: theme.deepBrand,
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 3,
@@ -268,7 +289,98 @@ export default function StreakScreen() {
           >
             Your journey
           </Text>
-          <View style={{marginVertical:16}}>{milestones.map((m,i)=>{const achieved=streak.longest_days>=m.days;return <View key={m.days} style={{flexDirection:"row",gap:16,minHeight:90}}><View style={{alignItems:"center",width:48}}><View style={{height:48,width:48,borderRadius:24,backgroundColor:achieved?m.shade:theme.surfaceMuted,justifyContent:"center",alignItems:"center"}}><Ionicons name={achieved?"flame":"lock-closed-outline"} size={achieved?28:20} color={achieved?"#fff":theme.textMuted}/></View>{i<milestones.length-1?<View style={{width:3,flex:1,backgroundColor:streak.longest_days>m.days?m.shade:theme.border}}/>:null}</View><View style={{flex:1,paddingTop:4,paddingBottom:22}}><Text style={{fontFamily:theme.font.semibold,color:theme.text,fontSize:16}}>{m.label}</Text><Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12,marginTop:5}}>{m.days} days · {achieved?"Unlocked":`${Math.max(0,m.days-current)} days to unlock`}</Text>{!achieved&&next?.days===m.days?<View accessibilityRole="progressbar" accessibilityValue={{min:0,max:m.days,now:current}} style={{height:5,backgroundColor:theme.border,borderRadius:3,marginTop:12}}><View style={{height:5,width:`${Math.min(100,current/m.days*100)}%`,backgroundColor:m.shade,borderRadius:3}}/></View>:null}</View></View>;})}</View>
+          <View style={{ marginVertical: 16 }}>
+            {milestones.map((m, i) => {
+              const achieved = streak.longest_days >= m.days;
+              return (
+                <View
+                  key={m.days}
+                  style={{ flexDirection: "row", gap: 16, minHeight: 90 }}
+                >
+                  <View style={{ alignItems: "center", width: 48 }}>
+                    <View
+                      style={{
+                        height: 48,
+                        width: 48,
+                        borderRadius: 24,
+                        backgroundColor: achieved ? m.shade : theme.surfaceMuted,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        opacity: achieved ? 1 : 0.72,
+                      }}
+                    >
+                      <Ionicons
+                        name="flame"
+                        size={28}
+                        color={achieved ? "#FFFFFF" : theme.textMuted}
+                      />
+                    </View>
+                    {i < milestones.length - 1 ? (
+                      <View
+                        style={{
+                          width: 3,
+                          flex: 1,
+                          backgroundColor:
+                            streak.longest_days > m.days
+                              ? m.shade
+                              : theme.border,
+                        }}
+                      />
+                    ) : null}
+                  </View>
+                  <View style={{ flex: 1, paddingTop: 4, paddingBottom: 22 }}>
+                    <Text
+                      style={{
+                        fontFamily: theme.font.semibold,
+                        color: achieved ? theme.text : theme.textMuted,
+                        fontSize: 16,
+                      }}
+                    >
+                      {m.label}
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: theme.font.body,
+                        color: theme.textMuted,
+                        fontSize: 12,
+                        marginTop: 5,
+                      }}
+                    >
+                      {m.days} days ·{" "}
+                      {achieved
+                        ? "Unlocked"
+                        : `${Math.max(0, m.days - current)} days to unlock`}
+                    </Text>
+                    {!achieved && next?.days === m.days ? (
+                      <View
+                        accessibilityRole="progressbar"
+                        accessibilityValue={{
+                          min: 0,
+                          max: m.days,
+                          now: current,
+                        }}
+                        style={{
+                          height: 5,
+                          backgroundColor: theme.border,
+                          borderRadius: 3,
+                          marginTop: 12,
+                        }}
+                      >
+                        <View
+                          style={{
+                            height: 5,
+                            width: `${Math.min(100, (current / m.days) * 100)}%`,
+                            backgroundColor: m.shade,
+                            borderRadius: 3,
+                          }}
+                        />
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
           <ToolButton
             secondary
             label="Share my streak"
