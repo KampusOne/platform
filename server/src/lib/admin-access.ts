@@ -22,7 +22,17 @@ type Grant = {permissions:string[];university_id:string|null};
 export type AdminAccess={permissions:string[];universityIds:string[];allUniversities:boolean;grants:Grant[]};
 export async function adminAccess(env:Bindings,user:AuthenticatedUser):Promise<AdminAccess>{
  const db=database(env);
- const custom=firstRow(await db.execute<{permissions:string[];university_ids:string[];all_universities:boolean;status:string}>(sql`select permissions,university_ids,all_universities,status from app_private.staff_access where user_id=${user.id}::uuid`));
+ const staffAccessReady=firstRow(await db.execute<{ready:boolean}>(sql`
+  select (
+   to_regclass('app_private.staff_access') is not null
+   and (select count(*)=4 from information_schema.columns
+        where table_schema='app_private' and table_name='staff_access'
+          and column_name in ('permissions','university_ids','all_universities','status'))
+  ) as ready
+ `))?.ready??false;
+ const custom=staffAccessReady
+  ? firstRow(await db.execute<{permissions:string[];university_ids:string[];all_universities:boolean;status:string}>(sql`select permissions,university_ids,all_universities,status from app_private.staff_access where user_id=${user.id}::uuid`))
+  : undefined;
  let grants:Grant[]=[];
  if(custom){
   if(custom.status==='ACTIVE') grants=custom.all_universities?[{permissions:custom.permissions,university_id:null}]:custom.university_ids.map(university_id=>({permissions:custom.permissions,university_id}));
