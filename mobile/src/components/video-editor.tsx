@@ -201,8 +201,10 @@ function VideoEditor({ request }: { request: VideoEditRequest }) {
     }
   }
 
-  const startPercent = (range.startMs / durationMs) * 100;
-  const endPercent = (range.endMs / durationMs) * 100;
+  const startPx = (range.startMs / durationMs) * trackWidth;
+  const endPx = (range.endMs / durationMs) * trackWidth;
+  const startHandleLeft = Math.max(0, Math.min(Math.max(0, trackWidth - 28), startPx - 14));
+  const endHandleLeft = Math.max(0, Math.min(Math.max(0, trackWidth - 28), endPx - 14));
   const selectionSeconds = (range.endMs - range.startMs) / 1000;
   const text = { color: theme.text, fontFamily: theme.font.body };
   const previewHeight = Math.max(
@@ -289,8 +291,8 @@ function VideoEditor({ request }: { request: VideoEditRequest }) {
               style={[
                 styles.selectedTrack,
                 {
-                  left: `${startPercent}%`,
-                  width: `${Math.max(0, endPercent - startPercent)}%`,
+                  left: startPx,
+                  width: Math.max(0, endPx - startPx),
                   backgroundColor: theme.brand,
                 },
               ]}
@@ -306,7 +308,7 @@ function VideoEditor({ request }: { request: VideoEditRequest }) {
               style={[
                 styles.handle,
                 {
-                  left: `calc(${startPercent}% - 14px)` as never,
+                  left: startHandleLeft,
                   backgroundColor: theme.deepBrand,
                 },
               ]}
@@ -322,7 +324,7 @@ function VideoEditor({ request }: { request: VideoEditRequest }) {
               style={[
                 styles.handle,
                 {
-                  left: `calc(${endPercent}% - 14px)` as never,
+                  left: endHandleLeft,
                   backgroundColor: theme.deepBrand,
                 },
               ]}
