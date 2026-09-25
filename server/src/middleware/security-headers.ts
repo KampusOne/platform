@@ -14,7 +14,7 @@ export const mediaAwareSecureHeaders: MiddlewareHandler<{ Bindings: Bindings; Va
   if (
     c.res.ok && ["GET", "HEAD"].includes(c.req.method) &&
     /^\/v1\/media\/[0-9a-f-]{36}$/i.test(c.req.path) &&
-    /^(image\/(jpeg|png|webp)|video\/mp4|application\/pdf)(;|$)/i.test(c.res.headers.get("Content-Type") ?? "")
+    /^(image\/(jpeg|png|webp)|video\/(mp4|webm)|application\/pdf)(;|$)/i.test(c.res.headers.get("Content-Type") ?? "")
   ) {
     // Run AFTER secureHeaders: setting this only in the route gets overwritten.
     c.header("Cross-Origin-Resource-Policy", "cross-origin");
