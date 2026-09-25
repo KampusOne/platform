@@ -4,9 +4,10 @@ import { useToast } from "@/src/components/toast";
 import { api } from "@/src/lib/api";
 import { syncAlarms, type Alarm } from "@/src/lib/alarms";
 import { useAppearance, type Theme } from "@/src/lib/appearance";
+import { selectionAsync } from "@/src/lib/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   Platform,
@@ -107,10 +108,10 @@ function displayTime(time: string): { clock: string; period: "AM" | "PM" } {
   };
 }
 
-function shiftWrap(value: number, offset: number, min: number, max: number) {
-  const count = max - min + 1;
-  return ((value - min + offset + count * 10) % count) + min;
-}
+
+const WHEEL_ITEM_HEIGHT = 52;
+const WHEEL_VISIBLE_ITEMS = 5;
+const WHEEL_CYCLES = 9;
 
 function WheelColumn({
   value,
@@ -127,34 +128,106 @@ function WheelColumn({
   label: string;
   onChange: (value: number) => void;
 }) {
-  const values = [-2, -1, 0, 1, 2].map((offset) =>
-    shiftWrap(value, offset, min, max),
+  const count = max - min + 1;
+  const values = useMemo(
+    () =>
+      Array.from(
+        { length: count * WHEEL_CYCLES },
+        (_, index) => min + (index % count),
+      ),
+    [count, min],
   );
+  const middleCycle = Math.floor(WHEEL_CYCLES / 2);
+  const initialIndex = middleCycle * count + (value - min);
+  const scrollRef = useRef<ScrollView>(null);
+  const lastIndexRef = useRef(initialIndex);
+  const lastValueRef = useRef(value);
+  const [selectedIndex, setSelectedIndex] = useState(initialIndex);
+
+  useEffect(() => {
+    lastValueRef.current = value;
+    const currentValue = values[selectedIndex];
+    if (currentValue === value) return;
+    const targetIndex = middleCycle * count + (value - min);
+    lastIndexRef.current = targetIndex;
+    setSelectedIndex(targetIndex);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: targetIndex * WHEEL_ITEM_HEIGHT,
+        animated: false,
+      });
+    });
+  }, [count, middleCycle, min, selectedIndex, value, values]);
+
+  const selectIndex = useCallback(
+    (rawIndex: number) => {
+      const index = Math.max(0, Math.min(values.length - 1, rawIndex));
+      if (index === lastIndexRef.current) return;
+      lastIndexRef.current = index;
+      setSelectedIndex(index);
+      const nextValue = values[index]!;
+      if (nextValue !== lastValueRef.current) {
+        lastValueRef.current = nextValue;
+        void selectionAsync();
+        onChange(nextValue);
+      }
+    },
+    [onChange, values],
+  );
+
   return (
-    <View style={pickerStyles.column} accessibilityLabel={label}>
+    <View style={pickerStyles.column} accessibilityLabel={label + " time wheel"}>
       <Text style={pickerStyles.columnLabel}>{label}</Text>
-      {values.map((item, index) => {
-        const selected = index === 2;
-        return (
-          <Pressable
-            key={`${label}-${item}-${index}`}
-            accessibilityRole="button"
-            accessibilityLabel={`Set ${label} to ${item}`}
-            onPress={() => onChange(item)}
-            style={pickerStyles.numberRow}
-          >
-            <Text
-              style={[
-                pickerStyles.number,
-                selected && pickerStyles.numberSelected,
-                !selected && Math.abs(index - 2) === 2 && pickerStyles.numberFaint,
-              ]}
+      <ScrollView
+        ref={scrollRef}
+        style={pickerStyles.wheelViewport}
+        contentContainerStyle={pickerStyles.wheelContent}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={WHEEL_ITEM_HEIGHT}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        nestedScrollEnabled
+        bounces={false}
+        contentOffset={{ x: 0, y: initialIndex * WHEEL_ITEM_HEIGHT }}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          const index = Math.round(
+            event.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT,
+          );
+          selectIndex(index);
+        }}
+      >
+        {values.map((item, index) => {
+          const distance = Math.abs(index - selectedIndex);
+          return (
+            <Pressable
+              key={label + "-" + index}
+              accessibilityRole="button"
+              accessibilityLabel={"Set " + label + " to " + item}
+              accessibilityState={{ selected: index === selectedIndex }}
+              onPress={() => {
+                scrollRef.current?.scrollTo({
+                  y: index * WHEEL_ITEM_HEIGHT,
+                  animated: true,
+                });
+                selectIndex(index);
+              }}
+              style={pickerStyles.numberRow}
             >
-              {pad ? String(item).padStart(2, "0") : item}
-            </Text>
-          </Pressable>
-        );
-      })}
+              <Text
+                style={[
+                  pickerStyles.number,
+                  distance === 0 && pickerStyles.numberSelected,
+                  distance === 1 && pickerStyles.numberNear,
+                  distance >= 2 && pickerStyles.numberFaint,
+                ]}
+              >
+                {pad ? String(item).padStart(2, "0") : item}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }
@@ -166,65 +239,171 @@ function PeriodColumn({
   value: "AM" | "PM";
   onChange: (value: "AM" | "PM") => void;
 }) {
+  const values = useMemo(
+    () =>
+      Array.from(
+        { length: WHEEL_CYCLES * 2 },
+        (_, index) => (index % 2 === 0 ? "AM" : "PM") as "AM" | "PM",
+      ),
+    [],
+  );
+  const middleCycle = Math.floor(WHEEL_CYCLES / 2);
+  const initialIndex = middleCycle * 2 + (value === "PM" ? 1 : 0);
+  const scrollRef = useRef<ScrollView>(null);
+  const lastIndexRef = useRef(initialIndex);
+  const lastValueRef = useRef(value);
+  const [selectedIndex, setSelectedIndex] = useState(initialIndex);
+
+  useEffect(() => {
+    lastValueRef.current = value;
+    if (values[selectedIndex] === value) return;
+    const targetIndex = middleCycle * 2 + (value === "PM" ? 1 : 0);
+    lastIndexRef.current = targetIndex;
+    setSelectedIndex(targetIndex);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: targetIndex * WHEEL_ITEM_HEIGHT,
+        animated: false,
+      });
+    });
+  }, [middleCycle, selectedIndex, value, values]);
+
+  const selectIndex = useCallback(
+    (rawIndex: number) => {
+      const index = Math.max(0, Math.min(values.length - 1, rawIndex));
+      if (index === lastIndexRef.current) return;
+      lastIndexRef.current = index;
+      setSelectedIndex(index);
+      const nextValue = values[index]!;
+      if (nextValue !== lastValueRef.current) {
+        lastValueRef.current = nextValue;
+        void selectionAsync();
+        onChange(nextValue);
+      }
+    },
+    [onChange, values],
+  );
+
   return (
-    <View style={pickerStyles.periodColumn}>
-      {(["AM", "PM"] as const).map((period) => (
-        <Pressable
-          key={period}
-          accessibilityRole="button"
-          accessibilityState={{ selected: value === period }}
-          onPress={() => onChange(period)}
-          style={pickerStyles.periodRow}
-        >
-          <Text
-            style={[
-              pickerStyles.periodText,
-              value === period && pickerStyles.periodTextSelected,
-            ]}
-          >
-            {period}
-          </Text>
-        </Pressable>
-      ))}
+    <View style={pickerStyles.periodColumn} accessibilityLabel="AM PM time wheel">
+      <ScrollView
+        ref={scrollRef}
+        style={pickerStyles.wheelViewport}
+        contentContainerStyle={pickerStyles.wheelContent}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={WHEEL_ITEM_HEIGHT}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        nestedScrollEnabled
+        bounces={false}
+        contentOffset={{ x: 0, y: initialIndex * WHEEL_ITEM_HEIGHT }}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          const index = Math.round(
+            event.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT,
+          );
+          selectIndex(index);
+        }}
+      >
+        {values.map((period, index) => {
+          const distance = Math.abs(index - selectedIndex);
+          return (
+            <Pressable
+              key={"period-" + index}
+              accessibilityRole="button"
+              accessibilityLabel={"Set time period to " + period}
+              accessibilityState={{ selected: index === selectedIndex }}
+              onPress={() => {
+                scrollRef.current?.scrollTo({
+                  y: index * WHEEL_ITEM_HEIGHT,
+                  animated: true,
+                });
+                selectIndex(index);
+              }}
+              style={pickerStyles.numberRow}
+            >
+              <Text
+                style={[
+                  pickerStyles.periodText,
+                  distance === 0 && pickerStyles.periodTextSelected,
+                  distance === 1 && pickerStyles.periodTextNear,
+                  distance >= 2 && pickerStyles.periodTextFaint,
+                ]}
+              >
+                {period}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }
 
 const pickerStyles = StyleSheet.create({
-  column: { width: 86, alignItems: "center" },
+  column: { width: 92, alignItems: "center" },
   columnLabel: {
     color: "rgba(255,255,255,0.62)",
     fontFamily: "Inter_600SemiBold",
     fontSize: 11,
     marginBottom: 8,
   },
+  wheelViewport: {
+    height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
+    width: "100%",
+  },
+  wheelContent: {
+    paddingVertical:
+      (WHEEL_ITEM_HEIGHT * (WHEEL_VISIBLE_ITEMS - 1)) / 2,
+  },
   numberRow: {
-    height: 48,
+    height: WHEEL_ITEM_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
   },
   number: {
-    color: "rgba(255,255,255,0.40)",
+    color: "rgba(255,255,255,0.18)",
     fontFamily: "Lato_900Black",
-    fontSize: 32,
+    fontSize: 31,
     lineHeight: 38,
   },
-  numberSelected: { color: "#FFFFFF", fontSize: 44, lineHeight: 48 },
-  numberFaint: { color: "rgba(255,255,255,0.18)" },
+  numberNear: {
+    color: "rgba(255,255,255,0.38)",
+    fontSize: 34,
+  },
+  numberSelected: {
+    color: "#FFFFFF",
+    fontSize: 44,
+    lineHeight: 48,
+  },
+  numberFaint: {
+    color: "rgba(255,255,255,0.16)",
+  },
   periodColumn: {
-    width: 76,
+    width: 92,
     alignItems: "center",
-    justifyContent: "center",
-    gap: 18,
+    justifyContent: "flex-end",
+    paddingTop: 27,
   },
-  periodRow: { minHeight: 52, alignItems: "center", justifyContent: "center" },
   periodText: {
-    color: "rgba(255,255,255,0.36)",
+    color: "rgba(255,255,255,0.18)",
     fontFamily: "Lato_900Black",
-    fontSize: 28,
+    fontSize: 27,
+    lineHeight: 34,
   },
-  periodTextSelected: { color: "#FFFFFF", fontSize: 34 },
+  periodTextNear: {
+    color: "rgba(255,255,255,0.38)",
+    fontSize: 29,
+  },
+  periodTextSelected: {
+    color: "#FFFFFF",
+    fontSize: 36,
+    lineHeight: 44,
+  },
+  periodTextFaint: {
+    color: "rgba(255,255,255,0.14)",
+  },
 });
 
 export default function Alarms() {
