@@ -30,6 +30,7 @@ const settingsSchema = z
     marketing: z.boolean(),
     haptics: z.boolean(),
     hideCgpa: z.boolean(),
+    hideReposts: z.boolean().optional(),
   })
   .strict();
 accountRoutes.get("/settings", async (c) => {
