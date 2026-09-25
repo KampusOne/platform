@@ -13,12 +13,14 @@ type Settings = {
   marketing: boolean;
   haptics: boolean;
   hideCgpa: boolean;
+  hideReposts: boolean;
 };
 const defaults: Settings = {
   notifications: true,
   marketing: false,
   haptics: true,
   hideCgpa: false,
+  hideReposts: false,
 };
 export default function SettingsScreen() {
   const { user } = useAuth();
@@ -94,6 +96,7 @@ export default function SettingsScreen() {
           ["marketing", "Product updates"],
           ["haptics", "Haptics"],
           ["hideCgpa", "Hide CGPA on my profile"],
+          ["hideReposts", "Hide my reposts on my profile"],
         ] as const
       ).map(([key, label]) => (
         <ToolRow
