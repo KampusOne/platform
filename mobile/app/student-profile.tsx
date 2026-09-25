@@ -16,7 +16,7 @@ import { FeedPost } from "@/src/components/feed-post";
 import { FeedSkeleton, ProfileSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
 
-type Person={cgpa?:number|string|null;user_id:string;display_name:string;username:string|null;biography:string|null;profile_image_url:string|null;cover_image_url:string|null;university_name:string|null;department_name:string|null;current_level:number|null;verified:boolean;can_view_reposts?:boolean;follower_count:number;post_count:number;followed:boolean;has_events:boolean};
+type Person={cgpa?:number|string|null;user_id:string;display_name:string;username:string|null;biography:string|null;profile_image_url:string|null;cover_image_url:string|null;university_name:string|null;department_name:string|null;current_level:number|null;verified:boolean;can_view_reposts?:boolean;follower_count:number;following_count:number;post_count:number;followed:boolean;has_events:boolean};
 type PersonResponse={profile:Person;roles:{id:string;agent_type:"VENDOR"|"TUTOR"|"RIDER"}[];isOwner:boolean};
 type Page={posts:SocialFeedPost[];nextCursor?:string|null};
 export default function StudentProfile(){
@@ -63,7 +63,7 @@ export default function StudentProfile(){
           {person.username?<Text style={{...label,color:theme.textMuted,marginTop:3}}>@{person.username}</Text>:null}
           {person.biography?<Text selectable style={{...label,lineHeight:21,marginTop:13}}>{person.biography}</Text>:null}
           <Text style={{...label,color:theme.textMuted,fontSize:12,lineHeight:19,marginTop:10}}>{[person.university_name,person.department_name,person.current_level?`${person.current_level} level`:null].filter(Boolean).join(" · ")}</Text>
-          <View style={{flexDirection:"row",gap:20,marginTop:13}}><Text style={label}><Text style={{fontFamily:theme.font.semibold}}>{safeCount(person.follower_count)}</Text> followers</Text><Text style={label}><Text style={{fontFamily:theme.font.semibold}}>{safeCount(person.post_count)}</Text> posts</Text></View>
+          <View style={{flexDirection:"row",gap:20,marginTop:13,flexWrap:"wrap"}}><Text style={label}><Text style={{fontFamily:theme.font.semibold}}>{safeCount(person.follower_count)}</Text> followers</Text><Text style={label}><Text style={{fontFamily:theme.font.semibold}}>{safeCount(person.following_count)}</Text> following</Text><Text style={label}><Text style={{fontFamily:theme.font.semibold}}>{safeCount(person.post_count)}</Text> posts</Text></View>
           {person.cgpa != null ? <Text style={{...label,marginTop:12}}>CGPA <Text style={{fontFamily:theme.font.semibold}}>{Number(person.cgpa).toFixed(2)}</Text></Text> : null}
           {data?.roles.length?<View style={{flexDirection:"row",flexWrap:"wrap",gap:8,marginTop:16}}>{data.roles.map(role=><Pressable key={role.id} accessibilityRole="button" onPress={()=>router.push({pathname:"/student-service",params:{id:role.id}})} style={{flexDirection:"row",alignItems:"center",gap:5,borderRadius:9,paddingHorizontal:11,paddingVertical:8,backgroundColor:theme.surfaceMuted}}><Ionicons name={role.agent_type==="VENDOR"?"storefront-outline":role.agent_type==="TUTOR"?"school-outline":"bicycle-outline"} size={15} color={theme.brand}/><Text style={{...label,fontSize:12}}>{role.agent_type==="VENDOR"?"Vendor":role.agent_type==="TUTOR"?"Tutor":"Rider"}</Text><Ionicons name="chevron-forward" size={12} color={theme.textMuted}/></Pressable>)}</View>:null}
         </View>

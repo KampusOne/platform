@@ -134,6 +134,8 @@ studentRoutes.get("/me", async (context) => {
       profiles.course_id, courses.name as course_name,
       profiles.current_level, profiles.matriculation_number,
       profiles.graduation_year, profiles.verification_status,
+      (select count(*)::int from public.profile_follows follows where follows.followed_id = users.id) as follower_count,
+      (select count(*)::int from public.profile_follows follows where follows.follower_id = users.id) as following_count,
       profiles.onboarding_step, profiles.onboarding_completed_at, (to_jsonb(profiles)->>'admission_year')::integer as admission_year,
       to_jsonb(profiles)->>'provisional_academic_submission_id' as provisional_academic_submission_id,
       ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`profiles.settings` : sql`'{}'::jsonb`} as settings

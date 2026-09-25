@@ -35,7 +35,7 @@ import { useToast } from "@/src/components/toast";
 import { FeedPost as FeedPostCard } from "@/src/components/feed-post";
 import { PostLinkDialog } from "@/src/components/post-menu";
 import { sharePostLink, type FeedPostData } from "@/src/lib/feed-posts";
-import { type SocialFeedPost } from "@/src/lib/feed-social";
+import { safeCount, type SocialFeedPost } from "@/src/lib/feed-social";
 import { ScreenSkeleton, ProfileSkeleton, ListSkeleton, FeedSkeleton } from "@/src/components/skeleton";
 import { theme } from "@/src/theme";
 
@@ -58,6 +58,8 @@ type StudentProfile = {
   graduation_year: number | null;
   verification_status: string | null;
   public_badge_verified?: boolean | null;
+  follower_count?: number | null;
+  following_count?: number | null;
 };
 
 type AcademicTerm = {
@@ -443,6 +445,14 @@ export default function ProfileScreen() {
           {profile?.biography ? (
             <Text style={styles.bio}>{profile.biography}</Text>
           ) : null}
+          <View accessibilityLabel="Profile social counts" style={styles.socialCounts}>
+            <Text style={styles.socialCountText}>
+              <Text style={styles.socialCountValue}>{safeCount(profile?.follower_count)}</Text> followers
+            </Text>
+            <Text style={styles.socialCountText}>
+              <Text style={styles.socialCountValue}>{safeCount(profile?.following_count)}</Text> following
+            </Text>
+          </View>
           <ScrollView
             contentContainerStyle={styles.metaRow}
             horizontal
@@ -1167,6 +1177,21 @@ const createStyles = (theme: Theme) =>
       fontSize: 13,
       lineHeight: 19,
       marginTop: 10,
+    },
+    socialCounts: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 18,
+      marginTop: 12,
+    },
+    socialCountText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 13,
+    },
+    socialCountValue: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
     },
     metaRow: { gap: 7, paddingRight: 20, paddingTop: 14 },
     meta: {
