@@ -16,8 +16,7 @@ type Tool = {
   title: string;
   description: string;
   icon: IconName;
-  href?: Href;
-  unavailableMessage?: string;
+  href: Href;
   tone?: "peach" | "sand" | "sage";
 };
 
