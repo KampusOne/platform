@@ -208,7 +208,16 @@ async function streakSnapshot(env: Bindings, userId: string) {
     // The legacy streak row still records the genuine last check-in. Preserve
     // that day instead of failing the entire page while the activity table is
     // unavailable.
-    activityDays = streak.last_day ? [streak.last_day] : [];
+    const activityDaysFromCurrentRun: string[] = [];
+    if (streak.last_day && streak.current_days > 0) {
+      const end = new Date(streak.last_day + "T12:00:00Z");
+      for (let index = streak.current_days - 1; index >= 0; index -= 1) {
+        const day = new Date(end);
+        day.setUTCDate(end.getUTCDate() - index);
+        activityDaysFromCurrentRun.push(day.toISOString().slice(0, 10));
+      }
+    }
+    activityDays = activityDaysFromCurrentRun;
   }
 
   const clock = firstRow(
