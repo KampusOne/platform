@@ -3,6 +3,7 @@ import { Hono } from "hono";
 
 import {
   agentVerificationReviewSchema,
+  z,
   campusPlaceSchema,
   contentSourceSchema,
   deliveryZoneSchema,
@@ -18,6 +19,11 @@ import {
   tutorialModerationSchema,
 } from "@kampusone/contracts";
 
+import { adminAccess, assertPermission, permissionForAdminRoute, resolveAdminScope, type AdminUser } from "../lib/admin-access";
+import { operationsRoutes } from "./operations";
+import { academicAdminRoutes } from "./academic-admin";
+import { broadcastRoutes } from "./broadcasts";
+import { applicationCheckRoutes } from "./application-checks";
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
@@ -27,7 +33,7 @@ import {
   requireFeature,
 } from "../lib/features";
 import { equalHash, sha256 } from "../lib/security";
-import { requireFullKyc } from "../lib/kyc";
+import { requireAgentIdentity } from "../lib/kyc";
 import { currentUser, requireAuth, requireOperator } from "../middleware/auth";
 import type { AuthenticatedUser, Bindings, Variables } from "../types";
 
@@ -49,50 +55,9 @@ async function body(context: { req: { json(): Promise<unknown> } }) {
   return context.req.json().catch(() => null);
 }
 
-async function adminScope(
-  env: Bindings,
-  user: AuthenticatedUser,
-  requested?: string,
-) {
-  if (user.operatorRoles.includes("PLATFORM_ADMIN")) return requested ?? null;
-  const result = await database(env).execute<{ university_id: string }>(sql`
-    select university_id from public.operator_roles
-    where user_id = ${user.id}::uuid and university_id is not null
-      and role=any(${sql.param(user.operatorRoles)}::text[])
-      and (${requested ?? null}::uuid is null or university_id=${requested ?? null}::uuid)
-      and (expires_at is null or expires_at > now())
-    order by created_at limit 1
-  `);
-  const universityId = firstRow(result)?.university_id;
-  if (!universityId)
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "No university scope is assigned to this account.",
-    );
-  if (requested && requested !== universityId) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "You cannot access another university's records.",
-    );
-  }
-  return universityId;
-}
+const adminScope = resolveAdminScope;
 
-function requireTutorialEditor(user: AuthenticatedUser) {
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "A content or institution administrator role is required.",
-    );
-  }
-}
+function requireTutorialEditor(_user: AuthenticatedUser) { /* permission middleware enforces content action */ }
 
 adminRoutes.post("/bootstrap", requireAuth, async (context) => {
   const user = currentUser(context);
@@ -150,29 +115,23 @@ adminRoutes.post("/bootstrap", requireAuth, async (context) => {
   return context.json({ status: "platform_admin_created" }, 201);
 });
 
-adminRoutes.use("/*", requireAuth, requireOperator(...ADMIN_ROLES));
+adminRoutes.use("/*", requireAuth);
 adminRoutes.use("/*", async (c, next) => {
-  const path = c.req.path.replace("/v1/admin", "");
-  const accepted = path.startsWith("/applications")
-    ? ["PLATFORM_ADMIN", "VERIFICATION_REVIEWER"]
-    : path.startsWith("/users")
-      ? ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "SUPPORT"]
-      : /^\/operations\/(payouts|payment-events|disputes)/.test(path)
-        ? ["PLATFORM_ADMIN", "FINANCE_REVIEWER"]
-        : /^\/(content|tutorials|campus-places)/.test(path)
-          ? ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"]
-          : [...ADMIN_ROLES];
-  const user = currentUser(c),
-    filtered = user.operatorRoles.filter((r) => accepted.includes(r));
-  if (!filtered.length)
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "Your administrator role cannot perform this action.",
-    );
-  c.set("user", { ...user, operatorRoles: filtered });
+  const permission = permissionForAdminRoute(c.req.path.replace("/v1/admin", ""), c.req.method);
+  if (!permission) throw new AppError(403,"FORBIDDEN","This administrative action is not available to your account.");
+  const user=currentUser(c);
+  if(permission==='access') {
+    const access=await adminAccess(c.env,user);
+    if(!access.permissions.length)throw new AppError(403,"FORBIDDEN","An active staff account is required.");
+  } else await assertPermission(c.env,user,permission);
+  const scopedUser:AdminUser={...user,adminPermission:permission};
+  c.set("user",scopedUser);
   await next();
 });
+adminRoutes.route("/",operationsRoutes);
+adminRoutes.route("/academic",academicAdminRoutes);
+adminRoutes.route("/broadcasts",broadcastRoutes);
+adminRoutes.route("/",applicationCheckRoutes);
 
 adminRoutes.get("/dashboard", async (context) => {
   const user = currentUser(context);
@@ -272,9 +231,9 @@ adminRoutes.get("/dashboard", async (context) => {
       applications: firstRow(applications),
       content: firstRow(content),
       commerce: firstRow(commerce),
-      revenue: firstRow(revenue),
+      revenue: (await adminAccess(context.env,user)).permissions.includes("finance.view") ? firstRow(revenue) : null,
     },
-    revenueTrend: trend.rows,
+    revenueTrend: (await adminAccess(context.env,user)).permissions.includes("finance.view") ? trend.rows : null,
     queues: { applications: queues.rows },
     generatedAt: new Date().toISOString(),
   });
@@ -293,7 +252,7 @@ adminRoutes.get("/users", async (context) => {
     select users.id, users.email, users.roles, users.status, users.email_verified_at,
       users.created_at, users.last_login_at, profiles.display_name, profiles.username,
       profiles.current_level, profiles.verification_status, profiles.onboarding_completed_at,
-      universities.name as university_name
+      profiles.profile_image_url, profiles.cover_image_url, profiles.university_id, universities.name as university_name
     from public.users users
     left join public.profiles profiles on profiles.user_id = users.id and profiles.deleted_at is null
     left join public.universities universities on universities.id = profiles.university_id
@@ -328,23 +287,19 @@ adminRoutes.get("/applications", async (context) => {
     order by case applications.status when 'SUBMITTED' then 0 when 'IN_REVIEW' then 1 else 2 end,
       applications.submitted_at desc limit 200
   `);
-  return context.json({ applications: result.rows });
+  const permissions=(await adminAccess(context.env,user)).permissions;
+  const applications=result.rows.map(row=>{
+    const safe={...row};
+    if(!permissions.includes('finance.view'))for(const key of ['bank_account_name','bank_account_last4','bank_provider'])delete safe[key];
+    if(!permissions.includes('agents.review'))for(const key of ['phone_e164','statement','evidence','legal_name','address_text','emergency_contact_name','emergency_contact_phone','kyc_provider','kyc_reference'])delete safe[key];
+    return safe;
+  });
+  return context.json({ applications });
 });
 
 adminRoutes.post("/applications/:id/verification", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "VERIFICATION_REVIEWER"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "A verification reviewer role is required.",
-    );
-  }
-  const parsed = agentVerificationReviewSchema.safeParse(await body(context));
+  const parsed = agentVerificationReviewSchema.extend({bankStatus:z.enum(["NOT_STARTED","VERIFIED","REJECTED"]).optional()}).safeParse(await body(context));
   if (
     !parsed.success ||
     (parsed.data.bankStatus === "VERIFIED" &&
@@ -366,16 +321,17 @@ adminRoutes.post("/applications/:id/verification", async (context) => {
   if (!application)
     throw new AppError(404, "NOT_FOUND", "That application does not exist.");
   await adminScope(context.env, user, application.university_id);
+  if(parsed.data.bankStatus!==undefined)await resolveAdminScope(context.env,user,application.university_id,'finance.review');
   await database(context.env).execute(sql`
     update public.agent_applications set
       kyc_status = ${parsed.data.identityStatus},
       kyc_provider = 'MANUAL_PILOT_REVIEW',
       kyc_reference = ${parsed.data.providerReference ?? null},
       phone_verified_at = ${parsed.data.phoneVerified ? new Date().toISOString() : null}::timestamptz,
-      bank_status = ${parsed.data.bankStatus},
-      bank_provider = case when ${parsed.data.bankStatus} = 'VERIFIED' then 'MANUAL_PILOT_REVIEW' else bank_provider end,
-      bank_account_name = ${parsed.data.bankAccountName ?? null},
-      bank_account_last4 = ${parsed.data.bankAccountLast4 ?? null},
+      bank_status = coalesce(${parsed.data.bankStatus??null},bank_status),
+      bank_provider = case when ${parsed.data.bankStatus??null} = 'VERIFIED' then 'MANUAL_PILOT_REVIEW' else bank_provider end,
+      bank_account_name = case when ${parsed.data.bankStatus!==undefined} then ${parsed.data.bankAccountName ?? null} else bank_account_name end,
+      bank_account_last4 = case when ${parsed.data.bankStatus!==undefined} then ${parsed.data.bankAccountLast4 ?? null} else bank_account_last4 end,
       review_note = ${parsed.data.note}, status = case when status = 'SUBMITTED' then 'IN_REVIEW' else status end,
       updated_at = now()
     where id = ${application.id}::uuid
@@ -399,17 +355,6 @@ adminRoutes.post("/applications/:id/verification", async (context) => {
 
 adminRoutes.post("/applications/:id/review", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "VERIFICATION_REVIEWER"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "A verification reviewer role is required.",
-    );
-  }
   const parsed = reviewAgentApplicationSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
@@ -426,9 +371,11 @@ adminRoutes.post("/applications/:id/review", async (context) => {
     kyc_status: string;
     phone_verified_at: string | null;
     terms_accepted_at: string | null;
+    revision:string;
+    status:string;
   }>(sql`
     select id, user_id, university_id, agent_type, display_name,
-      kyc_status, phone_verified_at, terms_accepted_at
+      kyc_status, phone_verified_at, terms_accepted_at,updated_at::text revision,status
     from public.agent_applications where id = ${context.req.param("id")}::uuid limit 1
   `);
   const application = firstRow(applicationResult);
@@ -448,45 +395,10 @@ adminRoutes.post("/applications/:id/review", async (context) => {
     );
   }
 
-  const client = sqlClient(context.env);
-  const statements = [
-    client`
-    update public.agent_applications set status = ${parsed.data.decision},
-      reviewer_user_id = ${user.id}::uuid, review_note = ${parsed.data.note},
-      reviewed_at = now(), updated_at = now()
-    where id = ${application.id}::uuid
-  `,
-  ];
-  if (parsed.data.decision === "APPROVED") {
-    if (context.env.UNIFIED_SCHEMA_READY === "true")
-      await requireFullKyc(context.env, application.id);
-    statements.push(client`
-      insert into public.agent_profiles (
-        university_id, user_id, application_id, agent_type, display_name, verified_at
-      ) values (
-        ${application.university_id}::uuid, ${application.user_id}::uuid,
-        ${application.id}::uuid, ${application.agent_type}, ${application.display_name}, now()
-      ) on conflict (university_id, user_id, agent_type) do update set
-        application_id = excluded.application_id, display_name = excluded.display_name,
-        verified_at = now(), status = 'ACTIVE', updated_at = now()
-    `);
-    // Agent capabilities come from reviewed agent_profiles, never an invented
-    // value in the legacy UserRole enum or a client-controlled role claim.
-  }
-  await client.transaction(statements);
-  await recordAudit(context.env, {
-    actorUserId: user.id,
-    universityId: application.university_id,
-    action: "agent.application.reviewed",
-    targetType: "agent_application",
-    targetId: application.id,
-    requestId: context.get("requestId"),
-    metadata: {
-      decision: parsed.data.decision,
-      agentType: application.agent_type,
-    },
-  });
-  return context.json({ status: parsed.data.decision });
+  if(parsed.data.decision==='APPROVED')await requireAgentIdentity(context.env,application.id);
+  const decision=firstRow(await database(context.env).execute<{outcome:string}>(sql`select app_private.review_agent_application(${user.id}::uuid,${application.id}::uuid,${parsed.data.decision},${parsed.data.note},${context.get('requestId')},${application.revision}) outcome`));
+  if(decision?.outcome!=='REVIEWED')throw new AppError(409,'CONFLICT','This application or its verification changed. Reload before deciding.');
+  return context.json({status:parsed.data.decision});
 });
 
 adminRoutes.get("/tutorials", async (context) => {
@@ -891,13 +803,6 @@ adminRoutes.get("/content/context", async (context) => {
 
 adminRoutes.post("/content/sources", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role),
-    )
-  ) {
-    throw new AppError(403, "FORBIDDEN", "A content editor role is required.");
-  }
   const parsed = contentSourceSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
@@ -936,17 +841,6 @@ adminRoutes.post("/content/sources", async (context) => {
 
 adminRoutes.post("/content/sources/:id/verify", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "An institution administrator role is required.",
-    );
-  }
   const result = await database(context.env).execute<{
     id: string;
     university_id: string;
@@ -975,13 +869,6 @@ adminRoutes.post("/content/sources/:id/verify", async (context) => {
 
 adminRoutes.post("/content/posts", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role),
-    )
-  ) {
-    throw new AppError(403, "FORBIDDEN", "A content editor role is required.");
-  }
   const parsed = feedPostSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
@@ -1042,13 +929,6 @@ adminRoutes.post("/content/posts", async (context) => {
 
 adminRoutes.post("/content/places", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN", "CONTENT_EDITOR"].includes(role),
-    )
-  ) {
-    throw new AppError(403, "FORBIDDEN", "A content editor role is required.");
-  }
   const parsed = campusPlaceSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
@@ -1222,25 +1102,15 @@ adminRoutes.get("/operations", async (context) => {
     products: products.rows,
     storefronts: storefronts.rows,
     zones: zones.rows,
-    disputes: disputes.rows,
-    payoutRequests: payouts.rows,
-    paymentEvents: paymentEvents.rows,
+    disputes: (await adminAccess(context.env,user)).permissions.includes("finance.view") ? disputes.rows : [],
+    financeAvailable: (await adminAccess(context.env,user)).permissions.includes("finance.view"),
+    payoutRequests: (await adminAccess(context.env,user)).permissions.includes("finance.view") ? payouts.rows : [],
+    paymentEvents: (await adminAccess(context.env,user)).permissions.includes("finance.view") ? paymentEvents.rows : [],
   });
 });
 
 adminRoutes.post("/operations/payment-events/:id/review", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "FINANCE_REVIEWER"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "A finance reviewer role is required.",
-    );
-  }
   const parsed = paymentEventReviewSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
@@ -1318,17 +1188,6 @@ adminRoutes.post("/operations/payment-events/:id/review", async (context) => {
 
 adminRoutes.post("/operations/categories", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "An institution administrator role is required.",
-    );
-  }
   const parsed = productCategorySchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
@@ -1375,17 +1234,6 @@ adminRoutes.post("/operations/storefronts/:id/review", async (context) => {
     );
   }
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "An institution administrator role is required.",
-    );
-  }
   const parsed = storefrontModerationSchema.safeParse(await body(context));
   if (!parsed.success) {
     throw new AppError(
@@ -1474,17 +1322,6 @@ adminRoutes.post("/operations/products/:id/review", async (context) => {
     );
   }
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "An institution administrator role is required.",
-    );
-  }
   const parsed = productModerationSchema.safeParse(await body(context));
   if (!parsed.success) {
     throw new AppError(
@@ -1573,17 +1410,6 @@ adminRoutes.post("/operations/zones", async (context) => {
     );
   }
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "INSTITUTION_ADMIN"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "An institution administrator role is required.",
-    );
-  }
   const parsed = deliveryZoneSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(400, "BAD_REQUEST", "Check the delivery zone details.");
@@ -1638,17 +1464,6 @@ adminRoutes.post("/operations/zones", async (context) => {
 
 adminRoutes.post("/operations/disputes/:id/review", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "SUPPORT", "FINANCE_REVIEWER"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "A support or finance reviewer role is required.",
-    );
-  }
   const parsed = disputeReviewSchema.safeParse(await body(context));
   if (
     !parsed.success ||
@@ -1713,17 +1528,6 @@ adminRoutes.post("/operations/disputes/:id/review", async (context) => {
 
 adminRoutes.post("/operations/payouts/:id/review", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "FINANCE_REVIEWER"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "A finance reviewer role is required.",
-    );
-  }
   const parsed = payoutReviewSchema.safeParse(await body(context));
   if (
     !parsed.success ||
@@ -1791,17 +1595,6 @@ adminRoutes.post("/operations/payouts/:id/review", async (context) => {
 
 adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
   const user = currentUser(context);
-  if (
-    !user.operatorRoles.some((role) =>
-      ["PLATFORM_ADMIN", "FINANCE_REVIEWER"].includes(role),
-    )
-  ) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "A finance reviewer role is required.",
-    );
-  }
   const scope = await adminScope(
     context.env,
     user,
@@ -1856,13 +1649,6 @@ adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
 
 adminRoutes.get("/release-phases", async (context) => {
   const user = currentUser(context);
-  if (!user.operatorRoles.includes("PLATFORM_ADMIN")) {
-    throw new AppError(
-      403,
-      "FORBIDDEN",
-      "A platform administrator role is required.",
-    );
-  }
   const result = await database(context.env).execute(sql`
     select phase_key, title, status, summary, requirements, updated_at
     from public.release_phases order by phase_key

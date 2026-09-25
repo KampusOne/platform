@@ -48,8 +48,10 @@ jobs:
         working-directory: server
       - run: npm run check
         working-directory: server
-      - run: npm test
+      - run: npm test -- --maxWorkers=2
         working-directory: server
+      - name: Verify academic source import and rerun safety
+        run: node --test database/imports/academic-importer.test.mjs
       - name: Verify password hashing in Workers runtime
         working-directory: server
         run: |

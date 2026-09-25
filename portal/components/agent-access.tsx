@@ -76,24 +76,19 @@ export function AgentAccess({
 
   return (
     <main className="agent-login-page">
-      <section className="agent-login-shell" aria-labelledby="agent-access-title">
-        <a
-          className="agent-auth-back"
-          href="https://kampusone.app"
-          aria-label="Back to KampusOne"
-        >
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
-        </a>
-
+      <section
+        className="agent-login-shell"
+        aria-labelledby="agent-access-title"
+      >
         <header className="agent-login-heading">
           <h1 id="agent-access-title">
-            {stage === "email" ? "Continue as an agent" : "Check your email"}
+            {stage === "email"
+              ? "Continue with your KampusOne email"
+              : "Check your email"}
           </h1>
           <p>
             {stage === "email"
-              ? "Use the email connected to your KampusOne student account. No separate agent account is needed."
+              ? "Use your existing account."
               : `Enter the six-digit code sent for ${email}. It expires in 10 minutes.`}
           </p>
         </header>
@@ -174,10 +169,20 @@ export function AgentAccess({
 
         {stage === "code" && (
           <div className="agent-auth-actions">
-            <button type="button" className="text-button" disabled={busy} onClick={changeEmail}>
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={changeEmail}
+            >
               Use another email
             </button>
-            <button type="button" className="text-button" disabled={busy} onClick={() => void resend()}>
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => void resend()}
+            >
               Send a new code
             </button>
           </div>

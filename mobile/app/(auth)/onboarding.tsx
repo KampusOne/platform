@@ -37,6 +37,8 @@ type Item = {
   faculty_id?: string;
   department_id?: string;
   code?: string;
+  award?: string | null;
+  normal_duration_years?: string | number | null;
 };
 type Catalog = {
   universities: Item[];
@@ -284,12 +286,17 @@ export default function OnboardingScreen() {
   const [facultyId, setFacultyId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [courseId, setCourseId] = useState("");
+  const [missingAcademic, setMissingAcademic] = useState(false);
+  const [missingFaculty, setMissingFaculty] = useState("");
+  const [missingDepartment, setMissingDepartment] = useState("");
+  const [missingProgramme, setMissingProgramme] = useState("");
+  const [firstName, setFirstName] = useState(profile?.first_name ?? "");
+  const [lastName, setLastName] = useState(profile?.last_name ?? "");
   const [username, setUsername] = useState("");
   const [matriculationNumber, setMatriculationNumber] = useState("");
-  const [currentLevel, setCurrentLevel] = useState("100");
-  const [graduationYear, setGraduationYear] = useState(
-    String(new Date().getFullYear() + 4),
-  );
+  const [currentLevel, setCurrentLevel] = useState("");
+  const [admissionYear, setAdmissionYear] = useState("");
+  const [graduationYear, setGraduationYear] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -317,6 +324,10 @@ export default function OnboardingScreen() {
   useEffect(() => {
     void loadCatalog();
   }, [loadCatalog]);
+  useEffect(() => {
+    setFirstName((current) => current || profile?.first_name || "");
+    setLastName((current) => current || profile?.last_name || "");
+  }, [profile?.first_name, profile?.last_name]);
 
   const faculties = useMemo(
     () =>
@@ -359,6 +370,9 @@ export default function OnboardingScreen() {
   );
   const department = departments.find((item) => item.id === departmentId);
   const course = courses.find((item) => item.id === courseId);
+  const duration = Number(course?.normal_duration_years);
+  const suggestedGraduation = /^\d{4}$/.test(admissionYear) && duration >= 1 && duration <= 10
+    ? String(Number(admissionYear) + Math.ceil(duration)) : null;
   const yearOptions = useMemo<Item[]>(() => {
     const thisYear = new Date().getFullYear();
     return Array.from({ length: 9 }, (_, index) => {
@@ -369,15 +383,23 @@ export default function OnboardingScreen() {
 
   const schoolStepComplete = Boolean(
     universityId &&
-      facultyId &&
-      departmentId &&
-      (!courseId || courses.some((item) => item.id === courseId)),
+    (missingAcademic
+      ? missingDepartment.trim().length >= 2
+      : facultyId && departmentId) &&
+    (!courseId || courses.some((item) => item.id === courseId)),
   );
   const identityStepComplete =
-    username.trim().length >= 3 && matriculationNumber.trim().length >= 3;
+    firstName.trim().length >= 1 &&
+    lastName.trim().length >= 1 &&
+    username.trim().length >= 3 &&
+    matriculationNumber.trim().length >= 3;
   const timelineStepComplete =
     levels.includes(currentLevel as (typeof levels)[number]) &&
-    Boolean(graduationYear);
+    /^\d{4}$/.test(admissionYear) &&
+    Number(admissionYear) >= 1950 &&
+    Number(admissionYear) <= new Date().getFullYear() + 1 &&
+    Boolean(graduationYear) &&
+    Number(graduationYear) >= Number(admissionYear);
   const canContinue =
     step === 0
       ? schoolStepComplete
@@ -393,28 +415,36 @@ export default function OnboardingScreen() {
 
   async function submit() {
     if (!canContinue) return;
-    if (!profile?.first_name || !profile.last_name) {
-      setError(
-        "Your verified account details did not load. Go back, check your connection and try again.",
-      );
-      return;
-    }
     setLoading(true);
     setError("");
     try {
       await api("/v1/student/me/onboarding", {
         method: "PATCH",
         body: JSON.stringify({
-          firstName: profile.first_name,
-          lastName: profile.last_name,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           username: username.trim(),
           universityId,
-          facultyId,
-          departmentId,
-          courseId: courseId || null,
+          facultyId: missingAcademic ? null : facultyId,
+          departmentId: missingAcademic ? null : departmentId,
+          courseId: missingAcademic ? null : courseId || null,
+          ...(missingAcademic
+            ? {
+                missingAcademic: {
+                  departmentName: missingDepartment.trim(),
+                  ...(missingFaculty.trim()
+                    ? { facultyName: missingFaculty.trim() }
+                    : {}),
+                  ...(missingProgramme.trim()
+                    ? { programmeName: missingProgramme.trim() }
+                    : {}),
+                },
+              }
+            : {}),
           currentLevel,
           matriculationNumber: matriculationNumber.trim(),
           graduationYear: Number(graduationYear),
+          admissionYear: Number(admissionYear),
         }),
       });
       await reloadProfile();
@@ -492,7 +522,18 @@ export default function OnboardingScreen() {
           />
           {catalogLoading ? (
             <View accessibilityLiveRegion="polite" style={styles.loadingState}>
-              <InlineLoading color={DEEP_TERRACOTTA} />
+              {[0, 1, 2].map((row) => (
+                <View
+                  key={row}
+                  style={{
+                    height: 54,
+                    width: "100%",
+                    borderRadius: 12,
+                    backgroundColor: theme.surfaceMuted,
+                    marginBottom: 12,
+                  }}
+                />
+              ))}
               <Text style={styles.loadingText}>
                 Loading your school choices…
               </Text>
@@ -508,38 +549,86 @@ export default function OnboardingScreen() {
                   setFacultyId("");
                   setDepartmentId("");
                   setCourseId("");
+                  setMissingAcademic(false);
+                  setMissingFaculty("");
+                  setMissingDepartment("");
+                  setMissingProgramme("");
                 }}
                 selected={universityId}
               />
-              <Selector
-                disabled={!universityId}
-                items={faculties}
-                label="Faculty"
-                onSelect={(id) => {
-                  setFacultyId(id);
-                  setDepartmentId("");
-                  setCourseId("");
-                }}
-                selected={facultyId}
-              />
-              <Selector
-                disabled={!facultyId}
-                items={departments}
-                label="Department"
-                onSelect={(id) => {
-                  setDepartmentId(id);
-                  setCourseId("");
-                }}
-                selected={departmentId}
-              />
-              <Selector
-                disabled={!departmentId}
-                items={courseOptions}
-                label="Programme"
-                onSelect={setCourseId}
-                optional
-                selected={courseId}
-              />
+              {!missingAcademic ? (
+                <>
+                  <Selector
+                    disabled={!universityId}
+                    items={faculties}
+                    label="Faculty"
+                    onSelect={(id) => {
+                      setFacultyId(id);
+                      setDepartmentId("");
+                      setCourseId("");
+                    }}
+                    selected={facultyId}
+                  />
+                  <Selector
+                    disabled={!facultyId}
+                    items={departments}
+                    label="Department"
+                    onSelect={(id) => {
+                      setDepartmentId(id);
+                      setCourseId("");
+                    }}
+                    selected={departmentId}
+                  />
+                  <Selector
+                    disabled={!departmentId}
+                    items={courseOptions}
+                    label="Programme"
+                    onSelect={setCourseId}
+                    optional
+                    selected={courseId}
+                  />
+                </>
+              ) : (
+                <>
+                  <AuthField
+                    label="Faculty / college (optional)"
+                    icon="school-outline"
+                    value={missingFaculty}
+                    onChangeText={setMissingFaculty}
+                    maxLength={180}
+                  />
+                  <AuthField
+                    label="Department"
+                    icon="school-outline"
+                    value={missingDepartment}
+                    onChangeText={setMissingDepartment}
+                    maxLength={180}
+                  />
+                  <AuthField
+                    label="Programme / degree (optional)"
+                    icon="school-outline"
+                    value={missingProgramme}
+                    onChangeText={setMissingProgramme}
+                    maxLength={180}
+                  />
+                  <Text style={styles.help}>
+                    Your details will be reviewed. You can continue with a
+                    provisional academic profile.
+                  </Text>
+                </>
+              )}
+              {universityId ? (
+                <TextLink
+                  onPress={() => {
+                    setMissingAcademic((value) => !value);
+                    setCourseId("");
+                  }}
+                >
+                  {missingAcademic
+                    ? "Choose from the listed departments"
+                    : "My department / programme isn’t listed"}
+                </TextLink>
+              ) : null}
             </View>
           ) : null}
           {!catalogLoading && !catalog ? (
@@ -555,6 +644,22 @@ export default function OnboardingScreen() {
       {step === 1 ? (
         <View>
           <AuthField
+            label="First name"
+            icon="person-outline"
+            value={firstName}
+            onChangeText={setFirstName}
+            maxLength={40}
+            autoComplete="given-name"
+          />
+          <AuthField
+            label="Last name"
+            icon="person-outline"
+            value={lastName}
+            onChangeText={setLastName}
+            maxLength={40}
+            autoComplete="family-name"
+          />
+          <AuthField
             autoCapitalize="none"
             autoComplete="username-new"
             autoCorrect={false}
@@ -564,7 +669,7 @@ export default function OnboardingScreen() {
             onChangeText={(value) =>
               setUsername(value.toLowerCase().replace(/[^a-z0-9_]/g, ""))
             }
-            placeholder="e.g. warriorpikin"
+            placeholder="Choose your username"
             textContentType="username"
             value={username}
           />
@@ -590,6 +695,15 @@ export default function OnboardingScreen() {
 
       {step === 2 ? (
         <View>
+          <AuthField
+            label="Admission / entry year"
+            icon="calendar-outline"
+            value={admissionYear}
+            onChangeText={(value) => setAdmissionYear(value.replace(/\D/g, ""))}
+            keyboardType="number-pad"
+            maxLength={4}
+            placeholder="Enter your admission year"
+          />
           <Text style={styles.fieldLabel}>Current level</Text>
           <View accessibilityRole="radiogroup" style={styles.levels}>
             {levels.map((level) => {
@@ -624,6 +738,7 @@ export default function OnboardingScreen() {
             onSelect={setGraduationYear}
             selected={graduationYear}
           />
+          {suggestedGraduation && yearOptions.some(item => item.id === suggestedGraduation) ? <Pressable accessibilityRole="button" onPress={() => setGraduationYear(suggestedGraduation)} style={{ paddingVertical: 12 }}><Text style={[styles.help, { color: theme.deepBrand }]}>Use {suggestedGraduation} · {duration}-year programme</Text></Pressable> : null}
 
           <View style={styles.summary}>
             <View style={styles.summaryRow}>
@@ -636,7 +751,9 @@ export default function OnboardingScreen() {
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Programme</Text>
               <Text numberOfLines={2} style={styles.summaryValue}>
-                {course?.name ?? department?.name ?? "Not selected"}
+                {missingAcademic
+                  ? `${missingProgramme || missingDepartment} · pending review`
+                  : (course?.name ?? department?.name ?? "Not selected")}
               </Text>
             </View>
           </View>
@@ -667,9 +784,6 @@ export default function OnboardingScreen() {
           pressed && styles.closePressed,
         ]}
       >
-        {signingOut ? (
-          <InlineLoading color={DEEP_TERRACOTTA} size="small" />
-        ) : null}
         <Text style={styles.switchAccountText}>
           {signingOut ? "Signing out…" : "Switch account / Sign out"}
         </Text>

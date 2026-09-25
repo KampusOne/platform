@@ -1,6 +1,6 @@
 import { InlineLoading, ListSkeleton } from "@/src/components/skeleton";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {  Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "@/src/lib/api";
@@ -74,11 +74,11 @@ function CommentList({ postId, refreshToken = 0, onUpdated, onReply, parentComme
     {!loading && !error && !comments.length ? <Text style={styles.empty}>{parentId ? "No replies yet." : "No replies yet. Be the first to join in."}</Text> : null}
     {comments.map((comment) => <View key={comment.id} style={styles.commentGroup}>
       <View style={styles.comment}>
-        <View style={styles.avatarRail}>{!comment.is_deleted ? <ProfileAvatar name={comment.author_name} imageUrl={comment.author_image_url} size={36} /> : <View style={styles.deletedAvatar} />}{expanded.has(comment.id) ? <View style={styles.connector} /> : null}</View>
+        <View style={styles.avatarRail}>{!comment.is_deleted ? <Pressable accessibilityRole="link" accessibilityLabel={`View ${comment.author_name}’s profile`} disabled={!comment.author_user_id} onPress={() => router.push({ pathname: "/student-profile", params: { id: comment.author_user_id! } })}><ProfileAvatar name={comment.author_name} imageUrl={comment.author_image_url} size={36} /></Pressable> : <View style={styles.deletedAvatar} />}{expanded.has(comment.id) ? <View style={styles.connector} /> : null}</View>
         <View style={styles.commentContent}>
           {comment.is_deleted ? <Text style={styles.deleted}>Reply deleted</Text> : <>
             <View style={styles.commentHeader}>
-              <View style={styles.authorRow}><Text accessibilityLabel={`${comment.author_name}${comment.author_verified ? ", verified" : ""}`} numberOfLines={1} style={styles.author}>{comment.author_name}</Text>{comment.author_verified ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><VerifiedBadge size={13} /></View> : null}<Text style={styles.time}>·</Text><RelativeTime value={comment.created_at} style={styles.time} /></View>
+              <Pressable accessibilityRole="link" accessibilityLabel={`View ${comment.author_name}’s profile`} disabled={!comment.author_user_id} onPress={() => router.push({ pathname: "/student-profile", params: { id: comment.author_user_id! } })} style={styles.authorRow}><Text accessibilityLabel={`${comment.author_name}${comment.author_verified ? ", verified" : ""}`} numberOfLines={1} style={styles.author}>{comment.author_name}</Text>{comment.author_verified ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><VerifiedBadge size={13} /></View> : null}<Text style={styles.time}>·</Text><RelativeTime value={comment.created_at} style={styles.time} /></Pressable>
               {comment.can_delete ? <Pressable accessibilityRole="button" accessibilityLabel="Delete your reply" disabled={deleting} onPress={() => setSelected(comment)} style={styles.menuButton}><Ionicons name="ellipsis-horizontal" size={18} color={theme.textMuted} /></Pressable> : null}
             </View>
             <Pressable accessibilityRole="button" accessibilityLabel={`Open replies to ${comment.author_name}`} onPress={() => toggleReplies(comment.id)} style={styles.bodyRegion}>

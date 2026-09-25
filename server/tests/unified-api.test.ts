@@ -245,7 +245,7 @@ describe("unified HTTP routes against the saved database schema", () => {
     await json(
       await request("/learning/courses", "PUT", {
         courses: [
-          { courseCode: "MTH101", title: "Calculus", units: 3, grade: "ZZ" },
+          { courseCode: "MTH101", title: "Calculus", units: 3, grade: "TOO-LONG" },
         ],
       }),
       400,
@@ -373,6 +373,9 @@ describe("application, private-file and trial boundaries", () => {
     universityId: school,
     agentType: "VENDOR",
     displayName: "Test shop",
+    businessName: "Test shop",
+    businessAddress: "Test campus address",
+    campusPermission: "NOT_REQUIRED",
     phoneE164: "+2348000000001",
     statement: "A test application for schema verification only.",
     legalName: "Test Applicant",
@@ -623,7 +626,7 @@ describe("application, private-file and trial boundaries", () => {
       ).profiles[0].agent_type,
     ).toBe("VENDOR");
   });
-  it("claims ten months internally exactly once, without a payment provider", async () => {
+  it("claims twelve months internally exactly once, without a payment provider", async () => {
     const r = await json(
       await request("/applications/trial", "POST", undefined, applicant),
       201,
@@ -631,7 +634,7 @@ describe("application, private-file and trial boundaries", () => {
     const claimed = new Date(r.trial.claimed_at),
       expires = new Date(r.trial.expires_at);
     const expected = new Date(claimed);
-    expected.setUTCMonth(expected.getUTCMonth() + 10);
+    expected.setUTCMonth(expected.getUTCMonth() + 12);
     expect(expires.getTime()).toBe(expected.getTime());
     await json(
       await request("/applications/trial", "POST", undefined, applicant),

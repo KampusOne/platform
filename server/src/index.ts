@@ -1,16 +1,21 @@
+import {deliverCommunityPush,checkCommunityPushReceipts} from "./services/community-push";
 import { sql } from "drizzle-orm";
 
 import { app } from "./app";
 import { database } from "./lib/database";
 import type { Bindings } from "./types";
 import { deliverQueuedNotifications } from "./services/notification-outbox";
+import { deliverQueuedBroadcasts } from "./services/broadcast-delivery";
 import { closeDueElections } from "./services/community-elections";
 
 export default {
   fetch: app.fetch,
   scheduled(_controller, env, executionContext) {
     executionContext.waitUntil(deliverQueuedNotifications(env));
+    executionContext.waitUntil(deliverCommunityPush(env));
+    executionContext.waitUntil(checkCommunityPushReceipts(env));
     executionContext.waitUntil(closeDueElections(env));
+    executionContext.waitUntil(deliverQueuedBroadcasts(env));
     executionContext.waitUntil(
       Promise.all([
         database(env).execute(

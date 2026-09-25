@@ -1,3 +1,4 @@
+import { syncWebAlarms, stopWebAlarms } from "./web-alarms";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 export type Alarm = {
@@ -17,7 +18,7 @@ export async function syncAlarms(
   alarms: Alarm[],
   requestPermission = false,
 ): Promise<boolean> {
-  if (Platform.OS === "web") return false;
+  if (Platform.OS === "web") return syncWebAlarms(alarms, requestPermission);
   const operation = queue
     .catch(() => undefined)
     .then(async () => {
@@ -59,14 +60,21 @@ export async function syncAlarms(
             ? [-1]
             : [])
           expected.set(`k1-alarm-${alarm.id}-${day}`, { alarm, day });
-      // Only replace this app's alarm requests. Remote/push notifications are untouched.
+      if (Platform.OS === "ios" && expected.size > 60) throw new Error("Use at most 60 weekly reminder slots on this iPhone. Disable some reminders, then sync again.");
+      const signatures = new Map(scheduled.map(entry=>[entry.identifier,entry.content.data?.alarmSignature]));
+      // Preserve unchanged reminders so a refresh cannot cancel an imminent alarm.
       for (const entry of scheduled)
-        if (entry.identifier.startsWith("k1-alarm-"))
+        if (entry.identifier.startsWith("k1-alarm-") && !expected.has(entry.identifier))
           await Notifications.cancelScheduledNotificationAsync(
             entry.identifier,
           );
       for (const [identifier, { alarm, day }] of expected) {
+        const signature=JSON.stringify([alarm.time,alarm.days,alarm.fires_at,alarm.label,alarm.sound,alarm.vibration,alarm.snooze_minutes,new Date().getTimezoneOffset()]);
+        if(signatures.get(identifier)===signature)continue;
         const [hour, minute] = alarm.time.split(":").map(Number);
+        // Campus timetable hours are Africa/Lagos (UTC+1), even on a device set to another zone.
+        const campusNow=new Date(Date.now()+3600000);
+        const date=new Date(Date.UTC(campusNow.getUTCFullYear(),campusNow.getUTCMonth(),campusNow.getUTCDate()+((day-campusNow.getUTCDay()+7)%7),hour!-1,minute!));
         await Notifications.scheduleNotificationAsync({
           identifier,
           content: {
@@ -74,7 +82,7 @@ export async function syncAlarms(
             body: "Your reminder",
             sound: alarm.sound === "default" ? "default" : false,
             categoryIdentifier: "k1-alarm",
-            data: { alarmId: alarm.id, snoozeMinutes: alarm.snooze_minutes },
+            data: { alarmId: alarm.id, snoozeMinutes: alarm.snooze_minutes, alarmSignature:signature },
           },
           trigger:
             day === -1
@@ -85,9 +93,9 @@ export async function syncAlarms(
                 }
               : {
                   type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-                  weekday: day + 1,
-                  hour: hour!,
-                  minute: minute!,
+                  weekday: date.getDay() + 1,
+                  hour: date.getHours(),
+                  minute: date.getMinutes(),
                   channelId: `k1-${alarm.sound}-${alarm.vibration}`,
                 },
         });
@@ -98,7 +106,7 @@ export async function syncAlarms(
   return operation;
 }
 export async function clearScheduledAlarms() {
-  if (Platform.OS === "web") return;
+  if (Platform.OS === "web") { stopWebAlarms(); return; }
   for (const n of await Notifications.getAllScheduledNotificationsAsync())
     if (
       n.identifier.startsWith("k1-alarm-") ||
@@ -110,7 +118,7 @@ export function listenForSnooze() {
   if (Platform.OS === "web") return () => {};
   Notifications.setNotificationHandler({
     handleNotification: async (n) => ({
-      shouldPlaySound: n.request.content.sound !== null,
+      shouldPlaySound: Boolean(n.request.content.sound),
       shouldSetBadge: false,
       shouldShowBanner: true,
       shouldShowList: true,
@@ -139,8 +147,9 @@ export function listenForSnooze() {
           type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
           seconds,
           repeats: false,
+          channelId: original.sound ? "k1-default-true" : "k1-silent-true",
         },
-      });
+      }).catch(()=>undefined);
     },
   );
   return () => listener.remove();

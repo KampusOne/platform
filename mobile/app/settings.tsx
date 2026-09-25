@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { Switch } from "react-native";
+import { Platform, Text } from "react-native";
+import {
+  getRegisteredPushDevice,
+  pushSetupAvailability,
+  registerPushDevice,
+  unregisterPushDevice,
+} from "@/src/lib/push-registration";
+import { Ionicons } from "@expo/vector-icons";
+import { BrandSwitch } from "@/src/components/brand-switch";
+import { ScreenSkeleton } from "@/src/components/skeleton";
 import { router } from "expo-router";
 import { ToolPage, ToolRow, ToolButton } from "@/src/components/toolkit";
 import { useToast } from "@/src/components/toast";
@@ -19,7 +28,7 @@ const defaults: Settings = {
   notifications: true,
   marketing: false,
   haptics: true,
-  hideCgpa: false,
+  hideCgpa: true,
   hideReposts: false,
 };
 export default function SettingsScreen() {
@@ -28,15 +37,74 @@ export default function SettingsScreen() {
   const toast = useToast();
   const [settings, setSettings] = useState(defaults);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushRegistered, setPushRegistered] = useState(false);
+  const pushAvailability = pushSetupAvailability();
   useEffect(() => {
+    let live = true;
+    if (user && Platform.OS !== "web")
+      void getRegisteredPushDevice(user.id)
+        .then((device) => {
+          if (live) setPushRegistered(Boolean(device));
+        })
+        .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [user?.id]);
+  async function changePush() {
+    if (!user || pushBusy) return;
+    setPushBusy(true);
+    try {
+      if (pushRegistered) {
+        await unregisterPushDevice(user.id);
+        setPushRegistered(false);
+        toast("Push turned off for this device", "success");
+      } else {
+        await registerPushDevice(user.id);
+        setPushRegistered(true);
+        toast(
+          "Device registered. Delivery can now be tested on this device.",
+          "success",
+        );
+      }
+    } catch (e) {
+      toast(
+        e instanceof Error ? e.message : "Push setup could not finish",
+        "error",
+      );
+    } finally {
+      setPushBusy(false);
+    }
+  }
+  useEffect(() => {
+    let live = true;
     if (!user) return;
-    void readCache<Settings>("settings." + user.id).then(
-      (s) => s && setSettings(s),
-    );
-    void api<{ settings: Partial<Settings> }>("/v1/account/settings")
-      .then(({ settings: s }) => setSettings({ ...defaults, ...s }))
-      .catch((e) => toast(e.message, "error"));
-  }, [user?.id, toast]);
+    void (async () => {
+      const cached = await readCache<Settings>("settings." + user.id);
+      if (live && cached) setSettings({ ...defaults, ...cached });
+      try {
+        const { settings: saved } = await api<{ settings: Partial<Settings> }>(
+          "/v1/account/settings",
+        );
+        if (live) setSettings({ ...defaults, ...saved });
+      } catch (caught) {
+        if (live)
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "Preferences could not load. Try again later.",
+          );
+      } finally {
+        if (live) setLoading(false);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [user?.id]);
   async function save() {
     setBusy(true);
     try {
@@ -58,7 +126,16 @@ export default function SettingsScreen() {
   }
   return (
     <ToolPage title="Settings">
-      {(["system", "light", "dark"] as const).map((mode) => (
+      {loading ? <ScreenSkeleton variant="list" compact /> : null}
+      {error ? (
+        <Text
+          accessibilityRole="alert"
+          style={{ color: theme.error, lineHeight: 21 }}
+        >
+          {error}
+        </Text>
+      ) : null}
+      {(["light", "dark", "system"] as const).map((mode) => (
         <ToolRow
           key={mode}
           title={
@@ -81,11 +158,15 @@ export default function SettingsScreen() {
             );
           }}
           trailing={
-            <Switch
-              accessibilityLabel={mode + " appearance"}
-              value={preference === mode}
-              onValueChange={() => void setAppearance(mode)}
-              trackColor={{ true: theme.deepBrand }}
+            <Ionicons
+              accessibilityLabel={
+                preference === mode ? "Selected" : "Not selected"
+              }
+              name={
+                preference === mode ? "radio-button-on" : "radio-button-off"
+              }
+              color={theme.deepBrand}
+              size={24}
             />
           }
         />
@@ -103,22 +184,45 @@ export default function SettingsScreen() {
           key={key}
           title={label}
           trailing={
-            <Switch
-              accessibilityLabel={label}
+            <BrandSwitch
+              label={label}
+              disabled={busy || loading}
               value={settings[key]}
               onValueChange={(value) =>
                 setSettings((s) => ({ ...s, [key]: value }))
               }
-              trackColor={{ true: theme.deepBrand }}
             />
           }
         />
       ))}
       <ToolButton
-        label="Save preferences"
-        disabled={busy}
+        label={busy ? "Saving preferences…" : "Save preferences"}
+        disabled={busy || loading}
         onPress={() => void save()}
       />
+      <ToolRow
+        title="Push on this device"
+        icon="notifications-outline"
+        detail={
+          pushRegistered
+            ? "This device is registered. Registration does not confirm delivery."
+            : pushAvailability.message
+        }
+      />
+      {pushAvailability.available ? (
+        <ToolButton
+          secondary
+          label={
+            pushBusy
+              ? "Updating device…"
+              : pushRegistered
+                ? "Turn off push on this device"
+                : "Set up push on this device"
+          }
+          disabled={pushBusy}
+          onPress={() => void changePush()}
+        />
+      ) : null}
       <ToolRow
         title="Privacy policy"
         onPress={() =>

@@ -1,652 +1,305 @@
-import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "@/src/lib/haptics";
 import { type Href, router } from "expo-router";
-import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-
-import {
-  InlineFeedback,
-  ProductScreen,
-  SearchField,
-} from "@/src/components/product-ui";
+import { useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { ProductScreen, SearchField } from "@/src/components/product-ui";
 import { SectionHeading } from "@/src/components/section-heading";
 import { AgentShortcuts } from "@/src/components/agent-shortcuts";
+import { ToolRow } from "@/src/components/toolkit";
 import { recordRecentTool, useRecentToolIds } from "@/src/lib/recent-tools";
-import { theme } from "@/src/theme";
-
-type IconName = keyof typeof Ionicons.glyphMap;
+import { useAppearance } from "@/src/lib/appearance";
+import { selectionAsync } from "@/src/lib/haptics";
 type Tool = {
   id: string;
   title: string;
-  description: string;
-  icon: IconName;
-  href?: Href;
-  unavailableMessage?: string;
-  tone?: "peach" | "sand" | "sage";
+  icon: keyof typeof Ionicons.glyphMap;
+  href: Href;
+  keywords?: string;
 };
-
-const tools = {
-  gpa: {
-    id: "gpa",
-    title: "CGPA Calculator",
-    description: "Your courses, units and grades.",
-    icon: "document-text-outline",
-    href: "/course-planner",
-    tone: "peach",
+const tools: Tool[] = [
+  {
+    id: "calendar",
+    title: "Academic calendar",
+    icon: "calendar-number-outline",
+    href: "/academic-calendar",
+    keywords: "semesters registration exams holidays dates",
   },
-  upload: {
-    id: "upload",
-    title: "Timetable Upload",
-    description: "Import and review your class schedule.",
-    icon: "cloud-upload-outline",
-    href: "/timetable-import",
-    tone: "sage",
-  },
-  timetable: {
+  {
     id: "timetable",
-    title: "Timetable Manager",
-    description: "View, add and manage your timetable.",
+    title: "Timetable",
     icon: "calendar-outline",
     href: "/timetable",
-    tone: "sand",
+    keywords: "classes schedule",
   },
-  alarm: {
+  {
+    id: "gpa",
+    title: "CGPA calculator",
+    icon: "calculator-outline",
+    href: "/course-planner",
+    keywords: "grades courses units",
+  },
+  {
+    id: "upload",
+    title: "Import timetable",
+    icon: "cloud-upload-outline",
+    href: "/timetable-import",
+  },
+  {
     id: "alarm",
-    title: "Alarms",
-    description: "Classes, study time and everyday reminders.",
+    title: "Alarms & reminders",
     icon: "alarm-outline",
     href: "/alarms",
-    tone: "peach",
   },
-  market: {
-    id: "market",
-    title: "Marketplace",
-    description: "Buy, sell or discover useful items.",
-    icon: "bag-handle-outline",
-    href: "/store",
-    tone: "sage",
-  },
-  study: {
+  {
     id: "study",
-    title: "AI Study Assistant",
-    description: "Work through a difficult topic.",
+    title: "Study assistant",
     icon: "sparkles-outline",
     href: "/ai",
-    tone: "peach",
+    keywords: "AI questions notes",
   },
-  summarize: {
+  {
     id: "summarize",
-    title: "Summaries & Quizzes",
-    description: "Bring your notes. Find the key ideas.",
+    title: "Summaries",
     icon: "reader-outline",
-    href: "/ai",
-    tone: "sand",
+    href: { pathname: "/ai", params: { mode: "summary" } },
   },
-} satisfies Record<string, Tool>;
-
-const essentialIds = [
-  "gpa",
-  "upload",
-  "timetable",
-  "alarm",
-  "market",
-  "study",
-] as const;
-
-const moreTools: Tool[] = [
+  {
+    id: "quiz",
+    title: "Practice questions",
+    icon: "help-circle-outline",
+    href: { pathname: "/ai", params: { mode: "quiz" } },
+  },
+  {
+    id: "history",
+    title: "Study history",
+    icon: "time-outline",
+    href: "/study-history",
+    keywords: "saved notes summaries quizzes",
+  },
   {
     id: "tutors",
-    title: "Tutors",
-    description: "",
+    title: "Tutors & materials",
     icon: "people-outline",
     href: "/tutorials",
-  },
-  {
-    id: "notes",
-    title: "Notes & PDFs",
-    description: "",
-    icon: "document-text-outline",
-    href: "/tutorials",
+    keywords: "notes PDFs past questions",
   },
   {
     id: "community",
     title: "Class community",
-    description: "",
     icon: "people-circle-outline",
     href: "/communities",
   },
   {
-    id: "questions",
-    title: "Past Questions",
-    description: "",
-    icon: "documents-outline",
-    href: "/tutorials",
+    id: "market",
+    title: "Marketplace",
+    icon: "bag-handle-outline",
+    href: "/store",
   },
   {
     id: "guide",
-    title: "Student Guide",
-    description: "",
+    title: "Campus guidelines",
     icon: "book-outline",
     href: "/guidelines",
+    keywords: "student rules",
   },
-  {
-    id: "campus",
-    title: "Campus Guide",
-    description: "",
-    icon: "map-outline",
-    href: "/map",
-  },
-  {
-    id: "routine",
-    title: "My streak",
-    description: "",
-    icon: "flame-outline",
-    href: "/streak",
-  },
-  {
-    id: "editor",
-    title: "Timetable Editor",
-    description: "",
-    icon: "calendar-number-outline",
-    href: "/timetable",
-  },
+  { id: "campus", title: "Campus map", icon: "map-outline", href: "/map" },
+  { id: "routine", title: "My streak", icon: "flame-outline", href: "/streak" },
 ];
-
 export default function ExploreScreen() {
-  const { theme, styles } = useThemeStyles(createStyles);
-
+  const { theme } = useAppearance();
   const [query, setQuery] = useState("");
-  const [notice, setNotice] = useState("");
-  const recentToolIds = useRecentToolIds();
-  const needle = query.trim().toLowerCase();
-  const matches = useMemo(() => {
-    if (!needle) return null;
-    return [...Object.values(tools), ...moreTools].filter((tool) =>
-      `${tool.title} ${tool.description}`.toLowerCase().includes(needle),
-    );
-  }, [needle]);
-  const recentTools = recentToolIds
-    .map((id) =>
-      [...Object.values(tools), ...moreTools].find((tool) => tool.id === id),
-    )
-    .filter((tool): tool is Tool => Boolean(tool));
-
-  function openTool(tool: Tool) {
-    void Haptics.selectionAsync();
-    if (tool.href) {
-      recordRecentTool(tool.id);
-      router.push(tool.href);
-      return;
-    }
-    setNotice(tool.unavailableMessage ?? `${tool.title} is not available yet.`);
+  const recentIds = useRecentToolIds();
+  const recent = recentIds
+    .map((id) => tools.find((tool) => tool.id === id))
+    .filter((t): t is Tool => Boolean(t))
+    .slice(0, 5);
+  function open(tool: Tool) {
+    void selectionAsync().catch(() => undefined);
+    recordRecentTool(tool.id);
+    router.push(tool.href);
   }
-
+  const matches = query.trim()
+    ? tools.filter((tool) =>
+        `${tool.title} ${tool.keywords ?? ""}`
+          .toLowerCase()
+          .includes(query.trim().toLowerCase()),
+      )
+    : null;
+  const row = (tool: Tool) => (
+    <ToolRow
+      key={tool.id}
+      title={tool.title}
+      icon={tool.icon}
+      onPress={() => open(tool)}
+    />
+  );
   return (
-    <ProductScreen style={styles.screen}>
+    <ProductScreen style={{ paddingTop: 12 }}>
+      <Text
+        style={{
+          fontFamily: theme.font.displayStrong,
+          color: theme.text,
+          fontSize: 30,
+          marginBottom: 20,
+        }}
+      >
+        Explore
+      </Text>
       <SearchField
-        onChangeText={setQuery}
-        onFilterPress={() =>
-          setNotice("Tools are already grouped by what students need most.")
-        }
-        placeholder="Search tools, resources or services"
         value={query}
+        onChangeText={setQuery}
+        placeholder="Find a tool"
       />
-      {notice ? (
-        <View style={styles.notice}>
-          <InlineFeedback message={notice} />
-        </View>
-      ) : null}
-
       {matches ? (
-        <View style={styles.results}>
+        <View style={{ marginTop: 24 }}>
           <SectionHeading
-            meta={`${matches.length} found`}
             title="Search results"
+            meta={String(matches.length)}
           />
           {matches.length ? (
-            matches.map((tool) => (
-              <SearchResult
-                key={tool.id}
-                onPress={() => openTool(tool)}
-                tool={tool}
-              />
-            ))
+            matches.map(row)
           ) : (
-            <View style={styles.zero}>
-              <Ionicons
-                color={theme.deepBrand}
-                name="search-outline"
-                size={30}
-              />
-              <Text style={styles.zeroTitle}>No matching tool</Text>
-            </View>
+            <Text
+              style={{
+                fontFamily: theme.font.body,
+                color: theme.textMuted,
+                paddingVertical: 32,
+              }}
+            >
+              No matching tools. Try a different word.
+            </Text>
           )}
         </View>
       ) : (
         <>
           <AgentShortcuts />
-          <View style={styles.section}>
-            <SectionHeading
-              {...(recentTools.length
-                ? { meta: `${recentTools.length} this session` }
-                : {})}
-              title="Recently used"
-            />
-            {recentTools.length ? (
+          {recent.length ? (
+            <View style={{ marginTop: 24 }}>
+              <SectionHeading title="Recently used" />
               <ScrollView
-                contentContainerStyle={styles.recentRail}
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 10 }}
               >
-                {recentTools.map((tool) => (
-                  <RecentCard
+                {recent.map((tool) => (
+                  <Pressable
                     key={tool.id}
-                    onPress={() => openTool(tool)}
-                    tool={tool}
-                  />
+                    accessibilityRole="button"
+                    onPress={() => open(tool)}
+                    style={({ pressed }) => ({
+                      borderBottomWidth: 2,
+                      borderColor: theme.brand,
+                      paddingHorizontal: 4,
+                      paddingVertical: 12,
+                      marginRight: 14,
+                      opacity: pressed ? 0.7 : 1,
+                    })}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: theme.font.medium,
+                        color: theme.text,
+                      }}
+                    >
+                      {tool.title}
+                    </Text>
+                  </Pressable>
                 ))}
               </ScrollView>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => openTool(tools.gpa)}
-                style={({ pressed }) => [
-                  styles.recentEmpty,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <View style={styles.recentEmptyIcon}>
+            </View>
+          ) : null}
+          <View style={{ marginTop: 28 }}>
+            <SectionHeading title="Your academics" />
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              {tools.slice(0, 2).map((tool, index) => (
+                <Pressable
+                  key={tool.id}
+                  accessibilityRole="button"
+                  onPress={() => open(tool)}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    minHeight: 136,
+                    backgroundColor: index ? theme.sand : theme.surfaceMuted,
+                    padding: 18,
+                    borderRadius: 18,
+                    justifyContent: "space-between",
+                    opacity: pressed ? 0.75 : 1,
+                  })}
+                >
                   <Ionicons
+                    name={tool.icon}
                     color={theme.deepBrand}
-                    name="time-outline"
-                    size={22}
+                    size={29}
                   />
-                </View>
-                <View style={styles.recentEmptyCopy}>
-                  <Text style={styles.recentEmptyTitle}>
-                    Your recent tools will appear here
+                  <Text
+                    style={{
+                      fontFamily: theme.font.display,
+                      color: theme.text,
+                      fontSize: 20,
+                    }}
+                  >
+                    {tool.title}
                   </Text>
-                </View>
-                <Ionicons
-                  color={theme.deepBrand}
-                  name="arrow-forward"
-                  size={18}
-                />
-              </Pressable>
-            )}
-          </View>
-
-          <View style={styles.section}>
-            <SectionHeading title="Student tools" />
-            <View style={styles.essentialGrid}>
-              {essentialIds.map((id) => (
-                <FeatureCard
-                  key={id}
-                  onPress={() => openTool(tools[id])}
-                  tool={tools[id]}
-                />
+                </Pressable>
               ))}
             </View>
+            {tools.slice(2, 4).map(row)}
           </View>
-
-          <View style={styles.section}>
-            <SectionHeading title="Study tools" />
-            <View style={styles.aiRow}>
-              {([tools.study, tools.summarize] as const).map((tool) => (
-                <AiCard
+          <View style={{ marginTop: 28 }}>
+            <SectionHeading title="Make room for study" />
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => open(tools[4]!)}
+              style={({ pressed }) => ({
+                backgroundColor: theme.deepBrand,
+                borderRadius: 18,
+                padding: 22,
+                minHeight: 115,
+                justifyContent: "space-between",
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <Ionicons name="sparkles-outline" color="#FFFFFF" size={25} />
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontFamily: theme.font.display,
+                  fontSize: 23,
+                  marginTop: 18,
+                }}
+              >
+                Open study assistant
+              </Text>
+            </Pressable>
+            <View
+              style={{ flexDirection: "row", flexWrap: "wrap", paddingTop: 8 }}
+            >
+              {tools.slice(5, 8).map((tool) => (
+                <Pressable
+                  accessibilityRole="button"
                   key={tool.id}
-                  onPress={() => openTool(tool)}
-                  tool={tool}
-                />
+                  onPress={() => open(tool)}
+                  style={{ paddingVertical: 16, paddingRight: 20 }}
+                >
+                  <Text
+                    style={{
+                      color: theme.deepBrand,
+                      fontFamily: theme.font.semibold,
+                      fontSize: 13,
+                    }}
+                  >
+                    {tool.title}
+                  </Text>
+                </Pressable>
               ))}
             </View>
           </View>
-
-          <View style={styles.section}>
-            <SectionHeading title="More to explore" />
-            <View style={styles.moreGrid}>
-              {moreTools.map((tool) => (
-                <CompactTool
-                  key={tool.id}
-                  onPress={() => openTool(tool)}
-                  tool={tool}
-                />
-              ))}
-            </View>
+          <View style={{ marginTop: 24 }}>
+            <SectionHeading title="Around campus" />
+            {tools.slice(8).map(row)}
           </View>
         </>
       )}
     </ProductScreen>
   );
 }
-
-function ToolIcon({
-  icon,
-  tone = "peach",
-  size = 23,
-}: {
-  icon: IconName;
-  tone?: Tool["tone"];
-  size?: number;
-}) {
-  const { theme, styles } = useThemeStyles(createStyles);
-
-  return (
-    <View
-      style={[
-        styles.toolIcon,
-        tone === "sage" && styles.toolIconSage,
-        tone === "sand" && styles.toolIconSand,
-      ]}
-    >
-      <Ionicons color={theme.deepBrand} name={icon} size={size} />
-    </View>
-  );
-}
-
-function RecentCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
-  const { theme, styles } = useThemeStyles(createStyles);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.recentCard, pressed && styles.pressed]}
-    >
-      <ToolIcon icon={tool.icon} tone={tool.tone} />
-      <Ionicons
-        color={theme.deepBrand}
-        name="chevron-forward"
-        size={17}
-        style={styles.recentChevron}
-      />
-      <Text style={styles.recentTitle}>{tool.title}</Text>
-    </Pressable>
-  );
-}
-
-function FeatureCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
-  const { theme, styles } = useThemeStyles(createStyles);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.featureCard, pressed && styles.pressed]}
-    >
-      <View pointerEvents="none" style={styles.featureBlob} />
-      <ToolIcon icon={tool.icon} tone={tool.tone} size={25} />
-      <View style={styles.featureCopy}>
-        <Text style={styles.featureTitle}>{tool.title}</Text>
-      </View>
-      <View style={styles.chevronCircle}>
-        <Ionicons color={theme.deepBrand} name="chevron-forward" size={17} />
-      </View>
-    </Pressable>
-  );
-}
-
-function AiCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
-  const { theme, styles } = useThemeStyles(createStyles);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.aiCard, pressed && styles.pressed]}
-    >
-      <ToolIcon icon={tool.icon} tone={tool.tone} size={25} />
-      <View style={styles.aiCopy}>
-        <Text style={styles.featureTitle}>{tool.title}</Text>
-      </View>
-      <Ionicons color={theme.deepBrand} name="chevron-forward" size={18} />
-    </Pressable>
-  );
-}
-
-function CompactTool({ tool, onPress }: { tool: Tool; onPress: () => void }) {
-  const { theme, styles } = useThemeStyles(createStyles);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.compact, pressed && styles.pressed]}
-    >
-      <View style={styles.compactIcon}>
-        <Ionicons color={theme.deepBrand} name={tool.icon} size={20} />
-      </View>
-      <Text numberOfLines={2} style={styles.compactTitle}>
-        {tool.title}
-      </Text>
-      <Ionicons color={theme.deepBrand} name="chevron-forward" size={15} />
-    </Pressable>
-  );
-}
-
-function SearchResult({ tool, onPress }: { tool: Tool; onPress: () => void }) {
-  const { theme, styles } = useThemeStyles(createStyles);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.resultRow, pressed && styles.pressed]}
-    >
-      <ToolIcon icon={tool.icon} tone={tool.tone} />
-      <View style={styles.resultCopy}>
-        <Text style={styles.resultTitle}>{tool.title}</Text>
-      </View>
-      <Ionicons color={theme.deepBrand} name="chevron-forward" size={18} />
-    </Pressable>
-  );
-}
-
-const createStyles = (theme: Theme) =>
-  StyleSheet.create({
-    screen: { paddingTop: 8 },
-    notice: { marginTop: 12 },
-    section: { marginTop: 28 },
-    recentRail: { gap: 10, paddingRight: 20 },
-    recentEmpty: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceGlassStrong,
-      borderColor: theme.border,
-      borderRadius: 18,
-      borderStyle: "dashed",
-      borderWidth: 1,
-      flexDirection: "row",
-      minHeight: 76,
-      paddingHorizontal: 14,
-    },
-    recentEmptyIcon: {
-      alignItems: "center",
-      backgroundColor: "rgba(233,177,142,0.18)",
-      borderRadius: 13,
-      height: 44,
-      justifyContent: "center",
-      width: 44,
-    },
-    recentEmptyCopy: { flex: 1, marginHorizontal: 11 },
-    recentEmptyTitle: {
-      color: theme.text,
-      fontFamily: theme.font.semibold,
-      fontSize: 13,
-    },
-    recentEmptyBody: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 11,
-      marginTop: 3,
-    },
-    recentCard: {
-      backgroundColor: theme.surfaceGlassStrong,
-      borderColor: theme.border,
-      borderRadius: 18,
-      borderWidth: 1,
-      minHeight: 142,
-      padding: 13,
-      position: "relative",
-      width: 145,
-      ...theme.shadow,
-    },
-    toolIcon: {
-      alignItems: "center",
-      backgroundColor: "#FBEDE6",
-      borderRadius: 14,
-      height: 48,
-      justifyContent: "center",
-      width: 48,
-    },
-    toolIconSage: { backgroundColor: "#EAF2EA" },
-    toolIconSand: { backgroundColor: "#F6EEDF" },
-    recentChevron: { position: "absolute", right: 11, top: 29 },
-    recentTitle: {
-      color: theme.text,
-      fontFamily: theme.font.semibold,
-      fontSize: 14.5,
-      lineHeight: 18,
-      marginTop: 12,
-      maxWidth: 110,
-    },
-    essentialGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent: "space-between",
-      rowGap: 10,
-    },
-    featureCard: {
-      alignItems: "flex-start",
-      backgroundColor: theme.surfaceGlassStrong,
-      borderColor: "rgba(41,35,31,0.09)",
-      borderRadius: 20,
-      borderWidth: 1,
-      flexDirection: "row",
-      minHeight: 142,
-      overflow: "hidden",
-      padding: 13,
-      position: "relative",
-      width: "48%",
-    },
-    featureBlob: {
-      backgroundColor: "rgba(233,177,142,0.20)",
-      borderRadius: 60,
-      bottom: -44,
-      height: 92,
-      position: "absolute",
-      right: -22,
-      width: 105,
-    },
-    featureCopy: { flex: 1, marginLeft: 10, paddingRight: 2 },
-    featureTitle: {
-      color: theme.text,
-      fontFamily: theme.font.semibold,
-      fontSize: 14,
-      lineHeight: 18,
-    },
-    featureBody: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 11,
-      lineHeight: 16,
-      marginTop: 5,
-    },
-    chevronCircle: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceGlassStrong,
-      borderRadius: 18,
-      bottom: 10,
-      height: 36,
-      justifyContent: "center",
-      position: "absolute",
-      right: 10,
-      width: 36,
-    },
-    aiRow: { flexDirection: "row", gap: 10 },
-    aiCard: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceGlassStrong,
-      borderColor: theme.border,
-      borderRadius: 19,
-      borderWidth: 1,
-      flex: 1,
-      minHeight: 128,
-      padding: 13,
-    },
-    aiCopy: { flex: 1, marginLeft: 10 },
-    moreGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent: "space-between",
-      rowGap: 8,
-    },
-    compact: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceGlassStrong,
-      borderColor: theme.border,
-      borderRadius: 14,
-      borderWidth: 1,
-      flexDirection: "row",
-      minHeight: 56,
-      paddingHorizontal: 8,
-      width: "48%",
-    },
-    compactIcon: {
-      alignItems: "center",
-      backgroundColor: "rgba(233,177,142,0.16)",
-      borderRadius: 11,
-      height: 36,
-      justifyContent: "center",
-      width: 36,
-    },
-    compactTitle: {
-      color: theme.text,
-      flex: 1,
-      fontFamily: theme.font.medium,
-      fontSize: 11,
-      lineHeight: 14,
-      marginLeft: 7,
-    },
-    results: { marginTop: 26 },
-    resultRow: {
-      alignItems: "center",
-      borderBottomColor: theme.border,
-      borderBottomWidth: 1,
-      flexDirection: "row",
-      gap: 12,
-      minHeight: 78,
-      paddingVertical: 10,
-    },
-    resultCopy: { flex: 1 },
-    resultTitle: {
-      color: theme.text,
-      fontFamily: theme.font.semibold,
-      fontSize: 14,
-    },
-    resultBody: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 11.5,
-      lineHeight: 16,
-      marginTop: 3,
-    },
-    zero: { alignItems: "center", minHeight: 340, paddingTop: 90 },
-    zeroTitle: {
-      color: theme.text,
-      fontFamily: theme.font.display,
-      fontSize: 20,
-      marginTop: 16,
-    },
-    zeroBody: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 13,
-      lineHeight: 19,
-      marginTop: 7,
-      maxWidth: 300,
-      textAlign: "center",
-    },
-    pressed: { opacity: 0.76, transform: [{ scale: 0.98 }] },
-  });
-const styles = createStyles(theme);

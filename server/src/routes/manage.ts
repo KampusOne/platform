@@ -4,6 +4,7 @@ import { z } from "@kampusone/contracts";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { id, input } from "../lib/input";
 import { AppError } from "../lib/errors";
+import { adminAccess, assertPermission, resolveAdminScope, type AdminUser } from "../lib/admin-access";
 import { recordAudit } from "../lib/audit";
 import { identityFingerprint } from "../lib/identity-fingerprint";
 import { currentUser, requireAuth } from "../middleware/auth";
@@ -14,29 +15,35 @@ export const manageRoutes = new Hono<{
 }>();
 manageRoutes.use("/*", requireAuth);
 manageRoutes.use("/*", async (c, next) => {
-  const user = currentUser(c);
-  if (user.operatorRoles.includes("PLATFORM_ADMIN")) return next();
-  const match = c.req.path.match(
-    /^\/v1\/manage\/applications\/([0-9a-f-]{36})\/(documents|identity|guardian)$/,
-  );
-  if (match) {
-    const grant = firstRow(
-      await database(c.env).execute(
-        sql`select o.id from public.operator_roles o join public.agent_applications a on a.university_id=o.university_id where a.id=${match[1]!}::uuid and o.user_id=${user.id}::uuid and o.role='VERIFICATION_REVIEWER' and(o.expires_at is null or o.expires_at>now()) limit 1`,
-      ),
-    );
-    if (grant) return next();
+  const user=currentUser(c),path=c.req.path.replace('/v1/manage',''),read=c.req.method==='GET';
+  const domain=path.split('/')[1],target=path.split('/')[2];
+  const permission=domain==='users'?(read?'users.view':'users.manage'):domain==='applications'?'agents.verify':domain==='support'?(read?'support.view':'support.manage'):domain==='trials'?(read?'agents.view':'product.manage'):domain==='agents'?'agents.view':domain==='universities'?(read?'universities.view':'universities.manage'):domain==='communities'?(read?'academic.view':'academic.manage'):null;
+  if(!permission)throw new AppError(403,'FORBIDDEN','Your staff permissions do not allow this action.');
+  await assertPermission(c.env,user,permission);
+  const scoped:AdminUser={...user,adminPermission:permission};c.set('user',scoped);
+  if(target){
+    const valid=id(target);
+    const query=domain==='users'?sql`select university_id institution_id from public.profiles where user_id=${valid}::uuid`:
+      domain==='applications'?sql`select university_id institution_id from public.agent_applications where id=${valid}::uuid`:
+      domain==='support'?sql`select institution_id from public.support_requests where id=${valid}::uuid`:
+      domain==='trials'?sql`select institution_id from public.agent_trials where id=${valid}::uuid`:
+      domain==='universities'?sql`select id institution_id from public.universities where id=${valid}::uuid`:
+      domain==='communities'?sql`select institution_id from public.cohort_communities where id=${valid}::uuid`:null;
+    if(!query)throw new AppError(403,'FORBIDDEN','This administrative action is unavailable.');
+    const resource=firstRow(await database(c.env).execute<{institution_id:string|null}>(query));
+    if(!resource)throw new AppError(404,'NOT_FOUND','Record not found.');
+    const scope=await resolveAdminScope(c.env,scoped,resource.institution_id??undefined);
+    if(scope!==null&&resource.institution_id!==scope)throw new AppError(403,'FORBIDDEN','This record is outside your university scope.');
+  } else if(!read) {
+    if(domain==='communities'){
+      const request=await c.req.json().catch(()=>null);
+      await resolveAdminScope(c.env,scoped,request?.institutionId);
+    } else if(!user.operatorRoles.includes('PLATFORM_ADMIN'))throw new AppError(403,'FORBIDDEN','A platform administrator must create this record.');
   }
-  throw new AppError(
-    403,
-    "FORBIDDEN",
-    "Your administrator role cannot perform this action.",
-  );
+  await next();
 });
 manageRoutes.get("/communities", async (c) => {
-  const scope = c.req.query("universityId")
-    ? id(c.req.query("universityId")!)
-    : null;
+  const scope = await resolveAdminScope(c.env,currentUser(c),c.req.query("universityId"));
   const r = await database(c.env).execute(
     sql`select cc.id,cc.name,cc.institution_id,cc.admission_year,cc.level_code current_level,cc.rep_user_id,cc.archived_at,(select count(*)::int from public.community_members where community_id=cc.id) members from public.cohort_communities cc where (${scope}::uuid is null or cc.institution_id=${scope}::uuid) order by cc.admission_year desc,cc.name limit 200`,
   );
@@ -244,8 +251,9 @@ manageRoutes.post("/communities/:id/transfers/:transferId", async (c) => {
   return c.json({ status: "saved" });
 });
 manageRoutes.get("/universities", async (c) => {
+  const scope=await resolveAdminScope(c.env,currentUser(c),c.req.query("universityId"));
   const r = await database(c.env).execute(
-    sql`select u.id,u.name,u.slug,coalesce(cfg.status,'CATALOGUED') status,(select count(*)::int from public.profiles p where p.university_id=u.id and p.deleted_at is null) users,(select count(*)::int from public.agent_profiles a where a.university_id=u.id and a.status='ACTIVE') agents from public.universities u left join public.institution_config cfg on cfg.institution_id=u.id where u.deleted_at is null order by u.name limit 500`,
+    sql`select u.id,u.name,u.slug,coalesce(cfg.status,'CATALOGUED') status,(select count(*)::int from public.profiles p where p.university_id=u.id and p.deleted_at is null) users,(select count(*)::int from public.agent_profiles a where a.university_id=u.id and a.status='ACTIVE') agents from public.universities u left join public.institution_config cfg on cfg.institution_id=u.id where u.deleted_at is null and (${scope}::uuid is null or u.id=${scope}::uuid) order by u.name limit 500`,
   );
   return c.json({ rows: r.rows });
 });
@@ -292,9 +300,7 @@ manageRoutes.patch("/universities/:id", async (c) => {
   return c.json({ status: "saved" });
 });
 manageRoutes.get("/trials", async (c) => {
-  const scope = c.req.query("universityId")
-    ? id(c.req.query("universityId")!)
-    : null;
+  const scope = await resolveAdminScope(c.env,currentUser(c),c.req.query("universityId"));
   const filter = c.req.query("status") ?? "ALL";
   const r = await database(c.env).execute(
     sql`with trials as(select t.id,t.user_id,t.institution_id,p.display_name,u.email,t.claimed_at,t.expires_at,t.revoked_at,case when t.revoked_at is not null then 'REVOKED' when t.expires_at<=now() then 'EXPIRED' when t.expires_at<now()+interval '30 days' then 'EXPIRING' else 'ACTIVE' end status from public.agent_trials t join public.users u on u.id=t.user_id left join public.profiles p on p.user_id=u.id) select * from trials where (${scope}::uuid is null or institution_id=${scope}::uuid) and (${filter}='ALL' or status=${filter}) order by claimed_at desc limit 100`,
@@ -320,9 +326,7 @@ manageRoutes.post("/trials/:id/revoke", async (c) => {
   return c.json({ status: "revoked" });
 });
 manageRoutes.get("/support", async (c) => {
-  const scope = c.req.query("universityId")
-    ? id(c.req.query("universityId")!)
-    : null;
+  const scope = await resolveAdminScope(c.env,currentUser(c),c.req.query("universityId"));
   const r = await database(c.env).execute(
     sql`select s.id,s.user_id,u.email,s.category,s.subject,s.body,s.status,s.reply,s.created_at from public.support_requests s join public.users u on u.id=s.user_id where (${scope}::uuid is null or s.institution_id=${scope}::uuid) order by s.created_at desc limit 100`,
   );
@@ -350,9 +354,7 @@ manageRoutes.patch("/support/:id", async (c) => {
   return c.json({ status: "saved" });
 });
 manageRoutes.get("/agents", async (c) => {
-  const scope = c.req.query("universityId")
-    ? id(c.req.query("universityId")!)
-    : null;
+  const scope = await resolveAdminScope(c.env,currentUser(c),c.req.query("universityId"));
   const type = c.req.query("type") ?? null;
   const r = await database(c.env).execute(
     sql`select a.id,a.user_id,a.agent_type,a.display_name,a.status,u.email,a.university_id,a.verified_at from public.agent_profiles a join public.users u on u.id=a.user_id where (${scope}::uuid is null or a.university_id=${scope}::uuid) and (${type}::text is null or a.agent_type=${type}) order by a.verified_at desc limit 100`,
@@ -364,7 +366,7 @@ manageRoutes.get("/users/:id", async (c) => {
   const [profile, restrictions, posts, orders, applications, streak] =
     await Promise.all([
       database(c.env).execute(
-        sql`select u.id,u.email,u.status,u.created_at,p.display_name,p.username,p.university_id,p.current_level,p.matriculation_number from public.users u left join public.profiles p on p.user_id=u.id where u.id=${target}::uuid`,
+        sql`select u.id,u.email,u.status,u.roles,u.created_at,p.display_name,p.username,p.university_id,p.current_level,p.matriculation_number,p.profile_image_url,p.cover_image_url,p.verification_status,coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) public_badge_verified from public.users u left join public.profiles p on p.user_id=u.id where u.id=${target}::uuid`,
       ),
       database(c.env).execute(
         sql`select id,kind,reason,ends_at,revoked_at from public.account_restrictions where user_id=${target}::uuid order by starts_at desc limit 20`,
@@ -395,7 +397,7 @@ manageRoutes.get("/users/:id", async (c) => {
     profile: firstRow(profile),
     restrictions: restrictions.rows,
     posts: posts.rows,
-    orders: orders.rows,
+    orders: (await adminAccess(c.env,currentUser(c))).permissions.includes("finance.view") ? orders.rows : [],
     applications: applications.rows,
     streak: firstRow(streak),
   });
@@ -467,7 +469,11 @@ manageRoutes.get("/applications/:id/documents", async (c) => {
     targetId: c.req.param("id"),
     requestId: c.get("requestId"),
   });
-  return c.json({ details: firstRow(result) ?? null });
+  const details=firstRow(result)??null;
+  if(details&&!(await adminAccess(c.env,currentUser(c))).permissions.includes('finance.view')){
+    delete details.bank_account_name;delete details.bank_account_last4;
+  }
+  return c.json({details});
 });
 manageRoutes.post("/applications/:id/identity", async (c) => {
   const applicationId = id(c.req.param("id"));

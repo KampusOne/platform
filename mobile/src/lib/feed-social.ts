@@ -1,8 +1,8 @@
 import type { FeedPostData } from "./feed-posts";
 
-export type QuotedPost = Pick<FeedPostData, "id" | "title" | "summary" | "body" | "image_url" | "published_at" | "source_name" | "source_verified"> & { source_image_url?: string | null };
+export type QuotedPost = Pick<FeedPostData, "id" | "title" | "summary" | "body" | "image_url" | "published_at" | "source_name" | "source_verified"> & { source_image_url?: string | null; media_type?:string|null };
 export type SocialFeedPost = FeedPostData & {
-  source_user_id?: string | null;
+  source_user_id?: string | null; media_type?: string | null;
   social_enabled?: boolean;
   liked?: boolean;
   like_count?: number;
@@ -21,7 +21,7 @@ export type FeedComment = {
   liked?: boolean; like_count?: number;
   id: string; body: string; created_at: string; author_name: string;
   author_verified: boolean; can_delete: boolean;
-  author_image_url?: string | null; author_username?: string | null;
+  author_user_id?: string | null; author_image_url?: string | null; author_username?: string | null;
   image_url?: string | null;
   parent_comment_id?: string | null; reply_count?: number; is_deleted?: boolean;
 };

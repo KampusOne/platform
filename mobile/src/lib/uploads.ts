@@ -101,3 +101,22 @@ export async function uploadAttachment(file: StagedAttachment): Promise<StagedAt
   const saved=await upload("resource",{uri:file.uri,name:file.name,type:file.type});
   return {...file,mediaId:saved.id};
 }
+
+export type PostMedia = { uri:string; name:string; type:string };
+export async function pickPostMedia(source: PhotoSource = "library"): Promise<PostMedia|null> {
+  if(source === "camera") return pickPhoto("post", "camera");
+  const result = await ImagePicker.launchImageLibraryAsync({mediaTypes:["images","videos"],allowsEditing:false,quality:0.8,videoMaxDuration:90});
+  if(result.canceled || !result.assets[0]) return null;
+  const asset=result.assets[0];
+  if(asset.type === "video") {
+    const type=asset.mimeType ?? (asset.uri.toLowerCase().endsWith(".mp4") ? "video/mp4" : "");
+    if(type !== "video/mp4") throw new Error("Choose an MP4 video. Export other formats as MP4 first.");
+    if((asset.fileSize??0)>10*1024*1024) throw new Error("Choose a video smaller than 10 MB.");
+    return {uri:asset.uri,name:asset.fileName??"post.mp4",type};
+  }
+  const context=ImageManipulator.manipulate(asset.uri);
+  try { if(Math.max(asset.width,asset.height)>1280)context.resize(asset.width>=asset.height?{width:1280}:{height:1280});
+    const image=await context.renderAsync();try {const saved=await image.saveAsync({format:SaveFormat.JPEG,compress:0.82});return {uri:saved.uri,name:"post.jpg",type:"image/jpeg"};}finally{image.release();}
+  }finally{context.release();}
+}
+export async function uploadPostMedia(file:PostMedia):Promise<UploadedFile>{return upload("post",file);}

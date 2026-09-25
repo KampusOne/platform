@@ -1,3 +1,4 @@
+import {deliverCommunityPush} from "../services/community-push";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { z } from "@kampusone/contracts";
@@ -142,6 +143,7 @@ communityRoutes.post("/:id/announcements", async (c) => {
     await database(c.env).execute(
       sql`select app_private.publish_community_announcement(${c.req.param("id")}::uuid,${u.id}::uuid,${d.title},${d.body},${d.idempotencyKey}::uuid)`,
     );
+    try{c.executionCtx.waitUntil(deliverCommunityPush(c.env).catch(()=>undefined));}catch{/* Cron drains queued notifications outside Worker runtimes. */}
     return c.json({ status: "published" }, 201);
   } catch (e) {
     explain(e);

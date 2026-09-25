@@ -1,0 +1,81 @@
+{
+  "recordedAt": "2026-09-25T02:49:49.476383+00:00",
+  "baselineMain": "50e452647b418d92077561a72fc68b23fbadc7f1",
+  "productionDeployed": false,
+  "newProductionSchemaApplied": false,
+  "approvedProfileMaintenance": "database/maintenance/20260925-uniben-profile-corrections.sql",
+  "checks": [
+    {
+      "command": "cd server && npm test -- --maxWorkers=2",
+      "result": "passed",
+      "files": 33,
+      "tests": 359
+    },
+    {
+      "command": "node --experimental-strip-types --test tests/*.test.mjs database/imports/academic-importer.test.mjs",
+      "result": "passed",
+      "tests": 101
+    },
+    {
+      "command": "cd packages/contracts && npm run check && npm test",
+      "result": "passed",
+      "tests": 9
+    },
+    {
+      "command": "cd server && npm run build && npx wrangler deploy --dry-run",
+      "result": "passed",
+      "deployed": false
+    },
+    {
+      "command": "cd mobile && npm run check && npm run export:web",
+      "result": "passed",
+      "htmlRoutes": 66
+    },
+    {
+      "command": "cd portal && npm run check && npm run lint && npm run build",
+      "result": "passed"
+    },
+    {
+      "command": "node server/scripts/import-academic-sources.mjs --dry-run",
+      "result": "passed",
+      "claims": 530,
+      "databaseAccessed": false
+    },
+    {
+      "command": "node server/scripts/verify-schema-proof.mjs corrections",
+      "result": "correctly_blocked",
+      "reason": "Approved production attestation for the current 20 migrations has not been issued."
+    }
+  ],
+  "unverified": [
+    "Authenticated browser and fourteen complete acceptance journeys",
+    "Real Hugging Face text/vision quality",
+    "Native alarms and selected-device remote notification",
+    "Production R2 media upload and seeking",
+    "Staging/production Neon migration rehearsal",
+    "Provider OAuth, mail delivery and financial settlement"
+  ],
+  "environmentLimitations": [
+    "Interactive localhost browser navigation blocked",
+    "Wrangler dev native interface initialization failed; CI runtime probe retained"
+  ],
+  "artifactMeasurement": {
+    "allExportedFileBytes": 17386222,
+    "largestSharedJsGzipBytes": [
+      287628,
+      228560
+    ],
+    "notMeasured": [
+      "initial page transfer",
+      "Android package size",
+      "mobile network latency",
+      "data used per session"
+    ]
+  },
+  "requirements": {
+    "total": 241,
+    "implementedAwaitingAcceptance": 174,
+    "inProgress": 62,
+    "blocked": 5
+  }
+}

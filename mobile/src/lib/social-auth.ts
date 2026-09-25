@@ -4,6 +4,14 @@ import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import { api, authApi, type Session } from "./api";
 const key = "k1.oauth.pkce";
+export type SocialProvider = "google" | "apple";
+export function socialConfiguration() {
+  return api<{ url: string; providers: SocialProvider[] }>(
+    "/v1/auth/social/config",
+    {},
+    false,
+  );
+}
 async function save(value: string) {
   if (Platform.OS === "web") sessionStorage.setItem(key, value);
   else await SecureStore.setItemAsync(key, value);
@@ -21,15 +29,32 @@ let pending: Promise<Session> | null = null;
 export async function finishSocialSignIn(url: string) {
   if (pending) return pending;
   pending = (async () => {
-    const params = new URL(url).searchParams;
-    if (params.get("error"))
+    const callback = new URL(url);
+    const params = callback.searchParams;
+    if (
+      params.get("error") ||
+      new URLSearchParams(callback.hash.slice(1)).get("error")
+    ) {
+      await take();
       throw new Error("Sign-in was cancelled or declined.");
+    }
     const code = params.get("code");
     if (!code) throw new Error("The sign-in link is incomplete.");
     const saved = await take();
     if (!saved) throw new Error("Start sign-in again on this device.");
-    const state = JSON.parse(saved) as { verifier: string; expires: number };
-    if (state.expires < Date.now())
+    let state: { verifier: string; expires: number };
+    try {
+      state = JSON.parse(saved);
+    } catch {
+      throw new Error("Start sign-in again on this device.");
+    }
+    if (
+      !state ||
+      typeof state.expires !== "number" ||
+      typeof state.verifier !== "string" ||
+      !/^[A-Za-z0-9._~-]{43,128}$/.test(state.verifier) ||
+      state.expires < Date.now()
+    )
       throw new Error("This sign-in attempt expired.");
     return authApi.socialComplete(code, state.verifier);
   })();
@@ -40,7 +65,12 @@ export async function finishSocialSignIn(url: string) {
   }
 }
 export async function beginSocialSignIn(provider: "google" | "apple") {
-  const { url: base } = await api<{ url: string }>("/v1/auth/social/config");
+  const { url: base, providers } = await socialConfiguration();
+  if (!providers.includes(provider)) {
+    throw new Error(
+      `${provider === "google" ? "Google" : "Apple"} sign-in is unavailable. Continue with your email.`,
+    );
+  }
   const redirect =
     Platform.OS === "web"
       ? window.location.origin + "/auth-callback"

@@ -1,3 +1,4 @@
+import { MediaPreview } from "./media-preview";
 import { router } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -15,7 +16,7 @@ export function QuotedPostPreview({ post, unavailable = false }: { post: QuotedP
     <View style={styles.author}><Text numberOfLines={1} style={styles.name}>{post.source_name}</Text>{post.source_verified ? <VerifiedBadge size={12} /> : null}<Text style={styles.muted}>·</Text><RelativeTime value={post.published_at} style={styles.muted} /></View>
     {text.title ? <Text numberOfLines={2} style={styles.title}>{text.title}</Text> : null}
     {text.paragraphs.length ? <Text numberOfLines={5} style={styles.body}>{text.paragraphs.join("\n\n")}</Text> : null}
-    {post.image_url ? <Image source={{ uri: post.image_url }} accessibilityLabel="Original post attachment" resizeMode="cover" style={styles.image} /> : null}
+    {post.image_url ? post.media_type?.startsWith("video/") ? <MediaPreview url={post.image_url} video label="Quoted video"/> : <Image source={{ uri: post.image_url }} accessibilityLabel="Original post attachment" resizeMode="cover" style={styles.image} /> : null}
   </Pressable>;
 }
 const createStyles = (theme: Theme) => StyleSheet.create({

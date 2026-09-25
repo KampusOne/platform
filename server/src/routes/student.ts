@@ -15,7 +15,7 @@ import {
 } from "@kampusone/contracts";
 
 import { database, firstRow, sqlClient } from "../lib/database";
-import { input as validatedInput } from "../lib/input";
+import { id, input as validatedInput } from "../lib/input";
 import { z } from "@kampusone/contracts";
 import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
@@ -28,6 +28,7 @@ import {
 } from "../lib/features";
 import { deriveHandoffCode } from "../lib/security";
 import { demoStoreCatalogue } from "../lib/store-demo";
+import { publishingRoutes } from "./publishing";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 
@@ -105,7 +106,7 @@ studentRoutes.get("/catalog", async (context) => {
       from public.departments where deleted_at is null order by name
     `),
     database(context.env).execute(sql`
-      select id, department_id, name, code
+      select id, department_id, name, code, to_jsonb(courses)->>'normal_duration_years' as normal_duration_years, to_jsonb(courses)->>'award' as award
       from public.courses where deleted_at is null order by code
     `),
   ]);
@@ -118,6 +119,7 @@ studentRoutes.get("/catalog", async (context) => {
 });
 
 studentRoutes.use("/*", requireAuth);
+studentRoutes.route("/",publishingRoutes);
 
 studentRoutes.get("/me", async (context) => {
   const user = currentUser(context);
@@ -127,15 +129,16 @@ studentRoutes.get("/me", async (context) => {
       profiles.username, profiles.display_name, profiles.first_name, profiles.last_name,
       profiles.biography, profiles.profile_image_url, profiles.cover_image_url,
       profiles.university_id, universities.name as university_name,
-      profiles.faculty_id, faculties.name as faculty_name,
-      profiles.department_id, departments.name as department_name,
+      profiles.faculty_id, coalesce(faculties.name,provisional.faculty_name) as faculty_name,
+      profiles.department_id, coalesce(departments.name,provisional.department_name) as department_name,
       profiles.course_id, courses.name as course_name,
       profiles.current_level, profiles.matriculation_number,
       profiles.graduation_year, profiles.verification_status,
-      profiles.onboarding_step, profiles.onboarding_completed_at,
+      profiles.onboarding_step, profiles.onboarding_completed_at, profiles.admission_year,profiles.provisional_academic_submission_id, provisional.department_name provisional_department_name,provisional.faculty_name provisional_faculty_name,
       ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`profiles.settings` : sql`'{}'::jsonb`} as settings
     from public.users users
     join public.profiles profiles on profiles.user_id = users.id and profiles.deleted_at is null
+    left join public.academic_missing_submissions provisional on provisional.id=profiles.provisional_academic_submission_id
     left join public.universities universities on universities.id = profiles.university_id
     left join public.faculties faculties on faculties.id = profiles.faculty_id
     left join public.departments departments on departments.id = profiles.department_id
@@ -151,7 +154,11 @@ studentRoutes.get("/me", async (context) => {
 
 studentRoutes.patch("/me/onboarding", async (context) => {
   const user = currentUser(context);
-  const parsed = onboardingProfileSchema.safeParse(await jsonBody(context));
+  const parsed = onboardingProfileSchema.extend({
+    facultyId:z.string().uuid().nullable().optional(),departmentId:z.string().uuid().nullable().optional(),
+    admissionYear:z.number().int().min(1950).max(new Date().getFullYear()+1).optional(),
+    missingAcademic:z.object({facultyName:z.string().trim().max(180).optional(),departmentName:z.string().trim().min(2).max(180),programmeName:z.string().trim().max(180).optional(),sourceNote:z.string().trim().max(2000).optional()}).optional(),
+  }).refine(v=>Boolean(v.missingAcademic)||Boolean(v.facultyId&&v.departmentId),"Select your faculty and department or submit the missing details.").safeParse(await jsonBody(context));
   if (!parsed.success) {
     throw new AppError(
       400,
@@ -163,7 +170,8 @@ studentRoutes.patch("/me/onboarding", async (context) => {
     );
   }
 
-  const selected = await database(context.env).execute<{
+  if(parsed.data.admissionYear && parsed.data.graduationYear<parsed.data.admissionYear) throw new AppError(400,"BAD_REQUEST","Expected graduation cannot precede admission.");
+  const selected = parsed.data.missingAcademic ? await database(context.env).execute<{university_id:string}>(sql`select id university_id from public.universities where id=${parsed.data.universityId}::uuid and deleted_at is null`) : await database(context.env).execute<{
     university_id: string;
   }>(sql`
     select universities.id as university_id
@@ -204,6 +212,11 @@ studentRoutes.patch("/me/onboarding", async (context) => {
     );
   }
 
+  let provisionalId:string|null=null;
+  if(parsed.data.missingAcademic){
+    const missing=parsed.data.missingAcademic;
+    provisionalId=firstRow(await database(context.env).execute<{id:string}>(sql`insert into public.academic_missing_submissions(user_id,institution_id,faculty_name,department_name,programme_name,source_note) values(${user.id}::uuid,${parsed.data.universityId}::uuid,${missing.facultyName??null},${missing.departmentName},${missing.programmeName??null},${missing.sourceNote??null}) on conflict(user_id,institution_id,department_name) do update set faculty_name=excluded.faculty_name,programme_name=excluded.programme_name,source_note=excluded.source_note,status='PENDING',updated_at=now() returning id`))?.id??null;
+  }
   await database(context.env).execute(sql`
     update public.profiles set
       first_name = ${parsed.data.firstName},
@@ -211,9 +224,11 @@ studentRoutes.patch("/me/onboarding", async (context) => {
       display_name = ${`${parsed.data.firstName} ${parsed.data.lastName}`},
       username = ${parsed.data.username},
       university_id = ${parsed.data.universityId}::uuid,
-      faculty_id = ${parsed.data.facultyId}::uuid,
-      department_id = ${parsed.data.departmentId}::uuid,
-      course_id = ${parsed.data.courseId ?? null}::uuid,
+      faculty_id = ${provisionalId ? null : parsed.data.facultyId}::uuid,
+      department_id = ${provisionalId ? null : parsed.data.departmentId}::uuid,
+      course_id = ${provisionalId ? null : parsed.data.courseId ?? null}::uuid,
+      admission_year = ${parsed.data.admissionYear??null},
+      provisional_academic_submission_id = ${provisionalId}::uuid,
       current_level = ${parsed.data.currentLevel},
       matriculation_number = ${parsed.data.matriculationNumber},
       graduation_year = ${parsed.data.graduationYear},
@@ -249,11 +264,14 @@ studentRoutes.get("/home", async (context) => {
     `),
     database(context.env).execute(sql`
       select posts.id, posts.category, posts.title, posts.summary, posts.image_url,
-        posts.urgent, posts.sponsored, posts.published_at, sources.name as source_name,
+        posts.urgent, posts.sponsored, posts.published_at,
+        case when posts.audience->>'studentPost' = 'true' or sources.name like 'student:%'
+          then coalesce(nullif(author.display_name, ''), 'KampusOne student') else sources.name end as source_name,
         exists(select 1 from public.feed_bookmarks bookmarks
           where bookmarks.post_id = posts.id and bookmarks.user_id = ${user.id}::uuid) as bookmarked
       from public.feed_posts posts
       join public.content_sources sources on sources.id = posts.source_id
+      left join public.profiles author on author.user_id = posts.author_user_id and author.deleted_at is null
       where posts.university_id = ${universityId}::uuid
         and posts.status in ('PUBLISHED', 'CORRECTED')
         and posts.published_at <= now()
@@ -266,7 +284,7 @@ studentRoutes.get("/home", async (context) => {
     `),
     context.env.UNIFIED_SCHEMA_READY === "true"
       ? database(context.env).execute<{ current_days: number }>(
-          sql`select current_days from app_private.check_in_streak(${user.id}::uuid)`,
+          sql`select case when last_day < (now() at time zone 'Africa/Lagos')::date - 1 then 0 else current_days end current_days from public.user_streaks where user_id=${user.id}::uuid`,
         )
       : Promise.resolve({ rows: [] }),
   ]);
@@ -288,7 +306,7 @@ studentRoutes.get("/feed", async (context) => {
   const category = context.req.query("category")?.toUpperCase();
   const result = await database(context.env).execute(sql`
     select posts.id, posts.category, posts.title, posts.summary, posts.body,
-      posts.image_url, posts.urgent, posts.sponsored, posts.published_at,
+      posts.image_url, posts.audience->>'format' as publishing_format, posts.audience->>'mediaType' as media_type, posts.audience->>'mediaContentType' as media_content_type, posts.author_user_id, author.profile_image_url as author_avatar_url, posts.urgent, posts.sponsored, posts.published_at,
       posts.correction_note,
       case when posts.audience->>'studentPost'='true' then coalesce(author.display_name,sources.name) else sources.name end as source_name,
       case when posts.audience->>'studentPost'='true' then coalesce(author.verification_status::text='VERIFIED',false) else sources.verified end as source_verified,
@@ -312,48 +330,58 @@ studentRoutes.post("/feed", async (c) => {
     throw new AppError(
       503,
       "PROVIDER_UNAVAILABLE",
-      "Posting is being connected. Try again shortly.",
+      "Posting is unavailable until the required server update is installed. Your draft is safe.",
     );
   const u = currentUser(c);
   const d = await validatedInput(
     c,
     z.object({
-      body: z.string().trim().min(4).max(5000),
+      body: z.string().trim().max(5000).default(""),
       mediaId: z.string().uuid().optional(),
       requestId: z.string().uuid(),
-    }),
+    }).refine((value) => value.body.length > 0 || Boolean(value.mediaId), "Write something or attach a photo or video."),
   );
-  const allowed = firstRow(
-    await database(c.env).execute<{ allowed: boolean }>(
-      sql`select app_private.consume_request_rate_limit('STUDENT_POST',${await sha256(u.id)},10,3600,3600) allowed`,
-    ),
-  );
-  if (!allowed?.allowed)
-    throw new AppError(
-      429,
-      "RATE_LIMITED",
-      "Please wait before posting again.",
-    );
-  if (
-    d.mediaId &&
-    !firstRow(
-      await database(c.env).execute(
-        sql`select id from public.media_objects where id=${d.mediaId}::uuid and owner_user_id=${u.id}::uuid and kind='post' and deleted_at is null`,
-      ),
-    )
-  )
-    throw new AppError(400, "BAD_REQUEST", "Choose an image from your device.");
+  const existing = firstRow(await database(c.env).execute<{id:string;body:string;image_url:string|null}>(sql`select id,body,image_url from public.feed_posts where author_user_id=${u.id}::uuid and client_request_id=${d.requestId}::uuid`));
+  if (existing) {
+    if (existing.body !== d.body || Boolean(existing.image_url) !== Boolean(d.mediaId) || (d.mediaId && !existing.image_url?.endsWith('/'+d.mediaId))) throw new AppError(409,"CONFLICT","This request identifier was already used for another post.");
+    return c.json({id:existing.id},200);
+  }
+  const allowed = firstRow(await database(c.env).execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('STUDENT_POST',${await sha256(u.id)},10,3600,3600) allowed`));
+  if (!allowed?.allowed) throw new AppError(429,"RATE_LIMITED","Please wait before posting again.");
+  const media = d.mediaId ? firstRow(await database(c.env).execute<{content_type:string}>(sql`select content_type from public.media_objects where id=${d.mediaId}::uuid and owner_user_id=${u.id}::uuid and institution_id=${requireUniversity(u)}::uuid and kind='post' and deleted_at is null`)) : null;
+  if (d.mediaId && !media) throw new AppError(400,"BAD_REQUEST","Upload your photo or video before publishing.");
+  const audience = JSON.stringify({studentPost:true,...(media ? {mediaType:media.content_type.startsWith("video/")?"video":"image",mediaContentType:media.content_type} : {})});
   const url = d.mediaId
     ? (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin) +
       "/v1/media/" +
       d.mediaId
     : null;
   const result = await database(c.env).execute(
-    sql`with source as(insert into public.content_sources(university_id,name,owner_user_id) values(${requireUniversity(u)}::uuid,${"student:" + u.id},${u.id}::uuid) on conflict(university_id,name) do update set owner_user_id=excluded.owner_user_id returning id) insert into public.feed_posts(university_id,source_id,author_user_id,category,title,summary,body,image_url,audience,status,published_at,client_request_id) select ${requireUniversity(u)}::uuid,id,${u.id}::uuid,'UPDATE',${d.body.slice(0, 180)},${d.body.slice(0, 500)},${d.body},${url},'{"studentPost":true}'::jsonb,'PUBLISHED',now(),${d.requestId}::uuid from source on conflict(author_user_id,client_request_id) where client_request_id is not null do update set client_request_id=excluded.client_request_id returning id`,
+    sql`with source as(insert into public.content_sources(university_id,name,owner_user_id) values(${requireUniversity(u)}::uuid,${"student:" + u.id},${u.id}::uuid) on conflict(university_id,name) do update set owner_user_id=excluded.owner_user_id returning id) insert into public.feed_posts(university_id,source_id,author_user_id,category,title,summary,body,image_url,audience,status,published_at,client_request_id) select ${requireUniversity(u)}::uuid,id,${u.id}::uuid,'UPDATE',${d.body.slice(0, 180) || 'Campus media'},${d.body.slice(0, 500) || 'Photo or video'},${d.body},${url},${audience}::jsonb,'PUBLISHED',now(),${d.requestId}::uuid from source on conflict(author_user_id,client_request_id) where client_request_id is not null do update set client_request_id=excluded.client_request_id where feed_posts.body=excluded.body and feed_posts.image_url is not distinct from excluded.image_url returning id`,
   );
+  if(!firstRow(result))throw new AppError(409,"CONFLICT","This request identifier was already used for another post.");
   return c.json(firstRow(result), 201);
 });
 
+studentRoutes.delete('/feed/:id',async c=>{
+ const result=await database(c.env).execute(sql`update public.feed_posts set status='ARCHIVED',updated_at=now() where id=${id(c.req.param('id'))}::uuid and author_user_id=${currentUser(c).id}::uuid and university_id=${requireUniversity(currentUser(c))}::uuid returning id`);
+ if(!firstRow(result))throw new AppError(404,'NOT_FOUND','Post not found.');
+ return c.json({status:'removed'});
+});
+studentRoutes.post('/feed/:id/report',async c=>{
+ const d=await validatedInput(c,z.object({reason:z.string().trim().min(5).max(1000)})),u=currentUser(c);
+ const result=await database(c.env).execute(sql`insert into public.feed_reports(post_id,reporter_user_id,institution_id,reason) select id,${u.id}::uuid,university_id,${d.reason} from public.feed_posts where id=${id(c.req.param('id'))}::uuid and university_id=${requireUniversity(u)}::uuid and status in ('PUBLISHED','CORRECTED') on conflict(post_id,reporter_user_id) do update set reason=excluded.reason returning id`);
+ if(!firstRow(result))throw new AppError(404,'NOT_FOUND','Post not found.');
+ return c.json({status:'reported'},201);
+});
+studentRoutes.post('/events',async c=>{
+ const d=await validatedInput(c,z.object({requestId:z.string().uuid(),event:z.enum(['screen_view','feature_started','feature_completed','feature_failed','timetable_import','study_session','application_submitted']),screen:z.string().regex(/^[a-zA-Z0-9_\/-]{1,100}$/).optional(),feature:z.string().regex(/^[a-zA-Z0-9_-]{1,60}$/).optional(),errorCode:z.string().regex(/^[A-Z0-9_]{1,60}$/).optional()}).strict());
+ const u=currentUser(c);
+ const allowed=firstRow(await database(c.env).execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('PRODUCT_EVENT',${u.id},300,3600,3600) allowed`));
+ if(!allowed?.allowed)throw new AppError(429,'RATE_LIMITED','Too many activity events.');
+ await database(c.env).execute(sql`insert into public.product_events(user_id,institution_id,event_name,screen,feature,error_code,client_request_id) values(${u.id}::uuid,${u.universityId}::uuid,${d.event},${d.screen??null},${d.feature??null},${d.errorCode??null},${d.requestId}::uuid) on conflict(user_id,client_request_id) do nothing`);
+ return c.json({status:'recorded'},202);
+});
 studentRoutes.put("/feed/:id/bookmark", async (context) => {
   const user = currentUser(context);
   await database(context.env).execute(sql`
@@ -500,11 +528,11 @@ studentRoutes.post("/gpa", async (context) => {
           await database(context.env).execute<{
             grading_scale: Record<string, number>;
           }>(
-            sql`select grading_scale from public.institution_config where institution_id=${requireUniversity(user)}::uuid`,
+            sql`select grading_scale from public.institution_config where institution_id=${requireUniversity(user)}::uuid and grading_source_status='VERIFIED'`,
           ),
         )?.grading_scale
       : undefined;
-  const gradingScale = scale ?? { A: 5, B: 4, C: 3, D: 2, E: 1, F: 0 };
+  const gradingScale = scale;
   if (
     new Set(parsed.data.results.map((result) => result.courseCode)).size !==
     parsed.data.results.length
@@ -515,13 +543,13 @@ studentRoutes.post("/gpa", async (context) => {
       "Each course can appear only once in a semester.",
     );
   for (const result of parsed.data.results) {
-    if (gradingScale[result.grade] === undefined)
+    if (gradingScale && gradingScale[result.grade] === undefined)
       throw new AppError(
         400,
         "BAD_REQUEST",
         "Choose a grade in your university scale.",
       );
-    result.gradePoint = gradingScale[result.grade]!;
+    if(gradingScale) result.gradePoint = gradingScale[result.grade]!;
   }
   const units = parsed.data.results.reduce(
     (sum, result) => sum + result.units,

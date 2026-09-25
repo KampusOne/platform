@@ -4,7 +4,7 @@ import { z, agentApplicationSchema } from "@kampusone/contracts";
 import { database, firstRow } from "../lib/database";
 import { input } from "../lib/input";
 import { ageOn } from "../lib/platform-policy";
-import { requireFullKyc } from "../lib/kyc";
+import { requireAgentIdentity } from "../lib/kyc";
 import { AppError } from "../lib/errors";
 import { currentUser, requireAuth } from "../middleware/auth";
 import { recordAudit } from "../lib/audit";
@@ -28,6 +28,29 @@ const schema = agentApplicationSchema.extend({
   guardianPhone: z.string().trim().max(20).optional(),
   guardianEmail: z.string().email().optional(),
   guardianRelationship: z.string().trim().max(80).optional(),
+  whatsappPhone:z.string().regex(/^\+[1-9]\d{7,14}$/).optional(),
+  campus:z.string().trim().min(2).max(180).optional(),
+  serviceLocation:z.string().trim().min(2).max(300).optional(),
+  campusPermission:z.enum(['GRANTED','NOT_REQUIRED','REVIEW']).optional(),
+  tutorSubjects:z.array(z.string().trim().min(1).max(120)).max(40).optional(),
+  tutorLevels:z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  experience:z.string().trim().max(2000).optional(),
+  riderDocumentIds:z.array(z.string().uuid()).max(6).optional(),
+  termsAccepted:z.literal(true).optional(),
+});
+applicationRoutes.get("/draft", async(c)=>{
+ const draft=firstRow(await database(c.env).execute(sql`select step,values_json as values,updated_at from public.agent_application_drafts where user_id=${currentUser(c).id}::uuid`));
+ c.header('Cache-Control','private, no-store');
+ return c.json({draft:draft??null});
+});
+applicationRoutes.put("/draft",async c=>{
+ const d=await input(c,z.object({step:z.number().int().min(0).max(5),values:z.record(z.string(),z.unknown())}));
+ // A draft is private unverified input, never a source of roles or approval.
+ const allowed=new Set(['birthDate','isStudent','matricNumber','department','businessName','businessAddress','identityDocumentId','portraitDocumentId','studentDocumentId','guardianName','guardianPhone','guardianEmail','guardianRelationship','universityId','agentType','displayName','phoneE164','statement','legalName','address','emergencyContactName','emergencyContactPhone','whatsappPhone','campus','serviceLocation','campusPermission','tutorSubjects','tutorLevels','experience','riderDocumentIds']);
+ const values=Object.fromEntries(Object.entries(d.values).filter(([key])=>allowed.has(key)));
+ if(JSON.stringify(values).length>60000)throw new AppError(400,'BAD_REQUEST','This application draft is too large.');
+ const result=await database(c.env).execute(sql`insert into public.agent_application_drafts(user_id,step,values_json) values(${currentUser(c).id}::uuid,${d.step},${JSON.stringify(values)}::jsonb) on conflict(user_id) do update set step=excluded.step,values_json=excluded.values_json,updated_at=now() returning step,values_json as values,updated_at`);
+ return c.json({draft:firstRow(result)});
 });
 applicationRoutes.get("/", async (c) => {
   const result = await database(c.env).execute(
@@ -38,6 +61,11 @@ applicationRoutes.get("/", async (c) => {
 applicationRoutes.post("/", async (c) => {
   const u = currentUser(c);
   const d = await input(c, schema);
+  if(!firstRow(await database(c.env).execute(sql`select id from public.universities where id=${d.universityId}::uuid and deleted_at is null`)))throw new AppError(400,'BAD_REQUEST','Choose an available university.');
+  if(d.agentType==='VENDOR'&&(!d.businessName||!d.businessAddress||!d.campusPermission))throw new AppError(400,'BAD_REQUEST','Add your business name, location and campus permission status.');
+  if(d.agentType==='TUTOR'&&(!d.tutorSubjects?.length||!d.tutorLevels?.length||!d.experience))throw new AppError(400,'BAD_REQUEST','Add your subjects, levels and teaching background.');
+  if(d.agentType==='RIDER'&&!d.riderDocumentIds?.length)throw new AppError(400,'BAD_REQUEST','Upload your bike and operating evidence.');
+  const roleDetails=JSON.stringify({whatsappPhone:d.whatsappPhone,campus:d.campus,serviceLocation:d.serviceLocation,campusPermission:d.campusPermission,tutorSubjects:d.tutorSubjects,tutorLevels:d.tutorLevels,experience:d.experience,riderDocumentIds:d.riderDocumentIds});
   const age = ageOn(d.birthDate);
   if (age < 16 || age > 110)
     throw new AppError(
@@ -69,6 +97,7 @@ applicationRoutes.post("/", async (c) => {
     d.identityDocumentId,
     d.portraitDocumentId,
     ...(d.studentDocumentId ? [d.studentDocumentId] : []),
+    ...(d.riderDocumentIds??[]),
   ];
   if (new Set(ids).size !== ids.length)
     throw new AppError(
@@ -98,9 +127,10 @@ applicationRoutes.post("/", async (c) => {
  values(${d.universityId}::uuid,${u.id}::uuid,${d.agentType},${d.displayName},${d.phoneE164},${d.statement},${d.legalName},${d.address},${d.emergencyContactName},${d.emergencyContactPhone},${d.termsVersion},now(),'PENDING')
  on conflict(university_id,user_id,agent_type) do update set display_name=excluded.display_name,phone_e164=excluded.phone_e164,statement=excluded.statement,legal_name=excluded.legal_name,address_text=excluded.address_text,emergency_contact_name=excluded.emergency_contact_name,emergency_contact_phone=excluded.emergency_contact_phone,terms_version=excluded.terms_version,terms_accepted_at=now(),kyc_status='PENDING',bank_status='NOT_STARTED',status='SUBMITTED',review_note=null,submitted_at=now(),updated_at=now()
  where agent_applications.status in('DRAFT','NEEDS_CORRECTION','REJECTED') returning id,status), details as (
- insert into public.agent_application_details(application_id,birth_date,is_student,matric_number,department,business_name,business_address,identity_document_id,portrait_document_id,student_document_id,guardian_name,guardian_phone,guardian_email,guardian_relationship,terms_version)
- select id,${d.birthDate}::date,${d.isStudent},${d.matricNumber ?? null},${d.department ?? null},${d.businessName ?? null},${d.businessAddress ?? null},${d.identityDocumentId}::uuid,${d.portraitDocumentId}::uuid,${d.studentDocumentId ?? null}::uuid,${d.guardianName ?? null},${d.guardianPhone ?? null},${d.guardianEmail ?? null},${d.guardianRelationship ?? null},${d.termsVersion} from application
- on conflict(application_id) do update set birth_date=excluded.birth_date,is_student=excluded.is_student,matric_number=excluded.matric_number,department=excluded.department,business_name=excluded.business_name,business_address=excluded.business_address,identity_document_id=excluded.identity_document_id,portrait_document_id=excluded.portrait_document_id,student_document_id=excluded.student_document_id,guardian_name=excluded.guardian_name,guardian_phone=excluded.guardian_phone,guardian_email=excluded.guardian_email,guardian_relationship=excluded.guardian_relationship,guardian_consent_at=null,guardian_reviewed_by=null,guardian_evidence=null,terms_version=excluded.terms_version returning application_id) select application.id,application.status from application join details on details.application_id=application.id`);
+ insert into public.agent_application_details(application_id,birth_date,is_student,matric_number,department,business_name,business_address,identity_document_id,portrait_document_id,student_document_id,guardian_name,guardian_phone,guardian_email,guardian_relationship,terms_version,role_details)
+ select id,${d.birthDate}::date,${d.isStudent},${d.matricNumber ?? null},${d.department ?? null},${d.businessName ?? null},${d.businessAddress ?? null},${d.identityDocumentId}::uuid,${d.portraitDocumentId}::uuid,${d.studentDocumentId ?? null}::uuid,${d.guardianName ?? null},${d.guardianPhone ?? null},${d.guardianEmail ?? null},${d.guardianRelationship ?? null},${d.termsVersion},${roleDetails}::jsonb from application
+ on conflict(application_id) do update set birth_date=excluded.birth_date,is_student=excluded.is_student,matric_number=excluded.matric_number,department=excluded.department,business_name=excluded.business_name,business_address=excluded.business_address,identity_document_id=excluded.identity_document_id,portrait_document_id=excluded.portrait_document_id,student_document_id=excluded.student_document_id,guardian_name=excluded.guardian_name,guardian_phone=excluded.guardian_phone,guardian_email=excluded.guardian_email,guardian_relationship=excluded.guardian_relationship,guardian_consent_at=null,guardian_reviewed_by=null,guardian_evidence=null,terms_version=excluded.terms_version,role_details=excluded.role_details returning application_id), receipt as (
+ insert into app_private.notification_outbox(user_id,channel,subject,body,dedupe_key) select ${u.id}::uuid,'EMAIL','We received your KampusOne application','Your '||${d.agentType.toLowerCase()}::text||' application is under review. Open your agent workspace to check its status. We will email you when a reviewer makes a decision.', 'agent-submitted:'||application.id::text||':'||${c.get('requestId')} from application join details on details.application_id=application.id on conflict(dedupe_key) do nothing returning id), draft_removed as (delete from public.agent_application_drafts where user_id=${u.id}::uuid and exists(select 1 from application)) select application.id,application.status from application join details on details.application_id=application.id`);
   const row = firstRow(result);
   if (!row)
     throw new AppError(
@@ -135,7 +165,7 @@ applicationRoutes.post("/trial", async (c) => {
       application_id: string;
       university_id: string;
     }>(
-      sql`select application_id,university_id from public.agent_profiles where user_id=${u.id}::uuid and status='ACTIVE' order by verified_at limit 1`,
+      sql`select application_id,university_id from public.agent_profiles where user_id=${u.id}::uuid and status='ACTIVE' and agent_type='VENDOR' order by verified_at limit 1`,
     ),
   );
   if (!profile)
@@ -144,7 +174,7 @@ applicationRoutes.post("/trial", async (c) => {
       "FORBIDDEN",
       "Your application must be approved first.",
     );
-  await requireFullKyc(c.env, profile.application_id);
+  await requireAgentIdentity(c.env, profile.application_id);
   const result = await database(c.env).execute(
     sql`insert into public.agent_trials(user_id,institution_id) values(${u.id}::uuid,${profile.university_id}::uuid) on conflict(user_id) do nothing returning id,claimed_at,expires_at`,
   );

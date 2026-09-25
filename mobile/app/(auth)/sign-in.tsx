@@ -62,10 +62,7 @@ export default function SignInScreen() {
   }
 
   return (
-    <AuthShell
-      subtitle="Your timetable, verified campus updates and student services are waiting."
-      title="Welcome back"
-    >
+    <AuthShell title="Welcome back">
       <Image
         accessible={false}
         accessibilityElementsHidden

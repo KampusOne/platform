@@ -45,11 +45,11 @@ export default function SignUpScreen() {
   const compactNames = width < 370;
   const canSubmit = Boolean(
     firstName.trim() &&
-      lastName.trim() &&
-      validEmail &&
-      passwordLongEnough &&
-      passwordsMatch &&
-      acceptedTerms,
+    lastName.trim() &&
+    validEmail &&
+    passwordLongEnough &&
+    passwordsMatch &&
+    acceptedTerms,
   );
 
   async function submit() {
@@ -107,10 +107,7 @@ export default function SignUpScreen() {
   }
 
   return (
-    <AuthShell
-      subtitle="Your campus in one place. Join a simpler, more prepared student life."
-      title="Create account"
-    >
+    <AuthShell title="Create account">
       <Image
         accessible={false}
         accessibilityIgnoresInvertColors

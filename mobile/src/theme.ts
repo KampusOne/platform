@@ -36,7 +36,7 @@ export const theme = {
   clay: "#D9855F",
   sand: "#F1DFC8",
   deepBrand: "#A8462E",
-  verification: "#C35D38",
+  verification: "#A8462E",
   verificationMark: "#FFFFFF",
   statusPositive: "#4B7B54",
   statusAttention: "#8A6008",

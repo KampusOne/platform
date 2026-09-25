@@ -25,9 +25,10 @@ describe("conversation API boundaries", () => {
       expect(response.status).toBe(401);
     });
   }
-  it("public badge controls require platform-admin privileges and record decisions atomically", () => {
+  it("public badge controls use scoped verification permissions and record decisions atomically", () => {
     const source = readFileSync(new URL("./public-badges.ts", import.meta.url), "utf8");
-    expect(source).toContain('requireOperator("PLATFORM_ADMIN")');
+    expect(source).toContain('resolveAdminScope');
+    expect(source).toContain('"users.verify"');
     expect(source).toContain("insert into app_private.audit_events");
     expect(source).toContain("candidate.previous=${data.expected}");
     expect(source).not.toMatch(/set\s+verification_status|set\s+roles/i);

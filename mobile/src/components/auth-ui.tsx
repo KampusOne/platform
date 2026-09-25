@@ -19,7 +19,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { theme } from "@/src/theme";
 import { useAuth } from "@/src/auth/auth-context";
-import { beginSocialSignIn } from "@/src/lib/social-auth";
+import {
+  beginSocialSignIn,
+  socialConfiguration,
+  type SocialProvider,
+} from "@/src/lib/social-auth";
 import { useToast } from "./toast";
 
 const DEEP_TERRACOTTA = "#A8462E";
@@ -63,7 +67,7 @@ export function AuthShell({
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.topbar}>
-            {back ? (
+            {back && (onBack || router.canGoBack()) ? (
               <Pressable
                 accessibilityLabel="Go back"
                 accessibilityRole="button"
@@ -203,11 +207,9 @@ export function PrimaryButton({
         pressed && styles.primaryPressed,
       ]}
     >
-      {loading ? (
-        <InlineLoading color="#FFFFFF" />
-      ) : (
-        <Text style={styles.primaryText}>{children}</Text>
-      )}
+      <Text style={styles.primaryText} accessibilityLiveRegion="polite">
+        {loading ? `${buttonLabel}…` : children}
+      </Text>
     </Pressable>
   );
 }
@@ -217,6 +219,26 @@ export function SocialAuthButtons() {
   const { beginSession } = useAuth();
   const toast = useToast();
   const [pending, setPending] = useState(false);
+  const [providers, setProviders] = useState<SocialProvider[]>([]);
+  const [providerState, setProviderState] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  useEffect(() => {
+    let active = true;
+    void socialConfiguration()
+      .then((config) => {
+        if (active) {
+          setProviders(config.providers);
+          setProviderState("ready");
+        }
+      })
+      .catch(() => {
+        if (active) setProviderState("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   async function signIn(provider: "google" | "apple") {
     setPending(true);
     try {
@@ -245,8 +267,10 @@ export function SocialAuthButtons() {
       <Pressable
         accessibilityLabel="Continue with Google"
         accessibilityRole="button"
-        accessibilityState={{ disabled: pending }}
-        disabled={pending}
+        accessibilityState={{
+          disabled: pending || !providers.includes("google"),
+        }}
+        disabled={pending || !providers.includes("google")}
         onPress={() => void signIn("google")}
         style={styles.socialButton}
       >
@@ -256,14 +280,27 @@ export function SocialAuthButtons() {
       <Pressable
         accessibilityLabel="Continue with Apple"
         accessibilityRole="button"
-        accessibilityState={{ disabled: pending }}
-        disabled={pending}
+        accessibilityState={{
+          disabled: pending || !providers.includes("apple"),
+        }}
+        disabled={pending || !providers.includes("apple")}
         onPress={() => void signIn("apple")}
         style={styles.socialButton}
       >
         <Ionicons color={theme.text} name="logo-apple" size={23} />
         <Text style={styles.socialButtonText}>Continue with Apple</Text>
       </Pressable>
+      {pending || providerState !== "ready" || providers.length < 2 ? (
+        <Text style={styles.socialHelp} accessibilityLiveRegion="polite">
+          {pending
+            ? "Opening sign-in…"
+            : providerState === "loading"
+              ? "Checking sign-in options…"
+              : providerState === "error"
+                ? "Other sign-in methods couldn’t be checked. Continue with email."
+                : "Unavailable sign-in methods are disabled. Continue with email."}
+        </Text>
+      ) : null}
     </View>
   );
 }

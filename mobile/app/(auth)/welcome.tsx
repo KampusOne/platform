@@ -82,6 +82,7 @@ const createStyles = (theme: Theme) =>
       alignSelf: "center",
       flexGrow: 1,
       maxWidth: 540,
+      justifyContent: "center",
       paddingBottom: 16,
       paddingHorizontal: 22,
       width: "100%",

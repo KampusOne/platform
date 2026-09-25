@@ -203,7 +203,7 @@ export default function TodayScreen() {
         />
       </View>
 
-      {loading ? <ScreenSkeleton /> : null}
+      {loading ? <ScreenSkeleton variant="dashboard" compact /> : null}
 
       {error ? (
         <Pressable
@@ -386,9 +386,7 @@ export default function TodayScreen() {
                     <Text numberOfLines={2} style={styles.updateTitle}>
                       {update.title}
                     </Text>
-                    <Text numberOfLines={2} style={styles.updateBody}>
-                      {update.summary}
-                    </Text>
+                    {update.summary.trim() !== update.title.trim() ? <Text numberOfLines={2} style={styles.updateBody}>{update.summary}</Text> : null}
                   </View>
                 </Pressable>
               ))}

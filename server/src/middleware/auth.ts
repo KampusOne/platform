@@ -157,7 +157,7 @@ export function setSessionCookies(
     sameSite: "Lax" as const,
     secure: env.ENVIRONMENT !== "local",
     path: "/",
-    ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
+    ...sessionCookieDomain(context, env),
   };
   setCookie(context, "k1_access", accessToken, { ...shared, maxAge: 15 * 60 });
   setCookie(context, "k1_refresh", refreshToken, {
@@ -176,8 +176,25 @@ export function clearSessionCookies(
 ) {
   const options = {
     path: "/",
-    ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
+    ...sessionCookieDomain(context, env),
   };
   deleteCookie(context, "k1_access", options);
   deleteCookie(context, "k1_refresh", options);
+}
+
+function sessionCookieDomain(
+  context: Parameters<typeof setCookie>[0],
+  env: Bindings,
+) {
+  if (!env.COOKIE_DOMAIN) return {};
+  const domain = env.COOKIE_DOMAIN.replace(/^\./, "").toLowerCase();
+  const origin = context.req.header("Origin");
+  // A same-origin preview proxy cannot set a cookie for the owned production
+  // domain. Browsers silently discard it, causing repeated login on reopening.
+  const hostname = new URL(
+    origin && allowedOrigins(env).has(origin) ? origin : context.req.url,
+  ).hostname;
+  return hostname === domain || hostname.endsWith(`.${domain}`)
+    ? { domain: env.COOKIE_DOMAIN }
+    : {};
 }

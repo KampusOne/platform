@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { portalApi } from "@/lib/api";
+import { ApplicationChecks } from "./application-checks";
 import { TransientNotice } from "./transient-notice";
 
 type Details = {
@@ -19,6 +20,7 @@ type Details = {
   guardian_relationship: string | null;
   guardian_consent_at: string | null;
   identity_recorded: boolean;
+  role_details?: { whatsappPhone?: string; campus?: string; serviceLocation?: string; campusPermission?: string; tutorSubjects?: string[]; tutorLevels?: string[]; experience?: string; riderDocumentIds?: string[] };
 };
 export function ApplicationDocuments({ id }: { id: string }) {
   const [details, setDetails] = useState<Details | null>(null);
@@ -116,6 +118,7 @@ export function ApplicationDocuments({ id }: { id: string }) {
     );
   return (
     <section className="sub-form form-stack">
+      <ApplicationChecks applicationId={id} />
       <h3>Application evidence</h3>
       <dl className="detail-list">
         <div>
@@ -151,6 +154,9 @@ export function ApplicationDocuments({ id }: { id: string }) {
           </div>
         ) : null}
       </dl>
+      {details.role_details && <dl className="detail-list">
+        {([ ["WhatsApp", details.role_details.whatsappPhone], ["Campus", details.role_details.campus], ["Service area", details.role_details.serviceLocation], ["Campus permission", details.role_details.campusPermission], ["Teaching subjects", details.role_details.tutorSubjects?.join(", ")], ["Teaching levels", details.role_details.tutorLevels?.join(", ")], ["Background", details.role_details.experience] ] as const).filter(([, value]) => Boolean(value)).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+      </dl>}
       <div className="button-row">
         {(
           [
@@ -170,6 +176,7 @@ export function ApplicationDocuments({ id }: { id: string }) {
             </button>
           ) : null,
         )}
+        {details.role_details?.riderDocumentIds?.map((mediaId, index) => <button className="button button--secondary" key={mediaId} disabled={busy} onClick={() => void openFile(mediaId)}>Rider evidence {index + 1}</button>)}
       </div>
       {fileLink ? (
         <a
