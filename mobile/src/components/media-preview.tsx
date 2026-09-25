@@ -44,13 +44,16 @@ function Video({
     instance.loop = false;
     instance.playbackRate = 1;
   });
-  const { isPlaying } = useEvent(player, "playingChange", {
+  const playingEvent = useEvent(player, "playingChange", {
     isPlaying: player.playing,
   });
-  const { status, error } = useEvent(player, "statusChange", {
+  const statusEvent = useEvent(player, "statusChange", {
     status: player.status,
-    error: null,
+    error: undefined,
   });
+  const isPlaying = playingEvent?.isPlaying ?? player.playing;
+  const status = statusEvent?.status ?? player.status;
+  const error = statusEvent?.error;
 
   useEffect(() => {
     const update = () => {
@@ -223,7 +226,7 @@ export function MediaPreview({
   return (
     <View style={{ marginVertical: 10 }}>
       {video ? (
-        <Video url={url} label={label} watermark={watermark} />
+        <Video url={url} label={label} {...(watermark ? { watermark } : {})} />
       ) : error ? (
         <Text style={{ color: theme.error }}>This image could not load.</Text>
       ) : (
@@ -249,13 +252,21 @@ const styles = StyleSheet.create({
   },
   video: { height: 260, width: "100%" },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.16)",
   },
   errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
