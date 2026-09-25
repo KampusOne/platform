@@ -7,10 +7,11 @@ async function feedback(action: () => Promise<void>) {
   if (!getPreferences().haptics) return;
   if (Platform.OS === "web") {
     try {
-      const webNavigator =
-        typeof navigator === "undefined"
-          ? undefined
-          : (navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean });
+      const webNavigator = (
+        globalThis as {
+          navigator?: { vibrate?: (pattern: number | number[]) => boolean };
+        }
+      ).navigator;
       webNavigator?.vibrate?.(8);
     } catch {
       /* Browser vibration support is optional. */
