@@ -29,7 +29,11 @@ import { CampusScape, VerifiedBadge } from "@/src/components/visual-system";
 import { ApiError, api, peekApiCache } from "@/src/lib/api";
 import { pickAndUpload } from "@/src/lib/uploads";
 import { useToast } from "@/src/components/toast";
-import { ScreenSkeleton, ProfileSkeleton, ListSkeleton } from "@/src/components/skeleton";
+import { FeedPost as FeedPostCard } from "@/src/components/feed-post";
+import { PostLinkDialog } from "@/src/components/post-menu";
+import { sharePostLink, type FeedPostData } from "@/src/lib/feed-posts";
+import { type SocialFeedPost } from "@/src/lib/feed-social";
+import { ScreenSkeleton, ProfileSkeleton, ListSkeleton, FeedSkeleton } from "@/src/components/skeleton";
 import { theme } from "@/src/theme";
 
 type StudentProfile = {
@@ -92,8 +96,9 @@ type FeedPost = {
   published_at: string;
 };
 type Feed = { posts: FeedPost[] };
+type RepostPage = { posts: SocialFeedPost[]; nextCursor?: string | null };
 type ProfilePayload = { profile: StudentProfile };
-type Tab = "Overview" | "Activity" | "Classes" | "Transactions";
+type Tab = "Overview" | "Reposts" | "Activity" | "Classes" | "Transactions";
 type ResourceState = "idle" | "ready" | "stale" | "error";
 
 export default function ProfileScreen() {
@@ -109,6 +114,15 @@ export default function ProfileScreen() {
   const [academics, setAcademics] = useState<Academic | null>(null);
   const [purchases, setPurchases] = useState<Purchases | null>(null);
   const [bookmarks, setBookmarks] = useState<FeedPost[]>([]);
+  const [reposts, setReposts] = useState<SocialFeedPost[]>([]);
+  const [repostCursor, setRepostCursor] = useState<string | null>(null);
+  const [repostState, setRepostState] = useState<ResourceState>("idle");
+  const [repostError, setRepostError] = useState("");
+  const [repostLoadingMore, setRepostLoadingMore] = useState(false);
+  const repostLoadVersion = useRef(0);
+  const repostPaging = useRef(false);
+  const repostLoaded = useRef(false);
+  const [copyId, setCopyId] = useState<string | null>(null);
   const [academicState, setAcademicState] = useState<ResourceState>("idle");
   const [purchasesState, setPurchasesState] = useState<ResourceState>("idle");
   const [feedState, setFeedState] = useState<ResourceState>("idle");
@@ -182,11 +196,46 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  const loadReposts = useCallback(async (refresh = false) => {
+    if (!user?.id) return;
+    const version = ++repostLoadVersion.current;
+    repostPaging.current = false;
+    setRepostLoadingMore(false);
+    setRepostError("");
+    if (!refresh) setRepostState((current) => current === "ready" ? "ready" : "idle");
+    try {
+      const page = await api<RepostPage>(
+        `/v1/student/feed?repostedBy=${encodeURIComponent(user.id)}`,
+        { cache: refresh ? "reload" : "default", signal: AbortSignal.timeout(15_000) },
+      );
+      if (version !== repostLoadVersion.current) return;
+      setReposts(page.posts);
+      setRepostCursor(page.nextCursor ?? null);
+      repostLoaded.current = true;
+      setRepostState("ready");
+    } catch (caught) {
+      if (version !== repostLoadVersion.current) return;
+      setRepostError(
+        caught instanceof ApiError
+          ? caught.message
+          : "Your reposts could not be loaded. Check your connection.",
+      );
+      setRepostState((current) => current === "ready" ? "stale" : "error");
+    }
+  }, [user?.id]);
+
   useFocusEffect(
     useCallback(() => {
       void load();
       return () => { loadVersion.current++; };
     }, [load]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab === "Reposts") void loadReposts(repostLoaded.current);
+      return () => { repostLoadVersion.current++; };
+    }, [activeTab, loadReposts]),
   );
 
   const name =
@@ -223,6 +272,70 @@ export default function ProfileScreen() {
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
   }, [purchases]);
+
+  async function loadMoreReposts() {
+    if (!repostCursor || repostPaging.current || repostLoadingMore || !user?.id) return;
+    repostPaging.current = true;
+    setRepostLoadingMore(true);
+    const version = repostLoadVersion.current;
+    try {
+      const page = await api<RepostPage>(
+        `/v1/student/feed?repostedBy=${encodeURIComponent(user.id)}&cursor=${encodeURIComponent(repostCursor)}`,
+        { signal: AbortSignal.timeout(15_000) },
+      );
+      if (version !== repostLoadVersion.current) return;
+      setReposts((current) => [
+        ...current,
+        ...page.posts.filter((post) => !current.some((item) => item.id === post.id)),
+      ]);
+      setRepostCursor(page.nextCursor ?? null);
+      setRepostError("");
+    } catch (caught) {
+      if (version === repostLoadVersion.current)
+        toast(caught instanceof Error ? caught.message : "Older reposts could not load.", "error");
+    } finally {
+      repostPaging.current = false;
+      if (version === repostLoadVersion.current) setRepostLoadingMore(false);
+    }
+  }
+
+  async function bookmarkRepost(post: FeedPostData) {
+    const next = !post.bookmarked;
+    setReposts((current) =>
+      current.map((item) => item.id === post.id ? { ...item, bookmarked: next } : item),
+    );
+    try {
+      await api(`/v1/student/feed/${post.id}/bookmark`, {
+        method: next ? "PUT" : "DELETE",
+      });
+    } catch (caught) {
+      setReposts((current) =>
+        current.map((item) => item.id === post.id ? { ...item, bookmarked: !next } : item),
+      );
+      toast(
+        caught instanceof Error ? caught.message : "Saved posts could not be updated.",
+        "error",
+      );
+    }
+  }
+
+  async function shareRepost(post: FeedPostData) {
+    try {
+      const result = await sharePostLink(post);
+      if (result === "copied") toast("Post link copied", "success");
+      else if (result === "manual") setCopyId(post.id);
+    } catch {
+      toast("The post link could not be shared.", "error");
+    }
+  }
+
+  function changedRepost(post: SocialFeedPost) {
+    setReposts((current) =>
+      post.reposted
+        ? current.map((item) => item.id === post.id ? { ...item, ...post } : item)
+        : current.filter((item) => item.id !== post.id),
+    );
+  }
 
   function explain(message: string) {
     void Haptics.selectionAsync();
@@ -432,7 +545,7 @@ export default function ProfileScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
           >
-            {(["Overview", "Activity", "Classes", "Transactions"] as const).map(
+            {(["Overview", "Reposts", "Activity", "Classes", "Transactions"] as const).map(
               (tab) => (
                 <Pressable
                   accessibilityRole="tab"
@@ -558,6 +671,78 @@ export default function ProfileScreen() {
             </>
           ) : null}
 
+          {activeTab === "Reposts" ? (
+            <View style={styles.repostPanel}>
+              {repostState === "idle" ? (
+                <FeedSkeleton count={2} />
+              ) : repostError && !reposts.length ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => void loadReposts(true)}
+                  style={({ pressed }) => [
+                    styles.error,
+                    styles.repostError,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons
+                    color={theme.deepBrand}
+                    name="cloud-offline-outline"
+                    size={20}
+                  />
+                  <Text style={styles.errorText}>{repostError} Tap to retry.</Text>
+                </Pressable>
+              ) : reposts.length ? (
+                <>
+                  {repostError ? (
+                    <Text accessibilityRole="alert" style={styles.repostNotice}>
+                      {repostError}
+                    </Text>
+                  ) : null}
+                  {reposts.map((post) => (
+                    <FeedPostCard
+                      key={post.id}
+                      post={post}
+                      onBookmark={(item) => void bookmarkRepost(item)}
+                      onShare={(item) => void shareRepost(item)}
+                      onDeleted={(postId) =>
+                        setReposts((current) => current.filter((item) => item.id !== postId))
+                      }
+                      onFeedback={(message) => toast(message)}
+                      onChanged={changedRepost}
+                    />
+                  ))}
+                  {repostCursor ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: repostLoadingMore }}
+                      disabled={repostLoadingMore}
+                      onPress={() => void loadMoreReposts()}
+                      style={({ pressed }) => [
+                        styles.loadMore,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      {repostLoadingMore ? (
+                        <FeedSkeleton count={1} />
+                      ) : (
+                        <Text style={styles.loadMoreText}>Load older reposts</Text>
+                      )}
+                    </Pressable>
+                  ) : null}
+                </>
+              ) : (
+                <EmptyResult
+                  actionLabel="Open Feed"
+                  body="Posts you repost will appear here, newest first."
+                  icon="repeat-outline"
+                  onAction={() => router.push("/feed")}
+                  title="No reposts yet"
+                />
+              )}
+            </View>
+          ) : null}
+
           {activeTab === "Activity" ? (
             <View style={styles.section}>
               <ActivityList
@@ -626,6 +811,8 @@ export default function ProfileScreen() {
           </Pressable>
         </>
       ) : null}
+
+      <PostLinkDialog id={copyId} onClose={() => setCopyId(null)} />
 
       <AccountMenu
         onClose={() => setMenuOpen(false)}
@@ -1190,6 +1377,27 @@ const createStyles = (theme: Theme) =>
       textTransform: "capitalize",
     },
     tabPanel: { marginHorizontal: 20 },
+    repostPanel: { marginHorizontal: 16, paddingBottom: 8 },
+    repostError: { marginHorizontal: 0, marginTop: 0 },
+    repostNotice: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12,
+      lineHeight: 18,
+      paddingHorizontal: 4,
+      paddingVertical: 10,
+    },
+    loadMore: {
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 50,
+      paddingVertical: 8,
+    },
+    loadMoreText: {
+      color: theme.deepBrand,
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+    },
     agentLink: {
       alignItems: "center",
       borderColor: theme.border,
