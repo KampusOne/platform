@@ -1224,7 +1224,7 @@ const createStyles = (theme: Theme, isDark: boolean) =>
     labelCard: {
       minHeight: 74,
       borderRadius: 22,
-      backgroundColor: "#34302D",
+      backgroundColor: isDark ? "#34302D" : theme.surface,
       marginTop: 16,
       paddingHorizontal: 18,
       flexDirection: "row",
