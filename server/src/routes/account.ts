@@ -158,23 +158,116 @@ accountRoutes.get("/restrictions", async (c) => {
   );
   return c.json({ restriction: firstRow(result) ?? null });
 });
+type StreakRow = {
+  current_days: number;
+  longest_days: number;
+  goal_days: number;
+  last_day: string | null;
+};
+
+function databaseErrorCode(error: unknown) {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (!current || typeof current !== "object") return undefined;
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+function isStreakSchemaDrift(error: unknown) {
+  const code = databaseErrorCode(error);
+  // 42P01 = missing relation, 42883 = missing function. Older production
+  // schemas can still have user_streaks while the activity ledger rolls out.
+  return code === "42P01" || code === "42883";
+}
+
 async function streakSnapshot(env: Bindings, userId: string) {
   const db = database(env);
-  const result = await db.execute(sql`select
+  const result = await db.execute<StreakRow>(sql`select
     case when last_day >= (now() at time zone 'Africa/Lagos')::date-1 then current_days else 0 end current_days,
     longest_days,goal_days,last_day::text
     from public.user_streaks where user_id=${userId}::uuid`);
-  const activity = await db.execute<{ day: string }>(sql`select day::text from public.streak_activity_days where user_id=${userId}::uuid and day >= (now() at time zone 'Africa/Lagos')::date-365 order by day`);
-  const clock = firstRow(await db.execute<{ today: string }>(sql`select (now() at time zone 'Africa/Lagos')::date::text as today`));
-  return { streak: firstRow(result) ?? { current_days: 0, longest_days: 0, goal_days: 7, last_day: null }, activityDays: activity.rows.map(row => row.day), timezone: "Africa/Lagos", today: clock?.today };
+  const streak =
+    firstRow(result) ?? {
+      current_days: 0,
+      longest_days: 0,
+      goal_days: 7,
+      last_day: null,
+    };
+
+  let activityDays: string[];
+  try {
+    const activity = await db.execute<{ day: string }>(
+      sql`select day::text from public.streak_activity_days where user_id=${userId}::uuid and day >= (now() at time zone 'Africa/Lagos')::date-365 order by day`,
+    );
+    activityDays = activity.rows.map((row) => row.day);
+  } catch (error) {
+    if (!isStreakSchemaDrift(error)) throw error;
+    // The legacy streak row still records the genuine last check-in. Preserve
+    // that day instead of failing the entire page while the activity table is
+    // unavailable.
+    activityDays = streak.last_day ? [streak.last_day] : [];
+  }
+
+  const clock = firstRow(
+    await db.execute<{ today: string }>(
+      sql`select (now() at time zone 'Africa/Lagos')::date::text as today`,
+    ),
+  );
+  return {
+    streak,
+    activityDays,
+    timezone: "Africa/Lagos",
+    today: clock?.today,
+  };
 }
-accountRoutes.get("/streak", async c => c.json(await streakSnapshot(c.env, currentUser(c).id)));
-accountRoutes.post("/streak", async c => {
-  await database(c.env).execute(sql`select * from app_private.check_in_streak(${currentUser(c).id}::uuid)`);
+
+async function checkInStreak(env: Bindings, userId: string) {
+  const db = database(env);
+  try {
+    await db.execute(
+      sql`select * from app_private.check_in_streak(${userId}::uuid)`,
+    );
+    return;
+  } catch (error) {
+    if (!isStreakSchemaDrift(error)) throw error;
+  }
+
+  // Compatibility path for a database that has the original user_streaks
+  // table but has not completed the activity-ledger/function rollout yet.
+  await db.execute(sql`
+    insert into public.user_streaks(user_id,current_days,longest_days,last_day)
+    values(${userId}::uuid,1,1,(now() at time zone 'Africa/Lagos')::date)
+    on conflict(user_id) do update set
+      current_days=case
+        when user_streaks.last_day=excluded.last_day then user_streaks.current_days
+        when user_streaks.last_day=excluded.last_day-1 then user_streaks.current_days+1
+        else 1
+      end,
+      longest_days=greatest(
+        user_streaks.longest_days,
+        case
+          when user_streaks.last_day=excluded.last_day then user_streaks.current_days
+          when user_streaks.last_day=excluded.last_day-1 then user_streaks.current_days+1
+          else 1
+        end
+      ),
+      last_day=excluded.last_day,
+      updated_at=now()
+  `);
+}
+
+accountRoutes.get("/streak", async (c) =>
+  c.json(await streakSnapshot(c.env, currentUser(c).id)),
+);
+accountRoutes.post("/streak", async (c) => {
+  await checkInStreak(c.env, currentUser(c).id);
   return c.json(await streakSnapshot(c.env, currentUser(c).id));
 });
-accountRoutes.post("/streak/check-in", async c => {
-  await database(c.env).execute(sql`select * from app_private.check_in_streak(${currentUser(c).id}::uuid)`);
+accountRoutes.post("/streak/check-in", async (c) => {
+  await checkInStreak(c.env, currentUser(c).id);
   return c.json(await streakSnapshot(c.env, currentUser(c).id));
 });
 accountRoutes.patch("/streak", async (c) => {
