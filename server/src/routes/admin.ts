@@ -133,6 +133,20 @@ adminRoutes.route("/academic",academicAdminRoutes);
 adminRoutes.route("/broadcasts",broadcastRoutes);
 adminRoutes.route("/",applicationCheckRoutes);
 
+adminRoutes.get("/access", async (context) => {
+  const user = currentUser(context);
+  const access = await adminAccess(context.env, user);
+  const result = await database(context.env).execute<{ id: string; name: string }>(sql`
+    select id, name from public.universities order by name
+  `);
+  const allowed = new Set(access.universityIds);
+  const universities = access.allUniversities
+    ? result.rows
+    : result.rows.filter((university) => allowed.has(university.id));
+  context.header("Cache-Control", "private, no-store");
+  return context.json({ ...access, universities });
+});
+
 adminRoutes.get("/dashboard", async (context) => {
   const user = currentUser(context);
   const scope = await adminScope(
