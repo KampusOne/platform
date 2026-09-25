@@ -4,7 +4,19 @@ import { getPreferences } from "./preferences";
 export const ImpactFeedbackStyle = NativeHaptics.ImpactFeedbackStyle;
 export const NotificationFeedbackType = NativeHaptics.NotificationFeedbackType;
 async function feedback(action: () => Promise<void>) {
-  if (Platform.OS === "web" || !getPreferences().haptics) return;
+  if (!getPreferences().haptics) return;
+  if (Platform.OS === "web") {
+    try {
+      const webNavigator =
+        typeof navigator === "undefined"
+          ? undefined
+          : (navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean });
+      webNavigator?.vibrate?.(8);
+    } catch {
+      /* Browser vibration support is optional. */
+    }
+    return;
+  }
   try {
     await action();
   } catch {
