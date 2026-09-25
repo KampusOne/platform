@@ -8,7 +8,7 @@ import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
 import { useAppearance } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
-import { api } from "@/src/lib/api";
+import { ApiError, api } from "@/src/lib/api";
 type Guide = {
   id: string;
   title: string;
@@ -32,15 +32,22 @@ export default function Guidelines() {
   const [items, setItems] = useState<Guide[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [serviceUnavailable, setServiceUnavailable] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
+    setServiceUnavailable(false);
     try {
       const response = await api<{ guidelines: Guide[] }>(
         "/v1/account/guidelines",
       );
       setItems(Array.isArray(response.guidelines) ? response.guidelines : []);
-    } catch {
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status >= 500) {
+        setItems([]);
+        setServiceUnavailable(true);
+        return;
+      }
       setError("Campus guidelines could not load right now. Please try again.");
     } finally {
       setLoading(false);
@@ -89,7 +96,13 @@ export default function Guidelines() {
         </View>
       ) : !items.length ? (
         <>
-          <EmptyResult title="No published guidelines yet" />
+          <EmptyResult
+            title={
+              serviceUnavailable
+                ? "Campus guidelines are being prepared"
+                : "No published guidelines yet"
+            }
+          />
           <Text
             style={{
               color: theme.textMuted,
@@ -97,19 +110,24 @@ export default function Guidelines() {
               lineHeight: 22,
             }}
           >
-            Your university's reviewed rules will appear here. Check your
-            school's official handbook while these are being prepared.
+            {serviceUnavailable
+              ? "Reviewed guidelines for your university will appear here once they’re available."
+              : "Your university's reviewed rules will appear here. Check your school's official handbook while these are being prepared."}
           </Text>
-          <ToolButton
-            secondary
-            label="Request a guideline or report missing information"
-            onPress={() =>
-              router.push({
-                pathname: "/support",
-                params: { category: "CONTENT" },
-              })
-            }
-          />
+          {serviceUnavailable ? (
+            <ToolButton secondary label="Check again" onPress={() => void load()} />
+          ) : (
+            <ToolButton
+              secondary
+              label="Request a guideline or report missing information"
+              onPress={() =>
+                router.push({
+                  pathname: "/support",
+                  params: { category: "CONTENT" },
+                })
+              }
+            />
+          )}
         </>
       ) : (
         items.map((g) => (
