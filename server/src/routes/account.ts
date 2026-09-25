@@ -189,8 +189,52 @@ accountRoutes.patch("/streak", async (c) => {
 });
 accountRoutes.get("/guidelines", async (c) => {
   const user = currentUser(c);
-  const result = await database(c.env).execute(
-    sql`select g.id,g.title,g.body,g.source_url,g.published_at,g.source_page,g.issuing_institution,g.document_date,g.effective_from,g.session_label,g.programme_name,g.version from public.institution_guidelines g join public.profiles p on p.user_id=${user.id}::uuid left join public.courses course on course.id=p.course_id where g.institution_id=p.university_id and (g.department_id is null or g.department_id=p.department_id) and (g.faculty_id is null or g.faculty_id=p.faculty_id) and (g.programme_name is null or g.programme_name=course.name) and (g.session_label is null or g.session_label=p.settings->>'academicSession') and (g.effective_from is null or g.effective_from<=(now() at time zone 'Africa/Lagos')::date) and g.status='PUBLISHED' order by g.updated_at desc limit 50`,
-  );
-  return c.json({ guidelines: result.rows });
+  try {
+    const result = await database(c.env).execute(
+      sql`select
+        g.id,
+        g.title,
+        g.body,
+        g.source_url,
+        g.published_at,
+        nullif(to_jsonb(g)->>'source_page','')::integer as source_page,
+        to_jsonb(g)->>'issuing_institution' as issuing_institution,
+        nullif(to_jsonb(g)->>'document_date','')::date as document_date,
+        nullif(to_jsonb(g)->>'effective_from','')::date as effective_from,
+        to_jsonb(g)->>'session_label' as session_label,
+        to_jsonb(g)->>'programme_name' as programme_name,
+        coalesce(nullif(to_jsonb(g)->>'version','')::integer,1) as version
+      from public.institution_guidelines g
+      join public.profiles p on p.user_id=${user.id}::uuid
+      left join public.courses course on course.id=p.course_id
+      where g.institution_id=p.university_id
+        and (g.department_id is null or g.department_id=p.department_id)
+        and (
+          nullif(to_jsonb(g)->>'faculty_id','') is null
+          or nullif(to_jsonb(g)->>'faculty_id','')::uuid=p.faculty_id
+        )
+        and (
+          nullif(to_jsonb(g)->>'programme_name','') is null
+          or to_jsonb(g)->>'programme_name'=course.name
+        )
+        and (
+          nullif(to_jsonb(g)->>'session_label','') is null
+          or to_jsonb(g)->>'session_label'=p.settings->>'academicSession'
+        )
+        and (
+          nullif(to_jsonb(g)->>'effective_from','') is null
+          or nullif(to_jsonb(g)->>'effective_from','')::date<=(now() at time zone 'Africa/Lagos')::date
+        )
+        and g.status='PUBLISHED'
+      order by g.updated_at desc
+      limit 50`,
+    );
+    return c.json({ guidelines: result.rows });
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code === "42P01") {
+      return c.json({ guidelines: [] });
+    }
+    throw error;
+  }
 });
