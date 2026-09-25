@@ -49,7 +49,6 @@ function Video({
   });
   const statusEvent = useEvent(player, "statusChange", {
     status: player.status,
-    error: undefined,
   });
   const isPlaying = playingEvent?.isPlaying ?? player.playing;
   const status = statusEvent?.status ?? player.status;
