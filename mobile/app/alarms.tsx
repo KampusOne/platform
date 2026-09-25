@@ -142,10 +142,21 @@ function WheelColumn({
   const scrollRef = useRef<ScrollView>(null);
   const lastIndexRef = useRef(initialIndex);
   const lastValueRef = useRef(value);
+  const didMountRef = useRef(false);
   const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 
   useEffect(() => {
     lastValueRef.current = value;
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({
+          y: initialIndex * WHEEL_ITEM_HEIGHT,
+          animated: false,
+        });
+      });
+      return;
+    }
     const currentValue = values[selectedIndex];
     if (currentValue === value) return;
     const targetIndex = middleCycle * count + (value - min);
@@ -252,10 +263,21 @@ function PeriodColumn({
   const scrollRef = useRef<ScrollView>(null);
   const lastIndexRef = useRef(initialIndex);
   const lastValueRef = useRef(value);
+  const didMountRef = useRef(false);
   const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 
   useEffect(() => {
     lastValueRef.current = value;
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({
+          y: initialIndex * WHEEL_ITEM_HEIGHT,
+          animated: false,
+        });
+      });
+      return;
+    }
     if (values[selectedIndex] === value) return;
     const targetIndex = middleCycle * 2 + (value === "PM" ? 1 : 0);
     lastIndexRef.current = targetIndex;
@@ -745,6 +767,7 @@ export default function Alarms() {
               </View>
 
               <ScrollView
+                nestedScrollEnabled
                 contentContainerStyle={styles.sheetContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
