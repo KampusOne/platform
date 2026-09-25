@@ -110,7 +110,14 @@ export default function SettingsScreen() {
     try {
       await api("/v1/account/settings", {
         method: "PUT",
-        body: JSON.stringify({ ...settings, appearance: preference }),
+        body: JSON.stringify({
+          appearance: preference,
+          notifications: settings.notifications,
+          marketing: settings.marketing,
+          haptics: settings.haptics,
+          hideCgpa: settings.hideCgpa,
+          hideReposts: settings.hideReposts,
+        }),
       });
       await writeCache("settings." + user?.id, settings);
       applyPreferences(settings);
