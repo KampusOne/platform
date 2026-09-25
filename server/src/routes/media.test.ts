@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { SignJWT } from "jose";
-import { mediaRoutes } from "./media";
+import { detectedMime, mediaRoutes } from "./media";
 import { mediaAwareSecureHeaders } from "../middleware/security-headers";
 import { AppError } from "../lib/errors";
 import type { Bindings, Variables } from "../types";
@@ -42,6 +42,28 @@ beforeEach(() => {
   state.put.mockResolvedValue({}); state.findUser.mockResolvedValue(actor); state.audit.mockResolvedValue(undefined);
 });
 describe("media upload and delivery regression", () => {
+  it("detects WebM and accepts a browser-trimmed post video", async () => {
+    const bytes = new Uint8Array([
+      0x1a, 0x45, 0xdf, 0xa3, 0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d,
+    ]);
+    expect(detectedMime(bytes)).toBe("video/webm");
+    state.execute
+      .mockResolvedValueOnce({ rows: [{ allowed: true }] })
+      .mockResolvedValue({ rows: [] });
+    const form = new FormData();
+    form.append("kind", "post");
+    form.append(
+      "file",
+      new File([bytes], "trimmed.webm", { type: "video/webm" }),
+    );
+    const response = await app.request(
+      "https://api.example/v1/media",
+      { method: "POST", headers: auth, body: form },
+      env,
+    );
+    expect(response.status).toBe(201);
+    expect(state.put).toHaveBeenCalledOnce();
+  });
   it("saves an avatar and returns a persisted media URL", async () => {
     state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValue({ rows: [] });
     const form = new FormData();
