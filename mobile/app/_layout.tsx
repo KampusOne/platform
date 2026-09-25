@@ -27,6 +27,7 @@ import { initializeAppearance } from "@/src/lib/appearance";
 import { listenForSnooze } from "@/src/lib/alarms";
 import { onAccountRestriction } from "@/src/lib/api";
 import { PhotoEditorHost } from "@/src/components/photo-editor";
+import { VideoEditorHost } from "@/src/components/video-editor";
 
 export default function RootLayout() {
   const { theme, isDark } = useThemeStyles(createStyles);
@@ -63,6 +64,7 @@ export default function RootLayout() {
           }}
         />
         <PhotoEditorHost />
+        <VideoEditorHost />
       </ToastProvider>}
     </AuthProvider>
   );

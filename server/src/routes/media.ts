@@ -64,6 +64,10 @@ export function detectedMime(bytes: Uint8Array) {
   if (head.startsWith("RIFF") && head.slice(8,12) === "WAVE") return "audio/wav";
   if (head.startsWith("ID3") || (bytes[0] === 0xff && ((bytes[1]??0) & 0xe0) === 0xe0)) return "audio/mpeg";
   if (head.startsWith("%PDF-")) return "application/pdf";
+  if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
+    const ebml = new TextDecoder().decode(bytes.slice(0, 256)).toLowerCase();
+    if (ebml.includes("webm")) return "video/webm";
+  }
   // ISO Base Media container: accept MP4 brands, not arbitrary ftyp/HEIC files.
   if (head.slice(4, 8) === "ftyp" && ["isom", "iso2", "mp41", "mp42", "avc1", "M4V "].includes(head.slice(8, 12))) return "video/mp4";
   return null;
@@ -109,11 +113,11 @@ mediaRoutes.post("/", requireAuth, async (c) => {
   if(!mime && kind === "resource" && file.type === "text/plain") {
     try { const text=new TextDecoder("utf-8",{fatal:true}).decode(bytes);if(!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)) mime="text/plain"; } catch { /* Not a UTF-8 source. */ }
   }
-  if (!mime || (kind === "notification-sound" ? !["audio/mpeg","audio/wav"].includes(mime) : mime.startsWith("audio/") || (mime === "video/mp4" ? kind !== "post" : !privateKinds.has(kind) && !mime.startsWith("image/"))))
+  if (!mime || (kind === "notification-sound" ? !["audio/mpeg","audio/wav"].includes(mime) : mime.startsWith("audio/") || (["video/mp4", "video/webm"].includes(mime) ? kind !== "post" : !privateKinds.has(kind) && !mime.startsWith("image/"))))
     throw new AppError(
       400,
       "BAD_REQUEST",
-      "Use a JPG, PNG or WebP image, a PDF document, or an MP4 video for a post.",
+      "Use a JPG, PNG or WebP image, a PDF document, or an MP4/WebM video for a post.",
     );
   const bucket = privateKinds.has(kind)
     ? c.env.PRIVATE_BUCKET

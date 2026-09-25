@@ -183,7 +183,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
   const media = data.mediaId ? firstRow(await database(c.env).execute<{content_type:string}>(sql`
     select id, content_type from public.media_objects where id = ${data.mediaId}::uuid and owner_user_id = ${user.id}::uuid and kind = 'post' and deleted_at is null
   `)) : undefined;
-  if (data.mediaId && (!media || !["image/jpeg","image/png","image/webp","video/mp4"].includes(media.content_type))) throw new AppError(400, "BAD_REQUEST", "Choose your own image or MP4 video.");
+  if (data.mediaId && (!media || !["image/jpeg","image/png","image/webp","video/mp4","video/webm"].includes(media.content_type))) throw new AppError(400, "BAD_REQUEST", "Choose your own image or supported video.");
   await rateLimit(c, "STUDENT_POST", 10);
   // Quotes retain references, not copies; campus-only originals stay campus-only.
   const result = await database(c.env).execute(sql`
