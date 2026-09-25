@@ -1,0 +1,7 @@
+import { useState } from "react";
+import {Image,Pressable,Text,View} from "react-native";
+import {Ionicons} from "@expo/vector-icons";
+import {VideoView,useVideoPlayer} from "expo-video";
+import {useAppearance} from "@/src/lib/appearance";
+function Video({url,label}:{url:string;label:string}){const{theme}=useAppearance();const player=useVideoPlayer(url,p=>{p.loop=false;});return <VideoView accessibilityLabel={label} player={player} nativeControls contentFit="contain" style={{height:240,width:"100%",backgroundColor:theme.surfaceMuted,borderRadius:12}}/>;}
+export function MediaPreview({url,video=false,label="Attached media"}:{url:string;video?:boolean;label?:string}){const{theme}=useAppearance();const[playing,setPlaying]=useState(false),[error,setError]=useState(false);return <View style={{marginVertical:10}}>{video?playing?<Video url={url} label={label}/>:<Pressable accessibilityRole="button" accessibilityLabel={`Load ${label}`} onPress={()=>setPlaying(true)} style={{height:200,backgroundColor:theme.surfaceMuted,alignItems:"center",justifyContent:"center",borderRadius:12,gap:8}}><Ionicons name="play-circle-outline" size={48} color={theme.brand}/><Text style={{fontFamily:theme.font.body,color:theme.text}}>Play video</Text></Pressable>:error?<Text style={{color:theme.error}}>This image could not load.</Text>:<Image accessibilityLabel={label} source={{uri:url}} onError={()=>setError(true)} resizeMode="contain" style={{height:240,width:"100%",borderRadius:12}}/>}</View>;}

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { unifiedMigrations } from "./helpers/database";
 import snapshot from "./fixtures/database-schema.json";
 const db = new PGlite();
 const user = "00000000-0000-4000-8000-000000000001";
@@ -34,14 +35,7 @@ beforeAll(async () => {
   }
   for (const statement of snapshot.functions) await db.exec(statement);
   for (const statement of snapshot.triggers) await db.exec(statement);
-  for (const name of [
-    "20260913200000_unified_student_platform.sql",
-    "20260913210000_timetable_course_alarm_sync.sql",
-    "20260913220000_ai_requests.sql",
-    "20260913230000_community_workflows.sql",
-    "20260913240000_verified_identity_and_resources.sql",
-    "20260913250000_one_time_alarms.sql",
-  ]) {
+  for (const name of unifiedMigrations) {
     try {
       await db.exec(
         readFileSync(

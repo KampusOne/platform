@@ -1,0 +1,30 @@
+# Academic source conflict register
+
+
+| ID | Source locations | Conflict or ambiguity | Required handling |
+| --- | --- | --- | --- |
+| AC01 | 77-page p. 21; 30-page p. 17 | BUK has 19 faculty labels in one report and 23 in the other, with different Education, Arts, Islamic Studies and communication groupings. | Keep both dated claims. Recover current official organisation and effective dates; do not union all labels into current faculties. |
+| AC02 | 77-page p. 30; 30-page p. 16 | UNIBEN 17-unit list versus an additional Computing portal label; engineering departments/programmes have unclear parentage. | Preserve programme labels and unresolved hierarchy. Confirm current Computing structure and engineering parent/award relationships. |
+| AC03 | 77-page pp. 46–47; 30-page pp. 23–24 | Babcock Computing and Engineering are separate in one report and combined in the other; Environmental Sciences appears in the manual but not the web directory. | Require dated university organisational evidence; no duplicate combined/split schools. |
+| AC04 | 77-page pp. 29–30; 30-page p. 21 | FUNAAB current colleges include Computing Sciences and Entrepreneurial and Development Studies; older report excerpts include a 2021 Management Sciences page and ambiguous Computer Science placement. | Version organisational relationships and confirm current title/placement before publication. |
+| AC05 | 77-page pp. 27–28; 30-page p. 18 | OAU new Computing structure coexists with older Technology navigation; Nursing faculty change may still be in approval process. | Keep proposed/pending separate from active; do not duplicate computing programmes or assume approval completed. |
+| AC06 | 77-page pp. 31–32; 30-page p. 15 | UI navigation count 20 versus older descriptive count 17; Computing department names differ from degree names. | Store department and award separately. “Computer Science and Artificial Intelligence” department does not prove an AI bachelor's degree. |
+| AC07 | 77-page p. 26; 30-page pp. 20, 28 | NOUN Computing versus older Sciences placement; Information Technology departmental mapping varies; programme pages disagree on assignment count. | Separate faculty restructuring from assessment policy. Do not choose a universal TMA count from these excerpts. |
+| AC08 | 77-page pp. 40, 71; 30-page p. 23 | DELSU current faculty labels versus January 2023 inventory and 2021 Management Sciences groups. | Preserve 2023/2021 validity and verify current mappings; no mechanical remapping of historical departments. |
+| AC09 | 77-page p. 59, source FA04 | FUNAAB examination departure timing conflicts internally: first/last 30 minutes versus first hour/last 10 minutes. | Rule remains conflicting; obtain applicable session instruction. |
+| AC10 | 77-page p. 63, source BE04 | Bells 100-level earned-credit progression language has conflicting consequences. Its general pass band is 45%, with no E grade. | Do not automate credit eligibility or impose a 40%/E-grade default. |
+| AC11 | 77-page p. 62, sources BC02/BC03 | Babcock digest is subordinate to printed manual and the first-year academic-standing exception matters. | Preserve manual precedence, cohort/level exceptions and due process; no automatic suspension from one summary value. |
+| AC12 | 30-page p. 28, section 5.11 | UI four-point scheme is tied to admission from 2016/2017 and is explicitly historical. | Recover circular and superseding decisions before selecting a student's scheme; never apply to all UI cohorts silently. |
+| AC13 | 77-page p. 61; 30-page pp. 25–26 | UNIBEN PharmD 75% attendance/level-specific pass marks, Medicine 70%, part-time Computer Science 70%/45% pass. | These are differently scoped claims, not a conflict resolved by one institution-wide number. Retain programme, level, mode and cohort. |
+| AC14 | 30-page pp. 26–27 | FUTA Data Science/Building show CGPA 1.50 while other programme excerpts show 1.00; credit/duration values differ by entry route. | Programme/version scope plus original-source recovery. Never assume every computing degree is four years. |
+| AC15 | 77-page p. 45 | UNIMED Speech/Language Therapy and Audiology are described as awaiting resource verification. | Proposed state only; not selectable as confirmed admitting programmes based on this evidence. |
+| AC16 | 77-page pp. 52–53 | Redeemer's duplicate social-science entries under Computing; Caleb Computer Science placement conflicts and generic repeated credit values are unreliable. | Flag invalid parentage; do not import duplicate degrees or generic credit requirements. |
+| AC17 | Both register sections | Alternate spellings and name changes: Usumanu/Usmanu Danfodiyo; Modibbo Adama; Dennis Osadebe/Osadebay; Arthur Javis/Jarvis; Kevin Eze/Ezeh; Tonine/Tonnie; Transatlantic “Medine”/Medicine. | Preserve raw values and aliases. Confirm legal/display names; do not silently correct source text or create duplicate institutions. |
+| AC18 | 77-page pp. 22–25, 31, 43–44, 51 | College/faculty overlap, legacy Science labels, and editorial subject clusters. | Academic unit type and parent are evidence-bearing fields; leave parent null/under review where not proven. |
+| AC19 | 77-page p. 77, source AZ02; p. 54, source NI01 | ABU only first 20 of a reported 114 catalogue rows; Nile “load more” catalogue only first 18 entries. | Mark pagination incomplete. Absence cannot delete an existing real programme. |
+| AC20 | 30-page p. 2 | Underlying citation URLs absent for additional claims. | Store compilation page and claimed issuer; source recovery required before verified publication. No invented URLs. |
+
+Other gaps are explicitly identified in individual profiles: unreadable/empty handbook and programme links; undated institutional pages; uncertain campus allocation; historical upload dates mistaken for effective dates; incomplete current admissions/accreditation status. A newer upload path is never enough to supersede a Senate-approved rule.
+
+
+Status: all listed issues require review before authoritative publication. This register is not a decision to invalidate either supplied report.

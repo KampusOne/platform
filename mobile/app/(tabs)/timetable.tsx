@@ -494,6 +494,11 @@ export default function TimetableScreen() {
       />
       <ToolButton
         secondary
+        label="Academic calendar"
+        onPress={() => router.push("/academic-calendar")}
+      />
+      <ToolButton
+        secondary
         label="Manage alarms"
         onPress={() => router.push("/alarms")}
       />

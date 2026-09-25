@@ -1,3 +1,4 @@
+import { parseScheduleDocument } from "../lib/schedule-document";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { z, timetableEntrySchema } from "@kampusone/contracts";
@@ -17,13 +18,13 @@ aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "quiz", "notes", "timetable"]);
 const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
-type Saved = { tier?: string; cards?: AICard[]; actions?: AIAction[]; version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
+type Saved = { documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
 }
 function publicResult(id: string, value: Saved) {
-  return { requestId: id, threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, warnings: value.warnings ?? [] } : {}) };
+  return { requestId: id, threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, events: value.events ?? [], documentType: value.documentType ?? "class_timetable", warnings: value.warnings ?? [] } : {}) };
 }
 function replay(row: RequestRow, hash: string) {
   if (row.request_hash !== hash) throw new AppError(409, "CONFLICT", "This request reference belongs to a different draft.", { reason: "AI_REQUEST_CONFLICT" });
@@ -173,7 +174,7 @@ aiRoutes.post("/", async c => {
     history.push(...turns.rows.reverse());
   }
   if (new TextEncoder().encode(prompt + JSON.stringify(history)).length > 60000) throw new AppError(413, "BAD_REQUEST", "This study context is too long. Use a shorter source or start a new session.");
-  const saved: Saved = { version: 3, tier: d.tier, provider: selectedProvider, prompt: d.prompt, threadId, ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}) };
+  const saved: Saved = { version: 3, tier: d.tier, provider: selectedProvider, prompt: d.prompt, threadId, ...(d.replyTo ? {parentId:d.replyTo} : {}), ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}) };
   const client = sqlClient(c.env);
   // The lock is a separate statement: READ COMMITTED obtains a fresh snapshot
   // AFTER any wait. Putting lock + count in one CTE would race on stale snapshots.
@@ -211,7 +212,7 @@ aiRoutes.post("/", async c => {
       const generated = d.mode==='study' ? await runStudentAssistant(c.env,u,aiInput) : await generateAI(c.env,aiInput);
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
-        const extracted = parseTimetableJSON(generated.text);
+        const extracted = parseScheduleDocument(generated.text, prompt);
         const entries: unknown[] = [], warnings = [...extracted.warnings];
         for (const [i, raw] of extracted.entries.entries()) {
           if (!raw || typeof raw !== "object") { warnings.push(`Class ${i+1} was unreadable and needs manual entry.`); continue; }
@@ -223,7 +224,7 @@ aiRoutes.post("/", async c => {
           }
           entries.push(valid.data);
         }
-        result = { ...result, entries, warnings };
+        result = { ...result, entries, warnings, events: extracted.events, documentType: extracted.documentType };
       } else {
         result.text = generated.text;
         if ('cards' in generated) result.cards=generated.cards as AICard[];

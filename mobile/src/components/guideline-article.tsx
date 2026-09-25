@@ -1,0 +1,4 @@
+import{Text,View}from'react-native';
+import{MediaImage}from'./media-image';
+import{useAppearance}from'@/src/lib/appearance';
+export function GuidelineArticle({body}:{body:string}){const{theme}=useAppearance();return <View style={{gap:10}}>{body.split('\n').map((line,i)=>{const picture=/^!\[([^\]]{0,200})\]\((https:\/\/[^\s)]+)\)$/.exec(line.trim());if(picture)return <MediaImage key={i} uri={picture[2]!} accessibilityLabel={picture[1]||'Guideline illustration'} resizeMode="contain" style={{width:'100%',height:220,borderRadius:12}}/>;const heading=/^#{1,3}\s+/.test(line),bullet=/^[-*]\s+/.test(line);return line.trim()?<Text key={i} selectable style={{fontFamily:heading?theme.font.semibold:theme.font.body,color:theme.text,fontSize:heading?18:14,lineHeight:heading?26:23,marginTop:heading?10:0}}>{heading?line.replace(/^#{1,3}\s+/,''):bullet?'• '+line.replace(/^[-*]\s+/,''):line}</Text>:null;})}</View>;}

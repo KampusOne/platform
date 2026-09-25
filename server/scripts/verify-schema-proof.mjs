@@ -2,7 +2,29 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const groups = {
+export const groups = {
+  corrections: [
+    "20260921100000_operations_permissions_academic",
+    "20260921110000_ai_history_and_streak_activity",
+    "20260921120000_publishing_capabilities",
+    "20260921130000_academic_publication",
+    "20260921140000_notification_delivery",
+    "20260921150000_broadcasts",
+    "20260921160000_payout_setup",
+    "20260921170000_application_checks",
+    "20260921180000_idempotent_timetable_import",
+    "20260921180000_feed_social_interactions",
+    "20260921183000_feed_post_likes",
+    "20260921184500_feed_comment_likes",
+    "20260921200000_feed_comment_replies",
+    "20260922140000_feed_conversation_experience",
+    "20260924000000_student_ai_profiles",
+    "20260925090000_calendar_and_campus_places",
+    "20260925100000_campus_map_foundation",
+    "20260925110000_notification_sound_catalogue",
+    "20260925120000_community_push_delivery",
+    "20260925130000_programme_metadata",
+  ],
   phase3: ["20260912200000_phase_3_commerce_foundation"],
   unified: [
     "20260913200000_unified_student_platform",
@@ -50,7 +72,7 @@ export function verifySchemaProof(proof, group, loadMigration) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const root = new URL("../../", import.meta.url);
   try {
-    const proof = JSON.parse(readFileSync(new URL("database/verification/production-20260920.json", root), "utf8"));
+    const proof = JSON.parse(readFileSync(new URL(`database/verification/${process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json"}`, root), "utf8"));
     const count = verifySchemaProof(proof, process.argv[2], (version) =>
       readFileSync(new URL(`database/neon/migrations/${version}.sql`, root)));
     console.log(`Verified recorded production proof: ${process.argv[2]} (${count} migration files).`);

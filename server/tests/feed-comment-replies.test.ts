@@ -81,10 +81,10 @@ describe("comment reply API and PostgreSQL", () => {
     await comment(reply.id);
     const roots = await (await request(`${postA}/comments`)).json();
     expect(roots.comments).toHaveLength(1);
-    expect(roots.comments[0]).toMatchObject({ id: root.id, parent_comment_id: null, reply_count: 1 });
+    expect(roots.comments[0]).toMatchObject({ id: root.id, parent_comment_id: null, reply_count: 1, author_user_id: userA });
     const children = await (await request(`${postA}/comments?parentCommentId=${root.id}`)).json();
     expect(children.comments).toHaveLength(1);
-    expect(children.comments[0]).toMatchObject({ id: reply.id, parent_comment_id: root.id, reply_count: 1, author_name: "Author B", author_username: "author-b", author_image_url: "https://example.test/b.png", can_delete: false });
+    expect(children.comments[0]).toMatchObject({ id: reply.id, parent_comment_id: root.id, reply_count: 1, author_user_id: userB, author_name: "Author B", author_username: "author-b", author_image_url: "https://example.test/b.png", can_delete: false });
   });
 
   it("retries the same request without duplicates or consuming another quota", async () => {
@@ -135,7 +135,7 @@ describe("comment reply API and PostgreSQL", () => {
     const removed = await request(`${postA}/comments/${root.id}`, "DELETE");
     expect(await removed.json()).toMatchObject({ retained: true, reply_count: 1 });
     const roots = await (await request(`${postA}/comments`)).json();
-    expect(roots.comments[0]).toMatchObject({ is_deleted: true, body: "", author_name: "Comment deleted", author_image_url: null, author_username: null, can_delete: false });
+    expect(roots.comments[0]).toMatchObject({ is_deleted: true, body: "", author_user_id: null, author_name: "Comment deleted", author_image_url: null, author_username: null, can_delete: false });
     const children = await (await request(`${postA}/comments?parentCommentId=${root.id}`)).json();
     expect(children.parentDeleted).toBe(true);
     expect(children.comments[0].id).toBe(reply.id);

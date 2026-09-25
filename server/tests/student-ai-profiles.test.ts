@@ -34,6 +34,14 @@ beforeAll(async()=>{
 },60000);
 afterAll(async()=>{await pg?.close();});
 describe("public profiles and scoped campus tools",()=>{
+ it("only exposes weighted saved CGPA after an explicit opt-in",async()=>{
+  for(const [semester,units,points] of [[1,20,80],[2,10,30]]) await pg.query("insert into gpa_terms(university_id,user_id,session_label,semester,level_code,gpa,earned_units,quality_points) values($1,$2,'2025/2026',$3,'100',$4,$5,$6)",[campus,owner,semester,points/units,units,points]);
+  expect((await result('/people/'+owner)).profile.cgpa).toBeNull();
+  await pg.query(`update profiles set settings='{"hideCgpa":false}'::jsonb where user_id=$1`,[owner]);
+  expect(Number((await result('/people/'+owner)).profile.cgpa)).toBe(3.67);
+  await pg.query(`update profiles set settings='{"hideCgpa":true}'::jsonb where user_id=$1`,[owner]);
+  expect((await result('/people/'+owner)).profile.cgpa).toBeNull();
+ });
  it("exposes public details and counts but no private identity",async()=>{const r=await result('/people/'+owner);expect(r.profile).toMatchObject({user_id:owner,display_name:'Public student',biography:'A short public bio',follower_count:0,post_count:0});expect(r.roles).toHaveLength(2);for(const field of['email','password_hash','matric_number','phone','settings','following_count'])expect(r.profile).not.toHaveProperty(field);});
  it("follows idempotently and only modifies the current student's relationship",async()=>{for(let i=0;i<2;i++)expect(await result('/people/'+owner+'/follow','PUT',{follow:true})).toMatchObject({followed:true,follower_count:1});await result('/people/'+owner+'/follow','PUT',{follow:false,userId:foreign},student,400);expect((await result('/people/'+owner)).profile.followed).toBe(true);await result('/people/'+student+'/follow','PUT',{follow:true},student,400);expect(await result('/people/'+owner+'/follow','PUT',{follow:false})).toMatchObject({follower_count:0});});
  it("hides personal role tags without concealing service ownership",async()=>{await pg.query(`update profiles set settings='{"publicRoles":{"vendor":false,"tutor":false}}'::jsonb where user_id=$1`,[owner]);expect((await result('/people/'+owner)).roles).toEqual([]);const store=await result('/people/services/'+vendor);expect(store.service).toMatchObject({user_id:owner,owner_name:'Public student',agent_type:'VENDOR'});expect(store.products.map((p:{id:string})=>p.id)).toEqual([product]);expect((await result('/people/products/'+product)).selectedProductId).toBe(product);expect((await result('/people/services/'+tutor)).tutorials).toHaveLength(1);});

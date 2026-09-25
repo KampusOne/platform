@@ -1,4 +1,3 @@
-import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
@@ -42,28 +41,23 @@ type GpaData = {
   } | null;
 };
 
-const gradePoints: Record<string, number> = {
-  A: 5,
-  B: 4,
-  C: 3,
-  D: 2,
-  E: 1,
-  F: 0,
-};
-const grades = Object.keys(gradePoints);
-
 export default function GpaScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
   const [data, setData] = useState<GpaData | null>(null);
   const [editing, setEditing] = useState(false);
-  const [sessionLabel, setSessionLabel] = useState("2025/2026");
-  const [semester, setSemester] = useState("1");
-  const [levelCode, setLevelCode] = useState("100");
+  const [sessionLabel, setSessionLabel] = useState("");
+  const [semester, setSemester] = useState("");
+  const [levelCode, setLevelCode] = useState("");
   const [courseCode, setCourseCode] = useState("");
   const [courseTitle, setCourseTitle] = useState("");
-  const [units, setUnits] = useState("3");
-  const [grade, setGrade] = useState("A");
+  const [units, setUnits] = useState("");
+  const [grade, setGrade] = useState("");
+  const [point, setPoint] = useState("");
+  const [verifiedScale, setVerifiedScale] = useState<Record<
+    string,
+    number
+  > | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -73,6 +67,19 @@ export default function GpaScreen() {
     try {
       setError("");
       setData(await api<GpaData>("/v1/student/gpa"));
+      try {
+        const grading = await api<{
+          gradingScale: Record<string, number> | null;
+          gradingScaleStatus?: string;
+        }>("/v1/learning/courses");
+        setVerifiedScale(
+          grading.gradingScaleStatus === "VERIFIED"
+            ? grading.gradingScale
+            : null,
+        );
+      } catch {
+        setVerifiedScale(null);
+      }
     } catch (caught) {
       setError(
         caught instanceof ApiError
@@ -92,12 +99,27 @@ export default function GpaScreen() {
 
   const normalizedGrade = grade.trim().toUpperCase();
   const numericUnits = Number(units);
+  const numericPoint = verifiedScale?.[normalizedGrade] ?? Number(point);
+  const hasPoint =
+    verifiedScale?.[normalizedGrade] !== undefined || point.trim().length > 0;
+  const canSaveTerm =
+    results.length > 0 &&
+    sessionLabel.trim().length >= 4 &&
+    levelCode.trim().length >= 3 &&
+    ["1", "2", "3"].includes(semester);
   const canAddCourse =
-    courseCode.trim().length > 0 &&
-    courseTitle.trim().length > 0 &&
-    gradePoints[normalizedGrade] !== undefined &&
+    courseCode.trim().length >= 2 &&
+    courseTitle.trim().length >= 2 &&
+    normalizedGrade.length > 0 &&
+    normalizedGrade.length <= 3 &&
+    (!verifiedScale || verifiedScale[normalizedGrade] !== undefined) &&
+    hasPoint &&
+    Number.isFinite(numericPoint) &&
+    numericPoint >= 0 &&
+    numericPoint <= 7 &&
     Number.isFinite(numericUnits) &&
-    numericUnits > 0;
+    numericUnits > 0 &&
+    numericUnits <= 30;
 
   const plannedGpa = useMemo(() => {
     let weightedPoints = 0;
@@ -114,8 +136,8 @@ export default function GpaScreen() {
   }, [results]);
 
   function addCourse() {
-    const gradePoint = gradePoints[normalizedGrade];
-    if (!canAddCourse || gradePoint === undefined) return;
+    const gradePoint = numericPoint;
+    if (!canAddCourse) return;
     const normalizedCode = courseCode.trim().toUpperCase();
     setResults((items) => [
       ...items.filter((item) => item.courseCode !== normalizedCode),
@@ -132,7 +154,7 @@ export default function GpaScreen() {
   }
 
   async function save() {
-    if (results.length === 0 || saving) return;
+    if (!canSaveTerm || saving) return;
     setSaving(true);
     setError("");
     try {
@@ -222,7 +244,8 @@ export default function GpaScreen() {
           <View style={styles.formHeading}>
             <Text style={styles.formTitle}>Semester details</Text>
             <Text style={styles.formIntro}>
-              Add only completed courses with confirmed grades.
+              Enter your actual session and level. Use grade points from your
+              university’s scale; do not combine different grading scales.
             </Text>
           </View>
           <View style={styles.double}>
@@ -284,7 +307,7 @@ export default function GpaScreen() {
                 autoCapitalize="characters"
                 label="Course code"
                 onChangeText={setCourseCode}
-                placeholder="CPE 211"
+                placeholder="Your course code"
                 value={courseCode}
               />
             </View>
@@ -301,44 +324,43 @@ export default function GpaScreen() {
             autoCapitalize="words"
             label="Course title"
             onChangeText={setCourseTitle}
-            placeholder="Circuit Theory"
+            placeholder="Course title"
             value={courseTitle}
           />
-          <Text style={styles.label}>Grade</Text>
-          <View
-            accessibilityLabel="Choose grade"
-            accessibilityRole="radiogroup"
-            style={styles.gradeRow}
-          >
-            {grades.map((item) => {
-              const selected = normalizedGrade === item;
-              return (
-                <Pressable
-                  accessibilityLabel={`Grade ${item}, ${gradePoints[item]} points`}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  key={item}
-                  onPress={() => setGrade(item)}
-                  style={({ pressed }) => [
-                    styles.grade,
-                    selected && styles.gradeActive,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.gradeText,
-                      selected && styles.gradeTextActive,
-                    ]}
-                  >
-                    {item}
-                  </Text>
-                </Pressable>
-              );
-            })}
+          <View style={styles.double}>
+            <View style={styles.half}>
+              <Field
+                label="Grade"
+                autoCapitalize="characters"
+                maxLength={3}
+                value={grade}
+                onChangeText={setGrade}
+                placeholder="Grade on your result"
+              />
+            </View>
+            <View style={styles.half}>
+              <Field
+                label="Grade point"
+                keyboardType="decimal-pad"
+                value={
+                  verifiedScale?.[normalizedGrade] !== undefined
+                    ? String(verifiedScale[normalizedGrade])
+                    : point
+                }
+                editable={!verifiedScale}
+                onChangeText={setPoint}
+                placeholder="From your university scale"
+              />
+            </View>
           </View>
           <Text style={styles.courseHint}>
-            Course code, title and units are required before adding a row.
+            {verifiedScale
+              ? "Using your university's reviewed grading scale."
+              : "Personal estimate: your university's grading scale has not been published here. Enter the correct points yourself."}
+          </Text>
+          <Text style={styles.courseHint}>
+            Add the course code, title, units, grade and its correct point
+            value.
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -422,19 +444,19 @@ export default function GpaScreen() {
             }
             accessibilityRole="button"
             accessibilityState={{
-              disabled: results.length === 0 || saving,
+              disabled: !canSaveTerm || saving,
               busy: saving,
             }}
-            disabled={results.length === 0 || saving}
+            disabled={!canSaveTerm || saving}
             onPress={() => void save()}
             style={({ pressed }) => [
               styles.save,
-              (results.length === 0 || saving) && styles.primaryDisabled,
+              (!canSaveTerm || saving) && styles.primaryDisabled,
               pressed && results.length > 0 && !saving && styles.pressed,
             ]}
           >
             {saving ? (
-              <InlineLoading color="#FFFFFF" />
+              <Text style={styles.saveText}>Saving semester…</Text>
             ) : (
               <Text
                 style={[
@@ -479,15 +501,14 @@ function AcademicSummary({ data }: { data: GpaData | null }) {
   return (
     <View
       accessible
-      accessibilityLabel={`Cumulative GPA ${cgpa} out of 5.00. ${totalUnits} earned units.`}
+      accessibilityLabel={`Personal cumulative GPA estimate ${cgpa}. ${totalUnits} earned units.`}
       style={styles.summary}
     >
       <View style={styles.summaryTop}>
         <View>
-          <Text style={styles.summaryLabel}>Cumulative GPA</Text>
+          <Text style={styles.summaryLabel}>Personal CGPA estimate</Text>
           <View style={styles.cgpaRow}>
             <Text style={styles.cgpa}>{cgpa}</Text>
-            <Text style={styles.scale}>/ 5.00</Text>
           </View>
         </View>
         <View

@@ -1,5 +1,7 @@
 "use client";
 
+import { withSessionLock } from "./session-lock";
+
 export type SessionUser = {
   id: string;
   email: string;
@@ -48,6 +50,9 @@ const baseUrl =
 let accessToken: string | null = null;
 let refreshPromise: Promise<Session | null> | null = null;
 let listener: ((session: Session | null) => void) | null = null;
+let credentialVersion = 0;
+let transitionQueue: Promise<void> = Promise.resolve();
+let queuedTransitions = 0;
 
 export function listenForSession(next: (session: Session | null) => void) {
   listener = next;
@@ -56,8 +61,46 @@ export function listenForSession(next: (session: Session | null) => void) {
   };
 }
 export function applySession(session: Session | null) {
+  credentialVersion += 1;
   accessToken = session?.accessToken ?? null;
   listener?.(session);
+}
+
+function transition<T>(operation: () => Promise<T>): Promise<T> {
+  queuedTransitions += 1;
+  const next = transitionQueue.then(async () => {
+    if (refreshPromise) await refreshPromise.catch(() => undefined);
+    return withSessionLock(operation);
+  });
+  transitionQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next.finally(() => {
+    queuedTransitions -= 1;
+  });
+}
+
+function validatedSession(value: Session): Session {
+  if (
+    !value ||
+    typeof value.accessToken !== "string" ||
+    !value.accessToken ||
+    typeof value.refreshToken !== "string" ||
+    !value.refreshToken ||
+    !value.user ||
+    typeof value.user.id !== "string" ||
+    typeof value.user.email !== "string" ||
+    !Array.isArray(value.user.roles) ||
+    !Array.isArray(value.user.operatorRoles)
+  ) {
+    throw new PortalApiError(
+      502,
+      "INVALID_RESPONSE",
+      "Your session could not be checked. Please try again.",
+    );
+  }
+  return value;
 }
 
 async function read<T>(response: Response) {
@@ -90,25 +133,38 @@ async function read<T>(response: Response) {
 }
 
 async function refresh() {
-  if (!refreshPromise)
-    refreshPromise = fetch(`${baseUrl}/v1/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-      signal: AbortSignal.timeout(15000),
-      headers: {
-        "Content-Type": "application/json",
-        "X-Device-Label": "KampusOne web portal",
-      },
-      body: "{}",
-    })
-      .then((response) => read<Session>(response))
+  if (!refreshPromise) {
+    if (queuedTransitions)
+      throw new PortalApiError(
+        409,
+        "SESSION_TRANSITION",
+        "A session change is in progress. Please try again.",
+      );
+    const versionAtStart = credentialVersion;
+    refreshPromise = withSessionLock(() =>
+      fetch(`${baseUrl}/v1/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        signal: AbortSignal.timeout(15000),
+        headers: {
+          "Content-Type": "application/json",
+          "X-Device-Label": "KampusOne web portal",
+        },
+        body: "{}",
+      }).then((response) => read<Session>(response)),
+    )
+      .then(validatedSession)
       .then((session) => {
-        applySession(session);
+        if (credentialVersion === versionAtStart) applySession(session);
         return session;
       })
       .catch((caught: unknown) => {
-        if (caught instanceof PortalApiError && caught.status === 401) {
-          applySession(null);
+        if (
+          caught instanceof PortalApiError &&
+          caught.status === 401 &&
+          caught.code === "UNAUTHENTICATED"
+        ) {
+          if (credentialVersion === versionAtStart) applySession(null);
           return null;
         }
         throw caught;
@@ -116,6 +172,7 @@ async function refresh() {
       .finally(() => {
         refreshPromise = null;
       });
+  }
   return refreshPromise;
 }
 
@@ -163,20 +220,24 @@ async function requestPasswordReset(email: string) {
 export const webAuth = {
   refresh,
   async login(email: string, password: string) {
-    const session = await portalApi<Session>(
-      "/v1/auth/login",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          email,
-          password,
-          deviceLabel: "KampusOne web portal",
-        }),
-      },
-      false,
-    );
-    applySession(session);
-    return session;
+    return transition(async () => {
+      const session = validatedSession(
+        await portalApi<Session>(
+          "/v1/auth/login",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              email,
+              password,
+              deviceLabel: "KampusOne web portal",
+            }),
+          },
+          false,
+        ),
+      );
+      applySession(session);
+      return session;
+    });
   },
   requestEmailCode(email: string) {
     return portalApi<{ status: string }>(
@@ -186,20 +247,24 @@ export const webAuth = {
     );
   },
   async verifyEmailCode(email: string, code: string) {
-    const session = await portalApi<Session>(
-      "/v1/auth/email-code/verify",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          email,
-          code,
-          deviceLabel: "KampusOne agent portal",
-        }),
-      },
-      false,
-    );
-    applySession(session);
-    return session;
+    return transition(async () => {
+      const session = validatedSession(
+        await portalApi<Session>(
+          "/v1/auth/email-code/verify",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              email,
+              code,
+              deviceLabel: "KampusOne agent portal",
+            }),
+          },
+          false,
+        ),
+      );
+      applySession(session);
+      return session;
+    });
   },
   register(input: {
     email: string;
@@ -221,20 +286,24 @@ export const webAuth = {
     );
   },
   async verify(email: string, code: string) {
-    const session = await portalApi<Session>(
-      "/v1/auth/verify-email",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          email,
-          code,
-          deviceLabel: "KampusOne web portal",
-        }),
-      },
-      false,
-    );
-    applySession(session);
-    return session;
+    return transition(async () => {
+      const session = validatedSession(
+        await portalApi<Session>(
+          "/v1/auth/verify-email",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              email,
+              code,
+              deviceLabel: "KampusOne web portal",
+            }),
+          },
+          false,
+        ),
+      );
+      applySession(session);
+      return session;
+    });
   },
   resend(email: string) {
     return portalApi(
@@ -264,10 +333,20 @@ export const webAuth = {
     );
   },
   async logout() {
-    try {
-      await portalApi("/v1/auth/logout", { method: "POST", body: "{}" }, false);
-    } finally {
+    return transition(async () => {
+      const result = await portalApi<{ status: string }>(
+        "/v1/auth/logout",
+        { method: "POST", body: "{}" },
+        false,
+      );
+      if (result?.status !== "signed_out") {
+        throw new PortalApiError(
+          502,
+          "INVALID_RESPONSE",
+          "Sign-out was not confirmed. Please try again.",
+        );
+      }
       applySession(null);
-    }
+    });
   },
 };

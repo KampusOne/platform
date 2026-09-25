@@ -36,7 +36,7 @@ export function ListSkeleton({ count = 3 }: { count?: number }) {
   return <LoadingRegion label="Loading content" style={styles.list}>{Array.from({ length: count }, (_, i) =>
     <View key={i} style={styles.row}><SkeletonBlock width={44} height={44} radius={10} /><View style={styles.copy}><SkeletonBlock width="65%" /><SkeletonBlock width="90%" /></View></View>)}</LoadingRegion>;
 }
-export function ScreenSkeleton() {
+export function ScreenSkeleton({ variant: _variant, compact: _compact }: { variant?: string; compact?: boolean } = {}) {
   const { theme } = useThemeStyles(() => ({}));
   return <LoadingRegion label="Loading page" style={[styles.screen, { backgroundColor: theme.canvas }]}>
     <SkeletonBlock width="48%" height={28} /><SkeletonBlock width="72%" />

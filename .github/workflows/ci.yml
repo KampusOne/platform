@@ -42,14 +42,20 @@ jobs:
           cache-dependency-path: |
             packages/contracts/package-lock.json
             server/package-lock.json
+            mobile/package-lock.json
       - run: npm ci
         working-directory: packages/contracts
       - run: npm ci
         working-directory: server
+      - name: Install dependencies for shared mobile session tests
+        run: npm ci
+        working-directory: mobile
       - run: npm run check
         working-directory: server
-      - run: npm test
+      - run: npm test -- --maxWorkers=2
         working-directory: server
+      - name: Verify academic source import and rerun safety
+        run: node --test database/imports/academic-importer.test.mjs
       - name: Verify password hashing in Workers runtime
         working-directory: server
         run: |

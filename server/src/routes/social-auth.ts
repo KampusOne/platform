@@ -12,15 +12,18 @@ import {
   resolveSupabaseIdentity,
   supabaseAuthRequest,
   supabaseConfiguration,
+  configuredSocialProviders,
 } from "../services/supabase-identity";
 import type { Bindings, Variables } from "../types";
 export const socialAuthRoutes = new Hono<{
   Bindings: Bindings;
   Variables: Variables;
 }>();
-socialAuthRoutes.get("/config", (c) => {
+socialAuthRoutes.get("/config", async (c) => {
   const { url } = supabaseConfiguration(c.env);
-  return c.json({ url, providers: ["google", "apple"] });
+  const providers = await configuredSocialProviders(c.env);
+  c.header("Cache-Control", "private, no-store");
+  return c.json({ url, providers });
 });
 socialAuthRoutes.post("/complete", async (c) => {
   const origin = c.req.header("Origin");

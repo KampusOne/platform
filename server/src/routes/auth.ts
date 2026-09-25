@@ -15,12 +15,24 @@ import {
 } from "@kampusone/contracts";
 
 import type { Bindings, Variables } from "../types";
-import { clearSessionCookies, refreshCookie, setSessionCookies } from "../middleware/auth";
+import {
+  clearSessionCookies,
+  refreshCookie,
+  setSessionCookies,
+} from "../middleware/auth";
 import { database, firstRow } from "../lib/database";
 import { requireEmailProvider, sendMail } from "../lib/email";
 import { AppError } from "../lib/errors";
+import { allowedOrigins } from "../lib/config";
 import { phase2SchemaReady } from "../lib/features";
-import { generateOtp, hashOtp, hashPassword, sha256, validatePassword, verifyPassword } from "../lib/security";
+import {
+  generateOtp,
+  hashOtp,
+  hashPassword,
+  sha256,
+  validatePassword,
+  verifyPassword,
+} from "../lib/security";
 import {
   createSession,
   findUserByEmail,
@@ -29,7 +41,19 @@ import {
   toAuthenticatedUser,
 } from "../services/sessions";
 
-export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+export const authRoutes = new Hono<{
+  Bindings: Bindings;
+  Variables: Variables;
+}>();
+
+authRoutes.use("*", async (context, next) => {
+  const origin = context.req.header("Origin");
+  if (origin && !allowedOrigins(context.env).has(origin)) {
+    throw new AppError(403, "FORBIDDEN", "This sign-in origin is not allowed.");
+  }
+  context.header("Cache-Control", "private, no-store");
+  await next();
+});
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>;
 
@@ -43,9 +67,13 @@ async function body(context: AppContext) {
   return context.req.json().catch(() => null) as Promise<unknown>;
 }
 
-function requestMetadata(context: { req: { header(name: string): string | undefined } }) {
+function requestMetadata(context: {
+  req: { header(name: string): string | undefined };
+}) {
   const deviceLabel = context.req.header("X-Device-Label");
-  const ipAddress = context.req.header("CF-Connecting-IP") ?? context.req.header("X-Forwarded-For")?.split(",")[0]?.trim();
+  const ipAddress =
+    context.req.header("CF-Connecting-IP") ??
+    context.req.header("X-Forwarded-For")?.split(",")[0]?.trim();
   const userAgent = context.req.header("User-Agent");
   return {
     ...(deviceLabel ? { deviceLabel } : {}),
@@ -54,17 +82,25 @@ function requestMetadata(context: { req: { header(name: string): string | undefi
   };
 }
 
-function logRegistrationFailure(context: AppContext, stage: RegistrationStage, caught: unknown) {
+function logRegistrationFailure(
+  context: AppContext,
+  stage: RegistrationStage,
+  caught: unknown,
+) {
   const error = caught instanceof Error ? caught : new Error(String(caught));
-  console.error(JSON.stringify({
-    level: "error",
-    event: "auth.register.failed",
-    stage,
-    requestId: context.get("requestId"),
-    errorName: error.name,
-    message: error.message,
-    stack: error.stack?.slice(0, 2_000),
-  }));
+  console.error(
+    JSON.stringify({
+      level: "error",
+      event: "auth.register.failed",
+      stage,
+      requestId: context.get("requestId"),
+      errorName: error.name,
+      errorCode:
+        typeof (error as Error & { code?: unknown }).code === "string"
+          ? (error as Error & { code?: string }).code
+          : undefined,
+    }),
+  );
 }
 
 async function consumeAuthRateLimit(
@@ -82,22 +118,33 @@ async function consumeAuthRateLimit(
   limit: number,
   blockSeconds: number,
 ) {
-  const ipAddress = context.req.header("CF-Connecting-IP")
-    ?? context.req.header("X-Forwarded-For")?.split(",")[0]?.trim()
-    ?? "unknown";
-  const keyHash = await sha256(`${identifier.trim().toLowerCase()}:${ipAddress}`);
+  const ipAddress =
+    context.req.header("CF-Connecting-IP") ??
+    context.req.header("X-Forwarded-For")?.split(",")[0]?.trim() ??
+    "unknown";
+  const keyHash = await sha256(
+    `${identifier.trim().toLowerCase()}:${ipAddress}`,
+  );
   const result = await database(context.env).execute<{ allowed: boolean }>(sql`
     select app_private.consume_request_rate_limit(
       ${scope}, ${keyHash}, ${limit}, 900, ${blockSeconds}
     ) as allowed
   `);
   if (!firstRow(result)?.allowed) {
-    throw new AppError(429, "RATE_LIMITED", "Too many attempts. Wait before trying again.");
+    throw new AppError(
+      429,
+      "RATE_LIMITED",
+      "Too many attempts. Wait before trying again.",
+    );
   }
   return keyHash;
 }
 
-async function clearAuthRateLimit(env: Bindings, scope: string, keyHash: string) {
+async function clearAuthRateLimit(
+  env: Bindings,
+  scope: string,
+  keyHash: string,
+) {
   await database(env).execute(sql`
     select app_private.clear_request_rate_limit(${scope}, ${keyHash})
   `);
@@ -111,7 +158,11 @@ function maybeSetWebCookies(
   setSessionCookies(context, env, session.accessToken, session.refreshToken);
 }
 
-async function latestVerification(env: Bindings, email: string, type: "EMAIL_VERIFICATION" | "PASSWORD_RESET") {
+async function latestVerification(
+  env: Bindings,
+  email: string,
+  type: "EMAIL_VERIFICATION" | "PASSWORD_RESET",
+) {
   const result = await database(env).execute<{
     id: string;
     user_id: string;
@@ -229,11 +280,20 @@ async function sendFreshEmailVerification(
   env: Bindings,
   user: { id: string; email: string; first_name: string | null },
 ) {
-  const latest = await latestVerification(env, user.email, "EMAIL_VERIFICATION");
-  if (latest && Date.now() - new Date(latest.last_sent_at).getTime() < 60_000) return;
+  const latest = await latestVerification(
+    env,
+    user.email,
+    "EMAIL_VERIFICATION",
+  );
+  if (latest && Date.now() - new Date(latest.last_sent_at).getTime() < 60_000)
+    return;
 
   if (!phase2SchemaReady(env)) {
-    const verification = await createVerification(env, user.id, "EMAIL_VERIFICATION");
+    const verification = await createVerification(
+      env,
+      user.id,
+      "EMAIL_VERIFICATION",
+    );
     await sendMail(env, {
       to: user.email,
       firstName: user.first_name,
@@ -241,7 +301,12 @@ async function sendFreshEmailVerification(
       kind: "verification",
       idempotencyKey: `verify-${verification.tokenId}`,
     });
-    await supersedeOlderVerifications(env, user.id, "EMAIL_VERIFICATION", verification.tokenId);
+    await supersedeOlderVerifications(
+      env,
+      user.id,
+      "EMAIL_VERIFICATION",
+      verification.tokenId,
+    );
     return;
   }
 
@@ -291,8 +356,16 @@ async function stagePendingRegistration(
   const verificationCode = generateOtp();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   const displayName = `${input.firstName} ${input.lastName}`;
-  if (input.firstName.length > 40 || input.lastName.length > 40 || displayName.length > 80) {
-    throw new AppError(400, "BAD_REQUEST", "Use a shorter first or last name and try again.");
+  if (
+    input.firstName.length > 40 ||
+    input.lastName.length > 40 ||
+    displayName.length > 80
+  ) {
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Use a shorter first or last name and try again.",
+    );
   }
   const [passwordHash, verificationHash] = await Promise.all([
     hashPassword(input.password),
@@ -350,14 +423,27 @@ async function sendRegistrationVerification(
 
 function verificationFailure(result: string): never {
   if (result === "LOCKED") {
-    throw new AppError(429, "RATE_LIMITED", "Too many attempts. Request a new code.");
+    throw new AppError(
+      429,
+      "RATE_LIMITED",
+      "Too many attempts. Request a new code.",
+    );
   }
-  throw new AppError(400, "BAD_REQUEST", "That code is incorrect, expired, or already used. Request a new one if needed.");
+  throw new AppError(
+    400,
+    "BAD_REQUEST",
+    "That code is incorrect, expired, or already used. Request a new one if needed.",
+  );
 }
 
 authRoutes.post("/register", async (context) => {
   const parsed = registerSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the account details and try again.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the account details and try again.",
+    );
   validatePassword(parsed.data.password);
   requireEmailProvider(context.env);
   await consumeAuthRateLimit(context, "REGISTER", parsed.data.email, 5, 900);
@@ -372,10 +458,15 @@ authRoutes.post("/register", async (context) => {
         throw caught;
       }
     }
-    return context.json({
-      status: existing.email_verified_at ? "already_registered" : "verification_required",
-      email: parsed.data.email,
-    }, 202);
+    return context.json(
+      {
+        status: existing.email_verified_at
+          ? "already_registered"
+          : "verification_required",
+        email: parsed.data.email,
+      },
+      202,
+    );
   }
 
   const userId = crypto.randomUUID();
@@ -388,8 +479,16 @@ authRoutes.post("/register", async (context) => {
   const username = `student_${userId.replaceAll("-", "").slice(0, 10)}`;
   const displayName = `${parsed.data.firstName} ${parsed.data.lastName}`;
 
-  if (parsed.data.firstName.length > 40 || parsed.data.lastName.length > 40 || displayName.length > 80) {
-    throw new AppError(400, "BAD_REQUEST", "Use a shorter first or last name and try again.");
+  if (
+    parsed.data.firstName.length > 40 ||
+    parsed.data.lastName.length > 40 ||
+    displayName.length > 80
+  ) {
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Use a shorter first or last name and try again.",
+    );
   }
 
   let passwordHash: string;
@@ -397,7 +496,11 @@ authRoutes.post("/register", async (context) => {
     passwordHash = await hashPassword(parsed.data.password);
   } catch (caught) {
     logRegistrationFailure(context, "password_hash", caught);
-    throw new AppError(500, "INTERNAL_ERROR", "We could not secure the account credentials. Please try again.");
+    throw new AppError(
+      500,
+      "INTERNAL_ERROR",
+      "We could not secure the account credentials. Please try again.",
+    );
   }
 
   let verificationHash: string;
@@ -408,13 +511,15 @@ authRoutes.post("/register", async (context) => {
     throw caught;
   }
 
-  let created: {
-    user_id: string | null;
-    verification_id: string | null;
-    profile_created: boolean;
-    terms_created: boolean;
-    privacy_created: boolean;
-  } | undefined;
+  let created:
+    | {
+        user_id: string | null;
+        verification_id: string | null;
+        profile_created: boolean;
+        terms_created: boolean;
+        privacy_created: boolean;
+      }
+    | undefined;
 
   try {
     const result = await database(context.env).execute<{
@@ -473,15 +578,25 @@ authRoutes.post("/register", async (context) => {
     created = firstRow(result);
   } catch (caught) {
     logRegistrationFailure(context, "account_insert", caught);
-    throw new AppError(500, "INTERNAL_ERROR", "We could not finish creating the account. Please try again.");
+    throw new AppError(
+      500,
+      "INTERNAL_ERROR",
+      "We could not finish creating the account. Please try again.",
+    );
   }
 
   if (!created?.user_id) {
     const raced = await findUserByEmail(context.env, parsed.data.email);
     if (!raced) {
-      const error = new Error("Registration insert returned no user after an email conflict.");
+      const error = new Error(
+        "Registration insert returned no user after an email conflict.",
+      );
       logRegistrationFailure(context, "account_insert", error);
-      throw new AppError(500, "INTERNAL_ERROR", "We could not finish creating the account. Please try again.");
+      throw new AppError(
+        500,
+        "INTERNAL_ERROR",
+        "We could not finish creating the account. Please try again.",
+      );
     }
     if (!raced.email_verified_at) {
       try {
@@ -491,16 +606,32 @@ authRoutes.post("/register", async (context) => {
         throw caught;
       }
     }
-    return context.json({
-      status: raced.email_verified_at ? "already_registered" : "verification_required",
-      email: parsed.data.email,
-    }, 202);
+    return context.json(
+      {
+        status: raced.email_verified_at
+          ? "already_registered"
+          : "verification_required",
+        email: parsed.data.email,
+      },
+      202,
+    );
   }
 
-  if (!created.verification_id || !created.profile_created || !created.terms_created || !created.privacy_created) {
-    const error = new Error("Atomic registration did not create every required account record.");
+  if (
+    !created.verification_id ||
+    !created.profile_created ||
+    !created.terms_created ||
+    !created.privacy_created
+  ) {
+    const error = new Error(
+      "Atomic registration did not create every required account record.",
+    );
     logRegistrationFailure(context, "account_insert", error);
-    throw new AppError(500, "INTERNAL_ERROR", "We could not finish creating the account. Please try again.");
+    throw new AppError(
+      500,
+      "INTERNAL_ERROR",
+      "We could not finish creating the account. Please try again.",
+    );
   }
 
   try {
@@ -519,16 +650,21 @@ authRoutes.post("/register", async (context) => {
     throw caught;
   }
 
-  return context.json({ status: "verification_required", email: parsed.data.email }, 201);
+  return context.json(
+    { status: "verification_required", email: parsed.data.email },
+    201,
+  );
 });
 
 authRoutes.post("/resend-verification", async (context) => {
   const parsed = resendVerificationSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter a valid email address.");
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Enter a valid email address.");
   requireEmailProvider(context.env);
   await consumeAuthRateLimit(context, "RESEND_OTP", parsed.data.email, 5, 900);
   const user = await findUserByEmail(context.env, parsed.data.email);
-  if (!user || user.email_verified_at) return context.json({ status: "accepted" }, 202);
+  if (!user || user.email_verified_at)
+    return context.json({ status: "accepted" }, 202);
 
   await sendFreshEmailVerification(context.env, user);
   return context.json({ status: "accepted" }, 202);
@@ -536,9 +672,18 @@ authRoutes.post("/resend-verification", async (context) => {
 
 authRoutes.post("/verify-email", async (context) => {
   const parsed = verifyEmailSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter the six-digit code from your email.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Enter the six-digit code from your email.",
+    );
   await consumeAuthRateLimit(context, "VERIFY_OTP", parsed.data.email, 30, 900);
-  const token = await latestVerification(context.env, parsed.data.email, "EMAIL_VERIFICATION");
+  const token = await latestVerification(
+    context.env,
+    parsed.data.email,
+    "EMAIL_VERIFICATION",
+  );
   if (!token) verificationFailure("INVALID");
   const consumed = await database(context.env).execute<{ result: string }>(sql`
     select app_private.check_and_consume_email_verification(
@@ -546,34 +691,56 @@ authRoutes.post("/verify-email", async (context) => {
     ) as result
   `);
   const verificationResult = firstRow(consumed)?.result ?? "INVALID";
-  if (verificationResult !== "VERIFIED") verificationFailure(verificationResult);
+  if (verificationResult !== "VERIFIED")
+    verificationFailure(verificationResult);
 
   const userRecord = await findUserByEmail(context.env, parsed.data.email);
-  if (!userRecord) throw new AppError(500, "INTERNAL_ERROR", "The account could not be loaded.");
-  const session = await createSession(context.env, toAuthenticatedUser(userRecord), {
-    ...requestMetadata(context),
-    ...(parsed.data.deviceLabel ? { deviceLabel: parsed.data.deviceLabel } : {}),
-  });
+  if (!userRecord)
+    throw new AppError(
+      500,
+      "INTERNAL_ERROR",
+      "The account could not be loaded.",
+    );
+  const session = await createSession(
+    context.env,
+    toAuthenticatedUser(userRecord),
+    {
+      ...requestMetadata(context),
+      ...(parsed.data.deviceLabel
+        ? { deviceLabel: parsed.data.deviceLabel }
+        : {}),
+    },
+  );
   maybeSetWebCookies(context, context.env, session);
 
-  context.executionCtx.waitUntil(sendMail(context.env, {
-    to: userRecord.email,
-    firstName: userRecord.first_name,
-    kind: "welcome",
-    idempotencyKey: `welcome-${userRecord.id}`,
-  }).catch(() => undefined));
+  context.executionCtx.waitUntil(
+    sendMail(context.env, {
+      to: userRecord.email,
+      firstName: userRecord.first_name,
+      kind: "welcome",
+      idempotencyKey: `welcome-${userRecord.id}`,
+    }).catch(() => undefined),
+  );
 
   return context.json(session);
 });
 
 authRoutes.post("/email-code/request", async (context) => {
   const parsed = emailCodeRequestSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter a valid email address.");
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Enter a valid email address.");
   requireEmailProvider(context.env);
-  await consumeAuthRateLimit(context, "EMAIL_CODE_REQUEST", parsed.data.email, 5, 900);
+  await consumeAuthRateLimit(
+    context,
+    "EMAIL_CODE_REQUEST",
+    parsed.data.email,
+    5,
+    900,
+  );
 
   const user = await findUserByEmail(context.env, parsed.data.email);
-  if (!user?.email_verified_at) return context.json({ status: "accepted" }, 202);
+  if (!user?.email_verified_at)
+    return context.json({ status: "accepted" }, 202);
 
   const latest = await latestEmailLoginCode(context.env, parsed.data.email);
   if (latest && Date.now() - new Date(latest.last_sent_at).getTime() < 60_000) {
@@ -587,13 +754,27 @@ authRoutes.post("/email-code/request", async (context) => {
     code: loginCode.code,
     kind: "agent-login",
     idempotencyKey: `agent-login-${loginCode.tokenId}`,
-  }).catch(() => undefined);
+  }).catch(async (caught: unknown) => {
+    // Keep a possibly delivered code valid, but do not tell the next retry that
+    // this failed delivery was a successful recent send.
+    await database(context.env).execute(sql`
+      update app_private.email_login_codes set last_sent_at=now()-interval '61 seconds'
+      where user_id=${user.id}::uuid and used_at is null
+        and token_hash=${await hashOtp(context.env, loginCode.code)}
+    `);
+    throw caught;
+  });
   return context.json({ status: "accepted" }, 202);
 });
 
 authRoutes.post("/email-code/verify", async (context) => {
   const parsed = emailCodeVerifySchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter the six-digit code from your email.");
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Enter the six-digit code from your email.",
+    );
   const rateLimitKey = await consumeAuthRateLimit(
     context,
     "EMAIL_CODE_VERIFY",
@@ -627,20 +808,31 @@ authRoutes.post("/email-code/verify", async (context) => {
     end as result
   `);
   const verificationResult = firstRow(consumed)?.result ?? "INVALID";
-  if (verificationResult !== "VERIFIED") verificationFailure(verificationResult);
+  if (verificationResult !== "VERIFIED")
+    verificationFailure(verificationResult);
 
   const userRecord = await findUserByEmail(context.env, parsed.data.email);
   if (!userRecord?.email_verified_at) {
-    throw new AppError(401, "UNAUTHENTICATED", "That code is incorrect, expired, or already used.");
+    throw new AppError(
+      401,
+      "UNAUTHENTICATED",
+      "That code is incorrect, expired, or already used.",
+    );
   }
   await database(context.env).execute(sql`
     update public.users set last_login_at = now(), updated_at = now()
     where id = ${userRecord.id}::uuid
   `);
-  const session = await createSession(context.env, toAuthenticatedUser(userRecord), {
-    ...requestMetadata(context),
-    ...(parsed.data.deviceLabel ? { deviceLabel: parsed.data.deviceLabel } : {}),
-  });
+  const session = await createSession(
+    context.env,
+    toAuthenticatedUser(userRecord),
+    {
+      ...requestMetadata(context),
+      ...(parsed.data.deviceLabel
+        ? { deviceLabel: parsed.data.deviceLabel }
+        : {}),
+    },
+  );
   await clearAuthRateLimit(context.env, "EMAIL_CODE_VERIFY", rateLimitKey);
   maybeSetWebCookies(context, context.env, session);
   return context.json(session);
@@ -648,23 +840,48 @@ authRoutes.post("/email-code/verify", async (context) => {
 
 authRoutes.post("/login", async (context) => {
   const parsed = loginSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter your email and password.");
-  const rateLimitKey = await consumeAuthRateLimit(context, "LOGIN", parsed.data.email, 10, 1800);
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Enter your email and password.");
+  const rateLimitKey = await consumeAuthRateLimit(
+    context,
+    "LOGIN",
+    parsed.data.email,
+    10,
+    1800,
+  );
   const userRecord = await findUserByEmail(context.env, parsed.data.email);
-  if (!userRecord || !(await verifyPassword(parsed.data.password, userRecord.password_hash))) {
-    throw new AppError(401, "UNAUTHENTICATED", "The email or password is incorrect.");
+  if (
+    !userRecord ||
+    !(await verifyPassword(parsed.data.password, userRecord.password_hash))
+  ) {
+    throw new AppError(
+      401,
+      "UNAUTHENTICATED",
+      "The email or password is incorrect.",
+    );
   }
   if (!userRecord.email_verified_at) {
-    throw new AppError(403, "FORBIDDEN", "Verify your email before signing in.", { verificationRequired: true });
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "Verify your email before signing in.",
+      { verificationRequired: true },
+    );
   }
 
   await database(context.env).execute(sql`
     update public.users set last_login_at = now(), updated_at = now() where id = ${userRecord.id}::uuid
   `);
-  const session = await createSession(context.env, toAuthenticatedUser(userRecord), {
-    ...requestMetadata(context),
-    ...(parsed.data.deviceLabel ? { deviceLabel: parsed.data.deviceLabel } : {}),
-  });
+  const session = await createSession(
+    context.env,
+    toAuthenticatedUser(userRecord),
+    {
+      ...requestMetadata(context),
+      ...(parsed.data.deviceLabel
+        ? { deviceLabel: parsed.data.deviceLabel }
+        : {}),
+    },
+  );
   await clearAuthRateLimit(context.env, "LOGIN", rateLimitKey);
   maybeSetWebCookies(context, context.env, session);
   return context.json(session);
@@ -672,12 +889,27 @@ authRoutes.post("/login", async (context) => {
 
 authRoutes.post("/refresh", async (context) => {
   const parsed = refreshSessionSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "The session request is invalid.");
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "The session request is invalid.");
   const token = parsed.data.refreshToken ?? refreshCookie(context);
-  if (!token) throw new AppError(401, "UNAUTHENTICATED", "No refresh session was provided.");
+  if (!token)
+    throw new AppError(
+      401,
+      "UNAUTHENTICATED",
+      "No refresh session was provided.",
+    );
+  if (!parsed.data.refreshToken && !context.req.header("Origin")) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "This browser session needs a valid origin.",
+    );
+  }
   const session = await rotateSession(context.env, token, {
     ...requestMetadata(context),
-    ...(parsed.data.deviceLabel ? { deviceLabel: parsed.data.deviceLabel } : {}),
+    ...(parsed.data.deviceLabel
+      ? { deviceLabel: parsed.data.deviceLabel }
+      : {}),
   });
   maybeSetWebCookies(context, context.env, session);
   return context.json(session);
@@ -686,7 +918,20 @@ authRoutes.post("/refresh", async (context) => {
 authRoutes.post("/logout", async (context) => {
   const raw = await body(context);
   const parsed = refreshSessionSchema.safeParse(raw);
-  const token = (parsed.success ? parsed.data.refreshToken : undefined) ?? refreshCookie(context);
+  const token =
+    (parsed.success ? parsed.data.refreshToken : undefined) ??
+    refreshCookie(context);
+  if (
+    token &&
+    !(parsed.success && parsed.data.refreshToken) &&
+    !context.req.header("Origin")
+  ) {
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "This browser session needs a valid origin.",
+    );
+  }
   if (token) await revokeSession(context.env, token);
   clearSessionCookies(context, context.env);
   return context.json({ status: "signed_out" });
@@ -694,18 +939,33 @@ authRoutes.post("/logout", async (context) => {
 
 authRoutes.post("/forgot-password", async (context) => {
   const parsed = forgotPasswordSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Enter a valid email address.");
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Enter a valid email address.");
   requireEmailProvider(context.env);
-  await consumeAuthRateLimit(context, "FORGOT_PASSWORD", parsed.data.email, 5, 900);
+  await consumeAuthRateLimit(
+    context,
+    "FORGOT_PASSWORD",
+    parsed.data.email,
+    5,
+    900,
+  );
   const user = await findUserByEmail(context.env, parsed.data.email);
   if (!user) return context.json({ status: "accepted" }, 202);
 
-  const latest = await latestVerification(context.env, parsed.data.email, "PASSWORD_RESET");
+  const latest = await latestVerification(
+    context.env,
+    parsed.data.email,
+    "PASSWORD_RESET",
+  );
   if (latest && Date.now() - new Date(latest.last_sent_at).getTime() < 60_000) {
     return context.json({ status: "accepted" }, 202);
   }
 
-  const verification = await createVerification(context.env, user.id, "PASSWORD_RESET");
+  const verification = await createVerification(
+    context.env,
+    user.id,
+    "PASSWORD_RESET",
+  );
   try {
     await sendMail(context.env, {
       to: user.email,
@@ -719,16 +979,36 @@ authRoutes.post("/forgot-password", async (context) => {
     // accepted by Resend still contains a usable reset code.
     throw caught;
   }
-  await supersedeOlderVerifications(context.env, user.id, "PASSWORD_RESET", verification.tokenId);
+  await supersedeOlderVerifications(
+    context.env,
+    user.id,
+    "PASSWORD_RESET",
+    verification.tokenId,
+  );
   return context.json({ status: "accepted" }, 202);
 });
 
 authRoutes.post("/reset-password", async (context) => {
   const parsed = resetPasswordSchema.safeParse(await body(context));
-  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Check the reset code and new password.");
-  await consumeAuthRateLimit(context, "RESET_PASSWORD", parsed.data.email, 20, 900);
+  if (!parsed.success)
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Check the reset code and new password.",
+    );
+  await consumeAuthRateLimit(
+    context,
+    "RESET_PASSWORD",
+    parsed.data.email,
+    20,
+    900,
+  );
   validatePassword(parsed.data.password);
-  const token = await latestVerification(context.env, parsed.data.email, "PASSWORD_RESET");
+  const token = await latestVerification(
+    context.env,
+    parsed.data.email,
+    "PASSWORD_RESET",
+  );
   if (!token) verificationFailure("INVALID");
   const passwordHash = await hashPassword(parsed.data.password);
   const consumed = await database(context.env).execute<{ result: string }>(sql`

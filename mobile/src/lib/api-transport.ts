@@ -6,7 +6,7 @@ import {
   readRefreshToken,
   removeRefreshToken,
   saveRefreshToken,
-} from "@/src/lib/session-storage";
+} from "./session-storage";
 
 export type SessionUser = {
   id: string;
@@ -160,7 +160,7 @@ function isExplicitSessionRejection(caught: unknown) {
   return (
     caught instanceof ApiError &&
     ((caught.status === 401 && caught.code === "UNAUTHENTICATED") ||
-      (caught.status === 403 && caught.code === "FORBIDDEN"))
+      (caught.status === 403 && caught.code === "FORBIDDEN" && caught.details?.reason === "ACCOUNT_RESTRICTED"))
   );
 }
 

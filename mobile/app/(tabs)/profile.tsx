@@ -486,7 +486,9 @@ export default function ProfileScreen() {
         </View>
       ) : null}
       <AgentShortcuts />
-      {loading && !profile && !sessionProfile ? <ScreenSkeleton /> : null}
+      {loading && !profile && !sessionProfile ? (
+        <ScreenSkeleton variant="profile" compact />
+      ) : null}
       {error ? (
         <Pressable
           accessibilityRole="button"

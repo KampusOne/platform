@@ -1,12 +1,14 @@
+import { BrandSwitch } from "@/src/components/brand-switch";
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { Platform, Pressable, Switch, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import {
   ToolPage,
   ToolButton,
   ToolField,
   ToolRow,
 } from "@/src/components/toolkit";
+import { ScreenSkeleton } from "@/src/components/skeleton";
 import { EmptyResult } from "@/src/components/product-ui";
 import { useToast } from "@/src/components/toast";
 import { useAppearance } from "@/src/lib/appearance";
@@ -34,7 +36,9 @@ export default function Alarms() {
   const [form, setForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const load = useCallback(async () => {
+    setLoadError("");
     const r = await api<{ alarms: Alarm[] }>("/v1/learning/alarms");
     setItems(r.alarms);
     setReady(true);
@@ -42,7 +46,10 @@ export default function Alarms() {
   }, []);
   useFocusEffect(
     useCallback(() => {
-      void load().catch((e) => toast(e.message, "error"));
+      void load().catch((e) => {
+        setLoadError(e instanceof Error ? e.message : "Alarms could not load.");
+        setReady(true);
+      });
     }, [load, toast]),
   );
   function edit(a: Alarm | null) {
@@ -69,7 +76,7 @@ export default function Alarms() {
         scheduled
           ? "Reminders updated"
           : Platform.OS === "web"
-            ? "Saved. Device alerts are available in the Android app."
+            ? "Saved. Device alerts are available in the installed Android and iOS app."
             : "Saved. Enable notifications in device settings.",
         "success",
       );
@@ -81,6 +88,26 @@ export default function Alarms() {
   }
   return (
     <ToolPage title="Alarms">
+      {Platform.OS === "web" ? <Text style={{color:theme.textMuted,fontSize:12,lineHeight:18,marginBottom:16}}>Browser reminders work while KampusOne is open. Use the Android or iOS app for reminders with the app closed.</Text> : null}
+      {!ready ? <ScreenSkeleton variant="list" compact /> : null}
+      {loadError ? (
+        <>
+          <Text accessibilityRole="alert" style={{ color: theme.error }}>
+            {loadError}
+          </Text>
+          <ToolButton
+            secondary
+            label="Retry alarms"
+            onPress={() =>
+              void load().catch((e) =>
+                setLoadError(
+                  e instanceof Error ? e.message : "Alarms could not load.",
+                ),
+              )
+            }
+          />
+        </>
+      ) : null}
       <ToolButton
         label={form ? "Close" : "Add alarm"}
         onPress={() => (form ? setForm(false) : edit(null))}
@@ -155,11 +182,23 @@ export default function Alarms() {
           ) : null}
           <ToolRow
             title="Sound"
-            trailing={<Switch value={sound} onValueChange={setSound} />}
+            trailing={
+              <BrandSwitch
+                label="Alarm sound"
+                value={sound}
+                onValueChange={setSound}
+              />
+            }
           />
           <ToolRow
             title="Vibration"
-            trailing={<Switch value={vibration} onValueChange={setVibration} />}
+            trailing={
+              <BrandSwitch
+                label="Alarm vibration"
+                value={vibration}
+                onValueChange={setVibration}
+              />
+            }
           />
           <ToolField
             label="Snooze minutes"
@@ -199,7 +238,7 @@ export default function Alarms() {
           ) : null}
         </View>
       ) : null}
-      {ready && !items.length && !form ? (
+      {ready && !loadError && !items.length && !form ? (
         <EmptyResult title="No alarms yet" />
       ) : null}
       {items.map((a) => (
@@ -219,8 +258,8 @@ export default function Alarms() {
           }
           onPress={() => edit(a)}
           trailing={
-            <Switch
-              accessibilityLabel={"Enable " + a.label}
+            <BrandSwitch
+              label={"Enable " + a.label}
               disabled={busy}
               value={a.enabled}
               onValueChange={(enabled) =>

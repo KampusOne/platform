@@ -1,6 +1,7 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AccessGate } from "@/components/access-gate";
-import { AdminDashboard, type AdminView } from "@/components/admin-dashboard";
+import { type AdminView } from "@/components/admin-dashboard";
+import { ScopedAdminDashboard } from "@/components/scoped-admin-dashboard";
 import { ManagePanel, type ManageSection } from "@/components/manage-panel";
 export default async function AdminSection({
   params,
@@ -8,6 +9,8 @@ export default async function AdminSection({
   params: Promise<{ section: string }>;
 }) {
   const { section } = await params;
+  if (section === "users") redirect("/admin/workspaces/users");
+  if (section === "audit") redirect("/admin/workspaces/audit");
   if (
     [
       "users",
@@ -20,7 +23,7 @@ export default async function AdminSection({
   )
     return (
       <AccessGate surface="admin">
-        <AdminDashboard initialView={section as AdminView} />
+        <ScopedAdminDashboard initialView={section as AdminView} />
       </AccessGate>
     );
   if (

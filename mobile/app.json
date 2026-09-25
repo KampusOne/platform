@@ -24,7 +24,10 @@
       },
       "package": "app.kampusone.mobile",
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": true
+      "predictiveBackGestureEnabled": true,
+      "permissions": [
+        "SCHEDULE_EXACT_ALARM"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -34,7 +37,13 @@
     "plugins": [
       [
         "expo-router",
-        { "asyncRoutes": { "web": true, "android": false, "ios": false } }
+        {
+          "asyncRoutes": {
+            "web": true,
+            "android": false,
+            "ios": false
+          }
+        }
       ],
       "expo-secure-store",
       "expo-web-browser",

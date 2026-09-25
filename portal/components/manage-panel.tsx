@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { PortalShell } from "./portal-shell";
 import { TransientNotice } from "./transient-notice";
 import { portalApi } from "@/lib/api";
+import { useAdminContext } from "./admin-context";
 type RecordRow = { id: string; [key: string]: string | number | null };
 export type ManageSection =
   | "universities"
@@ -22,8 +23,8 @@ const labels = {
 };
 export function ManagePanel({ section }: { section: ManageSection }) {
   const [rows, setRows] = useState<RecordRow[]>([]);
-  const [schools, setSchools] = useState<RecordRow[]>([]);
-  const [scope, setScope] = useState("");
+  const { scope, scopeLabel, can } = useAdminContext();
+  const [loadError, setLoadError] = useState("");
   const [status, setStatus] = useState("ALL");
   const [notice, setNotice] = useState("");
   const [settledQuery, setSettledQuery] = useState("");
@@ -43,9 +44,9 @@ export function ManagePanel({ section }: { section: ManageSection }) {
       path + "&universityId=" + scope + "&status=" + status,
     )
       .then((r) => {
-        if (alive) setRows(r.rows);
+        if (alive) { setRows(r.rows); setLoadError(""); }
       })
-      .catch((e) => setNotice(e.message))
+      .catch((e) => { if (alive) setLoadError(e.message); })
       .finally(() => {
         if (alive) setSettledQuery(queryKey);
       });
@@ -53,11 +54,6 @@ export function ManagePanel({ section }: { section: ManageSection }) {
       alive = false;
     };
   }, [section, scope, status, version, queryKey]);
-  useEffect(() => {
-    void portalApi<{ rows: RecordRow[] }>("/v1/manage/universities")
-      .then((r) => setSchools(r.rows))
-      .catch(() => undefined);
-  }, []);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -118,17 +114,6 @@ export function ManagePanel({ section }: { section: ManageSection }) {
     >
       <TransientNotice message={notice} />
       <div className="table-toolbar">
-        <label>
-          University
-          <select value={scope} onChange={(e) => setScope(e.target.value)}>
-            <option value="">All universities</option>
-            {schools.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
         {section === "trials" ? (
           <label>
             Status
@@ -152,7 +137,7 @@ export function ManagePanel({ section }: { section: ManageSection }) {
             <div key={i} />
           ))}
         </div>
-      ) : (
+      ) : loadError ? <section className="state-panel state-panel--error" role="alert"><p>{loadError}</p><button className="button button--secondary" onClick={() => setVersion((value) => value + 1)}>Try again</button></section> : (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
@@ -174,7 +159,7 @@ export function ManagePanel({ section }: { section: ManageSection }) {
                     </td>
                   ))}
                   <td>
-                    {["universities", "trials", "support"].includes(section) ? (
+                    {((section === "universities" && can("universities.manage")) || (section === "trials" && can("agents.review")) || (section === "support" && can("support.manage"))) ? (
                       <button
                         className="text-button"
                         onClick={() => setSelected(row)}
@@ -196,9 +181,9 @@ export function ManagePanel({ section }: { section: ManageSection }) {
           {!rows.length ? <p className="table-empty">No records yet</p> : null}
         </div>
       )}
-      {section === "universities" || selected ? (
+      {(section === "universities" && can("universities.manage")) || selected ? (
         <form className="form-stack manage-form" onSubmit={submit}>
-          <h2>{selected ? "Manage record" : "Add university"}</h2>
+          <h2>{selected ? "Manage record" : "Add university"}</h2><p className="scope-caption">{scopeLabel}</p>
           {section === "universities" ? (
             <>
               {!selected ? (

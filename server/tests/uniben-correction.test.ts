@@ -1,0 +1,13 @@
+import{readFileSync}from'node:fs';
+import{it,expect}from'vitest';
+import{createTestDatabase}from'./helpers/database';
+it('applies the reviewed profile correction once and leaves the unidentified account unchanged',async()=>{
+ const db=await createTestDatabase();try{
+ const uni='6a79211e-6e85-4d95-be24-976edb26ba58',faculty='ff5d6c9e-2ba9-47e9-98c7-519ec4793d2d';
+ await db.query("insert into universities(id,name,slug,updated_at)values($1,'University of Benin','uniben',now())",[uni]);await db.query("insert into faculties(id,university_id,name,slug,updated_at)values($1,$2,'Faculty of Engineering','engineering',now())",[faculty,uni]);
+ for(const[department,course,name,code]of[['4a30413f-cff8-4733-b1bc-682c8799d453','26c01504-a2a4-45b3-a4eb-b507534ae6c8','Computer Engineering','CE'],['7e298c53-58b5-44d3-a625-71108bb0c4de','5a1a35ea-fd74-4679-a7a2-bd8a9bd7dbec','Electrical Engineering','EE']]){await db.query("insert into departments(id,faculty_id,name,slug,updated_at)values($1,$2,$3,$4,now())",[department,faculty,name,code]);await db.query("insert into courses(id,department_id,name,code,updated_at)values($1,$2,$3,$4,now())",[course,department,'BSc '+name,code]);}
+ for(const[user,name,handle]of[['d34f89d0-aa39-4a92-b52f-a16af84a0b1f','Gideon Igiehon','warrior'],['55c42d3d-86c6-4917-8c16-1834db22ec79','Osariemen Orobosa','peace'],['46bf74d7-8f15-422a-b24d-55bef02d6c3a','Anibe David','storm_x']]){await db.query("insert into users(id,email,password_hash,updated_at)values($1::uuid,$1::uuid::text||'@example.invalid','synthetic',now())",[user]);await db.query("insert into profiles(id,user_id,university_id,faculty_id,department_id,course_id,display_name,username,current_level,verification_status,updated_at)values(gen_random_uuid(),$1,$2,$3,'4a30413f-cff8-4733-b1bc-682c8799d453','26c01504-a2a4-45b3-a4eb-b507534ae6c8',$4,$5,'100','VERIFIED',now())",[user,uni,faculty,name,handle]);}
+ const patch=readFileSync(new URL('../../database/maintenance/20260925-uniben-profile-corrections.sql',import.meta.url),'utf8');await db.exec(patch);await db.exec(patch);
+ expect((await db.query("select username,current_level from profiles order by username")).rows).toEqual([{username:'peace',current_level:'200'},{username:'storm_x',current_level:'100'},{username:'warrior',current_level:'200'}]);expect((await db.query("select c.name from profiles p join courses c on c.id=p.course_id where username='peace'")).rows).toEqual([{name:'B.Eng Mechatronics Engineering'}]);expect((await db.query("select id from app_private.audit_events where action='profile.academic.corrected'")).rows).toHaveLength(2);
+ }finally{await db.close();}
+},60000);

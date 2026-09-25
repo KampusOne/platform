@@ -3,7 +3,7 @@ import { database, firstRow } from "./database";
 import { AppError } from "./errors";
 import { ageOn } from "./platform-policy";
 import type { Bindings } from "../types";
-export async function requireFullKyc(env: Bindings, applicationId: string) {
+export async function requireFullKyc(env: Bindings, applicationId: string, requireBank = true) {
   const row = firstRow(
     await database(env).execute<{
       birth_date: string;
@@ -29,7 +29,7 @@ export async function requireFullKyc(env: Bindings, applicationId: string) {
     !row.phone_verified_at ||
     !row.terms_accepted_at ||
     !["VERIFIED", "MANUALLY_VERIFIED"].includes(row.kyc_status) ||
-    row.bank_status !== "VERIFIED"
+    (requireBank && row.bank_status !== "VERIFIED")
   )
     throw new AppError(
       409,
@@ -47,3 +47,6 @@ export async function requireFullKyc(env: Bindings, applicationId: string) {
     );
   return row;
 }
+
+/** Identity approval is separate from bank/payout eligibility. */
+export const requireAgentIdentity = (env: Bindings, applicationId: string) => requireFullKyc(env, applicationId, false);

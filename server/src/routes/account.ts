@@ -158,11 +158,24 @@ accountRoutes.get("/restrictions", async (c) => {
   );
   return c.json({ restriction: firstRow(result) ?? null });
 });
-accountRoutes.post("/streak", async (c) => {
-  const result = await database(c.env).execute(
-    sql`select * from app_private.check_in_streak(${currentUser(c).id}::uuid)`,
-  );
-  return c.json({ streak: firstRow(result) });
+async function streakSnapshot(env: Bindings, userId: string) {
+  const db = database(env);
+  const result = await db.execute(sql`select
+    case when last_day >= (now() at time zone 'Africa/Lagos')::date-1 then current_days else 0 end current_days,
+    longest_days,goal_days,last_day::text
+    from public.user_streaks where user_id=${userId}::uuid`);
+  const activity = await db.execute<{ day: string }>(sql`select day::text from public.streak_activity_days where user_id=${userId}::uuid and day >= (now() at time zone 'Africa/Lagos')::date-365 order by day`);
+  const clock = firstRow(await db.execute<{ today: string }>(sql`select (now() at time zone 'Africa/Lagos')::date::text as today`));
+  return { streak: firstRow(result) ?? { current_days: 0, longest_days: 0, goal_days: 7, last_day: null }, activityDays: activity.rows.map(row => row.day), timezone: "Africa/Lagos", today: clock?.today };
+}
+accountRoutes.get("/streak", async c => c.json(await streakSnapshot(c.env, currentUser(c).id)));
+accountRoutes.post("/streak", async c => {
+  await database(c.env).execute(sql`select * from app_private.check_in_streak(${currentUser(c).id}::uuid)`);
+  return c.json(await streakSnapshot(c.env, currentUser(c).id));
+});
+accountRoutes.post("/streak/check-in", async c => {
+  await database(c.env).execute(sql`select * from app_private.check_in_streak(${currentUser(c).id}::uuid)`);
+  return c.json(await streakSnapshot(c.env, currentUser(c).id));
 });
 accountRoutes.patch("/streak", async (c) => {
   const data = await input(
@@ -170,14 +183,14 @@ accountRoutes.patch("/streak", async (c) => {
     z.object({ goalDays: z.number().int().min(1).max(365) }),
   );
   await database(c.env).execute(
-    sql`update public.user_streaks set goal_days=${data.goalDays} where user_id=${currentUser(c).id}::uuid`,
+    sql`insert into public.user_streaks(user_id,goal_days) values(${currentUser(c).id}::uuid,${data.goalDays}) on conflict(user_id) do update set goal_days=excluded.goal_days,updated_at=now()`,
   );
   return c.json({ status: "saved" });
 });
 accountRoutes.get("/guidelines", async (c) => {
   const user = currentUser(c);
   const result = await database(c.env).execute(
-    sql`select g.id,g.title,g.body,g.source_url,g.published_at from public.institution_guidelines g join public.profiles p on p.user_id=${user.id}::uuid where g.institution_id=p.university_id and (g.department_id is null or g.department_id=p.department_id) and g.status='PUBLISHED' order by g.updated_at desc limit 50`,
+    sql`select g.id,g.title,g.body,g.source_url,g.published_at,g.source_page,g.issuing_institution,g.document_date,g.effective_from,g.session_label,g.programme_name,g.version from public.institution_guidelines g join public.profiles p on p.user_id=${user.id}::uuid left join public.courses course on course.id=p.course_id where g.institution_id=p.university_id and (g.department_id is null or g.department_id=p.department_id) and (g.faculty_id is null or g.faculty_id=p.faculty_id) and (g.programme_name is null or g.programme_name=course.name) and (g.session_label is null or g.session_label=p.settings->>'academicSession') and (g.effective_from is null or g.effective_from<=(now() at time zone 'Africa/Lagos')::date) and g.status='PUBLISHED' order by g.updated_at desc limit 50`,
   );
   return c.json({ guidelines: result.rows });
 });

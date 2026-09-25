@@ -20,6 +20,7 @@ export type Bindings = {
   JWT_SECRET?: string;
   OTP_PEPPER?: string;
   RESEND_API_KEY?: string;
+  RESEND_WEBHOOK_SECRET?: string;
   RESEND_FROM_EMAIL?: string;
   RESEND_REPLY_TO?: string;
   COOKIE_DOMAIN?: string;
@@ -42,6 +43,9 @@ export type Bindings = {
   HF_PRO_MODEL?: string;
   AI_CHAT_WINDOW_LIMIT?: string;
   AI_STUDY_TRIAL_LIMIT?: string;
+  EXPO_ACCESS_TOKEN?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
   KYC_FINGERPRINT_SECRET?: string;
   AI_DAILY_USER_LIMIT?: string;
   AI_DAILY_GLOBAL_LIMIT?: string;

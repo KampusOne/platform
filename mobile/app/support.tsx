@@ -42,7 +42,17 @@ export default function Support() {
       await api("/v1/account/support", {
         method: "POST",
         body: JSON.stringify({
-          category: ["PRIVACY", "APPEAL"].includes(params.category ?? "")
+          category: [
+            "ACCOUNT",
+            "ORDER",
+            "TUTORIAL",
+            "DELIVERY",
+            "PAYMENT",
+            "SAFETY",
+            "CONTENT",
+            "APPEAL",
+            "PRIVACY",
+          ].includes(params.category ?? "")
             ? params.category
             : "ACCOUNT",
           subject,

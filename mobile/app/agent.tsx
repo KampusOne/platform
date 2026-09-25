@@ -1,6 +1,7 @@
+import { BrandSwitch } from "@/src/components/brand-switch";
 import { useCallback, useState } from "react";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Switch, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import {
   ToolPage,
   ToolButton,
@@ -138,8 +139,8 @@ export default function AgentDashboard() {
         <ToolRow
           title="Available for deliveries"
           trailing={
-            <Switch
-              accessibilityLabel="Go online"
+            <BrandSwitch
+              label="Go online"
               disabled={busy}
               value={online}
               onValueChange={(v) => void availability(v)}

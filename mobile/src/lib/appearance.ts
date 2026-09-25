@@ -34,7 +34,7 @@ const dark: Theme = {
   info: "#89B3C1",
   warmWhite: "#25211E",
 };
-let preference: AppearancePreference = "system";
+let preference: AppearancePreference = "light";
 const listeners = new Set<() => void>();
 let initialized = false;
 export async function initializeAppearance() {
@@ -42,12 +42,12 @@ export async function initializeAppearance() {
   initialized = true;
   try {
     const saved = await AsyncStorage.getItem("k1.appearance");
-    if (saved === "dark" || saved === "light") {
+    if (saved === "dark" || saved === "light" || saved === "system") {
       preference = saved;
       listeners.forEach((fn) => fn());
     }
   } catch {
-    /* Follow system if storage is unavailable. */
+    /* Keep the light default if storage is unavailable. */
   }
 }
 export async function setAppearance(value: AppearancePreference) {

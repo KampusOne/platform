@@ -5,7 +5,7 @@ export async function extractAIPdf(bytes: Uint8Array): Promise<string> {
   if (!bytes.length || bytes.length > MAX_AI_MEDIA_BYTES || new TextDecoder().decode(bytes.subarray(0,5)) !== "%PDF-") throw new AIProviderError(400, "AI_INVALID_PDF", "This file is not a readable PDF.");
   let document: Awaited<ReturnType<typeof getDocumentProxy>> | undefined;
   try {
-    document = await getDocumentProxy(bytes, { useSystemFonts: false, disableAutoFetch: true, disableStream: true });
+    document = await getDocumentProxy(bytes, { useSystemFonts: false, disableAutoFetch: true, disableStream: true, stopAtErrors: true });
     if (document.numPages > 40) throw new AIProviderError(422, "AI_DOCUMENT_TOO_LONG", "Use a PDF of up to 40 pages, or upload one section at a time.");
     const pages: string[] = []; let length = 0;
     for (let n = 1; n <= document.numPages; n++) {
@@ -14,7 +14,8 @@ export async function extractAIPdf(bytes: Uint8Array): Promise<string> {
       const text = content.items.map(item => "str" in item ? item.str + (item.hasEOL ? "\n" : " ") : "").join("").trim();
       length += text.length;
       if (length > 45000) throw new AIProviderError(422, "AI_DOCUMENT_TOO_LONG", "This PDF contains too much text for one request. Upload a smaller section.");
-      if (text) pages.push(`[Page ${n}]\n${text}`);
+      if (!text) throw new AIProviderError(422, "AI_SCANNED_PDF", `Page ${n} has no readable text. Upload that page as an image so it is not silently skipped.`);
+      pages.push(`[Page ${n}]\n${text}`);
       page.cleanup();
     }
     if (!pages.length) throw new AIProviderError(422, "AI_SCANNED_PDF", "This PDF is a scan without readable text. Attach the relevant page as an image instead.");

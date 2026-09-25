@@ -18,6 +18,8 @@ import {
   type CommerceStorefront,
 } from "@/components/commerce-moderation";
 import { PortalApiError, portalApi } from "@/lib/api";
+import { useAdminContext } from "./admin-context";
+import { ApplicationBulkReview } from "./application-bulk-review";
 import { ApplicationDocuments } from "./application-documents";
 import { TransientNotice } from "./transient-notice";
 
@@ -232,13 +234,13 @@ export type AdminView =
   | "operations"
   | "audit";
 
-const money = (value: Scalar) =>
+const money = (value: Scalar) => value === null ? "Unavailable" :
   new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
     maximumFractionDigits: 0,
   }).format(Number(value ?? 0) / 100);
-const number = (value: Scalar) =>
+const number = (value: Scalar) => value === null ? "Unavailable" :
   new Intl.NumberFormat("en-NG").format(Number(value ?? 0));
 const date = (value: string | null | undefined) =>
   value
@@ -260,7 +262,7 @@ function ErrorPanel({
   error: PortalApiError;
   retry(): void;
 }) {
-  if (error.status === 403) return <BootstrapPanel retry={retry} />;
+  if (error.status === 403) return <section className="state-panel" role="alert"><h2>Workspace access restricted</h2><p>Your provisioned account does not have permission for this workspace.</p></section>;
   return (
     <section className="state-panel state-panel--error">
       <strong>Dashboard unavailable</strong>
@@ -272,74 +274,12 @@ function ErrorPanel({
   );
 }
 
-function BootstrapPanel({ retry }: { retry(): void }) {
-  const [token, setToken] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function bootstrap(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await portalApi("/v1/admin/bootstrap", {
-        method: "POST",
-        headers: token ? { "X-Admin-Bootstrap-Token": token } : undefined,
-        body: "{}",
-      });
-      retry();
-    } catch (caught) {
-      setError(
-        caught instanceof PortalApiError ? caught.message : "Bootstrap failed.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <section className="bootstrap-panel">
-      <div>
-        <p className="eyebrow">One-time setup</p>
-        <h2>Activate the first platform administrator</h2>
-        <p>
-          If this is the verified initial-admin email, activate it directly. A
-          deployment bootstrap credential remains available as a recovery method
-          and stops working after the first administrator is created.
-        </p>
-      </div>
-      <form className="form-stack" onSubmit={bootstrap}>
-        {error && <p className="form-error">{error}</p>}
-        <button className="button button--primary" disabled={busy}>
-          {busy ? "Activating…" : "Activate this verified account"}
-        </button>
-        <details>
-          <summary>Use recovery credential</summary>
-          <label>
-            Bootstrap credential
-            <input
-              type="password"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              autoComplete="off"
-            />
-          </label>
-          <button
-            className="button button--secondary"
-            disabled={busy}
-            type="submit"
-          >
-            Activate with credential
-          </button>
-        </details>
-      </form>
-    </section>
-  );
-}
-
 export function AdminDashboard({
   initialView = "overview",
 }: {
   initialView?: AdminView;
 }) {
+  const { scopedPath, can } = useAdminContext();
   const view = initialView;
   const navigate = useRouter();
   function setView(next: AdminView) {
@@ -379,45 +319,33 @@ export function AdminDashboard({
   useEffect(() => {
     let active = true;
     void Promise.all([
-      view === "overview"
-        ? portalApi<Dashboard>("/v1/admin/dashboard")
+      view === "overview" && can("overview.view")
+        ? portalApi<Dashboard>(scopedPath("/v1/admin/dashboard"))
         : Promise.resolve(null),
-      ["overview", "users"].includes(view)
-        ? portalApi<{ users: UserRecord[] }>("/v1/admin/users")
+      view === "users" && can("users.view")
+        ? portalApi<{ users: UserRecord[] }>(scopedPath("/v1/admin/users"))
         : Promise.resolve({ users: [] }),
-      ["overview", "applications"].includes(view)
+      view === "applications" && can("agents.view")
         ? portalApi<{ applications: AgentApplication[] }>(
-            "/v1/admin/applications",
+            scopedPath("/v1/admin/applications"),
           )
         : Promise.resolve({ applications: [] }),
-      ["overview", "audit"].includes(view)
-        ? portalApi<{ events: AuditEvent[] }>("/v1/admin/audit")
+      view === "audit" && can("audit.view")
+        ? portalApi<{ events: AuditEvent[] }>(scopedPath("/v1/admin/audit"))
         : Promise.resolve({ events: [] }),
       ["content", "tutorials", "operations"].includes(view)
-        ? portalApi<ContentContext>("/v1/admin/content/context")
+        ? portalApi<ContentContext>(scopedPath("/v1/admin/content/context"))
         : Promise.resolve({ universities: [], sources: [] }),
       (view === "tutorials"
-        ? portalApi<TutorialAdmin>("/v1/admin/tutorials")
+        ? portalApi<TutorialAdmin>(scopedPath("/v1/admin/tutorials"))
         : Promise.resolve({
             listings: [],
             resources: [],
             summary: { listings: 0, resources: 0, pending: 0, demo: 0 },
           })
-      ).catch((caught) => {
-        if (
-          caught instanceof PortalApiError &&
-          (caught.status === 404 || caught.code === "FEATURE_DISABLED")
-        ) {
-          return {
-            listings: [],
-            resources: [],
-            summary: { listings: 0, resources: 0, pending: 0, demo: 0 },
-          };
-        }
-        throw caught;
-      }),
+      ),
       view === "operations"
-        ? portalApi<Operations>("/v1/admin/operations")
+        ? portalApi<Operations>(scopedPath("/v1/admin/operations"))
         : Promise.resolve({
             products: [],
             storefronts: [],
@@ -466,15 +394,15 @@ export function AdminDashboard({
     return () => {
       active = false;
     };
-  }, [refreshKey, view]);
+  }, [refreshKey, view, scopedPath, can]);
 
   const revenue = useMemo(
     () =>
-      dashboard
+      dashboard && Object.values(dashboard.metrics.revenue).every((value) => value !== null)
         ? Number(dashboard.metrics.revenue.tutorial_gmv_kobo ?? 0) +
           Number(dashboard.metrics.revenue.store_gmv_kobo ?? 0) +
           Number(dashboard.metrics.revenue.delivery_gmv_kobo ?? 0)
-        : 0,
+        : null,
     [dashboard],
   );
   const maxTrend = Math.max(
@@ -488,40 +416,16 @@ export function AdminDashboard({
     <PortalShell
       active="admin"
       eyebrow="Administration · Live operations"
-      title="Campus operations center"
-      description="Track users, revenue, agent approvals, trusted content, and privileged activity from the real platform records."
+      title={view === "overview" ? "Operational overview" : label(view)}
+      description=""
       actions={
         <button className="button button--secondary" onClick={load}>
           Refresh data
         </button>
       }
     >
-      <nav className="section-tabs" aria-label="Administration sections">
-        {(
-          [
-            "overview",
-            "users",
-            "applications",
-            "tutorials",
-            "content",
-            "operations",
-            "audit",
-          ] as AdminView[]
-        ).map((item) => (
-          <button
-            key={item}
-            aria-current={view === item ? "page" : undefined}
-            onClick={() => setView(item)}
-          >
-            {item === "operations" ? "Commerce & finance" : label(item)}
-          </button>
-        ))}
-      </nav>
       {loading && (
-        <section className="state-panel">
-          <span className="spinner" />
-          <strong>Loading live operations…</strong>
-        </section>
+        <section className="workspace-loading" aria-busy="true" aria-label="Loading operations"><div className="skeleton-heading" /><div className="table-skeleton">{[0,1,2,3,4].map((item) => <div key={item} />)}</div></section>
       )}
       {!loading && error && <ErrorPanel error={error} retry={load} />}
       {!loading && !error && dashboard && view === "overview" && (
@@ -815,6 +719,7 @@ function ApplicationsView({
 }) {
   const [selected, setSelected] = useState<AgentApplication | null>(null);
   return (
+    <><ApplicationBulkReview applications={applications} onChanged={() => { setSelected(null); onChanged(); }} />
     <section className="dashboard-grid dashboard-grid--review">
       <article className="panel table-panel">
         <div className="panel-heading">
@@ -865,7 +770,7 @@ function ApplicationsView({
           onChanged();
         }}
       />
-    </section>
+    </section></>
   );
 }
 
@@ -876,6 +781,7 @@ function ApplicationInspector({
   item: AgentApplication | null;
   onChanged(): void;
 }) {
+  const { can, scopeLabel } = useAdminContext();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   if (!item)
@@ -923,7 +829,7 @@ function ApplicationInspector({
         body: JSON.stringify({
           identityStatus: form.get("identityStatus"),
           phoneVerified: form.get("phoneVerified") === "on",
-          bankStatus: form.get("bankStatus"),
+          ...(can("finance.review") ? { bankStatus: form.get("bankStatus") } : {}),
           providerReference: form.get("providerReference") || null,
           bankAccountName: form.get("bankAccountName") || null,
           bankAccountLast4: form.get("bankAccountLast4") || null,
@@ -951,7 +857,8 @@ function ApplicationInspector({
     <aside className="panel inspector">
       <p className="section-kicker">{label(item.agent_type)} application</p>
       <h2>{item.display_name}</h2>
-      <ApplicationDocuments key={item.id} id={item.id} />
+      <p className="scope-caption">{scopeLabel}</p>
+      {can("agents.verify") && <ApplicationDocuments key={item.id} id={item.id} />}
       <dl className="detail-list">
         <div>
           <dt>Legal name</dt>
@@ -990,7 +897,7 @@ function ApplicationInspector({
           <p>{item.review_note}</p>
         </div>
       )}
-      {reviewable ? (
+      {reviewable && can("agents.verify") ? (
         <form className="form-stack sub-form" onSubmit={verify}>
           <div>
             <p className="section-kicker">Layered verification</p>
@@ -1014,7 +921,7 @@ function ApplicationInspector({
             <input type="checkbox" name="phoneVerified" /> Phone evidence
             verified
           </label>
-          <label>
+          {can("finance.review") && <><label>
             Bank resolution
             <select
               name="bankStatus"
@@ -1048,7 +955,7 @@ function ApplicationInspector({
             Provider/reference
             <input name="providerReference" />
           </label>
-          <label>
+          </>}<label>
             Verification note
             <textarea
               name="verificationNote"
@@ -1062,7 +969,7 @@ function ApplicationInspector({
           </button>
         </form>
       ) : null}
-      {reviewable ? (
+      {reviewable && can("agents.review") ? (
         <form className="form-stack sub-form" onSubmit={review}>
           <label>
             Application decision
@@ -1104,6 +1011,7 @@ function TutorialsView({
   context: ContentContext;
   onChanged(): void;
 }) {
+  const { can } = useAdminContext();
   const [universityId, setUniversityId] = useState(
     context.universities[0]?.id ?? "",
   );
@@ -1111,52 +1019,16 @@ function TutorialsView({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
 
-  async function changeDemo(action: "seed" | "remove") {
+  async function removeDemo() {
     if (!universityId) return;
-    if (
-      action === "remove" &&
-      !window.confirm(
-        "Remove all demo tutorials and materials for this university? Existing history will be preserved.",
-      )
-    )
-      return;
-    setBusy(`demo-${action}`);
-    setError("");
-    setNotice("");
+    const records = [...data.listings, ...data.resources].filter((item) => item.is_demo && item.university_id === universityId);
+    if (!records.length || !window.confirm(`Archive ${records.length} identified demo records for this university? Review the names in the cleanup list first. Genuine records and audit history must remain.`)) return;
+    setBusy("demo-remove"); setError(""); setNotice("");
     try {
-      const result =
-        action === "seed"
-          ? await portalApi<{
-              listings: number;
-              resources: number;
-              cancelledBookings?: number;
-            }>("/v1/admin/tutorials/demo", {
-              method: "POST",
-              body: JSON.stringify({ universityId }),
-            })
-          : await portalApi<{
-              listings: number;
-              resources: number;
-              cancelledBookings?: number;
-            }>(
-              `/v1/admin/tutorials/demo?universityId=${encodeURIComponent(universityId)}`,
-              { method: "DELETE" },
-            );
-      setNotice(
-        action === "seed"
-          ? `Demo catalogue ready: ${result.listings} tutorials and ${result.resources} learning materials.`
-          : `Demo catalogue removed: ${result.listings} tutorials, ${result.resources} materials, and ${result.cancelledBookings ?? 0} future bookings.`,
-      );
-      onChanged();
-    } catch (caught) {
-      setError(
-        caught instanceof PortalApiError
-          ? caught.message
-          : "The demo catalogue could not be changed.",
-      );
-    } finally {
-      setBusy("");
-    }
+      const result = await portalApi<{ listings: number; resources: number; cancelledBookings?: number }>(`/v1/admin/tutorials/demo?universityId=${encodeURIComponent(universityId)}`, { method: "DELETE" });
+      setNotice(`Archived ${result.listings} demo tutorials and ${result.resources} demo materials; ${result.cancelledBookings ?? 0} future demo bookings cancelled.`); onChanged();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "The reviewed demo records could not be archived."); }
+    finally { setBusy(""); }
   }
 
   async function review(
@@ -1251,14 +1123,13 @@ function TutorialsView({
       </section>
       <section className="panel tutorial-demo-panel">
         <div>
-          <p className="section-kicker">Pilot controls</p>
-          <h2>Demo tutorial catalogue</h2>
+          <p className="section-kicker">Reviewed data cleanup</p>
+          <h2>Identified demo records</h2>
           <p>
-            Load a realistic free catalogue for testing. Removing it
-            soft-deletes the samples, closes their future sessions, and keeps
-            audit and booking history intact.
+            Review the exact sample records before archiving. Genuine listings, audit records and historical bookings are preserved.
           </p>
         </div>
+        <details><summary>Review identified records</summary><ul>{[...data.listings, ...data.resources].filter((item) => item.is_demo && item.university_id === universityId).map((item) => <li key={item.id}>{item.title} · {item.id}</li>)}</ul></details>
         <div className="tutorial-demo-actions">
           <label>
             University
@@ -1274,18 +1145,11 @@ function TutorialsView({
             </select>
           </label>
           <button
-            className="button button--primary"
-            disabled={!universityId || Boolean(busy)}
-            onClick={() => void changeDemo("seed")}
-          >
-            {busy === "demo-seed" ? "Loading…" : "Load demo catalogue"}
-          </button>
-          <button
             className="button button--danger"
-            disabled={!universityId || Boolean(busy) || !data.summary.demo}
-            onClick={() => void changeDemo("remove")}
+            disabled={!can("content.delete") || !universityId || Boolean(busy) || !data.summary.demo}
+            onClick={() => void removeDemo()}
           >
-            {busy === "demo-remove" ? "Removing…" : "Remove demo catalogue"}
+            {busy === "demo-remove" ? "Removing…" : "Archive reviewed demo records"}
           </button>
         </div>
       </section>
@@ -1385,7 +1249,7 @@ function TutorialsView({
             <div className="empty-row">
               <strong>No tutorial listings</strong>
               <span>
-                Load the demo catalogue or approve a tutor submission.
+                Approved tutor submissions will appear here.
               </span>
             </div>
           )}
@@ -1805,6 +1669,7 @@ function OperationsView({
 }) {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const { can } = useAdminContext();
   const [busy, setBusy] = useState(false);
   const universityId = context.universities[0]?.id ?? "";
   async function createCategory(event: FormEvent<HTMLFormElement>) {
@@ -2006,6 +1871,7 @@ function OperationsView({
             {operations.zones.filter((item) => item.active).length} active
           </small>
         </article>
+        {can("finance.view") && <>
         <article className="metric-card">
           <span>Open disputes</span>
           <strong>
@@ -2045,6 +1911,7 @@ function OperationsView({
           </strong>
           <small>Every decision is audited</small>
         </article>
+        </>}
       </section>
       {notice && <p className="form-notice operations-notice">{notice}</p>}
       {error && <p className="form-error operations-notice">{error}</p>}
@@ -2060,7 +1927,7 @@ function OperationsView({
               </span>
             ))}
           </div>
-          <form className="form-stack sub-form" onSubmit={createCategory}>
+          <form className="form-stack sub-form" onSubmit={createCategory} hidden={!can("marketplace.manage")}>
             <label>
               University
               <select name="universityId" defaultValue={universityId}>
@@ -2112,7 +1979,7 @@ function OperationsView({
               </span>
             ))}
           </div>
-          <form className="form-stack sub-form" onSubmit={createZone}>
+          <form className="form-stack sub-form" onSubmit={createZone} hidden={!can("marketplace.manage")}>
             <label>
               University
               <select name="universityId" defaultValue={universityId}>
@@ -2202,6 +2069,7 @@ function OperationsView({
           </form>
         </article>
       </section>
+      {can("finance.view") && <>
       <section className="dashboard-grid dashboard-grid--equal">
         <article className="panel">
           <div className="panel-heading">
@@ -2228,6 +2096,7 @@ function OperationsView({
               <p>{item.reason}</p>
               <form
                 className="form-stack"
+                hidden={!can("finance.review")}
                 onSubmit={(event) => void reviewDispute(event, item.id)}
               >
                 <label>
@@ -2276,7 +2145,8 @@ function OperationsView({
             <button
               className="button button--small"
               disabled={busy}
-              onClick={() => void releaseEligible()}
+              hidden={!can("payouts.approve")}
+              onClick={() => { if (window.confirm("Release earnings for the eligible records in your authorized university scope? This changes financial availability.")) void releaseEligible(); }}
             >
               Release eligible
             </button>
@@ -2299,6 +2169,7 @@ function OperationsView({
               </summary>
               <form
                 className="form-stack"
+                hidden={!can("payouts.approve")}
                 onSubmit={(event) => void reviewPayout(event, item.id)}
               >
                 <label>
@@ -2376,6 +2247,7 @@ function OperationsView({
             {item.state === "REQUIRES_REVIEW" && (
               <form
                 className="form-stack"
+                hidden={!can("finance.review")}
                 onSubmit={(event) => void reviewPaymentEvent(event, item.id)}
               >
                 <label>
@@ -2411,6 +2283,7 @@ function OperationsView({
           </div>
         )}
       </section>
+      </>}
     </>
   );
 }

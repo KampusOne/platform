@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 import { PortalShell } from "@/components/portal-shell";
@@ -76,9 +77,6 @@ type Dashboard = {
       created_at: string;
     }>;
   };
-};
-type Catalog = {
-  universities: Array<{ id: string; name: string; slug: string }>;
 };
 type Tutorial = {
   id: string;
@@ -205,7 +203,6 @@ const date = (value: string | null) =>
 export function AgentDashboard() {
   const [view, setView] = useState<View>("overview");
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [catalog, setCatalog] = useState<Catalog>({ universities: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -217,14 +214,10 @@ export function AgentDashboard() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([
-      portalApi<Dashboard>("/v1/agents/dashboard"),
-      portalApi<Catalog>("/v1/student/catalog"),
-    ])
-      .then(([nextDashboard, nextCatalog]) => {
+    void portalApi<Dashboard>("/v1/agents/dashboard")
+      .then((nextDashboard) => {
         if (active) {
           setDashboard(nextDashboard);
-          setCatalog(nextCatalog);
           if (
             nextDashboard.applications.length === 0 &&
             nextDashboard.profiles.length === 0
@@ -257,7 +250,7 @@ export function AgentDashboard() {
       active="agents"
       eyebrow="Agent workspace · Verified accounts"
       title="Your campus business desk"
-      description="Apply, publish services, track orders and bookings, and complete assigned deliveries from one accountable workspace."
+      description=""
       actions={
         <button className="button button--secondary" onClick={reload}>
           Refresh data
@@ -286,7 +279,7 @@ export function AgentDashboard() {
       </nav>
       {loading && (
         <section className="state-panel">
-          <span className="spinner" />
+          <div className="table-skeleton"><div /><div /><div /></div>
           <strong>Loading your workspace…</strong>
         </section>
       )}
@@ -305,8 +298,6 @@ export function AgentDashboard() {
       {!loading && !error && dashboard && view === "apply" && (
         <Applications
           dashboard={dashboard}
-          catalog={catalog}
-          onChanged={reload}
         />
       )}
       {!loading && !error && view === "tutorials" && (
@@ -500,203 +491,8 @@ function AgentOverview({
   );
 }
 
-function Applications({
-  dashboard,
-  catalog,
-  onChanged,
-}: {
-  dashboard: Dashboard;
-  catalog: Catalog;
-  onChanged(): void;
-}) {
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    setBusy(true);
-    setNotice("");
-    setError("");
-    try {
-      await portalApi("/v1/agents/applications", {
-        method: "POST",
-        body: JSON.stringify({
-          universityId: form.get("universityId"),
-          agentType: form.get("agentType"),
-          displayName: form.get("displayName"),
-          phoneE164: form.get("phoneE164"),
-          statement: form.get("statement"),
-          legalName: form.get("legalName"),
-          address: form.get("address"),
-          emergencyContactName: form.get("emergencyContactName"),
-          emergencyContactPhone: form.get("emergencyContactPhone"),
-          acceptedAgentTerms: form.get("acceptedAgentTerms") === "on",
-          termsVersion: "2026-09-10",
-        }),
-      });
-      setNotice("Your application was submitted for identity and role review.");
-      formElement.reset();
-      onChanged();
-    } catch (caught) {
-      setError(
-        caught instanceof PortalApiError
-          ? caught.message
-          : "Application could not be submitted.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <section className="dashboard-grid dashboard-grid--content">
-      <article className="panel content-intro">
-        <Image
-          src="/brand-scenes/rider.png"
-          alt="Campus delivery rider illustration"
-          width={1024}
-          height={1024}
-        />
-        <div>
-          <p className="section-kicker">Verified work</p>
-          <h2>Choose how you serve campus.</h2>
-          <p>
-            Tutors teach students, vendors sell campus essentials, and riders
-            complete assigned deliveries. Each role has its own review and
-            operating boundary.
-          </p>
-        </div>
-        <div className="application-cards">
-          {dashboard.applications.map((application) => (
-            <div key={application.id}>
-              <span
-                className={`state-badge state-badge--${application.status === "APPROVED" ? "live" : "pending"}`}
-              >
-                {label(application.status)}
-              </span>
-              <strong>{label(application.agent_type)}</strong>
-              <small>
-                Identity: {label(application.kyc_status ?? "not started")}
-              </small>
-              {application.review_note && <p>{application.review_note}</p>}
-            </div>
-          ))}
-        </div>
-      </article>
-      <article className="panel">
-        <p className="section-kicker">New application</p>
-        <h2>Submit your details</h2>
-        <form className="form-stack" onSubmit={submit}>
-          <label>
-            University
-            <select name="universityId" required defaultValue="">
-              <option value="" disabled>
-                Select your campus
-              </option>
-              {catalog.universities.map((university) => (
-                <option value={university.id} key={university.id}>
-                  {university.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="form-grid">
-            <label>
-              Agent role
-              <select name="agentType">
-                <option value="TUTOR">Tutor</option>
-                <option value="VENDOR">Vendor</option>
-                <option value="RIDER">Rider</option>
-              </select>
-            </label>
-            <label>
-              Public name
-              <input
-                name="displayName"
-                minLength={2}
-                maxLength={120}
-                required
-              />
-            </label>
-          </div>
-          <label>
-            Full legal name
-            <input
-              name="legalName"
-              minLength={2}
-              maxLength={160}
-              autoComplete="name"
-              required
-            />
-          </label>
-          <label>
-            Residential address
-            <textarea
-              name="address"
-              minLength={10}
-              maxLength={500}
-              autoComplete="street-address"
-              required
-            />
-          </label>
-          <div className="form-grid">
-            <label>
-              Phone number
-              <input
-                name="phoneE164"
-                type="tel"
-                pattern="\+[1-9][0-9]{7,14}"
-                placeholder="+2348012345678"
-                required
-              />
-            </label>
-            <label>
-              Emergency contact name
-              <input name="emergencyContactName" minLength={2} required />
-            </label>
-          </div>
-          <label>
-            Emergency contact phone
-            <input
-              name="emergencyContactPhone"
-              type="tel"
-              pattern="\+[1-9][0-9]{7,14}"
-              placeholder="+2348012345678"
-              required
-            />
-          </label>
-          <label>
-            Why should students trust you?
-            <textarea
-              name="statement"
-              minLength={20}
-              maxLength={1000}
-              required
-              placeholder="Describe your experience, campus connection, and how you will fulfil this role."
-            />
-          </label>
-          <label className="checkbox">
-            <input type="checkbox" name="acceptedAgentTerms" required /> I
-            accept the role rules, prohibited activities, verification, and
-            payout terms.
-          </label>
-          <p className="field-help">
-            KampusOne stores provider references and review outcomes—not raw
-            NIN/BVN values. Approval is never automatic.
-          </p>
-          {notice && <p className="form-notice">{notice}</p>}
-          {error && <p className="form-error">{error}</p>}
-          <button
-            className="button button--primary"
-            disabled={busy || !catalog.universities.length}
-          >
-            {busy ? "Submitting…" : "Submit for review"}
-          </button>
-        </form>
-      </article>
-    </section>
-  );
+function Applications({ dashboard }: { dashboard: Dashboard }) {
+  return <section className="panel"><h2>Your applications</h2><Link className="button button--primary" href="/agents">Continue an application</Link><div className="application-history">{dashboard.applications.map((application) => <div key={application.id} className="application-history__row"><span>{application.display_name} · {application.agent_type}</span><strong>{application.status.replaceAll("_", " ")}</strong>{application.review_note && <p>{application.review_note}</p>}</div>)}</div></section>;
 }
 
 function useWorkspaceData<T>(path: string, key: number) {
@@ -865,7 +661,7 @@ function TutorialWorkspace({ onChanged }: { onChanged(): void }) {
         </div>
         {loading && (
           <div className="state-panel">
-            <span className="spinner" />
+            <div className="table-skeleton"><div /><div /><div /></div>
           </div>
         )}
         {error && <WorkspaceGate error={error} />}
@@ -1159,7 +955,7 @@ function TutorialResourcesPanel({ onChanged }: { onChanged(): void }) {
         </div>
         {loading && (
           <div className="state-panel">
-            <span className="spinner" />
+            <div className="table-skeleton"><div /><div /><div /></div>
           </div>
         )}
         {error && <WorkspaceGate error={error} />}
@@ -1406,7 +1202,7 @@ function TutorialBookingPanel({ onChanged }: { onChanged(): void }) {
       </div>
       {loading && (
         <div className="state-panel">
-          <span className="spinner" />
+          <div className="table-skeleton"><div /><div /><div /></div>
         </div>
       )}
       {error && <WorkspaceGate error={error} />}
@@ -1611,7 +1407,7 @@ function DeliveryWorkspace({ onChanged }: { onChanged(): void }) {
         </div>
         {loading && (
           <div className="state-panel">
-            <span className="spinner" />
+            <div className="table-skeleton"><div /><div /><div /></div>
           </div>
         )}
         {error && <WorkspaceGate error={error} />}
@@ -1842,7 +1638,7 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
           </div>
           {loading && (
             <div className="state-panel">
-              <span className="spinner" />
+              <div className="table-skeleton"><div /><div /><div /></div>
             </div>
           )}
           {error && <WorkspaceGate error={error} />}

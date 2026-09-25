@@ -7,7 +7,8 @@ on:
       - ".github/workflows/deploy-worker.yml"
       - "packages/contracts/**"
       - "server/**"
-      - "database/verification/production-20260920.json"
+      - "database/verification/**"
+      - "database/neon/migrations/**"
   workflow_dispatch:
 
 permissions:
@@ -27,11 +28,15 @@ jobs:
           cache-dependency-path: |
             packages/contracts/package-lock.json
             server/package-lock.json
+            mobile/package-lock.json
       - run: npm ci
         working-directory: packages/contracts
       - run: npm ci
         working-directory: server
-      - run: npm run check && npm test && npm run build
+      - name: Install dependencies for shared mobile session tests
+        run: npm ci
+        working-directory: mobile
+      - run: npm run check && npm test -- --maxWorkers=2 && npm run build
         working-directory: server
       - name: Guard Phase 2 schema activation
         env:
@@ -58,6 +63,8 @@ jobs:
             && [ "$UNIFIED_MIGRATION_READY" != "true" ]; then
             node server/scripts/verify-schema-proof.mjs unified
           fi
+      - name: Guard September 21 correction migrations
+        run: node server/scripts/verify-schema-proof.mjs corrections
       - name: Deploy verified Worker
         uses: cloudflare/wrangler-action@v3
         with:

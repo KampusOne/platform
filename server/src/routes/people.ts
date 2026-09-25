@@ -53,6 +53,9 @@ peopleRoutes.get("/:id",async c=>{
   const target=id(c.req.param("id")),u=currentUser(c),db=database(c.env);
   const profile=firstRow(await db.execute(sql`select p.user_id,p.display_name,p.username,p.biography,p.profile_image_url,p.cover_image_url,p.current_level,
       uni.name as university_name,d.name as department_name,
+      case when p.settings->>'hideCgpa' = 'false' then
+        (select round(sum(g.quality_points)/nullif(sum(g.earned_units),0), 2) from public.gpa_terms g where g.user_id=p.user_id)
+        else null end as cgpa,
       coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,
       (p.user_id=${u.id}::uuid or not coalesce((p.settings->>'hideReposts')::boolean,false)) as can_view_reposts,
       (select count(*)::int from public.profile_follows f where f.followed_id=p.user_id) as follower_count,

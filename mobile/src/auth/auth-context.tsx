@@ -26,6 +26,7 @@ import {
 } from "@/src/lib/device-cache";
 import { clearScheduledAlarms } from "@/src/lib/alarms";
 import { applyPreferences, type Preferences } from "@/src/lib/preferences";
+import { unregisterPushDevice } from "@/src/lib/push-registration";
 
 type Profile = {
   id: string;
@@ -160,16 +161,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     void (async () => {
-      const snapshot = await readCache<{ user: SessionUser }>("last-session");
+      const snapshot = await readCache<{ user: SessionUser }>(
+        "last-session",
+      ).catch(() => null);
       if (snapshot && active) {
         const savedProfile = await readCache<Profile>(
           `profile.${snapshot.user.id}`,
-        );
+        ).catch(() => null);
         if (savedProfile?.onboarding_completed_at && active) {
           sessionUserId.current = snapshot.user.id;
           setUser(snapshot.user);
           setProfile(savedProfile);
-          setState("authenticated");
+          // Cached profile data is only a rendering optimization. It is never
+          // proof that a cookie/session is still valid after a restart.
           setProfileState("ready");
           applyPreferences(savedProfile.settings);
         }
@@ -184,6 +188,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(
     async function requestSignOut(): Promise<boolean> {
       try {
+        if (sessionUserId.current)
+          await unregisterPushDevice(sessionUserId.current).catch(
+            () => undefined,
+          );
         await authApi.logout();
       } catch (caught) {
         const detail =

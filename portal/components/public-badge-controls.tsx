@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { portalApi } from "@/lib/api";
 
 type Badge = { id: string; display_name: string; verified: boolean; available: boolean };
-export function PublicBadgeControls({ userId }: { userId: string }) {
+export function PublicBadgeControls({ userId, onSaved }: { userId: string; onSaved?: () => void }) {
   const [badge, setBadge] = useState<Badge | null>(null);
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -40,7 +40,7 @@ export function PublicBadgeControls({ userId }: { userId: string }) {
     const desired = !badge.verified, version = generation.current;
     try {
       const result = await portalApi<{ badge: Badge }>(path, { method: "PUT", body: JSON.stringify({ verified: desired, expected: badge.verified, reason: reason.trim() }) });
-      if (alive.current && version === generation.current) { setBadge(result.badge); setReason(""); setConfirmed(false); setMessage(desired ? "Verification badge assigned." : "Verification badge removed."); }
+      if (alive.current && version === generation.current) { setBadge(result.badge); setReason(""); setConfirmed(false); setMessage(desired ? "Verification badge assigned." : "Verification badge removed."); onSaved?.(); }
     } catch (caught) {
       // A timed-out success must not turn a retry into an accidental reversal.
       try {

@@ -6,6 +6,10 @@ import { useAppearance } from "@/src/lib/appearance";
 // retention periods and approved minor-agent terms before production launch.
 const privacy = [
   [
+    "Product activity",
+    "KampusOne records screen names and tool completion or failure events to understand which features work. These events do not contain your private study prompts, documents or bank details.",
+  ],
+  [
     "Your information",
     "KampusOne uses account and university details to provide your campus services. Information you publish, such as your name, profile photo and posts, can be visible to other users.",
   ],
@@ -45,7 +49,7 @@ const terms = [
   ],
   [
     "Trials and commissions",
-    "Eligible agents can claim a ten-month trial without a payment charge. The trial does not waive transaction commissions. Your earnings statement and withdrawal confirmation show applicable deductions. A trial does not automatically become a paid subscription without an agreed plan.",
+    "Eligible approved sellers can claim a twelve-month trial without a subscription charge. Existing trials retain their saved start and end dates. The trial does not waive transaction commissions. Your earnings statement and withdrawal confirmation show applicable deductions. A trial does not automatically become a paid subscription without an agreed plan.",
   ],
   [
     "Refunds and restrictions",

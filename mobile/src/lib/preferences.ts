@@ -9,7 +9,7 @@ export const defaultPreferences: Preferences = {
   notifications: true,
   marketing: false,
   haptics: true,
-  hideCgpa: false,
+  hideCgpa: true,
 };
 let current: Preferences = defaultPreferences;
 const subscribers = new Set<() => void>();

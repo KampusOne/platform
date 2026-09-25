@@ -22,12 +22,23 @@ export function supabaseConfiguration(env: Bindings) {
       "PROVIDER_UNAVAILABLE",
       "This sign-in method is not connected yet.",
     );
-  const base = new URL(env.SUPABASE_URL);
+  let base: URL;
+  try {
+    base = new URL(env.SUPABASE_URL);
+  } catch {
+    throw new AppError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "Authentication configuration needs review.",
+    );
+  }
   if (
     base.protocol !== "https:" ||
     base.username ||
     base.password ||
-    base.pathname !== "/"
+    base.pathname !== "/" ||
+    base.search ||
+    base.hash
   )
     throw new AppError(
       503,
@@ -82,7 +93,31 @@ export async function supabaseAuthRequest(
       "Sign-in could not be verified. Check your details and try again.",
     );
   }
-  return response.status === 204 ? null : (response.json() as Promise<unknown>);
+  if (response.status === 204) return null;
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    throw new AppError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "The sign-in provider returned an unreadable response. Please try again.",
+    );
+  }
+}
+
+export async function configuredSocialProviders(env: Bindings) {
+  const parsed = z
+    .object({ external: z.record(z.string(), z.boolean()) })
+    .safeParse(await supabaseAuthRequest(env, "settings"));
+  if (!parsed.success)
+    throw new AppError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "Sign-in methods could not be checked. Please try again.",
+    );
+  return (["google", "apple"] as const).filter(
+    (provider) => parsed.data.external[provider] === true,
+  );
 }
 // Provider identity is verified with Auth; user-editable metadata never assigns a role.
 export async function resolveSupabaseIdentity(
@@ -109,11 +144,27 @@ export async function resolveSupabaseIdentity(
       deleted_at: string | null;
       privileged: boolean;
     }>(
-      sql`select u.id,u.supabase_user_id,u.status::text,u.deleted_at,exists(select 1 from public.operator_roles where user_id=u.id) privileged from public.users u where u.supabase_user_id=${provider.id}::uuid or u.email=${email} order by (u.supabase_user_id=${provider.id}::uuid) desc nulls last limit 1`,
+      sql`select u.id,u.supabase_user_id,u.status::text,u.deleted_at,exists(select 1 from public.operator_roles where user_id=u.id) privileged from public.users u where u.supabase_user_id=${provider.id}::uuid or lower(u.email)=${email} order by (u.supabase_user_id=${provider.id}::uuid) desc nulls last limit 1`,
     ),
   );
   let target: string;
   if (existing) {
+    if (!existing.supabase_user_id && !existing.privileged) {
+      const staffSchema = firstRow(
+        await db.execute<{ available: boolean }>(
+          sql`select to_regclass('app_private.staff_access') is not null as available`,
+        ),
+      );
+      if (staffSchema?.available) {
+        existing.privileged = Boolean(
+          firstRow(
+            await db.execute(
+              sql`select user_id from app_private.staff_access where user_id=${existing.id}::uuid limit 1`,
+            ),
+          ),
+        );
+      }
+    }
     if (
       existing.deleted_at ||
       existing.status !== "ACTIVE" ||
@@ -133,7 +184,10 @@ export async function resolveSupabaseIdentity(
     target = existing.id;
     const linked = firstRow(
       await db.execute(
-        sql`update public.users set supabase_user_id=${provider.id}::uuid,email_verified_at=coalesce(email_verified_at,now()),updated_at=now() where id=${target}::uuid and (supabase_user_id is null or supabase_user_id=${provider.id}::uuid) returning id`,
+        // An unverified password registration must not survive a verified OAuth
+        // claim of that email; otherwise pre-registering another person's email
+        // would give the attacker a usable password after OAuth verification.
+        sql`update public.users set supabase_user_id=${provider.id}::uuid,password_hash=case when email_verified_at is null then '!provider-auth-only' else password_hash end,email_verified_at=coalesce(email_verified_at,now()),last_login_at=now(),updated_at=now() where id=${target}::uuid and status::text='ACTIVE' and deleted_at is null and (supabase_user_id is null or supabase_user_id=${provider.id}::uuid) returning id`,
       ),
     );
     if (!linked)
@@ -146,14 +200,21 @@ export async function resolveSupabaseIdentity(
     target = crypto.randomUUID();
     const text = (value: unknown, max: number) =>
       typeof value === "string" ? value.trim().slice(0, max) : "";
+    const fullName = (
+      text(provider.user_metadata?.full_name, 80) ||
+      text(provider.user_metadata?.name, 80)
+    ).split(/\s+/);
     const first =
       text(provider.user_metadata?.first_name, 40) ||
-      text(provider.user_metadata?.full_name, 40).split(" ")[0] ||
-      "Student";
-    const last = text(provider.user_metadata?.last_name, 40);
+      text(provider.user_metadata?.given_name, 40) ||
+      text(fullName[0], 40);
+    const last =
+      text(provider.user_metadata?.last_name, 40) ||
+      text(provider.user_metadata?.family_name, 40) ||
+      text(fullName.slice(1).join(" "), 40);
     const username = "student_" + target.replaceAll("-", "").slice(0, 20);
     const r = await db.execute(
-      sql`with account as(insert into public.users(id,email,password_hash,supabase_user_id,email_verified_at,updated_at) values(${target}::uuid,${email},'!provider-auth-only',${provider.id}::uuid,now(),now()) on conflict do nothing returning id) insert into public.profiles(id,user_id,username,display_name,first_name,last_name,onboarding_step,updated_at) select gen_random_uuid(),id,${username},${(first + " " + last).trim()},${first},${last},'PROFILE',now() from account returning user_id`,
+      sql`with account as(insert into public.users(id,email,password_hash,supabase_user_id,email_verified_at,last_login_at,updated_at) values(${target}::uuid,${email},'!provider-auth-only',${provider.id}::uuid,now(),now(),now()) on conflict do nothing returning id) insert into public.profiles(id,user_id,username,display_name,first_name,last_name,onboarding_step,updated_at) select gen_random_uuid(),id,${username},${(first + " " + last).trim() || "Student"},${first},${last},'PROFILE',now() from account returning user_id`,
     );
     if (!firstRow(r))
       throw new AppError(

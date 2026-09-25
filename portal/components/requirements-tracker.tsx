@@ -1,0 +1,11 @@
+"use client";
+import { useState } from "react";
+import register from "../../docs/requirements/register.json";
+import { PortalShell } from "./portal-shell";
+export function RequirementsTracker() {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
+  const [phase, setPhase] = useState("");
+  const records = register.requirements.filter((item) => (!status || item.status === status) && (!phase || String(item.phase) === phase) && `${item.id} ${item.title} ${item.expectedOutcome}`.toLowerCase().includes(query.toLowerCase()));
+  return <PortalShell active="admin" eyebrow={`Source checkpoint · ${register.asOf}`} title="241 requirements" description={register.statusPolicy}><div className="workspace-toolbar"><label>Search requirement<input className="search-input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ID, title or expected outcome" /></label><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{[...new Set(register.requirements.map((item) => item.status))].map((value) => <option key={value}>{value}</option>)}</select></label><label>Phase<select value={phase} onChange={(event) => setPhase(event.target.value)}><option value="">All phases</option>{[...new Set(register.requirements.map((item) => item.phase))].sort().map((value) => <option key={value} value={value}>Phase {value}</option>)}</select></label><strong>{records.length} of {register.requirements.length}</strong></div><div className="requirements-list">{records.map((item) => <details key={item.id}><summary><span className="requirement-id">{String(item.id).padStart(3, "0")}</span><strong>{item.title}</strong><span className="state-badge">{item.status}</span></summary><div className="requirement-detail"><p>{item.expectedOutcome}</p><dl><dt>Phase</dt><dd>{item.phase}</dd><dt>Dependencies</dt><dd>{item.dependencies}</dd><dt>Acceptance</dt><dd>{item.acceptanceTest}</dd><dt>Evidence</dt><dd>{item.evidence.length ? item.evidence.join("; ") : "Not recorded"}</dd><dt>Blockers</dt><dd>{item.blockers.length ? item.blockers.join("; ") : "No blocker recorded; this does not mean verified."}</dd></dl></div></details>)}</div>{!records.length && <p className="table-empty">No matching requirements.</p>}</PortalShell>;
+}

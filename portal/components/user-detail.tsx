@@ -1,6 +1,8 @@
 "use client";
 import { PublicBadgeControls } from "./public-badge-controls";
 import Link from "next/link";
+import Image from "next/image";
+import { useAdminContext } from "./admin-context";
 import { type FormEvent, useEffect, useState } from "react";
 import { PortalShell } from "./portal-shell";
 import { TransientNotice } from "./transient-notice";
@@ -20,7 +22,7 @@ type Activity = {
   created_at?: string;
 };
 type Detail = {
-  profile: { email: string; display_name: string; username: string };
+  profile: { email: string; display_name: string; username: string; roles?: string[]; profile_image_url?: string | null; cover_image_url?: string | null; verification_status?: string | null; public_badge_verified?: boolean };
   restrictions: Restriction[];
   posts: Activity[];
   orders: Activity[];
@@ -28,15 +30,21 @@ type Detail = {
   streak: { current_days: number; longest_days: number } | null;
 };
 export function UserDetail({ id }: { id: string }) {
+  const { scope } = useAdminContext();
+  return <UserDetailContent key={`${id}:${scope}`} id={id} />;
+}
+function UserDetailContent({ id }: { id: string }) {
+  const { can, scopedPath } = useAdminContext();
+  const [loadError, setLoadError] = useState("");
   const [data, setData] = useState<Detail | null>(null);
   const [notice, setNotice] = useState("");
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    void portalApi<Detail>("/v1/manage/users/" + id)
-      .then(setData)
-      .catch((e) => setNotice(e.message));
-  }, [id, version]);
+    void portalApi<Detail>(scopedPath("/v1/manage/users/" + id))
+      .then((result) => { setData(result); setLoadError(""); })
+      .catch((e) => setLoadError(e.message));
+  }, [id, version, scopedPath]);
   async function submit(
     e: FormEvent<HTMLFormElement>,
     action: "restriction" | "streak",
@@ -72,6 +80,14 @@ export function UserDetail({ id }: { id: string }) {
       setBusy(false);
     }
   }
+  async function changeCapability(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const fields = new FormData(event.currentTarget);
+    setBusy(true);
+    try { await portalApi(scopedPath(`/v1/admin/users/${id}/publishing-capabilities`), { method: "POST", body: JSON.stringify({ capability: fields.get("capability"), enabled: fields.get("enabled") === "true", reason: fields.get("reason") }) }); setNotice("Publishing capability updated and audited."); }
+    catch (error) { setNotice(error instanceof Error ? error.message : "Capability could not be updated."); }
+    finally { setBusy(false); }
+  }
   async function revoke(restrictionId: string) {
     try {
       await portalApi(
@@ -95,10 +111,18 @@ export function UserDetail({ id }: { id: string }) {
     >
       <TransientNotice message={notice} />
       <Link href="/admin/users">← Users</Link>
-      {data ? (
+      {loadError ? <section className="state-panel state-panel--error" role="alert"><p>{loadError}</p><button className="button button--secondary" onClick={() => setVersion((value) => value + 1)}>Try again</button></section> : data ? (
         <div className="user-detail-grid">
-          <PublicBadgeControls key={id} userId={id} />
+          {can("users.verify") && <PublicBadgeControls key={id} userId={id} onSaved={() => setVersion(value => value + 1)} />}
           <section>
+            <h2>Profile & media</h2>
+            <p>{data.profile.roles?.join(" · ") || "Account role not recorded"}</p>
+            <div className="admin-profile-media">
+              {data.profile.profile_image_url && <Image src={data.profile.profile_image_url} alt={`${data.profile.display_name || "Account"} profile photo`} width={120} height={120} unoptimized />}
+              {data.profile.cover_image_url && <Image src={data.profile.cover_image_url} alt="Account cover photo" width={340} height={150} unoptimized />}
+              {!data.profile.profile_image_url && !data.profile.cover_image_url && <p className="muted">No profile or cover photo uploaded.</p>}
+            </div>
+            <p className="verification-summary">{data.profile.public_badge_verified === true ? <><span className="brown-verification" aria-label="KampusOne verified">✓</span> Public account verified</> : "Public badge not assigned"}</p>
             <h2>Activity</h2>
             {(["posts", "orders", "applications"] as const).map((key) => (
               <section key={key}>
@@ -129,7 +153,7 @@ export function UserDetail({ id }: { id: string }) {
                       : "Permanent"}
                   </p>
                 </div>
-                {!r.revoked_at ? (
+                {!r.revoked_at && can("users.manage") ? (
                   <button
                     className="button button--secondary"
                     onClick={() => void revoke(r.id)}
@@ -143,7 +167,8 @@ export function UserDetail({ id }: { id: string }) {
             ))}
           </section>
           <section>
-            <form
+            {can("content.capabilities") && <form className="form-stack manage-form" onSubmit={changeCapability}><h2>Publisher capabilities</h2><label>Capability<select name="capability"><option value="POLL">Polls</option><option value="QA">Q&A</option><option value="ANONYMOUS_QA">Anonymous Q&A</option></select></label><label>Decision<select name="enabled"><option value="true">Grant capability</option><option value="false">Revoke capability</option></select></label><label>Reason<textarea name="reason" minLength={10} required maxLength={1000} /></label><button className="button button--primary" disabled={busy}>{busy ? "Recording…" : "Record capability"}</button></form>}
+            {can("users.manage") && <><form
               className="form-stack manage-form"
               onSubmit={(e) => void submit(e, "restriction")}
             >
@@ -187,7 +212,7 @@ export function UserDetail({ id }: { id: string }) {
               <button className="button button--secondary" disabled={busy}>
                 Save adjustment
               </button>
-            </form>
+            </form></>}
           </section>
         </div>
       ) : (

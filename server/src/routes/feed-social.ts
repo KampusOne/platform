@@ -42,9 +42,9 @@ async function rateLimit(c: Context<Env>, kind: string, limit: number) {
 function projection(user: User, withViews: boolean) {
   const views = withViews ? sql`(select count(*)::int from public.feed_post_views v where v.post_id = posts.id)` : sql`null::integer`;
   return sql`posts.id, posts.category, posts.title, posts.summary, posts.body,
-    posts.image_url, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
+    posts.image_url, posts.audience->>'mediaType' as media_type, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
     case when posts.audience->>'studentPost' = 'true'
-      then coalesce(author.display_name, sources.name) else sources.name end as source_name,
+      then coalesce(author.display_name, 'KampusOne student') else sources.name end as source_name,
     case when posts.audience->>'studentPost' = 'true'
       then coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) else sources.verified end as source_verified,
     coalesce(posts.author_user_id = ${user.id}::uuid, false) as can_delete,
@@ -62,9 +62,9 @@ function projection(user: User, withViews: boolean) {
     posts.quoted_post_id,
     case when quoted.id is null then null else jsonb_build_object(
       'id', quoted.id, 'title', quoted.title, 'summary', quoted.summary, 'body', quoted.body,
-      'image_url', quoted.image_url, 'published_at', quoted.published_at,
+      'image_url', quoted.image_url, 'media_type', quoted.audience->>'mediaType', 'published_at', quoted.published_at,
       'source_image_url', case when quoted.audience->>'studentPost' = 'true' then quoted_author.profile_image_url else null end,
-      'source_name', case when quoted.audience->>'studentPost' = 'true' then coalesce(quoted_author.display_name, quoted_source.name) else quoted_source.name end,
+      'source_name', case when quoted.audience->>'studentPost' = 'true' then coalesce(quoted_author.display_name, 'KampusOne student') else quoted_source.name end,
       'source_verified', case when quoted.audience->>'studentPost' = 'true' then coalesce((to_jsonb(quoted_author)->>'public_badge_verified')::boolean, quoted_author.verification_status::text='VERIFIED', false) else quoted_source.verified end
     ) end as quoted_post`;
 }
@@ -180,9 +180,10 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
       throw new AppError(409, "CONFLICT", "This draft changed. Submit it as a new post.");
     return c.json({ id: retry.id }, 200);
   }
-  if (data.mediaId && !firstRow(await database(c.env).execute(sql`
-    select id from public.media_objects where id = ${data.mediaId}::uuid and owner_user_id = ${user.id}::uuid and kind = 'post' and deleted_at is null
-  `))) throw new AppError(400, "BAD_REQUEST", "Choose an image from your device.");
+  const media = data.mediaId ? firstRow(await database(c.env).execute<{content_type:string}>(sql`
+    select id, content_type from public.media_objects where id = ${data.mediaId}::uuid and owner_user_id = ${user.id}::uuid and kind = 'post' and deleted_at is null
+  `)) : undefined;
+  if (data.mediaId && (!media || !["image/jpeg","image/png","image/webp","video/mp4"].includes(media.content_type))) throw new AppError(400, "BAD_REQUEST", "Choose your own image or MP4 video.");
   await rateLimit(c, "STUDENT_POST", 10);
   // Quotes retain references, not copies; campus-only originals stay campus-only.
   const result = await database(c.env).execute(sql`
@@ -196,7 +197,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
     )
     insert into public.feed_posts(university_id, source_id, author_user_id, category, title, summary, body, image_url, audience, status, published_at, client_request_id, quoted_post_id)
     select ${university}::uuid, source.id, ${user.id}::uuid, 'UPDATE', ${Array.from(data.body.padEnd(4," ")).slice(0, 180).join("")}, ${Array.from(data.body.padEnd(4," ")).slice(0, 500).join("")}, ${data.body}, ${imageUrl},
-      jsonb_build_object('studentPost', true, 'visibility', case when ${data.quotedPostId ?? null}::uuid is null or (select audience->>'visibility' from target) = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end),
+      jsonb_build_object('studentPost', true, 'mediaType', ${media?.content_type ?? null}::text, 'visibility', case when ${data.quotedPostId ?? null}::uuid is null or (select audience->>'visibility' from target) = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end),
       'PUBLISHED', now(), ${data.requestId}::uuid, ${data.quotedPostId ?? null}::uuid
     from source where ${data.quotedPostId ?? null}::uuid is null or exists(select 1 from target)
     on conflict(author_user_id, client_request_id) where client_request_id is not null
@@ -251,7 +252,7 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
       comments.created_at, comments.parent_comment_id, comments.deleted_at is not null as is_deleted,
       to_char(comments.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       case when comments.deleted_at is null then coalesce(author.display_name, 'KampusOne user') else 'Comment deleted' end as author_name,
-      author.profile_image_url as author_image_url, author.username as author_username,
+      author.user_id as author_user_id, author.profile_image_url as author_image_url, author.username as author_username,
       coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
       comments.deleted_at is null and comments.author_user_id = ${user.id}::uuid as can_delete,
       (select count(*)::int from public.feed_comments replies where replies.post_id = comments.post_id and replies.parent_comment_id = comments.id
@@ -304,7 +305,7 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
     )
     select saved.id, saved.body, saved.created_at, saved.parent_comment_id, false as is_deleted, true as can_delete,
       coalesce(author.display_name, 'KampusOne user') as author_name,
-      author.profile_image_url as author_image_url, author.username as author_username,
+      author.user_id as author_user_id, author.profile_image_url as author_image_url, author.username as author_username,
       coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
       (select count(*)::int from public.feed_comments replies where replies.post_id = ${postId}::uuid and replies.parent_comment_id = saved.id
         and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
