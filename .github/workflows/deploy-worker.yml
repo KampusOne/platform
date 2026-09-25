@@ -2,7 +2,7 @@ name: Deploy Worker
 
 on:
   push:
-    branches: [main]
+    branches: [hotfix-streak-live-20260925]
     paths:
       - ".github/workflows/deploy-worker.yml"
       - "packages/contracts/**"
