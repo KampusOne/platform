@@ -243,3 +243,17 @@ describe('measured reports',()=>{
   expect(report.measuredCost).toBeNull();
  });
 });
+
+// Reproduce the production schema before the pending academic migration.
+describe('profile rollout compatibility',()=>{
+ it('reads an existing profile when optional academic tables and columns are absent',async()=>{
+  await db.exec('begin');
+  try {
+   await db.exec('alter table public.profiles drop column provisional_academic_submission_id; alter table public.profiles drop column admission_year; drop table public.academic_missing_submissions cascade;');
+   const me=await response(await request('/student/me',student));
+   expect(me.profile.id).toBe(student);
+   expect(me.profile.admission_year).toBeNull();
+   expect(me.profile.provisional_academic_submission_id).toBeNull();
+  } finally { await db.exec('rollback'); }
+ });
+});

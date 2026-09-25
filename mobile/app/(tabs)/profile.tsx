@@ -5,6 +5,8 @@ import * as Haptics from "@/src/lib/haptics";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
+  AppState,
+  Platform,
   Image,
   Linking,
   Modal,
@@ -26,6 +28,7 @@ import { AgentShortcuts } from "@/src/components/agent-shortcuts";
 import { usePreferences } from "@/src/lib/preferences";
 import { SectionHeading } from "@/src/components/section-heading";
 import { CampusScape, VerifiedBadge } from "@/src/components/visual-system";
+import { refreshProfileResources, profileFailureMessage } from "@/src/lib/profile-refresh";
 import { ApiError, api, peekApiCache } from "@/src/lib/api";
 import { pickAndUpload } from "@/src/lib/uploads";
 import { useToast } from "@/src/components/toast";
@@ -139,16 +142,12 @@ export default function ProfileScreen() {
     try {
       setError("");
       setDataNotice("");
-      const me = await api<ProfilePayload>("/v1/student/me");
-      if (version !== loadVersion.current) return;
-      setProfile(me.profile);
-      setLoading(false); // Purchases, GPA and saves must never block the identity/header.
-
-      const [gpa, bought, feed] = await Promise.allSettled([
-        api<Academic>("/v1/student/gpa"),
-        api<Purchases>("/v1/student/purchases"),
-        api<Feed>("/v1/student/feed"),
-      ]);
+      const [gpa, bought, feed] = await refreshProfileResources<ProfilePayload, Academic, Purchases, Feed>(api, (result) => {
+        if (version !== loadVersion.current) return;
+        if (result.status === "fulfilled") setProfile(result.value.profile);
+        else setError(profileFailureMessage(result.reason));
+        setLoading(false);
+      });
       if (version !== loadVersion.current) return;
       if (gpa.status === "fulfilled") {
         setAcademics(gpa.value);
@@ -181,16 +180,14 @@ export default function ProfileScreen() {
       ].filter(Boolean);
       if (unavailable.length) {
         setDataNotice(
-          `${unavailable.join(", ")} could not be refreshed. Previously loaded information remains visible where available.`,
+          typeof navigator !== "undefined" && navigator.onLine === false
+            ? "You’re offline. Reconnect to refresh your statistics."
+            : `${unavailable.join(", ")} could not be refreshed. Previously loaded information remains visible where available.`,
         );
       }
     } catch (caught) {
       if (version !== loadVersion.current) return;
-      setError(
-        caught instanceof ApiError
-          ? caught.message
-          : "Your profile could not be refreshed.",
-      );
+      setError(profileFailureMessage(caught));
     } finally {
       if (version === loadVersion.current) setLoading(false);
     }
@@ -227,7 +224,16 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-      return () => { loadVersion.current++; };
+      const retry = () => { void load(); };
+      const subscription = AppState.addEventListener("change", (state) => {
+        if (state === "active") retry();
+      });
+      if (Platform.OS === "web" && typeof window !== "undefined") window.addEventListener("online", retry);
+      return () => {
+        loadVersion.current++;
+        subscription.remove();
+        if (Platform.OS === "web" && typeof window !== "undefined") window.removeEventListener("online", retry);
+      };
     }, [load]),
   );
 
