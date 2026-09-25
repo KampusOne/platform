@@ -23,7 +23,6 @@
         "backgroundColor": "#F1DFC8"
       },
       "package": "app.kampusone.mobile",
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": true,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
