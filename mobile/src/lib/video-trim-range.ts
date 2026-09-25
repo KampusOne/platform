@@ -23,9 +23,14 @@ export function setVideoTrimStart(
   minDurationMs = MIN_POST_VIDEO_DURATION_MS,
 ): VideoTrimRange {
   const minimum = Math.min(minDurationMs, durationMs);
-  const endMs = clampVideoTime(range.endMs, minimum, durationMs);
-  const lowerBound = Math.max(0, endMs - maxDurationMs);
-  const startMs = clampVideoTime(nextStartMs, lowerBound, Math.max(lowerBound, endMs - minimum));
+  let endMs = clampVideoTime(range.endMs, minimum, durationMs);
+  const startMs = clampVideoTime(
+    nextStartMs,
+    0,
+    Math.max(0, endMs - minimum),
+  );
+  if (endMs - startMs > maxDurationMs)
+    endMs = Math.min(durationMs, startMs + maxDurationMs);
   return { startMs, endMs };
 }
 
@@ -37,9 +42,18 @@ export function setVideoTrimEnd(
   minDurationMs = MIN_POST_VIDEO_DURATION_MS,
 ): VideoTrimRange {
   const minimum = Math.min(minDurationMs, durationMs);
-  const startMs = clampVideoTime(range.startMs, 0, Math.max(0, durationMs - minimum));
-  const upperBound = Math.min(durationMs, startMs + maxDurationMs);
-  const endMs = clampVideoTime(nextEndMs, Math.min(upperBound, startMs + minimum), upperBound);
+  let startMs = clampVideoTime(
+    range.startMs,
+    0,
+    Math.max(0, durationMs - minimum),
+  );
+  const endMs = clampVideoTime(
+    nextEndMs,
+    Math.min(durationMs, startMs + minimum),
+    durationMs,
+  );
+  if (endMs - startMs > maxDurationMs)
+    startMs = Math.max(0, endMs - maxDurationMs);
   return { startMs, endMs };
 }
 
