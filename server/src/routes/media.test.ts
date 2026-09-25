@@ -63,6 +63,30 @@ describe("media upload and delivery regression", () => {
     expect(response.headers.get("Content-Type")).toBe("image/png");
     expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(0);
   });
+  it("streams public MP4 byte ranges across the web app and Worker origins", async () => {
+    const size = 12;
+    state.execute.mockResolvedValue({ rows: [{ ...media("post"), content_type: "video/mp4", size_bytes: size }] });
+    state.get.mockResolvedValue({
+      body: new Response(new Uint8Array([1, 2, 3, 4])).body,
+      size,
+      httpEtag: '"video-fixture"',
+    });
+    const response = await app.request(
+      `https://api.example/v1/media/${mediaId}`,
+      { headers: { Range: "bytes=2-5" } },
+      env,
+    );
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Type")).toBe("video/mp4");
+    expect(response.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(response.headers.get("Content-Range")).toBe("bytes 2-5/12");
+    expect(response.headers.get("Content-Length")).toBe("4");
+    expect(response.headers.get("Cross-Origin-Resource-Policy")).toBe("cross-origin");
+    expect(state.get).toHaveBeenCalledWith(
+      `${ownerId}/post/${mediaId}`,
+      { range: { offset: 2, length: 4 } },
+    );
+  });
   it("keeps private documents inaccessible without an authenticated or signed request", async () => {
     state.execute.mockResolvedValue({ rows: [media("resource")] });
     const response = await app.request(`https://api.example/v1/media/${mediaId}`, {}, env);
