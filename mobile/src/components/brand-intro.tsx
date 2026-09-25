@@ -11,13 +11,15 @@ import {
 import { useAppearance } from "@/src/lib/appearance";
 
 let played = false;
-/** Runs once per cold start. Touches pass through; no artificial loading gate. */
+
+/** A short, once-per-cold-start brand sting. It never blocks touches or route loading. */
 export function BrandIntro() {
   const { theme } = useAppearance();
   const [visible, setVisible] = useState(!played);
   const mark = useRef(new Animated.Value(0)).current;
   const word = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
+
   useEffect(() => {
     if (played) {
       setVisible(false);
@@ -25,6 +27,7 @@ export function BrandIntro() {
     }
     played = true;
     let alive = true;
+
     void AccessibilityInfo.isReduceMotionEnabled()
       .then((reduced) => {
         if (!alive) return;
@@ -32,24 +35,25 @@ export function BrandIntro() {
           setVisible(false);
           return;
         }
+
         Animated.sequence([
-          Animated.stagger(75, [
-            Animated.timing(mark, {
-              toValue: 1,
-              duration: 240,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
-            }),
-            Animated.timing(word, {
-              toValue: 1,
-              duration: 240,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
-            }),
-          ]),
+          Animated.timing(mark, {
+            toValue: 1,
+            duration: 320,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(word, {
+            toValue: 1,
+            duration: 220,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.delay(280),
           Animated.timing(opacity, {
             toValue: 0,
             duration: 180,
+            easing: Easing.in(Easing.cubic),
             useNativeDriver: true,
           }),
         ]).start(() => {
@@ -57,30 +61,25 @@ export function BrandIntro() {
         });
       })
       .catch(() => setVisible(false));
+
     return () => {
       alive = false;
       mark.stopAnimation();
       word.stopAnimation();
       opacity.stopAnimation();
     };
-  }, [mark, word, opacity]);
+  }, [mark, opacity, word]);
+
   if (!visible) return null;
+
   return (
     <Animated.View
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={[
-        StyleSheet.absoluteFill,
-        {
-          backgroundColor: theme.canvas,
-          alignItems: "center",
-          justifyContent: "center",
-          opacity,
-        },
-      ]}
+      style={[StyleSheet.absoluteFill, styles.root, { opacity }]}
     >
-      <View style={{ alignItems: "center", marginTop: -32 }}>
+      <View style={styles.lockup}>
         <Animated.View
           style={{
             opacity: mark,
@@ -88,22 +87,22 @@ export function BrandIntro() {
               {
                 scale: mark.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0.94, 1],
+                  outputRange: [0.86, 1],
                 }),
               },
               {
                 translateY: mark.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [6, 0],
+                  outputRange: [9, 0],
                 }),
               },
             ],
           }}
         >
           <Image
-            source={require("@/assets/brand/kampusone-symbol-gradient.png")}
+            source={require("@/assets/icon.png")}
             resizeMode="contain"
-            style={{ width: 116, height: 93 }}
+            style={styles.mark}
           />
         </Animated.View>
         <Animated.View
@@ -119,14 +118,7 @@ export function BrandIntro() {
             ],
           }}
         >
-          <Text
-            style={{
-              color: theme.text,
-              fontFamily: theme.font.displayStrong,
-              fontSize: 31,
-              letterSpacing: -0.7,
-            }}
-          >
+          <Text style={[styles.wordmark, { fontFamily: theme.font.displayStrong }]}>
             KampusOne
           </Text>
         </Animated.View>
@@ -134,3 +126,20 @@ export function BrandIntro() {
     </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    backgroundColor: "#F1DFC8",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10000,
+  },
+  lockup: { alignItems: "center", marginTop: -30 },
+  mark: { width: 112, height: 120 },
+  wordmark: {
+    color: "#29231F",
+    fontSize: 30,
+    letterSpacing: -0.8,
+    marginTop: 8,
+  },
+});

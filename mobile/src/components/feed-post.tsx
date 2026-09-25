@@ -61,7 +61,7 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
         <Pressable accessibilityRole={detail ? undefined : "button"} accessibilityLabel={`Open conversation by ${post.source_name}`} onPress={openPost} style={[styles.postBody, detail && styles.detailBody]}>
           {structured ? <View style={styles.structuredPanel}><Text style={styles.structuredEyebrow}>{category === "EVENT" ? "CAMPUS EVENT" : "CAMPUS OPPORTUNITY"}</Text>{copy}</View> : copy}
           {post.urgent ? <Text style={styles.urgent}>Urgent campus update</Text> : null}
-          {post.image_url ? post.media_type?.startsWith("video/") ? <MediaPreview url={post.image_url} video label="Post video"/> : <MediaImage accessible accessibilityIgnoresInvertColors accessibilityLabel="Post attachment" resizeMode="cover" uri={post.image_url} style={styles.postImage} /> : null}
+          {post.image_url ? post.media_type?.startsWith("video/") ? <MediaPreview url={post.image_url} video label="Post video" watermark={post.source_name} /> : <MediaImage accessible accessibilityIgnoresInvertColors accessibilityLabel="Post attachment" resizeMode="cover" uri={post.image_url} style={styles.postImage} /> : null}
           {post.quoted_post_id ? <QuotedPostPreview post={post.quoted_post ?? null} /> : null}
           {post.correction_note ? <View accessibilityRole="alert" style={styles.correction}><Ionicons color={theme.statusAttention} name="information-circle-outline" size={17} /><Text style={styles.correctionText}>Correction: {post.correction_note}</Text></View> : null}
         </Pressable>

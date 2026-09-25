@@ -6,6 +6,7 @@ import { AppError } from "../lib/errors";
 import { visiblePost } from "../lib/feed-social";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
+import { notifyFeedInteraction } from "../services/feed-notifications";
 
 type Environment = { Bindings: Bindings; Variables: Variables };
 export const feedLikeRoutes = new Hono<Environment>();
@@ -49,6 +50,7 @@ async function setLike(context: Context<Environment>, liked: boolean) {
   `);
   const row = firstRow(result);
   if (!row) throw new AppError(404, "NOT_FOUND", "This post is unavailable. It may have been deleted or may belong to another campus.");
+  if (liked && row.liked) await notifyFeedInteraction(context.env, parsed.data, user.id, "like");
   return context.json(row);
 }
 

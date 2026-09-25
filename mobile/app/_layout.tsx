@@ -28,6 +28,9 @@ import { listenForSnooze } from "@/src/lib/alarms";
 import { onAccountRestriction } from "@/src/lib/api";
 import { PhotoEditorHost } from "@/src/components/photo-editor";
 import { VideoEditorHost } from "@/src/components/video-editor";
+import { BrandIntro } from "@/src/components/brand-intro";
+import { AppErrorBoundary } from "@/src/components/app-error-boundary";
+import { NotificationBootstrap } from "@/src/components/notification-bootstrap";
 
 export default function RootLayout() {
   const { theme, isDark } = useThemeStyles(createStyles);
@@ -54,17 +57,20 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      {!fontsLoaded && !fontError ? <ScreenSkeleton /> : <ToastProvider><AlarmSync/>
+      {!fontsLoaded && !fontError ? <ScreenSkeleton /> : <ToastProvider><AlarmSync/><NotificationBootstrap />
         <StatusBar style={isDark ? "light" : "dark"} />
         <ScreenVisitTracker />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: theme.canvas },
-          }}
-        />
+        <AppErrorBoundary>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: theme.canvas },
+            }}
+          />
+        </AppErrorBoundary>
         <PhotoEditorHost />
         <VideoEditorHost />
+        <BrandIntro />
       </ToastProvider>}
     </AuthProvider>
   );

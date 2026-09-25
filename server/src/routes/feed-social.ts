@@ -9,6 +9,7 @@ import { sha256 } from "../lib/security";
 import { commentRepliesSchemaReady, nextFeedCursor, parseFeedCursor, socialSchemaReady, visiblePost } from "../lib/feed-social";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
+import { notifyFeedInteraction } from "../services/feed-notifications";
 
 type Env = { Bindings: Bindings; Variables: Variables };
 type User = ReturnType<typeof currentUser>;
@@ -313,6 +314,7 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
   `);
   const comment = firstRow(result);
   if (!comment) throw new AppError(409, "CONFLICT", "The post or comment is unavailable, or this message request has already changed. Your draft has not been cleared.");
+  if (!retry) await notifyFeedInteraction(c.env, postId, user.id, "comment");
   return c.json({ comment }, retry ? 200 : 201);
 });
 
@@ -351,9 +353,12 @@ feedSocialRoutes.put("/:id/repost", requireAuth, async (c) => {
     ), saved as (
       insert into public.feed_reposts(post_id, institution_id, user_id)
       select id, university_id, ${user.id}::uuid from target on conflict(post_id, user_id) do nothing
-    ) select id from target
+      returning post_id
+    ) select target.id, exists(select 1 from saved) as created from target
   `);
-  if (!firstRow(result)) throw new AppError(404, "NOT_FOUND", "This post is no longer available to repost.");
+  const repost = firstRow(result) as { id: string; created?: boolean } | undefined;
+  if (!repost) throw new AppError(404, "NOT_FOUND", "This post is no longer available to repost.");
+  if (repost.created) await notifyFeedInteraction(c.env, postId, user.id, "repost");
   return c.json({ reposted: true, post: await readPost(c, postId) });
 });
 

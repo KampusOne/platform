@@ -106,6 +106,23 @@ type ProfilePayload = { profile: StudentProfile };
 type Tab = "Overview" | "Reposts" | "Activity" | "Classes" | "Transactions";
 type ResourceState = "idle" | "ready" | "stale" | "error";
 
+function safeArrayLength(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function safeActivityDate(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "Recently";
+  try {
+    return new Intl.DateTimeFormat("en-NG", {
+      day: "numeric",
+      month: "short",
+    }).format(new Date(timestamp));
+  } catch {
+    return "Recently";
+  }
+}
+
 export default function ProfileScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
@@ -541,14 +558,14 @@ export default function ProfileScreen() {
               icon="layers-outline"
               label="Semesters"
               value={
-                academicsKnown ? String(academics?.terms.length ?? 0) : "—"
+                academicsKnown ? String(safeArrayLength(academics?.terms)) : "—"
               }
             />
             <Metric
               icon="bag-check-outline"
               label="Orders"
               value={
-                purchasesKnown ? String(purchases?.orders.length ?? 0) : "—"
+                purchasesKnown ? String(safeArrayLength(purchases?.orders)) : "—"
               }
             />
             <Metric
@@ -797,7 +814,7 @@ export default function ProfileScreen() {
                 onAction={() => router.push("/purchases")}
                 title={
                   purchasesKnown
-                    ? `${(purchases?.orders.length ?? 0) + (purchases?.tutorialBookings.length ?? 0)} transactions`
+                    ? `${safeArrayLength(purchases?.orders) + safeArrayLength(purchases?.tutorialBookings)} transactions`
                     : "Transactions unavailable"
                 }
               />
@@ -972,10 +989,7 @@ function ActivityList({
             </Text>
             <Text style={styles.activityDetail}>
               {activity.detail} ·{" "}
-              {new Intl.DateTimeFormat("en-NG", {
-                day: "numeric",
-                month: "short",
-              }).format(new Date(activity.date))}
+              {safeActivityDate(activity.date)}
             </Text>
           </View>
           <Ionicons

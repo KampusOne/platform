@@ -9,8 +9,8 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "backgroundColor": "#FBF7F2",
-      "image": "./assets/brand/kampusone-symbol-gradient.png",
+      "backgroundColor": "#F1DFC8",
+      "image": "./assets/icon.png",
       "resizeMode": "contain"
     },
     "ios": {
@@ -19,14 +19,15 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FBF7F2"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#F1DFC8"
       },
       "package": "app.kampusone.mobile",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": true,
       "permissions": [
-        "SCHEDULE_EXACT_ALARM"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.SCHEDULE_EXACT_ALARM"
       ]
     },
     "web": {
