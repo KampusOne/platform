@@ -193,10 +193,20 @@ async function streakSnapshot(env: Bindings, userId: string) {
 
   // This production hotfix deliberately relies only on the already-approved
   // user_streaks schema. The full activity-day ledger stays behind the newer
-  // migration gate. The genuine last check-in is still safe to surface.
+  // migration gate. Reconstruct only the currently verified consecutive run
+  // from its aggregate so the calendar can show every active streak day.
+  const activityDays: string[] = [];
+  if (streak.last_day && streak.current_days > 0) {
+    const end = new Date(streak.last_day + "T12:00:00Z");
+    for (let index = streak.current_days - 1; index >= 0; index -= 1) {
+      const day = new Date(end);
+      day.setUTCDate(end.getUTCDate() - index);
+      activityDays.push(day.toISOString().slice(0, 10));
+    }
+  }
   return {
     streak,
-    activityDays: streak.last_day ? [streak.last_day] : [],
+    activityDays,
     timezone: "Africa/Lagos",
     today: clock?.today,
   };
