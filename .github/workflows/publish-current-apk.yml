@@ -1,0 +1,32 @@
+name: Publish current Android APK
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/publish-current-apk.yml"]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download latest successful APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: KampusOne-Android-test-f7643627724026e956a28eaad3d9d5542a06d107
+          path: apk
+          repository: KampusOne/platform
+          run-id: 36216347823
+          github-token: ${{ github.token }}
+      - name: Prepare public filename
+        run: |
+          file=$(find apk -type f -name "*.apk" | head -n 1)
+          test -n "$file"
+          cp "$file" KampusOne-Android.apk
+      - name: Publish stable public release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-latest --repo KampusOne/platform --yes --cleanup-tag || true
+          gh release create apk-latest KampusOne-Android.apk             --repo KampusOne/platform             --target f7643627724026e956a28eaad3d9d5542a06d107             --title "KampusOne Android Test"             --notes "Latest public KampusOne Android testing APK. Sideload testing build."             --prerelease

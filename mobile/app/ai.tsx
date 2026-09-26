@@ -127,7 +127,7 @@ export default function StudentAI() {
   const iconButton=(name:ComponentProps<typeof Ionicons>['name'],label:string,onPress:()=>void,disabled=false)=><Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{disabled}} disabled={disabled} onPress={onPress} style={{minHeight:44,minWidth:44,alignItems:'center',justifyContent:'center',opacity:disabled?0.4:1}}><Ionicons name={name} size={22} color={theme.text}/></Pressable>;
   const renderUser=(question:string,file?:StagedAttachment)=><View style={{alignSelf:'flex-end',maxWidth:'90%',marginTop:22,marginBottom:18}}>{file?<AttachmentPreview file={file} onOpen={()=>void openFile(file)}/>:null}{question?<View style={{backgroundColor:theme.sand,borderRadius:19,borderBottomRightRadius:5,paddingHorizontal:16,paddingVertical:12}}><Text selectable style={text}>{question}</Text></View>:null}</View>;
   return <SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:theme.canvas}}>
-    <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={{flex:1,width:'100%',maxWidth:760,alignSelf:'center'}}>
+    <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':Platform.OS==='android'?'height':undefined} style={{flex:1,width:'100%',maxWidth:760,alignSelf:'center'}}>
       <View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:12,paddingVertical:4,borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:theme.border}}>
         {iconButton('arrow-back','Go back',()=>router.canGoBack()?router.back():router.replace('/explore'))}
         <Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:21,flex:1}}>{workspace==='ask'?'Ask':'Study'}</Text>
