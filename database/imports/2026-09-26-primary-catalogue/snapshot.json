@@ -1,0 +1,4670 @@
+{
+  "version": "2026-09-26.1",
+  "retrieved_at": "2026-09-26",
+  "scope": "Institution identity and selected academic units only; not programme accreditation or academic policy.",
+  "sources": [
+    {
+      "id": "nuc-federal",
+      "url": "https://www.nuc.edu.ng/nigerian-univerisities/federal-univeristies/",
+      "publisher": "National Universities Commission",
+      "retrieved_at": "2026-09-26",
+      "sha256": "97bba50e22876c560d02183061e7551530166df5ee521bfcdb3e7a4c55de0979",
+      "retrieval": "direct_html",
+      "review_status": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "id": "nuc-state",
+      "url": "https://www.nuc.edu.ng/nigerian-univerisities/state-univerisity/",
+      "publisher": "National Universities Commission",
+      "retrieved_at": "2026-09-26",
+      "sha256": "3b3f9b8d1b6226eb12613c8ede1f85d150b45c527eb2e2492ccd7beea50d82cf",
+      "retrieval": "direct_html",
+      "review_status": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "id": "nuc-private",
+      "url": "https://www.nuc.edu.ng/nigerian-univerisities/private-univeristies/",
+      "publisher": "National Universities Commission",
+      "retrieved_at": "2026-09-26",
+      "sha256": "385b31f1e76b420a9aceb3d38e4a44351d2bf254ef244c5e5f435ef0f83ee8e7",
+      "retrieval": "direct_html",
+      "review_status": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "id": "abu-faculties",
+      "url": "https://abu.edu.ng/faculties/",
+      "publisher": "Ahmadu Bello University",
+      "retrieved_at": "2026-09-26",
+      "sha256": "d58cf2aa180030b814638fcfb986be6beb42b28e78b34449d3e0ccc07123b197",
+      "retrieval": "direct_html",
+      "review_status": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "id": "abu-ug-1",
+      "url": "https://programmes.abu.edu.ng/programmes_list.php?tab=6&goto=1",
+      "publisher": "Ahmadu Bello University",
+      "retrieved_at": "2026-09-26",
+      "sha256": "40a88e225ed40d4baeccacea69d718b2320c082f5b390f9a0d353568c3d01f00",
+      "retrieval": "direct_html",
+      "review_status": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "id": "abu-ug-2",
+      "url": "https://programmes.abu.edu.ng/programmes_list.php?tab=6&goto=2",
+      "publisher": "Ahmadu Bello University",
+      "retrieved_at": "2026-09-26",
+      "sha256": "c3393840d1c0f14944cc92d1b9cff47dad1a333387b57f90602001fc823ecfb4",
+      "retrieval": "direct_html",
+      "review_status": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "id": "abu-ug-3",
+      "url": "https://programmes.abu.edu.ng/programmes_list.php?tab=6&goto=3",
+      "publisher": "Ahmadu Bello University",
+      "retrieved_at": "2026-09-26",
+      "sha256": "70690642de54b3866d2d51aa149cff91e6a0adcda12976b531cf14a4fbd4dcff",
+      "retrieval": "direct_html",
+      "review_status": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "id": "abu-ug-4",
+      "url": "https://programmes.abu.edu.ng/programmes_list.php?tab=6&goto=4",
+      "publisher": "Ahmadu Bello University",
+      "retrieved_at": "2026-09-26",
+      "sha256": "fb3e50721ca49d9531620c7d4a049c3b5241c443a3a3dd5e6396ea8e71fd2a15",
+      "retrieval": "direct_html",
+      "review_status": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "id": "abu-ug-5",
+      "url": "https://programmes.abu.edu.ng/programmes_list.php?tab=6&goto=5",
+      "publisher": "Ahmadu Bello University",
+      "retrieved_at": "2026-09-26",
+      "sha256": "fa37dd429d560882a612d075fd63a3b5e37cc17911ba980f0c23872da56ed85c",
+      "retrieval": "direct_html",
+      "review_status": "PRIMARY_SOURCE_CHECKED"
+    },
+    {
+      "id": "abu-ug-6",
+      "url": "https://programmes.abu.edu.ng/programmes_list.php?tab=6&goto=6",
+      "publisher": "Ahmadu Bello University",
+      "retrieved_at": "2026-09-26",
+      "sha256": "06a6380821a251656157f1010e580332cefb81f77116d1bafe566f29baadc56c",
+      "retrieval": "direct_html",
+      "review_status": "PRIMARY_SOURCE_CHECKED"
+    }
+  ],
+  "universities": [
+    {
+      "key": "abubakar-tafawa-balewa-university-bauchi",
+      "name": "Abubakar Tafawa Balewa University, Bauchi",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 1,
+      "website_url": "https://www.atbu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria",
+      "name": "Ahmadu Bello University, Zaria",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 2,
+      "website_url": "https://www.abu.edu.ng",
+      "aliases": [
+        "ABU",
+        "Ahmadu Bello University"
+      ],
+      "slug": "abu"
+    },
+    {
+      "key": "bayero-university-kano",
+      "name": "Bayero University, Kano",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 3,
+      "website_url": "https://www.buk.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-gashua-yobe",
+      "name": "Federal University Gashua, Yobe",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 4,
+      "website_url": "https://www.fugashua.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-petroleum-resources-effurun",
+      "name": "Federal University of Petroleum Resources, Effurun",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 5,
+      "website_url": "https://www.fupre.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-technology-akure",
+      "name": "Federal University of Technology, Akure",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 6,
+      "website_url": "https://www.futa.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-technology-minna",
+      "name": "Federal University of Technology, Minna",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 7,
+      "website_url": "https://www.futminna.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-technology-owerri",
+      "name": "Federal University of Technology, Owerri",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 8,
+      "website_url": "https://www.futo.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-dutse-jigawa-state",
+      "name": "Federal University, Dutse, Jigawa State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 9,
+      "website_url": "https://www.fud.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-dutsin-ma-katsina",
+      "name": "Federal University, Dutsin-Ma, Katsina",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 10,
+      "website_url": "https://www.fudutsinma.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-kashere-gombe-state",
+      "name": "Federal University, Kashere, Gombe State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 11,
+      "website_url": "https://www.fukashere.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-lafia-nasarawa-state",
+      "name": "Federal University, Lafia, Nasarawa State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 12,
+      "website_url": "https://www.fulafia.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-lokoja-kogi-state",
+      "name": "Federal University, Lokoja, Kogi State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 13,
+      "website_url": "https://www.fulokoja.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "alex-ekwueme-university-ndufu-alike-ebonyi-state",
+      "name": "Alex Ekwueme University, Ndufu-Alike, Ebonyi State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 14,
+      "website_url": "https://www.funai.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-otuoke-bayelsa",
+      "name": "Federal University, Otuoke, Bayelsa",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 15,
+      "website_url": "https://www.fuotuoke.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-oye-ekiti-ekiti-state",
+      "name": "Federal University, Oye-Ekiti, Ekiti State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 16,
+      "website_url": "https://www.fuoye.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-wukari-taraba-state",
+      "name": "Federal University, Wukari, Taraba State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 17,
+      "website_url": "https://www.fuwukari.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-birnin-kebbi",
+      "name": "Federal University, Birnin Kebbi",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 18,
+      "website_url": "https://www.fubk.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-gusau-zamfara",
+      "name": "Federal University, Gusau Zamfara",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 19,
+      "website_url": "https://www.fugusau.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "michael-okpara-university-of-agricultural-umudike",
+      "name": "Michael Okpara University of Agricultural Umudike",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 20,
+      "website_url": "https://www.mouau.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "modibbo-adama-university-of-technology-yola",
+      "name": "Modibbo Adama University of Technology, Yola",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 21,
+      "website_url": "https://www.mautech.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "national-open-university-of-nigeria-abuja",
+      "name": "National Open University of Nigeria, Abuja",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 22,
+      "website_url": "https://www.nou.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "nigeria-police-academy-wudil",
+      "name": "Nigeria Police Academy Wudil",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 23,
+      "website_url": "https://polac.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "nigerian-defence-academy-kaduna",
+      "name": "Nigerian Defence Academy Kaduna",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 24,
+      "website_url": "https://www.nda.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "nnamdi-azikiwe-university-awka",
+      "name": "Nnamdi Azikiwe University, Awka",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 25,
+      "website_url": "https://www.unizik.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "obafemi-awolowo-university-ile-ife",
+      "name": "Obafemi Awolowo University,Ile-Ife",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 26,
+      "website_url": "https://www.oauife.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-abuja-gwagwalada",
+      "name": "University of Abuja, Gwagwalada",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 27,
+      "website_url": "https://www.uniabuja.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-agriculture-abeokuta",
+      "name": "Federal University of Agriculture, Abeokuta",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 28,
+      "website_url": "https://www.unaab.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "joseph-sarwuan-tarka-university-makurdi",
+      "name": "Joseph Sarwuan Tarka University, Makurdi",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 29,
+      "website_url": "https://www.uam.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-benin",
+      "name": "University of Benin",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 30,
+      "website_url": "https://www.uniben.edu.ng",
+      "aliases": [
+        "UNIBEN"
+      ],
+      "slug": "uniben"
+    },
+    {
+      "key": "university-of-calabar",
+      "name": "University of Calabar",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 31,
+      "website_url": "https://www.unical.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-ibadan",
+      "name": "University of Ibadan",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 32,
+      "website_url": "https://www.ui.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-ilorin",
+      "name": "University of Ilorin",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 33,
+      "website_url": "https://www.unilorin.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-jos",
+      "name": "University of Jos",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 34,
+      "website_url": "https://www.unijos.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-lagos",
+      "name": "University of Lagos",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 35,
+      "website_url": "https://www.unilag.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-maiduguri",
+      "name": "University of Maiduguri",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 36,
+      "website_url": "https://www.unimaid.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-nigeria-nsukka",
+      "name": "University of Nigeria, Nsukka",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 37,
+      "website_url": "https://www.unn.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-port-harcourt",
+      "name": "University of Port-Harcourt",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 38,
+      "website_url": "https://www.uniport.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-uyo",
+      "name": "University of Uyo",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 39,
+      "website_url": "https://www.uniuyo.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "usumanu-danfodiyo-university",
+      "name": "Usumanu Danfodiyo University",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 40,
+      "website_url": "https://www.udusok.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "nigerian-maritime-university-okerenkoko-delta-state",
+      "name": "Nigerian Maritime University Okerenkoko, Delta State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 41,
+      "website_url": "https://www.nmu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "air-force-institute-of-technology-kaduna",
+      "name": "Air Force Institute of Technology, Kaduna",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 42,
+      "website_url": "https://afit.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "nigerian-army-university-biu",
+      "name": "Nigerian Army University Biu",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 43,
+      "website_url": "https://naub.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-health-sciences-otukpo-benue-state",
+      "name": "Federal University of Health Sciences, Otukpo, Benue State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 44,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-agriculture-zuru-kebbi-state",
+      "name": "Federal University of Agriculture, Zuru, Kebbi State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 45,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-technology-babura-jigawa-state",
+      "name": "Federal University of Technology, Babura, Jigawa State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 46,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-technology-ikot-abasi-akwa-ibom-state",
+      "name": "Federal University of Technology, Ikot Abasi, Akwa Ibom State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 47,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-health-sciences-azare-bauchi-state",
+      "name": "Federal University of Health Sciences, Azare, Bauchi State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 48,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-health-sciences-ila-orangun-osun-state",
+      "name": "Federal University of Health Sciences, Ila Orangun, Osun State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 49,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "david-nweze-umahi-federal-university-of-medical-sciences-uburu",
+      "name": "David Nweze Umahi Federal University of Medical Sciences, Uburu",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 50,
+      "website_url": "https://kdums.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "admiralty-university-ibusa-delta-state",
+      "name": "Admiralty University Ibusa, Delta State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 51,
+      "website_url": "https://adun.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-transportation-daura-katsina",
+      "name": "Federal University of Transportation Daura, Katsina",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 52,
+      "website_url": "https://www.futd.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "african-aviation-and-aerospace-university",
+      "name": "African Aviation and Aerospace University",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 53,
+      "website_url": "https://aaau.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "national-university-of-science-and-technology-abuja",
+      "name": "National University of Science and Technology, Abuja",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 54,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-agriculture-bassam-biri-bayelsa",
+      "name": "Federal University of Agriculture Bassam-Biri, Bayelsa",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 55,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-health-sciences-kwale-delta-state",
+      "name": "Federal University of Health Sciences Kwale, Delta State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 56,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-health-sciences-katsina",
+      "name": "Federal University of Health Sciences, Katsina",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 57,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-agriculture-mubi",
+      "name": "Federal University of Agriculture, Mubi",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 58,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-education-zaria-kaduna-state",
+      "name": "Federal University of Education, Zaria, Kaduna State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 59,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "alvan-ikoku-federal-university-of-education-owerri-imo-state",
+      "name": "Alvan Ikoku Federal University of Education, Owerri, Imo State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 60,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "yusuf-maitama-sule-federal-university-of-education-kano",
+      "name": "Yusuf Maitama Sule Federal University of Education, Kano",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 61,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "adeyemi-federal-university-of-education-ondo",
+      "name": "Adeyemi Federal University of Education, Ondo",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 62,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-allied-health-sciences-enugu",
+      "name": "Federal University of Allied Health Sciences, Enugu",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 63,
+      "website_url": "https://fuahse.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-medicine-and-medical-sciences-abeokuta",
+      "name": "Federal University of Medicine and Medical Sciences, Abeokuta",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 64,
+      "website_url": "https://fummsa.net",
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-education-pankshin-plateau-state",
+      "name": "Federal University of Education Pankshin, Plateau State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 65,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-education-kontagora-niger-state",
+      "name": "Federal University of Education Kontagora, Niger State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 66,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "university-of-maritime-studies-oron-akwa-ibom-state",
+      "name": "University of Maritime Studies, Oron, Akwa Ibom State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 67,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-environment-and-technology-tai-town-ogoniland-rivers-state",
+      "name": "Federal University of Environment and Technology, Tai Town, Ogoniland, Rivers State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 68,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-applied-sciences-kachia-kaduna-state",
+      "name": "Federal University of Applied Sciences, Kachia, Kaduna State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 69,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "tai-solarin-federal-university-of-education-ijagun-ijebu-ode",
+      "name": "Tai Solarin Federal University of Education, Ijagun, Ijebu Ode",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 70,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-agriculture-and-developmental-studies-iragbuji-osun-state",
+      "name": "Federal University of Agriculture and Developmental Studies, Iragbuji, Osun State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 71,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-technology-and-environmental-studies-iyin-ekiti-ekiti-state",
+      "name": "Federal University of Technology and Environmental Studies, Iyin-Ekiti, Ekiti State.",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 72,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-agriculture-and-technology-okeho-oyo-state",
+      "name": "Federal University of Agriculture and Technology Okeho, Oyo State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 73,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-health-science-and-technology-tsafe",
+      "name": "Federal University of Health Science and Technology, Tsafe",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 74,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-agriculture-and-technology-obio-akpa-akwa-ibom-state",
+      "name": "Federal University of Agriculture and Technology Obio-Akpa Akwa Ibom State",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 75,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-science-and-technology-epe",
+      "name": "Federal University of Science and Technology, Epe",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 76,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "federal-university-of-science-and-technology-kabo-kano",
+      "name": "Federal University of Science and Technology, Kabo, Kano",
+      "ownership": "federal",
+      "source_id": "nuc-federal",
+      "source_row": 77,
+      "website_url": "https://fustkabo.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "rivers-state-university",
+      "name": "Rivers State University",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 1,
+      "website_url": "https://www.rsu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "ambrose-alli-university-ekpoma",
+      "name": "Ambrose Alli University, Ekpoma",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 2,
+      "website_url": "https://www.aauekpoma.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "abia-state-university-uturu",
+      "name": "Abia State University, Uturu",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 3,
+      "website_url": "https://www.abiastateuniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "ekiti-state-university",
+      "name": "Ekiti State University",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 4,
+      "website_url": "https://www.eksu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "enugu-state-university-of-science-and-technology-enugu",
+      "name": "Enugu State University of Science and Technology, Enugu",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 5,
+      "website_url": "https://www.esut.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "olabisi-onabanjo-university-ago-iwoye",
+      "name": "Olabisi Onabanjo University, Ago Iwoye",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 6,
+      "website_url": "https://www.oouagoiwoye.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "lagos-state-university-ojo",
+      "name": "Lagos State University, Ojo",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 7,
+      "website_url": "https://www.lasu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "ladoke-akintola-university-of-technology-ogbomoso",
+      "name": "Ladoke Akintola University of Technology, Ogbomoso",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 8,
+      "website_url": "https://www.lautech.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "rev-fr-moses-orshio-adasu-formerly-benue-state-university-makurdi",
+      "name": "Rev. Fr. Moses Orshio Adasu (Formerly, Benue State University), Makurdi",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 9,
+      "website_url": "https://www.bsum.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "delta-state-university-abraka",
+      "name": "Delta State University Abraka",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 10,
+      "website_url": "https://www.delsu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "imo-state-university-owerri",
+      "name": "Imo State University, Owerri",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 11,
+      "website_url": "https://www.imsu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "adekunle-ajasin-university-akungba",
+      "name": "Adekunle Ajasin University, Akungba",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 12,
+      "website_url": "https://www.aaua.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "prince-abubakar-audu-university-anyigba",
+      "name": "Prince Abubakar Audu University Anyigba",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 13,
+      "website_url": "https://www.ksu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "chukwuemeka-odumegwu-ojukwu-university-uli",
+      "name": "Chukwuemeka Odumegwu Ojukwu University, Uli",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 14,
+      "website_url": "https://coou.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "ebonyi-state-university-abakaliki",
+      "name": "Ebonyi State University, Abakaliki",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 15,
+      "website_url": "https://www.ebsu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "aliko-dangote-university-of-science-technology-wudil",
+      "name": "Aliko Dangote university of Science & Technology, Wudil",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 16,
+      "website_url": "https://www.kust.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "niger-delta-university-yenagoa",
+      "name": "Niger Delta University Yenagoa",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 17,
+      "website_url": "https://www.ndu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "adamawa-state-university-mubi",
+      "name": "Adamawa State University Mubi",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 18,
+      "website_url": "https://www.adsu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "nasarawa-state-university-keffi",
+      "name": "Nasarawa State University Keffi",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 19,
+      "website_url": "https://www.nsuk.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-cross-river-state-calabar",
+      "name": "University of Cross River State, Calabar",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 20,
+      "website_url": "https://www.crutech.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "gombe-state-univeristy-gombe",
+      "name": "Gombe State Univeristy, Gombe",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 21,
+      "website_url": "https://www.gsu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "kaduna-state-university-kaduna",
+      "name": "Kaduna State University, Kaduna",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 22,
+      "website_url": "https://www.kasu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "ibrahim-badamasi-babangida-university-lapai",
+      "name": "Ibrahim Badamasi Babangida University, Lapai",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 23,
+      "website_url": "https://www.ibbu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "plateau-state-university-bokkos",
+      "name": "Plateau State University Bokkos",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 24,
+      "website_url": "https://www.plasu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "yobe-state-university-damaturu",
+      "name": "Yobe State University, Damaturu",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 25,
+      "website_url": "https://www.ysu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "kebbi-state-university-of-science-and-technology-aliero",
+      "name": "Kebbi State University of Science and Technology, Aliero",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 26,
+      "website_url": "https://www.ksusta.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "umar-musa-yar-adua-university-katsina",
+      "name": "Umar Musa Yar' Adua University Katsina",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 27,
+      "website_url": "https://www.umyu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "osun-state-university-osogbo",
+      "name": "Osun State University Osogbo",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 28,
+      "website_url": "https://www.uniosun.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "olusegun-agagu-university-of-sc-tech-okitipupa-ondo",
+      "name": "Olusegun Agagu University of Sc. & Tech., Okitipupa, Ondo",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 29,
+      "website_url": "https://www.osustech.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "taraba-state-university-jalingo",
+      "name": "Taraba State University, Jalingo",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 30,
+      "website_url": "https://www.tsuniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "kwara-state-university-ilorin",
+      "name": "Kwara State University, Ilorin",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 31,
+      "website_url": "https://www.kwasu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "sokoto-state-university",
+      "name": "Sokoto State University",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 32,
+      "website_url": "https://www.ssu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "akwa-ibom-state-university-ikot-akpaden",
+      "name": "Akwa Ibom State University, Ikot Akpaden",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 33,
+      "website_url": "https://www.aksu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "ignatius-ajuru-university-of-education-rumuolumeni",
+      "name": "Ignatius Ajuru University of Education,Rumuolumeni",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 34,
+      "website_url": "https://www.iaue.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "bauchi-state-university-gadau",
+      "name": "Bauchi State University, Gadau",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 35,
+      "website_url": "https://www.basug.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "northwest-university-kano",
+      "name": "Northwest University Kano",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 36,
+      "website_url": "https://www.nwu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "first-technical-university-ibadan",
+      "name": "First Technical University Ibadan",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 37,
+      "website_url": "https://tech-u.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "sule-lamido-university-kafin-hausa-jigawa",
+      "name": "Sule Lamido University, Kafin Hausa, Jigawa",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 38,
+      "website_url": "https://www.slu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-medical-sciences-ondo-city-ondo-state",
+      "name": "University of Medical Sciences, Ondo City, Ondo State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 39,
+      "website_url": "https://www.unimed.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "edo-state-university-iyamho",
+      "name": "Edo State University, Iyamho",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 40,
+      "website_url": "https://www.edouniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "kingsley-ozumba-mbadiwe-university-ogboko-imo-state",
+      "name": "Kingsley Ozumba Mbadiwe University Ogboko, Imo State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 41,
+      "website_url": "https://www.komu.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "university-of-africa-toru-orua-bayelsa-state",
+      "name": "University of Africa Toru Orua, Bayelsa State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 42,
+      "website_url": "https://www.uat.edu.ng/public/",
+      "aliases": []
+    },
+    {
+      "key": "kashim-ibrahim-formerly-bornu-state-university-maiduguri",
+      "name": "Kashim Ibrahim ( formerly Bornu State) University, Maiduguri",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 43,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "moshood-abiola-university-of-science-and-technology-abeokuta",
+      "name": "Moshood Abiola University of Science and Technology Abeokuta",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 44,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "zamfara-state-university",
+      "name": "Zamfara State University",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 45,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "bayelsa-medical-university",
+      "name": "Bayelsa Medical University",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 46,
+      "website_url": "https://bmu.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "university-of-agriculture-and-environmental-sciences-umuagwo-imo-state",
+      "name": "University of Agriculture and Environmental Sciences Umuagwo, Imo State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 47,
+      "website_url": "https://www.uaes.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "confluence-university-of-science-and-technology-osara-kogi",
+      "name": "Confluence University of Science and Technology Osara, Kogi",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 48,
+      "website_url": "https://custech.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "bamidele-olumilua-university-of-science-and-technology-ikere-ekiti-state",
+      "name": "Bamidele Olumilua University of Science and Technology Ikere, Ekiti State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 49,
+      "website_url": "https://bouesti.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "university-of-delta-agbor",
+      "name": "University of Delta, Agbor",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 50,
+      "website_url": "https://unidel.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "delta-university-of-science-and-technology-ozoro",
+      "name": "Delta University of Science and Technology, Ozoro",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 51,
+      "website_url": "https://dsust.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "dennis-osadebe-university-asaba",
+      "name": "Dennis Osadebe University, Asaba",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 52,
+      "website_url": "https://www.dou.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "lagos-state-university-of-education-ijanikin",
+      "name": "Lagos State University of Education, Ijanikin",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 53,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "lagos-state-university-of-science-and-technology-ikorodu",
+      "name": "Lagos State University of Science and Technology Ikorodu",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 54,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "shehu-shagari-university-of-education-sokoto",
+      "name": "Shehu Shagari University of Education, Sokoto",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 55,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "state-university-of-medical-and-applied-sciences-igbo-eno-enugu",
+      "name": "State University of Medical and Applied Sciences, Igbo-Eno, Enugu",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 56,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "university-of-ilesa-osun-state",
+      "name": "University of Ilesa, Osun State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 57,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "emanuel-alayande-university-of-education-oyo",
+      "name": "Emanuel Alayande University of Education Oyo",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 58,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "kogi-state-university-kabba",
+      "name": "Kogi State University, Kabba",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 59,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "abdulkadir-kure-university-minna-niger-state",
+      "name": "AbdulKadir Kure University, Minna Niger State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 60,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "kwara-state-university-of-education-ilorin-kwara-state",
+      "name": "Kwara State University of Education, Ilorin, Kwara State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 61,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "abdulsalam-abubakar-university-of-agriculture-and-climate-action-mokwa-niger-state",
+      "name": "Abdulsalam Abubakar University of Agriculture and Climate Action, Mokwa, Niger State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 62,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "ebonyi-state-university-of-ict-science-and-technology-oferekpe-ebonyi-state",
+      "name": "Ebonyi State University of ICT, Science and Technology, Oferekpe, Ebonyi State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 63,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "cross-river-university-of-education-and-entrepeneurship-akampa-cross-river-state",
+      "name": "Cross River University of Education and Entrepeneurship, Akampa, Cross River State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 64,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "benue-state-university-of-agriculture-science-and-technology-ihugh",
+      "name": "Benue State University of Agriculture Science and Technology, Ihugh.",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 65,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "university-of-aeronautics-and-aerospace-engineering-ezza-ebonyi-state",
+      "name": "University of Aeronautics and Aerospace Engineering Ezza, Ebonyi State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 66,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "university-of-innovation-science-and-technology-omuma-imo-state",
+      "name": "University of Innovation, Science and Technology, Omuma, Imo State",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 67,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "taraba-state-university-of-tropical-agriculture-science-technology-and-climate-action-gembu",
+      "name": "Taraba State University of Tropical Agriculture, Science, Technology and Climate Action, Gembu",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 68,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "jigawa-state-university-of-medical-and-allied-health-sciences-majia",
+      "name": "Jigawa State University of Medical and Allied Health Sciences, Majia",
+      "ownership": "state",
+      "source_id": "nuc-state",
+      "source_row": 69,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "babcock-university-ilishan-remo",
+      "name": "Babcock University,Ilishan-Remo",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 1,
+      "website_url": "https://www.babcock.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "igbinedion-university-okada",
+      "name": "Igbinedion University Okada",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 2,
+      "website_url": "https://www.iuokada.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "madonna-university-okija",
+      "name": "Madonna University, Okija",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 3,
+      "website_url": "https://www.madonnauniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "bowen-university-iwo",
+      "name": "Bowen University, Iwo",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 4,
+      "website_url": "https://www.bowen.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "benson-idahosa-university-benin-city",
+      "name": "Benson Idahosa University, Benin City",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 5,
+      "website_url": "https://www.biu.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "covenant-university-ota",
+      "name": "Covenant University Ota",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 6,
+      "website_url": "https://www.covenantuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "pan-atlantic-university-lagos",
+      "name": "Pan-Atlantic University, Lagos",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 7,
+      "website_url": "https://www.pau.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "american-university-of-nigeria-yola",
+      "name": "American University of Nigeria, Yola",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 8,
+      "website_url": "https://www.aun.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "ajayi-crowther-university-ibadan",
+      "name": "Ajayi Crowther University, Ibadan",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 9,
+      "website_url": "https://www.acu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "al-hikmah-university-ilorin",
+      "name": "Al-Hikmah University, Ilorin",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 10,
+      "website_url": "https://www.alhikmah.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "al-qalam-university-katsina",
+      "name": "Al-Qalam University, Katsina",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 11,
+      "website_url": "https://www.auk.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "bells-university-of-technology-otta",
+      "name": "Bells University of Technology, Otta",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 12,
+      "website_url": "https://www.bellsuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "bingham-university-new-karu",
+      "name": "Bingham University, New Karu",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 13,
+      "website_url": "https://www.binghamuni.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "caritas-university-enugu",
+      "name": "Caritas University, Enugu",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 14,
+      "website_url": "https://www.caritasuni.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "crawford-university-igbesa",
+      "name": "Crawford University Igbesa",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 15,
+      "website_url": "https://www.crawforduniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "crescent-university",
+      "name": "Crescent University",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 16,
+      "website_url": "https://www.crescent-university.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "kwararafa-university-wukari",
+      "name": "Kwararafa University, Wukari",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 17,
+      "website_url": "https://www.kwararafauniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "lead-city-university-ibadan",
+      "name": "Lead City University, Ibadan",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 18,
+      "website_url": "https://www.lcu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "novena-university-ogume",
+      "name": "Novena University, Ogume",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 19,
+      "website_url": "https://www.novenauniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "redeemer-s-university-ede",
+      "name": "Redeemer's University, Ede",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 20,
+      "website_url": "https://www.run.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "renaissance-university-enugu",
+      "name": "Renaissance University, Enugu",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 21,
+      "website_url": "https://www.rnu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-of-mkar-mkar",
+      "name": "University of Mkar, Mkar",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 22,
+      "website_url": "https://www.unimkar.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "joseph-ayo-babalola-university-ikeji-arakeji",
+      "name": "Joseph Ayo Babalola University, Ikeji-Arakeji",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 23,
+      "website_url": "https://www.jabu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "achievers-university-owo",
+      "name": "Achievers University, Owo",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 24,
+      "website_url": "https://www.achievers.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "caleb-university-lagos",
+      "name": "Caleb University, Lagos",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 25,
+      "website_url": "https://www.calebuniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "fountain-unveristy-oshogbo",
+      "name": "Fountain Unveristy, Oshogbo",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 26,
+      "website_url": "https://www.fuo.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "african-university-of-science-and-technology-abuja",
+      "name": "African University of Science and Technology, Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 27,
+      "website_url": "http://aust.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "obong-university-obong-ntak",
+      "name": "Obong University, Obong Ntak",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 28,
+      "website_url": "https://www.obonguniversity.net",
+      "aliases": []
+    },
+    {
+      "key": "salem-university-lokoja",
+      "name": "Salem University, Lokoja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 29,
+      "website_url": "https://www.salemuniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "tansian-university-umunya",
+      "name": "Tansian University, Umunya",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 30,
+      "website_url": "https://tansianuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "veritas-university-abuja",
+      "name": "Veritas University, Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 31,
+      "website_url": "https://www.veritas.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "wesley-university-ondo",
+      "name": "Wesley University Ondo",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 32,
+      "website_url": "https://www.wesleyuni.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "western-delta-university-oghara-delta-state",
+      "name": "Western Delta University, Oghara Delta State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 33,
+      "website_url": "https://wdu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "afe-babalola-university-ado-ekiti-ekiti-state",
+      "name": "Afe Babalola University, Ado-Ekiti - Ekiti State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 34,
+      "website_url": "https://www.abuad.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "godfrey-okoye-university-ugwuomu-nike-enugu-state",
+      "name": "Godfrey Okoye University, Ugwuomu-Nike - Enugu State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 35,
+      "website_url": "https://www.gouni.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "nile-university-of-nigeria-abuja",
+      "name": "Nile University of Nigeria, Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 36,
+      "website_url": "https://www.nileuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "oduduwa-university-ipetumodu-osun-state",
+      "name": "Oduduwa University, Ipetumodu - Osun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 37,
+      "website_url": "https://www.oduduwauniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "paul-university-awka-anambra-state",
+      "name": "Paul University, Awka - Anambra State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 38,
+      "website_url": "https://www.pauluniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "rhema-university-obeama-asa-rivers-state",
+      "name": "Rhema University, Obeama-Asa - Rivers State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 39,
+      "website_url": "https://www.rhemauniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "wellspring-university-evbuobanosa-edo-state",
+      "name": "Wellspring University, Evbuobanosa - Edo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 40,
+      "website_url": "https://www.wellspringuniversity.net",
+      "aliases": []
+    },
+    {
+      "key": "adeleke-university-ede",
+      "name": "Adeleke University, Ede",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 41,
+      "website_url": "https://www.adelekeuniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "baze-university",
+      "name": "Baze University",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 42,
+      "website_url": "https://www.bazeuniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "landmark-university-omu-aran",
+      "name": "Landmark University, Omu-Aran.",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 43,
+      "website_url": "https://www.lmu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "glorious-vision-university-ogwa-edo-state",
+      "name": "Glorious Vision University, Ogwa, Edo State.",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 44,
+      "website_url": "https://www.sau.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "elizade-university-ilara-mokin",
+      "name": "Elizade University, Ilara-Mokin",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 45,
+      "website_url": "https://www.elizadeuniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "evangel-university-akaeze",
+      "name": "Evangel University, Akaeze",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 46,
+      "website_url": "https://www.evangeluniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "gregory-university-uturu",
+      "name": "Gregory University, Uturu",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 47,
+      "website_url": "https://www.gregoryuniversity.com",
+      "aliases": []
+    },
+    {
+      "key": "mcpherson-university-seriki-sotayo-ajebo",
+      "name": "Mcpherson University, Seriki Sotayo, Ajebo",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 48,
+      "website_url": "https://www.mcu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "southwestern-university-oku-owa",
+      "name": "Southwestern University, Oku Owa",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 49,
+      "website_url": "https://www.southwesternuniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "augustine-university",
+      "name": "Augustine University",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 50,
+      "website_url": "https://www.augustineuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "chrisland-university",
+      "name": "Chrisland University",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 51,
+      "website_url": "https://www.chrislanduniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "edwin-clark-university-kaigbodo",
+      "name": "Edwin Clark University, Kaigbodo",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 52,
+      "website_url": "https://www.edwinclarkuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "hallmark-university-ijebi-itele-ogun",
+      "name": "Hallmark University, Ijebi Itele, Ogun",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 53,
+      "website_url": "https://www.hallmark.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "hezekiah-university-umudi",
+      "name": "Hezekiah University, Umudi",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 54,
+      "website_url": "https://hezekiah.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "kings-university-ode-omu",
+      "name": "Kings University, Ode Omu",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 55,
+      "website_url": "https://www.kingsuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "micheal-cecilia-ibru-university",
+      "name": "Micheal & Cecilia Ibru University",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 56,
+      "website_url": "https://mciu.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "mountain-top-university",
+      "name": "Mountain Top University",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 57,
+      "website_url": "https://www.mtu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "ritman-university-ikot-ekpene-akwa-ibom",
+      "name": "Ritman University, Ikot Ekpene, Akwa Ibom",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 58,
+      "website_url": "https://www.ritmanuniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "summit-university-offa",
+      "name": "Summit University, Offa",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 59,
+      "website_url": "https://www.summituniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "christopher-university-mowe",
+      "name": "Christopher University Mowe",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 60,
+      "website_url": "https://www.christopheruniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "kola-daisi-university-ibadan-oyo-state",
+      "name": "Kola Daisi University Ibadan, Oyo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 61,
+      "website_url": "https://www.koladaisiuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "anchor-university-ayobo-lagos-state",
+      "name": "Anchor University Ayobo Lagos State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 62,
+      "website_url": "https://www.aul.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "dominican-university-ibadan-oyo-state",
+      "name": "Dominican University Ibadan Oyo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 63,
+      "website_url": "https://www.dui.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "legacy-university-okija-anambra-state",
+      "name": "Legacy University, Okija Anambra State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 64,
+      "website_url": "https://www.legacyuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "arthur-javis-university-akpoyubo-cross-river-state",
+      "name": "Arthur Javis University Akpoyubo Cross river State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 65,
+      "website_url": "https://www.arthurjarvisuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "ojaja-university-eiyenkorin-kwara-state",
+      "name": "Ojaja University Eiyenkorin, Kwara State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 66,
+      "website_url": "https://www.crownhilluniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "coal-city-university-enugu-state",
+      "name": "Coal City University Enugu State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 67,
+      "website_url": "https://www.ccu.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "clifford-university-owerrinta-abia-state",
+      "name": "Clifford University Owerrinta Abia State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 68,
+      "website_url": "https://www.clifforduni.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "spiritan-university-nneochi-abia-state",
+      "name": "Spiritan University, Nneochi Abia State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 69,
+      "website_url": "https://www.spiritanuniversity.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "precious-cornerstone-university-oyo",
+      "name": "Precious Cornerstone University, Oyo",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 70,
+      "website_url": "https://www.pcu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "pamo-university-of-medical-sciences-portharcourt",
+      "name": "PAMO University of Medical Sciences, Portharcourt",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 71,
+      "website_url": "https://www.pums.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "atiba-university-oyo",
+      "name": "Atiba University Oyo",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 72,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "eko-university-of-medical-and-health-sciences-ijanikin-lagos",
+      "name": "Eko University of Medical and Health Sciences Ijanikin, Lagos",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 73,
+      "website_url": "https://www.ekounivmed.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "skyline-university-kano",
+      "name": "Skyline University, Kano",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 74,
+      "website_url": "https://www.sun.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "greenfield-university-kaduna",
+      "name": "Greenfield University, Kaduna",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 75,
+      "website_url": "https://www.gfu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "dominion-university-ibadan-oyo-state",
+      "name": "Dominion University Ibadan, Oyo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 76,
+      "website_url": "https://www.dominionuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "trinity-university-ogun-state",
+      "name": "Trinity University Ogun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 77,
+      "website_url": "https://www.trinityuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "westland-university-iwo-osun-state",
+      "name": "Westland University Iwo, Osun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 78,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "topfaith-university-mkpatak-akwa-ibom-state",
+      "name": "Topfaith University, Mkpatak, Akwa Ibom State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 79,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "thomas-adewumi-university-oko-irese-kwara-state",
+      "name": "Thomas Adewumi University, Oko-Irese, Kwara State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 80,
+      "website_url": "https://www.tau.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "maranatha-university-lagos",
+      "name": "Maranatha University, Lagos",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 81,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "ave-maria-university-piyanko-nasarawa-state",
+      "name": "Ave Maria University, Piyanko, Nasarawa State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 82,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "al-istiqama-university-sumaila-kano-state",
+      "name": "Al-Istiqama University, Sumaila, Kano State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 83,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "mudiame-university-irrua-edo-state",
+      "name": "Mudiame University, Irrua, Edo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 84,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "havilla-university-nde-ikom-cross-river-state",
+      "name": "Havilla University, Nde-Ikom, Cross River State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 85,
+      "website_url": "https://havillauniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "claretian-university-of-nigeria-nekede-imo-state",
+      "name": "Claretian University of Nigeria, Nekede, Imo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 86,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "karl-kumm-university-vom-plateau-state",
+      "name": "Karl-Kumm University, Vom, Plateau State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 87,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "james-hope-university-lagos-lagos-state",
+      "name": "James Hope University, Lagos, Lagos State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 88,
+      "website_url": "https://www.jhu.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "maryam-abacha-american-university-of-nigeria-kano-state",
+      "name": "Maryam Abacha American University of Nigeria, Kano State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 89,
+      "website_url": "https://www.maaun.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "capital-city-university-kano-state",
+      "name": "Capital City University, Kano State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 90,
+      "website_url": "https://www.ccuk.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "ahman-pategi-university-kwara-state",
+      "name": "Ahman Pategi University, Kwara State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 91,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "university-of-offa-kwara-state",
+      "name": "University of Offa, Kwara State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 92,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "mewar-international-university-masaka-nasarawa-state",
+      "name": "Mewar International University, Masaka, Nasarawa State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 93,
+      "website_url": "https://www.miu.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "edusoko-university-bida-niger-state",
+      "name": "Edusoko University, Bida, Niger State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 94,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "philomath-university-kuje-abuja",
+      "name": "Philomath University, Kuje, Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 95,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "anan-university-kwall-plateau-state",
+      "name": "Anan University, Kwall, Plateau State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 96,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "north-eastern-university-gombe",
+      "name": "North Eastern University, Gombe",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 97,
+      "website_url": "https://pru.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "al-ansar-university-maiduguri-borno",
+      "name": "Al-Ansar University, Maiduguri, Borno",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 98,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "margaret-lawrence-university-umunede-delta-state",
+      "name": "Margaret Lawrence University, Umunede, Delta State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 99,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "khalifa-isiyaku-rabiu-university-kano",
+      "name": "Khalifa Isiyaku Rabiu University, Kano",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 100,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "sports-university-idumuje-ugboko-delta-state",
+      "name": "Sports University, Idumuje, Ugboko, Delta State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 101,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "baba-ahmed-university-kano-state",
+      "name": "Baba Ahmed University, Kano State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 102,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "saisa-university-of-medical-sciences-and-technology-sokoto-state",
+      "name": "Saisa University of Medical Sciences and Technology, Sokoto State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 103,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "nigerian-british-university-asa-abia-state",
+      "name": "Nigerian British University, Asa, Abia State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 104,
+      "website_url": "https://nbu.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "peter-university-achina-onneh-anambra-state",
+      "name": "Peter University, Achina-Onneh Anambra State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 105,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "newgate-university-minna-niger-state",
+      "name": "Newgate University, MInna, Niger State.",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 106,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "european-university-of-nigeria-duboyi-fct",
+      "name": "European University of Nigeria, Duboyi, FCT",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 107,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "northwest-university-sokoto-state",
+      "name": "NorthWest University Sokoto State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 108,
+      "website_url": "https://nwus.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "rayhaan-university-kebbi",
+      "name": "Rayhaan University, Kebbi",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 109,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "muhammad-kamalud-university-kwara",
+      "name": "Muhammad Kamalud University Kwara",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 110,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "sam-maris-university-ondo",
+      "name": "Sam Maris University, Ondo",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 111,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "aletheia-university-ago-iwoye-ogun-state",
+      "name": "Aletheia University, Ago-Iwoye Ogun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 112,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "lux-mundi-university-umuahia-abia-state",
+      "name": "Lux Mundi University Umuahia, Abia State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 113,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "maduka-university-ekwegbe-enugu-state",
+      "name": "Maduka University, Ekwegbe, Enugu State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 114,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "peaceland-university-enugu-state",
+      "name": "PeaceLand University, Enugu State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 115,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "amadeus-university-amizi-abia-state",
+      "name": "Amadeus University, Amizi, Abia State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 116,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "vision-university-ikogbo-ogun-state",
+      "name": "Vision University, Ikogbo, Ogun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 117,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "azman-university-kano-state",
+      "name": "Azman University, Kano State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 118,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "huda-university-gusau-zamafara-state",
+      "name": "Huda University, Gusau, Zamafara State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 119,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "franco-british-international-university-kaduna-state",
+      "name": "Franco British International University, Kaduna State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 120,
+      "website_url": "https://fbiu.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "canadian-university-of-nigeria-abuja",
+      "name": "Canadian University of Nigeria, Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 121,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "gerar-university-of-medical-science-imope-ijebu-ogun-state",
+      "name": "Gerar University of Medical Science Imope Ijebu, Ogun State.",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 122,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "british-canadian-university-obufu-cross-river-state",
+      "name": "British Canadian University, Obufu Cross River State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 123,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "hensard-university-toru-orua-sagbama-bayelsa-state",
+      "name": "Hensard University, Toru-Orua, Sagbama, Bayelsa State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 124,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "amaj-university-kwali-abuja",
+      "name": "Amaj University, Kwali, Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 125,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "phoenix-university-agwada-nasarawa-state",
+      "name": "Phoenix University, Agwada, Nasarawa State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 126,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "wigwe-university-isiokpo-rivers-state",
+      "name": "Wigwe University, Isiokpo Rivers State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 127,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "hillside-university-of-science-and-technology-okemisi-ekiti-state",
+      "name": "Hillside University of Science and Technology, Okemisi, Ekiti State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 128,
+      "website_url": "https://www.hust.edu.ng",
+      "aliases": []
+    },
+    {
+      "key": "university-on-the-niger-umunya-anambra-state",
+      "name": "University on the Niger, Umunya, Anambra state",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 129,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "elrazi-medical-university-yargaya-university-kano-state",
+      "name": "Elrazi Medical University Yargaya University, Kano State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 130,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "venite-university-iloro-ekiti-ekiti-state",
+      "name": "Venite University, Iloro-Ekiti, Ekiti State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 131,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "shanahan-university-onitsha-anambra-state",
+      "name": "Shanahan University Onitsha, Anambra State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 132,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "the-duke-medical-university-calabar-cross-river-state",
+      "name": "The Duke Medical University, Calabar, Cross River State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 133,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "mercy-medical-university-iwo-ogun-state",
+      "name": "Mercy Medical University, Iwo, Ogun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 134,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "cosmopolitan-university-abuja",
+      "name": "Cosmopolitan University Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 135,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "miva-open-university-abuja-fct",
+      "name": "Miva Open University, Abuja FCT",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 136,
+      "website_url": "https://miva.university/",
+      "aliases": []
+    },
+    {
+      "key": "iconic-open-university-sokoto-state",
+      "name": "Iconic Open University, Sokoto State.",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 137,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "west-midlands-open-university-ibadan-oyo-state",
+      "name": "West Midlands Open University, Ibadan, Oyo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 138,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "al-muhibbah-open-university-abuja",
+      "name": "Al-Muhibbah Open University, Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 139,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "el-amin-university-minna-niger-state",
+      "name": "El-Amin University, Minna, Niger State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 140,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "college-of-petroleum-and-energy-studies-kaduna-state",
+      "name": "College of Petroleum and Energy Studies, Kaduna State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 141,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "jewel-university-gombe-state",
+      "name": "Jewel University, Gombe state",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 142,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "prime-university-kuje-fct-abuja",
+      "name": "Prime University, Kuje, FCT Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 143,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "nigerian-university-of-technology-and-management-apapa-lagos-state",
+      "name": "Nigerian University of Technology and Management, Apapa, Lagos State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 144,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "al-bayan-university-ankpa-kogi-state",
+      "name": "Al-Bayan University, Ankpa, Kogi State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 145,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "lighthouse-university-evbobanosa-edo-state",
+      "name": "Lighthouse University, Evbobanosa, Edo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 146,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "african-university-of-economics-fct-abuja",
+      "name": "African University of Economics, FCT, Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 147,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "new-city-university-ayetoro-ogun-state",
+      "name": "New City University, Ayetoro, Ogun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 148,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "university-of-fortune-igbotako-ondo-state",
+      "name": "University of Fortune, Igbotako, Ondo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 149,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "eranova-university-abuja",
+      "name": "Eranova University, Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 150,
+      "website_url": "https://eranova.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "minaret-university-ikirun-osun-state",
+      "name": "Minaret University, Ikirun, Osun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 151,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "abdulrasaq-abubakar-toyin-university-oke-ogba-ganmo-ilorin-kwara-state",
+      "name": "Abdulrasaq Abubakar Toyin University, Oke-Ogba, Ganmo, Ilorin, Kwara State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 152,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "southern-atlantic-university-uyo-akwa-ibom-state",
+      "name": "Southern Atlantic University, Uyo, Akwa Ibom State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 153,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "lens-university-ilemona-kwara-state",
+      "name": "Lens University, Ilemona, Kwara State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 154,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "monarch-university-iyesi-ota-ogun-state",
+      "name": "Monarch University, Iyesi-Ota, Ogun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 155,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "tonine-iredia-university-of-communication-benin-city-edo-state",
+      "name": "Tonine Iredia University of Communication, Benin City, Edo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 156,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "isaac-balami-university-of-aeronautics-and-management-lagos-state",
+      "name": "Isaac Balami University of Aeronautics and Management, Lagos State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 157,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "kevin-eze-university-mgbowo-enugu-state",
+      "name": "Kevin Eze University, Mgbowo, Enugu State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 158,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "tazkiyah-university-kaduna-kaduna-state",
+      "name": "Tazkiyah University, Kaduna, Kaduna State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 159,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "leadership-university-abuja-fct",
+      "name": "Leadership University, Abuja, FCT",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 160,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "jimoh-babalola-university-ilorin-kwara-state",
+      "name": "Jimoh Babalola University, Ilorin, Kwara State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 161,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "bridget-university-mbaise-okirika-nweke-imo-state",
+      "name": "Bridget University Mbaise, Okirika-Nweke, Imo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 162,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "greenland-university-jalingo-taraba-state",
+      "name": "Greenland University, Jalingo, Taraba State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 163,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "jefap-university-suleja-niger-state",
+      "name": "JEFAP University, Suleja, Niger State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 164,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "azione-verde-university-amaigbo-imo-state",
+      "name": "Azione Verde University, Amaigbo, Imo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 165,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "unique-open-university-ojo-lagos-state",
+      "name": "Unique Open University, Ojo, Lagos State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 166,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "american-open-university-abeokuta-ogun-state",
+      "name": "American Open University, Abeokuta, Ogun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 167,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "millenium-crest-university-ikare-akoko-ondo-state",
+      "name": "Millenium Crest University, Ikare Akoko, Ondo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 168,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "abdulfattah-durojaiye-university-abeokuta-ogun-state",
+      "name": "Abdulfattah Durojaiye University, Abeokuta Ogun State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 169,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "euston-university-abakaliki-ebonyi-state",
+      "name": "Euston University, Abakaliki, Ebonyi State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 170,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "adeche-momoh-university-igarra-edo-state",
+      "name": "Adeche Momoh University, Igarra, Edo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 171,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "sani-bello-university-kontagora-niger-state",
+      "name": "Sani Bello University, Kontagora Niger State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 172,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "godday-erewa-university-sapele-delta-state",
+      "name": "Godday Erewa University, Sapele, Delta State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 173,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "owolabi-university-oke-ila-orangun",
+      "name": "Owolabi University, Oke Ila Orangun",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 174,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "regnum-medical-university-anthony-lagos-state",
+      "name": "Regnum Medical University, Anthony, Lagos State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 175,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "city-university-abuja",
+      "name": "City University Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 176,
+      "website_url": "https://www.cityuniversity.edu.ng/",
+      "aliases": []
+    },
+    {
+      "key": "transatlantic-university-of-medine-and-health-sciences-umuchukwu-anambra-state",
+      "name": "Transatlantic University of Medine and Health Sciences, Umuchukwu, Anambra State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 177,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "maria-assumpta-university-owerri-imo-state",
+      "name": "Maria Assumpta University Owerri, Imo State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 178,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "high-flyers-university-ikere-ekiti-ekiti-state",
+      "name": "High Flyers University, Ikere-Ekiti, Ekiti State",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 179,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "ummah-university-of-nigeria-abuja",
+      "name": "Ummah University of Nigeria, Abuja",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 180,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "pearl-university-calabar-cross-river",
+      "name": "Pearl University, Calabar, Cross river",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 181,
+      "website_url": null,
+      "aliases": []
+    },
+    {
+      "key": "omega-university-kaduna",
+      "name": "Omega University Kaduna",
+      "ownership": "private",
+      "source_id": "nuc-private",
+      "source_row": 182,
+      "website_url": null,
+      "aliases": []
+    }
+  ],
+  "faculties": [
+    {
+      "key": "ahmadu-bello-university-zaria:management-sciences",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Management Sciences",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Management Sciences"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:administration",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Administration",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Administration"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:agriculture",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Agriculture",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Agriculture"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:allied-health-sciences",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Allied Health Sciences",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Allied Health Sciences"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Arts",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Arts"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:basic-clinical-sciences",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Basic Clinical Sciences",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Basic Clinical Sciences"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:basic-medical-sciences",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Basic Medical Sciences",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Basic Medical Sciences"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:dental-surgery",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Dental Surgery",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Dental Surgery"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:clinical-sciences",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Clinical Sciences",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Clinical Sciences"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Education",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Education"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Engineering",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Engineering"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Environmental Design",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Environmental Design"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:law",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Law",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Law"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Life Sciences",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Life Sciences"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Physical Sciences",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Physical Sciences"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:pharmacy",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Pharmacy",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Pharmacy"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:social-sciences",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Social Sciences",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Social Sciences"
+      ]
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:veterinary-medicine",
+      "university_key": "ahmadu-bello-university-zaria",
+      "name": "Veterinary Medicine",
+      "source_id": "abu-faculties",
+      "aliases": [
+        "Faculty of Veterinary Medicine"
+      ]
+    }
+  ],
+  "departments": [
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:metallurgical-and-materials-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "Metallurgical and Materials Engineering",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:agriculture:agricultural-economics",
+      "faculty_key": "ahmadu-bello-university-zaria:agriculture",
+      "name": "Agricultural Economics",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:agriculture:fisheries",
+      "faculty_key": "ahmadu-bello-university-zaria:agriculture",
+      "name": "Fisheries",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:agriculture:forestry-and-wildlife",
+      "faculty_key": "ahmadu-bello-university-zaria:agriculture",
+      "name": "Forestry and Wildlife",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:arabic",
+      "faculty_key": "ahmadu-bello-university-zaria:arts",
+      "name": "Arabic",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:archaeology",
+      "faculty_key": "ahmadu-bello-university-zaria:arts",
+      "name": "Archaeology",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:theatre-and-performing-arts",
+      "faculty_key": "ahmadu-bello-university-zaria:arts",
+      "name": "Theatre and Performing Arts",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:english",
+      "faculty_key": "ahmadu-bello-university-zaria:arts",
+      "name": "English",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:fine-arts",
+      "faculty_key": "ahmadu-bello-university-zaria:environmental-design",
+      "name": "Fine Arts",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:french",
+      "faculty_key": "ahmadu-bello-university-zaria:arts",
+      "name": "French",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:african-languages-and-cultures",
+      "faculty_key": "ahmadu-bello-university-zaria:arts",
+      "name": "African Languages and Cultures",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:history",
+      "faculty_key": "ahmadu-bello-university-zaria:arts",
+      "name": "History",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:industrial-design",
+      "faculty_key": "ahmadu-bello-university-zaria:environmental-design",
+      "name": "Industrial Design",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:administration:local-government-and-development-studies",
+      "faculty_key": "ahmadu-bello-university-zaria:administration",
+      "name": "Local Government and Development Studies",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education",
+      "faculty_key": "ahmadu-bello-university-zaria:education",
+      "name": "Science Education",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:educational-foundation-and-curriculum",
+      "faculty_key": "ahmadu-bello-university-zaria:education",
+      "name": "Educational Foundation and Curriculum",
+      "source_id": "abu-ug-1",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:educational-psychology-and-counselling",
+      "faculty_key": "ahmadu-bello-university-zaria:education",
+      "name": "Educational Psychology and Counselling",
+      "source_id": "abu-ug-2",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education",
+      "faculty_key": "ahmadu-bello-university-zaria:education",
+      "name": "Arts and Social Science Education",
+      "source_id": "abu-ug-2",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:home-economics",
+      "faculty_key": "ahmadu-bello-university-zaria:education",
+      "name": "Home Economics",
+      "source_id": "abu-ug-2",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:agricultural-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "Agricultural Engineering",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:mechanical-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "Mechanical Engineering",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:chemical-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "Chemical Engineering",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:civil-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "Civil Engineering",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:computer-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "Computer Engineering",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:electrical-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "Electrical Engineering",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:electronics-and-telecommunications-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "ELECTRONICS AND TELECOMMUNICATIONS ENGINEERING",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:geomatics",
+      "faculty_key": "ahmadu-bello-university-zaria:environmental-design",
+      "name": "Geomatics",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:polymer-and-textile-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "Polymer and Textile Engineering",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:water-resources-and-environmental-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "Water Resources and Environmental Engineering",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:glass-and-silicate-technology",
+      "faculty_key": "ahmadu-bello-university-zaria:environmental-design",
+      "name": "Glass and Silicate Technology",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:geography-and-environmental-management",
+      "faculty_key": "ahmadu-bello-university-zaria:physical-sciences",
+      "name": "Geography and Environmental Management",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:vocational-and-technical-education",
+      "faculty_key": "ahmadu-bello-university-zaria:education",
+      "name": "Vocational and Technical Education",
+      "source_id": "abu-ug-3",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:physical-and-health-education",
+      "faculty_key": "ahmadu-bello-university-zaria:education",
+      "name": "Physical and Health Education",
+      "source_id": "abu-ug-4",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:agriculture:agricultural-extension-and-rural-development",
+      "faculty_key": "ahmadu-bello-university-zaria:agriculture",
+      "name": "Agricultural Extension and Rural Development",
+      "source_id": "abu-ug-4",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:architecture",
+      "faculty_key": "ahmadu-bello-university-zaria:environmental-design",
+      "name": "Architecture",
+      "source_id": "abu-ug-4",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences:biochemistry",
+      "faculty_key": "ahmadu-bello-university-zaria:life-sciences",
+      "name": "Biochemistry",
+      "source_id": "abu-ug-4",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences:biological-sciences",
+      "faculty_key": "ahmadu-bello-university-zaria:life-sciences",
+      "name": "Biological Sciences",
+      "source_id": "abu-ug-4",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences:botany",
+      "faculty_key": "ahmadu-bello-university-zaria:life-sciences",
+      "name": "Botany",
+      "source_id": "abu-ug-4",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:building",
+      "faculty_key": "ahmadu-bello-university-zaria:environmental-design",
+      "name": "Building",
+      "source_id": "abu-ug-4",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:chemistry",
+      "faculty_key": "ahmadu-bello-university-zaria:physical-sciences",
+      "name": "Chemistry",
+      "source_id": "abu-ug-4",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:computer-science",
+      "faculty_key": "ahmadu-bello-university-zaria:physical-sciences",
+      "name": "Computer Science",
+      "source_id": "abu-ug-4",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:geology",
+      "faculty_key": "ahmadu-bello-university-zaria:physical-sciences",
+      "name": "Geology",
+      "source_id": "abu-ug-4",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:basic-medical-sciences:human-anatomy",
+      "faculty_key": "ahmadu-bello-university-zaria:basic-medical-sciences",
+      "name": "Human Anatomy",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:basic-medical-sciences:human-physiology",
+      "faculty_key": "ahmadu-bello-university-zaria:basic-medical-sciences",
+      "name": "Human Physiology",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:social-sciences:political-science",
+      "faculty_key": "ahmadu-bello-university-zaria:social-sciences",
+      "name": "Political Science",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:surveying",
+      "faculty_key": "ahmadu-bello-university-zaria:engineering",
+      "name": "Surveying",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:social-sciences:mass-communication",
+      "faculty_key": "ahmadu-bello-university-zaria:social-sciences",
+      "name": "Mass Communication",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:mathematics",
+      "faculty_key": "ahmadu-bello-university-zaria:physical-sciences",
+      "name": "Mathematics",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences:microbiology",
+      "faculty_key": "ahmadu-bello-university-zaria:life-sciences",
+      "name": "Microbiology",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:physics",
+      "faculty_key": "ahmadu-bello-university-zaria:physical-sciences",
+      "name": "Physics",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:polymer-and-textile-engineering",
+      "faculty_key": "ahmadu-bello-university-zaria:physical-sciences",
+      "name": "Polymer and Textile Engineering",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:administration:public-administration",
+      "faculty_key": "ahmadu-bello-university-zaria:administration",
+      "name": "Public Administration",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:quantity-surveying",
+      "faculty_key": "ahmadu-bello-university-zaria:environmental-design",
+      "name": "Quantity Surveying",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:social-sciences:sociology",
+      "faculty_key": "ahmadu-bello-university-zaria:social-sciences",
+      "name": "Sociology",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:statistics",
+      "faculty_key": "ahmadu-bello-university-zaria:physical-sciences",
+      "name": "Statistics",
+      "source_id": "abu-ug-5",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences:zoology",
+      "faculty_key": "ahmadu-bello-university-zaria:life-sciences",
+      "name": "Zoology",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:urban-and-regional-planning",
+      "faculty_key": "ahmadu-bello-university-zaria:environmental-design",
+      "name": "Urban and Regional Planning",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:clinical-sciences:dental-surgery",
+      "faculty_key": "ahmadu-bello-university-zaria:clinical-sciences",
+      "name": "Dental Surgery",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:allied-health-sciences:medical-laboratory-science",
+      "faculty_key": "ahmadu-bello-university-zaria:allied-health-sciences",
+      "name": "Medical Laboratory Science",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:allied-health-sciences:medical-radiography",
+      "faculty_key": "ahmadu-bello-university-zaria:allied-health-sciences",
+      "name": "Medical Radiography",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:library-and-information-science",
+      "faculty_key": "ahmadu-bello-university-zaria:education",
+      "name": "Library and Information Science",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:allied-health-sciences:nursing-science",
+      "faculty_key": "ahmadu-bello-university-zaria:allied-health-sciences",
+      "name": "Nursing Science",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:human-kinetics-and-health-education",
+      "faculty_key": "ahmadu-bello-university-zaria:education",
+      "name": "Human Kinetics and Health Education",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:veterinary-medicine:veterinary-medicine",
+      "faculty_key": "ahmadu-bello-university-zaria:veterinary-medicine",
+      "name": "Veterinary Medicine",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:law:civil-law",
+      "faculty_key": "ahmadu-bello-university-zaria:law",
+      "name": "Civil Law",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:law:islamic-law",
+      "faculty_key": "ahmadu-bello-university-zaria:law",
+      "name": "Islamic Law",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:clinical-sciences:medicine",
+      "faculty_key": "ahmadu-bello-university-zaria:clinical-sciences",
+      "name": "Medicine",
+      "source_id": "abu-ug-6",
+      "aliases": []
+    }
+  ],
+  "programmes": [
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:metallurgical-and-materials-engineering:b-eng-mining-and-minerals-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:metallurgical-and-materials-engineering",
+      "name": "B Eng. Mining and Minerals Engineering",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:agriculture:agricultural-economics:b-agriculture",
+      "department_key": "ahmadu-bello-university-zaria:agriculture:agricultural-economics",
+      "name": "B. Agriculture",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:agriculture:fisheries:b-fisheries-and-aquaculture",
+      "department_key": "ahmadu-bello-university-zaria:agriculture:fisheries",
+      "name": "B. Fisheries and Aquaculture",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:agriculture:forestry-and-wildlife:b-forestry-and-wildlife",
+      "department_key": "ahmadu-bello-university-zaria:agriculture:forestry-and-wildlife",
+      "name": "B. Forestry and Wildlife",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:arabic:b-a-arabic",
+      "department_key": "ahmadu-bello-university-zaria:arts:arabic",
+      "name": "B.A Arabic",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:archaeology:b-a-archeology",
+      "department_key": "ahmadu-bello-university-zaria:arts:archaeology",
+      "name": "B.A Archeology",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:archaeology:b-a-archeology-history",
+      "department_key": "ahmadu-bello-university-zaria:arts:archaeology",
+      "name": "B.A Archeology/History",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:theatre-and-performing-arts:b-a-english-drama",
+      "department_key": "ahmadu-bello-university-zaria:arts:theatre-and-performing-arts",
+      "name": "B.A English (Drama)",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:english:b-a-english-language",
+      "department_key": "ahmadu-bello-university-zaria:arts:english",
+      "name": "B.A English (Language)",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:english:b-a-english-literature",
+      "department_key": "ahmadu-bello-university-zaria:arts:english",
+      "name": "B.A English (Literature)",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:fine-arts:b-a-fine-arts",
+      "department_key": "ahmadu-bello-university-zaria:environmental-design:fine-arts",
+      "name": "B.A Fine Arts",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:french:b-a-french",
+      "department_key": "ahmadu-bello-university-zaria:arts:french",
+      "name": "B.A French",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:african-languages-and-cultures:b-a-hausa",
+      "department_key": "ahmadu-bello-university-zaria:arts:african-languages-and-cultures",
+      "name": "B.A Hausa",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:history:b-a-history",
+      "department_key": "ahmadu-bello-university-zaria:arts:history",
+      "name": "B.A History",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:industrial-design:b-a-industrial-design",
+      "department_key": "ahmadu-bello-university-zaria:environmental-design:industrial-design",
+      "name": "B.A Industrial Design",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:administration:local-government-and-development-studies:b-a-local-government-development-studies",
+      "department_key": "ahmadu-bello-university-zaria:administration:local-government-and-development-studies",
+      "name": "B.A Local Government & Development Studies",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:arts:theatre-and-performing-arts:b-a-theatre-and-performing-arts",
+      "department_key": "ahmadu-bello-university-zaria:arts:theatre-and-performing-arts",
+      "name": "B.A Theatre and Performing Arts",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education:b-a-ed-arabic",
+      "department_key": "ahmadu-bello-university-zaria:education:science-education",
+      "name": "B.A(Ed) ARABIC",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:educational-foundation-and-curriculum:b-ed-education-foundation-and-curriculum",
+      "department_key": "ahmadu-bello-university-zaria:education:educational-foundation-and-curriculum",
+      "name": "B.Ed (Education Foundation and Curriculum)",
+      "source_id": "abu-ug-1",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:educational-psychology-and-counselling:b-ed-education-psychology-and-counselling",
+      "department_key": "ahmadu-bello-university-zaria:education:educational-psychology-and-counselling",
+      "name": "B.Ed (Education Psychology and Counselling)",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:educational-foundation-and-curriculum:b-ed-adult-education",
+      "department_key": "ahmadu-bello-university-zaria:education:educational-foundation-and-curriculum",
+      "name": "B.Ed Adult Education",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education:b-ed-arabic-education",
+      "department_key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education",
+      "name": "B.Ed Arabic Education",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education:b-ed-biology-education",
+      "department_key": "ahmadu-bello-university-zaria:education:science-education",
+      "name": "B.Ed Biology Education",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education:b-ed-chemistry-education",
+      "department_key": "ahmadu-bello-university-zaria:education:science-education",
+      "name": "B.Ed Chemistry Education",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education:b-ed-christian-religious-studies",
+      "department_key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education",
+      "name": "B.Ed Christian Religious Studies",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education:b-ed-creative-art",
+      "department_key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education",
+      "name": "B.Ed Creative Art",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education:b-ed-economics-education",
+      "department_key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education",
+      "name": "B.Ed Economics Education",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:educational-foundation-and-curriculum:b-ed-education-administration-and-planning",
+      "department_key": "ahmadu-bello-university-zaria:education:educational-foundation-and-curriculum",
+      "name": "B.Ed Education Administration and Planning",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education:b-ed-geography-education",
+      "department_key": "ahmadu-bello-university-zaria:education:science-education",
+      "name": "B.Ed Geography Education",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:educational-psychology-and-counselling:b-ed-guidance-and-counselling",
+      "department_key": "ahmadu-bello-university-zaria:education:educational-psychology-and-counselling",
+      "name": "B.Ed Guidance and Counselling",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education:b-ed-hausa-education",
+      "department_key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education",
+      "name": "B.Ed Hausa Education",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:home-economics:b-ed-home-economics",
+      "department_key": "ahmadu-bello-university-zaria:education:home-economics",
+      "name": "B.Ed Home Economics",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education:b-ed-integrated-science",
+      "department_key": "ahmadu-bello-university-zaria:education:science-education",
+      "name": "B.Ed Integrated Science",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education:b-ed-islamic-religious-studies",
+      "department_key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education",
+      "name": "B.Ed Islamic Religious Studies",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education:b-ed-language-arts",
+      "department_key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education",
+      "name": "B.Ed Language Arts",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education:b-ed-mathematics-education",
+      "department_key": "ahmadu-bello-university-zaria:education:science-education",
+      "name": "B.Ed Mathematics Education",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education:b-ed-physics-education",
+      "department_key": "ahmadu-bello-university-zaria:education:science-education",
+      "name": "B.Ed Physics Education",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education:b-ed-science-education",
+      "department_key": "ahmadu-bello-university-zaria:education:science-education",
+      "name": "B.Ed Science Education",
+      "source_id": "abu-ug-2",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education:b-ed-social-studies",
+      "department_key": "ahmadu-bello-university-zaria:education:arts-and-social-science-education",
+      "name": "B.Ed Social Studies",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:agricultural-engineering:b-eng-agricultural-and-bio-resources-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:agricultural-engineering",
+      "name": "B.Eng. Agricultural and Bio-Resources Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:agricultural-engineering:b-eng-agricultural-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:agricultural-engineering",
+      "name": "B.Eng. Agricultural Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:mechanical-engineering:b-eng-automotive-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:mechanical-engineering",
+      "name": "B.Eng. Automotive Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:chemical-engineering:b-eng-chemical-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:chemical-engineering",
+      "name": "B.Eng. Chemical Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:civil-engineering:b-eng-civil-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:civil-engineering",
+      "name": "B.Eng. Civil Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:computer-engineering:b-eng-computer-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:computer-engineering",
+      "name": "B.Eng. Computer Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:electrical-engineering:b-eng-electrical-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:electrical-engineering",
+      "name": "B.Eng. Electrical Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:electronics-and-telecommunications-engineering:b-eng-electronics-telecommunications-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:electronics-and-telecommunications-engineering",
+      "name": "B.Eng. Electronics & Telecommunications Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:geomatics:b-eng-geomatic-engineering",
+      "department_key": "ahmadu-bello-university-zaria:environmental-design:geomatics",
+      "name": "B.Eng. Geomatic Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:mechanical-engineering:b-eng-mechanical-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:mechanical-engineering",
+      "name": "B.Eng. Mechanical Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:mechanical-engineering:b-eng-mechatronics-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:mechanical-engineering",
+      "name": "B.Eng. Mechatronics Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:metallurgical-and-materials-engineering:b-eng-metallurgical-and-materials-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:metallurgical-and-materials-engineering",
+      "name": "B.Eng. Metallurgical and Materials Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:polymer-and-textile-engineering:b-eng-polymer-and-textile-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:polymer-and-textile-engineering",
+      "name": "B.Eng. Polymer and Textile Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:water-resources-and-environmental-engineering:b-eng-water-resources-environmental-engineering",
+      "department_key": "ahmadu-bello-university-zaria:engineering:water-resources-and-environmental-engineering",
+      "name": "B.Eng. Water Resources & Environmental Engineering",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:glass-and-silicate-technology:b-glass-and-silicate-technology",
+      "department_key": "ahmadu-bello-university-zaria:environmental-design:glass-and-silicate-technology",
+      "name": "B.Glass and Silicate Technology",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:geography-and-environmental-management:b-sc-geography",
+      "department_key": "ahmadu-bello-university-zaria:physical-sciences:geography-and-environmental-management",
+      "name": "B.Sc Geography",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:vocational-and-technical-education:b-sc-ed-agriculture-education",
+      "department_key": "ahmadu-bello-university-zaria:education:vocational-and-technical-education",
+      "name": "B.Sc (Ed) Agriculture Education",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:vocational-and-technical-education:b-sc-ed-business-education",
+      "department_key": "ahmadu-bello-university-zaria:education:vocational-and-technical-education",
+      "name": "B.Sc (Ed) Business Education",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education:b-sc-ed-computer-science-education",
+      "department_key": "ahmadu-bello-university-zaria:education:science-education",
+      "name": "B.Sc (Ed) Computer Science Education",
+      "source_id": "abu-ug-3",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:science-education:b-sc-ed-computer-science-education-special",
+      "department_key": "ahmadu-bello-university-zaria:education:science-education",
+      "name": "B.Sc (Ed) Computer Science Education (Special)",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:physical-and-health-education:b-sc-ed-health-education",
+      "department_key": "ahmadu-bello-university-zaria:education:physical-and-health-education",
+      "name": "B.Sc (Ed) Health Education",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:physical-and-health-education:b-sc-ed-human-kinetics",
+      "department_key": "ahmadu-bello-university-zaria:education:physical-and-health-education",
+      "name": "B.Sc (Ed) Human Kinetics",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:agriculture:agricultural-extension-and-rural-development:b-sc-agricultural-extension",
+      "department_key": "ahmadu-bello-university-zaria:agriculture:agricultural-extension-and-rural-development",
+      "name": "B.Sc Agricultural Extension",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:architecture:b-sc-architecture",
+      "department_key": "ahmadu-bello-university-zaria:environmental-design:architecture",
+      "name": "B.Sc Architecture",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences:biochemistry:b-sc-biochemistry",
+      "department_key": "ahmadu-bello-university-zaria:life-sciences:biochemistry",
+      "name": "B.Sc Biochemistry",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences:biological-sciences:b-sc-biological-science",
+      "department_key": "ahmadu-bello-university-zaria:life-sciences:biological-sciences",
+      "name": "B.Sc Biological Science",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences:botany:b-sc-botany",
+      "department_key": "ahmadu-bello-university-zaria:life-sciences:botany",
+      "name": "B.Sc Botany",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:building:b-sc-building",
+      "department_key": "ahmadu-bello-university-zaria:environmental-design:building",
+      "name": "B.Sc Building",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:chemistry:b-sc-chemistry",
+      "department_key": "ahmadu-bello-university-zaria:physical-sciences:chemistry",
+      "name": "B.Sc Chemistry",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:computer-science:b-sc-computer-science",
+      "department_key": "ahmadu-bello-university-zaria:physical-sciences:computer-science",
+      "name": "B.Sc Computer Science",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:geology:b-sc-geology",
+      "department_key": "ahmadu-bello-university-zaria:physical-sciences:geology",
+      "name": "B.Sc Geology",
+      "source_id": "abu-ug-4",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:geomatics:b-sc-geomatics",
+      "department_key": "ahmadu-bello-university-zaria:environmental-design:geomatics",
+      "name": "B.Sc Geomatics",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:glass-and-silicate-technology:b-sc-glass-technology",
+      "department_key": "ahmadu-bello-university-zaria:environmental-design:glass-and-silicate-technology",
+      "name": "B.Sc Glass Technology",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:basic-medical-sciences:human-anatomy:b-sc-human-anatomy",
+      "department_key": "ahmadu-bello-university-zaria:basic-medical-sciences:human-anatomy",
+      "name": "B.Sc Human Anatomy",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:basic-medical-sciences:human-physiology:b-sc-human-physiology",
+      "department_key": "ahmadu-bello-university-zaria:basic-medical-sciences:human-physiology",
+      "name": "B.Sc Human Physiology",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:social-sciences:political-science:b-sc-international-studies",
+      "department_key": "ahmadu-bello-university-zaria:social-sciences:political-science",
+      "name": "B.Sc International Studies",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:engineering:surveying:b-sc-land-surveying",
+      "department_key": "ahmadu-bello-university-zaria:engineering:surveying",
+      "name": "B.Sc Land Surveying",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:social-sciences:mass-communication:b-sc-mass-communication",
+      "department_key": "ahmadu-bello-university-zaria:social-sciences:mass-communication",
+      "name": "B.Sc Mass Communication",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:mathematics:b-sc-mathematics",
+      "department_key": "ahmadu-bello-university-zaria:physical-sciences:mathematics",
+      "name": "B.Sc Mathematics",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:mathematics:b-sc-mathematics-with-computer-science",
+      "department_key": "ahmadu-bello-university-zaria:physical-sciences:mathematics",
+      "name": "B.Sc Mathematics with Computer Science",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences:microbiology:b-sc-microbiology",
+      "department_key": "ahmadu-bello-university-zaria:life-sciences:microbiology",
+      "name": "B.Sc Microbiology",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:physics:b-sc-physics",
+      "department_key": "ahmadu-bello-university-zaria:physical-sciences:physics",
+      "name": "B.Sc Physics",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:social-sciences:political-science:b-sc-political-science",
+      "department_key": "ahmadu-bello-university-zaria:social-sciences:political-science",
+      "name": "B.Sc Political Science",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:polymer-and-textile-engineering:b-sc-polymer-textile-science",
+      "department_key": "ahmadu-bello-university-zaria:physical-sciences:polymer-and-textile-engineering",
+      "name": "B.Sc Polymer & Textile Science",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:administration:public-administration:b-sc-public-administration",
+      "department_key": "ahmadu-bello-university-zaria:administration:public-administration",
+      "name": "B.Sc Public Administration",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:quantity-surveying:b-sc-quantity-surveying",
+      "department_key": "ahmadu-bello-university-zaria:environmental-design:quantity-surveying",
+      "name": "B.Sc Quantity Surveying",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:social-sciences:sociology:b-sc-sociology",
+      "department_key": "ahmadu-bello-university-zaria:social-sciences:sociology",
+      "name": "B.Sc Sociology",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:statistics:b-sc-statistics",
+      "department_key": "ahmadu-bello-university-zaria:physical-sciences:statistics",
+      "name": "B.Sc Statistics",
+      "source_id": "abu-ug-5",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:physical-sciences:polymer-and-textile-engineering:b-sc-textile-science-technology",
+      "department_key": "ahmadu-bello-university-zaria:physical-sciences:polymer-and-textile-engineering",
+      "name": "B.Sc Textile Science & Technology",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:life-sciences:zoology:b-sc-zoology",
+      "department_key": "ahmadu-bello-university-zaria:life-sciences:zoology",
+      "name": "B.Sc Zoology",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:environmental-design:urban-and-regional-planning:b-urban-regional-planning",
+      "department_key": "ahmadu-bello-university-zaria:environmental-design:urban-and-regional-planning",
+      "name": "B.Urban & Regional Planning",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:clinical-sciences:dental-surgery:bachelor-of-dental-surgery",
+      "department_key": "ahmadu-bello-university-zaria:clinical-sciences:dental-surgery",
+      "name": "Bachelor of Dental Surgery",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:allied-health-sciences:medical-laboratory-science:bachelor-of-medical-lab-science",
+      "department_key": "ahmadu-bello-university-zaria:allied-health-sciences:medical-laboratory-science",
+      "name": "Bachelor of Medical Lab. Science",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:allied-health-sciences:medical-radiography:bachelor-of-medical-radiography",
+      "department_key": "ahmadu-bello-university-zaria:allied-health-sciences:medical-radiography",
+      "name": "Bachelor of Medical Radiography",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:library-and-information-science:blis-bachelor-of-library-information-science",
+      "department_key": "ahmadu-bello-university-zaria:education:library-and-information-science",
+      "name": "BLIS (Bachelor of Library & Information Science)",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:allied-health-sciences:nursing-science:bnsc-nursing-science",
+      "department_key": "ahmadu-bello-university-zaria:allied-health-sciences:nursing-science",
+      "name": "BNSc. Nursing Science",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:education:human-kinetics-and-health-education:bs-ed-human-kinetics-health-education",
+      "department_key": "ahmadu-bello-university-zaria:education:human-kinetics-and-health-education",
+      "name": "BS.Ed Human Kinetics Health Education",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "4",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:veterinary-medicine:veterinary-medicine:dvm",
+      "department_key": "ahmadu-bello-university-zaria:veterinary-medicine:veterinary-medicine",
+      "name": "DVM",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "6",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:law:civil-law:llb-civil-law",
+      "department_key": "ahmadu-bello-university-zaria:law:civil-law",
+      "name": "LLB Civil Law",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:law:civil-law:llb-civil-law2",
+      "department_key": "ahmadu-bello-university-zaria:law:civil-law",
+      "name": "LLB Civil Law2",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:law:islamic-law:llb-with-specialization-in-islamic-law",
+      "department_key": "ahmadu-bello-university-zaria:law:islamic-law",
+      "name": "LLB With Specialization in Islamic Law",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "5",
+      "delivery_mode_as_reported": "Full-time"
+    },
+    {
+      "key": "ahmadu-bello-university-zaria:clinical-sciences:medicine:mbbs",
+      "department_key": "ahmadu-bello-university-zaria:clinical-sciences:medicine",
+      "name": "MBBS",
+      "source_id": "abu-ug-6",
+      "duration_as_reported": "6",
+      "delivery_mode_as_reported": "Full-time"
+    }
+  ],
+  "gaps": [
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B. Pharmacy",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "5",
+        "faculty_as_reported": "Pharmaceutical Sciences",
+        "department_as_reported": "Pharmacy",
+        "source_id": "abu-ug-1"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B.Sc Accounting",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "4",
+        "faculty_as_reported": "ABU Business School",
+        "department_as_reported": "Accounting",
+        "source_id": "abu-ug-4"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B.Sc Accounting",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "4",
+        "faculty_as_reported": "ABU Business School",
+        "department_as_reported": "Accounting",
+        "source_id": "abu-ug-4"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B.Sc Actuarial Science",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "4",
+        "faculty_as_reported": "ABU Business School",
+        "department_as_reported": "Insurance",
+        "source_id": "abu-ug-4"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B.Sc Banking & Finance",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "4",
+        "faculty_as_reported": "ABU Business School",
+        "department_as_reported": "Banking and Finance",
+        "source_id": "abu-ug-4"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B.Sc Business Administration",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "4",
+        "faculty_as_reported": "ABU Business School",
+        "department_as_reported": "Business Administration",
+        "source_id": "abu-ug-4"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B.Sc Business Management",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "4",
+        "faculty_as_reported": "ABU Business School",
+        "department_as_reported": "Business Management",
+        "source_id": "abu-ug-4"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B.Sc Economics",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "4",
+        "faculty_as_reported": "ABU Business School",
+        "department_as_reported": "Economics",
+        "source_id": "abu-ug-4"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B.Sc Insurance",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "4",
+        "faculty_as_reported": "ABU Business School",
+        "department_as_reported": "Business Administration",
+        "source_id": "abu-ug-5"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B.Sc Insurance",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "4",
+        "faculty_as_reported": "ABU Business School",
+        "department_as_reported": "Insurance",
+        "source_id": "abu-ug-5"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "unmapped_programme",
+      "record": {
+        "name": "B.Sc Marketing",
+        "delivery_mode_as_reported": "Full-time",
+        "duration_as_reported": "4",
+        "faculty_as_reported": "ABU Business School",
+        "department_as_reported": "Marketing",
+        "source_id": "abu-ug-5"
+      },
+      "reason": "Faculty label is absent from the main faculty directory; needs review."
+    },
+    {
+      "kind": "national_coverage",
+      "note": "The NUC register covers institution identity only. Faculty/department coverage in this snapshot is ABU official faculty list and department relationships appearing in its 114-row undergraduate catalogue. No claims of nationwide complete faculties/departments."
+    },
+    {
+      "kind": "uniben",
+      "note": "Official pages returned 403/502 during direct retrieval. Indexed official pages show conflicting programme/department hierarchies. Existing records are retained; revised mappings need institutional review."
+    },
+    {
+      "kind": "duplicate_programme_row",
+      "record": {
+        "key": "ahmadu-bello-university-zaria:education:science-education:b-ed-geography-education",
+        "department_key": "ahmadu-bello-university-zaria:education:science-education",
+        "name": "B.Ed Geography Education",
+        "source_id": "abu-ug-2",
+        "duration_as_reported": "4",
+        "delivery_mode_as_reported": "Full-time"
+      },
+      "reason": "Exact duplicate programme identity in official source. Preserved here; only one selectable record is published."
+    },
+    {
+      "kind": "duplicate_programme_row",
+      "record": {
+        "key": "ahmadu-bello-university-zaria:physical-sciences:geography-and-environmental-management:b-sc-geography",
+        "department_key": "ahmadu-bello-university-zaria:physical-sciences:geography-and-environmental-management",
+        "name": "B.Sc Geography",
+        "source_id": "abu-ug-4",
+        "duration_as_reported": "4",
+        "delivery_mode_as_reported": "Full-time"
+      },
+      "reason": "Exact duplicate programme identity in official source. Preserved here; only one selectable record is published."
+    }
+  ],
+  "source_programme_rows": 114
+}

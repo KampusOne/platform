@@ -69,8 +69,8 @@ export function PortalShell({ active, eyebrow, title, description, actions, chil
   return <div className={`portal-frame ${active === "admin" ? "portal-frame--admin" : ""}`}>
     <aside className="sidebar">
       <Link href={`/${active}`} className="brand-link" aria-label="KampusOne workspace home"><Image src="/kampusone-horizontal-ink.png" width={168} height={41} priority alt="KampusOne" /></Link>
-      <p className="workspace-label">{active === "agents" ? "Your agent account" : active === "admin" ? "Administration & operations" : "Engineering"}</p>
-      {active === "admin" ? <AdminNavigation pathname={pathname} /> : <nav className="portal-nav" aria-label="Workspaces"><Link className="nav-item" href={`/${active}`} aria-current={pathname === `/${active}` ? "page" : undefined}>{active === "agents" ? "Applications" : "System status"}</Link>{active === "agents" && <><Link className="nav-item" href="/agents/dashboard" aria-current={pathname === "/agents/dashboard" ? "page" : undefined}>Agent dashboard</Link><Link className="nav-item" href="/agents/payouts" aria-current={pathname === "/agents/payouts" ? "page" : undefined}>Payout setup</Link></>}</nav>}
+      <p className="workspace-label">{active === "agents" ? "Agent applications" : active === "admin" ? "Administration & operations" : "Engineering"}</p>
+      {active === "admin" ? <AdminNavigation pathname={pathname} /> : <nav className="portal-nav" aria-label="Workspaces"><Link className="nav-item" href={`/${active}`} aria-current={pathname === `/${active}` ? "page" : undefined}>{active === "agents" ? "Applications" : "System status"}</Link></nav>}
     </aside>
     <div className="portal-content">
       <header className="topbar">

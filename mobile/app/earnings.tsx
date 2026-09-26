@@ -18,6 +18,7 @@ type Balance = {
   withdrawn_kobo: number;
 };
 type Earnings = {
+  withdrawalsEnabled?:boolean;
   tutorials: Balance;
   store: Balance;
   deliveries: Balance;
@@ -144,6 +145,7 @@ export default function EarningsScreen() {
           }}
           keyboardType="decimal-pad"
         />
+        {data && !data.withdrawalsEnabled && <Text style={{color:theme.textMuted,marginBottom:12}}>Withdrawals are not available yet. Your recorded earnings remain visible here.</Text>}
         <Text
           style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}
         >
@@ -172,6 +174,7 @@ export default function EarningsScreen() {
             disabled={
               busy ||
               !profile ||
+              !data?.withdrawalsEnabled ||
               Number(amount) < 5000 ||
               !Number.isFinite(Number(amount)) ||
               Number(amount) * 100 > Number(balance?.available_kobo ?? 0)

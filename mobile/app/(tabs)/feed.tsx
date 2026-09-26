@@ -2,7 +2,7 @@ import { FeedSkeleton, SkeletonBlock } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
-import { useFocusEffect, router } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Image, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type ViewToken } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -26,7 +26,9 @@ export default function FeedScreen() {
   const { width } = useWindowDimensions();
   const { user, state: authState } = useAuth();
   const [posts, setPosts] = useState<SocialFeedPost[]>([]);
-  const [query, setQuery] = useState("");
+  const { hashtag } = useLocalSearchParams<{ hashtag?: string }>();
+  const [query, setQuery] = useState(hashtag ?? "");
+  useEffect(() => { if (typeof hashtag === "string") { setQuery(hashtag); setSelected("All"); } }, [hashtag]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<(typeof categories)[number]>("All");
   const [loading, setLoading] = useState(true);
@@ -92,7 +94,8 @@ export default function FeedScreen() {
     finally { if (version === loadVersion.current) { paging.current = false; setLoadingMore(false); } }
   }
   useEffect(() => { if (!feedback) return; const timeout = setTimeout(() => setFeedback(""), 4500); return () => clearTimeout(timeout); }, [feedback]);
-  const filtered = useMemo(() => posts.filter((post) => (selected === "All" || post.category.toUpperCase() === selected.toUpperCase()) && (!search || `${post.title} ${post.summary} ${post.body} ${post.source_name}`.toLowerCase().includes(search.toLowerCase()))), [posts, search, selected]);
+  // Server owns filtering, including exact hashtag boundaries and tenant visibility.
+  const filtered = posts;
   const toggleBookmark = useCallback(async (post: FeedPostData) => {
     if (pendingBookmarks.current.has(post.id)) return;
     pendingBookmarks.current.add(post.id); void Haptics.selectionAsync();

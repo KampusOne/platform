@@ -1,3 +1,5 @@
+import { applyDueAcademicProgressions } from "./services/academic-progression";
+import { eraseDeletedAccountMedia } from "./services/account-erasure";
 import {deliverCommunityPush,checkCommunityPushReceipts} from "./services/community-push";
 import { sql } from "drizzle-orm";
 
@@ -11,6 +13,8 @@ import { closeDueElections } from "./services/community-elections";
 export default {
   fetch: app.fetch,
   scheduled(_controller, env, executionContext) {
+    executionContext.waitUntil(eraseDeletedAccountMedia(env));
+    executionContext.waitUntil(applyDueAcademicProgressions(env));
     executionContext.waitUntil(deliverQueuedNotifications(env));
     executionContext.waitUntil(deliverCommunityPush(env));
     executionContext.waitUntil(checkCommunityPushReceipts(env));

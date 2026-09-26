@@ -109,6 +109,7 @@ async function read<T>(response: Response) {
     | {
         error?: {
           code?: string;
+          requestId?: string;
           message?: string;
           details?: Record<string, unknown>;
         };
@@ -118,6 +119,7 @@ async function read<T>(response: Response) {
     const failure = payload as {
       error?: {
         code?: string;
+        requestId?: string;
         message?: string;
         details?: Record<string, unknown>;
       };
@@ -125,7 +127,7 @@ async function read<T>(response: Response) {
     throw new PortalApiError(
       response.status,
       failure?.error?.code ?? "REQUEST_FAILED",
-      failure?.error?.message ?? "KampusOne could not complete this request.",
+      (failure?.error?.message ?? (response.status === 404 ? "This service route is unavailable. Please refresh the portal or contact support." : "KampusOne could not complete this request.")) + (failure?.error?.requestId ? ` (Reference: ${failure.error.requestId})` : ""),
       failure?.error?.details,
     );
   }

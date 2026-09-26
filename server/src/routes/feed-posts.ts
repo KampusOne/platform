@@ -1,3 +1,4 @@
+import { profileSafetyReady, unblockedAuthor } from "../lib/profile-safety";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "@kampusone/contracts";
@@ -51,6 +52,7 @@ feedPostRoutes.get("/:id", requireAuth, async (context) => {
     join public.content_sources sources on sources.id = posts.source_id
     left join public.profiles author on author.user_id = posts.author_user_id and author.deleted_at is null
     where posts.id = ${id}::uuid and posts.university_id = ${campus}::uuid
+      and ${await profileSafetyReady(context.env) ? unblockedAuthor(user.id, sql`posts.author_user_id`) : sql`true`}
       and posts.status in ('PUBLISHED', 'CORRECTED') and posts.published_at <= now()
     limit 1
   `);

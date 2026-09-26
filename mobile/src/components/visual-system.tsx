@@ -137,7 +137,7 @@ export function GlassCard({
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
-  const { theme, styles } = useThemeStyles(createStyles);
+  const { theme, styles, isDark } = useThemeStyles(createStyles);
 
   return (
     <View style={[styles.glass, style]}>
@@ -147,7 +147,7 @@ export function GlassCard({
         }
         intensity={34}
         style={StyleSheet.absoluteFill}
-        tint="light"
+        tint={isDark ? "dark" : "light"}
       />
       <View pointerEvents="none" style={styles.glassTint} />
       <View pointerEvents="none" style={styles.glassGlow} />
@@ -538,7 +538,7 @@ export function HeaderBadge({
         {verified ? (
           <VerifiedBadge label={`${text} is verified`} size={15} />
         ) : icon ? (
-          <Ionicons name={icon} size={15} color={theme.deepBrand} />
+          <Ionicons name={icon} size={15} color={theme.accentText} />
         ) : null}
         <Text style={styles.headerBadgeText}>{text}</Text>
       </View>
@@ -799,8 +799,8 @@ export function MotivationBanner({
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
     glass: {
-      backgroundColor: "rgba(255,253,252,0.58)",
-      borderColor: "rgba(255,255,255,0.96)",
+      backgroundColor: theme.surfaceGlass,
+      borderColor: theme.border,
       borderRadius: 22,
       borderWidth: 1,
       overflow: "hidden",
@@ -808,7 +808,7 @@ const createStyles = (theme: Theme) =>
       ...theme.glassShadow,
     },
     glassTint: {
-      backgroundColor: "rgba(255,253,252,0.49)",
+      backgroundColor: theme.surfaceGlass,
       bottom: 0,
       left: 0,
       position: "absolute",
@@ -908,7 +908,7 @@ const createStyles = (theme: Theme) =>
     streakHero: {
       alignItems: "center",
       backgroundColor: "rgba(255,253,252,0.88)",
-      borderColor: "rgba(255,255,255,0.96)",
+      borderColor: theme.border,
       borderRadius: 22,
       borderWidth: 1,
       flexDirection: "row",
@@ -1238,7 +1238,7 @@ const createStyles = (theme: Theme) =>
     favorite: {
       alignItems: "center",
       backgroundColor: theme.surfaceGlassStrong,
-      borderColor: "rgba(255,255,255,0.96)",
+      borderColor: theme.border,
       borderRadius: 16,
       borderWidth: 1,
       height: 34,

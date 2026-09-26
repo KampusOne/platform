@@ -65,4 +65,19 @@ describe("student AI persistence and quota boundaries",()=>{
   it("does not leak provider configuration, secrets, normal-chat counters or billing credentials",async()=>{const result=await json(await request("/ai/status"));expect(result.capabilities).toEqual({text:true,images:true,documents:true});expect(result.subscription.checkoutEnabled).toBe(false);for(const value of ["hf_SYNTHETIC","test/model","huggingface","chat_used","GEMINI","HF_TOKEN"])expect(JSON.stringify(result)).not.toContain(value);});
   it("keeps shared capacity and kill switch enforced on exempt accounts",async()=>{env.AI_DAILY_GLOBAL_LIMIT="0";await json(await request("/ai","POST",draft()),429);env.AI_DAILY_GLOBAL_LIMIT="100";env.AI_ASSISTANT_ENABLED="false";await json(await request("/ai","POST",draft()),503);expect(provider).not.toHaveBeenCalled();});
   it("does not use another provider as a fallback",async()=>{for(const status of [401,402,403,429,500]){provider.mockResolvedValueOnce(new Response("PRIVATE_INPUT",{status}));const result=await json(await request("/ai","POST",draft()),503);expect(JSON.stringify(result)).not.toContain("PRIVATE_INPUT");}expect(provider).toHaveBeenCalledTimes(5);expect(provider.mock.calls.every(([url])=>String(url).startsWith("https://router.huggingface.co/"))).toBe(true);});
+  it('uses only the authenticated profile for personalized answers',async()=>{
+    await db.query("update profiles set first_name='Gideon',current_level='200' where user_id=$1",[owner]);
+    await json(await request('/ai','POST',{...draft(),prompt:'What is my name and level?'}));
+    const system=JSON.parse(String(provider.mock.calls[0]?.[1]?.body)).messages[0].content;
+    expect(system).toContain('Gideon');expect(system).toContain('200');expect(system).not.toContain('hf-other@example.invalid');
+  });
+  it('stores answer feedback idempotently and prevents cross-account ratings',async()=>{
+    const answer=await json(await request('/ai','POST',draft()));
+    await json(await request('/ai/feedback','POST',{requestId:answer.requestId,rating:'like'}));
+    expect((await json(await request(`/ai/history/${answer.requestId}`))).feedback.rating).toBe('like');
+    await json(await request('/ai/feedback','POST',{requestId:answer.requestId,rating:'dislike'},other),404);
+    await json(await request('/ai/feedback','POST',{requestId:answer.requestId,rating:null}));
+    expect((await json(await request(`/ai/history/${answer.requestId}`))).feedback).toBeNull();
+  });
+
 });

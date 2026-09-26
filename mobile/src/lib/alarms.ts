@@ -1,5 +1,7 @@
 import { syncWebAlarms, stopWebAlarms } from "./web-alarms";
 import { Platform } from "react-native";
+import { router, type Href } from "expo-router";
+import { nativeAlarms } from "./native-alarms";
 import * as Notifications from "expo-notifications";
 export type Alarm = {
   id: string;
@@ -39,16 +41,26 @@ export async function syncAlarms(
       if (!permissions.granted && requestPermission)
         permissions = await Notifications.requestPermissionsAsync();
       if (!permissions.granted) return false;
+      if (nativeAlarms) {
+        const allowed = await nativeAlarms.status();
+        if (!allowed && requestPermission) await nativeAlarms.requestExactPermission();
+        // Store alarms even when access is pending; the permission-granted receiver restores them.
+        await nativeAlarms.sync(JSON.stringify(alarms));
+        // Remove the older Expo schedule after ownership moves to the native alarm service.
+        for (const item of await Notifications.getAllScheduledNotificationsAsync())
+          if (item.identifier.startsWith("k1-alarm-") || item.identifier.startsWith("k1-snooze-")) await Notifications.cancelScheduledNotificationAsync(item.identifier);
+        return allowed;
+      }
       await Notifications.setNotificationCategoryAsync("k1-alarm", [
         {
           identifier: "snooze",
           buttonTitle: "Snooze",
-          options: { opensAppToForeground: false },
+          options: { opensAppToForeground: true },
         },
         {
           identifier: "dismiss",
           buttonTitle: "Dismiss",
-          options: { opensAppToForeground: false },
+          options: { opensAppToForeground: true },
         },
       ]);
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
@@ -79,10 +91,10 @@ export async function syncAlarms(
           identifier,
           content: {
             title: alarm.label,
-            body: "Your reminder",
+            body: alarm.timetable_entry_id ? "Your class starts in 15 minutes" : "Time for your reminder",
             sound: alarm.sound === "default" ? "default" : false,
             categoryIdentifier: "k1-alarm",
-            data: { alarmId: alarm.id, snoozeMinutes: alarm.snooze_minutes, alarmSignature:signature },
+            data: { alarmId: alarm.id, snoozeMinutes: alarm.snooze_minutes, alarmSignature:signature, label:alarm.label, path:`/alarm-ring?alarmId=${alarm.id}`, sound:alarm.sound, vibration:alarm.vibration },
           },
           trigger:
             day === -1
@@ -107,6 +119,7 @@ export async function syncAlarms(
 }
 export async function clearScheduledAlarms() {
   if (Platform.OS === "web") { stopWebAlarms(); return; }
+  if (nativeAlarms) { const active=await nativeAlarms.active(); if(active)await nativeAlarms.dismiss(JSON.parse(active).id); await nativeAlarms.sync("[]"); }
   for (const n of await Notifications.getAllScheduledNotificationsAsync())
     if (
       n.identifier.startsWith("k1-alarm-") ||
@@ -114,43 +127,35 @@ export async function clearScheduledAlarms() {
     )
       await Notifications.cancelScheduledNotificationAsync(n.identifier);
 }
+export async function snoozeNotification(original: Pick<Notifications.NotificationContent,"title"|"body"|"data"|"sound">) {
+  const raw = Number(original.data?.snoozeMinutes);
+  await Notifications.scheduleNotificationAsync({
+    identifier: `k1-snooze-${String(original.data?.alarmId ?? Date.now())}`,
+    content: {title: original.title ?? "Reminder",body: original.body ?? "",data: original.data ?? {},sound: original.sound ? "default" : false,categoryIdentifier: "k1-alarm"},
+    trigger: {type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,seconds: Math.max(1, Math.min(30, raw || 5)) * 60,repeats: false,channelId: original.sound ? "k1-default-true" : "k1-silent-true"},
+  });
+}
 export function listenForSnooze() {
   if (Platform.OS === "web") return () => {};
-  Notifications.setNotificationHandler({
-    handleNotification: async (n) => ({
-      shouldPlaySound: Boolean(n.request.content.sound),
-      shouldSetBadge: false,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
-  const listener = Notifications.addNotificationResponseReceivedListener(
-    (r) => {
-      if (
-        r.actionIdentifier !== "snooze" ||
-        r.notification.request.content.categoryIdentifier !== "k1-alarm"
-      )
-        return;
-      const original = r.notification.request.content;
-      const raw = Number(original.data?.snoozeMinutes);
-      const seconds = Math.max(1, Math.min(30, raw || 5)) * 60;
-      void Notifications.scheduleNotificationAsync({
-        identifier: `k1-snooze-${r.notification.request.identifier}`,
-        content: {
-          title: original.title ?? "Reminder",
-          body: original.body ?? "",
-          data: original.data ?? {},
-          sound: original.sound ? "default" : false,
-          categoryIdentifier: "k1-alarm",
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds,
-          repeats: false,
-          channelId: original.sound ? "k1-default-true" : "k1-silent-true",
-        },
-      }).catch(()=>undefined);
-    },
-  );
-  return () => listener.remove();
+  Notifications.setNotificationHandler({handleNotification: async n => ({shouldPlaySound: Boolean(n.request.content.sound),shouldSetBadge: false,shouldShowBanner: true,shouldShowList: true})});
+  let disposed=false;
+  const handled=new Set<string>();
+  const respond=async(r:Notifications.NotificationResponse)=>{
+    const key=r.notification.request.identifier+":"+r.notification.date+":"+r.actionIdentifier;
+    if(handled.has(key)||disposed)return;handled.add(key);
+    const original=r.notification.request.content;
+    if(original.categoryIdentifier==='k1-alarm'){
+      await Notifications.dismissNotificationAsync(r.notification.request.identifier);
+      if(r.actionIdentifier==='snooze'){await snoozeNotification(original);return;}
+      if(r.actionIdentifier==='dismiss')return;
+      router.push({pathname:'/alarm-ring',params:{alarmId:String(original.data?.alarmId??''),label:original.title??'Alarm',snooze:String(original.data?.snoozeMinutes??5),notificationId:r.notification.request.identifier}});
+    }else{
+      const path=original.data?.path;
+      if(typeof path==='string'&&path.startsWith('/')&&!path.startsWith('//'))router.push(path as Href);
+    }
+    await Notifications.clearLastNotificationResponseAsync();
+  };
+  const response=Notifications.addNotificationResponseReceivedListener(r=>{void respond(r).catch(()=>undefined);});
+  void Notifications.getLastNotificationResponseAsync().then(r=>{if(r)void respond(r).catch(()=>undefined);});
+  return()=>{disposed=true;response.remove();};
 }

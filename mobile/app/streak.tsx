@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { appLink } from "@/src/lib/app-links";
+import { useCallback, useEffect, useState } from "react";
 import { Share, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ToolPage, ToolButton, ToolRow } from "@/src/components/toolkit";
@@ -23,7 +24,7 @@ const milestones = [
   { days: 7, label: "Steady flame", shade: "#C35D38" },
   { days: 14, label: "Finding a rhythm", shade: "#A8462E" },
   { days: 30, label: "A month of progress", shade: "#C33F32" },
-  { days: 100, label: "Campus flame", shade: "#8157B4" },
+  { days: 100, label: "Campus flame", shade: "#8B402B" },
 ];
 function calendarDays(today: string) {
   const end = new Date(today + "T12:00:00Z");
@@ -51,8 +52,7 @@ export default function StreakScreen() {
   const [data, setData] = useState<StreakData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const working = useRef(false);
+
   const load = useCallback(async () => {
     setError("");
     try {
@@ -70,34 +70,11 @@ export default function StreakScreen() {
   useEffect(() => {
     void load();
   }, [load]);
-  async function checkIn() {
-    if (working.current) return;
-    working.current = true;
-    setBusy(true);
-    try {
-      await api("/v1/account/streak", { method: "POST" });
-      await load();
-      toast("Today's check-in saved", "success");
-    } catch (e) {
-      toast(
-        e instanceof Error ? e.message : "Check-in could not save. Try again.",
-        "error",
-      );
-    } finally {
-      working.current = false;
-      setBusy(false);
-    }
-  }
   const streak = data?.streak;
   const current = streak?.current_days ?? 0;
   const tier = [...milestones].reverse().find((m) => current >= m.days);
   const next = milestones.find((m) => current < m.days);
   const activeDays = streak ? currentStreakDays(streak) : new Set<string>();
-  const checkedIn = Boolean(
-    data &&
-      streak?.last_day === data.today &&
-      (data.activityDays.includes(data.today) || activeDays.has(data.today)),
-  );
   return (
     <ToolPage title="Your streak">
       {loading ? (
@@ -261,24 +238,14 @@ export default function StreakScreen() {
               lineHeight: 19,
             }}
           >
-            Check in once each day. A missed day starts a new streak. Days
+            Open KampusOne each day to keep your streak. It is counted automatically. A missed day starts a new streak. Days
             follow{" "}
             {data.timezone === "Africa/Lagos"
               ? "West Africa Time"
               : data.timezone}
             .
           </Text>
-          <ToolButton
-            label={
-              busy
-                ? "Saving check-in…"
-                : checkedIn
-                  ? "Checked in today"
-                  : "Check in for today"
-            }
-            disabled={busy || checkedIn}
-            onPress={() => void checkIn()}
-          />
+
           <Text
             style={{
               color: theme.text,
@@ -387,7 +354,7 @@ export default function StreakScreen() {
             disabled={!current}
             onPress={() =>
               void Share.share({
-                message: `${current} ${current === 1 ? "day" : "days"} showing up on KampusOne. Personal best: ${streak.longest_days} days. 🔥`,
+                message: `${current} ${current === 1 ? "day" : "days"} showing up on KampusOne. Personal best: ${streak.longest_days} days. 🔥 Keep your classes, notes and campus life together. ${appLink()}`,
               }).catch(() => toast("Could not open sharing", "error"))
             }
           />

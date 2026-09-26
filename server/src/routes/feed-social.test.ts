@@ -5,9 +5,10 @@ import { AppError } from "../lib/errors";
 import type { Bindings, Variables } from "../types";
 
 const mocks = vi.hoisted(() => ({
-  execute: vi.fn(), ready: vi.fn(), repliesReady: vi.fn(),
+  safetyReady: vi.fn(), execute: vi.fn(), ready: vi.fn(), repliesReady: vi.fn(),
   user: { id: "11111111-1111-4111-8111-111111111111", universityId: "22222222-2222-4222-8222-222222222222" as string | null },
 }));
+vi.mock("../lib/profile-safety", async (importOriginal) => ({ ...await importOriginal<typeof import("../lib/profile-safety")>(), profileSafetyReady: mocks.safetyReady }));
 vi.mock("../lib/database", () => ({ database: () => ({ execute: mocks.execute }), firstRow: (result: { rows: unknown[] }) => result.rows[0] }));
 vi.mock("../lib/security", () => ({ sha256: async () => "hashed-session-user" }));
 vi.mock("../lib/feed-social", async (importOriginal) => ({ ...await importOriginal<typeof import("../lib/feed-social")>(), socialSchemaReady: mocks.ready, commentRepliesSchemaReady: mocks.repliesReady }));
@@ -32,12 +33,39 @@ const query = (index = 0) => dialect.sqlToQuery(mocks.execute.mock.calls[index]!
 const request = (suffix = "", method = "GET", body?: unknown) => app.request(`/v1/student/feed${suffix}`, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, env);
 
 beforeEach(() => {
-  mocks.execute.mockReset(); mocks.ready.mockReset(); mocks.ready.mockResolvedValue(true);
+  mocks.safetyReady.mockResolvedValue(false); mocks.execute.mockReset(); mocks.ready.mockReset(); mocks.ready.mockResolvedValue(true);
   mocks.repliesReady.mockReset(); mocks.repliesReady.mockResolvedValue(true);
   mocks.user.universityId = "22222222-2222-4222-8222-222222222222";
 });
 
 describe("shared feed, comments, reposts and quotes", () => {
+  it("applies two-way blocks to feed authors, quote authors and reposters", async () => {
+    mocks.safetyReady.mockResolvedValue(true);
+    mocks.execute.mockResolvedValue({ rows: [] });
+    const response = await request();
+    expect(response.status).toBe(200);
+    const statement = query();
+    expect(statement.sql).toContain("public.user_blocks");
+    expect(statement.sql).toContain("ub.blocked_id=posts.author_user_id");
+    expect(statement.sql).toContain("ub.blocker_id=posts.author_user_id");
+    expect(statement.sql).toContain("ub.blocked_id=quoted.author_user_id");
+    expect(statement.sql).toContain("ub.blocked_id=r.user_id");
+    expect(statement.params.filter((value) => value === mocks.user.id).length).toBeGreaterThan(5);
+  });
+  it("searches complete hashtags rather than matching a hashtag prefix", async () => {
+    mocks.execute.mockResolvedValue({ rows: [] });
+    expect((await request("?q=%23JAMB")).status).toBe(200);
+    expect(query().sql).toContain("lower(tags[2]) =");
+    expect(query().params).toContain("jamb");
+    expect(query().params).not.toContain("%#JAMB%");
+  });
+  it("registers hashtag suggestions before post-ID validation", async () => {
+    mocks.execute.mockResolvedValue({ rows: [{ tag: "uniben", count: 2 }] });
+    const response = await request("/hashtags?q=uni");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ hashtags: [{ tag: "uniben", count: 2 }] });
+    expect(query().params).toContain("uni");
+  });
   it.each([["GET", ""], ["POST", ""], ["GET", `/${id}/comments`], ["POST", `/${id}/comments`], ["DELETE", `/${id}/comments/${commentId}`], ["PUT", `/${id}/repost`], ["DELETE", `/${id}/repost`]])("requires authentication: %s %s", async (method, suffix) => {
     const response = await app.request(`/v1/student/feed${suffix}`, { method }, env);
     expect(response.status).toBe(401); expect(mocks.execute).not.toHaveBeenCalled();

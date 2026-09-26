@@ -1,7 +1,7 @@
 import { BrandSwitch } from "@/src/components/brand-switch";
 import { useCallback, useState } from "react";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import {
   ToolPage,
   ToolButton,
@@ -18,6 +18,9 @@ type Item = {
   title?: string;
   name?: string;
   zone_name?: string;
+  store_name?:string;
+  pickup_location?:string;
+  delivery_note?:string;
   price_kobo?: number;
   rider_earning_kobo?: number;
   status: string;
@@ -36,6 +39,8 @@ export default function AgentDashboard() {
   const toast = useToast();
   const [items, setItems] = useState<Item[]>([]);
   const [ready, setReady] = useState(false);
+  const [loadError,setLoadError]=useState("");
+  const [rideTab,setRideTab]=useState<"AVAILABLE"|"ACTIVE"|"HISTORY">("AVAILABLE");
   const [online, setOnline] = useState(false);
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState("");
@@ -58,11 +63,15 @@ export default function AgentDashboard() {
     setItems(r.products ?? r.listings ?? r.jobs ?? []);
     setOnline(r.presence?.online ?? false);
     setReady(true);
+    setLoadError("");
   }, [role]);
   useFocusEffect(
     useCallback(() => {
-      void load().catch((e) => toast(e.message, "error"));
-    }, [load, toast]),
+      const refresh=()=>void load().catch((e) => {setLoadError(e.message);setReady(true);});
+      refresh();
+      const timer=role === "RIDER" ? setInterval(refresh,30_000) : undefined;
+      return ()=>{if(timer)clearInterval(timer);};
+    }, [load, role]),
   );
   async function action(item: Item, type: string) {
     setBusy(true);
@@ -108,9 +117,12 @@ export default function AgentDashboard() {
           ? "Seller dashboard"
           : role === "TUTOR"
             ? "Tutor dashboard"
-            : "Rider dashboard"
+            : role === "RIDER" ? "Available rides" : "Your workspaces"
       }
     >
+      {caps.profiles.length>1&&<View style={{flexDirection:"row",gap:8,marginBottom:18}}>{caps.profiles.map(p=><Pressable key={p.id} accessibilityRole="tab" accessibilityState={{selected:role===p.agent_type}} onPress={()=>router.setParams({role:p.agent_type})} style={{padding:12,borderBottomWidth:2,borderColor:role===p.agent_type?theme.brand:"transparent"}}><Text style={{color:theme.text}}>{p.agent_type.toLowerCase()}</Text></Pressable>)}</View>}
+      {(loadError||caps.error)&&<View style={{marginVertical:14}}><Text style={{color:theme.text}}>{loadError||caps.error}</Text><ToolButton secondary label="Try again" onPress={()=>void load().catch(e=>setLoadError(e.message))}/></View>}
+      {caps.ready&&!role&&!caps.error&&<EmptyResult title="No approved role yet" body="Your workspaces appear here once your agent application is approved."/>}
       <ToolRow
         title="Earnings & payouts"
         icon="wallet-outline"
@@ -121,6 +133,7 @@ export default function AgentDashboard() {
         icon="gift-outline"
         onPress={() => router.push("/trial")}
       />
+      {role === "VENDOR" && <ToolRow title="Orders & delivery" icon="receipt-outline" onPress={()=>router.push("/vendor-orders")}/>}
       {role === "VENDOR" ? (
         <ToolRow
           title="Store profile"
@@ -148,7 +161,8 @@ export default function AgentDashboard() {
           }
         />
       ) : null}
-      {ready && !items.length ? (
+      {role==="RIDER"&&<View style={{flexDirection:"row",gap:12,marginVertical:18}}>{(["AVAILABLE","ACTIVE","HISTORY"] as const).map(tab=><Pressable key={tab} accessibilityRole="tab" accessibilityState={{selected:rideTab===tab}} onPress={()=>setRideTab(tab)} style={{paddingVertical:10,borderBottomWidth:2,borderColor:tab===rideTab?theme.brand:"transparent"}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>{tab==="AVAILABLE"?"Available":tab==="ACTIVE"?"Your deliveries":"History"}</Text></Pressable>)}</View>}
+      {ready && !items.length && !loadError ? (
         <EmptyResult
           title={
             role === "RIDER"
@@ -159,7 +173,7 @@ export default function AgentDashboard() {
           }
         />
       ) : null}
-      {items.map((item) => (
+      {items.filter(item=>role!=="RIDER" || (rideTab === "AVAILABLE" ? item.status === "AVAILABLE" : rideTab === "ACTIVE" ? ["RESERVED","PICKED_UP"].includes(item.status) : !["AVAILABLE","RESERVED","PICKED_UP"].includes(item.status))).map((item) => (
         <View
           key={item.id}
           style={{
@@ -175,8 +189,9 @@ export default function AgentDashboard() {
               fontSize: 17,
             }}
           >
-            {item.name ?? item.title ?? item.zone_name}
+            {item.store_name ?? item.name ?? item.title ?? item.zone_name}
           </Text>
+          {role === "RIDER" && <View style={{gap:6,marginVertical:8}}><Text style={{color:theme.textMuted}}>Pickup · {item.pickup_location || item.zone_name || "Campus store"}</Text>{item.delivery_note&&<Text style={{color:theme.text}}>Delivery · {item.delivery_note}</Text>}</View>}
           {role === "TUTOR" ? (
             <ToolButton
               secondary
@@ -206,7 +221,7 @@ export default function AgentDashboard() {
           {role === "RIDER" && item.status === "AVAILABLE" ? (
             <ToolButton
               label="Accept delivery"
-              disabled={busy}
+              disabled={busy || !online}
               onPress={() => void action(item, "reserve")}
             />
           ) : null}

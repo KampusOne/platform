@@ -1,3 +1,6 @@
+import { ProfileAvatar } from "./profile-avatar";
+import { PostImage } from "./post-image";
+import { PostText } from "./post-text";
 import { MediaPreview } from "./media-preview";
 import { router } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
@@ -13,10 +16,9 @@ export function QuotedPostPreview({ post, unavailable = false }: { post: QuotedP
   if (!post || unavailable || wasPostDeleted(post.id)) return <View style={styles.card}><Text style={styles.muted}>Original post unavailable</Text></View>;
   const text = getFeedPostText(post);
   return <Pressable accessibilityRole="button" accessibilityLabel={`Open original post by ${post.source_name}${post.source_verified ? ", verified" : ""}`} onPress={(event) => { event.stopPropagation(); router.push({ pathname: "/post", params: { id: post.id } }); }} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
-    <View style={styles.author}><Text numberOfLines={1} style={styles.name}>{post.source_name}</Text>{post.source_verified ? <VerifiedBadge size={12} /> : null}<Text style={styles.muted}>·</Text><RelativeTime value={post.published_at} style={styles.muted} /></View>
-    {text.title ? <Text numberOfLines={2} style={styles.title}>{text.title}</Text> : null}
-    {text.paragraphs.length ? <Text numberOfLines={5} style={styles.body}>{text.paragraphs.join("\n\n")}</Text> : null}
-    {post.image_url ? post.media_type?.startsWith("video/") ? <MediaPreview url={post.image_url} video label="Quoted video"/> : <Image source={{ uri: post.image_url }} accessibilityLabel="Original post attachment" resizeMode="cover" style={styles.image} /> : null}
+    <View style={styles.author}><ProfileAvatar name={post.source_name} imageUrl={post.source_image_url} size={22} /><Text numberOfLines={1} style={styles.name}>{post.source_name}</Text>{post.source_verified ? <VerifiedBadge size={12} /> : null}<Text style={styles.muted}>·</Text><RelativeTime value={post.published_at} style={styles.muted} /></View>
+    <PostText key={post.id} {...text} style={styles.body} titleStyle={styles.title} />
+    {post.image_url ? post.media_type?.startsWith("video/") ? <MediaPreview url={post.image_url} video label="Quoted video"/> : <PostImage uri={post.image_url} label="Original post attachment" /> : null}
   </Pressable>;
 }
 const createStyles = (theme: Theme) => StyleSheet.create({

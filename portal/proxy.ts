@@ -10,7 +10,9 @@ const surfaceBySubdomain: Record<string, string> = {
 export function proxy(request: NextRequest) {
   const hostname = request.headers.get("host")?.split(":")[0] ?? "";
   const subdomain = hostname.split(".")[0] ?? "";
-  const surface = surfaceBySubdomain[subdomain];
+  // Separate deployments can use any owned subdomain without relying on its spelling.
+  const configuredSurface = process.env.KAMPUSONE_PORTAL_SURFACE;
+  const surface = (configuredSurface && surfaceBySubdomain[configuredSurface]) || surfaceBySubdomain[subdomain];
 
   if (
     surface &&

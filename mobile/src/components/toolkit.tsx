@@ -101,7 +101,7 @@ export function ToolButton({
       ]}
     >
       <Text
-        style={[styles.buttonText, secondary && { color: theme.deepBrand }]}
+        style={[styles.buttonText, secondary && { color: theme.accentText }]}
       >
         {label}
       </Text>
@@ -128,7 +128,7 @@ export function ToolRow({
       onPress={onPress}
       style={styles.row}
     >
-      {icon ? <Ionicons name={icon} color={theme.deepBrand} size={22} /> : null}
+      {icon ? <Ionicons name={icon} color={theme.accentText} size={22} /> : null}
       <View style={{ flex: 1 }}>
         <Text style={styles.rowTitle}>{title}</Text>
         {detail ? <Text style={styles.detail}>{detail}</Text> : null}

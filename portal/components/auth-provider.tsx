@@ -53,6 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       setStatus(session ? "authenticated" : "anonymous");
     } catch {
+      // A failed restore must not strand a new visit behind an endless gate.
+      setStatus((current) => current === "loading" ? "anonymous" : current);
       setRestoreError(
         "We couldn’t check your session. Check your connection and try again.",
       );

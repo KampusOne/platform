@@ -1,3 +1,4 @@
+import { APP_ORIGIN as appOrigin } from "./app-links";
 import { Platform, Share } from "react-native";
 import { clearApiCache } from "@/src/lib/api";
 
@@ -16,10 +17,10 @@ export type FeedPostData = {
   source_verified: boolean;
   bookmarked: boolean;
   can_delete?: boolean;
+  source_username?: string | null;
 };
 
-// This is the student app, not the separately deployed public landing website.
-const appOrigin = "https://kampusone-mobile-preview.vercel.app";
+// Production links never inherit a preview deployment hostname.
 const postIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const deletedPosts = new Set<string>();
 let pendingPost: string | null = null;
@@ -99,13 +100,14 @@ export async function copyPostLink(id: string): Promise<boolean> {
   }
 }
 
-export async function sharePostLink(post: Pick<FeedPostData, "id" | "title">): Promise<"shared" | "copied" | "cancelled" | "manual"> {
+export async function sharePostLink(post: Pick<FeedPostData, "id" | "title"> & Partial<Pick<FeedPostData, "source_name" | "source_username">>): Promise<"shared" | "copied" | "cancelled" | "manual"> {
   const url = postUrl(post.id);
+  const author = post.source_username ? `@${post.source_username}` : post.source_name;
+  const message = `Check out this post${author ? ` by ${author}` : ""} on KampusOne.`;
   if (Platform.OS === "web") {
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
-        // No body/summary text: the shared item is a URL to this exact post.
-        await navigator.share({ url, title: post.title });
+        await navigator.share({ url, title: post.title, text: message });
         return "shared";
       } catch (error) {
         if (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError") return "cancelled";
@@ -114,6 +116,6 @@ export async function sharePostLink(post: Pick<FeedPostData, "id" | "title">): P
     return (await copyPostLink(post.id)) ? "copied" : "manual";
   }
   // React Native's `url` field is iOS-only; Android must receive the URL in message.
-  const result = await Share.share(Platform.OS === "ios" ? { url } : { message: url });
+  const result = await Share.share(Platform.OS === "ios" ? { url, message } : { message: `${message}\n${url}` });
   return result.action === Share.dismissedAction ? "cancelled" : "shared";
 }

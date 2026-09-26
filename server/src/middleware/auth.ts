@@ -101,6 +101,7 @@ export const requireAuth = createMiddleware<AppEnvironment>(
         context.req.path,
       ) &&
       !context.req.path.startsWith("/v1/auth/")
+      && !context.req.path.startsWith("/v1/account/deletion/")
     ) {
       const restriction = firstRow(
         await database(context.env).execute<{

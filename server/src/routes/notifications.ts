@@ -9,12 +9,61 @@ import { resolveAdminScope } from '../lib/admin-access';
 import { recordAudit } from '../lib/audit';
 import { expoTokenPattern, sendTestPush, fetchPushReceipt } from '../lib/push';
 import type { Bindings, Variables } from '../types';
+import {defaultNotificationPreferences,notificationPreferences,notificationChannels,notificationCategories} from '../services/notification-preferences';
 
 export const notificationRoutes=new Hono<{Bindings:Bindings;Variables:Variables}>();
 notificationRoutes.use('/*',requireAuth);
 notificationRoutes.use('/*',async(c,next)=>{
  if(c.env.UNIFIED_SCHEMA_READY!=='true')throw new AppError(503,'PROVIDER_UNAVAILABLE','Notifications are unavailable until the account service is ready.');
  await next();
+});
+notificationRoutes.get('/preferences',async c=>{
+ const profile=firstRow(await database(c.env).execute<{preferences:unknown;channels:unknown}>(sql`select settings->'notificationPreferences' as preferences,settings->'notificationChannels' as channels from public.profiles where user_id=${currentUser(c).id}::uuid and deleted_at is null`));
+ return c.json({preferences:notificationPreferences(profile?.preferences),channels:notificationChannels(profile?.channels,profile?.preferences)});
+});
+notificationRoutes.put('/preferences',async c=>{
+ const legacy=Object.fromEntries(Object.keys(defaultNotificationPreferences).map(key=>[key,z.boolean().optional()]));
+ const channelShape=Object.fromEntries(notificationCategories.map(key=>[key,z.object({in_app_enabled:z.boolean(),push_enabled:z.boolean()}).strict()]));
+ const data=await input(c,z.union([z.object({channels:z.object(channelShape).strict()}).strict(),z.object(legacy).strict()]));
+ let channels,preferences;
+ if('channels' in data){channels=notificationChannels(data.channels);preferences=notificationPreferences(Object.fromEntries(Object.entries(channels).map(([key,value])=>[key,value.in_app_enabled])));preferences.pushAnnouncements=channels.announcements.push_enabled;preferences.pushCampusUpdates=channels.campusUpdates.push_enabled;}
+ else{preferences=notificationPreferences(data);channels=notificationChannels(null,preferences);}
+ await database(c.env).execute(sql`update public.profiles set settings=coalesce(settings,'{}'::jsonb)||jsonb_build_object('notificationPreferences',${JSON.stringify(preferences)}::jsonb,'notificationChannels',${JSON.stringify(channels)}::jsonb),updated_at=now() where user_id=${currentUser(c).id}::uuid and deleted_at is null`);
+ return c.json({preferences,channels});
+});
+notificationRoutes.get('/inbox',async c=>{
+ const user=currentUser(c),db=database(c.env);
+ const cursor=c.req.query('before'),limit=30;
+ let before:{time:string;id:string}|null=null;
+ if(cursor){const parts=cursor.split('|');const parsed=z.object({time:z.string().datetime({offset:true}),id:z.string().uuid()}).safeParse({time:parts[0],id:parts[1]});if(!parsed.success)throw new AppError(400,'BAD_REQUEST','This notification page is invalid.');before=parsed.data;}
+ const visible=sql`user_id=${user.id}::uuid and in_app_visible and (institution_id is null or institution_id=${user.universityId}::uuid) and app_private.notification_enabled(${user.id}::uuid,category,'in_app')`;
+ const [result,count]=await Promise.all([
+ db.execute<{id:string;title:string;body:string;path:string|null;read_at:string|null;created_at:string;category:string}>(sql`select id,title,body,path,read_at,created_at::text,category from public.in_app_notifications where ${visible} and (${before?.time??null}::timestamptz is null or (created_at,id)<(${before?.time??null}::timestamptz,${before?.id??null}::uuid)) order by created_at desc,id desc limit ${limit+1}`),
+ db.execute<{unread_count:number}>(sql`select count(*)::int as unread_count from public.in_app_notifications where ${visible} and read_at is null`)]);
+ const notifications=result.rows.slice(0,limit),last=notifications.at(-1);
+ return c.json({notifications,unreadCount:firstRow(count)?.unread_count??0,nextCursor:result.rows.length>limit&&last?new Date(last.created_at).toISOString()+'|'+last.id:null});
+});
+notificationRoutes.post('/read-all',async c=>{
+ await database(c.env).execute(sql`update public.in_app_notifications set read_at=now() where user_id=${currentUser(c).id}::uuid and read_at is null`);
+ return c.json({saved:true});
+});
+notificationRoutes.post('/alarm-events',async c=>{
+ const u=currentUser(c),data=await input(c,z.object({events:z.array(z.object({id:z.string().uuid(),alarmId:z.string().uuid(),kind:z.enum(['ringing','dismiss','snooze','missed']),firedAt:z.string().datetime({offset:true})}).strict()).max(100)}).strict());
+ const db=database(c.env);
+ for(const event of data.events){
+  // Only events belonging to the signed-in account can create its inbox messages.
+  const alarm=firstRow(await db.execute<{label:string}>(sql`select label from public.student_alarms where id=${event.alarmId}::uuid and user_id=${u.id}::uuid`));
+  if(!alarm||!['ringing','missed'].includes(event.kind))continue;
+  const title=event.kind==='missed'?`Missed alarm: ${alarm.label}`:alarm.label;
+  const body=event.kind==='missed'?'Your alarm rang for three minutes. Check your timetable for what is next.':'Your reminder is due. Open your timetable to see the details.';
+  await db.execute(sql`insert into public.in_app_notifications(user_id,institution_id,title,body,path,dedupe_key) values(${u.id}::uuid,${u.universityId}::uuid,${title},${body},'/alarms',${'alarm:'+event.alarmId+':'+event.firedAt+':'+event.kind}) on conflict do nothing`);
+ }
+ return c.json({acknowledged:data.events.map(event=>event.id)});
+});
+notificationRoutes.post('/alarms/import-timetable',async c=>{
+ const u=currentUser(c),d=await input(c,z.object({entryIds:z.array(z.string().uuid()).min(1).max(100),reminderMinutes:z.number().int().min(0).max(120).default(15)}).strict());
+ const result=await database(c.env).execute(sql`update public.timetable_entries set reminder_enabled=true,reminder_minutes=${d.reminderMinutes},updated_at=now() where user_id=${u.id}::uuid and university_id=${u.universityId}::uuid and status::text<>'ARCHIVED' and id=any(${d.entryIds}::uuid[]) returning id`);
+ return c.json({imported:result.rows.length});
 });
 notificationRoutes.get('/devices',async c=>{
  const result=await database(c.env).execute(sql`select id,platform,label,build_version,active,created_at,updated_at from app_private.push_devices where user_id=${currentUser(c).id}::uuid order by updated_at desc limit 30`);
@@ -87,13 +136,13 @@ notificationRoutes.post('/attempts/:id/observed',async c=>{
 
 notificationRoutes.get('/sounds/default',async c=>{
  const sound=firstRow(await database(c.env).execute(sql`select s.id,s.name,s.media_id from public.notification_sounds s join public.media_objects m on m.id=s.media_id and m.deleted_at is null where s.active and s.is_default and (s.institution_id=${currentUser(c).universityId}::uuid or s.institution_id is null) order by s.institution_id nulls last limit 1`));
- return c.json({sound:sound?{...sound,url:`${(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'')}/v1/media/${sound.media_id}`,availability:'web',nativeSound:'default'}:null});
+ return c.json({sound:sound?{...sound,url:`${(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'')}/v1/media/${sound.media_id}`,availability:'web-and-android',nativeSound:'downloaded-on-sync'}:null});
 });
 notificationRoutes.get('/admin/sounds',async c=>{
  const scope=await resolveAdminScope(c.env,currentUser(c),c.req.query('universityId'),'notifications.manage');
  const sounds=await database(c.env).execute(sql`select s.id,s.name,s.media_id,s.institution_id,s.is_default,s.active,m.content_type from public.notification_sounds s join public.media_objects m on m.id=s.media_id and m.deleted_at is null where (${scope}::uuid is null or s.institution_id=${scope}::uuid) order by s.created_at desc limit 100`);
  const origin=(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'');
- return c.json({sounds:sounds.rows.map(row=>({...row,url:`${origin}/v1/media/${row.media_id}`,availability:'web',nativeSound:'default'}))});
+ return c.json({sounds:sounds.rows.map(row=>({...row,url:`${origin}/v1/media/${row.media_id}`,availability:'web-and-android',nativeSound:'downloaded-on-sync'}))});
 });
 notificationRoutes.post('/admin/sounds',async c=>{
  const u=currentUser(c),d=await input(c,z.object({name:z.string().trim().min(2).max(80),mediaId:z.string().uuid(),universityId:z.string().uuid().optional()}).strict());
@@ -118,5 +167,5 @@ notificationRoutes.put('/admin/sounds/:id/default',async c=>{
   client`update public.notification_sounds set is_default=true where id=${target}::uuid and active`,
   client`insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome) values(${u.id}::uuid,${sound.institution_id}::uuid,'notification.sound.default','notification_sound',${target},${c.get('requestId')},'succeeded')`
  ]);
- return c.json({saved:true,availability:'web',nativeSound:'default'});
+ return c.json({saved:true,availability:'web-and-android',nativeSound:'downloaded-on-sync'});
 });

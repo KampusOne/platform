@@ -40,6 +40,7 @@ const POST_ASPECTS = [
   { key: "4:5", label: "4:5", aspect: 4 / 5 },
   { key: "3:4", label: "3:4", aspect: 3 / 4 },
   { key: "2:3", label: "2:3", aspect: 2 / 3 },
+  { key: "16:9", label: "16:9", aspect: 16 / 9 },
 ] as const;
 
 /** One editor serves profile, cover and post-photo pickers. */
@@ -89,8 +90,9 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
     zoom,
     position,
   );
-  const current = useRef({ geometry, busy });
-  current.current = { geometry, busy };
+  const current = useRef({ geometry, busy, zoom });
+  current.current = { geometry, busy, zoom };
+  const pinchStart = useRef<{ distance: number; zoom: number } | null>(null);
   const dragStart = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
@@ -105,10 +107,19 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
       PanResponder.create({
         onStartShouldSetPanResponder: () => !current.current.busy,
         onMoveShouldSetPanResponder: () => !current.current.busy,
-        onPanResponderGrant: () => {
+        onPanResponderGrant: (event) => {
+          const touches = event.nativeEvent.touches;
+          pinchStart.current = touches.length === 2 ? { distance: Math.hypot(touches[0]!.pageX - touches[1]!.pageX, touches[0]!.pageY - touches[1]!.pageY), zoom: current.current.zoom } : null;
           dragStart.current = current.current.geometry.position;
         },
-        onPanResponderMove: (_event, gesture) => {
+        onPanResponderMove: (event, gesture) => {
+          const touches = event.nativeEvent.touches;
+          if (touches.length === 2 && !current.current.busy) {
+            const distance = Math.hypot(touches[0]!.pageX - touches[1]!.pageX, touches[0]!.pageY - touches[1]!.pageY);
+            if (!pinchStart.current) pinchStart.current = { distance, zoom: current.current.zoom };
+            if (pinchStart.current.distance > 0) setZoom(clamp(pinchStart.current.zoom * distance / pinchStart.current.distance, 1, 4));
+            return;
+          }
           if (!current.current.busy)
             setPosition({
               x: dragStart.current.x + gesture.dx,
@@ -263,7 +274,7 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={[text, styles.hint, { color: theme.textMuted }]}>
-            Drag to position. Use − and + to zoom.
+            Drag to position. Pinch to zoom, or use − and +.
           </Text>
 
           {request.kind === "post" ? (
@@ -320,7 +331,8 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
                 width: frameWidth,
                 height: geometry.frameHeight,
                 borderRadius:
-                  request.kind === "avatar" ? frameWidth / 2 : 12,
+                  request.kind === "avatar" ? frameWidth / 2 : 1,
+                borderWidth: 1.5, borderColor: "rgba(255,255,255,0.85)",
               },
               Platform.OS === "web"
                 ? ({ touchAction: "none" } as ViewStyle)
@@ -347,6 +359,11 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
                 }}
               />
             </View>
+            {request.kind !== "avatar" ? <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+              {[1, 2].map((part) => <View key={`v${part}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${part * 100 / 3}%`, width: 1, backgroundColor: "rgba(255,255,255,0.65)" }} />)}
+              {[1, 2].map((part) => <View key={`h${part}`} style={{ position: "absolute", left: 0, right: 0, top: `${part * 100 / 3}%`, height: 1, backgroundColor: "rgba(255,255,255,0.65)" }} />)}
+              {[0,1,2,3].map((corner) => <View key={corner} style={{ position: "absolute", width: 18, height: 18, borderColor: "#FFFFFF", borderTopWidth: corner < 2 ? 3 : 0, borderBottomWidth: corner >= 2 ? 3 : 0, borderLeftWidth: corner % 2 === 0 ? 3 : 0, borderRightWidth: corner % 2 === 1 ? 3 : 0, ...(corner < 2 ? { top: 0 } : { bottom: 0 }), ...(corner % 2 === 0 ? { left: 0 } : { right: 0 }) }} />)}
+            </View> : null}
             {!ready && !error ? (
               <InlineLoading
                 color={theme.brand}

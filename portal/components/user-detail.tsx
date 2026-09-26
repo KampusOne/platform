@@ -1,4 +1,5 @@
 "use client";
+import { ProfilePolicyControls } from "./profile-policy-controls";
 import { PublicBadgeControls } from "./public-badge-controls";
 import Link from "next/link";
 import Image from "next/image";
@@ -110,7 +111,7 @@ function UserDetailContent({ id }: { id: string }) {
       description={data?.profile.email ?? ""}
     >
       <TransientNotice message={notice} />
-      <Link href="/admin/users">← Users</Link>
+      <Link href="/admin/workspaces/users">← Users</Link>
       {loadError ? <section className="state-panel state-panel--error" role="alert"><p>{loadError}</p><button className="button button--secondary" onClick={() => setVersion((value) => value + 1)}>Try again</button></section> : data ? (
         <div className="user-detail-grid">
           {can("users.verify") && <PublicBadgeControls key={id} userId={id} onSaved={() => setVersion(value => value + 1)} />}
@@ -167,6 +168,7 @@ function UserDetailContent({ id }: { id: string }) {
             ))}
           </section>
           <section>
+            <ProfilePolicyControls key={`${id}:policy`} userId={id} />
             {can("content.capabilities") && <form className="form-stack manage-form" onSubmit={changeCapability}><h2>Publisher capabilities</h2><label>Capability<select name="capability"><option value="POLL">Polls</option><option value="QA">Q&A</option><option value="ANONYMOUS_QA">Anonymous Q&A</option></select></label><label>Decision<select name="enabled"><option value="true">Grant capability</option><option value="false">Revoke capability</option></select></label><label>Reason<textarea name="reason" minLength={10} required maxLength={1000} /></label><button className="button button--primary" disabled={busy}>{busy ? "Recording…" : "Record capability"}</button></form>}
             {can("users.manage") && <><form
               className="form-stack manage-form"

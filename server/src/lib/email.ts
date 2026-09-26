@@ -1,7 +1,7 @@
 import type { Bindings } from "../types";
 import { AppError } from "./errors";
 
-type MailKind = "verification" | "password-reset" | "agent-login" | "welcome";
+type MailKind = "verification" | "password-reset" | "agent-login" | "welcome" | "account-deletion";
 
 type MailInput = {
   to: string;
@@ -14,6 +14,11 @@ type MailInput = {
 const DEFAULT_FROM_EMAIL = "KampusOne <hello@kampusone.app>";
 
 const copy = {
+  "account-deletion": {
+    subject: "Confirm deletion of your KampusOne account",
+    heading: "You requested to delete your account.",
+    intro: "Enter this code in KampusOne to permanently delete your account and personal content. If you did not request this, do not use or share the code. Your account has not been deleted.",
+  },
   verification: {
     subject: "Verify your KampusOne email",
     heading: "You’re one step from being ready.",

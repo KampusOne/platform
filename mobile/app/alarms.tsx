@@ -310,6 +310,7 @@ function PeriodColumn({
 
   return (
     <View style={pickerStyles.periodColumn} accessibilityLabel="AM PM time wheel">
+      <Text style={pickerStyles.columnLabel}>AM / PM</Text>
       <ScrollView
         ref={scrollRef}
         style={pickerStyles.periodWheelViewport}
@@ -407,14 +408,14 @@ const createPickerStyles = (theme: Theme, isDark: boolean) =>
       width: 92,
       alignItems: "center",
       justifyContent: "center",
-      paddingTop: 27,
+
     },
     periodWheelViewport: {
-      height: WHEEL_ITEM_HEIGHT * 3,
+      height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
       width: "100%",
     },
     periodWheelContent: {
-      paddingVertical: WHEEL_ITEM_HEIGHT,
+      paddingVertical: (WHEEL_ITEM_HEIGHT * (WHEEL_VISIBLE_ITEMS - 1)) / 2,
     },
     periodText: {
       color: isDark ? "rgba(255,255,255,0.34)" : "rgba(41,35,31,0.38)",
@@ -530,7 +531,7 @@ export default function Alarms() {
           ? "Reminders updated"
           : Platform.OS === "web"
             ? "Saved. Device alerts are available in the installed Android and iOS app."
-            : "Saved. Enable notifications in device settings.",
+            : "Saved. Enable notifications and Alarms & reminders in device settings.",
         "success",
       );
     } catch (error) {
@@ -606,6 +607,8 @@ export default function Alarms() {
             </Text>
           ) : null}
 
+          <Pressable accessibilityRole="button" disabled={busy} onPress={()=>router.push('/alarm-import')} style={styles.importButton}><Ionicons name="calendar-outline" size={20} color={theme.deepBrand}/><Text style={styles.importText}>Import from timetable</Text></Pressable>
+          {Platform.OS==='android'?<Pressable accessibilityRole="button" onPress={()=>{void syncAlarms(items,true).then(enabled=>toast(enabled?'Alarms are enabled':'Allow alarms and notifications in device settings')).catch(error=>toast(error.message,'error'));}} style={styles.importButton}><Ionicons name="notifications-outline" size={20} color={theme.deepBrand}/><Text style={styles.importText}>Check alarm permissions</Text></Pressable>:null}
           {!ready ? <ScreenSkeleton variant="list" compact /> : null}
 
           {loadError ? (
@@ -636,7 +639,7 @@ export default function Alarms() {
               <Ionicons name="alarm-outline" size={28} color={theme.deepBrand} />
               <Text style={styles.emptyTitle}>No alarms yet</Text>
               <Text style={styles.emptyText}>
-                Tap the + button to create your first reminder.
+                Tap the alarm button to create your first reminder.
               </Text>
             </View>
           ) : null}
@@ -702,7 +705,7 @@ export default function Alarms() {
           onPress={() => edit(null)}
           style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
         >
-          <Ionicons name="add" size={36} color={theme.text} />
+          <Ionicons name="alarm-outline" size={30} color="#fff" />
         </Pressable>
       </View>
 
@@ -986,6 +989,8 @@ const createStyles = (theme: Theme, isDark: boolean) =>
       marginBottom: 14,
       paddingHorizontal: 4,
     },
+    importButton:{flexDirection:"row",alignItems:"center",gap:10,padding:14,borderRadius:14,backgroundColor:theme.surfaceMuted,marginBottom:12},
+    importText:{fontFamily:theme.font.semibold,color:theme.deepBrand,fontSize:13},
     list: { gap: 12 },
     alarmCard: {
       minHeight: 116,
@@ -1106,9 +1111,9 @@ const createStyles = (theme: Theme, isDark: boolean) =>
       borderTopLeftRadius: 34,
       borderTopRightRadius: 34,
       overflow: "hidden",
-      backgroundColor: isDark ? "#24201D" : theme.canvas,
+      backgroundColor: theme.canvas,
     },
-    sheetSafe: { maxHeight: "100%", backgroundColor: isDark ? "#24201D" : theme.canvas },
+    sheetSafe: { maxHeight: "100%", backgroundColor: theme.canvas },
     sheetHandle: {
       width: 86,
       height: 5,

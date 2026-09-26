@@ -275,7 +275,11 @@ async function request<T>(
   )
     headers.set("Content-Type", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  const response = await fetch(`${apiUrl}${path}`, {
+  // Expo SDK 57 uses the standard Blob/FormData model for file uploads.
+  const send = Platform.OS !== "web" && (init.body instanceof FormData || ((path.startsWith("/v1/media?") || path.startsWith("/v1/ai/transcribe?")) && Boolean(init.body)))
+    ? (await import("expo/fetch")).fetch
+    : fetch;
+  const response = await send(`${apiUrl}${path}`, {
     ...init,
     signal: init.signal ?? AbortSignal.timeout(15_000),
     credentials: "include",

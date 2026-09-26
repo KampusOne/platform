@@ -22,6 +22,7 @@ import {
   vendorStorefrontStateSchema,
 } from "@kampusone/contracts";
 
+import { agentDiscoveryRoutes } from "./agent-discovery";
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
@@ -40,6 +41,7 @@ export const agentRoutes = new Hono<{
   Variables: Variables;
 }>();
 agentRoutes.use("/*", requireAuth);
+agentRoutes.route("/public",agentDiscoveryRoutes);
 
 async function body(context: { req: { json(): Promise<unknown> } }) {
   return context.req.json().catch(() => null);
@@ -1345,9 +1347,13 @@ agentRoutes.get("/deliveries", async (context) => {
     database(context.env).execute(sql`
     select jobs.id, jobs.order_id, zones.name as zone_name, jobs.status,
       jobs.rider_earning_kobo, jobs.earning_formula_version,
-      jobs.reserved_at, jobs.picked_up_at, jobs.delivered_at, jobs.created_at
+      jobs.reserved_at, jobs.picked_up_at, jobs.delivered_at, jobs.created_at,
+      storefront.display_name store_name, storefront.pickup_location,
+      case when jobs.rider_profile_id=${profile.id}::uuid then orders.delivery_note else null end delivery_note
     from public.delivery_jobs jobs
     join public.delivery_zones zones on zones.id = jobs.zone_id
+    join public.orders orders on orders.id=jobs.order_id
+    join public.vendor_storefronts storefront on storefront.vendor_profile_id=orders.vendor_profile_id
     where jobs.university_id = ${profile.university_id}::uuid
       and (jobs.status = 'AVAILABLE' or jobs.rider_profile_id = ${profile.id}::uuid)
     order by case when jobs.status = 'AVAILABLE' then 0 else 1 end, jobs.created_at
@@ -1594,6 +1600,7 @@ agentRoutes.get("/earnings", async (context) => {
     store: firstRow(store),
     deliveries: firstRow(deliveries),
     payoutRequests: payouts.rows,
+    withdrawalsEnabled: featureEnabled(context.env,"PAYMENTS_ENABLED"),
   });
 });
 

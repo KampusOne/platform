@@ -821,6 +821,7 @@ function ApplicationInspector({
   async function verify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const approve = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "approve";
     setBusy(true);
     setError("");
     try {
@@ -836,10 +837,14 @@ function ApplicationInspector({
           note: form.get("verificationNote"),
         }),
       });
+      if (approve) {
+        try { await portalApi(`/v1/admin/applications/${itemId}/review`, { method: "POST", body: JSON.stringify({ decision: "APPROVED", note: form.get("verificationNote") }) }); }
+        catch (caught) { throw new Error(`Verification was saved. Approval still needs attention: ${caught instanceof Error ? caught.message : "Reload the review and try again."}`); }
+      }
       onChanged();
     } catch (caught) {
       setError(
-        caught instanceof PortalApiError
+        caught instanceof Error
           ? caught.message
           : "Verification review failed.",
       );
@@ -900,7 +905,7 @@ function ApplicationInspector({
       {reviewable && can("agents.verify") ? (
         <form className="form-stack sub-form" onSubmit={verify}>
           <div>
-            <p className="section-kicker">Layered verification</p>
+            <p className="section-kicker">Application review</p>
             <h3>Record verification</h3>
           </div>
           <label>
@@ -964,9 +969,9 @@ function ApplicationInspector({
               placeholder="Record what evidence was reviewed. Never paste a raw NIN or BVN."
             />
           </label>
-          <button className="button button--secondary" disabled={busy}>
-            {busy ? "Saving…" : "Record verification"}
-          </button>
+          <p className="field-help">Check the evidence above, then record your decision. Approval activates the agent role; public badges and payouts remain separate.</p>
+          <div className="form-actions"><button name="action" value="save" className="button button--secondary" disabled={busy}>Save verification</button>{can("agents.review") && ["SUBMITTED", "IN_REVIEW"].includes(item.status) && <button name="action" value="approve" className="button button--primary" disabled={busy}>{busy ? "Saving…" : "Verify & approve"}</button>}</div>
+          {error && <p className="form-error" role="alert">{error}</p>}
         </form>
       ) : null}
       {reviewable && can("agents.review") ? (

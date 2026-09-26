@@ -31,6 +31,13 @@ export const unifiedMigrations = [
   "20260925110000_notification_sound_catalogue.sql",
   "20260925120000_community_push_delivery.sql",
   "20260925130000_programme_metadata.sql",
+  "20260926120000_reviewed_calendars_and_progression.sql",
+  "20260926120000_profile_safety_and_messages.sql",
+  "20260926150000_marketplace_promotions_resources.sql",
+  "20260926170000_academic_catalogue_provenance.sql",
+  "20260926190000_account_deletion.sql",
+  "20260926200000_notification_channels.sql",
+  "20260926210000_message_attachments.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */

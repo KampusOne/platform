@@ -22,6 +22,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { PopularShops } from "@/src/components/popular-shops";
 import { CreateAction } from "@/src/components/create-action";
 
 import { useReducedMotionPreference } from "@/src/components/visual-system";
@@ -72,6 +73,7 @@ export default function StoreScreen() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [cart, setCart] = useState<Cart>({});
   const [query, setQuery] = useState("");
+  const [selectedShop, setSelectedShop] = useState<string|null>(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
@@ -152,9 +154,9 @@ export default function StoreScreen() {
         Boolean(focusedProduct) || `${item.name} ${item.description} ${item.category} ${item.vendor_name}`
           .toLowerCase()
           .includes(term);
-      return (!focusedProduct || item.id===focusedProduct) && matchesCategory && matchesQuery;
+      return (!selectedShop || item.vendor_profile_id === selectedShop) && (!focusedProduct || item.id===focusedProduct) && matchesCategory && matchesQuery;
     });
-  }, [products, query, selectedCategory, focusedProduct]);
+  }, [products, query, selectedCategory, focusedProduct, selectedShop]);
 
   const cartItems = useMemo(
     () =>
@@ -180,6 +182,7 @@ export default function StoreScreen() {
   function clearFilters() {
     setQuery("");
     setSelectedCategory("All");
+    setSelectedShop(null);
   }
 
   function closeCart() {
@@ -432,6 +435,7 @@ export default function StoreScreen() {
                 </Pressable>
               </View>
 
+              {!featureDisabled && catalogueMode === "LIVE" && <PopularShops selected={selectedShop} onSelect={setSelectedShop} />}
               {!featureDisabled && categories.length > 1 ? (
                 <ScrollView
                   accessibilityLabel="Product categories"

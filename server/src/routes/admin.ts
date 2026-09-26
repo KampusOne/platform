@@ -20,6 +20,7 @@ import {
 } from "@kampusone/contracts";
 
 import { adminAccess, assertPermission, permissionForAdminRoute, resolveAdminScope, type AdminUser } from "../lib/admin-access";
+import { adminCommunityRoutes } from "./admin-community";
 import { operationsRoutes } from "./operations";
 import { academicAdminRoutes } from "./academic-admin";
 import { broadcastRoutes } from "./broadcasts";
@@ -128,6 +129,7 @@ adminRoutes.use("/*", async (c, next) => {
   c.set("user",scopedUser);
   await next();
 });
+adminRoutes.route("/",adminCommunityRoutes);
 adminRoutes.route("/",operationsRoutes);
 adminRoutes.route("/academic",academicAdminRoutes);
 adminRoutes.route("/broadcasts",broadcastRoutes);

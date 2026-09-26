@@ -62,6 +62,9 @@ export async function resolveAdminScope(env:Bindings,user:AdminUser,requested?:s
 export function permissionForAdminRoute(path:string,method:string):string|null{
  const read=method==='GET'||method==='HEAD';
  if(path==='/access')return 'access';
+ if(path.startsWith('/ai-feedback'))return read?'ai.view':null;
+ if(path.startsWith('/promoted-shops'))return read?'marketplace.view':'marketplace.manage';
+ if(path==='/social-moderation')return read?'users.view':null;
  if(path.startsWith('/broadcasts'))return read?'broadcasts.view':/(send|test|schedule)$/.test(path)?'broadcasts.send':'broadcasts.manage';
  if(path.startsWith('/staff'))return 'staff.manage';
  if(path.startsWith('/workspaces/'))return ({universities:'universities.view',users:'users.view',agents:'agents.view','academic-submissions':'academic.view',content:'content.view',analytics:'analytics.view',finance:'finance.view',audit:'audit.view',ai:'ai.view',support:'support.view'} as Record<string,string>)[path.split('/')[2]??'']??null;

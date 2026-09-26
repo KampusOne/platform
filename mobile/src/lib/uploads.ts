@@ -53,16 +53,25 @@ export function verifyPhoto(url: string): Promise<void> {
   });
 }
 async function upload(kind: UploadKind, file: { uri: string; name: string; type: string }): Promise<UploadedFile> {
-  const form = new FormData();
-  form.append("kind", kind);
+  const limit = kind === "post" && file.type.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+  let body: Blob;
   if (Platform.OS === "web") {
     const response = await fetch(file.uri);
     if (!response.ok) throw new Error("The selected file could not be read. Choose it again.");
-    const blob = await response.blob();
-    if (!blob.size || blob.size > 10 * 1024 * 1024) throw new Error("Choose a file smaller than 10 MB.");
-    form.append("file", blob, file.name);
-  } else form.append("file", file as unknown as Blob);
-  const result = await api<UploadedFile>("/v1/media", { method: "POST", body: form, signal: AbortSignal.timeout(60_000) });
+    body = await response.blob();
+  } else {
+    const { File } = await import("expo-file-system");
+    const nativeFile = new File(file.uri);
+    if (!nativeFile.exists) throw new Error("The selected file could not be read. Choose it again.");
+    body = nativeFile;
+  }
+  if (!body.size || body.size > limit) throw new Error(`Choose a file smaller than ${limit / 1024 / 1024} MB.`);
+  // Raw bytes avoid incompatible native/browser FormData implementations and
+  // the extra multipart copy for videos. The server verifies the actual bytes.
+  const result = await api<UploadedFile>(`/v1/media?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(file.name)}`, {
+    method: "POST", body, headers: { "Content-Type": file.type },
+    signal: AbortSignal.timeout(file.type.startsWith("video/") ? 180_000 : 60_000),
+  });
   if (!result?.id || !result.url || result.kind !== kind) throw new Error("The upload returned an incomplete response. Refresh before trying again.");
   // A profile read may have started while the upload was running. Invalidate
   // again after the write, so an old cached profile cannot undo the new photo.
@@ -95,7 +104,7 @@ export async function pickAttachment(): Promise<StagedAttachment | null> {
   if(result.canceled) return null;
   const file=result.assets[0]; if(!file) return null;
   if((file.size ?? 0)>8*1024*1024) throw new Error("Choose a file smaller than 8 MB.");
-  return {uri:file.uri,name:file.name,type:file.mimeType ?? (file.name.toLowerCase().endsWith('.txt')?'text/plain':'application/pdf'),size:file.size};
+  return {uri:file.uri,name:file.name,type:file.mimeType || ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain', pdf: 'application/pdf' }[file.name.toLowerCase().split('.').pop() ?? ''] ?? 'application/octet-stream'),size:file.size};
 }
 export async function uploadAttachment(file: StagedAttachment): Promise<StagedAttachment> {
   if(file.mediaId) return file;
@@ -111,6 +120,7 @@ export type PostMedia = {
   durationMs?: number | undefined;
   width?: number | undefined;
   height?: number | undefined;
+  original?: PhotoDimensions | undefined;
 };
 
 export async function pickPostMedia(
@@ -194,6 +204,7 @@ export async function pickPostMedia(
     type: "image/jpeg",
     width: edited.width,
     height: edited.height,
+    original: prepared,
   };
 }
 
@@ -213,14 +224,12 @@ export async function editPostMedia(
 
   if (!file.width || !file.height)
     throw new Error("This photo can no longer be edited. Replace it and try again.");
-  const edited = await requestPhotoEdit("post", {
-    uri: file.uri,
-    width: file.width,
-    height: file.height,
-  });
+  const original = file.original ?? { uri: file.uri, width: file.width, height: file.height };
+  const edited = await requestPhotoEdit("post", original);
   if (!edited) return null;
   return {
     ...file,
+    original,
     uri: edited.uri,
     name: "post.jpg",
     type: "image/jpeg",

@@ -1,4 +1,5 @@
 import {campusAdminRoutes} from "./routes/campus-admin";
+import { messageRoutes } from "./routes/messages";
 import { peopleRoutes } from "./routes/people";
 import { publicBadgeAdminRoutes, publicBadgeProfileRoutes } from "./routes/public-badges";
 import { Hono } from "hono";
@@ -21,6 +22,7 @@ import { agentRoutes } from "./routes/agents";
 import { adminRoutes } from "./routes/admin";
 import { paymentRoutes } from "./routes/payments";
 import { accountRoutes } from "./routes/account";
+import { accountDeletionRoutes } from "./routes/account-deletion";
 import { mediaRoutes } from "./routes/media";
 import { calendarRoutes } from "./routes/calendar";
 import { learningRoutes } from "./routes/learning";
@@ -37,7 +39,7 @@ app.use("*", requestId());
 app.use("*", mediaAwareSecureHeaders);
 app.use("/v1/*", async (c, next) =>
   bodyLimit({
-    maxSize: c.req.path === "/v1/media" || c.req.path === "/v1/media/" ? 10 * 1024 * 1024 + 4096 : 256 * 1024,
+    maxSize: c.req.path === "/v1/media" || c.req.path === "/v1/media/" ? 50 * 1024 * 1024 + 4096 : c.req.path === "/v1/ai/transcribe" ? 6 * 1024 * 1024 : 256 * 1024,
     onError: () => { throw new AppError(413, "BAD_REQUEST", "This upload or request is too large."); },
   })(c, next),
 );
@@ -84,7 +86,9 @@ app.route("/v1/admin/public-badges", publicBadgeAdminRoutes);
 app.route("/v1/admin", adminRoutes);
 app.route("/v1/payments", paymentRoutes);
 app.route("/v1/account", accountRoutes);
+app.route("/v1/account/deletion", accountDeletionRoutes);
 app.route("/v1/people", peopleRoutes);
+app.route("/v1/messages", messageRoutes);
 app.route("/v1/media", mediaRoutes);
 app.route("/v1/learning", learningRoutes);
 app.route("/v1/calendar", calendarRoutes);

@@ -2,25 +2,27 @@
   "expo": {
     "name": "KampusOne",
     "slug": "kampusone",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kampusone",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "backgroundColor": "#F1DFC8",
-      "image": "./assets/adaptive-icon-foreground.png",
+      "backgroundColor": "#FBF7F2",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.kampusone.mobile"
+      "bundleIdentifier": "app.kampusone.mobile",
+      "buildNumber": "30"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon-foreground.png",
-        "backgroundColor": "#F1DFC8"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "monochromeImage": "./assets/monochrome-icon.png",
+        "backgroundColor": "#A8462E"
       },
       "package": "app.kampusone.mobile",
       "predictiveBackGestureEnabled": true,
@@ -28,7 +30,8 @@
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SCHEDULE_EXACT_ALARM"
       ],
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "versionCode": 30
     },
     "web": {
       "bundler": "metro",
@@ -48,7 +51,26 @@
       ],
       "expo-secure-store",
       "expo-web-browser",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FBF7F2",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow KampusOne to record a message for Kira.",
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": true
+        }
+      ],
+      "./plugins/with-kampus-alarms",
+      "./plugins/with-branded-video-trim"
     ],
     "extra": {
       "apiUrl": "https://platformp.divine-haze-54eb.workers.dev"

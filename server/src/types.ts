@@ -15,6 +15,9 @@ export type Bindings = {
   STORE_DEMO_ENABLED?: string;
   LOGISTICS_ENABLED?: string;
   PAYMENTS_ENABLED: string;
+  YOUTUBE_API_KEY?: string;
+  AI_VIDEO_SEARCH_ENABLED?: string;
+  AI_VIDEO_DAILY_LIMIT?: string;
   AI_ASSISTANT_ENABLED: string;
   DATABASE_URL?: string;
   JWT_SECRET?: string;
@@ -41,6 +44,12 @@ export type Bindings = {
   HF_CHAT_MODEL?: string;
   HF_VISION_MODEL?: string;
   HF_PRO_MODEL?: string;
+  GROQ_API_KEY?: string;
+  GROQ_CHAT_MODEL?: string;
+  GROQ_VISION_MODEL?: string;
+  GROQ_TRANSCRIPTION_MODEL?: string;
+  AI_PRIMARY_PROVIDER?: string;
+  AI_FALLBACK_ENABLED?: string;
   AI_CHAT_WINDOW_LIMIT?: string;
   AI_STUDY_TRIAL_LIMIT?: string;
   EXPO_ACCESS_TOKEN?: string;

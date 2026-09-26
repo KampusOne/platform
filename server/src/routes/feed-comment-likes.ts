@@ -1,3 +1,4 @@
+import { profileSafetyReady, unblockedAuthor } from "../lib/profile-safety";
 import { sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "@kampusone/contracts";
@@ -46,7 +47,7 @@ feedCommentLikeRoutes.get("/comment-likes", requireAuth, async (context) => {
     from public.feed_comments comments
     join public.feed_posts posts on posts.id = comments.post_id and posts.university_id = comments.institution_id
     where comments.id = any(string_to_array(${ids.join(",")}, ',')::uuid[])
-      and comments.deleted_at is null and ${visiblePost(campus)}
+      and comments.deleted_at is null and ${visiblePost(campus)} and ${await profileSafetyReady(context.env) ? unblockedAuthor(user.id, sql`posts.author_user_id`) : sql`true`}
   `);
   return context.json({ likes: result.rows });
 });
@@ -57,6 +58,10 @@ async function setLike(context: Context<Environment>, liked: boolean) {
   const parsed = idSchema.safeParse(context.req.param("commentId"));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "This comment link is not valid.");
   await requireCommentLikes(context);
+  if (liked && await profileSafetyReady(context.env)) {
+    const allowed = firstRow(await database(context.env).execute(sql`select comments.id from public.feed_comments comments join public.feed_posts posts on posts.id=comments.post_id where comments.id=${parsed.data}::uuid and ${unblockedAuthor(user.id, sql`posts.author_user_id`)} and ${unblockedAuthor(user.id, sql`comments.author_user_id`)}`));
+    if (!allowed) throw new AppError(404, "NOT_FOUND", "This comment is unavailable.");
+  }
   // The database derives and locks the real parent post. Neither actor nor
   // campus nor parent-post authorization comes from a client-supplied body.
   const result = await database(context.env).execute(sql`

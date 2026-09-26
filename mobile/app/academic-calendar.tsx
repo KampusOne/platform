@@ -31,7 +31,7 @@ export default function Calendar() {
   }
   const body = { fontFamily: theme.font.body, color: theme.text, fontSize: 14, lineHeight: 21 };
   return <ToolPage title="Academic calendar">
-    <ToolButton label="Upload calendar" onPress={() => router.push("/timetable-import")} />
+    <ToolButton label="Upload calendar" onPress={() => router.push("/timetable-import?kind=calendar")} />
     {loading ? <ScreenSkeleton /> : error ? <><Text accessibilityRole="alert" style={body}>{error}</Text><ToolButton secondary label="Retry" onPress={() => setRetry(v => v + 1)} /></> : events.length ? events.map(e => <View key={e.id} style={{ paddingVertical: 18, borderBottomWidth: 1, borderColor: theme.border }}>
       <Text style={{ ...body, fontFamily: theme.font.semibold }}>{e.title}</Text>
       <Text style={{ ...body, color: theme.textMuted }}>{dateLabel(e.starts_on)}{e.ends_on !== e.starts_on ? ` – ${dateLabel(e.ends_on)}` : ""}</Text>

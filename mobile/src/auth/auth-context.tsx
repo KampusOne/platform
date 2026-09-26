@@ -27,6 +27,7 @@ import {
 import { clearScheduledAlarms } from "@/src/lib/alarms";
 import { applyPreferences, type Preferences } from "@/src/lib/preferences";
 import { unregisterPushDevice } from "@/src/lib/push-registration";
+import { removeRefreshToken } from "@/src/lib/session-storage";
 
 type Profile = {
   id: string;
@@ -37,6 +38,8 @@ type Profile = {
   profile_image_url?: string | null;
   university_id: string | null;
   university_name: string | null;
+  faculty_name?: string | null;
+  department_name?: string | null;
   onboarding_completed_at: string | null;
   settings?: Partial<Preferences>;
 };
@@ -55,6 +58,7 @@ type AuthContextValue = {
   retrySessionRestore(): Promise<void>;
   reloadProfile(): Promise<void>;
   signOut(): Promise<boolean>;
+  finishAccountDeletion(): Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -231,6 +235,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const finishAccountDeletion = useCallback(async () => {
+    sessionVersion.current++;
+    sessionUserId.current=null;
+    setAccessToken(null);
+    setUser(null);setProfile(null);setState("anonymous");
+    setProfileState("idle");setProfileError("");setSessionRestoreError("");
+    applyPreferences();
+    await Promise.allSettled([removeRefreshToken(),clearDeviceCache(),clearScheduledAlarms()]);
+  },[]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       state,
@@ -247,6 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       retrySessionRestore,
       reloadProfile,
       signOut,
+      finishAccountDeletion,
     }),
     [
       applySession,
@@ -257,6 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       retrySessionRestore,
       sessionRestoreError,
       signOut,
+      finishAccountDeletion,
       state,
       user,
     ],

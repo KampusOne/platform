@@ -248,7 +248,7 @@ export const tutorialResourceSchema = z
     courseCode: z.string().trim().toUpperCase().min(2).max(24),
     title: z.string().trim().min(3).max(180),
     description: z.string().trim().min(10).max(2000),
-    resourceType: z.enum(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK"]),
+    resourceType: z.enum(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK", "VIDEO"]),
     accessModel: z.enum(["FREE", "BOOKING_INCLUDED", "PAID"]).default("FREE"),
     priceKobo: z.number().int().min(0).max(100_000_000).default(0),
     levelCode: z.string().trim().min(3).max(20).nullable().optional(),
@@ -286,10 +286,10 @@ export const tutorialResourceSchema = z
         path: ["priceKobo"],
       });
     }
-    if (value.resourceType === "AUDIOBOOK" && !value.durationSeconds) {
+    if (["AUDIOBOOK", "VIDEO"].includes(value.resourceType) && !value.durationSeconds) {
       context.addIssue({
         code: "custom",
-        message: "Audiobooks need a duration.",
+        message: "Audio and video resources need a duration.",
         path: ["durationSeconds"],
       });
     }
@@ -600,3 +600,8 @@ export type OnboardingProfileInput = z.infer<typeof onboardingProfileSchema>;
 export type TimetableEntryInput = z.infer<typeof timetableEntrySchema>;
 export type GpaTermInput = z.infer<typeof gpaTermSchema>;
 export type AgentApplicationInput = z.infer<typeof agentApplicationSchema>;
+
+// Direct-message uploads are private and are authorized again on every read.
+export const directMessageInputSchema = z.object({
+  id: z.string().uuid(), body: z.string().trim().max(5000).default(""), mediaId: z.string().uuid().optional(),
+}).strict().refine(value => Boolean(value.body || value.mediaId), "Write a message or attach a file.");

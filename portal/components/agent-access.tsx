@@ -15,9 +15,11 @@ function messageFrom(error: unknown) {
 }
 
 export function AgentAccess({
-  onAuthenticated,
+  onAuthenticated, restoreError, onRetryRestore,
 }: {
   onAuthenticated(session: Session): void;
+  restoreError?: string;
+  onRetryRestore?(): Promise<void>;
 }) {
   const [stage, setStage] = useState<Stage>("email");
   const [email, setEmail] = useState("");
@@ -75,11 +77,13 @@ export function AgentAccess({
   }
 
   return (
-    <main className="agent-login-page">
+    <main className="agent-login-page agent-entry-page">
+      <aside className="agent-entry-story"><Image src="/brand/kampusone-horizontal-ink.svg" alt="KampusOne" width={230} height={55} priority /><div><p className="eyebrow">Built around your campus</p><h2>Your skills.<br />Your campus.<br />More possibilities.</h2><p>Sell what students need, share what you know, or deliver across campus.</p></div><p className="agent-entry-note">Apply here. Once approved, manage your work from the KampusOne app.</p></aside>
       <section
         className="agent-login-shell"
         aria-labelledby="agent-access-title"
       >
+        <p className="eyebrow">Agent applications</p>
         <header className="agent-login-heading">
           <h1 id="agent-access-title">
             {stage === "email"
@@ -101,6 +105,7 @@ export function AgentAccess({
           preload
         />
 
+        {restoreError && <p className="form-notice" role="status">Your previous session could not be restored. Continue with your email or <button className="text-button" type="button" onClick={() => void onRetryRestore?.()}>retry</button>.</p>}
         <form className="form-stack agent-login-form" onSubmit={submit}>
           {stage === "email" ? (
             <label>
