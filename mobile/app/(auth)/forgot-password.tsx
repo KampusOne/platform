@@ -71,27 +71,15 @@ export default function ForgotPasswordScreen() {
     }
   }
 
-  async function checkCode() {
+  function checkCode() {
     if (code.length !== 6) {
       setError("Enter the six-digit code.");
       return;
     }
 
-    setLoading(true);
     setError("");
     setNotice("");
-    try {
-      await authApi.validateResetCode(email.trim(), code);
-      setStep("password");
-    } catch (caught) {
-      setError(
-        caught instanceof ApiError
-          ? caught.message
-          : "We could not verify that code.",
-      );
-    } finally {
-      setLoading(false);
-    }
+    setStep("password");
   }
 
   async function resend() {
