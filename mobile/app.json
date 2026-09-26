@@ -6,11 +6,11 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kampusone",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "backgroundColor": "#F1DFC8",
-      "image": "./assets/icon.png",
+      "image": "./assets/splash-mark.png",
       "resizeMode": "contain"
     },
     "ios": {
@@ -19,21 +19,23 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/adaptive-foreground.png",
         "backgroundColor": "#F1DFC8"
       },
       "package": "app.kampusone.mobile",
       "predictiveBackGestureEnabled": true,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.SCHEDULE_EXACT_ALARM"
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.VIBRATE",
+        "android.permission.WAKE_LOCK"
       ],
       "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/adaptive-icon.png"
+      "favicon": "./assets/icon.png"
     },
     "plugins": [
       [
