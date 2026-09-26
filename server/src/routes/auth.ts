@@ -6,6 +6,7 @@ import {
   emailCodeVerifySchema,
   forgotPasswordSchema,
   loginSchema,
+  passwordResetCodeSchema,
   refreshSessionSchema,
   registerSchema,
   resendVerificationSchema,
@@ -986,6 +987,56 @@ authRoutes.post("/forgot-password", async (context) => {
     verification.tokenId,
   );
   return context.json({ status: "accepted" }, 202);
+});
+
+authRoutes.post("/validate-reset-code", async (context) => {
+  const parsed = passwordResetCodeSchema.safeParse(await body(context));
+  if (!parsed.success)
+    throw new AppError(400, "BAD_REQUEST", "Enter the six-digit reset code.");
+
+  await consumeAuthRateLimit(
+    context,
+    "RESET_PASSWORD",
+    parsed.data.email,
+    20,
+    900,
+  );
+
+  const token = await latestVerification(
+    context.env,
+    parsed.data.email,
+    "PASSWORD_RESET",
+  );
+  if (!token) verificationFailure("INVALID");
+  if (token.used_at || new Date(token.expires_at).getTime() <= Date.now()) {
+    verificationFailure("INVALID");
+  }
+  if (token.attempts >= 5) verificationFailure("LOCKED");
+
+  const candidateHash = await hashOtp(context.env, parsed.data.code);
+  const checked = await database(context.env).execute<{
+    valid: boolean;
+    attempts: number;
+  }>(sql`
+    update public.verification_tokens
+    set attempts = case
+      when token_hash = ${candidateHash} then attempts
+      else attempts + 1
+    end
+    where id = ${token.id}::uuid
+      and used_at is null
+      and expires_at > now()
+      and attempts < 5
+    returning (token_hash = ${candidateHash}) as valid, attempts
+  `);
+  const result = firstRow(checked);
+  if (!result?.valid) {
+    verificationFailure(
+      (result?.attempts ?? token.attempts + 1) >= 5 ? "LOCKED" : "INVALID",
+    );
+  }
+
+  return context.json({ status: "code_valid" });
 });
 
 authRoutes.post("/reset-password", async (context) => {
