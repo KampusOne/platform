@@ -129,7 +129,7 @@ export function VideoEditorHost() {
         enableCancelTrimmingDialog: false,
         cancelButtonText: "Cancel",
         saveButtonText: "Done",
-        cancelTrimmingButtonText: "Cancel",
+        cancelTrimmingButtonText: "Cancel trimming",
         trimmingText: "Preparing video…",
         headerText: "Trim video",
         headerTextSize: 17,
