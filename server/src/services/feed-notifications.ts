@@ -52,13 +52,8 @@ export async function notifyFeedInteraction(
       ) on conflict do nothing
     `);
 
-    await db.execute(sql`
-      insert into app_private.notification_outbox(
-        user_id,channel,subject,body,dedupe_key
-      ) values(
-        ${target.author_user_id}::uuid,'PUSH',${title},${body},${dedupe}
-      ) on conflict do nothing
-    `);
+    // Social engagement is intentionally in-app only. Remote push is reserved
+    // for time-sensitive academic, safety and explicitly enabled account alerts.
   } catch (error) {
     console.error(
       JSON.stringify({
