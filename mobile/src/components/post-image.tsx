@@ -4,11 +4,12 @@ import { MediaImage } from "./media-image";
 import { ImageViewer } from "./image-viewer";
 
 const dimensions = new Map<string, number>();
-export function PostImage({ uri, label = "Post attachment" }: { uri: string; label?: string }) {
-  const [aspect, setAspect] = useState(dimensions.get(uri) ?? 1);
+export function PostImage({ uri, label = "Post attachment", initialAspect }: { uri: string; label?: string; initialAspect?:number|undefined }) {
+  const [aspect, setAspect] = useState(initialAspect || dimensions.get(uri) || 1);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     let active = true;
+    if(initialAspect && initialAspect>0){setAspect(initialAspect);return;}
     if (dimensions.has(uri)) { setAspect(dimensions.get(uri)!); return; }
     Image.getSize(uri, (width, height) => {
       if (width > 0 && height > 0) {
@@ -19,11 +20,11 @@ export function PostImage({ uri, label = "Post attachment" }: { uri: string; lab
       }
     }, () => {});
     return () => { active = false; };
-  }, [uri]);
+  }, [uri,initialAspect]);
   return <>
     <Pressable accessibilityRole="button" accessibilityLabel={`View ${label.toLowerCase()}`} onPress={(event) => { event.stopPropagation(); setOpen(true); }} style={{ marginTop: 8 }}>
       <MediaImage uri={uri} accessibilityLabel={label} resizeMode="contain" style={{ width: "100%", aspectRatio: aspect, borderRadius: 12 }} />
     </Pressable>
-    <ImageViewer uri={open ? uri : null} label={label} onClose={() => setOpen(false)} />
+    <ImageViewer uri={open ? uri : null} label={label} downloadable onClose={() => setOpen(false)} />
   </>;
 }

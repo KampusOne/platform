@@ -32,6 +32,7 @@ import { NotificationBootstrap } from "@/src/components/notification-bootstrap";
 import { StartupProvider } from "@/src/lib/startup";
 import { AndroidBackNavigation } from "@/src/components/android-back-navigation";
 import { AutoStreak } from "@/src/components/auto-streak";
+import { DownloadTray } from "@/src/components/download-tray";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -87,6 +88,7 @@ export default function RootLayout() {
         <PhotoEditorHost />
         <VideoEditorHost />
         <AndroidBackNavigation />
+        <DownloadTray />
         <BrandIntro fontsReady={fontsLoaded || Boolean(fontError)} appearanceReady={appearanceReady} />
       </ToastProvider></StartupProvider>
     </AuthProvider>

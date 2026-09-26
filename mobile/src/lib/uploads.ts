@@ -7,6 +7,7 @@ import { requestPhotoEdit } from "./photo-edit-session";
 import { requestVideoEdit } from "./video-edit-session";
 import { getPostVideoDurationMs } from "./post-video-processing";
 import type { PhotoDimensions } from "./photo-crop";
+import { videoDimensions } from "./media-downloads";
 export type UploadedFile = { id: string; url: string; kind: string; private: boolean };
 export type PhotoSource = "library" | "camera";
 export type PhotoKind = "avatar" | "cover" | "product" | "post";
@@ -166,6 +167,7 @@ export async function pickPostMedia(
       name: asset.fileName ?? "post-video",
       type,
       durationMs,
+      ...await videoDimensions(asset.uri, {width:asset.width,height:asset.height}),
     });
     if (!edited) return null;
     return edited;
@@ -219,6 +221,7 @@ export async function editPostMedia(
       name: file.name,
       type: file.type,
       durationMs,
+      ...await videoDimensions(file.uri, file),
     });
   }
 

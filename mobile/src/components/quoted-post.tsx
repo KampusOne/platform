@@ -18,7 +18,7 @@ export function QuotedPostPreview({ post, unavailable = false }: { post: QuotedP
   return <Pressable accessibilityRole="button" accessibilityLabel={`Open original post by ${post.source_name}${post.source_verified ? ", verified" : ""}`} onPress={(event) => { event.stopPropagation(); router.push({ pathname: "/post", params: { id: post.id } }); }} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
     <View style={styles.author}><ProfileAvatar name={post.source_name} imageUrl={post.source_image_url} size={22} /><Text numberOfLines={1} style={styles.name}>{post.source_name}</Text>{post.source_verified ? <VerifiedBadge size={12} /> : null}<Text style={styles.muted}>·</Text><RelativeTime value={post.published_at} style={styles.muted} /></View>
     <PostText key={post.id} {...text} style={styles.body} titleStyle={styles.title} />
-    {post.image_url ? post.media_type?.startsWith("video/") ? <MediaPreview url={post.image_url} video label="Quoted video"/> : <PostImage uri={post.image_url} label="Original post attachment" /> : null}
+    {post.image_url ? (post.media_type === "video" || post.media_type?.startsWith("video/")) ? <MediaPreview url={post.image_url} video label="Quoted video" initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined}/> : <PostImage initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} uri={post.image_url} label="Original post attachment" /> : null}
   </Pressable>;
 }
 const createStyles = (theme: Theme) => StyleSheet.create({

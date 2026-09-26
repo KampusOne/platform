@@ -9,6 +9,8 @@ export type FeedPostData = {
   summary: string;
   body: string;
   image_url: string | null;
+  media_width?: number | null;
+  media_height?: number | null;
   urgent: boolean;
   sponsored: boolean;
   published_at: string;

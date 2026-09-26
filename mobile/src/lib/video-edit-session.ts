@@ -3,6 +3,8 @@ export type EditablePostVideo = {
   name: string;
   type: string;
   durationMs: number;
+  width?: number | undefined;
+  height?: number | undefined;
 };
 
 export type VideoEditRequest = { id: number; video: EditablePostVideo };

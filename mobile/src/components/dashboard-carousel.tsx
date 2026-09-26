@@ -5,14 +5,13 @@ import { router, type Href, useFocusEffect } from "expo-router";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useReducedMotionPreference } from "@/src/components/product-ui";
 
-// Reuse the existing approved illustrations. New matching artwork can be replaced
-// independently without changing slide destinations, timing or accessibility.
+// Each destination has a distinct illustration, with reduced-motion support.
 const slides: { title: string; detail: string; action: string; route: Href; image: number; wide?: boolean }[] = [
   { title: "Everything you need for today", detail: "Your campus, all in one place.", action: "Explore now", route: "/(tabs)/explore", image: require("@/assets/illustrations/home-student-v2.png") },
   { title: "Study with Kira", detail: "Summarise notes. Understand more.", action: "Chat with Kira", route: "/ai", image: require("@/assets/illustrations/auth-study-v2.png"), wide: true },
-  { title: "Shop on campus", detail: "Find what you need, close to you.", action: "Shop now", route: "/(tabs)/store", image: require("@/assets/illustrations/onboarding-walk-v2.png") },
-  { title: "Know your CGPA", detail: "Plan your courses and your next goal.", action: "Calculate now", route: "/course-planner", image: require("@/assets/illustrations/auth-study-v2.png"), wide: true },
-  { title: "Make time for your day", detail: "Classes, plans and everything between.", action: "Open timetable", route: "/(tabs)/timetable", image: require("@/assets/illustrations/home-student-v2.png") },
+  { title: "Shop on campus", detail: "Find what you need, close to you.", action: "Shop now", route: "/(tabs)/store", image: require("@/assets/illustrations/carousel-shop-v3.webp") },
+  { title: "Know your CGPA", detail: "Plan your courses and your next goal.", action: "Calculate now", route: "/course-planner", image: require("@/assets/illustrations/carousel-cgpa-v3.webp") },
+  { title: "Make time for your day", detail: "Classes, plans and everything between.", action: "Open timetable", route: "/(tabs)/timetable", image: require("@/assets/illustrations/carousel-timetable-v3.webp") },
 ];
 
 export function DashboardCarousel() {
@@ -40,7 +39,7 @@ export function DashboardCarousel() {
   }, [cardWidth, reduced]);
   useEffect(() => {
     if (!focused || !active || paused || reduced || screenReader) return;
-    const timer = setTimeout(() => go((index + 1) % slides.length), 7000);
+    const timer = setTimeout(() => go((index + 1) % slides.length), 4000);
     return () => clearTimeout(timer);
   }, [focused, active, paused, reduced, screenReader, index, go]);
   useEffect(() => { scroll.current?.scrollTo({ x: index * cardWidth, animated: false }); }, [cardWidth]);

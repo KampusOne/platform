@@ -279,17 +279,18 @@ async function request<T>(
   const send = Platform.OS !== "web" && (init.body instanceof FormData || ((path.startsWith("/v1/media?") || path.startsWith("/v1/ai/transcribe?")) && Boolean(init.body)))
     ? (await import("expo/fetch")).fetch
     : fetch;
-  const response = await send(`${apiUrl}${path}`, {
+  const signal = init.signal ?? AbortSignal.timeout(15_000);
+  const response = await waitForRequest(send(`${apiUrl}${path}`, {
     ...init,
-    signal: init.signal ?? AbortSignal.timeout(15_000),
+    signal,
     credentials: "include",
     headers,
-  });
+  }), signal);
   if (response.status === 401 && canRefresh && path !== "/v1/auth/refresh") {
     const renewed = await refreshSession();
     if (renewed) return request<T>(path, init, false);
   }
-  return parse<T>(response);
+  return waitForRequest(parse<T>(response),signal);
 }
 
 export async function api<T>(

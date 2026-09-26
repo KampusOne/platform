@@ -6,6 +6,6 @@ import com.facebook.react.uimanager.ViewManager;
 import java.util.Collections;
 import java.util.List;
 public class KampusAlarmPackage implements ReactPackage {
-  @Override public List<NativeModule> createNativeModules(ReactApplicationContext context) { return Collections.singletonList(new KampusAlarmModule(context)); }
+  @Override public List<NativeModule> createNativeModules(ReactApplicationContext context) { return java.util.Arrays.asList(new KampusAlarmModule(context), new KampusMediaModule(context)); }
   @Override public List<ViewManager> createViewManagers(ReactApplicationContext context) { return Collections.emptyList(); }
 }

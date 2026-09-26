@@ -23,6 +23,8 @@ export function MediaPreview({
   url: string;
   video?: boolean;
   label?: string;
+  watermark?:string;
+  initialAspect?:number|undefined;
 }) {
   const { theme } = useAppearance();
   const [error, setError] = useState("");

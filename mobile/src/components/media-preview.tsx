@@ -2,7 +2,7 @@ import { useEvent } from "expo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
-  Linking,
+  Platform,
   Modal,
   Pressable,
   StyleSheet,
@@ -13,6 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useAppearance } from "@/src/lib/appearance";
 import { SkeletonBlock } from "@/src/components/skeleton";
+import { downloadPostMedia } from "@/src/lib/media-downloads";
+import { useToast } from "@/src/components/toast";
 
 const playbackSpeeds = [1, 1.25, 1.5, 2] as const;
 
@@ -28,18 +30,21 @@ function Video({
   url,
   label,
   watermark,
+  initialAspect,
 }: {
   url: string;
   label: string;
   watermark?: string;
+  initialAspect?: number | undefined;
 }) {
   const { theme } = useAppearance();
+  const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState<(typeof playbackSpeeds)[number]>(1);
   const [trackWidth, setTrackWidth] = useState(0);
-  const [aspect, setAspect] = useState(16 / 9);
+  const [aspect, setAspect] = useState(initialAspect && initialAspect > 0 ? initialAspect : 16 / 9);
   const [seekHint, setSeekHint] = useState("");
   const videoView = useRef<VideoView>(null);
   const lastTap = useRef({ side: 0, at: 0 });
@@ -66,7 +71,7 @@ function Video({
       if (Number.isFinite(nextPosition)) setPosition(Math.max(0, nextPosition));
       if (Number.isFinite(nextDuration)) setDuration(Math.max(0, nextDuration));
       const size = player.videoTrack?.size ?? player.availableVideoTracks?.[0]?.size;
-      if (size && size.width > 0 && size.height > 0) setAspect(size.width / size.height);
+      if (!initialAspect && size && size.width > 0 && size.height > 0) setAspect(size.width / size.height);
     };
     update();
     const timer = setInterval(update, 250);
@@ -225,22 +230,22 @@ function Video({
           <Pressable accessibilityLabel="Close video options" onPress={() => setMenuOpen(false)} style={StyleSheet.absoluteFill} />
           <View style={[styles.menu, { backgroundColor: theme.canvas, borderColor: theme.border }]}>
             <Text style={[styles.menuTitle, { color: theme.text }]}>Video</Text>
-            <Pressable
+            {Platform.OS === 'android' && /^https:\/\//.test(url) ? <Pressable
               accessibilityRole="button"
               onPress={() => {
                 setMenuOpen(false);
-                void Linking.openURL(url);
+                void downloadPostMedia(url,true).catch(error=>toast(error.message,'error'));
               }}
               style={styles.menuRow}
             >
               <Ionicons name="download-outline" size={20} color={theme.deepBrand} />
               <View style={styles.menuCopy}>
-                <Text style={[styles.menuLabel, { color: theme.text }]}>Open video file</Text>
+                <Text style={[styles.menuLabel, { color: theme.text }]}>Download video</Text>
                 <Text style={[styles.menuDetail, { color: theme.textMuted }]}>
-                  Open the original video in your device viewer.
+                  Save to your gallery with a KampusOne watermark.
                 </Text>
               </View>
-            </Pressable>
+            </Pressable> : null}
             <Pressable accessibilityRole="button" onPress={() => setMenuOpen(false)} style={styles.menuRow}>
               <Ionicons name="close-outline" size={20} color={theme.textMuted} />
               <Text style={[styles.menuLabel, { color: theme.text }]}>Close</Text>
@@ -257,11 +262,13 @@ export function MediaPreview({
   video = false,
   label = "Attached media",
   watermark,
+  initialAspect,
 }: {
   url: string;
   video?: boolean;
   label?: string;
   watermark?: string;
+  initialAspect?: number | undefined;
 }) {
   const { theme } = useAppearance();
   const [error, setError] = useState(false);
@@ -269,7 +276,7 @@ export function MediaPreview({
   return (
     <View style={{ marginVertical: 10 }}>
       {video ? (
-        <Video url={url} label={label} {...(watermark ? { watermark } : {})} />
+        <Video url={url} label={label} initialAspect={initialAspect} {...(watermark ? { watermark } : {})} />
       ) : error ? (
         <Text style={{ color: theme.error }}>This image could not load.</Text>
       ) : (

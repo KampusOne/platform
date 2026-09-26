@@ -143,7 +143,7 @@ function WheelColumn({
     [count, min],
   );
   const middleCycle = Math.floor(WHEEL_CYCLES / 2);
-  const initialIndex = middleCycle * count + (value - min);
+  const initialIndex = useRef(middleCycle * count + (value - min)).current;
   const scrollRef = useRef<ScrollView>(null);
   const lastIndexRef = useRef(initialIndex);
   const lastValueRef = useRef(value);
@@ -261,7 +261,7 @@ function PeriodColumn({
     [theme, isDark],
   );
   const values = useMemo(() => ["AM", "PM"] as const, []);
-  const initialIndex = value === "PM" ? 1 : 0;
+  const initialIndex = useRef(value === "PM" ? 1 : 0).current;
   const scrollRef = useRef<ScrollView>(null);
   const lastIndexRef = useRef(initialIndex);
   const lastValueRef = useRef(value);

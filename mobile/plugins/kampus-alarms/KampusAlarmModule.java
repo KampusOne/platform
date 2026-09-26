@@ -14,6 +14,9 @@ public class KampusAlarmModule extends ReactContextBaseJavaModule {
       if (!KampusAlarmScheduler.canSchedule(getReactApplicationContext()) && android.os.Build.VERSION.SDK_INT >= 31) {
         Intent intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:"+getReactApplicationContext().getPackageName()));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); getReactApplicationContext().startActivity(intent);
+      } else if (android.os.Build.VERSION.SDK_INT >= 34 && !getReactApplicationContext().getSystemService(android.app.NotificationManager.class).canUseFullScreenIntent()) {
+        Intent intent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:"+getReactApplicationContext().getPackageName()));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); getReactApplicationContext().startActivity(intent);
       }
       promise.resolve(KampusAlarmScheduler.canSchedule(getReactApplicationContext()));
     } catch(Exception e) { promise.reject("ALARM_PERMISSION", "Open Settings > Apps > Special app access > Alarms & reminders to enable KampusOne.", e); }

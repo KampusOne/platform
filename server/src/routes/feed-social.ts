@@ -47,7 +47,7 @@ async function rateLimit(c: Context<Env>, kind: string, limit: number) {
 function projection(user: User, withViews: boolean) {
   const views = withViews ? sql`(select count(*)::int from public.feed_post_views v where v.post_id = posts.id)` : sql`null::integer`;
   return sql`posts.id, posts.category, posts.title, posts.summary, posts.body,
-    posts.image_url, posts.audience->>'mediaType' as media_type, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
+    posts.image_url, coalesce(posts.audience->>'mediaContentType',posts.audience->>'mediaType') as media_type, posts.audience->'mediaWidth' as media_width, posts.audience->'mediaHeight' as media_height, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
     case when posts.audience->>'studentPost' = 'true'
       then coalesce(author.display_name, 'KampusOne student') else sources.name end as source_name,
     case when posts.audience->>'studentPost' = 'true'
@@ -68,7 +68,7 @@ function projection(user: User, withViews: boolean) {
     posts.quoted_post_id,
     case when quoted.id is null then null else jsonb_build_object(
       'id', quoted.id, 'title', quoted.title, 'summary', quoted.summary, 'body', quoted.body,
-      'image_url', quoted.image_url, 'media_type', quoted.audience->>'mediaType', 'published_at', quoted.published_at,
+      'image_url', quoted.image_url, 'media_type', coalesce(quoted.audience->>'mediaContentType',quoted.audience->>'mediaType'), 'media_width',quoted.audience->'mediaWidth','media_height',quoted.audience->'mediaHeight','published_at', quoted.published_at,
       'source_image_url', case when quoted.audience->>'studentPost' = 'true' then quoted_author.profile_image_url else coalesce(to_jsonb(quoted_source)->>'image_url',to_jsonb(quoted_source)->>'logo_url') end,
       'source_name', case when quoted.audience->>'studentPost' = 'true' then coalesce(quoted_author.display_name, 'KampusOne student') else quoted_source.name end,
       'source_verified', case when quoted.audience->>'studentPost' = 'true' then coalesce((to_jsonb(quoted_author)->>'public_badge_verified')::boolean, quoted_author.verification_status::text='VERIFIED', false) else quoted_source.verified end
@@ -193,7 +193,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
   await requireSocial(c);
   const user = currentUser(c);
   const university = campus(user);
-  const data = await input(c, z.object({ body: z.string().trim().max(5000), requestId: uuid, mediaId: uuid.optional(), quotedPostId: uuid.optional() }).refine(d=>d.body.length>0 || Boolean(d.mediaId),"Add a message or photo."));
+  const data = await input(c, z.object({ body: z.string().trim().max(5000), requestId: uuid, mediaId: uuid.optional(), mediaWidth:z.number().int().min(1).max(16384).optional(),mediaHeight:z.number().int().min(1).max(16384).optional(),quotedPostId: uuid.optional() }).refine(d=>d.body.length>0 || Boolean(d.mediaId),"Add a message or photo."));
   // Retry before quota consumption; a reused key may not change the payload.
   const retry = firstRow(await database(c.env).execute(sql`
     select id, body, image_url, quoted_post_id from public.feed_posts
@@ -222,7 +222,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
     )
     insert into public.feed_posts(university_id, source_id, author_user_id, category, title, summary, body, image_url, audience, status, published_at, client_request_id, quoted_post_id)
     select ${university}::uuid, source.id, ${user.id}::uuid, 'UPDATE', ${Array.from(data.body.padEnd(4," ")).slice(0, 180).join("")}, ${Array.from(data.body.padEnd(4," ")).slice(0, 500).join("")}, ${data.body}, ${imageUrl},
-      jsonb_build_object('studentPost', true, 'mediaType', ${media?.content_type ?? null}::text, 'visibility', case when ${data.quotedPostId ?? null}::uuid is null or (select audience->>'visibility' from target) = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end),
+      jsonb_build_object('studentPost', true, 'mediaType', ${media?.content_type ?? null}::text, 'mediaWidth',${data.mediaWidth??null}::integer,'mediaHeight',${data.mediaHeight??null}::integer,'visibility', case when ${data.quotedPostId ?? null}::uuid is null or (select audience->>'visibility' from target) = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end),
       'PUBLISHED', now(), ${data.requestId}::uuid, ${data.quotedPostId ?? null}::uuid
     from source where ${data.quotedPostId ?? null}::uuid is null or exists(select 1 from target)
     on conflict(author_user_id, client_request_id) where client_request_id is not null

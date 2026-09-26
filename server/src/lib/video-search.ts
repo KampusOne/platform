@@ -12,7 +12,8 @@ export async function searchStudyVideos(env:Bindings,query:string,fetcher:typeof
  const allowed=firstRow(await database(env).execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('AI_VIDEO_GLOBAL','video-search',${limit},86400,86400) as allowed`));
  if(!allowed?.allowed)return {cards:[],note:'Video search quota is used. Do not invent links.'};
  const url=new URL('https://www.googleapis.com/youtube/v3/search');
- for(const [k,v] of Object.entries({part:'snippet',type:'video',maxResults:'3',safeSearch:'strict',videoEmbeddable:'true',q,key:env.YOUTUBE_API_KEY}))url.searchParams.set(k,v);
+ const publishedAfter=new Date(Date.now()-5*365.25*24*60*60*1000).toISOString();
+ for(const [k,v] of Object.entries({part:'snippet',type:'video',maxResults:'3',safeSearch:'strict',videoEmbeddable:'true',videoDefinition:'high',publishedAfter,order:'relevance',q,key:env.YOUTUBE_API_KEY}))url.searchParams.set(k,v);
  const started=Date.now();
  try {
   const response=await fetcher(url,{signal:AbortSignal.timeout(8000)});

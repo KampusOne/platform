@@ -2,7 +2,7 @@
   "expo": {
     "name": "KampusOne",
     "slug": "kampusone",
-    "version": "0.3.1",
+    "version": "0.3.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kampusone",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.kampusone.mobile",
-      "buildNumber": "30"
+      "buildNumber": "32"
     },
     "android": {
       "adaptiveIcon": {
@@ -25,13 +25,13 @@
         "backgroundColor": "#A8462E"
       },
       "package": "app.kampusone.mobile",
-      "predictiveBackGestureEnabled": true,
+      "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 31
+      "versionCode": 32
     },
     "web": {
       "bundler": "metro",

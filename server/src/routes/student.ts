@@ -302,7 +302,7 @@ studentRoutes.get("/feed", async (context) => {
   const category = context.req.query("category")?.toUpperCase();
   const result = await database(context.env).execute(sql`
     select posts.id, posts.category, posts.title, posts.summary, posts.body,
-      posts.image_url, posts.audience->>'format' as publishing_format, posts.audience->>'mediaType' as media_type, posts.audience->>'mediaContentType' as media_content_type, posts.author_user_id, author.profile_image_url as author_avatar_url, posts.urgent, posts.sponsored, posts.published_at,
+      posts.image_url, posts.audience->>'format' as publishing_format, coalesce(posts.audience->>'mediaContentType',posts.audience->>'mediaType') as media_type,posts.audience->'mediaWidth' as media_width,posts.audience->'mediaHeight' as media_height,posts.audience->>'mediaContentType' as media_content_type, posts.author_user_id, author.profile_image_url as author_avatar_url, posts.urgent, posts.sponsored, posts.published_at,
       posts.correction_note,
       case when posts.audience->>'studentPost'='true' then coalesce(author.display_name,sources.name) else sources.name end as source_name,
       case when posts.audience->>'studentPost'='true' then coalesce(author.verification_status::text='VERIFIED',false) else sources.verified end as source_verified,
@@ -334,6 +334,7 @@ studentRoutes.post("/feed", async (c) => {
     z.object({
       body: z.string().trim().max(5000).default(""),
       mediaId: z.string().uuid().optional(),
+      mediaWidth:z.number().int().min(1).max(16384).optional(),mediaHeight:z.number().int().min(1).max(16384).optional(),
       requestId: z.string().uuid(),
     }).refine((value) => value.body.length > 0 || Boolean(value.mediaId), "Write something or attach a photo or video."),
   );
@@ -346,7 +347,7 @@ studentRoutes.post("/feed", async (c) => {
   if (!allowed?.allowed) throw new AppError(429,"RATE_LIMITED","Please wait before posting again.");
   const media = d.mediaId ? firstRow(await database(c.env).execute<{content_type:string}>(sql`select content_type from public.media_objects where id=${d.mediaId}::uuid and owner_user_id=${u.id}::uuid and institution_id=${requireUniversity(u)}::uuid and kind='post' and deleted_at is null`)) : null;
   if (d.mediaId && !media) throw new AppError(400,"BAD_REQUEST","Upload your photo or video before publishing.");
-  const audience = JSON.stringify({studentPost:true,...(media ? {mediaType:media.content_type.startsWith("video/")?"video":"image",mediaContentType:media.content_type} : {})});
+  const audience = JSON.stringify({studentPost:true,...(media ? {mediaType:media.content_type,mediaContentType:media.content_type,mediaWidth:d.mediaWidth,mediaHeight:d.mediaHeight} : {})});
   const url = d.mediaId
     ? (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin) +
       "/v1/media/" +

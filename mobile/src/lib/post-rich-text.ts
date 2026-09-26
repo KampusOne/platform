@@ -30,7 +30,7 @@ export function postTokens(text: string): PostToken[] {
 }
 
 /** Collapse copy only, with a bound for both long paragraphs and many short lines. */
-export function postExcerpt(text: string, maxCharacters = 360, maxLines = 6): { text: string; collapsed: boolean } {
+export function postExcerpt(text: string, maxCharacters = 220, maxLines = 4): { text: string; collapsed: boolean } {
   const lineEnd = text.split("\n").slice(0, maxLines).join("\n").length;
   const limit = Math.min(maxCharacters, lineEnd);
   if (text.length <= limit) return { text, collapsed: false };

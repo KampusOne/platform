@@ -26,7 +26,9 @@ class KampusAlarmScheduler {
     AlarmManager manager=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);
     Iterator<String> old=previous.keys();while(old.hasNext()){String id=old.next();if(!next.has(id)){manager.cancel(pending(c,id));manager.cancel(pending(c,id+"~snooze"));}}
     prefs(c).edit().putString("alarms",next.toString()).apply();
-    Iterator<String> keys=next.keys();while(keys.hasNext()){String id=keys.next();JSONObject item=next.getJSONObject(id);if(!previous.has(id)||!previous.getJSONObject(id).toString().equals(item.toString()))schedule(c,id,next(item,System.currentTimeMillis()));}
+    // Re-register even unchanged alarms: Android can remove pending alarms when
+    // permission changes or the app is updated. setAlarmClock replaces by ID.
+    Iterator<String> keys=next.keys();while(keys.hasNext()){String id=keys.next();JSONObject item=next.getJSONObject(id);schedule(c,id,next(item,System.currentTimeMillis()));}
   }
   static void restore(Context c) throws Exception { JSONObject alarms=new JSONObject(prefs(c).getString("alarms","{}"));Iterator<String> keys=alarms.keys();while(keys.hasNext()){String id=keys.next();schedule(c,id,next(alarms.getJSONObject(id),System.currentTimeMillis()));}long snooze=prefs(c).getLong("snoozeAt",0);String id=prefs(c).getString("snoozeId",null);if(id!=null&&alarms.has(id))schedule(c,id+"~snooze",snooze); }
   static JSONObject alarm(Context c,String id) throws Exception { return new JSONObject(prefs(c).getString("alarms","{}")).optJSONObject(id.replace("~snooze","")); }

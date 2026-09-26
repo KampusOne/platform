@@ -32,7 +32,9 @@ public class KampusAlarmService extends Service {
       if(alarm!=null){KampusAlarmScheduler.record(this,alarm,"missed",firedAt);stopAudio();handler.removeCallbacksAndMessages(null);}
       alarm=incoming;firedAt=System.currentTimeMillis();channels();
       String title=alarm.optString("label","KampusOne alarm");
-      Notification notification=builder(CHANNEL).setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setContentTitle(title).setContentText("Time for your reminder · tap to open").setCategory(Notification.CATEGORY_ALARM).setOngoing(true).setVisibility(Notification.VISIBILITY_PUBLIC).setContentIntent(KampusAlarmScheduler.open(this,alarm.getString("id"))).addAction(new Notification.Action.Builder(null,"Snooze",action("snooze")).build()).addAction(new Notification.Action.Builder(null,"Dismiss",action("dismiss")).build()).build();
+      Intent screen = new Intent(this,KampusAlarmActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
+      PendingIntent ringScreen = PendingIntent.getActivity(this,73411,screen,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+      Notification notification=builder(CHANNEL).setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setContentTitle(title).setContentText("Time for your reminder · tap to open").setCategory(Notification.CATEGORY_ALARM).setOngoing(true).setVisibility(Notification.VISIBILITY_PUBLIC).setContentIntent(ringScreen).setFullScreenIntent(ringScreen,true).addAction(new Notification.Action.Builder(null,"Snooze",action("snooze")).build()).addAction(new Notification.Action.Builder(null,"Dismiss",action("dismiss")).build()).build();
       if(Build.VERSION.SDK_INT>=29)startForeground(NOTIFICATION_ID,notification,ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);else startForeground(NOTIFICATION_ID,notification);
       JSONObject active=new JSONObject(alarm.toString()).put("firedAt",firedAt).put("endsAt",firedAt+180000);KampusAlarmScheduler.prefs(this).edit().putString("active",active.toString()).apply();
       KampusAlarmScheduler.record(this,alarm,"ringing",firedAt);
