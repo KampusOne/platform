@@ -423,19 +423,36 @@ studentRoutes.delete("/feed/:id/bookmark", async (context) => {
 
 studentRoutes.get("/campus/places", async (context) => {
   const user = currentUser(context);
+  const universityId = requireUniversity(user);
   const query = context.req.query("q")?.trim();
   const category = context.req.query("category")?.toUpperCase();
   const search = query ? `%${query}%` : null;
-  const result = await database(context.env).execute(sql`
-    select id, name, category, description, latitude, longitude,
-      accessibility_notes, image_url, verified_at
-    from public.campus_places
-    where university_id = ${requireUniversity(user)}::uuid and status = 'PUBLISHED'
-      and (${category ?? null}::text is null or category = ${category ?? null})
-      and (${search}::text is null or name ilike ${search} or description ilike ${search})
-    order by name limit 100
-  `);
-  return context.json({ places: result.rows });
+  const [result, campusResult] = await Promise.all([
+    database(context.env).execute(sql`
+      select id, name, category, description, latitude, longitude,
+        accessibility_notes, image_url, verified_at, campus_id, search_aliases
+      from public.campus_places
+      where university_id = ${universityId}::uuid and status = 'PUBLISHED'
+        and (${category ?? null}::text is null or category = ${category ?? null})
+        and (
+          ${search}::text is null
+          or name ilike ${search}
+          or description ilike ${search}
+          or array_to_string(search_aliases, ' ') ilike ${search}
+        )
+      order by name limit 100
+    `),
+    database(context.env).execute(sql`
+      select id, name, slug, latitude, longitude
+      from public.institution_campuses
+      where institution_id = ${universityId}::uuid
+        and status = 'PUBLISHED'
+        and latitude is not null
+        and longitude is not null
+      order by name limit 20
+    `),
+  ]);
+  return context.json({ places: result.rows, campuses: campusResult.rows });
 });
 
 studentRoutes.get("/timetable", async (context) => {
