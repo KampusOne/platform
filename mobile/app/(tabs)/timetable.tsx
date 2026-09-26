@@ -134,7 +134,7 @@ export default function TimetableScreen() {
       setError(
         caught instanceof ApiError
           ? caught.message
-          : "The class could not be added.",
+          : "The activity could not be added.",
       );
     } finally {
       setSaving(false);
@@ -158,7 +158,7 @@ export default function TimetableScreen() {
       setError(
         caught instanceof ApiError
           ? caught.message
-          : "The class could not be removed.",
+          : "The activity could not be removed.",
       );
     } finally {
       setDeletingId(null);
@@ -194,7 +194,7 @@ export default function TimetableScreen() {
           <Text style={styles.eyebrow}>ACADEMICS</Text>
           <Text style={styles.pageTitle}>My timetable</Text>
           <Text style={styles.subtitle}>
-            Classes, venues and reminder preferences in time order.
+            Courses and activities, with reminders.
           </Text>
         </View>
       </View>
@@ -243,12 +243,12 @@ export default function TimetableScreen() {
             {currentDay === day ? "Today" : selectedDay.long}
           </Text>
           <Text style={styles.sectionMeta}>
-            {visible.length} {visible.length === 1 ? "class" : "classes"}
+            {visible.length} {visible.length === 1 ? "activity" : "activities"}
           </Text>
         </View>
         <Pressable
           accessibilityLabel={
-            editing ? "Close class form" : `Add a class on ${selectedDay.long}`
+            editing ? "Close activity form" : `Add a course or activity on ${selectedDay.long}`
           }
           accessibilityRole="button"
           onPress={toggleEditor}
@@ -266,7 +266,7 @@ export default function TimetableScreen() {
           <Text
             style={[styles.addActionText, editing && styles.closeActionText]}
           >
-            {editing ? "Close" : "Add class"}
+            {editing ? "Close" : "Add activity"}
           </Text>
         </Pressable>
       </View>
@@ -283,23 +283,23 @@ export default function TimetableScreen() {
             </View>
             <View style={styles.editorCopy}>
               <Text style={styles.editorTitle}>
-                New {selectedDay.long} class
+                New {selectedDay.long} activity
               </Text>
               <Text style={styles.editorHint}>15-minute reminder</Text>
             </View>
           </View>
           <Field
             autoCapitalize="words"
-            label="Class title"
+            label="Course or activity title"
             onChangeText={setTitle}
-            placeholder="Data Structures"
+            placeholder="Data Structures or study group"
             value={title}
           />
           <View style={styles.double}>
             <View style={styles.half}>
               <Field
                 autoCapitalize="characters"
-                label="Course code"
+                label="Course code (optional)"
                 onChangeText={setCode}
                 placeholder="CSC 211"
                 value={code}
@@ -348,7 +348,7 @@ export default function TimetableScreen() {
             </Text>
           ) : null}
           <Pressable
-            accessibilityLabel={saving ? "Saving class" : "Save class"}
+            accessibilityLabel={saving ? "Saving activity" : "Save activity"}
             accessibilityRole="button"
             accessibilityState={{ disabled: !canSave, busy: saving }}
             disabled={!canSave}
@@ -363,7 +363,7 @@ export default function TimetableScreen() {
               <InlineLoading color="#FFFFFF" />
             ) : (
               <Text style={[styles.saveText, !canSave && styles.disabledText]}>
-                Save class
+                Save activity
               </Text>
             )}
           </Pressable>
@@ -379,7 +379,7 @@ export default function TimetableScreen() {
       ) : null}
       {!loading && visible.length > 0 ? (
         <View
-          accessibilityLabel={`${selectedDay.long} class schedule`}
+          accessibilityLabel={`${selectedDay.long} course and activity schedule`}
           style={styles.timeline}
         >
           {visible.map((entry, index) => (
@@ -398,10 +398,10 @@ export default function TimetableScreen() {
                 {entry.occurs_on?<Text style={{color:theme.textMuted,fontFamily:theme.font.medium,fontSize:11,marginBottom:6}}>One-time · {entry.occurs_on}</Text>:null}
                 <View style={styles.classTopline}>
                   <Text style={styles.code}>
-                    {entry.course_code ?? "CLASS"}
+                    {entry.course_code || "ACTIVITY"}
                   </Text>
                   <Pressable
-                    accessibilityHint="Removes this class from your timetable"
+                    accessibilityHint="Removes this course or activity from your timetable"
                     accessibilityLabel={`Delete ${entry.title}`}
                     accessibilityRole="button"
                     accessibilityState={{
@@ -478,7 +478,7 @@ export default function TimetableScreen() {
                     ]}
                   >
                     {entry.reminder_enabled
-                      ? `${entry.reminder_minutes} minutes before class`
+                      ? `${entry.reminder_minutes} minutes before`
                       : "Reminder off"}
                   </Text>
                 </View>
@@ -600,7 +600,7 @@ function ScheduleEmpty({ day }: { day: string }) {
           </View>
         </View>
       </View>
-      <Text style={styles.emptyTitle}>No {day} classes yet</Text>
+      <Text style={styles.emptyTitle}>No {day} activities yet</Text>
     </View>
   );
 }
