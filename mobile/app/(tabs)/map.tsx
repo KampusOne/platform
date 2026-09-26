@@ -44,18 +44,28 @@ const OSM_ATTRIBUTION_URL = "https://www.openstreetmap.org/copyright";
 const TILE_HEADERS = { "User-Agent": "KampusOne/0.1 (+https://kampusone.app)" };
 
 type IconName = keyof typeof Ionicons.glyphMap;
+type CoordinateValue = string | number | null;
+type Campus = {
+  id: string;
+  name: string;
+  slug: string;
+  latitude: CoordinateValue;
+  longitude: CoordinateValue;
+};
 type Place = {
   id: string;
   name: string;
   category: string;
   description: string | null;
-  latitude: string | null;
-  longitude: string | null;
+  latitude: CoordinateValue;
+  longitude: CoordinateValue;
   accessibility_notes: string | null;
   image_url: string | null;
   verified_at: string | null;
+  search_aliases?: string[];
 };
-type MappedPlace = Place & { latitudeValue: number; longitudeValue: number };
+type MappedCoordinate = { latitudeValue: number; longitudeValue: number };
+type MappedPlace = Place & MappedCoordinate;
 type MapView = { latitude: number; longitude: number; zoom: number };
 type PixelPoint = { x: number; y: number };
 type MapTile = { key: string; left: number; top: number; uri: string };
@@ -89,16 +99,14 @@ function wrapTileX(value: number, tileCount: number) {
   return ((value % tileCount) + tileCount) % tileCount;
 }
 
-function coordinatesFor(place: Place) {
-  if (
-    place.latitude === null ||
-    place.longitude === null ||
-    !place.latitude.trim() ||
-    !place.longitude.trim()
-  )
-    return null;
-  const latitude = Number(place.latitude);
-  const longitude = Number(place.longitude);
+function coordinatesForValues(
+  latitudeValue: CoordinateValue,
+  longitudeValue: CoordinateValue,
+) {
+  if (latitudeValue === null || longitudeValue === null) return null;
+  if (!String(latitudeValue).trim() || !String(longitudeValue).trim()) return null;
+  const latitude = Number(latitudeValue);
+  const longitude = Number(longitudeValue);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
   if (
     latitude < -85.05112878 ||
@@ -108,6 +116,10 @@ function coordinatesFor(place: Place) {
   )
     return null;
   return { latitude, longitude };
+}
+
+function coordinatesFor(place: Pick<Place, "latitude" | "longitude">) {
+  return coordinatesForValues(place.latitude, place.longitude);
 }
 
 function normalizedMercator(latitude: number, longitude: number): PixelPoint {
@@ -134,7 +146,7 @@ function worldPixel(
 }
 
 function fitMapView(
-  places: MappedPlace[],
+  places: MappedCoordinate[],
   width: number,
   height: number,
 ): MapView | null {
@@ -300,7 +312,7 @@ function OpenStreetMap({
   onZoom: (change: number) => void;
   places: MappedPlace[];
   selected: MappedPlace | undefined;
-  viewportPlaces: MappedPlace[];
+  viewportPlaces: MappedCoordinate[];
   width: number;
   zoomAdjustment: number;
 }) {
@@ -704,6 +716,7 @@ export default function MapScreen() {
 
   const { width } = useWindowDimensions();
   const [places, setPlaces] = useState<Place[]>([]);
+  const [campuses, setCampuses] = useState<Campus[]>([]);
   const [selected, setSelected] = useState<(typeof categories)[number]>("All");
   const [selectedPlaceId, setSelectedPlaceId] = useState("");
   const [query, setQuery] = useState("");
@@ -716,9 +729,11 @@ export default function MapScreen() {
   const load = useCallback(async () => {
     try {
       setError("");
-      setPlaces(
-        (await api<{ places: Place[] }>("/v1/student/campus/places")).places,
+      const response = await api<{ places: Place[]; campuses?: Campus[] }>(
+        "/v1/student/campus/places",
       );
+      setPlaces(response.places);
+      setCampuses(response.campuses ?? []);
     } catch (caught) {
       setError(
         caught instanceof ApiError
@@ -744,12 +759,30 @@ export default function MapScreen() {
           (selected === "All" ||
             place.category.toUpperCase() === selected.toUpperCase()) &&
           (!needle ||
-            `${place.name} ${place.description ?? ""}`
+            `${place.name} ${place.description ?? ""} ${(place.search_aliases ?? []).join(" ")}`
               .toLowerCase()
               .includes(needle))
         );
       }),
     [places, query, selected],
+  );
+
+  const mappedCampusCenters = useMemo<MappedCoordinate[]>(
+    () =>
+      campuses.flatMap((campus) => {
+        const coordinates = coordinatesForValues(
+          campus.latitude,
+          campus.longitude,
+        );
+        if (!coordinates) return [];
+        return [
+          {
+            latitudeValue: coordinates.latitude,
+            longitudeValue: coordinates.longitude,
+          },
+        ];
+      }),
+    [campuses],
   );
 
   const allMappedPlaces = useMemo<MappedPlace[]>(
@@ -782,6 +815,8 @@ export default function MapScreen() {
       }),
     [filtered],
   );
+  const viewportCoordinates =
+    allMappedPlaces.length > 0 ? allMappedPlaces : mappedCampusCenters;
   const selectedPlace =
     mappedPlaces.find((place) => place.id === selectedPlaceId) ??
     mappedPlaces[0];
@@ -915,7 +950,7 @@ export default function MapScreen() {
               onZoom={zoomMap}
               places={mappedPlaces}
               selected={selectedPlace}
-              viewportPlaces={allMappedPlaces}
+              viewportPlaces={viewportCoordinates}
               width={mapWidth}
               zoomAdjustment={zoomAdjustment}
             />
