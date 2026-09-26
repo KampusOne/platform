@@ -23,6 +23,9 @@ type Settings = {
   haptics: boolean;
   hideCgpa: boolean;
   hideReposts: boolean;
+  notifyLikes: boolean;
+  notifyReposts: boolean;
+  notifyReplies: boolean;
 };
 const defaults: Settings = {
   notifications: true,
@@ -30,6 +33,9 @@ const defaults: Settings = {
   haptics: true,
   hideCgpa: true,
   hideReposts: false,
+  notifyLikes: true,
+  notifyReposts: true,
+  notifyReplies: true,
 };
 export default function SettingsScreen() {
   const { user } = useAuth();
@@ -117,6 +123,9 @@ export default function SettingsScreen() {
           haptics: settings.haptics,
           hideCgpa: settings.hideCgpa,
           hideReposts: settings.hideReposts,
+          notifyLikes: settings.notifyLikes,
+          notifyReposts: settings.notifyReposts,
+          notifyReplies: settings.notifyReplies,
         }),
       });
       await writeCache("settings." + user?.id, settings);
@@ -185,6 +194,9 @@ export default function SettingsScreen() {
           ["haptics", "Haptics"],
           ["hideCgpa", "Hide CGPA on my profile"],
           ["hideReposts", "Hide my reposts on my profile"],
+          ["notifyLikes", "Likes in Notifications"],
+          ["notifyReposts", "Reposts in Notifications"],
+          ["notifyReplies", "Replies in Notifications"],
         ] as const
       ).map(([key, label]) => (
         <ToolRow
