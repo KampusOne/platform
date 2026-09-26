@@ -210,8 +210,12 @@ const createStyles = (theme: Theme) =>
       lineHeight: 27,
     },
     hiddenInput: {
-      ...StyleSheet.absoluteFillObject,
+      bottom: 0,
       color: "transparent",
+      left: 0,
+      position: "absolute",
+      right: 0,
+      top: 0,
       opacity: 0.02,
       padding: 0,
     },
