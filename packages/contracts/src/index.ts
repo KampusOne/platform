@@ -95,6 +95,11 @@ export const refreshSessionSchema = z.object({
 
 export const forgotPasswordSchema = z.object({ email: emailSchema });
 
+export const passwordResetCodeSchema = z.object({
+  email: emailSchema,
+  code: z.string().regex(/^\d{6}$/),
+});
+
 export const resetPasswordSchema = z.object({
   email: emailSchema,
   code: z.string().regex(/^\d{6}$/),
