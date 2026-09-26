@@ -115,6 +115,25 @@ export async function runRepair({ cf, publicFetch, apply = false, report = conso
   return { applied: plan.missing.length > 0, versionId: afterId, plan };
 }
 
+export async function inspectVersions(cf, report = console.log) {
+  const deployments = await cf('/deployments');
+  const versions = await cf('/versions');
+  const active = deployments?.deployments?.[0]?.versions;
+  const latest = versions?.items?.[0]?.id;
+  report(`Active version count: ${Array.isArray(active) ? active.length : 0}`);
+  report(`Latest version ID valid: ${uuid.test(latest ?? '')}`);
+  if (!Array.isArray(active) || active.length !== 1 || !uuid.test(active[0].version_id ?? '') || !uuid.test(latest ?? '')) return;
+  report(`Active version: ${active[0].version_id}; traffic: ${Number(active[0].percentage)}`);
+  report(`Latest version: ${latest}`);
+  const current = await cf(`/versions/${active[0].version_id}`);
+  const pending = await cf(`/versions/${latest}`);
+  const currentEtag = current?.resources?.script?.etag;
+  report(`Same code fingerprint: ${Boolean(currentEtag && currentEtag === pending?.resources?.script?.etag)}`);
+  report(`Same resource configuration: ${stable(current?.resources) === stable(pending?.resources)}`);
+  report(`Same version settings: ${stable(current?.settings) === stable(pending?.settings)}`);
+  report('Read-only inspection complete. No configuration write, deployment, SQL or reset email.');
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const lines = ['# Portal preview origin repair', ''];
   const report = line => { console.log(line); lines.push(line); };
@@ -138,7 +157,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       if (!data.success) throw new Error('Cloudflare configuration request failed');
       return data.result;
     };
-    await runRepair({ cf, publicFetch, apply, report });
+    if (process.argv.includes('--inspect')) await inspectVersions(cf, report);
+    else await runRepair({ cf, publicFetch, apply, report });
   } catch (error) {
     // Never dump Cloudflare responses, binding values, headers or credentials.
     report(`FAILED: ${error instanceof Error && /^(Invalid live|The origin|The existing|Stop:|Worker code|Configuration|Unexpected change|Origin allowlist|Live origin|Deployment credentials|Cloudflare)/.test(error.message) ? error.message : 'Operation failed; raw diagnostic withheld'}`);

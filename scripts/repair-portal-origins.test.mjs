@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { activeVersion, assertPreserved, portalOrigins, repairPlan, runRepair } from './repair-portal-origins.mjs';
+import { activeVersion, assertPreserved, inspectVersions, portalOrigins, repairPlan, runRepair } from './repair-portal-origins.mjs';
 
 const versionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const bindings = [
@@ -95,4 +95,17 @@ test('stops before mutation if live settings drift during review', async () => {
     },
   }), /changed during review/);
   assert.equal(writes, 0);
+});
+
+test('version inspection never writes or prints binding values', async () => {
+  const logs = [];
+  await inspectVersions(async (path, init) => {
+    assert.equal(init, undefined);
+    if (path === '/deployments') return deployment;
+    if (path === '/versions') return versions;
+    return { resources: { script: { etag: 'private-fingerprint' }, bindings: [{ name: 'PRIVATE', text: 'never-log-this' }] } };
+  }, line => logs.push(line));
+  assert.ok(logs.some(line => line === 'Same code fingerprint: true'));
+  assert.equal(logs.join('\n').includes('never-log-this'), false);
+  assert.equal(logs.join('\n').includes('private-fingerprint'), false);
 });
