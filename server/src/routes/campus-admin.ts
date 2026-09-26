@@ -44,7 +44,7 @@ campusAdminRoutes.post('/:id/places',async c=>{
 });
 
 campusAdminRoutes.post('/:id/import-osm',async c=>{
- if(c.env.OSM_IMPORT_ENABLED==='false')throw new AppError(503,'SERVICE_UNAVAILABLE','OpenStreetMap import is temporarily disabled.');
+ if(c.env.OSM_IMPORT_ENABLED==='false')throw new AppError(503,'PROVIDER_UNAVAILABLE','OpenStreetMap import is temporarily disabled.');
  const campusId=id(c.req.param('id')),u=currentUser(c),db=database(c.env);
  const campus=firstRow(await db.execute<{institution_id:string;latitude:string|null;longitude:string|null}>(sql`select institution_id,latitude,longitude from public.institution_campuses where id=${campusId}::uuid`));
  if(!campus)throw new AppError(404,'NOT_FOUND','Campus not found.');
@@ -58,7 +58,7 @@ campusAdminRoutes.post('/:id/import-osm',async c=>{
  try{
   places=await importCampusPlacesFromOpenStreetMap({latitude,longitude,radiusMeters:parsed.data.radiusMeters});
  }catch(error){
-  throw new AppError(502,'BAD_GATEWAY',error instanceof Error?error.message:'OpenStreetMap import could not be completed.');
+  throw new AppError(502,'PROVIDER_UNAVAILABLE',error instanceof Error?error.message:'OpenStreetMap import could not be completed.');
  }
  const payload=JSON.stringify(places.map(place=>({
   name:place.name,
