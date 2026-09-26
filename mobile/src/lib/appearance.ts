@@ -9,34 +9,55 @@ export type Theme = {
     ? string
     : (typeof light)[K];
 };
+
 const dark: Theme = {
   ...light,
-  canvas: "#191614",
-  surface: "#25211E",
-  surfaceMuted: "#302923",
-  surfaceSoft: "#302923",
-  surfaceRaised: "#29231F",
-  surfaceGlass: "rgba(37,33,30,0.88)",
-  surfaceGlassStrong: "rgba(37,33,30,0.96)",
-  surfaceTint: "rgba(233,177,142,0.10)",
-  text: "#FAF1E8",
-  textMuted: "#C0AFA2",
-  textSubtle: "#C0AFA2",
-  textFaint: "#9A8D84",
-  border: "rgba(241,223,200,0.15)",
-  deepBrand: "#A8462E",
-  brand: "#E99C76",
-  brandPressed: "#DE8661",
-  sand: "#47362A",
-  success: "#91BD95",
-  warning: "#E1BA67",
-  error: "#F29A83",
-  info: "#89B3C1",
-  warmWhite: "#25211E",
+  canvas: "#000000",
+  surface: "#0D0D0D",
+  surfaceMuted: "#171717",
+  surfaceSoft: "#171717",
+  surfaceRaised: "#111111",
+  surfaceGlass: "rgba(13,13,13,0.88)",
+  surfaceGlassStrong: "rgba(13,13,13,0.96)",
+  surfaceTint: "rgba(195,93,56,0.13)",
+  text: "#FFFFFF",
+  textMuted: "#B7B1AD",
+  textSubtle: "#A39C97",
+  textFaint: "#807A76",
+  border: "rgba(255,255,255,0.12)",
+  deepBrand: "#C35D38",
+  brand: "#D9855F",
+  brandPressed: "#C35D38",
+  sand: "#211814",
+  peach: "#D9855F",
+  clay: "#C35D38",
+  success: "#7FB488",
+  warning: "#E2B866",
+  error: "#F08C78",
+  info: "#8AB4C2",
+  warmWhite: "#0D0D0D",
+  midnight: "#000000",
+  shadow: {
+    ...light.shadow,
+    shadowColor: "#000000",
+    shadowOpacity: 0.4,
+  },
+  floatingShadow: {
+    ...light.floatingShadow,
+    shadowColor: "#000000",
+    shadowOpacity: 0.55,
+  },
+  glassShadow: {
+    ...light.glassShadow,
+    shadowColor: "#000000",
+    shadowOpacity: 0.5,
+  },
 };
+
 let preference: AppearancePreference = "light";
 const listeners = new Set<() => void>();
 let initialized = false;
+
 export async function initializeAppearance() {
   if (initialized) return;
   initialized = true;
@@ -50,11 +71,13 @@ export async function initializeAppearance() {
     /* Keep the light default if storage is unavailable. */
   }
 }
+
 export async function setAppearance(value: AppearancePreference) {
   preference = value;
   listeners.forEach((fn) => fn());
   await AsyncStorage.setItem("k1.appearance", value);
 }
+
 export function useAppearance() {
   const selected = useSyncExternalStore(
     (cb) => {
@@ -71,6 +94,7 @@ export function useAppearance() {
     selected === "dark" || (selected === "system" && system === "dark");
   return { preference: selected, isDark, theme: isDark ? dark : light };
 }
+
 export function useThemeStyles<T>(factory: (theme: Theme) => T) {
   const state = useAppearance();
   return {
