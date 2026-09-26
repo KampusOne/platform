@@ -4,9 +4,13 @@ import { useAppearance } from "@/src/lib/appearance";
 
 const tokenPattern = /((?:https?:\/\/|www\.)[^\s]+|#[\p{L}\p{N}_]+)/giu;
 
-function safeUrl(raw: string) {
+function linkParts(raw: string) {
   const cleaned = raw.replace(/[),.!?;:]+$/u, "");
-  return cleaned.startsWith("www.") ? `https://${cleaned}` : cleaned;
+  return {
+    display: cleaned,
+    href: cleaned.startsWith("www.") ? `https://${cleaned}` : cleaned,
+    suffix: raw.slice(cleaned.length),
+  };
 }
 
 export function RichPostText({
@@ -41,22 +45,21 @@ export function RichPostText({
         }
 
         if (/^(?:https?:\/\/|www\.)/iu.test(part)) {
-          const url = safeUrl(part);
-          const suffix = part.slice(url.startsWith("https://www.") && part.startsWith("www.") ? url.length - 8 : url.length);
+          const { display, href, suffix } = linkParts(part);
           return (
             <Text key={index}>
               <Text
                 accessibilityRole="link"
                 onPress={(event) => {
                   event.stopPropagation();
-                  void Linking.openURL(url);
+                  void Linking.openURL(href);
                 }}
                 style={{
                   color: theme.deepBrand,
                   textDecorationLine: "underline",
                 }}
               >
-                {part.slice(0, part.length - suffix.length)}
+                {display}
               </Text>
               {suffix}
             </Text>
