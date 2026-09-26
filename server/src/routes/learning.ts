@@ -68,6 +68,42 @@ learningRoutes.delete("/alarms/:id", async (c) => {
   );
   return c.json({ status: "deleted" });
 });
+
+learningRoutes.post("/alarms/import-timetable", async (c) => {
+  const user = currentUser(c);
+  const result = await database(c.env).execute<{ id: string }>(sql`
+    insert into public.student_alarms(
+      user_id,institution_id,label,time,days,enabled,sound,vibration,snooze_minutes,timetable_entry_id
+    )
+    select
+      ${user.id}::uuid,
+      ${user.universityId}::uuid,
+      left(concat_ws(' · ', nullif(t.course_code, ''), t.title), 120),
+      (t.starts_at - interval '15 minutes')::time,
+      array[
+        case when t.starts_at < time '00:15'
+          then (t.day_of_week + 6) % 7
+          else t.day_of_week
+        end
+      ]::smallint[],
+      true,
+      'default',
+      true,
+      5,
+      t.id
+    from public.timetable_entries t
+    where t.user_id = ${user.id}::uuid
+      and t.status = 'ACTIVE'
+      and not exists(
+        select 1 from public.student_alarms a
+        where a.user_id = ${user.id}::uuid
+          and a.timetable_entry_id = t.id
+      )
+      and (select count(*) from public.student_alarms a where a.user_id=${user.id}::uuid) < 100
+    returning id
+  `);
+  return c.json({ created: result.rows.length }, result.rows.length ? 201 : 200);
+});
 learningRoutes.get("/courses", async (c) => {
   const u = currentUser(c);
   const [courses, config] = await Promise.all([
