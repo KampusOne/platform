@@ -405,16 +405,17 @@ const createPickerStyles = (theme: Theme, isDark: boolean) =>
     },
     periodColumn: {
       width: 92,
+      height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS + 21,
       alignItems: "center",
-      justifyContent: "center",
-      paddingTop: 27,
+      justifyContent: "flex-start",
+      paddingTop: 21,
     },
     periodWheelViewport: {
-      height: WHEEL_ITEM_HEIGHT * 3,
+      height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
       width: "100%",
     },
     periodWheelContent: {
-      paddingVertical: WHEEL_ITEM_HEIGHT,
+      paddingVertical: (WHEEL_ITEM_HEIGHT * (WHEEL_VISIBLE_ITEMS - 1)) / 2,
     },
     periodText: {
       color: isDark ? "rgba(255,255,255,0.34)" : "rgba(41,35,31,0.38)",
@@ -543,6 +544,26 @@ export default function Alarms() {
     }
   }
 
+  async function importTimetableAlarms() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await api<{ created: number }>("/v1/learning/alarms/import-timetable", { method: "POST" });
+      const updated = await load();
+      await syncAlarms(updated, true);
+      toast(
+        result.created
+          ? `${result.created} class ${result.created === 1 ? "alarm" : "alarms"} added 15 minutes before class.`
+          : "Your timetable alarms are already up to date.",
+        "success",
+      );
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not import timetable alarms", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function saveAlarm() {
     const normalizedLabel = label.trim() || "Alarm";
     void mutate(
@@ -599,6 +620,21 @@ export default function Alarms() {
               </Text>
             )}
           </View>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Import alarms from timetable"
+            disabled={busy}
+            onPress={() => void importTimetableAlarms()}
+            style={({ pressed }) => [styles.importButton, pressed && styles.alarmCardPressed, busy && styles.disabled]}
+          >
+            <Ionicons name="calendar-outline" size={19} color={theme.deepBrand} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.importTitle}>Import from timetable</Text>
+              <Text style={styles.importBody}>Adds an alarm 15 minutes before each class.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+          </Pressable>
 
           {Platform.OS === "web" ? (
             <Text style={styles.webNote}>
@@ -702,7 +738,7 @@ export default function Alarms() {
           onPress={() => edit(null)}
           style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
         >
-          <Ionicons name="add" size={36} color={theme.text} />
+          <Ionicons name="alarm-outline" size={30} color="#FFFFFF" />
         </Pressable>
       </View>
 
@@ -978,6 +1014,20 @@ const createStyles = (theme: Theme, isDark: boolean) =>
       fontSize: 13,
       lineHeight: 20,
     },
+    importButton: {
+      minHeight: 72,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surfaceRaised,
+      paddingHorizontal: 15,
+      marginBottom: 14,
+    },
+    importTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14 },
+    importBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11.5, marginTop: 2 },
     webNote: {
       color: theme.textMuted,
       fontFamily: theme.font.body,
@@ -1106,9 +1156,9 @@ const createStyles = (theme: Theme, isDark: boolean) =>
       borderTopLeftRadius: 34,
       borderTopRightRadius: 34,
       overflow: "hidden",
-      backgroundColor: isDark ? "#24201D" : theme.canvas,
+      backgroundColor: theme.canvas,
     },
-    sheetSafe: { maxHeight: "100%", backgroundColor: isDark ? "#24201D" : theme.canvas },
+    sheetSafe: { maxHeight: "100%", backgroundColor: theme.canvas },
     sheetHandle: {
       width: 86,
       height: 5,
@@ -1154,7 +1204,7 @@ const createStyles = (theme: Theme, isDark: boolean) =>
     },
     settingsCard: {
       borderRadius: 24,
-      backgroundColor: isDark ? "#34302D" : theme.surface,
+      backgroundColor: theme.surface,
       paddingHorizontal: 18,
       overflow: "hidden",
     },
