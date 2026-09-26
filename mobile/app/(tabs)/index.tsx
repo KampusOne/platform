@@ -54,6 +54,7 @@ type Home = {
   };
   campusClock?: { date: string; time: string; timeZone: string };
   streak_days?: number | null;
+  notification_unread?: number;
 };
 
 function greeting(hour: number) {
@@ -81,6 +82,7 @@ export default function TodayScreen() {
   const load = useCallback(async () => {
     setError("");
     try {
+      await api("/v1/account/streak/check-in", { method: "POST" }).catch(() => undefined);
       setData(await api<Home>("/v1/student/home"));
     } catch (caught) {
       setError(
@@ -170,6 +172,13 @@ export default function TodayScreen() {
               name="notifications-outline"
               size={21}
             />
+            {(data?.notification_unread ?? 0) > 0 ? (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {(data?.notification_unread ?? 0) > 99 ? "99+" : String(data?.notification_unread ?? 0)}
+                </Text>
+              </View>
+            ) : null}
           </Pressable>
         </View>
       </View>
@@ -470,6 +479,26 @@ const createStyles = (theme: Theme) =>
       marginTop: 5,
     },
     headerActions: { alignItems: "center", flexDirection: "row", gap: 6 },
+    notificationBadge: {
+      position: "absolute",
+      right: -3,
+      top: -4,
+      minWidth: 17,
+      height: 17,
+      borderRadius: 9,
+      paddingHorizontal: 4,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.deepBrand,
+      borderWidth: 1.5,
+      borderColor: theme.canvas,
+    },
+    notificationBadgeText: {
+      color: "#FFFFFF",
+      fontFamily: theme.font.bold,
+      fontSize: 8.5,
+      lineHeight: 11,
+    },
     bell: {
       alignItems: "center",
       height: 48,
