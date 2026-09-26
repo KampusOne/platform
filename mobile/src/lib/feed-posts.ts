@@ -14,12 +14,13 @@ export type FeedPostData = {
   correction_note: string | null;
   source_name: string;
   source_verified: boolean;
+  source_username?: string | null;
   bookmarked: boolean;
   can_delete?: boolean;
 };
 
 // This is the student app, not the separately deployed public landing website.
-const appOrigin = "https://kampusone-mobile-preview.vercel.app";
+const appOrigin = "https://kampusone.app";
 const postIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const deletedPosts = new Set<string>();
 let pendingPost: string | null = null;
@@ -99,13 +100,15 @@ export async function copyPostLink(id: string): Promise<boolean> {
   }
 }
 
-export async function sharePostLink(post: Pick<FeedPostData, "id" | "title">): Promise<"shared" | "copied" | "cancelled" | "manual"> {
+export async function sharePostLink(post: Pick<FeedPostData, "id" | "title" | "source_name" | "source_username">): Promise<"shared" | "copied" | "cancelled" | "manual"> {
   const url = postUrl(post.id);
+  const author = post.source_username ? `@${post.source_username.replace(/^@/, "")}` : post.source_name;
+  const intro = `Check out this post on KampusOne by ${author}.`;
   if (Platform.OS === "web") {
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
         // No body/summary text: the shared item is a URL to this exact post.
-        await navigator.share({ url, title: post.title });
+        await navigator.share({ url, title: post.title || "KampusOne post", text: intro });
         return "shared";
       } catch (error) {
         if (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError") return "cancelled";
@@ -114,6 +117,10 @@ export async function sharePostLink(post: Pick<FeedPostData, "id" | "title">): P
     return (await copyPostLink(post.id)) ? "copied" : "manual";
   }
   // React Native's `url` field is iOS-only; Android must receive the URL in message.
-  const result = await Share.share(Platform.OS === "ios" ? { url } : { message: url });
+  const result = await Share.share(
+    Platform.OS === "ios"
+      ? { url, message: intro }
+      : { message: `${intro}\n${url}` },
+  );
   return result.action === Share.dismissedAction ? "cancelled" : "shared";
 }
