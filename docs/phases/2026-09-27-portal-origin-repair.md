@@ -15,3 +15,13 @@ This changes only the preview portal. It does not run Wrangler deploy, SQL, cata
 Reference: [Cloudflare settings PATCH and binding inheritance](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/script_and_version_settings/methods/edit/).
 
 Vercel rejected the portal fix deployment (03b8fb6) with “Deployment rate limited — retry in 24 hours.” The proxy fix is saved and passes eight boundary tests plus portal lint, types and production build, but is not live. The older canonical portal URL was opened and reached staff sign-in without the session-restoration error. Password-reset email delivery and authenticated admin authorization are not implied by that browser check.
+
+## Final verification checkpoint
+
+- Read-only run https://github.com/KampusOne/platform/actions/runs/36280534910 confirmed active version `e0e0b8b2-9d79-485d-b583-a3db569e45f4` serves 100% of traffic and differs in code/resources from latest version `d5851acd-e672-428b-bcaf-e07dab400e3d`. No live update was made.
+- All nine verification workflows on `fd06394` passed, including eight portal boundary tests and eight configuration/inspection tests. The focused 12 identity regressions also passed locally.
+- The actual compiled Next.js proxy was exercised against a local mock API. A same-origin request reached the upstream with the canonical portal origin and only the API session cookie. Foreign Origin, unowned Host and missing-write Origin requests returned 403 before reaching the upstream. No account, real API or email provider was used. The normal production build was restored afterwards.
+- The existing approved `https://kampusone-platform-preview.vercel.app/admin` was opened through a temporary Vercel share link. Staff sign-in and the Reset password form both opened without the previous session warning. No credential or reset-code submission was made.
+- The private TXT and second-feedback workbook received an access follow-up with the new screenshot error, available older portal link, saved fix and explicit deployment blocker. All first feedback and blank second-feedback inputs are preserved; no numbered item was upgraded to a false live-Fixed status.
+
+Next release action: deploy the already tested portal commit once Vercel permits a build, then verify the real preview session/reset flow. The original immutable preview still lacks the new proxy. The pending full API/schema release remains separately approval-gated.
