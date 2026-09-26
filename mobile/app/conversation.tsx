@@ -10,7 +10,7 @@ import { api } from '@/src/lib/api';
 import { useAppearance } from '@/src/lib/appearance';
 import { useAuth } from '@/src/auth/auth-context';
 type Message={id:string;sender_id:string;body:string;read_at:string|null;created_at:string;media_id:string|null;media_type:string|null;media_name:string|null};
-type Data={thread:{status:string;recipient_id:string;initiator_id:string};profile:{user_id:string;display_name:string};messages:Message[];nextCursor:string|null};
+type Data={thread:{kind?:string;access_ends_at?:string|null;status:string;recipient_id:string;initiator_id:string};profile:{user_id:string;display_name:string};messages:Message[];nextCursor:string|null};
 function Attachment({message}:{message:Message}) {
   const [url,setUrl]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const {theme}=useAppearance();
@@ -55,21 +55,23 @@ export default function ConversationScreen(){
     catch(e){setError(e instanceof Error?e.message:'Message not sent. Your draft is kept.');}finally{setBusy(false);}
   }
   const incoming=data?.thread.status==='REQUESTED'&&data.thread.recipient_id===user?.id;
-  const canSend=data?.thread.status==='ACCEPTED'||(data?.thread.status==='REQUESTED'&&!incoming&&data.messages.length===0);
+  const tutorExpired=data?.thread.kind==='TUTOR'&&!data.thread.access_ends_at;
+  const canSend=!tutorExpired&&(data?.thread.status==='ACCEPTED'||(data?.thread.status==='REQUESTED'&&!incoming&&data.messages.length===0));
   return <ToolPage title={data?.profile?.display_name||'Conversation'}>
     {data?.profile?<ProfileActions userId={data.profile.user_id} name={data.profile.display_name} onChanged={()=>void load()}/>:null}
+    {data?.thread.kind==='TUTOR'?<Text style={{color:theme.text}}>{data.thread.access_ends_at?'Tutor access ends '+new Date(data.thread.access_ends_at).toLocaleString():'This session has expired. Renew your package from learning purchases.'}</Text>:null}
     {error?<><Text accessibilityRole="alert" style={{color:theme.error}}>{error}</Text><ToolButton secondary label="Refresh" onPress={()=>void load()}/></>:null}
     {data?.nextCursor?<ToolButton secondary label="Load earlier messages" disabled={busy} onPress={()=>void load(data.nextCursor!)}/>:null}
     {data?.messages.map(m=><View key={m.id} style={{alignSelf:m.sender_id===user?.id?'flex-end':'flex-start',maxWidth:'90%',padding:14,borderRadius:16,backgroundColor:m.sender_id===user?.id?theme.deepBrand:theme.surface}}>
       <Text selectable style={{fontSize:16,lineHeight:23,color:m.sender_id===user?.id?'white':theme.text}}>{m.body}</Text>
       {m.media_id&&m.media_type?<Attachment message={m}/>:null}
-      {m.sender_id===user?.id&&m.read_at?<Text style={{fontSize:12,color:'white',marginTop:4}}>Read</Text>:null}
+      {m.sender_id===user?.id?<Text style={{fontSize:12,color:'white',marginTop:4}}>{m.read_at?'Read':'Sent'}</Text>:null}
     </View>)}
     {incoming?<><Text style={{color:theme.text}}>Accept this message request to reply.</Text><ToolButton label="Accept request" disabled={busy} onPress={()=>void accept(true)}/><ToolButton secondary label="Decline" disabled={busy} onPress={()=>void accept(false)}/></>:canSend?<>
       <ToolField label="Message" placeholder="Write a message…" multiline value={draft} onChangeText={setDraft} maxLength={5000}/>
       {data?.thread.status==='ACCEPTED'?<><ToolButton secondary disabled={busy} label={busy?'Working…':'Attach image, PDF, audio or video'} onPress={()=>void chooseFile()}/><MessageVoice disabled={busy} onReady={(id,name)=>setAttachment({id,name})}/></>:null}
       {attachment?<><Text style={{color:theme.text}}>{attachment.name} attached</Text><ToolButton secondary disabled={busy} label="Remove attachment" onPress={()=>setAttachment(null)}/></>:null}
       <ToolButton label={busy?'Sending…':'Send'} disabled={busy||(!draft.trim()&&!attachment)} onPress={()=>void send()}/>
-    </>:data?<Text style={{color:theme.textMuted}}>{data.thread.status==='DECLINED'?'This request was declined.':'Your message request is waiting for acceptance.'}</Text>:null}
+    </>:data?<Text style={{color:theme.textMuted}}>{tutorExpired?'Past messages remain available. New messages and shared attachments require active access.':data.thread.status==='DECLINED'?'This request was declined.':'Your message request is waiting for acceptance.'}</Text>:null}
   </ToolPage>;
 }

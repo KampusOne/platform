@@ -2,7 +2,7 @@
   "expo": {
     "name": "KampusOne",
     "slug": "kampusone",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kampusone",
@@ -31,7 +31,7 @@
         "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 30
+      "versionCode": 31
     },
     "web": {
       "bundler": "metro",

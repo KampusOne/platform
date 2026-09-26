@@ -3,11 +3,11 @@
   "projectId": "rough-breeze-36415261",
   "branchId": "br-sparkling-moon-ayq31a8y",
   "database": "kampusone_full_fix_20260926",
-  "verifiedAt": "2026-09-26T18:13:08.350227+00:00",
+  "verifiedAt": "2026-09-26T19:40:40.003763+00:00",
   "productionApplied": false,
   "base": "Schema-only fixture, with no production rows copied",
   "checks": {
-    "migrationsApplied": 34,
+    "migrationsApplied": 38,
     "socialNotificationRecipients": "passed",
     "inAppPushIndependence": "passed",
     "notificationIdempotency": "passed",
@@ -17,7 +17,13 @@
     "remainingFixtureUsers": 0,
     "remainingFixtureCampuses": 0,
     "remainingFixtureNotifications": 0,
-    "scheduleConfirmationAndUndoIsolation": "passed"
+    "scheduleConfirmationAndUndoIsolation": "passed",
+    "phase3CommercePrerequisiteApplied": true,
+    "tutorialPurchaseSettlement": "passed on Neon; synthetic rows rolled back",
+    "feeSnapshotAndDoubleEntryReplay": "passed on Neon; one balanced journal",
+    "remainingFixturePurchases": 0,
+    "remainingFeeRules": 0,
+    "remainingJournals": 0
   },
   "migrations": [
     {
@@ -190,5 +196,12 @@
       "sourceBlobSha": "97b5d8c73eed43bf0ed6a5ddc3b08686349b5112",
       "sha256": "b5f593610b250743cba6a0a33489abc2aea6f58b98cf0fd2cafeb753af001a66"
     }
-  ]
+  ],
+  "continuationMigrations": [
+    "20260912200000_phase_3_commerce_foundation.sql",
+    "20260926230000_tutor_commerce.sql",
+    "20260926240000_commerce_fee_snapshots.sql",
+    "20260926250000_campus_delivery_quotes.sql"
+  ],
+  "continuationEvidence": "database/verification/tutor_commerce_20260926.sql"
 }

@@ -1,5 +1,7 @@
 # KampusOne September 26 repair handoff
 
+Continuation: see [the subsequent commerce work](2026-09-26-commerce-continuation.md) for tutor purchases, access periods, fee policies, campus distance quotes and added migration evidence. This record describes the earlier checkpoint.
+
 This branch implements repairs against the 130-item brief and the additional
 account-deletion and activity-notification requests. It preserves the existing
 working changes and incorporates upstream main through 95dca82, including the latest OTP and password-reset fixes.

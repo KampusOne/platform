@@ -65,6 +65,8 @@ jobs:
           fi
       - name: Guard September 21 correction migrations
         run: node server/scripts/verify-schema-proof.mjs corrections
+      - name: Guard September 26 repair and commerce migrations
+        run: node server/scripts/verify-schema-proof.mjs fullfix
       - name: Deploy verified Worker
         uses: cloudflare/wrangler-action@v3
         with:

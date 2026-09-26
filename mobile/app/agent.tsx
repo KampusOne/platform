@@ -22,7 +22,7 @@ type Item = {
   pickup_location?:string;
   delivery_note?:string;
   price_kobo?: number;
-  rider_earning_kobo?: number;
+  rider_earning_kobo?: number;commission_kobo?:number;
   status: string;
 };
 const money = (value: number) =>
@@ -218,6 +218,7 @@ export default function AgentDashboard() {
                 money(Number(item.price_kobo ?? item.rider_earning_kobo ?? 0))
               : ""}
           </Text>
+          {role === "RIDER" && item.commission_kobo!==undefined?<Text style={{color:theme.textMuted}}>Commission {money(item.commission_kobo)} · You receive {money(item.rider_earning_kobo??0)}</Text>:null}
           {role === "RIDER" && item.status === "AVAILABLE" ? (
             <ToolButton
               label="Accept delivery"

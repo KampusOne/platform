@@ -86,7 +86,7 @@ describe('broadcast permissions and immutable review',()=>{
  });
  it('rechecks sender revocation and recipient campus membership before delivery',async()=>{
   await queue([alice],'OPERATIONAL',staff);await db.query("update app_private.staff_access set status='SUSPENDED'where user_id=$1",[staff]);expect(await deliverQueuedBroadcasts(env)).toEqual({accepted:0,skipped:1});
-  await queue([alice]);await db.query('update public.profiles set university_id=$1 where user_id=$2',[other,alice]);await db.query('update public.agent_profiles set university_id=$1 where user_id=$2',[other,alice]);expect(await deliverQueuedBroadcasts(env)).toEqual({accepted:0,skipped:1});expect(fetchMock).not.toHaveBeenCalled();
+  await queue([alice]);await db.query('update public.profiles set university_id=$1 where user_id=$2',[other,alice]);await db.query("update public.agent_profiles set status='SUSPENDED' where user_id=$1",[alice]);expect(await deliverQueuedBroadcasts(env)).toEqual({accepted:0,skipped:1});expect(fetchMock).not.toHaveBeenCalled();
  });
 });
 describe('consent, suppression and provider reliability',()=>{

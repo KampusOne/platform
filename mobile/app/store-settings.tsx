@@ -1,3 +1,4 @@
+import {CampusPlaceChoice} from "@/src/components/campus-place-choice";
 import { useEffect, useState } from "react";
 import { ToolPage, ToolButton, ToolField } from "@/src/components/toolkit";
 import { useToast } from "@/src/components/toast";
@@ -7,6 +8,7 @@ export default function StoreSettings() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [phone, setPhone] = useState("");
+  const [pickupPlace,setPickupPlace]=useState<string|null>(null);
   const [pickup, setPickup] = useState("");
   const [instructions, setInstructions] = useState("");
   const [hours, setHours] = useState("");
@@ -17,7 +19,7 @@ export default function StoreSettings() {
         display_name: string;
         description: string;
         contact_phone_e164: string;
-        pickup_location: string;
+        pickup_location: string;pickup_place_id?:string|null;
         pickup_instructions: string;
         opening_hours: Record<string, string>;
       } | null;
@@ -27,7 +29,7 @@ export default function StoreSettings() {
           setName(s.display_name);
           setDescription(s.description ?? "");
           setPhone(s.contact_phone_e164 ?? "");
-          setPickup(s.pickup_location ?? "");
+          setPickup(s.pickup_location ?? "");setPickupPlace(s.pickup_place_id??null);
           setInstructions(s.pickup_instructions ?? "");
           setHours(Object.values(s.opening_hours ?? {}).join("; "));
         }
@@ -43,7 +45,7 @@ export default function StoreSettings() {
           displayName: name,
           description,
           contactPhoneE164: phone,
-          pickupLocation: pickup,
+          pickupLocation: pickup,pickupPlaceId:pickupPlace,
           pickupInstructions: instructions,
           openingHours: { schedule: hours },
           defaultPreparationMinutes: 60,
@@ -81,6 +83,7 @@ export default function StoreSettings() {
         value={pickup}
         onChangeText={setPickup}
       />
+      <CampusPlaceChoice label="Pickup point on the campus map" value={pickupPlace} onChange={setPickupPlace}/>
       <ToolField
         label="Pickup instructions"
         value={instructions}

@@ -568,6 +568,7 @@ function TutorialWorkspace({ onChanged }: { onChanged(): void }) {
           title: form.get("title"),
           description: form.get("description"),
           format: form.get("format"),
+          packageDays:form.get("packageDays")?Number(form.get("packageDays")):null,
           priceKobo: Math.round(Number(form.get("price")) * 100),
           capacity: Number(form.get("capacity")),
           locationText: form.get("locationText") || null,
@@ -746,8 +747,9 @@ function TutorialWorkspace({ onChanged }: { onChanged(): void }) {
       </article>
       <article className="panel">
         <p className="section-kicker">New tutorial</p>
-        <h2>Build a bookable class</h2>
+        <h2>Offer a class or tutor package</h2>
         <form className="form-stack" onSubmit={submit}>
+          <label>Package access in days (optional)<input name="packageDays" type="number" min="1" max="366"/><small>Leave blank for a scheduled class. Packages include messaging for the purchased period.</small></label>
           <div className="form-grid">
             <label>
               Course code
@@ -1507,6 +1509,7 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
   const [notice, setNotice] = useState("");
   const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [feePreview,setFeePreview]=useState<{input:string;ruleId:string;feeKobo:number;netKobo:number;requestId:string}|null>(null);
   const available =
     Number(data?.tutorials.available_kobo ?? 0) +
     Number(data?.store.available_kobo ?? 0) +
@@ -1531,13 +1534,14 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
     setNotice("");
     setFormError("");
     try {
-      await portalApi("/v1/agents/payouts", {
-        method: "POST",
-        body: JSON.stringify({
-          agentProfileId: form.get("agentProfileId"),
-          amountKobo: Math.round(Number(form.get("amount")) * 100),
-        }),
-      });
+      const payload={agentProfileId:form.get("agentProfileId"),amountKobo:Math.round(Number(form.get("amount"))*100)};
+      const fingerprint=JSON.stringify(payload);
+      if(!feePreview||feePreview.input!==fingerprint){
+        const r=await portalApi<{quote:{ruleId:string;feeKobo:number;netKobo:number}}>("/v1/agents/payout-quote",{method:"POST",body:fingerprint});
+        setFeePreview({...r.quote,input:fingerprint,requestId:crypto.randomUUID()});return;
+      }
+      await portalApi("/v1/agents/payouts",{method:"POST",body:JSON.stringify({...payload,feeRuleId:feePreview.ruleId,requestId:feePreview.requestId})});
+      setFeePreview(null);
       setNotice("Payout request submitted for finance review.");
       formElement.reset();
       setKey((value) => value + 1);
@@ -1594,7 +1598,7 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
         <article className="panel">
           <p className="section-kicker">Controlled withdrawal</p>
           <h2>Request a payout</h2>
-          <form className="form-stack" onSubmit={requestPayout}>
+          <form className="form-stack" onSubmit={requestPayout} onChange={()=>setFeePreview(null)}>
             <label>
               Agent account
               <select name="agentProfileId" defaultValue="" required>
@@ -1612,20 +1616,21 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
             </label>
             <label>
               Amount (₦)
-              <input name="amount" type="number" min="100" step="1" required />
+              <input name="amount" type="number" min="5000" step="1" required />
             </label>
             <p className="field-help">
               A verified payout account and sufficient available balance are
               required. Requests are balance-checked atomically and remain
               auditable; money is not auto-sent.
             </p>
+            {feePreview&&<p role="status">Withdrawal fee: {money(feePreview.feeKobo)}. Your bank receives {money(feePreview.netKobo)}.</p>}
             {notice && <p className="form-notice">{notice}</p>}
             {formError && <p className="form-error">{formError}</p>}
             <button
               className="button button--primary"
-              disabled={busy || available < 10_000}
+              disabled={busy || available < 500_000}
             >
-              {busy ? "Submitting…" : "Request payout"}
+              {busy ? "Working…" : feePreview ? "Confirm withdrawal" : "Review withdrawal fee"}
             </button>
           </form>
         </article>

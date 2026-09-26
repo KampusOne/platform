@@ -43,7 +43,7 @@ export function composeBroadcastPayload(content:EmailContent,email:string,token:
 export function emailUniversityMembership(universityId:string|null):SQL {
  if(!universityId)return sql`true`;
  return sql`(exists(select 1 from public.profiles p where p.user_id=u.id and p.deleted_at is null and p.university_id=${universityId}::uuid)
- or exists(select 1 from public.agent_profiles a where a.user_id=u.id and a.university_id=${universityId}::uuid)
+ or exists(select 1 from public.agent_profiles a where a.user_id=u.id and a.university_id=${universityId}::uuid and a.status='ACTIVE')
  or exists(select 1 from app_private.staff_access st where st.user_id=u.id and st.status='ACTIVE' and(st.all_universities or ${universityId}::uuid=any(st.university_ids)))
  or(not exists(select 1 from app_private.staff_access st where st.user_id=u.id) and exists(select 1 from public.operator_roles o where o.user_id=u.id and(o.expires_at is null or o.expires_at>now()) and(o.university_id=${universityId}::uuid or o.role='PLATFORM_ADMIN'))))`;
 }

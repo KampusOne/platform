@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Text, View, Pressable } from "react-native";
 import {
   ToolPage,
@@ -111,6 +111,7 @@ export default function TutorialManagement() {
   }
   return (
     <ToolPage title={listing?.title ?? "Manage tutorial"}>
+      <ToolButton secondary label="Learners & product sales" onPress={()=>router.push("/tutor-learners")}/>
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
         {(["Schedule", "Bookings", "Materials"] as const).map((t) => (
           <Pressable

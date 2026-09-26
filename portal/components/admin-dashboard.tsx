@@ -156,6 +156,7 @@ type Operations = {
     created_at: string;
   }>;
   payoutRequests: Array<{
+    fee_kobo?:Scalar;net_kobo?:Scalar;
     id: string;
     amount_kobo: Scalar;
     status: string;
@@ -2168,7 +2169,7 @@ function OperationsView({
                   </small>
                 </span>
                 <span>
-                  <strong>{money(item.amount_kobo)}</strong>
+                  <strong>Bank transfer: {money(item.net_kobo??item.amount_kobo)}</strong><small>Reserved {money(item.amount_kobo)} · Fee {money(item.fee_kobo??0)}</small>
                   <small>{label(item.status)}</small>
                 </span>
               </summary>

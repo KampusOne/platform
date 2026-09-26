@@ -353,6 +353,7 @@ describe("requirements 215–224: payout setup without money movement", () => {
   });
   it("blocks changes while a payout is reserved", async () => {
     const fetch = provider();
+    await db.query("insert into public.fee_rules(institution_id,fee_type,version,effective_at,flat_kobo,basis_points,created_by,reason) values($1,'WITHDRAWAL','test-reservation',now(),0,0,$2,'Synthetic reservation test')",[school,reviewer]);
     await db.query(
       "insert into public.payout_requests(id,university_id,agent_profile_id,requested_by_user_id,amount_kobo) values($1,$2,$3,$4,10000)",
       [uuid(80), school, profile, owner],

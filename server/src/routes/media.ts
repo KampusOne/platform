@@ -31,7 +31,7 @@ function mediaKey(env: Bindings) {
 async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
   if (user.id === media.owner_user_id) return;
   if(media.kind==='message') {
-    const allowed=firstRow(await database(env).execute(sql`select m.id from public.direct_messages m join public.direct_threads t on t.id=m.thread_id where m.media_id=${media.id}::uuid and t.status='ACCEPTED' and ${user.id}::uuid in(t.initiator_id,t.recipient_id) and not exists(select 1 from public.user_blocks b where (b.blocker_id=t.initiator_id and b.blocked_id=t.recipient_id) or (b.blocker_id=t.recipient_id and b.blocked_id=t.initiator_id)) limit 1`));
+    const allowed=firstRow(await database(env).execute(sql`select m.id from public.direct_messages m join public.direct_threads t on t.id=m.thread_id where m.media_id=${media.id}::uuid and t.status='ACCEPTED' and (t.kind='GENERAL' or app_private.tutor_access_end(t.initiator_id,t.recipient_id)>now()) and ${user.id}::uuid in(t.initiator_id,t.recipient_id) and not exists(select 1 from public.user_blocks b where (b.blocker_id=t.initiator_id and b.blocked_id=t.recipient_id) or (b.blocker_id=t.recipient_id and b.blocked_id=t.initiator_id)) limit 1`));
     if(allowed)return;
     throw new AppError(403,"FORBIDDEN","This conversation attachment is unavailable.");
   }
@@ -46,7 +46,7 @@ async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
   if (media.kind === "resource" && user.universityId === media.institution_id) {
     const resource = firstRow(
       await database(env).execute(
-        sql`select r.id from public.tutorial_resources r where r.media_object_id=${media.id}::uuid and r.university_id=${user.universityId}::uuid and r.deleted_at is null and r.status='PUBLISHED' and (r.access_model='FREE' or(r.access_model='BOOKING_INCLUDED' and r.listing_id is not null and exists(select 1 from public.tutorial_bookings b where b.listing_id=r.listing_id and b.student_user_id=${user.id}::uuid and b.status in ('CONFIRMED','COMPLETED')))) limit 1`,
+        sql`select r.id from public.tutorial_resources r where r.media_object_id=${media.id}::uuid and r.university_id=${user.universityId}::uuid and r.deleted_at is null and r.status='PUBLISHED' and app_private.can_read_tutor_resource(${user.id}::uuid,r.id) limit 1`,
       ),
     );
     if (resource) return;

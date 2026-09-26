@@ -11,9 +11,9 @@ import type { Bindings,Variables } from '../types';
 export const messageRoutes=new Hono<{Bindings:Bindings;Variables:Variables}>();
 messageRoutes.use('/*',requireAuth);
 messageRoutes.use('/*',async(c,next)=>{c.header('Cache-Control','private, no-store');await requireProfileSafety(c.env);await next();});
-type Thread={id:string;initiator_id:string;recipient_id:string;status:string};
+type Thread={id:string;initiator_id:string;recipient_id:string;status:string;kind:string;access_ends_at:string|null};
 async function threadFor(env:Bindings,userId:string,threadId:string) {
- const thread=firstRow(await database(env).execute<Thread>(sql`select id,initiator_id,recipient_id,status from public.direct_threads where id=${threadId}::uuid and ${userId}::uuid in(initiator_id,recipient_id)`));
+ const thread=firstRow(await database(env).execute<Thread>(sql`select id,initiator_id,recipient_id,status,kind,case when kind='TUTOR' then app_private.tutor_access_end(initiator_id,recipient_id) end access_ends_at from public.direct_threads where id=${threadId}::uuid and ${userId}::uuid in(initiator_id,recipient_id)`));
  if(!thread) throw new AppError(404,'NOT_FOUND','Conversation not found.');
  await requireUnblocked(env,userId,thread.initiator_id===userId?thread.recipient_id:thread.initiator_id);return thread;
 }
@@ -25,7 +25,7 @@ messageRoutes.get('/inbox',async c=>{
  if(c.req.query('before')){try{cursor=z.object({at:z.string().datetime(),id:z.string().uuid()}).strict().parse(JSON.parse(atob(c.req.query('before')!)));}catch{throw new AppError(400,'BAD_REQUEST','Refresh conversations before loading more.');}}
  const db=database(c.env);
  const visibility=sql`${u.id}::uuid in(t.initiator_id,t.recipient_id) and t.status<>'DECLINED' and p.deleted_at is null and ${unblockedAuthor(u.id,sql`p.user_id`)}`;
- const [rows,total]=await Promise.all([db.execute(sql`select t.id,t.status,t.initiator_id,t.recipient_id,t.updated_at,p.user_id,p.display_name,p.profile_image_url,
+ const [rows,total]=await Promise.all([db.execute(sql`select t.id,t.kind,t.status,t.initiator_id,t.recipient_id,t.updated_at,p.user_id,p.display_name,p.profile_image_url,
  to_char(t.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
  (select body from public.direct_messages m where m.thread_id=t.id order by m.created_at desc limit 1) as last_message,
  (select count(*)::int from public.direct_messages m where m.thread_id=t.id and m.sender_id<>${u.id}::uuid and m.read_at is null) as unread_count,
@@ -34,6 +34,7 @@ messageRoutes.get('/inbox',async c=>{
  where ${visibility}
  and (${cursor?.at??null}::timestamptz is null or (t.updated_at,t.id)<(${cursor?.at??null}::timestamptz,${cursor?.id??null}::uuid))
  and (${filter.data}='All' or (${filter.data}='Unread' and exists(select 1 from public.direct_messages m where m.thread_id=t.id and m.sender_id<>${u.id}::uuid and m.read_at is null))
+ or (${filter.data}='Tutor' and t.kind='TUTOR')
  or (${filter.data}='Requests' and t.status='REQUESTED' and t.recipient_id=${u.id}::uuid)
  or exists(select 1 from public.agent_profiles a where a.user_id=p.user_id and a.status='ACTIVE' and a.agent_type::text=upper(${filter.data})))
  order by t.updated_at desc,t.id desc limit 51`),
@@ -52,7 +53,7 @@ messageRoutes.post('/threads',async c=>{
  if(!target) throw new AppError(404,'NOT_FOUND','This profile is unavailable.');
  const thread=firstRow(await db.execute(sql`insert into public.direct_threads(institution_id,initiator_id,recipient_id,status)
  values(${u.universityId}::uuid,${u.id}::uuid,${d.userId}::uuid,case when exists(select 1 from public.profile_follows where follower_id=${d.userId}::uuid and followed_id=${u.id}::uuid) then 'ACCEPTED' else 'REQUESTED' end)
- on conflict(least(initiator_id,recipient_id),greatest(initiator_id,recipient_id)) do update set updated_at=direct_threads.updated_at returning id,status`));
+ on conflict(least(initiator_id,recipient_id),greatest(initiator_id,recipient_id)) where kind='GENERAL' do update set updated_at=direct_threads.updated_at returning id,status`));
  return c.json({thread},201);
 });
 messageRoutes.get('/threads/:id',async c=>{
@@ -76,6 +77,7 @@ messageRoutes.put('/threads/:id/read',async c=>{
 });
 messageRoutes.post('/threads/:id/messages',async c=>{
  const u=currentUser(c),t=await threadFor(c.env,u.id,id(c.req.param('id'))),d=await input(c,directMessageInputSchema),db=database(c.env);
+ if(t.kind==='TUTOR'&&!t.access_ends_at)throw new AppError(403,'FORBIDDEN','This tutor session has expired. Renew your package to send messages.');
  if(t.status==='DECLINED'||(t.status==='REQUESTED'&&t.recipient_id===u.id)) throw new AppError(403,'FORBIDDEN','Accept the request before replying.');
  if(d.mediaId) {
    if(t.status!=='ACCEPTED')throw new AppError(403,'FORBIDDEN','Attachments are available after the request is accepted.');

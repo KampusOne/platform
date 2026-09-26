@@ -36,6 +36,7 @@ type Availability = {
   booked_spaces: number;
 };
 type Listing = {
+  package_days?:number|null;
   id: string;
   course_code: string;
   title: string;
@@ -281,8 +282,10 @@ function ResourcePreview({
       const { resource: access } = await api<{
         resource: Resource & { can_access: boolean };
       }>(`/v1/student/tutorial-resources/${resource.id}`);
-      if (!access.can_access)
-        throw new Error("Book this tutorial to open the resource.");
+      if (!access.can_access) {
+        if(resource.access_model==='PAID'){onClose();router.push({pathname:'/learning-checkout',params:{resourceId:resource.id}});return;}
+        throw new Error("An active session or package is needed to open this resource.");
+      }
       const url = access.media_object_id
         ? (
             await api<{ url: string }>(
@@ -363,7 +366,7 @@ function ResourcePreview({
               ]}
             >
               <Text style={styles.openResourceButtonText}>
-                {opening ? "Opening…" : "Open full resource"}
+                {opening ? "Opening…" : resource.access_model === "PAID" ? "View access / buy resource" : "Open full resource"}
               </Text>
               <Ionicons color="#FFFFFF" name="open-outline" size={17} />
             </Pressable>
@@ -512,7 +515,7 @@ function TutorialCard({
         <View style={styles.noWindows}>
           <Ionicons color={theme.textMuted} name="time-outline" size={16} />
           <Text style={styles.noWindowsText}>
-            This tutor has not published a bookable time.
+            {listing.package_days?`${listing.package_days} days of tutor access, starting after payment.`:"This tutor has not published a bookable time."}
           </Text>
         </View>
       )}
@@ -520,12 +523,12 @@ function TutorialCard({
       <Pressable
         accessibilityLabel={`Book ${listing.title} with ${listing.tutor_name}`}
         accessibilityRole="button"
-        accessibilityState={{ busy, disabled: disabled || !selected }}
-        disabled={disabled || !selected}
+        accessibilityState={{ busy, disabled: disabled || (!selected&&!listing.package_days) }}
+        disabled={disabled || (!selected&&!listing.package_days)}
         onPress={onBook}
         style={({ pressed }) => [
           styles.bookButton,
-          (disabled || !selected) && styles.bookButtonDisabled,
+          (disabled || (!selected&&!listing.package_days)) && styles.bookButtonDisabled,
           pressed && !disabled && styles.bookButtonPressed,
         ]}
       >
@@ -533,7 +536,7 @@ function TutorialCard({
           <InlineLoading color="#FFFFFF" />
         ) : (
           <>
-            <Text style={styles.bookButtonText}>Book tutorial</Text>
+            <Text style={styles.bookButtonText}>{listing.package_days?`Get ${listing.package_days}-day package`:"Book tutorial"}</Text>
             <Ionicons color="#FFFFFF" name="arrow-forward" size={17} />
           </>
         )}
@@ -740,18 +743,7 @@ export default function TutorialsScreen() {
           await load();
           return;
         }
-        const payment = await api<{ authorizationUrl: string }>(
-          "/v1/payments/initialize",
-          {
-            body: JSON.stringify({
-              idempotencyKey: `tutorial-${booking.id}-${Date.now()}`,
-              resourceId: booking.id,
-              resourceType: "TUTORIAL_BOOKING",
-            }),
-            method: "POST",
-          },
-        );
-        await Linking.openURL(payment.authorizationUrl);
+        router.push({pathname:'/payment-review',params:{id:booking.id,type:'TUTORIAL_BOOKING'}});
       } catch (caught) {
         if (savedBookingId) {
           const providerUnavailable =
@@ -1048,7 +1040,7 @@ export default function TutorialsScreen() {
               busy={busy === listing.id}
               disabled={Boolean(busy)}
               listing={listing}
-              onBook={() => void book(listing)}
+              onBook={() => listing.package_days ? router.push({pathname:"/learning-checkout",params:{listingId:listing.id}}) : void book(listing)}
               onSelect={(id) => selectWindow(listing.id, id)}
               selectedId={
                 selectedWindows[listing.id] ?? listing.availability[0]?.id

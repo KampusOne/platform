@@ -1,3 +1,4 @@
+import { feeRuleRoutes } from "./fee-rules";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 
@@ -196,8 +197,9 @@ adminRoutes.get("/dashboard", async (context) => {
             on events.resource_type = 'TUTORIAL_BOOKING' and bookings.id = events.resource_id
           left join public.orders orders
             on events.resource_type = 'STORE_ORDER' and orders.id = events.resource_id
+      left join public.tutorial_purchases learning on events.resource_type='TUTORIAL_PURCHASE' and learning.id=events.resource_id
           where events.state = 'REQUIRES_REVIEW'
-            and (${scope}::uuid is null or coalesce(bookings.university_id, orders.university_id) = ${scope}::uuid)) as payment_anomalies
+            and (${scope}::uuid is null or coalesce(bookings.university_id, orders.university_id, learning.institution_id) = ${scope}::uuid)) as payment_anomalies
     `),
       database(context.env).execute(sql`
       select
@@ -433,7 +435,7 @@ adminRoutes.get("/tutorials", async (context) => {
   const [listings, resources] = await Promise.all([
     database(context.env).execute(sql`
       select listings.id, listings.university_id, listings.course_code, listings.title,
-        listings.format, listings.price_kobo, listings.capacity, listings.status,
+        listings.format, listings.price_kobo, listings.capacity, listings.package_days, listings.status,
         listings.review_status, listings.review_note, listings.submitted_at,
         listings.reviewed_at, listings.is_demo, listings.updated_at,
         coalesce(profiles.display_name, listings.publisher_name, 'KampusOne tutor') as tutor_name,
@@ -1086,7 +1088,7 @@ adminRoutes.get("/operations", async (context) => {
         disputes.created_at desc limit 200
     `),
     database(context.env).execute(sql`
-      select requests.id, requests.amount_kobo, requests.status, requests.provider_reference,
+      select requests.id, requests.amount_kobo, requests.fee_kobo, requests.net_kobo, requests.status, requests.provider_reference,
         requests.review_note, requests.requested_at, requests.reviewed_at, requests.paid_at,
         profiles.display_name, profiles.agent_type, users.email
       from public.payout_requests requests
@@ -1101,14 +1103,15 @@ adminRoutes.get("/operations", async (context) => {
         events.amount_kobo, events.state, events.resource_type, events.resource_id,
         events.review_reason, events.resolution_code, events.resolution_note,
         events.received_at, events.resolved_at,
-        coalesce(bookings.university_id, orders.university_id) as university_id
+        coalesce(bookings.university_id, orders.university_id, learning.institution_id) as university_id
       from public.payment_provider_events events
       left join public.tutorial_bookings bookings
         on events.resource_type = 'TUTORIAL_BOOKING' and bookings.id = events.resource_id
       left join public.orders orders
         on events.resource_type = 'STORE_ORDER' and orders.id = events.resource_id
+      left join public.tutorial_purchases learning on events.resource_type='TUTORIAL_PURCHASE' and learning.id=events.resource_id
       where ${scope}::uuid is null
-        or coalesce(bookings.university_id, orders.university_id) = ${scope}::uuid
+        or coalesce(bookings.university_id, orders.university_id, learning.institution_id) = ${scope}::uuid
       order by case events.state when 'REQUIRES_REVIEW' then 0 when 'RECEIVED' then 1 else 2 end,
         events.received_at desc limit 200
     `),
@@ -1142,12 +1145,13 @@ adminRoutes.post("/operations/payment-events/:id/review", async (context) => {
     university_id: string | null;
   }>(sql`
     select events.id, events.state, events.resource_type, events.resource_id,
-      coalesce(bookings.university_id, orders.university_id) as university_id
+      coalesce(bookings.university_id, orders.university_id, learning.institution_id) as university_id
     from public.payment_provider_events events
     left join public.tutorial_bookings bookings
       on events.resource_type = 'TUTORIAL_BOOKING' and bookings.id = events.resource_id
     left join public.orders orders
       on events.resource_type = 'STORE_ORDER' and orders.id = events.resource_id
+      left join public.tutorial_purchases learning on events.resource_type='TUTORIAL_PURCHASE' and learning.id=events.resource_id
     where events.id = ${context.req.param("id")}::uuid limit 1
   `);
   const paymentEvent = firstRow(result);
@@ -1616,7 +1620,7 @@ adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
     user,
     context.req.query("universityId"),
   );
-  const [bookings, orders, deliveries] = await Promise.all([
+  const [bookings, orders, deliveries, learning] = await Promise.all([
     database(context.env).execute<{ id: string }>(sql`
       update public.tutorial_bookings bookings set earnings_state = 'AVAILABLE', updated_at = now()
       where bookings.status = 'COMPLETED' and bookings.earnings_state = 'PENDING'
@@ -1640,6 +1644,7 @@ adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
         and not exists (select 1 from public.disputes disputes join public.orders orders on orders.id = disputes.order_id
           where orders.id = jobs.order_id and disputes.status in ('OPEN','UNDER_REVIEW')) returning jobs.id
     `),
+    database(context.env).execute(sql`update public.tutorial_purchases set earnings_state='AVAILABLE',updated_at=now() where status='PAID' and earnings_state='PENDING' and release_at<=now() and (${scope}::uuid is null or institution_id=${scope}::uuid) returning id`),
   ]);
   await recordAudit(context.env, {
     actorUserId: user.id,
@@ -1652,6 +1657,7 @@ adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
       bookings: bookings.rows.length,
       orders: orders.rows.length,
       deliveries: deliveries.rows.length,
+      learning: learning.rows.length,
     },
   });
   return context.json({
@@ -1659,6 +1665,7 @@ adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
       bookings: bookings.rows.length,
       orders: orders.rows.length,
       deliveries: deliveries.rows.length,
+      learning: learning.rows.length,
     },
   });
 });
@@ -1671,3 +1678,5 @@ adminRoutes.get("/release-phases", async (context) => {
   `);
   return context.json({ phases: result.rows });
 });
+
+adminRoutes.route("/operations/fee-rules",feeRuleRoutes);

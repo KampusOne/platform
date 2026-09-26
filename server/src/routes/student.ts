@@ -1,3 +1,4 @@
+import { commerceError } from "./learning-commerce";
 import { academicCatalogue } from "../lib/academic-catalogue";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -623,7 +624,7 @@ studentRoutes.get("/tutorials", async (context) => {
     database(context.env).execute(sql`
       select listings.id, listings.course_id, listings.tutor_profile_id, listings.course_code, listings.title,
         listings.description, listings.format, listings.price_kobo, listings.capacity,
-        listings.location_text, listings.cancellation_cutoff_hours, listings.is_demo,
+        listings.location_text, listings.cancellation_cutoff_hours, listings.is_demo, listings.package_days,
         coalesce(profiles.display_name, listings.publisher_name, 'KampusOne tutor') as tutor_name,
         profiles.biography as tutor_biography,
         coalesce((to_jsonb(tutor_profile)->>'public_badge_verified')::boolean,false) as tutor_verified,
@@ -669,7 +670,7 @@ studentRoutes.get("/tutorials", async (context) => {
         and (${search}::text is null or listings.title ilike ${search}
           or listings.course_code ilike ${search}
           or coalesce(profiles.display_name, listings.publisher_name, '') ilike ${search})
-        and exists (
+        and (listings.package_days is not null or exists (
           select 1 from public.tutorial_availability_windows windows
           where windows.listing_id = listings.id and windows.status = 'OPEN' and windows.starts_at > now()
             and (select count(*) from public.tutorial_bookings window_bookings
@@ -677,7 +678,7 @@ studentRoutes.get("/tutorials", async (context) => {
                 window_bookings.status in ('CONFIRMED','COMPLETED') or
                 (window_bookings.status = 'PENDING_PAYMENT' and window_bookings.payment_expires_at > now())
               )) < least(windows.capacity, listings.capacity)
-        )
+        ))
       order by listings.updated_at desc limit 100
     `),
     database(context.env).execute(sql`
@@ -718,20 +719,8 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
       resources.page_count, resources.duration_seconds, resources.download_count,
       resources.is_demo,
       ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`resources.media_object_id` : sql`null::uuid`} media_object_id,
-      case when resources.access_model = 'FREE' or (resources.access_model='BOOKING_INCLUDED' and exists (
-        select 1 from public.tutorial_bookings bookings
-        join public.tutorial_listings listings on listings.id = bookings.listing_id
-        where bookings.student_user_id = ${user.id}::uuid
-          and bookings.status in ('CONFIRMED','COMPLETED')
-          and bookings.listing_id = resources.listing_id
-      )) then resources.file_url else null end as file_url,
-      (resources.access_model = 'FREE' or (resources.access_model='BOOKING_INCLUDED' and exists (
-        select 1 from public.tutorial_bookings bookings
-        join public.tutorial_listings listings on listings.id = bookings.listing_id
-        where bookings.student_user_id = ${user.id}::uuid
-          and bookings.status in ('CONFIRMED','COMPLETED')
-          and bookings.listing_id = resources.listing_id
-      ))) as can_access
+      case when app_private.can_read_tutor_resource(${user.id}::uuid,resources.id) then resources.file_url else null end as file_url,
+      app_private.can_read_tutor_resource(${user.id}::uuid,resources.id) as can_access
     from public.tutorial_resources resources
     where resources.id = ${context.req.param("id")}::uuid
       and resources.university_id = ${requireUniversity(user)}::uuid
@@ -802,6 +791,7 @@ studentRoutes.post("/tutorial-bookings", async (context) => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
+    if(message.includes("FEE_POLICY_UNCONFIGURED"))commerceError(error);
     if (message.includes("TUTORIAL_FULL"))
       throw new AppError(409, "CONFLICT", "That tutorial is full.");
     if (message.includes("TUTORIAL_ALREADY_BOOKED"))
@@ -1078,6 +1068,11 @@ studentRoutes.get("/store", async (context) => {
   });
 });
 
+studentRoutes.get("/delivery-places",async c=>{
+  const rows=await database(c.env).execute(sql`select id,name from public.campus_places where university_id=${requireUniversity(currentUser(c))}::uuid and status='PUBLISHED' and latitude is not null and longitude is not null order by name limit 200`);
+  return c.json({places:rows.rows});
+});
+
 studentRoutes.post("/orders", async (context) => {
   requireFeature(
     context.env,
@@ -1103,6 +1098,11 @@ studentRoutes.post("/orders", async (context) => {
     );
   }
   const universityId = requireUniversity(user);
+  let destination:{latitude:number;longitude:number}|undefined;
+  if(parsed.data.deliveryPlaceId){
+    destination=firstRow(await database(context.env).execute<{latitude:number;longitude:number}>(sql`select latitude,longitude from public.campus_places where id=${parsed.data.deliveryPlaceId}::uuid and university_id=${universityId}::uuid and status='PUBLISHED' and latitude is not null and longitude is not null`));
+    if(!destination)throw new AppError(400,"BAD_REQUEST","Choose a published delivery point on your campus.");
+  }
   const orderId = crypto.randomUUID();
   const [pickup, delivery] = await Promise.all([
     deriveHandoffCode(context.env, orderId, "pickup"),
@@ -1115,12 +1115,12 @@ studentRoutes.post("/orders", async (context) => {
       delivery_fee_kobo: number;
       total_kobo: number;
     }>(sql`
-      select * from app_private.create_store_order_v2(
+      select * from app_private.create_store_order_v3(
         ${orderId}::uuid, ${universityId}::uuid, ${user.id}::uuid,
         ${parsed.data.vendorProfileId}::uuid, ${parsed.data.deliveryZoneId}::uuid,
         ${parsed.data.recipientName}, ${parsed.data.recipientPhoneE164},
         ${parsed.data.deliveryLocation}, ${parsed.data.deliveryLandmark ?? null},
-        ${parsed.data.deliveryLatitude ?? null}, ${parsed.data.deliveryLongitude ?? null},
+        ${destination?.latitude ?? parsed.data.deliveryLatitude ?? null}, ${destination?.longitude ?? parsed.data.deliveryLongitude ?? null},
         ${parsed.data.deliveryNote ?? null},
         ${JSON.stringify(parsed.data.items.map((item) => ({ product_id: item.productId, quantity: item.quantity })))}::jsonb,
         ${pickup.hash}, ${delivery.hash}
@@ -1139,6 +1139,7 @@ studentRoutes.post("/orders", async (context) => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
+    if(message.includes("FEE_POLICY_UNCONFIGURED"))commerceError(error);
     if (message.includes("PRODUCT_UNAVAILABLE_OR_STOCK_LOW"))
       throw new AppError(
         409,
@@ -1180,7 +1181,7 @@ studentRoutes.get("/orders/:id", async (context) => {
     university_id: string;
   }>(sql`
     select orders.id, orders.status, orders.university_id,
-      orders.subtotal_kobo, orders.delivery_fee_kobo, orders.total_kobo,
+      orders.subtotal_kobo, orders.delivery_fee_kobo, orders.buyer_fee_kobo, orders.fee_snapshot, orders.total_kobo,
       orders.delivery_note, orders.pricing_formula_version,
       orders.created_at, orders.updated_at, profiles.display_name as vendor_name,
       zones.name as zone_name,
@@ -1260,6 +1261,7 @@ studentRoutes.post("/product-reviews", async (context) => {
     `);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
+    if(message.includes("FEE_POLICY_UNCONFIGURED"))commerceError(error);
     if (message.includes("VERIFIED_PURCHASE_REQUIRED")) {
       throw new AppError(
         403,

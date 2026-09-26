@@ -13,6 +13,9 @@ import { closeDueElections } from "./services/community-elections";
 export default {
   fetch: app.fetch,
   scheduled(_controller, env, executionContext) {
+    if(env.UNIFIED_SCHEMA_READY==='true')executionContext.waitUntil(database(env).execute(sql`select app_private.maintain_tutor_commerce()`).catch(error=>{
+      console.error(JSON.stringify({event:'tutor_commerce.maintenance_failed',code:'DATABASE_ERROR'}));throw error;
+    }));
     executionContext.waitUntil(eraseDeletedAccountMedia(env));
     executionContext.waitUntil(applyDueAcademicProgressions(env));
     executionContext.waitUntil(deliverQueuedNotifications(env));

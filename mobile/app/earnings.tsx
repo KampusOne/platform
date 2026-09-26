@@ -1,3 +1,4 @@
+import * as Crypto from "expo-crypto";
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { Pressable, Text, View } from "react-native";
@@ -42,6 +43,7 @@ export default function EarningsScreen() {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [fee,setFee]=useState<{ruleId:string;feeKobo:number;netKobo:number;requestId:string}|null>(null);
   const profile =
     caps.profiles.find((p) => p.id === selected) ?? caps.profiles[0];
   const balance =
@@ -59,6 +61,10 @@ export default function EarningsScreen() {
       void load().catch((e) => toast(e.message, "error"));
     }, [load, toast]),
   );
+  async function reviewWithdrawal(){if(!profile)return;setBusy(true);try{
+    const r=await api<{quote:{ruleId:string;feeKobo:number;netKobo:number}}>('/v1/agents/payout-quote',{method:'POST',body:JSON.stringify({agentProfileId:profile.id,amountKobo:Math.round(Number(amount)*100)})});
+    setFee({...r.quote,requestId:Crypto.randomUUID()});setConfirm(true);
+  }catch(e){toast(e instanceof Error?e.message:'Fee quote unavailable','error');}finally{setBusy(false);}}
   async function withdraw() {
     if (!profile) return;
     setBusy(true);
@@ -67,6 +73,7 @@ export default function EarningsScreen() {
         method: "POST",
         body: JSON.stringify({
           agentProfileId: profile.id,
+          feeRuleId:fee?.ruleId,requestId:fee?.requestId,
           amountKobo: Math.round(Number(amount) * 100),
         }),
       });
@@ -93,7 +100,7 @@ export default function EarningsScreen() {
             key={p.id}
             onPress={() => {
               setSelected(p.id);
-              setConfirm(false);
+              setConfirm(false);setFee(null);
             }}
             style={{
               padding: 12,
@@ -141,7 +148,7 @@ export default function EarningsScreen() {
           value={amount}
           onChangeText={(v) => {
             setAmount(v);
-            setConfirm(false);
+            setConfirm(false);setFee(null);
           }}
           keyboardType="decimal-pad"
         />
@@ -155,7 +162,7 @@ export default function EarningsScreen() {
           <>
             <Text style={{ color: theme.text, marginVertical: 12 }}>
               Request {money(Math.round(Number(amount) * 100))} to your verified
-              payout account?
+              payout account? Fee: {money(fee?.feeKobo)}. You receive {money(fee?.netKobo)}.
             </Text>
             <ToolButton
               label="Confirm withdrawal"
@@ -179,7 +186,7 @@ export default function EarningsScreen() {
               !Number.isFinite(Number(amount)) ||
               Number(amount) * 100 > Number(balance?.available_kobo ?? 0)
             }
-            onPress={() => setConfirm(true)}
+            onPress={() => void reviewWithdrawal()}
           />
         )}
       </View>

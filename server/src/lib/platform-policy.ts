@@ -1,20 +1,5 @@
-export const COMMISSION_VERSION = "launch-2026-09-13";
 export const MINIMUM_WITHDRAWAL_KOBO = 500_000;
-export function commissionFor(grossKobo: number) {
-  if (!Number.isSafeInteger(grossKobo) || grossKobo < 0)
-    throw new RangeError("Invalid money amount");
-  const basisPoints =
-    grossKobo <= 250_000 ? 200 : grossKobo <= 500_000 ? 300 : 500;
-  const commissionKobo = Number(
-    (BigInt(grossKobo) * BigInt(basisPoints) + 5000n) / 10000n,
-  );
-  return {
-    basisPoints,
-    commissionKobo,
-    netKobo: grossKobo - commissionKobo,
-    version: COMMISSION_VERSION,
-  };
-}
+// Money calculations live in the versioned database fee engine.
 export function ageOn(birthDate: string, at = new Date()) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return -1;
   const dob = new Date(`${birthDate}T00:00:00Z`);

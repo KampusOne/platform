@@ -1,3 +1,4 @@
+import { learningCommerceRoutes } from "./routes/learning-commerce";
 import {campusAdminRoutes} from "./routes/campus-admin";
 import { messageRoutes } from "./routes/messages";
 import { peopleRoutes } from "./routes/people";
@@ -89,6 +90,7 @@ app.route("/v1/account", accountRoutes);
 app.route("/v1/account/deletion", accountDeletionRoutes);
 app.route("/v1/people", peopleRoutes);
 app.route("/v1/messages", messageRoutes);
+app.route("/v1/tutor-commerce", learningCommerceRoutes);
 app.route("/v1/media", mediaRoutes);
 app.route("/v1/learning", learningRoutes);
 app.route("/v1/calendar", calendarRoutes);
