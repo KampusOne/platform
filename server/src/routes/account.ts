@@ -31,6 +31,9 @@ const settingsSchema = z
     haptics: z.boolean(),
     hideCgpa: z.boolean(),
     hideReposts: z.boolean().optional(),
+    notifyLikes: z.boolean().optional(),
+    notifyReposts: z.boolean().optional(),
+    notifyReplies: z.boolean().optional(),
   })
   .strict();
 accountRoutes.get("/settings", async (c) => {
