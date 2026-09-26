@@ -1,7 +1,7 @@
 import { InlineLoading } from "@/src/components/skeleton";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, useState } from "react";
-import {  Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useRef, useState } from "react";
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, ApiError } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -41,27 +41,10 @@ export function PostMenu({ post, onBookmark, onShare, onDeleted, onFeedback }: P
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [canDelete, setCanDelete] = useState(false);
   const [error, setError] = useState("");
-  const [retry, setRetry] = useState(0);
   const [copyMode, setCopyMode] = useState(false);
   const afterDismiss = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    let active = true;
-    setChecking(true);
-    setCanDelete(false);
-    setError("");
-    void api<{ post: FeedPostData }>(`/v1/student/feed/${post.id}`)
-      .then(({ post: current }) => { if (active) setCanDelete(current.can_delete === true); })
-      .catch((caught) => {
-        if (active) setError(caught instanceof ApiError ? caught.message : "Could not check post options. Check your connection and try again.");
-      })
-      .finally(() => { if (active) setChecking(false); });
-    return () => { active = false; };
-  }, [open, post.id, retry]);
+  const canDelete = post.can_delete === true;
 
   function close() {
     if (deleting) return;
@@ -79,11 +62,9 @@ export function PostMenu({ post, onBookmark, onShare, onDeleted, onFeedback }: P
 
   function share() {
     if (Platform.OS === "ios") {
-      // Present the share sheet after this native modal has fully dismissed.
       afterDismiss.current = () => onShare(post);
       close();
     } else {
-      // Browsers must keep native sharing inside the user's activation event.
       close();
       onShare(post);
     }
@@ -95,7 +76,6 @@ export function PostMenu({ post, onBookmark, onShare, onDeleted, onFeedback }: P
         close();
         onFeedback("Post link copied.");
       } else {
-        // Reuse the same native modal rather than presenting a second one.
         setCopyMode(true);
       }
     } catch {
@@ -133,19 +113,30 @@ export function PostMenu({ post, onBookmark, onShare, onDeleted, onFeedback }: P
   return (
     <>
       <Pressable
-        accessibilityRole="button" accessibilityLabel={`More options for ${post.title}`}
-        accessibilityState={{ expanded: open }} hitSlop={4}
-        onPress={() => { void Haptics.selectionAsync(); setCanDelete(false); setChecking(true); setConfirm(false); setCopyMode(false); afterDismiss.current = null; setOpen(true); }}
+        accessibilityRole="button"
+        accessibilityLabel={`More options for ${post.title}`}
+        accessibilityState={{ expanded: open }}
+        hitSlop={4}
+        onPress={() => {
+          void Haptics.selectionAsync();
+          setConfirm(false);
+          setCopyMode(false);
+          setError("");
+          afterDismiss.current = null;
+          setOpen(true);
+        }}
         style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
       >
         <Ionicons name="ellipsis-horizontal" size={21} color={theme.textMuted} />
       </Pressable>
+
       <Modal transparent visible={open} animationType="none" onRequestClose={close} onDismiss={finishDismiss}>
         <View style={styles.overlay}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close post options" disabled={deleting} onPress={close} style={StyleSheet.absoluteFill} />
           <View accessibilityViewIsModal style={[styles.sheet, { paddingBottom: Math.max(16, insets.bottom) }]}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text accessibilityRole="header" style={styles.title}>{copyMode ? "Copy post link" : confirm ? "Delete this post?" : "Post options"}</Text>
+
               {copyMode ? (
                 <>
                   <Text style={styles.body}>Press and hold the link, or select it, then choose Copy.</Text>
@@ -168,12 +159,11 @@ export function PostMenu({ post, onBookmark, onShare, onDeleted, onFeedback }: P
                   {row("share-social-outline", "Share post", share)}
                   {row("link-outline", "Copy link", () => void copy())}
                   {row(post.bookmarked ? "bookmark" : "bookmark-outline", post.bookmarked ? "Unsave post" : "Save post", () => { close(); onBookmark(post); })}
-                  {checking ? <View style={styles.row}><InlineLoading color={theme.brand} /><Text style={styles.body}>Checking post permissions…</Text></View> : null}
-                  {!checking && canDelete ? row("trash-outline", "Delete post", () => { setError(""); setConfirm(true); }, true) : null}
-                  {error && !checking ? row("refresh-outline", "Retry post options", () => setRetry((value) => value + 1)) : null}
+                  {canDelete ? row("trash-outline", "Delete post", () => { setError(""); setConfirm(true); }, true) : null}
                   {row("close-outline", "Cancel", close)}
                 </>
               )}
+
               {error ? <Text accessibilityRole="alert" style={[styles.body, styles.danger]}>{error}</Text> : null}
             </ScrollView>
           </View>
