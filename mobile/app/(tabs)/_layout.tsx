@@ -2,15 +2,17 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import * as Haptics from "@/src/lib/haptics";
-import { Redirect, Tabs } from "expo-router";
+import { Redirect, Tabs, router, usePathname } from "expo-router";
 import { type ComponentProps, useEffect, useRef } from "react";
 import {
   Animated,
+  BackHandler,
   Easing,
   Platform,
   Pressable,
   StyleSheet,
   Text,
+  ToastAndroid,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -157,7 +159,7 @@ function NavItem({
 }
 
 function KampusTabBar({ state, navigation }: KampusTabBarProps) {
-  const { theme, styles } = useThemeStyles(createStyles);
+  const { theme, styles, isDark } = useThemeStyles(createStyles);
 
   const insets = useSafeAreaInsets();
   const routeName = state.routes[state.index]?.name ?? "index";
@@ -175,7 +177,7 @@ function KampusTabBar({ state, navigation }: KampusTabBarProps) {
           }
           intensity={30}
           style={StyleSheet.absoluteFill}
-          tint="light"
+          tint={isDark ? "dark" : "light"}
         />
         <View pointerEvents="none" style={styles.dockTint} />
         <View pointerEvents="none" style={styles.dockHighlight} />
@@ -219,6 +221,41 @@ export default function TabLayout() {
 
   const { state, profile, profileState, user } = useAuth();
   const reducedMotion = useReducedMotionPreference();
+  const pathname = usePathname();
+  const lastBack = useRef(0);
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || state !== "authenticated") return;
+    const tabRoots = new Set([
+      "/feed",
+      "/explore",
+      "/map",
+      "/profile",
+      "/campus",
+      "/tutorials",
+      "/store",
+      "/timetable",
+      "/gpa",
+      "/purchases",
+    ]);
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (tabRoots.has(pathname)) {
+        router.replace("/(tabs)" as never);
+        return true;
+      }
+      const home = pathname === "/" || pathname === "/index";
+      if (!home) return false;
+      const now = Date.now();
+      if (now - lastBack.current < 1800) {
+        BackHandler.exitApp();
+        return true;
+      }
+      lastBack.current = now;
+      ToastAndroid.show("Press back again to exit KampusOne", ToastAndroid.SHORT);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [pathname, state]);
   if (
     state === "loading" ||
     (state === "authenticated" && profileState === "loading")
@@ -284,7 +321,7 @@ const createStyles = (theme: Theme) =>
     glassDock: {
       alignItems: "center",
       backgroundColor: theme.surfaceGlassStrong,
-      borderColor: "rgba(255,255,255,0.94)",
+      borderColor: theme.canvas === "#000000" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.94)",
       borderRadius: 28,
       borderWidth: 1,
       flexDirection: "row",
@@ -294,7 +331,7 @@ const createStyles = (theme: Theme) =>
       ...theme.floatingShadow,
     },
     dockTint: {
-      backgroundColor: "rgba(251,247,242,0.42)",
+      backgroundColor: theme.canvas === "#000000" ? "rgba(0,0,0,0.48)" : "rgba(251,247,242,0.42)",
       bottom: 0,
       left: 0,
       position: "absolute",
