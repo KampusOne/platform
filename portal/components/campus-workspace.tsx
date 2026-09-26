@@ -50,6 +50,7 @@ export function CampusWorkspace() {
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
   const [search, setSearch] = useState("");
+  const [importMessage, setImportMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -142,6 +143,30 @@ export function CampusWorkspace() {
       setVersion((value) => value + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Campus map settings could not save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importMappedPlaces() {
+    if (!current) return;
+    setBusy(true);
+    setError("");
+    setImportMessage("");
+    try {
+      const result = await portalApi<{ found: number; synced: number; status: string }>(
+        `/v1/campus-admin/${current.id}/import-osm`,
+        {
+          method: "POST",
+          body: JSON.stringify({ radiusMeters: 2200 }),
+        },
+      );
+      setImportMessage(
+        `${result.synced} mapped places synced from OpenStreetMap as drafts. Review the important ones, then publish them.`,
+      );
+      setVersion((value) => value + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Mapped places could not be imported.");
     } finally {
       setBusy(false);
     }
@@ -279,6 +304,30 @@ export function CampusWorkspace() {
                 </button>
               </div>
             </form>
+          ) : null}
+
+          {can("universities.manage") ? (
+            <div className="form-stack panel">
+              <h3>Automatic map import</h3>
+              <p>
+                Pull named buildings and useful campus places around this campus from OpenStreetMap.
+                Imported records stay as drafts until you approve them.
+              </p>
+              <div className="form-actions">
+                <button
+                  className="button button--primary"
+                  disabled={busy || current.latitude === null || current.longitude === null}
+                  onClick={() => void importMappedPlaces()}
+                  type="button"
+                >
+                  Import mapped places
+                </button>
+              </div>
+              {importMessage ? <p role="status">{importMessage}</p> : null}
+              <p>
+                Map data © OpenStreetMap contributors. Imported data is stored in KampusOne so the student app does not query OpenStreetMap for every map view.
+              </p>
+            </div>
           ) : null}
 
           <label>
