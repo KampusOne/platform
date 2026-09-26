@@ -1,22 +1,19 @@
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
-import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { useAuth } from "@/src/auth/auth-context";
 import {
-  AuthField,
   AuthShell,
   FormError,
   FormNotice,
   PrimaryButton,
   TextLink,
 } from "@/src/components/auth-ui";
+import { OtpCodeInput } from "@/src/components/otp-code-input";
 import { ApiError, authApi } from "@/src/lib/api";
 import { theme } from "@/src/theme";
-
-const DEEP_TERRACOTTA = "#A8462E";
 
 export default function VerifyEmailScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
@@ -39,7 +36,11 @@ export default function VerifyEmailScreen() {
 
   async function verify() {
     if (!email) {
-      setError("Return to Create account and enter your email again.");
+      setError("Enter your email again.");
+      return;
+    }
+    if (code.length !== 6) {
+      setError("Enter the six-digit code.");
       return;
     }
 
@@ -62,16 +63,15 @@ export default function VerifyEmailScreen() {
   }
 
   async function resend() {
-    if (!email || resending) return;
+    if (!email || resending || seconds > 0) return;
     setResending(true);
     setError("");
     setNotice("");
     try {
       await authApi.resend(email);
+      setCode("");
       setSeconds(60);
-      setNotice(
-        "A fresh code is on its way if this account is still waiting for verification.",
-      );
+      setNotice("New code sent.");
     } catch (caught) {
       setError(
         caught instanceof ApiError
@@ -85,40 +85,21 @@ export default function VerifyEmailScreen() {
 
   return (
     <AuthShell
-      eyebrow="Email verification"
-      subtitle="Enter the six-digit code we sent. It expires in 10 minutes and works only once."
-      title="Check your email"
+      eyebrow="Verify email"
+      subtitle={email ? `Sent to ${email}.` : "Enter the code sent to your email."}
+      title="Enter your code"
     >
-      <View style={styles.emailRow}>
-        <Ionicons color={DEEP_TERRACOTTA} name="mail-outline" size={19} />
-        <Text selectable style={styles.email}>
-          {email || "No email address supplied"}
-        </Text>
-      </View>
-
-      <AuthField
-        autoComplete="one-time-code"
-        code
-        icon="keypad-outline"
-        inputMode="numeric"
-        keyboardType="number-pad"
+      <OtpCodeInput
+        autoFocus
+        error={Boolean(error)}
         label="Verification code"
-        maxLength={6}
         onChangeText={(value) => {
-          setCode(value.replace(/\D/g, ""));
+          setCode(value);
           setError("");
         }}
-        onSubmitEditing={() => void verify()}
-        placeholder="000000"
-        returnKeyType="done"
-        selectTextOnFocus
-        textContentType="oneTimeCode"
         value={code}
       />
 
-      <Text style={styles.copyHelp}>
-        You can paste the code here or press and hold to copy it.
-      </Text>
       {notice ? <FormNotice>{notice}</FormNotice> : null}
       <FormError message={error} />
       <PrimaryButton
@@ -126,21 +107,19 @@ export default function VerifyEmailScreen() {
         loading={loading}
         onPress={() => void verify()}
       >
-        Verify and continue
+        Continue
       </PrimaryButton>
 
       <View style={styles.resend}>
         <Text accessibilityLiveRegion="polite" style={styles.resendText}>
-          {seconds > 0
-            ? `Request another code in ${seconds}s`
-            : "Didn’t receive the email?"}
+          {seconds > 0 ? `Resend in ${seconds}s` : "Didn’t get it?"}
         </Text>
         {seconds === 0 ? (
           <TextLink
             disabled={resending || !email}
             onPress={() => void resend()}
           >
-            {resending ? "Sending…" : "Send another code"}
+            {resending ? "Sending…" : "Resend"}
           </TextLink>
         ) : null}
       </View>
@@ -148,7 +127,7 @@ export default function VerifyEmailScreen() {
       {!email ? (
         <View style={styles.missingEmail}>
           <TextLink onPress={() => router.replace("/(auth)/sign-up")}>
-            Return to Create account
+            Back to create account
           </TextLink>
         </View>
       ) : null}
@@ -158,30 +137,12 @@ export default function VerifyEmailScreen() {
 
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
-    emailRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: 8,
-      marginBottom: 24,
-    },
-    email: {
-      color: theme.text,
-      flex: 1,
-      fontFamily: theme.font.semibold,
-      fontSize: 14,
-    },
-    copyHelp: {
-      color: theme.textSubtle,
-      fontFamily: theme.font.body,
-      fontSize: 11.5,
-      lineHeight: 17,
-      marginBottom: 18,
-      marginTop: -6,
-    },
     resend: {
       alignItems: "center",
-      gap: 7,
-      marginTop: 24,
+      flexDirection: "row",
+      gap: 6,
+      justifyContent: "center",
+      marginTop: 18,
     },
     resendText: {
       color: theme.textMuted,
@@ -190,7 +151,7 @@ const createStyles = (theme: Theme) =>
     },
     missingEmail: {
       alignItems: "center",
-      marginTop: 18,
+      marginTop: 14,
     },
   });
 const styles = createStyles(theme);

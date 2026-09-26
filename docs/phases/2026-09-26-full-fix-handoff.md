@@ -2,7 +2,7 @@
 
 This branch implements repairs against the 130-item brief and the additional
 account-deletion and activity-notification requests. It preserves the existing
-working changes and incorporates upstream main through 93b5fcc.
+working changes and incorporates upstream main through 95dca82, including the latest OTP and password-reset fixes.
 
 ## Implemented in this pass
 

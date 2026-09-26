@@ -419,6 +419,16 @@ export const authApi = {
       false,
     );
   },
+  validateResetCode(email: string, code: string) {
+    return api<{ status: string }>(
+      "/v1/auth/validate-reset-code",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, code }),
+      },
+      false,
+    );
+  },
   resetPassword(email: string, code: string, password: string) {
     return api<{ status: string }>(
       "/v1/auth/reset-password",
