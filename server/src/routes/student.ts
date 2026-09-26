@@ -265,7 +265,7 @@ studentRoutes.get("/home", async (context) => {
   const currentCampusClock = campusClock();
   const today = currentCampusClock.weekday;
 
-  const [profile, timetable, posts, gpa, streak] = await Promise.all([
+  const [profile, timetable, posts, gpa, streak, notifications] = await Promise.all([
     database(context.env).execute(sql`
       select first_name, display_name, current_level, verification_status
       from public.profiles where user_id = ${user.id}::uuid and deleted_at is null limit 1
@@ -306,6 +306,11 @@ studentRoutes.get("/home", async (context) => {
           sql`select case when last_day < (now() at time zone 'Africa/Lagos')::date - 1 then 0 else current_days end current_days from public.user_streaks where user_id=${user.id}::uuid`,
         )
       : Promise.resolve({ rows: [] }),
+    context.env.UNIFIED_SCHEMA_READY === "true"
+      ? database(context.env).execute<{ unread: number }>(
+          sql`select count(*)::int as unread from public.in_app_notifications where user_id=${user.id}::uuid and read_at is null`,
+        )
+      : Promise.resolve({ rows: [] }),
   ]);
 
   return context.json({
@@ -316,6 +321,7 @@ studentRoutes.get("/home", async (context) => {
     campusClock: currentCampusClock,
     generatedAt: new Date().toISOString(),
     streak_days: firstRow(streak)?.current_days ?? null,
+    notification_unread: Number(firstRow(notifications)?.unread ?? 0),
   });
 });
 
