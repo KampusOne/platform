@@ -20,13 +20,21 @@ export async function notifyFeedInteraction(
         university_id: string;
         post_title: string;
         actor_name: string;
+        notify_likes: boolean;
+        notify_reposts: boolean;
+        notify_replies: boolean;
       }>(sql`
         select posts.author_user_id, posts.university_id,
           left(coalesce(nullif(btrim(posts.title), ''), 'your post'), 120) as post_title,
-          coalesce(actor.display_name, actor.username, 'Someone') as actor_name
+          coalesce(actor.display_name, actor.username, 'Someone') as actor_name,
+          coalesce((recipient.settings->>'notifyLikes')::boolean,true) as notify_likes,
+          coalesce((recipient.settings->>'notifyReposts')::boolean,true) as notify_reposts,
+          coalesce((recipient.settings->>'notifyReplies')::boolean,true) as notify_replies
         from public.feed_posts posts
         left join public.profiles actor
           on actor.user_id = ${actorUserId}::uuid and actor.deleted_at is null
+        left join public.profiles recipient
+          on recipient.user_id = posts.author_user_id and recipient.deleted_at is null
         where posts.id = ${postId}::uuid
           and posts.author_user_id is not null
           and posts.status in ('PUBLISHED','CORRECTED')
@@ -35,6 +43,9 @@ export async function notifyFeedInteraction(
     );
 
     if (!target?.author_user_id || target.author_user_id === actorUserId) return;
+    if (kind === "like" && !target.notify_likes) return;
+    if (kind === "repost" && !target.notify_reposts) return;
+    if (kind === "comment" && !target.notify_replies) return;
 
     const verb =
       kind === "like" ? "liked" : kind === "repost" ? "reposted" : "replied to";
