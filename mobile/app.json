@@ -50,7 +50,14 @@
       ],
       "expo-secure-store",
       "expo-web-browser",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow KampusOne to use your microphone when you speak to Kira.",
+          "speechRecognitionPermission": "Allow KampusOne to transcribe your voice when you speak to Kira."
+        }
+      ]
     ],
     "extra": {
       "apiUrl": "https://platformp.divine-haze-54eb.workers.dev"
