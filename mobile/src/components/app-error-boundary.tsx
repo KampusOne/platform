@@ -1,12 +1,46 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
+
+const REFRESH_RECOVERY_KEY = "kampusone.refresh-recovery";
+const REFRESH_RECOVERY_WINDOW_MS = 60_000;
+
+function isHardRefresh(): boolean {
+  if (Platform.OS !== "web" || typeof performance === "undefined") return false;
+  const [navigation] = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
+  return navigation?.type === "reload";
+}
+
+function tryRefreshRecovery(): boolean {
+  if (
+    Platform.OS !== "web" ||
+    typeof window === "undefined" ||
+    typeof sessionStorage === "undefined" ||
+    !isHardRefresh()
+  )
+    return false;
+
+  try {
+    const lastAttempt = Number(sessionStorage.getItem(REFRESH_RECOVERY_KEY) ?? 0);
+    const now = Date.now();
+    if (Number.isFinite(lastAttempt) && now - lastAttempt < REFRESH_RECOVERY_WINDOW_MS)
+      return false;
+
+    sessionStorage.setItem(REFRESH_RECOVERY_KEY, String(now));
+    // A hard reload can land between two Vercel/Expo route-bundle versions.
+    // Re-request the document once so the HTML and hashed route chunks agree.
+    window.location.reload();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export class AppErrorBoundary extends Component<
   { children: ReactNode },
-  { failed: boolean }
+  { failed: boolean; recovering: boolean }
 > {
-  state = { failed: false };
+  state = { failed: false, recovering: false };
 
   static getDerivedStateFromError() {
     return { failed: true };
@@ -18,6 +52,10 @@ export class AppErrorBoundary extends Component<
       stack: error.stack,
       componentStack: info.componentStack,
     });
+
+    if (tryRefreshRecovery()) {
+      this.setState({ recovering: true });
+    }
   }
 
   private recover = () => {
@@ -26,6 +64,15 @@ export class AppErrorBoundary extends Component<
 
   render() {
     if (!this.state.failed) return this.props.children;
+    if (this.state.recovering) {
+      return (
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.recovery}>
+            <Text style={styles.recoveryText}>Refreshing KampusOne…</Text>
+          </View>
+        </SafeAreaView>
+      );
+    }
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.card}>
@@ -45,6 +92,8 @@ export class AppErrorBoundary extends Component<
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#FBF7F2", justifyContent: "center", padding: 22 },
+  recovery: { alignItems: "center", flex: 1, justifyContent: "center" },
+  recoveryText: { color: "#665A51", fontSize: 14, fontWeight: "600" },
   card: { borderRadius: 24, backgroundColor: "#FFFFFF", padding: 24, borderWidth: 1, borderColor: "#E7D7C8" },
   eyebrow: { color: "#8F3C29", fontWeight: "800", fontSize: 10, letterSpacing: 1.2 },
   title: { color: "#29231F", fontWeight: "800", fontSize: 24, marginTop: 8 },
