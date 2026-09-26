@@ -1,0 +1,91 @@
+name: Publish repaired Android APK
+on:
+  push:
+    branches: [fix/student-experience-20260926]
+    paths: [".github/workflows/publish-repair-apk.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: publish-repair-apk-build-31
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOURCE_SHA: bfa75f60af3ce5016d18ed67d427e63f4e41c3dc
+      SOURCE_RUN: "36267031718"
+      SOURCE_ARTIFACT: "10915135295"
+      RELEASE_TAG: android-test-v0.3.1-31-bfa75f6
+    steps:
+      - name: Verify the successful source build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > source-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT" > source-artifact.json
+          python3 - <<'PY'
+          import json, os
+          run = json.load(open("source-run.json"))
+          artifact = json.load(open("source-artifact.json"))
+          assert run["conclusion"] == "success" and run["status"] == "completed"
+          assert run["head_sha"] == os.environ["SOURCE_SHA"]
+          assert artifact["workflow_run"]["id"] == int(os.environ["SOURCE_RUN"])
+          assert artifact["workflow_run"]["head_sha"] == os.environ["SOURCE_SHA"]
+          assert artifact["name"] == "KampusOne-Android-test-" + os.environ["SOURCE_SHA"]
+          assert not artifact["expired"]
+          print("Verified successful build and exact source artifact.")
+          PY
+      - name: Download the completed APK
+        uses: actions/download-artifact@v4
+        with:
+          name: KampusOne-Android-test-bfa75f60af3ce5016d18ed67d427e63f4e41c3dc
+          path: apk
+          repository: KampusOne/platform
+          run-id: 36267031718
+          github-token: ${{ github.token }}
+      - name: Verify package version and signature
+        run: |
+          python3 - <<'PY'
+          import glob, os, subprocess
+          sdk = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
+          assert sdk, "Android SDK is required to inspect the APK."
+          aapt = sorted(glob.glob(sdk + "/build-tools/*/aapt"))[-1]
+          signer = os.path.join(os.path.dirname(aapt), "apksigner")
+          apk = "apk/KampusOne-Android.apk"
+          result = subprocess.check_output([aapt, "dump", "badging", apk], text=True)
+          package = next(line for line in result.splitlines() if line.startswith("package:"))
+          assert "name='app.kampusone.mobile'" in package
+          assert "versionCode='31'" in package
+          assert "versionName='0.3.1'" in package
+          subprocess.run([signer, "verify", apk], check=True)
+          print(package)
+          PY
+          cd apk
+          sha256sum KampusOne-Android.apk > KampusOne-Android.apk.sha256
+      - name: Publish the requested testing download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.txt <<'NOTES'
+          KampusOne Android testing APK — version 0.3.1, build 31.
+
+          Built successfully from bfa75f60af3ce5016d18ed67d427e63f4e41c3dc.
+          Includes the Android changes from the numbered repair brief, including account-deletion and activity-notification screens, tutor purchases/packages/chat and fee-review flows.
+
+          This is a test-signed build for the requested sideload review. Server-dependent features still require matching production database/API updates and configuration. Physical-device alarm, push and full role acceptance are not yet complete.
+
+          Source build: https://github.com/KampusOne/platform/actions/runs/36267031718
+          NOTES
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern KampusOne-Android.apk --dir existing
+            cmp apk/KampusOne-Android.apk existing/KampusOne-Android.apk
+          else
+            gh release create "$RELEASE_TAG" apk/KampusOne-Android.apk apk/KampusOne-Android.apk.sha256 \
+              --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+              --title "KampusOne Android test 0.3.1 (build 31)" \
+              --notes-file release-notes.txt --prerelease
+          fi
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url,assets
