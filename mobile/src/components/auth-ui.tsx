@@ -214,31 +214,45 @@ export function PrimaryButton({
   );
 }
 
+function GoogleMark() {
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={styles.googleMark}
+    >
+      <View style={[styles.googleArc, styles.googleArcBlue]} />
+      <View style={[styles.googleArc, styles.googleArcRed]} />
+      <View style={[styles.googleArc, styles.googleArcYellow]} />
+      <View style={[styles.googleArc, styles.googleArcGreen]} />
+      <View style={styles.googleMarkCutout} />
+      <View style={styles.googleMarkGap} />
+      <View style={styles.googleMarkBar} />
+    </View>
+  );
+}
+
 export function SocialAuthButtons() {
   const { theme, styles } = useThemeStyles(createStyles);
   const { beginSession } = useAuth();
   const toast = useToast();
   const [pending, setPending] = useState(false);
   const [providers, setProviders] = useState<SocialProvider[]>([]);
-  const [providerState, setProviderState] = useState<
-    "loading" | "ready" | "error"
-  >("loading");
+
   useEffect(() => {
     let active = true;
     void socialConfiguration()
       .then((config) => {
-        if (active) {
-          setProviders(config.providers);
-          setProviderState("ready");
-        }
+        if (active) setProviders(config.providers);
       })
       .catch(() => {
-        if (active) setProviderState("error");
+        if (active) setProviders([]);
       });
     return () => {
       active = false;
     };
   }, []);
+
   async function signIn(provider: "google" | "apple") {
     setPending(true);
     try {
@@ -254,6 +268,8 @@ export function SocialAuthButtons() {
     }
   }
 
+  const appleDisabled = pending || !providers.includes("apple");
+
   return (
     <View
       accessibilityLabel="Other sign-in methods"
@@ -264,41 +280,43 @@ export function SocialAuthButtons() {
         <Text style={styles.dividerText}>or</Text>
         <View style={styles.divider} />
       </View>
+
       <Pressable
         accessibilityLabel="Continue with Google"
         accessibilityRole="button"
-        accessibilityState={{
-          disabled: pending || !providers.includes("google"),
-        }}
-        disabled={pending || !providers.includes("google")}
+        accessibilityState={{ busy: pending, disabled: pending }}
+        disabled={pending}
         onPress={() => void signIn("google")}
-        style={styles.socialButton}
+        style={({ pressed }) => [
+          styles.socialButton,
+          styles.googleButton,
+          pending && styles.socialButtonDisabled,
+          pressed && !pending && styles.socialButtonPressed,
+        ]}
       >
-        <Ionicons color="#4285F4" name="logo-google" size={21} />
+        <GoogleMark />
         <Text style={styles.socialButtonText}>Continue with Google</Text>
       </Pressable>
+
       <Pressable
         accessibilityLabel="Continue with Apple"
         accessibilityRole="button"
-        accessibilityState={{
-          disabled: pending || !providers.includes("apple"),
-        }}
-        disabled={pending || !providers.includes("apple")}
+        accessibilityState={{ disabled: appleDisabled }}
+        disabled={appleDisabled}
         onPress={() => void signIn("apple")}
-        style={styles.socialButton}
+        style={({ pressed }) => [
+          styles.socialButton,
+          appleDisabled && styles.socialButtonDisabled,
+          pressed && !appleDisabled && styles.socialButtonPressed,
+        ]}
       >
         <Ionicons color={theme.text} name="logo-apple" size={23} />
         <Text style={styles.socialButtonText}>Continue with Apple</Text>
       </Pressable>
-      {pending || providerState !== "ready" || providers.length < 2 ? (
+
+      {pending ? (
         <Text style={styles.socialHelp} accessibilityLiveRegion="polite">
-          {pending
-            ? "Opening sign-in…"
-            : providerState === "loading"
-              ? "Checking sign-in options…"
-              : providerState === "error"
-                ? "Other sign-in methods couldn’t be checked. Continue with email."
-                : "Unavailable sign-in methods are disabled. Continue with email."}
+          Opening sign in
         </Text>
       ) : null}
     </View>
@@ -518,19 +536,96 @@ const createStyles = (theme: Theme) =>
     },
     socialButton: {
       alignItems: "center",
-      backgroundColor: "#F1ECE7",
+      backgroundColor: "#F7F3F0",
+      borderColor: "#E3DAD3",
       borderRadius: 14,
+      borderWidth: 1,
       flexDirection: "row",
       gap: 12,
       height: 54,
       justifyContent: "center",
       marginBottom: 10,
-      opacity: 0.68,
+    },
+    googleButton: {
+      backgroundColor: "#FFFFFF",
+      borderColor: "#D7CEC7",
+    },
+    socialButtonPressed: {
+      backgroundColor: "#EEE7E1",
+      transform: [{ scale: 0.99 }],
+    },
+    socialButtonDisabled: {
+      opacity: 0.46,
     },
     socialButtonText: {
       color: theme.text,
       fontFamily: theme.font.semibold,
       fontSize: 14,
+    },
+    googleMark: {
+      height: 22,
+      position: "relative",
+      width: 22,
+    },
+    googleArc: {
+      borderRadius: 11,
+      height: 22,
+      left: 0,
+      position: "absolute",
+      top: 0,
+      width: 22,
+    },
+    googleArcBlue: {
+      borderColor: "#4285F4",
+      borderRightColor: "transparent",
+      borderWidth: 4,
+      transform: [{ rotate: "-35deg" }],
+    },
+    googleArcRed: {
+      borderColor: "transparent",
+      borderRightColor: "#EA4335",
+      borderTopColor: "#EA4335",
+      borderWidth: 4,
+      transform: [{ rotate: "-35deg" }],
+    },
+    googleArcYellow: {
+      borderBottomColor: "#FBBC05",
+      borderColor: "transparent",
+      borderLeftColor: "#FBBC05",
+      borderWidth: 4,
+      transform: [{ rotate: "-35deg" }],
+    },
+    googleArcGreen: {
+      borderBottomColor: "#34A853",
+      borderColor: "transparent",
+      borderRightColor: "#34A853",
+      borderWidth: 4,
+      transform: [{ rotate: "-35deg" }],
+    },
+    googleMarkCutout: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 7,
+      height: 14,
+      left: 4,
+      position: "absolute",
+      top: 4,
+      width: 14,
+    },
+    googleMarkGap: {
+      backgroundColor: "#FFFFFF",
+      height: 8,
+      position: "absolute",
+      right: -1,
+      top: 4,
+      width: 8,
+    },
+    googleMarkBar: {
+      backgroundColor: "#4285F4",
+      height: 4,
+      position: "absolute",
+      right: 0,
+      top: 9,
+      width: 10,
     },
     socialHelp: {
       color: theme.textSubtle,
