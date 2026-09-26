@@ -1,8 +1,7 @@
 import { useEvent } from "expo";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Image,
+   Image,
   Linking,
   Modal,
   Pressable,
@@ -13,6 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useAppearance } from "@/src/lib/appearance";
+import { InlineLoading } from "./skeleton";
 
 const playbackSpeeds = [1, 1.25, 1.5, 2] as const;
 
@@ -39,6 +39,8 @@ function Video({
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState<(typeof playbackSpeeds)[number]>(1);
   const [trackWidth, setTrackWidth] = useState(0);
+  const lastTap = useRef(0);
+  const lastTapSide = useRef<"left" | "right" | null>(null);
 
   const player = useVideoPlayer(url, (instance) => {
     instance.loop = false;
@@ -88,6 +90,18 @@ function Video({
     }
   }
 
+  function tapSeek(side: "left" | "right") {
+    const now = Date.now();
+    if (lastTapSide.current === side && now - lastTap.current <= 320) {
+      seekBy(side === "left" ? -5 : 5);
+      lastTap.current = 0;
+      lastTapSide.current = null;
+      return;
+    }
+    lastTap.current = now;
+    lastTapSide.current = side;
+  }
+
   function cycleSpeed() {
     const index = playbackSpeeds.indexOf(speed);
     const next = playbackSpeeds[(index + 1) % playbackSpeeds.length] ?? 1;
@@ -110,10 +124,17 @@ function Video({
         surfaceType="textureView"
         style={styles.video}
       />
+      <View pointerEvents="box-none" style={styles.seekOverlay}>
+        <Pressable accessibilityLabel="Double tap to go back 5 seconds" onPress={() => tapSeek("left")} style={styles.seekHalf} />
+        <Pressable accessibilityLabel="Double tap to go forward 5 seconds" onPress={() => tapSeek("right")} style={styles.seekHalf} />
+      </View>
 
       {status === "loading" ? (
         <View pointerEvents="none" style={styles.loadingOverlay}>
-          <ActivityIndicator color="#FFFFFF" />
+          <View style={[styles.loadingCard, { backgroundColor: theme.surfaceGlassStrong }]}>
+            <Text style={[styles.loadingText, { color: theme.text }]}>Loading video</Text>
+            <InlineLoading color={theme.brand} style={styles.loadingLine} />
+          </View>
         </View>
       ) : null}
 
@@ -250,6 +271,8 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   video: { height: 260, width: "100%" },
+  seekOverlay: { position: "absolute", top: 0, left: 0, right: 0, height: 178, flexDirection: "row" },
+  seekHalf: { flex: 1 },
   loadingOverlay: {
     position: "absolute",
     top: 0,
@@ -258,8 +281,11 @@ const styles = StyleSheet.create({
     left: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.16)",
+    backgroundColor: "rgba(0,0,0,0.12)",
   },
+  loadingCard: { minWidth: 132, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, gap: 3, alignItems: "center" },
+  loadingText: { fontSize: 12, fontWeight: "700" },
+  loadingLine: { width: 88, marginVertical: 3 },
   errorOverlay: {
     position: "absolute",
     top: 0,
