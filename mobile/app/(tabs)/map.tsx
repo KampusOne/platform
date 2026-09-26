@@ -62,6 +62,7 @@ type Place = {
   accessibility_notes: string | null;
   image_url: string | null;
   verified_at: string | null;
+  search_aliases?: string[];
 };
 type MappedCoordinate = { latitudeValue: number; longitudeValue: number };
 type MappedPlace = Place & MappedCoordinate;
@@ -758,7 +759,7 @@ export default function MapScreen() {
           (selected === "All" ||
             place.category.toUpperCase() === selected.toUpperCase()) &&
           (!needle ||
-            `${place.name} ${place.description ?? ""}`
+            `${place.name} ${place.description ?? ""} ${(place.search_aliases ?? []).join(" ")}`
               .toLowerCase()
               .includes(needle))
         );
