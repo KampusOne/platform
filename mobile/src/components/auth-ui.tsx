@@ -221,13 +221,38 @@ function GoogleMark() {
       importantForAccessibility="no-hide-descendants"
       style={styles.googleMark}
     >
-      <View style={[styles.googleArc, styles.googleArcBlue]} />
-      <View style={[styles.googleArc, styles.googleArcRed]} />
-      <View style={[styles.googleArc, styles.googleArcYellow]} />
-      <View style={[styles.googleArc, styles.googleArcGreen]} />
-      <View style={styles.googleMarkCutout} />
-      <View style={styles.googleMarkGap} />
-      <View style={styles.googleMarkBar} />
+      <View style={[styles.googleSlice, styles.googleTopLeft]}>
+        <Ionicons
+          color="#EA4335"
+          name="logo-google"
+          size={22}
+          style={styles.googleGlyphTopLeft}
+        />
+      </View>
+      <View style={[styles.googleSlice, styles.googleTopRight]}>
+        <Ionicons
+          color="#4285F4"
+          name="logo-google"
+          size={22}
+          style={styles.googleGlyphTopRight}
+        />
+      </View>
+      <View style={[styles.googleSlice, styles.googleBottomLeft]}>
+        <Ionicons
+          color="#FBBC05"
+          name="logo-google"
+          size={22}
+          style={styles.googleGlyphBottomLeft}
+        />
+      </View>
+      <View style={[styles.googleSlice, styles.googleBottomRight]}>
+        <Ionicons
+          color="#34A853"
+          name="logo-google"
+          size={22}
+          style={styles.googleGlyphBottomRight}
+        />
+      </View>
     </View>
   );
 }
@@ -567,65 +592,47 @@ const createStyles = (theme: Theme) =>
       position: "relative",
       width: 22,
     },
-    googleArc: {
-      borderRadius: 11,
-      height: 22,
+    googleSlice: {
+      height: 11,
+      overflow: "hidden",
+      position: "absolute",
+      width: 11,
+    },
+    googleTopLeft: {
+      left: 0,
+      top: 0,
+    },
+    googleTopRight: {
+      right: 0,
+      top: 0,
+    },
+    googleBottomLeft: {
+      bottom: 0,
+      left: 0,
+    },
+    googleBottomRight: {
+      bottom: 0,
+      right: 0,
+    },
+    googleGlyphTopLeft: {
       left: 0,
       position: "absolute",
       top: 0,
-      width: 22,
     },
-    googleArcBlue: {
-      borderColor: "#4285F4",
-      borderRightColor: "transparent",
-      borderWidth: 4,
-      transform: [{ rotate: "-35deg" }],
-    },
-    googleArcRed: {
-      borderColor: "transparent",
-      borderRightColor: "#EA4335",
-      borderTopColor: "#EA4335",
-      borderWidth: 4,
-      transform: [{ rotate: "-35deg" }],
-    },
-    googleArcYellow: {
-      borderBottomColor: "#FBBC05",
-      borderColor: "transparent",
-      borderLeftColor: "#FBBC05",
-      borderWidth: 4,
-      transform: [{ rotate: "-35deg" }],
-    },
-    googleArcGreen: {
-      borderBottomColor: "#34A853",
-      borderColor: "transparent",
-      borderRightColor: "#34A853",
-      borderWidth: 4,
-      transform: [{ rotate: "-35deg" }],
-    },
-    googleMarkCutout: {
-      backgroundColor: "#FFFFFF",
-      borderRadius: 7,
-      height: 14,
-      left: 4,
-      position: "absolute",
-      top: 4,
-      width: 14,
-    },
-    googleMarkGap: {
-      backgroundColor: "#FFFFFF",
-      height: 8,
-      position: "absolute",
-      right: -1,
-      top: 4,
-      width: 8,
-    },
-    googleMarkBar: {
-      backgroundColor: "#4285F4",
-      height: 4,
+    googleGlyphTopRight: {
       position: "absolute",
       right: 0,
-      top: 9,
-      width: 10,
+      top: 0,
+    },
+    googleGlyphBottomLeft: {
+      bottom: 0,
+      left: 0,
+      position: "absolute",
+    },
+    googleGlyphBottomRight: {
+      bottom: 0,
+      position: "absolute",
+      right: 0,
     },
     socialHelp: {
       color: theme.textSubtle,
