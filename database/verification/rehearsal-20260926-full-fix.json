@@ -1,0 +1,194 @@
+{
+  "environment": "rehearsal",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-sparkling-moon-ayq31a8y",
+  "database": "kampusone_full_fix_20260926",
+  "verifiedAt": "2026-09-26T18:13:08.350227+00:00",
+  "productionApplied": false,
+  "base": "Schema-only fixture, with no production rows copied",
+  "checks": {
+    "migrationsApplied": 34,
+    "socialNotificationRecipients": "passed",
+    "inAppPushIndependence": "passed",
+    "notificationIdempotency": "passed",
+    "deletionConfirmationAndIsolation": "passed",
+    "mediaErasureQueue": "passed",
+    "fixturesRolledBack": true,
+    "remainingFixtureUsers": 0,
+    "remainingFixtureCampuses": 0,
+    "remainingFixtureNotifications": 0,
+    "scheduleConfirmationAndUndoIsolation": "passed"
+  },
+  "migrations": [
+    {
+      "version": "20260913200000_unified_student_platform",
+      "sourceBlobSha": "a11789d089540255bc43b2aa7c7b6892a750639c",
+      "sha256": "574b705c078d55b83ba8fef21a61b5c5b47b58f5c7f608b073c841b23942e158"
+    },
+    {
+      "version": "20260913210000_timetable_course_alarm_sync",
+      "sourceBlobSha": "d9fb42c811e938d654d53a5432c6b22b02bd19d6",
+      "sha256": "f8cdebb7e7f9e16243cdb9d3dac1c9728f8bc1a205b84ab1a5e68b4d0addf712"
+    },
+    {
+      "version": "20260913220000_ai_requests",
+      "sourceBlobSha": "a268c541c9a4cc9ef906fbfba3aff9424b9fb585",
+      "sha256": "f6c279ac05d1876c9e9f032d08e04a6998f78dc7f5e4764790b76290d2d6926b"
+    },
+    {
+      "version": "20260913230000_community_workflows",
+      "sourceBlobSha": "e43fb436802ce1ceb740fc5e5dc6e487fcdacfbf",
+      "sha256": "d1f50837d437fd7570ab4a4bc100eeb2961ab10183e8887fc4e65d54e76e1176"
+    },
+    {
+      "version": "20260913240000_verified_identity_and_resources",
+      "sourceBlobSha": "c029c956c8324d352e8011b83eab12d6974e29d1",
+      "sha256": "d63b5c42b6183b26632e282e80489792b665bc9601e0a4f749a2898d85fe26aa"
+    },
+    {
+      "version": "20260913250000_one_time_alarms",
+      "sourceBlobSha": "a57fcb2720ca2aa2fee0bd193664fa4e0cbabb21",
+      "sha256": "fb691842f5c2ded669e305ee0b0e6b9999768cc32b0aa74e3f0f5c12754c004f"
+    },
+    {
+      "version": "20260921100000_operations_permissions_academic",
+      "sourceBlobSha": "b3a2e8085882da2b52816d65513b632e0b277135",
+      "sha256": "57362a0553287c9c45dd055cf6c3d3baf42b30beb60e94f8ba8eca3e409aab6d"
+    },
+    {
+      "version": "20260921110000_ai_history_and_streak_activity",
+      "sourceBlobSha": "917a7ffb0e0774db994a57cc1d677f38a8ef05bb",
+      "sha256": "2970489189e48197b0f4645ab0a63831025951dba14fe11f297dcb82c367fe5a"
+    },
+    {
+      "version": "20260921120000_publishing_capabilities",
+      "sourceBlobSha": "2aeed8a191c5d09a8ccaf0fda548fdbdd82a19f5",
+      "sha256": "3bce1c2591f16cf4a1e19f4bde36f67e3754e1b343835b1fbb7b8fdf6a9bd0c7"
+    },
+    {
+      "version": "20260921130000_academic_publication",
+      "sourceBlobSha": "be9a4c1be674c2488f31a8880f3f0994000feada",
+      "sha256": "304f7738dc25cd19fbbb0e5be8b33b96253c1b56243a397cd73cac5834d12ec7"
+    },
+    {
+      "version": "20260921140000_notification_delivery",
+      "sourceBlobSha": "6ebfa7ef42afe5452023bc494210d83998fdb4a0",
+      "sha256": "e6af1feffd3e1d3a16fea8aa633e402e73efc063830fae93a5091a0e1a4279c8"
+    },
+    {
+      "version": "20260921150000_broadcasts",
+      "sourceBlobSha": "33de23c19018d2aacabe74a169961b71fcbfdf61",
+      "sha256": "822f9bcfc7ae675ba3de8ae765671fc9d21bc5269a3dbc86769fbbd729bc6df8"
+    },
+    {
+      "version": "20260921160000_payout_setup",
+      "sourceBlobSha": "4a61a536e0b33332e79a43cd6071d17be471e94a",
+      "sha256": "d46d76e35d169a15885a8685345814d228f0ecaa1a7e2c9c5620127321f66935"
+    },
+    {
+      "version": "20260921170000_application_checks",
+      "sourceBlobSha": "6e52913e88122c39a8a7e6fe1f02563c69adeb75",
+      "sha256": "cac796ee16efce1f2645fdeca4610b30b0d443012e6068856a7c706254229b41"
+    },
+    {
+      "version": "20260921180000_idempotent_timetable_import",
+      "sourceBlobSha": "a1c78e3ec6f91a62713a4304007831011dd31d9c",
+      "sha256": "257a2dbdc4803bbce8ea06e06b79b79433348b67490b35b0468f555cb1b9aaab"
+    },
+    {
+      "version": "20260921180000_feed_social_interactions",
+      "sourceBlobSha": "491f4bb9fc5a95adbe041f2d3d0576e428d35d55",
+      "sha256": "25815d3414458ba350e31a5bdc8a81a8190bcf1de35a247ae109669c6c7acf26"
+    },
+    {
+      "version": "20260921183000_feed_post_likes",
+      "sourceBlobSha": "2f10abc8459efe67e4ce8e4b8cc1964e225ba3ae",
+      "sha256": "26bd585501cb539ad44af37d2bf7da61edc95e1ca13755f0ac67c06ab7969ce0"
+    },
+    {
+      "version": "20260921184500_feed_comment_likes",
+      "sourceBlobSha": "758b90186ca0c6d499c2fa43eb58a3ad60ed8aaf",
+      "sha256": "66724bff4ea2040d57f1d940293dd382f2be95d796167e1ba91b29a820ab6c46"
+    },
+    {
+      "version": "20260921200000_feed_comment_replies",
+      "sourceBlobSha": "596ca647b51db1e9bdfbcd558dc13e5b8db60d9a",
+      "sha256": "b22d8a63fcb3c3062cbd04d17d05ea7f616ddbb3efd7fb55f4db22bf2e70e752"
+    },
+    {
+      "version": "20260922140000_feed_conversation_experience",
+      "sourceBlobSha": "a8efb5ef473eefdcf733d8d9132dd4adeb9eb68b",
+      "sha256": "db8e248037c75403b00f95d709ace3431d38f107e4e630ad64b8a0707484b4ea"
+    },
+    {
+      "version": "20260924000000_student_ai_profiles",
+      "sourceBlobSha": "c5525e6c2be11a107da231b05d099edce0047b61",
+      "sha256": "634f908d64031ee7bfefcd4cd26f157d38f8ba507741d33882ffffc8437a52c2"
+    },
+    {
+      "version": "20260925090000_calendar_and_campus_places",
+      "sourceBlobSha": "8b8e152ada9d7d111677efbfe40cea1dd7a05ccf",
+      "sha256": "14767fe67953f04b9be24c2cff2d4e94ec0d81a856a26662c7e2a4e501e38669"
+    },
+    {
+      "version": "20260925100000_campus_map_foundation",
+      "sourceBlobSha": "2c1b96cd7eb2d4ef43ef6a6b141ab7be362627d0",
+      "sha256": "2ea815572bcf31a6e8cea8212c98fd82a35b999a246b7f7813c3cdc314bc72ed"
+    },
+    {
+      "version": "20260925110000_notification_sound_catalogue",
+      "sourceBlobSha": "8bc12d1f72ae6913c0710a874369876e39c6c659",
+      "sha256": "8b5d8a5a142de748abadbcee951aed5fc6f4582432c8624463506a53700c3a70"
+    },
+    {
+      "version": "20260925120000_community_push_delivery",
+      "sourceBlobSha": "cd9234ade82609afc2a814b18aaad7b84ca1c5ba",
+      "sha256": "1c35e39612206c73657e5c443f9e2b930e514bdec41396a6b20f1c439d41b355"
+    },
+    {
+      "version": "20260925130000_programme_metadata",
+      "sourceBlobSha": "aa2a0a26626c5c0629805e7094555d46a1915cfd",
+      "sha256": "f0d016f1d255da7dc4501b2f6612827da6fe07717f307750d558a706008840f6"
+    },
+    {
+      "version": "20260926120000_reviewed_calendars_and_progression",
+      "sourceBlobSha": "fd8ca7cadd83016310a3dfc6408fb5a30967675c",
+      "sha256": "eb23e1ee5f01304a440cb35ed6f6c389710ba599cacdf113be88bfebc7b3bc23"
+    },
+    {
+      "version": "20260926120000_profile_safety_and_messages",
+      "sourceBlobSha": "dac2a875520754c3a70afff277234511305eaf7c",
+      "sha256": "9b74a03eba0e9648606ba1cf84725a05ca3855829cae53f7ccab63e65ee7d59d"
+    },
+    {
+      "version": "20260926150000_marketplace_promotions_resources",
+      "sourceBlobSha": "32becaa3751faeec0b4d142848774916b333ac7b",
+      "sha256": "e92b1618402015b7c4f01173b854e62a56c765b322257e45a982cc818b476b4a"
+    },
+    {
+      "version": "20260926170000_academic_catalogue_provenance",
+      "sourceBlobSha": "7624a4a16ee186efa70d218a27873f43c9bb9164",
+      "sha256": "dd9c48037c4540603859d736974b9dcf2053eff8fd11a887adcea847c7c9cbaa"
+    },
+    {
+      "version": "20260926190000_account_deletion",
+      "sourceBlobSha": "a57d957e2cac76548755152cdee26ff77eaf2427",
+      "sha256": "8f513c04e8a08333377e7f337dd0ae852d81d387e9f5d16be674c67981151c78"
+    },
+    {
+      "version": "20260926200000_notification_channels",
+      "sourceBlobSha": "1db6fcc67b35dd1d0e01ba2ff519042e358d8a54",
+      "sha256": "cd1521f3b4729d5ec27d36ae6d551f83c02a4ad4fa6458cc81175edf1effdfee"
+    },
+    {
+      "version": "20260926210000_message_attachments",
+      "sourceBlobSha": "d494485c08a1a00ac852094fc5c50cdc3cda49d7",
+      "sha256": "4ea82b5744a612445f222d6d4e08ff70c2146b08ab5786611d1a368f359c878e"
+    },
+    {
+      "version": "20260926220000_ai_schedule_actions",
+      "sourceBlobSha": "97b5d8c73eed43bf0ed6a5ddc3b08686349b5112",
+      "sha256": "b5f593610b250743cba6a0a33489abc2aea6f58b98cf0fd2cafeb753af001a66"
+    }
+  ]
+}

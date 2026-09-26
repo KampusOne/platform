@@ -60,3 +60,33 @@ describe("public profiles and scoped campus tools",()=>{
   const own=await runStudentTool(env,identity,'get_my_timetable',{});expect(JSON.stringify(own.data)).toContain('90');expect(JSON.stringify((await runStudentTool(env,{...identity,id:owner},'get_my_timetable',{})).data)).not.toContain('Mathematics 101');
  });
 });
+
+it('saves and undoes an owned edit atomically, preserves concurrent edits and never resurrects an undone addition',async()=>{
+ const add=(await runStudentTool(env,identity,'prepare_timetable_entry',{title:'Gym',dayOfWeek:2,startsAt:'15:00',endsAt:'16:00'})).action!;
+ async function store(action:unknown){const requestId=crypto.randomUUID();await pg.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result)values($1,$2,repeat('a',64),'study','COMPLETED',$3::jsonb)",[student,requestId,JSON.stringify({version:4,text:'Review schedule',actions:[action]})]);return requestId;}
+ const requestId=await store(add),payload={requestId,actionId:add.id};
+ await result('/ai/actions/confirm','POST',payload);
+ expect((await result('/ai/history/'+requestId)).actions[0].confirmed).toBe(true);
+ expect((await runStudentTool(env,{...identity,id:owner},'prepare_timetable_edit',{entryId:add.id,entry:{...add.entry,startsAt:'17:00',endsAt:'18:00'}})).data).toHaveProperty('error');
+ const edit=(await runStudentTool(env,identity,'prepare_timetable_edit',{entryId:add.id,entry:{...add.entry,startsAt:'17:00',endsAt:'18:00'}})).action!;
+ const editRequest=await store(edit),editPayload={requestId:editRequest,actionId:edit.id};
+ await result('/ai/actions/confirm','POST',editPayload,owner,404);
+ await result('/ai/actions/confirm','POST',editPayload);
+ expect((await pg.query<{starts_at:string}>('select starts_at from timetable_entries where id=$1',[add.id])).rows[0]?.starts_at).toBe('17:00:00');
+ for(let i=0;i<2;i++)expect(await result('/ai/actions/undo','POST',editPayload)).toMatchObject({undone:true,id:add.id});
+ expect((await pg.query<{starts_at:string}>('select starts_at from timetable_entries where id=$1',[add.id])).rows[0]?.starts_at).toBe('15:00:00');
+ await result('/ai/actions/undo','POST',payload,student,409); // A later edit means this old undo must not overwrite it.
+ const stale=(await runStudentTool(env,identity,'prepare_timetable_edit',{entryId:add.id,entry:{...add.entry,venue:'Hall A'}})).action!;
+ const staleRequest=await store(stale);
+ await pg.query("update timetable_entries set venue='Newer choice',updated_at=clock_timestamp() where id=$1",[add.id]);
+ await result('/ai/actions/confirm','POST',{requestId:staleRequest,actionId:stale.id},student,409);
+ expect((await pg.query<{venue:string}>('select venue from timetable_entries where id=$1',[add.id])).rows[0]?.venue).toBe('Newer choice');
+ const add2=(await runStudentTool(env,identity,'prepare_timetable_entry',{title:'Revision',dayOfWeek:3,startsAt:'19:00',endsAt:'20:00'})).action!;
+ const request2=await store(add2),payload2={requestId:request2,actionId:add2.id};
+ await result('/ai/actions/confirm','POST',payload2);
+ await result('/ai/actions/undo','POST',payload2,owner,404);
+ await result('/ai/actions/undo','POST',payload2);
+ expect((await pg.query('select id from student_alarms where timetable_entry_id=$1',[add2.id])).rows).toHaveLength(0);
+ await result('/ai/actions/confirm','POST',payload2,student,409);
+ expect((await result('/ai/history/'+request2)).actions[0]).toMatchObject({confirmed:false,undone:true});
+});

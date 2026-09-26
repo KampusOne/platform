@@ -38,6 +38,7 @@ export const unifiedMigrations = [
   "20260926190000_account_deletion.sql",
   "20260926200000_notification_channels.sql",
   "20260926210000_message_attachments.sql",
+  "20260926220000_ai_schedule_actions.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */

@@ -18,13 +18,30 @@ async function threadFor(env:Bindings,userId:string,threadId:string) {
  await requireUnblocked(env,userId,thread.initiator_id===userId?thread.recipient_id:thread.initiator_id);return thread;
 }
 messageRoutes.get('/inbox',async c=>{
- const u=currentUser(c);const rows=await database(c.env).execute(sql`select t.id,t.status,t.initiator_id,t.recipient_id,t.updated_at,p.user_id,p.display_name,p.profile_image_url,
+ const u=currentUser(c);
+ const filter=z.enum(['All','Unread','Requests','Tutor','Vendor','Rider']).safeParse(c.req.query('filter')??'All');
+ if(!filter.success)throw new AppError(400,'BAD_REQUEST','Choose a conversation filter.');
+ let cursor:{at:string;id:string}|undefined;
+ if(c.req.query('before')){try{cursor=z.object({at:z.string().datetime(),id:z.string().uuid()}).strict().parse(JSON.parse(atob(c.req.query('before')!)));}catch{throw new AppError(400,'BAD_REQUEST','Refresh conversations before loading more.');}}
+ const db=database(c.env);
+ const visibility=sql`${u.id}::uuid in(t.initiator_id,t.recipient_id) and t.status<>'DECLINED' and p.deleted_at is null and ${unblockedAuthor(u.id,sql`p.user_id`)}`;
+ const [rows,total]=await Promise.all([db.execute(sql`select t.id,t.status,t.initiator_id,t.recipient_id,t.updated_at,p.user_id,p.display_name,p.profile_image_url,
+ to_char(t.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
  (select body from public.direct_messages m where m.thread_id=t.id order by m.created_at desc limit 1) as last_message,
  (select count(*)::int from public.direct_messages m where m.thread_id=t.id and m.sender_id<>${u.id}::uuid and m.read_at is null) as unread_count,
  coalesce((select json_agg(a.agent_type) from public.agent_profiles a where a.user_id=p.user_id and a.status='ACTIVE'),'[]'::json) as roles
  from public.direct_threads t join public.profiles p on p.user_id=case when t.initiator_id=${u.id}::uuid then t.recipient_id else t.initiator_id end
- where ${u.id}::uuid in(t.initiator_id,t.recipient_id) and t.status<>'DECLINED' and p.deleted_at is null and ${unblockedAuthor(u.id,sql`p.user_id`)} order by t.updated_at desc limit 100`);
- return c.json({threads:rows.rows,unreadCount:rows.rows.reduce((n,r)=>n+Number(r.unread_count||0),0)});
+ where ${visibility}
+ and (${cursor?.at??null}::timestamptz is null or (t.updated_at,t.id)<(${cursor?.at??null}::timestamptz,${cursor?.id??null}::uuid))
+ and (${filter.data}='All' or (${filter.data}='Unread' and exists(select 1 from public.direct_messages m where m.thread_id=t.id and m.sender_id<>${u.id}::uuid and m.read_at is null))
+ or (${filter.data}='Requests' and t.status='REQUESTED' and t.recipient_id=${u.id}::uuid)
+ or exists(select 1 from public.agent_profiles a where a.user_id=p.user_id and a.status='ACTIVE' and a.agent_type::text=upper(${filter.data})))
+ order by t.updated_at desc,t.id desc limit 51`),
+ db.execute<{count:number}>(sql`select count(*)::int as count from public.direct_messages m join public.direct_threads t on t.id=m.thread_id
+ join public.profiles p on p.user_id=case when t.initiator_id=${u.id}::uuid then t.recipient_id else t.initiator_id end
+ where ${visibility} and m.sender_id<>${u.id}::uuid and m.read_at is null`)]);
+ const page=rows.rows.slice(0,50),last=page.at(-1);
+ return c.json({threads:page.map(({cursor_at,...row})=>row),nextCursor:rows.rows.length>50&&last?btoa(JSON.stringify({at:last.cursor_at,id:last.id})):null,unreadCount:Number(firstRow(total)?.count??0)});
 });
 messageRoutes.post('/threads',async c=>{
  const u=currentUser(c),d=await input(c,z.object({userId:z.string().uuid()}).strict());

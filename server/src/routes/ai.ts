@@ -83,35 +83,23 @@ aiRoutes.get("/thread/:id", async c => {
 });
 // Mutations accept only the IDs of a server-stored proposal. No client-supplied account,
 // arbitrary tool, SQL, URL, course contents, or permission claims can be executed.
-aiRoutes.post("/actions/confirm", async c => {
+for (const operation of ['confirm','undo'] as const) aiRoutes.post(`/actions/${operation}`, async c => {
   requireSchema(c.env);
   if (c.env.AI_ASSISTANT_ENABLED!=="true" || !await studentExperienceReady(c.env)) throw new AppError(503,"PROVIDER_UNAVAILABLE","Timetable actions are not available right now.");
   const d = await input(c,z.object({requestId:z.string().uuid(),actionId:z.string().uuid()}).strict());
   const u=currentUser(c);
   if (!u.universityId) throw new AppError(400,"BAD_REQUEST","Complete your university profile first.");
-  const saved=firstRow(await database(c.env).execute<{result:Saved}>(sql`select result from app_private.ai_requests where user_id=${u.id}::uuid and idempotency_key=${d.requestId}::uuid and mode='study' and status='COMPLETED' and created_at>now()-interval '1 day' and result ? 'text'`));
+  const db=database(c.env);
+  const saved=firstRow(await db.execute<{result:Saved}>(sql`select result from app_private.ai_requests where user_id=${u.id}::uuid and idempotency_key=${d.requestId}::uuid and mode='study' and status='COMPLETED' and created_at>now()-interval '90 days' and result ? 'text'`));
   const action=saved?.result.actions?.find(a=>a.id===d.actionId && a.type==='timetable');
-  if(!action) throw new AppError(404,"NOT_FOUND","This class preview has expired or was deleted. Ask again to create a new one.");
-  const valid=classDraftSchema.safeParse(action.entry);
-  if(!valid.success) throw new AppError(400,"BAD_REQUEST","This class preview is invalid. Nothing was changed.");
-  const e=valid.data;
-  // Idempotent confirmation returns success even when the class time has since passed.
-  const existing=firstRow(await database(c.env).execute(sql`select id from public.timetable_entries where id=${d.actionId}::uuid and user_id=${u.id}::uuid`));
-  if(existing) return c.json({saved:true,id:d.actionId});
-  if(e.date && Date.parse(e.date+'T'+e.startsAt+':00+01:00')<=Date.now()) throw new AppError(400,"BAD_REQUEST","This class start time has passed. Ask for a new preview.");
-  const client=sqlClient(c.env);
-  const results=await client.transaction([
-    client`select pg_advisory_xact_lock(hashtextextended(${u.id},241))`,
-    client`insert into public.timetable_entries(id,university_id,user_id,title,course_code,venue,lecturer,day_of_week,starts_at,ends_at,reminder_minutes,reminder_enabled,occurs_on)
-      select ${d.actionId}::uuid,${u.universityId}::uuid,${u.id}::uuid,${e.title},${e.courseCode ?? ''},${e.venue ?? ''},${e.lecturer ?? ''},${e.dayOfWeek},${e.startsAt}::time,${e.endsAt}::time,${e.reminderMinutes},${e.reminderEnabled},${e.date ?? null}::date
-      where exists(select 1 from app_private.ai_requests where user_id=${u.id}::uuid and idempotency_key=${d.requestId}::uuid and result ? 'text')
-      on conflict do nothing returning id`,
-    client`select id from public.timetable_entries where id=${d.actionId}::uuid and user_id=${u.id}::uuid`,
-  ],{isolationLevel:'ReadCommitted'});
-  if(!results[2]?.length) throw new AppError(409,"CONFLICT","A matching class already exists, or the preview was removed. Check your timetable before adding another.");
-  // The timetable insert is the authoritative success; a lost confirmation response
-  // can be retried safely using the same action ID.
-  return c.json({saved:true,id:d.actionId});
+  if(!action) throw new AppError(404,"NOT_FOUND","This schedule preview has expired or was deleted. Ask for a new one.");
+  if(!classDraftSchema.safeParse(action.entry).success) throw new AppError(400,"BAD_REQUEST","This schedule preview is invalid. Nothing was changed.");
+  const receipt=firstRow(await db.execute<{outcome:string;entry_id:string}>(sql`select * from app_private.apply_ai_schedule_action(${u.id}::uuid,${d.requestId}::uuid,${d.actionId}::uuid,${operation==='undo'})`));
+  if(receipt?.outcome==='SAVED') return c.json({saved:true,id:receipt.entry_id});
+  if(receipt?.outcome==='UNDONE') return c.json({undone:true,id:receipt.entry_id});
+  if(receipt?.outcome==='NOT_FOUND') throw new AppError(404,"NOT_FOUND","This schedule preview is no longer available.");
+  if(receipt?.outcome==='CHANGED') throw new AppError(409,"CONFLICT","This entry changed since the preview. Open your timetable to review it; nothing was overwritten.");
+  throw new AppError(409,"CONFLICT","This action can no longer be applied. Open your timetable or ask Kira for a new preview.");
 });
 aiRoutes.delete("/history/:id", async c => {
   requireSchema(c.env);

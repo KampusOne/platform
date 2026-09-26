@@ -76,3 +76,17 @@ it('paginates messages in stable chronological order without overlapping pages',
  const first=await json(await request('/messages/threads/'+tid));expect(first.messages).toHaveLength(50);expect(first.messages[0].body).toBe('Message 16');expect(first.nextCursor).toBeTruthy();
  const second=await json(await request('/messages/threads/'+tid+'?before='+first.nextCursor));expect(second.messages).toHaveLength(15);expect(second.messages[0].body).toBe('Message 1');expect(second.nextCursor).toBeNull();
 });
+
+it('paginates more than 100 inbox conversations and counts all unread messages, with server filters and private cursors',async()=>{
+ await db.exec("insert into public.users(id,email,password_hash,updated_at) select gen_random_uuid(),'pagination-'||n||'@test.invalid','test',now() from generate_series(1,105) n");
+ await db.query("insert into public.profiles(id,user_id,university_id,display_name,username,updated_at) select gen_random_uuid(),id,$1,'Student',left(replace(id::text,'-',''),28),now() from public.users where email like 'pagination-%'",[campus]);
+ await db.query("insert into public.direct_threads(institution_id,initiator_id,recipient_id,status) select $1,$2,id,'ACCEPTED' from public.users where email like 'pagination-%'",[campus,a]);
+ await db.query("insert into public.direct_messages(id,thread_id,sender_id,body) select gen_random_uuid(),id,recipient_id,'Hello' from public.direct_threads where initiator_id=$1",[a]);
+ const seen=new Set<string>();let cursor:string|null=null;const sizes:number[]=[];
+ do {const page=await json(await request('/messages/inbox'+(cursor?'?before='+encodeURIComponent(cursor):'')));sizes.push(page.threads.length);expect(page.unreadCount).toBe(105);for(const t of page.threads){expect(seen.has(t.id)).toBe(false);seen.add(t.id);}cursor=page.nextCursor;}while(cursor);
+ expect(sizes).toEqual([50,50,5]);expect(seen.size).toBe(105);
+ expect((await json(await request('/messages/inbox?filter=Requests'))).threads).toEqual([]);
+ expect((await json(await request('/messages/inbox?filter=Unread'))).threads).toHaveLength(50);
+ expect((await json(await request('/messages/inbox','GET',undefined,outsider))).unreadCount).toBe(0);
+ await json(await request('/messages/inbox?before=not-a-cursor'),400);
+});

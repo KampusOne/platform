@@ -81,9 +81,9 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   buttonText: { color: "#FFFFFF", fontFamily: theme.font.semibold, fontSize: 12.5 },
   art: { position: "absolute", bottom: -8, right: -19, width: "51%", height: 216 },
   wideArt: { width: "57%", right: -29, height: 194, bottom: 0 },
-  controls: { flexDirection: "row", alignItems: "center", justifyContent: "center", height: 32 },
-  dotTarget: { width: 24, height: 32, justifyContent: "center", alignItems: "center" },
+  controls: { flexDirection: "row", alignItems: "center", justifyContent: "center", height: 44 },
+  dotTarget: { width: 44, height: 44, justifyContent: "center", alignItems: "center" },
   dot: { width: 5, height: 5, backgroundColor: theme.textFaint, borderRadius: 4 },
   selectedDot: { width: 16, backgroundColor: theme.accentText },
-  play: { position: "absolute", right: 0, height: 32, width: 36, alignItems: "center", justifyContent: "center" },
+  play: { position: "absolute", right: 0, height: 44, width: 44, alignItems: "center", justifyContent: "center" },
 });
