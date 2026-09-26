@@ -11,15 +11,18 @@ import {
   PrimaryButton,
   TextLink,
 } from "@/src/components/auth-ui";
+import { OtpCodeInput } from "@/src/components/otp-code-input";
 import { ApiError, authApi } from "@/src/lib/api";
 import { theme } from "@/src/theme";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+type ResetStep = "email" | "code" | "password";
+
 export default function ForgotPasswordScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const [step, setStep] = useState<"email" | "reset">("email");
+  const [step, setStep] = useState<ResetStep>("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -39,6 +42,7 @@ export default function ForgotPasswordScreen() {
   const validEmail = emailPattern.test(email.trim());
   const passwordsMatch =
     Boolean(confirmPassword) && password === confirmPassword;
+  const stepNumber = step === "email" ? 1 : step === "code" ? 2 : 3;
 
   async function send() {
     if (!validEmail) {
@@ -51,13 +55,39 @@ export default function ForgotPasswordScreen() {
     setNotice("");
     try {
       await authApi.forgotPassword(email.trim());
-      setStep("reset");
+      setCode("");
+      setPassword("");
+      setConfirmPassword("");
+      setStep("code");
       setSeconds(60);
     } catch (caught) {
       setError(
         caught instanceof ApiError
           ? caught.message
-          : "We could not send the reset email.",
+          : "We could not send the reset code.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function checkCode() {
+    if (code.length !== 6) {
+      setError("Enter the six-digit code.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      await authApi.validateResetCode(email.trim(), code);
+      setStep("password");
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught.message
+          : "We could not verify that code.",
       );
     } finally {
       setLoading(false);
@@ -71,15 +101,14 @@ export default function ForgotPasswordScreen() {
     setNotice("");
     try {
       await authApi.forgotPassword(email.trim());
+      setCode("");
       setSeconds(60);
-      setNotice(
-        "A fresh reset code is on its way if an account uses this email.",
-      );
+      setNotice("New code sent.");
     } catch (caught) {
       setError(
         caught instanceof ApiError
           ? caught.message
-          : "We could not send another reset code.",
+          : "We could not send another code.",
       );
     } finally {
       setResending(false);
@@ -87,12 +116,8 @@ export default function ForgotPasswordScreen() {
   }
 
   async function reset() {
-    if (code.length !== 6) {
-      setError("Enter the six-digit reset code.");
-      return;
-    }
     if (password.length < 10) {
-      setError("Use at least 10 characters for your new password.");
+      setError("Use at least 10 characters.");
       return;
     }
     if (password !== confirmPassword) {
@@ -117,27 +142,50 @@ export default function ForgotPasswordScreen() {
     }
   }
 
+  function goBack() {
+    setError("");
+    setNotice("");
+    if (step === "password") {
+      setStep("code");
+      return;
+    }
+    if (step === "code") setStep("email");
+  }
+
+  const title =
+    step === "email"
+      ? "Reset your password"
+      : step === "code"
+        ? "Enter your code"
+        : "New password";
+  const subtitle =
+    step === "email"
+      ? "Enter your email to get a reset code."
+      : step === "code"
+        ? `Sent to ${email}.`
+        : "Enter a new password.";
+
   return (
     <AuthShell
-      eyebrow={`Step ${step === "email" ? "1" : "2"} of 2`}
-      onBack={step === "reset" ? () => setStep("email") : undefined}
-      subtitle={
-        step === "email"
-          ? "Enter the email connected to your account and we’ll send a one-time reset code."
-          : "Enter the code from your email, then choose a new password."
-      }
-      title={step === "email" ? "Reset your password" : "Choose a new password"}
+      eyebrow={`Step ${stepNumber} of 3`}
+      onBack={step === "email" ? undefined : goBack}
+      subtitle={subtitle}
+      title={title}
     >
       <View
-        accessibilityLabel={`Password reset step ${step === "email" ? "1" : "2"} of 2`}
+        accessibilityLabel={`Password reset step ${stepNumber} of 3`}
         style={styles.progress}
       >
-        <View style={styles.progressActive} />
-        <View
-          style={
-            step === "reset" ? styles.progressActive : styles.progressInactive
-          }
-        />
+        {[1, 2, 3].map((number) => (
+          <View
+            key={number}
+            style={
+              number <= stepNumber
+                ? styles.progressActive
+                : styles.progressInactive
+            }
+          />
+        ))}
       </View>
 
       {step === "email" ? (
@@ -158,39 +206,45 @@ export default function ForgotPasswordScreen() {
           textContentType="emailAddress"
           value={email}
         />
-      ) : (
+      ) : null}
+
+      {step === "code" ? (
         <>
-          <FormNotice>
-            Reset instructions were requested for{" "}
-            <Text selectable style={styles.email}>
-              {email}
-            </Text>
-            . The code expires in 10 minutes.
-          </FormNotice>
-          <AuthField
-            autoComplete="one-time-code"
-            code
-            icon="keypad-outline"
-            inputMode="numeric"
-            keyboardType="number-pad"
+          <OtpCodeInput
+            autoFocus
+            error={Boolean(error)}
             label="Reset code"
-            maxLength={6}
             onChangeText={(value) => {
-              setCode(value.replace(/\D/g, ""));
+              setCode(value);
               setError("");
             }}
-            placeholder="000000"
-            selectTextOnFocus
-            textContentType="oneTimeCode"
             value={code}
           />
+          <View style={styles.resendRow}>
+            <Text accessibilityLiveRegion="polite" style={styles.resendText}>
+              {seconds > 0 ? `Resend in ${seconds}s` : "Didn’t get it?"}
+            </Text>
+            {seconds === 0 ? (
+              <TextLink disabled={resending} onPress={() => void resend()}>
+                {resending ? "Sending…" : "Resend"}
+              </TextLink>
+            ) : null}
+          </View>
+        </>
+      ) : null}
+
+      {step === "password" ? (
+        <>
           <AuthField
             autoCapitalize="none"
             autoComplete="new-password"
             autoCorrect={false}
             icon="lock-closed-outline"
             label="New password"
-            onChangeText={setPassword}
+            onChangeText={(value) => {
+              setPassword(value);
+              setError("");
+            }}
             placeholder="At least 10 characters"
             secureTextEntry
             textContentType="newPassword"
@@ -202,8 +256,11 @@ export default function ForgotPasswordScreen() {
             autoCorrect={false}
             error={Boolean(confirmPassword) && !passwordsMatch}
             icon="lock-closed-outline"
-            label="Confirm new password"
-            onChangeText={setConfirmPassword}
+            label="Confirm password"
+            onChangeText={(value) => {
+              setConfirmPassword(value);
+              setError("");
+            }}
             onSubmitEditing={() => void reset()}
             placeholder="Enter it again"
             returnKeyType="go"
@@ -211,20 +268,8 @@ export default function ForgotPasswordScreen() {
             textContentType="newPassword"
             value={confirmPassword}
           />
-          <View style={styles.resendRow}>
-            <Text accessibilityLiveRegion="polite" style={styles.resendText}>
-              {seconds > 0
-                ? `Request another code in ${seconds}s`
-                : "Code missing or expired?"}
-            </Text>
-            {seconds === 0 ? (
-              <TextLink disabled={resending} onPress={() => void resend()}>
-                {resending ? "Sending…" : "Send again"}
-              </TextLink>
-            ) : null}
-          </View>
         </>
-      )}
+      ) : null}
 
       {notice ? <FormNotice>{notice}</FormNotice> : null}
       <FormError message={error} />
@@ -232,12 +277,24 @@ export default function ForgotPasswordScreen() {
         disabled={
           step === "email"
             ? !validEmail
-            : code.length !== 6 || password.length < 10 || !passwordsMatch
+            : step === "code"
+              ? code.length !== 6
+              : password.length < 10 || !passwordsMatch
         }
         loading={loading}
-        onPress={() => void (step === "email" ? send() : reset())}
+        onPress={() =>
+          void (step === "email"
+            ? send()
+            : step === "code"
+              ? checkCode()
+              : reset())
+        }
       >
-        {step === "email" ? "Send reset code" : "Update password"}
+        {step === "email"
+          ? "Send reset code"
+          : step === "code"
+            ? "Continue"
+            : "Update password"}
       </PrimaryButton>
     </AuthShell>
   );
@@ -262,10 +319,6 @@ const createStyles = (theme: Theme) =>
       flex: 1,
       height: 4,
     },
-    email: {
-      color: theme.text,
-      fontFamily: theme.font.semibold,
-    },
     resendRow: {
       alignItems: "center",
       flexDirection: "row",
@@ -273,7 +326,7 @@ const createStyles = (theme: Theme) =>
       gap: 6,
       justifyContent: "flex-end",
       marginBottom: 18,
-      marginTop: -4,
+      marginTop: -6,
     },
     resendText: {
       color: theme.textMuted,
