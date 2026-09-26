@@ -33,9 +33,13 @@ import {
 
 const POST_ASPECTS = [
   { key: "original", label: "Original" },
-  { key: "square", label: "1:1", aspect: 1 },
-  { key: "portrait", label: "4:5", aspect: 4 / 5 },
-  { key: "landscape", label: "16:9", aspect: 16 / 9 },
+  { key: "3:2", label: "3:2", aspect: 3 / 2 },
+  { key: "4:3", label: "4:3", aspect: 4 / 3 },
+  { key: "5:4", label: "5:4", aspect: 5 / 4 },
+  { key: "1:1", label: "1:1", aspect: 1 },
+  { key: "4:5", label: "4:5", aspect: 4 / 5 },
+  { key: "3:4", label: "3:4", aspect: 3 / 4 },
+  { key: "2:3", label: "2:3", aspect: 2 / 3 },
 ] as const;
 
 /** One editor serves profile, cover and post-photo pickers. */
@@ -72,8 +76,8 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
 
   const aspect =
     request.kind === "avatar" ? 1 : request.kind === "cover" ? 3 : postAspect;
-  const maxFrameWidth = Math.max(80, Math.min(window.width - 48, 520));
-  const maxFrameHeight = Math.max(160, Math.min(window.height * 0.48, 500));
+  const maxFrameWidth = Math.max(80, Math.min(window.width - 32, 560));
+  const maxFrameHeight = Math.max(180, Math.min(window.height * 0.52, 540));
   const frameWidth = Math.max(
     48,
     Math.min(maxFrameWidth, maxFrameHeight * aspect),
@@ -183,10 +187,10 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
   const text = { color: theme.text, fontFamily: theme.font.body };
   const title =
     request.kind === "avatar"
-      ? "Edit profile photo"
+      ? "Crop profile photo"
       : request.kind === "cover"
-        ? "Edit cover photo"
-        : "Crop photo";
+        ? "Crop cover photo"
+        : "Crop image";
   const frameLabel =
     request.kind === "avatar"
       ? "Circular profile photo preview"
@@ -349,6 +353,25 @@ function PhotoEditor({ request }: { request: PhotoEditRequest }) {
                 style={StyleSheet.absoluteFill}
               />
             ) : null}
+
+            {ready ? (
+              request.kind === "avatar" ? (
+                <View
+                  pointerEvents="none"
+                  style={[StyleSheet.absoluteFill, styles.avatarGuide]}
+                />
+              ) : (
+                <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                  <View
+                    style={[StyleSheet.absoluteFill, styles.cropOutline]}
+                  />
+                  <View style={[styles.gridVertical, { left: "33.333%" }]} />
+                  <View style={[styles.gridVertical, { left: "66.666%" }]} />
+                  <View style={[styles.gridHorizontal, { top: "33.333%" }]} />
+                  <View style={[styles.gridHorizontal, { top: "66.666%" }]} />
+                </View>
+              )
+            ) : null}
           </View>
 
           <View style={styles.row}>
@@ -488,15 +511,46 @@ const styles = StyleSheet.create({
   },
   aspectButton: {
     minHeight: 40,
-    minWidth: 68,
-    paddingHorizontal: 12,
+    minWidth: 58,
+    paddingHorizontal: 11,
     borderWidth: 1,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
   aspectText: { fontSize: 13, fontWeight: "600" },
-  frame: { overflow: "hidden", backgroundColor: "#1F1B18" },
+  frame: {
+    overflow: "hidden",
+    backgroundColor: "#1F1B18",
+    shadowColor: "#29231F",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  avatarGuide: {
+    borderColor: "rgba(255,255,255,0.96)",
+    borderWidth: 2,
+    borderRadius: 999,
+  },
+  cropOutline: {
+    borderColor: "rgba(255,255,255,0.96)",
+    borderWidth: 2,
+  },
+  gridVertical: {
+    backgroundColor: "rgba(255,255,255,0.52)",
+    bottom: 0,
+    position: "absolute",
+    top: 0,
+    width: StyleSheet.hairlineWidth,
+  },
+  gridHorizontal: {
+    backgroundColor: "rgba(255,255,255,0.52)",
+    height: StyleSheet.hairlineWidth,
+    left: 0,
+    position: "absolute",
+    right: 0,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
