@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { previewApiRequest } from "./lib/preview-origin";
 
 const surfaceBySubdomain: Record<string, string> = {
   admin: "/admin",
@@ -8,6 +9,22 @@ const surfaceBySubdomain: Record<string, string> = {
 };
 
 export function proxy(request: NextRequest) {
+  const apiRequest = previewApiRequest(
+    request.nextUrl.pathname, request.method, request.headers,
+    {
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      VERCEL_URL: process.env.VERCEL_URL,
+      VERCEL_BRANCH_URL: process.env.VERCEL_BRANCH_URL,
+    },
+  );
+  if (apiRequest.kind === "reject")
+    return NextResponse.json(
+      { error: { code: "FORBIDDEN", message: "Open this portal directly and try again." } },
+      { status: 403, headers: { "Cache-Control": "private, no-store" } },
+    );
+  if (apiRequest.kind === "forward")
+    return NextResponse.next({ request: { headers: apiRequest.headers } });
+
   const hostname = request.headers.get("host")?.split(":")[0] ?? "";
   const subdomain = hostname.split(".")[0] ?? "";
   // Separate deployments can use any owned subdomain without relying on its spelling.

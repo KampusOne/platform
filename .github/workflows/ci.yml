@@ -94,6 +94,8 @@ jobs:
         working-directory: portal
       - run: npm run lint
         working-directory: portal
+      - run: npm test
+        working-directory: portal
       - run: npm run check
         working-directory: portal
       - run: npm run build
