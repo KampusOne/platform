@@ -48,6 +48,7 @@ function projection(user: User, withViews: boolean) {
       then coalesce(author.display_name, 'KampusOne student') else sources.name end as source_name,
     case when posts.audience->>'studentPost' = 'true'
       then coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) else sources.verified end as source_verified,
+    case when posts.audience->>'studentPost' = 'true' then author.username else null end as source_username,
     coalesce(posts.author_user_id = ${user.id}::uuid, false) as can_delete,
     case when posts.audience->>'visibility' = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end as visibility,
     true as social_enabled,
