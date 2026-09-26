@@ -27,6 +27,11 @@
   },
   "migrations": [
     {
+      "version": "20260912200000_phase_3_commerce_foundation",
+      "sourceBlobSha": "515ae32e25a34d18934e623e04955d124657e765",
+      "sha256": "48fe9d350e4b1b02087d3126dd9ee249e4ef66d4a38e1371f2c370f50396e89f"
+    },
+    {
       "version": "20260913200000_unified_student_platform",
       "sourceBlobSha": "a11789d089540255bc43b2aa7c7b6892a750639c",
       "sha256": "574b705c078d55b83ba8fef21a61b5c5b47b58f5c7f608b073c841b23942e158"
@@ -195,6 +200,21 @@
       "version": "20260926220000_ai_schedule_actions",
       "sourceBlobSha": "97b5d8c73eed43bf0ed6a5ddc3b08686349b5112",
       "sha256": "b5f593610b250743cba6a0a33489abc2aea6f58b98cf0fd2cafeb753af001a66"
+    },
+    {
+      "version": "20260926230000_tutor_commerce",
+      "sourceBlobSha": "450f9a31c7a96258896f0fe2dd4d5bd95f285c22",
+      "sha256": "1882d2d32b5371188fda7a2bf2f9ab96089bfc2cc6cfd9cbedc9c1646e8f85f9"
+    },
+    {
+      "version": "20260926240000_commerce_fee_snapshots",
+      "sourceBlobSha": "d63c4273ac449eb1d24cf888a64801109fecccb4",
+      "sha256": "c82d675d9b0d7d0d514bb75e887116b622acf2929d8d5d400bfdbc8c39494158"
+    },
+    {
+      "version": "20260926250000_campus_delivery_quotes",
+      "sourceBlobSha": "e9cf5ff33d30c14df49f442c7d24bf06a4ef499b",
+      "sha256": "2b2d6358eced97388caab332602b532549fbd4c3cde127ff635363a0a45f3c09"
     }
   ],
   "continuationMigrations": [

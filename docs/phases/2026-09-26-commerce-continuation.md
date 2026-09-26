@@ -25,6 +25,10 @@ The continuation adds `20260926230000_tutor_commerce.sql`, `20260926240000_comme
 - Verification sources: `server/tests/tutor-commerce.test.ts`, `database/verification/tutor_commerce_20260926.sql`, and the updated rehearsal JSON.
 - App version is 0.3.1 / Android build 31. The Android workflow runs when this branch is pushed; its final result is recorded in the user-facing TXT report.
 
-Production has not been promoted. Real fee-policy configuration, payment-provider operation, domain/push configuration and physical Android acceptance are separate release gates. No rates, live charges, payouts or external email messages were created during this continuation.
+All eight GitHub regression workflows passed on `bfa75f60af3ce5016d18ed67d427e63f4e41c3dc`. Both Vercel previews are READY on that commit. The Android build is tracked separately in the user-facing TXT report.
+
+No manual production promotion or production migration was performed. Cloudflare's connected `platformp` branch build succeeded and created version `1e7e129a-6fad-475f-b582-f5a707953ce7`; that build result is not proof of production activation. A read-only check of the public API returned 404 for the new tutor-commerce route, and the production database did not contain `tutorial_purchases`, `fee_rules` or `account_deletion_requests`. The API readiness endpoint returned 200, but it checks configured bindings rather than the new schema. The separate legacy `platform` Cloudflare build failed. The admin production domain still returned `404 DEPLOYMENT_NOT_FOUND`.
+
+Real fee-policy configuration, payment-provider operation, domain/push configuration and physical Android acceptance remain release gates. No business rates, live charges, payouts or external email messages were created during this continuation.
 
 The existing production evidence guard now includes every September 26 migration. Rehearsal evidence cannot satisfy it; no production attestation was manufactured.
