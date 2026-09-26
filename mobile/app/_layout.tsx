@@ -15,12 +15,9 @@ import {
   Lato_700Bold_Italic,
   Lato_900Black,
 } from "@expo-google-fonts/lato";
-import { StyleSheet, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import { ScreenVisitTracker } from "@/src/components/screen-visit-tracker";
-
-import { theme } from "@/src/theme";
 import { AuthProvider } from "@/src/auth/auth-context";
-import { ScreenSkeleton } from "@/src/components/skeleton";
 import { ToastProvider } from "@/src/components/toast";
 import { useEffect } from "react";
 import { initializeAppearance } from "@/src/lib/appearance";
@@ -33,13 +30,24 @@ import { AppErrorBoundary } from "@/src/components/app-error-boundary";
 import { NotificationBootstrap } from "@/src/components/notification-bootstrap";
 
 export default function RootLayout() {
-  const { theme, isDark } = useThemeStyles(createStyles);
+  const { styles, theme, isDark } = useThemeStyles(createStyles);
+
   useEffect(() => {
     void initializeAppearance();
     void checkBuildVersion();
   }, []);
+
   useEffect(listenForSnooze, []);
-  useEffect(()=>{if(typeof document==="undefined")return;const style=document.createElement("style");style.textContent="input:focus,input:focus-visible,textarea:focus,textarea:focus-visible,select:focus,select:focus-visible,[contenteditable=\"true\"]:focus,[contenteditable=\"true\"]:focus-visible{outline:none!important;box-shadow:none!important}button:focus-visible,[role=button]:focus-visible{outline:2px solid #C35D38;outline-offset:2px}";document.head.appendChild(style);return()=>style.remove();},[]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const style = document.createElement("style");
+    style.textContent =
+      'input:focus,input:focus-visible,textarea:focus,textarea:focus-visible,select:focus,select:focus-visible,[contenteditable="true"]:focus,[contenteditable="true"]:focus-visible{outline:none!important;box-shadow:none!important}button:focus-visible,[role=button]:focus-visible{outline:2px solid #C35D38;outline-offset:2px}';
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, []);
+
   useEffect(
     () => onAccountRestriction(() => router.replace("/restricted")),
     [],
@@ -54,35 +62,51 @@ export default function RootLayout() {
     Lato_700Bold_Italic,
     Lato_900Black,
   });
+  const fontsReady = fontsLoaded || Boolean(fontError);
 
   return (
     <AuthProvider>
-      {!fontsLoaded && !fontError ? <ScreenSkeleton /> : <ToastProvider><AlarmSync/><NotificationBootstrap />
-        <StatusBar style={isDark ? "light" : "dark"} />
-        <ScreenVisitTracker />
-        <AppErrorBoundary>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: theme.canvas },
-            }}
+      {!fontsReady ? (
+        <View style={styles.launchUnderlay}>
+          <Image
+            source={require("@/assets/adaptive-icon-foreground.png")}
+            resizeMode="contain"
+            style={styles.launchMark}
           />
-        </AppErrorBoundary>
-        <PhotoEditorHost />
-        <VideoEditorHost />
-        <BrandIntro />
-      </ToastProvider>}
+        </View>
+      ) : (
+        <ToastProvider>
+          <AlarmSync />
+          <NotificationBootstrap />
+          <StatusBar style={isDark ? "light" : "dark"} />
+          <ScreenVisitTracker />
+          <AppErrorBoundary>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: theme.canvas },
+              }}
+            />
+          </AppErrorBoundary>
+          <PhotoEditorHost />
+          <VideoEditorHost />
+          <BrandIntro />
+        </ToastProvider>
+      )}
     </AuthProvider>
   );
 }
 
-const createStyles = (theme: Theme) =>
+const createStyles = (_theme: Theme) =>
   StyleSheet.create({
-    loading: {
+    launchUnderlay: {
       alignItems: "center",
-      backgroundColor: theme.canvas,
+      backgroundColor: "#F1DFC8",
       flex: 1,
       justifyContent: "center",
     },
+    launchMark: {
+      height: 220,
+      width: 220,
+    },
   });
-const styles = createStyles(theme);
