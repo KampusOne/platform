@@ -1,7 +1,6 @@
 import { useEvent } from "expo";
 import { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Image,
   Linking,
   Modal,
@@ -13,6 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useAppearance } from "@/src/lib/appearance";
+import { SkeletonBlock } from "@/src/components/skeleton";
 
 const playbackSpeeds = [1, 1.25, 1.5, 2] as const;
 
@@ -112,8 +112,26 @@ function Video({
       />
 
       {status === "loading" ? (
-        <View pointerEvents="none" style={styles.loadingOverlay}>
-          <ActivityIndicator color="#FFFFFF" />
+        <View
+          pointerEvents="none"
+          accessibilityLabel="Loading video"
+          accessibilityState={{ busy: true }}
+          style={styles.loadingOverlay}
+        >
+          <View style={styles.videoSkeleton}>
+            <SkeletonBlock
+              width="72%"
+              height={8}
+              radius={4}
+              style={styles.videoSkeletonLine}
+            />
+            <SkeletonBlock
+              width="48%"
+              height={8}
+              radius={4}
+              style={styles.videoSkeletonLine}
+            />
+          </View>
         </View>
       ) : null}
 
@@ -259,6 +277,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.16)",
+  },
+  videoSkeleton: {
+    width: "58%",
+    gap: 9,
+    alignItems: "center",
+  },
+  videoSkeletonLine: {
+    backgroundColor: "rgba(255,255,255,0.52)",
   },
   errorOverlay: {
     position: "absolute",

@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "splash": {
       "backgroundColor": "#F1DFC8",
-      "image": "./assets/icon.png",
+      "image": "./assets/adaptive-icon-foreground.png",
       "resizeMode": "contain"
     },
     "ios": {
@@ -19,7 +19,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/adaptive-icon-foreground.png",
         "backgroundColor": "#F1DFC8"
       },
       "package": "app.kampusone.mobile",
@@ -33,7 +33,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/adaptive-icon.png"
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       [

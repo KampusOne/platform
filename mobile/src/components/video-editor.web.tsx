@@ -463,7 +463,7 @@ function WebVideoEditor({ request }: { request: VideoEditRequest }) {
           <View style={styles.busyRow}>
             <InlineLoading color={theme.brand} />
             <Text style={{ color: theme.textMuted, fontFamily: theme.font.body }}>
-              Preparing trimmed video…
+              Preparing video…
             </Text>
           </View>
         ) : null}
