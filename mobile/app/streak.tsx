@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Share, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ToolPage, ToolButton, ToolRow } from "@/src/components/toolkit";
@@ -51,8 +51,7 @@ export default function StreakScreen() {
   const [data, setData] = useState<StreakData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const working = useRef(false);
+
   const load = useCallback(async () => {
     setError("");
     try {
@@ -70,24 +69,6 @@ export default function StreakScreen() {
   useEffect(() => {
     void load();
   }, [load]);
-  async function checkIn() {
-    if (working.current) return;
-    working.current = true;
-    setBusy(true);
-    try {
-      await api("/v1/account/streak", { method: "POST" });
-      await load();
-      toast("Today's check-in saved", "success");
-    } catch (e) {
-      toast(
-        e instanceof Error ? e.message : "Check-in could not save. Try again.",
-        "error",
-      );
-    } finally {
-      working.current = false;
-      setBusy(false);
-    }
-  }
   const streak = data?.streak;
   const current = streak?.current_days ?? 0;
   const tier = [...milestones].reverse().find((m) => current >= m.days);
@@ -261,24 +242,12 @@ export default function StreakScreen() {
               lineHeight: 19,
             }}
           >
-            Check in once each day. A missed day starts a new streak. Days
-            follow{" "}
+            Your streak checks itself the first time you open KampusOne each day. A missed day starts a new streak. Days follow{" "}
             {data.timezone === "Africa/Lagos"
               ? "West Africa Time"
               : data.timezone}
-            .
+            . {checkedIn ? "Today is already counted." : "Open the home screen to count today."}
           </Text>
-          <ToolButton
-            label={
-              busy
-                ? "Saving check-in…"
-                : checkedIn
-                  ? "Checked in today"
-                  : "Check in for today"
-            }
-            disabled={busy || checkedIn}
-            onPress={() => void checkIn()}
-          />
           <Text
             style={{
               color: theme.text,
@@ -387,7 +356,7 @@ export default function StreakScreen() {
             disabled={!current}
             onPress={() =>
               void Share.share({
-                message: `${current} ${current === 1 ? "day" : "days"} showing up on KampusOne. Personal best: ${streak.longest_days} days. 🔥`,
+                message: `I'm on a ${current}-day streak on KampusOne 🔥\n\nKampusOne helps students keep up with classes, campus updates, study tools and more.\nhttps://kampusone.app`,
               }).catch(() => toast("Could not open sharing", "error"))
             }
           />
