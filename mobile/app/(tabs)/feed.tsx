@@ -2,7 +2,7 @@ import { FeedSkeleton, SkeletonBlock } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
-import { useFocusEffect, router } from "expo-router";
+import { useFocusEffect, router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Image, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type ViewToken } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -25,6 +25,7 @@ export default function FeedScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
   const { user, state: authState } = useAuth();
+  const { q: routeQuery } = useLocalSearchParams<{ q?: string | string[] }>();
   const [posts, setPosts] = useState<SocialFeedPost[]>([]);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
@@ -54,6 +55,10 @@ export default function FeedScreen() {
       });
     }
   }).current;
+  useEffect(() => {
+    const incoming = Array.isArray(routeQuery) ? routeQuery[0] : routeQuery;
+    if (typeof incoming === "string" && incoming.trim()) setQuery(incoming.trim());
+  }, [routeQuery]);
   useEffect(() => { const timer = setTimeout(() => setSearch(query.trim()), 300); return () => clearTimeout(timer); }, [query]);
   const path = useMemo(() => `/v1/student/feed?q=${encodeURIComponent(search)}${selected === "All" ? "" : `&category=${selected.toUpperCase()}`}`, [search, selected]);
   const scope = `${user?.id ?? "anonymous"}:${path}`;
