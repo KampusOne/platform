@@ -203,6 +203,7 @@ export default function SignUpScreen() {
           accessibilityLabel="Accept the Terms and Privacy Policy"
           accessibilityRole="checkbox"
           accessibilityState={{ checked: acceptedTerms }}
+          hitSlop={10}
           onPress={() => setAcceptedTerms((value) => !value)}
           style={({ pressed }) => [
             styles.checkbox,
@@ -211,31 +212,30 @@ export default function SignUpScreen() {
           ]}
         >
           {acceptedTerms ? (
-            <Ionicons color="#FFFFFF" name="checkmark" size={17} />
+            <Ionicons color="#FFFFFF" name="checkmark" size={15} />
           ) : null}
         </Pressable>
-        <View style={styles.termsCopy}>
-          <Text style={styles.termsText}>
-            I agree to the account terms and data policy.
+        <Text style={styles.termsText}>
+          I agree to the{" "}
+          <Text
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL("https://kampusone.app/terms")}
+            style={styles.termsLink}
+          >
+            Terms
+          </Text>{" "}
+          and{" "}
+          <Text
+            accessibilityRole="link"
+            onPress={() =>
+              void Linking.openURL("https://kampusone.app/privacy")
+            }
+            style={styles.termsLink}
+          >
+            Privacy Policy
           </Text>
-          <View style={styles.termsLinks}>
-            <TextLink
-              onPress={() =>
-                void Linking.openURL("https://kampusone.app/terms")
-              }
-            >
-              Terms
-            </TextLink>
-            <Text style={styles.termsAnd}>and</Text>
-            <TextLink
-              onPress={() =>
-                void Linking.openURL("https://kampusone.app/privacy")
-              }
-            >
-              Privacy Policy
-            </TextLink>
-          </View>
-        </View>
+          .
+        </Text>
       </View>
       <FormError message={error} />
       <PrimaryButton
@@ -291,19 +291,19 @@ const createStyles = (theme: Theme) =>
       fontFamily: theme.font.medium,
     },
     termsRow: {
-      alignItems: "flex-start",
+      alignItems: "center",
       flexDirection: "row",
-      gap: 11,
-      marginBottom: 16,
+      gap: 9,
+      marginBottom: 12,
     },
     checkbox: {
       alignItems: "center",
       borderColor: theme.clay,
-      borderRadius: 7,
-      borderWidth: 1.5,
-      height: 44,
+      borderRadius: 6,
+      borderWidth: 1.35,
+      height: 24,
       justifyContent: "center",
-      width: 44,
+      width: 24,
     },
     checkboxChecked: {
       backgroundColor: theme.deepBrand,
@@ -311,28 +311,18 @@ const createStyles = (theme: Theme) =>
     },
     checkboxPressed: {
       opacity: 0.72,
-      transform: [{ scale: 0.97 }],
-    },
-    termsCopy: {
-      flex: 1,
-      paddingTop: 2,
+      transform: [{ scale: 0.96 }],
     },
     termsText: {
       color: theme.textMuted,
+      flex: 1,
       fontFamily: theme.font.body,
       fontSize: 12,
-      lineHeight: 17,
+      lineHeight: 18,
     },
-    termsLinks: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: 6,
-      marginTop: 4,
-    },
-    termsAnd: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 12,
+    termsLink: {
+      color: theme.deepBrand,
+      fontFamily: theme.font.semibold,
     },
     footer: {
       alignItems: "center",
