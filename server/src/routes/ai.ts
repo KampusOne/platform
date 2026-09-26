@@ -18,13 +18,13 @@ aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "quiz", "notes", "timetable"]);
 const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
-type Saved = { documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
+type Saved = { documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; feedback?: "like" | "dislike"; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
 }
 function publicResult(id: string, value: Saved) {
-  return { requestId: id, threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, events: value.events ?? [], documentType: value.documentType ?? "class_timetable", warnings: value.warnings ?? [] } : {}) };
+  return { requestId: id, threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], ...(value.feedback ? { feedback: value.feedback } : {}), ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, events: value.events ?? [], documentType: value.documentType ?? "class_timetable", warnings: value.warnings ?? [] } : {}) };
 }
 function replay(row: RequestRow, hash: string) {
   if (row.request_hash !== hash) throw new AppError(409, "CONFLICT", "This request reference belongs to a different draft.", { reason: "AI_REQUEST_CONFLICT" });
@@ -111,6 +111,25 @@ aiRoutes.post("/actions/confirm", async c => {
   // can be retried safely using the same action ID.
   return c.json({saved:true,id:d.actionId});
 });
+aiRoutes.put("/feedback/:id", async c => {
+  requireSchema(c.env);
+  const requestId = z.string().uuid().safeParse(c.req.param("id"));
+  if (!requestId.success) throw new AppError(400, "BAD_REQUEST", "Invalid Kira response.");
+  const body = await input(c, z.object({ vote: z.enum(["like", "dislike"]) }).strict());
+  const updated = firstRow(await database(c.env).execute<{ idempotency_key: string }>(sql`
+    update app_private.ai_requests
+    set result = result || jsonb_build_object('feedback', ${body.vote})
+    where user_id=${currentUser(c).id}::uuid
+      and idempotency_key=${requestId.data}::uuid
+      and status='COMPLETED'
+      and result ? 'text'
+      and not (result ? 'deleted')
+    returning idempotency_key
+  `));
+  if (!updated) throw new AppError(404, "NOT_FOUND", "That Kira response is no longer available.");
+  return c.json({ feedback: body.vote });
+});
+
 aiRoutes.delete("/history/:id", async c => {
   requireSchema(c.env);
   const id = z.string().uuid().safeParse(c.req.param("id"));
