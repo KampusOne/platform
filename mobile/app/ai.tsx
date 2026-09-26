@@ -3,6 +3,11 @@ import { Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, Scrol
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
+import * as Clipboard from "expo-clipboard";
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from "expo-speech-recognition";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
@@ -20,7 +25,7 @@ type Mode="study"|"summary"|"notes"|"quiz";
 type Tier="standard"|"pro";
 type Card={id:string;kind:"product"|"tutor"|"video";title:string;subtitle:string;path:string;thumbnail?:string};
 type Action={id:string;type:"timetable";entry:{title:string;courseCode?:string;venue?:string;dayOfWeek:number;date?:string;startsAt:string;endsAt:string};confirmed?:boolean};
-type Turn={requestId:string;text:string;prompt?:string;fileName?:string;mediaId?:string;file?:StagedAttachment;mode?:Mode;cards?:Card[];actions?:Action[]};
+type Turn={requestId:string;text:string;prompt?:string;fileName?:string;mediaId?:string;file?:StagedAttachment;mode?:Mode;cards?:Card[];actions?:Action[];feedback?:"like"|"dislike"};
 type Draft={prompt:string;mode:Mode;tier:Tier;attachment?:StagedAttachment;replyTo?:string;key:string};
 type Status={enabled:boolean;capabilities:{text:boolean;images:boolean;documents:boolean};tier:Tier;study:{limit:number;remaining:number|null};subscription:{checkoutEnabled:boolean}};
 type SavedWork={id:string;title:string;mode:Mode;created_at:string};
@@ -44,6 +49,7 @@ export default function StudentAI() {
   const [nextOffset,setNextOffset]=useState<number|null>(null);const [historyQuery,setHistoryQuery]=useState("");
   const [deleteId,setDeleteId]=useState<string>();const [confirming,setConfirming]=useState<string>();
   const [preview,setPreview]=useState<{uri:string;name:string}>();
+  const [listening,setListening]=useState(false);
   const key=useRef(randomUUID()),lock=useRef(false),scroll=useRef<ScrollView>(null);
   const owner=useRef(user?.id);owner.current=user?.id;
   const generation=useRef(0),alive=useRef(true),draftOwner=useRef<string | undefined>(undefined);
@@ -55,6 +61,20 @@ export default function StudentAI() {
   const webInputStyle=Platform.OS==='web'?({outlineStyle:'none',outlineWidth:0,outlineColor:'transparent',boxShadow:'none',WebkitTapHighlightColor:'transparent'} as any):undefined;
   const storageKey=`ai-workspace-v3.${user?.id}.${workspace}`;
   const valid=()=>alive.current;
+
+  useSpeechRecognitionEvent("start",()=>setListening(true));
+  useSpeechRecognitionEvent("end",()=>setListening(false));
+  useSpeechRecognitionEvent("result",(event)=>{
+    const transcript=event.results[0]?.transcript?.trim();
+    if(!transcript)return;
+    setPrompt(transcript);
+    key.current=randomUUID();
+    setError("");
+  });
+  useSpeechRecognitionEvent("error",(event)=>{
+    setListening(false);
+    if(event.error!=="aborted")setError(event.message || "Voice input could not start. You can still type to Kira.");
+  });
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;};},[]);
   const loadStatus=useCallback(async()=>{const account=owner.current;try{const result=await api<Status>("/v1/ai/status");if(valid() && owner.current===account)setStatus(result);}catch{if(valid() && owner.current===account)setStatus(undefined);}},[]);
   const restoreThread=useCallback(async(id:string,version:number)=>{
@@ -122,7 +142,35 @@ export default function StudentAI() {
   useEffect(()=>{if(openHistoryParam === "1" && loaded){setSheet("history");void loadHistory("",0);}},[openHistoryParam,loaded]);
   async function removeHistory(id:string){const version=generation.current;setHistoryBusy(true);try{await api(`/v1/ai/history/${id}`,{method:'DELETE'});if(!valid()||version!==generation.current)return;setHistory(rows=>rows.filter(row=>row.id!==id));setTurns(rows=>rows.filter(row=>row.requestId!==id));if(replyTo===id){setReplyTo(undefined);key.current=randomUUID();}setDeleteId(undefined);}catch(e){if(valid()&&version===generation.current)setHistoryError(e instanceof Error?e.message:'Could not delete this answer.');}finally{if(valid()&&version===generation.current)setHistoryBusy(false);}}
   async function confirm(turn:Turn,action:Action){if(confirming)return;const version=generation.current;setConfirming(action.id);try{await api('/v1/ai/actions/confirm',{method:'POST',body:JSON.stringify({requestId:turn.requestId,actionId:action.id})});if(!valid()||version!==generation.current)return;clearApiCache();setTurns(rows=>rows.map(row=>row.requestId===turn.requestId?{...row,actions:row.actions?.map(a=>a.id===action.id?{...a,confirmed:true}:a)??[]}:row));toast('Added to your timetable','success');try{const result=await api<{alarms:Alarm[]}>('/v1/learning/alarms');if(valid()&&version===generation.current)await syncAlarms(result.alarms,true);}catch{if(valid()&&version===generation.current)toast('Class saved. Check device reminders in Alarms.');}}catch(e){if(valid()&&version===generation.current)toast(e instanceof Error?e.message:'The class was not added.','error');}finally{if(valid()&&version===generation.current)setConfirming(undefined);}}
-  async function copy(answer:string){try{if(Platform.OS==='web'&&typeof navigator!=='undefined'&&navigator.clipboard){await navigator.clipboard.writeText(answer);toast('Copied','success');}else await Share.share({message:answer});}catch{toast('Select the answer text to copy it.');}}
+  async function toggleVoice(){
+    if(listening){ExpoSpeechRecognitionModule.stop();return;}
+    try{
+      const permission=await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if(!permission.granted){setError("Microphone and speech recognition permission are needed to talk to Kira.");return;}
+      ExpoSpeechRecognitionModule.start({
+        lang:"en-NG",
+        interimResults:true,
+        continuous:false,
+        maxAlternatives:1,
+      });
+    }catch(e){setListening(false);setError(e instanceof Error?e.message:"Voice input could not start.");}
+  }
+  async function copy(answer:string){
+    try{await Clipboard.setStringAsync(answer);toast("Copied","success");}
+    catch{toast("This answer could not be copied.","error");}
+  }
+  async function shareAnswer(answer:string){
+    try{
+      await Share.share({message:`This is the response I got from Kira on KampusOne:\n\n${answer}\n\nhttps://kampusone.app`});
+    }catch{toast("Could not open sharing","error");}
+  }
+  async function rateAnswer(requestId:string,vote:"like"|"dislike"){
+    try{
+      await api(`/v1/ai/feedback/${requestId}`,{method:"PUT",body:JSON.stringify({vote})});
+      setTurns(rows=>rows.map(row=>row.requestId===requestId?{...row,feedback:vote}:row));
+      toast(vote==="like"?"Thanks — this helps Kira improve.":"Thanks — this response was flagged for review.","success");
+    }catch(e){toast(e instanceof Error?e.message:"Could not save AI feedback","error");}
+  }
   const smallButton=(label:string,onPress:()=>void,disabled=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled}} disabled={disabled} onPress={onPress} style={{paddingVertical:10,paddingHorizontal:12,opacity:disabled?0.5:1}}><Text style={{...muted,color:theme.brand,fontFamily:theme.font.semibold}}>{label}</Text></Pressable>;
   const iconButton=(name:ComponentProps<typeof Ionicons>['name'],label:string,onPress:()=>void,disabled=false)=><Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{disabled}} disabled={disabled} onPress={onPress} style={{minHeight:44,minWidth:44,alignItems:'center',justifyContent:'center',opacity:disabled?0.4:1}}><Ionicons name={name} size={22} color={theme.text}/></Pressable>;
   const renderUser=(question:string,file?:StagedAttachment)=><View style={{alignSelf:'flex-end',maxWidth:'90%',marginTop:22,marginBottom:18}}>{file?<AttachmentPreview file={file} onOpen={()=>void openFile(file)}/>:null}{question?<View style={{backgroundColor:theme.sand,borderRadius:19,borderBottomRightRadius:5,paddingHorizontal:16,paddingVertical:12}}><Text selectable style={text}>{question}</Text></View>:null}</View>;
@@ -130,7 +178,7 @@ export default function StudentAI() {
     <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':Platform.OS==='android'?'height':undefined} style={{flex:1,width:'100%',maxWidth:760,alignSelf:'center'}}>
       <View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:12,paddingVertical:4,borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:theme.border}}>
         {iconButton('arrow-back','Go back',()=>router.canGoBack()?router.back():router.replace('/explore'))}
-        <Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:21,flex:1}}>{workspace==='ask'?'Ask':'Study'}</Text>
+        <View style={{flex:1}}><Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:21}}>Kira</Text><Text style={{...muted,fontSize:10,marginTop:-1}}>{workspace==='ask'?'Ask anything':'Summary & Notes'}</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel={`AI plan: ${tier==='pro'?'Pro':'Standard'}`} onPress={()=>setSheet('plans')} disabled={busy} style={{flexDirection:'row',alignItems:'center',padding:12,gap:5}}><Text style={{...muted,color:theme.text}}>{tier==='pro'?'Pro':'Standard'}</Text><Ionicons name="chevron-down" size={14} color={theme.textMuted}/></Pressable>
         {iconButton('time-outline','Conversation history',()=>{setSheet('history');void loadHistory('',0);},busy)}
         {iconButton('create-outline','New conversation',newConversation,busy)}
@@ -150,7 +198,12 @@ export default function StudentAI() {
           return <View key={turn.requestId}>{renderUser(turn.prompt??'',file)}<StudyAnswer value={turn.text}/>
             {turn.cards?.map(card=><Pressable key={card.id} accessibilityRole="button" onPress={()=>{if(card.kind==='video' && /^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(card.path))void Linking.openURL(card.path).catch(()=>toast('Could not open this video.','error'));else if(/^\/student-service\?(id|product)=[0-9a-f-]{36}$/i.test(card.path))router.push(card.path as never);}} style={{marginTop:12,padding:16,borderWidth:1,borderColor:theme.border,borderRadius:13,backgroundColor:theme.surface,flexDirection:'row',alignItems:'center',gap:12}}>{card.kind==='video'&&card.thumbnail?<Image accessibilityLabel={card.title} source={{uri:card.thumbnail}} style={{width:96,height:54,borderRadius:7}}/>:<Ionicons name={card.kind==='tutor'?'person-outline':'bag-outline'} size={23} color={theme.brand}/>}<View style={{flex:1}}><Text style={{...text,fontFamily:theme.font.semibold,fontSize:14}}>{card.title}</Text><Text style={muted}>{card.subtitle}</Text></View><Ionicons name="chevron-forward" size={17} color={theme.textMuted}/></Pressable>)}
             {turn.actions?.map(action=><View key={action.id} style={{marginTop:14,padding:17,borderWidth:1,borderColor:theme.border,borderRadius:14,backgroundColor:theme.surface}}><Text style={{...text,fontFamily:theme.font.semibold}}>{action.entry.courseCode || action.entry.title}</Text><Text style={muted}>{action.entry.date || `Every ${days[action.entry.dayOfWeek]}`} · {action.entry.startsAt}–{action.entry.endsAt}{action.entry.venue?`\n${action.entry.venue}`:''}</Text>{smallButton(action.confirmed?'Added to timetable':confirming===action.id?'Adding…':'Add to timetable',()=>void confirm(turn,action),Boolean(confirming)||action.confirmed===true)}</View>)}
-            <View style={{alignSelf:'flex-start',marginTop:7}}>{iconButton('copy-outline','Copy answer',()=>void copy(turn.text))}</View>
+            <View style={{alignSelf:'flex-start',marginTop:7,flexDirection:'row',alignItems:'center'}}>
+              {iconButton('copy-outline','Copy answer',()=>void copy(turn.text))}
+              {iconButton('share-social-outline','Share answer',()=>void shareAnswer(turn.text))}
+              {iconButton(turn.feedback==='like'?'thumbs-up':'thumbs-up-outline','Helpful answer',()=>void rateAnswer(turn.requestId,'like'))}
+              {iconButton(turn.feedback==='dislike'?'thumbs-down':'thumbs-down-outline','Not helpful answer',()=>void rateAnswer(turn.requestId,'dislike'))}
+            </View>
           </View>;
         }):null}
         {pending?<View>{renderUser(pending.prompt,pending.file)}<View accessibilityRole="text" accessibilityLabel="Kira is working" accessibilityLiveRegion="polite" style={{gap:10,marginTop:8}}><Text style={muted}>Working on it…</Text><SkeletonBlock width="76%"/><SkeletonBlock width="56%"/></View></View>:null}
@@ -162,7 +215,7 @@ export default function StudentAI() {
         {attachment?<AttachmentPreview file={attachment} uploading={uploading} onRemove={()=>{setAttachment(undefined);key.current=randomUUID();}} onOpen={()=>void openFile(attachment)}/>:null}
         <View style={{borderWidth:1,borderColor:theme.border,borderRadius:22,backgroundColor:theme.surface,paddingHorizontal:9,paddingTop:12,paddingBottom:5}}>
           <TextInput accessibilityLabel="Message Kira" value={prompt} onChangeText={changePrompt} editable={loaded&&!busy} placeholder={workspace==='ask'?'Ask Kira…':'Add instructions or paste your material…'} placeholderTextColor={theme.textMuted} multiline maxLength={20000} textAlignVertical="top" style={[{color:theme.text,fontFamily:theme.font.body,fontSize:16,lineHeight:23,minHeight:43,maxHeight:150,paddingHorizontal:7,paddingBottom:8},webInputStyle]}/>
-          <View style={{flexDirection:'row',alignItems:'center'}}>{iconButton('add','Attach image or document',()=>void attach(),busy||!loaded)}{iconButton('information-circle-outline','AI privacy and help',()=>setSheet('info'))}<View style={{flex:1}}/>
+          <View style={{flexDirection:'row',alignItems:'center'}}>{iconButton('add','Attach image or document',()=>void attach(),busy||!loaded)}{iconButton(listening?'stop-circle':'mic-outline',listening?'Stop voice input':'Speak to Kira',()=>void toggleVoice(),busy||!loaded)}{iconButton('information-circle-outline','AI privacy and help',()=>setSheet('info'))}<View style={{flex:1}}/>
             <Pressable accessibilityRole="button" accessibilityLabel={busy?'AI is working':'Send message'} accessibilityState={{disabled:busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment),busy}} disabled={busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment)} onPress={()=>void send()} style={{width:42,height:42,borderRadius:21,alignItems:'center',justifyContent:'center',backgroundColor:theme.deepBrand,opacity:busy||(!prompt.trim()&&!attachment)?0.5:1}}><Ionicons name="arrow-up" size={24} color="#FFFFFF"/></Pressable>
           </View>
         </View>
@@ -178,7 +231,7 @@ export default function StudentAI() {
             {sheet==='plans'?<View><Pressable accessibilityRole="radio" accessibilityState={{checked:tier==='standard'}} onPress={()=>{setTier('standard');key.current=randomUUID();setSheet(null);}} style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.border,marginBottom:12}}><Text style={{...text,fontFamily:theme.font.semibold}}>Standard</Text><Text style={muted}>Everyday questions and five shared Summary / Notes trials.</Text></Pressable>
               <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.brand,marginBottom:16}}><Text style={{...text,fontFamily:theme.font.semibold}}>Pro · Monthly</Text><Text style={{...muted,marginTop:5}}>More room for learning, longer study use and an upgraded AI option.</Text>{status?.tier==='pro'?smallButton('Use Pro',()=>{setTier('pro');key.current=randomUUID();setSheet(null);}):<Text style={{...muted,marginTop:16,color:theme.brand}}>Subscriptions are not open yet. No payment will be taken.</Text>}</View>
             </View>:null}
-            {sheet==='info'?<View style={{gap:15}}><Text style={text}>Your chats are private to your account and saved for 90 days. You can remove saved answers from History.</Text><Text style={text}>Questions and attachments are processed by external AI services. Do not include passwords, payment details or other people's confidential information.</Text><Text style={text}>Kira can read your timetable and find published campus services. Timetable changes require you to review a class card and tap Add. It cannot manage accounts or perform admin actions.</Text><Text style={text}>Attach one image, PDF or text file per message, up to 8 MB. Text PDFs support up to 40 pages within the text limit. For scanned PDFs, attach the relevant page as an image.</Text></View>:null}
+            {sheet==='info'?<View style={{gap:15}}><Text style={text}>Your chats are private to your account and saved for 90 days. You can remove saved answers from History.</Text><Text style={text}>Questions and attachments are processed by external AI services. Do not include passwords, payment details or other people's confidential information.</Text><Text style={text}>Kira can read your timetable and find published campus services. Timetable changes require you to review a class card and tap Add. It cannot manage accounts or perform admin actions.</Text><Text style={text}>Attach one image, PDF or text file per message. Kira reads the document within the available AI context and keeps the conversation attached to that material. Very large PDFs may be processed in sections rather than rejected by a fixed page count.</Text><Text style={text}>Use the microphone button to speak. Your device transcribes the recording into the composer so you can review the text before sending it.</Text></View>:null}
             {sheet==='history'?<View>
               <View style={{flexDirection:'row',alignItems:'center',marginBottom:10,borderWidth:1,borderColor:theme.border,borderRadius:12,paddingLeft:12}}><TextInput accessibilityLabel="Search conversations" value={search} onChangeText={setSearch} placeholder="Search saved work" placeholderTextColor={theme.textMuted} style={{...text,flex:1,paddingVertical:11}} onSubmitEditing={()=>void loadHistory(search,0)}/>{smallButton('Search',()=>void loadHistory(search,0),historyBusy)}</View>
               {historyError?<Text accessibilityRole="alert" style={muted}>{historyError}</Text>:null}{historyBusy?<ListSkeleton count={3}/>:null}
