@@ -49,6 +49,76 @@ peopleRoutes.get("/products/:id",async c=>{
   if(!result.products.some(p=>p.id===productId)) throw new AppError(404,"NOT_FOUND","This product is no longer available.");
   return c.json({...result,selectedProductId:productId});
 });
+
+type ProfileConnectionRow = {
+  user_id: string;
+  display_name: string;
+  username: string | null;
+  profile_image_url: string | null;
+  current_level: number | null;
+  university_name: string | null;
+  department_name: string | null;
+  verified: boolean;
+  cursor_at: string;
+};
+
+function profileConnectionCursor(raw: string | undefined) {
+  if (!raw) return null;
+  const parts = raw.split("|");
+  if (parts.length !== 2 || !parts[0] || !parts[1] || !Number.isFinite(Date.parse(parts[0])))
+    throw new AppError(400, "BAD_REQUEST", "This followers list position is not valid.");
+  return { at: parts[0], userId: id(parts[1]) };
+}
+
+function profileConnectionPage(rows: ProfileConnectionRow[]) {
+  const visible = rows.slice(0, 40);
+  const tail = visible[visible.length - 1];
+  return {
+    people: visible.map(({ cursor_at: _cursorAt, ...person }) => person),
+    nextCursor: rows.length > 40 && tail ? `${tail.cursor_at}|${tail.user_id}` : null,
+  };
+}
+
+peopleRoutes.get("/:id/followers",async c=>{
+  const target=id(c.req.param("id")),u=currentUser(c),db=database(c.env),cursor=profileConnectionCursor(c.req.query("cursor"));
+  const owner=firstRow(await db.execute(sql`select p.user_id from public.profiles p join public.users account on account.id=p.user_id and account.status::text='ACTIVE' where p.user_id=${target}::uuid and p.deleted_at is null`));
+  if(!owner) throw new AppError(404,"NOT_FOUND","This student profile is not available.");
+  const result=await db.execute<ProfileConnectionRow>(sql`
+    select p.user_id,p.display_name,p.username,p.profile_image_url,p.current_level,
+      uni.name as university_name,d.name as department_name,
+      coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,
+      f.created_at::text as cursor_at
+    from public.profile_follows f
+    join public.profiles p on p.user_id=f.follower_id and p.deleted_at is null
+    join public.users account on account.id=p.user_id and account.status::text='ACTIVE'
+    left join public.universities uni on uni.id=p.university_id
+    left join public.departments d on d.id=p.department_id
+    where f.followed_id=${target}::uuid
+      ${cursor?sql`and (f.created_at,f.follower_id)<(${cursor.at}::timestamptz,${cursor.userId}::uuid)`:sql``}
+    order by f.created_at desc,f.follower_id desc limit 41`);
+  void u;
+  return c.json(profileConnectionPage(result.rows));
+});
+peopleRoutes.get("/:id/following",async c=>{
+  const target=id(c.req.param("id")),db=database(c.env),cursor=profileConnectionCursor(c.req.query("cursor"));
+  const owner=firstRow(await db.execute(sql`select p.user_id from public.profiles p join public.users account on account.id=p.user_id and account.status::text='ACTIVE' where p.user_id=${target}::uuid and p.deleted_at is null`));
+  if(!owner) throw new AppError(404,"NOT_FOUND","This student profile is not available.");
+  const result=await db.execute<ProfileConnectionRow>(sql`
+    select p.user_id,p.display_name,p.username,p.profile_image_url,p.current_level,
+      uni.name as university_name,d.name as department_name,
+      coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,
+      f.created_at::text as cursor_at
+    from public.profile_follows f
+    join public.profiles p on p.user_id=f.followed_id and p.deleted_at is null
+    join public.users account on account.id=p.user_id and account.status::text='ACTIVE'
+    left join public.universities uni on uni.id=p.university_id
+    left join public.departments d on d.id=p.department_id
+    where f.follower_id=${target}::uuid
+      ${cursor?sql`and (f.created_at,f.followed_id)<(${cursor.at}::timestamptz,${cursor.userId}::uuid)`:sql``}
+    order by f.created_at desc,f.followed_id desc limit 41`);
+  return c.json(profileConnectionPage(result.rows));
+});
+
 peopleRoutes.get("/:id",async c=>{
   const target=id(c.req.param("id")),u=currentUser(c),db=database(c.env);
   const profile=firstRow(await db.execute(sql`select p.user_id,p.display_name,p.username,p.biography,p.profile_image_url,p.cover_image_url,p.current_level,
