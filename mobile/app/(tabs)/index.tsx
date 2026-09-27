@@ -55,7 +55,7 @@ type Home = {
     cgpa: string | number | null;
     total_units: string | number | null;
   };
-  campusClock?: { date: string; time: string; timeZone: string };
+  campusClock: { date: string; time: string; timeZone: string };
   streak_days?: number | null;
 };
 
@@ -86,7 +86,7 @@ function normalizeHome(input: Home | null | undefined): Home {
               ? source.campusClock.timeZone
               : "Africa/Lagos",
         }
-      : undefined;
+      : { date: "", time: "", timeZone: "Africa/Lagos" };
 
   return {
     profile:
