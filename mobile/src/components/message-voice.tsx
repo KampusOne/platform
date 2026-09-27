@@ -18,23 +18,33 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 export function MessageVoice({
   disabled,
   onReady,
+  onActiveChange,
   compact = false,
 }: {
   disabled: boolean;
-  onReady: (id: string, name: string) => void;
+  onReady: (id: string, name: string) => void | Promise<void>;
+  onActiveChange?: (active: boolean) => void;
   compact?: boolean;
 }) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const state = useAudioRecorderState(recorder, 250);
   const [uri, setUri] = useState<string>();
+  const [recordedDuration, setRecordedDuration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const { theme, styles } = useThemeStyles(createStyles);
+  const active = state.isRecording || Boolean(uri);
+
+  useEffect(() => {
+    onActiveChange?.(active);
+    return () => onActiveChange?.(false);
+  }, [active, onActiveChange]);
 
   useEffect(() => {
     const stop = async () => {
       if (recorder.isRecording) {
         await recorder.stop();
+        setRecordedDuration(state.durationMillis);
         setUri(recorder.uri ?? undefined);
       }
       await setAudioModeAsync({ allowsRecording: false });
@@ -52,6 +62,7 @@ export function MessageVoice({
   useEffect(() => {
     if (state.isRecording && state.durationMillis >= 120_000) {
       void recorder.stop().then(() => {
+        setRecordedDuration(state.durationMillis);
         setUri(recorder.uri ?? undefined);
         return setAudioModeAsync({ allowsRecording: false });
       }).catch(() => setError("Recording could not be saved."));
@@ -64,6 +75,7 @@ export function MessageVoice({
     try {
       if (state.isRecording) {
         await recorder.stop();
+        setRecordedDuration(state.durationMillis);
         setUri(recorder.uri ?? undefined);
         await setAudioModeAsync({ allowsRecording: false });
       } else {
@@ -72,12 +84,27 @@ export function MessageVoice({
         await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
         await recorder.prepareToRecordAsync();
         recorder.record();
+        setRecordedDuration(0);
         setUri(undefined);
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Recording failed.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function cancelRecording() {
+    if (busy) return;
+    setError("");
+    try {
+      if (state.isRecording) await recorder.stop();
+    } catch {
+      // Discarding should still reset the local composer even if the native recorder already stopped.
+    } finally {
+      setUri(undefined);
+      setRecordedDuration(0);
+      await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
     }
   }
 
@@ -93,8 +120,9 @@ export function MessageVoice({
         body,
         headers: { "Content-Type": Platform.OS === "web" ? body.type || "audio/webm" : "audio/mp4" },
       });
-      onReady(result.id, "Voice note");
+      await onReady(result.id, "Voice note");
       setUri(undefined);
+      setRecordedDuration(0);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Upload failed. Your recording is kept.");
     } finally {
@@ -104,43 +132,69 @@ export function MessageVoice({
 
   if (compact) {
     return (
-      <View style={styles.compactWrap}>
+      <View style={[styles.compactWrap, active && styles.compactWrapActive]}>
         {uri ? (
           <View style={styles.voiceDraft}>
             <VoicePlayback uri={uri} compact />
-            <Text numberOfLines={1} style={styles.voiceDraftText}>Voice note</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Use voice note"
-              disabled={disabled || busy}
-              onPress={() => void attach()}
-              style={({ pressed }) => [styles.useVoice, (pressed || disabled || busy) && styles.disabled]}
-            >
-              <Ionicons name={busy ? "cloud-upload-outline" : "checkmark"} size={18} color="#FFFFFF" />
-            </Pressable>
+            <View style={styles.voiceDraftCopy}>
+              <Text numberOfLines={1} style={styles.voiceDraftText}>Voice note</Text>
+              <Text style={styles.voiceDraftMeta}>{Math.max(1, Math.round(recordedDuration / 1000))}s</Text>
+            </View>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Discard voice note"
               disabled={busy}
-              onPress={() => setUri(undefined)}
-              style={({ pressed }) => [styles.smallIcon, pressed && styles.pressed]}
+              onPress={() => void cancelRecording()}
+              style={({ pressed }) => [styles.actionIcon, pressed && styles.pressed, busy && styles.disabled]}
             >
-              <Ionicons name="close" size={19} color={theme.textMuted} />
+              <Ionicons name="trash-outline" size={19} color={theme.textMuted} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Send voice note"
+              disabled={disabled || busy}
+              onPress={() => void attach()}
+              style={({ pressed }) => [styles.sendVoice, (pressed || disabled || busy) && styles.disabled]}
+            >
+              <Ionicons name={busy ? "cloud-upload-outline" : "send"} size={18} color="#FFFFFF" />
+            </Pressable>
+          </View>
+        ) : state.isRecording ? (
+          <View style={styles.recordingBar}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel voice recording"
+              disabled={busy}
+              onPress={() => void cancelRecording()}
+              style={({ pressed }) => [styles.actionIcon, pressed && styles.pressed]}
+            >
+              <Ionicons name="close" size={22} color={theme.textMuted} />
+            </Pressable>
+            <View style={styles.recordingStatus}>
+              <View style={styles.recordingDot} />
+              <Text accessibilityLiveRegion="polite" style={styles.recordingTime}>{Math.floor(state.durationMillis / 1000)}s</Text>
+              <Text style={styles.recordingLabel}>Recording voice note</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Stop recording voice note"
+              disabled={disabled || busy}
+              onPress={() => void record()}
+              style={({ pressed }) => [styles.stopButton, (pressed || disabled || busy) && styles.disabled]}
+            >
+              <Ionicons name="stop" size={17} color="#FFFFFF" />
             </Pressable>
           </View>
         ) : (
-          <View style={styles.recordingWrap}>
-            {state.isRecording ? <Text accessibilityLiveRegion="polite" style={styles.recordingTime}>{Math.floor(state.durationMillis / 1000)}s</Text> : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={state.isRecording ? "Stop recording voice note" : "Record voice note"}
-              disabled={disabled || busy}
-              onPress={() => void record()}
-              style={({ pressed }) => [styles.micButton, state.isRecording && styles.micButtonRecording, (pressed || disabled || busy) && styles.disabled]}
-            >
-              <Ionicons name={state.isRecording ? "stop" : "mic-outline"} size={21} color={state.isRecording ? "#FFFFFF" : theme.textMuted} />
-            </Pressable>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Record voice note"
+            disabled={disabled || busy}
+            onPress={() => void record()}
+            style={({ pressed }) => [styles.micButton, (pressed || disabled || busy) && styles.disabled]}
+          >
+            <Ionicons name="mic-outline" size={21} color={theme.textMuted} />
+          </Pressable>
         )}
         {error ? <Text accessibilityRole="alert" style={styles.compactError}>{error}</Text> : null}
       </View>
@@ -195,12 +249,22 @@ export function VoicePlayback({ uri, compact = false }: { uri: string; compact?:
 
 const createStyles = (theme: Theme) => StyleSheet.create({
   compactWrap: { alignItems: "flex-end", justifyContent: "center" },
+  compactWrapActive: { flex: 1, minWidth: 0, alignItems: "stretch" },
   recordingWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
-  recordingTime: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 11, minWidth: 24, textAlign: "right" },
+  recordingBar: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 22, paddingHorizontal: 5, backgroundColor: theme.surfaceMuted },
+  recordingStatus: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 7 },
+  recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.deepBrand },
+  recordingTime: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 12, minWidth: 25 },
+  recordingLabel: { flex: 1, color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12 },
   micButton: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   micButtonRecording: { backgroundColor: theme.deepBrand },
-  voiceDraft: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 40, maxWidth: 190, borderRadius: 20, paddingHorizontal: 5, backgroundColor: theme.surfaceMuted },
-  voiceDraftText: { flex: 1, minWidth: 58, color: theme.text, fontFamily: theme.font.medium, fontSize: 12 },
+  voiceDraft: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 22, paddingHorizontal: 5, backgroundColor: theme.surfaceMuted },
+  voiceDraftCopy: { flex: 1, minWidth: 0, gap: 1 },
+  voiceDraftText: { color: theme.text, fontFamily: theme.font.medium, fontSize: 12 },
+  voiceDraftMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10 },
+  actionIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  stopButton: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: theme.deepBrand },
+  sendVoice: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: theme.deepBrand },
   useVoice: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: theme.deepBrand },
   smallIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   playIcon: { backgroundColor: theme.surface },

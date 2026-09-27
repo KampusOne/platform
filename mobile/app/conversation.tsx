@@ -3,6 +3,7 @@ import {
   AppState,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -132,6 +133,7 @@ export default function ConversationScreen() {
   const [uploading, setUploading] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [attachment, setAttachment] = useState<{ id: string; name: string } | null>(null);
+  const [voiceActive, setVoiceActive] = useState(false);
   const pending = useRef<{ id: string; body: string; mediaId?: string } | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
   const initialScrollDone = useRef(false);
@@ -224,6 +226,24 @@ export default function ConversationScreen() {
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Message not sent. Your draft is kept.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendVoice(mediaId: string) {
+    if (sending) throw new Error("Another message is still sending.");
+    setSending(true);
+    setError("");
+    const message = { id: Crypto.randomUUID(), body: "", mediaId };
+    try {
+      await api(`/v1/messages/threads/${id}/messages`, { method: "POST", body: JSON.stringify(message) });
+      await load();
+      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+    } catch (caught) {
+      const messageText = caught instanceof Error ? caught.message : "Voice note not sent. Your recording is kept.";
+      setError(messageText);
+      throw caught instanceof Error ? caught : new Error(messageText);
     } finally {
       setSending(false);
     }
@@ -353,36 +373,54 @@ export default function ConversationScreen() {
                 </View>
               ) : null}
               <View style={styles.composerBar}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Attach file"
-                  disabled={!canAttach || locked}
-                  onPress={() => void chooseFile()}
-                  style={({ pressed }) => [styles.plusButton, (!canAttach || locked) && styles.disabled, pressed && styles.pressed]}
-                >
-                  <Ionicons name={uploading ? "cloud-upload-outline" : "add"} size={24} color={theme.text} />
-                </Pressable>
-                <TextInput
-                  accessibilityLabel="Message"
-                  placeholder={canAttach ? "Type a message…" : "Send your message request…"}
-                  placeholderTextColor={theme.textMuted}
-                  value={draft}
-                  onChangeText={setDraft}
-                  multiline
-                  maxLength={5000}
-                  selectionColor={theme.brand}
-                  style={styles.composerInput}
-                />
-                {canAttach ? <MessageVoice compact disabled={locked} onReady={(mediaId, name) => setAttachment({ id: mediaId, name })} /> : null}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Send message"
-                  disabled={sending || (!draft.trim() && !attachment)}
-                  onPress={() => void send()}
-                  style={({ pressed }) => [styles.sendButton, (sending || (!draft.trim() && !attachment)) && styles.sendDisabled, pressed && styles.pressed]}
-                >
-                  <Ionicons name={sending ? "hourglass-outline" : "send"} size={19} color="#FFFFFF" />
-                </Pressable>
+                {!voiceActive ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Attach file"
+                    disabled={!canAttach || locked}
+                    onPress={() => void chooseFile()}
+                    style={({ pressed }) => [styles.plusButton, (!canAttach || locked) && styles.disabled, pressed && styles.pressed]}
+                  >
+                    <Ionicons name={uploading ? "cloud-upload-outline" : "add"} size={24} color={theme.text} />
+                  </Pressable>
+                ) : null}
+                {!voiceActive ? (
+                  <TextInput
+                    accessibilityLabel="Message"
+                    placeholder={canAttach ? "Type a message…" : "Send your message request…"}
+                    placeholderTextColor={theme.textMuted}
+                    value={draft}
+                    onChangeText={setDraft}
+                    multiline
+                    maxLength={5000}
+                    selectionColor={theme.brand}
+                    style={styles.composerInput}
+                  />
+                ) : null}
+                {canAttach ? (
+                  <MessageVoice
+                    compact
+                    disabled={locked}
+                    onActiveChange={(active) => {
+                      setVoiceActive(active);
+                      if (active) Keyboard.dismiss();
+                    }}
+                    onReady={async (mediaId) => {
+                      await sendVoice(mediaId);
+                    }}
+                  />
+                ) : null}
+                {!voiceActive ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Send message"
+                    disabled={sending || (!draft.trim() && !attachment)}
+                    onPress={() => void send()}
+                    style={({ pressed }) => [styles.sendButton, (sending || (!draft.trim() && !attachment)) && styles.sendDisabled, pressed && styles.pressed]}
+                  >
+                    <Ionicons name={sending ? "hourglass-outline" : "send"} size={19} color="#FFFFFF" />
+                  </Pressable>
+                ) : null}
               </View>
             </View>
           ) : data ? (
