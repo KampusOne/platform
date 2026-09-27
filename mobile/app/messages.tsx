@@ -11,7 +11,7 @@ const filters = ['All', 'Unread', 'Requests', 'Tutor', 'Vendor', 'Rider'] as con
 export default function MessagesScreen() {
   const { theme } = useAppearance(), { user } = useAuth();
   const [threads, setThreads] = useState<Thread[]>([]), [filter, setFilter] = useState<typeof filters[number]>('All');
-  const [error, setError] = useState(''), [loading, setLoading] = useState(true), [moreBusy, setMoreBusy] = useState(false);
+  const [error, setError] = useState(''), [loading, setLoading] = useState(true), [moreBusy, setMoreBusy] = useState(false), [refreshing, setRefreshing] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const epoch = useRef(0), loadingRef = useRef(false), paged = useRef(false);
   const load = useCallback(async (before?: string) => {
@@ -30,22 +30,31 @@ export default function MessagesScreen() {
       if (version === epoch.current) { loadingRef.current = false; setLoading(false); setMoreBusy(false); }
     }
   }, [filter, user?.id]);
+  const refresh = useCallback(async () => {
+    if (loadingRef.current) return;
+    paged.current = false;
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
   useFocusEffect(useCallback(() => {
     epoch.current += 1; loadingRef.current = false; paged.current = false;
-    setThreads([]); setCursor(null); setLoading(true); setError('');
+    setThreads([]); setCursor(null); setLoading(true); setRefreshing(false); setError('');
     void load();
     const timer = setInterval(() => { if (AppState.currentState === 'active' && !paged.current) void load(); }, 15000);
     return () => { epoch.current += 1; loadingRef.current = false; clearInterval(timer); };
   }, [load]));
-  return <ToolPage title="Messages">
+  return <ToolPage title="Messages" refreshing={refreshing} onRefresh={() => { void refresh(); }}>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
       {filters.map(f => <Pressable key={f} accessibilityRole="button" accessibilityState={{ selected: filter === f }} onPress={() => setFilter(f)} style={{ minHeight: 44, padding: 12, borderRadius: 10, backgroundColor: filter === f ? theme.deepBrand : theme.surface }}>
         <Text style={{ color: filter === f ? 'white' : theme.text }}>{f}</Text>
       </Pressable>)}
     </View>
-    {error ? <><Text accessibilityRole="alert" style={{ color: theme.error }}>{error}</Text><ToolButton label="Refresh conversations" onPress={() => void load()} /></> : null}
+    {error ? <Text accessibilityRole="alert" style={{ color: theme.error }}>{error}</Text> : null}
     {loading ? <Text style={{ color: theme.textMuted }}>Loading…</Text> : !error && !threads.length ? <Text style={{ color: theme.textMuted }}>No {filter === 'Requests' ? 'requests' : 'conversations'} yet.</Text> : threads.map(t => <ToolRow key={t.id} title={t.display_name} detail={t.last_message || 'Start a conversation'} onPress={() => router.push({ pathname: '/conversation', params: { id: t.id } })} trailing={t.unread_count > 0 ? <Text accessibilityLabel={`${t.unread_count} unread messages`} style={{ color: theme.brand, fontWeight: '700' }}>{t.unread_count > 99 ? '99+' : t.unread_count}</Text> : undefined} />)}
     {cursor ? <ToolButton label={moreBusy ? 'Loading…' : 'Load older conversations'} disabled={moreBusy} onPress={() => void load(cursor)} /> : null}
-    {paged.current ? <ToolButton label="Refresh conversations" disabled={moreBusy} onPress={() => void load()} /> : null}
   </ToolPage>;
 }

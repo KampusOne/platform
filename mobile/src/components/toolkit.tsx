@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { type ReactNode } from "react";
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,10 +18,14 @@ export function ToolPage({
   title,
   children,
   action,
+  refreshing = false,
+  onRefresh,
 }: {
   title: string;
   children: ReactNode;
   action?: ReactNode;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
 
@@ -34,6 +39,18 @@ export function ToolPage({
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        alwaysBounceVertical={Boolean(onRefresh)}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.deepBrand}
+              colors={[theme.deepBrand]}
+              progressBackgroundColor={theme.surface}
+            />
+          ) : undefined
+        }
       >
         <View style={styles.header}>
           <Pressable
