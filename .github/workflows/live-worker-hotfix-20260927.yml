@@ -1,0 +1,58 @@
+name: Live Worker hotfix 20260927
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/live-worker-hotfix-20260927.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hotfix/live-notifications-streak-messages-20260927
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            packages/contracts/package-lock.json
+            server/package-lock.json
+            mobile/package-lock.json
+      - run: npm ci
+        working-directory: packages/contracts
+      - run: npm ci
+        working-directory: server
+      - name: Install dependencies for shared session tests
+        run: npm ci
+        working-directory: mobile
+      - name: Verify pinned hotfix Worker
+        run: npm run check && npm test -- --maxWorkers=2 && npm run build
+        working-directory: server
+      - name: Deploy pinned hotfix Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server
+          command: deploy
+      - name: Verify live hotfix routes
+        env:
+          API_URL: https://platformp.divine-haze-54eb.workers.dev
+        run: |
+          curl --fail --silent --show-error --retry 2 --max-time 20 "$API_URL/health/ready"
+          for route in /v1/notifications/inbox /v1/account/streak /v1/messages/inbox; do
+            status=$(curl --silent --show-error --retry 2 --max-time 20 -o /tmp/route.json -w '%{http_code}' "$API_URL$route")
+            if [ "$status" != "401" ]; then
+              echo "Expected $route to exist and require authentication (401); received $status."
+              cat /tmp/route.json || true
+              exit 1
+            fi
+          done
