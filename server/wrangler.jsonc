@@ -36,6 +36,7 @@
 
     "HF_CHAT_MODEL": "Qwen/Qwen3-4B-Instruct-2507:nscale",
     "HF_VISION_MODEL": "Qwen/Qwen3-VL-30B-A3B-Instruct:novita",
+    "HF_TRANSCRIPTION_MODEL": "openai/whisper-large-v3",
     "AI_CHAT_WINDOW_LIMIT": "15",
     "AI_STUDY_TRIAL_LIMIT": "5"
   },
