@@ -17,6 +17,7 @@ import { downloadPostMedia } from "@/src/lib/media-downloads";
 import { useToast } from "@/src/components/toast";
 import { readVideoPlaybackSession, writeVideoPlaybackSession } from "@/src/lib/video-playback-session";
 import { isFeedRoutePlaybackActive, subscribeFeedRoutePlayback } from "@/src/lib/feed-video-playback";
+import { cachedVideoSource, FAST_VIDEO_BUFFER_OPTIONS } from "@/src/lib/video-source";
 
 const playbackSpeeds = [1, 1.25, 1.5, 2] as const;
 
@@ -77,9 +78,10 @@ function Video({
   const suspendedRef = useRef(suspended);
   const feedRouteActiveRef = useRef(playbackMode !== "feed-autoplay" || isFeedRoutePlaybackActive());
 
-  const player = useVideoPlayer(url, (instance) => {
+  const player = useVideoPlayer(cachedVideoSource(url), (instance) => {
     instance.loop = false;
     instance.playbackRate = 1;
+    instance.bufferOptions = FAST_VIDEO_BUFFER_OPTIONS;
     if (playbackMode === "feed-autoplay") instance.muted = true;
   });
   const playingEvent = useEvent(player, "playingChange", {
