@@ -18,7 +18,39 @@ class KampusAlarmScheduler {
     String[] clock=alarm.getString("time").split(":"); Calendar date=Calendar.getInstance(TimeZone.getTimeZone("Africa/Lagos"));date.setTimeInMillis(now);date.set(Calendar.HOUR_OF_DAY,Integer.parseInt(clock[0]));date.set(Calendar.MINUTE,Integer.parseInt(clock[1]));date.set(Calendar.SECOND,0);date.set(Calendar.MILLISECOND,0);
     for(int offset=0;offset<=7;offset++){int day=date.get(Calendar.DAY_OF_WEEK)-1;for(int i=0;i<days.length();i++)if(days.getInt(i)==day&&date.getTimeInMillis()>now)return date.getTimeInMillis();date.add(Calendar.DATE,1);}return -1;
   }
-  static void schedule(Context c,String id,long when) { if(when<=System.currentTimeMillis()||!canSchedule(c))return; ((AlarmManager)c.getSystemService(Context.ALARM_SERVICE)).setAlarmClock(new AlarmManager.AlarmClockInfo(when,open(c,id)),pending(c,id)); }
+  static boolean schedule(Context c,String id,long when) {
+    if(when<=System.currentTimeMillis())return false;
+    AlarmManager manager=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);
+    PendingIntent alarmIntent=pending(c,id);
+    try {
+      if(canSchedule(c)){
+        manager.setAlarmClock(new AlarmManager.AlarmClockInfo(when,open(c,id)),alarmIntent);
+        android.util.Log.i("KampusAlarms","Scheduled exact alarm "+id+" at "+when);
+      } else {
+        // Android 14+ denies SCHEDULE_EXACT_ALARM by default on many fresh installs.
+        // Never silently drop the user's alarm: keep a wake-up fallback registered
+        // while the app guides the user to enable exact alarm access.
+        if(Build.VERSION.SDK_INT>=23)manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,alarmIntent);
+        else manager.set(AlarmManager.RTC_WAKEUP,when,alarmIntent);
+        android.util.Log.w("KampusAlarms","Exact alarm access unavailable; scheduled wake-up fallback for "+id);
+      }
+      return true;
+    } catch(SecurityException denied) {
+      // Permission can be revoked between canScheduleExactAlarms() and registration.
+      try {
+        if(Build.VERSION.SDK_INT>=23)manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,alarmIntent);
+        else manager.set(AlarmManager.RTC_WAKEUP,when,alarmIntent);
+        android.util.Log.w("KampusAlarms","Exact alarm permission changed; fallback registered for "+id,denied);
+        return true;
+      } catch(Exception fallbackError) {
+        android.util.Log.e("KampusAlarms","Unable to register alarm "+id,fallbackError);
+        return false;
+      }
+    } catch(Exception error) {
+      android.util.Log.e("KampusAlarms","Unable to register alarm "+id,error);
+      return false;
+    }
+  }
   static synchronized void sync(Context c,JSONArray alarms) throws Exception {
     if(alarms.length()>150)throw new IllegalArgumentException("Too many alarms");
     JSONObject previous=new JSONObject(prefs(c).getString("alarms","{}")),next=new JSONObject();
