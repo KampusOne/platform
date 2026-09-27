@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode, useEffect } from "react";
-import { Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { Platform, SafeAreaView, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useStartup } from "@/src/lib/startup";
@@ -40,9 +40,9 @@ function tryRefreshRecovery(): boolean {
 
 export class AppErrorBoundary extends Component<
   { children: ReactNode },
-  { failed: boolean; recovering: boolean }
+  { failed: boolean; refreshing: boolean }
 > {
-  state = { failed: false, recovering: false };
+  state = { failed: false, refreshing: false };
 
   static getDerivedStateFromError() {
     return { failed: true };
@@ -56,47 +56,56 @@ export class AppErrorBoundary extends Component<
     });
 
     if (tryRefreshRecovery()) {
-      this.setState({ recovering: true });
+      this.setState({ refreshing: true });
     }
   }
 
   private recover = () => {
-    this.setState({ failed: false }, () => router.replace("/"));
+    this.setState({ failed: false, refreshing: false }, () => {
+      if (router.canGoBack()) {
+        router.back();
+        return;
+      }
+      router.replace("/");
+    });
   };
 
   render() {
     if (!this.state.failed) return this.props.children;
-    return <ErrorFallback recover={this.recover} recovering={this.state.recovering} />;
+    return <SilentRecovery recover={this.recover} refreshing={this.state.refreshing} />;
   }
 }
 
-function ErrorFallback({ recover, recovering }: { recover: () => void; recovering: boolean }) {
+function SilentRecovery({
+  recover,
+  refreshing,
+}: {
+  recover: () => void;
+  refreshing: boolean;
+}) {
   const { styles } = useThemeStyles(createStyles);
   const { markHomeReady } = useStartup();
-  useEffect(markHomeReady, [markHomeReady]);
-  if (recovering) return <SafeAreaView style={styles.safe}><Text style={styles.body}>Refreshing KampusOne…</Text></SafeAreaView>;
+
+  useEffect(() => {
+    markHomeReady();
+    if (refreshing) return;
+    const timer = setTimeout(recover, 0);
+    return () => clearTimeout(timer);
+  }, [markHomeReady, recover, refreshing]);
+
   return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.card}>
-          <Text style={styles.eyebrow}>KAMPUSONE</Text>
-          <Text style={styles.title}>This screen hit a problem</Text>
-          <Text style={styles.body}>
-            Your session is still safe. Go back home and try the screen again.
-          </Text>
-          <Pressable accessibilityRole="button" onPress={recover} style={styles.button}>
-            <Text style={styles.buttonText}>Return home</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
+    <SafeAreaView
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={styles.safe}
+    />
+  );
 }
 
-const createStyles = (theme: Theme) => StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.canvas, justifyContent: "center", padding: 22 },
-  card: { borderRadius: 24, backgroundColor: theme.surface, padding: 24, borderWidth: 1, borderColor: theme.border },
-  eyebrow: { color: theme.accentText, fontWeight: "800", fontSize: 10, letterSpacing: 1.2 },
-  title: { color: theme.text, fontWeight: "800", fontSize: 24, marginTop: 8 },
-  body: { color: theme.textMuted, fontSize: 14, lineHeight: 21, marginTop: 8 },
-  button: { alignSelf: "flex-start", backgroundColor: theme.deepBrand, borderRadius: 14, minHeight: 46, justifyContent: "center", paddingHorizontal: 18, marginTop: 20 },
-  buttonText: { color: "#FFFFFF", fontWeight: "700" },
-});
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    safe: {
+      backgroundColor: theme.canvas,
+      flex: 1,
+    },
+  });
