@@ -42,11 +42,15 @@ app.use("/v1/*", async (c, next) => {
     isMediaUpload &&
     c.req.query("kind") === "post" &&
     (c.req.header("Content-Type") ?? "").toLowerCase().startsWith("video/");
+  const isVoiceTranscription =
+    c.req.path === "/v1/ai/transcribe" || c.req.path === "/v1/ai/transcribe/";
   const maxSize = rawPostVideoUpload
     ? 50 * 1024 * 1024 + 4096
     : isMediaUpload
       ? 10 * 1024 * 1024 + 4096
-      : 256 * 1024;
+      : isVoiceTranscription
+        ? 8 * 1024 * 1024 + 4096
+        : 256 * 1024;
   return bodyLimit({
     maxSize,
     onError: () => {
@@ -55,7 +59,9 @@ app.use("/v1/*", async (c, next) => {
         "BAD_REQUEST",
         rawPostVideoUpload
           ? "Post videos can be up to 50 MB. Trim or choose a smaller video."
-          : "This upload or request is too large.",
+          : isVoiceTranscription
+            ? "Voice recordings can be up to 8 MB. Record a shorter message."
+            : "This upload or request is too large.",
       );
     },
   })(c, next);
