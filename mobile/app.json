@@ -2,9 +2,9 @@
   "expo": {
     "name": "KampusOne",
     "slug": "kampusone",
-    "version": "0.3.4",
+    "version": "0.3.5",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/kampusone-app-icon.jpg",
     "scheme": "kampusone",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -16,13 +16,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.kampusone.mobile",
-      "buildNumber": "34"
+      "buildNumber": "35"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "monochromeImage": "./assets/monochrome-icon.png",
-        "backgroundColor": "#A8462E"
+        "foregroundImage": "./assets/kampusone-app-icon.jpg",
+        "backgroundColor": "#F1DFC7"
       },
       "package": "app.kampusone.mobile",
       "predictiveBackGestureEnabled": false,
@@ -31,12 +30,12 @@
         "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 34
+      "versionCode": 35
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/kampusone-app-icon.jpg"
     },
     "plugins": [
       [

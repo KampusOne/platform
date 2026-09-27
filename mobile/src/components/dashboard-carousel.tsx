@@ -17,61 +17,141 @@ const slides: { title: string; detail: string; action: string; route: Href; imag
 export function DashboardCarousel() {
   const { styles, theme } = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
-  const cardWidth = Math.min(width, 540) - 40;
+  const fallbackWidth = Math.max(1, Math.min(width, 540) - 40);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const cardWidth = viewportWidth || fallbackWidth;
   const scroll = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(AppState.currentState === "active");
   const [paused, setPaused] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [screenReader, setScreenReader] = useState(false);
   const reduced = useReducedMotionPreference();
-  useFocusEffect(useCallback(() => { setFocused(true); return () => setFocused(false); }, []));
+
+  useFocusEffect(useCallback(() => {
+    setFocused(true);
+    return () => setFocused(false);
+  }, []));
+
   useEffect(() => {
     const app = AppState.addEventListener("change", state => setActive(state === "active"));
     let alive = true;
-    void AccessibilityInfo.isScreenReaderEnabled().then(value => { if (alive) setScreenReader(value); });
+    void AccessibilityInfo.isScreenReaderEnabled().then(value => {
+      if (alive) setScreenReader(value);
+    });
     const a11y = AccessibilityInfo.addEventListener("screenReaderChanged", setScreenReader);
-    return () => { alive = false; app.remove(); a11y.remove(); };
+    return () => {
+      alive = false;
+      app.remove();
+      a11y.remove();
+    };
   }, []);
-  const go = useCallback((next: number) => {
-    setIndex(next);
-    scroll.current?.scrollTo({ x: next * cardWidth, animated: !reduced });
-  }, [cardWidth, reduced]);
-  useEffect(() => {
-    if (!focused || !active || paused || reduced || screenReader) return;
-    const timer = setTimeout(() => go((index + 1) % slides.length), 4000);
-    return () => clearTimeout(timer);
-  }, [focused, active, paused, reduced, screenReader, index, go]);
-  useEffect(() => { scroll.current?.scrollTo({ x: index * cardWidth, animated: false }); }, [cardWidth]);
 
-  return <View style={styles.root}>
-    <ScrollView ref={scroll} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-      onScrollBeginDrag={() => setPaused(true)}
-      onMomentumScrollEnd={event => setIndex(Math.round(event.nativeEvent.contentOffset.x / cardWidth))}
+  const go = useCallback((next: number) => {
+    const bounded = ((next % slides.length) + slides.length) % slides.length;
+    setIndex(bounded);
+    if (cardWidth > 0) {
+      scroll.current?.scrollTo({ x: bounded * cardWidth, animated: !reduced });
+    }
+  }, [cardWidth, reduced]);
+
+  useEffect(() => {
+    if (!focused || !active || paused || dragging || reduced || screenReader) return;
+    const timer = setTimeout(() => go(index + 1), 3000);
+    return () => clearTimeout(timer);
+  }, [focused, active, paused, dragging, reduced, screenReader, index, go]);
+
+  useEffect(() => {
+    if (cardWidth > 0) {
+      scroll.current?.scrollTo({ x: index * cardWidth, animated: false });
+    }
+  }, [cardWidth]);
+
+  const updateIndexFromOffset = useCallback((x: number) => {
+    if (cardWidth <= 0) return;
+    const next = Math.max(0, Math.min(slides.length - 1, Math.round(x / cardWidth)));
+    setIndex(next);
+  }, [cardWidth]);
+
+  return <View
+    onLayout={event => {
+      const measured = Math.max(1, Math.round(event.nativeEvent.layout.width));
+      setViewportWidth(current => current === measured ? current : measured);
+    }}
+    style={styles.root}
+  >
+    <ScrollView
+      ref={scroll}
+      horizontal
+      pagingEnabled
+      snapToInterval={cardWidth}
+      decelerationRate="fast"
+      showsHorizontalScrollIndicator={false}
+      onScrollBeginDrag={() => setDragging(true)}
+      onScrollEndDrag={event => {
+        updateIndexFromOffset(event.nativeEvent.contentOffset.x);
+        setDragging(false);
+      }}
+      onMomentumScrollEnd={event => {
+        updateIndexFromOffset(event.nativeEvent.contentOffset.x);
+        setDragging(false);
+      }}
       style={styles.viewport}
     >
-      {slides.map((slide, i) => <View key={slide.action} style={[styles.card, { width: cardWidth }]}
-        accessibilityElementsHidden={i !== index} importantForAccessibility={i === index ? "auto" : "no-hide-descendants"}>
+      {slides.map((slide, i) => <View
+        key={slide.action}
+        style={[styles.card, { width: cardWidth }]}
+        accessibilityElementsHidden={i !== index}
+        importantForAccessibility={i === index ? "auto" : "no-hide-descendants"}
+      >
         <View style={styles.copy}>
           <Text style={styles.title}>{slide.title}</Text>
           <Text style={styles.detail}>{slide.detail}</Text>
-          <Pressable accessibilityRole="button" onPress={() => router.push(slide.route)} style={({ pressed }) => [styles.button, pressed && { opacity: 0.78 }]}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push(slide.route)}
+            style={({ pressed }) => [styles.button, pressed && { opacity: 0.78 }]}
+          >
             <Text style={styles.buttonText}>{slide.action}</Text>
           </Pressable>
         </View>
-        <Image accessible={false} accessibilityIgnoresInvertColors resizeMode="contain" source={slide.image} style={[styles.art, slide.wide && styles.wideArt]} />
+        <Image
+          accessible={false}
+          accessibilityIgnoresInvertColors
+          resizeMode="contain"
+          source={slide.image}
+          style={[styles.art, slide.wide && styles.wideArt]}
+        />
       </View>)}
     </ScrollView>
+
     <View style={styles.controls}>
-      {slides.map((slide, i) => <Pressable key={slide.action} accessibilityRole="button" accessibilityLabel={`Show ${slide.title}`} accessibilityState={{ selected: i === index }} onPress={() => { setPaused(true); go(i); }} style={styles.dotTarget}><View style={[styles.dot, i === index && styles.selectedDot]} /></Pressable>)}
-      {!screenReader && !reduced ? <Pressable accessibilityRole="button" accessibilityLabel={paused ? "Play slides" : "Pause slides"} onPress={() => setPaused(value => !value)} style={styles.play}><Ionicons name={paused ? "play" : "pause"} color={theme.textMuted} size={13} /></Pressable> : null}
+      {slides.map((slide, i) => <Pressable
+        key={slide.action}
+        accessibilityRole="button"
+        accessibilityLabel={`Show ${slide.title}`}
+        accessibilityState={{ selected: i === index }}
+        onPress={() => go(i)}
+        style={styles.dotTarget}
+      >
+        <View style={[styles.dot, i === index && styles.selectedDot]} />
+      </Pressable>)}
+      {!screenReader && !reduced ? <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={paused ? "Play slides" : "Pause slides"}
+        onPress={() => setPaused(value => !value)}
+        style={styles.play}
+      >
+        <Ionicons name={paused ? "play" : "pause"} color={theme.textMuted} size={13} />
+      </Pressable> : null}
     </View>
   </View>;
 }
 
 const createStyles = (theme: Theme) => StyleSheet.create({
-  root: { marginTop: 20 },
-  viewport: { borderRadius: 24, backgroundColor: theme.surfaceSoft },
+  root: { marginTop: 20, width: "100%" },
+  viewport: { borderRadius: 24, backgroundColor: theme.surfaceSoft, width: "100%" },
   card: { minHeight: 232, overflow: "hidden", padding: 20, justifyContent: "center" },
   copy: { width: "59%", zIndex: 2 },
   title: { color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 27, lineHeight: 29, letterSpacing: -0.6 },
