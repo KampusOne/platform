@@ -13,8 +13,20 @@ export function AlarmSync(){
   async function transferEvents(){if(!nativeAlarms)return;const events=await getAlarmEvents();if(events.length){const result=await api<{acknowledged:string[]}>('/v1/notifications/alarm-events',{method:'POST',body:JSON.stringify({events})});await nativeAlarms.acknowledge(JSON.stringify(result.acknowledged));}}
   async function restore(){
    if(syncing)return;syncing=true;
-   try{const result=await api<{alarms:Alarm[]}>('/v1/learning/alarms');if(!active)return;await syncAlarms(result.alarms);
-    try{const {sound}=await api<{sound:{url:string}|null}>('/v1/notifications/sounds/default');if(active){if(Platform.OS==='web')setWebAlarmSound(sound?.url);else if(nativeAlarms)await nativeAlarms.cacheSound(sound?.url??'');}}catch{/* Keep the cached or built-in sound offline. */}
+   try{const result=await api<{alarms:Alarm[]}>('/v1/learning/alarms');if(!active)return;
+    const hasEnabledAlarm=result.alarms.some(alarm=>alarm.enabled);
+    const requestExact=Boolean(hasEnabledAlarm&&Platform.OS==='android'&&nativeAlarms&&!(await nativeAlarms.status()));
+    await syncAlarms(result.alarms,requestExact);
+    try{
+      if(Platform.OS==='web'){
+        const {sound}=await api<{sound:{url:string}|null}>('/v1/notifications/sounds/default');
+        if(active)setWebAlarmSound(sound?.url);
+      }else if(nativeAlarms){
+        // Android alarms deliberately use the device's built-in alarm tone.
+        // Clear any previously cached admin/custom tone so a broken download can never silence ringing.
+        await nativeAlarms.cacheSound('');
+      }
+    }catch{/* Keep the built-in device alarm tone offline. */}
     await transferEvents();
    }catch{/* Native schedules and pending events survive a network interruption. */}finally{syncing=false;}
   }
