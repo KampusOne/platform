@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { assertAIConfiguration, generateAI, completeAI, aiMessages, selectAIProvider, studentSafeText, type AIEnvironment, type AIMode } from "../src/lib/ai-provider";
+import { assertAIConfiguration, generateAI, completeAI, aiMessages, aiSystemInstruction, selectAIProvider, studentSafeText, type AIEnvironment, type AIMode } from "../src/lib/ai-provider";
 const env:AIEnvironment={AI_ASSISTANT_ENABLED:"true",HF_TOKEN:"hf_SYNTHETIC",HF_CHAT_MODEL:"test/text:nscale",HF_VISION_MODEL:"test/vision:novita",HF_PRO_MODEL:"test/pro"};
 const success=()=>Response.json({choices:[{finish_reason:"stop",message:{content:"A useful answer"}}]});
 describe("Hugging Face-only adapter",()=>{
+  it("identifies the assistant as Kira",()=>{const instruction=aiSystemInstruction("study");expect(instruction).toContain("You are Kira");expect(instruction).toContain("identify yourself as Kira");expect(instruction).not.toContain("You are KampusOne AI");});
   it.each(["study","summary","notes","quiz","timetable"] as AIMode[])("always routes %s through HF",mode=>{for(const mime of [undefined,"application/pdf","image/png"])expect(selectAIProvider(mode,mime)).toBe("huggingface");});
   it.each(["image/jpeg","image/png","image/webp"])("uses vision model and image_url for %s",async mimeType=>{const fetcher=vi.fn<typeof fetch>().mockResolvedValue(success());await generateAI(env,{mode:"study",prompt:"Explain this",media:{mimeType,data:"SYNTHETIC"}},fetcher);const call=JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));expect(call.model).toBe("test/vision:novita");expect(call.messages.at(-1).content[1]).toEqual({type:"image_url",image_url:{url:`data:${mimeType};base64,SYNTHETIC`}});expect(fetcher).toHaveBeenCalledTimes(1);});
   it("requires PDF text extraction before provider I/O",async()=>{const fetcher=vi.fn<typeof fetch>();await expect(generateAI(env,{mode:"summary",prompt:"Read",media:{mimeType:"application/pdf",data:"PDF"}},fetcher)).rejects.toMatchObject({reason:"AI_UNSUPPORTED_MEDIA"});expect(fetcher).not.toHaveBeenCalled();});
