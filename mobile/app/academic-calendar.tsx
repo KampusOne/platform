@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { randomUUID } from "expo-crypto";
 import { router, useFocusEffect } from "expo-router";
 
-import { ToolPage } from "@/src/components/toolkit";
+import { ToolField, ToolPage } from "@/src/components/toolkit";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useAppearance, type Theme } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
@@ -16,6 +17,20 @@ type Event = {
   ends_on: string;
   semester: string;
 };
+
+type EventDraft = {
+  title: string;
+  startsOn: string;
+  endsOn: string;
+  semester: string;
+};
+
+const emptyDraft = (): EventDraft => ({
+  title: "",
+  startsOn: "",
+  endsOn: "",
+  semester: "",
+});
 
 const dateLabel = (value: string) =>
   new Date(value + "T12:00:00Z").toLocaleDateString("en-NG", {
@@ -41,6 +56,22 @@ const dateBadge = (value: string) => {
   };
 };
 
+const isRealDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(value + "T12:00:00Z");
+  return (
+    Number.isFinite(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
+  );
+};
+
+const sortEvents = (rows: Event[]) =>
+  [...rows].sort(
+    (left, right) =>
+      left.starts_on.localeCompare(right.starts_on) ||
+      left.title.localeCompare(right.title),
+  );
+
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
     hero: {
@@ -64,6 +95,7 @@ const createStyles = (theme: Theme) =>
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: theme.surfaceTint,
+      flexShrink: 0,
     },
     eyebrow: {
       fontFamily: theme.font.semibold,
@@ -85,6 +117,9 @@ const createStyles = (theme: Theme) =>
       color: theme.textMuted,
       marginTop: 6,
     },
+    heroActions: {
+      gap: 10,
+    },
     importButton: {
       minHeight: 52,
       borderRadius: 16,
@@ -99,6 +134,115 @@ const createStyles = (theme: Theme) =>
       fontFamily: theme.font.semibold,
       fontSize: 14,
       color: "#FFFFFF",
+    },
+    addButton: {
+      minHeight: 50,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surfaceMuted,
+      paddingHorizontal: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 9,
+    },
+    addText: {
+      fontFamily: theme.font.semibold,
+      fontSize: 14,
+      color: theme.accentText,
+    },
+    formCard: {
+      marginTop: 14,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+      padding: 16,
+      ...theme.shadow,
+    },
+    formHeader: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: 12,
+      marginBottom: 16,
+    },
+    formHeaderCopy: {
+      flex: 1,
+      minWidth: 0,
+    },
+    formTitle: {
+      fontFamily: theme.font.displayStrong,
+      fontSize: 18,
+      color: theme.text,
+    },
+    formBody: {
+      fontFamily: theme.font.body,
+      fontSize: 12,
+      lineHeight: 18,
+      color: theme.textMuted,
+      marginTop: 5,
+    },
+    closeForm: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.surfaceMuted,
+      flexShrink: 0,
+    },
+    formHint: {
+      fontFamily: theme.font.body,
+      fontSize: 11,
+      lineHeight: 17,
+      color: theme.textMuted,
+      marginTop: -8,
+      marginBottom: 16,
+    },
+    formError: {
+      fontFamily: theme.font.medium,
+      fontSize: 12,
+      lineHeight: 18,
+      color: theme.error,
+      marginBottom: 12,
+    },
+    formActions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+    },
+    saveButton: {
+      minHeight: 46,
+      borderRadius: 14,
+      paddingHorizontal: 18,
+      flex: 1,
+      minWidth: 140,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.deepBrand,
+    },
+    saveButtonText: {
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+      color: "#FFFFFF",
+    },
+    cancelButton: {
+      minHeight: 46,
+      borderRadius: 14,
+      paddingHorizontal: 18,
+      minWidth: 100,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.surfaceMuted,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    cancelButtonText: {
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+      color: theme.accentText,
     },
     sectionHeader: {
       flexDirection: "row",
@@ -193,6 +337,7 @@ const createStyles = (theme: Theme) =>
       alignItems: "center",
       justifyContent: "center",
       paddingVertical: 7,
+      flexShrink: 0,
     },
     dateMonth: {
       fontFamily: theme.font.bold,
@@ -236,14 +381,26 @@ const createStyles = (theme: Theme) =>
       fontSize: 11,
       color: theme.accentText,
     },
-    removeLink: {
+    eventActions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 4,
+      marginTop: 3,
+    },
+    eventAction: {
       alignSelf: "flex-start",
-      paddingTop: 10,
-      paddingBottom: 2,
+      paddingTop: 9,
+      paddingBottom: 3,
       paddingRight: 12,
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
+    },
+    editText: {
+      fontFamily: theme.font.medium,
+      fontSize: 12,
+      color: theme.accentText,
     },
     removeText: {
       fontFamily: theme.font.medium,
@@ -271,6 +428,7 @@ const createStyles = (theme: Theme) =>
     },
     confirmActions: {
       flexDirection: "row",
+      flexWrap: "wrap",
       gap: 8,
       marginTop: 10,
     },
@@ -308,9 +466,13 @@ export default function Calendar() {
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [editing, setEditing] = useState<"new" | string | null>(null);
+  const [draft, setDraft] = useState<EventDraft>(emptyDraft);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [formError, setFormError] = useState("");
   const generation = useRef(0);
+  const createRequestId = useRef(randomUUID());
 
   useFocusEffect(
     useCallback(() => {
@@ -323,7 +485,8 @@ export default function Calendar() {
 
       void api<{ events: Event[] }>("/v1/calendar", { timeoutMs: 12_000 })
         .then((result) => {
-          if (current === generation.current) setEvents(result.events);
+          if (current === generation.current)
+            setEvents(sortEvents(result.events));
         })
         .catch((caught) => {
           if (current !== generation.current) return;
@@ -342,6 +505,118 @@ export default function Calendar() {
       };
     }, [user?.id, retry]),
   );
+
+  function closeEditor() {
+    if (busy) return;
+    setEditing(null);
+    setDraft(emptyDraft());
+    setFormError("");
+  }
+
+  function openNew() {
+    if (busy) return;
+    createRequestId.current = randomUUID();
+    setDraft(emptyDraft());
+    setFormError("");
+    setRemoving(null);
+    setActionError("");
+    setEditing("new");
+  }
+
+  function openEdit(event: Event) {
+    if (busy) return;
+    setDraft({
+      title: event.title,
+      startsOn: event.starts_on,
+      endsOn: event.ends_on,
+      semester: event.semester,
+    });
+    setFormError("");
+    setRemoving(null);
+    setActionError("");
+    setEditing(event.id);
+  }
+
+  function changeDraft<Key extends keyof EventDraft>(
+    key: Key,
+    value: EventDraft[Key],
+  ) {
+    if (editing === "new") createRequestId.current = randomUUID();
+    setDraft((current) => ({ ...current, [key]: value }));
+    if (formError) setFormError("");
+  }
+
+  async function saveDate() {
+    if (!editing || busy) return;
+
+    const title = draft.title.trim();
+    const startsOn = draft.startsOn.trim();
+    const endsOn = draft.endsOn.trim() || startsOn;
+    const semester = draft.semester.trim();
+
+    if (!title) {
+      setFormError("Add a title for this date.");
+      return;
+    }
+    if (!isRealDate(startsOn)) {
+      setFormError("Enter a real start date in YYYY-MM-DD format.");
+      return;
+    }
+    if (!isRealDate(endsOn)) {
+      setFormError("Enter a real end date in YYYY-MM-DD format.");
+      return;
+    }
+    if (endsOn < startsOn) {
+      setFormError("The end date cannot be before the start date.");
+      return;
+    }
+
+    const current = generation.current;
+    const event = { title, startsOn, endsOn, semester };
+    setBusy(true);
+    setFormError("");
+
+    try {
+      const result =
+        editing === "new"
+          ? await api<{ event: Event }>("/v1/calendar", {
+              method: "POST",
+              timeoutMs: 12_000,
+              body: JSON.stringify({
+                requestId: createRequestId.current,
+                event,
+              }),
+            })
+          : await api<{ event: Event }>(`/v1/calendar/${editing}`, {
+              method: "PATCH",
+              timeoutMs: 12_000,
+              body: JSON.stringify({ event }),
+            });
+
+      if (current !== generation.current) return;
+      setEvents((rows) =>
+        sortEvents(
+          editing === "new"
+            ? [...rows.filter((row) => row.id !== result.event.id), result.event]
+            : rows.map((row) =>
+                row.id === result.event.id ? result.event : row,
+              ),
+        ),
+      );
+      setEditing(null);
+      setDraft(emptyDraft());
+      setFormError("");
+    } catch (caught) {
+      if (current !== generation.current) return;
+      setFormError(
+        caught instanceof Error
+          ? caught.message
+          : "This date could not be saved. Try again.",
+      );
+    } finally {
+      if (current === generation.current) setBusy(false);
+    }
+  }
 
   async function remove(id: string) {
     if (busy) return;
@@ -382,29 +657,163 @@ export default function Calendar() {
               color={theme.deepBrand}
             />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.eyebrow}>ACADEMIC YEAR</Text>
-            <Text style={styles.heroTitle}>Keep important dates together.</Text>
-            <Text style={styles.heroBody}>
-              Import your university calendar and keep lectures, breaks and exam
-              periods easy to scan.
+            <Text
+              android_hyphenationFrequency="none"
+              style={styles.heroTitle}
+              textBreakStrategy="simple"
+            >
+              Keep important dates together.
+            </Text>
+            <Text
+              android_hyphenationFrequency="none"
+              style={styles.heroBody}
+              textBreakStrategy="simple"
+            >
+              Import your university calendar, then add your own deadlines,
+              events and reminders too.
             </Text>
           </View>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Import academic calendar"
-          onPress={() => router.push("/timetable-import?kind=calendar")}
-          style={({ pressed }) => [
-            styles.importButton,
-            pressed && { opacity: 0.78 },
-          ]}
-        >
-          <Ionicons name="cloud-upload-outline" size={19} color="#FFFFFF" />
-          <Text style={styles.importText}>Import academic calendar</Text>
-        </Pressable>
+        <View style={styles.heroActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Import academic calendar"
+            onPress={() => router.push("/timetable-import?kind=calendar")}
+            style={({ pressed }) => [
+              styles.importButton,
+              pressed && { opacity: 0.78 },
+            ]}
+          >
+            <Ionicons name="cloud-upload-outline" size={19} color="#FFFFFF" />
+            <Text style={styles.importText}>Import academic calendar</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add a date"
+            disabled={busy}
+            onPress={openNew}
+            style={({ pressed }) => [
+              styles.addButton,
+              (pressed || busy) && { opacity: 0.62 },
+            ]}
+          >
+            <Ionicons name="add-circle-outline" size={19} color={theme.accentText} />
+            <Text style={styles.addText}>Add a date</Text>
+          </Pressable>
+        </View>
       </View>
+
+      {editing ? (
+        <View style={styles.formCard}>
+          <View style={styles.formHeader}>
+            <View style={styles.formHeaderCopy}>
+              <Text style={styles.formTitle}>
+                {editing === "new" ? "Add personal date" : "Edit date"}
+              </Text>
+              <Text style={styles.formBody}>
+                Add anything you want to remember. Changes here only affect your
+                own calendar.
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close calendar editor"
+              disabled={busy}
+              onPress={closeEditor}
+              style={({ pressed }) => [
+                styles.closeForm,
+                (pressed || busy) && { opacity: 0.58 },
+              ]}
+            >
+              <Ionicons name="close" size={21} color={theme.text} />
+            </Pressable>
+          </View>
+
+          <ToolField
+            label="Title"
+            placeholder="e.g. Project defence"
+            value={draft.title}
+            maxLength={160}
+            onChangeText={(value) => changeDraft("title", value)}
+            editable={!busy}
+            returnKeyType="next"
+          />
+          <ToolField
+            label="Start date"
+            placeholder="YYYY-MM-DD"
+            value={draft.startsOn}
+            maxLength={10}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="numbers-and-punctuation"
+            onChangeText={(value) => changeDraft("startsOn", value)}
+            editable={!busy}
+          />
+          <ToolField
+            label="End date"
+            placeholder="Leave blank for a one-day event"
+            value={draft.endsOn}
+            maxLength={10}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="numbers-and-punctuation"
+            onChangeText={(value) => changeDraft("endsOn", value)}
+            editable={!busy}
+          />
+          <Text style={styles.formHint}>
+            Use YYYY-MM-DD, for example 2026-10-12.
+          </Text>
+          <ToolField
+            label="Semester or label (optional)"
+            placeholder="e.g. First semester, Personal"
+            value={draft.semester}
+            maxLength={80}
+            onChangeText={(value) => changeDraft("semester", value)}
+            editable={!busy}
+          />
+
+          {formError ? (
+            <Text accessibilityRole="alert" style={styles.formError}>
+              {formError}
+            </Text>
+          ) : null}
+
+          <View style={styles.formActions}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => void saveDate()}
+              style={({ pressed }) => [
+                styles.saveButton,
+                (pressed || busy) && { opacity: 0.58 },
+              ]}
+            >
+              <Text style={styles.saveButtonText}>
+                {busy
+                  ? "Saving…"
+                  : editing === "new"
+                    ? "Add to calendar"
+                    : "Save changes"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={closeEditor}
+              style={({ pressed }) => [
+                styles.cancelButton,
+                (pressed || busy) && { opacity: 0.58 },
+              ]}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Your dates</Text>
@@ -455,7 +864,13 @@ export default function Calendar() {
               </View>
 
               <View style={styles.eventContent}>
-                <Text style={styles.eventTitle}>{event.title}</Text>
+                <Text
+                  android_hyphenationFrequency="none"
+                  style={styles.eventTitle}
+                  textBreakStrategy="simple"
+                >
+                  {event.title}
+                </Text>
                 <Text style={styles.eventDate}>
                   {dateLabel(event.starts_on)}
                   {event.ends_on !== event.starts_on
@@ -511,25 +926,47 @@ export default function Calendar() {
                     </View>
                   </View>
                 ) : (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${event.title}`}
-                    onPress={() => {
-                      setRemoving(event.id);
-                      setActionError("");
-                    }}
-                    style={({ pressed }) => [
-                      styles.removeLink,
-                      pressed && { opacity: 0.62 },
-                    ]}
-                  >
-                    <Ionicons
-                      name="trash-outline"
-                      size={14}
-                      color={theme.deepBrand}
-                    />
-                    <Text style={styles.removeText}>Remove</Text>
-                  </Pressable>
+                  <View style={styles.eventActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit ${event.title}`}
+                      disabled={busy}
+                      onPress={() => openEdit(event)}
+                      style={({ pressed }) => [
+                        styles.eventAction,
+                        (pressed || busy) && { opacity: 0.62 },
+                      ]}
+                    >
+                      <Ionicons
+                        name="create-outline"
+                        size={14}
+                        color={theme.accentText}
+                      />
+                      <Text style={styles.editText}>Edit</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${event.title}`}
+                      disabled={busy}
+                      onPress={() => {
+                        setRemoving(event.id);
+                        setActionError("");
+                        setEditing(null);
+                        setFormError("");
+                      }}
+                      style={({ pressed }) => [
+                        styles.eventAction,
+                        (pressed || busy) && { opacity: 0.62 },
+                      ]}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={14}
+                        color={theme.deepBrand}
+                      />
+                      <Text style={styles.removeText}>Remove</Text>
+                    </Pressable>
+                  </View>
                 )}
               </View>
             </View>
@@ -546,9 +983,20 @@ export default function Calendar() {
           </View>
           <Text style={styles.stateTitle}>No academic dates yet</Text>
           <Text style={styles.stateBody}>
-            Import your university calendar to see semester dates, breaks and
-            exam periods here.
+            Import your university calendar or add a personal date to get
+            started.
           </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={openNew}
+            style={({ pressed }) => [
+              styles.retryButton,
+              pressed && { opacity: 0.68 },
+            ]}
+          >
+            <Ionicons name="add-outline" size={17} color={theme.accentText} />
+            <Text style={styles.retryText}>Add a date</Text>
+          </Pressable>
         </View>
       )}
     </ToolPage>
