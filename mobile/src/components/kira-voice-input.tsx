@@ -101,7 +101,17 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
       const body=Platform.OS==='web'?await(await fetch(recordingUri)).blob():new File(recordingUri) as unknown as Blob;
       if(body.size>8*1024*1024)throw new Error('Record a shorter voice message.');
       const contentType=Platform.OS==='web'?body.type||'audio/webm':'audio/mp4';
-      const result=await api<{text:string}>('/v1/ai/transcribe?idempotencyKey='+encodeURIComponent(id.current)+'&consent=true',{method:'POST',headers:{'Content-Type':contentType},body,timeoutMs:75000});
+      const path='/v1/ai/transcribe?idempotencyKey='+encodeURIComponent(id.current)+'&consent=true';
+      let result:{text:string};
+      try{
+        result=await api<{text:string}>(path,{method:'POST',headers:{'Content-Type':contentType},body,timeoutMs:75000});
+      }catch(e){
+        const retryMultipart=e instanceof ApiError&&((e.status===500&&e.code==='INTERNAL_ERROR')||e.details?.retryMultipart===true);
+        if(!retryMultipart)throw e;
+        const form=new FormData();
+        form.append('file',body,Platform.OS==='web'?'Kira-voice.webm':'Kira-voice.m4a');
+        result=await api<{text:string}>(path,{method:'POST',body:form,timeoutMs:75000});
+      }
       const transcript=result.text.trim();
       if(!transcript)throw new Error('No speech was detected. Try recording again.');
       return transcript;
