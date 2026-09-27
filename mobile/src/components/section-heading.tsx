@@ -17,7 +17,13 @@ export function SectionHeading({
 
   return (
     <View style={styles.row}>
-      <Text style={styles.title}>{title}</Text>
+      <Text
+        android_hyphenationFrequency="none"
+        style={styles.title}
+        textBreakStrategy="simple"
+      >
+        {title}
+      </Text>
       {meta ? (
         <Pressable
           accessibilityRole={onPress ? "button" : undefined}
@@ -26,7 +32,13 @@ export function SectionHeading({
           onPress={onPress}
           style={({ pressed }) => [styles.metaWrap, pressed && styles.pressed]}
         >
-          <Text style={styles.meta}>{meta}</Text>
+          <Text
+            android_hyphenationFrequency="none"
+            style={styles.meta}
+            textBreakStrategy="simple"
+          >
+            {meta}
+          </Text>
           {onPress ? (
             <Ionicons
               name="chevron-forward"
@@ -47,19 +59,28 @@ const createStyles = (theme: Theme) =>
       flexDirection: "row",
       justifyContent: "space-between",
       marginBottom: theme.spacing[3],
+      minWidth: 0,
     },
     title: {
       color: theme.text,
       fontFamily: theme.font.display,
       fontSize: 19,
+      flex: 1,
       letterSpacing: -0.2,
+      minWidth: 0,
+      paddingRight: 12,
     },
     meta: {
       color: theme.brandPressed,
       fontFamily: theme.font.semibold,
       fontSize: 13,
     },
-    metaWrap: { alignItems: "center", flexDirection: "row", gap: 3 },
+    metaWrap: {
+      alignItems: "center",
+      flexDirection: "row",
+      flexShrink: 0,
+      gap: 3,
+    },
     pressed: { opacity: 0.58 },
   });
 const styles = createStyles(theme);
