@@ -126,11 +126,11 @@ aiRoutes.post("/transcribe", async c => {
 
   try {
     const text = await transcribeAI(c.env, bytes, mime);
-    await db.execute(sql`update app_private.ai_requests set status='COMPLETED',result=${JSON.stringify({version:1})}::jsonb || jsonb_build_object('transcriptionText',${text}) where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
+    await db.execute(sql`update app_private.ai_requests set status='COMPLETED',result=${JSON.stringify({version:1,transcriptionText:text})}::jsonb where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
     return c.json({ text });
   } catch (error) {
     const failure = error instanceof AIProviderError ? error : new AIProviderError(503, "AI_PROVIDER_UNAVAILABLE", "Voice transcription could not connect. Your recording is kept; try again.");
-    await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({version:1})}::jsonb || jsonb_build_object('reason',${failure.reason},'message',${failure.message}) where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
+    await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({version:1,reason:failure.reason,message:failure.message})}::jsonb where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
     throw providerFailure(failure);
   }
 });
