@@ -159,7 +159,7 @@ const moreTools: Tool[] = [
 export default function ExploreScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
-  const compactPhone = width < 380;
+  const compactPhone = width < 400;
 
   const [query, setQuery] = useState("");
   const recentToolIds = useRecentToolIds();
