@@ -61,6 +61,18 @@ describe("public profiles and scoped campus tools",()=>{
   expect(await result('/ai/actions/undo','POST',{requestId,actionId:action.id})).toMatchObject({undone:true,id:action.id,type:'alarm'});
   expect((await pg.query('select id from student_alarms where id=$1',[action.id])).rows).toHaveLength(0);
  });
+ it("requires review before a Kira calendar event is saved and can undo it",async()=>{
+  const startsOn=new Date(Date.now()+2*86400000).toISOString().slice(0,10),endsOn=new Date(Date.now()+5*86400000).toISOString().slice(0,10);
+  const prepared=await runStudentTool(env,identity,'prepare_calendar_event',{title:'Second semester exams',startsOn,endsOn,semester:'Second semester'});
+  expect(prepared.action?.type).toBe('calendar');
+  expect((await pg.query('select id from student_calendar_events where id=$1',[prepared.action!.id])).rows).toHaveLength(0);
+  const requestId=crypto.randomUUID(),action=prepared.action!;
+  await pg.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result)values($1,$2,repeat('d',64),'study','COMPLETED',$3::jsonb)",[student,requestId,JSON.stringify({version:3,text:'Review this calendar event',actions:[action]})]);
+  expect(await result('/ai/actions/confirm','POST',{requestId,actionId:action.id})).toMatchObject({saved:true,id:action.id,type:'calendar'});
+  expect((await pg.query('select title from student_calendar_events where id=$1 and user_id=$2',[action.id,student])).rows).toHaveLength(1);
+  expect(await result('/ai/actions/undo','POST',{requestId,actionId:action.id})).toMatchObject({undone:true,id:action.id,type:'calendar'});
+  expect((await pg.query('select id from student_calendar_events where id=$1',[action.id])).rows).toHaveLength(0);
+ });
  it("validates dates, requires review, and confirms one class/alarm only",async()=>{
   const date=new Date(Date.now()+7*86400000).toISOString().slice(0,10),weekday=new Date(date+'T12:00Z').getUTCDay();
   const entry={title:'Mathematics 101',courseCode:'MTH101',dayOfWeek:weekday,startsAt:'10:00',endsAt:'11:30',date};
