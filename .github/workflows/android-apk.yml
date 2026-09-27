@@ -2,7 +2,7 @@ name: Build Android test APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, release/apk-authfix-20260927-1904]
     paths:
       [
         "mobile/**",
@@ -67,3 +67,11 @@ jobs:
           gh release create apk-latest KampusOne-Android.apk             --target "$GITHUB_SHA"             --title "KampusOne Android Test"             --notes "Latest KampusOne Android testing APK built from main. This is a sideload testing build, not a Play Store release."             --prerelease
 # Expo's generated test signing is for sideload testing only. A separately
 # provisioned release/upload keystore is required before Play Store publication.
+
+      - name: Publish auth-fix APK release
+        if: github.ref == 'refs/heads/release/apk-authfix-20260927-1904'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-authfix-20260927-1904 --yes --cleanup-tag || true
+          gh release create apk-authfix-20260927-1904 KampusOne-Android.apk --target "$GITHUB_SHA" --title "KampusOne Android Auth Fix 2026-09-27" --notes "Stable snapshot of current main with Vercel API proxy primary and Worker fallback for native Android auth."
