@@ -1,0 +1,20 @@
+name: Check public mobile auth reachability
+on:
+  push:
+    branches: [fix/student-experience-20260926, fix/mobile-preview-origin-20260927]
+    paths: [.github/workflows/mobile-auth-reachability.yml, scripts/check-mobile-auth-reachability.mjs]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check liveness and empty-input auth validation without accounts or email
+        run: node scripts/check-mobile-auth-reachability.mjs
