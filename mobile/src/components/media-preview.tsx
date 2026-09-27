@@ -1,5 +1,5 @@
 import { useEvent } from "expo";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Image,
   Platform,
@@ -15,8 +15,17 @@ import { useAppearance } from "@/src/lib/appearance";
 import { SkeletonBlock } from "@/src/components/skeleton";
 import { downloadPostMedia } from "@/src/lib/media-downloads";
 import { useToast } from "@/src/components/toast";
+import { readVideoPlaybackSession, writeVideoPlaybackSession } from "@/src/lib/video-playback-session";
+import { isFeedRoutePlaybackActive, subscribeFeedRoutePlayback } from "@/src/lib/feed-video-playback";
 
 const playbackSpeeds = [1, 1.25, 1.5, 2] as const;
+
+export type MediaPlaybackMode = "unmanaged" | "feed-autoplay" | "manual-managed";
+
+export type MediaPlaybackHandle = {
+  measureInWindow(callback: (x: number, y: number, width: number, height: number) => void): void;
+  setViewportVisible(visible: boolean): void;
+};
 
 function formatClock(value: number) {
   if (!Number.isFinite(value) || value < 0) return "0:00";
@@ -31,11 +40,21 @@ function Video({
   label,
   watermark,
   initialAspect,
+  playbackMode,
+  onPlaybackHandle,
+  suspended,
+  playbackKey,
+  onOpen,
 }: {
   url: string;
   label: string;
   watermark?: string;
   initialAspect?: number | undefined;
+  playbackMode: MediaPlaybackMode;
+  onPlaybackHandle?: ((handle: MediaPlaybackHandle | null) => void) | undefined;
+  suspended: boolean;
+  playbackKey?: string | undefined;
+  onOpen?: ((state: { position: number; muted: boolean }) => void) | undefined;
 }) {
   const { theme } = useAppearance();
   const toast = useToast();
@@ -46,23 +65,129 @@ function Video({
   const [trackWidth, setTrackWidth] = useState(0);
   const [aspect, setAspect] = useState(initialAspect && initialAspect > 0 ? initialAspect : 16 / 9);
   const [seekHint, setSeekHint] = useState("");
+  const [isViewportVisible, setIsViewportVisible] = useState(playbackMode === "unmanaged");
+  const shellRef = useRef<View>(null);
   const videoView = useRef<VideoView>(null);
   const lastTap = useRef({ side: 0, at: 0 });
   const seekHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewportVisibleRef = useRef(playbackMode === "unmanaged");
+  const resumeWhenVisibleRef = useRef(false);
+  const manuallyPausedRef = useRef(false);
+  const didApplyInitialFeedMute = useRef(false);
+  const suspendedRef = useRef(suspended);
+  const feedRouteActiveRef = useRef(playbackMode !== "feed-autoplay" || isFeedRoutePlaybackActive());
 
   const player = useVideoPlayer(url, (instance) => {
     instance.loop = false;
     instance.playbackRate = 1;
+    if (playbackMode === "feed-autoplay") instance.muted = true;
   });
   const playingEvent = useEvent(player, "playingChange", {
     isPlaying: player.playing,
+  });
+  const mutedEvent = useEvent(player, "mutedChange", {
+    muted: player.muted,
   });
   const statusEvent = useEvent(player, "statusChange", {
     status: player.status,
   });
   const isPlaying = playingEvent?.isPlaying ?? player.playing;
+  const isMuted = mutedEvent?.muted ?? player.muted;
   const status = statusEvent?.status ?? player.status;
   const error = statusEvent?.error;
+  const managed = playbackMode !== "unmanaged";
+
+  const setViewportVisible = useCallback((visible: boolean) => {
+    viewportVisibleRef.current = visible;
+    setIsViewportVisible(visible);
+
+    if (!visible || suspendedRef.current || (playbackMode === "feed-autoplay" && !feedRouteActiveRef.current)) {
+      if (player.playing && !manuallyPausedRef.current) resumeWhenVisibleRef.current = true;
+      player.pause();
+      return;
+    }
+
+    if (playbackMode === "feed-autoplay") {
+      const remembered = readVideoPlaybackSession(playbackKey);
+      if (remembered) {
+        if (Math.abs(Number(player.currentTime) - remembered.position) > 0.35) {
+          player.currentTime = remembered.position;
+        }
+        player.muted = remembered.muted;
+        didApplyInitialFeedMute.current = true;
+      } else if (!didApplyInitialFeedMute.current) {
+        player.muted = true;
+        didApplyInitialFeedMute.current = true;
+      }
+      if (!manuallyPausedRef.current) player.play();
+      return;
+    }
+
+    if (resumeWhenVisibleRef.current && !manuallyPausedRef.current) {
+      resumeWhenVisibleRef.current = false;
+      player.play();
+    }
+  }, [playbackKey, playbackMode, player]);
+
+  useEffect(() => {
+    if (playbackMode !== "feed-autoplay") return;
+    return subscribeFeedRoutePlayback((active) => {
+      feedRouteActiveRef.current = active;
+      if (!active) {
+        if (player.playing && !manuallyPausedRef.current) resumeWhenVisibleRef.current = true;
+        player.pause();
+        return;
+      }
+      if (!viewportVisibleRef.current || suspendedRef.current || manuallyPausedRef.current) return;
+      const remembered = readVideoPlaybackSession(playbackKey);
+      if (remembered) {
+        if (Math.abs(Number(player.currentTime) - remembered.position) > 0.35) {
+          player.currentTime = remembered.position;
+        }
+        player.muted = remembered.muted;
+        didApplyInitialFeedMute.current = true;
+      } else if (!didApplyInitialFeedMute.current) {
+        player.muted = true;
+        didApplyInitialFeedMute.current = true;
+      }
+      player.play();
+    });
+  }, [playbackKey, playbackMode, player]);
+
+  useEffect(() => {
+    if (!managed || !onPlaybackHandle) return;
+    const handle: MediaPlaybackHandle = {
+      measureInWindow(callback) {
+        const node = shellRef.current;
+        if (!node) {
+          callback(0, 0, 0, 0);
+          return;
+        }
+        node.measureInWindow(callback);
+      },
+      setViewportVisible,
+    };
+    onPlaybackHandle(handle);
+    return () => onPlaybackHandle(null);
+  }, [managed, onPlaybackHandle, setViewportVisible]);
+
+  useEffect(() => {
+    suspendedRef.current = suspended;
+    if (suspended) {
+      if (player.playing && !manuallyPausedRef.current) resumeWhenVisibleRef.current = true;
+      player.pause();
+      return;
+    }
+    if (
+      viewportVisibleRef.current &&
+      resumeWhenVisibleRef.current &&
+      !manuallyPausedRef.current &&
+      (playbackMode !== "feed-autoplay" || feedRouteActiveRef.current)
+    ) {
+      resumeWhenVisibleRef.current = false;
+      player.play();
+    }
+  }, [playbackMode, player, suspended]);
 
   useEffect(() => {
     const update = () => {
@@ -86,6 +211,16 @@ function Video({
       const next = Math.max(0, Math.min(duration || Number(player.duration) || 0, position + seconds));
       player.currentTime = next;
     }
+  }
+
+  function openViewer() {
+    if (!onOpen) return false;
+    const current = Math.max(0, Number(player.currentTime) || 0);
+    writeVideoPlaybackSession(playbackKey, current, player.muted);
+    if (player.playing && !manuallyPausedRef.current) resumeWhenVisibleRef.current = true;
+    player.pause();
+    onOpen({ position: current, muted: player.muted });
+    return true;
   }
 
   function doubleTap(side: number) {
@@ -112,7 +247,7 @@ function Video({
   }
 
   return (
-    <View style={[styles.videoShell, { backgroundColor: "#080808" }]}>
+    <View ref={shellRef} style={[styles.videoShell, { backgroundColor: "#080808" }]}>
       <VideoView
         ref={videoView}
         accessibilityLabel={label}
@@ -124,8 +259,8 @@ function Video({
       />
 
       <View style={styles.seekZones}>
-        <Pressable accessible={false} onPress={(event) => { event.stopPropagation(); doubleTap(-1); }} style={{ flex: 1 }} />
-        <Pressable accessible={false} onPress={(event) => { event.stopPropagation(); doubleTap(1); }} style={{ flex: 1 }} />
+        <Pressable accessible={false} onPress={(event) => { event.stopPropagation(); if (!openViewer()) doubleTap(-1); }} style={{ flex: 1 }} />
+        <Pressable accessible={false} onPress={(event) => { event.stopPropagation(); if (!openViewer()) doubleTap(1); }} style={{ flex: 1 }} />
       </View>
       {seekHint ? <View pointerEvents="none" style={styles.seekFeedback}><Text style={styles.speedText}>{seekHint}</Text></View> : null}
 
@@ -169,8 +304,20 @@ function Video({
           </Pressable>
           <Pressable
             accessibilityLabel={isPlaying ? "Pause video" : "Play video"}
-            onPress={(event) => { event.stopPropagation(); isPlaying ? player.pause() : player.play(); }}
-            style={styles.playButton}
+            accessibilityState={{ disabled: managed && !isViewportVisible }}
+            disabled={managed && !isViewportVisible}
+            onPress={(event) => {
+              event.stopPropagation();
+              if (isPlaying) {
+                manuallyPausedRef.current = true;
+                resumeWhenVisibleRef.current = false;
+                player.pause();
+              } else {
+                manuallyPausedRef.current = false;
+                player.play();
+              }
+            }}
+            style={[styles.playButton, managed && !isViewportVisible && styles.disabledControl]}
           >
             <Ionicons name={isPlaying ? "pause" : "play"} size={23} color="#FFFFFF" />
           </Pressable>
@@ -196,6 +343,16 @@ function Video({
             {formatClock(position)} / {formatClock(duration)}
           </Text>
           <View style={styles.bottomActions}>
+            <Pressable
+              accessibilityLabel={isMuted ? "Unmute video" : "Mute video"}
+              onPress={(event) => {
+                event.stopPropagation();
+                player.muted = !isMuted;
+              }}
+              style={styles.iconButton}
+            >
+              <Ionicons name={isMuted ? "volume-mute-outline" : "volume-high-outline"} size={19} color="#FFFFFF" />
+            </Pressable>
             <Pressable accessibilityLabel="View video full screen" onPress={(event) => { event.stopPropagation(); void videoView.current?.enterFullscreen(); }} style={styles.iconButton}><Ionicons name="expand-outline" size={19} color="#FFFFFF" /></Pressable>
             <Pressable accessibilityLabel={`Playback speed ${speed} times`} onPress={(event) => { event.stopPropagation(); cycleSpeed(); }} style={styles.speedButton}>
               <Text style={styles.speedText}>{speed}×</Text>
@@ -245,12 +402,22 @@ export function MediaPreview({
   label = "Attached media",
   watermark,
   initialAspect,
+  playbackMode = "unmanaged",
+  onPlaybackHandle,
+  suspended = false,
+  playbackKey,
+  onOpen,
 }: {
   url: string;
   video?: boolean;
   label?: string;
   watermark?: string;
   initialAspect?: number | undefined;
+  playbackMode?: MediaPlaybackMode;
+  onPlaybackHandle?: ((handle: MediaPlaybackHandle | null) => void) | undefined;
+  suspended?: boolean;
+  playbackKey?: string | undefined;
+  onOpen?: ((state: { position: number; muted: boolean }) => void) | undefined;
 }) {
   const { theme } = useAppearance();
   const [error, setError] = useState(false);
@@ -258,7 +425,17 @@ export function MediaPreview({
   return (
     <View style={{ marginVertical: 10 }}>
       {video ? (
-        <Video url={url} label={label} initialAspect={initialAspect} {...(watermark ? { watermark } : {})} />
+        <Video
+          url={url}
+          label={label}
+          initialAspect={initialAspect}
+          playbackMode={playbackMode}
+          onPlaybackHandle={onPlaybackHandle}
+          suspended={suspended}
+          playbackKey={playbackKey}
+          onOpen={onOpen}
+          {...(watermark ? { watermark } : {})}
+        />
       ) : error ? (
         <Text style={{ color: theme.error }}>This image could not load.</Text>
       ) : (
@@ -344,6 +521,7 @@ const styles = StyleSheet.create({
   timeText: { color: "rgba(255,255,255,0.9)", fontSize: 10.5, fontWeight: "600" },
   speedButton: { minHeight: 34, minWidth: 42, alignItems: "center", justifyContent: "center" },
   speedText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
+  disabledControl: { opacity: 0.45 },
   modalRoot: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.35)", padding: 14 },
   menu: { borderWidth: 1, borderRadius: 20, padding: 14, gap: 4, maxWidth: 520, width: "100%", alignSelf: "center" },
   menuTitle: { fontSize: 16, fontWeight: "700", paddingHorizontal: 8, paddingBottom: 4 },
