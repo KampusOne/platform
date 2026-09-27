@@ -2,7 +2,7 @@ name: Performance regression
 on:
   pull_request:
   push:
-    branches: [main, "perf/mobile-speed-pass-20260927"]
+    branches: [main]
 permissions:
   contents: read
 jobs:
