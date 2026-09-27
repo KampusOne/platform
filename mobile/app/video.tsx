@@ -174,7 +174,7 @@ export default function VideoViewerScreen() {
     }).catch((caught) => {
       if (version === sourceVersion.current) setError(caught instanceof Error ? caught.message : "This video could not load.");
     });
-  }, [player, post?.id, post?.image_url, requestedMuted, requestedPosition, speed]);
+  }, [player, post?.id, post?.image_url, requestedMuted, requestedPosition]);
 
   useEffect(() => {
     const update = () => {
