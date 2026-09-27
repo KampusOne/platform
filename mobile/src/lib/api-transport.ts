@@ -1,4 +1,5 @@
 import { invalidationTargets, matchesRead, waitForRequest } from "./request-policy";
+import { withRequestDeadline } from "./request-deadline";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
@@ -23,6 +24,8 @@ export type Session = {
   refreshExpiresIn: number;
   user: SessionUser;
 };
+
+export type ApiRequestInit = RequestInit & { timeoutMs?: number };
 
 export class ApiError extends Error {
   constructor(
@@ -209,7 +212,7 @@ async function securelyAcceptSession(session: Session) {
   return session;
 }
 
-async function refreshSession(timeoutMs = 15_000) {
+async function refreshSession(timeoutMs = 12_000) {
   if (!refreshPromise) {
     if (queuedSessionTransitions > 0) {
       throw new ApiError(
@@ -219,25 +222,29 @@ async function refreshSession(timeoutMs = 15_000) {
       );
     }
     const versionAtStart = credentialVersion;
-    refreshPromise = readRefreshToken()
-      .then((refreshToken) =>
-        fetch(`${apiUrl}/v1/auth/refresh`, {
+    refreshPromise = withRequestDeadline(async (signal) => {
+        const refreshToken = await readRefreshToken();
+        // Native sessions live in SecureStore, not browser cookies. A fresh
+        // install or signed-out device has nothing to restore over the network.
+        if (Platform.OS !== "web" && !refreshToken) return null;
+        if (signal.aborted) throw new Error("Session restoration cancelled");
+        const response = await fetch(`${apiUrl}/v1/auth/refresh`, {
           method: "POST",
           credentials: "include",
-          signal: AbortSignal.timeout(timeoutMs),
+          signal,
           headers: {
             "Content-Type": "application/json",
             "X-Device-Label": "KampusOne mobile",
           },
           body: JSON.stringify(refreshToken ? { refreshToken } : {}),
-        }),
-      )
-      .then((response) => parse<Session>(response))
-      .then(securelyAcceptSession)
+        });
+        return parse<Session>(response);
+      }, timeoutMs)
+      .then((session) => session ? securelyAcceptSession(session) : null)
       .then((session) => {
         // Do not let an older refresh overwrite a session established while it
         // was in flight (for example, a fresh interactive sign-in).
-        if (credentialVersion === versionAtStart) {
+        if (session && credentialVersion === versionAtStart) {
           setAccessToken(session.accessToken);
           sessionListener?.(session);
         }
@@ -264,9 +271,10 @@ async function refreshSession(timeoutMs = 15_000) {
 
 async function request<T>(
   path: string,
-  init: RequestInit = {},
+  init: ApiRequestInit = {},
   canRefresh = true,
 ): Promise<T> {
+  const { timeoutMs, signal: parentSignal, ...requestInit } = init;
   const headers = new Headers(init.headers);
   if (
     init.body &&
@@ -275,22 +283,39 @@ async function request<T>(
   )
     headers.set("Content-Type", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  const response = await fetch(`${apiUrl}${path}`, {
-    ...init,
-    signal: init.signal ?? AbortSignal.timeout(15_000),
-    credentials: "include",
-    headers,
-  });
-  if (response.status === 401 && canRefresh && path !== "/v1/auth/refresh") {
+  // Expo SDK 57 uses the standard Blob/FormData model for file uploads.
+  const send = Platform.OS !== "web" && (init.body instanceof FormData || ((path.startsWith("/v1/media?") || path.startsWith("/v1/ai/transcribe?")) && Boolean(init.body)))
+    ? (await import("expo/fetch")).fetch
+    : fetch;
+  let result: { response: Response; value?: T };
+  try {
+    result = await withRequestDeadline(async (signal) => {
+      const response = await send(`${apiUrl}${path}`, {
+        ...requestInit, signal, credentials: "include", headers,
+      });
+      if (response.status === 401 && canRefresh && path !== "/v1/auth/refresh") return { response };
+      return { response, value: await parse<T>(response) };
+    }, timeoutMs, parentSignal);
+  } catch (caught) {
+    if (caught instanceof Error && caught.name === "TimeoutError") {
+      throw new ApiError(0, "REQUEST_TIMEOUT", caught.message);
+    }
+    if (caught instanceof TypeError) {
+      throw new ApiError(0, "NETWORK_UNAVAILABLE", "We couldn’t connect to KampusOne. Check your internet connection and try again.");
+    }
+    throw caught;
+  }
+  if (result.response.status === 401 && canRefresh && path !== "/v1/auth/refresh") {
     const renewed = await refreshSession();
     if (renewed) return request<T>(path, init, false);
+    return withRequestDeadline(() => parse<T>(result.response), timeoutMs, parentSignal);
   }
-  return parse<T>(response);
+  return result.value as T;
 }
 
 export async function api<T>(
   path: string,
-  init: RequestInit = {},
+  init: ApiRequestInit = {},
   canRefresh = true,
 ): Promise<T> {
   const isRead = !init.method || init.method.toUpperCase() === "GET";
@@ -404,9 +429,7 @@ export const authApi = {
       ).then(securelyAcceptSession),
     );
   },
-  refresh(timeoutMs = 15_000) {
-    return refreshSession(timeoutMs);
-  },
+  refresh: refreshSession,
   hasSavedSession() {
     return readRefreshToken().then(Boolean);
   },
