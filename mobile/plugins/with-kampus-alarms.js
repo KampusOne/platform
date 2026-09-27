@@ -38,7 +38,7 @@ module.exports = function withKampusAlarms(config) {
     fs.mkdirSync(destination, { recursive: true });
     const assets = path.join(config.modRequest.platformProjectRoot, 'app/src/main/assets');
     fs.mkdirSync(assets, { recursive: true });
-    fs.copyFileSync(path.join(config.modRequest.projectRoot, 'assets/brand/kampusone-symbol-solid.png'), path.join(assets, 'kampus-download-mark.png'));
+    fs.copyFileSync(path.join(config.modRequest.projectRoot, 'assets/brand/kampusone-horizontal-ink.png'), path.join(assets, 'kampus-download-wordmark.png'));
     for (const file of fs.readdirSync(path.join(__dirname, 'kampus-alarms'))) if (file.endsWith('.java')) fs.copyFileSync(path.join(__dirname, 'kampus-alarms', file), path.join(destination, file));
     return config;
   }]);
