@@ -241,20 +241,21 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
       body: string;
       image_url: string | null;
       quoted_post_id: string | null;
-      audience: { media?: unknown };
+      media_matches: boolean;
     }>(sql`
-      select id, body, image_url, quoted_post_id, audience from public.feed_posts
+      select id, body, image_url, quoted_post_id,
+        coalesce(audience->'media', '[]'::jsonb) = ${mediaPayloadJson}::jsonb as media_matches
+      from public.feed_posts
       where author_user_id = ${user.id}::uuid and client_request_id = ${data.requestId}::uuid
       limit 1
     `),
   );
   if (retry) {
-    const retryMedia = Array.isArray(retry.audience?.media) ? retry.audience.media : [];
     if (
       retry.body !== data.body ||
       (retry.quoted_post_id ?? null) !== (data.quotedPostId ?? null) ||
       (retry.image_url ?? null) !== imageUrl ||
-      (hasMediaArray && JSON.stringify(retryMedia) !== mediaPayloadJson)
+      (hasMediaArray && !retry.media_matches)
     )
       throw new AppError(409, "CONFLICT", "This draft changed. Submit it as a new post.");
     return c.json({ id: retry.id }, 200);
