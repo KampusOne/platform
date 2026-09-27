@@ -71,7 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileState, setProfileState] = useState<ProfileState>("idle");
   const [profileError, setProfileError] = useState("");
   const sessionVersion = useRef(0),
-    sessionUserId = useRef<string | null>(null);
+    sessionUserId = useRef<string | null>(null),
+    freshProfileGeneration = useRef(-1);
 
   const reloadProfile = useCallback(async () => {
     const generation = sessionVersion.current,
@@ -85,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         response.profile.id !== expectedUser
       )
         return;
+      freshProfileGeneration.current = generation;
       setProfile(response.profile);
       applyPreferences(response.profile.settings);
       setProfileState("ready");
@@ -105,15 +107,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (session: Session) => {
       if (sessionUserId.current !== session.user.id) {
         sessionVersion.current++;
+        const generation = sessionVersion.current;
         sessionUserId.current = session.user.id;
         setProfile(null);
         setProfileState("loading");
+
+        // A returning student should never stare at an empty router while the
+        // same profile is fetched again. The network remains authoritative and
+        // replaces this account-local device cache as soon as it arrives.
+        void readCache<Profile>(`profile.${session.user.id}`)
+          .then((savedProfile) => {
+            if (
+              !savedProfile ||
+              savedProfile.id !== session.user.id ||
+              generation !== sessionVersion.current ||
+              sessionUserId.current !== session.user.id ||
+              freshProfileGeneration.current === generation
+            )
+              return;
+            setProfile(savedProfile);
+            setProfileError("");
+            setProfileState("ready");
+            applyPreferences(savedProfile.settings);
+          })
+          .catch(() => undefined);
       }
       setAccessToken(session.accessToken);
       setSessionRestoreError("");
       setUser(session.user);
       setState("authenticated");
       void writeCache("last-session", { user: session.user }, 30 * 86400_000).catch(() => undefined);
+
+      // Start the dashboard read beside the profile read instead of waiting for
+      // profile -> redirect -> screen mount -> home. The transport deduplicates
+      // the request if Today mounts while this is still in flight.
+      if (session.user.universityId)
+        void api("/v1/student/home").catch(() => undefined);
+
       // Accept sign-in immediately. Profile loading has its own visible retry state.
       void reloadProfile().catch(() => undefined);
     },
