@@ -20,7 +20,11 @@ export default function EntryScreen() {
   }
   // BrandIntro stays above the router while session/profile restoration is in
   // progress, so startup never flashes a second loading/auth screen.
-  if (state === "loading" || (state === "authenticated" && profileState === "loading")) return null;
+  if (
+    state === "loading" ||
+    (state === "authenticated" && profileState === "loading" && !profile)
+  )
+    return null;
   if (state === "anonymous") return <Redirect href="/(auth)/welcome" />;
   if (profileState === "error") {
     return (
