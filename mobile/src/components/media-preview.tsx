@@ -125,7 +125,7 @@ function Video({
       resumeWhenVisibleRef.current = false;
       player.play();
     }
-  }, [playbackMode, player]);
+  }, [playbackKey, playbackMode, player]);
 
   useEffect(() => {
     if (!managed || !onPlaybackHandle) return;
