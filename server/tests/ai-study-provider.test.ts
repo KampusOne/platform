@@ -69,6 +69,21 @@ describe("student AI persistence and quota boundaries",()=>{
     expect(rows.rows[0]).toMatchObject({mode:"transcription",status:"COMPLETED",transcription_text:"Explain Newton's second law."});
     expect(provider.mock.calls.filter(([url])=>String(url).includes("/hf-inference/models/"))).toHaveLength(1);
   });
+  it("records voice provider failures as structured AI errors instead of internal 500s",async()=>{
+    provider.mockResolvedValueOnce(new Response("PRIVATE_PROVIDER_BODY",{status:429}));
+    const requestKey=crypto.randomUUID();
+    const response=await app.request(`https://api.example.invalid/v1/ai/transcribe?idempotencyKey=${requestKey}&consent=true`,{
+      method:"POST",
+      headers:{Authorization:`Bearer ${tokens.get(owner)}`,"Content-Type":"audio/mp4"},
+      body:new Uint8Array([0,1,2,3,4]),
+    },env);
+    expect(response.status).toBe(503);
+    const data=await response.json() as {error:{details?:{reason?:string}}};
+    expect(data.error.details?.reason).toBe("AI_PROVIDER_LIMIT");
+    expect(JSON.stringify(data)).not.toContain("PRIVATE_PROVIDER_BODY");
+    const rows=await db.query<{status:string;reason:string}>(`select status,result->>'reason' as reason from app_private.ai_requests where user_id=$1 and idempotency_key=$2`,[owner,requestKey]);
+    expect(rows.rows[0]).toMatchObject({status:"FAILED",reason:"AI_PROVIDER_LIMIT"});
+  });
   it.each(["study","summary","notes","quiz"])("saves %s without exposing provider identity",async mode=>{const body=draft(mode);const result=await json(await request("/ai","POST",body));expect(result).toMatchObject({tier:"standard",requestId:body.idempotencyKey,text:expect.any(String)});expect(result.provider).toBeUndefined();expect(provider).toHaveBeenCalledTimes(1);expect(provider.mock.calls[0]?.[0]).toBe("https://router.huggingface.co/v1/chat/completions");const payload=JSON.parse(String(provider.mock.calls[0]?.[1]?.body));expect(payload.model).toBe(mode==="study"?"test/reasoning:nscale":"test/model:nscale");const saved=await json(await request(`/ai/history/${body.idempotencyKey}`));expect(saved.provider).toBeUndefined();expect(saved.text).toBe(result.text);expect((await json(await request("/ai/history?q=Ohm"))).sessions).toHaveLength(1);});
   it("injects the signed-in student's stored profile into Kira context without private identity fields",async()=>{await json(await request("/ai","POST",{...draft(),prompt:"What's my name?"}));const payload=JSON.parse(String(provider.mock.calls[0]?.[1]?.body));const system=String(payload.messages?.[0]?.content??"");expect(system).toContain("You are Kira");expect(system).toContain('\"name\":\"Provider test\"');expect(system).toContain('\"username\":\"hf-study-0\"');expect(system).toContain("Gideon");expect(system).toContain("Orobosa");expect(system).toContain("Joshua");expect(system).toContain("student AI companion");expect(system).not.toContain(ownerEmail);expect(system).not.toContain(owner);});
   it("routes omitted provider to HF and replays without another call",async()=>{const {provider:_provider,...body}=draft();const first=await json(await request("/ai","POST",body));expect(await json(await request("/ai","POST",body))).toEqual(first);expect(provider).toHaveBeenCalledTimes(1);await json(await request("/ai","POST",{...body,prompt:"Changed"}),409);});
