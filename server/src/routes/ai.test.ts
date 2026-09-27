@@ -41,5 +41,15 @@ describe("AI router security and idempotency",()=>{
   it("rejects an unowned private attachment before reservation",async()=>{expect((await post({mediaId})).status).toBe(404);const media=queries().find(q=>q.sql.includes("public.media_objects"))!;expect(media.sql).toContain("owner_user_id=");expect(media.params).toContain(owner);expect(mocks.transaction).not.toHaveBeenCalled();});
   it("records terminal provider failure without saving a successful answer",async()=>{mocks.fetch.mockResolvedValueOnce(new Response("confidential upstream detail",{status:403}));const r=await post();expect(r.status).toBe(503);expect(JSON.stringify(await r.json())).not.toContain("confidential");expect(queries().some(q=>q.sql.includes("status='FAILED'"))).toBe(true);expect(mocks.fetch).toHaveBeenCalledTimes(1);});
   it("scopes history searches and deletes to the verified account",async()=>{await get("/ai/history?q=physics");expect(queries()[0]?.params).toContain(owner);expect(queries()[0]?.params).toContain("physics");vi.clearAllMocks();await get(`/ai/history/${key}`,"DELETE");expect(queries()[0]?.params).toContain(owner);expect(queries()[0]?.sql).toContain('"deleted":true');expect(queries()[0]?.sql).not.toContain("delete from");});
+  it("stores, clears and scopes Kira response feedback to the signed-in owner",async()=>{
+    const request=(rating:"like"|"dislike"|null,authenticated=true)=>app.request("/ai/feedback",{method:"POST",headers:{...(authenticated?{Authorization:"Bearer test"}:{}),"Content-Type":"application/json"},body:JSON.stringify({requestId:key,rating})},env);
+    expect((await request("like",false)).status).toBe(401);expect(mocks.execute).not.toHaveBeenCalled();
+    mocks.execute.mockResolvedValueOnce({rows:[{result:{text:"Energy explanation",feedback:{rating:"like"}}}]});
+    let r=await request("like");expect(r.status).toBe(200);expect(await r.json()).toEqual({feedback:{rating:"like"}});
+    let q=queries()[0]!;expect(q.sql).toContain("update app_private.ai_requests");expect(q.sql).toContain("user_id=");expect(q.sql).toContain("status='COMPLETED'");expect(q.params).toContain(owner);expect(q.params).toContain(key);expect(q.params).toContain("like");
+    vi.clearAllMocks();mocks.execute.mockResolvedValueOnce({rows:[{result:{text:"Energy explanation"}}]});
+    r=await request(null);expect(r.status).toBe(200);expect(await r.json()).toEqual({feedback:null});q=queries()[0]!;expect(q.sql).toContain("result - 'feedback'");expect(q.params).toContain(owner);expect(q.params).toContain(key);
+    vi.clearAllMocks();r=await request("dislike");expect(r.status).toBe(404);expect((await r.json() as {error:{code:string}}).error.code).toBe("NOT_FOUND");
+  });
   it("rejects fabricated action payloads before any write",async()=>{const r=await app.request("/ai/actions/confirm",{method:"POST",headers:{Authorization:"Bearer test","Content-Type":"application/json"},body:JSON.stringify({requestId:key,actionId:mediaId,userId:owner,entry:{title:"Forged"}})},env);expect(r.status).toBe(400);expect(mocks.transaction).not.toHaveBeenCalled();});
 });

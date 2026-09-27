@@ -18,13 +18,13 @@ aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "quiz", "notes", "timetable"]);
 const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
-type Saved = { documentType?: string; events?: unknown[]; tier?: string; cards?: AICard[]; actions?: AIAction[]; version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
+type Saved = { documentType?: string; events?: unknown[]; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
 }
 function publicResult(id: string, value: Saved) {
-  return { requestId: id, threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, events: value.events ?? [], documentType: value.documentType ?? "class_timetable", warnings: value.warnings ?? [] } : {}) };
+  return { requestId: id, threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], feedback: value.feedback ?? null, ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, events: value.events ?? [], documentType: value.documentType ?? "class_timetable", warnings: value.warnings ?? [] } : {}) };
 }
 function replay(row: RequestRow, hash: string) {
   if (row.request_hash !== hash) throw new AppError(409, "CONFLICT", "This request reference belongs to a different draft.", { reason: "AI_REQUEST_CONFLICT" });
@@ -78,6 +78,24 @@ aiRoutes.get("/thread/:id", async c => {
   if (!parent) throw new AppError(404,"NOT_FOUND","Conversation not found.");
   const rows = await database(c.env).execute<{ idempotency_key: string; result: Saved; mode: string }>(sql`select idempotency_key,result,mode from app_private.ai_requests where user_id=${user.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${parent.result.threadId ?? id.data} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc,idempotency_key desc limit 60`);
   return c.json({ turns: rows.rows.reverse().map(row=>({...publicResult(row.idempotency_key,row.result),prompt:row.result.prompt ?? "",fileName:row.result.fileName,mediaId:row.result.mediaId,mode:row.mode})) });
+});
+aiRoutes.post("/feedback", async c => {
+  requireSchema(c.env);
+  const d = await input(c, z.object({ requestId: z.string().uuid(), rating: z.enum(["like", "dislike"]).nullable() }).strict());
+  const user = currentUser(c);
+  const row = firstRow(await database(c.env).execute<{ result: Saved }>(sql`update app_private.ai_requests
+    set result=case
+      when ${d.rating}::text is null then result - 'feedback'
+      else jsonb_set(result,'{feedback}',jsonb_build_object('rating',${d.rating}::text),true)
+    end
+    where user_id=${user.id}::uuid
+      and idempotency_key=${d.requestId}::uuid
+      and status='COMPLETED'
+      and result ? 'text'
+      and coalesce(result->>'deleted','false')<>'true'
+    returning result`));
+  if (!row) throw new AppError(404, "NOT_FOUND", "This Kira response is no longer available.");
+  return c.json({ feedback: row.result.feedback ?? null });
 });
 // Mutations accept only the IDs of a server-stored proposal. No client-supplied account,
 // arbitrary tool, SQL, URL, course contents, or permission claims can be executed.
