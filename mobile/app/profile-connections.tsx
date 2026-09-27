@@ -109,6 +109,7 @@ export default function ProfileConnectionsScreen() {
     if (!cursor || paging.current || loading || loadingMore || !target) return;
     paging.current = true;
     setLoadingMore(true);
+    setError("");
     const version = requestVersion.current;
     try {
       const page = await api<ConnectionPage>(
@@ -254,7 +255,7 @@ export default function ProfileConnectionsScreen() {
           ListFooterComponent={
             loadingMore ? <ActivityIndicator style={styles.footerLoader} color={theme.brand} size="small" /> :
             error && people.length > 0 ? (
-              <Pressable accessibilityRole="button" onPress={() => void loadMore()} style={styles.inlineError}>
+              <Pressable accessibilityRole="button" onPress={() => void load(true)} style={styles.inlineError}>
                 <Text style={styles.inlineErrorText}>{error} Tap to retry.</Text>
               </Pressable>
             ) : null
