@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
 
 import { ToolField, ToolPage } from "@/src/components/toolkit";
@@ -71,6 +72,40 @@ const sortEvents = (rows: Event[]) =>
       left.starts_on.localeCompare(right.starts_on) ||
       left.title.localeCompare(right.title),
   );
+
+const localCalendarKey = (userId?: string | null) =>
+  `@kampusone/calendar/personal/${userId || "anonymous"}`;
+
+const readLocalEvents = async (key: string): Promise<Event[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((row): row is Event => {
+      if (!row || typeof row !== "object") return false;
+      const value = row as Partial<Event>;
+      return (
+        typeof value.id === "string" &&
+        typeof value.title === "string" &&
+        typeof value.starts_on === "string" &&
+        typeof value.ends_on === "string" &&
+        typeof value.semester === "string"
+      );
+    });
+  } catch {
+    return [];
+  }
+};
+
+const mergeCalendarEvents = (serverRows: Event[], localRows: Event[]) => {
+  const localById = new Map(localRows.map((row) => [row.id, row]));
+  const serverIds = new Set(serverRows.map((row) => row.id));
+  return sortEvents([
+    ...serverRows.map((row) => localById.get(row.id) ?? row),
+    ...localRows.filter((row) => !serverIds.has(row.id)),
+  ]);
+};
 
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
@@ -473,6 +508,8 @@ export default function Calendar() {
   const [formError, setFormError] = useState("");
   const generation = useRef(0);
   const createRequestId = useRef(randomUUID());
+  const localEvents = useRef<Event[]>([]);
+  const storageKey = localCalendarKey(user?.id);
 
   useFocusEffect(
     useCallback(() => {
@@ -483,18 +520,24 @@ export default function Calendar() {
       setBusy(false);
       setActionError("");
 
-      void api<{ events: Event[] }>("/v1/calendar", { timeoutMs: 12_000 })
-        .then((result) => {
-          if (current === generation.current)
-            setEvents(sortEvents(result.events));
-        })
-        .catch((caught) => {
+      void Promise.all([
+        api<{ events: Event[] }>("/v1/calendar", { timeoutMs: 12_000 })
+          .then((result) => ({ rows: result.events, error: "" }))
+          .catch((caught) => ({
+            rows: [] as Event[],
+            error:
+              caught instanceof Error
+                ? caught.message
+                : "Your calendar could not be loaded.",
+          })),
+        readLocalEvents(storageKey),
+      ])
+        .then(([server, local]) => {
           if (current !== generation.current) return;
-          setError(
-            caught instanceof Error
-              ? caught.message
-              : "Your calendar could not be loaded.",
-          );
+          localEvents.current = local;
+          const merged = mergeCalendarEvents(server.rows, local);
+          setEvents(merged);
+          if (server.error && merged.length === 0) setError(server.error);
         })
         .finally(() => {
           if (current === generation.current) setLoading(false);
@@ -577,30 +620,59 @@ export default function Calendar() {
     setFormError("");
 
     try {
-      const result =
-        editing === "new"
-          ? await api<{ event: Event }>("/v1/calendar", {
-              method: "POST",
-              timeoutMs: 12_000,
-              body: JSON.stringify({
-                requestId: createRequestId.current,
-                event,
-              }),
-            })
-          : await api<{ event: Event }>(`/v1/calendar/${editing}`, {
-              method: "PATCH",
-              timeoutMs: 12_000,
-              body: JSON.stringify({ event }),
-            });
+      let saved: Event;
+      let backedByServer = false;
+      try {
+        const result =
+          editing === "new"
+            ? await api<{ event: Event }>("/v1/calendar", {
+                method: "POST",
+                timeoutMs: 12_000,
+                body: JSON.stringify({
+                  requestId: createRequestId.current,
+                  event,
+                }),
+              })
+            : await api<{ event: Event }>(`/v1/calendar/${editing}`, {
+                method: "PATCH",
+                timeoutMs: 12_000,
+                body: JSON.stringify({ event }),
+              });
+        saved = result.event;
+        backedByServer = true;
+      } catch {
+        saved = {
+          id: editing === "new" ? `local:${randomUUID()}` : editing,
+          title,
+          starts_on: startsOn,
+          ends_on: endsOn,
+          semester,
+        };
+      }
+
+      if (current !== generation.current) return;
+
+      if (backedByServer) {
+        const nextLocal = localEvents.current.filter(
+          (row) => row.id !== saved.id && row.id !== editing,
+        );
+        localEvents.current = nextLocal;
+        await AsyncStorage.setItem(storageKey, JSON.stringify(nextLocal));
+      } else {
+        const nextLocal = [
+          ...localEvents.current.filter((row) => row.id !== saved.id),
+          saved,
+        ];
+        localEvents.current = nextLocal;
+        await AsyncStorage.setItem(storageKey, JSON.stringify(nextLocal));
+      }
 
       if (current !== generation.current) return;
       setEvents((rows) =>
         sortEvents(
           editing === "new"
-            ? [...rows.filter((row) => row.id !== result.event.id), result.event]
-            : rows.map((row) =>
-                row.id === result.event.id ? result.event : row,
-              ),
+            ? [...rows.filter((row) => row.id !== saved.id), saved]
+            : rows.map((row) => (row.id === editing ? saved : row)),
         ),
       );
       setEditing(null);
@@ -625,10 +697,15 @@ export default function Calendar() {
     setActionError("");
 
     try {
-      await api(`/v1/calendar/${id}`, {
-        method: "DELETE",
-        timeoutMs: 12_000,
-      });
+      if (!id.startsWith("local:")) {
+        await api(`/v1/calendar/${id}`, {
+          method: "DELETE",
+          timeoutMs: 12_000,
+        });
+      }
+      const nextLocal = localEvents.current.filter((row) => row.id !== id);
+      localEvents.current = nextLocal;
+      await AsyncStorage.setItem(storageKey, JSON.stringify(nextLocal));
       if (current === generation.current) {
         setEvents((rows) => rows.filter((row) => row.id !== id));
         setRemoving(null);
