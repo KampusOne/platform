@@ -20,22 +20,40 @@ function application() {
 beforeEach(() => {
   mocks.verify.mockReset(); mocks.execute.mockReset();
   mocks.verify.mockResolvedValue({ id, sessionFamilyId: "22222222-2222-4222-8222-222222222222" });
-  mocks.execute.mockImplementation(async () => ({ rows: mocks.execute.mock.calls.length % 2 ? [{ id, email: "synthetic@example.test", roles: [], operator_roles: [], university_id: null }] : [] }));
+  mocks.execute.mockResolvedValue({
+    rows: [{
+      id,
+      email: "synthetic@example.test",
+      roles: [],
+      operator_roles: [],
+      university_id: null,
+      restriction: null,
+    }],
+  });
 });
 describe("request-local authorization reuse", () => {
   it("does not repeat JWT, session or restriction checks at each nested route", async () => {
     const result = await application().request("/v1/student/example", { headers: { Authorization: "Bearer synthetic" } }, env);
     expect(result.status).toBe(200); expect(await result.json()).toEqual({ id });
-    expect(mocks.verify).toHaveBeenCalledTimes(1); expect(mocks.execute).toHaveBeenCalledTimes(2);
+    expect(mocks.verify).toHaveBeenCalledTimes(1); expect(mocks.execute).toHaveBeenCalledTimes(1);
   });
   it("always validates the next HTTP request instead of caching authorization globally", async () => {
     const app = application();
     for (let n = 0; n < 2; n++) expect((await app.request("/v1/student/example", { headers: { Authorization: "Bearer synthetic" } }, env)).status).toBe(200);
-    expect(mocks.verify).toHaveBeenCalledTimes(2); expect(mocks.execute).toHaveBeenCalledTimes(4);
+    expect(mocks.verify).toHaveBeenCalledTimes(2); expect(mocks.execute).toHaveBeenCalledTimes(2);
   });
   it("restricted users cannot reach the route or be marked successfully authorized", async () => {
     mocks.execute.mockReset();
-    mocks.execute.mockResolvedValueOnce({ rows: [{ id, email: "synthetic@example.test", roles: [], operator_roles: [], university_id: null }] }).mockResolvedValueOnce({ rows: [{ kind: "SUSPENDED", reason: "test", ends_at: null }] });
+    mocks.execute.mockResolvedValueOnce({
+      rows: [{
+        id,
+        email: "synthetic@example.test",
+        roles: [],
+        operator_roles: [],
+        university_id: null,
+        restriction: { kind: "SUSPENDED", reason: "test", ends_at: null },
+      }],
+    });
     const result = await application().request("/v1/student/example", { headers: { Authorization: "Bearer synthetic" } }, env);
     expect(result.status).toBe(403); expect(await result.json()).toEqual({ error: "ACCOUNT_RESTRICTED" });
   });
