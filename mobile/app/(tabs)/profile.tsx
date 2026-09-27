@@ -15,6 +15,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -126,6 +127,8 @@ function safeActivityDate(value: string): string {
 
 export default function ProfileScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
+  const { width } = useWindowDimensions();
+  const compactPhone = width < 400;
 
   const { user, profile: sessionProfile, signOut, reloadProfile } = useAuth();
   const toast = useToast();
@@ -590,7 +593,10 @@ export default function ProfileScreen() {
           </View>
 
           <ScrollView
-            contentContainerStyle={styles.tabs}
+            contentContainerStyle={[
+              styles.tabs,
+              compactPhone && styles.tabsCompact,
+            ]}
             horizontal
             showsHorizontalScrollIndicator={false}
           >
@@ -607,10 +613,13 @@ export default function ProfileScreen() {
                   style={[styles.tab, activeTab === tab && styles.tabActive]}
                 >
                   <Text
+                    android_hyphenationFrequency="none"
+                    numberOfLines={1}
                     style={[
                       styles.tabText,
                       activeTab === tab && styles.tabTextActive,
                     ]}
+                    textBreakStrategy="simple"
                   >
                     {tab}
                   </Text>
@@ -678,24 +687,28 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.actionGrid}>
                 <ProfileAction
+                  compact={compactPhone}
                   icon="document-text-outline"
                   title="Faculty Guidelines"
                   body=""
                   onPress={() => router.push("/guidelines")}
                 />
                 <ProfileAction
+                  compact={compactPhone}
                   icon="briefcase-outline"
                   title="Departmental Guidelines"
                   body=""
                   onPress={() => router.push("/guidelines")}
                 />
                 <ProfileAction
+                  compact={compactPhone}
                   icon="wallet-outline"
                   title="Transactions"
                   body="Bookings, orders and payment history."
                   onPress={() => router.push("/purchases")}
                 />
                 <ProfileAction
+                  compact={compactPhone}
                   icon="time-outline"
                   title="Past Classes"
                   body="Previous semesters and class records."
@@ -943,11 +956,13 @@ function ProfileAction({
   title,
   body,
   onPress,
+  compact = false,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   body: string;
   onPress: () => void;
+  compact?: boolean;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
 
@@ -955,14 +970,33 @@ function ProfileAction({
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.action,
+        compact && styles.actionCompact,
+        pressed && styles.pressed,
+      ]}
     >
       <View style={styles.actionIcon}>
         <Ionicons color={theme.deepBrand} name={icon} size={21} />
       </View>
       <View style={styles.actionCopy}>
-        <Text style={styles.actionTitle}>{title}</Text>
-        <Text style={styles.actionBody}>{body}</Text>
+        <Text
+          android_hyphenationFrequency="none"
+          numberOfLines={2}
+          style={styles.actionTitle}
+          textBreakStrategy="simple"
+        >
+          {title}
+        </Text>
+        {body ? (
+          <Text
+            android_hyphenationFrequency="none"
+            style={styles.actionBody}
+            textBreakStrategy="simple"
+          >
+            {body}
+          </Text>
+        ) : null}
       </View>
       <Ionicons color={theme.deepBrand} name="chevron-forward" size={17} />
     </Pressable>
@@ -1295,6 +1329,7 @@ const createStyles = (theme: Theme) =>
       paddingHorizontal: 2,
     },
     tabs: { gap: 8, paddingHorizontal: 20, paddingVertical: 20 },
+    tabsCompact: { paddingHorizontal: 14 },
     tab: {
       alignItems: "center",
       backgroundColor: theme.surfaceGlassStrong,
@@ -1378,6 +1413,11 @@ const createStyles = (theme: Theme) =>
       padding: 12,
       width: "48%",
     },
+    actionCompact: {
+      minHeight: 78,
+      paddingHorizontal: 14,
+      width: "100%",
+    },
     actionIcon: {
       alignItems: "center",
       backgroundColor: "rgba(233,177,142,0.18)",
@@ -1386,7 +1426,7 @@ const createStyles = (theme: Theme) =>
       justifyContent: "center",
       width: 42,
     },
-    actionCopy: { flex: 1, marginLeft: 9 },
+    actionCopy: { flex: 1, marginLeft: 9, minWidth: 0 },
     actionTitle: {
       color: theme.text,
       fontFamily: theme.font.semibold,

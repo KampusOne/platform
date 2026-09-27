@@ -37,6 +37,7 @@ export function ProductScreen({
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { width } = useWindowDimensions();
+  const compactPhone = width < 400;
   const contentWidth = Math.min(width, 540);
   const entry = useRef(new Animated.Value(1)).current;
   const reducedMotion = useReducedMotionPreference();
@@ -61,7 +62,12 @@ export function ProductScreen({
   return (
     <SafeAreaView edges={["top"]} style={styles.safe}>
       <Animated.ScrollView
-        contentContainerStyle={[styles.content, { width: contentWidth }, style]}
+        contentContainerStyle={[
+          styles.content,
+          compactPhone && styles.contentCompact,
+          { width: contentWidth },
+          style,
+        ]}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -320,7 +326,13 @@ const createStyles = (theme: Theme) =>
       top: 620,
       width: 220,
     },
-    content: { alignSelf: "center", paddingBottom: 118, paddingHorizontal: 20 },
+    content: {
+      alignSelf: "center",
+      minWidth: 0,
+      paddingBottom: 118,
+      paddingHorizontal: 20,
+    },
+    contentCompact: { paddingHorizontal: 14 },
     search: {
       alignItems: "center",
       backgroundColor: theme.surfaceGlassStrong,
@@ -331,6 +343,7 @@ const createStyles = (theme: Theme) =>
       gap: 10,
       minHeight: 56,
       paddingLeft: 16,
+      minWidth: 0,
       paddingRight: 8,
       ...theme.shadow,
     },
@@ -347,6 +360,7 @@ const createStyles = (theme: Theme) =>
       fontFamily: theme.font.body,
       fontSize: 14.5,
       minHeight: 54,
+      minWidth: 0,
     },
     searchAction: {
       alignItems: "center",

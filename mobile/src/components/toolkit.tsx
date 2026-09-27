@@ -10,6 +10,7 @@ import {
   Text,
   TextInput,
   type TextInputProps,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -28,6 +29,8 @@ export function ToolPage({
   onRefresh?: () => void;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const { width } = useWindowDimensions();
+  const compactPhone = width < 400;
 
   // Use the containing viewport, not a possibly stale window-width measurement.
   // Both scroll viewport and content need a definite width on React Native Web.
@@ -35,7 +38,10 @@ export function ToolPage({
     <SafeAreaView edges={["top"]} style={styles.safe}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          compactPhone && styles.contentCompact,
+        ]}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -63,7 +69,13 @@ export function ToolPage({
           >
             <Ionicons name="arrow-back" size={24} color={theme.text} />
           </Pressable>
-          <Text style={styles.title}>{title}</Text>
+          <Text
+            android_hyphenationFrequency="none"
+            style={styles.title}
+            textBreakStrategy="simple"
+          >
+            {title}
+          </Text>
           {action}
         </View>
         {children}
@@ -148,9 +160,23 @@ export function ToolRow({
       style={styles.row}
     >
       {leading ?? (icon ? <Ionicons name={icon} color={theme.accentText} size={22} /> : null)}
-      <View style={{ flex: 1 }}>
-        <Text style={styles.rowTitle}>{title}</Text>
-        {detail ? <Text style={styles.detail}>{detail}</Text> : null}
+      <View style={styles.rowCopy}>
+        <Text
+          android_hyphenationFrequency="none"
+          style={styles.rowTitle}
+          textBreakStrategy="simple"
+        >
+          {title}
+        </Text>
+        {detail ? (
+          <Text
+            android_hyphenationFrequency="none"
+            style={styles.detail}
+            textBreakStrategy="simple"
+          >
+            {detail}
+          </Text>
+        ) : null}
       </View>
       {trailing ??
         (onPress ? (
@@ -181,6 +207,7 @@ const createStyles = (theme: Theme) =>
       paddingBottom: 118,
       paddingHorizontal: 20,
     },
+    contentCompact: { paddingHorizontal: 14 },
     header: {
       flexDirection: "row",
       alignItems: "center",
@@ -235,6 +262,7 @@ const createStyles = (theme: Theme) =>
       borderColor: theme.border,
       minHeight: 64,
     },
+    rowCopy: { flex: 1, minWidth: 0 },
     rowTitle: {
       fontFamily: theme.font.semibold,
       fontSize: 15,

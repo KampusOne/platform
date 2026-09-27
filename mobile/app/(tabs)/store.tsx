@@ -67,8 +67,12 @@ export default function StoreScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { width: windowWidth } = useWindowDimensions();
+  const compactPhone = windowWidth < 400;
   const contentWidth = Math.min(windowWidth, 540);
-  const productWidth = (contentWidth - 52) / 2;
+  const horizontalPadding = compactPhone ? 14 : 20;
+  const productWidth = compactPhone
+    ? contentWidth - horizontalPadding * 2
+    : (contentWidth - 52) / 2;
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -333,8 +337,11 @@ export default function StoreScreen() {
       >
         <FlatList
           accessibilityLabel="Campus store products"
-          columnWrapperStyle={styles.productRow}
-          contentContainerStyle={styles.listContent}
+          columnWrapperStyle={compactPhone ? undefined : styles.productRow}
+          contentContainerStyle={[
+            styles.listContent,
+            compactPhone && styles.listContentCompact,
+          ]}
           data={catalogueData}
           extraData={cart}
           initialNumToRender={8}
@@ -424,10 +431,16 @@ export default function StoreScreen() {
               {!featureDisabled && categories.length > 1 ? (
                 <ScrollView
                   accessibilityLabel="Product categories"
-                  contentContainerStyle={styles.categories}
+                  contentContainerStyle={[
+                    styles.categories,
+                    compactPhone && styles.categoriesCompact,
+                  ]}
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  style={styles.categoryScroller}
+                  style={[
+                    styles.categoryScroller,
+                    compactPhone && styles.categoryScrollerCompact,
+                  ]}
                 >
                   {categories.map((category) => {
                     const selected = category === selectedCategory;
@@ -541,8 +554,14 @@ export default function StoreScreen() {
               ) : null}
             </>
           }
+          key={compactPhone ? "store-compact" : "store-regular"}
           maxToRenderPerBatch={10}
-          numColumns={2}
+          numColumns={compactPhone ? 1 : 2}
+          ItemSeparatorComponent={
+            compactPhone
+              ? () => <View style={styles.compactProductGap} />
+              : undefined
+          }
           removeClippedSubviews={Platform.OS === "android"}
           renderItem={({ item: product }) => (
             <ProductCard
@@ -879,7 +898,12 @@ function ProductCard({
             {product.category}
           </Text>
         </View>
-        <Text numberOfLines={2} style={styles.name}>
+        <Text
+          android_hyphenationFrequency="none"
+          numberOfLines={2}
+          style={styles.name}
+          textBreakStrategy="simple"
+        >
           {product.name}
         </Text>
         <View style={styles.vendor}>
@@ -894,10 +918,10 @@ function ProductCard({
         </View>
         <View style={styles.priceRow}>
           <Text
-            adjustsFontSizeToFit
-            minimumFontScale={0.86}
+            android_hyphenationFrequency="none"
             numberOfLines={1}
             style={styles.price}
+            textBreakStrategy="simple"
           >
             {naira(product.price_kobo)}
           </Text>
@@ -1128,7 +1152,9 @@ const createStyles = (theme: Theme) =>
     listFrame: { alignSelf: "center", flex: 1 },
     catalogue: { flex: 1 },
     listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 8 },
+    listContentCompact: { paddingHorizontal: 14 },
     productRow: { gap: 12, marginBottom: 12 },
+    compactProductGap: { height: 12 },
     storeToolbar: {
       alignItems: "center",
       flexDirection: "row",
@@ -1196,7 +1222,9 @@ const createStyles = (theme: Theme) =>
       width: 44,
     },
     categoryScroller: { marginHorizontal: -20, marginTop: 12 },
+    categoryScrollerCompact: { marginHorizontal: -14 },
     categories: { gap: 8, paddingHorizontal: 20 },
+    categoriesCompact: { paddingHorizontal: 14 },
     categoryChip: {
       alignItems: "center",
       backgroundColor: theme.surface,
