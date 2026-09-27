@@ -1,3 +1,4 @@
+import { ImageViewer } from "@/src/components/image-viewer";
 import { hasPublicBadge } from "@/src/lib/public-badges";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
@@ -130,6 +131,7 @@ export default function ProfileScreen() {
   const toast = useToast();
   const { hideCgpa } = usePreferences();
   const [uploading, setUploading] = useState(false);
+  const [viewPhoto, setViewPhoto] = useState<{uri:string;label:string}|null>(null);
   const [profile, setProfile] = useState<StudentProfile | null>(() =>
     peekApiCache<ProfilePayload>("/v1/student/me")?.profile ?? (sessionProfile as StudentProfile | null));
   const loadVersion = useRef(0);
@@ -393,11 +395,7 @@ export default function ProfileScreen() {
       <View style={styles.profileTop}>
         <View style={styles.cover}>
           {profile?.cover_image_url ? (
-            <Image
-              accessible={false}
-              source={{ uri: profile.cover_image_url }}
-              style={styles.coverImage}
-            />
+            <Pressable accessibilityRole="button" accessibilityLabel="View cover photo" onPress={()=>setViewPhoto({uri:profile.cover_image_url!,label:"Your cover photo"})} style={StyleSheet.absoluteFill}><Image accessible={false} source={{ uri: profile.cover_image_url }} style={styles.coverImage}/></Pressable>
           ) : (
             <CampusScape />
           )}
@@ -417,10 +415,10 @@ export default function ProfileScreen() {
 
         <View style={styles.identity}>
           <Pressable
-            accessibilityLabel="Edit profile photo"
+            accessibilityLabel="View profile photo"
             accessibilityRole="button"
             disabled={uploading}
-            onPress={() => void uploadPhoto()}
+            onPress={() => profile?.profile_image_url ? setViewPhoto({uri:profile.profile_image_url,label:"Your profile photo"}) : void uploadPhoto()}
             style={styles.avatarWrap}
           >
             <View style={styles.avatarFallback}>
@@ -433,9 +431,9 @@ export default function ProfileScreen() {
                 style={styles.avatarImage}
               />
             ) : null}
-            <View style={styles.camera}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Edit profile photo" onPress={event=>{event.stopPropagation();void uploadPhoto();}} style={styles.camera}>
               <Ionicons color="#FFFFFF" name="camera" size={17} />
-            </View>
+            </Pressable>
           </Pressable>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{name}</Text>
@@ -877,6 +875,7 @@ export default function ProfileScreen() {
         reducedMotion={reducedMotion}
         visible={menuOpen}
       />
+      <ImageViewer uri={viewPhoto?.uri??null} label={viewPhoto?.label??"Your photo"} onClose={()=>setViewPhoto(null)}/>
     </ProductScreen>
   );
 }
@@ -1234,7 +1233,7 @@ const createStyles = (theme: Theme) =>
     },
     error: {
       alignItems: "center",
-      backgroundColor: "#FFF2EC",
+      backgroundColor: theme.surfaceSoft,
       borderRadius: 16,
       flexDirection: "row",
       gap: 8,

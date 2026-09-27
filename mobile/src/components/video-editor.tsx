@@ -13,6 +13,7 @@ import {
   subscribeVideoEdit,
 } from "@/src/lib/video-edit-session";
 import { MAX_POST_VIDEO_DURATION_MS } from "@/src/lib/video-trim-range";
+import { videoDimensions } from "@/src/lib/media-downloads";
 
 function fileUri(path: string) {
   return path.startsWith("file://")
@@ -40,11 +41,12 @@ export function VideoEditorHost() {
     const module = NativeVideoTrim as Spec;
 
     const finished = module.onFinishTrimming(
-      ({ outputPath, startTime, endTime, duration }) => {
+      async ({ outputPath, startTime, endTime, duration }) => {
         const active = getVideoEdit();
         if (!active || opened.current !== active.id) return;
         opened.current = null;
         finishVideoEdit(active.id, {
+          ...await videoDimensions(fileUri(outputPath),active.video),
           uri: fileUri(outputPath),
           name: "post-trimmed.mp4",
           type: "video/mp4",
@@ -53,6 +55,13 @@ export function VideoEditorHost() {
         });
       },
     );
+
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const started=module.onStartTrimming(()=>{
+      if(watchdog)clearTimeout(watchdog);
+      const id=getVideoEdit()?.id;
+      watchdog=setTimeout(()=>{const active=getVideoEdit();if(active && active.id===id){opened.current=null;try{closeEditor();}catch{}failVideoEdit(active.id,new Error('Video processing took too long. Try a shorter clip.'));}},180000);
+    });
 
     const cancelled = module.onCancel(() => {
       const active = getVideoEdit();
@@ -89,6 +98,8 @@ export function VideoEditorHost() {
 
     return () => {
       finished.remove();
+      started.remove();
+      if(watchdog)clearTimeout(watchdog);
       cancelled.remove();
       hidden.remove();
       failed.remove();

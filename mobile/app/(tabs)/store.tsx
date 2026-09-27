@@ -1,3 +1,4 @@
+import {CampusPlaceChoice} from "@/src/components/campus-place-choice";
 import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,6 +23,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { PopularShops } from "@/src/components/popular-shops";
 import { CreateAction } from "@/src/components/create-action";
 
 import { useReducedMotionPreference } from "@/src/components/visual-system";
@@ -70,8 +72,13 @@ export default function StoreScreen() {
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [deliveryPlace,setDeliveryPlace]=useState<string|null>(null);
+  const [recipientName,setRecipientName]=useState("");
+  const [recipientPhone,setRecipientPhone]=useState("");
+  const [deliveryLocation,setDeliveryLocation]=useState("");
   const [cart, setCart] = useState<Cart>({});
   const [query, setQuery] = useState("");
+  const [selectedShop, setSelectedShop] = useState<string|null>(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
@@ -152,9 +159,9 @@ export default function StoreScreen() {
         Boolean(focusedProduct) || `${item.name} ${item.description} ${item.category} ${item.vendor_name}`
           .toLowerCase()
           .includes(term);
-      return (!focusedProduct || item.id===focusedProduct) && matchesCategory && matchesQuery;
+      return (!selectedShop || item.vendor_profile_id === selectedShop) && (!focusedProduct || item.id===focusedProduct) && matchesCategory && matchesQuery;
     });
-  }, [products, query, selectedCategory, focusedProduct]);
+  }, [products, query, selectedCategory, focusedProduct, selectedShop]);
 
   const cartItems = useMemo(
     () =>
@@ -180,6 +187,7 @@ export default function StoreScreen() {
   function clearFilters() {
     setQuery("");
     setSelectedCategory("All");
+    setSelectedShop(null);
   }
 
   function closeCart() {
@@ -236,6 +244,7 @@ export default function StoreScreen() {
           method: "POST",
           body: JSON.stringify({
             vendorProfileId: cartItems[0]?.product.vendor_profile_id,
+            recipientName,recipientPhoneE164:recipientPhone,deliveryLocation,deliveryPlaceId:deliveryPlace,
             deliveryZoneId: selectedZone.id,
             deliveryNote: deliveryNote.trim() || null,
             items: cartItems.map(({ product, quantity }) => ({
@@ -252,28 +261,7 @@ export default function StoreScreen() {
       setNotice(
         `Order #${order.id.slice(0, 8)} was created. You can always resume it from Purchases.`,
       );
-      try {
-        const payment = await api<{ authorizationUrl: string }>(
-          "/v1/payments/initialize",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              idempotencyKey: `order-${order.id}-${Date.now()}`,
-              resourceType: "STORE_ORDER",
-              resourceId: order.id,
-            }),
-          },
-        );
-        await Linking.openURL(payment.authorizationUrl);
-      } catch (paymentError) {
-        const message =
-          paymentError instanceof ApiError
-            ? paymentError.message
-            : "The secure payment page could not be opened.";
-        setNotice(
-          `Your unpaid order is safely saved. ${message} Resume payment from Purchases.`,
-        );
-      }
+      router.push({pathname:'/payment-review',params:{id:order.id,type:'STORE_ORDER'}});
     } catch (caught) {
       setCheckoutError(
         caught instanceof ApiError
@@ -432,6 +420,7 @@ export default function StoreScreen() {
                 </Pressable>
               </View>
 
+              {!featureDisabled && catalogueMode === "LIVE" && <PopularShops selected={selectedShop} onSelect={setSelectedShop} />}
               {!featureDisabled && categories.length > 1 ? (
                 <ScrollView
                   accessibilityLabel="Product categories"
@@ -741,6 +730,10 @@ export default function StoreScreen() {
                     </View>
                   ) : null}
 
+                  <Text style={styles.sectionLabel}>Recipient name</Text><TextInput accessibilityLabel="Recipient name" value={recipientName} onChangeText={setRecipientName} maxLength={120} style={styles.noteInput}/>
+                  <Text style={styles.sectionLabel}>Recipient phone (+234)</Text><TextInput accessibilityLabel="Recipient phone" value={recipientPhone} onChangeText={setRecipientPhone} keyboardType="phone-pad" maxLength={14} style={styles.noteInput}/>
+                  <Text style={styles.sectionLabel}>Delivery address</Text><TextInput accessibilityLabel="Delivery address" value={deliveryLocation} onChangeText={setDeliveryLocation} maxLength={500} style={styles.noteInput}/>
+                  <CampusPlaceChoice label="Delivery point on the campus map" value={deliveryPlace} onChange={setDeliveryPlace}/>
                   <Text style={styles.sectionLabel}>
                     Delivery note{" "}
                     <Text style={styles.optional}>(optional)</Text>
@@ -775,7 +768,7 @@ export default function StoreScreen() {
                       </Text>
                     </View>
                     <View style={[styles.totalRow, styles.grandTotal]}>
-                      <Text style={styles.grandLabel}>Total</Text>
+                      <Text style={styles.grandLabel}>Estimate before service fee</Text>
                       <Text style={styles.grandValue}>{naira(total)}</Text>
                     </View>
                   </View>
@@ -790,7 +783,7 @@ export default function StoreScreen() {
                     }
                     accessibilityHint={
                       selectedZone
-                        ? "Creates your order and opens the secure payment page"
+                        ? "Reserves your order and shows the exact delivery and service fees before payment"
                         : "Select a delivery zone first"
                     }
                     accessibilityRole="button"
@@ -822,7 +815,7 @@ export default function StoreScreen() {
                           ]}
                         >
                           {selectedZone
-                            ? "Create order & pay securely"
+                            ? "Review final price"
                             : "Select a zone to continue"}
                         </Text>
                       </>

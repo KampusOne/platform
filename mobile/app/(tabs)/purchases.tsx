@@ -695,18 +695,7 @@ export default function PurchasesScreen() {
     setBusy(resourceId);
     setError("");
     try {
-      const payment = await api<{ authorizationUrl: string }>(
-        "/v1/payments/initialize",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            idempotencyKey: `resume-${resourceId}-${Date.now()}`,
-            resourceType,
-            resourceId,
-          }),
-        },
-      );
-      await Linking.openURL(payment.authorizationUrl);
+      router.push({pathname:'/payment-review',params:{id:resourceId,type:resourceType}});
     } catch (caught) {
       setError(
         caught instanceof ApiError
@@ -926,6 +915,7 @@ export default function PurchasesScreen() {
         }
         ListHeaderComponent={
           <>
+            <Pressable accessibilityRole="button" accessibilityLabel="Open learning materials and tutor packages" onPress={()=>router.push('/learning-library')} style={{padding:16,minHeight:48}}><Text style={{color:theme.brand,fontFamily:theme.font.semibold}}>Learning materials & tutor packages →</Text></Pressable>
             <View style={styles.header}>
               <Pressable
                 accessibilityLabel="Go back"

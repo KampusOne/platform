@@ -36,6 +36,7 @@ type Availability = {
   booked_spaces: number;
 };
 type Listing = {
+  package_days?:number|null;
   id: string;
   course_code: string;
   title: string;
@@ -46,6 +47,8 @@ type Listing = {
   tutor_profile_id: string | null;
   tutor_name: string;
   tutor_biography: string | null;
+  lecture_house_name?: string | null;
+  lecture_house_address?: string | null;
   tutor_verified: boolean;
   rating: number;
   review_count: number;
@@ -57,6 +60,8 @@ type Listing = {
 type TutorSummary = {
   id: string;
   biography: string | null;
+  lectureHouse?: string | null;
+  lectureHouseAddress?: string | null;
   courses: string[];
   name: string;
   verified: boolean;
@@ -69,7 +74,7 @@ type Resource = {
   course_code: string;
   title: string;
   description: string;
-  resource_type: "PAST_QUESTION" | "NOTE" | "PDF" | "AUDIOBOOK";
+  resource_type: "PAST_QUESTION" | "NOTE" | "PDF" | "AUDIOBOOK" | "VIDEO";
   access_model: "FREE" | "BOOKING_INCLUDED" | "PAID";
   price_kobo: number;
   level_code: string | null;
@@ -92,6 +97,7 @@ const learningCategories = [
   "Notes",
   "PDFs",
   "Audiobooks",
+  "Videos",
 ];
 
 const resourceCategory: Record<Resource["resource_type"], string> = {
@@ -99,6 +105,7 @@ const resourceCategory: Record<Resource["resource_type"], string> = {
   NOTE: "Notes",
   PDF: "PDFs",
   AUDIOBOOK: "Audiobooks",
+  VIDEO: "Videos",
 };
 
 function naira(kobo: number) {
@@ -178,6 +185,7 @@ function TutorCard({ tutor }: { tutor: TutorSummary }) {
       <Text numberOfLines={2} style={styles.tutorCardBio}>
         {tutor.biography ?? "Approved KampusOne tutor"}
       </Text>
+      {tutor.lectureHouse && <Text numberOfLines={2} style={styles.tutorCardBio}>{tutor.lectureHouse}{tutor.lectureHouseAddress ? ` · ${tutor.lectureHouseAddress}` : ""}</Text>}
       <View style={styles.courseChips}>
         {tutor.courses.slice(0, 2).map((course) => (
           <View key={course} style={styles.courseChip}>
@@ -190,8 +198,8 @@ function TutorCard({ tutor }: { tutor: TutorSummary }) {
 }
 
 function resourceMeta(resource: Resource) {
-  if (resource.resource_type === "AUDIOBOOK" && resource.duration_seconds) {
-    return `${Math.max(1, Math.round(resource.duration_seconds / 60))} min audio`;
+  if (["AUDIOBOOK", "VIDEO"].includes(resource.resource_type) && resource.duration_seconds) {
+    return `${Math.max(1, Math.round(resource.duration_seconds / 60))} min ${resource.resource_type === "VIDEO" ? "video" : "audio"}`;
   }
   if (resource.page_count)
     return `${resource.page_count} ${resource.page_count === 1 ? "page" : "pages"}`;
@@ -214,6 +222,7 @@ function ResourceRow({
     NOTE: "document-text-outline",
     PDF: "reader-outline",
     AUDIOBOOK: "headset-outline",
+    VIDEO: "videocam-outline",
   } as const;
   return (
     <Pressable
@@ -227,7 +236,7 @@ function ResourceRow({
     >
       <View style={styles.resourceIcon}>
         <Ionicons
-          color={theme.deepBrand}
+          color={theme.accentText}
           name={icons[resource.resource_type]}
           size={22}
         />
@@ -273,8 +282,10 @@ function ResourcePreview({
       const { resource: access } = await api<{
         resource: Resource & { can_access: boolean };
       }>(`/v1/student/tutorial-resources/${resource.id}`);
-      if (!access.can_access)
-        throw new Error("Book this tutorial to open the resource.");
+      if (!access.can_access) {
+        if(resource.access_model==='PAID'){onClose();router.push({pathname:'/learning-checkout',params:{resourceId:resource.id}});return;}
+        throw new Error("An active session or package is needed to open this resource.");
+      }
       const url = access.media_object_id
         ? (
             await api<{ url: string }>(
@@ -355,7 +366,7 @@ function ResourcePreview({
               ]}
             >
               <Text style={styles.openResourceButtonText}>
-                {opening ? "Opening…" : "Open full resource"}
+                {opening ? "Opening…" : resource.access_model === "PAID" ? "View access / buy resource" : "Open full resource"}
               </Text>
               <Ionicons color="#FFFFFF" name="open-outline" size={17} />
             </Pressable>
@@ -403,7 +414,7 @@ function TutorialCard({
     <View style={styles.listingCard}>
       <View style={styles.listingTop}>
         <View style={styles.courseTile}>
-          <Ionicons color={theme.deepBrand} name="school-outline" size={21} />
+          <Ionicons color={theme.accentText} name="school-outline" size={21} />
           <Text numberOfLines={1} style={styles.courseCode}>
             {listing.course_code}
           </Text>
@@ -504,7 +515,7 @@ function TutorialCard({
         <View style={styles.noWindows}>
           <Ionicons color={theme.textMuted} name="time-outline" size={16} />
           <Text style={styles.noWindowsText}>
-            This tutor has not published a bookable time.
+            {listing.package_days?`${listing.package_days} days of tutor access, starting after payment.`:"This tutor has not published a bookable time."}
           </Text>
         </View>
       )}
@@ -512,12 +523,12 @@ function TutorialCard({
       <Pressable
         accessibilityLabel={`Book ${listing.title} with ${listing.tutor_name}`}
         accessibilityRole="button"
-        accessibilityState={{ busy, disabled: disabled || !selected }}
-        disabled={disabled || !selected}
+        accessibilityState={{ busy, disabled: disabled || (!selected&&!listing.package_days) }}
+        disabled={disabled || (!selected&&!listing.package_days)}
         onPress={onBook}
         style={({ pressed }) => [
           styles.bookButton,
-          (disabled || !selected) && styles.bookButtonDisabled,
+          (disabled || (!selected&&!listing.package_days)) && styles.bookButtonDisabled,
           pressed && !disabled && styles.bookButtonPressed,
         ]}
       >
@@ -525,7 +536,7 @@ function TutorialCard({
           <InlineLoading color="#FFFFFF" />
         ) : (
           <>
-            <Text style={styles.bookButtonText}>Book tutorial</Text>
+            <Text style={styles.bookButtonText}>{listing.package_days?`Get ${listing.package_days}-day package`:"Book tutorial"}</Text>
             <Ionicons color="#FFFFFF" name="arrow-forward" size={17} />
           </>
         )}
@@ -590,7 +601,7 @@ export default function TutorialsScreen() {
         resources?: Resource[];
       }>("/v1/student/tutorials");
       setListings(
-        catalogue.listings.map((listing) => ({
+        catalogue.listings.filter((listing) => !listing.is_demo).map((listing) => ({
           ...listing,
           completed_sessions: Number(listing.completed_sessions ?? 0),
           is_demo: Boolean(listing.is_demo),
@@ -600,7 +611,7 @@ export default function TutorialsScreen() {
           tutor_verified: Boolean(listing.tutor_verified),
         })),
       );
-      setResources(catalogue.resources ?? []);
+      setResources((catalogue.resources ?? []).filter((resource) => !resource.is_demo));
     } catch (caught) {
       setLoadError(
         caught instanceof ApiError
@@ -680,6 +691,8 @@ export default function TutorialsScreen() {
       }
       tutorsById.set(tutorId, {
         biography: listing.tutor_biography,
+        lectureHouse: listing.lecture_house_name ?? null,
+        lectureHouseAddress: listing.lecture_house_address ?? null,
         courses: [listing.course_code],
         id: tutorId,
         isDemo: listing.is_demo,
@@ -730,18 +743,7 @@ export default function TutorialsScreen() {
           await load();
           return;
         }
-        const payment = await api<{ authorizationUrl: string }>(
-          "/v1/payments/initialize",
-          {
-            body: JSON.stringify({
-              idempotencyKey: `tutorial-${booking.id}-${Date.now()}`,
-              resourceId: booking.id,
-              resourceType: "TUTORIAL_BOOKING",
-            }),
-            method: "POST",
-          },
-        );
-        await Linking.openURL(payment.authorizationUrl);
+        router.push({pathname:'/payment-review',params:{id:booking.id,type:'TUTORIAL_BOOKING'}});
       } catch (caught) {
         if (savedBookingId) {
           const providerUnavailable =
@@ -870,7 +872,7 @@ export default function TutorialsScreen() {
               <View style={styles.actionError}>
                 <Ionicons
                   accessible={false}
-                  color={theme.deepBrand}
+                  color={theme.accentText}
                   name="alert-circle-outline"
                   size={19}
                   style={styles.alertIcon}
@@ -917,7 +919,7 @@ export default function TutorialsScreen() {
                 ]}
               >
                 <Ionicons
-                  color={theme.deepBrand}
+                  color={theme.accentText}
                   name="cloud-offline-outline"
                   size={20}
                 />
@@ -1038,7 +1040,7 @@ export default function TutorialsScreen() {
               busy={busy === listing.id}
               disabled={Boolean(busy)}
               listing={listing}
-              onBook={() => void book(listing)}
+              onBook={() => listing.package_days ? router.push({pathname:"/learning-checkout",params:{listingId:listing.id}}) : void book(listing)}
               onSelect={(id) => selectWindow(listing.id, id)}
               selectedId={
                 selectedWindows[listing.id] ?? listing.availability[0]?.id
@@ -1068,7 +1070,7 @@ const createStyles = (theme: Theme) =>
     filters: { marginTop: 13 },
     notice: {
       alignItems: "flex-start",
-      backgroundColor: "#FFF7E9",
+      backgroundColor: theme.surfaceSoft,
       borderRadius: 15,
       flexDirection: "row",
       gap: 8,
@@ -1108,7 +1110,7 @@ const createStyles = (theme: Theme) =>
     },
     actionError: {
       alignItems: "flex-start",
-      backgroundColor: "#FFF0EB",
+      backgroundColor: theme.surfaceSoft,
       borderRadius: 15,
       flexDirection: "row",
       gap: 8,
@@ -1119,7 +1121,7 @@ const createStyles = (theme: Theme) =>
       paddingTop: 4,
     },
     actionErrorText: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       flex: 1,
       fontFamily: theme.font.medium,
       fontSize: 11.5,
@@ -1133,7 +1135,7 @@ const createStyles = (theme: Theme) =>
     },
     loadError: {
       alignItems: "center",
-      backgroundColor: "#FFF0EB",
+      backgroundColor: theme.surfaceSoft,
       borderRadius: 18,
       flexDirection: "row",
       gap: 11,
@@ -1143,7 +1145,7 @@ const createStyles = (theme: Theme) =>
     },
     loadErrorCopy: { flex: 1 },
     loadErrorTitle: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       fontFamily: theme.font.semibold,
       fontSize: 13,
     },
@@ -1222,7 +1224,7 @@ const createStyles = (theme: Theme) =>
       width: 56,
     },
     tutorAvatarText: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       fontFamily: theme.font.displayStrong,
       fontSize: 17,
     },
@@ -1282,7 +1284,7 @@ const createStyles = (theme: Theme) =>
       width: 72,
     },
     courseCode: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       fontFamily: theme.font.bold,
       fontSize: 10.5,
       marginTop: 5,

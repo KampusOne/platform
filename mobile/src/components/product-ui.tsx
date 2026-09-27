@@ -117,7 +117,7 @@ export function SearchField({
   const [focused, setFocused] = useState(false);
   return (
     <View style={[styles.search, focused && styles.searchFocused]}>
-      <Ionicons color={theme.deepBrand} name="search-outline" size={22} />
+      <Ionicons color={theme.accentText} name="search-outline" size={22} />
       <TextInput
         accessibilityLabel={placeholder}
         autoCapitalize="none"
@@ -153,7 +153,7 @@ export function SearchField({
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons color={theme.deepBrand} name="options-outline" size={19} />
+          <Ionicons color={theme.accentText} name="options-outline" size={19} />
         </Pressable>
       ) : null}
     </View>
@@ -248,7 +248,7 @@ export function EmptyResult({
         />
       ) : (
         <View style={styles.emptyIcon}>
-          <Ionicons color={theme.deepBrand} name={icon} size={28} />
+          <Ionicons color={theme.accentText} name={icon} size={28} />
         </View>
       )}
       <Text style={styles.emptyTitle}>{title}</Text>
@@ -324,7 +324,7 @@ const createStyles = (theme: Theme) =>
     search: {
       alignItems: "center",
       backgroundColor: theme.surfaceGlassStrong,
-      borderColor: "rgba(41,35,31,0.08)",
+      borderColor: theme.border,
       borderRadius: 20,
       borderWidth: 1,
       flexDirection: "row",
@@ -379,14 +379,14 @@ const createStyles = (theme: Theme) =>
       borderColor: theme.deepBrand,
     },
     filterText: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       fontFamily: theme.font.medium,
       fontSize: 13,
     },
     filterTextActive: { color: "#FFFFFF", fontFamily: theme.font.semibold },
     feedback: {
       alignItems: "center",
-      backgroundColor: "#FFF8F4",
+      backgroundColor: theme.surfaceSoft,
       borderColor: "rgba(168,70,46,0.18)",
       borderRadius: 14,
       borderWidth: 1,
@@ -397,11 +397,11 @@ const createStyles = (theme: Theme) =>
       paddingVertical: 11,
     },
     feedbackSuccess: {
-      backgroundColor: "#F3F7F3",
+      backgroundColor: theme.surfaceSoft,
       borderColor: "rgba(75,123,84,0.22)",
     },
     feedbackText: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       flex: 1,
       fontFamily: theme.font.medium,
       fontSize: 12.5,

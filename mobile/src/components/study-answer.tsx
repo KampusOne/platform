@@ -1,5 +1,7 @@
 import { Fragment, type ReactNode } from "react";
-import { Platform, Text, View } from "react-native";
+import { Linking, Platform, Text, View } from "react-native";
+import { useToast } from "@/src/components/toast";
+import { postTokens } from "@/src/lib/post-rich-text";
 import { useAppearance } from "@/src/lib/appearance";
 
 type MathSegment =
@@ -196,17 +198,19 @@ function MathBlock({ value }: { value: string }) {
   );
 }
 
-/** Deliberately no HTML, embedded media, or clickable model-generated URLs. */
+/** Text formatting and validated HTTP(S) links; never render model HTML. */
 export function StudyAnswer({ value }: { value: string }) {
   const { theme } = useAppearance();
+  const toast = useToast();
   const base = { fontFamily: theme.font.body, color: theme.text, fontSize: 16, lineHeight: 27 };
+  const links = (text: string) => postTokens(text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2')).map((token,index) => token.kind === 'link' ? <Text key={index} accessibilityRole="link" style={{color:theme.accentText,textDecorationLine:'underline'}} onPress={()=>void Linking.openURL(token.target!).catch(()=>toast('This link could not open.','error'))}>{token.text}</Text> : token.text);
 
   const inline = (line: string): ReactNode[] =>
     line.split(/(\*\*[^*]+\*\*|\x60[^\x60]+\x60|\$[^$\n]+\$|\\\([^)]*\\\))/g).map((part, index) => {
       if (part.startsWith("**") && part.endsWith("**")) {
         return (
           <Text key={index} style={{ fontFamily: theme.font.semibold }}>
-            {part.slice(2, -2)}
+            {links(part.slice(2, -2))}
           </Text>
         );
       }
@@ -236,7 +240,7 @@ export function StudyAnswer({ value }: { value: string }) {
         );
       }
 
-      return <Fragment key={index}>{part}</Fragment>;
+      return <Fragment key={index}>{links(part)}</Fragment>;
     });
 
   const blocks: ReactNode[] = [];

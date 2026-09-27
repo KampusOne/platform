@@ -3,9 +3,15 @@ export function waitForRequest<T>(operation: Promise<T>, signal?: AbortSignal | 
   if (!signal) return operation;
   if (signal.aborted) return Promise.reject(signal.reason ?? new Error("Request cancelled"));
   return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(signal.reason ?? new Error("Request cancelled"));
+    const abort = () => {
+      signal.removeEventListener("abort", abort);
+      reject(signal.reason ?? new Error("Request cancelled"));
+    };
     signal.addEventListener("abort", abort, { once: true });
-    operation.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+    operation.then(
+      (value) => { signal.removeEventListener("abort", abort); resolve(value); },
+      (error) => { signal.removeEventListener("abort", abort); reject(error); },
+    );
   });
 }
 

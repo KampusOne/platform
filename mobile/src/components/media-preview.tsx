@@ -1,8 +1,8 @@
 import { useEvent } from "expo";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
-  Linking,
+  Platform,
   Modal,
   Pressable,
   StyleSheet,
@@ -13,6 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useAppearance } from "@/src/lib/appearance";
 import { SkeletonBlock } from "@/src/components/skeleton";
+import { downloadPostMedia } from "@/src/lib/media-downloads";
+import { useToast } from "@/src/components/toast";
 
 const playbackSpeeds = [1, 1.25, 1.5, 2] as const;
 
@@ -28,17 +30,25 @@ function Video({
   url,
   label,
   watermark,
+  initialAspect,
 }: {
   url: string;
   label: string;
   watermark?: string;
+  initialAspect?: number | undefined;
 }) {
   const { theme } = useAppearance();
+  const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState<(typeof playbackSpeeds)[number]>(1);
   const [trackWidth, setTrackWidth] = useState(0);
+  const [aspect, setAspect] = useState(initialAspect && initialAspect > 0 ? initialAspect : 16 / 9);
+  const [seekHint, setSeekHint] = useState("");
+  const videoView = useRef<VideoView>(null);
+  const lastTap = useRef({ side: 0, at: 0 });
+  const seekHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const player = useVideoPlayer(url, (instance) => {
     instance.loop = false;
@@ -60,10 +70,12 @@ function Video({
       const nextDuration = Number(player.duration);
       if (Number.isFinite(nextPosition)) setPosition(Math.max(0, nextPosition));
       if (Number.isFinite(nextDuration)) setDuration(Math.max(0, nextDuration));
+      const size = player.videoTrack?.size ?? player.availableVideoTracks?.[0]?.size;
+      if (!initialAspect && size && size.width > 0 && size.height > 0) setAspect(size.width / size.height);
     };
     update();
     const timer = setInterval(update, 250);
-    return () => clearInterval(timer);
+    return () => { clearInterval(timer); if (seekHintTimer.current) clearTimeout(seekHintTimer.current); };
   }, [player]);
 
   const progress = duration > 0 ? Math.max(0, Math.min(1, position / duration)) : 0;
@@ -88,6 +100,17 @@ function Video({
     }
   }
 
+  function doubleTap(side: number) {
+    const now = Date.now();
+    if (lastTap.current.side === side && now - lastTap.current.at < 330) {
+      seekBy(side * 5);
+      setSeekHint(side < 0 ? "−5 seconds" : "+5 seconds");
+      if (seekHintTimer.current) clearTimeout(seekHintTimer.current);
+      seekHintTimer.current = setTimeout(() => setSeekHint(""), 700);
+    }
+    lastTap.current = { side, at: now };
+  }
+
   function cycleSpeed() {
     const index = playbackSpeeds.indexOf(speed);
     const next = playbackSpeeds[(index + 1) % playbackSpeeds.length] ?? 1;
@@ -101,15 +124,22 @@ function Video({
   }
 
   return (
-    <View style={[styles.videoShell, { backgroundColor: theme.surfaceMuted }]}>
+    <View style={[styles.videoShell, { backgroundColor: "#080808" }]}>
       <VideoView
+        ref={videoView}
         accessibilityLabel={label}
         player={player}
         nativeControls={false}
         contentFit="contain"
         surfaceType="textureView"
-        style={styles.video}
+        style={[styles.video, { aspectRatio: aspect }]}
       />
+
+      <View style={styles.seekZones}>
+        <Pressable accessible={false} onPress={(event) => { event.stopPropagation(); doubleTap(-1); }} style={{ flex: 1 }} />
+        <Pressable accessible={false} onPress={(event) => { event.stopPropagation(); doubleTap(1); }} style={{ flex: 1 }} />
+      </View>
+      {seekHint ? <View pointerEvents="none" style={styles.seekFeedback}><Text style={styles.speedText}>{seekHint}</Text></View> : null}
 
       {status === "loading" ? (
         <View
@@ -152,17 +182,17 @@ function Video({
 
       <View style={styles.controls}>
         <View style={styles.controlRow}>
-          <Pressable accessibilityLabel="Back 10 seconds" onPress={() => seekBy(-10)} style={styles.iconButton}>
+          <Pressable accessibilityLabel="Back 10 seconds" onPress={(event) => { event.stopPropagation(); seekBy(-10); }} style={styles.iconButton}>
             <Ionicons name="play-back" size={19} color="#FFFFFF" />
           </Pressable>
           <Pressable
             accessibilityLabel={isPlaying ? "Pause video" : "Play video"}
-            onPress={() => (isPlaying ? player.pause() : player.play())}
+            onPress={(event) => { event.stopPropagation(); isPlaying ? player.pause() : player.play(); }}
             style={styles.playButton}
           >
             <Ionicons name={isPlaying ? "pause" : "play"} size={23} color="#FFFFFF" />
           </Pressable>
-          <Pressable accessibilityLabel="Forward 10 seconds" onPress={() => seekBy(10)} style={styles.iconButton}>
+          <Pressable accessibilityLabel="Forward 10 seconds" onPress={(event) => { event.stopPropagation(); seekBy(10); }} style={styles.iconButton}>
             <Ionicons name="play-forward" size={19} color="#FFFFFF" />
           </Pressable>
         </View>
@@ -171,7 +201,7 @@ function Video({
           accessibilityRole="adjustable"
           accessibilityLabel="Video progress"
           onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-          onPress={(event) => seekFromTrack(event.nativeEvent.locationX)}
+          onPress={(event) => { event.stopPropagation(); seekFromTrack(event.nativeEvent.locationX); }}
           style={styles.progressTouch}
         >
           <View style={styles.progressTrack}>
@@ -184,10 +214,11 @@ function Video({
             {formatClock(position)} / {formatClock(duration)}
           </Text>
           <View style={styles.bottomActions}>
-            <Pressable accessibilityLabel={`Playback speed ${speed} times`} onPress={cycleSpeed} style={styles.speedButton}>
+            <Pressable accessibilityLabel="View video full screen" onPress={(event) => { event.stopPropagation(); void videoView.current?.enterFullscreen(); }} style={styles.iconButton}><Ionicons name="expand-outline" size={19} color="#FFFFFF" /></Pressable>
+            <Pressable accessibilityLabel={`Playback speed ${speed} times`} onPress={(event) => { event.stopPropagation(); cycleSpeed(); }} style={styles.speedButton}>
               <Text style={styles.speedText}>{speed}×</Text>
             </Pressable>
-            <Pressable accessibilityLabel="More video options" onPress={() => setMenuOpen(true)} style={styles.iconButton}>
+            <Pressable accessibilityLabel="More video options" onPress={(event) => { event.stopPropagation(); setMenuOpen(true); }} style={styles.iconButton}>
               <Ionicons name="ellipsis-horizontal" size={20} color="#FFFFFF" />
             </Pressable>
           </View>
@@ -199,22 +230,22 @@ function Video({
           <Pressable accessibilityLabel="Close video options" onPress={() => setMenuOpen(false)} style={StyleSheet.absoluteFill} />
           <View style={[styles.menu, { backgroundColor: theme.canvas, borderColor: theme.border }]}>
             <Text style={[styles.menuTitle, { color: theme.text }]}>Video</Text>
-            <Pressable
+            {Platform.OS === 'android' && /^https:\/\//.test(url) ? <Pressable
               accessibilityRole="button"
               onPress={() => {
                 setMenuOpen(false);
-                void Linking.openURL(url);
+                void downloadPostMedia(url,true).catch(error=>toast(error.message,'error'));
               }}
               style={styles.menuRow}
             >
               <Ionicons name="download-outline" size={20} color={theme.deepBrand} />
               <View style={styles.menuCopy}>
-                <Text style={[styles.menuLabel, { color: theme.text }]}>Open video file</Text>
+                <Text style={[styles.menuLabel, { color: theme.text }]}>Download video</Text>
                 <Text style={[styles.menuDetail, { color: theme.textMuted }]}>
-                  Save it from your device viewer. Branded export is kept separate so we never fake a watermark.
+                  Save to your gallery with a KampusOne watermark.
                 </Text>
               </View>
-            </Pressable>
+            </Pressable> : null}
             <Pressable accessibilityRole="button" onPress={() => setMenuOpen(false)} style={styles.menuRow}>
               <Ionicons name="close-outline" size={20} color={theme.textMuted} />
               <Text style={[styles.menuLabel, { color: theme.text }]}>Close</Text>
@@ -231,11 +262,13 @@ export function MediaPreview({
   video = false,
   label = "Attached media",
   watermark,
+  initialAspect,
 }: {
   url: string;
   video?: boolean;
   label?: string;
   watermark?: string;
+  initialAspect?: number | undefined;
 }) {
   const { theme } = useAppearance();
   const [error, setError] = useState(false);
@@ -243,7 +276,7 @@ export function MediaPreview({
   return (
     <View style={{ marginVertical: 10 }}>
       {video ? (
-        <Video url={url} label={label} {...(watermark ? { watermark } : {})} />
+        <Video url={url} label={label} initialAspect={initialAspect} {...(watermark ? { watermark } : {})} />
       ) : error ? (
         <Text style={{ color: theme.error }}>This image could not load.</Text>
       ) : (
@@ -261,13 +294,14 @@ export function MediaPreview({
 
 const styles = StyleSheet.create({
   videoShell: {
-    minHeight: 240,
     width: "100%",
     borderRadius: 14,
     overflow: "hidden",
     position: "relative",
   },
-  video: { height: 260, width: "100%" },
+  video: { width: "100%" },
+  seekZones: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, flexDirection: "row" },
+  seekFeedback: { position: "absolute", top: "30%", alignSelf: "center", padding: 12, borderRadius: 8, backgroundColor: "rgba(0,0,0,0.65)" },
   loadingOverlay: {
     position: "absolute",
     top: 0,

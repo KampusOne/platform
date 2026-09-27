@@ -1,8 +1,9 @@
 import { AlarmSync } from "@/src/components/alarm-sync";
 import { checkBuildVersion } from "@/src/lib/build-version";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
-import { Stack, router } from "expo-router";
+import { SplashScreen, Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import * as SystemUI from "expo-system-ui";
 import { useFonts } from "expo-font";
 import {
   Inter_400Regular,
@@ -15,11 +16,11 @@ import {
   Lato_700Bold_Italic,
   Lato_900Black,
 } from "@expo-google-fonts/lato";
-import { Image, StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import { ScreenVisitTracker } from "@/src/components/screen-visit-tracker";
 import { AuthProvider } from "@/src/auth/auth-context";
 import { ToastProvider } from "@/src/components/toast";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { initializeAppearance } from "@/src/lib/appearance";
 import { listenForSnooze } from "@/src/lib/alarms";
 import { onAccountRestriction } from "@/src/lib/api";
@@ -28,12 +29,19 @@ import { VideoEditorHost } from "@/src/components/video-editor";
 import { BrandIntro } from "@/src/components/brand-intro";
 import { AppErrorBoundary } from "@/src/components/app-error-boundary";
 import { NotificationBootstrap } from "@/src/components/notification-bootstrap";
+import { StartupProvider } from "@/src/lib/startup";
+import { AndroidBackNavigation } from "@/src/components/android-back-navigation";
+import { AutoStreak } from "@/src/components/auto-streak";
+import { DownloadTray } from "@/src/components/download-tray";
+
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout() {
-  const { styles, theme, isDark } = useThemeStyles(createStyles);
-
+  const { theme, isDark } = useThemeStyles(createStyles);
+  const [appearanceReady, setAppearanceReady] = useState(false);
+  useEffect(() => { void SystemUI.setBackgroundColorAsync(theme.canvas).catch(() => undefined); }, [theme.canvas]);
   useEffect(() => {
-    void initializeAppearance();
+    void initializeAppearance().finally(() => setAppearanceReady(true));
     void checkBuildVersion();
   }, []);
 
@@ -61,38 +69,28 @@ export default function RootLayout() {
     Lato_700Bold,
     Lato_700Bold_Italic,
     Lato_900Black,
+    Caveat_600SemiBold: require("@/assets/fonts/caveat-600.ttf"),
   });
-  const fontsReady = fontsLoaded || Boolean(fontError);
 
   return (
     <AuthProvider>
-      {!fontsReady ? (
-        <View style={styles.launchUnderlay}>
-          <Image
-            source={require("@/assets/adaptive-icon-foreground.png")}
-            resizeMode="contain"
-            style={styles.launchMark}
+      <StartupProvider><ToastProvider><AlarmSync/><NotificationBootstrap /><AutoStreak />
+        <StatusBar style={isDark ? "light" : "dark"} />
+        <ScreenVisitTracker />
+        <AppErrorBoundary>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: theme.canvas },
+            }}
           />
-        </View>
-      ) : (
-        <ToastProvider>
-          <AlarmSync />
-          <NotificationBootstrap />
-          <StatusBar style={isDark ? "light" : "dark"} />
-          <ScreenVisitTracker />
-          <AppErrorBoundary>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: theme.canvas },
-              }}
-            />
-          </AppErrorBoundary>
-          <PhotoEditorHost />
-          <VideoEditorHost />
-          <BrandIntro />
-        </ToastProvider>
-      )}
+        </AppErrorBoundary>
+        <PhotoEditorHost />
+        <VideoEditorHost />
+        <AndroidBackNavigation />
+        <DownloadTray />
+        <BrandIntro fontsReady={fontsLoaded || Boolean(fontError)} appearanceReady={appearanceReady} />
+      </ToastProvider></StartupProvider>
     </AuthProvider>
   );
 }

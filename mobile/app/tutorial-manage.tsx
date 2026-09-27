@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Text, View, Pressable } from "react-native";
 import {
   ToolPage,
@@ -11,7 +11,8 @@ import { EmptyResult } from "@/src/components/product-ui";
 import { useToast } from "@/src/components/toast";
 import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
-import { pickAndUpload, type UploadedFile } from "@/src/lib/uploads";
+import { pickLearningResource } from "@/src/lib/learning-resource-upload";
+import { type UploadedFile } from "@/src/lib/uploads";
 type Listing = {
   id: string;
   title: string;
@@ -62,8 +63,11 @@ export default function TutorialManagement() {
     [description, setDescription] = useState(""),
     [file, setFile] = useState<UploadedFile | null>(null),
     [resourceType, setResourceType] = useState<
-      "PDF" | "NOTE" | "PAST_QUESTION"
+      "PDF" | "NOTE" | "PAST_QUESTION" | "AUDIOBOOK" | "VIDEO"
     >("PDF");
+  const [accessModel,setAccessModel]=useState<"FREE"|"BOOKING_INCLUDED"|"PAID">("BOOKING_INCLUDED");
+  const [resourcePrice,setResourcePrice]=useState("");
+  const [durationMinutes,setDurationMinutes]=useState("");
   const load = useCallback(async () => {
     const [r, w] = await Promise.all([
       api<{ listings: Listing[]; bookings: Booking[]; resources: Resource[] }>(
@@ -97,7 +101,7 @@ export default function TutorialManagement() {
   async function upload() {
     setBusy(true);
     try {
-      const next = await pickAndUpload("resource");
+      const next = await pickLearningResource(resourceType);
       if (next) setFile(next);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Upload failed", "error");
@@ -107,6 +111,7 @@ export default function TutorialManagement() {
   }
   return (
     <ToolPage title={listing?.title ?? "Manage tutorial"}>
+      <ToolButton secondary label="Learners & product sales" onPress={()=>router.push("/tutor-learners")}/>
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
         {(["Schedule", "Bookings", "Materials"] as const).map((t) => (
           <Pressable
@@ -279,13 +284,13 @@ export default function TutorialManagement() {
             multiline
             maxLength={2000}
           />
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            {(["PDF", "NOTE", "PAST_QUESTION"] as const).map((t) => (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {(["PDF", "NOTE", "PAST_QUESTION", "AUDIOBOOK", "VIDEO"] as const).map((t) => (
               <Pressable
                 key={t}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: resourceType === t }}
-                onPress={() => setResourceType(t)}
+                onPress={() => { setResourceType(t); setFile(null); }}
                 style={{
                   padding: 12,
                   backgroundColor:
@@ -300,11 +305,15 @@ export default function TutorialManagement() {
                     ? "Past question"
                     : t === "NOTE"
                       ? "Notes"
-                      : "PDF"}
+                      : t === "AUDIOBOOK" ? "Audiobook" : t === "VIDEO" ? "Video" : "PDF"}
                 </Text>
               </Pressable>
             ))}
           </View>
+          <View style={{flexDirection:"row",flexWrap:"wrap",gap:8,marginVertical:14}}>{(["FREE","BOOKING_INCLUDED","PAID"] as const).map(model=><Pressable key={model} accessibilityRole="radio" accessibilityState={{checked:accessModel===model}} onPress={()=>setAccessModel(model)} style={{padding:12,borderRadius:10,backgroundColor:accessModel===model?theme.surfaceMuted:"transparent"}}><Text style={{color:theme.text}}>{model==="FREE"?"Free":model==="PAID"?"Paid":"For booked students"}</Text></Pressable>)}</View>
+          {accessModel==="PAID"&&<ToolField label="Price (₦)" value={resourcePrice} onChangeText={setResourcePrice} keyboardType="decimal-pad"/>}
+          {["AUDIOBOOK","VIDEO"].includes(resourceType)&&<ToolField label="Duration (minutes)" value={durationMinutes} onChangeText={setDurationMinutes} keyboardType="decimal-pad"/>}
+          {file&&<Text style={{color:theme.textMuted,marginVertical:10}}>File uploaded privately. Submit below to send it for review.</Text>}
           <ToolButton
             secondary
             label={file ? "Replace uploaded file" : "Choose file from device"}
@@ -314,7 +323,7 @@ export default function TutorialManagement() {
           <ToolButton
             label="Submit material"
             disabled={
-              busy || !file || !title.trim() || description.trim().length < 10
+              busy || !file || !title.trim() || description.trim().length < 10 || (accessModel === "PAID" && (!Number.isFinite(Number(resourcePrice)) || Number(resourcePrice) <= 0)) || (["AUDIOBOOK","VIDEO"].includes(resourceType) && (!Number.isFinite(Number(durationMinutes)) || Number(durationMinutes) <= 0))
             }
             onPress={() =>
               void perform(async () => {
@@ -329,8 +338,9 @@ export default function TutorialManagement() {
                       title,
                       description,
                       resourceType,
-                      accessModel: "BOOKING_INCLUDED",
-                      priceKobo: 0,
+                      accessModel,
+                      priceKobo: accessModel === "PAID" ? Math.round(Number(resourcePrice)*100) : 0,
+                      ...(["AUDIOBOOK","VIDEO"].includes(resourceType) ? {durationSeconds:Math.round(Number(durationMinutes)*60)} : {}),
                     }),
                   },
                 );

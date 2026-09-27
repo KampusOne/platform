@@ -2,7 +2,7 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Image,
   Pressable,
@@ -19,7 +19,10 @@ import {
 } from "@/src/components/product-ui";
 import { SectionHeading } from "@/src/components/section-heading";
 import { AgentShortcuts } from "@/src/components/agent-shortcuts";
-import { ScreenSkeleton } from "@/src/components/skeleton";
+import { DashboardCarousel } from "@/src/components/dashboard-carousel";
+import { useStartup } from "@/src/lib/startup";
+import { readCache, writeCache } from "@/src/lib/device-cache";
+import { useNotificationCount } from "@/src/lib/notification-state";
 import { ApiError, api } from "@/src/lib/api";
 import { recordRecentTool } from "@/src/lib/recent-tools";
 import { theme } from "@/src/theme";
@@ -72,36 +75,52 @@ function timeInMinutes(value: string) {
 export default function TodayScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const { markHomeReady } = useStartup();
+  const unreadNotifications = useNotificationCount();
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const generation = useRef(0);
   const [data, setData] = useState<Home | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
+    const current = ++generation.current;
     setError("");
     try {
-      setData(await api<Home>("/v1/student/home"));
+      const cached = user ? await readCache<Home>(`home.${user.id}`) : null;
+      if (current !== generation.current) return;
+      const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      if (cached && cached.campusClock?.date === localDate) { setData(cached); setLoading(false); markHomeReady(); }
+      const fresh = await api<Home>("/v1/student/home");
+      if (current !== generation.current) return;
+      setData(fresh);
+      if (user) void writeCache(`home.${user.id}`, fresh, 12 * 60 * 60_000);
     } catch (caught) {
-      setError(
-        caught instanceof ApiError
-          ? caught.message
-          : "Your campus day could not be loaded.",
-      );
+      if (current !== generation.current) return;
+      setError(caught instanceof ApiError ? caught.message : "Your campus day could not be loaded.");
     } finally {
-      setLoading(false);
+      if (current === generation.current) { setLoading(false); markHomeReady(); }
     }
-  }, []);
+  }, [user?.id, markHomeReady]);
 
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  useFocusEffect(useCallback(() => {
+    void load();
+    return () => { generation.current++; };
+  }, [load]));
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    const refresh = () => { void api<{ unreadCount: number }>("/v1/messages/inbox").then(result => { if (active) setUnreadMessages(result.unreadCount); }).catch(() => undefined); };
+    refresh();
+    const timer = setInterval(refresh, 60_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [user?.id]));
 
   const firstName = data?.profile?.first_name ?? profile?.first_name ?? "there";
   const now = new Date();
-  const campusTime = data?.campusClock?.time;
+  const campusTime = new Intl.DateTimeFormat("en-GB", { timeZone: data?.campusClock?.timeZone || "Africa/Lagos", hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
   const nowInMinutes = campusTime
     ? timeInMinutes(campusTime)
     : now.getHours() * 60 + now.getMinutes();
@@ -136,7 +155,7 @@ export default function TodayScreen() {
             accessibilityRole="button"
             accessibilityLabel={
               data?.streak_days == null
-                ? "Start your streak"
+                ? "Your daily streak"
                 : `${data.streak_days} day streak`
             }
             accessible
@@ -145,7 +164,7 @@ export default function TodayScreen() {
             <Ionicons color={theme.brand} name="flame-outline" size={24} />
             <Text style={styles.streakText}>
               {data?.streak_days == null
-                ? "Start your streak"
+                ? "Your daily streak"
                 : `${data.streak_days} day streak`}
             </Text>
           </Pressable>
@@ -159,8 +178,12 @@ export default function TodayScreen() {
           </View>
         </View>
         <View style={styles.headerActions}>
+          <Pressable accessibilityLabel={`Open messages${unreadMessages ? `, ${unreadMessages} unread` : ""}`} accessibilityRole="button" onPress={() => router.push("/messages")} style={({ pressed }) => [styles.bell, pressed && styles.pressed]}>
+            <Ionicons color={theme.text} name="chatbubble-ellipses-outline" size={21} />
+            {unreadMessages > 0 ? <View style={styles.badge}><Text style={styles.badgeText}>{unreadMessages > 99 ? "99+" : unreadMessages}</Text></View> : null}
+          </Pressable>
           <Pressable
-            accessibilityLabel="Open notifications"
+            accessibilityLabel={`Open notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}
             accessibilityRole="button"
             onPress={openNotifications}
             style={({ pressed }) => [styles.bell, pressed && styles.pressed]}
@@ -170,40 +193,14 @@ export default function TodayScreen() {
               name="notifications-outline"
               size={21}
             />
+            {unreadNotifications > 0 ? <View style={styles.badge}><Text style={styles.badgeText}>{unreadNotifications > 99 ? "99+" : unreadNotifications}</Text></View> : null}
           </Pressable>
         </View>
       </View>
 
       {notice ? <InlineFeedback message={notice} /> : null}
 
-      <View style={styles.hero}>
-        <View pointerEvents="none" style={styles.heroOrb} />
-        <View style={styles.heroCopy}>
-          <Text style={styles.heroTitle}>
-            Everything{`\n`}you need for{`\n`}today
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push("/explore")}
-            style={({ pressed }) => [
-              styles.heroButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.heroButtonText}>Explore now</Text>
-            <Ionicons color="#FFFFFF" name="arrow-forward" size={17} />
-          </Pressable>
-        </View>
-        <Image
-          accessible={false}
-          accessibilityIgnoresInvertColors
-          resizeMode="contain"
-          source={require("@/assets/illustrations/home-student-v2.png")}
-          style={styles.heroImage}
-        />
-      </View>
-
-      {loading ? <ScreenSkeleton variant="dashboard" compact /> : null}
+      <DashboardCarousel />
 
       {error ? (
         <Pressable
@@ -215,7 +212,7 @@ export default function TodayScreen() {
           style={({ pressed }) => [styles.error, pressed && styles.pressed]}
         >
           <Ionicons
-            color={theme.deepBrand}
+            color={theme.accentText}
             name="cloud-offline-outline"
             size={21}
           />
@@ -369,7 +366,7 @@ export default function TodayScreen() {
                   ) : (
                     <View style={styles.updateIcon}>
                       <Ionicons
-                        color={theme.deepBrand}
+                        color={theme.accentText}
                         name={
                           update.urgent
                             ? "warning-outline"
@@ -420,7 +417,7 @@ function QuickAction({
       style={({ pressed }) => [styles.quick, pressed && styles.pressed]}
     >
       <View style={styles.quickIcon}>
-        <Ionicons color={theme.deepBrand} name={icon} size={22} />
+        <Ionicons color={theme.accentText} name={icon} size={22} />
       </View>
       <Text numberOfLines={2} style={styles.quickText}>
         {label}
@@ -450,7 +447,7 @@ const createStyles = (theme: Theme) =>
       fontSize: 13,
     },
     greetingScript: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       fontFamily: theme.font.calligraphy,
       fontSize: 26,
       letterSpacing: -0.7,
@@ -476,56 +473,8 @@ const createStyles = (theme: Theme) =>
       justifyContent: "center",
       width: 44,
     },
-    hero: {
-      backgroundColor: "#F6E8DD",
-      borderRadius: 26,
-      justifyContent: "center",
-      marginTop: 20,
-      minHeight: 226,
-      overflow: "hidden",
-      padding: 20,
-      position: "relative",
-    },
-    heroOrb: {
-      backgroundColor: "rgba(233,177,142,0.28)",
-      borderRadius: 90,
-      height: 180,
-      position: "absolute",
-      right: -56,
-      top: -44,
-      width: 180,
-    },
-    heroCopy: { paddingVertical: 5, width: "56%", zIndex: 2 },
-    heroTitle: {
-      color: theme.text,
-      fontFamily: theme.font.displayStrong,
-      fontSize: 27,
-      letterSpacing: -0.6,
-      lineHeight: 28,
-    },
-    heroButton: {
-      alignItems: "center",
-      alignSelf: "flex-start",
-      backgroundColor: theme.deepBrand,
-      borderRadius: 15,
-      flexDirection: "row",
-      gap: 8,
-      marginTop: 18,
-      minHeight: 47,
-      paddingHorizontal: 16,
-    },
-    heroButtonText: {
-      color: "#FFFFFF",
-      fontFamily: theme.font.semibold,
-      fontSize: 13,
-    },
-    heroImage: {
-      bottom: -8,
-      height: 215,
-      position: "absolute",
-      right: -8,
-      width: "56%",
-    },
+    badge: { position: "absolute", right: 0, top: 2, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: theme.deepBrand, borderColor: theme.canvas, borderWidth: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 },
+    badgeText: { color: "#FFFFFF", fontFamily: theme.font.bold, fontSize: 9 },
     loading: { alignItems: "center", gap: 9, paddingVertical: 34 },
     loadingText: {
       color: theme.textMuted,
@@ -534,7 +483,7 @@ const createStyles = (theme: Theme) =>
     },
     error: {
       alignItems: "center",
-      backgroundColor: "#FFF2EC",
+      backgroundColor: theme.surfaceSoft,
       borderColor: "rgba(168,70,46,0.18)",
       borderRadius: 18,
       borderWidth: 1,
@@ -545,7 +494,7 @@ const createStyles = (theme: Theme) =>
     },
     errorCopy: { flex: 1 },
     errorTitle: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       fontFamily: theme.font.semibold,
       fontSize: 13.5,
     },
@@ -694,7 +643,7 @@ const createStyles = (theme: Theme) =>
     },
     updateCopy: { flex: 1, marginLeft: 12 },
     updateSource: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       fontFamily: theme.font.bold,
       fontSize: 9.5,
     },

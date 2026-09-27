@@ -212,7 +212,7 @@ async function securelyAcceptSession(session: Session) {
   return session;
 }
 
-async function refreshSession(timeoutMs = 12_000) {
+async function refreshSession() {
   if (!refreshPromise) {
     if (queuedSessionTransitions > 0) {
       throw new ApiError(
@@ -239,7 +239,7 @@ async function refreshSession(timeoutMs = 12_000) {
           body: JSON.stringify(refreshToken ? { refreshToken } : {}),
         });
         return parse<Session>(response);
-      }, timeoutMs)
+      }, 12_000)
       .then((session) => session ? securelyAcceptSession(session) : null)
       .then((session) => {
         // Do not let an older refresh overwrite a session established while it
@@ -430,9 +430,6 @@ export const authApi = {
     );
   },
   refresh: refreshSession,
-  hasSavedSession() {
-    return readRefreshToken().then(Boolean);
-  },
   forgotPassword(email: string) {
     return api<{ status: string }>(
       "/v1/auth/forgot-password",

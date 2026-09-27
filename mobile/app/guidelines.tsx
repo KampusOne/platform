@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Linking, Text, View } from "react-native";
 import { router } from "expo-router";
 import { ToolPage, ToolButton } from "@/src/components/toolkit";
-import { EmptyResult } from "@/src/components/product-ui";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
 import { useAppearance } from "@/src/lib/appearance";
@@ -66,6 +65,7 @@ export default function Guidelines() {
         }}
       >
         {profile?.university_name || "Your institution"}
+        {[profile?.faculty_name, profile?.department_name].filter(Boolean).length ? `\n${[profile?.faculty_name, profile?.department_name].filter(Boolean).join(" · ")}` : ""}
       </Text>
       {loading ? (
         <ScreenSkeleton variant="learning" compact />
@@ -96,13 +96,6 @@ export default function Guidelines() {
         </View>
       ) : !items.length ? (
         <>
-          <EmptyResult
-            title={
-              serviceUnavailable
-                ? "Campus guidelines are being prepared"
-                : "No published guidelines yet"
-            }
-          />
           <Text
             style={{
               color: theme.textMuted,
@@ -111,8 +104,8 @@ export default function Guidelines() {
             }}
           >
             {serviceUnavailable
-              ? "Reviewed guidelines for your university will appear here once they’re available."
-              : "Your university's reviewed rules will appear here. Check your school's official handbook while these are being prepared."}
+              ? "School-specific guidelines could not load. The general study guidance below is still available."
+              : "We are still checking your school’s handbook and departmental rules. Start with the general guidance below, and confirm school-specific requirements with your department."}
           </Text>
           {serviceUnavailable ? (
             <ToolButton secondary label="Check again" onPress={() => void load()} />
@@ -245,6 +238,25 @@ export default function Guidelines() {
           </View>
         ))
       )}
+      <View style={{ marginTop: 24, borderTopWidth: 1, borderColor: theme.border, paddingTop: 20 }}>
+        <Text style={{ color: theme.text, fontFamily: theme.font.display, fontSize: 22, marginBottom: 8 }}>Study essentials</Text>
+        <Text style={{ color: theme.textMuted, fontFamily: theme.font.body, lineHeight: 22, marginBottom: 14 }}>
+          General guidance from KampusOne. This is not an official university rulebook. Your school’s current handbook and departmental notices take priority.
+        </Text>
+        <GuidelineArticle body={[
+          "## Your faculty and department",
+          "Keep your admission details, matriculation number and course-registration confirmation together. Check your department’s approved course list before registering; ask your course adviser about electives, carryovers and prerequisites.",
+          "Find your faculty office, departmental office, level adviser and official noticeboard or student portal. Use those channels to confirm deadlines, changes of venue and exam instructions before relying on forwarded messages.",
+          "## Dress and practical sessions",
+          "Check the current faculty or departmental dress guidance before lectures, placements and presentations. Requirements can differ between programmes; KampusOne does not assume one dress code applies to every student.",
+          "Before a laboratory, workshop, studio, clinic or field trip, ask the supervisor which protective clothing and equipment are required. Follow the session’s safety briefing and report hazards promptly.",
+          "## Classes, assessments and examinations",
+          "Save your timetable and assessment dates, allow time to reach the venue, and check any attendance requirement in your course handbook. Confirm your exam venue, allowed materials and identification requirements with your department.",
+          "Cite the sources you use, submit your own work and check the lecturer’s policy on AI assistance. Keep copies of submitted assignments and receipts. If a result or registration looks wrong, contact the designated adviser or exams office with your records.",
+          "## Get support early",
+          "Ask your department about academic support and accessibility arrangements when you need them. Use the school’s official student affairs, counselling or security contacts for concerns that require their help.",
+        ].join("\n\n")} />
+      </View>
     </ToolPage>
   );
 }

@@ -12,6 +12,8 @@ export type Capabilities = {
   communities: { id: string; name: string }[];
 };
 export function useCapabilities() {
+  const [ready,setReady] = useState(false);
+  const [error,setError] = useState("");
   const [data, setData] = useState<Capabilities>({
     profiles: [],
     communities: [],
@@ -21,17 +23,17 @@ export function useCapabilities() {
       let active = true;
       void api<Capabilities>("/v1/account/capabilities")
         .then((r) => {
-          if (active) setData(r);
+          if (active) {setData(r);setReady(true);setError("");}
         })
-        .catch(() => {
-          if (active) setData({ profiles: [], communities: [] });
+        .catch((caught:unknown) => {
+          if (active) {setReady(true);setError(caught instanceof Error ? caught.message : "Your workspaces could not load.");}
         });
       return () => {
         active = false;
       };
     }, []),
   );
-  return data;
+  return {...data,ready,error};
 }
 export function AgentShortcuts() {
   const data = useCapabilities();
