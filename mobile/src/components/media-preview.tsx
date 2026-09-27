@@ -30,11 +30,13 @@ function Video({
   url,
   label,
   watermark,
+  downloadUsername,
   initialAspect,
 }: {
   url: string;
   label: string;
   watermark?: string;
+  downloadUsername?: string;
   initialAspect?: number | undefined;
 }) {
   const { theme } = useAppearance();
@@ -234,7 +236,7 @@ function Video({
               accessibilityRole="button"
               onPress={() => {
                 setMenuOpen(false);
-                void downloadPostMedia(url,true).catch(error=>toast(error.message,'error'));
+                void downloadPostMedia(url,true,downloadUsername).catch(error=>toast(error.message,'error'));
               }}
               style={styles.menuRow}
             >
@@ -262,12 +264,14 @@ export function MediaPreview({
   video = false,
   label = "Attached media",
   watermark,
+  downloadUsername,
   initialAspect,
 }: {
   url: string;
   video?: boolean;
   label?: string;
   watermark?: string;
+  downloadUsername?: string;
   initialAspect?: number | undefined;
 }) {
   const { theme } = useAppearance();
@@ -276,7 +280,7 @@ export function MediaPreview({
   return (
     <View style={{ marginVertical: 10 }}>
       {video ? (
-        <Video url={url} label={label} initialAspect={initialAspect} {...(watermark ? { watermark } : {})} />
+        <Video url={url} label={label} initialAspect={initialAspect} {...(watermark ? { watermark } : {})} {...(downloadUsername ? { downloadUsername } : {})} />
       ) : error ? (
         <Text style={{ color: theme.error }}>This image could not load.</Text>
       ) : (
