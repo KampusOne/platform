@@ -8,21 +8,19 @@ import {
   Text,
   View,
 } from "react-native";
-import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 
 let played = false;
 
-const INTRO_MIN_MS = 1_900;
-const INTRO_FADE_MS = 260;
+const INTRO_MIN_MS = 900;
+const INTRO_FADE_MS = 180;
 
 /**
- * One clean cold-start brand transition. It stays above route/session loading so
- * users never see implementation loaders between the native splash and the app.
+ * One clean cold-start brand transition. It never waits on network/session
+ * restoration, so branding cannot block sign-in or first interaction.
  */
 export function BrandIntro() {
   const { theme } = useAppearance();
-  const { state, profileState, sessionRestoreError, profileError } = useAuth();
   const [visible, setVisible] = useState(!played);
   const [minimumElapsed, setMinimumElapsed] = useState(false);
   const [motionComplete, setMotionComplete] = useState(false);
@@ -31,14 +29,6 @@ export function BrandIntro() {
   const tagline = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const dismissing = useRef(false);
-
-  const appReady =
-    state === "anonymous" ||
-    Boolean(sessionRestoreError) ||
-    (state === "authenticated" &&
-      (profileState === "ready" ||
-        profileState === "error" ||
-        Boolean(profileError)));
 
   useEffect(() => {
     if (played) {
@@ -113,7 +103,6 @@ export function BrandIntro() {
       !visible ||
       !minimumElapsed ||
       !motionComplete ||
-      !appReady ||
       dismissing.current
     )
       return;
@@ -125,7 +114,7 @@ export function BrandIntro() {
       easing: Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     }).start(() => setVisible(false));
-  }, [appReady, minimumElapsed, motionComplete, opacity, visible]);
+  }, [minimumElapsed, motionComplete, opacity, visible]);
 
   if (!visible) return null;
 
