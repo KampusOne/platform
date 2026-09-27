@@ -2,7 +2,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { Image, Platform } from "react-native";
-import { api, clearApiCache } from "./api";
+import { api, ApiError, clearApiCache } from "./api";
 import { requestPhotoEdit } from "./photo-edit-session";
 import { requestVideoEdit } from "./video-edit-session";
 import { getPostVideoDurationMs } from "./post-video-processing";
@@ -69,10 +69,22 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
   if (!body.size || body.size > limit) throw new Error(`Choose a file smaller than ${limit / 1024 / 1024} MB.`);
   // Raw bytes avoid incompatible native/browser FormData implementations and
   // the extra multipart copy for videos. The server verifies the actual bytes.
-  const result = await api<UploadedFile>(`/v1/media?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(file.name)}`, {
-    method: "POST", body, headers: { "Content-Type": file.type },
-    timeoutMs: file.type.startsWith("video/") ? 180_000 : 60_000,
-  });
+  const timeoutMs = file.type.startsWith("video/") ? 180_000 : 60_000;
+  let result: UploadedFile;
+  try {
+    result = await api<UploadedFile>(`/v1/media?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(file.name)}`, {
+      method: "POST", body, headers: { "Content-Type": file.type }, timeoutMs,
+    });
+  } catch (caught) {
+    // Production can temporarily lag the mobile client while guarded Worker
+    // migrations are awaiting approval. The previous Worker only understands
+    // multipart uploads and throws this generic 500 before reading any bytes.
+    if (!(caught instanceof ApiError && caught.status === 500 && caught.code === "INTERNAL_ERROR" && caught.message === "The service could not complete this request.")) throw caught;
+    const form = new FormData();
+    form.append("kind", kind);
+    form.append("file", body, file.name);
+    result = await api<UploadedFile>("/v1/media", { method: "POST", body: form, timeoutMs });
+  }
   if (!result?.id || !result.url || result.kind !== kind) throw new Error("The upload returned an incomplete response. Refresh before trying again.");
   // A profile read may have started while the upload was running. Invalidate
   // again after the write, so an old cached profile cannot undo the new photo.
