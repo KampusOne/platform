@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Platform, Pressable, Text, View } from 'react-native';
+import { AppState, Platform, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { File } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import { api, ApiError } from '@/src/lib/api';
 import { useAppearance } from '@/src/lib/appearance';
+import { InlineLoading } from '@/src/components/skeleton';
 
 const MAX_RECORDING_MS = 120000;
 const WAVE_BARS = 34;
@@ -126,9 +127,9 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
     <View accessibilityLiveRegion="polite" accessibilityLabel={working?'Transcribing voice message':state.isRecording?'Recording voice message':'Voice recording saved'} style={{minHeight:64,flexDirection:'row',alignItems:'center',gap:9}}>
       <Pressable accessibilityRole="button" accessibilityLabel="Cancel voice recording" disabled={working} onPress={()=>void cancel()} style={{width:44,height:44,alignItems:'center',justifyContent:'center',opacity:working?0.4:1}}><Ionicons name="close" size={28} color={theme.text}/></Pressable>
       <Text style={{color:theme.textMuted,fontFamily:theme.font.semibold,fontSize:12,minWidth:34}}>{durationLabel(duration)}</Text>
-      <View style={{flex:1,height:32,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:2,overflow:'hidden'}}>{working?<ActivityIndicator size="small" color={theme.brand}/>:waveform}</View>
+      <View style={{flex:1,height:32,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:2,overflow:'hidden'}}>{working?<InlineLoading color={theme.brand} size={28}/>:waveform}</View>
       <Pressable accessibilityRole="button" accessibilityLabel={state.isRecording?'Stop and save recording':'Recording saved'} disabled={!state.isRecording||working} onPress={()=>void stopAndKeep()} style={{width:44,height:44,borderRadius:22,backgroundColor:theme.surfaceMuted,alignItems:'center',justifyContent:'center',opacity:state.isRecording&&!working?1:0.65}}><View style={{width:13,height:13,borderRadius:3,backgroundColor:theme.textMuted}}/></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={working?'Transcribing voice message':'Use voice message'} disabled={working||disabled} onPress={()=>void submitVoice()} style={{width:44,height:44,borderRadius:22,backgroundColor:theme.deepBrand,alignItems:'center',justifyContent:'center',opacity:working||disabled?0.5:1}}>{working?<ActivityIndicator size="small" color="#FFFFFF"/>:<Ionicons name="arrow-up" size={24} color="#FFFFFF"/>}</Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={working?'Transcribing voice message':'Use voice message'} disabled={working||disabled} onPress={()=>void submitVoice()} style={{width:44,height:44,borderRadius:22,backgroundColor:theme.deepBrand,alignItems:'center',justifyContent:'center',opacity:working||disabled?0.5:1}}>{working?<InlineLoading color="#FFFFFF" size={20}/>:<Ionicons name="arrow-up" size={24} color="#FFFFFF"/>}</Pressable>
     </View>
     {error?<Text accessibilityRole="alert" style={{color:theme.error,fontFamily:theme.font.body,fontSize:12,lineHeight:18,paddingHorizontal:7,paddingBottom:5}}>{error}</Text>:null}
   </View>;
