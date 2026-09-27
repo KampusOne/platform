@@ -43,7 +43,7 @@ async function rateLimit(c: Context<Env>, kind: string, limit: number) {
 function projection(user: User, withViews: boolean) {
   const views = withViews ? sql`(select count(*)::int from public.feed_post_views v where v.post_id = posts.id)` : sql`null::integer`;
   return sql`posts.id, posts.category, posts.title, posts.summary, posts.body,
-    posts.image_url, posts.audience->>'mediaType' as media_type, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
+    posts.image_url, posts.audience->>'mediaType' as media_type, coalesce(posts.audience->'media', '[]'::jsonb) as media, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
     case when posts.audience->>'studentPost' = 'true'
       then coalesce(author.display_name, 'KampusOne student') else sources.name end as source_name,
     case when posts.audience->>'studentPost' = 'true' then nullif(author.username, '') else null end as source_username,
@@ -64,7 +64,7 @@ function projection(user: User, withViews: boolean) {
     posts.quoted_post_id,
     case when quoted.id is null then null else jsonb_build_object(
       'id', quoted.id, 'title', quoted.title, 'summary', quoted.summary, 'body', quoted.body,
-      'image_url', quoted.image_url, 'media_type', quoted.audience->>'mediaType', 'published_at', quoted.published_at,
+      'image_url', quoted.image_url, 'media_type', quoted.audience->>'mediaType', 'media', coalesce(quoted.audience->'media', '[]'::jsonb), 'published_at', quoted.published_at,
       'source_image_url', case when quoted.audience->>'studentPost' = 'true' then quoted_author.profile_image_url else null end,
       'source_name', case when quoted.audience->>'studentPost' = 'true' then coalesce(quoted_author.display_name, 'KampusOne student') else quoted_source.name end,
       'source_verified', case when quoted.audience->>'studentPost' = 'true' then coalesce((to_jsonb(quoted_author)->>'public_badge_verified')::boolean, quoted_author.verification_status::text='VERIFIED', false) else quoted_source.verified end
@@ -170,22 +170,98 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
   await requireSocial(c);
   const user = currentUser(c);
   const university = campus(user);
-  const data = await input(c, z.object({ body: z.string().trim().max(5000), requestId: uuid, mediaId: uuid.optional(), quotedPostId: uuid.optional() }).refine(d=>d.body.length>0 || Boolean(d.mediaId),"Add a message or photo."));
+  const mediaInput = z.object({
+    mediaId: uuid,
+    width: z.number().int().positive().max(10000).optional(),
+    height: z.number().int().positive().max(10000).optional(),
+  });
+  const data = await input(
+    c,
+    z.object({
+      body: z.string().trim().max(5000),
+      requestId: uuid,
+      mediaId: uuid.optional(),
+      media: z.array(mediaInput).max(5).optional(),
+      quotedPostId: uuid.optional(),
+    })
+      .refine((value) => !(value.mediaId && value.media?.length), "Choose either the legacy media field or the media list.")
+      .refine((value) => value.body.length > 0 || Boolean(value.mediaId) || Boolean(value.media?.length), "Add a message or photo."),
+  );
+
+  const requestedMedia = data.media?.length
+    ? data.media
+    : data.mediaId
+      ? [{ mediaId: data.mediaId }]
+      : [];
+  const origin = (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin).replace(/\/$/, "");
+  const resolvedMedia: Array<{ mediaId: string; url: string; type: string; width?: number; height?: number }> = [];
+
+  for (const item of requestedMedia) {
+    const mediaObject = firstRow(
+      await database(c.env).execute<{ id: string; content_type: string }>(sql`
+        select id, content_type from public.media_objects
+        where id = ${item.mediaId}::uuid
+          and owner_user_id = ${user.id}::uuid
+          and kind = 'post'
+          and deleted_at is null
+        limit 1
+      `),
+    );
+    if (!mediaObject || !["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"].includes(mediaObject.content_type))
+      throw new AppError(400, "BAD_REQUEST", "Choose your own image or supported video.");
+    resolvedMedia.push({
+      mediaId: item.mediaId,
+      url: `${origin}/v1/media/${item.mediaId}`,
+      type: mediaObject.content_type,
+      ...("width" in item && item.width ? { width: item.width } : {}),
+      ...("height" in item && item.height ? { height: item.height } : {}),
+    });
+  }
+
+  const videos = resolvedMedia.filter((item) => item.type.startsWith("video/"));
+  if (videos.length && resolvedMedia.length > 1)
+    throw new AppError(400, "BAD_REQUEST", "Post one video by itself. Multiple attachments can contain up to 5 images.");
+
+  const imageUrl = resolvedMedia[0]?.url ?? null;
+  const mediaType = resolvedMedia[0]?.type ?? null;
+  const mediaPayload = data.media?.length
+    ? resolvedMedia.map(({ url, type, width, height }) => ({
+        url,
+        type,
+        ...(width ? { width } : {}),
+        ...(height ? { height } : {}),
+      }))
+    : [];
+  const mediaPayloadJson = JSON.stringify(mediaPayload);
+  const hasMediaArray = Boolean(data.media?.length);
+
   // Retry before quota consumption; a reused key may not change the payload.
-  const retry = firstRow(await database(c.env).execute(sql`
-    select id, body, image_url, quoted_post_id from public.feed_posts
-    where author_user_id = ${user.id}::uuid and client_request_id = ${data.requestId}::uuid limit 1
-  `));
-  const imageUrl = data.mediaId ? `${(c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin).replace(/\/$/, "")}/v1/media/${data.mediaId}` : null;
+  const retry = firstRow(
+    await database(c.env).execute<{
+      id: string;
+      body: string;
+      image_url: string | null;
+      quoted_post_id: string | null;
+      media_matches: boolean;
+    }>(sql`
+      select id, body, image_url, quoted_post_id,
+        coalesce(audience->'media', '[]'::jsonb) = ${mediaPayloadJson}::jsonb as media_matches
+      from public.feed_posts
+      where author_user_id = ${user.id}::uuid and client_request_id = ${data.requestId}::uuid
+      limit 1
+    `),
+  );
   if (retry) {
-    if (retry.body !== data.body || (retry.quoted_post_id ?? null) !== (data.quotedPostId ?? null) || (retry.image_url ?? null) !== imageUrl)
+    if (
+      retry.body !== data.body ||
+      (retry.quoted_post_id ?? null) !== (data.quotedPostId ?? null) ||
+      (retry.image_url ?? null) !== imageUrl ||
+      (hasMediaArray && !retry.media_matches)
+    )
       throw new AppError(409, "CONFLICT", "This draft changed. Submit it as a new post.");
     return c.json({ id: retry.id }, 200);
   }
-  const media = data.mediaId ? firstRow(await database(c.env).execute<{content_type:string}>(sql`
-    select id, content_type from public.media_objects where id = ${data.mediaId}::uuid and owner_user_id = ${user.id}::uuid and kind = 'post' and deleted_at is null
-  `)) : undefined;
-  if (data.mediaId && (!media || !["image/jpeg","image/png","image/webp","video/mp4","video/webm"].includes(media.content_type))) throw new AppError(400, "BAD_REQUEST", "Choose your own image or supported video.");
+
   await rateLimit(c, "STUDENT_POST", 10);
   // Quotes retain references, not copies; campus-only originals stay campus-only.
   const result = await database(c.env).execute(sql`
@@ -197,19 +273,46 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
       values(${university}::uuid, ${"student:" + user.id}, ${user.id}::uuid)
       on conflict(university_id, name) do update set owner_user_id = excluded.owner_user_id returning id
     )
-    insert into public.feed_posts(university_id, source_id, author_user_id, category, title, summary, body, image_url, audience, status, published_at, client_request_id, quoted_post_id)
-    select ${university}::uuid, source.id, ${user.id}::uuid, 'UPDATE', ${Array.from(data.body.padEnd(4," ")).slice(0, 180).join("")}, ${Array.from(data.body.padEnd(4," ")).slice(0, 500).join("")}, ${data.body}, ${imageUrl},
-      jsonb_build_object('studentPost', true, 'mediaType', ${media?.content_type ?? null}::text, 'visibility', case when ${data.quotedPostId ?? null}::uuid is null or (select audience->>'visibility' from target) = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end),
-      'PUBLISHED', now(), ${data.requestId}::uuid, ${data.quotedPostId ?? null}::uuid
-    from source where ${data.quotedPostId ?? null}::uuid is null or exists(select 1 from target)
+    insert into public.feed_posts(
+      university_id, source_id, author_user_id, category, title, summary, body,
+      image_url, audience, status, published_at, client_request_id, quoted_post_id
+    )
+    select
+      ${university}::uuid,
+      source.id,
+      ${user.id}::uuid,
+      'UPDATE',
+      ${Array.from(data.body.padEnd(4, " ")).slice(0, 180).join("")},
+      ${Array.from(data.body.padEnd(4, " ")).slice(0, 500).join("")},
+      ${data.body},
+      ${imageUrl},
+      jsonb_build_object(
+        'studentPost', true,
+        'mediaType', ${mediaType}::text,
+        'media', ${mediaPayloadJson}::jsonb,
+        'visibility', case when ${data.quotedPostId ?? null}::uuid is null
+          or (select audience->>'visibility' from target) = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end
+      ),
+      'PUBLISHED',
+      now(),
+      ${data.requestId}::uuid,
+      ${data.quotedPostId ?? null}::uuid
+    from source
+    where ${data.quotedPostId ?? null}::uuid is null or exists(select 1 from target)
     on conflict(author_user_id, client_request_id) where client_request_id is not null
     do update set client_request_id = excluded.client_request_id
-      where feed_posts.body = excluded.body and feed_posts.image_url is not distinct from excluded.image_url
+      where feed_posts.body = excluded.body
+        and feed_posts.image_url is not distinct from excluded.image_url
         and feed_posts.quoted_post_id is not distinct from excluded.quoted_post_id
+        and (
+          ${hasMediaArray}::boolean = false
+          or coalesce(feed_posts.audience->'media', '[]'::jsonb) = coalesce(excluded.audience->'media', '[]'::jsonb)
+        )
     returning id
   `);
   const post = firstRow(result);
-  if (!post) throw new AppError(409, "CONFLICT", "The original post is unavailable or this request belongs to a different draft.");
+  if (!post)
+    throw new AppError(409, "CONFLICT", "The original post is unavailable or this request belongs to a different draft.");
   return c.json(post, 201);
 });
 

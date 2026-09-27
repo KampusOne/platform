@@ -49,6 +49,13 @@ test("public absolute Worker media streams direct on web while relative media ke
   assert.equal(resolveMediaLink(`https://worker.example/v1/media/${id}`, "/api"), `https://worker.example/v1/media/${id}?v=3`);
   assert.equal(resolveMediaLink(`/api/v1/media/${id}?v=1`, "/api"), `/api/v1/media/${id}?v=3`);
 });
+test("nested multi-image post media URLs are normalized recursively", () => {
+  const input = { media: [{ url: `https://worker.example/v1/media/${id}`, type: "image/jpeg" }] };
+  const output = normalizeMediaLinks(input, "/api");
+  assert.equal(output.media[0].url, `https://worker.example/v1/media/${id}?v=3`);
+  assert.equal(output.media[0].type, "image/jpeg");
+});
+
 test("signed private media stays same-origin on web", () => {
   const link = resolveMediaLink(`https://worker.example/v1/media/${id}?access=signed.token`, "/api");
   assert.equal(link, `/api/v1/media/${id}?access=signed.token&v=3`);

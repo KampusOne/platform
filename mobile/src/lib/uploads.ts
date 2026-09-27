@@ -136,55 +136,10 @@ export type PostMedia = {
   original?: PhotoDimensions | undefined;
 };
 
-export async function pickPostMedia(
-  source: PhotoSource = "library",
+async function preparePostImageAsset(
+  asset: ImagePicker.ImagePickerAsset,
+  editImmediately: boolean,
 ): Promise<PostMedia | null> {
-  if (source === "camera") {
-    const photo = await pickPhoto("post", "camera");
-    return photo
-      ? {
-          uri: photo.uri,
-          name: photo.name,
-          type: photo.type,
-          width: photo.width,
-          height: photo.height,
-        }
-      : null;
-  }
-
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ["images", "videos"],
-    allowsEditing: false,
-    quality: 1,
-  });
-  if (result.canceled || !result.assets[0]) return null;
-  const asset = result.assets[0];
-
-  if (asset.type === "video") {
-    if ((asset.fileSize ?? 0) > 100 * 1024 * 1024)
-      throw new Error(
-        "Choose a source video smaller than 100 MB, then trim it before posting.",
-      );
-    const type =
-      asset.mimeType ??
-      (asset.uri.toLowerCase().endsWith(".mp4")
-        ? "video/mp4"
-        : "video/quicktime");
-    const durationMs = await getPostVideoDurationMs(
-      asset.uri,
-      asset.duration ?? undefined,
-    );
-    const edited = await requestVideoEdit({
-      uri: asset.uri,
-      name: asset.fileName ?? "post-video",
-      type,
-      durationMs,
-      ...await videoDimensions(asset.uri, {width:asset.width,height:asset.height}),
-    });
-    if (!edited) return null;
-    return edited;
-  }
-
   if (!asset.width || !asset.height)
     throw new Error("This photo could not be read. Choose another image.");
   if ((asset.fileSize ?? 0) > 15 * 1024 * 1024)
@@ -210,16 +165,110 @@ export async function pickPostMedia(
     context.release();
   }
 
-  const edited = await requestPhotoEdit("post", prepared);
-  if (!edited) return null;
+  const output = editImmediately
+    ? await requestPhotoEdit("post", prepared)
+    : prepared;
+  if (!output) return null;
   return {
-    uri: edited.uri,
+    uri: output.uri,
     name: "post.jpg",
     type: "image/jpeg",
-    width: edited.width,
-    height: edited.height,
+    width: output.width,
+    height: output.height,
     original: prepared,
   };
+}
+
+async function preparePostVideoAsset(
+  asset: ImagePicker.ImagePickerAsset,
+): Promise<PostMedia | null> {
+  if ((asset.fileSize ?? 0) > 100 * 1024 * 1024)
+    throw new Error(
+      "Choose a source video smaller than 100 MB, then trim it before posting.",
+    );
+  const type =
+    asset.mimeType ??
+    (asset.uri.toLowerCase().endsWith(".mp4")
+      ? "video/mp4"
+      : "video/quicktime");
+  const durationMs = await getPostVideoDurationMs(
+    asset.uri,
+    asset.duration ?? undefined,
+  );
+  return requestVideoEdit({
+    uri: asset.uri,
+    name: asset.fileName ?? "post-video",
+    type,
+    durationMs,
+    ...await videoDimensions(asset.uri, {
+      width: asset.width,
+      height: asset.height,
+    }),
+  });
+}
+
+export async function pickPostMedia(
+  source: PhotoSource = "library",
+): Promise<PostMedia | null> {
+  if (source === "camera") {
+    const photo = await pickPhoto("post", "camera");
+    return photo
+      ? {
+          uri: photo.uri,
+          name: photo.name,
+          type: photo.type,
+          width: photo.width,
+          height: photo.height,
+        }
+      : null;
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ["images", "videos"],
+    allowsEditing: false,
+    quality: 1,
+  });
+  if (result.canceled || !result.assets[0]) return null;
+  const asset = result.assets[0];
+  return asset.type === "video"
+    ? preparePostVideoAsset(asset)
+    : preparePostImageAsset(asset, true);
+}
+
+/**
+ * Pick an ordered group for a post. X-style multi-media posts are image-only;
+ * video remains a single attachment so the current trim/transcode path stays
+ * deterministic on mid-range Android devices.
+ */
+export async function pickPostMediaBatch(limit = 5): Promise<PostMedia[]> {
+  const selectionLimit = Math.max(1, Math.min(5, Math.trunc(limit)));
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ["images", "videos"],
+    allowsEditing: false,
+    allowsMultipleSelection: true,
+    selectionLimit,
+    quality: 1,
+  });
+  if (result.canceled) return [];
+
+  const assets = result.assets.slice(0, selectionLimit);
+  if (!assets.length) return [];
+  const videos = assets.filter((asset) => asset.type === "video");
+  if (videos.length) {
+    if (assets.length !== 1)
+      throw new Error(
+        "Choose one video by itself. Multiple attachments can contain up to 5 images.",
+      );
+    const video = await preparePostVideoAsset(videos[0]!);
+    return video ? [video] : [];
+  }
+
+  const prepared: PostMedia[] = [];
+  for (const asset of assets) {
+    const image = await preparePostImageAsset(asset, false);
+    if (image) prepared.push(image);
+  }
+  return prepared;
 }
 
 export async function editPostMedia(

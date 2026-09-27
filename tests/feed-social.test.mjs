@@ -27,9 +27,30 @@ test("the shared card has comments, reposts, and nested quote previews without d
   assert.match(source, /<QuotedPostPreview/); assert.match(source, /openReply/); assert.match(source, /openPost/);
   assert.match(source, /action: \{[^\n]*minHeight: 44/); assert.match(source, /post: \{[^\n]*paddingTop: 10[^\n]*paddingBottom: 3/);
 });
+
+test("student posts support an ordered X-style slider with at most five images", () => {
+  const compose = read("mobile/app/compose.tsx");
+  const uploads = read("mobile/src/lib/uploads.ts");
+  const card = read("mobile/src/components/feed-post.tsx");
+  const slider = read("mobile/src/components/post-media-slider.tsx");
+  const route = read("server/src/routes/feed-social.ts");
+
+  assert.match(compose, /const maxImages = 5/);
+  assert.match(compose, /media: attachments/);
+  assert.match(compose, /swipe to preview/);
+  assert.match(uploads, /allowsMultipleSelection: true/);
+  assert.match(uploads, /Math\.min\(5,/);
+  assert.match(card, /<PostMediaSlider items=\{post\.media\}/);
+  assert.match(slider, /horizontal/);
+  assert.match(slider, /snapToInterval/);
+  assert.match(route, /media: z\.array\(mediaInput\)\.max\(5\)/);
+  assert.match(route, /audience->'media'/);
+  assert.match(route, /Multiple attachments can contain up to 5 images/);
+});
+
 test("quote composition submits a reference, not copied original text", () => {
   const source = read("mobile/app/compose.tsx");
-  assert.match(source, /quotedPostId: quoteId/); assert.match(source, /lock.current/);
+  assert.match(source, /quotedPostId: quoteId/); assert.match(source, /publishLock.current/);
   assert.doesNotMatch(source, /body:\s*original\.body/);
 });
 test("quote previews become unavailable when the original is deleted", () => {
