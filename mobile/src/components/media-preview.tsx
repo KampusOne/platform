@@ -16,6 +16,7 @@ import { SkeletonBlock } from "@/src/components/skeleton";
 import { downloadPostMedia } from "@/src/lib/media-downloads";
 import { useToast } from "@/src/components/toast";
 import { readVideoPlaybackSession, writeVideoPlaybackSession } from "@/src/lib/video-playback-session";
+import { isFeedRoutePlaybackActive, subscribeFeedRoutePlayback } from "@/src/lib/feed-video-playback";
 
 const playbackSpeeds = [1, 1.25, 1.5, 2] as const;
 
@@ -74,6 +75,7 @@ function Video({
   const manuallyPausedRef = useRef(false);
   const didApplyInitialFeedMute = useRef(false);
   const suspendedRef = useRef(suspended);
+  const feedRouteActiveRef = useRef(playbackMode !== "feed-autoplay" || isFeedRoutePlaybackActive());
 
   const player = useVideoPlayer(url, (instance) => {
     instance.loop = false;
@@ -99,7 +101,7 @@ function Video({
     viewportVisibleRef.current = visible;
     setIsViewportVisible(visible);
 
-    if (!visible || suspendedRef.current) {
+    if (!visible || suspendedRef.current || (playbackMode === "feed-autoplay" && !feedRouteActiveRef.current)) {
       if (player.playing && !manuallyPausedRef.current) resumeWhenVisibleRef.current = true;
       player.pause();
       return;
@@ -128,6 +130,31 @@ function Video({
   }, [playbackKey, playbackMode, player]);
 
   useEffect(() => {
+    if (playbackMode !== "feed-autoplay") return;
+    return subscribeFeedRoutePlayback((active) => {
+      feedRouteActiveRef.current = active;
+      if (!active) {
+        if (player.playing && !manuallyPausedRef.current) resumeWhenVisibleRef.current = true;
+        player.pause();
+        return;
+      }
+      if (!viewportVisibleRef.current || suspendedRef.current || manuallyPausedRef.current) return;
+      const remembered = readVideoPlaybackSession(playbackKey);
+      if (remembered) {
+        if (Math.abs(Number(player.currentTime) - remembered.position) > 0.35) {
+          player.currentTime = remembered.position;
+        }
+        player.muted = remembered.muted;
+        didApplyInitialFeedMute.current = true;
+      } else if (!didApplyInitialFeedMute.current) {
+        player.muted = true;
+        didApplyInitialFeedMute.current = true;
+      }
+      player.play();
+    });
+  }, [playbackKey, playbackMode, player]);
+
+  useEffect(() => {
     if (!managed || !onPlaybackHandle) return;
     const handle: MediaPlaybackHandle = {
       measureInWindow(callback) {
@@ -151,11 +178,16 @@ function Video({
       player.pause();
       return;
     }
-    if (viewportVisibleRef.current && resumeWhenVisibleRef.current && !manuallyPausedRef.current) {
+    if (
+      viewportVisibleRef.current &&
+      resumeWhenVisibleRef.current &&
+      !manuallyPausedRef.current &&
+      (playbackMode !== "feed-autoplay" || feedRouteActiveRef.current)
+    ) {
       resumeWhenVisibleRef.current = false;
       player.play();
     }
-  }, [player, suspended]);
+  }, [playbackMode, player, suspended]);
 
   useEffect(() => {
     const update = () => {
