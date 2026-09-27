@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Image, StyleSheet, Text, View } from "react-native";
 import { SplashScreen } from "expo-router";
 import { useAppearance } from "@/src/lib/appearance";
+import { useAuth } from "@/src/auth/auth-context";
 
-/** Branded ~2s launch motion. It is intentionally independent of network/session loading. */
+/** Branded launch motion that also covers startup/session restoration. */
 export function BrandIntro({ fontsReady, appearanceReady }: { fontsReady: boolean; appearanceReady: boolean }) {
   const { theme, isDark } = useAppearance();
+  const { state, sessionRestoreError, profileState } = useAuth();
   const [visible, setVisible] = useState(true);
   const [reduced, setReduced] = useState(false);
   const [animationDone, setAnimationDone] = useState(false);
@@ -16,9 +18,14 @@ export function BrandIntro({ fontsReady, appearanceReady }: { fontsReady: boolea
   const tagline = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const nativeHidden = useRef(false);
-  const ready =
+  const routeReady =
+    Boolean(sessionRestoreError) ||
+    state === "anonymous" ||
+    (state === "authenticated" && (profileState === "ready" || profileState === "error"));
+  const visualReady =
     deadlineReached ||
     (fontsReady && appearanceReady && animationDone && minimumElapsed);
+  const ready = routeReady && visualReady;
 
   useEffect(() => {
     let alive = true;
