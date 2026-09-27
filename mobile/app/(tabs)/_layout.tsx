@@ -148,7 +148,12 @@ function NavItem({
           size={22}
         />
       </Animated.View>
-      <Text style={[styles.navLabel, focused && styles.navLabelFocused]}>
+      <Text
+        android_hyphenationFrequency="none"
+        numberOfLines={1}
+        style={[styles.navLabel, focused && styles.navLabelFocused]}
+        textBreakStrategy="simple"
+      >
         {label}
       </Text>
     </Pressable>
@@ -276,10 +281,10 @@ const createStyles = (theme: Theme) =>
     },
     navPosition: {
       alignSelf: "center",
-      left: 14,
+      left: 10,
       maxWidth: 520,
       position: "absolute",
-      right: 14,
+      right: 10,
     },
     glassDock: {
       alignItems: "center",
@@ -314,7 +319,7 @@ const createStyles = (theme: Theme) =>
       flex: 1,
       height: 62,
       justifyContent: "center",
-      minWidth: 54,
+      minWidth: 0,
       position: "relative",
     },
     navPill: {
@@ -322,8 +327,10 @@ const createStyles = (theme: Theme) =>
       borderRadius: 21,
       height: 54,
       position: "absolute",
+      maxWidth: 62,
+      minWidth: 48,
       top: 4,
-      width: 62,
+      width: "88%",
     },
     navLabel: {
       color: theme.textMuted,
