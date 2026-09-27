@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { useReducedMotionPreference } from "@/src/components/visual-system";
 import { theme } from "@/src/theme";
+import { setFeedRoutePlaybackActive } from "@/src/lib/feed-video-playback";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type TabBarRenderer = NonNullable<ComponentProps<typeof Tabs>["tabBar"]>;
@@ -196,6 +197,7 @@ function KampusTabBar({ state, navigation }: KampusTabBarProps) {
               }}
               onPress={() => {
                 if (!route) return;
+                if (routeName !== route.name) setFeedRoutePlaybackActive(false);
                 void Haptics.selectionAsync();
                 const event = navigation.emit({
                   canPreventDefault: true,
