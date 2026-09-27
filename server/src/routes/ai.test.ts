@@ -38,6 +38,17 @@ describe("AI router security and idempotency",()=>{
   it("replays completed requests without paid I/O",async()=>{mocks.execute.mockResolvedValueOnce(cached("COMPLETED",{text:"Saved"}));const r=await post();expect((await r.json() as {text:string}).text).toBe("Saved");expect(mocks.transaction).not.toHaveBeenCalled();expect(mocks.fetch).not.toHaveBeenCalled();});
   it("rejects mutated keys, deleted results and processing replays",async()=>{for(const [row,status] of [[cached("COMPLETED",{text:"Private"},"other-hash"),409],[cached("COMPLETED",{deleted:true}),410],[cached("PROCESSING",null),409]] as const){mocks.execute.mockResolvedValueOnce(row);const r=await post();expect(r.status).toBe(status);expect(JSON.stringify(await r.json())).not.toContain("Private");}expect(mocks.fetch).not.toHaveBeenCalled();});
   it("returns a persistent-limit reset without provider I/O",async()=>{mocks.transaction.mockResolvedValueOnce([[],[],[]]);const r=await post();expect(r.status).toBe(429);expect(r.headers.get("Retry-After")).toBeTruthy();expect((await r.json() as {error:{details:{reason:string}}}).error.details.reason).toBe("AI_CHAT_LIMIT");expect(mocks.fetch).not.toHaveBeenCalled();});
+  it("accepts timetable notes and forwards them as filtering preferences",async()=>{
+    mocks.fetch.mockResolvedValueOnce(Response.json({choices:[{finish_reason:"stop",message:{content:'{"documentType":"class_timetable","entries":[],"events":[],"warnings":[]}'}}]}));
+    const response=await post({mode:"timetable",prompt:"Monday MTH 201 08:00-10:00",notes:"I do not offer CSE 201. Include my other courses."});
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({documentType:"class_timetable",entries:[]});
+    const init=mocks.fetch.mock.calls[0]?.[1] as RequestInit;
+    const providerBody=JSON.parse(String(init.body)) as {messages:{content:unknown}[]};
+    const sent=String(providerBody.messages.at(-1)?.content ?? "");
+    expect(sent).toContain("Student timetable preferences");
+    expect(sent).toContain("I do not offer CSE 201");
+  });
   it("rejects an unowned private attachment before reservation",async()=>{expect((await post({mediaId})).status).toBe(404);const media=queries().find(q=>q.sql.includes("public.media_objects"))!;expect(media.sql).toContain("owner_user_id=");expect(media.params).toContain(owner);expect(mocks.transaction).not.toHaveBeenCalled();});
   it("records terminal provider failure without saving a successful answer",async()=>{mocks.fetch.mockResolvedValueOnce(new Response("confidential upstream detail",{status:403}));const r=await post();expect(r.status).toBe(503);expect(JSON.stringify(await r.json())).not.toContain("confidential");expect(queries().some(q=>q.sql.includes("status='FAILED'"))).toBe(true);expect(mocks.fetch).toHaveBeenCalledTimes(1);});
   it("scopes history searches and deletes to the verified account",async()=>{await get("/ai/history?q=physics");expect(queries()[0]?.params).toContain(owner);expect(queries()[0]?.params).toContain("physics");vi.clearAllMocks();await get(`/ai/history/${key}`,"DELETE");expect(queries()[0]?.params).toContain(owner);expect(queries()[0]?.sql).toContain('"deleted":true');expect(queries()[0]?.sql).not.toContain("delete from");});

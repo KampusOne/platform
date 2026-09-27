@@ -53,6 +53,7 @@ export const mediaRoutes = new Hono<{
   Variables: Variables;
 }>();
 const privateKinds = new Set(["kyc", "support", "resource"]);
+const uploadKinds = new Set(["avatar", "cover", "product", "post", "resource", "kyc", "support", "notification-sound"]);
 export function detectedMime(bytes: Uint8Array) {
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
     return "image/jpeg";
@@ -76,25 +77,41 @@ mediaRoutes.post("/", requireAuth, async (c) => {
   const user = currentUser(c);
   if (Number(c.req.header("Content-Length") ?? 0) > 10 * 1024 * 1024 + 4096)
     throw new AppError(413, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
-  const form = await c.req.formData();
-  const file = form.get("file");
-  const kind = String(form.get("kind"));
-  if (
-    !(file instanceof File) ||
-    ![
-      "avatar",
-      "cover",
-      "product",
-      "post",
-      "resource",
-      "kyc",
-      "support",
-      "notification-sound",
-    ].includes(kind)
-  )
+
+  const contentType = c.req.header("Content-Type") ?? "";
+  let kind = "";
+  let originalName = "upload";
+  let declaredMime = "";
+  let bytes: ArrayBuffer;
+
+  if (contentType.toLowerCase().startsWith("multipart/form-data")) {
+    let form: FormData;
+    try {
+      form = await c.req.formData();
+    } catch {
+      throw new AppError(400, "BAD_REQUEST", "Choose the file again and retry the upload.");
+    }
+    const file = form.get("file");
+    kind = String(form.get("kind") ?? "");
+    if (!(file instanceof File))
+      throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
+    originalName = file.name || "upload";
+    declaredMime = (file.type.split(";")[0] ?? "").trim().toLowerCase();
+    bytes = await file.arrayBuffer();
+  } else {
+    // Current native/web clients upload the original bytes directly to avoid
+    // incompatible FormData implementations and unnecessary media copies.
+    kind = String(c.req.query("kind") ?? "");
+    originalName = String(c.req.query("name") ?? "upload").trim() || "upload";
+    declaredMime = (contentType.split(";")[0] ?? "").trim().toLowerCase();
+    bytes = await c.req.arrayBuffer();
+  }
+
+  if (!uploadKinds.has(kind))
     throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
-  if (file.size < 1 || file.size > 10 * 1024 * 1024)
+  if (bytes.byteLength < 1 || bytes.byteLength > 10 * 1024 * 1024)
     throw new AppError(400, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
+
   const recent = await database(c.env).execute<{ allowed: boolean }>(
     sql`select app_private.consume_request_rate_limit('MEDIA_UPLOAD',${user.id},30,3600,3600) allowed`,
   );
@@ -104,41 +121,49 @@ mediaRoutes.post("/", requireAuth, async (c) => {
       "RATE_LIMITED",
       "Upload limit reached. Try again later.",
     );
-  if(kind === "notification-sound") {
-    await resolveAdminScope(c.env,user,user.universityId??undefined,"notifications.manage");
-    if(file.size>2*1024*1024) throw new AppError(400,"BAD_REQUEST","Use a notification sound smaller than 2 MB.");
+
+  if (kind === "notification-sound") {
+    await resolveAdminScope(c.env, user, user.universityId ?? undefined, "notifications.manage");
+    if (bytes.byteLength > 2 * 1024 * 1024)
+      throw new AppError(400, "BAD_REQUEST", "Use a notification sound smaller than 2 MB.");
   }
-  const bytes = await file.arrayBuffer();
+
   let mime = detectedMime(new Uint8Array(bytes));
-  if(!mime && kind === "resource" && file.type === "text/plain") {
-    try { const text=new TextDecoder("utf-8",{fatal:true}).decode(bytes);if(!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)) mime="text/plain"; } catch { /* Not a UTF-8 source. */ }
+  if (!mime && kind === "resource" && declaredMime === "text/plain") {
+    try {
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      if (!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)) mime = "text/plain";
+    } catch {
+      /* Not a UTF-8 source. */
+    }
   }
-  if (!mime || (kind === "notification-sound" ? !["audio/mpeg","audio/wav"].includes(mime) : mime.startsWith("audio/") || (["video/mp4", "video/webm"].includes(mime) ? kind !== "post" : !privateKinds.has(kind) && !mime.startsWith("image/"))))
+  if (!mime || (kind === "notification-sound" ? !["audio/mpeg", "audio/wav"].includes(mime) : mime.startsWith("audio/") || (["video/mp4", "video/webm"].includes(mime) ? kind !== "post" : !privateKinds.has(kind) && !mime.startsWith("image/"))))
     throw new AppError(
       400,
       "BAD_REQUEST",
       "Use a JPG, PNG or WebP image, a PDF document, or an MP4/WebM video for a post.",
     );
-  const bucket = privateKinds.has(kind)
-    ? c.env.PRIVATE_BUCKET
-    : c.env.MEDIA_BUCKET;
+
+  const bucket = privateKinds.has(kind) ? c.env.PRIVATE_BUCKET : c.env.MEDIA_BUCKET;
   if (!bucket)
     throw new AppError(
       503,
       "PROVIDER_UNAVAILABLE",
       "File storage is not connected yet.",
     );
+
   const mediaId = crypto.randomUUID();
   const key = `${user.id}/${kind}/${mediaId}`;
   await bucket.put(key, bytes, { httpMetadata: { contentType: mime } });
   try {
-  await database(c.env).execute(
-    sql`insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values(${mediaId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${kind},${key},${mime},${file.size},${file.name.slice(0, 180)})`,
-  );
+    await database(c.env).execute(
+      sql`insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values(${mediaId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${kind},${key},${mime},${bytes.byteLength},${originalName.slice(0, 180)})`,
+    );
   } catch (error) {
     await bucket.delete(key);
     throw error;
   }
+
   const origin = (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin).replace(
     /\/$/,
     "",
@@ -152,6 +177,7 @@ mediaRoutes.post("/", requireAuth, async (c) => {
     await database(c.env).execute(
       sql`update public.profiles set cover_image_url=${url},updated_at=now() where user_id=${user.id}::uuid`,
     );
+
   return c.json(
     { id: mediaId, url, kind, content_type: mime, private: privateKinds.has(kind) },
     201,

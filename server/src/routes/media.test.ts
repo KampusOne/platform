@@ -61,6 +61,21 @@ describe("media upload and delivery regression", () => {
     expect(response.status).toBe(201);
     expect(state.put).toHaveBeenCalledOnce();
   });
+  it("accepts raw resource bytes from the current mobile upload transport", async () => {
+    state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValue({ rows: [] });
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const response = await app.request(
+      "https://api.example/v1/media?kind=resource&name=timetable.png",
+      { method: "POST", headers: { ...auth, "Content-Type": "image/png" }, body: bytes },
+      env,
+    );
+    expect(response.status).toBe(201);
+    const result = await response.json() as { kind: string; private: boolean; content_type: string };
+    expect(result.kind).toBe("resource");
+    expect(result.private).toBe(true);
+    expect(result.content_type).toBe("image/png");
+    expect(state.put).toHaveBeenCalledOnce();
+  });
   it("saves an avatar and returns a persisted media URL", async () => {
     state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValue({ rows: [] });
     const form = new FormData();
