@@ -34,14 +34,24 @@ const categories = [
   "Sport",
 ] as const;
 const TILE_SIZE = 256;
-const MAP_HEIGHT = 324;
+const MIN_MAP_HEIGHT = 260;
+const MAX_MAP_HEIGHT = 324;
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 19;
-const OSM_TILE_BASE = (
+const LEGACY_OSM_TILE_BASE = (
   process.env.EXPO_PUBLIC_OSM_TILE_URL ?? "https://tile.openstreetmap.org"
 ).replace(/\/+$/, "");
+const MAP_TILE_TEMPLATE =
+  process.env.EXPO_PUBLIC_MAP_TILE_URL_TEMPLATE?.trim() ||
+  `${LEGACY_OSM_TILE_BASE}/{z}/{x}/{y}.png`;
 const OSM_ATTRIBUTION_URL = "https://www.openstreetmap.org/copyright";
-const TILE_HEADERS = { "User-Agent": "KampusOne/0.1 (+https://kampusone.app)" };
+const TILE_HEADERS = { "User-Agent": "KampusOne/0.3 (+https://kampusone.app)" };
+
+function mapTileUrl(zoom: number, x: number, y: number) {
+  return MAP_TILE_TEMPLATE.replaceAll("{z}", String(zoom))
+    .replaceAll("{x}", String(x))
+    .replaceAll("{y}", String(y));
+}
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type Place = {
@@ -198,7 +208,7 @@ function visibleTiles(view: MapView, width: number, height: number): MapTile[] {
         key: `${view.zoom}/${tileX}/${tileY}`,
         left: tileX * TILE_SIZE - leftEdge,
         top: tileY * TILE_SIZE - topEdge,
-        uri: `${OSM_TILE_BASE}/${view.zoom}/${wrappedX}/${tileY}.png`,
+        uri: mapTileUrl(view.zoom, wrappedX, tileY),
       });
     }
   }
@@ -703,6 +713,7 @@ export default function MapScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { width } = useWindowDimensions();
+  const mapHeight = clamp(width * 0.78, MIN_MAP_HEIGHT, MAX_MAP_HEIGHT);
   const [places, setPlaces] = useState<Place[]>([]);
   const [selected, setSelected] = useState<(typeof categories)[number]>("All");
   const [selectedPlaceId, setSelectedPlaceId] = useState("");
@@ -907,7 +918,7 @@ export default function MapScreen() {
             <OpenStreetMap
               directoryError={Boolean(error) && !places.length}
               directoryLoading={loading}
-              height={MAP_HEIGHT}
+              height={mapHeight}
               onDirections={(place) => void directions(place)}
               onLayout={updateMapLayout}
               onRecenter={recenterMap}

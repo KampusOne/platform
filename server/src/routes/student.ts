@@ -15,6 +15,10 @@ import {
 } from "@kampusone/contracts";
 
 import { database, firstRow, sqlClient } from "../lib/database";
+import {
+  campusDirectoryDefaultForUniversity,
+  filterCampusStarterPlaces,
+} from "../lib/campus-defaults";
 import { id, input as validatedInput } from "../lib/input";
 import { z } from "@kampusone/contracts";
 import { sha256 } from "../lib/security";
@@ -509,19 +513,50 @@ studentRoutes.delete("/feed/:id/bookmark", async (context) => {
 
 studentRoutes.get("/campus/places", async (context) => {
   const user = currentUser(context);
+  const universityId = requireUniversity(user);
   const query = context.req.query("q")?.trim();
   const category = context.req.query("category")?.toUpperCase();
   const search = query ? `%${query}%` : null;
-  const result = await database(context.env).execute(sql`
+  const db = database(context.env);
+  const result = await db.execute(sql`
     select id, name, category, description, latitude, longitude,
       accessibility_notes, image_url, verified_at
     from public.campus_places
-    where university_id = ${requireUniversity(user)}::uuid and status = 'PUBLISHED'
+    where university_id = ${universityId}::uuid and status = 'PUBLISHED'
       and (${category ?? null}::text is null or category = ${category ?? null})
       and (${search}::text is null or name ilike ${search} or description ilike ${search})
     order by name limit 100
   `);
-  return context.json({ places: result.rows });
+
+  if (result.rows.length > 0) {
+    return context.json({
+      places: result.rows,
+      directorySource: "DATABASE" as const,
+    });
+  }
+
+  const university = firstRow(
+    await db.execute<{ name: string }>(sql`
+      select name from public.universities
+      where id = ${universityId}::uuid and deleted_at is null
+      limit 1
+    `),
+  );
+  const starter = campusDirectoryDefaultForUniversity(university?.name);
+
+  if (!starter) {
+    return context.json({
+      places: [],
+      campus: null,
+      directorySource: "EMPTY" as const,
+    });
+  }
+
+  return context.json({
+    campus: starter.campus,
+    places: filterCampusStarterPlaces(starter.places, { category, query }),
+    directorySource: "STARTER" as const,
+  });
 });
 
 studentRoutes.get("/timetable", async (context) => {
