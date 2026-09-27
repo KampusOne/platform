@@ -70,18 +70,35 @@ learningRoutes.delete("/alarms/:id", async (c) => {
 });
 learningRoutes.get("/courses", async (c) => {
   const u = currentUser(c);
-  const [courses, config] = await Promise.all([
-    database(c.env).execute(
-      sql`select course_code,title,units,grade from public.course_drafts where user_id=${u.id}::uuid order by course_code limit 100`,
-    ),
-    database(c.env).execute(
-      sql`select grading_scale,grading_source_status from public.institution_config where institution_id=${u.universityId}::uuid`,
-    ),
-  ]);
+  const courses = await database(c.env).execute(
+    sql`select course_code,title,units,grade from public.course_drafts where user_id=${u.id}::uuid order by course_code limit 100`,
+  );
+
+  let gradingScale: Record<string, number> | null = null;
+  let gradingScaleStatus = "UNVERIFIED";
+  if (u.universityId) {
+    const config = firstRow(
+      await database(c.env).execute<{
+        grading_scale: Record<string, number>;
+        grading_source_status: string;
+      }>(
+        sql`select
+          config.grading_scale,
+          coalesce(to_jsonb(config)->>'grading_source_status','UNVERIFIED') as grading_source_status
+        from public.institution_config config
+        where config.institution_id=${u.universityId}::uuid`,
+      ),
+    );
+    if (config?.grading_source_status === "VERIFIED") {
+      gradingScale = config.grading_scale;
+      gradingScaleStatus = "VERIFIED";
+    }
+  }
+
   return c.json({
     courses: courses.rows,
-    gradingScale: firstRow(config)?.grading_source_status==='VERIFIED' ? firstRow(config)?.grading_scale : null,
-    gradingScaleStatus:firstRow(config)?.grading_source_status==='VERIFIED'?'VERIFIED':'UNVERIFIED',
+    gradingScale,
+    gradingScaleStatus,
   });
 });
 learningRoutes.put("/courses", async (c) => {
@@ -106,8 +123,15 @@ learningRoutes.put("/courses", async (c) => {
   if (new Set(d.courses.map((v) => v.courseCode)).size !== d.courses.length)
     throw new AppError(400, "BAD_REQUEST", "Remove duplicate course codes.");
   const config = firstRow(
-    await database(c.env).execute<{ grading_scale: Record<string, number>; grading_source_status:string }>(
-      sql`select grading_scale,grading_source_status from public.institution_config where institution_id=${u.universityId}::uuid`,
+    await database(c.env).execute<{
+      grading_scale: Record<string, number>;
+      grading_source_status: string;
+    }>(
+      sql`select
+        config.grading_scale,
+        coalesce(to_jsonb(config)->>'grading_source_status','UNVERIFIED') as grading_source_status
+      from public.institution_config config
+      where config.institution_id=${u.universityId}::uuid`,
     ),
   );
   for (const course of d.courses) {
