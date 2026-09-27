@@ -1,11 +1,12 @@
 import { Component, type ErrorInfo, type ReactNode, useEffect } from "react";
-import { Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
-import { router } from "expo-router";
+import { Platform, SafeAreaView, StyleSheet, Text } from "react-native";
+import { router, usePathname } from "expo-router";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useStartup } from "@/src/lib/startup";
 
 const REFRESH_RECOVERY_KEY = "kampusone.refresh-recovery";
 const REFRESH_RECOVERY_WINDOW_MS = 60_000;
+const NAVIGATION_RECOVERY_DELAY_MS = 800;
 
 function isHardRefresh(): boolean {
   if (Platform.OS !== "web" || typeof performance === "undefined") return false;
@@ -38,14 +39,36 @@ function tryRefreshRecovery(): boolean {
   }
 }
 
-export class AppErrorBoundary extends Component<
-  { children: ReactNode },
-  { failed: boolean; recovering: boolean }
-> {
-  state = { failed: false, recovering: false };
+type BoundaryProps = {
+  children: ReactNode;
+  resetKey: string;
+};
+
+type BoundaryState = {
+  failed: boolean;
+  recovering: boolean;
+};
+
+class AppErrorBoundaryCore extends Component<BoundaryProps, BoundaryState> {
+  state: BoundaryState = { failed: false, recovering: false };
+  private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
 
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+
+  componentDidUpdate(previous: BoundaryProps) {
+    if (previous.resetKey !== this.props.resetKey && this.state.failed) {
+      if (this.recoveryTimer) {
+        clearTimeout(this.recoveryTimer);
+        this.recoveryTimer = null;
+      }
+      this.setState({ failed: false, recovering: false });
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.recoveryTimer) clearTimeout(this.recoveryTimer);
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -57,46 +80,64 @@ export class AppErrorBoundary extends Component<
 
     if (tryRefreshRecovery()) {
       this.setState({ recovering: true });
+      return;
     }
-  }
 
-  private recover = () => {
-    this.setState({ failed: false }, () => router.replace("/"));
-  };
+    // Never trap the user on a global error page. Leave the broken route and
+    // let the resetKey change remount the normal screen tree.
+    if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)");
+
+    this.recoveryTimer = setTimeout(() => {
+      // If the navigation stack did not move for any reason, force a safe
+      // authenticated landing route instead of leaving a dead-end screen.
+      if (this.state.failed) router.replace("/(tabs)");
+    }, NAVIGATION_RECOVERY_DELAY_MS);
+  }
 
   render() {
     if (!this.state.failed) return this.props.children;
-    return <ErrorFallback recover={this.recover} recovering={this.state.recovering} />;
+    return <RecoveryFallback recovering={this.state.recovering} />;
   }
 }
 
-function ErrorFallback({ recover, recovering }: { recover: () => void; recovering: boolean }) {
-  const { styles } = useThemeStyles(createStyles);
-  const { markHomeReady } = useStartup();
-  useEffect(markHomeReady, [markHomeReady]);
-  if (recovering) return <SafeAreaView style={styles.safe}><Text style={styles.body}>Refreshing KampusOne…</Text></SafeAreaView>;
+export function AppErrorBoundary({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.card}>
-          <Text style={styles.eyebrow}>KAMPUSONE</Text>
-          <Text style={styles.title}>This screen hit a problem</Text>
-          <Text style={styles.body}>
-            Your session is still safe. Go back home and try the screen again.
-          </Text>
-          <Pressable accessibilityRole="button" onPress={recover} style={styles.button}>
-            <Text style={styles.buttonText}>Return home</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
+    <AppErrorBoundaryCore resetKey={pathname}>
+      {children}
+    </AppErrorBoundaryCore>
+  );
 }
 
-const createStyles = (theme: Theme) => StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.canvas, justifyContent: "center", padding: 22 },
-  card: { borderRadius: 24, backgroundColor: theme.surface, padding: 24, borderWidth: 1, borderColor: theme.border },
-  eyebrow: { color: theme.accentText, fontWeight: "800", fontSize: 10, letterSpacing: 1.2 },
-  title: { color: theme.text, fontWeight: "800", fontSize: 24, marginTop: 8 },
-  body: { color: theme.textMuted, fontSize: 14, lineHeight: 21, marginTop: 8 },
-  button: { alignSelf: "flex-start", backgroundColor: theme.deepBrand, borderRadius: 14, minHeight: 46, justifyContent: "center", paddingHorizontal: 18, marginTop: 20 },
-  buttonText: { color: "#FFFFFF", fontWeight: "700" },
-});
+function RecoveryFallback({ recovering }: { recovering: boolean }) {
+  const { styles } = useThemeStyles(createStyles);
+  const { markHomeReady } = useStartup();
+
+  useEffect(markHomeReady, [markHomeReady]);
+
+  return (
+    <SafeAreaView
+      accessibilityLabel={recovering ? "Refreshing KampusOne" : "Returning to previous screen"}
+      style={styles.safe}
+    >
+      {recovering ? <Text style={styles.body}>Refreshing KampusOne…</Text> : null}
+    </SafeAreaView>
+  );
+}
+
+const createStyles = (theme: Theme) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: theme.canvas,
+      justifyContent: "center",
+      padding: 22,
+    },
+    body: {
+      color: theme.textMuted,
+      fontSize: 14,
+      lineHeight: 21,
+      textAlign: "center",
+    },
+  });
