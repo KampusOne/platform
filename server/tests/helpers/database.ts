@@ -31,6 +31,7 @@ export const unifiedMigrations = [
   "20260925110000_notification_sound_catalogue.sql",
   "20260925120000_community_push_delivery.sql",
   "20260925130000_programme_metadata.sql",
+  "20260927120000_direct_messages_live.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */

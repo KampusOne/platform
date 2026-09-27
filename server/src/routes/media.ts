@@ -30,6 +30,30 @@ function mediaKey(env: Bindings) {
 }
 async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
   if (user.id === media.owner_user_id) return;
+  if (media.kind === "message") {
+    const allowed = firstRow(
+      await database(env).execute(sql`
+        select m.id
+        from public.direct_messages m
+        join public.direct_threads t on t.id=m.thread_id
+        where m.media_id=${media.id}::uuid
+          and t.status='ACCEPTED'
+          and ${user.id}::uuid in(t.initiator_id,t.recipient_id)
+          and not exists(
+            select 1 from public.user_blocks b
+            where (b.blocker_id=t.initiator_id and b.blocked_id=t.recipient_id)
+               or (b.blocker_id=t.recipient_id and b.blocked_id=t.initiator_id)
+          )
+        limit 1
+      `),
+    );
+    if (allowed) return;
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "This conversation attachment is unavailable.",
+    );
+  }
   const permission=media.kind==='kyc'?'agents.verify':media.kind==='support'?'support.view':'content.view';
   const access=await adminAccess(env,user);
   if(access.permissions.includes(permission)){
@@ -52,8 +76,8 @@ export const mediaRoutes = new Hono<{
   Bindings: Bindings;
   Variables: Variables;
 }>();
-const privateKinds = new Set(["kyc", "support", "resource"]);
-const uploadKinds = new Set(["avatar", "cover", "product", "post", "resource", "kyc", "support", "notification-sound"]);
+const privateKinds = new Set(["kyc", "support", "resource", "message"]);
+const uploadKinds = new Set(["avatar", "cover", "product", "post", "resource", "kyc", "support", "notification-sound", "message"]);
 const standardUploadLimit = 10 * 1024 * 1024;
 const postVideoUploadLimit = 50 * 1024 * 1024;
 function uploadTooLargeMessage(kind: string, mime: string | null | undefined) {
@@ -77,16 +101,17 @@ export function detectedMime(bytes: Uint8Array) {
     if (ebml.includes("webm")) return "video/webm";
   }
   // ISO Base Media container: accept MP4 brands, not arbitrary ftyp/HEIC files.
-  if (head.slice(4, 8) === "ftyp" && ["isom", "iso2", "mp41", "mp42", "avc1", "M4V "].includes(head.slice(8, 12))) return "video/mp4";
+  if (head.slice(4, 8) === "ftyp" && ["isom", "iso2", "mp41", "mp42", "avc1", "M4V ", "M4A "].includes(head.slice(8, 12))) return "video/mp4";
   return null;
 }
 mediaRoutes.post("/", requireAuth, async (c) => {
   const user = currentUser(c);
   const contentType = c.req.header("Content-Type") ?? "";
   const requestMime = (contentType.split(";")[0] ?? "").trim().toLowerCase();
-  const rawPostVideoUpload =
-    c.req.query("kind") === "post" && requestMime.startsWith("video/");
-  const requestLimit = rawPostVideoUpload
+  const rawLargeVideoUpload =
+    ["post", "message"].includes(String(c.req.query("kind") ?? "")) &&
+    requestMime.startsWith("video/");
+  const requestLimit = rawLargeVideoUpload
     ? postVideoUploadLimit
     : standardUploadLimit;
   if (Number(c.req.header("Content-Length") ?? 0) > requestLimit + 4096)
@@ -153,8 +178,15 @@ mediaRoutes.post("/", requireAuth, async (c) => {
       /* Not a UTF-8 source. */
     }
   }
+  if (
+    kind === "message" &&
+    declaredMime.startsWith("audio/") &&
+    ["video/webm", "video/mp4"].includes(mime ?? "")
+  ) {
+    mime = mime === "video/webm" ? "audio/webm" : "audio/mp4";
+  }
   const finalLimit =
-    kind === "post" && mime?.startsWith("video/")
+    ["post", "message"].includes(kind) && mime?.startsWith("video/")
       ? postVideoUploadLimit
       : standardUploadLimit;
   if (bytes.byteLength > finalLimit)
@@ -163,7 +195,7 @@ mediaRoutes.post("/", requireAuth, async (c) => {
       "BAD_REQUEST",
       uploadTooLargeMessage(kind, mime ?? declaredMime),
     );
-  if (!mime || (kind === "notification-sound" ? !["audio/mpeg", "audio/wav"].includes(mime) : mime.startsWith("audio/") || (["video/mp4", "video/webm"].includes(mime) ? kind !== "post" : !privateKinds.has(kind) && !mime.startsWith("image/"))))
+  if (!mime || (kind === "notification-sound" ? !["audio/mpeg", "audio/wav"].includes(mime) : (mime.startsWith("audio/") && kind !== "message") || (["video/mp4", "video/webm"].includes(mime) ? !["post", "message"].includes(kind) : !privateKinds.has(kind) && !mime.startsWith("image/"))))
     throw new AppError(
       400,
       "BAD_REQUEST",
