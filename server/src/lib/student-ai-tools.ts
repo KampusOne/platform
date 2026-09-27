@@ -269,7 +269,8 @@ export async function runStudentAssistant(env: Bindings, user: AuthenticatedUser
     needsRecommendationContext(input) ? studentRecommendationContext(env, user) : Promise.resolve("Recommendation signals were not loaded because this request does not need recommendations."),
   ]);
   const systemContext = [
-    `Current date/time: ${new Date().toISOString()}. Student timezone: Africa/Lagos.`,
+    `Current date/time: ${new Date().toISOString()}. Student timezone: Africa/Lagos. You are operating inside the signed-in KampusOne student experience.`,
+    `Current KampusOne runtime availability: tutor discovery=${env.TUTORIALS_ENABLED === "true" && env.PHASE_2_SCHEMA_READY === "true"}; store/product/vendor discovery=${env.STORE_ENABLED === "true" && env.PHASE_3_SCHEMA_READY === "true"}; payments=${env.PAYMENTS_ENABLED === "true"}; logistics=${env.LOGISTICS_ENABLED === "true"}. Treat unavailable capabilities as unavailable now, not as promises.`,
     "Canonical public KampusOne information:",
     KAMPUSONE_PUBLIC_CONTEXT,
     "Kira companion behaviour:",
