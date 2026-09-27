@@ -228,6 +228,7 @@ function Selector({
             <FlatList
               contentContainerStyle={styles.optionList}
               data={filteredItems}
+              style={styles.optionListViewport}
               keyboardShouldPersistTaps="handled"
               keyExtractor={(item) => item.id}
               ListEmptyComponent={
@@ -1042,8 +1043,11 @@ const createStyles = (theme: Theme) =>
       opacity: 0.55,
     },
     optionList: {
-      flexGrow: 1,
       paddingBottom: 24,
+    },
+    optionListViewport: {
+      flexGrow: 0,
+      maxHeight: 420,
     },
     option: {
       alignItems: "center",
