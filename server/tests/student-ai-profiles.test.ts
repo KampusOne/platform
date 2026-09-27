@@ -52,7 +52,7 @@ describe("public profiles and scoped campus tools",()=>{
   const firesAt=new Date(Date.now()+60*60*1000).toISOString();
   const prepared=await runStudentTool(env,identity,'prepare_alarm',{label:'Study thermodynamics',time:'18:30',days:[],firesAt,sound:'default',vibration:true,snoozeMinutes:5});
   expect(prepared.action?.type).toBe('alarm');
-  expect((await pg.query('select id from student_alarms where id=$1',[prepared.action!.id])).toHaveProperty('rows',[]);
+  expect((await pg.query('select id from student_alarms where id=$1',[prepared.action!.id])).rows).toHaveLength(0);
   const requestId=crypto.randomUUID(),action=prepared.action!;
   await pg.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result)values($1,$2,repeat('c',64),'study','COMPLETED',$3::jsonb)",[student,requestId,JSON.stringify({version:3,text:'Review this alarm',actions:[action]})]);
   expect(await result('/ai/actions/confirm','POST',{requestId,actionId:action.id})).toMatchObject({saved:true,id:action.id,type:'alarm'});
