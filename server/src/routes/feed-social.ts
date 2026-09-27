@@ -289,13 +289,8 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
         'studentPost', true,
         'mediaType', ${mediaType}::text,
         'media', ${mediaPayloadJson}::jsonb,
-        'visibility',
-          case
-            when ${data.quotedPostId ?? null}::uuid is null
-              or (select audience->>'visibility' from target) = 'PUBLIC'
-            then 'PUBLIC'
-            else 'CAMPUS'
-          end
+        'visibility', case when ${data.quotedPostId ?? null}::uuid is null
+          or (select audience->>'visibility' from target) = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end
       ),
       'PUBLISHED',
       now(),
