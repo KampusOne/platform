@@ -23,7 +23,7 @@ import { DashboardCarousel } from "@/src/components/dashboard-carousel";
 import { useStartup } from "@/src/lib/startup";
 import { readCache, writeCache } from "@/src/lib/device-cache";
 import { useNotificationCount } from "@/src/lib/notification-state";
-import { ApiError, api } from "@/src/lib/api";
+import { ApiError, api, peekApiCache } from "@/src/lib/api";
 import { recordRecentTool } from "@/src/lib/recent-tools";
 import { streakColor } from "@/src/lib/streak-theme";
 import { theme } from "@/src/theme";
@@ -158,18 +158,30 @@ export default function TodayScreen() {
   const unreadNotifications = useNotificationCount();
   const [unreadMessages, setUnreadMessages] = useState(0);
   const generation = useRef(0);
-  const [data, setData] = useState<Home | null>(null);
+  const [data, setData] = useState<Home | null>(() => {
+    const prefetched = peekApiCache<Home>("/v1/student/home");
+    return prefetched ? normalizeHome(prefetched) : null;
+  });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => peekApiCache<Home>("/v1/student/home") === undefined,
+  );
 
   const load = useCallback(async () => {
     const current = ++generation.current;
     setError("");
     try {
-      const cachedRaw = user
-        ? await readCache<Home>(homeCacheKey(user.id))
-        : null;
+      const transportCached = peekApiCache<Home>("/v1/student/home");
+      if (transportCached) {
+        setData(normalizeHome(transportCached));
+        setLoading(false);
+        markHomeReady();
+      }
+      const cachedRaw =
+        !transportCached && user
+          ? await readCache<Home>(homeCacheKey(user.id))
+          : null;
       const cached = cachedRaw ? normalizeHome(cachedRaw) : null;
       if (current !== generation.current) return;
       const localDate = new Intl.DateTimeFormat("en-CA", {
