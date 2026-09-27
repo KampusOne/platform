@@ -15,4 +15,4 @@ jobs:
         with:
           node-version: 22
       - name: Check media links, crop boundaries, Save and Cancel
-        run: node --experimental-strip-types --test tests/media-workflow.test.mjs
+        run: node --experimental-strip-types --test tests/media-workflow.test.mjs tests/feed-video-playback.test.mjs
