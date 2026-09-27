@@ -128,7 +128,7 @@ function safeActivityDate(value: string): string {
 export default function ProfileScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
-  const compactPhone = width < 380;
+  const compactPhone = width < 400;
 
   const { user, profile: sessionProfile, signOut, reloadProfile } = useAuth();
   const toast = useToast();
