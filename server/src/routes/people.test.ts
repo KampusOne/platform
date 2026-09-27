@@ -11,7 +11,7 @@ const connectionId = "33333333-3333-4333-8333-333333333333";
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
   ready: vi.fn(),
-  user: { id: viewerId, universityId: "44444444-4444-4444-8444-444444444444" as string | null },
+  user: { id: "11111111-1111-4111-8111-111111111111", universityId: "44444444-4444-4444-8444-444444444444" as string | null },
 }));
 
 vi.mock("../lib/database", () => ({
