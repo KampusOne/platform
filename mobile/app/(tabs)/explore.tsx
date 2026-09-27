@@ -3,7 +3,14 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
 import { type Href, router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 import { ProductScreen, SearchField } from "@/src/components/product-ui";
 import { SectionHeading } from "@/src/components/section-heading";
@@ -151,6 +158,8 @@ const moreTools: Tool[] = [
 
 export default function ExploreScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
+  const { width } = useWindowDimensions();
+  const compactPhone = width < 380;
 
   const [query, setQuery] = useState("");
   const recentToolIds = useRecentToolIds();
@@ -265,6 +274,7 @@ export default function ExploreScreen() {
             <View style={styles.essentialGrid}>
               {essentialIds.map((id) => (
                 <FeatureCard
+                  compact={compactPhone}
                   key={id}
                   onPress={() => openTool(tools[id])}
                   tool={tools[id]}
@@ -282,6 +292,7 @@ export default function ExploreScreen() {
             >
               {([tools.study, tools.summarize, tools.quiz] as const).map((tool) => (
                 <AiCard
+                  compact={compactPhone}
                   key={tool.id}
                   onPress={() => openTool(tool)}
                   tool={tool}
@@ -295,6 +306,7 @@ export default function ExploreScreen() {
             <View style={styles.moreGrid}>
               {moreTools.map((tool) => (
                 <CompactTool
+                  compact={compactPhone}
                   key={tool.id}
                   onPress={() => openTool(tool)}
                   tool={tool}
@@ -348,63 +360,129 @@ function RecentCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
         size={17}
         style={styles.recentChevron}
       />
-      <Text style={styles.recentTitle}>{tool.title}</Text>
+      <Text
+        android_hyphenationFrequency="none"
+        numberOfLines={2}
+        style={styles.recentTitle}
+        textBreakStrategy="simple"
+      >
+        {tool.title}
+      </Text>
     </Pressable>
   );
 }
 
-function FeatureCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
+function FeatureCard({
+  tool,
+  onPress,
+  compact = false,
+}: {
+  tool: Tool;
+  onPress: () => void;
+  compact?: boolean;
+}) {
   const { theme, styles } = useThemeStyles(createStyles);
 
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.featureCard, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.featureCard,
+        compact && styles.featureCardCompact,
+        pressed && styles.pressed,
+      ]}
     >
       <View pointerEvents="none" style={styles.featureBlob} />
       <ToolIcon icon={tool.icon} tone={tool.tone} size={25} />
-      <View style={styles.featureCopy}>
-        <Text style={styles.featureTitle}>{tool.title}</Text>
+      <View style={[styles.featureCopy, compact && styles.featureCopyCompact]}>
+        <Text
+          android_hyphenationFrequency="none"
+          numberOfLines={2}
+          style={styles.featureTitle}
+          textBreakStrategy="simple"
+        >
+          {tool.title}
+        </Text>
       </View>
-      <View style={styles.chevronCircle}>
+      <View
+        style={
+          compact ? styles.chevronCircleCompact : styles.chevronCircle
+        }
+      >
         <Ionicons color={theme.accentText} name="chevron-forward" size={17} />
       </View>
     </Pressable>
   );
 }
 
-function AiCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
+function AiCard({
+  tool,
+  onPress,
+  compact = false,
+}: {
+  tool: Tool;
+  onPress: () => void;
+  compact?: boolean;
+}) {
   const { theme, styles } = useThemeStyles(createStyles);
 
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.aiCard, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.aiCard,
+        compact && styles.aiCardCompact,
+        pressed && styles.pressed,
+      ]}
     >
       <ToolIcon icon={tool.icon} tone={tool.tone} size={25} />
       <View style={styles.aiCopy}>
-        <Text style={styles.featureTitle}>{tool.title}</Text>
+        <Text
+          android_hyphenationFrequency="none"
+          numberOfLines={2}
+          style={styles.featureTitle}
+          textBreakStrategy="simple"
+        >
+          {tool.title}
+        </Text>
       </View>
       <Ionicons color={theme.accentText} name="chevron-forward" size={18} />
     </Pressable>
   );
 }
 
-function CompactTool({ tool, onPress }: { tool: Tool; onPress: () => void }) {
+function CompactTool({
+  tool,
+  onPress,
+  compact = false,
+}: {
+  tool: Tool;
+  onPress: () => void;
+  compact?: boolean;
+}) {
   const { theme, styles } = useThemeStyles(createStyles);
 
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.compact, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.compact,
+        compact && styles.compactWide,
+        pressed && styles.pressed,
+      ]}
     >
       <View style={styles.compactIcon}>
         <Ionicons color={theme.accentText} name={tool.icon} size={20} />
       </View>
-      <Text numberOfLines={2} style={styles.compactTitle}>
+      <Text
+        android_hyphenationFrequency="none"
+        numberOfLines={2}
+        style={styles.compactTitle}
+        textBreakStrategy="simple"
+      >
         {tool.title}
       </Text>
       <Ionicons color={theme.accentText} name="chevron-forward" size={15} />
@@ -423,7 +501,13 @@ function SearchResult({ tool, onPress }: { tool: Tool; onPress: () => void }) {
     >
       <ToolIcon icon={tool.icon} tone={tool.tone} />
       <View style={styles.resultCopy}>
-        <Text style={styles.resultTitle}>{tool.title}</Text>
+        <Text
+          android_hyphenationFrequency="none"
+          style={styles.resultTitle}
+          textBreakStrategy="simple"
+        >
+          {tool.title}
+        </Text>
       </View>
       <Ionicons color={theme.accentText} name="chevron-forward" size={18} />
     </Pressable>
@@ -524,7 +608,18 @@ const createStyles = (theme: Theme) =>
       right: -22,
       width: 105,
     },
-    featureCopy: { flex: 1, marginLeft: 10, paddingRight: 2 },
+    featureCardCompact: {
+      flexDirection: "column",
+      minHeight: 132,
+    },
+    featureCopy: { flex: 1, marginLeft: 10, minWidth: 0, paddingRight: 2 },
+    featureCopyCompact: {
+      flex: 0,
+      marginLeft: 0,
+      marginTop: 10,
+      paddingRight: 0,
+      width: "100%",
+    },
     featureTitle: {
       color: theme.text,
       fontFamily: theme.font.semibold,
@@ -549,6 +644,17 @@ const createStyles = (theme: Theme) =>
       right: 10,
       width: 36,
     },
+    chevronCircleCompact: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceGlassStrong,
+      borderRadius: 18,
+      height: 36,
+      justifyContent: "center",
+      position: "absolute",
+      right: 10,
+      top: 13,
+      width: 36,
+    },
     aiRow: { gap: 10, paddingRight: 20 },
     aiCard: {
       alignItems: "center",
@@ -559,9 +665,10 @@ const createStyles = (theme: Theme) =>
       flexDirection: "row",
       minHeight: 104,
       padding: 13,
-      width: 176,
+      width: 196,
     },
-    aiCopy: { flex: 1, marginLeft: 10 },
+    aiCardCompact: { width: 220 },
+    aiCopy: { flex: 1, marginLeft: 10, minWidth: 0 },
     moreGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -579,6 +686,11 @@ const createStyles = (theme: Theme) =>
       paddingHorizontal: 8,
       width: "48%",
     },
+    compactWide: {
+      minHeight: 62,
+      paddingHorizontal: 12,
+      width: "100%",
+    },
     compactIcon: {
       alignItems: "center",
       backgroundColor: "rgba(233,177,142,0.16)",
@@ -591,6 +703,7 @@ const createStyles = (theme: Theme) =>
       color: theme.text,
       flex: 1,
       fontFamily: theme.font.medium,
+      minWidth: 0,
       fontSize: 11,
       lineHeight: 14,
       marginLeft: 7,
