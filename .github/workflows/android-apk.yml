@@ -47,7 +47,8 @@ jobs:
         env:
           CI: "1"
           NODE_ENV: production
-          EXPO_PUBLIC_KAMPUSONE_API_URL: https://platformp.divine-haze-54eb.workers.dev
+          EXPO_PUBLIC_KAMPUSONE_API_URL: https://kampusone-mobile-preview.vercel.app/api
+          EXPO_PUBLIC_KAMPUSONE_API_FALLBACK_URL: https://platformp.divine-haze-54eb.workers.dev
       - name: Prepare public APK
         run: cp mobile/android/app/build/outputs/apk/release/*.apk KampusOne-Android.apk
       - name: Save Android testing artifact

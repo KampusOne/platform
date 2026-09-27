@@ -43,12 +43,74 @@ const configuredUrl =
   process.env.EXPO_PUBLIC_KAMPUSONE_API_URL ??
   process.env.EXPO_PUBLIC_API_URL ??
   (Constants.expoConfig?.extra?.apiUrl as string | undefined);
+const configuredFallbackUrl =
+  process.env.EXPO_PUBLIC_KAMPUSONE_API_FALLBACK_URL ??
+  (Constants.expoConfig?.extra?.apiFallbackUrl as string | undefined);
 export const apiUrl =
   Platform.OS === "web" &&
   typeof window !== "undefined" &&
   !["localhost", "127.0.0.1"].includes(window.location.hostname)
     ? "/api"
     : (configuredUrl ?? "http://localhost:8787").replace(/\/$/, "");
+const fallbackApiUrl =
+  Platform.OS === "web"
+    ? null
+    : configuredFallbackUrl?.replace(/\/$/, "") ?? null;
+let activeApiUrl: string | null = null;
+let apiOriginPromise: Promise<string> | null = null;
+
+async function apiOriginHealthy(origin: string): Promise<boolean> {
+  try {
+    return await withRequestDeadline(async (signal) => {
+      const response = await fetch(`${origin}/health/ready`, {
+        method: "GET",
+        signal,
+      });
+      return response.ok;
+    }, 4_000);
+  } catch {
+    return false;
+  }
+}
+
+async function resolveApiUrl(): Promise<string> {
+  if (Platform.OS === "web" || !fallbackApiUrl || fallbackApiUrl === apiUrl)
+    return apiUrl;
+  if (activeApiUrl) return activeApiUrl;
+  if (!apiOriginPromise) {
+    apiOriginPromise = new Promise<string>((resolve) => {
+      const candidates = [apiUrl, fallbackApiUrl];
+      let remaining = candidates.length;
+      let settled = false;
+      for (const candidate of candidates) {
+        void apiOriginHealthy(candidate).then((healthy) => {
+          if (healthy && !settled) {
+            settled = true;
+            resolve(candidate);
+            return;
+          }
+          remaining -= 1;
+          if (remaining === 0 && !settled) {
+            settled = true;
+            resolve(apiUrl);
+          }
+        });
+      }
+    })
+      .then((origin) => {
+        activeApiUrl = origin;
+        return origin;
+      })
+      .finally(() => {
+        apiOriginPromise = null;
+      });
+  }
+  return apiOriginPromise;
+}
+
+function resetApiOrigin() {
+  if (Platform.OS !== "web") activeApiUrl = null;
+}
 let accessToken: string | null = null;
 let sessionListener: ((session: Session | null) => void) | null = null;
 let restrictionListener: (() => void) | null = null;
@@ -234,7 +296,8 @@ async function refreshSession() {
         // install or signed-out device has nothing to restore over the network.
         if (Platform.OS !== "web" && !refreshToken) return null;
         if (signal.aborted) throw new Error("Session restoration cancelled");
-        const response = await fetch(`${apiUrl}/v1/auth/refresh`, {
+        const baseUrl = await resolveApiUrl();
+        const response = await fetch(`${baseUrl}/v1/auth/refresh`, {
           method: "POST",
           credentials: "include",
           signal,
@@ -297,7 +360,8 @@ async function request<T>(
   let result: { response: Response; value?: T };
   try {
     result = await withRequestDeadline(async (signal) => {
-      const response = await send(`${apiUrl}${path}`, {
+      const baseUrl = await resolveApiUrl();
+      const response = await send(`${baseUrl}${path}`, {
         ...requestInit, signal, credentials: "include", headers,
       });
       if (response.status === 401 && canRefresh && path !== "/v1/auth/refresh") return { response };
@@ -305,9 +369,11 @@ async function request<T>(
     }, timeoutMs, parentSignal);
   } catch (caught) {
     if (caught instanceof Error && caught.name === "TimeoutError") {
+      resetApiOrigin();
       throw new ApiError(0, "REQUEST_TIMEOUT", caught.message);
     }
     if (caught instanceof TypeError) {
+      resetApiOrigin();
       throw new ApiError(0, "NETWORK_UNAVAILABLE", "We couldn’t connect to KampusOne. Check your internet connection and try again.");
     }
     throw caught;

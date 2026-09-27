@@ -2,7 +2,7 @@
   "expo": {
     "name": "KampusOne",
     "slug": "kampusone",
-    "version": "0.3.5",
+    "version": "0.3.6",
     "orientation": "portrait",
     "icon": "./assets/kampusone-app-icon.jpg",
     "scheme": "kampusone",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.kampusone.mobile",
-      "buildNumber": "35"
+      "buildNumber": "36"
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +30,7 @@
         "android.permission.SCHEDULE_EXACT_ALARM"
       ],
       "softwareKeyboardLayoutMode": "pan",
-      "versionCode": 35
+      "versionCode": 36
     },
     "web": {
       "bundler": "metro",
@@ -72,7 +72,8 @@
       "./plugins/with-branded-video-trim"
     ],
     "extra": {
-      "apiUrl": "https://platformp.divine-haze-54eb.workers.dev"
+      "apiUrl": "https://kampusone-mobile-preview.vercel.app/api",
+      "apiFallbackUrl": "https://platformp.divine-haze-54eb.workers.dev"
     },
     "experiments": {
       "typedRoutes": true
