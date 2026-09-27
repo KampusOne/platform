@@ -80,34 +80,46 @@ aiRoutes.post("/transcribe", async c => {
 
   const requestHash = await sha256(JSON.stringify(["voice-v1", mime, bytes.byteLength, await hashBytes(bytes)]));
   const user = currentUser(c), db = database(c.env);
-  const findRequest = async () => firstRow(await db.execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid`));
-  const existing = await findRequest();
-  if (existing) return c.json(replayTranscription(existing, requestHash));
-
-  const claimed = firstRow(await db.execute<{ idempotency_key: string }>(sql`insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) values(${user.id}::uuid,${key.data}::uuid,${requestHash},'transcription','PROCESSING','{"version":1}'::jsonb) on conflict do nothing returning idempotency_key`));
-  if (!claimed) {
-    const raced = await findRequest();
-    if (!raced) throw new AppError(409, "CONFLICT", "Voice transcription could not be started. Your recording is kept.", { reason: "AI_VOICE_CLAIM", retryWithNewKey: true });
-    return c.json(replayTranscription(raced, requestHash));
-  }
-
-  const rate = firstRow(await db.execute<{ allowed: boolean }>(sql`select app_private.consume_request_rate_limit('AI_VOICE',${await sha256(user.id)},30,900,900) as allowed`));
-  if (!rate?.allowed) {
-    const reset = new Date(Date.now() + 900000).toISOString();
-    await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({version:1,reason:"AI_VOICE_LIMIT",message:"Too many voice recordings. Your recording is kept; try again shortly."})}::jsonb where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
-    c.header("Retry-After", "900");
-    throw new AppError(429, "RATE_LIMITED", "Too many voice recordings. Your recording is kept; try again shortly.", { reason: "AI_VOICE_LIMIT", resetsAt: reset, retryAfter: 900, retryWithNewKey: true });
-  }
-
   try {
-    const text = await transcribeAI(c.env, bytes, mime);
-    await db.execute(sql`update app_private.ai_requests set status='COMPLETED',result=${JSON.stringify({version:1})}::jsonb || jsonb_build_object('transcriptionText',${text}) where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
-    return c.json({ text });
+    const findRequest = async () => firstRow(await db.execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid`));
+    const existing = await findRequest();
+    if (existing) return c.json(replayTranscription(existing, requestHash));
+
+    const claimed = firstRow(await db.execute<{ idempotency_key: string }>(sql`insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) values(${user.id}::uuid,${key.data}::uuid,${requestHash},'transcription','PROCESSING','{"version":1}'::jsonb) on conflict do nothing returning idempotency_key`));
+    if (!claimed) {
+      const raced = await findRequest();
+      if (!raced) throw new AppError(409, "CONFLICT", "Voice transcription could not be started. Your recording is kept.", { reason: "AI_VOICE_CLAIM", retryWithNewKey: true });
+      return c.json(replayTranscription(raced, requestHash));
+    }
+
+    const rate = firstRow(await db.execute<{ allowed: boolean }>(sql`select app_private.consume_request_rate_limit('AI_VOICE',${await sha256(user.id)},30,900,900) as allowed`));
+    if (!rate?.allowed) {
+      const reset = new Date(Date.now() + 900000).toISOString();
+      await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({version:1,reason:"AI_VOICE_LIMIT",message:"Too many voice recordings. Your recording is kept; try again shortly."})}::jsonb where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
+      c.header("Retry-After", "900");
+      throw new AppError(429, "RATE_LIMITED", "Too many voice recordings. Your recording is kept; try again shortly.", { reason: "AI_VOICE_LIMIT", resetsAt: reset, retryAfter: 900, retryWithNewKey: true });
+    }
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    console.warn(JSON.stringify({ event: "ai.voice.prepare.failed", requestId: c.get("requestId"), errorName: error instanceof Error ? error.name : "UnknownError" }));
+    throw new AppError(503, "PROVIDER_UNAVAILABLE", "Voice transcription could not start. Your recording is kept; try again.", { reason: "AI_VOICE_PREPARE", retryWithNewKey: true });
+  }
+
+  let text: string;
+  try {
+    text = await transcribeAI(c.env, bytes, mime);
   } catch (error) {
     const failure = error instanceof AIProviderError ? error : new AIProviderError(503, "AI_PROVIDER_UNAVAILABLE", "Voice transcription could not connect. Your recording is kept; try again.");
-    await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({version:1})}::jsonb || jsonb_build_object('reason',${failure.reason},'message',${failure.message}) where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
+    await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({version:1})}::jsonb || jsonb_build_object('reason',${failure.reason},'message',${failure.message}) where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`).catch(() => undefined);
     throw providerFailure(failure);
   }
+
+  // A transcription is useful immediately even if its replay bookkeeping cannot
+  // be persisted. The request was already authenticated, rate-limited and claimed.
+  await db.execute(sql`update app_private.ai_requests set status='COMPLETED',result=${JSON.stringify({version:1})}::jsonb || jsonb_build_object('transcriptionText',${text}) where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`).catch(error => {
+    console.warn(JSON.stringify({ event: "ai.voice.persist.failed", requestId: c.get("requestId"), errorName: error instanceof Error ? error.name : "UnknownError" }));
+  });
+  return c.json({ text });
 });
 aiRoutes.get("/history", async c => {
   requireSchema(c.env);
