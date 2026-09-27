@@ -55,9 +55,85 @@ type Home = {
     cgpa: string | number | null;
     total_units: string | number | null;
   };
-  campusClock?: { date: string; time: string; timeZone: string };
+  campusClock: { date: string; time: string; timeZone: string };
   streak_days?: number | null;
 };
+
+const HOME_CACHE_VERSION = "v2";
+
+function normalizeHome(input: Home | null | undefined): Home {
+  const source =
+    input && typeof input === "object" ? input : ({} as Partial<Home>);
+  const updates = Array.isArray(source.updates) ? source.updates : [];
+  const today = Array.isArray(source.today) ? source.today : [];
+  const academics =
+    source.academics && typeof source.academics === "object"
+      ? source.academics
+      : { cgpa: null, total_units: null };
+  const campusClock =
+    source.campusClock && typeof source.campusClock === "object"
+      ? {
+          date:
+            typeof source.campusClock.date === "string"
+              ? source.campusClock.date
+              : "",
+          time:
+            typeof source.campusClock.time === "string"
+              ? source.campusClock.time
+              : "",
+          timeZone:
+            typeof source.campusClock.timeZone === "string"
+              ? source.campusClock.timeZone
+              : "Africa/Lagos",
+        }
+      : { date: "", time: "", timeZone: "Africa/Lagos" };
+
+  return {
+    profile:
+      source.profile && typeof source.profile === "object"
+        ? source.profile
+        : null,
+    today: today.filter(
+      (item): item is AgendaItem => Boolean(item && typeof item === "object"),
+    ),
+    updates: updates
+      .filter((update): update is Update =>
+        Boolean(update && typeof update === "object"),
+      )
+      .map((update, index) => ({
+        ...update,
+        id:
+          typeof update.id === "string" && update.id
+            ? update.id
+            : `home-update-${index}`,
+        title:
+          typeof update.title === "string" && update.title.trim()
+            ? update.title
+            : "Campus update",
+        summary: typeof update.summary === "string" ? update.summary : "",
+        category:
+          typeof update.category === "string" ? update.category : "UPDATE",
+        source_name:
+          typeof update.source_name === "string"
+            ? update.source_name
+            : "KampusOne",
+        urgent: Boolean(update.urgent),
+        image_url:
+          typeof update.image_url === "string" ? update.image_url : null,
+      })),
+    academics: {
+      cgpa: academics.cgpa ?? null,
+      total_units: academics.total_units ?? null,
+    },
+    campusClock,
+    streak_days:
+      typeof source.streak_days === "number" ? source.streak_days : null,
+  };
+}
+
+function homeCacheKey(userId: string) {
+  return `home.${HOME_CACHE_VERSION}.${userId}`;
+}
 
 function greeting(hour: number) {
   if (hour < 12) return "Good morning,";
@@ -65,7 +141,8 @@ function greeting(hour: number) {
   return "Good evening,";
 }
 
-function timeInMinutes(value: string) {
+function timeInMinutes(value: string | null | undefined) {
+  if (typeof value !== "string") return Number.POSITIVE_INFINITY;
   const [hours, minutes] = value.split(":").map(Number);
   if (!Number.isFinite(hours) || !Number.isFinite(minutes))
     return Number.POSITIVE_INFINITY;
@@ -89,14 +166,27 @@ export default function TodayScreen() {
     const current = ++generation.current;
     setError("");
     try {
-      const cached = user ? await readCache<Home>(`home.${user.id}`) : null;
+      const cachedRaw = user
+        ? await readCache<Home>(homeCacheKey(user.id))
+        : null;
+      const cached = cachedRaw ? normalizeHome(cachedRaw) : null;
       if (current !== generation.current) return;
-      const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-      if (cached && cached.campusClock?.date === localDate) { setData(cached); setLoading(false); markHomeReady(); }
-      const fresh = await api<Home>("/v1/student/home");
+      const localDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Africa/Lagos",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+      if (cached && cached.campusClock?.date === localDate) {
+        setData(cached);
+        setLoading(false);
+        markHomeReady();
+      }
+      const fresh = normalizeHome(await api<Home>("/v1/student/home"));
       if (current !== generation.current) return;
       setData(fresh);
-      if (user) void writeCache(`home.${user.id}`, fresh, 12 * 60 * 60_000);
+      if (user)
+        void writeCache(homeCacheKey(user.id), fresh, 12 * 60 * 60_000);
     } catch (caught) {
       if (current !== generation.current) return;
       setError(caught instanceof ApiError ? caught.message : "Your campus day could not be loaded.");
@@ -120,7 +210,12 @@ export default function TodayScreen() {
 
   const firstName = data?.profile?.first_name ?? profile?.first_name ?? "there";
   const now = new Date();
-  const campusTime = new Intl.DateTimeFormat("en-GB", { timeZone: data?.campusClock?.timeZone || "Africa/Lagos", hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
+  const campusTime =
+    typeof data?.campusClock?.time === "string" && data.campusClock.time
+      ? data.campusClock.time
+      : `${String(now.getHours()).padStart(2, "0")}:${String(
+          now.getMinutes(),
+        ).padStart(2, "0")}`;
   const nowInMinutes = campusTime
     ? timeInMinutes(campusTime)
     : now.getHours() * 60 + now.getMinutes();
@@ -132,9 +227,13 @@ export default function TodayScreen() {
   const nextInProgress = Boolean(
     next && timeInMinutes(next.starts_at) <= nowInMinutes,
   );
-  const campusDate = data?.campusClock?.date
-    ? new Date(`${data.campusClock.date}T12:00:00`)
-    : now;
+  const campusDateCandidate =
+    data?.campusClock?.date && /^\\d{4}-\\d{2}-\\d{2}$/.test(data.campusClock.date)
+      ? new Date(`${data.campusClock.date}T12:00:00`)
+      : now;
+  const campusDate = Number.isNaN(campusDateCandidate.getTime())
+    ? now
+    : campusDateCandidate;
   const date = new Intl.DateTimeFormat("en-NG", {
     day: "numeric",
     month: "long",
@@ -383,7 +482,7 @@ export default function TodayScreen() {
                     <Text numberOfLines={2} style={styles.updateTitle}>
                       {update.title}
                     </Text>
-                    {update.summary.trim() !== update.title.trim() ? <Text numberOfLines={2} style={styles.updateBody}>{update.summary}</Text> : null}
+                    {update.summary.trim() && update.summary.trim() !== update.title.trim() ? <Text numberOfLines={2} style={styles.updateBody}>{update.summary}</Text> : null}
                   </View>
                 </Pressable>
               ))}

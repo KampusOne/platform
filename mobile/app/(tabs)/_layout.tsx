@@ -168,14 +168,14 @@ function KampusTabBar({ state, navigation }: KampusTabBarProps) {
       style={[styles.navPosition, { bottom: Math.max(insets.bottom, 8) }]}
     >
       <View style={styles.glassDock}>
-        <BlurView
-          experimentalBlurMethod={
-            Platform.OS === "android" ? "dimezisBlurView" : "none"
-          }
-          intensity={30}
-          style={StyleSheet.absoluteFill}
-          tint={isDark ? "dark" : "light"}
-        />
+        {Platform.OS === "android" ? null : (
+          <BlurView
+            experimentalBlurMethod="none"
+            intensity={30}
+            style={StyleSheet.absoluteFill}
+            tint={isDark ? "dark" : "light"}
+          />
+        )}
         <View pointerEvents="none" style={styles.dockTint} />
         <View pointerEvents="none" style={styles.dockHighlight} />
         {primaryItems.map((item) => {
