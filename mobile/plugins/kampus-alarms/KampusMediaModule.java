@@ -30,16 +30,32 @@ public class KampusMediaModule extends ReactContextBaseJavaModule {
       try { reader.setDataSource(getReactApplicationContext(),Uri.parse(uri)); int width=Integer.parseInt(reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)),height=Integer.parseInt(reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));String angle=reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);if("90".equals(angle)||"270".equals(angle)){int swap=width;width=height;height=swap;}WritableMap result=Arguments.createMap();result.putInt("width",width);result.putInt("height",height);promise.resolve(result); }
       catch(Exception e){promise.reject("VIDEO_SIZE","Could not read video dimensions.",e);}finally{try{reader.release();}catch(Exception ignored){}}});
   }
-  Bitmap watermark(int width) throws Exception {
-    int w=Math.max(100,Math.min(380,width)),h=Math.max(32,w/5);
+  String fitText(Paint paint,String value,float maxWidth) {
+    if(value==null||value.isEmpty()||paint.measureText(value)<=maxWidth)return value;
+    final String ellipsis="…";int end=value.length();
+    while(end>1&&paint.measureText(value.substring(0,end)+ellipsis)>maxWidth)end--;
+    return value.substring(0,Math.max(1,end))+ellipsis;
+  }
+  Bitmap watermark(int width,String username) throws Exception {
+    String author=username==null?"":username.trim().replaceFirst("^@+","");
+    if(!author.isEmpty())author="@"+author;
+    int w=Math.max(120,Math.min(380,width)),h=author.isEmpty()?Math.max(32,w/5):Math.max(44,w/4);
     Bitmap bitmap=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);Canvas canvas=new Canvas(bitmap);Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     paint.setColor(Color.argb(175,41,35,31));canvas.drawRoundRect(0,0,w,h,h/4f,h/4f,paint);
     Bitmap logo;try(InputStream input=getReactApplicationContext().getAssets().open("kampus-download-mark.png")){logo=BitmapFactory.decodeStream(input);}
-    if(logo!=null){canvas.drawBitmap(logo,null,new RectF(h*0.15f,h*0.12f,h*1.12f,h*0.88f),null);logo.recycle();}
-    paint.setColor(Color.WHITE);paint.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));paint.setTextSize(h*0.44f);
-    canvas.drawText("KampusOne",h*1.22f,h*0.66f,paint);return bitmap;
+    float logoLeft=h*0.14f,logoTop=h*0.14f,logoSize=h*0.72f;
+    if(logo!=null){canvas.drawBitmap(logo,null,new RectF(logoLeft,logoTop,logoLeft+logoSize,logoTop+logoSize),null);logo.recycle();}
+    float textLeft=h*0.98f,maxText=Math.max(12f,w-textLeft-h*0.12f);
+    paint.setColor(Color.WHITE);paint.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));paint.setTextSize(author.isEmpty()?h*0.40f:h*0.30f);
+    String brand=fitText(paint,"KampusOne",maxText);
+    canvas.drawText(brand,textLeft,author.isEmpty()?h*0.64f:h*0.43f,paint);
+    if(!author.isEmpty()){
+      paint.setColor(Color.argb(225,255,255,255));paint.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));paint.setTextSize(h*0.22f);
+      canvas.drawText(fitText(paint,author,maxText),textLeft,h*0.74f,paint);
+    }
+    return bitmap;
   }
-  File stampPhoto(File input,File output) throws Exception {
+  File stampPhoto(File input,File output,String username) throws Exception {
     BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeFile(input.getPath(),bounds);
     if(bounds.outWidth<=0||bounds.outHeight<=0)throw new IOException("Unsupported image.");
     BitmapFactory.Options options=new BitmapFactory.Options();options.inMutable=true;
@@ -47,18 +63,18 @@ public class KampusMediaModule extends ReactContextBaseJavaModule {
     options.inSampleSize=1;while((long)(bounds.outWidth/options.inSampleSize)*(bounds.outHeight/options.inSampleSize)>16000000L)options.inSampleSize*=2;
     Bitmap original=BitmapFactory.decodeFile(input.getPath(),options);if(original==null)throw new IOException("Could not decode image.");
     Bitmap result=original.copy(Bitmap.Config.ARGB_8888,true);original.recycle();
-    Bitmap mark=watermark(Math.min(result.getWidth()-12,Math.max(120,result.getWidth()/3)));
+    Bitmap mark=watermark(Math.min(result.getWidth()-12,Math.max(120,result.getWidth()/3)),username);
     new Canvas(result).drawBitmap(mark,Math.max(0,result.getWidth()-mark.getWidth()-12),Math.max(0,result.getHeight()-mark.getHeight()-12),null);mark.recycle();
     try(OutputStream stream=new FileOutputStream(output)){if(!result.compress(Bitmap.CompressFormat.JPEG,92,stream))throw new IOException("Could not save image.");}finally{result.recycle();}return output;
   }
-  File stampVideo(String id,File input,File output,File markFile) throws Exception {
+  File stampVideo(String id,File input,File output,File markFile,String username) throws Exception {
     MediaMetadataRetriever metadata=new MediaMetadataRetriever();long duration;int width;
     try{metadata.setDataSource(input.getPath());duration=Long.parseLong(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));width=Integer.parseInt(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));}finally{metadata.release();}
-    Bitmap mark=watermark(Math.max(120,width/3));try(OutputStream stream=new FileOutputStream(markFile)){mark.compress(Bitmap.CompressFormat.PNG,100,stream);}finally{mark.recycle();}
+    Bitmap mark=watermark(Math.max(120,width/3),username);try(OutputStream stream=new FileOutputStream(markFile)){mark.compress(Bitmap.CompressFormat.PNG,100,stream);}finally{mark.recycle();}
     for(String encoder:new String[]{"h264_mediacodec","mpeg4"}) {
       output.delete();CountDownLatch done=new CountDownLatch(1);final boolean[] success={false};
       String[] arguments={"-y","-i",input.getPath(),"-i",markFile.getPath(),"-filter_complex","[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[base];[base][1:v]overlay=W-w-12:H-h-12[v]","-map","[v]","-map","0:a?","-c:v",encoder,"-b:v","2500k","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart",output.getPath()};
-      FFmpegSession session=FFmpegKit.executeWithArgumentsAsync(arguments,finished->{success[0]=ReturnCode.isSuccess(finished.getReturnCode());done.countDown();},log->{},stats->progress(id,"Watermarking",0.65+0.3*Math.min(1,stats.getTime()/Math.max(1d,duration))));
+      FFmpegSession session=FFmpegKit.executeWithArgumentsAsync(arguments,finished->{success[0]=ReturnCode.isSuccess(finished.getReturnCode());done.countDown();},log->{},stats->progress(id,"Downloading",0.65+0.3*Math.min(1,stats.getTime()/Math.max(1d,duration))));
       if(!done.await(180,TimeUnit.SECONDS)){FFmpegKit.cancel(session.getSessionId());throw new IOException("Video processing timed out. Try a shorter clip.");}
       if(success[0]&&output.length()>0)return output;
     }
@@ -75,7 +91,7 @@ public class KampusMediaModule extends ReactContextBaseJavaModule {
       if(Build.VERSION.SDK_INT>=29){values.clear();values.put(MediaStore.MediaColumns.IS_PENDING,0);resolver.update(uri,values,null,null);}return uri;
     }catch(Exception e){resolver.delete(uri,null,null);throw e;}
   }
-  @ReactMethod public void download(String rawUrl,boolean video,String id,Promise promise) {
+  @ReactMethod public void download(String rawUrl,boolean video,String id,String username,Promise promise) {
     if(running.size()>=2||!running.add(id)){promise.reject("DOWNLOAD_BUSY","Two downloads are already running.");return;}
     workers.execute(()->{
       File directory=new File(getReactApplicationContext().getCacheDir(),"kampus-download-"+UUID.randomUUID());directory.mkdirs();
@@ -91,10 +107,10 @@ public class KampusMediaModule extends ReactContextBaseJavaModule {
         try(InputStream source=connection.getInputStream();OutputStream target=new FileOutputStream(input)){byte[] bytes=new byte[32768];int count;
           while((count=source.read(bytes))!=-1){total+=count;if(total>80*1024*1024||System.currentTimeMillis()-started>180000)throw new IOException("Download timed out or file is too large.");target.write(bytes,0,count);if(System.currentTimeMillis()-last>250){progress(id,"Downloading",expected>0?0.65*total/expected:0);last=System.currentTimeMillis();}}
         }
-        progress(id,"Watermarking",0.65);
+        progress(id,"Downloading",0.65);
         File output=new File(directory,video?"download.mp4":"download.jpg");
-        if(video)stampVideo(id,input,output,new File(directory,"watermark.png"));else stampPhoto(input,output);
-        progress(id,"Saving",0.97);Uri saved=saveGallery(output,video);progress(id,"Saved",1);promise.resolve(saved.toString());
+        if(video)stampVideo(id,input,output,new File(directory,"watermark.png"),username);else stampPhoto(input,output,username);
+        progress(id,"Downloading",0.97);Uri saved=saveGallery(output,video);progress(id,"Saved",1);promise.resolve(saved.toString());
       }catch(Exception e){promise.reject("DOWNLOAD_FAILED",e.getMessage()==null?"Could not save this media.":e.getMessage(),e);}
       finally{if(connection!=null)connection.disconnect();File[] files=directory.listFiles();if(files!=null)for(File file:files)file.delete();directory.delete();running.remove(id);}
     });
