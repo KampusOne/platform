@@ -5,7 +5,7 @@
   "compatibility_date": "2026-09-09",
   "workers_dev": true,
   "routes": [
-    { "pattern": "api.kampusone.app", "custom_domain": true }
+    { "pattern": "api.kampusone.app", "custom_domain": true, "zone_name": "kampusone.app" }
   ],
   "preview_urls": false,
   "keep_vars": true,
