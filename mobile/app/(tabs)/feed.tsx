@@ -15,6 +15,7 @@ import { ApiError, api, peekApiCache } from "@/src/lib/api";
 import { sharePostLink, wasPostDeleted, type FeedPostData } from "@/src/lib/feed-posts";
 import { mergeById, type FeedPage, type SocialFeedPost } from "@/src/lib/feed-social";
 import { recordPostView } from "@/src/lib/post-views";
+import { pickFullyVisibleVideo, type FeedVideoFrame } from "@/src/lib/feed-video-playback";
 
 const categories = ["All", "Update", "Event", "Sports", "Opportunity", "Emergency"] as const;
 const emptyFeedIllustration = require("@/assets/illustrations/feed-empty-v2.png");
@@ -83,27 +84,21 @@ export default function FeedScreen() {
 
     const viewportTop = insets.top;
     const viewportBottom = height - Math.max(insets.bottom, 8) - floatingTabBarHeight;
-    const viewportCenter = (viewportTop + viewportBottom) / 2;
-    const candidates: Array<{ id: string; distance: number }> = [];
+    const frames: FeedVideoFrame[] = [];
     let remaining = entries.length;
 
     const finish = () => {
       remaining -= 1;
       if (remaining > 0 || version !== videoEvaluationVersion.current) return;
-      const selected = candidates.sort((a, b) => a.distance - b.distance)[0]?.id ?? null;
-      applyVisibleVideo(selected);
+      applyVisibleVideo(
+        pickFullyVisibleVideo(frames, viewportTop, viewportBottom, videoVisibilityTolerance),
+      );
     };
 
     for (const [id, handle] of entries) {
       handle.measureInWindow((_x, y, _width, videoHeight) => {
         if (version !== videoEvaluationVersion.current) return;
-        const bottom = y + videoHeight;
-        const fullyVisible = videoHeight > 0
-          && y >= viewportTop - videoVisibilityTolerance
-          && bottom <= viewportBottom + videoVisibilityTolerance;
-        if (fullyVisible) {
-          candidates.push({ id, distance: Math.abs(y + videoHeight / 2 - viewportCenter) });
-        }
+        frames.push({ id, y, height: videoHeight });
         finish();
       });
     }
