@@ -30,28 +30,37 @@ public class KampusMediaModule extends ReactContextBaseJavaModule {
       try { reader.setDataSource(getReactApplicationContext(),Uri.parse(uri)); int width=Integer.parseInt(reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)),height=Integer.parseInt(reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));String angle=reader.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);if("90".equals(angle)||"270".equals(angle)){int swap=width;width=height;height=swap;}WritableMap result=Arguments.createMap();result.putInt("width",width);result.putInt("height",height);promise.resolve(result); }
       catch(Exception e){promise.reject("VIDEO_SIZE","Could not read video dimensions.",e);}finally{try{reader.release();}catch(Exception ignored){}}});
   }
-  String fitText(Paint paint,String value,float maxWidth) {
-    if(value==null||value.isEmpty()||paint.measureText(value)<=maxWidth)return value;
-    final String ellipsis="…";int end=value.length();
-    while(end>1&&paint.measureText(value.substring(0,end)+ellipsis)>maxWidth)end--;
-    return value.substring(0,Math.max(1,end))+ellipsis;
+  String cleanUsername(String raw) {
+    if(raw==null)return "";
+    String value=raw.trim().replaceFirst("^@+","");
+    value=value.replaceAll("[^A-Za-z0-9._-]","");
+    return value.length()>32?value.substring(0,32):value;
   }
-  Bitmap watermark(int width,String username) throws Exception {
-    String author=username==null?"":username.trim().replaceFirst("^@+","");
-    if(!author.isEmpty())author="@"+author;
-    int w=Math.max(120,Math.min(380,width)),h=author.isEmpty()?Math.max(32,w/5):Math.max(44,w/4);
+  String fitLabel(Paint paint,String value,float maxWidth) {
+    if(paint.measureText(value)<=maxWidth)return value;
+    String suffix="...";
+    while(value.length()>1&&paint.measureText(value+suffix)>maxWidth)value=value.substring(0,value.length()-1);
+    return value+suffix;
+  }
+  Bitmap watermark(int videoWidth,String rawUsername) throws Exception {
+    int maxWidth=Math.max(96,videoWidth-24);
+    int w=Math.min(maxWidth,Math.max(120,Math.min(340,Math.round(videoWidth*0.28f))));
+    int h=Math.max(34,Math.min(72,Math.round(w*0.22f)));
     Bitmap bitmap=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);Canvas canvas=new Canvas(bitmap);Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
-    paint.setColor(Color.argb(175,41,35,31));canvas.drawRoundRect(0,0,w,h,h/4f,h/4f,paint);
-    Bitmap logo;try(InputStream input=getReactApplicationContext().getAssets().open("kampus-download-mark.png")){logo=BitmapFactory.decodeStream(input);}
-    float logoLeft=h*0.14f,logoTop=h*0.14f,logoSize=h*0.72f;
-    if(logo!=null){canvas.drawBitmap(logo,null,new RectF(logoLeft,logoTop,logoLeft+logoSize,logoTop+logoSize),null);logo.recycle();}
-    float textLeft=h*0.98f,maxText=Math.max(12f,w-textLeft-h*0.12f);
-    paint.setColor(Color.WHITE);paint.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));paint.setTextSize(author.isEmpty()?h*0.40f:h*0.30f);
-    String brand=fitText(paint,"KampusOne",maxText);
-    canvas.drawText(brand,textLeft,author.isEmpty()?h*0.64f:h*0.43f,paint);
-    if(!author.isEmpty()){
-      paint.setColor(Color.argb(225,255,255,255));paint.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));paint.setTextSize(h*0.22f);
-      canvas.drawText(fitText(paint,author,maxText),textLeft,h*0.74f,paint);
+    paint.setColor(Color.argb(188,255,255,255));canvas.drawRoundRect(0,0,w,h,h/2f,h/2f,paint);
+    Bitmap logo;try(InputStream input=getReactApplicationContext().getAssets().open("kampus-download-wordmark.png")){logo=BitmapFactory.decodeStream(input);}
+    float pad=Math.max(7f,h*0.18f),cursor=pad;
+    if(logo!=null&&logo.getWidth()>0&&logo.getHeight()>0){
+      float maxLogoW=w*0.55f,maxLogoH=h*0.5f,scale=Math.min(maxLogoW/logo.getWidth(),maxLogoH/logo.getHeight());
+      float logoW=logo.getWidth()*scale,logoH=logo.getHeight()*scale,top=(h-logoH)/2f;
+      canvas.drawBitmap(logo,null,new RectF(cursor,top,cursor+logoW,top+logoH),null);cursor+=logoW+pad*0.7f;logo.recycle();
+    }
+    String username=cleanUsername(rawUsername);
+    if(!username.isEmpty()){
+      paint.setColor(Color.rgb(41,35,31));paint.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));paint.setTextSize(Math.max(10f,h*0.29f));
+      String label=fitLabel(paint,"@"+username,Math.max(1f,w-cursor-pad));
+      Paint.FontMetrics metrics=paint.getFontMetrics();float baseline=(h-(metrics.bottom-metrics.top))/2f-metrics.top;
+      canvas.drawText(label,cursor,baseline,paint);
     }
     return bitmap;
   }
@@ -63,17 +72,19 @@ public class KampusMediaModule extends ReactContextBaseJavaModule {
     options.inSampleSize=1;while((long)(bounds.outWidth/options.inSampleSize)*(bounds.outHeight/options.inSampleSize)>16000000L)options.inSampleSize*=2;
     Bitmap original=BitmapFactory.decodeFile(input.getPath(),options);if(original==null)throw new IOException("Could not decode image.");
     Bitmap result=original.copy(Bitmap.Config.ARGB_8888,true);original.recycle();
-    Bitmap mark=watermark(Math.min(result.getWidth()-12,Math.max(120,result.getWidth()/3)),username);
-    new Canvas(result).drawBitmap(mark,Math.max(0,result.getWidth()-mark.getWidth()-12),Math.max(0,result.getHeight()-mark.getHeight()-12),null);mark.recycle();
+    int padding=Math.max(12,Math.min(32,result.getWidth()/60));
+    Bitmap mark=watermark(result.getWidth(),username);
+    new Canvas(result).drawBitmap(mark,Math.max(0,result.getWidth()-mark.getWidth()-padding),padding,null);mark.recycle();
     try(OutputStream stream=new FileOutputStream(output)){if(!result.compress(Bitmap.CompressFormat.JPEG,92,stream))throw new IOException("Could not save image.");}finally{result.recycle();}return output;
   }
   File stampVideo(String id,File input,File output,File markFile,String username) throws Exception {
     MediaMetadataRetriever metadata=new MediaMetadataRetriever();long duration;int width;
     try{metadata.setDataSource(input.getPath());duration=Long.parseLong(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));width=Integer.parseInt(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));}finally{metadata.release();}
-    Bitmap mark=watermark(Math.max(120,width/3),username);try(OutputStream stream=new FileOutputStream(markFile)){mark.compress(Bitmap.CompressFormat.PNG,100,stream);}finally{mark.recycle();}
+    int padding=Math.max(12,Math.min(32,width/60));
+    Bitmap mark=watermark(width,username);try(OutputStream stream=new FileOutputStream(markFile)){mark.compress(Bitmap.CompressFormat.PNG,100,stream);}finally{mark.recycle();}
     for(String encoder:new String[]{"h264_mediacodec","mpeg4"}) {
       output.delete();CountDownLatch done=new CountDownLatch(1);final boolean[] success={false};
-      String[] arguments={"-y","-i",input.getPath(),"-i",markFile.getPath(),"-filter_complex","[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[base];[base][1:v]overlay=W-w-12:H-h-12[v]","-map","[v]","-map","0:a?","-c:v",encoder,"-b:v","2500k","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart",output.getPath()};
+      String[] arguments={"-y","-i",input.getPath(),"-i",markFile.getPath(),"-filter_complex","[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[base];[base][1:v]overlay=W-w-"+padding+":"+padding+"[v]","-map","[v]","-map","0:a?","-c:v",encoder,"-b:v","2500k","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart",output.getPath()};
       FFmpegSession session=FFmpegKit.executeWithArgumentsAsync(arguments,finished->{success[0]=ReturnCode.isSuccess(finished.getReturnCode());done.countDown();},log->{},stats->progress(id,"Downloading",0.65+0.3*Math.min(1,stats.getTime()/Math.max(1d,duration))));
       if(!done.await(180,TimeUnit.SECONDS)){FFmpegKit.cancel(session.getSessionId());throw new IOException("Video processing timed out. Try a shorter clip.");}
       if(success[0]&&output.length()>0)return output;
