@@ -39,6 +39,7 @@ export type Bindings = {
   AUTH_PROVIDER?: string;
   HF_TOKEN?: string;
   HF_CHAT_MODEL?: string;
+  HF_REASONING_MODEL?: string;
   HF_VISION_MODEL?: string;
   HF_PRO_MODEL?: string;
   HF_TRANSCRIPTION_MODEL?: string;
