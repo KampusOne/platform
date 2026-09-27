@@ -1,6 +1,6 @@
 import type { FeedPostData } from "./feed-posts";
 
-export type QuotedPost = Pick<FeedPostData, "id" | "title" | "summary" | "body" | "image_url" | "published_at" | "source_name" | "source_verified"> & { source_image_url?: string | null; media_type?:string|null };
+export type QuotedPost = Pick<FeedPostData, "id" | "title" | "summary" | "body" | "image_url" | "published_at" | "source_name" | "source_verified" | "media_width" | "media_height"> & { source_image_url?: string | null; media_type?:string|null };
 export type SocialFeedPost = FeedPostData & {
   source_user_id?: string | null; media_type?: string | null;
   social_enabled?: boolean;

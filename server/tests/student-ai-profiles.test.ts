@@ -28,8 +28,8 @@ beforeAll(async()=>{
  for(const [id,name]of[[campus,"Campus A"],[otherCampus,"Campus B"]])await pg.query("insert into universities(id,name,slug,updated_at)values($1::uuid,$2,$1::uuid::text,now())",[id,name]);
  for(const [id,uni]of[[student,campus],[owner,campus],[foreign,otherCampus]]){await pg.query("insert into users(id,email,password_hash,updated_at)values($1::uuid,$1::uuid::text||'@example.invalid','synthetic',now())",[id]);await pg.query("insert into profiles(id,user_id,university_id,username,display_name,biography,settings,updated_at)values(gen_random_uuid(),$1::uuid,$2,left($1::uuid::text,28),'Public student','A short public bio','{}',now())",[id,uni]);}
  for(const [id,user,uni,type]of[[vendor,owner,campus,"VENDOR"],[tutor,owner,campus,"TUTOR"],[foreignTutor,foreign,otherCampus,"TUTOR"]]){const application=crypto.randomUUID();await pg.query("insert into agent_applications(id,user_id,university_id,agent_type,display_name,phone_e164,statement)values($1,$2,$3,$4,'Campus service','+2347000000000','Synthetic application for testing only')",[application,user,uni,type]);await pg.query("insert into agent_profiles(id,user_id,university_id,application_id,agent_type,display_name,biography,verified_at)values($1,$2,$3,$4,$5,'Campus service','Public service biography',now())",[id,user,uni,application,type]);}
- await pg.query("insert into vendor_storefronts(vendor_profile_id,university_id,display_name,description,status,submitted_at,reviewed_by_user_id,reviewed_at,moderated_revision,contact_phone_e164,pickup_location)values($1,$2,'Test storefront','A real schema test store','APPROVED',now(),$3,now(),1,'+2348000000000','Campus gate pickup')",[vendor,campus,student]);
- const category=crypto.randomUUID();await pg.query("insert into product_categories(id,university_id,name,status)values($1,$2,'Books','APPROVED')",[category,campus]);await pg.query("insert into vendor_products(id,university_id,vendor_profile_id,name,description,category,category_id,price_kobo,stock_quantity,status)values($1,$2,$3,'Physics textbook','A useful physics textbook','Books',$4,100000,3,'PUBLISHED')",[product,campus,vendor,category]);
+ await pg.query("insert into vendor_storefronts(vendor_profile_id,university_id,display_name,description,status,submitted_at,reviewed_by_user_id,reviewed_at,moderated_revision,contact_phone_e164,pickup_location,opening_hours)values($1,$2,'Test storefront','A real schema test store','APPROVED',now(),$3,now(),1,'+2348000000000','Campus gate pickup',jsonb_build_object('summary','Weekdays'))",[vendor,campus,student]);
+ const category=crypto.randomUUID();await pg.query("insert into product_categories(id,university_id,name,status)values($1,$2,'Books','APPROVED')",[category,campus]);await pg.query("insert into vendor_products(id,university_id,vendor_profile_id,name,description,category,category_id,price_kobo,stock_quantity,status,submitted_at,reviewed_by_user_id,reviewed_at,moderated_revision,package_weight_grams,package_length_cm,package_width_cm,package_height_cm,bicycle_delivery_eligible)values($1,$2,$3,'Physics textbook','A useful physics textbook','Books',$4,100000,3,'PUBLISHED',now(),$5,now(),1,350,24,18,3,true)",[product,campus,vendor,category,student]);
  for(const [id,uni]of[[tutor,campus],[foreignTutor,otherCampus]])await pg.query("insert into tutorial_listings(university_id,tutor_profile_id,course_code,title,description,format,price_kobo,capacity,status,review_status)values($1,$2,'MTH101','Math tutorial','An approved mathematics study session','IN_PERSON',100000,20,'PUBLISHED','APPROVED')",[uni,id]);
 },60000);
 afterAll(async()=>{await pg?.close();});
@@ -59,4 +59,34 @@ describe("public profiles and scoped campus tools",()=>{
   const classes=(await pg.query<{user_id:string;occurs_on:string}>('select user_id,occurs_on from timetable_entries')).rows;expect(classes).toHaveLength(1);expect(classes[0]?.user_id).toBe(student);const alarms=(await pg.query<{days:unknown[];fires_at:string}>('select days,fires_at from student_alarms where timetable_entry_id=$1',[action.id])).rows;expect(alarms).toHaveLength(1);expect(alarms[0]?.days).toEqual([]);expect(alarms[0]?.fires_at).toBeTruthy();
   const own=await runStudentTool(env,identity,'get_my_timetable',{});expect(JSON.stringify(own.data)).toContain('90');expect(JSON.stringify((await runStudentTool(env,{...identity,id:owner},'get_my_timetable',{})).data)).not.toContain('Mathematics 101');
  });
+});
+
+it('saves and undoes an owned edit atomically, preserves concurrent edits and never resurrects an undone addition',async()=>{
+ const add=(await runStudentTool(env,identity,'prepare_timetable_entry',{title:'Gym',dayOfWeek:2,startsAt:'15:00',endsAt:'16:00'})).action!;
+ async function store(action:unknown){const requestId=crypto.randomUUID();await pg.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result)values($1,$2,repeat('a',64),'study','COMPLETED',$3::jsonb)",[student,requestId,JSON.stringify({version:4,text:'Review schedule',actions:[action]})]);return requestId;}
+ const requestId=await store(add),payload={requestId,actionId:add.id};
+ await result('/ai/actions/confirm','POST',payload);
+ expect((await result('/ai/history/'+requestId)).actions[0].confirmed).toBe(true);
+ expect((await runStudentTool(env,{...identity,id:owner},'prepare_timetable_edit',{entryId:add.id,entry:{...add.entry,startsAt:'17:00',endsAt:'18:00'}})).data).toHaveProperty('error');
+ const edit=(await runStudentTool(env,identity,'prepare_timetable_edit',{entryId:add.id,entry:{...add.entry,startsAt:'17:00',endsAt:'18:00'}})).action!;
+ const editRequest=await store(edit),editPayload={requestId:editRequest,actionId:edit.id};
+ await result('/ai/actions/confirm','POST',editPayload,owner,404);
+ await result('/ai/actions/confirm','POST',editPayload);
+ expect((await pg.query<{starts_at:string}>('select starts_at from timetable_entries where id=$1',[add.id])).rows[0]?.starts_at).toBe('17:00:00');
+ for(let i=0;i<2;i++)expect(await result('/ai/actions/undo','POST',editPayload)).toMatchObject({undone:true,id:add.id});
+ expect((await pg.query<{starts_at:string}>('select starts_at from timetable_entries where id=$1',[add.id])).rows[0]?.starts_at).toBe('15:00:00');
+ await result('/ai/actions/undo','POST',payload,student,409); // A later edit means this old undo must not overwrite it.
+ const stale=(await runStudentTool(env,identity,'prepare_timetable_edit',{entryId:add.id,entry:{...add.entry,venue:'Hall A'}})).action!;
+ const staleRequest=await store(stale);
+ await pg.query("update timetable_entries set venue='Newer choice',updated_at=clock_timestamp() where id=$1",[add.id]);
+ await result('/ai/actions/confirm','POST',{requestId:staleRequest,actionId:stale.id},student,409);
+ expect((await pg.query<{venue:string}>('select venue from timetable_entries where id=$1',[add.id])).rows[0]?.venue).toBe('Newer choice');
+ const add2=(await runStudentTool(env,identity,'prepare_timetable_entry',{title:'Revision',dayOfWeek:3,startsAt:'19:00',endsAt:'20:00'})).action!;
+ const request2=await store(add2),payload2={requestId:request2,actionId:add2.id};
+ await result('/ai/actions/confirm','POST',payload2);
+ await result('/ai/actions/undo','POST',payload2,owner,404);
+ await result('/ai/actions/undo','POST',payload2);
+ expect((await pg.query('select id from student_alarms where timetable_entry_id=$1',[add2.id])).rows).toHaveLength(0);
+ await result('/ai/actions/confirm','POST',payload2,student,409);
+ expect((await result('/ai/history/'+request2)).actions[0]).toMatchObject({confirmed:false,undone:true});
 });

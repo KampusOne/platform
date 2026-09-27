@@ -172,7 +172,7 @@ export default function SettingsScreen() {
               name={
                 preference === mode ? "radio-button-on" : "radio-button-off"
               }
-              color={theme.deepBrand}
+              color={theme.accentText}
               size={24}
             />
           }
@@ -230,6 +230,7 @@ export default function SettingsScreen() {
           onPress={() => void changePush()}
         />
       ) : null}
+      <ToolRow title="Blocked accounts" icon="ban-outline" onPress={() => router.push("/blocked")} />
       <ToolRow
         title="Privacy policy"
         onPress={() =>
@@ -243,6 +244,7 @@ export default function SettingsScreen() {
         }
       />
       <ToolRow title="Help & support" onPress={() => router.push("/support")} />
+      <ToolRow title="Delete account" icon="trash-outline" detail="Permanently remove your account and personal content" onPress={() => router.push("/delete-account")} />
     </ToolPage>
   );
 }

@@ -1,0 +1,36 @@
+name: Verify portal origin repair safety
+
+on:
+  push:
+    branches: [fix/student-experience-20260926]
+    paths:
+      - .github/workflows/repair-portal-origins.yml
+      - scripts/repair-portal-origins.mjs
+      - scripts/repair-portal-origins.test.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repair-portal-origins
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify narrow configuration update and regression guards
+        run: node --test scripts/repair-portal-origins.test.mjs
+      - name: Inspect active and pending Worker version metadata without mutation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/repair-portal-origins.mjs --inspect

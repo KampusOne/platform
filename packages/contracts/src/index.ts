@@ -230,6 +230,7 @@ export const paymentEventReviewSchema = z.object({
 });
 
 export const tutorialListingSchema = z.object({
+  packageDays: z.number().int().min(1).max(366).nullable().optional(),
   courseId: z.string().uuid().nullable().optional(),
   courseCode: z.string().trim().min(2).max(24),
   title: z.string().trim().min(3).max(160),
@@ -253,7 +254,7 @@ export const tutorialResourceSchema = z
     courseCode: z.string().trim().toUpperCase().min(2).max(24),
     title: z.string().trim().min(3).max(180),
     description: z.string().trim().min(10).max(2000),
-    resourceType: z.enum(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK"]),
+    resourceType: z.enum(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK", "VIDEO"]),
     accessModel: z.enum(["FREE", "BOOKING_INCLUDED", "PAID"]).default("FREE"),
     priceKobo: z.number().int().min(0).max(100_000_000).default(0),
     levelCode: z.string().trim().min(3).max(20).nullable().optional(),
@@ -291,10 +292,10 @@ export const tutorialResourceSchema = z
         path: ["priceKobo"],
       });
     }
-    if (value.resourceType === "AUDIOBOOK" && !value.durationSeconds) {
+    if (["AUDIOBOOK", "VIDEO"].includes(value.resourceType) && !value.durationSeconds) {
       context.addIssue({
         code: "custom",
-        message: "Audiobooks need a duration.",
+        message: "Audio and video resources need a duration.",
         path: ["durationSeconds"],
       });
     }
@@ -390,6 +391,7 @@ export const vendorProductStockSchema = z.object({
 });
 
 export const vendorStorefrontSchema = z.object({
+  pickupPlaceId:z.string().uuid().nullable().optional(),
   displayName: z.string().trim().min(2).max(120),
   description: z.string().trim().min(10).max(2000),
   contactPhoneE164: z
@@ -522,6 +524,7 @@ export const storeOrderSchema = z
   .object({
     vendorProfileId: z.string().uuid(),
     deliveryZoneId: z.string().uuid(),
+    deliveryPlaceId:z.string().uuid().nullable().optional(),
     recipientName: z.string().trim().min(2).max(120),
     recipientPhoneE164: z
       .string()
@@ -578,14 +581,37 @@ export const handoffCodeSchema = z.object({
 });
 
 export const payoutRequestSchema = z.object({
+  requestId:z.string().uuid().optional(), feeRuleId:z.string().uuid().optional(),
   agentProfileId: z.string().uuid(),
   amountKobo: z.number().int().min(5000_00).max(100_000_000_00),
 });
 
 export const paymentInitializationSchema = z.object({
-  resourceType: z.enum(["TUTORIAL_BOOKING", "STORE_ORDER"]),
+  resourceType: z.enum(["TUTORIAL_BOOKING", "STORE_ORDER", "TUTORIAL_PURCHASE"]),
   resourceId: z.string().uuid(),
   idempotencyKey: z.string().trim().min(8).max(160),
+});
+
+export const tutorPurchaseTargetSchema = z.object({
+  resourceId: z.string().uuid().optional(), listingId: z.string().uuid().optional(),
+}).strict().refine(v => Boolean(v.resourceId) !== Boolean(v.listingId), "Choose one learning product.");
+export const feeRuleSchema = z.object({
+  institutionId: z.string().uuid(),
+  feeType: z.enum(["TUTOR_COMMISSION", "BUYER_SERVICE", "WITHDRAWAL", "RIDER_COMMISSION", "DELIVERY"]),
+  version: z.string().trim().min(3).max(80), effectiveAt: z.string().datetime(),
+  flatKobo: z.number().int().min(0).max(10_000_000), basisPoints: z.number().int().min(0).max(10_000),
+  minimumKobo: z.number().int().min(0).max(10_000_000).default(0),
+  maximumKobo: z.number().int().min(0).max(100_000_000).nullable().default(null),
+  zoneId: z.string().uuid().nullable().default(null), reason: z.string().trim().min(10).max(1000),
+  bands: z.array(z.object({fromMetres:z.number().int().min(0),toMetres:z.number().int().positive().nullable(),feeKobo:z.number().int().min(0).max(10_000_000)}).strict()).max(30).default([]),
+}).strict().superRefine((v,c)=>{
+  if(v.maximumKobo!==null&&v.maximumKobo<v.minimumKobo)c.addIssue({code:"custom",path:["maximumKobo"],message:"Maximum must cover the minimum."});
+  if(v.feeType!=="DELIVERY"&&(v.zoneId||v.bands.length))c.addIssue({code:"custom",path:["bands"],message:"Distance bands belong to delivery rules."});
+  for(let i=0;i<v.bands.length;i++){
+    const b=v.bands[i]!,previous=v.bands[i-1];
+    if((b.toMetres!==null&&b.toMetres<=b.fromMetres)||(i===0&&b.fromMetres!==0)||(previous&&(previous.toMetres===null||previous.toMetres!==b.fromMetres)))
+      c.addIssue({code:"custom",path:["bands",i],message:"Bands must start at zero and be contiguous, in metres."});
+  }
 });
 
 export const liveHealthSchema = z.object({
@@ -605,3 +631,8 @@ export type OnboardingProfileInput = z.infer<typeof onboardingProfileSchema>;
 export type TimetableEntryInput = z.infer<typeof timetableEntrySchema>;
 export type GpaTermInput = z.infer<typeof gpaTermSchema>;
 export type AgentApplicationInput = z.infer<typeof agentApplicationSchema>;
+
+// Direct-message uploads are private and are authorized again on every read.
+export const directMessageInputSchema = z.object({
+  id: z.string().uuid(), body: z.string().trim().max(5000).default(""), mediaId: z.string().uuid().optional(),
+}).strict().refine(value => Boolean(value.body || value.mediaId), "Write a message or attach a file.");

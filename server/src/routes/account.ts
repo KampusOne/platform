@@ -1,3 +1,4 @@
+import { requireProfileSafety } from "../lib/profile-safety";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { z } from "@kampusone/contracts";
@@ -22,6 +23,11 @@ accountRoutes.get("/capabilities", async (c) => {
     sql`select id,name from public.cohort_communities where rep_user_id=${u.id}::uuid and archived_at is null`,
   );
   return c.json({ profiles: profiles.rows, communities: communities.rows });
+});
+accountRoutes.get('/blocked',async c=>{
+  await requireProfileSafety(c.env);
+  const rows=await database(c.env).execute(sql`select b.blocked_id as user_id,p.display_name,p.username,p.profile_image_url,b.created_at from public.user_blocks b join public.profiles p on p.user_id=b.blocked_id where b.blocker_id=${currentUser(c).id}::uuid order by b.created_at desc limit 200`);
+  return c.json({profiles:rows.rows});
 });
 const settingsSchema = z
   .object({

@@ -151,7 +151,7 @@ export function AuthField({
             setFocused(true);
             onFocus?.(event);
           }}
-          placeholderTextColor="#766960"
+          placeholderTextColor={theme.textMuted}
           secureTextEntry={secureTextEntry && !revealed}
           selectionColor={DEEP_TERRACOTTA}
           style={[styles.input, code && styles.codeInput, style]}
@@ -439,7 +439,7 @@ const createStyles = (theme: Theme) =>
       marginTop: 10,
     },
     eyebrow: {
-      color: DEEP_TERRACOTTA,
+      color: theme.accentText,
       fontFamily: theme.font.bold,
       fontSize: 10,
       letterSpacing: 1.3,
@@ -472,7 +472,7 @@ const createStyles = (theme: Theme) =>
     },
     field: {
       alignItems: "center",
-      backgroundColor: "rgba(255,253,252,0.72)",
+      backgroundColor: theme.surfaceGlassStrong,
       borderColor: "#9A8D84",
       borderRadius: 14,
       borderWidth: 1.25,
@@ -489,11 +489,11 @@ const createStyles = (theme: Theme) =>
       paddingRight: 8.25,
     },
     fieldError: {
-      backgroundColor: "#FFF8F5",
+      backgroundColor: theme.surfaceSoft,
       borderColor: theme.error,
     },
     fieldDisabled: {
-      backgroundColor: "#EFEAE5",
+      backgroundColor: theme.surfaceSoft,
       borderColor: theme.border,
       opacity: 0.65,
     },
@@ -561,8 +561,8 @@ const createStyles = (theme: Theme) =>
     },
     socialButton: {
       alignItems: "center",
-      backgroundColor: "#F7F3F0",
-      borderColor: "#E3DAD3",
+      backgroundColor: theme.surfaceSoft,
+      borderColor: theme.border,
       borderRadius: 14,
       borderWidth: 1,
       flexDirection: "row",
@@ -644,7 +644,7 @@ const createStyles = (theme: Theme) =>
     },
     error: {
       alignItems: "flex-start",
-      backgroundColor: "#FFF1EC",
+      backgroundColor: theme.surfaceSoft,
       borderLeftColor: DEEP_TERRACOTTA,
       borderLeftWidth: 3,
       flexDirection: "row",
@@ -654,7 +654,7 @@ const createStyles = (theme: Theme) =>
       paddingVertical: 11,
     },
     errorText: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       flex: 1,
       fontFamily: theme.font.medium,
       fontSize: 12.5,
@@ -662,7 +662,7 @@ const createStyles = (theme: Theme) =>
     },
     notice: {
       alignItems: "flex-start",
-      backgroundColor: "#F6E8DF",
+      backgroundColor: theme.surfaceSoft,
       borderLeftColor: theme.clay,
       borderLeftWidth: 3,
       flexDirection: "row",
@@ -679,7 +679,7 @@ const createStyles = (theme: Theme) =>
       lineHeight: 18,
     },
     link: {
-      color: DEEP_TERRACOTTA,
+      color: theme.accentText,
       fontFamily: theme.font.semibold,
       fontSize: 13.5,
     },

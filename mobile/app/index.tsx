@@ -2,8 +2,8 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Redirect, router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "@/src/auth/auth-context";
-import { ScreenSkeleton } from "@/src/components/skeleton";
 import { pendingPostLink } from "@/src/lib/feed-posts";
+import { InlineLoading } from "@/src/components/skeleton";
 
 export default function EntryScreen() {
   const { styles } = useThemeStyles(createStyles);
@@ -19,7 +19,17 @@ export default function EntryScreen() {
       </View>
     );
   }
-  if (state === "loading" || (state === "authenticated" && profileState === "loading")) return <ScreenSkeleton />;
+  if (state === "loading" || (state === "authenticated" && profileState === "loading")) return (
+    <View accessibilityLiveRegion="polite" style={styles.errorState}>
+      <InlineLoading size="large" />
+      <Text style={styles.errorTitle}>{state === "loading" ? "Welcome to KampusOne" : "Opening your campus"}</Text>
+      <Text style={styles.errorBody}>{state === "loading" ? "Checking your saved session…" : "Loading your profile…"}</Text>
+      {state === "loading" ? <>
+        <Pressable accessibilityRole="button" onPress={() => router.replace("/(auth)/sign-in")} style={styles.retry}><Text style={styles.retryText}>Sign in</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.replace("/(auth)/sign-up")} style={styles.signOut}><Text style={styles.signOutText}>Create account</Text></Pressable>
+      </> : null}
+    </View>
+  );
   if (state === "anonymous") return <Redirect href="/(auth)/welcome" />;
   if (profileState === "error") {
     return (
@@ -40,11 +50,11 @@ export default function EntryScreen() {
 const createStyles = (theme: Theme) => StyleSheet.create({
   errorState: { alignItems: "center", backgroundColor: theme.canvas, flex: 1, justifyContent: "center", paddingHorizontal: 28 },
   errorIcon: { alignItems: "center", backgroundColor: "rgba(233,177,142,0.24)", borderRadius: 28, height: 56, justifyContent: "center", width: 56 },
-  errorIconText: { color: theme.deepBrand, fontFamily: theme.font.displayStrong, fontSize: 28 },
+  errorIconText: { color: theme.accentText, fontFamily: theme.font.displayStrong, fontSize: 28 },
   errorTitle: { color: theme.text, fontFamily: theme.font.display, fontSize: 22, marginTop: 18 },
   errorBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 14, lineHeight: 21, marginTop: 7, maxWidth: 360, textAlign: "center" },
   retry: { alignItems: "center", backgroundColor: theme.deepBrand, borderRadius: 14, justifyContent: "center", marginTop: 20, minHeight: 50, paddingHorizontal: 24 },
   retryText: { color: "#FFFFFF", fontFamily: theme.font.semibold, fontSize: 14 },
   signOut: { alignItems: "center", justifyContent: "center", marginTop: 8, minHeight: 44, paddingHorizontal: 20 },
-  signOutText: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 13 },
+  signOutText: { color: theme.accentText, fontFamily: theme.font.semibold, fontSize: 13 },
 });

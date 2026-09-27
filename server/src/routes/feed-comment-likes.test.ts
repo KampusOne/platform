@@ -5,9 +5,10 @@ import { AppError } from "../lib/errors";
 import type { Bindings, Variables } from "../types";
 
 const mocks = vi.hoisted(() => ({
-  execute: vi.fn(),
+  safetyReady: vi.fn(), execute: vi.fn(),
   user: { id: "11111111-1111-4111-8111-111111111111", universityId: "22222222-2222-4222-8222-222222222222" as string | null },
 }));
+vi.mock("../lib/profile-safety", async (importOriginal) => ({ ...await importOriginal<typeof import("../lib/profile-safety")>(), profileSafetyReady: mocks.safetyReady }));
 vi.mock("../lib/database", () => ({ database: () => ({ execute: mocks.execute }), firstRow: (result: { rows: unknown[] }) => result.rows[0] }));
 vi.mock("../middleware/auth", () => {
   const requireAuth: MiddlewareHandler = async (context, next) => {
@@ -26,12 +27,22 @@ const headers = { Authorization: "Bearer test-session", "Content-Type": "applica
 const dialect = new PgDialect();
 let env: Bindings;
 beforeEach(() => {
-  mocks.execute.mockReset().mockResolvedValueOnce({ rows: [{ ready: true }] });
+  mocks.safetyReady.mockResolvedValue(false); mocks.execute.mockReset().mockResolvedValueOnce({ rows: [{ ready: true }] });
   mocks.user.universityId = "22222222-2222-4222-8222-222222222222";
   env = { UNIFIED_SCHEMA_READY: "true" } as Bindings;
 });
 
 describe("comment likes", () => {
+  it("refuses a blocked comment author or post author before mutation", async () => {
+    mocks.safetyReady.mockResolvedValue(true);
+    mocks.execute.mockResolvedValueOnce({ rows: [] });
+    const response = await app.request(`/v1/student/feed/comments/${id}/like`, { method: "PUT", headers }, env);
+    expect(response.status).toBe(404);
+    const query = dialect.sqlToQuery(mocks.execute.mock.calls[1]![0]);
+    expect(query.sql).toContain("ub.blocked_id=posts.author_user_id");
+    expect(query.sql).toContain("ub.blocked_id=comments.author_user_id");
+    expect(mocks.execute).toHaveBeenCalledTimes(2);
+  });
   it.each(["PUT", "DELETE"])("requires authentication for %s", async (method) => {
     expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method }, env)).status).toBe(401);
     expect(mocks.execute).not.toHaveBeenCalled();
@@ -68,7 +79,7 @@ describe("comment likes", () => {
     expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method: "PUT", headers }, env)).status).toBe(500);
   });
   it("returns a recoverable 503 before the additive migration exists", async () => {
-    mocks.execute.mockReset().mockResolvedValue({ rows: [{ ready: false }] });
+    mocks.safetyReady.mockResolvedValue(false); mocks.execute.mockReset().mockResolvedValue({ rows: [{ ready: false }] });
     expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method: "PUT", headers }, env)).status).toBe(503);
     expect(mocks.execute).toHaveBeenCalledTimes(1);
   });

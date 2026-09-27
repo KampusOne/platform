@@ -1,3 +1,4 @@
+import { commerceError } from "./learning-commerce";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 
@@ -22,6 +23,7 @@ import {
   vendorStorefrontStateSchema,
 } from "@kampusone/contracts";
 
+import { agentDiscoveryRoutes } from "./agent-discovery";
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
@@ -40,6 +42,7 @@ export const agentRoutes = new Hono<{
   Variables: Variables;
 }>();
 agentRoutes.use("/*", requireAuth);
+agentRoutes.route("/public",agentDiscoveryRoutes);
 
 async function body(context: { req: { json(): Promise<unknown> } }) {
   return context.req.json().catch(() => null);
@@ -125,16 +128,15 @@ agentRoutes.get("/dashboard", async (context) => {
       from public.agent_profiles where user_id = ${user.id}::uuid order by verified_at desc
     `),
     database(context.env).execute(sql`
-      select count(distinct listings.id)::int as listings,
-        count(bookings.id)::int as bookings,
-        count(bookings.id) filter (where bookings.status = 'COMPLETED')::int as completed,
-        coalesce(sum(bookings.amount_kobo) filter (where bookings.status in ('CONFIRMED','COMPLETED')), 0)::bigint as gross_revenue_kobo,
-        coalesce(sum(bookings.amount_kobo) filter (where bookings.earnings_state = 'PENDING'), 0)::bigint as pending_earnings_kobo,
-        coalesce(sum(bookings.amount_kobo) filter (where bookings.earnings_state = 'AVAILABLE'), 0)::bigint as available_earnings_kobo
-      from public.agent_profiles profiles
-      left join public.tutorial_listings listings on listings.tutor_profile_id = profiles.id
-      left join public.tutorial_bookings bookings on bookings.listing_id = listings.id
-      where profiles.user_id = ${user.id}::uuid and profiles.agent_type = 'TUTOR'
+      with owned as(select id from public.agent_profiles where user_id=${user.id}::uuid and agent_type='TUTOR'),
+      sales as(
+        select b.amount_kobo-b.buyer_fee_kobo gross,b.tutor_net_kobo net,b.earnings_state,b.status from public.tutorial_bookings b join public.tutorial_listings l on l.id=b.listing_id where l.tutor_profile_id in(select id from owned)
+        union all select p.price_kobo,p.tutor_net_kobo,p.earnings_state,case when p.status='PAID' then 'CONFIRMED' else p.status end from public.tutorial_purchases p where p.tutor_profile_id in(select id from owned)
+      ) select (select count(*)::int from public.tutorial_listings where tutor_profile_id in(select id from owned)) listings,
+        count(*)::int bookings,count(*) filter(where status='COMPLETED')::int completed,
+        coalesce(sum(gross) filter(where status in ('CONFIRMED','COMPLETED')),0)::bigint gross_revenue_kobo,
+        coalesce(sum(net) filter(where earnings_state='PENDING'),0)::bigint pending_earnings_kobo,
+        coalesce(sum(net) filter(where earnings_state='AVAILABLE'),0)::bigint available_earnings_kobo from sales
     `),
     database(context.env).execute(sql`
       with vendor_profiles as (
@@ -275,7 +277,7 @@ agentRoutes.get("/tutorials", async (context) => {
   const [listings, bookings, resources] = await Promise.all([
     database(context.env).execute(sql`
       select listings.id, listings.course_code, listings.title, listings.description,
-        listings.format, listings.price_kobo, listings.capacity, listings.status,
+        listings.format, listings.price_kobo, listings.capacity, listings.package_days, listings.status,
         listings.location_text, listings.cancellation_cutoff_hours,
         listings.review_status, listings.review_note, listings.submitted_at,
         listings.reviewed_at, listings.created_at, listings.updated_at
@@ -351,13 +353,13 @@ agentRoutes.post("/tutorials", async (context) => {
     insert into public.tutorial_listings (
       id, university_id, tutor_profile_id, course_id, course_code,
       title, description, format, price_kobo, capacity, publisher_name,
-      location_text, cancellation_cutoff_hours
+      location_text, cancellation_cutoff_hours, package_days
     ) values (
       ${id}::uuid, ${profile.university_id}::uuid, ${profile.id}::uuid,
       ${parsed.data.courseId ?? null}::uuid, ${parsed.data.courseCode}, ${parsed.data.title},
       ${parsed.data.description}, ${parsed.data.format}, ${parsed.data.priceKobo}, ${parsed.data.capacity},
       (select display_name from public.agent_profiles where id = ${profile.id}::uuid),
-      ${parsed.data.locationText ?? null}, ${parsed.data.cancellationCutoffHours}
+      ${parsed.data.locationText ?? null}, ${parsed.data.cancellationCutoffHours}, ${parsed.data.packageDays ?? null}
     )
   `);
   return context.json({ id, status: "DRAFT" }, 201);
@@ -710,7 +712,7 @@ agentRoutes.get("/storefront", async (context) => {
   const result = await database(context.env).execute(sql`
     select storefronts.vendor_profile_id, storefronts.university_id,
       storefronts.display_name, storefronts.description,
-      storefronts.contact_phone_e164, storefronts.pickup_location,
+      storefronts.contact_phone_e164, storefronts.pickup_location, storefronts.pickup_place_id,
       storefronts.pickup_instructions, storefronts.opening_hours,
       storefronts.default_preparation_minutes, storefronts.status,
       storefronts.submitted_at, storefronts.listing_revision,
@@ -721,7 +723,8 @@ agentRoutes.get("/storefront", async (context) => {
       and storefronts.university_id = ${profile.university_id}::uuid
     limit 1
   `);
-  return context.json({ storefront: firstRow(result) ?? null });
+  const places=await database(context.env).execute(sql`select id,name from public.campus_places where university_id=${profile.university_id}::uuid and status='PUBLISHED' and latitude is not null and longitude is not null order by name limit 200`);
+  return context.json({ storefront: firstRow(result) ?? null, places:places.rows });
 });
 
 agentRoutes.put("/storefront", async (context) => {
@@ -740,6 +743,7 @@ agentRoutes.put("/storefront", async (context) => {
     );
   }
   const profile = await operationalVendorProfile(context.env, user.id);
+  if(parsed.data.pickupPlaceId&&!firstRow(await database(context.env).execute(sql`select id from public.campus_places where id=${parsed.data.pickupPlaceId}::uuid and university_id=${profile.university_id}::uuid and status='PUBLISHED' and latitude is not null and longitude is not null`)))throw new AppError(400,"BAD_REQUEST","Choose a published campus pickup point.");
   const result = await database(context.env).execute<{
     vendor_profile_id: string;
     status: string;
@@ -748,20 +752,21 @@ agentRoutes.put("/storefront", async (context) => {
     insert into public.vendor_storefronts (
       vendor_profile_id, university_id, display_name, description,
       contact_phone_e164, pickup_location, pickup_instructions,
-      opening_hours, default_preparation_minutes
+      opening_hours, default_preparation_minutes, pickup_place_id
     ) values (
       ${profile.id}::uuid, ${profile.university_id}::uuid,
       ${parsed.data.displayName}, ${parsed.data.description},
       ${parsed.data.contactPhoneE164}, ${parsed.data.pickupLocation},
       ${parsed.data.pickupInstructions ?? null},
       ${JSON.stringify(parsed.data.openingHours)}::jsonb,
-      ${parsed.data.defaultPreparationMinutes}
+      ${parsed.data.defaultPreparationMinutes}, ${parsed.data.pickupPlaceId??null}::uuid
     )
     on conflict (vendor_profile_id) do update set
       display_name = excluded.display_name,
       description = excluded.description,
       contact_phone_e164 = excluded.contact_phone_e164,
       pickup_location = excluded.pickup_location,
+      pickup_place_id = excluded.pickup_place_id,
       pickup_instructions = excluded.pickup_instructions,
       opening_hours = excluded.opening_hours,
       default_preparation_minutes = excluded.default_preparation_minutes,
@@ -1344,10 +1349,14 @@ agentRoutes.get("/deliveries", async (context) => {
   const [result, presence] = await Promise.all([
     database(context.env).execute(sql`
     select jobs.id, jobs.order_id, zones.name as zone_name, jobs.status,
-      jobs.rider_earning_kobo, jobs.earning_formula_version,
-      jobs.reserved_at, jobs.picked_up_at, jobs.delivered_at, jobs.created_at
+      jobs.rider_earning_kobo, jobs.commission_kobo, jobs.fee_snapshot, jobs.earning_formula_version,
+      jobs.reserved_at, jobs.picked_up_at, jobs.delivered_at, jobs.created_at,
+      storefront.display_name store_name, storefront.pickup_location,
+      case when jobs.rider_profile_id=${profile.id}::uuid then orders.delivery_note else null end delivery_note
     from public.delivery_jobs jobs
     join public.delivery_zones zones on zones.id = jobs.zone_id
+    join public.orders orders on orders.id=jobs.order_id
+    join public.vendor_storefronts storefront on storefront.vendor_profile_id=orders.vendor_profile_id
     where jobs.university_id = ${profile.university_id}::uuid
       and (jobs.status = 'AVAILABLE' or jobs.rider_profile_id = ${profile.id}::uuid)
     order by case when jobs.status = 'AVAILABLE' then 0 else 1 end, jobs.created_at
@@ -1537,11 +1546,14 @@ agentRoutes.get("/earnings", async (context) => {
   const [tutorials, store, deliveries, payouts] = await Promise.all([
     database(context.env).execute(sql`
       with earned as (
-        select coalesce(sum(bookings.amount_kobo) filter (where bookings.earnings_state = 'PENDING'), 0)::bigint as pending_kobo,
-          coalesce(sum(bookings.amount_kobo) filter (where bookings.earnings_state = 'AVAILABLE'), 0)::bigint as gross_available_kobo
+        select coalesce(sum(bookings.tutor_net_kobo) filter (where bookings.earnings_state = 'PENDING'), 0)::bigint as pending_kobo,
+          coalesce(sum(bookings.tutor_net_kobo) filter (where bookings.earnings_state = 'AVAILABLE'), 0)::bigint as gross_available_kobo
         from public.tutorial_bookings bookings join public.tutorial_listings listings on listings.id = bookings.listing_id
         join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id where profiles.user_id = ${user.id}::uuid
-      ), payouts as (
+        union all select coalesce(sum(p.tutor_net_kobo) filter(where p.earnings_state='PENDING'),0)::bigint,
+          coalesce(sum(p.tutor_net_kobo) filter(where p.earnings_state='AVAILABLE'),0)::bigint
+        from public.tutorial_purchases p join public.agent_profiles a on a.id=p.tutor_profile_id where a.user_id=${user.id}::uuid and p.status='PAID'
+      ), totals as (select sum(pending_kobo)::bigint pending_kobo,sum(gross_available_kobo)::bigint gross_available_kobo from earned), payouts as (
         select coalesce(sum(requests.amount_kobo) filter (where requests.status in ('REQUESTED','IN_REVIEW','APPROVED','PROCESSING','FAILED')), 0)::bigint as reserved_kobo,
           coalesce(sum(requests.amount_kobo) filter (where requests.status = 'PAID'), 0)::bigint as withdrawn_kobo
         from public.payout_requests requests join public.agent_profiles profiles on profiles.id = requests.agent_profile_id
@@ -1549,7 +1561,7 @@ agentRoutes.get("/earnings", async (context) => {
       )
       select earned.pending_kobo,
         greatest(earned.gross_available_kobo - payouts.reserved_kobo - payouts.withdrawn_kobo, 0::bigint) as available_kobo,
-        payouts.reserved_kobo, payouts.withdrawn_kobo from earned cross join payouts
+        payouts.reserved_kobo, payouts.withdrawn_kobo from totals earned cross join payouts
     `),
     database(context.env).execute(sql`
       with earned as (
@@ -1583,7 +1595,7 @@ agentRoutes.get("/earnings", async (context) => {
         payouts.reserved_kobo, payouts.withdrawn_kobo from earned cross join payouts
     `),
     database(context.env).execute(sql`
-      select requests.id, requests.amount_kobo, requests.status, requests.requested_at,
+      select requests.id, requests.amount_kobo, requests.fee_kobo, requests.net_kobo, requests.status, requests.requested_at,
         profiles.agent_type, profiles.display_name
       from public.payout_requests requests join public.agent_profiles profiles on profiles.id = requests.agent_profile_id
       where requests.requested_by_user_id = ${user.id}::uuid order by requests.requested_at desc limit 100
@@ -1594,7 +1606,20 @@ agentRoutes.get("/earnings", async (context) => {
     store: firstRow(store),
     deliveries: firstRow(deliveries),
     payoutRequests: payouts.rows,
+    withdrawalsEnabled: featureEnabled(context.env,"PAYMENTS_ENABLED"),
   });
+});
+
+agentRoutes.post("/payout-quote",async context=>{
+  const user=currentUser(context),parsed=payoutRequestSchema.safeParse(await body(context));
+  if(!parsed.success)throw new AppError(400,"BAD_REQUEST","Check the withdrawal amount.");
+  const profile=firstRow(await database(context.env).execute<{university_id:string}>(sql`select university_id from public.agent_profiles where id=${parsed.data.agentProfileId}::uuid and user_id=${user.id}::uuid and status='ACTIVE'`));
+  if(!profile)throw new AppError(404,"NOT_FOUND","Agent profile unavailable.");
+  try {
+    const row=firstRow(await database(context.env).execute<{quote:{ruleId:string;feeKobo:number}}>(sql`select app_private.quote_fee(${profile.university_id}::uuid,'WITHDRAWAL',${parsed.data.amountKobo}) quote`));
+    if(Number(row!.quote.feeKobo)>=parsed.data.amountKobo)throw new AppError(409,"CONFLICT","The withdrawal fee exceeds this amount.");
+    return context.json({quote:{...row!.quote,amountKobo:parsed.data.amountKobo,netKobo:parsed.data.amountKobo-Number(row!.quote.feeKobo)}});
+  }catch(e){commerceError(e);}
 });
 
 agentRoutes.post("/payouts", async (context) => {
@@ -1638,15 +1663,16 @@ agentRoutes.post("/payouts", async (context) => {
   }
   if (context.env.UNIFIED_SCHEMA_READY === "true")
     await requireFullKyc(context.env, firstRow(application)!.id);
-  const id = crypto.randomUUID();
+  const id = parsed.data.requestId ?? crypto.randomUUID();
   try {
     await database(context.env).execute(sql`
-      select * from app_private.request_agent_payout(
-        ${id}::uuid, ${profile.id}::uuid, ${user.id}::uuid, ${parsed.data.amountKobo}::bigint
+      select * from app_private.request_agent_payout_v2(
+        ${id}::uuid, ${profile.id}::uuid, ${user.id}::uuid, ${parsed.data.amountKobo}::bigint, ${parsed.data.feeRuleId??null}::uuid
       )
     `);
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "";
+    if(message.includes("FEE_POLICY_UNCONFIGURED")||message.includes("PRICE_CHANGED"))commerceError(caught);
     if (message.includes("PAYOUT_BALANCE_INSUFFICIENT")) {
       throw new AppError(
         409,

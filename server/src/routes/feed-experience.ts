@@ -1,3 +1,5 @@
+import { profileSafetyReady, unblockedAuthor } from "../lib/profile-safety";
+import { notifyFeedInteraction } from "../services/feed-notifications";
 import { feedExperienceReady } from "../lib/feed-experience";
 export { feedExperienceReady } from "../lib/feed-experience";
 import { sql } from "drizzle-orm";
@@ -23,6 +25,9 @@ function campus(c: Context<Env>): string {
   const universityId = currentUser(c).universityId;
   if (!universityId) throw new AppError(409, "CONFLICT", "Complete your student profile to use the feed.", { onboardingRequired: true });
   return universityId;
+}
+async function visibleTo(c: Context<Env>, university: string) {
+  return sql`${visiblePost(university)} and ${await profileSafetyReady(c.env) ? unblockedAuthor(currentUser(c).id, sql`posts.author_user_id`) : sql`true`}`;
 }
 function origin(c: Context<Env>): string { return (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin).replace(/\/$/, ""); }
 async function quota(c: Context<Env>, kind: string, limit: number) {
@@ -52,7 +57,7 @@ async function enrichPosts(c: Context<Env>, next: () => Promise<void>) {
   const extra = await database(c.env).execute<{ id: string; source_image_url: string | null; view_count: number | null }>(sql`
     select posts.id, case when posts.audience->>'studentPost'='true' then author.profile_image_url else null end as source_image_url, ${views} as view_count
     from public.feed_posts posts left join public.profiles author on author.user_id=posts.author_user_id and author.deleted_at is null
-    where posts.id=any(${sql.param(ids)}::uuid[]) and ${visiblePost(campus(c))}
+    where posts.id=any(${sql.param(ids)}::uuid[]) and ${await visibleTo(c, campus(c))}
   `);
   const byId = new Map(extra.rows.map((row) => [row.id, row]));
   for (const post of posts) { const row = byId.get(String(post.id)); if (row) Object.assign(post, { source_image_url: row.source_image_url, view_count: row.view_count }); }
@@ -71,7 +76,7 @@ feedExperienceRoutes.get("/:id/comments", requireAuth, async (c, next) => {
     select comments.id, comments.media_object_id from public.feed_comments comments
     join public.media_objects media on media.id=comments.media_object_id and media.owner_user_id=comments.author_user_id and media.deleted_at is null and media.kind='post'
     join public.feed_posts posts on posts.id=comments.post_id
-    where comments.id=any(${sql.param(ids)}::uuid[]) and comments.post_id=${identifier(c.req.param("id"))}::uuid and comments.deleted_at is null and ${visiblePost(campus(c))}
+    where comments.id=any(${sql.param(ids)}::uuid[]) and comments.post_id=${identifier(c.req.param("id"))}::uuid and comments.deleted_at is null and ${await visibleTo(c, campus(c))}
   `);
   const byId = new Map(media.rows.map((row) => [row.id, `${origin(c)}/v1/media/${row.media_object_id}`]));
   for (const comment of comments) comment.image_url = comment.is_deleted ? null : byId.get(String(comment.id)) ?? null;
@@ -84,12 +89,12 @@ feedExperienceRoutes.put("/:id/view", requireAuth, async (c) => {
   await quota(c, "FEED_VIEW", 1800);
   await database(c.env).execute(sql`
     insert into public.feed_post_views(post_id,institution_id,user_id)
-    select posts.id,posts.university_id,${user.id}::uuid from public.feed_posts posts where posts.id=${postId}::uuid and ${visiblePost(university)}
+    select posts.id,posts.university_id,${user.id}::uuid from public.feed_posts posts where posts.id=${postId}::uuid and ${await visibleTo(c, university)}
     on conflict(post_id,user_id) do nothing
   `);
   const result = firstRow(await database(c.env).execute<{ view_count: number }>(sql`
     select (select count(*)::int from public.feed_post_views v where v.post_id=posts.id) as view_count
-    from public.feed_posts posts where posts.id=${postId}::uuid and ${visiblePost(university)}
+    from public.feed_posts posts where posts.id=${postId}::uuid and ${await visibleTo(c, university)}
   `));
   if (!result) throw new AppError(404, "NOT_FOUND", "This post is unavailable.");
   return c.json(result);
@@ -119,10 +124,10 @@ feedExperienceRoutes.post("/:id/comments", requireAuth, async (c, next) => {
   }
   const saved = firstRow(await database(c.env).execute(sql`
     with target as (
-      select posts.id,posts.university_id from public.feed_posts posts where posts.id=${postId}::uuid and ${visiblePost(university)} for update
+      select posts.id,posts.university_id from public.feed_posts posts where posts.id=${postId}::uuid and ${await visibleTo(c, university)} for update
     ), parent as (
       select parents.id from public.feed_comments parents join target on target.id=parents.post_id and target.university_id=parents.institution_id
-      where parents.id=${parentId}::uuid and (parents.deleted_at is null or ${retry?.id ?? null}::uuid is not null) for update of parents
+      where parents.id=${parentId}::uuid and ${await profileSafetyReady(c.env) ? unblockedAuthor(user.id, sql`parents.author_user_id`) : sql`true`} and (parents.deleted_at is null or ${retry?.id ?? null}::uuid is not null) for update of parents
     ), saved as (
       insert into public.feed_comments(post_id,institution_id,author_user_id,body,client_request_id,parent_comment_id,media_object_id)
       select id,university_id,${user.id}::uuid,${data.body},${data.requestId}::uuid,${parentId}::uuid,${mediaId}::uuid from target
@@ -134,7 +139,7 @@ feedExperienceRoutes.post("/:id/comments", requireAuth, async (c, next) => {
       returning id,body,created_at,author_user_id,parent_comment_id,media_object_id
     )
     select saved.id,saved.body,saved.created_at,saved.parent_comment_id,false as is_deleted,true as can_delete,
-      coalesce(author.display_name,'KampusOne user') as author_name,author.profile_image_url as author_image_url,
+      coalesce(author.display_name,'KampusOne user') as author_name,author.profile_image_url as author_image_url,author.user_id as author_user_id,author.username as author_username,
       coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
       case when media.id is null then null else ${origin(c) + "/v1/media/"} || media.id::text end as image_url,
       (select count(*)::int from public.feed_comments replies where replies.post_id=${postId}::uuid and replies.parent_comment_id=saved.id and replies.deleted_at is null) as reply_count
@@ -142,5 +147,6 @@ feedExperienceRoutes.post("/:id/comments", requireAuth, async (c, next) => {
     left join public.media_objects media on media.id=saved.media_object_id and media.owner_user_id=saved.author_user_id and media.deleted_at is null
   `));
   if (!saved) throw new AppError(409, "CONFLICT", "The post or reply is unavailable, or this draft has already changed. Your draft has not been cleared.");
+  if (!retry) await notifyFeedInteraction(c.env, postId, user.id, "comment");
   return c.json({ comment: saved }, retry ? 200 : 201);
 });

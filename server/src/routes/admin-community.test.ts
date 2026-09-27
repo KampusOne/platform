@@ -1,0 +1,27 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Hono } from "hono";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { Bindings, Variables } from "../types";
+import { AppError } from "../lib/errors";
+const mocks=vi.hoisted(()=>({execute:vi.fn(),scope:vi.fn(),audit:vi.fn()}));
+vi.mock("../lib/database",()=>({database:()=>({execute:mocks.execute}),firstRow:(r:{rows:unknown[]})=>r.rows[0]}));
+vi.mock("../lib/admin-access",async original=>({...await original<typeof import("../lib/admin-access")>(),resolveAdminScope:mocks.scope}));
+vi.mock("../lib/audit",()=>({recordAudit:mocks.audit}));
+vi.mock("../middleware/auth",()=>({currentUser:()=>({id:"11111111-1111-4111-8111-111111111111"})}));
+import { adminCommunityRoutes } from "./admin-community";
+import { permissionForAdminRoute } from "../lib/admin-access";
+const target="22222222-2222-4222-8222-222222222222",scope="33333333-3333-4333-8333-333333333333";
+const app=new Hono<{Bindings:Bindings;Variables:Variables}>().route("/v1/admin",adminCommunityRoutes);
+app.onError((e,c)=>e instanceof AppError?c.json({error:e.message},e.status):c.json({error:"unexpected"},500));
+const req=(path:string,method="GET",data?:unknown)=>app.request(`/v1/admin${path}`,{method,headers:{"Content-Type":"application/json"},...(data?{body:JSON.stringify(data)}:{})},{} as Bindings);
+const dialect=new PgDialect();
+beforeEach(()=>{mocks.execute.mockReset();mocks.scope.mockReset().mockResolvedValue(scope);mocks.audit.mockReset().mockResolvedValue(undefined);});
+describe("administrative community review",()=>{
+ it("maps feedback and moderation to explicit read permissions",()=>{expect(permissionForAdminRoute("/ai-feedback","GET")).toBe("ai.view");expect(permissionForAdminRoute("/ai-feedback/a/b","GET")).toBe("ai.view");expect(permissionForAdminRoute("/ai-feedback","POST")).toBeNull();expect(permissionForAdminRoute("/social-moderation","GET")).toBe("users.view");expect(permissionForAdminRoute(`/users/${target}/social-policy`,"PUT")).toBe("users.manage");});
+ it("rejects malformed identifiers before querying",async()=>{expect((await req("/users/not-a-user/social-policy")).status).toBe(400);expect(mocks.execute).not.toHaveBeenCalled();});
+ it("does not expose a profile outside the resolved university",async()=>{mocks.execute.mockResolvedValue({rows:[]});expect((await req(`/users/${target}/social-policy`)).status).toBe(404);const q=dialect.sqlToQuery(mocks.execute.mock.calls[0]![0]);expect(q.params).toContain(scope);expect(q.sql).toContain("p.university_id=");});
+ it("requires notification permission even when disabling an existing broadcast policy",async()=>{mocks.execute.mockResolvedValue({rows:[{university_id:scope,notify_all_in_app:true,notify_all_push:true}]});mocks.scope.mockImplementation(async(_env,_user,_scope,permission)=>{if(permission==="notifications.manage")throw new AppError(403,"FORBIDDEN","Not allowed");return scope;});expect((await req(`/users/${target}/social-policy`,"PUT",{blockProtected:false,notifyAllInApp:false,notifyAllPush:false,reason:"Disable this account policy"})).status).toBe(403);expect(mocks.execute).toHaveBeenCalledTimes(1);expect(mocks.audit).not.toHaveBeenCalled();});
+ it("updates approved policy settings and audits the reason",async()=>{mocks.execute.mockResolvedValueOnce({rows:[{university_id:scope,notify_all_in_app:false,notify_all_push:false}]}).mockResolvedValueOnce({rows:[{user_id:target}]});expect((await req(`/users/${target}/social-policy`,"PUT",{blockProtected:true,notifyAllInApp:false,notifyAllPush:false,reason:"Official university account"})).status).toBe(200);expect(mocks.audit).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({action:"profile.social_policy.updated",targetId:target,metadata:expect.objectContaining({reason:"Official university account"})}));});
+ it("filters rated responses by university and records access",async()=>{mocks.execute.mockResolvedValue({rows:[]});const response=await req("/ai-feedback?rating=dislike");expect(response.status).toBe(200);expect(response.headers.get("Cache-Control")).toBe("private, no-store");const q=dialect.sqlToQuery(mocks.execute.mock.calls[0]![0]);expect(q.params).toContain(scope);expect(q.params).toContain("dislike");expect(q.sql).toContain("r.status='COMPLETED'");expect(mocks.audit).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({action:"ai.feedback.viewed"}));});
+ it("requires a visible rated response before opening chat context",async()=>{mocks.execute.mockResolvedValue({rows:[]});expect((await req(`/ai-feedback/${target}/44444444-4444-4444-8444-444444444444`)).status).toBe(404);expect(mocks.execute).toHaveBeenCalledTimes(1);});
+});

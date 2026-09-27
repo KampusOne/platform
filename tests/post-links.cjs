@@ -7,18 +7,23 @@ const ts = require(require.resolve("typescript", { paths: [path.join(__dirname, 
 const source = fs.readFileSync(path.join(__dirname, "../mobile/src/lib/feed-posts.ts"), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const id = "33333333-3333-4333-8333-333333333333";
-const url = `https://kampusone-mobile-preview.vercel.app/post?id=${id}`;
-const post = { id, title: "Campus update", body: "Do not share this body as text" };
+const url = `https://kampusone.app/post?id=${id}`;
+const post = { id, title: "Campus update", source_username: "campusupdates", body: "Do not share this body as text" };
+const message = "Check out this post by @campusupdates on KampusOne.";
 function load(os, options = {}) {
   const calls = { shares: [], copies: [], invalidations: 0, removals: 0 };
   const exported = {};
   const storage = options.storage || new Map();
   const context = {
-    Error, module: { exports: exported }, exports: exported,
+    Error, process: { env: {} }, module: { exports: exported }, exports: exported,
     require(name) {
       if (name === "react-native") return { Platform: { OS: os }, Share: {
         dismissedAction: "dismissed", share: async (payload) => { calls.shares.push(payload); return { action: "shared" }; },
       } };
+      if (name === "./app-links") {
+        const exports={};const code=ts.transpileModule(fs.readFileSync(path.join(__dirname,"../mobile/src/lib/app-links.ts"),"utf8"),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+        vm.runInNewContext(code,{exports,URL,Error,process:{env:{}}});return exports;
+      }
       if (name === "@/src/lib/api") return { clearApiCache: () => { calls.invalidations++; } };
       throw new Error(`Unexpected import ${name}`);
     },
@@ -37,19 +42,19 @@ test("a post URL targets the real app route and rejects invalid IDs", () => {
 test("Android shares the URL in message, never the post body", async () => {
   const { api, calls } = load("android");
   assert.equal(await api.sharePostLink(post), "shared");
-  assert.deepEqual(JSON.parse(JSON.stringify(calls.shares)), [{ message: url }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.shares)), [{ message: `${message}\n${url}` }]);
 });
 test("iOS shares one URL without duplicating it as text", async () => {
   const { api, calls } = load("ios");
   await api.sharePostLink(post);
-  assert.deepEqual(JSON.parse(JSON.stringify(calls.shares)), [{ url }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.shares)), [{ url, message }]);
 });
 test("web native sharing uses a URL, not a text summary", async () => {
   let payload;
   const { api } = load("web", { navigator: { share: async (value) => { payload = value; } } });
   assert.equal(await api.sharePostLink(post), "shared");
   assert.equal(payload.url, url);
-  assert.equal(payload.text, undefined);
+  assert.equal(payload.text, message);
 });
 test("cancelling web sharing is not treated as a failure or copied silently", async () => {
   let copied = false;

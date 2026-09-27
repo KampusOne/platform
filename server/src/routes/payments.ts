@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 
 import { paymentInitializationSchema } from "@kampusone/contracts";
+import { id } from "../lib/input";
 
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
@@ -12,6 +13,14 @@ import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 
 export const paymentRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+paymentRoutes.get("/summary/:type/:id",requireAuth,async c=>{
+  const u=currentUser(c),resourceId=id(c.req.param("id")),kind=c.req.param("type");
+  const result=kind==='TUTORIAL_BOOKING'?await database(c.env).execute(sql`select b.id,l.title,b.status,b.amount_kobo,b.amount_kobo-b.buyer_fee_kobo base_kobo,b.buyer_fee_kobo,0 delivery_fee_kobo,b.fee_snapshot from public.tutorial_bookings b join public.tutorial_listings l on l.id=b.listing_id where b.id=${resourceId}::uuid and b.student_user_id=${u.id}::uuid`):
+    kind==='STORE_ORDER'?await database(c.env).execute(sql`select o.id,'Campus store order' title,o.status,o.total_kobo amount_kobo,o.subtotal_kobo base_kobo,o.buyer_fee_kobo,o.delivery_fee_kobo,o.fee_snapshot from public.orders o where o.id=${resourceId}::uuid and o.buyer_user_id=${u.id}::uuid`):{rows:[]};
+  const purchase=firstRow(result);if(!purchase)throw new AppError(404,'NOT_FOUND','This purchase is unavailable.');
+  return c.json({purchase});
+});
 
 paymentRoutes.post("/initialize", requireAuth, async (context) => {
   requireFeature(context.env, "PAYMENTS_ENABLED", "Payments are not enabled in this environment.");
@@ -24,7 +33,12 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
     throw new AppError(503, "FEATURE_DISABLED", "Store payments are temporarily unavailable.");
   }
   const user = currentUser(context);
-  const resource = parsed.data.resourceType === "TUTORIAL_BOOKING"
+  const resource = parsed.data.resourceType === "TUTORIAL_PURCHASE"
+    ? await database(context.env).execute<{id:string;amount_kobo:number;status:string;pricing_formula_version:string|null}>(sql`
+        select id,amount_kobo,status,null::text pricing_formula_version from public.tutorial_purchases
+        where id=${parsed.data.resourceId}::uuid and student_user_id=${user.id}::uuid and payment_expires_at>now() limit 1
+      `)
+    : parsed.data.resourceType === "TUTORIAL_BOOKING"
     ? await database(context.env).execute<{
         id: string; amount_kobo: number; status: string; pricing_formula_version: string | null;
       }>(sql`
@@ -58,7 +72,8 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
     select status, authorization_url, access_code, provider_reference
     from public.payment_attempts
     where user_id = ${user.id}::uuid and resource_type = ${parsed.data.resourceType}
-      and resource_id = ${item.id}::uuid and idempotency_key = ${parsed.data.idempotencyKey}
+      and resource_id = ${item.id}::uuid and (idempotency_key = ${parsed.data.idempotencyKey} or status in ('CREATED','INITIALIZED'))
+    order by (status in ('CREATED','INITIALIZED')) desc, created_at desc
     limit 1
   `);
   const existing = firstRow(existingResult);
@@ -74,6 +89,8 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
     throw new AppError(409, "CONFLICT", "That payment attempt cannot be reused. Start a new attempt.");
   }
 
+  const allowed=firstRow(await database(context.env).execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('PAYMENT_INITIALIZE',${user.id},10,3600,3600) allowed`));
+  if(!allowed?.allowed)throw new AppError(429,"RATE_LIMITED","Checkout limit reached. Please try again later.");
   const reference = `K1-${parsed.data.resourceType === "TUTORIAL_BOOKING" ? "T" : "O"}-${crypto.randomUUID()}`;
   const attemptId = crypto.randomUUID();
   const inserted = await database(context.env).execute<{ id: string }>(sql`
@@ -122,13 +139,13 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
       initialized_at = now(), updated_at = now()
     where id = ${attemptId}::uuid and status = 'CREATED'
   `);
-  const table = parsed.data.resourceType === "TUTORIAL_BOOKING" ? "tutorial_bookings" : "orders";
+  const table = parsed.data.resourceType === "TUTORIAL_PURCHASE" ? "tutorial_purchases" : parsed.data.resourceType === "TUTORIAL_BOOKING" ? "tutorial_bookings" : "orders";
   if (table === "tutorial_bookings") {
     await database(context.env).execute(sql`
       update public.tutorial_bookings set provider_reference = coalesce(provider_reference, ${reference}), updated_at = now()
       where id = ${item.id}::uuid and student_user_id = ${user.id}::uuid and status = 'PENDING_PAYMENT'
     `);
-  } else {
+  } else if (table === "orders") {
     await database(context.env).execute(sql`
       update public.orders set provider_reference = coalesce(provider_reference, ${reference}), updated_at = now()
       where id = ${item.id}::uuid and buyer_user_id = ${user.id}::uuid and status = 'PENDING_PAYMENT'
@@ -175,7 +192,7 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
   }
   const event = JSON.parse(raw) as {
     event?: string;
-    data?: { reference?: string; amount?: number; status?: string };
+    data?: { reference?: string; amount?: number; status?: string; currency?: string };
   };
   if (event.event !== "charge.success" || event.data?.status !== "success" || !event.data.reference) {
     return context.json({ status: "ignored" });
@@ -189,6 +206,10 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
       updated_at = now()
   `);
 
+  if(context.env.UNIFIED_SCHEMA_READY === "true") {
+    const settled=firstRow(await database(context.env).execute<{status:string}>(sql`select app_private.settle_commerce_payment(${reference},${event.data.amount??null}::bigint,${event.data.currency??null}) status`));
+    return context.json({status:settled?.status});
+  }
   const bookingResult = phase2SchemaReady(context.env)
     ? await database(context.env).execute<{
         id: string; university_id: string; amount_kobo: number; tutor_user_id: string;

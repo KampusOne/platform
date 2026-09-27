@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { randomUUID } from "expo-crypto";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Image, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ToolPage, ToolButton, ToolField } from "@/src/components/toolkit";
@@ -13,29 +13,31 @@ import { readCache, writeCache } from "@/src/lib/device-cache";
 import { syncAlarms, type Alarm } from "@/src/lib/alarms";
 type Entry = { title: string; courseCode: string; venue: string; lecturer: string; dayOfWeek: number; startsAt: string; endsAt: string; reminderMinutes: number; reminderEnabled: boolean };
 type Event = {title:string;startsOn:string;endsOn:string;semester:string};
-type Draft = { entries: Entry[]; events?:Event[]; documentType?:string; text: string; attachment?:StagedAttachment; warnings?: string[]; key?: string; saveKey?:string };
+type Draft = { notes?:string; entries: Entry[]; events?:Event[]; documentType?:string; text: string; attachment?:StagedAttachment; warnings?: string[]; key?: string; saveKey?:string };
 const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 export default function ImportTimetable() {
+  const {kind}=useLocalSearchParams<{kind?:string}>();
+  const [notes,setNotes]=useState("");
   const {user}=useAuth(), {theme}=useAppearance(), toast=useToast();
   const [entries,setEntries]=useState<Entry[]>([]),[events,setEvents]=useState<Event[]>([]),[documentType,setDocumentType]=useState("");
-  const [text,setText]=useState(""),[attachment,setAttachment]=useState<StagedAttachment>(),[paste,setPaste]=useState(false);
+  const [text,setText]=useState(""),[attachment,setAttachment]=useState<StagedAttachment>(),[paste,setPaste]=useState(true);
   const [warnings,setWarnings]=useState<string[]>([]),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false),[error,setError]=useState(""),[expanded,setExpanded]=useState<number|null>(null);
   const key=useRef(randomUUID()), saveKey=useRef(randomUUID()), locked=useRef(false), generation=useRef(0), account=useRef(user?.id);account.current=user?.id;
   const body={fontFamily:theme.font.body,color:theme.text,fontSize:14,lineHeight:21};
   const muted={...body,color:theme.textMuted,fontSize:12,lineHeight:18};
-  useEffect(()=>{let active=true;generation.current++;locked.current=false;setBusy(false);setLoaded(false);setEntries([]);setEvents([]);setAttachment(undefined);setText("");setDocumentType("");setWarnings([]);setError("");key.current=randomUUID();saveKey.current=randomUUID();
-    if(user?.id) void readCache<Draft>("timetable-draft."+user.id).then(d=>{if(!active||!d)return;setEntries(d.entries??[]);setEvents(d.events??[]);setDocumentType(d.documentType??"");setText(d.text??"");setPaste(Boolean(d.text));setAttachment(d.attachment);setWarnings(d.warnings??[]);key.current=d.key??randomUUID();saveKey.current=d.saveKey??randomUUID();}).catch(()=>undefined).finally(()=>{if(active)setLoaded(true);});
+  useEffect(()=>{let active=true;generation.current++;locked.current=false;setBusy(false);setLoaded(false);setEntries([]);setEvents([]);setAttachment(undefined);setText("");setNotes("");setDocumentType("");setWarnings([]);setError("");key.current=randomUUID();saveKey.current=randomUUID();
+    if(user?.id) void readCache<Draft>("timetable-draft."+user.id).then(d=>{if(!active||!d)return;setEntries(d.entries??[]);setEvents(d.events??[]);setDocumentType(d.documentType??"");setText(d.text??"");setNotes(d.notes??"");setPaste(true);setAttachment(d.attachment);setWarnings(d.warnings??[]);key.current=d.key??randomUUID();saveKey.current=d.saveKey??randomUUID();}).catch(()=>undefined).finally(()=>{if(active)setLoaded(true);});
     return()=>{active=false;generation.current++;};
   },[user?.id]);
-  const draft=()=>({entries,events,documentType,text,attachment,warnings,key:key.current,saveKey:saveKey.current});
-  useEffect(()=>{if(!loaded||!user?.id)return;const timer=setTimeout(()=>{void writeCache("timetable-draft."+user.id,draft()).catch(()=>undefined);},250);return()=>clearTimeout(timer);},[entries,events,documentType,text,attachment,warnings,loaded,user?.id]);
+  const draft=()=>({notes,entries,events,documentType,text,attachment,warnings,key:key.current,saveKey:saveKey.current});
+  useEffect(()=>{if(!loaded||!user?.id)return;const timer=setTimeout(()=>{void writeCache("timetable-draft."+user.id,draft()).catch(()=>undefined);},250);return()=>clearTimeout(timer);},[entries,events,documentType,text,notes,attachment,warnings,loaded,user?.id]);
   function changed(){key.current=randomUUID();saveKey.current=randomUUID();setError("");}
   async function attach(){if(locked.current)return;const version=generation.current;locked.current=true;setBusy(true);try{const f=await pickAttachment();if(f&&version===generation.current){setAttachment(f);changed();}}catch(e){if(version===generation.current)setError(e instanceof Error?e.message:"Choose your file again.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
   async function scan(){if(locked.current)return;const version=generation.current,owner=account.current;locked.current=true;setBusy(true);setError("");try{
     const file=attachment?await uploadAttachment(attachment):undefined;if(version!==generation.current)return;setAttachment(file);
     await writeCache("timetable-draft."+owner,{...draft(),attachment:file}).catch(()=>undefined);
-    const r=await api<{entries:Entry[];events?:Event[];documentType?:string;warnings?:string[]}>("/v1/ai",{method:"POST",signal:AbortSignal.timeout(45000),body:JSON.stringify({mode:"timetable",prompt:text,mediaId:file?.mediaId,idempotencyKey:key.current,consent:true})});
-    if(version!==generation.current)return;setEntries(r.entries);setEvents(r.events??[]);setDocumentType(r.documentType??"class_timetable");setWarnings(r.warnings??[]);setExpanded(null);saveKey.current=randomUUID();
+    const r=await api<{entries:Entry[];events?:Event[];documentType?:string;warnings?:string[]}>("/v1/ai",{method:"POST",timeoutMs: 75000,body:JSON.stringify({mode:"timetable",prompt:text,notes,mediaId:file?.mediaId,idempotencyKey:key.current,consent:true})});
+    if(version!==generation.current)return;setEntries(r.entries.map(e=>({...e,courseCode:e.courseCode??"",venue:e.venue??"",lecturer:e.lecturer??""})));setEvents(r.events??[]);setDocumentType(r.documentType??"class_timetable");setWarnings(r.warnings??[]);setExpanded(null);saveKey.current=randomUUID();
   }catch(e){if(version!==generation.current)return;if(e instanceof ApiError&&e.details?.retryWithNewKey===true)key.current=randomUUID();setError(e instanceof Error?e.message:"Could not read the file. Your draft is kept.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
   const calendar=documentType==="academic_calendar";
   async function save(){if(locked.current)return;const version=generation.current,owner=account.current;
@@ -49,21 +51,22 @@ export default function ImportTimetable() {
       if(version===generation.current){toast(calendar?"Calendar saved":"Timetable saved","success");router.replace(calendar?"/academic-calendar":"/timetable");}
     }catch(e){if(version===generation.current)setError(e instanceof Error?e.message:"Could not save. Your reviewed draft is kept.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
   function edit(i:number,field:keyof Entry,value:string|number){setEntries(rows=>rows.map((e,n)=>n===i?{...e,[field]:value}:e));saveKey.current=randomUUID();}
-  return <ToolPage title="Upload timetable" action={<Ionicons name="sparkles-outline" size={22} color={theme.brand}/> }>
+  return <ToolPage title={kind==="calendar"?"Upload academic calendar":"Upload timetable"} action={<Ionicons name="sparkles-outline" size={22} color={theme.brand}/> }>
     <View style={{padding:20,borderRadius:18,backgroundColor:theme.surfaceMuted,alignItems:"center",gap:10,marginBottom:16}}>
       <Ionicons name="calendar-outline" size={34} color={theme.brand}/>
-      <Text style={{...body,fontFamily:theme.font.semibold,fontSize:18}}>Your week, organised</Text>
+      <Text style={{...body,fontFamily:theme.font.semibold,fontSize:18}}>{kind==="calendar"?"Your session, organised":"Your week, organised"}</Text>
       <Text style={muted}>Photo, PDF or text · up to 8 MB</Text>
-      <ToolButton secondary label={attachment?"Replace file":"Choose timetable"} disabled={!loaded||busy} onPress={()=>void attach()}/>
+      <ToolButton secondary label={attachment?"Replace file":kind==="calendar"?"Choose calendar":"Choose timetable"} disabled={!loaded||busy} onPress={()=>void attach()}/>
     </View>
     {attachment?<View style={{borderWidth:1,borderColor:theme.border,borderRadius:12,padding:12,marginBottom:12,gap:8}}>
       {attachment.uri&&attachment.type.startsWith("image/")?<Image accessibilityLabel="Selected timetable preview" source={{uri:attachment.uri}} resizeMode="contain" style={{height:150,width:"100%"}}/>:null}
       <View style={{flexDirection:"row",alignItems:"center",gap:12}}><Ionicons name="document-outline" size={22} color={theme.brand}/><Text numberOfLines={2} style={{...body,flex:1}}>{attachment.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attachment" disabled={busy} onPress={()=>{setAttachment(undefined);changed();}} style={{padding:10}}><Ionicons name="close" size={22} color={theme.text}/></Pressable></View>
     </View>:null}
     <Pressable accessibilityRole="button" disabled={busy} onPress={()=>setPaste(v=>!v)} style={{paddingVertical:12}}><Text style={{...body,color:theme.deepBrand}}>{paste?"Hide text":"Paste timetable text"}</Text></Pressable>
-    {paste?<ToolField label="Timetable text" multiline value={text} maxLength={20000} editable={!busy} onChangeText={v=>{setText(v);changed();}} placeholder="Paste here…"/>:null}
+    {paste?<ToolField label="Timetable text" multiline value={text} maxLength={20000} editable={!busy} onChangeText={v=>{setText(v);changed();}} placeholder={kind==="calendar"?"Paste academic calendar activities and dates…":"Monday · MTH 201 · 8:00 AM–10:00 AM · LT 1"}/>:null}
+    <ToolField label="Notes (optional)" multiline value={notes} maxLength={2000} editable={!busy} onChangeText={value=>{setNotes(value);changed();}} placeholder="I do not offer CSE 201. Include my other courses."/>
     <Text style={{...muted,marginBottom:12}}>Processed privately by AI. Review before saving.</Text>
-    <ToolButton label={busy?"Working…":"Read timetable"} disabled={!loaded||busy||(!attachment&&!text.trim())} onPress={()=>void scan()}/>
+    <ToolButton label={busy?"Reading your document…":kind==="calendar"?"Read calendar":"Read timetable"} disabled={!loaded||busy||(!attachment&&!text.trim())} onPress={()=>void scan()}/>
     {error?<Text accessibilityRole="alert" style={{...body,color:theme.error,marginVertical:12}}>{error}</Text>:null}
     {calendar?<View style={{paddingVertical:14,gap:5}}><Text style={{...body,fontFamily:theme.font.semibold}}>Academic calendar · {events.length} events</Text><Text style={muted}>This file lists dates, not class times. Review and save these events to your calendar.</Text></View>:null}
     {warnings.length?<Text style={{...muted,marginVertical:12}}>{warnings.join("\n")}</Text>:null}

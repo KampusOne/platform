@@ -14,6 +14,7 @@ export default function CreateListing() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [packageDays,setPackageDays]=useState("");
   const [stock, setStock] = useState("1");
   const [code, setCode] = useState("");
   const [location, setLocation] = useState("");
@@ -48,6 +49,7 @@ export default function CreateListing() {
       const path = tutor ? "/v1/agents/tutorials" : "/v1/agents/products";
       const body = tutor
         ? {
+            packageDays:packageDays?Number(packageDays):null,
             courseCode: code,
             title: name,
             description,
@@ -126,6 +128,8 @@ export default function CreateListing() {
       />
       {tutor ? (
         <>
+          <ToolField label="Package access (days, optional)" value={packageDays} onChangeText={setPackageDays} keyboardType="number-pad"/>
+          <Text style={{color:theme.textMuted}}>Leave blank for a scheduled session. Packages start after payment and include tutor chat.</Text>
           <ToolField label="Course code" value={code} onChangeText={setCode} />
           <ToolField
             label="Location"

@@ -3,6 +3,8 @@ import type {PGlite} from '@electric-sql/pglite';
 import {createTestDatabase,testDatabaseAdapter,testSqlClient} from './helpers/database';
 import {createSession} from '../src/services/sessions';
 import {app} from '../src/app';
+import {notifyFeedInteraction,notifyPublishedPost} from '../src/services/feed-notifications';
+import { readFileSync } from 'node:fs';
 import {deliverCommunityPush,checkCommunityPushReceipts} from '../src/services/community-push';
 import type {Bindings} from '../src/types';
 let db:PGlite;
@@ -115,5 +117,53 @@ describe('community announcement delivery',()=>{
   await deliverCommunityPush(env);
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect((await db.query('select status,error_code from app_private.community_push_deliveries where outbox_id=$1',[outbox])).rows).toEqual([{status:'UNKNOWN',error_code:'PUSH_NETWORK_UNCERTAIN'}]);
+ });
+});
+
+
+describe('notification inbox and preferences',()=>{
+ it('filters opted-out categories and gives an exact unread count for the inbox',async()=>{
+  const preference=await data(await request('/preferences','GET',undefined,student));
+  const preferences={...preference.preferences,likes:false,pushAnnouncements:false};
+  await data(await request('/preferences','PUT',preferences,student));
+  const id=crypto.randomUUID();
+  await db.query("insert into public.in_app_notifications(user_id,institution_id,title,body,dedupe_key) values($1,$2,'Hidden like','social',$3),($1,$2,'Visible comment','reply',$4)",[student,school,'feed-like:'+id,'feed-comment:'+id]);
+  const result=await data(await request('/inbox','GET',undefined,student));
+  expect(result.notifications.some((item:any)=>item.title==='Hidden like')).toBe(false);
+  expect(result.notifications.some((item:any)=>item.title==='Visible comment')).toBe(true);
+  expect(result.unreadCount).toBe(result.notifications.filter((item:any)=>!item.read_at).length);
+  await data(await request('/read-all','POST',{},student));
+  expect((await data(await request('/inbox','GET',undefined,student))).unreadCount).toBe(0);
+  await data(await request('/preferences','PUT',preference.preferences,student));
+ });
+ it('does not enqueue push notifications for social activity',async()=>{
+  const post=crypto.randomUUID(),source=crypto.randomUUID();
+  await db.query("insert into public.content_sources(id,university_id,name,verified) values($1,$2,'Social test',true)",[source,school]);
+  await db.query("insert into public.feed_posts(id,source_id,university_id,author_user_id,category,title,summary,body,status) values($1,$2,$3,$4,'UPDATE','Post','Summary','Body','PUBLISHED')",[post,source,school,student]);
+  await notifyFeedInteraction(env,post,staff,'like');
+  const key='feed-like:'+post+':'+staff;
+  expect((await db.query('select id from public.in_app_notifications where dedupe_key=$1',[key])).rows).toHaveLength(1);
+  expect((await db.query("select id from app_private.notification_outbox where channel='PUSH' and dedupe_key=$1",[key])).rows).toHaveLength(0);
+ });
+ it('syncs owned alarm events once and ignores another user alarm',async()=>{
+  const alarm=crypto.randomUUID(),firedAt=new Date().toISOString();
+  await db.query("insert into public.student_alarms(id,user_id,institution_id,label,time,days,enabled) values($1,$2,$3,'MTH 201','08:00',ARRAY[1]::smallint[],true)",[alarm,student,school]);
+  const events=[{id:crypto.randomUUID(),alarmId:alarm,kind:'ringing',firedAt},{id:crypto.randomUUID(),alarmId:alarm,kind:'missed',firedAt}];
+  await data(await request('/alarm-events','POST',{events},outsider));
+  expect((await db.query("select id from public.in_app_notifications where user_id=$1 and dedupe_key like 'alarm:%'",[outsider])).rows).toHaveLength(0);
+  await data(await request('/alarm-events','POST',{events},student));await data(await request('/alarm-events','POST',{events},student));
+  expect((await db.query("select id from public.in_app_notifications where user_id=$1 and dedupe_key like $2",[student,'alarm:'+alarm+':%'])).rows).toHaveLength(2);
+ });
+ it('dispatches subscribed posts in-app and only designated official posts by push',async()=>{
+  await db.exec(readFileSync(new URL('../../database/neon/migrations/20260926120000_profile_safety_and_messages.sql',import.meta.url),'utf8'));
+  const source=crypto.randomUUID();await db.query("insert into public.content_sources(id,university_id,name,verified) values($1,$2,'Official test',true)",[source,school]);
+  await db.query('insert into public.profile_post_subscriptions(follower_id,target_id) values($1,$2)',[student,staff]);
+  const publish=async()=>{const post=crypto.randomUUID();await db.query("insert into public.feed_posts(id,source_id,university_id,author_user_id,category,title,summary,body,status) values($1,$2,$3,$4,'UPDATE','New post','Summary','Full post','PUBLISHED')",[post,source,school,staff]);await notifyPublishedPost(env,post);return post;};
+  const ordinary=await publish();
+  expect((await db.query('select id from public.in_app_notifications where dedupe_key=$1',['profile-post:'+ordinary+':'+student])).rows).toHaveLength(1);
+  expect((await db.query('select id from app_private.notification_outbox where dedupe_key like $1',['%'+ordinary+'%'])).rows).toHaveLength(0);
+  await db.query('insert into public.profile_social_policies(user_id,institution_id,notify_all_in_app,notify_all_push) values($1,$2,true,true)',[staff,school]);
+  const official=await publish();await notifyPublishedPost(env,official);
+  expect((await db.query("select o.user_id from app_private.notification_outbox o join public.in_app_notifications n on o.dedupe_key='activity:'||n.id::text where n.dedupe_key like $1",['official-post:'+official+':%'])).rows).toEqual([{user_id:student}]);
  });
 });

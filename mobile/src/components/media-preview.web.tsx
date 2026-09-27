@@ -23,6 +23,8 @@ export function MediaPreview({
   url: string;
   video?: boolean;
   label?: string;
+  watermark?:string;
+  initialAspect?:number|undefined;
 }) {
   const { theme } = useAppearance();
   const [error, setError] = useState("");
@@ -79,7 +81,16 @@ export function MediaPreview({
             width: "100%",
             maxHeight: 360,
             borderRadius: 16,
-            background: theme.surfaceMuted,
+            background: "#080808",
+            objectFit: "contain",
+          },
+          onClick: (event) => event.stopPropagation(),
+          onDoubleClick: (event) => {
+            event.stopPropagation(); event.preventDefault();
+            const video = event.currentTarget as HTMLVideoElement;
+            const bounds = video.getBoundingClientRect();
+            const delta = event.clientX - bounds.left < bounds.width / 2 ? -5 : 5;
+            video.currentTime = Math.max(0, Math.min(Number.isFinite(video.duration) ? video.duration : Infinity, video.currentTime + delta));
           },
           onError: () => setError("This video could not load."),
         })

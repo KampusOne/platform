@@ -2,7 +2,7 @@ name: Build Android test APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, fix/student-experience-20260926]
     paths:
       [
         "mobile/**",
@@ -29,6 +29,9 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Check live native auth reachability without accounts or email
+        continue-on-error: true
+        run: node scripts/check-mobile-auth-reachability.mjs
       - name: Install dependencies
         run: npm ci
         working-directory: mobile
@@ -64,5 +67,20 @@ jobs:
         run: |
           gh release delete apk-latest --yes --cleanup-tag || true
           gh release create apk-latest KampusOne-Android.apk             --target "$GITHUB_SHA"             --title "KampusOne Android Test"             --notes "Latest KampusOne Android testing APK built from main. This is a sideload testing build, not a Play Store release."             --prerelease
+      - name: Publish numbered feedback test APK
+        if: github.ref == 'refs/heads/fix/student-experience-20260926'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(node -p 'require("./mobile/app.json").expo.version')
+          code=$(node -p 'require("./mobile/app.json").expo.android.versionCode')
+          tag="android-feedback-v${version}-${code}-${GITHUB_SHA:0:7}"
+          sha256sum KampusOne-Android.apk > KampusOne-Android.apk.sha256
+          cat > /tmp/apk-feedback-notes.txt <<'NOTES'
+          Android network/startup repair: removes unsupported native AbortSignal.timeout calls, restores sign-in/sign-up requests, bounds session restoration, and releases the launch animation independently of network loading. Preserves all round-two client fixes.
+          Production database/API rollout is awaiting explicit approval. Backend-dependent features must be retested after that rollout. This release is not an all-features-live claim.
+          NOTES
+          gh release create "$tag" KampusOne-Android.apk KampusOne-Android.apk.sha256 --target "$GITHUB_SHA" --title "KampusOne feedback test $version ($code)" --notes-file /tmp/apk-feedback-notes.txt --prerelease
 # Expo's generated test signing is for sideload testing only. A separately
 # provisioned release/upload keystore is required before Play Store publication.

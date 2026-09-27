@@ -218,7 +218,7 @@ describe('campus and programme administration',()=>{
   const sound=await response(await request('/notifications/admin/sounds',admin,'POST',{name:'Campus ping',mediaId:media,universityId:school}),201);
   await response(await request('/notifications/admin/sounds/'+sound.id+'/default',admin,'PUT',{}));
   const current=await response(await request('/notifications/sounds/default',finance));
-  expect(current.sound).toMatchObject({id:sound.id,name:'Campus ping',availability:'web',nativeSound:'default'});
+  expect(current.sound).toMatchObject({id:sound.id,name:'Campus ping',availability:'web-and-android',nativeSound:'downloaded-on-sync'});
   expect((await response(await request('/notifications/sounds/default',student))).sound).toBeNull();
  });
 });

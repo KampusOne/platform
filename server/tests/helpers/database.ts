@@ -5,6 +5,7 @@ import type { SQL } from "drizzle-orm";
 import snapshot from "../fixtures/database-schema.json";
 
 export const unifiedMigrations = [
+  "20260912200000_phase_3_commerce_foundation.sql",
   "20260913200000_unified_student_platform.sql",
   "20260913210000_timetable_course_alarm_sync.sql",
   "20260913220000_ai_requests.sql",
@@ -31,6 +32,17 @@ export const unifiedMigrations = [
   "20260925110000_notification_sound_catalogue.sql",
   "20260925120000_community_push_delivery.sql",
   "20260925130000_programme_metadata.sql",
+  "20260926120000_reviewed_calendars_and_progression.sql",
+  "20260926120000_profile_safety_and_messages.sql",
+  "20260926150000_marketplace_promotions_resources.sql",
+  "20260926170000_academic_catalogue_provenance.sql",
+  "20260926190000_account_deletion.sql",
+  "20260926200000_notification_channels.sql",
+  "20260926210000_message_attachments.sql",
+  "20260926220000_ai_schedule_actions.sql",
+  "20260926230000_tutor_commerce.sql",
+  "20260926240000_commerce_fee_snapshots.sql",
+  "20260926250000_campus_delivery_quotes.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */

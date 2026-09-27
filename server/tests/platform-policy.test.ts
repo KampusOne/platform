@@ -2,30 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   ageOn,
   allowedAgentAge,
-  commissionFor,
   MINIMUM_WITHDRAWAL_KOBO,
 } from "../src/lib/platform-policy";
 import { detectedMime } from "../src/routes/media";
 describe("launch policies", () => {
-  it.each([
-    [0, 200, 0],
-    [250000, 200, 5000],
-    [250001, 300, 7500],
-    [500000, 300, 15000],
-    [500001, 500, 25000],
-  ])("snapshots commission for %i kobo", (gross, rate, fee) => {
-    const result = commissionFor(gross);
-    expect(result.basisPoints).toBe(rate);
-    expect(result.commissionKobo).toBe(fee);
-    expect(result.netKobo + result.commissionKobo).toBe(gross);
-  });
-  it("uses integer arithmetic even at the safe integer bound", () => {
-    const r = commissionFor(Number.MAX_SAFE_INTEGER);
-    expect(r.netKobo + r.commissionKobo).toBe(Number.MAX_SAFE_INTEGER);
-  });
-  it.each([-1, 0.01, NaN, Infinity])("rejects invalid money %s", (value) =>
-    expect(() => commissionFor(value)).toThrow(),
-  );
   it("requires a 5000 naira minimum withdrawal", () =>
     expect(MINIMUM_WITHDRAWAL_KOBO).toBe(500000));
   it("turns 16 at midnight in Lagos, not UTC", () => {

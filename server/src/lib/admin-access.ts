@@ -62,6 +62,9 @@ export async function resolveAdminScope(env:Bindings,user:AdminUser,requested?:s
 export function permissionForAdminRoute(path:string,method:string):string|null{
  const read=method==='GET'||method==='HEAD';
  if(path==='/access')return 'access';
+ if(path.startsWith('/ai-feedback'))return read?'ai.view':null;
+ if(path.startsWith('/promoted-shops'))return read?'marketplace.view':'marketplace.manage';
+ if(path==='/social-moderation')return read?'users.view':null;
  if(path.startsWith('/broadcasts'))return read?'broadcasts.view':/(send|test|schedule)$/.test(path)?'broadcasts.send':'broadcasts.manage';
  if(path.startsWith('/staff'))return 'staff.manage';
  if(path.startsWith('/workspaces/'))return ({universities:'universities.view',users:'users.view',agents:'agents.view','academic-submissions':'academic.view',content:'content.view',analytics:'analytics.view',finance:'finance.view',audit:'audit.view',ai:'ai.view',support:'support.view'} as Record<string,string>)[path.split('/')[2]??'']??null;
@@ -74,6 +77,7 @@ export function permissionForAdminRoute(path:string,method:string):string|null{
  if(path.startsWith('/applications'))return read?'agents.view':path.endsWith('/verification')?'agents.verify':'agents.review';
  if(path.startsWith('/academic/'))return read?'academic.view':'academic.manage';
  if(path.startsWith('/academic-submissions'))return read?'academic.view':'academic.manage';
+ if(path.startsWith('/operations/fee-rules'))return read?'finance.view':'finance.review';
  if(path.startsWith('/operations/payouts')||path==='/operations/release-eligible-earnings')return read?'finance.view':'payouts.approve';
  if(/^\/operations\/(payment-events|disputes)/.test(path))return read?'finance.view':'finance.review';
  if(path.startsWith('/operations'))return read?'marketplace.view':'marketplace.manage';

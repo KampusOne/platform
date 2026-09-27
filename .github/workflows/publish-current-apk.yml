@@ -30,3 +30,4 @@ jobs:
         run: |
           gh release delete apk-latest --repo KampusOne/platform --yes --cleanup-tag || true
           gh release create apk-latest KampusOne-Android.apk             --repo KampusOne/platform             --target f7643627724026e956a28eaad3d9d5542a06d107             --title "KampusOne Android Test"             --notes "Latest public KampusOne Android testing APK. Sideload testing build."             --prerelease
+

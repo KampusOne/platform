@@ -1,3 +1,4 @@
+import { profileSafetyReady, unblockedAuthor } from "../lib/profile-safety";
 import { sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "@kampusone/contracts";
@@ -32,7 +33,7 @@ feedLikeRoutes.get("/likes", requireAuth, async (context) => {
       (select count(*)::integer from public.feed_likes likes where likes.post_id = posts.id) as like_count
     from public.feed_posts posts
     where posts.id = any(string_to_array(${ids.join(",")}, ',')::uuid[])
-      and ${visiblePost(campus)}
+      and ${visiblePost(campus)} and ${await profileSafetyReady(context.env) ? unblockedAuthor(user.id, sql`posts.author_user_id`) : sql`true`}
   `);
   return context.json({ likes: result.rows });
 });
@@ -42,6 +43,10 @@ async function setLike(context: Context<Environment>, liked: boolean) {
   const user = currentUser(context), campus = campusId(user);
   const parsed = idSchema.safeParse(context.req.param("id"));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "This post link is not valid.");
+  if (liked && await profileSafetyReady(context.env)) {
+    const allowed = firstRow(await database(context.env).execute(sql`select posts.id from public.feed_posts posts where posts.id=${parsed.data}::uuid and ${unblockedAuthor(user.id, sql`posts.author_user_id`)}`));
+    if (!allowed) throw new AppError(404, "NOT_FOUND", "This post is unavailable.");
+  }
   // Identity is always the authenticated session, never a client-supplied user ID.
   const result = await database(context.env).execute(sql`
     select * from app_private.set_feed_post_like(

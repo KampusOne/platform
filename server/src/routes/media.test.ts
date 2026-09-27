@@ -42,6 +42,26 @@ beforeEach(() => {
   state.put.mockResolvedValue({}); state.findUser.mockResolvedValue(actor); state.audit.mockResolvedValue(undefined);
 });
 describe("media upload and delivery regression", () => {
+  it("accepts binary native/web MP4 uploads without FormData", async () => {
+    const bytes = new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0]);
+    state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValue({ rows: [] });
+    const response = await app.request("https://api.example/v1/media?kind=post&name=trimmed.mp4", { method: "POST", headers: { ...auth, "Content-Type": "video/mp4" }, body: bytes }, env);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ kind: "post", content_type: "video/mp4", private: false });
+    expect(state.put).toHaveBeenCalledOnce();
+  });
+  it("keeps a binary tutor audio resource private", async () => {
+    state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValue({ rows: [] });
+    const response = await app.request("https://api.example/v1/media?kind=resource&name=lesson.mp3", { method: "POST", headers: { ...auth, "Content-Type": "audio/mpeg" }, body: new TextEncoder().encode("ID3lesson") }, env);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ kind: "resource", content_type: "audio/mpeg", private: true });
+  });
+  it("rejects fake video bytes despite a declared MP4 MIME type", async () => {
+    state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] });
+    const response = await app.request("https://api.example/v1/media?kind=post&name=video.mp4", { method: "POST", headers: { ...auth, "Content-Type": "video/mp4" }, body: "not a video" }, env);
+    expect(response.status).toBe(400);
+    expect(state.put).not.toHaveBeenCalled();
+  });
   it("detects WebM and accepts a browser-trimmed post video", async () => {
     const bytes = new Uint8Array([
       0x1a, 0x45, 0xdf, 0xa3, 0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d,

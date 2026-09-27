@@ -39,6 +39,8 @@ type Item = {
   code?: string;
   award?: string | null;
   normal_duration_years?: string | number | null;
+  slug?: string;
+  aliases?: string[];
 };
 type Catalog = {
   universities: Item[];
@@ -109,11 +111,13 @@ function Selector({
   const reducedMotion = useReducedMotionPreference();
   const activeItem = items.find((item) => item.id === selected);
   const filteredItems = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return items;
-    return items.filter((item) =>
-      `${item.code ?? ""} ${item.name}`.toLowerCase().includes(needle),
-    );
+    const normalize = (text: string) => text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const words = normalize(query).trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return items;
+    return items.filter((item) => {
+      const text = normalize(`${item.code ?? ""} ${item.slug ?? ""} ${item.name} ${(item.aliases || []).join(" ")}`);
+      return words.every((word) => text.includes(word));
+    });
   }, [items, query]);
   const close = useCallback(() => {
     setOpen(false);
@@ -282,6 +286,9 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
+  const [structureLoading, setStructureLoading] = useState(false);
+  const [structureError, setStructureError] = useState("");
+  const [structureRetry, setStructureRetry] = useState(0);
   const [universityId, setUniversityId] = useState("");
   const [facultyId, setFacultyId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
@@ -305,7 +312,7 @@ export default function OnboardingScreen() {
     setCatalogLoading(true);
     setError("");
     try {
-      const data = await api<Catalog>("/v1/student/catalog");
+      const data = await api<Catalog>("/v1/student/catalog?institutionsOnly=true");
       setCatalog(data);
       setUniversityId((current) =>
         data.universities.some((item) => item.id === current) ? current : "",
@@ -324,6 +331,25 @@ export default function OnboardingScreen() {
   useEffect(() => {
     void loadCatalog();
   }, [loadCatalog]);
+  useEffect(() => {
+    if (!universityId) return;
+    let live = true;
+    setStructureLoading(true);
+    setStructureError("");
+    setCatalog((current) => current ? { ...current, faculties: [], departments: [], courses: [] } : current);
+    void api<Catalog>(`/v1/student/catalog?universityId=${encodeURIComponent(universityId)}`)
+      .then((data) => {
+        if (!live) return;
+        setCatalog((current) => current ? { ...current, faculties: data.faculties, departments: data.departments, courses: data.courses } : data);
+        // Do not leave a student at an unusable set of empty pickers.
+        if (!data.faculties.length) setMissingAcademic(true);
+      })
+      .catch(() => {
+        if (live) setStructureError("Your school’s departments could not load. Try again, or enter your details for review.");
+      })
+      .finally(() => { if (live) setStructureLoading(false); });
+    return () => { live = false; };
+  }, [universityId, structureRetry]);
   useEffect(() => {
     setFirstName((current) => current || profile?.first_name || "");
     setLastName((current) => current || profile?.last_name || "");
@@ -382,7 +408,7 @@ export default function OnboardingScreen() {
   }, []);
 
   const schoolStepComplete = Boolean(
-    universityId &&
+    universityId && !structureLoading &&
     (missingAcademic
       ? missingDepartment.trim().length >= 2
       : facultyId && departmentId) &&
@@ -556,10 +582,20 @@ export default function OnboardingScreen() {
                 }}
                 selected={universityId}
               />
+              {structureLoading ? <View accessibilityLiveRegion="polite" style={styles.loadingState}><InlineLoading /><Text style={styles.help}>Loading faculties and departments…</Text></View> : null}
+              {structureError ? (
+                <View>
+                  <Text accessibilityRole="alert" style={styles.help}>{structureError}</Text>
+                  <TextLink onPress={() => setStructureRetry((value) => value + 1)}>Try again</TextLink>
+                </View>
+              ) : null}
+              {universityId && !structureLoading && !structureError && !faculties.length ? (
+                <Text style={styles.help}>Your school is listed. Its faculty and department directory is still being reviewed; enter your own details below to continue.</Text>
+              ) : null}
               {!missingAcademic ? (
                 <>
                   <Selector
-                    disabled={!universityId}
+                    disabled={!universityId || structureLoading}
                     items={faculties}
                     label="Faculty"
                     onSelect={(id) => {
@@ -579,6 +615,7 @@ export default function OnboardingScreen() {
                     }}
                     selected={departmentId}
                   />
+                  {facultyId && !structureLoading && !departments.length ? <Text style={styles.help}>Departments for this faculty are not listed yet. Use “My department isn’t listed” to enter yours.</Text> : null}
                   <Selector
                     disabled={!departmentId}
                     items={courseOptions}
@@ -621,6 +658,7 @@ export default function OnboardingScreen() {
                 <TextLink
                   onPress={() => {
                     setMissingAcademic((value) => !value);
+                    setMissingFaculty((value) => value || faculties.find((item) => item.id === facultyId)?.name || "");
                     setCourseId("");
                   }}
                 >

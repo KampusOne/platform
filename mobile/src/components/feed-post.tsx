@@ -1,5 +1,6 @@
 import { MediaPreview } from "./media-preview";
-import { MediaImage } from "./media-image";
+import { PostImage } from "./post-image";
+import { PostText } from "./post-text";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { memo, useState } from "react";
@@ -38,10 +39,7 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
   const structured = structuredCategories.has(category);
   const openPost = () => { if (!detail) router.push({ pathname: "/post", params: { id: post.id } }); };
   const openReply = () => { if (onComment) onComment(); else setReplyOpen(true); };
-  const copy = text.title || text.paragraphs.length ? <View style={styles.postCopy}>
-    {text.title ? <Text style={[styles.postTitle, detail && styles.detailText]}>{text.title}</Text> : null}
-    {text.paragraphs.map((paragraph, index) => <Text key={index} style={[styles.postText, detail && styles.detailText]}>{paragraph}</Text>)}
-  </View> : null;
+  const copy = text.title || text.paragraphs.length ? <PostText key={post.id} {...text} detail={detail} style={[styles.postText, detail && styles.detailText]} titleStyle={[styles.postTitle, detail && styles.detailText]} onError={onFeedback} /> : null;
   return <View style={styles.post}>
     {post.repost_by ? <View style={styles.repostedBy}><Ionicons name="repeat-outline" size={13} color={theme.textMuted} /><Text numberOfLines={1} style={styles.repostedText}>{post.repost_by.name || "A KampusOne user"} reposted</Text></View> : null}
     {/* Content and action buttons are separate hit regions. Empty avatar-gutter space opens the post too. */}
@@ -61,7 +59,7 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
         <Pressable accessibilityRole={detail ? undefined : "button"} accessibilityLabel={`Open conversation by ${post.source_name}`} onPress={openPost} style={[styles.postBody, detail && styles.detailBody]}>
           {structured ? <View style={styles.structuredPanel}><Text style={styles.structuredEyebrow}>{category === "EVENT" ? "CAMPUS EVENT" : "CAMPUS OPPORTUNITY"}</Text>{copy}</View> : copy}
           {post.urgent ? <Text style={styles.urgent}>Urgent campus update</Text> : null}
-          {post.image_url ? post.media_type?.startsWith("video/") ? <MediaPreview url={post.image_url} video label="Post video" watermark={post.source_name} /> : <MediaImage accessible accessibilityIgnoresInvertColors accessibilityLabel="Post attachment" resizeMode="cover" uri={post.image_url} style={styles.postImage} /> : null}
+          {post.image_url ? (post.media_type === "video" || post.media_type?.startsWith("video/")) ? <MediaPreview url={post.image_url} video label="Post video" initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} watermark={post.source_name} /> : <PostImage initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} uri={post.image_url} /> : null}
           {post.quoted_post_id ? <QuotedPostPreview post={post.quoted_post ?? null} /> : null}
           {post.correction_note ? <View accessibilityRole="alert" style={styles.correction}><Ionicons color={theme.statusAttention} name="information-circle-outline" size={17} /><Text style={styles.correctionText}>Correction: {post.correction_note}</Text></View> : null}
         </Pressable>

@@ -51,21 +51,21 @@ export default function EditTimetable() {
       } catch {
         /* The timetable remains saved if OS scheduling is unavailable. */
       }
-      toast("Class updated", "success");
+      toast("Activity updated", "success");
       router.back();
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not save class", "error");
+      toast(e instanceof Error ? e.message : "Could not save activity", "error");
     } finally {
       setBusy(false);
     }
   }
   return (
-    <ToolPage title="Edit class">
+    <ToolPage title="Edit activity">
       {entry
         ? (
             [
-              ["title", "Title"],
-              ["course_code", "Course code"],
+              ["title", "Course or activity title"],
+              ["course_code", "Course code (optional)"],
               ["venue", "Venue"],
               ["lecturer", "Lecturer"],
               ["day_of_week", "Day · Sun 0, Mon 1 … Sat 6"],
@@ -88,7 +88,7 @@ export default function EditTimetable() {
           ))
         : null}
       <ToolButton
-        label="Save class"
+        label="Save activity"
         disabled={busy || !entry}
         onPress={() => void save()}
       />

@@ -198,7 +198,7 @@ export default function ExploreScreen() {
           ) : (
             <View style={styles.zero}>
               <Ionicons
-                color={theme.deepBrand}
+                color={theme.accentText}
                 name="search-outline"
                 size={30}
               />
@@ -241,7 +241,7 @@ export default function ExploreScreen() {
               >
                 <View style={styles.recentEmptyIcon}>
                   <Ionicons
-                    color={theme.deepBrand}
+                    color={theme.accentText}
                     name="time-outline"
                     size={22}
                   />
@@ -252,7 +252,7 @@ export default function ExploreScreen() {
                   </Text>
                 </View>
                 <Ionicons
-                  color={theme.deepBrand}
+                  color={theme.accentText}
                   name="arrow-forward"
                   size={18}
                 />
@@ -327,7 +327,7 @@ function ToolIcon({
         tone === "sand" && styles.toolIconSand,
       ]}
     >
-      <Ionicons color={theme.deepBrand} name={icon} size={size} />
+      <Ionicons color={theme.accentText} name={icon} size={size} />
     </View>
   );
 }
@@ -343,7 +343,7 @@ function RecentCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
     >
       <ToolIcon icon={tool.icon} tone={tool.tone} />
       <Ionicons
-        color={theme.deepBrand}
+        color={theme.accentText}
         name="chevron-forward"
         size={17}
         style={styles.recentChevron}
@@ -368,7 +368,7 @@ function FeatureCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
         <Text style={styles.featureTitle}>{tool.title}</Text>
       </View>
       <View style={styles.chevronCircle}>
-        <Ionicons color={theme.deepBrand} name="chevron-forward" size={17} />
+        <Ionicons color={theme.accentText} name="chevron-forward" size={17} />
       </View>
     </Pressable>
   );
@@ -387,7 +387,7 @@ function AiCard({ tool, onPress }: { tool: Tool; onPress: () => void }) {
       <View style={styles.aiCopy}>
         <Text style={styles.featureTitle}>{tool.title}</Text>
       </View>
-      <Ionicons color={theme.deepBrand} name="chevron-forward" size={18} />
+      <Ionicons color={theme.accentText} name="chevron-forward" size={18} />
     </Pressable>
   );
 }
@@ -402,12 +402,12 @@ function CompactTool({ tool, onPress }: { tool: Tool; onPress: () => void }) {
       style={({ pressed }) => [styles.compact, pressed && styles.pressed]}
     >
       <View style={styles.compactIcon}>
-        <Ionicons color={theme.deepBrand} name={tool.icon} size={20} />
+        <Ionicons color={theme.accentText} name={tool.icon} size={20} />
       </View>
       <Text numberOfLines={2} style={styles.compactTitle}>
         {tool.title}
       </Text>
-      <Ionicons color={theme.deepBrand} name="chevron-forward" size={15} />
+      <Ionicons color={theme.accentText} name="chevron-forward" size={15} />
     </Pressable>
   );
 }
@@ -425,7 +425,7 @@ function SearchResult({ tool, onPress }: { tool: Tool; onPress: () => void }) {
       <View style={styles.resultCopy}>
         <Text style={styles.resultTitle}>{tool.title}</Text>
       </View>
-      <Ionicons color={theme.deepBrand} name="chevron-forward" size={18} />
+      <Ionicons color={theme.accentText} name="chevron-forward" size={18} />
     </Pressable>
   );
 }
@@ -479,14 +479,14 @@ const createStyles = (theme: Theme) =>
     },
     toolIcon: {
       alignItems: "center",
-      backgroundColor: "#FBEDE6",
+      backgroundColor: theme.surfaceSoft,
       borderRadius: 14,
       height: 44,
       justifyContent: "center",
       width: 44,
     },
-    toolIconSage: { backgroundColor: "#EAF2EA" },
-    toolIconSand: { backgroundColor: "#F6EEDF" },
+    toolIconSage: { backgroundColor: theme.surfaceSoft },
+    toolIconSand: { backgroundColor: theme.surfaceSoft },
     recentChevron: { position: "absolute", right: 11, top: 29 },
     recentTitle: {
       color: theme.text,

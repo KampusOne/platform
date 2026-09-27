@@ -18,7 +18,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { useReducedMotionPreference } from "@/src/components/visual-system";
 import { theme } from "@/src/theme";
-import { ScreenSkeleton } from "@/src/components/skeleton";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type TabBarRenderer = NonNullable<ComponentProps<typeof Tabs>["tabBar"]>;
@@ -144,7 +143,7 @@ function NavItem({
         }}
       >
         <Ionicons
-          color={focused ? theme.deepBrand : theme.textMuted}
+          color={focused ? theme.accentText : theme.textMuted}
           name={focused ? activeIcon : icon}
           size={22}
         />
@@ -157,7 +156,7 @@ function NavItem({
 }
 
 function KampusTabBar({ state, navigation }: KampusTabBarProps) {
-  const { theme, styles } = useThemeStyles(createStyles);
+  const { theme, styles, isDark } = useThemeStyles(createStyles);
 
   const insets = useSafeAreaInsets();
   const routeName = state.routes[state.index]?.name ?? "index";
@@ -175,7 +174,7 @@ function KampusTabBar({ state, navigation }: KampusTabBarProps) {
           }
           intensity={30}
           style={StyleSheet.absoluteFill}
-          tint="light"
+          tint={isDark ? "dark" : "light"}
         />
         <View pointerEvents="none" style={styles.dockTint} />
         <View pointerEvents="none" style={styles.dockHighlight} />
@@ -223,7 +222,7 @@ export default function TabLayout() {
     state === "loading" ||
     (state === "authenticated" && profileState === "loading")
   ) {
-    return <ScreenSkeleton />;
+    return <View style={styles.loading} />;
   }
   if (state === "anonymous") return <Redirect href="/(auth)/welcome" />;
   if (state === "authenticated" && profileState === "error")
@@ -237,8 +236,9 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      initialRouteName="index"
       key={user?.id ?? "anonymous"}
-      backBehavior="history"
+      backBehavior="fullHistory"
       tabBar={(props) => <KampusTabBar {...props} />}
       screenOptions={{
         animation: reducedMotion ? "none" : "fade",
@@ -284,7 +284,7 @@ const createStyles = (theme: Theme) =>
     glassDock: {
       alignItems: "center",
       backgroundColor: theme.surfaceGlassStrong,
-      borderColor: "rgba(255,255,255,0.94)",
+      borderColor: theme.border,
       borderRadius: 28,
       borderWidth: 1,
       flexDirection: "row",
@@ -294,7 +294,7 @@ const createStyles = (theme: Theme) =>
       ...theme.floatingShadow,
     },
     dockTint: {
-      backgroundColor: "rgba(251,247,242,0.42)",
+      backgroundColor: theme.surfaceGlass,
       bottom: 0,
       left: 0,
       position: "absolute",
@@ -333,7 +333,7 @@ const createStyles = (theme: Theme) =>
       marginTop: 3,
     },
     navLabelFocused: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       fontFamily: theme.font.semibold,
     },
   });

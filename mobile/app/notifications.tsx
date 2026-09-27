@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
-import { Text } from "react-native";
-import { router, type Href } from "expo-router";
+import { useCallback, useState, useRef } from "react";
+import { Pressable, Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { updateNotificationCount, changeNotificationCount } from "@/src/lib/notification-state";
+import { router, useFocusEffect, type Href } from "expo-router";
 import { ToolPage, ToolRow, ToolButton } from "@/src/components/toolkit";
 import { EmptyResult } from "@/src/components/product-ui";
 import { ScreenSkeleton } from "@/src/components/skeleton";
@@ -20,13 +22,14 @@ export default function Notifications() {
   const [items, setItems] = useState<Notice[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
+  const [nextCursor,setNextCursor]=useState<string|null>(null);
+  const extended=useRef(false);
+  const [moreBusy,setMoreBusy]=useState(false);
   const load = useCallback(async () => {
     setError("");
     try {
-      setItems(
-        (await api<{ notifications: Notice[] }>("/v1/account/notifications"))
-          .notifications,
-      );
+      const result=await api<{notifications:Notice[];unreadCount:number;nextCursor:string|null}>("/v1/notifications/inbox");
+      setItems(current=>extended.current?[...result.notifications,...current.filter(n=>!result.notifications.some(f=>f.id===n.id))]:result.notifications);updateNotificationCount(result.unreadCount);if(!extended.current)setNextCursor(result.nextCursor);
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Notifications could not load.",
@@ -35,20 +38,16 @@ export default function Notifications() {
       setReady(true);
     }
   }, []);
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(useCallback(() => { void load();const timer=setInterval(()=>void load(),20000);return()=>clearInterval(timer); },[load]));
+  async function loadMore(){if(!nextCursor||moreBusy)return;setMoreBusy(true);extended.current=true;try{const result=await api<{notifications:Notice[];nextCursor:string|null}>("/v1/notifications/inbox?before="+encodeURIComponent(nextCursor));setItems(current=>[...current,...result.notifications.filter(n=>!current.some(old=>old.id===n.id))]);setNextCursor(result.nextCursor);}catch{toast("Could not load older notifications","error");}finally{setMoreBusy(false);}}
   async function open(n: Notice) {
+    if(!n.read_at){setItems(current=>current.map(i=>i.id===n.id?{...i,read_at:new Date().toISOString()}:i));changeNotificationCount(-1);}
     try {
       await api("/v1/account/notifications/" + n.id, { method: "PATCH" });
-      setItems((s) =>
-        s.map((i) =>
-          i.id === n.id ? { ...i, read_at: new Date().toISOString() } : i,
-        ),
-      );
       if (n.path?.startsWith("/") && !n.path.startsWith("//"))
         router.push(n.path as Href);
     } catch (e) {
+      if(!n.read_at){setItems(current=>current.map(i=>i.id===n.id?{...i,read_at:null}:i));changeNotificationCount(1);}
       toast(
         e instanceof Error ? e.message : "Could not open notification",
         "error",
@@ -56,7 +55,8 @@ export default function Notifications() {
     }
   }
   return (
-    <ToolPage title="Notifications">
+    <ToolPage title="Notifications" action={<Pressable accessibilityRole="button" accessibilityLabel="Notification settings" onPress={()=>router.push('/notification-preferences')} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="options-outline" size={24} color={theme.text}/></Pressable>}>
+      {items.some(item=>!item.read_at)?<ToolButton secondary label="Mark all as read" onPress={()=>{void api('/v1/notifications/read-all',{method:'POST'}).then(()=>{setItems(current=>current.map(item=>({...item,read_at:new Date().toISOString()})));updateNotificationCount(0);}).catch(()=>toast('Could not mark notifications as read','error'));}}/>:null}
       {!ready ? (
         <ScreenSkeleton variant="list" compact />
       ) : error ? (
@@ -86,10 +86,11 @@ export default function Notifications() {
           />
         ))
       )}
+      {nextCursor?<ToolButton secondary label={moreBusy?"Loading…":"Older notifications"} disabled={moreBusy} onPress={()=>void loadMore()}/>:null}
       <ToolRow
         title="Notification settings"
         icon="settings-outline"
-        onPress={() => router.push("/settings")}
+        onPress={() => router.push("/notification-preferences")}
       />
     </ToolPage>
   );

@@ -27,6 +27,7 @@ import {
 import { clearScheduledAlarms } from "@/src/lib/alarms";
 import { applyPreferences, type Preferences } from "@/src/lib/preferences";
 import { unregisterPushDevice } from "@/src/lib/push-registration";
+import { removeRefreshToken } from "@/src/lib/session-storage";
 
 type Profile = {
   id: string;
@@ -37,6 +38,8 @@ type Profile = {
   profile_image_url?: string | null;
   university_id: string | null;
   university_name: string | null;
+  faculty_name?: string | null;
+  department_name?: string | null;
   onboarding_completed_at: string | null;
   settings?: Partial<Preferences>;
 };
@@ -55,6 +58,7 @@ type AuthContextValue = {
   retrySessionRestore(): Promise<void>;
   reloadProfile(): Promise<void>;
   signOut(): Promise<boolean>;
+  finishAccountDeletion(): Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -84,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(response.profile);
       applyPreferences(response.profile.settings);
       setProfileState("ready");
-      await writeCache(`profile.${response.profile.id}`, response.profile);
+      void writeCache(`profile.${response.profile.id}`, response.profile);
     } catch (caught) {
       if (generation !== sessionVersion.current) return;
       setProfileState((current) => (current === "ready" ? current : "error"));
@@ -98,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applySession = useCallback(
-    async (session: Session) => {
+    (session: Session) => {
       if (sessionUserId.current !== session.user.id) {
         sessionVersion.current++;
         sessionUserId.current = session.user.id;
@@ -110,11 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session.user);
       setState("authenticated");
       void writeCache("last-session", { user: session.user }, 30 * 86400_000).catch(() => undefined);
-      try {
-        await reloadProfile();
-      } catch {
-        /* The signed-in session remains valid; the UI exposes a profile retry state. */
-      }
+      // Accept sign-in immediately. Profile loading has its own visible retry state.
+      void reloadProfile().catch(() => undefined);
     },
     [reloadProfile],
   );
@@ -160,15 +161,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let restoring = true;
+    const generation = sessionVersion.current;
+    // Disk-cache reads must not delay checking the actual secure session.
+    void retrySessionRestore().finally(() => { restoring = false; });
     void (async () => {
       const snapshot = await readCache<{ user: SessionUser }>(
         "last-session",
       ).catch(() => null);
-      if (snapshot && active) {
+      if (snapshot && active && restoring && generation === sessionVersion.current) {
         const savedProfile = await readCache<Profile>(
           `profile.${snapshot.user.id}`,
         ).catch(() => null);
-        if (savedProfile?.onboarding_completed_at && active) {
+        if (savedProfile?.onboarding_completed_at && active && restoring && generation === sessionVersion.current) {
           sessionUserId.current = snapshot.user.id;
           setUser(snapshot.user);
           setProfile(savedProfile);
@@ -178,7 +183,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           applyPreferences(savedProfile.settings);
         }
       }
-      if (active) await retrySessionRestore();
     })();
     return () => {
       active = false;
@@ -231,6 +235,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const finishAccountDeletion = useCallback(async () => {
+    sessionVersion.current++;
+    sessionUserId.current=null;
+    setAccessToken(null);
+    setUser(null);setProfile(null);setState("anonymous");
+    setProfileState("idle");setProfileError("");setSessionRestoreError("");
+    applyPreferences();
+    await Promise.allSettled([removeRefreshToken(),clearDeviceCache(),clearScheduledAlarms()]);
+  },[]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       state,
@@ -247,6 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       retrySessionRestore,
       reloadProfile,
       signOut,
+      finishAccountDeletion,
     }),
     [
       applySession,
@@ -257,6 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       retrySessionRestore,
       sessionRestoreError,
       signOut,
+      finishAccountDeletion,
       state,
       user,
     ],

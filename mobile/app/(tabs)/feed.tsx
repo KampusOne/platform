@@ -2,7 +2,7 @@ import { FeedSkeleton, SkeletonBlock } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
-import { useFocusEffect, router } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Image, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type ViewToken } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -26,7 +26,9 @@ export default function FeedScreen() {
   const { width } = useWindowDimensions();
   const { user, state: authState } = useAuth();
   const [posts, setPosts] = useState<SocialFeedPost[]>([]);
-  const [query, setQuery] = useState("");
+  const { hashtag } = useLocalSearchParams<{ hashtag?: string }>();
+  const [query, setQuery] = useState(hashtag ?? "");
+  useEffect(() => { if (typeof hashtag === "string") { setQuery(hashtag); setSelected("All"); } }, [hashtag]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<(typeof categories)[number]>("All");
   const [loading, setLoading] = useState(true);
@@ -69,7 +71,7 @@ export default function FeedScreen() {
     if (refresh) setRefreshing(true); else if (newScope) setLoading(!cached);
     setError("");
     try {
-      const response = await api<FeedPage>(path, { signal: AbortSignal.timeout(15_000), cache: refresh ? "reload" : "default" });
+      const response = await api<FeedPage>(path, { timeoutMs: 15_000, cache: refresh ? "reload" : "default" });
       if (version === loadVersion.current) {
         const incoming = response.posts.filter((post) => !wasPostDeleted(post.id));
         // Returning from a conversation refreshes visible data without discarding loaded pages.
@@ -86,13 +88,14 @@ export default function FeedScreen() {
     paging.current = true; setLoadingMore(true);
     const version = loadVersion.current;
     try {
-      const response = await api<FeedPage>(`${path}&cursor=${encodeURIComponent(cursor)}`, { signal: AbortSignal.timeout(15_000) });
+      const response = await api<FeedPage>(`${path}&cursor=${encodeURIComponent(cursor)}`, { timeoutMs: 15_000 });
       if (version === loadVersion.current) { setPosts((items) => mergeById(items, response.posts).filter((post) => !wasPostDeleted(post.id))); setCursor(response.nextCursor ?? null); setError(""); }
     } catch (caught) { if (version === loadVersion.current) setFeedback(caught instanceof ApiError ? caught.message : "Older posts could not load. Tap Load more to retry."); }
     finally { if (version === loadVersion.current) { paging.current = false; setLoadingMore(false); } }
   }
   useEffect(() => { if (!feedback) return; const timeout = setTimeout(() => setFeedback(""), 4500); return () => clearTimeout(timeout); }, [feedback]);
-  const filtered = useMemo(() => posts.filter((post) => (selected === "All" || post.category.toUpperCase() === selected.toUpperCase()) && (!search || `${post.title} ${post.summary} ${post.body} ${post.source_name}`.toLowerCase().includes(search.toLowerCase()))), [posts, search, selected]);
+  // Server owns filtering, including exact hashtag boundaries and tenant visibility.
+  const filtered = posts;
   const toggleBookmark = useCallback(async (post: FeedPostData) => {
     if (pendingBookmarks.current.has(post.id)) return;
     pendingBookmarks.current.add(post.id); void Haptics.selectionAsync();

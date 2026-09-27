@@ -44,3 +44,18 @@ export function parseScheduleDocument(text: string, sourceText = "") {
   }
   return { documentType, entries, events, warnings };
 }
+
+/** Accept common vision model formatting while preserving real, explicitly supplied times. */
+export function normalizeScheduleEntry(raw:Record<string,unknown>) {
+  const clock=(value:unknown)=>{
+    if(typeof value!=="string")return value;
+    const time=value.trim().match(/^(\d{1,2})(?::([0-5]\d))?(?::00)?\s*(AM|PM)?$/i);
+    if(!time)return value;
+    let hour=Number(time[1]);const marker=time[3]?.toUpperCase();
+    if(marker){if(hour<1||hour>12)return value;hour=hour%12+(marker==='PM'?12:0);}
+    if(hour>23)return value;
+    return `${String(hour).padStart(2,'0')}:${time[2]??'00'}`;
+  };
+  const day=typeof raw.dayOfWeek==='string' ? /^\d$/.test(raw.dayOfWeek)?Number(raw.dayOfWeek):['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].findIndex(value=>value.startsWith(String(raw.dayOfWeek).toLowerCase().trim())) : raw.dayOfWeek;
+  return {title:raw.title,courseCode:raw.courseCode??'',venue:raw.venue??'',lecturer:raw.lecturer??'',dayOfWeek:day,startsAt:clock(raw.startsAt),endsAt:clock(raw.endsAt),reminderMinutes:15,reminderEnabled:true};
+}

@@ -41,7 +41,10 @@
     "react-native-screens": "~4.26.0",
     "react-native-video-trim": "^8.2.2",
     "react-native-web": "~0.21.0",
-    "expo-clipboard": "~57.0.1"
+    "expo-audio": "~57.0.5",
+    "expo-clipboard": "~57.0.2",
+    "expo-splash-screen": "~57.0.8",
+    "expo-file-system": "~57.0.6"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

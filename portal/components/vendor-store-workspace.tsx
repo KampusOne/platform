@@ -7,6 +7,7 @@ import { PortalApiError, portalApi } from "@/lib/api";
 
 type Scalar = string | number | null;
 type Storefront = {
+  pickup_place_id?:string|null;
   vendor_profile_id: string;
   display_name: string;
   description: string | null;
@@ -174,7 +175,7 @@ function InlineState({ error }: { error: PortalApiError }) {
 
 export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
   const [refreshKey, setRefreshKey] = useState(0);
-  const storefrontResource = useResource<{ storefront: Storefront | null }>(
+  const storefrontResource = useResource<{ storefront: Storefront | null;places:{id:string;name:string}[] }>(
     "/v1/agents/storefront",
     refreshKey,
   );
@@ -228,6 +229,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
           description: form.get("description"),
           contactPhoneE164: form.get("contactPhoneE164"),
           pickupLocation: form.get("pickupLocation"),
+          pickupPlaceId:form.get("pickupPlaceId")||null,
           pickupInstructions: form.get("pickupInstructions") || null,
           openingHours: { summary: form.get("openingHours") },
           defaultPreparationMinutes: Number(form.get("defaultPreparationMinutes")),
@@ -487,6 +489,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
                 Pickup location
                 <input name="pickupLocation" minLength={5} maxLength={500} required defaultValue={storefront?.pickup_location ?? ""} disabled={storeLocked} />
               </label>
+              <label>Campus pickup point (optional)<select name="pickupPlaceId" defaultValue={storefront?.pickup_place_id??''} disabled={storeLocked}><option value="">Use configured zone fee</option>{storefrontResource.data?.places?.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
               <label>
                 Default preparation (minutes)
                 <input name="defaultPreparationMinutes" type="number" min="10" max="1440" required defaultValue={Number(storefront?.default_preparation_minutes ?? 60)} disabled={storeLocked} />

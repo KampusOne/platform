@@ -1,6 +1,6 @@
 import { InlineLoading } from "@/src/components/skeleton";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {  Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, ApiError } from "@/src/lib/api";
@@ -41,27 +41,11 @@ export function PostMenu({ post, onBookmark, onShare, onDeleted, onFeedback }: P
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [canDelete, setCanDelete] = useState(false);
+  // This flag comes from the authenticated feed response; DELETE is still authorized by the API.
+  const canDelete = post.can_delete === true;
   const [error, setError] = useState("");
-  const [retry, setRetry] = useState(0);
   const [copyMode, setCopyMode] = useState(false);
   const afterDismiss = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    let active = true;
-    setChecking(true);
-    setCanDelete(false);
-    setError("");
-    void api<{ post: FeedPostData }>(`/v1/student/feed/${post.id}`)
-      .then(({ post: current }) => { if (active) setCanDelete(current.can_delete === true); })
-      .catch((caught) => {
-        if (active) setError(caught instanceof ApiError ? caught.message : "Could not check post options. Check your connection and try again.");
-      })
-      .finally(() => { if (active) setChecking(false); });
-    return () => { active = false; };
-  }, [open, post.id, retry]);
 
   function close() {
     if (deleting) return;
@@ -135,7 +119,7 @@ export function PostMenu({ post, onBookmark, onShare, onDeleted, onFeedback }: P
       <Pressable
         accessibilityRole="button" accessibilityLabel={`More options for ${post.title}`}
         accessibilityState={{ expanded: open }} hitSlop={4}
-        onPress={() => { void Haptics.selectionAsync(); setCanDelete(false); setChecking(true); setConfirm(false); setCopyMode(false); afterDismiss.current = null; setOpen(true); }}
+        onPress={() => { void Haptics.selectionAsync(); setConfirm(false); setCopyMode(false); afterDismiss.current = null; setOpen(true); }}
         style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
       >
         <Ionicons name="ellipsis-horizontal" size={21} color={theme.textMuted} />
@@ -168,9 +152,7 @@ export function PostMenu({ post, onBookmark, onShare, onDeleted, onFeedback }: P
                   {row("share-social-outline", "Share post", share)}
                   {row("link-outline", "Copy link", () => void copy())}
                   {row(post.bookmarked ? "bookmark" : "bookmark-outline", post.bookmarked ? "Unsave post" : "Save post", () => { close(); onBookmark(post); })}
-                  {checking ? <View style={styles.row}><InlineLoading color={theme.brand} /><Text style={styles.body}>Checking post permissions…</Text></View> : null}
-                  {!checking && canDelete ? row("trash-outline", "Delete post", () => { setError(""); setConfirm(true); }, true) : null}
-                  {error && !checking ? row("refresh-outline", "Retry post options", () => setRetry((value) => value + 1)) : null}
+                  {canDelete ? row("trash-outline", "Delete post", () => { setError(""); setConfirm(true); }, true) : null}
                   {row("close-outline", "Cancel", close)}
                 </>
               )}

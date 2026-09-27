@@ -3,6 +3,19 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const groups = {
+  fullfix: [
+    "20260926120000_profile_safety_and_messages",
+    "20260926120000_reviewed_calendars_and_progression",
+    "20260926150000_marketplace_promotions_resources",
+    "20260926170000_academic_catalogue_provenance",
+    "20260926190000_account_deletion",
+    "20260926200000_notification_channels",
+    "20260926210000_message_attachments",
+    "20260926220000_ai_schedule_actions",
+    "20260926230000_tutor_commerce",
+    "20260926240000_commerce_fee_snapshots",
+    "20260926250000_campus_delivery_quotes"
+],
   corrections: [
     "20260921100000_operations_permissions_academic",
     "20260921110000_ai_history_and_streak_activity",
@@ -72,7 +85,7 @@ export function verifySchemaProof(proof, group, loadMigration) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const root = new URL("../../", import.meta.url);
   try {
-    const proof = JSON.parse(readFileSync(new URL(`database/verification/${process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json"}`, root), "utf8"));
+    const proof = JSON.parse(readFileSync(new URL(`database/verification/${process.argv[2] === "fullfix" ? "production-20260926-full-fix.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json"}`, root), "utf8"));
     const count = verifySchemaProof(proof, process.argv[2], (version) =>
       readFileSync(new URL(`database/neon/migrations/${version}.sql`, root)));
     console.log(`Verified recorded production proof: ${process.argv[2]} (${count} migration files).`);

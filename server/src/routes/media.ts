@@ -30,6 +30,11 @@ function mediaKey(env: Bindings) {
 }
 async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
   if (user.id === media.owner_user_id) return;
+  if(media.kind==='message') {
+    const allowed=firstRow(await database(env).execute(sql`select m.id from public.direct_messages m join public.direct_threads t on t.id=m.thread_id where m.media_id=${media.id}::uuid and t.status='ACCEPTED' and (t.kind='GENERAL' or app_private.tutor_access_end(t.initiator_id,t.recipient_id)>now()) and ${user.id}::uuid in(t.initiator_id,t.recipient_id) and not exists(select 1 from public.user_blocks b where (b.blocker_id=t.initiator_id and b.blocked_id=t.recipient_id) or (b.blocker_id=t.recipient_id and b.blocked_id=t.initiator_id)) limit 1`));
+    if(allowed)return;
+    throw new AppError(403,"FORBIDDEN","This conversation attachment is unavailable.");
+  }
   const permission=media.kind==='kyc'?'agents.verify':media.kind==='support'?'support.view':'content.view';
   const access=await adminAccess(env,user);
   if(access.permissions.includes(permission)){
@@ -41,7 +46,7 @@ async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
   if (media.kind === "resource" && user.universityId === media.institution_id) {
     const resource = firstRow(
       await database(env).execute(
-        sql`select r.id from public.tutorial_resources r where r.media_object_id=${media.id}::uuid and r.university_id=${user.universityId}::uuid and r.deleted_at is null and r.status='PUBLISHED' and (r.access_model='FREE' or(r.access_model='BOOKING_INCLUDED' and r.listing_id is not null and exists(select 1 from public.tutorial_bookings b where b.listing_id=r.listing_id and b.student_user_id=${user.id}::uuid and b.status in ('CONFIRMED','COMPLETED')))) limit 1`,
+        sql`select r.id from public.tutorial_resources r where r.media_object_id=${media.id}::uuid and r.university_id=${user.universityId}::uuid and r.deleted_at is null and r.status='PUBLISHED' and app_private.can_read_tutor_resource(${user.id}::uuid,r.id) limit 1`,
       ),
     );
     if (resource) return;
@@ -52,7 +57,7 @@ export const mediaRoutes = new Hono<{
   Bindings: Bindings;
   Variables: Variables;
 }>();
-const privateKinds = new Set(["kyc", "support", "resource"]);
+const privateKinds = new Set(["kyc", "support", "resource", "message"]);
 export function detectedMime(bytes: Uint8Array) {
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
     return "image/jpeg";
@@ -68,33 +73,50 @@ export function detectedMime(bytes: Uint8Array) {
     const ebml = new TextDecoder().decode(bytes.slice(0, 256)).toLowerCase();
     if (ebml.includes("webm")) return "video/webm";
   }
+  if (head.slice(4,8) === "ftyp" && ["M4A ","M4B "].includes(head.slice(8,12))) return "audio/mp4";
   // ISO Base Media container: accept MP4 brands, not arbitrary ftyp/HEIC files.
   if (head.slice(4, 8) === "ftyp" && ["isom", "iso2", "mp41", "mp42", "avc1", "M4V "].includes(head.slice(8, 12))) return "video/mp4";
   return null;
 }
 mediaRoutes.post("/", requireAuth, async (c) => {
   const user = currentUser(c);
-  if (Number(c.req.header("Content-Length") ?? 0) > 10 * 1024 * 1024 + 4096)
-    throw new AppError(413, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
-  const form = await c.req.formData();
-  const file = form.get("file");
-  const kind = String(form.get("kind"));
-  if (
-    !(file instanceof File) ||
-    ![
-      "avatar",
-      "cover",
-      "product",
-      "post",
-      "resource",
-      "kyc",
-      "support",
-      "notification-sound",
-    ].includes(kind)
-  )
+  const maximum = 50 * 1024 * 1024;
+  if (Number(c.req.header("Content-Length") ?? 0) > maximum + 4096)
+    throw new AppError(413, "BAD_REQUEST", "Choose a video smaller than 50 MB.");
+  const isMultipart = c.req.header("Content-Type")?.toLowerCase().startsWith("multipart/form-data");
+  let file: File | null;
+  let kind: string;
+  if (isMultipart) {
+    const form = await c.req.formData();
+    const selected = form.get("file");
+    file = selected instanceof File ? selected : null;
+    kind = String(form.get("kind"));
+  } else {
+    kind = c.req.query("kind") ?? "";
+    const name = (c.req.query("name") ?? "upload").slice(0, 180);
+    // Read a bounded stream even if the client omitted Content-Length.
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    const reader = c.req.raw.body?.getReader();
+    if (reader) {
+      try {
+        for (;;) {
+          const part = await reader.read();
+          if (part.done) break;
+          size += part.value.byteLength;
+          if (size > maximum) { await reader.cancel(); throw new AppError(413, "BAD_REQUEST", "Choose a video smaller than 50 MB."); }
+          chunks.push(part.value);
+        }
+      } finally { reader.releaseLock(); }
+    }
+    file = new File(chunks as BlobPart[], name, { type: c.req.header("Content-Type") ?? "application/octet-stream" });
+  }
+  if (!file || !["avatar", "cover", "product", "post", "resource", "kyc", "support", "notification-sound", "message"].includes(kind))
     throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
-  if (file.size < 1 || file.size > 10 * 1024 * 1024)
-    throw new AppError(400, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
+  const declaredVideo = (["post","resource","message"].includes(kind)) && (file.type.startsWith("video/") || (["resource","message"].includes(kind) && file.type.startsWith("audio/")));
+  const limit = declaredVideo ? maximum : 10 * 1024 * 1024;
+  if (file.size < 1 || file.size > limit)
+    throw new AppError(413, "BAD_REQUEST", `Choose a ${declaredVideo ? "video smaller than 50" : "file smaller than 10"} MB.`);
   const recent = await database(c.env).execute<{ allowed: boolean }>(
     sql`select app_private.consume_request_rate_limit('MEDIA_UPLOAD',${user.id},30,3600,3600) allowed`,
   );
@@ -113,12 +135,14 @@ mediaRoutes.post("/", requireAuth, async (c) => {
   if(!mime && kind === "resource" && file.type === "text/plain") {
     try { const text=new TextDecoder("utf-8",{fatal:true}).decode(bytes);if(!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)) mime="text/plain"; } catch { /* Not a UTF-8 source. */ }
   }
-  if (!mime || (kind === "notification-sound" ? !["audio/mpeg","audio/wav"].includes(mime) : mime.startsWith("audio/") || (["video/mp4", "video/webm"].includes(mime) ? kind !== "post" : !privateKinds.has(kind) && !mime.startsWith("image/"))))
+  if(kind=== "message" && file.type.startsWith("audio/") && ["video/webm","video/mp4"].includes(mime??"")) mime=mime=== "video/webm"?"audio/webm":"audio/mp4";
+  if (!mime || (kind === "notification-sound" ? !["audio/mpeg","audio/wav"].includes(mime) : (mime.startsWith("audio/") && !["resource","message"].includes(kind)) || (["video/mp4", "video/webm"].includes(mime) ? !["post", "resource", "message"].includes(kind) : !privateKinds.has(kind) && !mime.startsWith("image/"))))
     throw new AppError(
       400,
       "BAD_REQUEST",
       "Use a JPG, PNG or WebP image, a PDF document, or an MP4/WebM video for a post.",
     );
+  if (file.size > 10 * 1024 * 1024 && !mime.startsWith("video/") && !(["resource","message"].includes(kind) && mime.startsWith("audio/"))) throw new AppError(413, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
   const bucket = privateKinds.has(kind)
     ? c.env.PRIVATE_BUCKET
     : c.env.MEDIA_BUCKET;

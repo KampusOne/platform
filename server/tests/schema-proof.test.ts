@@ -35,3 +35,10 @@ describe("correction deployment guard", () => {
     expect(() => verifySchemaProof(wrongBranch, "corrections", load)).toThrow();
   });
 });
+
+it("guards every September 26 migration before production deployment",()=>{
+  const evidence={...proof(),checks:{fullfix:"passed",fixturesRolledBack:true},migrations:groups.fullfix.map((version:string)=>{const bytes=load(version);return {version,sourceBlobSha:createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex")};})};
+  expect(verifySchemaProof(evidence,"fullfix",load)).toBe(groups.fullfix.length);
+  expect(groups.fullfix.map((name:string)=>name+".sql").sort()).toEqual(readdirSync(new URL("../../database/neon/migrations/",import.meta.url)).filter((name:string)=>name.startsWith("20260926")).sort());
+  expect(()=>verifySchemaProof({...evidence,environment:"rehearsal"},"fullfix",load)).toThrow();
+});

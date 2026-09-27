@@ -35,6 +35,8 @@ const schema = agentApplicationSchema.extend({
   tutorSubjects:z.array(z.string().trim().min(1).max(120)).max(40).optional(),
   tutorLevels:z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   experience:z.string().trim().max(2000).optional(),
+  lectureHouseName:z.string().trim().max(160).optional(),
+  lectureHouseAddress:z.string().trim().max(500).optional(),
   riderDocumentIds:z.array(z.string().uuid()).max(6).optional(),
   termsAccepted:z.literal(true).optional(),
 });
@@ -46,7 +48,7 @@ applicationRoutes.get("/draft", async(c)=>{
 applicationRoutes.put("/draft",async c=>{
  const d=await input(c,z.object({step:z.number().int().min(0).max(5),values:z.record(z.string(),z.unknown())}));
  // A draft is private unverified input, never a source of roles or approval.
- const allowed=new Set(['birthDate','isStudent','matricNumber','department','businessName','businessAddress','identityDocumentId','portraitDocumentId','studentDocumentId','guardianName','guardianPhone','guardianEmail','guardianRelationship','universityId','agentType','displayName','phoneE164','statement','legalName','address','emergencyContactName','emergencyContactPhone','whatsappPhone','campus','serviceLocation','campusPermission','tutorSubjects','tutorLevels','experience','riderDocumentIds']);
+ const allowed=new Set(['birthDate','isStudent','matricNumber','department','businessName','businessAddress','identityDocumentId','portraitDocumentId','studentDocumentId','guardianName','guardianPhone','guardianEmail','guardianRelationship','universityId','agentType','displayName','phoneE164','statement','legalName','address','emergencyContactName','emergencyContactPhone','whatsappPhone','campus','serviceLocation','campusPermission','tutorSubjects','tutorLevels','experience','lectureHouseName','lectureHouseAddress','riderDocumentIds']);
  const values=Object.fromEntries(Object.entries(d.values).filter(([key])=>allowed.has(key)));
  if(JSON.stringify(values).length>60000)throw new AppError(400,'BAD_REQUEST','This application draft is too large.');
  const result=await database(c.env).execute(sql`insert into public.agent_application_drafts(user_id,step,values_json) values(${currentUser(c).id}::uuid,${d.step},${JSON.stringify(values)}::jsonb) on conflict(user_id) do update set step=excluded.step,values_json=excluded.values_json,updated_at=now() returning step,values_json as values,updated_at`);
@@ -65,7 +67,7 @@ applicationRoutes.post("/", async (c) => {
   if(d.agentType==='VENDOR'&&(!d.businessName||!d.businessAddress||!d.campusPermission))throw new AppError(400,'BAD_REQUEST','Add your business name, location and campus permission status.');
   if(d.agentType==='TUTOR'&&(!d.tutorSubjects?.length||!d.tutorLevels?.length||!d.experience))throw new AppError(400,'BAD_REQUEST','Add your subjects, levels and teaching background.');
   if(d.agentType==='RIDER'&&!d.riderDocumentIds?.length)throw new AppError(400,'BAD_REQUEST','Upload your bike and operating evidence.');
-  const roleDetails=JSON.stringify({whatsappPhone:d.whatsappPhone,campus:d.campus,serviceLocation:d.serviceLocation,campusPermission:d.campusPermission,tutorSubjects:d.tutorSubjects,tutorLevels:d.tutorLevels,experience:d.experience,riderDocumentIds:d.riderDocumentIds});
+  const roleDetails=JSON.stringify({whatsappPhone:d.whatsappPhone,campus:d.campus,serviceLocation:d.serviceLocation,campusPermission:d.campusPermission,tutorSubjects:d.tutorSubjects,tutorLevels:d.tutorLevels,experience:d.experience,lectureHouseName:d.lectureHouseName,lectureHouseAddress:d.lectureHouseAddress,riderDocumentIds:d.riderDocumentIds});
   const age = ageOn(d.birthDate);
   if (age < 16 || age > 110)
     throw new AppError(
@@ -136,7 +138,7 @@ applicationRoutes.post("/", async (c) => {
     throw new AppError(
       409,
       "CONFLICT",
-      "This application is already under review or approved.",
+      "You already have a pending or approved application for this role. You can apply for another role.",
     );
   await recordAudit(c.env, {
     actorUserId: u.id,

@@ -20,7 +20,7 @@ type Details = {
   guardian_relationship: string | null;
   guardian_consent_at: string | null;
   identity_recorded: boolean;
-  role_details?: { whatsappPhone?: string; campus?: string; serviceLocation?: string; campusPermission?: string; tutorSubjects?: string[]; tutorLevels?: string[]; experience?: string; riderDocumentIds?: string[] };
+  role_details?: { whatsappPhone?: string; campus?: string; serviceLocation?: string; campusPermission?: string; tutorSubjects?: string[]; tutorLevels?: string[]; experience?: string; lectureHouseName?: string; lectureHouseAddress?: string; riderDocumentIds?: string[] };
 };
 export function ApplicationDocuments({ id }: { id: string }) {
   const [details, setDetails] = useState<Details | null>(null);
@@ -155,7 +155,7 @@ export function ApplicationDocuments({ id }: { id: string }) {
         ) : null}
       </dl>
       {details.role_details && <dl className="detail-list">
-        {([ ["WhatsApp", details.role_details.whatsappPhone], ["Campus", details.role_details.campus], ["Service area", details.role_details.serviceLocation], ["Campus permission", details.role_details.campusPermission], ["Teaching subjects", details.role_details.tutorSubjects?.join(", ")], ["Teaching levels", details.role_details.tutorLevels?.join(", ")], ["Background", details.role_details.experience] ] as const).filter(([, value]) => Boolean(value)).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+        {([ ["WhatsApp", details.role_details.whatsappPhone], ["Campus", details.role_details.campus], ["Service area", details.role_details.serviceLocation], ["Campus permission", details.role_details.campusPermission], ["Teaching subjects", details.role_details.tutorSubjects?.join(", ")], ["Teaching levels", details.role_details.tutorLevels?.join(", ")], ["Background", details.role_details.experience], ["Lecture house", details.role_details.lectureHouseName], ["Lecture house address", details.role_details.lectureHouseAddress] ] as const).filter(([, value]) => Boolean(value)).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
       </dl>}
       <div className="button-row">
         {(

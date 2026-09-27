@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { withRequestDeadline } from "./request-deadline";
 const currentBuild = process.env.EXPO_PUBLIC_BUILD_ID;
 let pending: Promise<void> | undefined;
 const editingPath = /(?:compose|account-edit|onboarding|password|support|settings|timetable|gpa|checkout)/i;
@@ -7,9 +8,10 @@ export function checkBuildVersion(): Promise<void> {
   if (pending) return pending;
   pending = (async () => {
     try {
-      const response = await fetch(`/app-version.json?t=${Date.now()}`, { cache: "no-store", signal: AbortSignal.timeout(2500) });
-      if (!response.ok) return;
-      const payload: unknown = await response.json();
+      const payload: unknown = await withRequestDeadline(async (signal) => {
+        const response = await fetch(`/app-version.json?t=${Date.now()}`, { cache: "no-store", signal });
+        return response.ok ? response.json() : null;
+      }, 2500);
       const version = (payload as { version?: unknown } | null)?.version;
       if (typeof version !== "string" || !/^[a-zA-Z0-9._-]{7,80}$/.test(version) || version === currentBuild) return;
       if (editingPath.test(window.location.pathname)) return;

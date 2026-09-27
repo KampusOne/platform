@@ -1,4 +1,4 @@
-import { api as transport, apiUrl, peekTransportCache } from "./api-transport";
+import { api as transport, apiUrl, peekTransportCache, type ApiRequestInit } from "./api-transport";
 import { normalizeMediaLinks } from "./media-links";
 
 export * from "./api-transport";
@@ -10,7 +10,7 @@ function normalize<T>(value: T): T {
   normalized.set(value, result);
   return result;
 }
-export async function api<T>(path: string, init: RequestInit = {}, canRefresh = true): Promise<T> {
+export async function api<T>(path: string, init: ApiRequestInit = {}, canRefresh = true): Promise<T> {
   return normalize(await transport<T>(path, init, canRefresh));
 }
 export function peekApiCache<T>(path: string): T | undefined {

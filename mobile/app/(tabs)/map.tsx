@@ -438,7 +438,7 @@ function OpenStreetMap({
         {!view && directoryError ? (
           <View pointerEvents="none" style={styles.mapFeedback}>
             <Ionicons
-              color={theme.deepBrand}
+              color={theme.accentText}
               name="cloud-offline-outline"
               size={24}
             />
@@ -459,7 +459,7 @@ function OpenStreetMap({
         {tilesUnavailable ? (
           <View pointerEvents="none" style={styles.mapFeedback}>
             <Ionicons
-              color={theme.deepBrand}
+              color={theme.accentText}
               name="cloud-offline-outline"
               size={24}
             />
@@ -879,7 +879,7 @@ export default function MapScreen() {
               <View style={styles.notice}>
                 <Ionicons
                   accessible={false}
-                  color={theme.deepBrand}
+                  color={theme.accentText}
                   name="information-circle-outline"
                   size={18}
                 />
@@ -946,7 +946,7 @@ export default function MapScreen() {
                 ]}
               >
                 <Ionicons
-                  color={theme.deepBrand}
+                  color={theme.accentText}
                   name="cloud-offline-outline"
                   size={20}
                 />
@@ -1170,7 +1170,7 @@ const createStyles = (theme: Theme) =>
       right: 5,
     },
     attributionText: {
-      color: "#34312F",
+      color: theme.text,
       fontFamily: theme.font.medium,
       fontSize: 9.5,
       textDecorationLine: "underline",
@@ -1267,7 +1267,7 @@ const createStyles = (theme: Theme) =>
     },
     error: {
       alignItems: "center",
-      backgroundColor: "#FFF0EB",
+      backgroundColor: theme.surfaceSoft,
       borderRadius: 18,
       flexDirection: "row",
       gap: 11,
@@ -1277,7 +1277,7 @@ const createStyles = (theme: Theme) =>
     },
     errorCopy: { flex: 1 },
     errorTitle: {
-      color: theme.deepBrand,
+      color: theme.accentText,
       fontFamily: theme.font.semibold,
       fontSize: 13,
     },

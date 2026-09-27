@@ -22,6 +22,7 @@ export async function initializePaystack(env: Bindings, input: InitializeInput) 
     body: JSON.stringify({
       email: input.email,
       amount: input.amountKobo,
+      currency: "NGN",
       reference: input.reference,
       metadata: input.metadata,
       ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),

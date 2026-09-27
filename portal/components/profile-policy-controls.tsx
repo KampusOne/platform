@@ -1,0 +1,12 @@
+"use client";
+import { useEffect, useState, type FormEvent } from "react";
+import { portalApi } from "@/lib/api";
+import { useAdminContext } from "./admin-context";
+type Policy={block_protected:boolean;notify_all_in_app:boolean;notify_all_push:boolean};
+export function ProfilePolicyControls({userId}:{userId:string}){
+  const {can,scopedPath}=useAdminContext();
+  const [policy,setPolicy]=useState<Policy|null>(null),[error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+  useEffect(()=>{let active=true;void portalApi<{policy:Policy}>(scopedPath(`/v1/admin/users/${userId}/social-policy`)).then(r=>{if(active)setPolicy(r.policy);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[userId,scopedPath]);
+  async function save(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!policy)return;const form=new FormData(event.currentTarget);setBusy(true);setError("");setNotice("");try{await portalApi(scopedPath(`/v1/admin/users/${userId}/social-policy`),{method:"PUT",body:JSON.stringify({blockProtected:policy.block_protected,notifyAllInApp:policy.notify_all_in_app,notifyAllPush:policy.notify_all_push,reason:form.get("reason")})});setNotice("Account policy saved. It applies to future posts in this university.");}catch(e){setError(e instanceof Error?e.message:"Could not save this policy.");}finally{setBusy(false);}}
+  return <section className="manage-form"><h2>Campus account policy</h2><p className="field-help">Choose whether this is an essential campus account and which future posts reach students in its university. Push delivery still requires device permission.</p>{error&&<p className="form-error" role="alert">{error}</p>}{notice&&<p className="form-notice" role="status">{notice}</p>}{policy&&<form className="form-stack" onSubmit={save}>{([["block_protected","Protect this account from blocking","users.manage"],["notify_all_in_app","Notify every student in the app","notifications.manage"],["notify_all_push","Send phone notifications for new posts","notifications.manage"]] as const).map(([key,label,permission])=><label className="checkbox" key={key}><input type="checkbox" checked={policy[key]} disabled={busy||!can(permission)||!can("users.manage")} onChange={e=>setPolicy({...policy,[key]:e.target.checked})}/>{label}</label>)}{can("users.manage")&&<><label>Reason<textarea name="reason" required minLength={5} maxLength={1000}/></label><button className="button button--primary" disabled={busy}>{busy?"Saving…":"Save account policy"}</button></>}</form>}</section>;
+}

@@ -67,7 +67,9 @@ export function AccessGate({
         aria-live="polite"
         aria-busy={!restoreError}
       >
-        <p>{restoreError || "Checking your session…"}</p>
+        <Image src="/brand/kampusone-horizontal-ink.svg" alt="KampusOne" width={220} height={54} priority />
+        <span className="session-progress" aria-label="Opening KampusOne" />
+        {restoreError && <p>{restoreError}</p>}
         {restoreError ? (
           <button
             className="button button--primary"
@@ -133,7 +135,7 @@ export function AccessGate({
     );
   }
 
-  if (surface === "agents") return <AgentAccess onAuthenticated={start} />;
+  if (surface === "agents") return <AgentAccess onAuthenticated={start} restoreError={restoreError} onRetryRestore={retryRestore} />;
   return (
     <main className="agent-login-page">
       <section
@@ -159,6 +161,7 @@ export function AccessGate({
             <p>Use your provisioned KampusOne account.</p>
           ) : null}
         </header>
+        {restoreError && <p className="form-notice" role="status">Your previous session could not be restored. You can sign in again, or <button type="button" className="text-button" onClick={() => void retryRestore()}>retry</button>.</p>}
         <form className="form-stack" onSubmit={submit}>
           <label>
             Email address
