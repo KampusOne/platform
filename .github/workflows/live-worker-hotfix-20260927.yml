@@ -1,4 +1,4 @@
-name: Live Worker API domain hotfix 20260927
+name: Live Worker API domain hotfix 20260927 r2
 
 on:
   push:
