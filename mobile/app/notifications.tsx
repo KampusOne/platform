@@ -100,8 +100,9 @@ export default function Notifications() {
             key={n.id}
             title={n.title}
             detail={n.body}
-            leading={n.actor_user_id ? <ProfileAvatar name={n.actor_name || "Student"} imageUrl={n.actor_profile_image_url} size={42} /> : undefined}
-            icon={n.actor_user_id ? undefined : n.read_at ? "mail-open-outline" : "mail-unread-outline"}
+            {...(n.actor_user_id
+              ? { leading: <ProfileAvatar name={n.actor_name || "Student"} imageUrl={n.actor_profile_image_url} size={42} /> }
+              : { icon: n.read_at ? "mail-open-outline" as const : "mail-unread-outline" as const })}
             trailing={<View style={{flexDirection:"row",alignItems:"center",gap:10}}>{!n.read_at?<View accessibilityLabel="Unread notification" style={{width:8,height:8,borderRadius:4,backgroundColor:theme.brand}}/>:null}<Ionicons name="chevron-forward" color={theme.textMuted} size={18}/></View>}
             onPress={() => void open(n)}
           />
