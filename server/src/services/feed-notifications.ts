@@ -45,9 +45,9 @@ export async function notifyFeedInteraction(
 
     await db.execute(sql`
       insert into public.in_app_notifications(
-        user_id,institution_id,title,body,path,dedupe_key
+        user_id,institution_id,actor_user_id,title,body,path,dedupe_key
       ) values(
-        ${target.author_user_id}::uuid,${target.university_id}::uuid,
+        ${target.author_user_id}::uuid,${target.university_id}::uuid,${actorUserId}::uuid,
         ${title},${body},${path},${dedupe}
       ) on conflict do nothing
     `);

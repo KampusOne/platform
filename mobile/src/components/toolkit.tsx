@@ -129,12 +129,14 @@ export function ToolRow({
   title,
   detail,
   icon,
+  leading,
   onPress,
   trailing,
 }: {
   title: string;
   detail?: string;
   icon?: keyof typeof Ionicons.glyphMap;
+  leading?: ReactNode;
   onPress?: () => void;
   trailing?: ReactNode;
 }) {
@@ -145,7 +147,7 @@ export function ToolRow({
       onPress={onPress}
       style={styles.row}
     >
-      {icon ? <Ionicons name={icon} color={theme.accentText} size={22} /> : null}
+      {leading ?? (icon ? <Ionicons name={icon} color={theme.accentText} size={22} /> : null)}
       <View style={{ flex: 1 }}>
         <Text style={styles.rowTitle}>{title}</Text>
         {detail ? <Text style={styles.detail}>{detail}</Text> : null}
