@@ -25,6 +25,7 @@ import { readCache, writeCache } from "@/src/lib/device-cache";
 import { useNotificationCount } from "@/src/lib/notification-state";
 import { ApiError, api } from "@/src/lib/api";
 import { recordRecentTool } from "@/src/lib/recent-tools";
+import { streakColor } from "@/src/lib/streak-theme";
 import { theme } from "@/src/theme";
 
 type AgendaItem = {
@@ -260,7 +261,11 @@ export default function TodayScreen() {
             accessible
             style={styles.streak}
           >
-            <Ionicons color={theme.brand} name="flame-outline" size={24} />
+            <Ionicons
+              color={streakColor(data?.streak_days, theme.textMuted)}
+              name={(data?.streak_days ?? 0) > 0 ? "flame" : "flame-outline"}
+              size={24}
+            />
             <Text style={styles.streakText}>
               {data?.streak_days == null
                 ? "Your daily streak"

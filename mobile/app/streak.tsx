@@ -7,6 +7,7 @@ import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
 import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
+import { streakMilestone, streakMilestones } from "@/src/lib/streak-theme";
 type Streak = {
   current_days: number;
   longest_days: number;
@@ -19,13 +20,6 @@ type StreakData = {
   timezone: string;
   today: string;
 };
-const milestones = [
-  { days: 1, label: "First spark", shade: "#D9855F" },
-  { days: 7, label: "Steady flame", shade: "#C35D38" },
-  { days: 14, label: "Finding a rhythm", shade: "#A8462E" },
-  { days: 30, label: "A month of progress", shade: "#C33F32" },
-  { days: 100, label: "Campus flame", shade: "#8B402B" },
-];
 function calendarDays(today: string) {
   const end = new Date(today + "T12:00:00Z");
   return Array.from({ length: 28 }, (_, index) => {
@@ -72,8 +66,8 @@ export default function StreakScreen() {
   }, [load]);
   const streak = data?.streak;
   const current = streak?.current_days ?? 0;
-  const tier = [...milestones].reverse().find((m) => current >= m.days);
-  const next = milestones.find((m) => current < m.days);
+  const tier = streakMilestone(current);
+  const next = streakMilestones.find((m) => current < m.days);
   const activeDays = streak ? currentStreakDays(streak) : new Set<string>();
   return (
     <ToolPage title="Your streak">
@@ -101,7 +95,7 @@ export default function StreakScreen() {
           <View style={{ alignItems: "center", paddingVertical: 22, gap: 8 }}>
             <Ionicons
               name={current ? "flame" : "flame-outline"}
-              color={tier?.shade ?? theme.textMuted}
+              color={tier?.color ?? theme.textMuted}
               size={76}
             />
             <Text
@@ -257,7 +251,7 @@ export default function StreakScreen() {
             Your journey
           </Text>
           <View style={{ marginVertical: 16 }}>
-            {milestones.map((m, i) => {
+            {streakMilestones.map((m, i) => {
               const achieved = streak.longest_days >= m.days;
               return (
                 <View
@@ -270,7 +264,7 @@ export default function StreakScreen() {
                         height: 48,
                         width: 48,
                         borderRadius: 24,
-                        backgroundColor: achieved ? m.shade : theme.surfaceMuted,
+                        backgroundColor: achieved ? m.color : theme.surfaceMuted,
                         justifyContent: "center",
                         alignItems: "center",
                         opacity: achieved ? 1 : 0.72,
@@ -282,14 +276,14 @@ export default function StreakScreen() {
                         color={achieved ? "#FFFFFF" : theme.textMuted}
                       />
                     </View>
-                    {i < milestones.length - 1 ? (
+                    {i < streakMilestones.length - 1 ? (
                       <View
                         style={{
                           width: 3,
                           flex: 1,
                           backgroundColor:
                             streak.longest_days > m.days
-                              ? m.shade
+                              ? m.color
                               : theme.border,
                         }}
                       />
@@ -337,7 +331,7 @@ export default function StreakScreen() {
                           style={{
                             height: 5,
                             width: `${Math.min(100, (current / m.days) * 100)}%`,
-                            backgroundColor: m.shade,
+                            backgroundColor: m.color,
                             borderRadius: 3,
                           }}
                         />

@@ -53,13 +53,19 @@ notificationRoutes.get('/inbox',async c=>{
   if(!parsed.success)throw new AppError(400,'BAD_REQUEST','This notification page is invalid.');
   before=parsed.data;
  }
- const visible=sql`user_id=${user.id}::uuid and (institution_id is null or institution_id=${user.universityId}::uuid)`;
+ const visible=sql`n.user_id=${user.id}::uuid and (n.institution_id is null or n.institution_id=${user.universityId}::uuid)`;
  const [result,count]=await Promise.all([
-  db.execute<{id:string;title:string;body:string;path:string|null;read_at:string|null;created_at:string}>(sql`select id,title,body,path,read_at,created_at::text from public.in_app_notifications where ${visible} and (${before?.time??null}::timestamptz is null or (created_at,id)<(${before?.time??null}::timestamptz,${before?.id??null}::uuid)) order by created_at desc,id desc limit ${limit+1}`),
-  db.execute<{unread_count:number}>(sql`select count(*)::int as unread_count from public.in_app_notifications where ${visible} and read_at is null`),
+  db.execute<{id:string;title:string;body:string;path:string|null;read_at:string|null;created_at:string;actor_user_id:string|null;actor_name:string|null;actor_profile_image_url:string|null}>(sql`select n.id,n.title,n.body,n.path,n.read_at,n.created_at::text,n.actor_user_id,coalesce(actor.display_name,actor.username) as actor_name,actor.profile_image_url as actor_profile_image_url from public.in_app_notifications n left join public.profiles actor on actor.user_id=n.actor_user_id and actor.deleted_at is null where ${visible} and (${before?.time??null}::timestamptz is null or (n.created_at,n.id)<(${before?.time??null}::timestamptz,${before?.id??null}::uuid)) order by n.created_at desc,n.id desc limit ${limit+1}`),
+  db.execute<{unread_count:number}>(sql`select count(*)::int as unread_count from public.in_app_notifications n where ${visible} and n.read_at is null`),
  ]);
  const notifications=result.rows.slice(0,limit),last=notifications.at(-1);
  return c.json({notifications,unreadCount:firstRow(count)?.unread_count??0,nextCursor:result.rows.length>limit&&last?new Date(last.created_at).toISOString()+'|'+last.id:null});
+});
+notificationRoutes.patch('/inbox/:id/read',async c=>{
+ const result=await database(c.env).execute<{id:string;read_at:string}>(sql`update public.in_app_notifications set read_at=coalesce(read_at,now()) where id=${id(c.req.param('id'))}::uuid and user_id=${currentUser(c).id}::uuid returning id,read_at::text`);
+ const notification=firstRow(result);
+ if(!notification)throw new AppError(404,'NOT_FOUND','Notification not found.');
+ return c.json({notification});
 });
 notificationRoutes.post('/read-all',async c=>{
  await database(c.env).execute(sql`update public.in_app_notifications set read_at=coalesce(read_at,now()) where user_id=${currentUser(c).id}::uuid and read_at is null`);

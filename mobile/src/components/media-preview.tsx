@@ -234,7 +234,7 @@ function Video({
               accessibilityRole="button"
               onPress={() => {
                 setMenuOpen(false);
-                void downloadPostMedia(url,true).catch(error=>toast(error.message,'error'));
+                void downloadPostMedia(url,true,watermark).catch(error=>toast(error.message,'error'));
               }}
               style={styles.menuRow}
             >

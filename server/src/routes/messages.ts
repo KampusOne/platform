@@ -461,11 +461,12 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
       : thread.initiator_id;
   await db.execute(sql`
     insert into public.in_app_notifications(
-      user_id,institution_id,title,body,path,dedupe_key
+      user_id,institution_id,actor_user_id,title,body,path,dedupe_key
     )
     select
       ${recipient}::uuid,
       recipient_profile.university_id,
+      ${user.id}::uuid,
       coalesce(sender_profile.display_name,sender_profile.username,'Someone')
         || ${thread.status === "REQUESTED"
           ? " sent you a message request"
