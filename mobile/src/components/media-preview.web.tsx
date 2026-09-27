@@ -2,6 +2,7 @@ import { createElement, useEffect, useRef, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { useAppearance } from "@/src/lib/appearance";
 import { readVideoPlaybackSession, writeVideoPlaybackSession } from "@/src/lib/video-playback-session";
+import { isFeedRoutePlaybackActive, subscribeFeedRoutePlayback } from "@/src/lib/feed-video-playback";
 
 export type MediaPlaybackMode = "unmanaged" | "feed-autoplay" | "manual-managed";
 
@@ -51,6 +52,32 @@ export function MediaPreview({
   const viewportVisibleRef = useRef(playbackMode === "unmanaged");
   const resumeWhenVisibleRef = useRef(false);
   const didApplyInitialFeedMute = useRef(false);
+  const feedRouteActiveRef = useRef(playbackMode !== "feed-autoplay" || isFeedRoutePlaybackActive());
+
+  useEffect(() => {
+    if (playbackMode !== "feed-autoplay") return;
+    return subscribeFeedRoutePlayback((active) => {
+      feedRouteActiveRef.current = active;
+      const element = videoRef.current;
+      if (!element) return;
+      if (!active) {
+        if (!element.paused) resumeWhenVisibleRef.current = true;
+        element.pause();
+        return;
+      }
+      if (!viewportVisibleRef.current || suspended) return;
+      const remembered = readVideoPlaybackSession(playbackKey);
+      if (remembered) {
+        if (Math.abs(element.currentTime - remembered.position) > 0.35) element.currentTime = remembered.position;
+        element.muted = remembered.muted;
+        didApplyInitialFeedMute.current = true;
+      } else if (!didApplyInitialFeedMute.current) {
+        element.muted = true;
+        didApplyInitialFeedMute.current = true;
+      }
+      void element.play().catch(() => undefined);
+    });
+  }, [playbackKey, playbackMode, suspended]);
 
   useEffect(() => {
     if (!video || playbackMode === "unmanaged" || !onPlaybackHandle) return;
@@ -68,7 +95,7 @@ export function MediaPreview({
         viewportVisibleRef.current = visible;
         const element = videoRef.current;
         if (!element) return;
-        if (!visible || suspended) {
+        if (!visible || suspended || (playbackMode === "feed-autoplay" && !feedRouteActiveRef.current)) {
           if (!element.paused) resumeWhenVisibleRef.current = true;
           element.pause();
           return;
@@ -102,11 +129,15 @@ export function MediaPreview({
     if (suspended) {
       if (!element.paused) resumeWhenVisibleRef.current = true;
       element.pause();
-    } else if (viewportVisibleRef.current && resumeWhenVisibleRef.current) {
+    } else if (
+      viewportVisibleRef.current &&
+      resumeWhenVisibleRef.current &&
+      (playbackMode !== "feed-autoplay" || feedRouteActiveRef.current)
+    ) {
       resumeWhenVisibleRef.current = false;
       void element.play().catch(() => undefined);
     }
-  }, [suspended]);
+  }, [playbackMode, suspended]);
 
   return (
     <View style={{ marginVertical: 10 }}>
