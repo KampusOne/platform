@@ -15,6 +15,7 @@ import { useAppearance } from "@/src/lib/appearance";
 import { SkeletonBlock } from "@/src/components/skeleton";
 import { downloadPostMedia } from "@/src/lib/media-downloads";
 import { useToast } from "@/src/components/toast";
+import { readVideoPlaybackSession, writeVideoPlaybackSession } from "@/src/lib/video-playback-session";
 
 const playbackSpeeds = [1, 1.25, 1.5, 2] as const;
 
@@ -41,6 +42,8 @@ function Video({
   playbackMode,
   onPlaybackHandle,
   suspended,
+  playbackKey,
+  onOpen,
 }: {
   url: string;
   label: string;
@@ -49,6 +52,8 @@ function Video({
   playbackMode: MediaPlaybackMode;
   onPlaybackHandle?: ((handle: MediaPlaybackHandle | null) => void) | undefined;
   suspended: boolean;
+  playbackKey?: string | undefined;
+  onOpen?: ((state: { position: number; muted: boolean }) => void) | undefined;
 }) {
   const { theme } = useAppearance();
   const toast = useToast();
@@ -101,7 +106,14 @@ function Video({
     }
 
     if (playbackMode === "feed-autoplay") {
-      if (!didApplyInitialFeedMute.current) {
+      const remembered = readVideoPlaybackSession(playbackKey);
+      if (remembered) {
+        if (Math.abs(Number(player.currentTime) - remembered.position) > 0.35) {
+          player.currentTime = remembered.position;
+        }
+        player.muted = remembered.muted;
+        didApplyInitialFeedMute.current = true;
+      } else if (!didApplyInitialFeedMute.current) {
         player.muted = true;
         didApplyInitialFeedMute.current = true;
       }
@@ -181,6 +193,16 @@ function Video({
     }
   }
 
+  function openViewer() {
+    if (!onOpen) return false;
+    const current = Math.max(0, Number(player.currentTime) || 0);
+    writeVideoPlaybackSession(playbackKey, current, player.muted);
+    if (player.playing && !manuallyPausedRef.current) resumeWhenVisibleRef.current = true;
+    player.pause();
+    onOpen({ position: current, muted: player.muted });
+    return true;
+  }
+
   function doubleTap(side: number) {
     const now = Date.now();
     if (lastTap.current.side === side && now - lastTap.current.at < 330) {
@@ -217,8 +239,8 @@ function Video({
       />
 
       <View style={styles.seekZones}>
-        <Pressable accessible={false} onPress={(event) => { event.stopPropagation(); doubleTap(-1); }} style={{ flex: 1 }} />
-        <Pressable accessible={false} onPress={(event) => { event.stopPropagation(); doubleTap(1); }} style={{ flex: 1 }} />
+        <Pressable accessible={false} onPress={(event) => { event.stopPropagation(); if (!openViewer()) doubleTap(-1); }} style={{ flex: 1 }} />
+        <Pressable accessible={false} onPress={(event) => { event.stopPropagation(); if (!openViewer()) doubleTap(1); }} style={{ flex: 1 }} />
       </View>
       {seekHint ? <View pointerEvents="none" style={styles.seekFeedback}><Text style={styles.speedText}>{seekHint}</Text></View> : null}
 
@@ -369,6 +391,8 @@ export function MediaPreview({
   playbackMode = "unmanaged",
   onPlaybackHandle,
   suspended = false,
+  playbackKey,
+  onOpen,
 }: {
   url: string;
   video?: boolean;
@@ -378,6 +402,8 @@ export function MediaPreview({
   playbackMode?: MediaPlaybackMode;
   onPlaybackHandle?: ((handle: MediaPlaybackHandle | null) => void) | undefined;
   suspended?: boolean;
+  playbackKey?: string | undefined;
+  onOpen?: ((state: { position: number; muted: boolean }) => void) | undefined;
 }) {
   const { theme } = useAppearance();
   const [error, setError] = useState(false);
@@ -392,6 +418,8 @@ export function MediaPreview({
           playbackMode={playbackMode}
           onPlaybackHandle={onPlaybackHandle}
           suspended={suspended}
+          playbackKey={playbackKey}
+          onOpen={onOpen}
           {...(watermark ? { watermark } : {})}
         />
       ) : error ? (
