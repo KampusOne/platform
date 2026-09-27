@@ -201,7 +201,7 @@ export function campusDirectoryDefaultForUniversity(
 
 export function filterCampusStarterPlaces(
   places: readonly CampusStarterPlace[],
-  filters: { category?: string; query?: string },
+  filters: { category?: string | undefined; query?: string | undefined },
 ) {
   const category = filters.category?.trim().toUpperCase();
   const query = filters.query?.trim().toLowerCase();
