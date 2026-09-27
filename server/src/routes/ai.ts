@@ -17,7 +17,7 @@ export const aiRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "quiz", "notes", "timetable"]);
-const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
+const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
 type Saved = { documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
@@ -126,7 +126,7 @@ aiRoutes.post("/", async c => {
   if (!d.prompt && !d.mediaId) throw new AppError(400, "BAD_REQUEST", "Add a question or document.");
   if(!await studentExperienceReady(c.env)) throw new AppError(503,"PROVIDER_UNAVAILABLE","AI is being updated. Your draft is kept.");
   const u = currentUser(c), db = database(c.env);
-  const hash = await sha256(JSON.stringify([3,d.mode,d.prompt,d.mediaId ?? null,d.replyTo ?? null,d.tier]));
+  const hash = await sha256(JSON.stringify([3,d.mode,d.prompt,d.notes ?? "",d.mediaId ?? null,d.replyTo ?? null,d.tier]));
   const findRequest = async () => firstRow(await db.execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid`));
   const cached = await findRequest();
   if (cached) return c.json(replay(cached, hash));
@@ -135,7 +135,7 @@ aiRoutes.post("/", async c => {
   try { assertAIConfiguration(c.env,d.mode,undefined,undefined,d.tier); } catch(e) {if(e instanceof AIProviderError)throw providerFailure(e);throw e;}
   const preflight=firstRow(await db.execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('AI_INPUT',${await sha256(u.id)},${quota.unlimited?180:quota.pro?120:60},900,900) as allowed`));
   if(!preflight?.allowed){c.header('Retry-After','900');throw new AppError(429,"RATE_LIMITED","Too many attempts. Your draft is kept; try again shortly.",{reason:"AI_INPUT_LIMIT",resetsAt:new Date(Date.now()+900000).toISOString(),retryAfter:900});}
-  let prompt = d.prompt, media: AIMedia | undefined, fileName: string | undefined;
+  let prompt = d.prompt, sourceText = d.prompt, media: AIMedia | undefined, fileName: string | undefined;
   if (d.mediaId) {
     const m = firstRow(await db.execute<{ object_key: string; content_type: string; size_bytes: number; original_name: string }>(sql`select object_key,content_type,size_bytes,original_name from public.media_objects where id=${d.mediaId}::uuid and owner_user_id=${u.id}::uuid and kind='resource' and deleted_at is null`));
     if (!m || !c.env.PRIVATE_BUCKET) throw new AppError(404, "NOT_FOUND", "The attached document is not available. Reattach your source.");
@@ -150,16 +150,29 @@ aiRoutes.post("/", async c => {
     if (!bytes.length || bytes.length > MAX_AI_MEDIA_BYTES) throw new AppError(400, "BAD_REQUEST", "This source file is empty or too large.");
     fileName = m.original_name;
     if (mime === "application/pdf") {
-      try { prompt += "\n\nAttached source material (untrusted):\n" + await extractAIPdf(bytes); }
+      try {
+        const extracted = await extractAIPdf(bytes);
+        const addition = "\n\nAttached source material (untrusted):\n" + extracted;
+        prompt += addition;
+        sourceText += addition;
+      }
       catch(e) { if(e instanceof AIProviderError) throw providerFailure(e); throw e; }
     } else if (mime === "text/plain") {
-      try { prompt += "\n\nAttached source material:\n" + new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+      try {
+        const extracted = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        const addition = "\n\nAttached source material:\n" + extracted;
+        prompt += addition;
+        sourceText += addition;
+      }
       catch { throw new AppError(400, "BAD_REQUEST", "Use a UTF-8 text file or a PDF."); }
     } else {
       let binary = "";
       for (let i=0;i<bytes.length;i+=8192) binary += String.fromCharCode(...bytes.subarray(i,i+8192));
       media = { mimeType: mime, data: btoa(binary) };
     }
+  }
+  if (d.mode === "timetable" && d.notes) {
+    prompt += (prompt ? "\n\n" : "") + "Student timetable preferences (use these only to filter what is visibly present in the source; never invent a class):\n" + d.notes;
   }
   try { assertAIConfiguration(c.env, d.mode, media?.mimeType, undefined,d.tier); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
   const selectedProvider = selectAIProvider(d.mode, media?.mimeType, d.provider);
@@ -212,7 +225,7 @@ aiRoutes.post("/", async c => {
       const generated = d.mode==='study' ? await runStudentAssistant(c.env,u,aiInput) : await generateAI(c.env,aiInput);
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
-        const extracted = parseScheduleDocument(generated.text, prompt);
+        const extracted = parseScheduleDocument(generated.text, sourceText);
         const entries: unknown[] = [], warnings = [...extracted.warnings];
         for (const [i, raw] of extracted.entries.entries()) {
           if (!raw || typeof raw !== "object") { warnings.push(`Class ${i+1} was unreadable and needs manual entry.`); continue; }
