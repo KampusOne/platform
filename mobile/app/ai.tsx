@@ -102,7 +102,7 @@ export default function StudentAI() {
       await writeCache(storageKey,{prompt:question,mode,tier,attachment:savedFile,replyTo,key:key.current});
       if(!valid()||version!==generation.current)return;
       setPending({prompt:question,...(file?{file}:{})});setPrompt("");setAttachment(undefined);
-      const result=await api<Turn>("/v1/ai",{method:"POST",signal:AbortSignal.timeout(75000),body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,replyTo,tier,idempotencyKey:key.current,consent:true})});
+      const result=await api<Turn>("/v1/ai",{method:"POST",timeoutMs: 75_000,body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,replyTo,tier,idempotencyKey:key.current,consent:true})});
       if(!valid()||version!==generation.current)return;
       setTurns(current=>[...current.filter(t=>t.requestId!==result.requestId),{...result,prompt:question,...(file?{file}:{})}]);setReplyTo(result.requestId);key.current=randomUUID();
       void loadStatus();
