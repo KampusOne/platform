@@ -41,6 +41,7 @@ export type Bindings = {
   HF_CHAT_MODEL?: string;
   HF_VISION_MODEL?: string;
   HF_PRO_MODEL?: string;
+  HF_TRANSCRIPTION_MODEL?: string;
   AI_CHAT_WINDOW_LIMIT?: string;
   AI_STUDY_TRIAL_LIMIT?: string;
   EXPO_ACCESS_TOKEN?: string;
