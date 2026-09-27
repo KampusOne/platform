@@ -24,7 +24,6 @@ import {
   verifyPhoto,
   type PostMedia,
   type UploadedFile,
-  type PhotoSource,
 } from "@/src/lib/uploads";
 
 type DraftMedia = {
@@ -138,7 +137,7 @@ export default function Compose() {
     }
   }
 
-  async function attach(source: PhotoSource = "library") {
+  async function attach() {
     if (pickerLock.current || selecting || publishing || editingKey) return;
     const current = mediaRef.current;
     if (current.some((item) => item.local.type.startsWith("video/"))) {
@@ -154,10 +153,7 @@ export default function Compose() {
     pickerLock.current = true;
     setSelecting(true);
     try {
-      const selected = source === "camera"
-        ? ((await pickPostMedia("camera")) ? [await pickPostMedia("camera")] : [])
-        : await pickPostMediaBatch(remaining);
-
+      const selected = await pickPostMediaBatch(remaining);
       const valid = selected.filter((item): item is PostMedia => Boolean(item));
       if (!valid.length || !alive.current) return;
       if (valid.some((item) => item.type.startsWith("video/")) && (current.length > 0 || valid.length > 1)) {
@@ -476,7 +472,7 @@ export default function Compose() {
                     : `${media.length}/${maxImages} images · swipe to preview`}
                 </Text>
                 {media.length < maxImages && !media.some((item) => item.local.type.startsWith("video/")) ? (
-                  <Pressable accessibilityRole="button" disabled={selecting || publishing || uploading} onPress={() => void attach("library")} style={{ paddingVertical: 8, paddingHorizontal: 4 }}>
+                  <Pressable accessibilityRole="button" disabled={selecting || publishing || uploading} onPress={() => void attach()} style={{ paddingVertical: 8, paddingHorizontal: 4 }}>
                     <Text style={{ ...text, color: theme.brand, fontFamily: theme.font.semibold, fontSize: 12 }}>Add more</Text>
                   </Pressable>
                 ) : null}
@@ -499,7 +495,7 @@ export default function Compose() {
         </ScrollView>
 
         <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Add images or video" disabled={selecting || publishing || Boolean(editingKey) || uploading} onPress={() => void attach("library")} style={{ padding: 10, opacity: media.length >= maxImages ? 0.45 : 1 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Add images or video" disabled={selecting || publishing || Boolean(editingKey) || uploading} onPress={() => void attach()} style={{ padding: 10, opacity: media.length >= maxImages ? 0.45 : 1 }}>
             <Ionicons name="images-outline" size={25} color={theme.brand} />
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Take a photo" disabled={selecting || publishing || Boolean(editingKey) || uploading} onPress={() => void attachCamera()} style={{ padding: 10, opacity: media.length >= maxImages ? 0.45 : 1 }}>
