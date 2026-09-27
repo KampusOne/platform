@@ -461,12 +461,28 @@ export default function ProfileScreen() {
             <Text style={styles.bio}>{profile.biography}</Text>
           ) : null}
           <View accessibilityLabel="Profile social counts" style={styles.socialCounts}>
-            <Text style={styles.socialCountText}>
-              <Text style={styles.socialCountValue}>{safeCount(profile?.follower_count)}</Text> followers
-            </Text>
-            <Text style={styles.socialCountText}>
-              <Text style={styles.socialCountValue}>{safeCount(profile?.following_count)}</Text> following
-            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`View ${safeCount(profile?.follower_count)} followers`}
+              disabled={!user?.id}
+              hitSlop={8}
+              onPress={() => user?.id && router.push({ pathname: "/social-connections", params: { id: user.id, kind: "followers" } })}
+            >
+              <Text style={styles.socialCountText}>
+                <Text style={styles.socialCountValue}>{safeCount(profile?.follower_count)}</Text> followers
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`View ${safeCount(profile?.following_count)} following`}
+              disabled={!user?.id}
+              hitSlop={8}
+              onPress={() => user?.id && router.push({ pathname: "/social-connections", params: { id: user.id, kind: "following" } })}
+            >
+              <Text style={styles.socialCountText}>
+                <Text style={styles.socialCountValue}>{safeCount(profile?.following_count)}</Text> following
+              </Text>
+            </Pressable>
           </View>
           <ScrollView
             contentContainerStyle={styles.metaRow}

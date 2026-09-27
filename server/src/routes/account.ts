@@ -5,6 +5,7 @@ import { database, firstRow, sqlClient } from "../lib/database";
 import { input, id } from "../lib/input";
 import { AppError } from "../lib/errors";
 import { recordAudit } from "../lib/audit";
+import { requireProfileSafety } from "../lib/profile-safety";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 
@@ -38,6 +39,25 @@ accountRoutes.get("/settings", async (c) => {
     sql`select settings from public.profiles where user_id=${currentUser(c).id}::uuid`,
   );
   return c.json({ settings: firstRow(result)?.settings ?? {} });
+});
+accountRoutes.get("/blocked", async (c) => {
+  await requireProfileSafety(c.env);
+  const result = await database(c.env).execute(sql`
+    select
+      p.user_id,
+      p.display_name,
+      p.username,
+      p.profile_image_url,
+      blocks.reason,
+      blocks.details,
+      blocks.created_at
+    from public.user_blocks blocks
+    join public.profiles p on p.user_id=blocks.blocked_id and p.deleted_at is null
+    where blocks.blocker_id=${currentUser(c).id}::uuid
+    order by blocks.created_at desc
+    limit 250
+  `);
+  return c.json({ profiles: result.rows });
 });
 accountRoutes.put("/settings", async (c) => {
   const settings = await input(c, settingsSchema);

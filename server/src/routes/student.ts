@@ -286,6 +286,7 @@ studentRoutes.get("/home", async (context) => {
         posts.urgent, posts.sponsored, posts.published_at,
         case when posts.audience->>'studentPost' = 'true' or sources.name like 'student:%'
           then coalesce(nullif(author.display_name, ''), 'KampusOne student') else sources.name end as source_name,
+        case when posts.audience->>'studentPost' = 'true' or sources.name like 'student:%' then nullif(author.username, '') else null end as source_username,
         exists(select 1 from public.feed_bookmarks bookmarks
           where bookmarks.post_id = posts.id and bookmarks.user_id = ${user.id}::uuid) as bookmarked
       from public.feed_posts posts
@@ -328,6 +329,7 @@ studentRoutes.get("/feed", async (context) => {
       posts.image_url, posts.audience->>'format' as publishing_format, posts.audience->>'mediaType' as media_type, posts.audience->>'mediaContentType' as media_content_type, posts.author_user_id, author.profile_image_url as author_avatar_url, posts.urgent, posts.sponsored, posts.published_at,
       posts.correction_note,
       case when posts.audience->>'studentPost'='true' then coalesce(author.display_name,sources.name) else sources.name end as source_name,
+      case when posts.audience->>'studentPost'='true' then nullif(author.username,'') else null end as source_username,
       case when posts.audience->>'studentPost'='true' then coalesce(author.verification_status::text='VERIFIED',false) else sources.verified end as source_verified,
       exists(select 1 from public.feed_bookmarks bookmarks
         where bookmarks.post_id = posts.id and bookmarks.user_id = ${user.id}::uuid) as bookmarked

@@ -7,6 +7,7 @@ import { input, id } from "../lib/input";
 import { AppError } from "../lib/errors";
 import { sha256 } from "../lib/security";
 import { studentExperienceReady } from "../lib/student-ai-policy";
+import { requireProfileSafety, requireUnblocked } from "../lib/profile-safety";
 import { visiblePost } from "../lib/feed-social";
 import type { Bindings, Variables, AuthenticatedUser } from "../types";
 export const peopleRoutes = new Hono<{Bindings:Bindings;Variables:Variables}>();
@@ -23,6 +24,7 @@ async function readService(env: Bindings, user: AuthenticatedUser, serviceId: st
     join public.users u on u.id=p.user_id and u.status::text='ACTIVE'
     where a.id=${serviceId}::uuid and a.university_id=${user.universityId}::uuid and a.status='ACTIVE'`));
   if(!service) throw new AppError(404,"NOT_FOUND","This campus service is not available.");
+  await requireUnblocked(env,user.id,service.user_id);
   let products: Record<string,unknown>[]=[],tutorials:Record<string,unknown>[]=[];
   if(service.agent_type==='VENDOR') {
     if(env.STORE_ENABLED!=="true" || env.PHASE_3_SCHEMA_READY!=="true") throw new AppError(503,"PROVIDER_UNAVAILABLE","The campus store is not open yet.");
@@ -51,6 +53,7 @@ peopleRoutes.get("/products/:id",async c=>{
 });
 peopleRoutes.get("/:id",async c=>{
   const target=id(c.req.param("id")),u=currentUser(c),db=database(c.env);
+  await requireUnblocked(c.env,u.id,target);
   const profile=firstRow(await db.execute(sql`select p.user_id,p.display_name,p.username,p.biography,p.profile_image_url,p.cover_image_url,p.current_level,
       uni.name as university_name,d.name as department_name,
       case when p.settings->>'hideCgpa' = 'false' then
@@ -73,9 +76,60 @@ peopleRoutes.get("/:id",async c=>{
     order by a.agent_type`);
   return c.json({profile,roles:roles.rows,isOwner:target===u.id});
 });
+const connectionPageSize=40;
+async function ensureConnectionTarget(db:ReturnType<typeof database>,target:string){
+  const row=firstRow(await db.execute(sql`select p.user_id from public.profiles p join public.users account on account.id=p.user_id and account.status::text='ACTIVE' where p.user_id=${target}::uuid and p.deleted_at is null limit 1`));
+  if(!row) throw new AppError(404,"NOT_FOUND","This student profile is not available.");
+}
+function connectionProjection(viewer:AuthenticatedUser){
+  return sql`p.user_id,p.display_name,p.username,p.profile_image_url,p.current_level,
+    uni.name as university_name,d.name as department_name,
+    coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,
+    exists(select 1 from public.profile_follows mine where mine.follower_id=${viewer.id}::uuid and mine.followed_id=p.user_id) as followed`;
+}
+peopleRoutes.get("/:id/followers",async c=>{
+  const target=id(c.req.param("id")),viewer=currentUser(c),db=database(c.env);
+  const cursorValue=c.req.query("cursor"),cursor=cursorValue?id(cursorValue):null;
+  await ensureConnectionTarget(db,target);
+  const result=await db.execute(sql`
+    select ${connectionProjection(viewer)}
+    from public.profile_follows f
+    join public.profiles p on p.user_id=f.follower_id and p.deleted_at is null
+    join public.users account on account.id=p.user_id and account.status::text='ACTIVE'
+    left join public.universities uni on uni.id=p.university_id
+    left join public.departments d on d.id=p.department_id
+    where f.followed_id=${target}::uuid
+      and (${cursor}::uuid is null or p.user_id>${cursor}::uuid)
+    order by p.user_id
+    limit ${connectionPageSize+1}
+  `);
+  const people=result.rows.slice(0,connectionPageSize) as Array<{user_id:string}>;
+  return c.json({people,nextCursor:result.rows.length>connectionPageSize?people[people.length-1]?.user_id??null:null});
+});
+peopleRoutes.get("/:id/following",async c=>{
+  const target=id(c.req.param("id")),viewer=currentUser(c),db=database(c.env);
+  const cursorValue=c.req.query("cursor"),cursor=cursorValue?id(cursorValue):null;
+  await ensureConnectionTarget(db,target);
+  const result=await db.execute(sql`
+    select ${connectionProjection(viewer)}
+    from public.profile_follows f
+    join public.profiles p on p.user_id=f.followed_id and p.deleted_at is null
+    join public.users account on account.id=p.user_id and account.status::text='ACTIVE'
+    left join public.universities uni on uni.id=p.university_id
+    left join public.departments d on d.id=p.department_id
+    where f.follower_id=${target}::uuid
+      and (${cursor}::uuid is null or p.user_id>${cursor}::uuid)
+    order by p.user_id
+    limit ${connectionPageSize+1}
+  `);
+  const people=result.rows.slice(0,connectionPageSize) as Array<{user_id:string}>;
+  return c.json({people,nextCursor:result.rows.length>connectionPageSize?people[people.length-1]?.user_id??null:null});
+});
+
 peopleRoutes.put("/:id/follow",async c=>{
   const target=id(c.req.param("id")),u=currentUser(c),d=await input(c,z.object({follow:z.boolean()}).strict());
   if(target===u.id) throw new AppError(400,"BAD_REQUEST","You cannot follow yourself.");
+  await requireUnblocked(c.env,u.id,target);
   const db=database(c.env);
   const allowed=firstRow(await db.execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('PROFILE_FOLLOW',${await sha256(u.id)},120,3600,3600) as allowed`));
   if(!allowed?.allowed) throw new AppError(429,"RATE_LIMITED","Please wait before changing more follows.");
@@ -86,4 +140,43 @@ peopleRoutes.put("/:id/follow",async c=>{
   } else await db.execute(sql`delete from public.profile_follows where follower_id=${u.id}::uuid and followed_id=${target}::uuid`);
   const counts=firstRow(await db.execute(sql`select count(*)::int as follower_count from public.profile_follows where followed_id=${target}::uuid`));
   return c.json({followed:d.follow,follower_count:counts?.follower_count ?? 0});
+});
+
+peopleRoutes.put("/:id/block",async c=>{
+  await requireProfileSafety(c.env);
+  const target=id(c.req.param("id")),u=currentUser(c);
+  if(target===u.id) throw new AppError(400,"BAD_REQUEST","You cannot block yourself.");
+  const data=await input(c,z.object({
+    reason:z.string().trim().min(1).max(100).optional(),
+    details:z.string().trim().min(1).max(1000).optional(),
+  }).strict());
+  const db=database(c.env);
+  const profile=firstRow(await db.execute<{block_protected:boolean}>(sql`
+    select p.user_id,coalesce(policy.block_protected,false) as block_protected
+    from public.profiles p
+    join public.users account on account.id=p.user_id and account.status::text='ACTIVE'
+    left join public.profile_social_policies policy on policy.user_id=p.user_id
+    where p.user_id=${target}::uuid and p.deleted_at is null
+    limit 1`));
+  if(!profile) throw new AppError(404,"NOT_FOUND","This student profile is not available.");
+  if(profile.block_protected) throw new AppError(403,"FORBIDDEN","This profile cannot be blocked.");
+  await db.execute(sql`
+    insert into public.user_blocks(blocker_id,blocked_id,institution_id,reason,details)
+    values(${u.id}::uuid,${target}::uuid,${u.universityId}::uuid,${data.reason??null},${data.details??null})
+    on conflict(blocker_id,blocked_id) do update set
+      reason=coalesce(excluded.reason,user_blocks.reason),
+      details=coalesce(excluded.details,user_blocks.details)`);
+  await db.execute(sql`
+    delete from public.profile_follows
+    where (follower_id=${u.id}::uuid and followed_id=${target}::uuid)
+       or (follower_id=${target}::uuid and followed_id=${u.id}::uuid)`);
+  return c.json({blocked:true});
+});
+peopleRoutes.delete("/:id/block",async c=>{
+  await requireProfileSafety(c.env);
+  const target=id(c.req.param("id")),u=currentUser(c);
+  await database(c.env).execute(sql`
+    delete from public.user_blocks
+    where blocker_id=${u.id}::uuid and blocked_id=${target}::uuid`);
+  return c.json({blocked:false});
 });

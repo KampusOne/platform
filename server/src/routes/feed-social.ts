@@ -46,6 +46,7 @@ function projection(user: User, withViews: boolean) {
     posts.image_url, posts.audience->>'mediaType' as media_type, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
     case when posts.audience->>'studentPost' = 'true'
       then coalesce(author.display_name, 'KampusOne student') else sources.name end as source_name,
+    case when posts.audience->>'studentPost' = 'true' then nullif(author.username, '') else null end as source_username,
     case when posts.audience->>'studentPost' = 'true'
       then coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) else sources.verified end as source_verified,
     coalesce(posts.author_user_id = ${user.id}::uuid, false) as can_delete,
