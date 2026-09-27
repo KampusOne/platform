@@ -1,3 +1,4 @@
+import { parseScheduleDocument } from "../lib/schedule-document";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { z, timetableEntrySchema } from "@kampusone/contracts";
@@ -6,7 +7,7 @@ import { input } from "../lib/input";
 import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
 import { requireAuth, currentUser } from "../middleware/auth";
-import { aiDay, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, selectAIProvider, type AIMedia, type AITurn } from "../lib/ai-provider";
+import { aiDay, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, AIProviderError, assertAIConfiguration, generateAI, providerConfiguration, selectAIProvider, type AIMedia, type AITurn } from "../lib/ai-provider";
 import { isStudyGeneration, studentAIPolicy, studentAIUsage, studentExperienceReady } from "../lib/student-ai-policy";
 import { extractAIPdf } from "../lib/ai-document";
 import { runStudentAssistant, classDraftSchema, type AICard, type AIAction } from "../lib/student-ai-tools";
@@ -16,14 +17,14 @@ export const aiRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "quiz", "notes", "timetable"]);
-const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
-type Saved = { tier?: string; cards?: AICard[]; actions?: AIAction[]; version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
+const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
+type Saved = { documentType?: string; events?: unknown[]; tier?: string; cards?: AICard[]; actions?: AIAction[]; version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
 }
 function publicResult(id: string, value: Saved) {
-  return { requestId: id, threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, warnings: value.warnings ?? [] } : {}) };
+  return { requestId: id, threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, events: value.events ?? [], documentType: value.documentType ?? "class_timetable", warnings: value.warnings ?? [] } : {}) };
 }
 function replay(row: RequestRow, hash: string) {
   if (row.request_hash !== hash) throw new AppError(409, "CONFLICT", "This request reference belongs to a different draft.", { reason: "AI_REQUEST_CONFLICT" });
@@ -125,7 +126,7 @@ aiRoutes.post("/", async c => {
   if (!d.prompt && !d.mediaId) throw new AppError(400, "BAD_REQUEST", "Add a question or document.");
   if(!await studentExperienceReady(c.env)) throw new AppError(503,"PROVIDER_UNAVAILABLE","AI is being updated. Your draft is kept.");
   const u = currentUser(c), db = database(c.env);
-  const hash = await sha256(JSON.stringify([3,d.mode,d.prompt,d.mediaId ?? null,d.replyTo ?? null,d.tier]));
+  const hash = await sha256(JSON.stringify([3,d.mode,d.prompt,d.notes ?? "",d.mediaId ?? null,d.replyTo ?? null,d.tier]));
   const findRequest = async () => firstRow(await db.execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid`));
   const cached = await findRequest();
   if (cached) return c.json(replay(cached, hash));
@@ -159,6 +160,10 @@ aiRoutes.post("/", async c => {
       for (let i=0;i<bytes.length;i+=8192) binary += String.fromCharCode(...bytes.subarray(i,i+8192));
       media = { mimeType: mime, data: btoa(binary) };
     }
+  }
+  const scheduleSource = prompt;
+  if (d.mode === "timetable" && d.notes) {
+    prompt += (prompt ? "\n\n" : "") + "Student timetable preferences (use these only to filter what is visibly present in the source; never invent a class):\n" + d.notes;
   }
   try { assertAIConfiguration(c.env, d.mode, media?.mimeType, undefined,d.tier); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
   const selectedProvider = selectAIProvider(d.mode, media?.mimeType, d.provider);
@@ -211,7 +216,7 @@ aiRoutes.post("/", async c => {
       const generated = d.mode==='study' ? await runStudentAssistant(c.env,u,aiInput) : await generateAI(c.env,aiInput);
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
-        const extracted = parseTimetableJSON(generated.text);
+        const extracted = parseScheduleDocument(generated.text, scheduleSource);
         const entries: unknown[] = [], warnings = [...extracted.warnings];
         for (const [i, raw] of extracted.entries.entries()) {
           if (!raw || typeof raw !== "object") { warnings.push(`Class ${i+1} was unreadable and needs manual entry.`); continue; }
@@ -223,7 +228,7 @@ aiRoutes.post("/", async c => {
           }
           entries.push(valid.data);
         }
-        result = { ...result, entries, warnings };
+        result = { ...result, entries, warnings, events: extracted.events, documentType: extracted.documentType };
       } else {
         result.text = generated.text;
         if ('cards' in generated) result.cards=generated.cards as AICard[];
