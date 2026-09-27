@@ -73,6 +73,56 @@ peopleRoutes.get("/:id",async c=>{
     order by a.agent_type`);
   return c.json({profile,roles:roles.rows,isOwner:target===u.id});
 });
+const connectionPageSize=40;
+async function ensureConnectionTarget(db:ReturnType<typeof database>,target:string){
+  const row=firstRow(await db.execute(sql`select p.user_id from public.profiles p join public.users account on account.id=p.user_id and account.status::text='ACTIVE' where p.user_id=${target}::uuid and p.deleted_at is null limit 1`));
+  if(!row) throw new AppError(404,"NOT_FOUND","This student profile is not available.");
+}
+function connectionProjection(viewer:AuthenticatedUser){
+  return sql`p.user_id,p.display_name,p.username,p.profile_image_url,p.current_level,
+    uni.name as university_name,d.name as department_name,
+    coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,
+    exists(select 1 from public.profile_follows mine where mine.follower_id=${viewer.id}::uuid and mine.followed_id=p.user_id) as followed`;
+}
+peopleRoutes.get("/:id/followers",async c=>{
+  const target=id(c.req.param("id")),viewer=currentUser(c),db=database(c.env);
+  const cursorValue=c.req.query("cursor"),cursor=cursorValue?id(cursorValue):null;
+  await ensureConnectionTarget(db,target);
+  const result=await db.execute(sql`
+    select ${connectionProjection(viewer)}
+    from public.profile_follows f
+    join public.profiles p on p.user_id=f.follower_id and p.deleted_at is null
+    join public.users account on account.id=p.user_id and account.status::text='ACTIVE'
+    left join public.universities uni on uni.id=p.university_id
+    left join public.departments d on d.id=p.department_id
+    where f.followed_id=${target}::uuid
+      and (${cursor}::uuid is null or p.user_id>${cursor}::uuid)
+    order by p.user_id
+    limit ${connectionPageSize+1}
+  `);
+  const people=result.rows.slice(0,connectionPageSize) as Array<{user_id:string}>;
+  return c.json({people,nextCursor:result.rows.length>connectionPageSize?people[people.length-1]?.user_id??null:null});
+});
+peopleRoutes.get("/:id/following",async c=>{
+  const target=id(c.req.param("id")),viewer=currentUser(c),db=database(c.env);
+  const cursorValue=c.req.query("cursor"),cursor=cursorValue?id(cursorValue):null;
+  await ensureConnectionTarget(db,target);
+  const result=await db.execute(sql`
+    select ${connectionProjection(viewer)}
+    from public.profile_follows f
+    join public.profiles p on p.user_id=f.followed_id and p.deleted_at is null
+    join public.users account on account.id=p.user_id and account.status::text='ACTIVE'
+    left join public.universities uni on uni.id=p.university_id
+    left join public.departments d on d.id=p.department_id
+    where f.follower_id=${target}::uuid
+      and (${cursor}::uuid is null or p.user_id>${cursor}::uuid)
+    order by p.user_id
+    limit ${connectionPageSize+1}
+  `);
+  const people=result.rows.slice(0,connectionPageSize) as Array<{user_id:string}>;
+  return c.json({people,nextCursor:result.rows.length>connectionPageSize?people[people.length-1]?.user_id??null:null});
+});
+
 peopleRoutes.put("/:id/follow",async c=>{
   const target=id(c.req.param("id")),u=currentUser(c),d=await input(c,z.object({follow:z.boolean()}).strict());
   if(target===u.id) throw new AppError(400,"BAD_REQUEST","You cannot follow yourself.");
