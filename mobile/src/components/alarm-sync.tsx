@@ -31,11 +31,12 @@ export function AlarmSync(){
    }catch{/* Native schedules and pending events survive a network interruption. */}finally{syncing=false;}
   }
   async function observe(){if(!active||AppState.currentState!=='active'||!nativeAlarms)return;try{const ringing=await getRingingAlarm();if(ringing&&ringing.endsAt>Date.now()){const key=ringing.id+':'+ringing.firedAt;if(key!==lastRing){lastRing=key;void transferEvents().catch(()=>undefined);router.push({pathname:'/alarm-ring',params:{alarmId:ringing.id}});}}}catch{/* Never crash navigation when the native service is unavailable. */}}
-  void restore();const timer=nativeAlarms?setInterval(()=>void observe(),1500):null;
+  const initialRestore=setTimeout(()=>void restore(),1800);
+  const timer=nativeAlarms?setInterval(()=>void observe(),1500):null;
   const sub=AppState.addEventListener('change',state=>{if(state==='active'){void restore();void observe();}});
   const ring=(event:Event)=>{const detail=(event as CustomEvent<{label:string;alarmId:string}>).detail;router.push({pathname:'/alarm-ring',params:{alarmId:detail.alarmId,label:detail.label}});};
   if(Platform.OS==='web')window.addEventListener('k1-alarm',ring);
-  return()=>{active=false;sub.remove();if(timer)clearInterval(timer);if(Platform.OS==='web')window.removeEventListener('k1-alarm',ring);};
+  return()=>{active=false;clearTimeout(initialRestore);sub.remove();if(timer)clearInterval(timer);if(Platform.OS==='web')window.removeEventListener('k1-alarm',ring);};
  },[user?.id]);
  return null;
 }
