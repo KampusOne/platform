@@ -117,3 +117,22 @@ describe('community announcement delivery',()=>{
   expect((await db.query('select status,error_code from app_private.community_push_deliveries where outbox_id=$1',[outbox])).rows).toEqual([{status:'UNKNOWN',error_code:'PUSH_NETWORK_UNCERTAIN'}]);
  });
 });
+
+
+describe('notification inbox read state',()=>{
+ it('returns the actor profile and persists individual read state',async()=>{
+  const notificationId=crypto.randomUUID();
+  await db.query('update public.profiles set profile_image_url=$2 where user_id=$1',[staff,'https://images.example.invalid/staff-avatar.jpg']);
+  await db.query("insert into public.in_app_notifications(id,user_id,institution_id,actor_user_id,title,body,path,dedupe_key) values($1,$2,$3,$4,'Test 0 liked your post','Post title','/post?id=test',$5)",[notificationId,student,school,staff,'test-notification:'+notificationId]);
+  const inbox=await data(await request('/inbox','GET',undefined,student));
+  expect(inbox.notifications.find((n:any)=>n.id===notificationId)).toMatchObject({
+   actor_user_id:staff,
+   actor_name:'Test 0',
+   actor_profile_image_url:'https://images.example.invalid/staff-avatar.jpg',
+   read_at:null,
+  });
+  await data(await request('/inbox/'+notificationId+'/read','PATCH',undefined,student));
+  const refreshed=await data(await request('/inbox','GET',undefined,student));
+  expect(refreshed.notifications.find((n:any)=>n.id===notificationId)?.read_at).toBeTruthy();
+ });
+});
