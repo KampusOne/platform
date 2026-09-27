@@ -221,30 +221,81 @@ export function MessageVoice({
   );
 }
 
-export function VoicePlayback({ uri, compact = false }: { uri: string; compact?: boolean }) {
-  const player = useAudioPlayer(uri);
+export function VoicePlayback({
+  uri,
+  compact = false,
+  autoPlay = false,
+  onPlaybackError,
+}: {
+  uri: string;
+  compact?: boolean;
+  autoPlay?: boolean;
+  onPlaybackError?: (message: string) => void;
+}) {
+  const player = useAudioPlayer(uri, {
+    updateInterval: 250,
+    downloadFirst: true,
+  });
   const state = useAudioPlayerStatus(player);
+  const [autoPlayPending, setAutoPlayPending] = useState(autoPlay);
   const { theme, styles } = useThemeStyles(createStyles);
-  const toggle = () => {
-    if (state.playing) player.pause();
-    else {
-      if (state.didJustFinish) void player.seekTo(0);
+  const statusError = (state as typeof state & { error?: string | null }).error ?? null;
+  const loading = !state.isLoaded || state.isBuffering;
+
+  useEffect(() => {
+    setAutoPlayPending(autoPlay);
+  }, [autoPlay, uri]);
+
+  useEffect(() => {
+    if (!statusError) return;
+    setAutoPlayPending(false);
+    onPlaybackError?.("Voice note could not play. Tap to retry.");
+  }, [statusError, onPlaybackError]);
+
+  useEffect(() => {
+    if (!autoPlayPending || !state.isLoaded) return;
+    setAutoPlayPending(false);
+    void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true })
+      .then(() => player.play())
+      .catch(() => onPlaybackError?.("Voice note could not play. Tap to retry."));
+  }, [autoPlayPending, state.isLoaded, player, onPlaybackError]);
+
+  const toggle = async () => {
+    setAutoPlayPending(false);
+    try {
+      if (state.playing) {
+        player.pause();
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      if (state.didJustFinish) await player.seekTo(0);
       player.play();
+    } catch {
+      onPlaybackError?.("Voice note could not play. Tap to retry.");
     }
   };
+
   if (compact) {
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={state.playing ? "Pause audio" : "Play audio"}
-        onPress={toggle}
-        style={({ pressed }) => [styles.smallIcon, styles.playIcon, pressed && styles.pressed]}
+        accessibilityLabel={loading ? "Loading audio" : state.playing ? "Pause audio" : "Play audio"}
+        disabled={!state.isLoaded}
+        onPress={() => void toggle()}
+        style={({ pressed }) => [styles.smallIcon, styles.playIcon, pressed && styles.pressed, !state.isLoaded && styles.disabled]}
       >
-        <Ionicons name={state.playing ? "pause" : "play"} size={17} color={theme.deepBrand} />
+        <Ionicons name={loading ? "hourglass-outline" : state.playing ? "pause" : "play"} size={17} color={theme.deepBrand} />
       </Pressable>
     );
   }
-  return <ToolButton secondary label={state.playing ? "Pause audio" : "Play audio"} onPress={toggle} />;
+  return (
+    <ToolButton
+      secondary
+      disabled={!state.isLoaded}
+      label={loading ? "Loading audio…" : state.playing ? "Pause audio" : "Play audio"}
+      onPress={() => void toggle()}
+    />
+  );
 }
 
 const createStyles = (theme: Theme) => StyleSheet.create({
