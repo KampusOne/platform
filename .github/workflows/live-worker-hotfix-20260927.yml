@@ -30,6 +30,8 @@ jobs:
         working-directory: packages/contracts
       - run: npm ci
         working-directory: server
+      - run: npm ci
+        working-directory: mobile
       - name: Verify pinned Worker
         run: npm run check && npm test -- --maxWorkers=2 && npm run build
         working-directory: server
