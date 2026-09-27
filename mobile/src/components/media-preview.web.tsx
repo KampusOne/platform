@@ -1,6 +1,7 @@
 import { createElement, useEffect, useRef, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { useAppearance } from "@/src/lib/appearance";
+import { readVideoPlaybackSession, writeVideoPlaybackSession } from "@/src/lib/video-playback-session";
 
 export type MediaPlaybackMode = "unmanaged" | "feed-autoplay" | "manual-managed";
 
@@ -29,6 +30,8 @@ export function MediaPreview({
   playbackMode = "unmanaged",
   onPlaybackHandle,
   suspended = false,
+  playbackKey,
+  onOpen,
 }: {
   url: string;
   video?: boolean;
@@ -38,6 +41,8 @@ export function MediaPreview({
   playbackMode?: MediaPlaybackMode;
   onPlaybackHandle?: ((handle: MediaPlaybackHandle | null) => void) | undefined;
   suspended?: boolean;
+  playbackKey?: string | undefined;
+  onOpen?: ((state: { position: number; muted: boolean }) => void) | undefined;
 }) {
   const { theme } = useAppearance();
   const [error, setError] = useState("");
@@ -69,7 +74,12 @@ export function MediaPreview({
           return;
         }
         if (playbackMode === "feed-autoplay") {
-          if (!didApplyInitialFeedMute.current) {
+          const remembered = readVideoPlaybackSession(playbackKey);
+          if (remembered) {
+            if (Math.abs(element.currentTime - remembered.position) > 0.35) element.currentTime = remembered.position;
+            element.muted = remembered.muted;
+            didApplyInitialFeedMute.current = true;
+          } else if (!didApplyInitialFeedMute.current) {
             element.muted = true;
             didApplyInitialFeedMute.current = true;
           }
@@ -155,7 +165,15 @@ export function MediaPreview({
             background: "#080808",
             objectFit: "contain",
           },
-          onClick: (event) => event.stopPropagation(),
+          onClick: (event) => {
+            event.stopPropagation();
+            const element = event.currentTarget as HTMLVideoElement;
+            writeVideoPlaybackSession(playbackKey, element.currentTime, element.muted);
+            if (onOpen) {
+              element.pause();
+              onOpen({ position: element.currentTime, muted: element.muted });
+            }
+          },
           onDoubleClick: (event) => {
             event.stopPropagation(); event.preventDefault();
             const video = event.currentTarget as HTMLVideoElement;
