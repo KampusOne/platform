@@ -1,4 +1,4 @@
-name: Live Worker auth reachability check 20260927
+name: Live Worker API domain hotfix 20260927
 
 on:
   push:
@@ -10,21 +10,50 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
+    environment: production
     steps:
-      - name: Check exact APK API origin
-        env:
-          API_URL: https://platformp.divine-haze-54eb.workers.dev
+      - uses: actions/checkout@v4
+        with:
+          ref: hotfix/api-custom-domain-20260927
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            packages/contracts/package-lock.json
+            server/package-lock.json
+            mobile/package-lock.json
+      - run: npm ci
+        working-directory: packages/contracts
+      - run: npm ci
+        working-directory: server
+      - name: Verify pinned Worker
+        run: npm run check && npm test -- --maxWorkers=2 && npm run build
+        working-directory: server
+      - name: Deploy first-party API domain hotfix
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server
+          command: deploy
+      - name: Verify both API origins
         run: |
           set -euo pipefail
-          echo "Checking ready endpoint"
-          time curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "$API_URL/health/ready"
-          echo
-          echo "Checking password login route reaches the Worker and database"
-          status=$(curl --silent --show-error --connect-timeout 5 --max-time 10             -o /tmp/login.json -w '%{http_code}'             -H 'Content-Type: application/json'             --data '{"email":"apk-probe-invalid@kampusone.app","password":"not-a-real-password","deviceLabel":"KampusOne auth probe"}'             "$API_URL/v1/auth/login")
-          cat /tmp/login.json
-          echo
-          echo "HTTP $status"
-          test "$status" = "401"
+          for API_URL in https://api.kampusone.app https://platformp.divine-haze-54eb.workers.dev; do
+            echo "Checking $API_URL"
+            time curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "$API_URL/health/ready"
+            echo
+            status=$(curl --silent --show-error --connect-timeout 5 --max-time 10 \
+              -o /tmp/login.json -w '%{http_code}' \
+              -H 'Content-Type: application/json' \
+              --data '{"email":"apk-probe-invalid@kampusone.app","password":"not-a-real-password","deviceLabel":"KampusOne auth probe"}' \
+              "$API_URL/v1/auth/login")
+            cat /tmp/login.json
+            echo
+            echo "$API_URL HTTP $status"
+            test "$status" = "401"
+          done
