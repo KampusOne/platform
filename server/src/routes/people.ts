@@ -80,7 +80,7 @@ function profileConnectionPage(rows: ProfileConnectionRow[]) {
 }
 
 peopleRoutes.get("/:id/followers",async c=>{
-  const target=id(c.req.param("id")),u=currentUser(c),db=database(c.env),cursor=profileConnectionCursor(c.req.query("cursor"));
+  const target=id(c.req.param("id")),db=database(c.env),cursor=profileConnectionCursor(c.req.query("cursor"));
   const owner=firstRow(await db.execute(sql`select p.user_id from public.profiles p join public.users account on account.id=p.user_id and account.status::text='ACTIVE' where p.user_id=${target}::uuid and p.deleted_at is null`));
   if(!owner) throw new AppError(404,"NOT_FOUND","This student profile is not available.");
   const result=await db.execute<ProfileConnectionRow>(sql`
@@ -96,7 +96,6 @@ peopleRoutes.get("/:id/followers",async c=>{
     where f.followed_id=${target}::uuid
       ${cursor?sql`and (f.created_at,f.follower_id)<(${cursor.at}::timestamptz,${cursor.userId}::uuid)`:sql``}
     order by f.created_at desc,f.follower_id desc limit 41`);
-  void u;
   return c.json(profileConnectionPage(result.rows));
 });
 peopleRoutes.get("/:id/following",async c=>{
