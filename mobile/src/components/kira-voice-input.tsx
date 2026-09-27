@@ -106,7 +106,7 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
       try{
         result=await api<{text:string}>(path,{method:'POST',headers:{'Content-Type':contentType},body,timeoutMs:75000});
       }catch(e){
-        const retryMultipart=e instanceof ApiError&&((e.status===500&&e.code==='INTERNAL_ERROR')||e.details?.retryMultipart===true);
+        const retryMultipart=e instanceof ApiError&&e.details?.retryMultipart===true;
         if(!retryMultipart)throw e;
         const form=new FormData();
         form.append('file',body,Platform.OS==='web'?'Kira-voice.webm':'Kira-voice.m4a');
