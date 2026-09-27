@@ -63,3 +63,22 @@ test("main profile dashboard shows the signed-in user's repost history", () => {
   assert.match(source, /Load older reposts/);
   assert.match(source, /post\.reposted[\s\S]*current\.filter/);
 });
+
+
+test("profile follower and following counts open real connection lists", () => {
+  const ownProfile = read("mobile/app/(tabs)/profile.tsx");
+  const publicProfile = read("mobile/app/student-profile.tsx");
+  const connections = read("mobile/app/profile-connections.tsx");
+  const peopleRoute = read("server/src/routes/people.ts");
+
+  assert.match(ownProfile, /pathname:\s*"\/profile-connections"[\s\S]*tab:\s*"followers"/);
+  assert.match(ownProfile, /pathname:\s*"\/profile-connections"[\s\S]*tab:\s*"following"/);
+  assert.match(publicProfile, /pathname:"\/profile-connections"[\s\S]*tab:"followers"/);
+  assert.match(publicProfile, /pathname:"\/profile-connections"[\s\S]*tab:"following"/);
+  assert.match(connections, /\/v1\/people\/\$\{target\}\/\$\{active\}/);
+  assert.match(connections, /pathname:\s*"\/student-profile"/);
+  assert.match(peopleRoute, /get\("\/:id\/followers"/);
+  assert.match(peopleRoute, /get\("\/:id\/following"/);
+  assert.match(peopleRoute, /order by f\.created_at desc,f\.follower_id desc limit 41/);
+  assert.match(peopleRoute, /order by f\.created_at desc,f\.followed_id desc limit 41/);
+});
