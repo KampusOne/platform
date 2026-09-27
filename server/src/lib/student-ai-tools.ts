@@ -255,12 +255,12 @@ async function studentRecommendationContext(env: Bindings, user: AuthenticatedUs
 
 export function needsCampusTools(input: AIInput): boolean {
   const recent = [input.prompt, ...(input.history ?? []).slice(-2).map(turn => turn.prompt)].join(" ");
-  return /\b(alarm|remind|reminder|calendar|timetable|schedule|class|lecture|product|vendor|store|shop|buy|tutor|recommend|suggest|availability|available|price|cost)\b/i.test(recent);
+  return /\b(alarm|remind|reminder|calendar|timetable|schedule|class|lecture|exam|deadline|product|item|vendor|seller|store|shop|buy|purchase|food|textbook|tutor|tutorial|lesson|teach|teacher|recommend|suggest|availability|available|price|cost|affordable)\b/i.test(recent);
 }
 
 function needsRecommendationContext(input: AIInput): boolean {
   const recent = [input.prompt, ...(input.history ?? []).slice(-2).map(turn => turn.prompt)].join(" ");
-  return /\b(recommend|suggest|product|vendor|store|shop|buy|tutor|taste|preference|budget)\b/i.test(recent);
+  return /\b(recommend|suggest|best|good|fit|product|item|vendor|seller|store|shop|buy|purchase|food|textbook|tutor|tutorial|lesson|teach|taste|preference|budget|affordable)\b/i.test(recent);
 }
 
 export async function runStudentAssistant(env: Bindings, user: AuthenticatedUser, input: AIInput) {
