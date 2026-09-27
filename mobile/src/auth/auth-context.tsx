@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Alert, Platform } from "react-native";
+import { Alert } from "react-native";
 
 import {
   api,
@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(response.profile);
       applyPreferences(response.profile.settings);
       setProfileState("ready");
-      await writeCache(`profile.${response.profile.id}`, response.profile);
+      void writeCache(`profile.${response.profile.id}`, response.profile);
     } catch (caught) {
       if (generation !== sessionVersion.current) return;
       setProfileState((current) => (current === "ready" ? current : "error"));
@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applySession = useCallback(
-    async (session: Session) => {
+    (session: Session) => {
       if (sessionUserId.current !== session.user.id) {
         sessionVersion.current++;
         sessionUserId.current = session.user.id;
@@ -110,11 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session.user);
       setState("authenticated");
       void writeCache("last-session", { user: session.user }, 30 * 86400_000).catch(() => undefined);
-      try {
-        await reloadProfile();
-      } catch {
-        /* The signed-in session remains valid; the UI exposes a profile retry state. */
-      }
+      // Authentication is already valid here; profile loading has its own state
+      // and must not keep the sign-in action spinning.
+      void reloadProfile().catch(() => undefined);
     },
     [reloadProfile],
   );
@@ -123,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () =>
       onSessionChange((session) => {
         if (session) {
-          void applySession(session);
+          applySession(session);
         } else {
           sessionVersion.current++;
           sessionUserId.current = null;
@@ -141,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applySession],
   );
 
-  const retrySessionRestore = useCallback(async (timeoutMs = 15_000) => {
+  const retrySessionRestore = useCallback(async (timeoutMs = 12_000) => {
     setSessionRestoreError("");
     try {
       const session = await authApi.refresh(timeoutMs);
@@ -149,9 +147,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState((current) => (current === "loading" ? "anonymous" : current));
       }
     } catch {
-      // An unavailable API does not prove the device's refresh session is
-      // invalid. Keep any known credentials untouched and let the entry screen
-      // offer an explicit retry or a privacy-safe path to interactive sign-in.
+      // A failed connection does not invalidate a stored refresh token. Make
+      // the failure visible quickly and keep interactive sign-in available.
       setSessionRestoreError(
         "We couldn’t check this device’s session. Check your connection and try again.",
       );
@@ -160,35 +157,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let restoring = true;
+    const generation = sessionVersion.current;
+
+    // Start the secure-session check immediately instead of waiting for cache IO.
+    void retrySessionRestore(3_500).finally(() => {
+      restoring = false;
+    });
+
     void (async () => {
       const snapshot = await readCache<{ user: SessionUser }>(
         "last-session",
       ).catch(() => null);
-      if (snapshot && active) {
+      if (snapshot && active && restoring && generation === sessionVersion.current) {
         const savedProfile = await readCache<Profile>(
           `profile.${snapshot.user.id}`,
         ).catch(() => null);
-        if (savedProfile?.onboarding_completed_at && active) {
+        if (
+          savedProfile?.onboarding_completed_at &&
+          active &&
+          restoring &&
+          generation === sessionVersion.current
+        ) {
           sessionUserId.current = snapshot.user.id;
           setUser(snapshot.user);
           setProfile(savedProfile);
-          // Cached profile data is only a rendering optimization. It is never
-          // proof that a cookie/session is still valid after a restart.
+          // Cached data is only a rendering optimization, never auth proof.
           setProfileState("ready");
           applyPreferences(savedProfile.settings);
         }
       }
-      if (Platform.OS !== "web") {
-        const hasSavedSession = await authApi.hasSavedSession().catch(() => true);
-        if (!active) return;
-        if (!hasSavedSession) {
-          setSessionRestoreError("");
-          setState("anonymous");
-          return;
-        }
-      }
-      if (active) await retrySessionRestore(3_500);
     })();
+
     return () => {
       active = false;
     };
