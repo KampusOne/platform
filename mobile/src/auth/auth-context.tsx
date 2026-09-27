@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(response.profile);
       applyPreferences(response.profile.settings);
       setProfileState("ready");
-      await writeCache(`profile.${response.profile.id}`, response.profile);
+      void writeCache(`profile.${response.profile.id}`, response.profile);
     } catch (caught) {
       if (generation !== sessionVersion.current) return;
       setProfileState((current) => (current === "ready" ? current : "error"));
@@ -102,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applySession = useCallback(
-    async (session: Session) => {
+    (session: Session) => {
       if (sessionUserId.current !== session.user.id) {
         sessionVersion.current++;
         sessionUserId.current = session.user.id;
@@ -114,11 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session.user);
       setState("authenticated");
       void writeCache("last-session", { user: session.user }, 30 * 86400_000).catch(() => undefined);
-      try {
-        await reloadProfile();
-      } catch {
-        /* The signed-in session remains valid; the UI exposes a profile retry state. */
-      }
+      // Accept sign-in immediately. Profile loading has its own visible retry state.
+      void reloadProfile().catch(() => undefined);
     },
     [reloadProfile],
   );
@@ -164,15 +161,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let restoring = true;
+    const generation = sessionVersion.current;
+    // Disk-cache reads must not delay checking the actual secure session.
+    void retrySessionRestore().finally(() => { restoring = false; });
     void (async () => {
       const snapshot = await readCache<{ user: SessionUser }>(
         "last-session",
       ).catch(() => null);
-      if (snapshot && active) {
+      if (snapshot && active && restoring && generation === sessionVersion.current) {
         const savedProfile = await readCache<Profile>(
           `profile.${snapshot.user.id}`,
         ).catch(() => null);
-        if (savedProfile?.onboarding_completed_at && active) {
+        if (savedProfile?.onboarding_completed_at && active && restoring && generation === sessionVersion.current) {
           sessionUserId.current = snapshot.user.id;
           setUser(snapshot.user);
           setProfile(savedProfile);
@@ -182,7 +183,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           applyPreferences(savedProfile.settings);
         }
       }
-      if (active) await retrySessionRestore();
     })();
     return () => {
       active = false;

@@ -71,7 +71,7 @@ export default function FeedScreen() {
     if (refresh) setRefreshing(true); else if (newScope) setLoading(!cached);
     setError("");
     try {
-      const response = await api<FeedPage>(path, { signal: AbortSignal.timeout(15_000), cache: refresh ? "reload" : "default" });
+      const response = await api<FeedPage>(path, { timeoutMs: 15_000, cache: refresh ? "reload" : "default" });
       if (version === loadVersion.current) {
         const incoming = response.posts.filter((post) => !wasPostDeleted(post.id));
         // Returning from a conversation refreshes visible data without discarding loaded pages.
@@ -88,7 +88,7 @@ export default function FeedScreen() {
     paging.current = true; setLoadingMore(true);
     const version = loadVersion.current;
     try {
-      const response = await api<FeedPage>(`${path}&cursor=${encodeURIComponent(cursor)}`, { signal: AbortSignal.timeout(15_000) });
+      const response = await api<FeedPage>(`${path}&cursor=${encodeURIComponent(cursor)}`, { timeoutMs: 15_000 });
       if (version === loadVersion.current) { setPosts((items) => mergeById(items, response.posts).filter((post) => !wasPostDeleted(post.id))); setCursor(response.nextCursor ?? null); setError(""); }
     } catch (caught) { if (version === loadVersion.current) setFeedback(caught instanceof ApiError ? caught.message : "Older posts could not load. Tap Load more to retry."); }
     finally { if (version === loadVersion.current) { paging.current = false; setLoadingMore(false); } }

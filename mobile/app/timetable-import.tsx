@@ -36,7 +36,7 @@ export default function ImportTimetable() {
   async function scan(){if(locked.current)return;const version=generation.current,owner=account.current;locked.current=true;setBusy(true);setError("");try{
     const file=attachment?await uploadAttachment(attachment):undefined;if(version!==generation.current)return;setAttachment(file);
     await writeCache("timetable-draft."+owner,{...draft(),attachment:file}).catch(()=>undefined);
-    const r=await api<{entries:Entry[];events?:Event[];documentType?:string;warnings?:string[]}>("/v1/ai",{method:"POST",signal:AbortSignal.timeout(75000),body:JSON.stringify({mode:"timetable",prompt:text,notes,mediaId:file?.mediaId,idempotencyKey:key.current,consent:true})});
+    const r=await api<{entries:Entry[];events?:Event[];documentType?:string;warnings?:string[]}>("/v1/ai",{method:"POST",timeoutMs: 75000,body:JSON.stringify({mode:"timetable",prompt:text,notes,mediaId:file?.mediaId,idempotencyKey:key.current,consent:true})});
     if(version!==generation.current)return;setEntries(r.entries.map(e=>({...e,courseCode:e.courseCode??"",venue:e.venue??"",lecturer:e.lecturer??""})));setEvents(r.events??[]);setDocumentType(r.documentType??"class_timetable");setWarnings(r.warnings??[]);setExpanded(null);saveKey.current=randomUUID();
   }catch(e){if(version!==generation.current)return;if(e instanceof ApiError&&e.details?.retryWithNewKey===true)key.current=randomUUID();setError(e instanceof Error?e.message:"Could not read the file. Your draft is kept.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
   const calendar=documentType==="academic_calendar";

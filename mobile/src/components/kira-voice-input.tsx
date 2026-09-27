@@ -36,7 +36,7 @@ export function KiraVoiceInput({disabled,enabled,onTranscript}:{disabled:boolean
     try{
       const body=Platform.OS==='web' ? await (await fetch(uri)).blob() : new File(uri) as unknown as Blob;
       const contentType=Platform.OS==='web' ? body.type||'audio/webm' : 'audio/mp4';
-      const result=await api<{text:string}>(`/v1/ai/transcribe?idempotencyKey=${id.current}&consent=true`,{method:'POST',headers:{'Content-Type':contentType},body,signal:AbortSignal.timeout(45000)});
+      const result=await api<{text:string}>(`/v1/ai/transcribe?idempotencyKey=${id.current}&consent=true`,{method:'POST',headers:{'Content-Type':contentType},body,timeoutMs: 45000});
       if(alive.current){onTranscript(result.text);setUri(undefined);id.current=randomUUID();}
     }catch(e){if(alive.current){setError(e instanceof Error?e.message:'Your recording is kept. Try again.');if(e instanceof ApiError&&e.details?.retryWithNewKey)id.current=randomUUID();}}
     finally{locked.current=false;if(alive.current)setWorking(false);}

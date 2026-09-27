@@ -45,7 +45,7 @@ export default function ConversationScreen(){
     if(picked.canceled)return;const file=picked.assets[0];if(!file)return;
     if(!file.size||file.size>50*1024*1024)throw new Error('Choose a file smaller than 50 MB; images and PDFs must be smaller than 10 MB.');
     const body=Platform.OS==='web'?await(await fetch(file.uri)).blob():new (await import('expo-file-system')).File(file.uri) as unknown as Blob;
-    const result=await api<{id:string}>('/v1/media?kind=message&name='+encodeURIComponent(file.name),{method:'POST',body,headers:{'Content-Type':file.mimeType||body.type||'application/octet-stream'},signal:AbortSignal.timeout(180000)});
+    const result=await api<{id:string}>('/v1/media?kind=message&name='+encodeURIComponent(file.name),{method:'POST',body,headers:{'Content-Type':file.mimeType||body.type||'application/octet-stream'},timeoutMs: 180000});
     setAttachment({id:result.id,name:file.name});
   }catch(e){setError(e instanceof Error?e.message:'Attachment upload failed.');}finally{setBusy(false);}}
   async function send(){if((!draft.trim()&&!attachment)||busy)return;setBusy(true);setError('');

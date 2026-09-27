@@ -71,7 +71,7 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
   // the extra multipart copy for videos. The server verifies the actual bytes.
   const result = await api<UploadedFile>(`/v1/media?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(file.name)}`, {
     method: "POST", body, headers: { "Content-Type": file.type },
-    signal: AbortSignal.timeout(file.type.startsWith("video/") ? 180_000 : 60_000),
+    timeoutMs: file.type.startsWith("video/") ? 180_000 : 60_000,
   });
   if (!result?.id || !result.url || result.kind !== kind) throw new Error("The upload returned an incomplete response. Refresh before trying again.");
   // A profile read may have started while the upload was running. Invalidate

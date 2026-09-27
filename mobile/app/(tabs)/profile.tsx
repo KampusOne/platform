@@ -224,7 +224,7 @@ export default function ProfileScreen() {
     try {
       const page = await api<RepostPage>(
         `/v1/student/feed?repostedBy=${encodeURIComponent(user.id)}`,
-        { cache: refresh ? "reload" : "default", signal: AbortSignal.timeout(15_000) },
+        { cache: refresh ? "reload" : "default", timeoutMs: 15_000 },
       );
       if (version !== repostLoadVersion.current) return;
       setReposts(page.posts);
@@ -308,7 +308,7 @@ export default function ProfileScreen() {
     try {
       const page = await api<RepostPage>(
         `/v1/student/feed?repostedBy=${encodeURIComponent(user.id)}&cursor=${encodeURIComponent(repostCursor)}`,
-        { signal: AbortSignal.timeout(15_000) },
+        { timeoutMs: 15_000 },
       );
       if (version !== repostLoadVersion.current) return;
       setReposts((current) => [
