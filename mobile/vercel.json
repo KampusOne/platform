@@ -35,5 +35,10 @@
         }
       ]
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "apk-candidate-20260927-1448": false
+    }
+  }
 }

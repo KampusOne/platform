@@ -2,7 +2,7 @@ name: Build Android test APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, apk-candidate-20260927-1448]
     paths:
       [
         "mobile/**",
@@ -64,5 +64,12 @@ jobs:
         run: |
           gh release delete apk-latest --yes --cleanup-tag || true
           gh release create apk-latest KampusOne-Android.apk             --target "$GITHUB_SHA"             --title "KampusOne Android Test"             --notes "Latest KampusOne Android testing APK built from main. This is a sideload testing build, not a Play Store release."             --prerelease
+      - name: Publish shareable APK candidate
+        if: github.ref == 'refs/heads/apk-candidate-20260927-1448'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-candidate-20260927-1448 --yes --cleanup-tag || true
+          gh release create apk-candidate-20260927-1448 KampusOne-Android.apk --target "$GITHUB_SHA" --title "KampusOne Android Candidate 2026-09-27" --notes "Fresh APK candidate built from latest main plus the notification type-safe compile fix. Vercel deployment is disabled for this branch. Sideload testing build."
 # Expo's generated test signing is for sideload testing only. A separately
 # provisioned release/upload keystore is required before Play Store publication.
