@@ -66,7 +66,7 @@ function profileConnectionCursor(raw: string | undefined) {
   if (!raw) return null;
   const parts = raw.split("|");
   if (parts.length !== 2 || !parts[0] || !parts[1] || !Number.isFinite(Date.parse(parts[0])))
-    throw new AppError(400, "BAD_REQUEST", "This followers list position is not valid.");
+    throw new AppError(400, "BAD_REQUEST", "This connections list position is not valid.");
   return { at: parts[0], userId: id(parts[1]) };
 }
 
