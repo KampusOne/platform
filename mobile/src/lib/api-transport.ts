@@ -78,25 +78,11 @@ async function resolveApiUrl(): Promise<string> {
     return apiUrl;
   if (activeApiUrl) return activeApiUrl;
   if (!apiOriginPromise) {
-    apiOriginPromise = new Promise<string>((resolve) => {
-      const candidates = [apiUrl, fallbackApiUrl];
-      let remaining = candidates.length;
-      let settled = false;
-      for (const candidate of candidates) {
-        void apiOriginHealthy(candidate).then((healthy) => {
-          if (healthy && !settled) {
-            settled = true;
-            resolve(candidate);
-            return;
-          }
-          remaining -= 1;
-          if (remaining === 0 && !settled) {
-            settled = true;
-            resolve(apiUrl);
-          }
-        });
-      }
-    })
+    apiOriginPromise = (async () => {
+      if (await apiOriginHealthy(apiUrl)) return apiUrl;
+      if (await apiOriginHealthy(fallbackApiUrl)) return fallbackApiUrl;
+      return apiUrl;
+    })()
       .then((origin) => {
         activeApiUrl = origin;
         return origin;
