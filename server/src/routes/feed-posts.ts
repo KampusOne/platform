@@ -41,6 +41,7 @@ feedPostRoutes.get("/:id", requireAuth, async (context) => {
       posts.correction_note,
       case when posts.audience->>'studentPost' = 'true'
         then coalesce(author.display_name, sources.name) else sources.name end as source_name,
+      case when posts.audience->>'studentPost' = 'true' then author.username else null end as source_username,
       case when posts.audience->>'studentPost' = 'true'
         then coalesce(author.verification_status::text = 'VERIFIED', false)
         else sources.verified end as source_verified,
