@@ -46,6 +46,17 @@ describe("AI router security and idempotency",()=>{
     expect(queries().some(q=>q.sql.includes("'transcription'"))).toBe(true);
     expect(queries().some(q=>q.sql.includes("status='COMPLETED'"))).toBe(true);
   });
+  it("accepts multipart audio as a proxy-safe transcription fallback",async()=>{
+    mocks.execute.mockImplementation(async(s:SQL)=>{const q=query(s);if(q.sql.includes("consume_request_rate_limit"))return {rows:[{allowed:true}]};if(q.sql.includes("insert into app_private.ai_requests")&&q.sql.includes("transcription"))return {rows:[{idempotency_key:key}]};return {rows:[]};});
+    mocks.fetch.mockResolvedValueOnce(Response.json({text:"Proxy-safe voice transcript."}));
+    const form=new FormData();
+    form.append("file",new Blob([new Uint8Array([0,1,2,3,4])],{type:"audio/mp4"}),"Kira-voice.m4a");
+    const r=await app.request(`/ai/transcribe?idempotencyKey=${key}&consent=true`,{method:"POST",headers:{Authorization:"Bearer test"},body:form},env);
+    expect(r.status).toBe(200);expect(await r.json()).toEqual({text:"Proxy-safe voice transcript."});
+    const providerCall=mocks.fetch.mock.calls[0];
+    expect(String(providerCall?.[0])).toContain("router.huggingface.co/hf-inference/models/openai/whisper-large-v3");
+    expect(new Headers(providerCall?.[1]?.headers).get("Content-Type")).toBe("audio/mp4");
+  });
   it("requires authentication on all private reads",async()=>{for(const path of ["/ai/status","/ai/history",`/ai/history/${key}`,`/ai/thread/${key}`])expect((await app.request(path,{},env)).status).toBe(401);expect(mocks.execute).not.toHaveBeenCalled();});
   it.each([{AI_ASSISTANT_ENABLED:"false"},{HF_TOKEN:""},{HF_CHAT_MODEL:""}])("rejects disabled/missing configuration before quota reservation",async fields=>{expect((await post({},{...env,...fields})).status).toBe(503);expect(mocks.transaction).not.toHaveBeenCalled();expect(mocks.fetch).not.toHaveBeenCalled();});
   it("locks separately before the fresh-snapshot quota claim",async()=>{const response=await post();expect(response.status).toBe(200);expect(await response.json()).toMatchObject({text:"Energy explanation",tier:"standard"});const [statements,options]=mocks.transaction.mock.calls[0]!;expect(options.isolationLevel).toBe("ReadCommitted");expect(statements[0].text).toContain("pg_advisory_xact_lock");expect(statements[2].text).toContain("on conflict do nothing");expect(statements[2].text).toContain("('summary','notes','quiz')");expect(statements[2].values).toContain(owner);expect(mocks.fetch).toHaveBeenCalledTimes(1);expect(response.headers.get("cache-control")).toContain("no-store");});

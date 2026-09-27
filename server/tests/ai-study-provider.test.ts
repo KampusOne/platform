@@ -15,7 +15,7 @@ const env: Bindings = {
   ENVIRONMENT: "local", ALLOWED_ORIGINS: "https://app.example.invalid", MINIMUM_APP_VERSION: "0.1.0", MAINTENANCE_MODE: "false",
   ACADEMIC_CORE_ENABLED: "true", SOCIAL_FEED_ENABLED: "true", MARKETPLACE_ENABLED: "false", PHASE_2_SCHEMA_READY: "true", PHASE_3_SCHEMA_READY: "false",
   UNIFIED_SCHEMA_READY: "true", PAYMENTS_ENABLED: "false", AI_ASSISTANT_ENABLED: "true", JWT_SECRET: "test-only-signing-key-not-for-deployment-12345678",
-  HF_TOKEN: "hf_SYNTHETIC", HF_CHAT_MODEL: "test/model:nscale", HF_REASONING_MODEL: "test/reasoning:nscale", HF_VISION_MODEL: "test/vision",
+  HF_TOKEN: "hf_SYNTHETIC", HF_CHAT_MODEL: "test/model:nscale", HF_REASONING_MODEL: "test/reasoning:nscale", HF_VISION_MODEL: "test/vision", HF_TRANSCRIPTION_MODEL: "test/whisper",
 };
 const tokens = new Map<string, string>();
 const provider = vi.fn<typeof fetch>();
@@ -46,14 +46,44 @@ beforeEach(async () => {
   env.AI_DAILY_USER_LIMIT = "5"; env.AI_DAILY_GLOBAL_LIMIT = "100"; env.AI_ASSISTANT_ENABLED = "true";
   env.HF_TOKEN = "hf_SYNTHETIC";env.AI_CHAT_WINDOW_LIMIT="15";env.AI_STUDY_TRIAL_LIMIT="5";
   provider.mockReset();
-  provider.mockImplementation(async url => String(url).includes("huggingface.co")
-    ? Response.json({ choices: [{ finish_reason: "stop", message: { content: "Voltage equals current multiplied by resistance." } }] })
-    : Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "A Gemini test answer." }] } }] }));
+  provider.mockImplementation(async url => String(url).includes("/hf-inference/models/")
+    ? Response.json({ text: "Explain Newton's second law." })
+    : String(url).includes("huggingface.co")
+      ? Response.json({ choices: [{ finish_reason: "stop", message: { content: "Voltage equals current multiplied by resistance." } }] })
+      : Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "A Gemini test answer." }] } }] }));
   vi.stubGlobal("fetch", provider);
 });
 afterAll(async () => { vi.unstubAllGlobals(); await db?.close(); });
 
 describe("student AI persistence and quota boundaries",()=>{
+  it("stores and replays Kira voice transcription against the real AI request schema",async()=>{
+    const requestKey=crypto.randomUUID();
+    const makeRequest=()=>app.request(`https://api.example.invalid/v1/ai/transcribe?idempotencyKey=${requestKey}&consent=true`,{
+      method:"POST",
+      headers:{Authorization:`Bearer ${tokens.get(owner)}`,"Content-Type":"audio/mp4"},
+      body:new Uint8Array([0,1,2,3,4]),
+    },env);
+    expect(await json(await makeRequest())).toEqual({text:"Explain Newton's second law."});
+    expect(await json(await makeRequest())).toEqual({text:"Explain Newton's second law."});
+    const rows=await db.query<{mode:string;status:string;transcription_text:string}>(`select mode,status,result->>'transcriptionText' as transcription_text from app_private.ai_requests where user_id=$1 and idempotency_key=$2`,[owner,requestKey]);
+    expect(rows.rows[0]).toMatchObject({mode:"transcription",status:"COMPLETED",transcription_text:"Explain Newton's second law."});
+    expect(provider.mock.calls.filter(([url])=>String(url).includes("/hf-inference/models/"))).toHaveLength(1);
+  });
+  it("records voice provider failures as structured AI errors instead of internal 500s",async()=>{
+    provider.mockResolvedValueOnce(new Response("PRIVATE_PROVIDER_BODY",{status:429}));
+    const requestKey=crypto.randomUUID();
+    const response=await app.request(`https://api.example.invalid/v1/ai/transcribe?idempotencyKey=${requestKey}&consent=true`,{
+      method:"POST",
+      headers:{Authorization:`Bearer ${tokens.get(owner)}`,"Content-Type":"audio/mp4"},
+      body:new Uint8Array([0,1,2,3,4]),
+    },env);
+    expect(response.status).toBe(503);
+    const data=await response.json() as {error:{details?:{reason?:string}}};
+    expect(data.error.details?.reason).toBe("AI_PROVIDER_LIMIT");
+    expect(JSON.stringify(data)).not.toContain("PRIVATE_PROVIDER_BODY");
+    const rows=await db.query<{status:string;reason:string}>(`select status,result->>'reason' as reason from app_private.ai_requests where user_id=$1 and idempotency_key=$2`,[owner,requestKey]);
+    expect(rows.rows[0]).toMatchObject({status:"FAILED",reason:"AI_PROVIDER_LIMIT"});
+  });
   it.each(["study","summary","notes","quiz"])("saves %s without exposing provider identity",async mode=>{const body=draft(mode);const result=await json(await request("/ai","POST",body));expect(result).toMatchObject({tier:"standard",requestId:body.idempotencyKey,text:expect.any(String)});expect(result.provider).toBeUndefined();expect(provider).toHaveBeenCalledTimes(1);expect(provider.mock.calls[0]?.[0]).toBe("https://router.huggingface.co/v1/chat/completions");const payload=JSON.parse(String(provider.mock.calls[0]?.[1]?.body));expect(payload.model).toBe(mode==="study"?"test/reasoning:nscale":"test/model:nscale");const saved=await json(await request(`/ai/history/${body.idempotencyKey}`));expect(saved.provider).toBeUndefined();expect(saved.text).toBe(result.text);expect((await json(await request("/ai/history?q=Ohm"))).sessions).toHaveLength(1);});
   it("injects the signed-in student's stored profile into Kira context without private identity fields",async()=>{await json(await request("/ai","POST",{...draft(),prompt:"What's my name?"}));const payload=JSON.parse(String(provider.mock.calls[0]?.[1]?.body));const system=String(payload.messages?.[0]?.content??"");expect(system).toContain("You are Kira");expect(system).toContain('\"name\":\"Provider test\"');expect(system).toContain('\"username\":\"hf-study-0\"');expect(system).toContain("Gideon");expect(system).toContain("Orobosa");expect(system).toContain("Joshua");expect(system).toContain("student AI companion");expect(system).not.toContain(ownerEmail);expect(system).not.toContain(owner);});
   it("routes omitted provider to HF and replays without another call",async()=>{const {provider:_provider,...body}=draft();const first=await json(await request("/ai","POST",body));expect(await json(await request("/ai","POST",body))).toEqual(first);expect(provider).toHaveBeenCalledTimes(1);await json(await request("/ai","POST",{...body,prompt:"Changed"}),409);});

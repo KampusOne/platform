@@ -71,11 +71,36 @@ aiRoutes.post("/transcribe", async c => {
   if (!key.success || c.req.query("consent") !== "true") throw new AppError(400, "BAD_REQUEST", "Start a new voice recording and try again.");
   if (!await studentExperienceReady(c.env)) throw new AppError(503, "PROVIDER_UNAVAILABLE", "Voice input is being updated. Your recording is kept.");
   if (c.env.AI_ASSISTANT_ENABLED !== "true" || !transcriptionConfiguration(c.env).configured) throw new AppError(503, "PROVIDER_UNAVAILABLE", "Voice input is temporarily unavailable.");
-  const mime = ((c.req.header("Content-Type") ?? "").split(";")[0] ?? "").trim().toLowerCase();
-  if (!AI_AUDIO_MIME_TYPES.has(mime)) throw new AppError(400, "BAD_REQUEST", "Record a new voice message in a supported audio format.");
+  const contentType = c.req.header("Content-Type") ?? "";
+  const multipart = contentType.toLowerCase().startsWith("multipart/form-data");
   const declaredLength = Number(c.req.header("Content-Length") ?? 0);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_AI_TRANSCRIPTION_BYTES) throw new AppError(413, "BAD_REQUEST", "Record a shorter voice message.");
-  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  if (!multipart && Number.isFinite(declaredLength) && declaredLength > MAX_AI_TRANSCRIPTION_BYTES) throw new AppError(413, "BAD_REQUEST", "Record a shorter voice message.");
+
+  let mime = "";
+  let bytes: Uint8Array;
+  if (multipart) {
+    let form: FormData;
+    try {
+      form = await c.req.formData();
+    } catch {
+      throw new AppError(400, "BAD_REQUEST", "This voice upload could not be read. Your recording is kept; try again.", { reason: "AI_VOICE_MULTIPART" });
+    }
+    const file = form.get("file");
+    if (!(file instanceof File)) throw new AppError(400, "BAD_REQUEST", "Choose the voice recording again and retry.", { reason: "AI_VOICE_MULTIPART" });
+    mime = ((file.type ?? "").split(";")[0] ?? "").trim().toLowerCase();
+    bytes = new Uint8Array(await file.arrayBuffer());
+  } else {
+    mime = ((contentType.split(";")[0] ?? "")).trim().toLowerCase();
+    let buffer: ArrayBuffer;
+    try {
+      buffer = await c.req.arrayBuffer();
+    } catch {
+      throw new AppError(400, "BAD_REQUEST", "This connection could not read the voice upload. Your recording is kept; retrying is safe.", { reason: "AI_VOICE_BODY", retryMultipart: true });
+    }
+    bytes = new Uint8Array(buffer);
+  }
+
+  if (!AI_AUDIO_MIME_TYPES.has(mime)) throw new AppError(400, "BAD_REQUEST", "Record a new voice message in a supported audio format.");
   if (!bytes.length || bytes.byteLength > MAX_AI_TRANSCRIPTION_BYTES) throw new AppError(413, "BAD_REQUEST", "Record a shorter voice message.");
 
   const requestHash = await sha256(JSON.stringify(["voice-v1", mime, bytes.byteLength, await hashBytes(bytes)]));
@@ -101,11 +126,11 @@ aiRoutes.post("/transcribe", async c => {
 
   try {
     const text = await transcribeAI(c.env, bytes, mime);
-    await db.execute(sql`update app_private.ai_requests set status='COMPLETED',result=${JSON.stringify({version:1})}::jsonb || jsonb_build_object('transcriptionText',${text}) where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
+    await db.execute(sql`update app_private.ai_requests set status='COMPLETED',result=${JSON.stringify({version:1,transcriptionText:text})}::jsonb where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
     return c.json({ text });
   } catch (error) {
     const failure = error instanceof AIProviderError ? error : new AIProviderError(503, "AI_PROVIDER_UNAVAILABLE", "Voice transcription could not connect. Your recording is kept; try again.");
-    await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({version:1})}::jsonb || jsonb_build_object('reason',${failure.reason},'message',${failure.message}) where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
+    await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({version:1,reason:failure.reason,message:failure.message})}::jsonb where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
     throw providerFailure(failure);
   }
 });
