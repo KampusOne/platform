@@ -26,6 +26,7 @@ type Props = {
   onInfo: () => void;
   onSend: () => void;
   onTranscript: (text: string) => void;
+  onTranscriptAndSend: (text: string) => void | Promise<void>;
   onActiveChange?: (active: boolean) => void;
 };
 
@@ -38,15 +39,17 @@ function barHeight(value: number | undefined) {
   return 5 + Math.round(Math.max(0, Math.min(1, (value + 60) / 60)) * 22);
 }
 
-/** Records locally first; transcription becomes editable draft text and never auto-sends a chat. */
-export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onAttach,onInfo,onSend,onTranscript,onActiveChange}:Props){
+type VoiceAction = 'draft' | 'send';
+
+/** Records locally first. Stop transcribes to an editable draft; Send transcribes and submits to Kira. */
+export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onAttach,onInfo,onSend,onTranscript,onTranscriptAndSend,onActiveChange}:Props){
   const {theme}=useAppearance();
   const recorder=useAudioRecorder(VOICE_RECORDING_OPTIONS);
   const state=useAudioRecorderState(recorder,100);
-  const [uri,setUri]=useState<string>(),[savedDuration,setSavedDuration]=useState(0),[working,setWorking]=useState(false),[error,setError]=useState('');
+  const [uri,setUri]=useState<string>(),[savedDuration,setSavedDuration]=useState(0),[working,setWorking]=useState<VoiceAction|null>(null),[error,setError]=useState('');
   const [meters,setMeters]=useState<number[]>(()=>Array(WAVE_BARS).fill(-60));
   const id=useRef(randomUUID()),alive=useRef(true),locked=useRef(false),timer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
-  const active=state.isRecording||Boolean(uri)||working;
+  const active=state.isRecording||Boolean(uri)||working!==null;
 
   useEffect(()=>{onActiveChange?.(active);},[active,onActiveChange]);
   useEffect(()=>{if(state.isRecording)setMeters(values=>[...values.slice(-(WAVE_BARS-1)),state.metering??-60]);},[state.durationMillis,state.isRecording,state.metering]);
@@ -84,30 +87,38 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
     finally{locked.current=false;}
   }
   async function cancel(){
-    if(working||locked.current)return;
+    if(working!==null||locked.current)return;
     locked.current=true;if(timer.current){clearTimeout(timer.current);timer.current=undefined;}
     try{if(recorder.isRecording)await recorder.stop();await setAudioModeAsync({allowsRecording:false});}catch{}
     finally{if(alive.current){setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));setError('');}id.current=randomUUID();locked.current=false;}
   }
-  async function transcribe(recordingUri:string){
-    if(locked.current||disabled)return;
-    locked.current=true;setWorking(true);setError('');
-    try{
-      const body=Platform.OS==='web'?await(await fetch(recordingUri)).blob():new File(recordingUri) as unknown as Blob;
-      if(body.size>8*1024*1024)throw new Error('Record a shorter voice message.');
-      const contentType=Platform.OS==='web'?body.type||'audio/webm':'audio/mp4';
-      const result=await api<{text:string}>('/v1/ai/transcribe?idempotencyKey='+encodeURIComponent(id.current)+'&consent=true',{method:'POST',headers:{'Content-Type':contentType},body,timeoutMs:75000});
-      if(alive.current){
-        const transcript=result.text.trim();if(!transcript)throw new Error('No speech was detected. Try recording again.');
-        onTranscript(transcript);setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));id.current=randomUUID();
-      }
-    }catch(e){if(alive.current){setError(e instanceof Error?e.message:'Your recording is kept. Try again.');if(e instanceof ApiError&&e.details?.retryWithNewKey)id.current=randomUUID();}}
-    finally{locked.current=false;if(alive.current)setWorking(false);}
+  function clearSavedRecording(){
+    if(!alive.current)return;
+    setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));id.current=randomUUID();
   }
-  async function submitVoice(){
-    if(working||disabled)return;
+  async function transcribe(recordingUri:string,action:VoiceAction){
+    if(locked.current||disabled)return undefined;
+    locked.current=true;setWorking(action);setError('');
+    try{
+      const nativeFile=Platform.OS==='web'?undefined:new File(recordingUri);
+      const body=Platform.OS==='web'?await(await fetch(recordingUri)).blob():nativeFile as unknown as Blob;
+      if(body.size>8*1024*1024)throw new Error('Record a shorter voice message.');
+      const contentType=Platform.OS==='web'?body.type||'audio/webm':nativeFile?.type||'audio/mp4';
+      const result=await api<{text:string}>('/v1/ai/transcribe?idempotencyKey='+encodeURIComponent(id.current)+'&consent=true',{method:'POST',headers:{'Content-Type':contentType},body,timeoutMs:75000});
+      const transcript=result.text.trim();if(!transcript)throw new Error('No speech was detected. Try recording again.');
+      return transcript;
+    }catch(e){if(alive.current){setError(e instanceof Error?e.message:'Your recording is kept. Try again.');if(e instanceof ApiError&&e.details?.retryWithNewKey)id.current=randomUUID();}return undefined;}
+    finally{locked.current=false;if(alive.current)setWorking(null);}
+  }
+  async function processVoice(action:VoiceAction){
+    if(working!==null||disabled)return;
     const saved=state.isRecording?await stopAndKeep():uri;
-    if(saved)await transcribe(saved);
+    if(!saved)return;
+    const transcript=await transcribe(saved,action);
+    if(!transcript||!alive.current)return;
+    clearSavedRecording();
+    if(action==='send')await onTranscriptAndSend(transcript);
+    else onTranscript(transcript);
   }
 
   const waveform=useMemo(()=>meters.map((value,index)=><View key={index} style={{width:3,height:barHeight(value),borderRadius:2,backgroundColor:theme.textMuted,opacity:index<meters.length-1?0.72:1}}/>),[meters,theme.textMuted]);
@@ -124,12 +135,12 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
   </View>;
 
   return <View>
-    <View accessibilityLiveRegion="polite" accessibilityLabel={working?'Transcribing voice message':state.isRecording?'Recording voice message':'Voice recording saved'} style={{minHeight:64,flexDirection:'row',alignItems:'center',gap:9}}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Cancel voice recording" disabled={working} onPress={()=>void cancel()} style={{width:44,height:44,alignItems:'center',justifyContent:'center',opacity:working?0.4:1}}><Ionicons name="close" size={28} color={theme.text}/></Pressable>
+    <View accessibilityLiveRegion="polite" accessibilityLabel={working!==null?'Transcribing voice message':state.isRecording?'Recording voice message':'Voice recording saved'} style={{minHeight:64,flexDirection:'row',alignItems:'center',gap:9}}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Cancel voice recording" disabled={working!==null} onPress={()=>void cancel()} style={{width:44,height:44,alignItems:'center',justifyContent:'center',opacity:working!==null?0.4:1}}><Ionicons name="close" size={28} color={theme.text}/></Pressable>
       <Text style={{color:theme.textMuted,fontFamily:theme.font.semibold,fontSize:12,minWidth:34}}>{durationLabel(duration)}</Text>
-      <View style={{flex:1,height:32,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:2,overflow:'hidden'}}>{working?<InlineLoading color={theme.brand} size={28}/>:waveform}</View>
-      <Pressable accessibilityRole="button" accessibilityLabel={state.isRecording?'Stop and save recording':'Recording saved'} disabled={!state.isRecording||working} onPress={()=>void stopAndKeep()} style={{width:44,height:44,borderRadius:22,backgroundColor:theme.surfaceMuted,alignItems:'center',justifyContent:'center',opacity:state.isRecording&&!working?1:0.65}}><View style={{width:13,height:13,borderRadius:3,backgroundColor:theme.textMuted}}/></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={working?'Transcribing voice message':'Use voice message'} disabled={working||disabled} onPress={()=>void submitVoice()} style={{width:44,height:44,borderRadius:22,backgroundColor:theme.deepBrand,alignItems:'center',justifyContent:'center',opacity:working||disabled?0.5:1}}>{working?<InlineLoading color="#FFFFFF" size={20}/>:<Ionicons name="arrow-up" size={24} color="#FFFFFF"/>}</Pressable>
+      <View style={{flex:1,height:32,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,overflow:'hidden'}}>{working!==null?<><InlineLoading color={theme.brand} size={24}/><Text style={{color:theme.textMuted,fontFamily:theme.font.semibold,fontSize:11}}>Transcribing…</Text></>:waveform}</View>
+      <Pressable accessibilityRole="button" accessibilityLabel={working==='draft'?'Transcribing voice message':'Stop and transcribe to draft'} accessibilityState={{busy:working==='draft',disabled:working!==null||disabled}} disabled={working!==null||disabled} onPress={()=>void processVoice('draft')} style={{width:44,height:44,borderRadius:22,backgroundColor:theme.surfaceMuted,alignItems:'center',justifyContent:'center',opacity:working!==null&&working!=='draft'||disabled?0.5:1}}>{working==='draft'?<InlineLoading color={theme.textMuted} size={20}/>:<View style={{width:13,height:13,borderRadius:3,backgroundColor:theme.textMuted}}/>}</Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={working==='send'?'Transcribing voice message':'Transcribe and send to Kira'} accessibilityState={{busy:working==='send',disabled:working!==null||disabled}} disabled={working!==null||disabled} onPress={()=>void processVoice('send')} style={{width:44,height:44,borderRadius:22,backgroundColor:theme.deepBrand,alignItems:'center',justifyContent:'center',opacity:working!==null&&working!=='send'||disabled?0.5:1}}>{working==='send'?<InlineLoading color="#FFFFFF" size={20}/>:<Ionicons name="arrow-up" size={24} color="#FFFFFF"/>}</Pressable>
     </View>
     {error?<Text accessibilityRole="alert" style={{color:theme.error,fontFamily:theme.font.body,fontSize:12,lineHeight:18,paddingHorizontal:7,paddingBottom:5}}>{error}</Text>:null}
   </View>;
