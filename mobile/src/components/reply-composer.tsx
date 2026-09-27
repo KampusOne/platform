@@ -71,7 +71,7 @@ export function ReplyComposer({ post, parent, initialPhoto, onClose, onSent }: {
   function close() { if (!lock.current) { keep(key, draft); onClose(); } }
   return <Modal visible animationType="none" presentationStyle="fullScreen" onShow={() => field.current?.focus()} onRequestClose={close}>
     <SafeAreaView style={[styles.screen, keyboardViewport]}>
-      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : Platform.OS === "android" ? "height" : undefined}>
+      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close reply, keep draft" disabled={busy} onPress={close} style={styles.icon}><Ionicons name="close" color={theme.text} size={26} /></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Post reply" accessibilityState={{ disabled: !canSend, busy: busy && !uploading }} disabled={!canSend} onPress={() => void send()} style={[styles.send, !canSend && styles.disabled]}>{busy && !uploading ? <InlineLoading size="small" color="#FFFFFF" /> : <Text style={styles.sendText}>Reply</Text>}</Pressable>
