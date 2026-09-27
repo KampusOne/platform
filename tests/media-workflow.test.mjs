@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { photoCrop } from "../mobile/src/lib/photo-crop.ts";
+import { resizeCrop } from "../mobile/src/lib/crop-selection.ts";
 import { normalizeMediaLinks, resolveMediaLink } from "../mobile/src/lib/media-links.ts";
 import { requestPhotoEdit, finishPhotoEdit, subscribePhotoEdit, getPhotoEdit } from "../mobile/src/lib/photo-edit-session.ts";
 import { requestVideoEdit, finishVideoEdit, subscribeVideoEdit, getVideoEdit } from "../mobile/src/lib/video-edit-session.ts";
@@ -25,6 +26,24 @@ test("extreme dragging and zooming never leave the image or request out-of-bound
 });
 test("invalid dimensions fail before calling a native crop operation", () => {
   for (const width of [0, -1, NaN, Infinity]) assert.throws(() => photoCrop({ width, height: 500 }, 300, 1, 1, { x: 0, y: 0 }));
+});
+test("crop corner motion stays proportional to the finger while preserving aspect ratio", () => {
+  for (const box of [
+    { x: 80, y: 80, width: 80, height: 160 },
+    { x: 80, y: 80, width: 160, height: 90 },
+  ]) {
+    for (const corner of ["tl", "tr", "bl", "br"]) {
+      const dx = corner.endsWith("l") ? -42 : 42;
+      const dy = corner.startsWith("t") ? -18 : 18;
+      const next = resizeCrop(box, dx, dy, corner, 420, 520);
+      const beforeX = corner.endsWith("l") ? box.x : box.x + box.width;
+      const beforeY = corner.startsWith("t") ? box.y : box.y + box.height;
+      const afterX = corner.endsWith("l") ? next.x : next.x + next.width;
+      const afterY = corner.startsWith("t") ? next.y : next.y + next.height;
+      assert.ok(Math.hypot(afterX - beforeX, afterY - beforeY) <= Math.hypot(dx, dy) + 1e-9);
+      assert.ok(Math.abs(next.width / next.height - box.width / box.height) < 1e-9);
+    }
+  }
 });
 test("public absolute Worker media streams direct on web while relative media keeps the proxy", () => {
   assert.equal(resolveMediaLink(`https://worker.example/v1/media/${id}`, "/api"), `https://worker.example/v1/media/${id}?v=3`);
