@@ -46,6 +46,23 @@ describe("AI router security and idempotency",()=>{
     expect(queries().some(q=>q.sql.includes("'transcription'"))).toBe(true);
     expect(queries().some(q=>q.sql.includes("status='COMPLETED'"))).toBe(true);
   });
+  it("returns a successful transcript even if replay bookkeeping cannot be persisted",async()=>{
+    mocks.execute.mockImplementation(async(s:SQL)=>{const q=query(s);if(q.sql.includes("consume_request_rate_limit"))return {rows:[{allowed:true}]};if(q.sql.includes("insert into app_private.ai_requests")&&q.sql.includes("transcription"))return {rows:[{idempotency_key:key}]};if(q.sql.includes("status='COMPLETED'"))throw new Error("synthetic persistence failure");return {rows:[]};});
+    mocks.fetch.mockResolvedValueOnce(Response.json({text:"Keep the transcript visible."}));
+    const r=await app.request(`/ai/transcribe?idempotencyKey=${key}&consent=true`,{method:"POST",headers:{Authorization:"Bearer test","Content-Type":"audio/mp4"},body:new Uint8Array([0,1,2,3,4])},env);
+    expect(r.status).toBe(200);expect(await r.json()).toEqual({text:"Keep the transcript visible."});
+  });
+  it("keeps provider failures voice-specific even when failure bookkeeping also fails",async()=>{
+    mocks.execute.mockImplementation(async(s:SQL)=>{const q=query(s);if(q.sql.includes("consume_request_rate_limit"))return {rows:[{allowed:true}]};if(q.sql.includes("insert into app_private.ai_requests")&&q.sql.includes("transcription"))return {rows:[{idempotency_key:key}]};if(q.sql.includes("status='FAILED'"))throw new Error("synthetic persistence failure");return {rows:[]};});
+    mocks.fetch.mockResolvedValueOnce(new Response("upstream unavailable",{status:503}));
+    const r=await app.request(`/ai/transcribe?idempotencyKey=${key}&consent=true`,{method:"POST",headers:{Authorization:"Bearer test","Content-Type":"audio/mp4"},body:new Uint8Array([0,1,2,3,4])},env);
+    expect(r.status).toBe(503);const payload=await r.json() as {error:{message:string}};expect(payload.error.message).toContain("Voice transcription");
+  });
+  it("converts unexpected transcription preparation crashes into a retryable voice error",async()=>{
+    mocks.execute.mockRejectedValueOnce(new Error("synthetic database failure"));
+    const r=await app.request(`/ai/transcribe?idempotencyKey=${key}&consent=true`,{method:"POST",headers:{Authorization:"Bearer test","Content-Type":"audio/mp4"},body:new Uint8Array([0,1,2,3,4])},env);
+    expect(r.status).toBe(503);const payload=await r.json() as {error:{message:string;details?:{reason?:string}}};expect(payload.error.message).toContain("Voice transcription");expect(payload.error.details?.reason).toBe("AI_VOICE_PREPARE");expect(mocks.fetch).not.toHaveBeenCalled();
+  });
   it("requires authentication on all private reads",async()=>{for(const path of ["/ai/status","/ai/history",`/ai/history/${key}`,`/ai/thread/${key}`])expect((await app.request(path,{},env)).status).toBe(401);expect(mocks.execute).not.toHaveBeenCalled();});
   it.each([{AI_ASSISTANT_ENABLED:"false"},{HF_TOKEN:""},{HF_CHAT_MODEL:""}])("rejects disabled/missing configuration before quota reservation",async fields=>{expect((await post({},{...env,...fields})).status).toBe(503);expect(mocks.transaction).not.toHaveBeenCalled();expect(mocks.fetch).not.toHaveBeenCalled();});
   it("locks separately before the fresh-snapshot quota claim",async()=>{const response=await post();expect(response.status).toBe(200);expect(await response.json()).toMatchObject({text:"Energy explanation",tier:"standard"});const [statements,options]=mocks.transaction.mock.calls[0]!;expect(options.isolationLevel).toBe("ReadCommitted");expect(statements[0].text).toContain("pg_advisory_xact_lock");expect(statements[2].text).toContain("on conflict do nothing");expect(statements[2].text).toContain("('summary','notes','quiz')");expect(statements[2].values).toContain(owner);expect(mocks.fetch).toHaveBeenCalledTimes(1);expect(response.headers.get("cache-control")).toContain("no-store");});
