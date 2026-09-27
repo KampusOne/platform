@@ -1,4 +1,4 @@
-name: Live Worker API domain hotfix 20260927 r2
+name: APK API proxy reachability check 20260927
 
 on:
   push:
@@ -10,42 +10,14 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: production
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: hotfix/api-custom-domain-20260927
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            packages/contracts/package-lock.json
-            server/package-lock.json
-            mobile/package-lock.json
-      - run: npm ci
-        working-directory: packages/contracts
-      - run: npm ci
-        working-directory: server
-      - run: npm ci
-        working-directory: mobile
-      - name: Verify pinned Worker
-        run: npm run check && npm test -- --maxWorkers=2 && npm run build
-        working-directory: server
-      - name: Deploy first-party API domain hotfix
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: server
-          command: deploy
-      - name: Verify both API origins
+      - name: Verify Vercel API proxy and direct Worker
         run: |
           set -euo pipefail
-          for API_URL in https://api.kampusone.app https://platformp.divine-haze-54eb.workers.dev; do
+          for API_URL in https://kampusone-mobile-preview.vercel.app/api https://platformp.divine-haze-54eb.workers.dev; do
             echo "Checking $API_URL"
             time curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "$API_URL/health/ready"
             echo
