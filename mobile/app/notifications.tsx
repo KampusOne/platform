@@ -1,11 +1,12 @@
 import { useCallback, useState, useRef } from "react";
-import { Pressable, Text } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { updateNotificationCount, changeNotificationCount } from "@/src/lib/notification-state";
 import { router, useFocusEffect, type Href } from "expo-router";
 import { ToolPage, ToolRow, ToolButton } from "@/src/components/toolkit";
 import { EmptyResult } from "@/src/components/product-ui";
 import { ScreenSkeleton } from "@/src/components/skeleton";
+import { ProfileAvatar } from "@/src/components/profile-avatar";
 import { useAppearance } from "@/src/lib/appearance";
 import { useToast } from "@/src/components/toast";
 import { api } from "@/src/lib/api";
@@ -15,6 +16,9 @@ type Notice = {
   body: string;
   path: string | null;
   read_at: string | null;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  actor_profile_image_url: string | null;
 };
 export default function Notifications() {
   const toast = useToast();
@@ -41,22 +45,37 @@ export default function Notifications() {
   useFocusEffect(useCallback(() => { void load();const timer=setInterval(()=>void load(),20000);return()=>clearInterval(timer); },[load]));
   async function loadMore(){if(!nextCursor||moreBusy)return;setMoreBusy(true);extended.current=true;try{const result=await api<{notifications:Notice[];nextCursor:string|null}>("/v1/notifications/inbox?before="+encodeURIComponent(nextCursor));setItems(current=>[...current,...result.notifications.filter(n=>!current.some(old=>old.id===n.id))]);setNextCursor(result.nextCursor);}catch{toast("Could not load older notifications","error");}finally{setMoreBusy(false);}}
   async function open(n: Notice) {
-    if(!n.read_at){setItems(current=>current.map(i=>i.id===n.id?{...i,read_at:new Date().toISOString()}:i));changeNotificationCount(-1);}
-    try {
-      await api("/v1/account/notifications/" + n.id, { method: "PATCH" });
-      if (n.path?.startsWith("/") && !n.path.startsWith("//"))
+    const wasUnread=!n.read_at;
+    const openedAt=new Date().toISOString();
+    if(wasUnread){
+      setItems(current=>current.map(i=>i.id===n.id?{...i,read_at:openedAt}:i));
+      changeNotificationCount(-1);
+    }
+    const readRequest=wasUnread
+      ? api("/v1/notifications/inbox/" + n.id + "/read", { method: "PATCH" })
+      : null;
+    if (n.path?.startsWith("/") && !n.path.startsWith("//")) {
+      try {
         router.push(n.path as Href);
+      } catch {
+        toast("Could not open notification", "error");
+      }
+    }
+    if(!readRequest)return;
+    try {
+      await readRequest;
     } catch (e) {
-      if(!n.read_at){setItems(current=>current.map(i=>i.id===n.id?{...i,read_at:null}:i));changeNotificationCount(1);}
+      setItems(current=>current.map(i=>i.id===n.id?{...i,read_at:null}:i));
+      changeNotificationCount(1);
       toast(
-        e instanceof Error ? e.message : "Could not open notification",
+        e instanceof Error ? e.message : "Could not mark notification as read",
         "error",
       );
     }
   }
   return (
     <ToolPage title="Notifications" action={<Pressable accessibilityRole="button" accessibilityLabel="Notification settings" onPress={()=>router.push('/notification-preferences')} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="options-outline" size={24} color={theme.text}/></Pressable>}>
-      {items.some(item=>!item.read_at)?<ToolButton secondary label="Mark all as read" onPress={()=>{void api('/v1/notifications/read-all',{method:'POST'}).then(()=>{setItems(current=>current.map(item=>({...item,read_at:new Date().toISOString()})));updateNotificationCount(0);}).catch(()=>toast('Could not mark notifications as read','error'));}}/>:null}
+      <ToolButton secondary label="Mark all as read" disabled={!items.some(item=>!item.read_at)} onPress={()=>{void api('/v1/notifications/read-all',{method:'POST'}).then(()=>{setItems(current=>current.map(item=>({...item,read_at:new Date().toISOString()})));updateNotificationCount(0);}).catch(()=>toast('Could not mark notifications as read','error'));}}/>
       {!ready ? (
         <ScreenSkeleton variant="list" compact />
       ) : error ? (
@@ -81,7 +100,9 @@ export default function Notifications() {
             key={n.id}
             title={n.title}
             detail={n.body}
-            icon={n.read_at ? "mail-open-outline" : "mail-unread-outline"}
+            leading={n.actor_user_id ? <ProfileAvatar name={n.actor_name || "Student"} imageUrl={n.actor_profile_image_url} size={42} /> : undefined}
+            icon={n.actor_user_id ? undefined : n.read_at ? "mail-open-outline" : "mail-unread-outline"}
+            trailing={<View style={{flexDirection:"row",alignItems:"center",gap:10}}>{!n.read_at?<View accessibilityLabel="Unread notification" style={{width:8,height:8,borderRadius:4,backgroundColor:theme.brand}}/>:null}<Ionicons name="chevron-forward" color={theme.textMuted} size={18}/></View>}
             onPress={() => void open(n)}
           />
         ))
