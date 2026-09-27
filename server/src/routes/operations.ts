@@ -34,14 +34,28 @@ operationsRoutes.put('/staff/:id',async c=>{
 });
 operationsRoutes.post('/users/:id/verification',async c=>{
  const actor=currentUser(c),target=id(c.req.param('id'));
- const d=await input(c,z.object({verified:z.boolean(),reason:z.string().trim().min(10).max(1000)}));
+ const d=await input(c,z.object({status:z.enum(['UNVERIFIED','VERIFIED','REJECTED']),expected:z.enum(['UNVERIFIED','PENDING','VERIFIED','REJECTED']),reason:z.string().trim().min(10).max(1000)}).strict());
+ if(d.status===d.expected)throw new AppError(400,'BAD_REQUEST','Choose a verification status that changes the current account state.');
  const profile=firstRow(await database(c.env).execute<{university_id:string|null}>(sql`select university_id from public.profiles where user_id=${target}::uuid and deleted_at is null`));
  if(!profile)throw new AppError(404,'NOT_FOUND','Profile not found.');
  const scope=await resolveAdminScope(c.env,actor,profile.university_id??undefined,'users.verify');
  if(scope!==null&&profile.university_id!==scope)throw new AppError(403,'FORBIDDEN','This profile is outside your university scope.');
- await database(c.env).execute(sql`update public.profiles set public_badge_verified=${d.verified},updated_at=now() where user_id=${target}::uuid`);
- await recordAudit(c.env,{actorUserId:actor.id,universityId:profile.university_id,action:d.verified?'user.badge.granted':'user.badge.revoked',targetType:'user',targetId:target,requestId:c.get('requestId'),metadata:{reason:d.reason}});
- return c.json({status:d.verified?'VERIFIED':'UNVERIFIED'});
+ const action=d.status==='VERIFIED'?'user.verification.verified':d.status==='REJECTED'?'user.verification.rejected':'user.verification.reset';
+ const saved=firstRow(await database(c.env).execute<{status:string}>(sql`
+  with updated as(
+   update public.profiles set verification_status=${d.status}::"VerificationStatus",updated_at=now()
+   where user_id=${target}::uuid and deleted_at is null and verification_status::text=${d.expected}
+   returning verification_status::text status,university_id
+  ), logged as(
+   insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata)
+   select ${actor.id}::uuid,updated.university_id,${action},'user',${target},${c.get('requestId')},'succeeded',
+    jsonb_build_object('previous',${d.expected},'status',updated.status,'reason',${d.reason})
+   from updated returning target_id
+  )
+  select updated.status from updated join logged on logged.target_id=${target}
+ `));
+ if(!saved)throw new AppError(409,'CONFLICT','The verification status changed in another session. Reload this profile before recording a decision.');
+ return c.json({verification:saved});
 });
 const sources={
  universities:sql`select u.id,u.name,u.state,u.slug,u.id institution_id,u.created_at,coalesce(cfg.status,'CATALOGUED') status,'UNIVERSITY' type from public.universities u left join public.institution_config cfg on cfg.institution_id=u.id where u.deleted_at is null`,
