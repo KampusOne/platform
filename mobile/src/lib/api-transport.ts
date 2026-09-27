@@ -56,46 +56,26 @@ const fallbackApiUrl =
   Platform.OS === "web"
     ? null
     : configuredFallbackUrl?.replace(/\/$/, "") ?? null;
-let activeApiUrl: string | null = null;
-let apiOriginPromise: Promise<string> | null = null;
+let activeApiUrl = apiUrl;
 
-async function apiOriginHealthy(origin: string): Promise<boolean> {
-  try {
-    return await withRequestDeadline(async (signal) => {
-      const response = await fetch(`${origin}/health/ready`, {
-        method: "GET",
-        signal,
-      });
-      return response.ok;
-    }, 4_000);
-  } catch {
-    return false;
-  }
+function currentApiUrl() {
+  return Platform.OS === "web" ? apiUrl : activeApiUrl;
 }
 
-async function resolveApiUrl(): Promise<string> {
+function alternateApiUrl(origin: string) {
   if (Platform.OS === "web" || !fallbackApiUrl || fallbackApiUrl === apiUrl)
-    return apiUrl;
-  if (activeApiUrl) return activeApiUrl;
-  if (!apiOriginPromise) {
-    apiOriginPromise = (async () => {
-      if (await apiOriginHealthy(apiUrl)) return apiUrl;
-      if (await apiOriginHealthy(fallbackApiUrl)) return fallbackApiUrl;
-      return apiUrl;
-    })()
-      .then((origin) => {
-        activeApiUrl = origin;
-        return origin;
-      })
-      .finally(() => {
-        apiOriginPromise = null;
-      });
-  }
-  return apiOriginPromise;
+    return null;
+  return origin === apiUrl ? fallbackApiUrl : apiUrl;
 }
 
-function resetApiOrigin() {
-  if (Platform.OS !== "web") activeApiUrl = null;
+function markApiOriginHealthy(origin: string) {
+  if (Platform.OS !== "web") activeApiUrl = origin;
+}
+
+function markApiOriginUnavailable(origin: string) {
+  const alternate = alternateApiUrl(origin);
+  if (alternate && activeApiUrl === origin) activeApiUrl = alternate;
+  return alternate;
 }
 let accessToken: string | null = null;
 let sessionListener: ((session: Session | null) => void) | null = null;
@@ -115,7 +95,15 @@ let queuedSessionTransitions = 0;
 const reads = new Map<string, { expires: number; value: unknown }>();
 const inFlight = new Map<string, Promise<unknown>>();
 const cacheable =
-  /^\/v1\/student\/(me|home|feed|timetable|gpa|catalog|campus\/places)(\/|\?|$)/;
+  /^\/v1\/(?!auth(?:\/|$)|media(?:\/|$)|config(?:\/|$))/;
+
+function readCacheTtl(path: string) {
+  if (/\/catalog(?:\/|\?|$)|\/campus\/places(?:\/|\?|$)/.test(path))
+    return 300_000;
+  if (/^\/v1\/(messages|notifications)(\/|\?|$)/.test(path)) return 5_000;
+  if (/\/feed(?:\/|\?|$)|^\/v1\/people(\/|\?|$)/.test(path)) return 10_000;
+  return 20_000;
+}
 
 export function clearApiCache() {
   cacheVersion += 1;
@@ -274,6 +262,7 @@ async function refreshSession() {
       );
     }
     const versionAtStart = credentialVersion;
+    const restoreOrigin = currentApiUrl();
     const restoreController = new AbortController();
     refreshAbortController = restoreController;
     refreshPromise = withRequestDeadline(async (signal) => {
@@ -282,8 +271,7 @@ async function refreshSession() {
         // install or signed-out device has nothing to restore over the network.
         if (Platform.OS !== "web" && !refreshToken) return null;
         if (signal.aborted) throw new Error("Session restoration cancelled");
-        const baseUrl = await resolveApiUrl();
-        const response = await fetch(`${baseUrl}/v1/auth/refresh`, {
+        const response = await fetch(`${restoreOrigin}/v1/auth/refresh`, {
           method: "POST",
           credentials: "include",
           signal,
@@ -293,6 +281,7 @@ async function refreshSession() {
           },
           body: JSON.stringify(refreshToken ? { refreshToken } : {}),
         });
+        markApiOriginHealthy(restoreOrigin);
         return parse<Session>(response);
       }, 12_000, restoreController.signal)
       .then((session) => session ? securelyAcceptSession(session) : null)
@@ -309,6 +298,12 @@ async function refreshSession() {
         // A failed connection, a 5xx, or malformed JSON does not prove that a
         // refresh cookie or the current access token is invalid. Only the API's
         // explicit auth rejection is allowed to end the local session.
+        if (
+          (caught instanceof Error && caught.name === "TimeoutError") ||
+          caught instanceof TypeError
+        ) {
+          markApiOriginUnavailable(restoreOrigin);
+        }
         if (!isExplicitSessionRejection(caught)) throw caught;
         if (credentialVersion === versionAtStart) {
           setAccessToken(null);
@@ -343,26 +338,67 @@ async function request<T>(
   const send = Platform.OS !== "web" && (init.body instanceof FormData || ((path.startsWith("/v1/media?") || path.startsWith("/v1/ai/transcribe?")) && Boolean(init.body)))
     ? (await import("expo/fetch")).fetch
     : fetch;
-  let result: { response: Response; value?: T };
-  try {
-    result = await withRequestDeadline(async (signal) => {
-      const baseUrl = await resolveApiUrl();
+  const method = (requestInit.method ?? "GET").toUpperCase();
+  const mayRetryOnAnotherOrigin = method === "GET" || method === "HEAD";
+  const requestTimeoutMs = timeoutMs ?? 15_000;
+  const startedAt = Date.now();
+  const remainingTimeoutMs = () =>
+    Math.max(1, requestTimeoutMs - (Date.now() - startedAt));
+  const attempt = (baseUrl: string) =>
+    withRequestDeadline(async (signal) => {
       const response = await send(`${baseUrl}${path}`, {
         ...requestInit, signal, credentials: "include", headers,
       });
-      if (response.status === 401 && canRefresh && path !== "/v1/auth/refresh") return { response };
+      markApiOriginHealthy(baseUrl);
+      if (response.status === 401 && canRefresh && path !== "/v1/auth/refresh")
+        return { response };
       return { response, value: await parse<T>(response) };
-    }, timeoutMs, parentSignal);
+    }, remainingTimeoutMs(), parentSignal);
+
+  let result: { response: Response; value?: T };
+  const primaryOrigin = currentApiUrl();
+  try {
+    result = await attempt(primaryOrigin);
   } catch (caught) {
-    if (caught instanceof Error && caught.name === "TimeoutError") {
-      resetApiOrigin();
-      throw new ApiError(0, "REQUEST_TIMEOUT", caught.message);
+    const connectionFailure =
+      (caught instanceof Error && caught.name === "TimeoutError") ||
+      caught instanceof TypeError;
+    const alternate = connectionFailure
+      ? markApiOriginUnavailable(primaryOrigin)
+      : null;
+    if (
+      alternate &&
+      mayRetryOnAnotherOrigin &&
+      !parentSignal?.aborted &&
+      remainingTimeoutMs() > 250
+    ) {
+      try {
+        result = await attempt(alternate);
+      } catch (fallbackError) {
+        if (
+          fallbackError instanceof Error &&
+          fallbackError.name === "TimeoutError"
+        )
+          throw new ApiError(0, "REQUEST_TIMEOUT", fallbackError.message);
+        if (fallbackError instanceof TypeError)
+          throw new ApiError(
+            0,
+            "NETWORK_UNAVAILABLE",
+            "We couldn’t connect to KampusOne. Check your internet connection and try again.",
+          );
+        throw fallbackError;
+      }
+    } else {
+      if (caught instanceof Error && caught.name === "TimeoutError")
+        throw new ApiError(0, "REQUEST_TIMEOUT", caught.message);
+      if (caught instanceof TypeError)
+        throw new ApiError(
+          0,
+          "NETWORK_UNAVAILABLE",
+          "We couldn’t connect to KampusOne. Check your internet connection and try again.",
+        );
+      throw caught;
     }
-    if (caught instanceof TypeError) {
-      resetApiOrigin();
-      throw new ApiError(0, "NETWORK_UNAVAILABLE", "We couldn’t connect to KampusOne. Check your internet connection and try again.");
-    }
-    throw caught;
   }
   if (result.response.status === 401 && canRefresh && path !== "/v1/auth/refresh") {
     const renewed = await refreshSession();
@@ -401,7 +437,7 @@ export async function api<T>(
         if (reads.size >= 60) reads.delete(reads.keys().next().value!);
         reads.set(path, {
           value,
-          expires: Date.now() + (/\/catalog(?:\?|$)/.test(path) ? 300_000 : 20_000),
+          expires: Date.now() + readCacheTtl(path),
         });
       }
       return value;
