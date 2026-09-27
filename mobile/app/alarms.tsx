@@ -191,6 +191,21 @@ function WheelColumn({
     [onChange, values],
   );
 
+  const settleAtOffset = useCallback(
+    (offsetY: number) => {
+      const index = Math.max(
+        0,
+        Math.min(values.length - 1, Math.round(offsetY / WHEEL_ITEM_HEIGHT)),
+      );
+      const targetY = index * WHEEL_ITEM_HEIGHT;
+      selectIndex(index);
+      if (Math.abs(offsetY - targetY) > 0.5) {
+        scrollRef.current?.scrollTo({ y: targetY, animated: false });
+      }
+    },
+    [selectIndex, values.length],
+  );
+
   return (
     <View style={pickerStyles.column} accessibilityLabel={label + " time wheel"}>
       <Text style={pickerStyles.columnLabel}>{label}</Text>
@@ -206,11 +221,28 @@ function WheelColumn({
         bounces={false}
         contentOffset={{ x: 0, y: initialIndex * WHEEL_ITEM_HEIGHT }}
         scrollEventThrottle={16}
+        onLayout={() => {
+          requestAnimationFrame(() => {
+            scrollRef.current?.scrollTo({
+              y: selectedIndex * WHEEL_ITEM_HEIGHT,
+              animated: false,
+            });
+          });
+        }}
         onScroll={(event) => {
           const index = Math.round(
             event.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT,
           );
           selectIndex(index);
+        }}
+        onScrollEndDrag={(event) => {
+          const velocityY = event.nativeEvent.velocity?.y ?? 0;
+          if (Math.abs(velocityY) < 0.01) {
+            settleAtOffset(event.nativeEvent.contentOffset.y);
+          }
+        }}
+        onMomentumScrollEnd={(event) => {
+          settleAtOffset(event.nativeEvent.contentOffset.y);
         }}
       >
         {values.map((item, index) => {
@@ -308,6 +340,21 @@ function PeriodColumn({
     [onChange, values],
   );
 
+  const settleAtOffset = useCallback(
+    (offsetY: number) => {
+      const index = Math.max(
+        0,
+        Math.min(values.length - 1, Math.round(offsetY / WHEEL_ITEM_HEIGHT)),
+      );
+      const targetY = index * WHEEL_ITEM_HEIGHT;
+      selectIndex(index);
+      if (Math.abs(offsetY - targetY) > 0.5) {
+        scrollRef.current?.scrollTo({ y: targetY, animated: false });
+      }
+    },
+    [selectIndex, values.length],
+  );
+
   return (
     <View style={pickerStyles.periodColumn} accessibilityLabel="AM PM time wheel">
       <Text style={pickerStyles.columnLabel}>AM / PM</Text>
@@ -323,11 +370,28 @@ function PeriodColumn({
         bounces={false}
         contentOffset={{ x: 0, y: initialIndex * WHEEL_ITEM_HEIGHT }}
         scrollEventThrottle={16}
+        onLayout={() => {
+          requestAnimationFrame(() => {
+            scrollRef.current?.scrollTo({
+              y: selectedIndex * WHEEL_ITEM_HEIGHT,
+              animated: false,
+            });
+          });
+        }}
         onScroll={(event) => {
           const index = Math.round(
             event.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT,
           );
           selectIndex(index);
+        }}
+        onScrollEndDrag={(event) => {
+          const velocityY = event.nativeEvent.velocity?.y ?? 0;
+          if (Math.abs(velocityY) < 0.01) {
+            settleAtOffset(event.nativeEvent.contentOffset.y);
+          }
+        }}
+        onMomentumScrollEnd={(event) => {
+          settleAtOffset(event.nativeEvent.contentOffset.y);
         }}
       >
         {values.map((period, index) => {
@@ -375,6 +439,7 @@ const createPickerStyles = (theme: Theme, isDark: boolean) =>
     wheelViewport: {
       height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
       width: "100%",
+      overflow: "hidden",
     },
     wheelContent: {
       paddingVertical:
@@ -413,6 +478,7 @@ const createPickerStyles = (theme: Theme, isDark: boolean) =>
     periodWheelViewport: {
       height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
       width: "100%",
+      overflow: "hidden",
     },
     periodWheelContent: {
       paddingVertical: (WHEEL_ITEM_HEIGHT * (WHEEL_VISIBLE_ITEMS - 1)) / 2,
