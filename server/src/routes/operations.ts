@@ -49,7 +49,7 @@ operationsRoutes.post('/users/:id/verification',async c=>{
   ), logged as(
    insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata)
    select ${actor.id}::uuid,updated.university_id,${action},'user',${target},${c.get('requestId')},'succeeded',
-    jsonb_build_object('previous',${d.expected},'status',updated.status,'reason',${d.reason})
+    jsonb_build_object('previous',${d.expected}::text,'status',updated.status,'reason',${d.reason}::text)
    from updated returning target_id
   )
   select updated.status from updated join logged on logged.target_id=${target}
