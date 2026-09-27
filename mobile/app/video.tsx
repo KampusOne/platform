@@ -319,7 +319,7 @@ export default function VideoViewerScreen() {
     }
   }
 
-  const mediaHeight = Math.max(260, Math.min(height * 0.53, width * 0.95));
+  const mediaHeight = Math.max(220, Math.min(height * 0.43, width * 0.95));
 
   if (loading && !post) {
     return <SafeAreaView style={styles.screen}><StatusBar style="light" /><View style={styles.center}><Text style={[styles.stateText, { fontFamily: theme.font.medium }]}>Opening video…</Text></View></SafeAreaView>;
@@ -464,9 +464,9 @@ const styles = StyleSheet.create({
   followingButton: { borderWidth: 1, borderColor: "#5C656D", backgroundColor: "transparent" },
   followText: { color: "#FFFFFF", fontSize: 14 },
   description: { color: "#FFFFFF", fontSize: 15, lineHeight: 21 },
-  actions: { flexDirection: "row", alignItems: "center", gap: 12 },
-  actionButton: { minHeight: 54, minWidth: 78, paddingHorizontal: 16, borderRadius: 28, backgroundColor: "#202830", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  iconAction: { width: 54, height: 54, borderRadius: 27, backgroundColor: "#202830", alignItems: "center", justifyContent: "center" },
+  actions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  actionButton: { flex: 1, minHeight: 50, minWidth: 0, paddingHorizontal: 7, borderRadius: 25, backgroundColor: "#202830", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  iconAction: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#202830", alignItems: "center", justifyContent: "center" },
   actionCount: { color: "#FFFFFF", fontSize: 14 },
   playbackDock: { marginTop: "auto", paddingHorizontal: 0, paddingBottom: 4 },
   progressTouch: { minHeight: 25, justifyContent: "center" },
