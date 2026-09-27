@@ -49,7 +49,7 @@ export function ProfileActions({ userId, name, canBlock = true, notifications = 
     <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end", padding: 16 }}>
         <Pressable accessibilityLabel="Close profile options" onPress={close} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
-        <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: "85%", borderRadius: 20, backgroundColor: theme.surface }} contentContainerStyle={{ padding: 22, paddingBottom: 32 }}>
+        <ScrollView\n          keyboardShouldPersistTaps="handled"\n          showsVerticalScrollIndicator={action !== "menu"}\n          style={{ flexGrow: 0, flexShrink: 1, maxHeight: "85%", borderRadius: 20, backgroundColor: theme.surface }}\n          contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 22, paddingBottom: action === "menu" ? 18 : 28 }}\n        >
           <Text style={{ ...text, fontFamily: theme.font.semibold, fontSize: 19, marginBottom: 14 }}>{action === "menu" ? name : action === "block" ? `Block ${name}?` : `Report ${name}`}</Text>
           {action === "menu" ? <>
             {row(notifications ? "Turn off post notifications" : "Turn on post notifications", notifications ? "notifications-off-outline" : "notifications-outline", () => void toggleNotifications())}
