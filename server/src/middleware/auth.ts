@@ -43,18 +43,46 @@ export const requireAuth = createMiddleware<AppEnvironment>(
         "UNAUTHENTICATED",
         "Refresh your session to continue.",
       );
+    const checkRestriction =
+      context.env.UNIFIED_SCHEMA_READY === "true" &&
+      !["/v1/account/restrictions", "/v1/account/support"].includes(
+        context.req.path,
+      ) &&
+      !context.req.path.startsWith("/v1/auth/");
+    const restrictionProjection = checkRestriction
+      ? sql`(
+          select json_build_object(
+            'kind', restriction.kind,
+            'reason', restriction.reason,
+            'ends_at', restriction.ends_at::text
+          )
+          from public.account_restrictions restriction
+          where restriction.user_id = users.id
+            and restriction.revoked_at is null
+            and restriction.starts_at <= now()
+            and (restriction.ends_at is null or restriction.ends_at > now())
+          order by restriction.starts_at desc
+          limit 1
+        )`
+      : sql`null::json`;
     const result = await database(context.env).execute<{
       id: string;
       email: string;
       roles: string[] | null;
       university_id: string | null;
       operator_roles: string[] | null;
+      restriction: {
+        kind: string;
+        reason: string;
+        ends_at: string | null;
+      } | null;
     }>(sql`
     select
       users.id,
       users.email,
       users.roles::text[] as roles,
       profiles.university_id,
+      ${restrictionProjection} as restriction,
       coalesce(
         array_agg(distinct operator_roles.role) filter (
           where operator_roles.role is not null
@@ -95,30 +123,13 @@ export const requireAuth = createMiddleware<AppEnvironment>(
         : {}),
     };
     context.set("user", user);
-    if (
-      context.env.UNIFIED_SCHEMA_READY === "true" &&
-      !["/v1/account/restrictions", "/v1/account/support"].includes(
-        context.req.path,
-      ) &&
-      !context.req.path.startsWith("/v1/auth/")
-    ) {
-      const restriction = firstRow(
-        await database(context.env).execute<{
-          kind: string;
-          reason: string;
-          ends_at: string | null;
-        }>(
-          sql`select kind,reason,ends_at from public.account_restrictions where user_id=${user.id}::uuid and revoked_at is null and starts_at<=now() and(ends_at is null or ends_at>now()) order by starts_at desc limit 1`,
-        ),
+    if (checkRestriction && row.restriction)
+      throw new AppError(
+        403,
+        "ACCOUNT_RESTRICTED",
+        "Your account has been restricted.",
+        row.restriction,
       );
-      if (restriction)
-        throw new AppError(
-          403,
-          "ACCOUNT_RESTRICTED",
-          "Your account has been restricted.",
-          restriction,
-        );
-    }
     authenticatedRequests.add(context);
     await next();
   },
