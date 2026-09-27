@@ -4,12 +4,34 @@ import { readFileSync, readdirSync } from "node:fs";
 import { PostLikeStore } from "../mobile/src/lib/post-like-store.ts";
 import { waitForRequest, invalidationTargets, matchesRead } from "../mobile/src/lib/request-policy.ts";
 const read = (path) => readFileSync(new URL("../" + path, import.meta.url), "utf8");
-test("view analytics does not invalidate content, mutations stay scoped", () => {
+test("background bookkeeping does not invalidate content, mutations stay scoped", () => {
   assert.deepEqual(invalidationTargets("/v1/student/feed/id/view"), []);
+  assert.deepEqual(invalidationTargets("/v1/student/events"), []);
+  assert.deepEqual(invalidationTargets("/v1/notifications/alarm-events"), []);
+  assert.deepEqual(invalidationTargets("/v1/notifications/devices"), []);
+  assert.deepEqual(invalidationTargets("/v1/account/streak"), ["/v1/student/home"]);
+  assert.deepEqual(invalidationTargets("/v1/messages/abc/read"), ["/v1/messages"]);
   assert.ok(invalidationTargets("/v1/student/feed/id/like").includes("/v1/student/feed"));
   assert.equal(invalidationTargets("/v1/auth/logout"), null);
   assert.equal(matchesRead("/v1/student/feed?q=test", "/v1/student/feed"), true);
   assert.equal(matchesRead("/v1/student/feedback", "/v1/student/feed"), false);
+});
+test("mobile requests start immediately without a health-probe waterfall", () => {
+  const source = read("mobile/src/lib/api-transport.ts");
+  assert.doesNotMatch(source, /health\\/ready/);
+  assert.doesNotMatch(source, /resolveApiUrl/);
+  assert.match(source, /let activeApiUrl = apiUrl/);
+  assert.match(source, /mayRetryOnAnotherOrigin/);
+  assert.match(source, /remainingTimeoutMs/);
+  assert.match(source, /readCacheTtl/);
+});
+test("startup gives first-screen data priority over background maintenance", () => {
+  const auth = read("mobile/src/auth/auth-context.tsx");
+  assert.match(auth, /api\\("\\/v1\\/student\\/home"\\)/);
+  assert.match(auth, /readCache<Profile>/);
+  assert.match(read("mobile/src/components/screen-visit-tracker.tsx"), /1_200/);
+  assert.match(read("mobile/src/components/alarm-sync.tsx"), /initialRestore=setTimeout/);
+  assert.match(read("mobile/src/components/notification-bootstrap.tsx"), /2_500/);
 });
 test("one cancelled consumer cannot cancel another reader of the same request", async () => {
   let resolve; const shared = new Promise((yes) => { resolve = yes; });
