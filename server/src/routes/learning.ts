@@ -176,11 +176,27 @@ learningRoutes.post("/timetable/import", async (c) => {
       );
   const requestId = d.requestId ?? crypto.randomUUID();
   const hash = await sha256(JSON.stringify([u.universityId, d.entries]));
-  const result = firstRow(
-    await database(c.env).execute<{ outcome: string; imported: number }>(
-      sql`select * from app_private.import_timetable_entries(${u.id}::uuid,${u.universityId}::uuid,${requestId}::uuid,${hash},${JSON.stringify(d.entries)}::jsonb)`,
-    ),
-  );
+  let result: { outcome: string; imported: number } | undefined;
+  try {
+    result = firstRow(
+      await database(c.env).execute<{ outcome: string; imported: number }>(
+        sql`select * from app_private.import_timetable_entries(${u.id}::uuid,${u.universityId}::uuid,${requestId}::uuid,${hash},${JSON.stringify(d.entries)}::jsonb)`,
+      ),
+    );
+  } catch (error) {
+    // Compatibility for the older saved integration-test schema and any
+    // emergency rollback that predates the idempotent import function.
+    if ((error as Error & { code?: unknown }).code !== "42883") throw error;
+    const client = sqlClient(c.env);
+    await client.transaction([
+      client`select pg_advisory_xact_lock(hashtextextended(${u.id + "-timetable"},0))`,
+      ...d.entries.map(
+        (e) =>
+          client`insert into public.timetable_entries(id,user_id,university_id,title,course_code,venue,lecturer,day_of_week,starts_at,ends_at,reminder_minutes,reminder_enabled) values(${crypto.randomUUID()}::uuid,${u.id}::uuid,${u.universityId}::uuid,${e.title},${e.courseCode?.toUpperCase() ?? null},${e.venue ?? null},${e.lecturer ?? null},${e.dayOfWeek},${e.startsAt}::time,${e.endsAt}::time,${e.reminderMinutes},${e.reminderEnabled})`,
+      ),
+    ]);
+    return c.json({ imported: d.entries.length, requestId }, 201);
+  }
   if (result?.outcome === "CONFLICT")
     throw new AppError(
       409,
