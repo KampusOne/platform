@@ -94,7 +94,7 @@ export function MediaPreview({
     };
     onPlaybackHandle(handle);
     return () => onPlaybackHandle(null);
-  }, [onPlaybackHandle, playbackMode, suspended, video]);
+  }, [onPlaybackHandle, playbackKey, playbackMode, suspended, video]);
 
   useEffect(() => {
     const element = videoRef.current;
