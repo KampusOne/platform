@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { pickFullyVisibleVideo } from "../mobile/src/lib/feed-video-playback.ts";
+import { clearVideoPlaybackSession, readVideoPlaybackSession, writeVideoPlaybackSession } from "../mobile/src/lib/video-playback-session.ts";
 
 test("feed video activates only when the whole video is inside the usable viewport", () => {
   assert.equal(
@@ -52,4 +53,23 @@ test("invalid or empty measurements cannot autoplay a video", () => {
   assert.equal(pickFullyVisibleVideo([], 40, 700), null);
   assert.equal(pickFullyVisibleVideo([{ id: "zero", y: 100, height: 0 }], 40, 700), null);
   assert.equal(pickFullyVisibleVideo([{ id: "bad", y: Number.NaN, height: 100 }], 40, 700), null);
+});
+
+
+test("video playback session preserves timestamp and mute state across screens", () => {
+  clearVideoPlaybackSession("post-1");
+  assert.equal(readVideoPlaybackSession("post-1"), null);
+  writeVideoPlaybackSession("post-1", 12.75, false);
+  const saved = readVideoPlaybackSession("post-1");
+  assert.equal(saved?.position, 12.75);
+  assert.equal(saved?.muted, false);
+  clearVideoPlaybackSession("post-1");
+  assert.equal(readVideoPlaybackSession("post-1"), null);
+});
+
+test("video playback session ignores invalid positions", () => {
+  clearVideoPlaybackSession("post-2");
+  writeVideoPlaybackSession("post-2", Number.NaN, true);
+  writeVideoPlaybackSession("post-2", -1, true);
+  assert.equal(readVideoPlaybackSession("post-2"), null);
 });
