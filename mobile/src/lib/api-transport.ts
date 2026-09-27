@@ -209,7 +209,7 @@ async function securelyAcceptSession(session: Session) {
   return session;
 }
 
-async function refreshSession() {
+async function refreshSession(timeoutMs = 15_000) {
   if (!refreshPromise) {
     if (queuedSessionTransitions > 0) {
       throw new ApiError(
@@ -224,7 +224,7 @@ async function refreshSession() {
         fetch(`${apiUrl}/v1/auth/refresh`, {
           method: "POST",
           credentials: "include",
-          signal: AbortSignal.timeout(15_000),
+          signal: AbortSignal.timeout(timeoutMs),
           headers: {
             "Content-Type": "application/json",
             "X-Device-Label": "KampusOne mobile",
@@ -404,7 +404,12 @@ export const authApi = {
       ).then(securelyAcceptSession),
     );
   },
-  refresh: refreshSession,
+  refresh(timeoutMs = 15_000) {
+    return refreshSession(timeoutMs);
+  },
+  hasSavedSession() {
+    return readRefreshToken().then(Boolean);
+  },
   forgotPassword(email: string) {
     return api<{ status: string }>(
       "/v1/auth/forgot-password",
