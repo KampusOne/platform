@@ -3,6 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { type ReactNode } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -36,6 +38,10 @@ export function ToolPage({
   // Both scroll viewport and content need a definite width on React Native Web.
   return (
     <SafeAreaView edges={["top"]} style={styles.safe}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.safe}
+      >
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -80,6 +86,7 @@ export function ToolPage({
         </View>
         {children}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
