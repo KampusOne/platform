@@ -37,7 +37,7 @@ export function ProductScreen({
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { width } = useWindowDimensions();
-  const compactPhone = width < 380;
+  const compactPhone = width < 400;
   const contentWidth = Math.min(width, 540);
   const entry = useRef(new Animated.Value(1)).current;
   const reducedMotion = useReducedMotionPreference();
