@@ -276,7 +276,7 @@ export default function StreakScreen() {
                         color={achieved ? "#FFFFFF" : theme.textMuted}
                       />
                     </View>
-                    {i < milestones.length - 1 ? (
+                    {i < streakMilestones.length - 1 ? (
                       <View
                         style={{
                           width: 3,
