@@ -76,6 +76,18 @@ describe("media upload and delivery regression", () => {
     expect(result.content_type).toBe("image/png");
     expect(state.put).toHaveBeenCalledOnce();
   });
+  it("accepts raw post videos larger than the image and document limit", async () => {
+    state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValue({ rows: [] });
+    const bytes = new Uint8Array(10 * 1024 * 1024 + 1024);
+    bytes.set([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d], 0);
+    const response = await app.request(
+      "https://api.example/v1/media?kind=post&name=trimmed.mp4",
+      { method: "POST", headers: { ...auth, "Content-Type": "video/mp4" }, body: bytes },
+      env,
+    );
+    expect(response.status).toBe(201);
+    expect(state.put).toHaveBeenCalledOnce();
+  });
   it("saves an avatar and returns a persisted media URL", async () => {
     state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValue({ rows: [] });
     const form = new FormData();

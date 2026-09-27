@@ -35,12 +35,31 @@ export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use("*", requestId());
 app.use("*", mediaAwareSecureHeaders);
-app.use("/v1/*", async (c, next) =>
-  bodyLimit({
-    maxSize: c.req.path === "/v1/media" || c.req.path === "/v1/media/" ? 10 * 1024 * 1024 + 4096 : 256 * 1024,
-    onError: () => { throw new AppError(413, "BAD_REQUEST", "This upload or request is too large."); },
-  })(c, next),
-);
+app.use("/v1/*", async (c, next) => {
+  const isMediaUpload =
+    c.req.path === "/v1/media" || c.req.path === "/v1/media/";
+  const rawPostVideoUpload =
+    isMediaUpload &&
+    c.req.query("kind") === "post" &&
+    (c.req.header("Content-Type") ?? "").toLowerCase().startsWith("video/");
+  const maxSize = rawPostVideoUpload
+    ? 50 * 1024 * 1024 + 4096
+    : isMediaUpload
+      ? 10 * 1024 * 1024 + 4096
+      : 256 * 1024;
+  return bodyLimit({
+    maxSize,
+    onError: () => {
+      throw new AppError(
+        413,
+        "BAD_REQUEST",
+        rawPostVideoUpload
+          ? "Post videos can be up to 50 MB. Trim or choose a smaller video."
+          : "This upload or request is too large.",
+      );
+    },
+  })(c, next);
+});
 app.use("/v1/*", async (context, next) => {
   const origins = allowedOrigins(context.env);
   return cors({

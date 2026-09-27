@@ -54,6 +54,13 @@ export const mediaRoutes = new Hono<{
 }>();
 const privateKinds = new Set(["kyc", "support", "resource"]);
 const uploadKinds = new Set(["avatar", "cover", "product", "post", "resource", "kyc", "support", "notification-sound"]);
+const standardUploadLimit = 10 * 1024 * 1024;
+const postVideoUploadLimit = 50 * 1024 * 1024;
+function uploadTooLargeMessage(kind: string, mime: string | null | undefined) {
+  return kind === "post" && mime?.startsWith("video/")
+    ? "Post videos can be up to 50 MB. Trim or choose a smaller video."
+    : "Choose a file smaller than 10 MB.";
+}
 export function detectedMime(bytes: Uint8Array) {
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
     return "image/jpeg";
@@ -75,10 +82,19 @@ export function detectedMime(bytes: Uint8Array) {
 }
 mediaRoutes.post("/", requireAuth, async (c) => {
   const user = currentUser(c);
-  if (Number(c.req.header("Content-Length") ?? 0) > 10 * 1024 * 1024 + 4096)
-    throw new AppError(413, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
-
   const contentType = c.req.header("Content-Type") ?? "";
+  const requestMime = (contentType.split(";")[0] ?? "").trim().toLowerCase();
+  const rawPostVideoUpload =
+    c.req.query("kind") === "post" && requestMime.startsWith("video/");
+  const requestLimit = rawPostVideoUpload
+    ? postVideoUploadLimit
+    : standardUploadLimit;
+  if (Number(c.req.header("Content-Length") ?? 0) > requestLimit + 4096)
+    throw new AppError(
+      413,
+      "BAD_REQUEST",
+      uploadTooLargeMessage(String(c.req.query("kind") ?? ""), requestMime),
+    );
   let kind = "";
   let originalName = "upload";
   let declaredMime = "";
@@ -109,8 +125,8 @@ mediaRoutes.post("/", requireAuth, async (c) => {
 
   if (!uploadKinds.has(kind))
     throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
-  if (bytes.byteLength < 1 || bytes.byteLength > 10 * 1024 * 1024)
-    throw new AppError(400, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
+  if (bytes.byteLength < 1)
+    throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
 
   const recent = await database(c.env).execute<{ allowed: boolean }>(
     sql`select app_private.consume_request_rate_limit('MEDIA_UPLOAD',${user.id},30,3600,3600) allowed`,
@@ -137,6 +153,16 @@ mediaRoutes.post("/", requireAuth, async (c) => {
       /* Not a UTF-8 source. */
     }
   }
+  const finalLimit =
+    kind === "post" && mime?.startsWith("video/")
+      ? postVideoUploadLimit
+      : standardUploadLimit;
+  if (bytes.byteLength > finalLimit)
+    throw new AppError(
+      413,
+      "BAD_REQUEST",
+      uploadTooLargeMessage(kind, mime ?? declaredMime),
+    );
   if (!mime || (kind === "notification-sound" ? !["audio/mpeg", "audio/wav"].includes(mime) : mime.startsWith("audio/") || (["video/mp4", "video/webm"].includes(mime) ? kind !== "post" : !privateKinds.has(kind) && !mime.startsWith("image/"))))
     throw new AppError(
       400,

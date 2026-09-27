@@ -15,7 +15,7 @@ Add pre-publish editing for student feed attachments without changing post autho
 - Cancel returns to the composer without uploading the selected edit.
 - The composer keeps its existing local preview, retry and draft-preservation behavior.
 - Attached media exposes Edit so the crop/trim can be reopened before publishing.
-- Final uploads remain capped by the existing 10 MB media limit. Source videos may be up to 100 MB so a user can select a larger source and trim it down locally first.
+- Images and documents remain capped at 10 MB. Trimmed post videos may upload up to 50 MB; source videos may be up to 100 MB so a user can select a larger source and trim it locally first.
 
 ## Architecture
 
