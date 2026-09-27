@@ -255,6 +255,10 @@ export default function ConversationScreen() {
   const canAttach = data?.thread.status === "ACCEPTED";
   const locked = sending || uploading || actionBusy;
   const peerName = data?.profile?.display_name || "Conversation";
+  const handleVoiceActive = useCallback((active: boolean) => {
+    setVoiceActive(active);
+    if (active) Keyboard.dismiss();
+  }, []);
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.screen}>
@@ -397,20 +401,17 @@ export default function ConversationScreen() {
                     style={styles.composerInput}
                   />
                 ) : null}
-                {canAttach ? (
+                {canAttach && !draft.trim() && !attachment ? (
                   <MessageVoice
                     compact
                     disabled={locked}
-                    onActiveChange={(active) => {
-                      setVoiceActive(active);
-                      if (active) Keyboard.dismiss();
-                    }}
+                    onActiveChange={handleVoiceActive}
                     onReady={async (mediaId) => {
                       await sendVoice(mediaId);
                     }}
                   />
                 ) : null}
-                {!voiceActive ? (
+                {!voiceActive && (!canAttach || Boolean(draft.trim()) || Boolean(attachment)) ? (
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Send message"
