@@ -116,7 +116,13 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
       if(!transcript)throw new Error('No speech was detected. Try recording again.');
       return transcript;
     }catch(e){
-      if(alive.current){setError(e instanceof Error?e.message:'Your recording is kept. Try again.');if(e instanceof ApiError&&e.details?.retryWithNewKey)id.current=randomUUID();}
+      if(alive.current){
+        const message=e instanceof ApiError&&e.status===500&&e.code==='INTERNAL_ERROR'
+          ? 'Voice transcription hit a temporary server error. Your recording is kept — tap retry.'
+          : e instanceof Error?e.message:'Your recording is kept. Try again.';
+        setError(message);
+        if(e instanceof ApiError&&e.details?.retryWithNewKey)id.current=randomUUID();
+      }
       return undefined;
     }finally{locked.current=false;if(alive.current)setWorking(false);}
   }
