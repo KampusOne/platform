@@ -10,7 +10,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { VideoView, useVideoPlayer } from "expo-video";
@@ -54,7 +53,6 @@ function actionLabel(count: number) {
 
 export default function VideoViewerScreen() {
   const { theme } = useAppearance();
-  const { height, width } = useWindowDimensions();
   const params = useLocalSearchParams<{
     id?: string | string[];
     position?: string;
@@ -74,6 +72,7 @@ export default function VideoViewerScreen() {
   const [position, setPosition] = useState(requestedPosition);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState<(typeof speeds)[number]>(1);
+  const [contentFit, setContentFit] = useState<"contain" | "cover">("contain");
   const [trackWidth, setTrackWidth] = useState(0);
   const videoRef = useRef<VideoView>(null);
   const focused = useRef(false);
@@ -319,8 +318,6 @@ export default function VideoViewerScreen() {
     }
   }
 
-  const mediaHeight = Math.max(220, Math.min(height * 0.43, width * 0.95));
-
   if (loading && !post) {
     return <SafeAreaView style={styles.screen}><StatusBar style="light" /><View style={styles.center}><Text style={[styles.stateText, { fontFamily: theme.font.medium }]}>Opening video…</Text></View></SafeAreaView>;
   }
@@ -341,13 +338,13 @@ export default function VideoViewerScreen() {
         </Pressable>
       </View>
 
-      <View style={[styles.mediaStage, { height: mediaHeight }]}>
+      <View style={styles.mediaStage}>
         <VideoView
           ref={videoRef}
           accessibilityLabel="Post video"
           player={player}
           nativeControls={false}
-          contentFit="contain"
+          contentFit={contentFit}
           surfaceType="textureView"
           style={StyleSheet.absoluteFill}
         />
@@ -358,7 +355,7 @@ export default function VideoViewerScreen() {
       <View style={styles.meta}>
         <View style={styles.authorRow}>
           <Pressable accessibilityRole="button" disabled={!post.source_user_id} onPress={() => post.source_user_id && router.push({ pathname: "/student-profile", params: { id: post.source_user_id } })} style={styles.authorIdentity}>
-            <ProfileAvatar name={post.source_name} imageUrl={post.source_image_url} size={48} />
+            <ProfileAvatar name={post.source_name} imageUrl={post.source_image_url} size={42} />
             <View style={styles.authorCopy}>
               <View style={styles.nameRow}>
                 <Text numberOfLines={1} style={[styles.authorName, { fontFamily: theme.font.semibold }]}>{post.source_name}</Text>
@@ -422,6 +419,15 @@ export default function VideoViewerScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="Use native full screen" onPress={() => void videoRef.current?.enterFullscreen()} style={styles.controlButton}>
             <Ionicons name="expand-outline" size={27} color="#FFFFFF" />
           </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={contentFit === "contain" ? "Fill video area" : "Fit entire video"}
+            accessibilityState={{ selected: contentFit === "cover" }}
+            onPress={() => setContentFit((current) => current === "contain" ? "cover" : "contain")}
+            style={styles.controlButton}
+          >
+            <Ionicons name="scan-outline" size={27} color="#FFFFFF" />
+          </Pressable>
         </View>
       </View>
 
@@ -446,36 +452,36 @@ export default function VideoViewerScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#000000" },
-  header: { minHeight: 62, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 4 },
-  headerButton: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: "#1B242C" },
+  header: { minHeight: 66, paddingHorizontal: 24, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 4 },
+  headerButton: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: "#1B242C" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28 },
   stateText: { color: "#FFFFFF", fontSize: 14, textAlign: "center" },
-  mediaStage: { width: "100%", backgroundColor: "#000000", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  mediaStage: { flex: 1, minHeight: 0, width: "100%", backgroundColor: "#000000", alignItems: "center", justifyContent: "center", overflow: "hidden" },
   videoState: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: "rgba(0,0,0,0.42)" },
   videoStateText: { color: "#FFFFFF", fontSize: 13 },
-  meta: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 12, gap: 12 },
+  meta: { paddingHorizontal: 24, paddingTop: 10, paddingBottom: 10, gap: 10 },
   authorRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  authorIdentity: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12 },
+  authorIdentity: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 11 },
   authorCopy: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  authorName: { color: "#FFFFFF", fontSize: 18, flexShrink: 1 },
+  authorName: { color: "#FFFFFF", fontSize: 17, flexShrink: 1 },
   username: { color: "#AEB4BA", fontSize: 13, marginTop: 2 },
-  followButton: { minHeight: 44, minWidth: 98, paddingHorizontal: 18, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: "#202830" },
+  followButton: { minHeight: 42, minWidth: 90, paddingHorizontal: 16, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "#202830" },
   followingButton: { borderWidth: 1, borderColor: "#5C656D", backgroundColor: "transparent" },
   followText: { color: "#FFFFFF", fontSize: 14 },
   description: { color: "#FFFFFF", fontSize: 15, lineHeight: 21 },
-  actions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  actionButton: { flex: 1, minHeight: 50, minWidth: 0, paddingHorizontal: 7, borderRadius: 25, backgroundColor: "#202830", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
-  iconAction: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#202830", alignItems: "center", justifyContent: "center" },
+  actions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  actionButton: { flex: 1, minHeight: 52, minWidth: 0, paddingHorizontal: 8, borderRadius: 26, backgroundColor: "#202830", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  iconAction: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#202830", alignItems: "center", justifyContent: "center" },
   actionCount: { color: "#FFFFFF", fontSize: 14 },
-  playbackDock: { marginTop: "auto", paddingHorizontal: 0, paddingBottom: 4 },
-  progressTouch: { minHeight: 25, justifyContent: "center" },
-  progressTrack: { height: 4, backgroundColor: "#3C3C3C", overflow: "hidden" },
+  playbackDock: { paddingHorizontal: 0, paddingBottom: 2 },
+  progressTouch: { minHeight: 24, justifyContent: "center" },
+  progressTrack: { height: 3, backgroundColor: "#3C3C3C", overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: "#FFFFFF" },
-  controls: { minHeight: 78, paddingHorizontal: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  controlButton: { minWidth: 48, minHeight: 48, alignItems: "center", justifyContent: "center" },
-  remaining: { color: "#FFFFFF", fontSize: 16 },
-  speed: { color: "#FFFFFF", fontSize: 17 },
+  controls: { minHeight: 82, paddingHorizontal: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  controlButton: { minWidth: 44, minHeight: 52, alignItems: "center", justifyContent: "center" },
+  remaining: { color: "#FFFFFF", fontSize: 15 },
+  speed: { color: "#FFFFFF", fontSize: 16 },
   notice: { position: "absolute", left: 18, right: 18, bottom: 108, alignItems: "center" },
   noticeText: { color: "#FFFFFF", backgroundColor: "rgba(27,36,44,0.96)", borderRadius: 14, paddingHorizontal: 16, paddingVertical: 11, fontSize: 12.5, overflow: "hidden" },
   modalRoot: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)", padding: 14 },
