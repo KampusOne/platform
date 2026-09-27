@@ -605,3 +605,17 @@ export type OnboardingProfileInput = z.infer<typeof onboardingProfileSchema>;
 export type TimetableEntryInput = z.infer<typeof timetableEntrySchema>;
 export type GpaTermInput = z.infer<typeof gpaTermSchema>;
 export type AgentApplicationInput = z.infer<typeof agentApplicationSchema>;
+
+
+// Direct-message uploads are private and are authorized again on every read.
+export const directMessageInputSchema = z
+  .object({
+    id: z.string().uuid(),
+    body: z.string().trim().max(5000).default(""),
+    mediaId: z.string().uuid().optional(),
+  })
+  .strict()
+  .refine(
+    (value) => Boolean(value.body || value.mediaId),
+    "Write a message or attach a file.",
+  );
