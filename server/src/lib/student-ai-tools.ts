@@ -53,7 +53,7 @@ export const studentTools: AITool[] = [
   { type: "function", function: { name: "search_vendors", description: "Find approved vendor storefronts on this student's campus.", parameters: queryParameters } },
   { type: "function", function: { name: "search_tutors", description: "Find approved published tutor listings for the student's subject on their campus. Results are not a guarantee of suitability.", parameters: queryParameters } },
   { type: "function", function: { name: "prepare_timetable_entry", description: "Prepare a class for review. This does not write anything. Supply only details explicitly given by the student; ask for missing start/end times. For a specific date use YYYY-MM-DD and matching weekday. Omit date only for a recurring weekly class explicitly requested by the student.", parameters: { type: "object", properties: { title: { type: "string" }, courseCode: { type: "string" }, venue: { type: "string" }, lecturer: { type: "string" }, dayOfWeek: { type: "integer", minimum: 0, maximum: 6 }, startsAt: { type: "string", description: "HH:MM" }, endsAt: { type: "string", description: "HH:MM" }, date: { type: "string", description: "YYYY-MM-DD for a one-time class" } }, required: ["title", "dayOfWeek", "startsAt", "endsAt"], additionalProperties: false } } },
-  { type: "function", function: { name: "prepare_alarm", description: "Prepare an alarm/reminder for student review; this does not save it. For a one-time alarm use days=[] and an ISO 8601 firesAt with timezone offset. For a repeating alarm provide weekday numbers Sunday=0 through Saturday=6 and omit firesAt.", parameters: { type: "object", properties: { label: { type: "string" }, time: { type: "string", description: "HH:MM in the student's Africa/Lagos campus time" }, days: { type: "array", items: { type: "integer", minimum: 0, maximum: 6 }, maxItems: 7 }, firesAt: { type: ["string", "null"], description: "ISO 8601 date/time with offset for a one-time alarm" }, sound: { type: "string", enum: ["default", "silent"] }, vibration: { type: "boolean" }, snoozeMinutes: { type: "integer", minimum: 1, maximum: 30 } }, required: ["label", "time", "days"], additionalProperties: false } } },
+  { type: "function", function: { name: "prepare_alarm", description: "Prepare an alarm/reminder for student review; this does not save it. For a one-time alarm use days=[] and an ISO 8601 firesAt with timezone offset. For a repeating alarm provide weekday numbers Sunday=0 through Saturday=6 and omit firesAt.", parameters: { type: "object", properties: { label: { type: "string" }, time: { type: "string", description: "HH:MM in the student's Africa/Lagos campus time" }, days: { type: "array", items: { type: "integer", minimum: 0, maximum: 6 }, maxItems: 7 }, firesAt: { type: "string", description: "ISO 8601 date/time with offset for a one-time alarm; omit for repeating alarms" }, sound: { type: "string", enum: ["default", "silent"] }, vibration: { type: "boolean" }, snoozeMinutes: { type: "integer", minimum: 1, maximum: 30 } }, required: ["label", "time", "days"], additionalProperties: false } } },
   { type: "function", function: { name: "prepare_calendar_event", description: "Prepare a dated academic calendar event for review; this does not save it. Use this for date ranges such as exams, registration, breaks or deadlines, not hourly classes.", parameters: { type: "object", properties: { title: { type: "string" }, startsOn: { type: "string", description: "YYYY-MM-DD" }, endsOn: { type: "string", description: "YYYY-MM-DD" }, semester: { type: "string" } }, required: ["title", "startsOn", "endsOn"], additionalProperties: false } } },
 ];
 
@@ -258,10 +258,15 @@ export function needsCampusTools(input: AIInput): boolean {
   return /\b(alarm|remind|reminder|calendar|timetable|schedule|class|lecture|product|vendor|store|shop|buy|tutor|recommend|suggest|availability|available|price|cost)\b/i.test(recent);
 }
 
+function needsRecommendationContext(input: AIInput): boolean {
+  const recent = [input.prompt, ...(input.history ?? []).slice(-2).map(turn => turn.prompt)].join(" ");
+  return /\b(recommend|suggest|product|vendor|store|shop|buy|tutor|taste|preference|budget)\b/i.test(recent);
+}
+
 export async function runStudentAssistant(env: Bindings, user: AuthenticatedUser, input: AIInput) {
   const [profileContext, recommendationContext] = await Promise.all([
     studentAssistantProfileContext(env, user),
-    studentRecommendationContext(env, user),
+    needsRecommendationContext(input) ? studentRecommendationContext(env, user) : Promise.resolve("Recommendation signals were not loaded because this request does not need recommendations."),
   ]);
   const systemContext = [
     `Current date/time: ${new Date().toISOString()}. Student timezone: Africa/Lagos.`,
