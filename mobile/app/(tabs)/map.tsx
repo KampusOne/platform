@@ -1,4 +1,4 @@
-import { InlineLoading, SkeletonBlock } from "@/src/components/skeleton";
+import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
@@ -8,7 +8,6 @@ import {
   AccessibilityInfo,
   FlatList,
   Image,
-  Linking,
   type LayoutChangeEvent,
   PanResponder,
   Platform,
@@ -34,25 +33,12 @@ const categories = [
   "Health",
   "Sport",
 ] as const;
-const TILE_SIZE = 256;
-const MIN_MAP_HEIGHT = 260;
-const MAX_MAP_HEIGHT = 324;
-const MIN_ZOOM = 2;
-const MAX_ZOOM = 19;
-const LEGACY_OSM_TILE_BASE = (
-  process.env.EXPO_PUBLIC_OSM_TILE_URL ?? "https://tile.openstreetmap.org"
-).replace(/\/+$/, "");
-const MAP_TILE_TEMPLATE =
-  process.env.EXPO_PUBLIC_MAP_TILE_URL_TEMPLATE?.trim() ||
-  `${LEGACY_OSM_TILE_BASE}/{z}/{x}/{y}.png`;
-const OSM_ATTRIBUTION_URL = "https://www.openstreetmap.org/copyright";
-const TILE_HEADERS = { "User-Agent": "KampusOne/0.3 (+https://kampusone.app)" };
 
-function mapTileUrl(zoom: number, x: number, y: number) {
-  return MAP_TILE_TEMPLATE.replaceAll("{z}", String(zoom))
-    .replaceAll("{x}", String(x))
-    .replaceAll("{y}", String(y));
-}
+const MIN_MAP_HEIGHT = 360;
+const MAX_MAP_HEIGHT = 440;
+const MIN_MAP_ZOOM = 0.85;
+const MAX_MAP_ZOOM = 2.35;
+const WALKING_METRES_PER_MINUTE = 75;
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type Place = {
@@ -67,10 +53,14 @@ type Place = {
   verified_at: string | null;
 };
 type MappedPlace = Place & { latitudeValue: number; longitudeValue: number };
-type MapView = { latitude: number; longitude: number; zoom: number };
 type PixelPoint = { x: number; y: number };
-type MapTile = { key: string; left: number; top: number; uri: string };
-type TileStatus = { failed: number; key: string; loaded: number };
+type CampusEdge = { a: string; b: string; distance: number };
+type CampusRoute = { distance: number; ids: string[] };
+type Projection = {
+  centerLatitude: number;
+  centerLongitude: number;
+  scale: number;
+};
 
 const icons: Record<string, IconName> = {
   ACADEMIC: "school-outline",
@@ -92,12 +82,18 @@ const markerColors: Record<string, string> = {
   TRANSPORT: "#3F6B78",
 };
 
+const zoneColors: Record<string, string> = {
+  ACADEMIC: "rgba(82,111,168,.10)",
+  FOOD: "rgba(185,93,80,.10)",
+  HEALTH: "rgba(168,70,46,.10)",
+  HOSTEL: "rgba(141,85,53,.11)",
+  SERVICE: "rgba(122,106,93,.09)",
+  SPORT: "rgba(75,123,84,.10)",
+  TRANSPORT: "rgba(63,107,120,.09)",
+};
+
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
-}
-
-function wrapTileX(value: number, tileCount: number) {
-  return ((value % tileCount) + tileCount) % tileCount;
 }
 
 function coordinatesFor(place: Place) {
@@ -106,151 +102,204 @@ function coordinatesFor(place: Place) {
     place.longitude === null ||
     !place.latitude.trim() ||
     !place.longitude.trim()
-  )
+  ) {
     return null;
+  }
+
   const latitude = Number(place.latitude);
   const longitude = Number(place.longitude);
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
   if (
-    latitude < -85.05112878 ||
-    latitude > 85.05112878 ||
+    latitude < -90 ||
+    latitude > 90 ||
     longitude < -180 ||
     longitude > 180
-  )
+  ) {
     return null;
+  }
+
   return { latitude, longitude };
 }
 
-function normalizedMercator(latitude: number, longitude: number): PixelPoint {
-  const safeLatitude = clamp(latitude, -85.05112878, 85.05112878);
-  const sinLatitude = Math.sin((safeLatitude * Math.PI) / 180);
-  return {
-    x: (longitude + 180) / 360,
-    y: 0.5 - Math.log((1 + sinLatitude) / (1 - sinLatitude)) / (4 * Math.PI),
-  };
+function distanceBetween(a: MappedPlace, b: MappedPlace) {
+  const earthRadius = 6371000;
+  const latitudeA = (a.latitudeValue * Math.PI) / 180;
+  const latitudeB = (b.latitudeValue * Math.PI) / 180;
+  const latitudeDelta = ((b.latitudeValue - a.latitudeValue) * Math.PI) / 180;
+  const longitudeDelta = ((b.longitudeValue - a.longitudeValue) * Math.PI) / 180;
+  const value =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(latitudeA) *
+      Math.cos(latitudeB) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return 2 * earthRadius * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
-function latitudeFromMercatorY(y: number) {
-  return (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI;
-}
-
-function worldPixel(
-  latitude: number,
-  longitude: number,
-  zoom: number,
-): PixelPoint {
-  const normalized = normalizedMercator(latitude, longitude);
-  const worldSize = TILE_SIZE * 2 ** zoom;
-  return { x: normalized.x * worldSize, y: normalized.y * worldSize };
-}
-
-function shiftedMapView(view: MapView, offset: PixelPoint): MapView {
-  const worldSize = TILE_SIZE * 2 ** view.zoom;
-  const center = worldPixel(view.latitude, view.longitude, view.zoom);
-  const shiftedX =
-    ((center.x - offset.x) % worldSize + worldSize) % worldSize;
-  const shiftedY = clamp(center.y - offset.y, 0, worldSize);
-
-  return {
-    latitude: latitudeFromMercatorY(shiftedY / worldSize),
-    longitude: (shiftedX / worldSize) * 360 - 180,
-    zoom: view.zoom,
-  };
-}
-
-function fitMapView(
-  places: MappedPlace[],
-  width: number,
-  height: number,
-): MapView | null {
-  if (!places.length) return null;
-
-  const first = normalizedMercator(
-    places[0]?.latitudeValue ?? 0,
-    places[0]?.longitudeValue ?? 0,
-  );
-  let minimumX = first.x;
-  let maximumX = first.x;
-  let minimumY = first.y;
-  let maximumY = first.y;
+function campusEdges(places: MappedPlace[]): CampusEdge[] {
+  const edges = new Map<string, CampusEdge>();
 
   for (const place of places) {
-    const point = normalizedMercator(place.latitudeValue, place.longitudeValue);
-    minimumX = Math.min(minimumX, point.x);
-    maximumX = Math.max(maximumX, point.x);
-    minimumY = Math.min(minimumY, point.y);
-    maximumY = Math.max(maximumY, point.y);
-  }
+    const nearest = places
+      .filter((candidate) => candidate.id !== place.id)
+      .map((candidate) => ({
+        candidate,
+        distance: distanceBetween(place, candidate),
+      }))
+      .sort((left, right) => left.distance - right.distance)
+      .slice(0, 3);
 
-  const centerX = (minimumX + maximumX) / 2;
-  const centerY = (minimumY + maximumY) / 2;
-  const spanX = maximumX - minimumX;
-  const spanY = maximumY - minimumY;
-  const innerWidth = Math.max(120, width - 92);
-  const innerHeight = Math.max(120, height - 116);
-  const zoomX =
-    spanX > 0 ? Math.log2(innerWidth / (TILE_SIZE * spanX)) : MAX_ZOOM;
-  const zoomY =
-    spanY > 0 ? Math.log2(innerHeight / (TILE_SIZE * spanY)) : MAX_ZOOM;
-  const fittedZoom =
-    places.length === 1 ? 17 : Math.floor(Math.min(zoomX, zoomY));
-
-  return {
-    latitude: latitudeFromMercatorY(centerY),
-    longitude: centerX * 360 - 180,
-    zoom: clamp(fittedZoom, MIN_ZOOM, 18),
-  };
-}
-
-function visibleTiles(view: MapView, width: number, height: number): MapTile[] {
-  const center = worldPixel(view.latitude, view.longitude, view.zoom);
-  const leftEdge = center.x - width / 2;
-  const topEdge = center.y - height / 2;
-  const rightEdge = center.x + width / 2;
-  const bottomEdge = center.y + height / 2;
-  const minimumTileX = Math.floor(leftEdge / TILE_SIZE);
-  const maximumTileX = Math.floor(rightEdge / TILE_SIZE);
-  const minimumTileY = Math.floor(topEdge / TILE_SIZE);
-  const maximumTileY = Math.floor(bottomEdge / TILE_SIZE);
-  const tileCount = 2 ** view.zoom;
-  const tiles: MapTile[] = [];
-
-  for (let tileY = minimumTileY; tileY <= maximumTileY; tileY += 1) {
-    if (tileY < 0 || tileY >= tileCount) continue;
-    for (let tileX = minimumTileX; tileX <= maximumTileX; tileX += 1) {
-      const wrappedX = wrapTileX(tileX, tileCount);
-      tiles.push({
-        key: `${view.zoom}/${tileX}/${tileY}`,
-        left: tileX * TILE_SIZE - leftEdge,
-        top: tileY * TILE_SIZE - topEdge,
-        uri: mapTileUrl(view.zoom, wrappedX, tileY),
-      });
+    for (const item of nearest) {
+      const first = place.id < item.candidate.id ? place.id : item.candidate.id;
+      const second = place.id < item.candidate.id ? item.candidate.id : place.id;
+      const key = first + ":" + second;
+      if (!edges.has(key)) {
+        edges.set(key, {
+          a: first,
+          b: second,
+          distance: item.distance,
+        });
+      }
     }
   }
 
-  return tiles;
+  return Array.from(edges.values());
 }
 
-function markerPosition(
-  place: MappedPlace,
-  view: MapView,
+function shortestCampusRoute(
+  places: MappedPlace[],
+  edges: CampusEdge[],
+  originId: string,
+  destinationId: string,
+): CampusRoute | null {
+  if (!originId || !destinationId || originId === destinationId) return null;
+
+  const placeIds = new Set(places.map((place) => place.id));
+  if (!placeIds.has(originId) || !placeIds.has(destinationId)) return null;
+
+  const adjacency = new Map<string, Array<{ id: string; distance: number }>>();
+  for (const place of places) adjacency.set(place.id, []);
+  for (const edge of edges) {
+    adjacency.get(edge.a)?.push({ id: edge.b, distance: edge.distance });
+    adjacency.get(edge.b)?.push({ id: edge.a, distance: edge.distance });
+  }
+
+  const distances = new Map<string, number>();
+  const previous = new Map<string, string>();
+  const pending = new Set(placeIds);
+  for (const id of placeIds) distances.set(id, Number.POSITIVE_INFINITY);
+  distances.set(originId, 0);
+
+  while (pending.size) {
+    let current = "";
+    let currentDistance = Number.POSITIVE_INFINITY;
+    for (const id of pending) {
+      const distance = distances.get(id) ?? Number.POSITIVE_INFINITY;
+      if (distance < currentDistance) {
+        current = id;
+        currentDistance = distance;
+      }
+    }
+
+    if (!current || !Number.isFinite(currentDistance)) break;
+    pending.delete(current);
+    if (current === destinationId) break;
+
+    for (const neighbour of adjacency.get(current) ?? []) {
+      if (!pending.has(neighbour.id)) continue;
+      const nextDistance = currentDistance + neighbour.distance;
+      if (nextDistance < (distances.get(neighbour.id) ?? Number.POSITIVE_INFINITY)) {
+        distances.set(neighbour.id, nextDistance);
+        previous.set(neighbour.id, current);
+      }
+    }
+  }
+
+  const total = distances.get(destinationId);
+  if (!Number.isFinite(total)) return null;
+
+  const ids = [destinationId];
+  let current = destinationId;
+  while (current !== originId) {
+    const previousId = previous.get(current);
+    if (!previousId) return null;
+    ids.unshift(previousId);
+    current = previousId;
+  }
+
+  return { distance: total ?? 0, ids };
+}
+
+function createProjection(
+  places: MappedPlace[],
   width: number,
   height: number,
-) {
-  const center = worldPixel(view.latitude, view.longitude, view.zoom);
-  const point = worldPixel(
-    place.latitudeValue,
-    place.longitudeValue,
-    view.zoom,
+  zoom: number,
+): Projection | null {
+  if (!places.length || width <= 0 || height <= 0) return null;
+
+  let minimumLatitude = places[0]?.latitudeValue ?? 0;
+  let maximumLatitude = minimumLatitude;
+  let minimumLongitude = places[0]?.longitudeValue ?? 0;
+  let maximumLongitude = minimumLongitude;
+
+  for (const place of places) {
+    minimumLatitude = Math.min(minimumLatitude, place.latitudeValue);
+    maximumLatitude = Math.max(maximumLatitude, place.latitudeValue);
+    minimumLongitude = Math.min(minimumLongitude, place.longitudeValue);
+    maximumLongitude = Math.max(maximumLongitude, place.longitudeValue);
+  }
+
+  const latitudeSpan = Math.max(maximumLatitude - minimumLatitude, 0.0025);
+  const longitudeSpan = Math.max(maximumLongitude - minimumLongitude, 0.0025);
+  const usableWidth = Math.max(180, width - 76);
+  const usableHeight = Math.max(180, height - 126);
+  const scale = Math.min(
+    usableWidth / longitudeSpan,
+    usableHeight / latitudeSpan,
   );
-  const worldSize = TILE_SIZE * 2 ** view.zoom;
-  let horizontalOffset = point.x - center.x;
-  if (horizontalOffset > worldSize / 2) horizontalOffset -= worldSize;
-  if (horizontalOffset < -worldSize / 2) horizontalOffset += worldSize;
+
   return {
-    left: width / 2 + horizontalOffset,
-    top: height / 2 + point.y - center.y,
+    centerLatitude: (minimumLatitude + maximumLatitude) / 2,
+    centerLongitude: (minimumLongitude + maximumLongitude) / 2,
+    scale: scale * zoom,
   };
+}
+
+function pointFor(
+  place: MappedPlace,
+  projection: Projection,
+  width: number,
+  height: number,
+  pan: PixelPoint,
+): PixelPoint {
+  return {
+    x:
+      width / 2 +
+      (place.longitudeValue - projection.centerLongitude) * projection.scale +
+      pan.x,
+    y:
+      height / 2 -
+      (place.latitudeValue - projection.centerLatitude) * projection.scale +
+      pan.y,
+  };
+}
+
+function routeEdgeKeys(route: CampusRoute | null) {
+  const keys = new Set<string>();
+  if (!route) return keys;
+
+  for (let index = 1; index < route.ids.length; index += 1) {
+    const a = route.ids[index - 1] ?? "";
+    const b = route.ids[index] ?? "";
+    keys.add(a < b ? a + ":" + b : b + ":" + a);
+  }
+
+  return keys;
+}
+
+function formatDistance(metres: number) {
+  if (metres < 1000) return Math.max(1, Math.round(metres)) + " m";
+  return (metres / 1000).toFixed(metres >= 10000 ? 0 : 1) + " km";
 }
 
 function VerificationBadge() {
@@ -267,104 +316,105 @@ function VerificationBadge() {
   );
 }
 
-function RasterTile({
-  onSettled,
-  tile,
+function MapSegment({
+  active,
+  from,
+  to,
 }: {
-  onSettled: (loaded: boolean) => void;
-  tile: MapTile;
+  active: boolean;
+  from: PixelPoint;
+  to: PixelPoint;
 }) {
-  const { theme, styles } = useThemeStyles(createStyles);
+  const { styles } = useThemeStyles(createStyles);
+  const deltaX = to.x - from.x;
+  const deltaY = to.y - from.y;
+  const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+  if (length < 1) return null;
 
-  const settled = useRef(false);
-  const settle = useCallback(
-    (loaded: boolean) => {
-      if (settled.current) return;
-      settled.current = true;
-      onSettled(loaded);
-    },
-    [onSettled],
-  );
-
+  const angle = (Math.atan2(deltaY, deltaX) * 180) / Math.PI;
   return (
-    <Image
-      accessible={false}
-      accessibilityIgnoresInvertColors
-      fadeDuration={0}
-      onError={() => settle(false)}
-      onLoad={() => settle(true)}
-      resizeMode="cover"
-      source={{ cache: "force-cache", headers: TILE_HEADERS, uri: tile.uri }}
-      style={[styles.mapTile, { left: tile.left, top: tile.top }]}
+    <View
+      pointerEvents="none"
+      style={[
+        active ? styles.routeSegment : styles.walkwaySegment,
+        {
+          left: (from.x + to.x) / 2 - length / 2,
+          top: (from.y + to.y) / 2 - (active ? 3 : 2),
+          width: length,
+          transform: [{ rotate: angle + "deg" }],
+        },
+      ]}
     />
   );
 }
 
-function OpenStreetMap({
+function CampusMap({
+  choosingOrigin,
+  destination,
   directoryError,
   directoryLoading,
   height,
+  onCancelRoute,
   onDirections,
   onLayout,
-  onRecenter,
   onSelect,
-  onZoom,
+  origin,
   places,
+  route,
   selected,
-  viewportPlaces,
+  visiblePlaceIds,
   width,
-  zoomAdjustment,
 }: {
+  choosingOrigin: boolean;
+  destination: MappedPlace | undefined;
   directoryError: boolean;
   directoryLoading: boolean;
   height: number;
+  onCancelRoute: () => void;
   onDirections: (place: Place) => void;
   onLayout: (event: LayoutChangeEvent) => void;
-  onRecenter: () => void;
   onSelect: (id: string) => void;
-  onZoom: (change: number) => void;
+  origin: MappedPlace | undefined;
   places: MappedPlace[];
+  route: CampusRoute | null;
   selected: MappedPlace | undefined;
-  viewportPlaces: MappedPlace[];
+  visiblePlaceIds: Set<string>;
   width: number;
-  zoomAdjustment: number;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
-
-  const fittedView = useMemo(
-    () => fitMapView(viewportPlaces, width, height),
-    [height, viewportPlaces, width],
-  );
-  const [panOffset, setPanOffset] = useState<PixelPoint>({ x: 0, y: 0 });
-  const panOffsetRef = useRef<PixelPoint>(panOffset);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<PixelPoint>({ x: 0, y: 0 });
+  const panRef = useRef<PixelPoint>(pan);
   const dragStartRef = useRef<PixelPoint>({ x: 0, y: 0 });
   const canPanRef = useRef(false);
-  const baseView = useMemo(
-    () =>
-      fittedView
-        ? {
-            ...fittedView,
-            zoom: clamp(fittedView.zoom + zoomAdjustment, MIN_ZOOM, MAX_ZOOM),
-          }
-        : null,
-    [fittedView, zoomAdjustment],
+
+  const boundsKey = useMemo(
+    () => places.map((place) => place.id).sort().join("|"),
+    [places],
   );
-  const view = useMemo(
-    () => (baseView ? shiftedMapView(baseView, panOffset) : null),
-    [baseView, panOffset],
+  const projection = useMemo(
+    () => createProjection(places, width, height, zoom),
+    [height, places, width, zoom],
+  );
+  const edges = useMemo(() => campusEdges(places), [places]);
+  const activeEdges = useMemo(() => routeEdgeKeys(route), [route]);
+  const placeById = useMemo(
+    () => new Map(places.map((place) => [place.id, place] as const)),
+    [places],
   );
 
   useEffect(() => {
     const centered = { x: 0, y: 0 };
-    panOffsetRef.current = centered;
-    setPanOffset(centered);
-  }, [baseView?.latitude, baseView?.longitude, baseView?.zoom]);
+    panRef.current = centered;
+    setPan(centered);
+    setZoom(1);
+  }, [boundsKey]);
 
   useEffect(() => {
-    panOffsetRef.current = panOffset;
-  }, [panOffset]);
+    panRef.current = pan;
+  }, [pan]);
 
-  canPanRef.current = view !== null;
+  canPanRef.current = projection !== null;
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -373,10 +423,10 @@ function OpenStreetMap({
           canPanRef.current &&
           (Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4),
         onPanResponderGrant: () => {
-          dragStartRef.current = panOffsetRef.current;
+          dragStartRef.current = panRef.current;
         },
         onPanResponderMove: (_event, gesture) => {
-          setPanOffset({
+          setPan({
             x: dragStartRef.current.x + gesture.dx,
             y: dragStartRef.current.y + gesture.dy,
           });
@@ -386,50 +436,44 @@ function OpenStreetMap({
     [],
   );
 
-  const tiles = useMemo(
-    () => (view ? visibleTiles(view, width, height) : []),
-    [height, view, width],
-  );
-  const tileSetKey = useMemo(
-    () => tiles.map((tile) => tile.key).join("|"),
-    [tiles],
-  );
-  const [tileStatus, setTileStatus] = useState<TileStatus>({
-    failed: 0,
-    key: "",
-    loaded: 0,
-  });
+  const points = useMemo(() => {
+    const result = new Map<string, PixelPoint>();
+    if (!projection) return result;
+    for (const place of places) {
+      result.set(place.id, pointFor(place, projection, width, height, pan));
+    }
+    return result;
+  }, [height, pan, places, projection, width]);
 
-  const settleTile = useCallback(
-    (loaded: boolean) => {
-      setTileStatus((current) => {
-        const status =
-          current.key === tileSetKey
-            ? current
-            : { failed: 0, key: tileSetKey, loaded: 0 };
-        return loaded
-          ? { ...status, loaded: status.loaded + 1 }
-          : { ...status, failed: status.failed + 1 };
+  const categoryZones = useMemo(() => {
+    const groups = new Map<string, PixelPoint[]>();
+    for (const place of places) {
+      const point = points.get(place.id);
+      if (!point) continue;
+      const group = groups.get(place.category) ?? [];
+      group.push(point);
+      groups.set(place.category, group);
+    }
+
+    return Array.from(groups.entries())
+      .filter(([, group]) => group.length >= 2)
+      .map(([category, group]) => {
+        const x = group.reduce((sum, point) => sum + point.x, 0) / group.length;
+        const y = group.reduce((sum, point) => sum + point.y, 0) / group.length;
+        return { category, x, y };
       });
-    },
-    [tileSetKey],
-  );
+  }, [places, points]);
 
-  const currentStatus =
-    tileStatus.key === tileSetKey
-      ? tileStatus
-      : { failed: 0, key: tileSetKey, loaded: 0 };
-  const tilesLoading =
-    Boolean(tiles.length) &&
-    currentStatus.loaded === 0 &&
-    currentStatus.failed < tiles.length;
-  const tilesUnavailable =
-    Boolean(tiles.length) &&
-    currentStatus.loaded === 0 &&
-    currentStatus.failed >= tiles.length;
-  const partialFailure = currentStatus.loaded > 0 && currentStatus.failed > 0;
-  const canZoomIn = view !== null && view.zoom < MAX_ZOOM;
-  const canZoomOut = view !== null && view.zoom > MIN_ZOOM;
+  const recenter = useCallback(() => {
+    void Haptics.selectionAsync();
+    const centered = { x: 0, y: 0 };
+    panRef.current = centered;
+    setPan(centered);
+    setZoom(1);
+  }, []);
+
+  const canZoomIn = zoom < MAX_MAP_ZOOM;
+  const canZoomOut = zoom > MIN_MAP_ZOOM;
 
   return (
     <View style={styles.mapFrame}>
@@ -438,27 +482,78 @@ function OpenStreetMap({
         onLayout={onLayout}
         style={[styles.mapViewport, { height }]}
       >
-        {tiles.map((tile) => (
-          <RasterTile key={tile.key} onSettled={settleTile} tile={tile} />
+        <View pointerEvents="none" style={styles.campusBoundary} />
+
+        {categoryZones.map((zone) => (
+          <View
+            key={zone.category}
+            pointerEvents="none"
+            style={[
+              styles.zone,
+              {
+                backgroundColor: zoneColors[zone.category] ?? "rgba(168,70,46,.07)",
+                left: zone.x - 72,
+                top: zone.y - 50,
+              },
+            ]}
+          >
+            <Text style={styles.zoneLabel}>
+              {zone.category.charAt(0) + zone.category.slice(1).toLowerCase()}
+            </Text>
+          </View>
         ))}
 
-        {view
+        {projection
+          ? edges.map((edge) => {
+              const from = points.get(edge.a);
+              const to = points.get(edge.b);
+              if (!from || !to) return null;
+              const key = edge.a < edge.b ? edge.a + ":" + edge.b : edge.b + ":" + edge.a;
+              return (
+                <MapSegment
+                  active={activeEdges.has(key)}
+                  from={from}
+                  key={key}
+                  to={to}
+                />
+              );
+            })
+          : null}
+
+        {projection
           ? places.map((place) => {
-              const position = markerPosition(place, view, width, height);
+              const position = points.get(place.id);
+              if (!position) return null;
               if (
-                position.left < -28 ||
-                position.left > width + 28 ||
-                position.top < -28 ||
-                position.top > height + 28
-              )
+                position.x < -40 ||
+                position.x > width + 40 ||
+                position.y < -40 ||
+                position.y > height + 40
+              ) {
                 return null;
-              const active = place.id === selected?.id;
+              }
+
+              const isOrigin = place.id === origin?.id;
+              const isDestination = place.id === destination?.id;
+              const isSelected = place.id === selected?.id;
+              const isVisible =
+                visiblePlaceIds.has(place.id) ||
+                choosingOrigin ||
+                Boolean(route) ||
+                isOrigin ||
+                isDestination;
+
               return (
                 <Pressable
-                  accessibilityLabel={`${place.name}, ${place.category.toLowerCase()}${place.verified_at ? ", verified campus place" : ""}`}
+                  accessibilityLabel={
+                    place.name +
+                    ", " +
+                    place.category.toLowerCase() +
+                    (place.verified_at ? ", verified campus place" : "")
+                  }
                   accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  hitSlop={4}
+                  accessibilityState={{ selected: isSelected }}
+                  hitSlop={5}
                   key={place.id}
                   onPress={() => onSelect(place.id)}
                   style={({ pressed }) => [
@@ -466,46 +561,103 @@ function OpenStreetMap({
                     {
                       backgroundColor:
                         markerColors[place.category] ?? theme.brand,
-                      left: position.left,
-                      top: position.top,
+                      left: position.x,
+                      opacity: isVisible ? 1 : 0.24,
+                      top: position.y,
                     },
-                    active && styles.pinActive,
+                    (isSelected || isOrigin || isDestination) && styles.pinActive,
+                    isOrigin && styles.pinOrigin,
+                    isDestination && styles.pinDestination,
                     pressed && styles.pinPressed,
                   ]}
                 >
                   <Ionicons
                     color="#FFFFFF"
-                    name={icons[place.category] ?? "location-outline"}
-                    size={active ? 19 : 16}
+                    name={
+                      isOrigin
+                        ? "walk"
+                        : isDestination
+                          ? "flag"
+                          : icons[place.category] ?? "location-outline"
+                    }
+                    size={isSelected || isOrigin || isDestination ? 17 : 14}
                   />
                 </Pressable>
               );
             })
           : null}
 
-        {!view && !directoryLoading && !directoryError ? (
-          <View style={styles.mapFallback}>
-            <Ionicons color={theme.textMuted} name="map-outline" size={28} />
-            <Text style={styles.mapFallbackTitle}>
-              No mapped places in this view
-            </Text>
-            <Text style={styles.mapFallbackBody}>
-              A real map can appear after a campus editor saves valid
-              coordinates.
-            </Text>
+        <View pointerEvents="none" style={styles.layerBadge}>
+          <View style={styles.layerBadgeIcon}>
+            <Ionicons color="#FFFFFF" name="map" size={13} />
           </View>
-        ) : null}
+          <View>
+            <Text style={styles.layerBadgeTitle}>KampusOne map</Text>
+            <Text style={styles.layerBadgeMeta}>Campus layer</Text>
+          </View>
+        </View>
 
-        {!view && directoryLoading ? (
+        <View style={styles.mapControls}>
+          <Pressable
+            accessibilityLabel="Zoom in"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canZoomIn }}
+            disabled={!canZoomIn}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              setZoom((current) => clamp(current + 0.2, MIN_MAP_ZOOM, MAX_MAP_ZOOM));
+            }}
+            style={({ pressed }) => [
+              styles.zoomButton,
+              !canZoomIn && styles.controlDisabled,
+              pressed && styles.controlPressed,
+            ]}
+          >
+            <Ionicons color={theme.text} name="add" size={20} />
+          </Pressable>
+          <View style={styles.controlDivider} />
+          <Pressable
+            accessibilityLabel="Zoom out"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canZoomOut }}
+            disabled={!canZoomOut}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              setZoom((current) => clamp(current - 0.2, MIN_MAP_ZOOM, MAX_MAP_ZOOM));
+            }}
+            style={({ pressed }) => [
+              styles.zoomButton,
+              !canZoomOut && styles.controlDisabled,
+              pressed && styles.controlPressed,
+            ]}
+          >
+            <Ionicons color={theme.text} name="remove" size={20} />
+          </Pressable>
+          <View style={styles.controlDivider} />
+          <Pressable
+            accessibilityLabel="Recenter campus map"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !projection }}
+            disabled={!projection}
+            onPress={recenter}
+            style={({ pressed }) => [
+              styles.zoomButton,
+              !projection && styles.controlDisabled,
+              pressed && styles.controlPressed,
+            ]}
+          >
+            <Ionicons color={theme.text} name="locate-outline" size={18} />
+          </Pressable>
+        </View>
+
+        {!projection && directoryLoading ? (
           <View pointerEvents="none" style={styles.mapFeedback}>
-            <SkeletonBlock width="90%" height={150} />
-            <Text style={styles.mapFeedbackText}>
-              Loading campus coordinates…
-            </Text>
+            <InlineLoading color={theme.brand} />
+            <Text style={styles.mapFeedbackTitle}>Loading campus map…</Text>
           </View>
         ) : null}
 
-        {!view && directoryError ? (
+        {!projection && directoryError ? (
           <View pointerEvents="none" style={styles.mapFeedback}>
             <Ionicons
               color={theme.accentText}
@@ -514,121 +666,80 @@ function OpenStreetMap({
             />
             <Text style={styles.mapFeedbackTitle}>Campus map unavailable</Text>
             <Text style={styles.mapFeedbackText}>
-              Retry the campus directory below to load mapped places.
+              Retry below to load the campus directory.
             </Text>
           </View>
         ) : null}
 
-        {tilesLoading ? (
+        {!projection && !directoryLoading && !directoryError ? (
           <View pointerEvents="none" style={styles.mapFeedback}>
-            <SkeletonBlock width="90%" height={150} />
-            <Text style={styles.mapFeedbackText}>Loading OpenStreetMap…</Text>
+            <Ionicons color={theme.textMuted} name="map-outline" size={26} />
+            <Text style={styles.mapFeedbackTitle}>No mapped places yet</Text>
           </View>
         ) : null}
 
-        {tilesUnavailable ? (
-          <View pointerEvents="none" style={styles.mapFeedback}>
-            <Ionicons
-              color={theme.accentText}
-              name="cloud-offline-outline"
-              size={24}
-            />
-            <Text style={styles.mapFeedbackTitle}>
-              Map tiles are unavailable
-            </Text>
-            <Text style={styles.mapFeedbackText}>
-              The directory remains available. Directions can open when your
-              connection returns.
-            </Text>
+        {choosingOrigin && destination ? (
+          <View style={styles.routePrompt}>
+            <View style={styles.routePromptIcon}>
+              <Ionicons color="#FFFFFF" name="walk" size={17} />
+            </View>
+            <View style={styles.routePromptCopy}>
+              <Text style={styles.routePromptTitle}>Choose where you are starting</Text>
+              <Text numberOfLines={1} style={styles.routePromptText}>
+                Tap any campus pin to route to {destination.name}.
+              </Text>
+            </View>
+            <Pressable
+              accessibilityLabel="Cancel directions"
+              accessibilityRole="button"
+              onPress={onCancelRoute}
+              style={({ pressed }) => [
+                styles.routeClose,
+                pressed && styles.controlPressed,
+              ]}
+            >
+              <Ionicons color={theme.text} name="close" size={18} />
+            </Pressable>
           </View>
         ) : null}
 
-        {partialFailure ? (
-          <View pointerEvents="none" style={styles.partialBadge}>
-            <Ionicons
-              color={theme.statusAttention}
-              name="warning-outline"
-              size={13}
-            />
-            <Text style={styles.partialBadgeText}>Some tiles unavailable</Text>
+        {route && origin && destination ? (
+          <View style={styles.routeSummary}>
+            <View style={styles.routeSummaryTop}>
+              <View style={styles.routeSummaryCopy}>
+                <Text numberOfLines={1} style={styles.routeSummaryTitle}>
+                  {origin.name} → {destination.name}
+                </Text>
+                <Text style={styles.routeSummaryMeta}>
+                  {formatDistance(route.distance)} · about{" "}
+                  {Math.max(
+                    1,
+                    Math.ceil(route.distance / WALKING_METRES_PER_MINUTE),
+                  )}{" "}
+                  min walk
+                </Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Clear directions"
+                accessibilityRole="button"
+                onPress={onCancelRoute}
+                style={({ pressed }) => [
+                  styles.routeClose,
+                  pressed && styles.controlPressed,
+                ]}
+              >
+                <Ionicons color={theme.text} name="close" size={18} />
+              </Pressable>
+            </View>
+            <View style={styles.routeLegend}>
+              <View style={styles.routeLegendLine} />
+              <Text style={styles.routeLegendText}>KampusOne campus route</Text>
+            </View>
           </View>
         ) : null}
-
-        <View style={styles.mapControls}>
-          <Pressable
-            accessibilityLabel="Zoom in"
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !canZoomIn }}
-            disabled={!canZoomIn}
-            onPress={() => onZoom(1)}
-            style={({ pressed }) => [
-              styles.zoomButton,
-              !canZoomIn && styles.controlDisabled,
-              pressed && styles.controlPressed,
-            ]}
-          >
-            <Ionicons color={theme.text} name="add" size={21} />
-          </Pressable>
-          <View style={styles.controlDivider} />
-          <Pressable
-            accessibilityLabel="Zoom out"
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !canZoomOut }}
-            disabled={!canZoomOut}
-            onPress={() => onZoom(-1)}
-            style={({ pressed }) => [
-              styles.zoomButton,
-              !canZoomOut && styles.controlDisabled,
-              pressed && styles.controlPressed,
-            ]}
-          >
-            <Ionicons color={theme.text} name="remove" size={21} />
-          </Pressable>
-          <View style={styles.controlDivider} />
-          <Pressable
-            accessibilityHint="Fits all mapped campus places on the map"
-            accessibilityLabel="Recenter campus places"
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !view }}
-            disabled={!view}
-            onPress={() => {
-              const centered = { x: 0, y: 0 };
-              panOffsetRef.current = centered;
-              setPanOffset(centered);
-              onRecenter();
-            }}
-            style={({ pressed }) => [
-              styles.zoomButton,
-              !view && styles.controlDisabled,
-              pressed && styles.controlPressed,
-            ]}
-          >
-            <Ionicons color={theme.text} name="scan-outline" size={19} />
-          </Pressable>
-        </View>
-
-        {view ? (
-          <View pointerEvents="none" style={styles.zoomBadge}>
-            <Text style={styles.zoomBadgeText}>z{view.zoom}</Text>
-          </View>
-        ) : null}
-
-        <Pressable
-          accessibilityLabel="Open OpenStreetMap copyright and licence information"
-          accessibilityRole="link"
-          onPress={() => void Linking.openURL(OSM_ATTRIBUTION_URL)}
-          style={({ pressed }) => [
-            styles.attribution,
-            pressed && styles.controlPressed,
-          ]}
-        >
-          <Text style={styles.attributionText}>
-            © OpenStreetMap contributors
-          </Text>
-        </Pressable>
       </View>
 
-      {selected ? (
+      {!choosingOrigin && !route && selected ? (
         <View style={styles.selectedPlace}>
           <View
             style={[
@@ -647,7 +758,10 @@ function OpenStreetMap({
           <View style={styles.selectedPlaceCopy}>
             <View style={styles.selectedPlaceNameRow}>
               <Text
-                accessibilityLabel={`${selected.name}${selected.verified_at ? ", verified campus place" : ""}`}
+                accessibilityLabel={
+                  selected.name +
+                  (selected.verified_at ? ", verified campus place" : "")
+                }
                 numberOfLines={1}
                 style={styles.selectedPlaceName}
               >
@@ -656,12 +770,12 @@ function OpenStreetMap({
               {selected.verified_at ? <VerificationBadge /> : null}
             </View>
             <Text numberOfLines={1} style={styles.selectedPlaceMeta}>
-              {selected.category.toLowerCase()} · mapped coordinates
+              {selected.category.toLowerCase()} · tap directions to route here
             </Text>
           </View>
           <Pressable
-            accessibilityLabel={`Open directions to ${selected.name} in Google Maps`}
-            accessibilityRole="link"
+            accessibilityLabel={"Directions to " + selected.name}
+            accessibilityRole="button"
             onPress={() => onDirections(selected)}
             style={({ pressed }) => [
               styles.mapDirection,
@@ -675,12 +789,12 @@ function OpenStreetMap({
         <View style={styles.mapCaption}>
           <Ionicons
             color={theme.brandPressed}
-            name="information-circle-outline"
+            name="git-branch-outline"
             size={16}
           />
           <Text style={styles.mapCaptionText}>
-            Drag to explore, use +/− to zoom, and tap a pin for directions.
-            Live turn-by-turn navigation opens in Google Maps.
+            Drag to explore, zoom, choose a place, and get campus directions
+            without leaving KampusOne.
           </Text>
         </View>
       )}
@@ -690,71 +804,82 @@ function OpenStreetMap({
 
 function PlaceRow({
   onDirections,
+  onSelect,
   place,
+  selected,
 }: {
   onDirections: (place: Place) => void;
+  onSelect: (id: string) => void;
   place: Place;
+  selected: boolean;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
-
   const hasCoordinates = coordinatesFor(place) !== null;
+
   return (
-    <View style={styles.placeRow}>
-      {place.image_url ? (
-        <Image
-          accessible={false}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          resizeMode="cover"
-          source={{ uri: place.image_url }}
-          style={styles.placeImage}
-        />
-      ) : (
-        <View style={styles.placeIcon}>
-          <Ionicons
-            color={theme.brandPressed}
-            name={icons[place.category] ?? "location-outline"}
-            size={22}
+    <View style={[styles.placeRow, selected && styles.placeRowSelected]}>
+      <Pressable
+        accessibilityLabel={"Show " + place.name + " on campus map"}
+        accessibilityRole="button"
+        onPress={() => onSelect(place.id)}
+        style={({ pressed }) => [
+          styles.placeMain,
+          pressed && styles.placeMainPressed,
+        ]}
+      >
+        {place.image_url ? (
+          <Image
+            accessible={false}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            resizeMode="cover"
+            source={{ uri: place.image_url }}
+            style={styles.placeImage}
           />
-        </View>
-      )}
-      <View style={styles.placeCopy}>
-        <View style={styles.placeCategoryRow}>
-          <Text style={styles.placeCategory}>
-            {place.category.toLowerCase()}
-          </Text>
-          {place.verified_at ? <VerificationBadge /> : null}
-        </View>
-        <Text
-          accessibilityLabel={`${place.name}${place.verified_at ? ", verified campus place" : ""}`}
-          style={styles.placeName}
-        >
-          {place.name}
-        </Text>
-        <Text numberOfLines={2} style={styles.placeDescription}>
-          {place.description ??
-            "Campus information will be added by a verified editor."}
-        </Text>
-        {place.accessibility_notes ? (
-          <View style={styles.accessibilityRow}>
+        ) : (
+          <View style={styles.placeIcon}>
             <Ionicons
-              color={theme.info}
-              name="accessibility-outline"
-              size={13}
+              color={theme.brandPressed}
+              name={icons[place.category] ?? "location-outline"}
+              size={21}
             />
-            <Text numberOfLines={2} style={styles.accessibilityText}>
-              {place.accessibility_notes}
-            </Text>
           </View>
-        ) : null}
-      </View>
+        )}
+        <View style={styles.placeCopy}>
+          <View style={styles.placeCategoryRow}>
+            <Text style={styles.placeCategory}>
+              {place.category.toLowerCase()}
+            </Text>
+            {place.verified_at ? <VerificationBadge /> : null}
+          </View>
+          <Text numberOfLines={1} style={styles.placeName}>
+            {place.name}
+          </Text>
+          <Text numberOfLines={2} style={styles.placeDescription}>
+            {place.description ??
+              "Campus information will be added by a verified editor."}
+          </Text>
+          {place.accessibility_notes ? (
+            <View style={styles.accessibilityRow}>
+              <Ionicons
+                color={theme.info}
+                name="accessibility-outline"
+                size={13}
+              />
+              <Text numberOfLines={1} style={styles.accessibilityText}>
+                {place.accessibility_notes}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
       <Pressable
         accessibilityLabel={
           hasCoordinates
-            ? `Directions to ${place.name}`
-            : `Directions unavailable for ${place.name}`
+            ? "Directions to " + place.name
+            : "Directions unavailable for " + place.name
         }
-        accessibilityRole="link"
+        accessibilityRole="button"
         accessibilityState={{ disabled: !hasCoordinates }}
         disabled={!hasCoordinates}
         onPress={() => onDirections(place)}
@@ -765,9 +890,9 @@ function PlaceRow({
         ]}
       >
         <Ionicons
-          color={hasCoordinates ? theme.deepBrand : theme.textSubtle}
-          name={hasCoordinates ? "navigate-outline" : "location-outline"}
-          size={20}
+          color={hasCoordinates ? "#FFFFFF" : theme.textSubtle}
+          name={hasCoordinates ? "navigate" : "location-outline"}
+          size={17}
         />
       </Pressable>
     </View>
@@ -776,25 +901,27 @@ function PlaceRow({
 
 export default function MapScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
-
   const { width } = useWindowDimensions();
-  const mapHeight = clamp(width * 0.78, MIN_MAP_HEIGHT, MAX_MAP_HEIGHT);
+  const mapHeight = clamp(width * 1.08, MIN_MAP_HEIGHT, MAX_MAP_HEIGHT);
+
   const [places, setPlaces] = useState<Place[]>([]);
-  const [selected, setSelected] = useState<(typeof categories)[number]>("All");
+  const [selectedCategory, setSelectedCategory] =
+    useState<(typeof categories)[number]>("All");
   const [selectedPlaceId, setSelectedPlaceId] = useState("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [mapWidth, setMapWidth] = useState(360);
-  const [zoomAdjustment, setZoomAdjustment] = useState(0);
+  const [routeDestinationId, setRouteDestinationId] = useState("");
+  const [routeOriginId, setRouteOriginId] = useState("");
+  const [choosingOrigin, setChoosingOrigin] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setError("");
-      setPlaces(
-        (await api<{ places: Place[] }>("/v1/student/campus/places")).places,
-      );
+      const response = await api<{ places: Place[] }>("/v1/student/campus/places");
+      setPlaces(response.places);
     } catch (caught) {
       setError(
         caught instanceof ApiError
@@ -817,15 +944,15 @@ export default function MapScreen() {
       places.filter((place) => {
         const needle = query.trim().toLowerCase();
         return (
-          (selected === "All" ||
-            place.category.toUpperCase() === selected.toUpperCase()) &&
+          (selectedCategory === "All" ||
+            place.category.toUpperCase() === selectedCategory.toUpperCase()) &&
           (!needle ||
-            `${place.name} ${place.description ?? ""}`
+            (place.name + " " + (place.description ?? ""))
               .toLowerCase()
               .includes(needle))
         );
       }),
-    [places, query, selected],
+    [places, query, selectedCategory],
   );
 
   const allMappedPlaces = useMemo<MappedPlace[]>(
@@ -843,6 +970,7 @@ export default function MapScreen() {
       }),
     [places],
   );
+
   const mappedPlaces = useMemo<MappedPlace[]>(
     () =>
       filtered.flatMap((place) => {
@@ -858,45 +986,87 @@ export default function MapScreen() {
       }),
     [filtered],
   );
-  const selectedPlace =
-    mappedPlaces.find((place) => place.id === selectedPlaceId) ??
-    mappedPlaces[0];
 
-  const directions = useCallback(async (place: Place) => {
-    const coordinates = coordinatesFor(place);
-    if (!coordinates) {
+  const visiblePlaceIds = useMemo(
+    () => new Set(mappedPlaces.map((place) => place.id)),
+    [mappedPlaces],
+  );
+  const selectedPlace =
+    allMappedPlaces.find((place) => place.id === selectedPlaceId) ??
+    mappedPlaces[0];
+  const routeOrigin = allMappedPlaces.find(
+    (place) => place.id === routeOriginId,
+  );
+  const routeDestination = allMappedPlaces.find(
+    (place) => place.id === routeDestinationId,
+  );
+  const graphEdges = useMemo(
+    () => campusEdges(allMappedPlaces),
+    [allMappedPlaces],
+  );
+  const route = useMemo(
+    () =>
+      shortestCampusRoute(
+        allMappedPlaces,
+        graphEdges,
+        routeOriginId,
+        routeDestinationId,
+      ),
+    [allMappedPlaces, graphEdges, routeDestinationId, routeOriginId],
+  );
+
+  const clearRoute = useCallback(() => {
+    void Haptics.selectionAsync();
+    setRouteOriginId("");
+    setRouteDestinationId("");
+    setChoosingOrigin(false);
+    setNotice("");
+  }, []);
+
+  const beginDirections = useCallback((place: Place) => {
+    if (!coordinatesFor(place)) {
       const message =
-        "Directions are unavailable until a campus editor adds coordinates for this place.";
+        "Directions are unavailable until this place has mapped coordinates.";
       setNotice(message);
       AccessibilityInfo.announceForAccessibility(message);
       return;
     }
 
-    const destination = `${coordinates.latitude},${coordinates.longitude}`;
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
-    try {
-      void Haptics.selectionAsync();
-      await Linking.openURL(url);
-    } catch {
-      const message =
-        "Google Maps directions could not be opened on this device.";
-      setNotice(message);
-      AccessibilityInfo.announceForAccessibility(message);
-    }
-  }, []);
-
-  const selectPlace = useCallback((id: string) => {
     void Haptics.selectionAsync();
-    setSelectedPlaceId(id);
+    setSelectedPlaceId(place.id);
+    setRouteDestinationId(place.id);
+    setRouteOriginId("");
+    setChoosingOrigin(true);
+    setNotice("");
+    AccessibilityInfo.announceForAccessibility(
+      "Choose your starting point on the campus map.",
+    );
   }, []);
 
-  const updateSearch = useCallback((value: string) => {
-    setQuery(value);
-  }, []);
+  const selectPlace = useCallback(
+    (id: string) => {
+      void Haptics.selectionAsync();
 
-  const updateCategory = useCallback((item: string) => {
-    setSelected(item as typeof selected);
-  }, []);
+      if (choosingOrigin) {
+        if (id === routeDestinationId) {
+          const message = "Choose a different starting point.";
+          setNotice(message);
+          AccessibilityInfo.announceForAccessibility(message);
+          return;
+        }
+        setRouteOriginId(id);
+        setChoosingOrigin(false);
+        setNotice("");
+        AccessibilityInfo.announceForAccessibility(
+          "Campus directions are ready.",
+        );
+        return;
+      }
+
+      setSelectedPlaceId(id);
+    },
+    [choosingOrigin, routeDestinationId],
+  );
 
   const updateMapLayout = useCallback((event: LayoutChangeEvent) => {
     const nextWidth = Math.round(event.nativeEvent.layout.width);
@@ -905,15 +1075,6 @@ export default function MapScreen() {
     );
   }, []);
 
-  const zoomMap = useCallback((change: number) => {
-    void Haptics.selectionAsync();
-    setZoomAdjustment((current) => clamp(current + change, -16, 16));
-  }, []);
-
-  const recenterMap = useCallback(() => {
-    void Haptics.selectionAsync();
-    setZoomAdjustment(0);
-  }, []);
   const canShowDirectory = Boolean(places.length) || (!loading && !error);
 
   return (
@@ -938,16 +1099,28 @@ export default function MapScreen() {
         }
         ListHeaderComponent={
           <>
+            <View style={styles.header}>
+              <View>
+                <Text style={styles.eyebrow}>CAMPUS NAVIGATION</Text>
+                <Text style={styles.title}>Find your way around</Text>
+              </View>
+              <View style={styles.headerIcon}>
+                <Ionicons color={theme.brandPressed} name="navigate" size={20} />
+              </View>
+            </View>
+
             <SearchField
-              onChangeText={updateSearch}
+              onChangeText={setQuery}
               placeholder="Find a building or service"
               value={query}
             />
             <View style={styles.filters}>
               <FilterRow
                 items={categories}
-                onSelect={updateCategory}
-                selected={selected}
+                onSelect={(item) =>
+                  setSelectedCategory(item as typeof selectedCategory)
+                }
+                selected={selectedCategory}
               />
             </View>
 
@@ -980,20 +1153,22 @@ export default function MapScreen() {
               </View>
             ) : null}
 
-            <OpenStreetMap
+            <CampusMap
+              choosingOrigin={choosingOrigin}
+              destination={routeDestination}
               directoryError={Boolean(error) && !places.length}
               directoryLoading={loading}
               height={mapHeight}
-              onDirections={(place) => void directions(place)}
+              onCancelRoute={clearRoute}
+              onDirections={beginDirections}
               onLayout={updateMapLayout}
-              onRecenter={recenterMap}
               onSelect={selectPlace}
-              onZoom={zoomMap}
-              places={mappedPlaces}
+              origin={routeOrigin}
+              places={allMappedPlaces}
+              route={route}
               selected={selectedPlace}
-              viewportPlaces={allMappedPlaces}
+              visiblePlaceIds={visiblePlaceIds}
               width={mapWidth}
-              zoomAdjustment={zoomAdjustment}
             />
 
             {loading ? (
@@ -1003,14 +1178,16 @@ export default function MapScreen() {
               >
                 <InlineLoading color={theme.brand} />
                 <Text style={styles.directoryLoadingText}>
-                  Loading reviewed campus places…
+                  Loading campus places…
                 </Text>
               </View>
             ) : null}
 
             {error ? (
               <Pressable
-                accessibilityLabel={`The campus directory is unavailable. ${error}. Retry`}
+                accessibilityLabel={
+                  "The campus directory is unavailable. " + error + ". Retry"
+                }
                 accessibilityRole="button"
                 onPress={() => {
                   setLoading(true);
@@ -1038,21 +1215,15 @@ export default function MapScreen() {
             {canShowDirectory ? (
               <View style={styles.sectionHeader}>
                 <View>
-                  <Text style={styles.sectionTitle}>Campus places</Text>
+                  <Text style={styles.sectionTitle}>Places on campus</Text>
                   <Text style={styles.sectionSubtitle}>
                     {filtered.length}{" "}
                     {filtered.length === 1 ? "place" : "places"} in this view
                   </Text>
                 </View>
                 <View style={styles.coordinateKey}>
-                  <Ionicons
-                    color={theme.brandPressed}
-                    name="navigate-outline"
-                    size={14}
-                  />
-                  <Text style={styles.coordinateKeyText}>
-                    Google Maps handoff
-                  </Text>
+                  <View style={styles.coordinateKeyLine} />
+                  <Text style={styles.coordinateKeyText}>In-app directions</Text>
                 </View>
               </View>
             ) : null}
@@ -1062,12 +1233,14 @@ export default function MapScreen() {
         removeClippedSubviews={Platform.OS === "android"}
         renderItem={({ item: place }) => (
           <PlaceRow
-            onDirections={(item) => void directions(item)}
+            onDirections={beginDirections}
+            onSelect={selectPlace}
             place={place}
+            selected={place.id === selectedPlaceId}
           />
         )}
         showsVerticalScrollIndicator={false}
-        style={[styles.directory, { width: Math.min(width, 540) }]}
+        style={[styles.directory, { width: Math.min(width, 560) }]}
         windowSize={7}
       />
     </SafeAreaView>
@@ -1078,8 +1251,36 @@ const createStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { backgroundColor: theme.canvas, flex: 1 },
     directory: { alignSelf: "center" },
-    listContent: { paddingBottom: 118, paddingHorizontal: 20, paddingTop: 10 },
-    filters: { marginBottom: 14, marginTop: 13 },
+    listContent: { paddingBottom: 120, paddingHorizontal: 18, paddingTop: 10 },
+    header: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 16,
+      paddingHorizontal: 2,
+    },
+    eyebrow: {
+      color: theme.brandPressed,
+      fontFamily: theme.font.bold,
+      fontSize: 9,
+      letterSpacing: 1.1,
+    },
+    title: {
+      color: theme.text,
+      fontFamily: theme.font.display,
+      fontSize: 26,
+      lineHeight: 31,
+      marginTop: 2,
+    },
+    headerIcon: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceMuted,
+      borderRadius: 18,
+      height: 44,
+      justifyContent: "center",
+      width: 44,
+    },
+    filters: { marginBottom: 14, marginTop: 12 },
     notice: {
       alignItems: "center",
       backgroundColor: "rgba(241,223,200,.50)",
@@ -1109,60 +1310,130 @@ const createStyles = (theme: Theme) =>
     },
     mapFrame: {
       backgroundColor: theme.surfaceRaised,
-      borderColor: theme.border,
-      borderRadius: 25,
+      borderColor: "rgba(120,86,66,.18)",
+      borderRadius: 26,
       borderWidth: 1,
       overflow: "hidden",
       ...theme.shadow,
     },
     mapViewport: {
-      backgroundColor: theme.surfaceMuted,
+      backgroundColor: "#F2E9DC",
       overflow: "hidden",
       position: "relative",
       width: "100%",
     },
-    mapTile: {
-      height: TILE_SIZE + 1,
+    campusBoundary: {
+      backgroundColor: "rgba(255,255,255,.42)",
+      borderColor: "rgba(168,70,46,.18)",
+      borderRadius: 34,
+      borderWidth: 2,
+      bottom: 22,
+      left: 18,
       position: "absolute",
-      width: TILE_SIZE + 1,
+      right: 18,
+      top: 22,
     },
-    mapFallback: {
+    zone: {
       alignItems: "center",
-      bottom: 0,
-      justifyContent: "center",
-      left: 32,
+      borderRadius: 42,
+      height: 100,
+      justifyContent: "flex-start",
+      paddingTop: 10,
       position: "absolute",
-      right: 32,
-      top: 0,
+      width: 144,
     },
-    mapFallbackTitle: {
+    zoneLabel: {
+      color: "rgba(66,54,46,.47)",
+      fontFamily: theme.font.bold,
+      fontSize: 8,
+      letterSpacing: 0.55,
+      textTransform: "uppercase",
+    },
+    walkwaySegment: {
+      backgroundColor: "rgba(97,83,73,.26)",
+      borderRadius: 2,
+      height: 4,
+      position: "absolute",
+    },
+    routeSegment: {
+      backgroundColor: theme.deepBrand,
+      borderColor: "rgba(255,255,255,.90)",
+      borderRadius: 3,
+      borderWidth: 1,
+      height: 6,
+      position: "absolute",
+    },
+    layerBadge: {
+      alignItems: "center",
+      backgroundColor: "rgba(255,252,248,.94)",
+      borderColor: "rgba(120,86,66,.16)",
+      borderRadius: 15,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 8,
+      left: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      position: "absolute",
+      top: 10,
+      ...theme.shadow,
+    },
+    layerBadgeIcon: {
+      alignItems: "center",
+      backgroundColor: theme.deepBrand,
+      borderRadius: 10,
+      height: 27,
+      justifyContent: "center",
+      width: 27,
+    },
+    layerBadgeTitle: {
       color: theme.text,
       fontFamily: theme.font.semibold,
-      fontSize: 14,
-      marginTop: 9,
-      textAlign: "center",
+      fontSize: 10.5,
     },
-    mapFallbackBody: {
+    layerBadgeMeta: {
       color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 11,
-      lineHeight: 16,
-      marginTop: 4,
-      textAlign: "center",
+      fontFamily: theme.font.medium,
+      fontSize: 8.5,
+      marginTop: 1,
     },
+    mapControls: {
+      backgroundColor: "rgba(255,252,248,.95)",
+      borderColor: "rgba(120,86,66,.16)",
+      borderRadius: 15,
+      borderWidth: 1,
+      overflow: "hidden",
+      position: "absolute",
+      right: 10,
+      top: 10,
+      ...theme.shadow,
+    },
+    zoomButton: {
+      alignItems: "center",
+      height: 42,
+      justifyContent: "center",
+      width: 42,
+    },
+    controlDivider: {
+      backgroundColor: "rgba(120,86,66,.12)",
+      height: 1,
+      marginHorizontal: 8,
+    },
+    controlDisabled: { opacity: 0.35 },
+    controlPressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
     mapFeedback: {
       alignItems: "center",
       alignSelf: "center",
-      backgroundColor: theme.surfaceGlassStrong,
-      borderColor: theme.border,
-      borderRadius: 17,
+      backgroundColor: "rgba(255,252,248,.94)",
+      borderColor: "rgba(120,86,66,.16)",
+      borderRadius: 18,
       borderWidth: 1,
       gap: 7,
       left: 48,
-      padding: 14,
+      padding: 16,
       position: "absolute",
       right: 48,
-      top: 110,
+      top: 142,
       ...theme.shadow,
     },
     mapFeedbackTitle: {
@@ -1178,113 +1449,127 @@ const createStyles = (theme: Theme) =>
       lineHeight: 15,
       textAlign: "center",
     },
-    partialBadge: {
-      alignItems: "center",
-      backgroundColor: "rgba(255,247,233,.95)",
-      borderRadius: 12,
-      flexDirection: "row",
-      gap: 5,
-      left: 10,
-      paddingHorizontal: 9,
-      paddingVertical: 7,
-      position: "absolute",
-      top: 10,
-    },
-    partialBadgeText: {
-      color: theme.statusAttention,
-      fontFamily: theme.font.semibold,
-      fontSize: 9,
-    },
-    mapControls: {
-      backgroundColor: theme.surfaceGlassStrong,
-      borderColor: "rgba(255,255,255,.98)",
-      borderRadius: 15,
-      borderWidth: 1,
-      overflow: "hidden",
-      position: "absolute",
-      right: 10,
-      top: 10,
-      ...theme.shadow,
-    },
-    zoomButton: {
-      alignItems: "center",
-      height: 44,
-      justifyContent: "center",
-      width: 44,
-    },
-    controlDivider: {
-      backgroundColor: theme.border,
-      height: 1,
-      marginHorizontal: 8,
-    },
-    controlDisabled: { opacity: 0.35 },
-    controlPressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
-    zoomBadge: {
-      backgroundColor: theme.surfaceGlassStrong,
-      borderRadius: 9,
-      paddingHorizontal: 7,
-      paddingVertical: 5,
-      position: "absolute",
-      right: 12,
-      top: 151,
-    },
-    zoomBadgeText: {
-      color: theme.textMuted,
-      fontFamily: theme.font.bold,
-      fontSize: 8.5,
-    },
-    attribution: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceGlassStrong,
-      borderRadius: 8,
-      bottom: 5,
-      justifyContent: "center",
-      minHeight: 44,
-      minWidth: 44,
-      paddingHorizontal: 10,
-      position: "absolute",
-      right: 5,
-    },
-    attributionText: {
-      color: theme.text,
-      fontFamily: theme.font.medium,
-      fontSize: 9.5,
-      textDecorationLine: "underline",
-    },
     pin: {
       alignItems: "center",
       borderColor: "#FFFFFF",
-      borderRadius: 22,
-      borderWidth: 3,
-      height: 44,
+      borderRadius: 17,
+      borderWidth: 2,
+      height: 34,
       justifyContent: "center",
-      marginLeft: -22,
-      marginTop: -22,
+      marginLeft: -17,
+      marginTop: -17,
       position: "absolute",
-      width: 44,
+      width: 34,
       ...theme.shadow,
     },
     pinActive: {
-      borderRadius: 25,
-      height: 50,
-      marginLeft: -25,
-      marginTop: -25,
-      width: 50,
+      borderRadius: 20,
+      borderWidth: 3,
+      height: 40,
+      marginLeft: -20,
+      marginTop: -20,
+      width: 40,
     },
-    pinPressed: { opacity: 0.82, transform: [{ scale: 0.96 }] },
+    pinOrigin: { borderColor: "#F6C453" },
+    pinDestination: { borderColor: theme.deepBrand },
+    pinPressed: { opacity: 0.82, transform: [{ scale: 0.95 }] },
+    routePrompt: {
+      alignItems: "center",
+      backgroundColor: "rgba(255,252,248,.97)",
+      borderColor: "rgba(168,70,46,.18)",
+      borderRadius: 18,
+      borderWidth: 1,
+      bottom: 12,
+      flexDirection: "row",
+      gap: 9,
+      left: 12,
+      padding: 10,
+      position: "absolute",
+      right: 12,
+      ...theme.shadow,
+    },
+    routePromptIcon: {
+      alignItems: "center",
+      backgroundColor: theme.deepBrand,
+      borderRadius: 13,
+      height: 38,
+      justifyContent: "center",
+      width: 38,
+    },
+    routePromptCopy: { flex: 1 },
+    routePromptTitle: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 11.5,
+    },
+    routePromptText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 9.5,
+      marginTop: 2,
+    },
+    routeClose: {
+      alignItems: "center",
+      borderRadius: 12,
+      height: 38,
+      justifyContent: "center",
+      width: 38,
+    },
+    routeSummary: {
+      backgroundColor: "rgba(255,252,248,.97)",
+      borderColor: "rgba(168,70,46,.18)",
+      borderRadius: 18,
+      borderWidth: 1,
+      bottom: 12,
+      left: 12,
+      padding: 11,
+      position: "absolute",
+      right: 12,
+      ...theme.shadow,
+    },
+    routeSummaryTop: { alignItems: "center", flexDirection: "row" },
+    routeSummaryCopy: { flex: 1, paddingRight: 8 },
+    routeSummaryTitle: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 11.5,
+    },
+    routeSummaryMeta: {
+      color: theme.brandPressed,
+      fontFamily: theme.font.semibold,
+      fontSize: 9.5,
+      marginTop: 3,
+    },
+    routeLegend: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 7,
+      marginTop: 8,
+    },
+    routeLegendLine: {
+      backgroundColor: theme.deepBrand,
+      borderRadius: 2,
+      height: 4,
+      width: 28,
+    },
+    routeLegendText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.medium,
+      fontSize: 8.5,
+    },
     selectedPlace: {
       alignItems: "center",
       flexDirection: "row",
-      minHeight: 68,
+      minHeight: 72,
       paddingHorizontal: 11,
       paddingVertical: 10,
     },
     selectedPlaceIcon: {
       alignItems: "center",
       borderRadius: 13,
-      height: 40,
+      height: 42,
       justifyContent: "center",
-      width: 40,
+      width: 42,
     },
     selectedPlaceCopy: { flex: 1, marginLeft: 9 },
     selectedPlaceNameRow: {
@@ -1303,7 +1588,6 @@ const createStyles = (theme: Theme) =>
       fontFamily: theme.font.body,
       fontSize: 9.5,
       marginTop: 2,
-      textTransform: "capitalize",
     },
     mapDirection: {
       alignItems: "center",
@@ -1317,7 +1601,7 @@ const createStyles = (theme: Theme) =>
       alignItems: "center",
       flexDirection: "row",
       gap: 7,
-      minHeight: 58,
+      minHeight: 56,
       paddingHorizontal: 12,
     },
     mapCaptionText: {
@@ -1335,7 +1619,7 @@ const createStyles = (theme: Theme) =>
       justifyContent: "center",
       width: 14,
     },
-    directoryLoading: { alignItems: "center", gap: 8, paddingVertical: 28 },
+    directoryLoading: { alignItems: "center", gap: 8, paddingVertical: 24 },
     directoryLoadingText: {
       color: theme.textMuted,
       fontFamily: theme.font.body,
@@ -1347,7 +1631,7 @@ const createStyles = (theme: Theme) =>
       borderRadius: 18,
       flexDirection: "row",
       gap: 11,
-      marginTop: 16,
+      marginTop: 14,
       minHeight: 72,
       padding: 14,
     },
@@ -1368,12 +1652,13 @@ const createStyles = (theme: Theme) =>
       alignItems: "flex-end",
       flexDirection: "row",
       justifyContent: "space-between",
-      marginTop: 25,
+      marginTop: 24,
+      paddingHorizontal: 2,
     },
     sectionTitle: {
       color: theme.text,
       fontFamily: theme.font.display,
-      fontSize: 21,
+      fontSize: 22,
     },
     sectionSubtitle: {
       color: theme.textMuted,
@@ -1384,8 +1669,14 @@ const createStyles = (theme: Theme) =>
     coordinateKey: {
       alignItems: "center",
       flexDirection: "row",
-      gap: 4,
-      paddingBottom: 2,
+      gap: 5,
+      paddingBottom: 3,
+    },
+    coordinateKeyLine: {
+      backgroundColor: theme.deepBrand,
+      borderRadius: 2,
+      height: 4,
+      width: 20,
     },
     coordinateKeyText: {
       color: theme.brandPressed,
@@ -1397,20 +1688,36 @@ const createStyles = (theme: Theme) =>
       borderBottomColor: theme.border,
       borderBottomWidth: 1,
       flexDirection: "row",
-      minHeight: 116,
-      paddingVertical: 12,
+      minHeight: 106,
+      paddingVertical: 10,
     },
-    placeImage: { borderRadius: 15, height: 78, width: 78 },
+    placeRowSelected: {
+      backgroundColor: "rgba(241,223,200,.20)",
+      borderRadius: 16,
+      paddingHorizontal: 6,
+    },
+    placeMain: {
+      alignItems: "center",
+      flex: 1,
+      flexDirection: "row",
+      minHeight: 82,
+    },
+    placeMainPressed: { opacity: 0.76 },
+    placeImage: { borderRadius: 15, height: 66, width: 66 },
     placeIcon: {
       alignItems: "center",
       backgroundColor: theme.surfaceMuted,
       borderRadius: 15,
-      height: 68,
+      height: 62,
       justifyContent: "center",
-      width: 68,
+      width: 62,
     },
     placeCopy: { flex: 1, marginLeft: 11 },
-    placeCategoryRow: { alignItems: "center", flexDirection: "row", gap: 5 },
+    placeCategoryRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 5,
+    },
     placeCategory: {
       color: theme.brandPressed,
       fontFamily: theme.font.bold,
@@ -1422,38 +1729,40 @@ const createStyles = (theme: Theme) =>
       color: theme.text,
       fontFamily: theme.font.semibold,
       fontSize: 14.5,
-      marginTop: 4,
+      marginTop: 3,
     },
     placeDescription: {
       color: theme.textMuted,
       fontFamily: theme.font.body,
       fontSize: 10.5,
       lineHeight: 15,
-      marginTop: 3,
+      marginTop: 2,
     },
     accessibilityRow: {
-      alignItems: "flex-start",
+      alignItems: "center",
       flexDirection: "row",
       gap: 4,
-      marginTop: 5,
+      marginTop: 4,
     },
     accessibilityText: {
       color: theme.info,
       flex: 1,
       fontFamily: theme.font.medium,
       fontSize: 9.5,
-      lineHeight: 13,
     },
     rowDirection: {
       alignItems: "center",
-      backgroundColor: theme.surfaceMuted,
+      backgroundColor: theme.deepBrand,
       borderRadius: 14,
       height: 44,
       justifyContent: "center",
-      marginLeft: 6,
+      marginLeft: 8,
       width: 44,
     },
-    rowDirectionDisabled: { opacity: 0.52 },
+    rowDirectionDisabled: {
+      backgroundColor: theme.surfaceMuted,
+      opacity: 0.52,
+    },
     directoryEmpty: {
       alignItems: "center",
       minHeight: 220,
@@ -1475,4 +1784,5 @@ const createStyles = (theme: Theme) =>
       textAlign: "center",
     },
   });
+
 const styles = createStyles(theme);
