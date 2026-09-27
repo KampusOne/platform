@@ -59,6 +59,7 @@ export function onAccountRestriction(listener: () => void) {
   };
 }
 let refreshPromise: Promise<Session | null> | null = null;
+let refreshAbortController: AbortController | null = null;
 let credentialVersion = 0;
 let cacheVersion = 0;
 let sessionTransitionQueue: Promise<void> = Promise.resolve();
@@ -175,10 +176,13 @@ function runSessionTransition<T>(operation: () => Promise<T>): Promise<T> {
   const pending = sessionTransitionQueue.then(async () => {
     const activeRefresh = refreshPromise;
     if (activeRefresh) {
+      // Interactive auth must never sit behind a stale cold-start refresh.
+      // Abort the restore and wait only for its cancellation to settle.
+      refreshAbortController?.abort();
       try {
         await activeRefresh;
       } catch {
-        /* The transition can still proceed with the current cookie. */
+        /* A cancelled/offline restore must not block sign-in or sign-up. */
       }
     }
     return operation();
@@ -222,6 +226,8 @@ async function refreshSession() {
       );
     }
     const versionAtStart = credentialVersion;
+    const restoreController = new AbortController();
+    refreshAbortController = restoreController;
     refreshPromise = withRequestDeadline(async (signal) => {
         const refreshToken = await readRefreshToken();
         // Native sessions live in SecureStore, not browser cookies. A fresh
@@ -239,7 +245,7 @@ async function refreshSession() {
           body: JSON.stringify(refreshToken ? { refreshToken } : {}),
         });
         return parse<Session>(response);
-      }, 12_000)
+      }, 12_000, restoreController.signal)
       .then((session) => session ? securelyAcceptSession(session) : null)
       .then((session) => {
         // Do not let an older refresh overwrite a session established while it
@@ -263,6 +269,7 @@ async function refreshSession() {
         return null;
       })
       .finally(() => {
+        if (refreshAbortController === restoreController) refreshAbortController = null;
         refreshPromise = null;
       });
   }
@@ -361,6 +368,7 @@ export const authApi = {
         "/v1/auth/social/complete",
         {
           method: "POST",
+          timeoutMs: 35_000,
           body: JSON.stringify({
             authCode,
             codeVerifier,
@@ -382,6 +390,7 @@ export const authApi = {
       "/v1/auth/register",
       {
         method: "POST",
+        timeoutMs: 35_000,
         body: JSON.stringify({ ...input, legalVersion: "2026-09-10" }),
       },
       false,
@@ -393,6 +402,7 @@ export const authApi = {
         "/v1/auth/verify-email",
         {
           method: "POST",
+          timeoutMs: 35_000,
           body: JSON.stringify({
             email,
             code,
@@ -408,6 +418,7 @@ export const authApi = {
       "/v1/auth/resend-verification",
       {
         method: "POST",
+        timeoutMs: 35_000,
         body: JSON.stringify({ email }),
       },
       false,
@@ -419,6 +430,7 @@ export const authApi = {
         "/v1/auth/login",
         {
           method: "POST",
+          timeoutMs: 35_000,
           body: JSON.stringify({
             email,
             password,
