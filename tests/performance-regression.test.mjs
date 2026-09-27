@@ -18,20 +18,20 @@ test("background bookkeeping does not invalidate content, mutations stay scoped"
 });
 test("mobile requests start immediately without a health-probe waterfall", () => {
   const source = read("mobile/src/lib/api-transport.ts");
-  assert.doesNotMatch(source, /health\\/ready/);
-  assert.doesNotMatch(source, /resolveApiUrl/);
-  assert.match(source, /let activeApiUrl = apiUrl/);
-  assert.match(source, /mayRetryOnAnotherOrigin/);
-  assert.match(source, /remainingTimeoutMs/);
-  assert.match(source, /readCacheTtl/);
+  assert.equal(source.includes("/health/ready"), false);
+  assert.equal(source.includes("resolveApiUrl"), false);
+  assert.ok(source.includes("let activeApiUrl = apiUrl"));
+  assert.ok(source.includes("mayRetryOnAnotherOrigin"));
+  assert.ok(source.includes("remainingTimeoutMs"));
+  assert.ok(source.includes("readCacheTtl"));
 });
 test("startup gives first-screen data priority over background maintenance", () => {
   const auth = read("mobile/src/auth/auth-context.tsx");
-  assert.match(auth, /api\\("\\/v1\\/student\\/home"\\)/);
-  assert.match(auth, /readCache<Profile>/);
-  assert.match(read("mobile/src/components/screen-visit-tracker.tsx"), /1_200/);
-  assert.match(read("mobile/src/components/alarm-sync.tsx"), /initialRestore=setTimeout/);
-  assert.match(read("mobile/src/components/notification-bootstrap.tsx"), /2_500/);
+  assert.ok(auth.includes('api("/v1/student/home")'));
+  assert.ok(auth.includes("readCache<Profile>"));
+  assert.ok(read("mobile/src/components/screen-visit-tracker.tsx").includes("1_200"));
+  assert.ok(read("mobile/src/components/alarm-sync.tsx").includes("initialRestore=setTimeout"));
+  assert.ok(read("mobile/src/components/notification-bootstrap.tsx").includes("2_500"));
 });
 test("one cancelled consumer cannot cancel another reader of the same request", async () => {
   let resolve; const shared = new Promise((yes) => { resolve = yes; });
