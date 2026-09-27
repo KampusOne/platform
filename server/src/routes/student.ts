@@ -92,6 +92,81 @@ function requireUniversity(user: ReturnType<typeof currentUser>) {
 }
 
 studentRoutes.get("/catalog", async (context) => {
+  const institutionsOnly = context.req.query("institutionsOnly") === "true";
+  const requestedUniversityId = context.req.query("universityId")?.trim();
+
+  if (
+    requestedUniversityId &&
+    !z.string().uuid().safeParse(requestedUniversityId).success
+  ) {
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose a valid university and try again.",
+    );
+  }
+
+  if (institutionsOnly) {
+    const universities = await database(context.env).execute(sql`
+      select id, name, slug, country, state
+      from public.universities
+      where deleted_at is null
+      order by name
+    `);
+    return context.json({
+      universities: universities.rows,
+      faculties: [],
+      departments: [],
+      courses: [],
+    });
+  }
+
+  if (requestedUniversityId) {
+    const [universities, faculties, departments, courses] = await Promise.all([
+      database(context.env).execute(sql`
+        select id, name, slug, country, state
+        from public.universities
+        where id = ${requestedUniversityId}::uuid and deleted_at is null
+        order by name
+      `),
+      database(context.env).execute(sql`
+        select id, university_id, name, slug
+        from public.faculties
+        where university_id = ${requestedUniversityId}::uuid
+          and deleted_at is null
+        order by name
+      `),
+      database(context.env).execute(sql`
+        select departments.id, departments.faculty_id, departments.name, departments.slug
+        from public.departments departments
+        join public.faculties faculties on faculties.id = departments.faculty_id
+        where faculties.university_id = ${requestedUniversityId}::uuid
+          and faculties.deleted_at is null
+          and departments.deleted_at is null
+        order by departments.name
+      `),
+      database(context.env).execute(sql`
+        select courses.id, courses.department_id, courses.name, courses.code,
+          to_jsonb(courses)->>'normal_duration_years' as normal_duration_years,
+          to_jsonb(courses)->>'award' as award
+        from public.courses courses
+        join public.departments departments on departments.id = courses.department_id
+        join public.faculties faculties on faculties.id = departments.faculty_id
+        where faculties.university_id = ${requestedUniversityId}::uuid
+          and faculties.deleted_at is null
+          and departments.deleted_at is null
+          and courses.deleted_at is null
+        order by courses.code, courses.name
+      `),
+    ]);
+    return context.json({
+      universities: universities.rows,
+      faculties: faculties.rows,
+      departments: departments.rows,
+      courses: courses.rows,
+    });
+  }
+
   const [universities, faculties, departments, courses] = await Promise.all([
     database(context.env).execute(sql`
       select id, name, slug, country, state
