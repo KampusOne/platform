@@ -27,7 +27,7 @@
     "PHASE_3_SCHEMA_READY": "true",
     "UNIFIED_SCHEMA_READY": "true",
     "TUTORIALS_ENABLED": "true",
-    "STORE_ENABLED": "false",
+    "STORE_ENABLED": "true",
     "STORE_DEMO_ENABLED": "false",
     "LOGISTICS_ENABLED": "false",
     "PAYMENTS_ENABLED": "false",
@@ -35,6 +35,7 @@
     "AI_UNLIMITED_EMAIL_HASHES": "af83a966d0eb435808a4657fce605b89077ab7369a7d32caea01ccba0276d3fb",
 
     "HF_CHAT_MODEL": "Qwen/Qwen3-4B-Instruct-2507:nscale",
+    "HF_REASONING_MODEL": "Qwen/Qwen3-235B-A22B-Instruct-2507:nscale",
     "HF_VISION_MODEL": "Qwen/Qwen3-VL-30B-A3B-Instruct:novita",
     "HF_TRANSCRIPTION_MODEL": "openai/whisper-large-v3",
     "AI_CHAT_WINDOW_LIMIT": "15",

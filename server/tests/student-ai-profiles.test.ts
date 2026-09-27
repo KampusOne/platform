@@ -46,8 +46,33 @@ describe("public profiles and scoped campus tools",()=>{
  it("follows idempotently and only modifies the current student's relationship",async()=>{for(let i=0;i<2;i++)expect(await result('/people/'+owner+'/follow','PUT',{follow:true})).toMatchObject({followed:true,follower_count:1});await result('/people/'+owner+'/follow','PUT',{follow:false,userId:foreign},student,400);expect((await result('/people/'+owner)).profile.followed).toBe(true);expect((await result('/people/'+student)).profile.following_count).toBe(1);await result('/people/'+student+'/follow','PUT',{follow:true},student,400);expect(await result('/people/'+owner+'/follow','PUT',{follow:false})).toMatchObject({follower_count:0});});
  it("hides personal role tags without concealing service ownership",async()=>{await pg.query(`update profiles set settings='{"publicRoles":{"vendor":false,"tutor":false}}'::jsonb where user_id=$1`,[owner]);expect((await result('/people/'+owner)).roles).toEqual([]);const store=await result('/people/services/'+vendor);expect(store.service).toMatchObject({user_id:owner,owner_name:'Public student',agent_type:'VENDOR'});expect(store.products.map((p:{id:string})=>p.id)).toEqual([product]);expect((await result('/people/products/'+product)).selectedProductId).toBe(product);expect((await result('/people/services/'+tutor)).tutorials).toHaveLength(1);});
  it("cannot read a different campus service and does not advertise it on a profile",async()=>{await result('/people/services/'+foreignTutor,'GET',undefined,student,404);expect((await result('/people/'+foreign)).roles).toEqual([]);});
- it("queries actual published same-campus products and tutors",async()=>{const products=await runStudentTool(env,identity,'search_products',{query:'Physics'});expect(products.cards?.map(c=>c.id)).toEqual([product]);const tutors=await runStudentTool(env,identity,'search_tutors',{query:'MTH101'});expect(tutors.cards).toHaveLength(1);expect(tutors.cards?.[0]?.path).toContain(tutor);await pg.query("update profiles set deleted_at=now() where user_id=$1",[owner]);expect((await runStudentTool(env,identity,'search_tutors',{query:'MTH101'})).cards).toEqual([]);await result('/people/services/'+vendor,'GET',undefined,student,404);await pg.query("update profiles set deleted_at=null where user_id=$1",[owner]);});
+ it("queries actual published same-campus products, vendors and tutors",async()=>{const products=await runStudentTool(env,identity,'search_products',{query:'Physics'});expect(products.cards?.map(c=>c.id)).toEqual([product]);const vendors=await runStudentTool(env,identity,'search_vendors',{query:'Test'});expect(vendors.cards?.map(c=>c.id)).toEqual([vendor]);expect(vendors.cards?.[0]?.kind).toBe('vendor');const tutors=await runStudentTool(env,identity,'search_tutors',{query:'MTH101'});expect(tutors.cards).toHaveLength(1);expect(tutors.cards?.[0]?.path).toContain(tutor);await pg.query("update profiles set deleted_at=now() where user_id=$1",[owner]);expect((await runStudentTool(env,identity,'search_tutors',{query:'MTH101'})).cards).toEqual([]);await result('/people/services/'+vendor,'GET',undefined,student,404);await pg.query("update profiles set deleted_at=null where user_id=$1",[owner]);});
  it("rejects unknown admin tools and account-ID injection",async()=>{for(const name of['get_admin_url','execute_sql','delete_user'])expect((await runStudentTool(env,identity,name,{})).data).toHaveProperty('error');expect((await runStudentTool(env,identity,'get_my_timetable',{userId:owner})).data).toHaveProperty('error');expect((await runStudentTool(env,identity,'search_products',{query:'Physics',universityId:otherCampus})).data).toHaveProperty('error');});
+ it("requires review before a standalone Kira alarm is saved and can undo it",async()=>{
+  const firesAt=new Date(Date.now()+60*60*1000).toISOString();
+  const prepared=await runStudentTool(env,identity,'prepare_alarm',{label:'Study thermodynamics',time:'18:30',days:[],firesAt,sound:'default',vibration:true,snoozeMinutes:5});
+  expect(prepared.action?.type).toBe('alarm');
+  expect((await pg.query('select id from student_alarms where id=$1',[prepared.action!.id])).rows).toHaveLength(0);
+  const requestId=crypto.randomUUID(),action=prepared.action!;
+  await pg.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result)values($1,$2,repeat('c',64),'study','COMPLETED',$3::jsonb)",[student,requestId,JSON.stringify({version:3,text:'Review this alarm',actions:[action]})]);
+  expect(await result('/ai/actions/confirm','POST',{requestId,actionId:action.id})).toMatchObject({saved:true,id:action.id,type:'alarm'});
+  const saved=(await pg.query<{id:string;timetable_entry_id:string|null}>('select id,timetable_entry_id from student_alarms where id=$1',[action.id])).rows;
+  expect(saved).toHaveLength(1);expect(saved[0]?.timetable_entry_id).toBeNull();
+  expect(await result('/ai/actions/undo','POST',{requestId,actionId:action.id})).toMatchObject({undone:true,id:action.id,type:'alarm'});
+  expect((await pg.query('select id from student_alarms where id=$1',[action.id])).rows).toHaveLength(0);
+ });
+ it("requires review before a Kira calendar event is saved and can undo it",async()=>{
+  const startsOn=new Date(Date.now()+2*86400000).toISOString().slice(0,10),endsOn=new Date(Date.now()+5*86400000).toISOString().slice(0,10);
+  const prepared=await runStudentTool(env,identity,'prepare_calendar_event',{title:'Second semester exams',startsOn,endsOn,semester:'Second semester'});
+  expect(prepared.action?.type).toBe('calendar');
+  expect((await pg.query('select id from student_calendar_events where id=$1',[prepared.action!.id])).rows).toHaveLength(0);
+  const requestId=crypto.randomUUID(),action=prepared.action!;
+  await pg.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result)values($1,$2,repeat('d',64),'study','COMPLETED',$3::jsonb)",[student,requestId,JSON.stringify({version:3,text:'Review this calendar event',actions:[action]})]);
+  expect(await result('/ai/actions/confirm','POST',{requestId,actionId:action.id})).toMatchObject({saved:true,id:action.id,type:'calendar'});
+  expect((await pg.query('select title from student_calendar_events where id=$1 and user_id=$2',[action.id,student])).rows).toHaveLength(1);
+  expect(await result('/ai/actions/undo','POST',{requestId,actionId:action.id})).toMatchObject({undone:true,id:action.id,type:'calendar'});
+  expect((await pg.query('select id from student_calendar_events where id=$1',[action.id])).rows).toHaveLength(0);
+ });
  it("validates dates, requires review, and confirms one class/alarm only",async()=>{
   const date=new Date(Date.now()+7*86400000).toISOString().slice(0,10),weekday=new Date(date+'T12:00Z').getUTCDay();
   const entry={title:'Mathematics 101',courseCode:'MTH101',dayOfWeek:weekday,startsAt:'10:00',endsAt:'11:30',date};
