@@ -1,0 +1,43 @@
+name: Verify multi-image posts
+
+on:
+  push:
+    branches:
+      - work/multi-image-posts-20260927
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multi-image-posts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            packages/contracts/package-lock.json
+            server/package-lock.json
+            mobile/package-lock.json
+      - run: npm ci
+        working-directory: packages/contracts
+      - run: npm ci
+        working-directory: server
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run check
+        working-directory: server
+      - run: npm run check
+        working-directory: mobile
+      - run: npm test -- --maxWorkers=2
+        working-directory: server
+      - run: node --experimental-strip-types --test tests/feed-social.test.mjs tests/media-workflow.test.mjs
+      - run: npm run export:web
+        working-directory: mobile
