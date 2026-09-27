@@ -40,11 +40,13 @@ describe('requirements 15–20: server permissions and university scope',()=>{
   await response(await request('/admin/access',finance),403);await response(await request('/admin/workspaces/finance',finance),403);
   await db.query("update app_private.staff_access set status='ACTIVE' where user_id=$1",[finance]);
  });
- it('badge changes are audited without creating staff or agent powers',async()=>{
-  await response(await request('/admin/users/'+student+'/verification',admin,'POST',{verified:true,reason:'Manual evidence checked for this badge'}));
-  expect((await db.query('select verification_status,public_badge_verified from public.profiles where user_id=$1',[student])).rows[0]).toEqual({verification_status:'UNVERIFIED',public_badge_verified:true});
+ it('profile verification changes the account status, is audited, and rejects stale decisions',async()=>{
+  await response(await request('/admin/users/'+student+'/verification',finance,'POST',{status:'VERIFIED',expected:'UNVERIFIED',reason:'Reviewed the student profile details'}),403);
+  expect(await response(await request('/admin/users/'+student+'/verification',admin,'POST',{status:'VERIFIED',expected:'UNVERIFIED',reason:'Reviewed the student profile details'}))).toEqual({verification:{status:'VERIFIED'}});
+  expect((await db.query('select verification_status,public_badge_verified from public.profiles where user_id=$1',[student])).rows[0]).toEqual({verification_status:'VERIFIED',public_badge_verified:null});
+  await response(await request('/admin/users/'+student+'/verification',admin,'POST',{status:'REJECTED',expected:'UNVERIFIED',reason:'This stale review must not overwrite the latest decision'}),409);
+  expect((await db.query("select action from app_private.audit_events where target_id=$1 and action='user.verification.verified'",[student])).rows).toHaveLength(1);
   expect((await db.query('select * from public.operator_roles where user_id=$1',[student])).rows).toHaveLength(0);
-  expect((await db.query("select action from app_private.audit_events where target_id=$1 and action='user.badge.granted'",[student])).rows).toHaveLength(1);
   await response(await request('/admin/access',student),403);
  });
  it('every implemented workspace queries real schema columns and honors pagination',async()=>{
@@ -58,7 +60,7 @@ describe('requirements 15–20: server permissions and university scope',()=>{
   expect((await response(await request('/admin/public-badges/'+student))).badge.verified).toBe(true);
   await response(await request('/admin/public-badges/'+student,admin,'PUT',{verified:false,expected:true,reason:'Reviewed the public recognition badge'}));
   await response(await request('/admin/public-badges/'+student,admin,'PUT',{verified:true,expected:true,reason:'A stale browser must not overwrite it'}),409);
-  expect((await db.query('select verification_status,public_badge_verified from public.profiles where user_id=$1',[student])).rows[0]).toEqual({verification_status:'UNVERIFIED',public_badge_verified:false});
+  expect((await db.query('select verification_status,public_badge_verified from public.profiles where user_id=$1',[student])).rows[0]).toEqual({verification_status:'VERIFIED',public_badge_verified:false});
   await db.query("insert into app_private.staff_access(user_id,permissions,all_universities,status,updated_by) values($1,array['users.verify'],true,'SUSPENDED',$1)",[admin]);
   await response(await request('/admin/public-badges/'+student,admin),403);
   await db.query('delete from app_private.staff_access where user_id=$1',[admin]);
