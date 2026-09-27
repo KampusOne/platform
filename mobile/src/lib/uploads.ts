@@ -62,7 +62,7 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
     if (!blob.size || blob.size > 10 * 1024 * 1024) throw new Error("Choose a file smaller than 10 MB.");
     form.append("file", blob, file.name);
   } else form.append("file", file as unknown as Blob);
-  const result = await api<UploadedFile>("/v1/media", { method: "POST", body: form, signal: AbortSignal.timeout(60_000) });
+  const result = await api<UploadedFile>("/v1/media", { method: "POST", body: form, timeoutMs: file.type.startsWith("video/") ? 180_000 : 60_000 });
   if (!result?.id || !result.url || result.kind !== kind) throw new Error("The upload returned an incomplete response. Refresh before trying again.");
   // A profile read may have started while the upload was running. Invalidate
   // again after the write, so an old cached profile cannot undo the new photo.
