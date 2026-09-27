@@ -1,0 +1,47 @@
+name: Performance branch verification
+
+on:
+  push:
+    branches: ["perf/mobile-speed-pass-20260927"]
+
+permissions:
+  contents: read
+
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run check
+        working-directory: mobile
+      - run: npm run export:web
+        working-directory: mobile
+
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            packages/contracts/package-lock.json
+            server/package-lock.json
+      - run: npm ci
+        working-directory: packages/contracts
+      - run: npm ci
+        working-directory: server
+      - run: npm run check
+        working-directory: server
+      - run: npx vitest run src/middleware/auth-performance.test.ts
+        working-directory: server
