@@ -3,7 +3,7 @@ name: Verify platform
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "perf/mobile-speed-pass-20260927"]
 
 permissions:
   contents: read
