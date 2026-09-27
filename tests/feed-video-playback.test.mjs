@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pickFullyVisibleVideo } from "../mobile/src/lib/feed-video-playback.ts";
+import { isFeedRoutePath, isFeedRoutePlaybackActive, pickFullyVisibleVideo, setFeedRoutePlaybackActive, subscribeFeedRoutePlayback } from "../mobile/src/lib/feed-video-playback.ts";
 import { clearVideoPlaybackSession, readVideoPlaybackSession, writeVideoPlaybackSession } from "../mobile/src/lib/video-playback-session.ts";
 
 test("feed video activates only when the whole video is inside the usable viewport", () => {
@@ -72,4 +72,32 @@ test("video playback session ignores invalid positions", () => {
   writeVideoPlaybackSession("post-2", Number.NaN, true);
   writeVideoPlaybackSession("post-2", -1, true);
   assert.equal(readVideoPlaybackSession("post-2"), null);
+});
+
+
+test("route playback gate disables feed audio outside the feed route", () => {
+  setFeedRoutePlaybackActive(false);
+  const states = [];
+  const unsubscribe = subscribeFeedRoutePlayback((active) => states.push(active));
+  assert.equal(isFeedRoutePlaybackActive(), false);
+  setFeedRoutePlaybackActive(true);
+  assert.equal(isFeedRoutePlaybackActive(), true);
+  setFeedRoutePlaybackActive(false);
+  assert.equal(isFeedRoutePlaybackActive(), false);
+  unsubscribe();
+  setFeedRoutePlaybackActive(true);
+  assert.deepEqual(states, [false, true, false]);
+  setFeedRoutePlaybackActive(false);
+});
+
+test("only the feed pathname enables feed playback", () => {
+  assert.equal(isFeedRoutePath("/feed"), true);
+  assert.equal(isFeedRoutePath("/feed/"), true);
+  assert.equal(isFeedRoutePath("feed"), true);
+  assert.equal(isFeedRoutePath("/explore"), false);
+  assert.equal(isFeedRoutePath("/map"), false);
+  assert.equal(isFeedRoutePath("/profile"), false);
+  assert.equal(isFeedRoutePath("/post"), false);
+  assert.equal(isFeedRoutePath("/video"), false);
+  assert.equal(isFeedRoutePath("/notifications"), false);
 });
