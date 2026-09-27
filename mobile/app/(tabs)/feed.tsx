@@ -4,11 +4,12 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
 import { useFocusEffect, useLocalSearchParams, router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Image, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type ViewToken } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { AppState, FlatList, Image, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type ViewToken } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { FilterRow, SearchField } from "@/src/components/product-ui";
 import { FeedPost } from "@/src/components/feed-post";
+import type { MediaPlaybackHandle } from "@/src/components/media-preview";
 import { PostLinkDialog } from "@/src/components/post-menu";
 import { ApiError, api, peekApiCache } from "@/src/lib/api";
 import { sharePostLink, wasPostDeleted, type FeedPostData } from "@/src/lib/feed-posts";
@@ -17,13 +18,16 @@ import { recordPostView } from "@/src/lib/post-views";
 
 const categories = ["All", "Update", "Event", "Sports", "Opportunity", "Emergency"] as const;
 const emptyFeedIllustration = require("@/assets/illustrations/feed-empty-v2.png");
+const floatingTabBarHeight = 72;
+const videoVisibilityTolerance = 1;
 function FeedEmptyState({ filtered }: { filtered: boolean }) {
   const { styles } = useThemeStyles(createStyles);
   return <View style={styles.emptyState}><Image accessible={false} resizeMode="contain" source={emptyFeedIllustration} style={styles.emptyIllustration} /><Text style={styles.emptyTitle}>{filtered ? "No matching posts" : "No posts here yet"}</Text><Text style={styles.emptyBody}>{filtered ? "Try another search or choose a different update type." : "Student posts, campus updates and conversations will appear here."}</Text></View>;
 }
 export default function FeedScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { user, state: authState } = useAuth();
   const [posts, setPosts] = useState<SocialFeedPost[]>([]);
   const { hashtag } = useLocalSearchParams<{ hashtag?: string }>();
@@ -43,6 +47,11 @@ export default function FeedScreen() {
   const loadedScope = useRef("");
   const pendingBookmarks = useRef(new Set<string>());
   const viewer = useRef<string | null>(null);
+  const videoHandles = useRef(new Map<string, MediaPlaybackHandle>());
+  const feedFocused = useRef(false);
+  const appActive = useRef(AppState.currentState === "active");
+  const videoEvaluationVersion = useRef(0);
+  const videoEvaluationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   viewer.current = authState === "authenticated" ? user?.id ?? null : null;
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50, minimumViewTime: 1000 }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -56,6 +65,88 @@ export default function FeedScreen() {
       });
     }
   }).current;
+  const applyVisibleVideo = useCallback((postId: string | null) => {
+    for (const [id, handle] of videoHandles.current) {
+      handle.setViewportVisible(id === postId);
+    }
+  }, []);
+
+  const evaluateVideoVisibility = useCallback(() => {
+    const version = ++videoEvaluationVersion.current;
+    if (!feedFocused.current || !appActive.current) {
+      applyVisibleVideo(null);
+      return;
+    }
+
+    const entries = Array.from(videoHandles.current.entries());
+    if (!entries.length) return;
+
+    const viewportTop = insets.top;
+    const viewportBottom = height - Math.max(insets.bottom, 8) - floatingTabBarHeight;
+    const viewportCenter = (viewportTop + viewportBottom) / 2;
+    const candidates: Array<{ id: string; distance: number }> = [];
+    let remaining = entries.length;
+
+    const finish = () => {
+      remaining -= 1;
+      if (remaining > 0 || version !== videoEvaluationVersion.current) return;
+      const selected = candidates.sort((a, b) => a.distance - b.distance)[0]?.id ?? null;
+      applyVisibleVideo(selected);
+    };
+
+    for (const [id, handle] of entries) {
+      handle.measureInWindow((_x, y, _width, videoHeight) => {
+        if (version !== videoEvaluationVersion.current) return;
+        const bottom = y + videoHeight;
+        const fullyVisible = videoHeight > 0
+          && y >= viewportTop - videoVisibilityTolerance
+          && bottom <= viewportBottom + videoVisibilityTolerance;
+        if (fullyVisible) {
+          candidates.push({ id, distance: Math.abs(y + videoHeight / 2 - viewportCenter) });
+        }
+        finish();
+      });
+    }
+  }, [applyVisibleVideo, height, insets.bottom, insets.top]);
+
+  const scheduleVideoEvaluation = useCallback(() => {
+    if (videoEvaluationTimer.current) return;
+    videoEvaluationTimer.current = setTimeout(() => {
+      videoEvaluationTimer.current = null;
+      evaluateVideoVisibility();
+    }, 32);
+  }, [evaluateVideoVisibility]);
+
+  const registerVideoHandle = useCallback((postId: string, handle: MediaPlaybackHandle | null) => {
+    const existing = videoHandles.current.get(postId);
+    if (!handle) {
+      existing?.setViewportVisible(false);
+      videoHandles.current.delete(postId);
+    } else {
+      videoHandles.current.set(postId, handle);
+    }
+    videoEvaluationVersion.current += 1;
+    scheduleVideoEvaluation();
+  }, [scheduleVideoEvaluation]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      appActive.current = state === "active";
+      if (appActive.current && feedFocused.current) scheduleVideoEvaluation();
+      else {
+        videoEvaluationVersion.current += 1;
+        applyVisibleVideo(null);
+      }
+    });
+    return () => subscription.remove();
+  }, [applyVisibleVideo, scheduleVideoEvaluation]);
+
+  useEffect(() => () => {
+    if (videoEvaluationTimer.current) clearTimeout(videoEvaluationTimer.current);
+    videoEvaluationVersion.current += 1;
+    applyVisibleVideo(null);
+  }, [applyVisibleVideo]);
+
   useEffect(() => { const timer = setTimeout(() => setSearch(query.trim()), 300); return () => clearTimeout(timer); }, [query]);
   const path = useMemo(() => `/v1/student/feed?q=${encodeURIComponent(search)}${selected === "All" ? "" : `&category=${selected.toUpperCase()}`}`, [search, selected]);
   const scope = `${user?.id ?? "anonymous"}:${path}`;
@@ -82,7 +173,21 @@ export default function FeedScreen() {
     } catch (caught) { if (version === loadVersion.current) setError(caught instanceof ApiError ? caught.message : "Posts could not be loaded. Check your connection."); }
     finally { if (version === loadVersion.current) { setLoading(false); setRefreshing(false); } }
   }, [path, scope]);
-  useFocusEffect(useCallback(() => { void load(); return () => { loadVersion.current++; }; }, [load]));
+  useFocusEffect(useCallback(() => {
+    feedFocused.current = true;
+    scheduleVideoEvaluation();
+    void load();
+    return () => {
+      feedFocused.current = false;
+      loadVersion.current++;
+      videoEvaluationVersion.current += 1;
+      if (videoEvaluationTimer.current) {
+        clearTimeout(videoEvaluationTimer.current);
+        videoEvaluationTimer.current = null;
+      }
+      applyVisibleVideo(null);
+    };
+  }, [applyVisibleVideo, load, scheduleVideoEvaluation]));
   async function loadMore() {
     if (!cursor || paging.current || loading || refreshing) return;
     paging.current = true; setLoadingMore(true);
@@ -117,10 +222,11 @@ export default function FeedScreen() {
   const changedPost = useCallback((changed: SocialFeedPost) => { setPosts((items) => items.map((post) => post.id === changed.id ? { ...post, ...changed } : post)); }, []);
   const bookmarkAction = useCallback((post: FeedPostData) => { void toggleBookmark(post); }, [toggleBookmark]);
   const shareAction = useCallback((post: FeedPostData) => { void sharePost(post); }, [sharePost]);
-  const renderPost = useCallback(({ item }: { item: SocialFeedPost }) => <FeedPost post={item} onBookmark={bookmarkAction} onShare={shareAction} onDeleted={removePost} onFeedback={setFeedback} onChanged={changedPost} />, [bookmarkAction, shareAction, removePost, changedPost]);
+  const renderPost = useCallback(({ item }: { item: SocialFeedPost }) => <FeedPost post={item} onBookmark={bookmarkAction} onShare={shareAction} onDeleted={removePost} onFeedback={setFeedback} onChanged={changedPost} onVideoHandle={registerVideoHandle} videoAutoPlay />, [bookmarkAction, shareAction, removePost, changedPost, registerVideoHandle]);
   return <SafeAreaView edges={["top"]} style={styles.screen}>
     <FlatList contentContainerStyle={styles.listContent} data={filtered} initialNumToRender={6} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" keyExtractor={(post) => post.id}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="transparent" colors={["transparent"]} progressBackgroundColor="transparent" />} viewabilityConfig={viewabilityConfig} onViewableItemsChanged={onViewableItemsChanged}
+      onLayout={scheduleVideoEvaluation} onScroll={scheduleVideoEvaluation} onScrollEndDrag={scheduleVideoEvaluation} onMomentumScrollEnd={scheduleVideoEvaluation} onContentSizeChange={scheduleVideoEvaluation} scrollEventThrottle={32}
       ListEmptyComponent={!loading && !error ? <FeedEmptyState filtered={Boolean(search) || selected !== "All"} /> : null}
       ListHeaderComponent={<><View style={{ height: 4, opacity: refreshing ? 1 : 0 }}><SkeletonBlock height={4} /></View><SearchField onChangeText={setQuery} placeholder="Search posts, sources or events" value={query} /><View style={styles.filters}><FilterRow items={categories} onSelect={(item) => setSelected(item as typeof selected)} selected={selected} /></View>{loading ? <FeedSkeleton /> : null}{error ? <Pressable accessibilityRole="button" onPress={() => void load()} style={styles.error}><Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={20} /><Text style={styles.errorText}>{error} Tap to retry.</Text></Pressable> : null}</>}
       ListFooterComponent={cursor ? <Pressable accessibilityRole="button" accessibilityLabel="Load more posts" disabled={loadingMore} onPress={() => void loadMore()} style={styles.more}>{loadingMore ? <FeedSkeleton count={1} /> : <Text style={styles.moreText}>Load more posts</Text>}</Pressable> : null}
