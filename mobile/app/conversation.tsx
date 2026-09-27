@@ -105,7 +105,17 @@ function Attachment({ message, mine }: { message: Message; mine: boolean }) {
           />
         </Pressable>
       ) : url && isAudio ? (
-        <View style={[styles.audioPlayback, mine && styles.audioPlaybackMine]}><VoicePlayback uri={url} compact /></View>
+        <View style={[styles.audioPlayback, mine && styles.audioPlaybackMine]}>
+          <VoicePlayback
+            uri={url}
+            compact
+            autoPlay
+            onPlaybackError={(message) => {
+              setUrl("");
+              setError(message);
+            }}
+          />
+        </View>
       ) : (
         <Pressable
           accessibilityRole="button"
@@ -113,8 +123,10 @@ function Attachment({ message, mine }: { message: Message; mine: boolean }) {
           onPress={() => void open()}
           style={({ pressed }) => [styles.attachmentButton, mine && styles.attachmentButtonMine, (pressed || busy) && styles.pressed]}
         >
-          <Ionicons name={isImage ? "image-outline" : isVideo ? "videocam-outline" : isAudio ? "mic-outline" : "document-outline"} size={19} color={mine ? "#FFFFFF" : theme.deepBrand} />
-          <Text numberOfLines={1} style={[styles.attachmentText, mine && styles.attachmentTextMine]}>{busy ? "Opening…" : message.media_name || "Open attachment"}</Text>
+          <Ionicons name={isImage ? "image-outline" : isVideo ? "videocam-outline" : isAudio ? "play-circle-outline" : "document-outline"} size={19} color={mine ? "#FFFFFF" : theme.deepBrand} />
+          <Text numberOfLines={1} style={[styles.attachmentText, mine && styles.attachmentTextMine]}>
+            {busy ? (isAudio ? "Loading voice note…" : "Opening…") : isAudio ? "Play voice note" : message.media_name || "Open attachment"}
+          </Text>
         </Pressable>
       )}
       {error ? <Text accessibilityRole="alert" style={[styles.attachmentError, mine && styles.attachmentErrorMine]}>{error}</Text> : null}
