@@ -20,7 +20,7 @@ vi.mock("../middleware/auth", () => ({
 }));
 import { aiRoutes } from "./ai";
 const owner = "11111111-1111-4111-8111-111111111111", key = "22222222-2222-4222-8222-222222222222", mediaId = "33333333-3333-4333-8333-333333333333";
-const env = {UNIFIED_SCHEMA_READY:"true",AI_ASSISTANT_ENABLED:"true",HF_TOKEN:"synthetic",HF_CHAT_MODEL:"test/chat",HF_VISION_MODEL:"test/vision"} as Bindings;
+const env = {UNIFIED_SCHEMA_READY:"true",AI_ASSISTANT_ENABLED:"true",HF_TOKEN:"synthetic",HF_CHAT_MODEL:"test/chat",HF_VISION_MODEL:"test/vision",HF_TRANSCRIPTION_MODEL:"openai/whisper-large-v3"} as Bindings;
 const app=new Hono<{Bindings:Bindings;Variables:Variables}>();
 app.onError((e,c)=>e instanceof AppError?c.json({error:{code:e.code,message:e.message,details:e.details}},e.status):c.json({error:String(e)},500));app.route("/ai",aiRoutes);
 const body={mode:"study",prompt:"Explain energy",idempotencyKey:key,consent:true};
@@ -32,6 +32,20 @@ function cached(status:string,result:unknown,request_hash="request-hash"){return
 beforeEach(()=>{vi.clearAllMocks();mocks.execute.mockImplementation(async(s:SQL)=>query(s).sql.includes("consume_request_rate_limit")?{rows:[{allowed:true}]}:{rows:[]});mocks.transaction.mockResolvedValue([[],[],[{idempotency_key:key}]]);mocks.fetch.mockResolvedValue(Response.json({choices:[{finish_reason:"stop",message:{content:"Energy explanation"}}]}));vi.stubGlobal("fetch",mocks.fetch);});
 afterEach(()=>vi.unstubAllGlobals());
 describe("AI router security and idempotency",()=>{
+  it("reports voice input only when transcription is configured",async()=>{
+    const r=await get("/ai/status");expect(r.status).toBe(200);expect(await r.json()).toMatchObject({voiceEnabled:true});
+    const off=await app.request("/ai/status",{headers:{Authorization:"Bearer test"}},{...env,HF_TRANSCRIPTION_MODEL:""});
+    expect(await off.json()).toMatchObject({voiceEnabled:false});
+  });
+  it("transcribes authenticated audio through the server-side speech provider",async()=>{
+    mocks.execute.mockImplementation(async(s:SQL)=>{const q=query(s);if(q.sql.includes("consume_request_rate_limit"))return {rows:[{allowed:true}]};if(q.sql.includes("insert into app_private.ai_requests")&&q.sql.includes("transcription"))return {rows:[{idempotency_key:key}]};return {rows:[]};});
+    mocks.fetch.mockResolvedValueOnce(Response.json({text:"Explain Newton's second law."}));
+    const r=await app.request(`/ai/transcribe?idempotencyKey=${key}&consent=true`,{method:"POST",headers:{Authorization:"Bearer test","Content-Type":"audio/mp4"},body:new Uint8Array([0,1,2,3,4])},env);
+    expect(r.status).toBe(200);expect(await r.json()).toEqual({text:"Explain Newton's second law."});
+    expect(String(mocks.fetch.mock.calls[0]?.[0])).toContain("router.huggingface.co/hf-inference/models/openai/whisper-large-v3");
+    expect(queries().some(q=>q.sql.includes("'transcription'"))).toBe(true);
+    expect(queries().some(q=>q.sql.includes("status='COMPLETED'"))).toBe(true);
+  });
   it("requires authentication on all private reads",async()=>{for(const path of ["/ai/status","/ai/history",`/ai/history/${key}`,`/ai/thread/${key}`])expect((await app.request(path,{},env)).status).toBe(401);expect(mocks.execute).not.toHaveBeenCalled();});
   it.each([{AI_ASSISTANT_ENABLED:"false"},{HF_TOKEN:""},{HF_CHAT_MODEL:""}])("rejects disabled/missing configuration before quota reservation",async fields=>{expect((await post({},{...env,...fields})).status).toBe(503);expect(mocks.transaction).not.toHaveBeenCalled();expect(mocks.fetch).not.toHaveBeenCalled();});
   it("locks separately before the fresh-snapshot quota claim",async()=>{const response=await post();expect(response.status).toBe(200);expect(await response.json()).toMatchObject({text:"Energy explanation",tier:"standard"});const [statements,options]=mocks.transaction.mock.calls[0]!;expect(options.isolationLevel).toBe("ReadCommitted");expect(statements[0].text).toContain("pg_advisory_xact_lock");expect(statements[2].text).toContain("on conflict do nothing");expect(statements[2].text).toContain("('summary','notes','quiz')");expect(statements[2].values).toContain(owner);expect(mocks.fetch).toHaveBeenCalledTimes(1);expect(response.headers.get("cache-control")).toContain("no-store");});
