@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
+import { byteRange } from "../lib/http-range";
 import { currentUser, requireAuth } from "../middleware/auth";
 import { id } from "../lib/input";
 import { recordAudit } from "../lib/audit";
@@ -55,6 +56,14 @@ export const mediaRoutes = new Hono<{
   Variables: Variables;
 }>();
 const privateKinds = new Set(["kyc", "support", "resource"]);
+const uploadKinds = new Set(["avatar", "cover", "product", "post", "resource", "kyc", "support"]);
+const standardUploadLimit = 10 * 1024 * 1024;
+const postVideoUploadLimit = 50 * 1024 * 1024;
+function uploadTooLargeMessage(kind: string, mime: string | null | undefined) {
+  return kind === "post" && mime?.startsWith("video/")
+    ? "Post videos can be up to 50 MB. Trim or choose a smaller video."
+    : "Choose a file smaller than 10 MB.";
+}
 export function detectedMime(bytes: Uint8Array) {
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
     return "image/jpeg";
@@ -64,30 +73,61 @@ export function detectedMime(bytes: Uint8Array) {
   if (head.startsWith("RIFF") && head.slice(8, 12) === "WEBP")
     return "image/webp";
   if (head.startsWith("%PDF-")) return "application/pdf";
+  if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
+    const ebml = new TextDecoder().decode(bytes.slice(0, 256)).toLowerCase();
+    if (ebml.includes("webm")) return "video/webm";
+  }
+  // ISO Base Media container: accept MP4 brands, not arbitrary ftyp/HEIC files.
+  if (head.slice(4, 8) === "ftyp" && ["isom", "iso2", "mp41", "mp42", "avc1", "M4V "].includes(head.slice(8, 12))) return "video/mp4";
   return null;
 }
 mediaRoutes.post("/", requireAuth, async (c) => {
   const user = currentUser(c);
-  if (Number(c.req.header("Content-Length") ?? 0) > 10 * 1024 * 1024 + 4096)
-    throw new AppError(413, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
-  const form = await c.req.formData();
-  const file = form.get("file");
-  const kind = String(form.get("kind"));
-  if (
-    !(file instanceof File) ||
-    ![
-      "avatar",
-      "cover",
-      "product",
-      "post",
-      "resource",
-      "kyc",
-      "support",
-    ].includes(kind)
-  )
+  const contentType = c.req.header("Content-Type") ?? "";
+  const requestMime = (contentType.split(";")[0] ?? "").trim().toLowerCase();
+  const rawPostVideoUpload =
+    c.req.query("kind") === "post" && requestMime.startsWith("video/");
+  const requestLimit = rawPostVideoUpload
+    ? postVideoUploadLimit
+    : standardUploadLimit;
+  if (Number(c.req.header("Content-Length") ?? 0) > requestLimit + 4096)
+    throw new AppError(
+      413,
+      "BAD_REQUEST",
+      uploadTooLargeMessage(String(c.req.query("kind") ?? ""), requestMime),
+    );
+
+  let kind = "";
+  let originalName = "upload";
+  let declaredMime = "";
+  let bytes: ArrayBuffer;
+
+  if (contentType.toLowerCase().startsWith("multipart/form-data")) {
+    let form: FormData;
+    try {
+      form = await c.req.formData();
+    } catch {
+      throw new AppError(400, "BAD_REQUEST", "Choose the file again and retry the upload.");
+    }
+    const file = form.get("file");
+    kind = String(form.get("kind") ?? "");
+    if (!(file instanceof File))
+      throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
+    originalName = file.name || "upload";
+    declaredMime = (file.type.split(";")[0] ?? "").trim().toLowerCase();
+    bytes = await file.arrayBuffer();
+  } else {
+    kind = String(c.req.query("kind") ?? "");
+    originalName = String(c.req.query("name") ?? "upload").trim() || "upload";
+    declaredMime = requestMime;
+    bytes = await c.req.arrayBuffer();
+  }
+
+  if (!uploadKinds.has(kind))
     throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
-  if (file.size < 1 || file.size > 10 * 1024 * 1024)
-    throw new AppError(400, "BAD_REQUEST", "Choose a file smaller than 10 MB.");
+  if (bytes.byteLength < 1)
+    throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
+
   const recent = await database(c.env).execute<{ allowed: boolean }>(
     sql`select app_private.consume_request_rate_limit('MEDIA_UPLOAD',${user.id},30,3600,3600) allowed`,
   );
@@ -97,14 +137,30 @@ mediaRoutes.post("/", requireAuth, async (c) => {
       "RATE_LIMITED",
       "Upload limit reached. Try again later.",
     );
-  const bytes = await file.arrayBuffer();
+
   const mime = detectedMime(new Uint8Array(bytes));
-  if (!mime || (!privateKinds.has(kind) && !mime.startsWith("image/")))
+  const finalLimit =
+    kind === "post" && mime?.startsWith("video/")
+      ? postVideoUploadLimit
+      : standardUploadLimit;
+  if (bytes.byteLength > finalLimit)
+    throw new AppError(
+      413,
+      "BAD_REQUEST",
+      uploadTooLargeMessage(kind, mime ?? declaredMime),
+    );
+  if (
+    !mime ||
+    (["video/mp4", "video/webm"].includes(mime)
+      ? kind !== "post"
+      : !privateKinds.has(kind) && !mime.startsWith("image/"))
+  )
     throw new AppError(
       400,
       "BAD_REQUEST",
-      "Use a JPG, PNG or WebP image, or a PDF document.",
+      "Use a JPG, PNG or WebP image, a PDF document, or an MP4/WebM video for a post.",
     );
+
   const bucket = privateKinds.has(kind)
     ? c.env.PRIVATE_BUCKET
     : c.env.MEDIA_BUCKET;
@@ -114,12 +170,19 @@ mediaRoutes.post("/", requireAuth, async (c) => {
       "PROVIDER_UNAVAILABLE",
       "File storage is not connected yet.",
     );
+
   const mediaId = crypto.randomUUID();
   const key = `${user.id}/${kind}/${mediaId}`;
   await bucket.put(key, bytes, { httpMetadata: { contentType: mime } });
-  await database(c.env).execute(
-    sql`insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values(${mediaId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${kind},${key},${mime},${file.size},${file.name.slice(0, 180)})`,
-  );
+  try {
+    await database(c.env).execute(
+      sql`insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values(${mediaId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${kind},${key},${mime},${bytes.byteLength},${originalName.slice(0, 180)})`,
+    );
+  } catch (error) {
+    await bucket.delete(key);
+    throw error;
+  }
+
   const origin = (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin).replace(
     /\/$/,
     "",
@@ -133,8 +196,9 @@ mediaRoutes.post("/", requireAuth, async (c) => {
     await database(c.env).execute(
       sql`update public.profiles set cover_image_url=${url},updated_at=now() where user_id=${user.id}::uuid`,
     );
+
   return c.json(
-    { id: mediaId, url, kind, private: privateKinds.has(kind) },
+    { id: mediaId, url, kind, content_type: mime, private: privateKinds.has(kind) },
     201,
   );
 });
@@ -174,8 +238,9 @@ mediaRoutes.get("/:id", async (c) => {
     kind: string;
     object_key: string;
     content_type: string;
+    size_bytes: number;
   }>(
-    sql`select id,owner_user_id,institution_id,kind,object_key,content_type from public.media_objects where id=${id(c.req.param("id"))}::uuid and deleted_at is null`,
+    sql`select id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes from public.media_objects where id=${id(c.req.param("id"))}::uuid and deleted_at is null`,
   );
   const media = firstRow(result);
   if (!media) throw new AppError(404, "NOT_FOUND", "File not found.");
@@ -231,7 +296,13 @@ mediaRoutes.get("/:id", async (c) => {
   const bucket = privateKinds.has(media.kind)
     ? c.env.PRIVATE_BUCKET
     : c.env.MEDIA_BUCKET;
-  const object = await bucket?.get(media.object_key);
+  const range = c.req.header("Range");
+  const selected = range ? byteRange(range, Number(media.size_bytes)) : null;
+  if (range && !selected) {
+    c.header("Content-Range", `bytes */${media.size_bytes}`);
+    return c.body(null, 416);
+  }
+  const object = await bucket?.get(media.object_key, selected ? { range: selected } : undefined);
   if (!object) throw new AppError(404, "NOT_FOUND", "File not found.");
   c.header("Content-Type", media.content_type);
   c.header("X-Content-Type-Options", "nosniff");
@@ -244,5 +315,14 @@ mediaRoutes.get("/:id", async (c) => {
   );
   if (media.content_type === "application/pdf")
     c.header("Content-Disposition", 'attachment; filename="document.pdf"');
+  c.header("Accept-Ranges", "bytes");
+  if (object.httpEtag) c.header("ETag", object.httpEtag);
+  if (selected) {
+    const { offset, length } = selected;
+    c.header("Content-Range", `bytes ${offset}-${offset + length - 1}/${object.size}`);
+    c.header("Content-Length", String(length));
+    return c.body(object.body, 206);
+  }
+  c.header("Content-Length", String(object.size));
   return c.body(object.body);
 });
