@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 
 import {
   api,
@@ -141,10 +141,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applySession],
   );
 
-  const retrySessionRestore = useCallback(async () => {
+  const retrySessionRestore = useCallback(async (timeoutMs = 15_000) => {
     setSessionRestoreError("");
     try {
-      const session = await authApi.refresh();
+      const session = await authApi.refresh(timeoutMs);
       if (!session) {
         setState((current) => (current === "loading" ? "anonymous" : current));
       }
@@ -178,7 +178,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           applyPreferences(savedProfile.settings);
         }
       }
-      if (active) await retrySessionRestore();
+      if (Platform.OS !== "web") {
+        const hasSavedSession = await authApi.hasSavedSession().catch(() => true);
+        if (!active) return;
+        if (!hasSavedSession) {
+          setSessionRestoreError("");
+          setState("anonymous");
+          return;
+        }
+      }
+      if (active) await retrySessionRestore(3_500);
     })();
     return () => {
       active = false;
