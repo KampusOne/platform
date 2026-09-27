@@ -3,19 +3,22 @@ import { AccessibilityInfo, Animated, Easing, Image, StyleSheet, Text, View } fr
 import { SplashScreen } from "expo-router";
 import { useAppearance } from "@/src/lib/appearance";
 
-/** Brief launch motion. Network requests render in the destination, never behind the logo. */
+/** Branded ~2s launch motion. It is intentionally independent of network/session loading. */
 export function BrandIntro({ fontsReady, appearanceReady }: { fontsReady: boolean; appearanceReady: boolean }) {
   const { theme, isDark } = useAppearance();
   const [visible, setVisible] = useState(true);
   const [reduced, setReduced] = useState(false);
   const [animationDone, setAnimationDone] = useState(false);
+  const [minimumElapsed, setMinimumElapsed] = useState(false);
   const [deadlineReached, setDeadlineReached] = useState(false);
   const mark = useRef(new Animated.Value(0)).current;
   const word = useRef(new Animated.Value(0)).current;
   const tagline = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const nativeHidden = useRef(false);
-  const ready = (fontsReady && appearanceReady && animationDone) || deadlineReached;
+  const ready =
+    deadlineReached ||
+    (fontsReady && appearanceReady && animationDone && minimumElapsed);
 
   useEffect(() => {
     let alive = true;
@@ -28,9 +31,15 @@ export function BrandIntro({ fontsReady, appearanceReady }: { fontsReady: boolea
         easing: Easing.out(Easing.cubic), useNativeDriver: true,
       }))).start(() => { if (alive) setAnimationDone(true); });
     }).catch(() => { if (alive) { mark.setValue(1); word.setValue(1); tagline.setValue(1); setAnimationDone(true); } });
-    const timer = setTimeout(() => setDeadlineReached(true), 1200);
-    return () => { alive = false; clearTimeout(timer); [mark, word, tagline].forEach(value => value.stopAnimation()); };
-  }, [mark, word, tagline]);
+    const minimumTimer = setTimeout(() => setMinimumElapsed(true), reduced ? 900 : 1_800);
+    const deadlineTimer = setTimeout(() => setDeadlineReached(true), 2_400);
+    return () => {
+      alive = false;
+      clearTimeout(minimumTimer);
+      clearTimeout(deadlineTimer);
+      [mark, word, tagline].forEach(value => value.stopAnimation());
+    };
+  }, [mark, word, tagline, reduced]);
 
   useEffect(() => {
     if (!ready || !visible) return;
