@@ -118,6 +118,54 @@ describe("unified HTTP routes against the saved database schema", () => {
   ])("loads %s using actual schema columns", async (path) => {
     await json(await request(path));
   });
+  it("scopes onboarding catalogue requests instead of returning every school's structure", async () => {
+    const faculty = "10000000-0000-4000-8000-000000000020";
+    const foreignFaculty = "10000000-0000-4000-8000-000000000021";
+    const department = "10000000-0000-4000-8000-000000000030";
+    const foreignDepartment = "10000000-0000-4000-8000-000000000031";
+    const course = "10000000-0000-4000-8000-000000000040";
+    const foreignCourse = "10000000-0000-4000-8000-000000000041";
+
+    await db.query(
+      "insert into public.faculties(id,university_id,name,slug,updated_at) values($1,$2,'Engineering','engineering',now()),($3,$4,'Arts','arts',now())",
+      [faculty, school, foreignFaculty, otherSchool],
+    );
+    await db.query(
+      "insert into public.departments(id,faculty_id,name,slug,updated_at) values($1,$2,'Computer Engineering','computer-engineering',now()),($3,$4,'History','history',now())",
+      [department, faculty, foreignDepartment, foreignFaculty],
+    );
+    await db.query(
+      "insert into public.courses(id,department_id,name,code,updated_at) values($1,$2,'Computer Engineering','CPE',now()),($3,$4,'History','HIS',now())",
+      [course, department, foreignCourse, foreignDepartment],
+    );
+
+    const institutions = await json(
+      await request("/student/catalog?institutionsOnly=true"),
+    );
+    expect(institutions.universities).toHaveLength(2);
+    expect(institutions.faculties).toEqual([]);
+    expect(institutions.departments).toEqual([]);
+    expect(institutions.courses).toEqual([]);
+
+    const scoped = await json(
+      await request(`/student/catalog?universityId=${school}`),
+    );
+    expect(scoped.universities.map((item: { id: string }) => item.id)).toEqual([
+      school,
+    ]);
+    expect(scoped.faculties.map((item: { id: string }) => item.id)).toEqual([
+      faculty,
+    ]);
+    expect(scoped.departments.map((item: { id: string }) => item.id)).toEqual([
+      department,
+    ]);
+    expect(scoped.courses.map((item: { id: string }) => item.id)).toEqual([
+      course,
+    ]);
+
+    await json(await request("/student/catalog?universityId=not-a-uuid"), 400);
+  });
+
   it("loads capability lists without querying imaginary columns", async () => {
     expect(await json(await request("/account/capabilities"))).toEqual({
       profiles: [],
