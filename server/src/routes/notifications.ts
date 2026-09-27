@@ -9,6 +9,12 @@ import { resolveAdminScope } from '../lib/admin-access';
 import { recordAudit } from '../lib/audit';
 import { expoTokenPattern, sendTestPush, fetchPushReceipt } from '../lib/push';
 import type { Bindings, Variables } from '../types';
+import {
+  defaultNotificationPreferences,
+  notificationPreferences,
+  notificationChannels,
+  notificationCategories,
+} from '../services/notification-preferences';
 
 export const notificationRoutes=new Hono<{Bindings:Bindings;Variables:Variables}>();
 notificationRoutes.use('/*',requireAuth);
@@ -16,6 +22,50 @@ notificationRoutes.use('/*',async(c,next)=>{
  if(c.env.UNIFIED_SCHEMA_READY!=='true')throw new AppError(503,'PROVIDER_UNAVAILABLE','Notifications are unavailable until the account service is ready.');
  await next();
 });
+notificationRoutes.get('/preferences',async c=>{
+ const profile=firstRow(await database(c.env).execute<{preferences:unknown;channels:unknown}>(sql`select settings->'notificationPreferences' as preferences,settings->'notificationChannels' as channels from public.profiles where user_id=${currentUser(c).id}::uuid and deleted_at is null`));
+ return c.json({preferences:notificationPreferences(profile?.preferences),channels:notificationChannels(profile?.channels,profile?.preferences)});
+});
+notificationRoutes.put('/preferences',async c=>{
+ const legacy=Object.fromEntries(Object.keys(defaultNotificationPreferences).map(key=>[key,z.boolean().optional()]));
+ const channelShape=Object.fromEntries(notificationCategories.map(key=>[key,z.object({in_app_enabled:z.boolean(),push_enabled:z.boolean()}).strict()]));
+ const data=await input(c,z.union([z.object({channels:z.object(channelShape).strict()}).strict(),z.object(legacy).strict()]));
+ let channels,preferences;
+ if('channels' in data){
+  channels=notificationChannels(data.channels);
+  preferences=notificationPreferences(Object.fromEntries(Object.entries(channels).map(([key,value])=>[key,value.in_app_enabled])));
+  preferences.pushAnnouncements=channels.announcements.push_enabled;
+  preferences.pushCampusUpdates=channels.campusUpdates.push_enabled;
+ } else {
+  preferences=notificationPreferences(data);
+  channels=notificationChannels(null,preferences);
+ }
+ await database(c.env).execute(sql`update public.profiles set settings=coalesce(settings,'{}'::jsonb)||jsonb_build_object('notificationPreferences',${JSON.stringify(preferences)}::jsonb,'notificationChannels',${JSON.stringify(channels)}::jsonb),updated_at=now() where user_id=${currentUser(c).id}::uuid and deleted_at is null`);
+ return c.json({preferences,channels});
+});
+notificationRoutes.get('/inbox',async c=>{
+ const user=currentUser(c),db=database(c.env),limit=30;
+ let before:{time:string;id:string}|null=null;
+ const cursor=c.req.query('before');
+ if(cursor){
+  const parts=cursor.split('|');
+  const parsed=z.object({time:z.string().datetime({offset:true}),id:z.string().uuid()}).safeParse({time:parts[0],id:parts[1]});
+  if(!parsed.success)throw new AppError(400,'BAD_REQUEST','This notification page is invalid.');
+  before=parsed.data;
+ }
+ const visible=sql`user_id=${user.id}::uuid and (institution_id is null or institution_id=${user.universityId}::uuid)`;
+ const [result,count]=await Promise.all([
+  db.execute<{id:string;title:string;body:string;path:string|null;read_at:string|null;created_at:string}>(sql`select id,title,body,path,read_at,created_at::text from public.in_app_notifications where ${visible} and (${before?.time??null}::timestamptz is null or (created_at,id)<(${before?.time??null}::timestamptz,${before?.id??null}::uuid)) order by created_at desc,id desc limit ${limit+1}`),
+  db.execute<{unread_count:number}>(sql`select count(*)::int as unread_count from public.in_app_notifications where ${visible} and read_at is null`),
+ ]);
+ const notifications=result.rows.slice(0,limit),last=notifications.at(-1);
+ return c.json({notifications,unreadCount:firstRow(count)?.unread_count??0,nextCursor:result.rows.length>limit&&last?new Date(last.created_at).toISOString()+'|'+last.id:null});
+});
+notificationRoutes.post('/read-all',async c=>{
+ await database(c.env).execute(sql`update public.in_app_notifications set read_at=coalesce(read_at,now()) where user_id=${currentUser(c).id}::uuid and read_at is null`);
+ return c.json({saved:true});
+});
+
 notificationRoutes.get('/devices',async c=>{
  const result=await database(c.env).execute(sql`select id,platform,label,build_version,active,created_at,updated_at from app_private.push_devices where user_id=${currentUser(c).id}::uuid order by updated_at desc limit 30`);
  return c.json({devices:result.rows});
