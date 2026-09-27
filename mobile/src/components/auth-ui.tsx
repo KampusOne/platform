@@ -48,13 +48,7 @@ export function AuthShell({
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.safe}>
       <KeyboardAvoidingView
-        behavior={
-          Platform.OS === "ios"
-            ? "padding"
-            : Platform.OS === "android"
-              ? "height"
-              : undefined
-        }
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.safe}
       >
         <ScrollView
