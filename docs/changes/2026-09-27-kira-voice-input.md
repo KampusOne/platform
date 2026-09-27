@@ -8,9 +8,9 @@ Kira now exposes an in-composer voice flow on mobile and web. The idle composer 
 
 - Recording starts only after an explicit microphone tap.
 - Cancel stops and discards the local recording.
-- Stop saves the local recording without sending anything.
-- The arrow sends only the recording for speech-to-text. The returned transcript is inserted into the editable Kira prompt and is not automatically sent as a chat.
-- Failed transcription keeps the local recording so the user can retry.
+- Stop ends the recording, immediately shows an animated `Transcribing…` state, then inserts the returned transcript into the editable Kira prompt without sending it.
+- The arrow ends the recording, shows the same `Transcribing…` state, then automatically sends the returned text through Kira's normal chat send flow without requiring a second tap.
+- Failed transcription keeps the local recording so the user can retry. After a failed stop-to-draft attempt, the stop control becomes a retry-transcription control.
 - Recordings auto-stop at 120 seconds and are capped at 8 MB.
 - Android capture uses Expo's high-quality preset, metering and the speech-recognition audio source.
 
