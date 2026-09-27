@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { z, timetableEntrySchema } from "@kampusone/contracts";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { input, id } from "../lib/input";
+import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
@@ -161,7 +162,10 @@ learningRoutes.post("/timetable/import", async (c) => {
     throw new AppError(409, "CONFLICT", "Choose your university first.");
   const d = await input(
     c,
-    z.object({ entries: z.array(timetableEntrySchema).min(1).max(40) }),
+    z.object({
+      requestId: z.string().uuid().optional(),
+      entries: z.array(timetableEntrySchema).min(1).max(40),
+    }),
   );
   for (const e of d.entries)
     if (e.endsAt <= e.startsAt)
@@ -170,13 +174,33 @@ learningRoutes.post("/timetable/import", async (c) => {
         "BAD_REQUEST",
         "Check each class start and end time.",
       );
-  const client = sqlClient(c.env);
-  await client.transaction([
-    client`select pg_advisory_xact_lock(hashtextextended(${u.id + "-timetable"},0))`,
-    ...d.entries.map(
-      (e) =>
-        client`insert into public.timetable_entries(id,user_id,university_id,title,course_code,venue,lecturer,day_of_week,starts_at,ends_at,reminder_minutes,reminder_enabled) values(${crypto.randomUUID()}::uuid,${u.id}::uuid,${u.universityId}::uuid,${e.title},${e.courseCode?.toUpperCase() ?? null},${e.venue ?? null},${e.lecturer ?? null},${e.dayOfWeek},${e.startsAt}::time,${e.endsAt}::time,${e.reminderMinutes},${e.reminderEnabled})`,
+  const requestId = d.requestId ?? crypto.randomUUID();
+  const hash = await sha256(JSON.stringify([u.universityId, d.entries]));
+  const result = firstRow(
+    await database(c.env).execute<{ outcome: string; imported: number }>(
+      sql`select * from app_private.import_timetable_entries(${u.id}::uuid,${u.universityId}::uuid,${requestId}::uuid,${hash},${JSON.stringify(d.entries)}::jsonb)`,
     ),
-  ]);
-  return c.json({ imported: d.entries.length }, 201);
+  );
+  if (result?.outcome === "CONFLICT")
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "This import request was used for different class details. Start a new save.",
+    );
+  if (result?.outcome === "FORBIDDEN")
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "Your university changed. Reload before importing.",
+    );
+  if (!result)
+    throw new AppError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "The timetable could not be saved. Retry with the same request.",
+    );
+  return c.json(
+    { imported: result.imported, requestId },
+    result.outcome === "EXISTING" ? 200 : 201,
+  );
 });
