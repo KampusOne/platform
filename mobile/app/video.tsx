@@ -406,7 +406,7 @@ export default function VideoViewerScreen() {
           onPress={(event) => seekFromTrack(event.nativeEvent.locationX)}
           style={styles.progressTouch}
         >
-          <View style={styles.progressTrack}><View style={[styles.progressFill, { width: String(progress * 100) + "%" }]} /></View>
+          <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress * 100}%` as `${number}%` }]} /></View>
         </Pressable>
         <View style={styles.controls}>
           <Pressable accessibilityRole="button" accessibilityLabel={isPlaying ? "Pause video" : "Play video"} onPress={togglePlayback} style={styles.controlButton}>
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28 },
   stateText: { color: "#FFFFFF", fontSize: 14, textAlign: "center" },
   mediaStage: { width: "100%", backgroundColor: "#000000", alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  videoState: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: "rgba(0,0,0,0.42)" },
+  videoState: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: "rgba(0,0,0,0.42)" },
   videoStateText: { color: "#FFFFFF", fontSize: 13 },
   meta: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 12, gap: 12 },
   authorRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },

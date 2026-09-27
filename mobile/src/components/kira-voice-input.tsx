@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Platform, Pressable, Text, View } from 'react-native';
+import { AppState, Platform, Pressable, Text, View } from 'react-native';
+import { InlineLoading } from './skeleton';
 import { Ionicons } from '@expo/vector-icons';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { File } from 'expo-file-system';
@@ -138,7 +139,7 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
       <Pressable accessibilityRole="button" accessibilityLabel="Cancel voice recording" disabled={working} onPress={()=>void cancel()} style={{width:44,height:44,alignItems:'center',justifyContent:'center',opacity:working?0.4:1}}><Ionicons name="close" size={28} color={theme.text}/></Pressable>
       {!working?<Text style={{color:theme.textMuted,fontFamily:theme.font.semibold,fontSize:12,minWidth:34}}>{durationLabel(duration)}</Text>:null}
       <View style={{flex:1,height:32,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:2,overflow:'hidden'}}>
-        {working?<View style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8}}><ActivityIndicator size="small" color={theme.textMuted}/><Text style={{color:theme.text,fontFamily:theme.font.semibold,fontSize:15}}>Transcribing…</Text></View>:waveform}
+        {working?<View style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8}}><InlineLoading color={theme.textMuted} size={34} style={{marginVertical:0}}/><Text style={{color:theme.text,fontFamily:theme.font.semibold,fontSize:15}}>Transcribing…</Text></View>:waveform}
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel={working?'Transcribing voice message':state.isRecording?'Stop and transcribe recording':'Retry transcription'} disabled={working||(!state.isRecording&&!uri)} onPress={()=>void finishVoice('draft')} style={{width:44,height:44,borderRadius:22,backgroundColor:theme.surfaceMuted,alignItems:'center',justifyContent:'center',opacity:working||(!state.isRecording&&!uri)?0.5:1}}>
         {working||state.isRecording?<View style={{width:13,height:13,borderRadius:3,backgroundColor:theme.textMuted}}/>:<Ionicons name="refresh" size={20} color={theme.textMuted}/>}
