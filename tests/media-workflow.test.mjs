@@ -6,6 +6,7 @@ import { normalizeMediaLinks, resolveMediaLink } from "../mobile/src/lib/media-l
 import { requestPhotoEdit, finishPhotoEdit, subscribePhotoEdit, getPhotoEdit } from "../mobile/src/lib/photo-edit-session.ts";
 import { requestVideoEdit, finishVideoEdit, subscribeVideoEdit, getVideoEdit } from "../mobile/src/lib/video-edit-session.ts";
 import { formatVideoTime, initialVideoTrimRange, setVideoTrimEnd, setVideoTrimStart } from "../mobile/src/lib/video-trim-range.ts";
+import { cachedVideoSource, FAST_VIDEO_BUFFER_OPTIONS, safeVideoRouteUrl } from "../mobile/src/lib/video-source.ts";
 const id = "8ea652a5-7061-4b16-a0cb-609f24470de4";
 
 test("wide photo is cropped to a square without stretching", () => {
@@ -93,6 +94,15 @@ test("cancel returns no photo; only Save returns edited pixels, and stale sessio
     assert.equal(getPhotoEdit(), null);
   } finally { unsubscribe(); }
   await assert.rejects(requestPhotoEdit("avatar", { uri: "unused", width: 1, height: 1 }), /not ready/);
+});
+
+test("video handoff reuses a cacheable source and a shallow startup buffer", () => {
+  const url = "https://api.example/v1/media/8ea652a5-7061-4b16-a0cb-609f24470de4?v=3";
+  assert.deepEqual(cachedVideoSource(url), { uri: url, useCaching: true });
+  assert.equal(safeVideoRouteUrl(url), url);
+  assert.equal(safeVideoRouteUrl("javascript:alert(1)"), "");
+  assert.ok(FAST_VIDEO_BUFFER_OPTIONS.minBufferForPlayback < 1);
+  assert.ok(FAST_VIDEO_BUFFER_OPTIONS.preferredForwardBufferDuration <= 3);
 });
 
 test("post video trim ranges enforce one-second minimum and ninety-second maximum", () => {

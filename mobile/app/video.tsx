@@ -26,6 +26,11 @@ import {
   readVideoPlaybackSession,
   writeVideoPlaybackSession,
 } from "@/src/lib/video-playback-session";
+import {
+  cachedVideoSource,
+  FAST_VIDEO_BUFFER_OPTIONS,
+  safeVideoRouteUrl,
+} from "@/src/lib/video-source";
 
 const speeds = [1, 1.25, 1.5, 2] as const;
 
@@ -59,10 +64,12 @@ export default function VideoViewerScreen() {
     id?: string | string[];
     position?: string;
     muted?: string;
+    url?: string | string[];
   }>();
   const id = validPostId(params.id) ? params.id : "";
   const requestedPosition = Math.max(0, Number(params.position ?? 0) || 0);
   const requestedMuted = params.muted !== "0";
+  const initialVideoUrl = useMemo(() => safeVideoRouteUrl(params.url), [params.url]);
   const [post, setPost] = useState<SocialFeedPost | null>(null);
   const [person, setPerson] = useState<PersonResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,16 +82,24 @@ export default function VideoViewerScreen() {
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState<(typeof speeds)[number]>(1);
   const [trackWidth, setTrackWidth] = useState(0);
+  const [firstFrameRendered, setFirstFrameRendered] = useState(false);
+  const [slowLoading, setSlowLoading] = useState(false);
   const videoRef = useRef<VideoView>(null);
   const focused = useRef(false);
   const shouldResume = useRef(true);
   const sourceVersion = useRef(0);
+  const activeVideoUrl = useRef(initialVideoUrl);
 
-  const player = useVideoPlayer(null, (instance) => {
-    instance.loop = false;
-    instance.muted = requestedMuted;
-    instance.playbackRate = 1;
-  });
+  const player = useVideoPlayer(
+    initialVideoUrl ? cachedVideoSource(initialVideoUrl) : null,
+    (instance) => {
+      instance.loop = false;
+      instance.muted = requestedMuted;
+      instance.playbackRate = 1;
+      instance.currentTime = requestedPosition;
+      instance.bufferOptions = FAST_VIDEO_BUFFER_OPTIONS;
+    },
+  );
 
   const playingEvent = useEvent(player, "playingChange", {
     isPlaying: player.playing,
@@ -132,17 +147,30 @@ export default function VideoViewerScreen() {
 
   useEffect(() => {
     if (!post?.image_url) return;
-    const version = ++sourceVersion.current;
+    const nextUrl = post.image_url;
     const remembered = readVideoPlaybackSession(post.id);
     const startAt = remembered?.position ?? requestedPosition;
     const startMuted = remembered?.muted ?? requestedMuted;
-    void player.replaceAsync(post.image_url).then(() => {
-      if (version !== sourceVersion.current) return;
+    const applyPlaybackState = () => {
       player.currentTime = Math.max(0, startAt);
       player.muted = startMuted;
       player.playbackRate = speed;
       shouldResume.current = true;
       if (focused.current) player.play();
+    };
+
+    if (activeVideoUrl.current === nextUrl) {
+      applyPlaybackState();
+      return;
+    }
+
+    const version = ++sourceVersion.current;
+    setFirstFrameRendered(false);
+    setSlowLoading(false);
+    void player.replaceAsync(cachedVideoSource(nextUrl)).then(() => {
+      if (version !== sourceVersion.current) return;
+      activeVideoUrl.current = nextUrl;
+      applyPlaybackState();
     }).catch((caught) => {
       if (version === sourceVersion.current) setError(caught instanceof Error ? caught.message : "This video could not load.");
     });
@@ -171,19 +199,19 @@ export default function VideoViewerScreen() {
 
   useFocusEffect(useCallback(() => {
     focused.current = true;
-    if (post?.image_url && shouldResume.current) player.play();
+    if ((post?.image_url || initialVideoUrl) && shouldResume.current) player.play();
     return () => {
       focused.current = false;
       shouldResume.current = player.playing;
       if (post?.id) writeVideoPlaybackSession(post.id, Number(player.currentTime) || 0, player.muted);
       player.pause();
     };
-  }, [player, post?.id, post?.image_url]));
+  }, [initialVideoUrl, player, post?.id, post?.image_url]));
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
-        if (focused.current && shouldResume.current && post?.image_url) player.play();
+        if (focused.current && shouldResume.current && (post?.image_url || initialVideoUrl)) player.play();
         return;
       }
       shouldResume.current = player.playing;
@@ -191,13 +219,43 @@ export default function VideoViewerScreen() {
       player.pause();
     });
     return () => subscription.remove();
-  }, [player, post?.id, post?.image_url]);
+  }, [initialVideoUrl, player, post?.id, post?.image_url]);
 
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(""), 3000);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (firstFrameRendered || !(post?.image_url || initialVideoUrl)) {
+      setSlowLoading(false);
+      return;
+    }
+    const timer = setTimeout(() => setSlowLoading(true), 6000);
+    return () => clearTimeout(timer);
+  }, [firstFrameRendered, initialVideoUrl, post?.image_url]);
+
+  async function retryVideo() {
+    const nextUrl = post?.image_url || initialVideoUrl;
+    if (!nextUrl) return;
+    const remembered = readVideoPlaybackSession(post?.id);
+    setSlowLoading(false);
+    setFirstFrameRendered(false);
+    setError("");
+    try {
+      await player.replaceAsync(cachedVideoSource(nextUrl));
+      activeVideoUrl.current = nextUrl;
+      player.currentTime = Math.max(0, remembered?.position ?? requestedPosition);
+      player.muted = remembered?.muted ?? requestedMuted;
+      player.playbackRate = speed;
+      shouldResume.current = true;
+      if (focused.current) player.play();
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : "This video could not load.");
+      setSlowLoading(true);
+    }
+  }
 
   const progress = duration > 0 ? Math.max(0, Math.min(1, position / duration)) : 0;
   const description = useMemo(() => {
@@ -349,10 +407,33 @@ export default function VideoViewerScreen() {
           nativeControls={false}
           contentFit="contain"
           surfaceType="textureView"
+          onFirstFrameRender={() => {
+            setFirstFrameRendered(true);
+            setSlowLoading(false);
+          }}
           style={StyleSheet.absoluteFill}
         />
-        {status === "loading" ? <View pointerEvents="none" style={styles.videoState}><Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>Loading video…</Text></View> : null}
-        {status === "error" ? <View pointerEvents="none" style={styles.videoState}><Ionicons name="alert-circle-outline" color="#FFFFFF" size={28} /><Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>{playerError?.message || "This video could not play."}</Text></View> : null}
+        {status === "loading" && !firstFrameRendered ? (
+          <View pointerEvents={slowLoading ? "auto" : "none"} style={styles.videoState}>
+            <Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>
+              {slowLoading ? "Video is taking longer than usual." : "Loading video…"}
+            </Text>
+            {slowLoading ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Retry video" onPress={() => void retryVideo()} style={styles.retryButton}>
+                <Text style={[styles.retryText, { fontFamily: theme.font.semibold }]}>Retry</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+        {status === "error" ? (
+          <View style={styles.videoState}>
+            <Ionicons name="alert-circle-outline" color="#FFFFFF" size={28} />
+            <Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>{playerError?.message || "This video could not play."}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Retry video" onPress={() => void retryVideo()} style={styles.retryButton}>
+              <Text style={[styles.retryText, { fontFamily: theme.font.semibold }]}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.meta}>
@@ -453,6 +534,8 @@ const styles = StyleSheet.create({
   mediaStage: { width: "100%", backgroundColor: "#000000", alignItems: "center", justifyContent: "center", overflow: "hidden" },
   videoState: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: "rgba(0,0,0,0.42)" },
   videoStateText: { color: "#FFFFFF", fontSize: 13 },
+  retryButton: { minHeight: 42, minWidth: 96, paddingHorizontal: 18, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" },
+  retryText: { color: "#11171C", fontSize: 13 },
   meta: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 12, gap: 12 },
   authorRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   authorIdentity: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12 },

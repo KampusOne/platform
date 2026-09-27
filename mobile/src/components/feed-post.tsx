@@ -40,6 +40,13 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
   const category = post.category.toUpperCase();
   const text = getFeedPostText(post);
   const structured = structuredCategories.has(category);
+  const videoUrl =
+    post.media?.length === 1 && post.media[0]?.type.startsWith("video/")
+      ? post.media[0].url
+      : post.image_url &&
+          (post.media_type === "video" || post.media_type?.startsWith("video/"))
+        ? post.image_url
+        : "";
   const setVideoHandle = useCallback((handle: MediaPlaybackHandle | null) => {
     onVideoHandle?.(post.id, handle);
   }, [onVideoHandle, post.id]);
@@ -50,9 +57,10 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
         id: post.id,
         position: String(state.position),
         muted: state.muted ? "1" : "0",
+        url: videoUrl,
       },
     });
-  }, [post.id]);
+  }, [post.id, videoUrl]);
   const openPost = () => { if (!detail) router.push({ pathname: "/post", params: { id: post.id } }); };
   const openReply = () => { if (onComment) onComment(); else setReplyOpen(true); };
   const copy = text.title || text.paragraphs.length ? <PostText key={post.id} {...text} detail={detail} style={[styles.postText, detail && styles.detailText]} titleStyle={[styles.postTitle, detail && styles.detailText]} onError={onFeedback} /> : null;
