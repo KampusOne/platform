@@ -7,7 +7,7 @@ export type AITier = "standard" | "pro";
 export type AIProvider = "huggingface";
 export type AIEnvironment = {
   AI_ASSISTANT_ENABLED?: string; HF_TOKEN?: string; HF_CHAT_MODEL?: string;
-  HF_VISION_MODEL?: string; HF_PRO_MODEL?: string;
+  HF_VISION_MODEL?: string; HF_PRO_MODEL?: string; HF_TRANSCRIPTION_MODEL?: string;
   AI_DAILY_USER_LIMIT?: string; AI_DAILY_GLOBAL_LIMIT?: string;
 };
 export type AIMedia = { mimeType: string; data: string };
@@ -17,8 +17,10 @@ export type AITool = { type: "function"; function: { name: string; description: 
 export type AIToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 export type AIMessage = { role: "system" | "user" | "assistant" | "tool"; content: unknown; tool_calls?: AIToolCall[]; tool_call_id?: string };
 export const MAX_AI_MEDIA_BYTES = 8 * 1024 * 1024;
+export const MAX_AI_TRANSCRIPTION_BYTES = 8 * 1024 * 1024;
 export const AI_HISTORY_DAYS = 90;
 export const AI_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "text/plain"]);
+export const AI_AUDIO_MIME_TYPES = new Set(["audio/mp4", "audio/m4a", "audio/x-m4a", "audio/webm", "audio/ogg", "audio/mpeg", "audio/wav", "audio/x-wav", "audio/aac", "audio/flac"]);
 export function aiLimit(value: string | undefined, fallback: number, maximum: number): number {
   if (value === undefined || value.trim() === "") return fallback;
   const n = Number(value);
@@ -106,6 +108,49 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
 export async function generateAI(env: AIEnvironment, input: AIInput, fetcher: typeof fetch = fetch): Promise<{ text: string; provider: AIProvider }> {
   const result = await completeAI(env, input, aiMessages(input), undefined, fetcher);
   return { text: result.text, provider: "huggingface" };
+}
+
+export function transcriptionConfiguration(env: AIEnvironment) {
+  const token = env.HF_TOKEN?.trim();
+  const model = env.HF_TRANSCRIPTION_MODEL?.trim();
+  return { provider: "huggingface" as const, token, model, configured: Boolean(token && model) };
+}
+function ownedBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+export async function transcribeAI(env: AIEnvironment, audio: Uint8Array, mimeType: string, fetcher: typeof fetch = fetch): Promise<string> {
+  if (env.AI_ASSISTANT_ENABLED !== "true") throw new AIProviderError(503, "AI_DISABLED", "Voice input is temporarily paused.");
+  const config = transcriptionConfiguration(env);
+  if (!config.configured) throw new AIProviderError(503, "AI_TRANSCRIPTION_NOT_CONFIGURED", "Voice input is temporarily unavailable.");
+  const mime = (mimeType.split(";")[0] ?? "").trim().toLowerCase();
+  if (!AI_AUDIO_MIME_TYPES.has(mime)) throw new AIProviderError(400, "AI_UNSUPPORTED_AUDIO", "Record a new voice message in a supported audio format.");
+  if (audio.byteLength < 1 || audio.byteLength > MAX_AI_TRANSCRIPTION_BYTES) throw new AIProviderError(400, "AI_AUDIO_SIZE", "Record a shorter voice message.");
+  const modelPath = config.model!.split("/").map(encodeURIComponent).join("/");
+  try {
+    const response = await fetcher(`https://router.huggingface.co/hf-inference/models/${modelPath}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.token!}`, "Content-Type": mime, Accept: "application/json" },
+      body: ownedBuffer(audio),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => undefined);
+      if ([400, 415, 422].includes(response.status)) throw new AIProviderError(400, "AI_TRANSCRIPTION_REJECTED", "That recording could not be transcribed. Try recording again.");
+      if (response.status === 402 || response.status === 429) throw new AIProviderError(503, "AI_PROVIDER_LIMIT", "Voice transcription capacity is temporarily unavailable. Your recording is kept; try again.");
+      throw new AIProviderError(503, response.status === 401 || response.status === 403 ? "AI_PROVIDER_AUTH" : "AI_PROVIDER_UNAVAILABLE", "Voice transcription is temporarily unavailable. Your recording is kept; try again.");
+    }
+    const payload = await response.json() as { text?: unknown };
+    const text = typeof payload.text === "string" ? payload.text.trim() : "";
+    if (!text) throw new AIProviderError(422, "AI_EMPTY_TRANSCRIPT", "No speech was detected. Try recording again.");
+    if (text.length > 20000) throw new AIProviderError(502, "AI_INVALID_TRANSCRIPT", "That voice message produced too much text. Record a shorter message.");
+    return text;
+  } catch (error) {
+    if (error instanceof AIProviderError) throw error;
+    if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) throw new AIProviderError(504, "AI_TRANSCRIPTION_TIMEOUT", "Voice transcription took too long. Your recording is kept; try again.");
+    throw new AIProviderError(503, "AI_PROVIDER_UNAVAILABLE", "Voice transcription could not connect. Your recording is kept; try again.");
+  }
 }
 
 export function parseTimetableJSON(text: string) { return parseScheduleDocument(text); }
