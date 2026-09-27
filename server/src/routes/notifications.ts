@@ -85,6 +85,18 @@ notificationRoutes.post('/attempts/:id/observed',async c=>{
  return c.json({observation:firstRow(result)});
 });
 
+
+notificationRoutes.post('/alarms/import-timetable',async c=>{
+ const u=currentUser(c),data=await input(c,z.object({entryIds:z.array(z.string().uuid()).min(1).max(100).transform(values=>[...new Set(values)]),reminderMinutes:z.number().int().min(0).max(120)}).strict());
+ const client=sqlClient(c.env);
+ const results=await client.transaction([
+  client`select pg_advisory_xact_lock(hashtextextended(${u.id+'-class-alarms'},0))`,
+  client`update public.timetable_entries set reminder_enabled=false,updated_at=now() where user_id=${u.id}::uuid and status<>'ARCHIVED' and reminder_enabled`,
+  client`update public.timetable_entries set reminder_minutes=${data.reminderMinutes},reminder_enabled=true,updated_at=now() where user_id=${u.id}::uuid and status<>'ARCHIVED' and id=any(${data.entryIds}::uuid[]) returning id`
+ ]);
+ return c.json({imported:(results[2]??[]).length});
+});
+
 notificationRoutes.get('/sounds/default',async c=>{
  const sound=firstRow(await database(c.env).execute(sql`select s.id,s.name,s.media_id from public.notification_sounds s join public.media_objects m on m.id=s.media_id and m.deleted_at is null where s.active and s.is_default and (s.institution_id=${currentUser(c).universityId}::uuid or s.institution_id is null) order by s.institution_id nulls last limit 1`));
  return c.json({sound:sound?{...sound,url:`${(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'')}/v1/media/${sound.media_id}`,availability:'web',nativeSound:'default'}:null});
