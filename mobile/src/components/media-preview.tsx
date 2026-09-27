@@ -1,5 +1,5 @@
 import { useEvent } from "expo";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Image,
   Platform,
@@ -204,18 +204,6 @@ function Video({
   }, [player]);
 
   const progress = duration > 0 ? Math.max(0, Math.min(1, position / duration)) : 0;
-  const watermarkCorner = Math.floor(position / 6) % 4;
-  const watermarkStyle = useMemo(
-    () => [
-      styles.watermark,
-      watermarkCorner === 0 && styles.watermarkTopLeft,
-      watermarkCorner === 1 && styles.watermarkTopRight,
-      watermarkCorner === 2 && styles.watermarkBottomRight,
-      watermarkCorner === 3 && styles.watermarkBottomLeft,
-    ],
-    [watermarkCorner],
-  );
-
   function seekBy(seconds: number) {
     try {
       player.seekBy(seconds);
@@ -306,12 +294,6 @@ function Video({
           <Text style={styles.errorText}>
             {error?.message || "This video could not load."}
           </Text>
-        </View>
-      ) : null}
-
-      {watermark ? (
-        <View pointerEvents="none" style={watermarkStyle}>
-          <Text style={styles.watermarkText}>K1 · {watermark}</Text>
         </View>
       ) : null}
 
@@ -510,18 +492,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(24,20,18,0.78)",
   },
   errorText: { color: "#FFFFFF", fontSize: 12, textAlign: "center", lineHeight: 17 },
-  watermark: {
-    position: "absolute",
-    backgroundColor: "rgba(20,16,14,0.48)",
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  watermarkTopLeft: { left: 10, top: 10 },
-  watermarkTopRight: { right: 10, top: 10 },
-  watermarkBottomRight: { right: 10, bottom: 92 },
-  watermarkBottomLeft: { left: 10, bottom: 92 },
-  watermarkText: { color: "rgba(255,255,255,0.9)", fontSize: 9, fontWeight: "700" },
   controls: {
     position: "absolute",
     left: 0,
