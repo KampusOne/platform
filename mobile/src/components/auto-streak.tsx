@@ -13,8 +13,9 @@ export function AutoStreak(){
    if(pending.has(userId))return;pending.add(userId);
    try{if(await readCache<string>(key)===day||!live)return;await api('/v1/account/streak',{method:'POST'});if(live)await writeCache(key,day);}catch{/* Retry next foreground; never invent a saved day. */}finally{pending.delete(userId);}
   }
-  void record();const listener=AppState.addEventListener('change',state=>{if(state==='active')void record();});
+  const initialRecord=setTimeout(()=>void record(),1800);
+  const listener=AppState.addEventListener('change',state=>{if(state==='active')void record();});
   const timer=setInterval(()=>{if(AppState.currentState==='active')void record();},60000);
-  return()=>{live=false;listener.remove();clearInterval(timer);};
+  return()=>{live=false;clearTimeout(initialRecord);listener.remove();clearInterval(timer);};
  },[user?.id]);return null;
 }
