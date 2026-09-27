@@ -7,7 +7,7 @@ import { input } from "../lib/input";
 import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
 import { requireAuth, currentUser } from "../middleware/auth";
-import { aiDay, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, selectAIProvider, type AIMedia, type AITurn } from "../lib/ai-provider";
+import { aiDay, AI_AUDIO_MIME_TYPES, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, MAX_AI_TRANSCRIPTION_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, selectAIProvider, transcribeAI, transcriptionConfiguration, type AIMedia, type AITurn } from "../lib/ai-provider";
 import { isStudyGeneration, studentAIPolicy, studentAIUsage, studentExperienceReady } from "../lib/student-ai-policy";
 import { extractAIPdf } from "../lib/ai-document";
 import { runStudentAssistant, classDraftSchema, type AICard, type AIAction } from "../lib/student-ai-tools";
@@ -18,7 +18,7 @@ aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "quiz", "notes", "timetable"]);
 const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
-type Saved = { documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; version?: number; text?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
+type Saved = { documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
@@ -38,13 +38,25 @@ function replay(row: RequestRow, hash: string) {
 function providerFailure(error: AIProviderError) {
   return new AppError(error.status, error.status === 429 ? "RATE_LIMITED" : error.status === 400 || error.status === 422 ? "BAD_REQUEST" : "PROVIDER_UNAVAILABLE", error.message, { reason: error.reason, retryWithNewKey: true });
 }
+async function hashBytes(bytes: Uint8Array) {
+  const copy = new Uint8Array(bytes.byteLength); copy.set(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", copy.buffer);
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+function replayTranscription(row: RequestRow, hash: string) {
+  if (row.request_hash !== hash) throw new AppError(409, "CONFLICT", "This voice request reference belongs to a different recording.", { reason: "AI_VOICE_REQUEST_CONFLICT", retryWithNewKey: true });
+  if (row.status === "COMPLETED" && typeof row.result?.transcriptionText === "string") return { text: row.result.transcriptionText };
+  if (row.status === "FAILED") throw new AppError(503, "PROVIDER_UNAVAILABLE", row.result?.message ?? "That transcription did not finish. Your recording is kept; try again.", { reason: row.result?.reason ?? "AI_VOICE_FAILED", retryWithNewKey: true });
+  const stale = Date.now() - new Date(row.created_at).getTime() > 120000;
+  throw new AppError(409, "CONFLICT", stale ? "That transcription did not finish in time. Your recording is kept; try again." : "This recording is still being transcribed.", { reason: stale ? "AI_VOICE_STALE" : "AI_VOICE_PROCESSING", retryWithNewKey: stale });
+}
 aiRoutes.get("/status", async c => {
   const ready = await studentExperienceReady(c.env);
   const enabled = c.env.AI_ASSISTANT_ENABLED === "true" && ready;
   const quota = await studentAIPolicy(c.env, currentUser(c));
   const usage = c.env.UNIFIED_SCHEMA_READY === "true" ? await studentAIUsage(c.env, currentUser(c).id) : null;
   // Provider credentials, model IDs, internal limits and normal Ask counters never leave the Worker.
-  return c.json({ enabled, historyDays: AI_HISTORY_DAYS, maxFileBytes: MAX_AI_MEDIA_BYTES,
+  return c.json({ enabled, voiceEnabled: enabled && transcriptionConfiguration(c.env).configured, historyDays: AI_HISTORY_DAYS, maxFileBytes: MAX_AI_MEDIA_BYTES,
     capabilities: { text: enabled && providerConfiguration(c.env,"study").configured,
       images: enabled && providerConfiguration(c.env,"study","image/jpeg").configured,
       documents: enabled && providerConfiguration(c.env,"summary").configured },
@@ -52,6 +64,50 @@ aiRoutes.get("/status", async c => {
     study: { limit: quota.study, remaining: quota.unlimited || quota.pro ? null : Math.max(0,quota.study-Number(usage?.study_used ?? 0)) },
     subscription: { cadence: "monthly", checkoutEnabled: false, available: false },
   });
+});
+aiRoutes.post("/transcribe", async c => {
+  requireSchema(c.env);
+  const key = z.string().uuid().safeParse(c.req.query("idempotencyKey"));
+  if (!key.success || c.req.query("consent") !== "true") throw new AppError(400, "BAD_REQUEST", "Start a new voice recording and try again.");
+  if (!await studentExperienceReady(c.env)) throw new AppError(503, "PROVIDER_UNAVAILABLE", "Voice input is being updated. Your recording is kept.");
+  if (c.env.AI_ASSISTANT_ENABLED !== "true" || !transcriptionConfiguration(c.env).configured) throw new AppError(503, "PROVIDER_UNAVAILABLE", "Voice input is temporarily unavailable.");
+  const mime = ((c.req.header("Content-Type") ?? "").split(";")[0] ?? "").trim().toLowerCase();
+  if (!AI_AUDIO_MIME_TYPES.has(mime)) throw new AppError(400, "BAD_REQUEST", "Record a new voice message in a supported audio format.");
+  const declaredLength = Number(c.req.header("Content-Length") ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_AI_TRANSCRIPTION_BYTES) throw new AppError(413, "BAD_REQUEST", "Record a shorter voice message.");
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  if (!bytes.length || bytes.byteLength > MAX_AI_TRANSCRIPTION_BYTES) throw new AppError(413, "BAD_REQUEST", "Record a shorter voice message.");
+
+  const requestHash = await sha256(JSON.stringify(["voice-v1", mime, bytes.byteLength, await hashBytes(bytes)]));
+  const user = currentUser(c), db = database(c.env);
+  const findRequest = async () => firstRow(await db.execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid`));
+  const existing = await findRequest();
+  if (existing) return c.json(replayTranscription(existing, requestHash));
+
+  const claimed = firstRow(await db.execute<{ idempotency_key: string }>(sql`insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) values(${user.id}::uuid,${key.data}::uuid,${requestHash},'transcription','PROCESSING','{"version":1}'::jsonb) on conflict do nothing returning idempotency_key`));
+  if (!claimed) {
+    const raced = await findRequest();
+    if (!raced) throw new AppError(409, "CONFLICT", "Voice transcription could not be started. Your recording is kept.", { reason: "AI_VOICE_CLAIM", retryWithNewKey: true });
+    return c.json(replayTranscription(raced, requestHash));
+  }
+
+  const rate = firstRow(await db.execute<{ allowed: boolean }>(sql`select app_private.consume_request_rate_limit('AI_VOICE',${await sha256(user.id)},30,900,900) as allowed`));
+  if (!rate?.allowed) {
+    const reset = new Date(Date.now() + 900000).toISOString();
+    await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({version:1,reason:"AI_VOICE_LIMIT",message:"Too many voice recordings. Your recording is kept; try again shortly."})}::jsonb where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
+    c.header("Retry-After", "900");
+    throw new AppError(429, "RATE_LIMITED", "Too many voice recordings. Your recording is kept; try again shortly.", { reason: "AI_VOICE_LIMIT", resetsAt: reset, retryAfter: 900, retryWithNewKey: true });
+  }
+
+  try {
+    const text = await transcribeAI(c.env, bytes, mime);
+    await db.execute(sql`update app_private.ai_requests set status='COMPLETED',result=${JSON.stringify({version:1})}::jsonb || jsonb_build_object('transcriptionText',${text}) where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
+    return c.json({ text });
+  } catch (error) {
+    const failure = error instanceof AIProviderError ? error : new AIProviderError(503, "AI_PROVIDER_UNAVAILABLE", "Voice transcription could not connect. Your recording is kept; try again.");
+    await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({version:1})}::jsonb || jsonb_build_object('reason',${failure.reason},'message',${failure.message}) where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
+    throw providerFailure(failure);
+  }
 });
 aiRoutes.get("/history", async c => {
   requireSchema(c.env);
