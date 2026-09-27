@@ -37,10 +37,12 @@ export function providerConfiguration(env: AIEnvironment, mode: AIMode, mimeType
   const token = env.HF_TOKEN?.trim();
   const reasoningModel = mode === "study" ? env.HF_REASONING_MODEL?.trim() : undefined;
   const model = (image ? env.HF_VISION_MODEL : tier === "pro" ? env.HF_PRO_MODEL : reasoningModel || env.HF_CHAT_MODEL)?.trim();
+  const chatModel = env.HF_CHAT_MODEL?.trim();
+  const fallbackModel = !image && tier === "standard" && reasoningModel && chatModel && chatModel !== model ? chatModel : undefined;
   const missing: string[] = [];
   if (!token) missing.push("HF_TOKEN");
   if (!model) missing.push(image ? "HF_VISION_MODEL" : tier === "pro" ? "HF_PRO_MODEL" : "HF_CHAT_MODEL");
-  return { provider: "huggingface" as const, token, model, missing, configured: missing.length === 0 };
+  return { provider: "huggingface" as const, token, model, fallbackModel, missing, configured: missing.length === 0 };
 }
 export function assertAIConfiguration(env: AIEnvironment, mode: AIMode, mimeType?: string, requested?: AIProvider, tier: AITier = "standard") {
   if (env.AI_ASSISTANT_ENABLED !== "true") throw new AIProviderError(503, "AI_DISABLED", "AI is temporarily paused. Your draft is kept.");
@@ -78,10 +80,15 @@ export function aiMessages(input: AIInput): AIMessage[] {
 export async function completeAI(env: AIEnvironment, input: AIInput, messages: AIMessage[], tools?: AITool[], fetcher: typeof fetch = fetch): Promise<{ text: string; calls: AIToolCall[] }> {
   const config = assertAIConfiguration(env, input.mode, input.media?.mimeType, input.provider, input.tier);
   try {
-    const response = await fetcher("https://router.huggingface.co/v1/chat/completions", {
+    const requestModel = (model: string) => fetcher("https://router.huggingface.co/v1/chat/completions", {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.token!}` }, signal: AbortSignal.timeout(30000),
-      body: JSON.stringify({ model: config.model, messages, max_tokens: input.mode === "study" ? 4096 : 4096, temperature: 0.2, stream: false, ...(tools?.length ? { tools, tool_choice: "auto" } : {}) }),
+      body: JSON.stringify({ model, messages, max_tokens: 4096, temperature: 0.2, stream: false, ...(tools?.length ? { tools, tool_choice: "auto" } : {}) }),
     });
+    let response = await requestModel(config.model!);
+    if (!response.ok && config.fallbackModel && ![401,403].includes(response.status)) {
+      void response.body?.cancel().catch(() => undefined);
+      response = await requestModel(config.fallbackModel);
+    }
     if (!response.ok) {
       void response.body?.cancel().catch(() => undefined);
       if (response.status === 402 || response.status === 429) throw new AIProviderError(503, "AI_PROVIDER_LIMIT", "AI capacity is temporarily unavailable. Your draft is kept; try again later.");
