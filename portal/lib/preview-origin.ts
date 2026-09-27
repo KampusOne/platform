@@ -17,6 +17,7 @@ export function previewApiRequest(
   method: string,
   headers: Headers,
   env: PreviewEnvironment,
+  canonicalOrigin: typeof portalOrigin | "https://kampusone-mobile-preview.vercel.app" = portalOrigin,
 ): ProxyDecision {
   if (env.VERCEL_ENV !== "preview" || !pathname.startsWith("/api/"))
     return { kind: "unchanged" };
@@ -39,7 +40,7 @@ export function previewApiRequest(
   const forwarded = new Headers(headers);
   // Same-origin checks above replace the browser-side CSRF boundary for this
   // trusted reverse proxy. The Worker still authenticates sessions and roles.
-  forwarded.set("origin", portalOrigin);
+  forwarded.set("origin", canonicalOrigin);
   // Hosting/session protection cookies belong only to Vercel, not the Worker.
   const sessionCookies = (headers.get("cookie") ?? "").split(";")
     .map(cookie => cookie.trim())
