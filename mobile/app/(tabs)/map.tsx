@@ -21,6 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FilterRow, SearchField } from "@/src/components/product-ui";
 import { ApiError, api } from "@/src/lib/api";
+import { useAuth } from "@/src/auth/auth-context";
 import { theme } from "@/src/theme";
 
 const categories = [
@@ -53,6 +54,33 @@ type Place = {
   verified_at: string | null;
 };
 type MappedPlace = Place & { latitudeValue: number; longitudeValue: number };
+
+const UNIBEN_UGBOWO_FALLBACK: Place[] = [
+  ["5a3e978c-8d07-411c-bd0d-1b08313fe128","Student Affairs Division","SERVICE","Student Affairs Division, University of Benin Ugbowo Campus.","6.400023","5.609885"],
+  ["a64fc253-2c9e-407c-b852-b077e0390d5b","Faculty of Engineering","ACADEMIC","Faculty of Engineering, University of Benin Ugbowo Campus.","6.401790","5.615370"],
+  ["4abd5761-6388-46f0-b20d-e3aef1f4f1c2","Faculty of Physical Sciences","ACADEMIC","Faculty of Physical Sciences, University of Benin Ugbowo Campus.","6.400310","5.615350"],
+  ["f61bd3ec-dbdf-498d-aaab-c867c8c77522","Faculty of Life Sciences","ACADEMIC","Faculty of Life Sciences, University of Benin Ugbowo Campus.","6.398940","5.614870"],
+  ["c1a6b966-0cec-427d-8672-fe1df10ae369","Faculty of Education","ACADEMIC","Faculty of Education, University of Benin Ugbowo Campus.","6.400910","5.619670"],
+  ["e1ab63c1-5fbd-4a41-9a4d-f2c0b18d7fae","Faculty of Law","ACADEMIC","Faculty of Law, University of Benin Ugbowo Campus.","6.400530","5.622440"],
+  ["f66a29bf-08dc-43b6-be7a-d66c099613a5","JUPEB Foundation School","ACADEMIC","UNIBEN JUPEB Foundation School, Ugbowo Campus.","6.397003","5.617815"],
+  ["99189c22-3c1b-4d07-baf5-81a1544aa283","Clinical Hostel","HOSTEL","Clinical Hostel, University of Benin Ugbowo Campus.","6.394530","5.617190"],
+  ["8918a6f0-c56a-432f-b8d1-0d6aed349b57","NDDC Hostel","HOSTEL","NDDC Hostel, University of Benin Ugbowo Campus.","6.394710","5.617890"],
+  ["f9d9e845-ec23-4ef6-90da-aa84a651a5d6","Food Court (Buka)","FOOD","Campus food court (Buka), University of Benin Ugbowo Campus.","6.395260","5.619070"],
+  ["647a85ab-9396-45c4-b427-bebb7d3dcf3b","Hall 5 Hostel","HOSTEL","Hall 5 student hostel, University of Benin Ugbowo Campus.","6.397120","5.623920"],
+  ["68a12e6f-640c-4412-8cf6-63a5502d454c","Hall 6 Hostel","HOSTEL","Hall 6 student hostel, University of Benin Ugbowo Campus.","6.398220","5.626190"],
+  ["5931353c-3b42-4b13-a5f6-a48ff024c92d","Hall 7 Hostel","HOSTEL","Hall 7 student hostel, University of Benin Ugbowo Campus.","6.397970","5.625230"],
+].map(([id,name,category,description,latitude,longitude]) => ({
+  id,
+  name,
+  category,
+  description,
+  latitude,
+  longitude,
+  accessibility_notes: null,
+  image_url: null,
+  verified_at: "2026-09-27T00:00:00.000Z",
+}));
+
 type PixelPoint = { x: number; y: number };
 type CampusEdge = { a: string; b: string; distance: number };
 type CampusRoute = { distance: number; ids: string[] };
@@ -901,6 +929,7 @@ function PlaceRow({
 
 export default function MapScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
+  const { profile } = useAuth();
   const { width } = useWindowDimensions();
   const mapHeight = clamp(width * 1.08, MIN_MAP_HEIGHT, MAX_MAP_HEIGHT);
 
@@ -918,20 +947,31 @@ export default function MapScreen() {
   const [choosingOrigin, setChoosingOrigin] = useState(false);
 
   const load = useCallback(async () => {
+    const isUniben =
+      profile?.university_name?.trim().toLowerCase() === "university of benin";
     try {
       setError("");
       const response = await api<{ places: Place[] }>("/v1/student/campus/places");
-      setPlaces(response.places);
+      if (response.places.length || !isUniben) {
+        setPlaces(response.places);
+      } else {
+        setPlaces(UNIBEN_UGBOWO_FALLBACK);
+      }
     } catch (caught) {
-      setError(
-        caught instanceof ApiError
-          ? caught.message
-          : "Campus places could not be loaded.",
-      );
+      if (isUniben) {
+        setPlaces(UNIBEN_UGBOWO_FALLBACK);
+        setError("");
+      } else {
+        setError(
+          caught instanceof ApiError
+            ? caught.message
+            : "Campus places could not be loaded.",
+        );
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [profile?.university_name]);
 
   useFocusEffect(
     useCallback(() => {
