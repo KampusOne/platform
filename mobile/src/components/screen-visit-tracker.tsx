@@ -55,7 +55,12 @@ export function ScreenVisitTracker() {
     const visit = user.id + ":" + pathname;
     if (last.current === visit) return;
     last.current = visit;
-    recordActivity("screen_view", { screen: route });
+    // Analytics is lower priority than navigation and first-screen data.
+    const timer = setTimeout(
+      () => recordActivity("screen_view", { screen: route }),
+      1_200,
+    );
+    return () => clearTimeout(timer);
   }, [pathname, user?.id, state]);
   return null;
 }
