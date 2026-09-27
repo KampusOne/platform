@@ -15,6 +15,47 @@ import { ToolButton } from "./toolkit";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 
+const WAVEFORM = [8, 16, 24, 14, 28, 18, 10, 22, 30, 16, 12, 26, 20, 9, 18, 28, 14, 24, 11, 20, 30, 16, 9, 23];
+
+function formatAudioTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const whole = Math.floor(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+
+function Waveform({
+  progress,
+  activeColor,
+  inactiveColor,
+  compact = false,
+}: {
+  progress: number;
+  activeColor: string;
+  inactiveColor: string;
+  compact?: boolean;
+}) {
+  const activeBars = Math.round(Math.max(0, Math.min(1, progress)) * WAVEFORM.length);
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[stylesStatic.waveform, compact && stylesStatic.waveformCompact]}
+    >
+      {WAVEFORM.map((height, index) => (
+        <View
+          key={index}
+          style={{
+            width: 3,
+            height: compact ? Math.max(6, Math.round(height * 0.82)) : height,
+            borderRadius: 2,
+            backgroundColor: index < activeBars ? activeColor : inactiveColor,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
 export function MessageVoice({
   disabled,
   onReady,
@@ -29,7 +70,6 @@ export function MessageVoice({
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const state = useAudioRecorderState(recorder, 250);
   const [uri, setUri] = useState<string>();
-  const [recordedDuration, setRecordedDuration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const { theme, styles } = useThemeStyles(createStyles);
@@ -44,7 +84,6 @@ export function MessageVoice({
     const stop = async () => {
       if (recorder.isRecording) {
         await recorder.stop();
-        setRecordedDuration(state.durationMillis);
         setUri(recorder.uri ?? undefined);
       }
       await setAudioModeAsync({ allowsRecording: false });
@@ -62,7 +101,6 @@ export function MessageVoice({
   useEffect(() => {
     if (state.isRecording && state.durationMillis >= 120_000) {
       void recorder.stop().then(() => {
-        setRecordedDuration(state.durationMillis);
         setUri(recorder.uri ?? undefined);
         return setAudioModeAsync({ allowsRecording: false });
       }).catch(() => setError("Recording could not be saved."));
@@ -75,7 +113,6 @@ export function MessageVoice({
     try {
       if (state.isRecording) {
         await recorder.stop();
-        setRecordedDuration(state.durationMillis);
         setUri(recorder.uri ?? undefined);
         await setAudioModeAsync({ allowsRecording: false });
       } else {
@@ -84,7 +121,6 @@ export function MessageVoice({
         await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
         await recorder.prepareToRecordAsync();
         recorder.record();
-        setRecordedDuration(0);
         setUri(undefined);
       }
     } catch (caught) {
@@ -103,7 +139,6 @@ export function MessageVoice({
       // Discarding should still reset the local composer even if the native recorder already stopped.
     } finally {
       setUri(undefined);
-      setRecordedDuration(0);
       await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
     }
   }
@@ -122,7 +157,6 @@ export function MessageVoice({
       });
       await onReady(result.id, "Voice note");
       setUri(undefined);
-      setRecordedDuration(0);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Upload failed. Your recording is kept.");
     } finally {
@@ -135,11 +169,7 @@ export function MessageVoice({
       <View style={[styles.compactWrap, active && styles.compactWrapActive]}>
         {uri ? (
           <View style={styles.voiceDraft}>
-            <VoicePlayback uri={uri} compact />
-            <View style={styles.voiceDraftCopy}>
-              <Text numberOfLines={1} style={styles.voiceDraftText}>Voice note</Text>
-              <Text style={styles.voiceDraftMeta}>{Math.max(1, Math.round(recordedDuration / 1000))}s</Text>
-            </View>
+            <VoicePlayback uri={uri} compact stretch />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Discard voice note"
@@ -172,8 +202,8 @@ export function MessageVoice({
             </Pressable>
             <View style={styles.recordingStatus}>
               <View style={styles.recordingDot} />
-              <Text accessibilityLiveRegion="polite" style={styles.recordingTime}>{Math.floor(state.durationMillis / 1000)}s</Text>
-              <Text style={styles.recordingLabel}>Recording voice note</Text>
+              <Waveform compact progress={1} activeColor={theme.deepBrand} inactiveColor={theme.border} />
+              <Text accessibilityLiveRegion="polite" style={styles.recordingTime}>{formatAudioTime(state.durationMillis / 1000)}</Text>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -206,7 +236,7 @@ export function MessageVoice({
       <ToolButton
         secondary
         disabled={disabled || busy}
-        label={state.isRecording ? `Stop recording · ${Math.floor(state.durationMillis / 1000)}s` : "Record voice note"}
+        label={state.isRecording ? `Stop recording · ${formatAudioTime(state.durationMillis / 1000)}` : "Record voice note"}
         onPress={() => void record()}
       />
       {uri ? (
@@ -221,54 +251,142 @@ export function MessageVoice({
   );
 }
 
-export function VoicePlayback({ uri, compact = false }: { uri: string; compact?: boolean }) {
+export function VoicePlayback({
+  uri,
+  compact = false,
+  mine = false,
+  stretch = false,
+}: {
+  uri: string;
+  compact?: boolean;
+  mine?: boolean;
+  stretch?: boolean;
+}) {
   const player = useAudioPlayer(uri);
   const state = useAudioPlayerStatus(player);
   const { theme, styles } = useThemeStyles(createStyles);
+  const duration = Math.max(0, state.duration || 0);
+  const currentTime = Math.max(0, state.currentTime || 0);
+  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+
   const toggle = () => {
-    if (state.playing) player.pause();
-    else {
-      if (state.didJustFinish) void player.seekTo(0);
-      player.play();
+    if (state.playing) {
+      player.pause();
+      return;
     }
+    if (state.didJustFinish || (duration > 0 && currentTime >= duration - 0.05)) {
+      void player.seekTo(0);
+    }
+    player.play();
   };
+
   if (compact) {
+    const activeColor = mine ? "#FFFFFF" : theme.deepBrand;
+    const inactiveColor = mine ? "rgba(255,255,255,0.34)" : theme.border;
     return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={state.playing ? "Pause audio" : "Play audio"}
-        onPress={toggle}
-        style={({ pressed }) => [styles.smallIcon, styles.playIcon, pressed && styles.pressed]}
+      <View
+        accessibilityLabel={`Voice note ${formatAudioTime(duration)}`}
+        style={[
+          styles.compactPlayer,
+          mine && styles.compactPlayerMine,
+          stretch && styles.compactPlayerStretch,
+        ]}
       >
-        <Ionicons name={state.playing ? "pause" : "play"} size={17} color={theme.deepBrand} />
-      </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={state.playing ? "Pause voice note" : "Play voice note"}
+          onPress={toggle}
+          style={({ pressed }) => [styles.playerPlay, mine && styles.playerPlayMine, pressed && styles.pressed]}
+        >
+          <Ionicons
+            name={state.playing ? "pause" : "play"}
+            size={17}
+            color={mine ? theme.deepBrand : "#FFFFFF"}
+            style={!state.playing ? { marginLeft: 2 } : undefined}
+          />
+        </Pressable>
+        <View style={styles.playerWave}>
+          <Waveform compact progress={progress} activeColor={activeColor} inactiveColor={inactiveColor} />
+        </View>
+        <Text style={[styles.playerTime, mine && styles.playerTimeMine]}>
+          {state.playing || currentTime > 0 ? formatAudioTime(currentTime) : formatAudioTime(duration)}
+        </Text>
+      </View>
     );
   }
   return <ToolButton secondary label={state.playing ? "Pause audio" : "Play audio"} onPress={toggle} />;
 }
 
+const stylesStatic = StyleSheet.create({
+  waveform: {
+    flex: 1,
+    minWidth: 0,
+    height: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 1,
+  },
+  waveformCompact: { height: 26 },
+});
+
 const createStyles = (theme: Theme) => StyleSheet.create({
   compactWrap: { alignItems: "flex-end", justifyContent: "center" },
   compactWrapActive: { flex: 1, minWidth: 0, alignItems: "stretch" },
-  recordingWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
-  recordingBar: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 22, paddingHorizontal: 5, backgroundColor: theme.surfaceMuted },
+  recordingBar: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 24,
+    paddingHorizontal: 5,
+    backgroundColor: theme.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.border,
+  },
   recordingStatus: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 7 },
   recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.deepBrand },
-  recordingTime: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 12, minWidth: 25 },
-  recordingLabel: { flex: 1, color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12 },
+  recordingTime: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 11, minWidth: 32, textAlign: "right" },
   micButton: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
-  micButtonRecording: { backgroundColor: theme.deepBrand },
-  voiceDraft: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 22, paddingHorizontal: 5, backgroundColor: theme.surfaceMuted },
-  voiceDraftCopy: { flex: 1, minWidth: 0, gap: 1 },
-  voiceDraftText: { color: theme.text, fontFamily: theme.font.medium, fontSize: 12 },
-  voiceDraftMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10 },
+  voiceDraft: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 24,
+    paddingHorizontal: 5,
+    backgroundColor: theme.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.border,
+  },
   actionIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
   stopButton: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: theme.deepBrand },
   sendVoice: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: theme.deepBrand },
-  useVoice: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: theme.deepBrand },
-  smallIcon: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  playIcon: { backgroundColor: theme.surface },
-  compactError: { position: "absolute", right: 0, bottom: 44, width: 220, color: theme.error, fontFamily: theme.font.body, fontSize: 11, lineHeight: 16, backgroundColor: theme.surface, borderRadius: 10, padding: 8 },
+  compactPlayer: {
+    minWidth: 218,
+    minHeight: 48,
+    backgroundColor: theme.surfaceMuted,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 7,
+    borderRadius: 24,
+  },
+  compactPlayerMine: { backgroundColor: "rgba(255,255,255,0.08)" },
+  compactPlayerStretch: { flex: 1, minWidth: 0 },
+  playerPlay: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.deepBrand,
+  },
+  playerPlayMine: { backgroundColor: "#FFFFFF" },
+  playerWave: { flex: 1, minWidth: 92 },
+  playerTime: { minWidth: 31, color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 10, textAlign: "right" },
+  playerTimeMine: { color: "rgba(255,255,255,0.82)" },
+  compactError: { position: "absolute", right: 0, bottom: 50, width: 220, color: theme.error, fontFamily: theme.font.body, fontSize: 11, lineHeight: 16, backgroundColor: theme.surface, borderRadius: 10, padding: 8 },
   pressed: { opacity: 0.68 },
   disabled: { opacity: 0.45 },
 });

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
   FlatList,
@@ -75,7 +75,7 @@ function Attachment({ message, mine }: { message: Message; mine: boolean }) {
   const isVideo = message.media_type?.startsWith("video/");
 
   async function open() {
-    if (!message.media_id || busy) return;
+    if (!message.media_id || busy || (isAudio && url)) return;
     setBusy(true);
     setError("");
     try {
@@ -88,6 +88,10 @@ function Attachment({ message, mine }: { message: Message; mine: boolean }) {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (isAudio && message.media_id && !url && !busy) void open();
+  }, [isAudio, message.media_id, url, busy]);
 
   return (
     <View style={styles.attachmentWrap}>
@@ -105,7 +109,7 @@ function Attachment({ message, mine }: { message: Message; mine: boolean }) {
           />
         </Pressable>
       ) : url && isAudio ? (
-        <View style={[styles.audioPlayback, mine && styles.audioPlaybackMine]}><VoicePlayback uri={url} compact /></View>
+        <View style={styles.audioPlayback}><VoicePlayback uri={url} compact mine={mine} /></View>
       ) : (
         <Pressable
           accessibilityRole="button"
@@ -334,9 +338,10 @@ export default function ConversationScreen() {
               renderItem={({ item }) => {
                 const mine = item.sender_id === user?.id;
                 const showBody = item.body && !(item.body === "Attachment" && item.media_id);
+                const voiceOnly = Boolean(item.media_type?.startsWith("audio/") && !showBody);
                 return (
                   <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
-                    <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+                    <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther, voiceOnly && styles.bubbleVoice]}>
                       {showBody ? <Text selectable style={[styles.messageText, mine && styles.messageTextMine]}>{item.body}</Text> : null}
                       {item.media_id && item.media_type ? <Attachment message={item} mine={mine} /> : null}
                     </View>
@@ -458,10 +463,11 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   emptyIcon: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", backgroundColor: theme.surfaceMuted },
   emptyTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 17 },
   emptyBody: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13, lineHeight: 20, textAlign: "center" },
-  messageRow: { maxWidth: "82%", gap: 4 },
+  messageRow: { maxWidth: "86%", gap: 3 },
   messageRowMine: { alignSelf: "flex-end", alignItems: "flex-end" },
   messageRowOther: { alignSelf: "flex-start", alignItems: "flex-start" },
   bubble: { paddingHorizontal: 13, paddingVertical: 10, borderRadius: 18, minHeight: 38 },
+  bubbleVoice: { paddingHorizontal: 5, paddingVertical: 5, borderRadius: 26 },
   bubbleMine: { backgroundColor: theme.deepBrand, borderBottomRightRadius: 6 },
   bubbleOther: { backgroundColor: theme.surface, borderBottomLeftRadius: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
   messageText: { color: theme.text, fontFamily: theme.font.body, fontSize: 14, lineHeight: 20 },
@@ -477,8 +483,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   attachmentError: { color: theme.error, fontFamily: theme.font.body, fontSize: 10, lineHeight: 14 },
   attachmentErrorMine: { color: "#FFE5DC" },
   messageImage: { width: 230, height: 180, borderRadius: 12, backgroundColor: theme.surfaceMuted },
-  audioPlayback: { alignSelf: "flex-start", backgroundColor: theme.surfaceMuted, borderRadius: 18, padding: 4 },
-  audioPlaybackMine: { backgroundColor: "rgba(255,255,255,0.14)" },
+  audioPlayback: { alignSelf: "flex-start", borderRadius: 24, overflow: "hidden" },
   composerDock: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, backgroundColor: theme.canvas, gap: 7 },
   composerBar: { minHeight: 50, flexDirection: "row", alignItems: "flex-end", gap: 4 },
   plusButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: theme.surfaceMuted, marginBottom: 3 },
