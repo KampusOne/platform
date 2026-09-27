@@ -74,7 +74,7 @@ export default function Notifications() {
     }
   }
   return (
-    <ToolPage title="Notifications" action={<Pressable accessibilityRole="button" accessibilityLabel="Notification settings" onPress={()=>router.push('/notification-preferences')} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="options-outline" size={24} color={theme.text}/></Pressable>}>
+    <ToolPage title="Notifications" action={<Pressable accessibilityRole="button" accessibilityLabel="Notification settings" onPress={()=>router.push('/notification-preferences')} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="settings-outline" size={24} color={theme.text}/></Pressable>}>
       <ToolButton secondary label="Mark all as read" disabled={!items.some(item=>!item.read_at)} onPress={()=>{void api('/v1/notifications/read-all',{method:'POST'}).then(()=>{setItems(current=>current.map(item=>({...item,read_at:new Date().toISOString()})));updateNotificationCount(0);}).catch(()=>toast('Could not mark notifications as read','error'));}}/>
       {!ready ? (
         <ScreenSkeleton variant="list" compact />
@@ -109,11 +109,6 @@ export default function Notifications() {
         ))
       )}
       {nextCursor?<ToolButton secondary label={moreBusy?"Loading…":"Older notifications"} disabled={moreBusy} onPress={()=>void loadMore()}/>:null}
-      <ToolRow
-        title="Notification settings"
-        icon="settings-outline"
-        onPress={() => router.push("/notification-preferences")}
-      />
     </ToolPage>
   );
 }
