@@ -372,6 +372,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   compactPlayer: {
     minWidth: 218,
     minHeight: 48,
+    backgroundColor: theme.surfaceMuted,
     flexDirection: "row",
     alignItems: "center",
     gap: 9,
