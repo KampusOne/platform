@@ -1,4 +1,4 @@
-name: Live Worker hotfix 20260927
+name: Live Worker profile connections hotfix 20260927
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: hotfix/live-notifications-streak-messages-20260927
+          ref: hotfix/profile-connections-20260927
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -33,10 +33,10 @@ jobs:
       - name: Install dependencies for shared session tests
         run: npm ci
         working-directory: mobile
-      - name: Verify pinned hotfix Worker
+      - name: Verify pinned profile-connections Worker
         run: npm run check && npm test -- --maxWorkers=2 && npm run build
         working-directory: server
-      - name: Deploy pinned hotfix Worker
+      - name: Deploy pinned profile-connections Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -48,7 +48,7 @@ jobs:
           API_URL: https://platformp.divine-haze-54eb.workers.dev
         run: |
           curl --fail --silent --show-error --retry 2 --max-time 20 "$API_URL/health/ready"
-          for route in /v1/notifications/inbox /v1/account/streak /v1/messages/inbox; do
+          for route in /v1/notifications/inbox /v1/account/streak /v1/messages/inbox /v1/people/11111111-1111-4111-8111-111111111111/followers /v1/people/11111111-1111-4111-8111-111111111111/following; do
             status=$(curl --silent --show-error --retry 2 --max-time 20 -o /tmp/route.json -w '%{http_code}' "$API_URL$route")
             if [ "$status" != "401" ]; then
               echo "Expected $route to exist and require authentication (401); received $status."
