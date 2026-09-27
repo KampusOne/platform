@@ -2,7 +2,7 @@ name: Deploy Worker
 
 on:
   push:
-    branches: [main]
+    branches: [main, internal-calendar-timetable-hotfix-20260927]
     paths:
       - ".github/workflows/deploy-worker.yml"
       - "packages/contracts/**"
@@ -73,5 +73,10 @@ jobs:
           status=$(curl --silent --show-error --retry 2 --max-time 20 -o /tmp/kampusone-route-check.json -w '%{http_code}' "$API_URL/v1/account/guidelines")
           if [ "$status" != "401" ]; then
             echo "Expected the active route to require authentication (401); received $status."
+            exit 1
+          fi
+          calendar_status=$(curl --silent --show-error --retry 2 --max-time 20 -o /tmp/kampusone-calendar-check.json -w '%{http_code}' "$API_URL/v1/calendar")
+          if [ "$calendar_status" != "401" ]; then
+            echo "Expected the calendar route to require authentication (401); received $calendar_status."
             exit 1
           fi
