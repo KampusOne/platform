@@ -2,10 +2,14 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "expo-router";
 import { useAuth } from "@/src/auth/auth-context";
 import { recordActivity } from "@/src/lib/telemetry";
+import { isFeedRoutePath, setFeedRoutePlaybackActive } from "@/src/lib/feed-video-playback";
 export function ScreenVisitTracker() {
   const pathname = usePathname();
   const { user, state } = useAuth();
   const last = useRef("");
+  useEffect(() => {
+    setFeedRoutePlaybackActive(isFeedRoutePath(pathname));
+  }, [pathname]);
   useEffect(() => {
     if (!user || state !== "authenticated") {
       last.current = "";
