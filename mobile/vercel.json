@@ -35,5 +35,10 @@
         }
       ]
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "internal-calendar-timetable-hotfix-20260927": false
+    }
+  }
 }
