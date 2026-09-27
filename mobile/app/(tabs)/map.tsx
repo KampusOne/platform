@@ -55,7 +55,7 @@ type Place = {
 };
 type MappedPlace = Place & { latitudeValue: number; longitudeValue: number };
 
-const UNIBEN_UGBOWO_FALLBACK: Place[] = [
+const UNIBEN_UGBOWO_FALLBACK: Place[] = ([
   ["5a3e978c-8d07-411c-bd0d-1b08313fe128","Student Affairs Division","SERVICE","Student Affairs Division, University of Benin Ugbowo Campus.","6.400023","5.609885"],
   ["a64fc253-2c9e-407c-b852-b077e0390d5b","Faculty of Engineering","ACADEMIC","Faculty of Engineering, University of Benin Ugbowo Campus.","6.401790","5.615370"],
   ["4abd5761-6388-46f0-b20d-e3aef1f4f1c2","Faculty of Physical Sciences","ACADEMIC","Faculty of Physical Sciences, University of Benin Ugbowo Campus.","6.400310","5.615350"],
@@ -69,7 +69,8 @@ const UNIBEN_UGBOWO_FALLBACK: Place[] = [
   ["647a85ab-9396-45c4-b427-bebb7d3dcf3b","Hall 5 Hostel","HOSTEL","Hall 5 student hostel, University of Benin Ugbowo Campus.","6.397120","5.623920"],
   ["68a12e6f-640c-4412-8cf6-63a5502d454c","Hall 6 Hostel","HOSTEL","Hall 6 student hostel, University of Benin Ugbowo Campus.","6.398220","5.626190"],
   ["5931353c-3b42-4b13-a5f6-a48ff024c92d","Hall 7 Hostel","HOSTEL","Hall 7 student hostel, University of Benin Ugbowo Campus.","6.397970","5.625230"],
-].map(([id,name,category,description,latitude,longitude]) => ({
+] as Array<[string, string, string, string, string, string]>).map(
+  ([id,name,category,description,latitude,longitude]) => ({
   id,
   name,
   category,
@@ -79,7 +80,8 @@ const UNIBEN_UGBOWO_FALLBACK: Place[] = [
   accessibility_notes: null,
   image_url: null,
   verified_at: "2026-09-27T00:00:00.000Z",
-}));
+  }),
+);
 
 type PixelPoint = { x: number; y: number };
 type CampusEdge = { a: string; b: string; distance: number };
