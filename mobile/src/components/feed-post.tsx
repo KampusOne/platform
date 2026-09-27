@@ -42,6 +42,16 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
   const setVideoHandle = useCallback((handle: MediaPlaybackHandle | null) => {
     onVideoHandle?.(post.id, handle);
   }, [onVideoHandle, post.id]);
+  const openVideo = useCallback((state: { position: number; muted: boolean }) => {
+    router.push({
+      pathname: "/video",
+      params: {
+        id: post.id,
+        position: String(state.position),
+        muted: state.muted ? "1" : "0",
+      },
+    });
+  }, [post.id]);
   const openPost = () => { if (!detail) router.push({ pathname: "/post", params: { id: post.id } }); };
   const openReply = () => { if (onComment) onComment(); else setReplyOpen(true); };
   const copy = text.title || text.paragraphs.length ? <PostText key={post.id} {...text} detail={detail} style={[styles.postText, detail && styles.detailText]} titleStyle={[styles.postTitle, detail && styles.detailText]} onError={onFeedback} /> : null;
@@ -64,7 +74,7 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
         <Pressable accessibilityRole={detail ? undefined : "button"} accessibilityLabel={`Open conversation by ${post.source_name}`} onPress={openPost} style={[styles.postBody, detail && styles.detailBody]}>
           {structured ? <View style={styles.structuredPanel}><Text style={styles.structuredEyebrow}>{category === "EVENT" ? "CAMPUS EVENT" : "CAMPUS OPPORTUNITY"}</Text>{copy}</View> : copy}
           {post.urgent ? <Text style={styles.urgent}>Urgent campus update</Text> : null}
-          {post.image_url ? (post.media_type === "video" || post.media_type?.startsWith("video/")) ? <MediaPreview url={post.image_url} video label="Post video" initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} watermark={post.source_name} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} /> : <PostImage initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} uri={post.image_url} /> : null}
+          {post.image_url ? (post.media_type === "video" || post.media_type?.startsWith("video/")) ? <MediaPreview url={post.image_url} video label="Post video" initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} watermark={post.source_name} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} /> : <PostImage initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} uri={post.image_url} /> : null}
           {post.quoted_post_id ? <QuotedPostPreview post={post.quoted_post ?? null} /> : null}
           {post.correction_note ? <View accessibilityRole="alert" style={styles.correction}><Ionicons color={theme.statusAttention} name="information-circle-outline" size={17} /><Text style={styles.correctionText}>Correction: {post.correction_note}</Text></View> : null}
         </Pressable>
