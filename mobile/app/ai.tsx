@@ -95,9 +95,10 @@ export default function StudentAI() {
   function newConversation(){if(lock.current)return;setTurns([]);setReplyTo(undefined);setPrompt("");setAttachment(undefined);setError("");key.current=randomUUID();}
   async function attach(){if(lock.current)return;const version=generation.current;try{const file=await pickAttachment();if(file && valid()&&version===generation.current){setAttachment(file);setError("");key.current=randomUUID();}}catch(e){if(valid()&&version===generation.current)setError(e instanceof Error?e.message:"This file could not be attached.");}}
   async function openFile(file:StagedAttachment){const version=generation.current;try{let uri=file.uri;if(!uri&&file.mediaId)uri=(await api<{url:string}>(`/v1/media/${file.mediaId}/access`,{method:"POST"})).url;if(!uri)throw new Error("Reattach this file to preview it.");if(!valid()||version!==generation.current)return;if(file.type.startsWith('image/'))setPreview({uri,name:file.name});else await Linking.openURL(uri);}catch(e){if(valid()&&version===generation.current)toast(e instanceof Error?e.message:"Could not open this file.","error");}}
-  async function send(){
-    if(lock.current||!loaded||(!prompt.trim()&&!attachment))return;
-    const version=generation.current;const question=prompt.trim();let file=attachment;
+  async function send(promptOverride?:string){
+    const outgoing=(promptOverride??prompt).trim();
+    if(lock.current||!loaded||(!outgoing&&!attachment))return;
+    const version=generation.current;const question=outgoing;let file=attachment;
     lock.current=true;setBusy(true);setError("");setLimit(undefined);
     try{
       if(file){setUploading(true);file=await uploadAttachment(file);if(!valid()||version!==generation.current)return;setAttachment(file);setUploading(false);}
@@ -182,7 +183,7 @@ export default function StudentAI() {
         {attachment?<AttachmentPreview file={attachment} uploading={uploading} onRemove={()=>{setAttachment(undefined);key.current=randomUUID();}} onOpen={()=>void openFile(attachment)}/>:null}
         <View style={{borderWidth:1,borderColor:theme.border,borderRadius:22,backgroundColor:theme.surface,paddingHorizontal:9,paddingTop:voiceActive?5:12,paddingBottom:5}}>
           {!voiceActive?<TextInput accessibilityLabel="Message Kira" value={prompt} onChangeText={changePrompt} editable={loaded&&!busy} placeholder={workspace==='ask'?'Ask Kira…':'Add instructions or paste your material…'} placeholderTextColor={theme.textMuted} multiline maxLength={20000} textAlignVertical="top" style={[{color:theme.text,fontFamily:theme.font.body,fontSize:16,lineHeight:23,minHeight:43,maxHeight:150,paddingHorizontal:7,paddingBottom:8},webInputStyle]}/>:null}
-          <KiraVoiceInput key={`${user?.id}.${workspace}`} disabled={busy||!loaded} enabled={status?.voiceEnabled===true} sendBusy={busy} sendDisabled={busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment)} onAttach={()=>void attach()} onInfo={()=>setSheet('info')} onSend={()=>void send()} onActiveChange={setVoiceActive} onTranscript={value=>changePrompt((prompt?prompt+"\n":"")+value)}/>
+          <KiraVoiceInput key={`${user?.id}.${workspace}`} disabled={busy||!loaded} enabled={status?.voiceEnabled===true} sendBusy={busy} sendDisabled={busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment)} onAttach={()=>void attach()} onInfo={()=>setSheet('info')} onSend={()=>void send()} onActiveChange={setVoiceActive} onTranscript={value=>changePrompt((prompt?prompt+"\n":"")+value)} onSendTranscript={async value=>{const voicePrompt=(prompt.trim()?prompt.trim()+"\n":"")+value;await send(voicePrompt);}}/>
         </View>
         <Text style={{...muted,fontSize:10,textAlign:'center',marginTop:7}}>Kira can make mistakes. Check important details.</Text>
       </View>
