@@ -3,13 +3,14 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   FlatList,
   Image,
   Linking,
   type LayoutChangeEvent,
+  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
@@ -141,6 +142,20 @@ function worldPixel(
   const normalized = normalizedMercator(latitude, longitude);
   const worldSize = TILE_SIZE * 2 ** zoom;
   return { x: normalized.x * worldSize, y: normalized.y * worldSize };
+}
+
+function shiftedMapView(view: MapView, offset: PixelPoint): MapView {
+  const worldSize = TILE_SIZE * 2 ** view.zoom;
+  const center = worldPixel(view.latitude, view.longitude, view.zoom);
+  const shiftedX =
+    ((center.x - offset.x) % worldSize + worldSize) % worldSize;
+  const shiftedY = clamp(center.y - offset.y, 0, worldSize);
+
+  return {
+    latitude: latitudeFromMercatorY(shiftedY / worldSize),
+    longitude: (shiftedX / worldSize) * 360 - 180,
+    zoom: view.zoom,
+  };
 }
 
 function fitMapView(
@@ -320,7 +335,11 @@ function OpenStreetMap({
     () => fitMapView(viewportPlaces, width, height),
     [height, viewportPlaces, width],
   );
-  const view = useMemo(
+  const [panOffset, setPanOffset] = useState<PixelPoint>({ x: 0, y: 0 });
+  const panOffsetRef = useRef<PixelPoint>(panOffset);
+  const dragStartRef = useRef<PixelPoint>({ x: 0, y: 0 });
+  const canPanRef = useRef(false);
+  const baseView = useMemo(
     () =>
       fittedView
         ? {
@@ -330,6 +349,43 @@ function OpenStreetMap({
         : null,
     [fittedView, zoomAdjustment],
   );
+  const view = useMemo(
+    () => (baseView ? shiftedMapView(baseView, panOffset) : null),
+    [baseView, panOffset],
+  );
+
+  useEffect(() => {
+    const centered = { x: 0, y: 0 };
+    panOffsetRef.current = centered;
+    setPanOffset(centered);
+  }, [baseView?.latitude, baseView?.longitude, baseView?.zoom]);
+
+  useEffect(() => {
+    panOffsetRef.current = panOffset;
+  }, [panOffset]);
+
+  canPanRef.current = view !== null;
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          canPanRef.current &&
+          (Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4),
+        onPanResponderGrant: () => {
+          dragStartRef.current = panOffsetRef.current;
+        },
+        onPanResponderMove: (_event, gesture) => {
+          setPanOffset({
+            x: dragStartRef.current.x + gesture.dx,
+            y: dragStartRef.current.y + gesture.dy,
+          });
+        },
+        onPanResponderTerminationRequest: () => true,
+      }),
+    [],
+  );
+
   const tiles = useMemo(
     () => (view ? visibleTiles(view, width, height) : []),
     [height, view, width],
@@ -377,7 +433,11 @@ function OpenStreetMap({
 
   return (
     <View style={styles.mapFrame}>
-      <View onLayout={onLayout} style={[styles.mapViewport, { height }]}>
+      <View
+        {...panResponder.panHandlers}
+        onLayout={onLayout}
+        style={[styles.mapViewport, { height }]}
+      >
         {tiles.map((tile) => (
           <RasterTile key={tile.key} onSettled={settleTile} tile={tile} />
         ))}
@@ -531,7 +591,12 @@ function OpenStreetMap({
             accessibilityRole="button"
             accessibilityState={{ disabled: !view }}
             disabled={!view}
-            onPress={onRecenter}
+            onPress={() => {
+              const centered = { x: 0, y: 0 };
+              panOffsetRef.current = centered;
+              setPanOffset(centered);
+              onRecenter();
+            }}
             style={({ pressed }) => [
               styles.zoomButton,
               !view && styles.controlDisabled,
@@ -614,8 +679,8 @@ function OpenStreetMap({
             size={16}
           />
           <Text style={styles.mapCaptionText}>
-            This map shows only places with reviewed coordinates. It does not
-            provide live navigation.
+            Drag to explore, use +/− to zoom, and tap a pin for directions.
+            Live turn-by-turn navigation opens in Google Maps.
           </Text>
         </View>
       )}
