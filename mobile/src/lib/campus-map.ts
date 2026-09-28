@@ -25,6 +25,12 @@ export type CampusDirectory = {
   map_style?: string;
   status?: string;
   boundary?: LngLat[] | null;
+  navigation_bounds?: {
+    north: string;
+    south: string;
+    east: string;
+    west: string;
+  } | null;
 };
 
 export type CampusDirectoryResponse = {
@@ -124,6 +130,23 @@ export function isInsideCampus(
   const point: LngLat = [location.longitude, location.latitude];
   const boundary = campus?.boundary ?? [];
   if (boundary.length >= 3) return pointInPolygon(point, boundary);
+
+  const bounds = campus?.navigation_bounds;
+  if (bounds) {
+    const north = Number(bounds.north);
+    const south = Number(bounds.south);
+    const east = Number(bounds.east);
+    const west = Number(bounds.west);
+    if ([north, south, east, west].every(Number.isFinite)) {
+      return (
+        location.latitude >= south &&
+        location.latitude <= north &&
+        location.longitude >= west &&
+        location.longitude <= east
+      );
+    }
+  }
+
   return distanceMetres(point, campusCenter(campus)) <= 1_900;
 }
 
