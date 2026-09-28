@@ -2,9 +2,10 @@ import { ImageViewer } from "@/src/components/image-viewer";
 import { hasPublicBadge } from "@/src/lib/public-badges";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "@/src/lib/haptics";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
   Platform,
@@ -149,6 +150,7 @@ export default function ProfileScreen() {
   const loadVersion = useRef(0);
   const [academics, setAcademics] = useState<Academic | null>(null);
   const [purchases, setPurchases] = useState<Purchases | null>(null);
+  const [dismissedActivityIds, setDismissedActivityIds] = useState<string[]>([]);
   const [bookmarks, setBookmarks] = useState<FeedPost[]>([]);
   const [reposts, setReposts] = useState<SocialFeedPost[]>([]);
   const [repostCursor, setRepostCursor] = useState<string | null>(null);
@@ -277,6 +279,27 @@ export default function ProfileScreen() {
     }, [activeTab, loadReposts]),
   );
 
+  useEffect(() => {
+    let active = true;
+    if (!user?.id) {
+      setDismissedActivityIds([]);
+      return () => { active = false; };
+    }
+    const storageKey = `kampusone.profile.activity-hidden.v1:${user.id}`;
+    void AsyncStorage.getItem(storageKey)
+      .then((value) => {
+        if (!active) return;
+        const parsed = value ? JSON.parse(value) : [];
+        setDismissedActivityIds(
+          Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [],
+        );
+      })
+      .catch(() => {
+        if (active) setDismissedActivityIds([]);
+      });
+    return () => { active = false; };
+  }, [user?.id]);
+
   const name =
     profile?.display_name ?? sessionProfile?.display_name ?? "Student";
   const initials = name
@@ -311,41 +334,27 @@ export default function ProfileScreen() {
         date: order.created_at,
       })),
     ];
-    return rows.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
-  }, [purchases]);
+    return rows
+      .filter((activity) => !dismissedActivityIds.includes(activity.id))
+      .sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      );
+  }, [dismissedActivityIds, purchases]);
 
   async function removeActivity(activity: ActivityItem) {
-    const previous = purchases;
-    setPurchases((current) => {
-      if (!current) return current;
-      return activity.kind === "booking"
-        ? {
-            ...current,
-            tutorialBookings: current.tutorialBookings.filter(
-              (booking) => booking.id !== activity.resourceId,
-            ),
-          }
-        : {
-            ...current,
-            orders: current.orders.filter(
-              (order) => order.id !== activity.resourceId,
-            ),
-          };
-    });
+    if (!user?.id) return;
+    const previous = dismissedActivityIds;
+    const next = Array.from(new Set([...dismissedActivityIds, activity.id]));
+    setDismissedActivityIds(next);
     try {
-      await api(
-        `/v1/student/purchases/activity/${activity.kind}/${activity.resourceId}`,
-        { method: "DELETE" },
+      await AsyncStorage.setItem(
+        `kampusone.profile.activity-hidden.v1:${user.id}`,
+        JSON.stringify(next),
       );
       toast("Activity removed", "success");
-    } catch (caught) {
-      setPurchases(previous);
-      toast(
-        caught instanceof Error ? caught.message : "Activity could not be removed.",
-        "error",
-      );
+    } catch {
+      setDismissedActivityIds(previous);
+      toast("Activity could not be removed.", "error");
     }
   }
 
