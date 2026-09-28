@@ -1,8 +1,8 @@
 {
   "generated_at": "2026-09-28",
   "source_snapshot": "reality-farouqk/nigeria-tertiary-institutions-api:data/nigerian_universities_faculties.csv",
-  "catalogue_rows_parsed_by_generator": 326,
-  "safe_source_matches": 308,
+  "catalogue_rows": 328,
+  "safe_source_matches": 310,
   "official_overrides": [
     "University of Benin"
   ],
@@ -135,6 +135,7 @@
     "Plateau State University, Bokkos",
     "Yobe State University, Damaturu",
     "Kebbi State University of Science and Technology, Aliero",
+    "Umar Musa Yar' Adua University, Katsina",
     "Olusegun Agagu University of Science and Technology, Okitipupa, Ondo",
     "Taraba State University, Jalingo",
     "Kwara State University, Ilorin",
@@ -174,6 +175,7 @@
     "Crescent University",
     "Kwararafa University, Wukari",
     "Lead City University, Ibadan",
+    "Redeemer's University, Ede",
     "Renaissance University, Enugu",
     "University of Mkar, Mkar",
     "Achievers University, Owo",
@@ -412,7 +414,7 @@
     }
   ],
   "notes": [
-    "The catalogue migration asserts 328 rows; this generator only parses F/S/P-prefixed tuples, so its parsed-row count is not the canonical catalogue count.",
+    "All 328 onboarding catalogue tuples are parsed, including SQL-escaped apostrophes.",
     "No low-confidence fuzzy match is auto-imported.",
     "An empty department list never authorizes inferred departments.",
     "UNIBEN is excluded from the researched baseline and overridden with first-party 2026 data."
