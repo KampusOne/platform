@@ -7,6 +7,7 @@ import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
+import { notifyProfilePostPublished } from "../services/profile-post-notifications";
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>;
 type PublishingPost = { id: string; format: "POLL" | "QA" | "ANONYMOUS_QA"; body: string; closes_at: string | null; author_user_id: string; published_at: string };
@@ -52,6 +53,7 @@ publishingRoutes.post("/publishing/posts", async c => {
   const hash = await sha256(JSON.stringify([school(c), data.format, data.body, data.options ?? null, closeTime]));
   const saved = firstRow(await database(c.env).execute<{ outcome: string; id: string }>(sql`select * from app_private.create_publishing_post(${currentUser(c).id}::uuid,${school(c)}::uuid,${data.requestId}::uuid,${hash},${data.format},${data.body},${data.options ? JSON.stringify(data.options) : null}::jsonb,${closeTime}::timestamptz)`));
   failOutcome(saved?.outcome);
+  if (saved!.outcome === "CREATED") await notifyProfilePostPublished(c.env, saved!.id);
   return c.json({ id: saved!.id }, saved!.outcome === "CREATED" ? 201 : 200);
 });
 publishingRoutes.get("/publishing/posts/:id", async c => {
