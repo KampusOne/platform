@@ -600,7 +600,7 @@ studentRoutes.get("/campus/places", async (context) => {
           longitude: String(storedCampus.longitude),
           map_style: storedCampus.map_style ?? "KAMPUSONE",
           status: storedCampus.status,
-          boundary: starter?.campus.boundary ?? null,
+          navigation_bounds: starter?.campus.navigation_bounds ?? null,
         }
       : starter?.campus ?? null;
 
@@ -659,10 +659,37 @@ studentRoutes.post("/campus/route", async (context) => {
 
   const user = currentUser(context);
   const universityId = requireUniversity(user);
+  const db = database(context.env);
+  const university = firstRow(
+    await db.execute<{ name: string }>(sql`
+      select name
+      from public.universities
+      where id = ${universityId}::uuid and deleted_at is null
+      limit 1
+    `),
+  );
+  const starter = campusDirectoryDefaultForUniversity(university?.name);
+  const bounds = starter?.campus.navigation_bounds;
+
+  if (!bounds) {
+    throw new AppError(
+      503,
+      "CAMPUS_GEOFENCE_UNAVAILABLE",
+      "Live walking directions are not configured for this campus yet.",
+    );
+  }
+
+  if (!insideNavigationBounds(data.origin, bounds)) {
+    throw new AppError(
+      400,
+      "OFF_CAMPUS",
+      "Live walking directions start when you are inside the campus boundary.",
+    );
+  }
 
   if (data.destination.placeId) {
     const storedDestination = firstRow(
-      await database(context.env).execute<{
+      await db.execute<{
         latitude: string | null;
         longitude: string | null;
       }>(sql`
@@ -680,157 +707,58 @@ studentRoutes.post("/campus/route", async (context) => {
     }
   }
 
-  const toRadians = (value: number) => (value * Math.PI) / 180;
-  const earthRadius = 6_371_000;
-  const latA = toRadians(data.origin.latitude);
-  const latB = toRadians(data.destination.latitude);
-  const latDelta = toRadians(data.destination.latitude - data.origin.latitude);
-  const lonDelta = toRadians(data.destination.longitude - data.origin.longitude);
-  const haversine =
-    Math.sin(latDelta / 2) ** 2 +
-    Math.cos(latA) * Math.cos(latB) * Math.sin(lonDelta / 2) ** 2;
-  const straightLineDistance =
-    2 * earthRadius * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-
-  if (straightLineDistance > 8_000) {
+  if (!insideNavigationBounds(data.destination, bounds)) {
     throw new AppError(
       400,
       "OUTSIDE_CAMPUS_ROUTE",
-      "Choose a destination on your campus.",
+      "Choose a destination inside your campus.",
     );
   }
 
-  const routingBase = (
-    context.env.CAMPUS_ROUTING_BASE_URL ??
-    "https://routing.openstreetmap.de/routed-foot/route/v1/driving"
-  ).replace(/\/$/, "");
-  const coordinates =
-    `${data.origin.longitude},${data.origin.latitude};` +
-    `${data.destination.longitude},${data.destination.latitude}`;
-  const url =
-    `${routingBase}/${coordinates}` +
-    "?overview=full&steps=true&geometries=geojson";
+  consumeCampusRouteQuota(user.id);
 
-  const routingController = new AbortController();
-  const routingTimeout = setTimeout(() => routingController.abort(), 8_000);
-  let response: Response;
   try {
-    response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "X-Client-Id": "kampusone.app",
-      },
-      signal: routingController.signal,
+    const route = await fetchCampusWalkingRoute({
+      baseUrl: context.env.CAMPUS_ROUTING_BASE_URL,
+      from: data.origin,
+      to: data.destination,
+      timeoutMs: 8_000,
     });
-  } catch {
-    throw new AppError(
-      503,
-      "ROUTING_UNAVAILABLE",
-      "Walking directions could not be calculated right now.",
-    );
-  } finally {
-    clearTimeout(routingTimeout);
+
+    const stepInstruction = (step: (typeof route.steps)[number]) => {
+      const type = step.maneuver.type.replace(/_/g, " ");
+      const modifier = step.maneuver.modifier?.replace(/_/g, " ");
+      const name = step.name.trim();
+      if (type === "depart") return name ? `Start on ${name}` : "Start walking";
+      if (type === "arrive") return "You’ve arrived";
+      const movement = modifier ? `${modifier} ${type}` : type;
+      return name ? `${movement} onto ${name}` : movement;
+    };
+
+    return context.json({
+      distanceMeters: route.distance,
+      durationSeconds: route.duration,
+      geometry: route.geometry.coordinates,
+      steps: route.steps.map((step) => ({
+        instruction: stepInstruction(step),
+        distanceMeters: step.distance,
+        durationSeconds: step.duration,
+        name: step.name || null,
+        maneuverType: step.maneuver.type,
+        maneuverModifier: step.maneuver.modifier,
+        location: null,
+      })),
+    });
+  } catch (caught) {
+    if (caught instanceof CampusRoutingProviderError) {
+      throw new AppError(
+        503,
+        "ROUTING_UNAVAILABLE",
+        "Walking directions could not be calculated right now.",
+      );
+    }
+    throw caught;
   }
-
-  if (response.status === 429) {
-    throw new AppError(
-      503,
-      "ROUTING_BUSY",
-      "Campus directions are busy. Try again in a moment.",
-    );
-  }
-  if (!response.ok) {
-    throw new AppError(
-      503,
-      "ROUTING_UNAVAILABLE",
-      "Walking directions could not be calculated right now.",
-    );
-  }
-
-  const payload = (await response.json()) as {
-    code?: string;
-    routes?: Array<{
-      distance?: number;
-      duration?: number;
-      geometry?: { type?: string; coordinates?: unknown };
-      legs?: Array<{
-        steps?: Array<{
-          name?: string;
-          distance?: number;
-          duration?: number;
-          maneuver?: {
-            type?: string;
-            modifier?: string;
-            location?: [number, number];
-          };
-        }>;
-      }>;
-    }>;
-  };
-
-  const route = payload.routes?.[0];
-  const rawCoordinates = route?.geometry?.coordinates;
-  if (
-    payload.code !== "Ok" ||
-    !route ||
-    !Array.isArray(rawCoordinates) ||
-    rawCoordinates.length < 2
-  ) {
-    throw new AppError(
-      422,
-      "ROUTE_NOT_FOUND",
-      "No walkable campus route was found for those points.",
-    );
-  }
-
-  const geometry = rawCoordinates
-    .filter(
-      (value): value is [number, number] =>
-        Array.isArray(value) &&
-        value.length >= 2 &&
-        typeof value[0] === "number" &&
-        typeof value[1] === "number",
-    )
-    .map(([longitude, latitude]) => [longitude, latitude] as [number, number]);
-
-  const stepInstruction = (step: {
-    name?: string;
-    maneuver?: { type?: string; modifier?: string };
-  }) => {
-    const type = step.maneuver?.type?.replace(/_/g, " ") ?? "continue";
-    const modifier = step.maneuver?.modifier?.replace(/_/g, " ");
-    const name = step.name?.trim();
-    if (type === "depart") return name ? `Start on ${name}` : "Start walking";
-    if (type === "arrive") return "You’ve arrived";
-    const movement = modifier ? `${modifier} ${type}` : type;
-    return name ? `${movement} onto ${name}` : movement;
-  };
-
-  const steps = (route.legs ?? [])
-    .flatMap((leg) => leg.steps ?? [])
-    .map((step) => ({
-      instruction: stepInstruction(step),
-      distanceMeters: Number(step.distance ?? 0),
-      durationSeconds: Number(step.duration ?? 0),
-      name: step.name?.trim() || null,
-      maneuverType: step.maneuver?.type ?? null,
-      maneuverModifier: step.maneuver?.modifier ?? null,
-      location:
-        Array.isArray(step.maneuver?.location) &&
-        step.maneuver!.location!.length >= 2
-          ? ([
-              step.maneuver!.location![0],
-              step.maneuver!.location![1],
-            ] as [number, number])
-          : null,
-    }));
-
-  return context.json({
-    distanceMeters: Number(route.distance ?? 0),
-    durationSeconds: Number(route.duration ?? 0),
-    geometry,
-    steps,
-  });
 });
 
 studentRoutes.get("/timetable", async (context) => {
