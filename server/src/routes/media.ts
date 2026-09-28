@@ -164,9 +164,11 @@ mediaRoutes.post("/", requireAuth, async (c) => {
     );
 
   if (kind === "notification-sound") {
-    await resolveAdminScope(c.env, user, user.universityId ?? undefined, "notifications.manage");
+    // The same verified MP3/WAV media type is used by the admin catalogue and
+    // by a student's private alarm choices. Publishing a sound to the campus
+    // catalogue still requires notifications.manage in the notifications route.
     if (bytes.byteLength > 2 * 1024 * 1024)
-      throw new AppError(400, "BAD_REQUEST", "Use a notification sound smaller than 2 MB.");
+      throw new AppError(400, "BAD_REQUEST", "Use an alarm sound smaller than 2 MB.");
   }
 
   let mime = detectedMime(new Uint8Array(bytes));
