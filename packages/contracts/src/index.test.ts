@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   apiErrorSchema,
+  directMessageInputSchema,
+  directMessageReactionSchema,
+  directMessageReportReasonSchema,
   emailCodeRequestSchema,
   emailCodeVerifySchema,
   paymentInitializationSchema,
@@ -189,4 +192,22 @@ describe("shared API contracts", () => {
       note: "",
     })).toThrow();
   });
+
+  it("validates direct-message replies, reactions, and reports", () => {
+    const reply = directMessageInputSchema.parse({
+      id: "00000000-0000-4000-8000-000000000011",
+      body: "I’m good",
+      replyToMessageId: "00000000-0000-4000-8000-000000000012",
+    });
+    expect(reply.replyToMessageId).toBe("00000000-0000-4000-8000-000000000012");
+    expect(directMessageReactionSchema.parse("❤️")).toBe("❤️");
+    expect(directMessageReportReasonSchema.parse("SCAM")).toBe("SCAM");
+    expect(() => directMessageReactionSchema.parse("💩")).toThrow();
+    expect(() => directMessageReportReasonSchema.parse("DELETE")).toThrow();
+    expect(() => directMessageInputSchema.parse({
+      id: "00000000-0000-4000-8000-000000000013",
+      replyToMessageId: "00000000-0000-4000-8000-000000000012",
+    })).toThrow();
+  });
+
 });
