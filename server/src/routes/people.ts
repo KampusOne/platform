@@ -7,7 +7,12 @@ import { input, id } from "../lib/input";
 import { AppError } from "../lib/errors";
 import { sha256 } from "../lib/security";
 import { studentExperienceReady } from "../lib/student-ai-policy";
-import { requireProfileSafety, requireUnblocked } from "../lib/profile-safety";
+import {
+  blockRelationship,
+  requireProfileSafety,
+  requireUnblocked,
+  unblockedAuthorIfReady,
+} from "../lib/profile-safety";
 import { visiblePost } from "../lib/feed-social";
 import type { Bindings, Variables, AuthenticatedUser } from "../types";
 export const peopleRoutes = new Hono<{Bindings:Bindings;Variables:Variables}>();
@@ -53,7 +58,13 @@ peopleRoutes.get("/products/:id",async c=>{
 });
 peopleRoutes.get("/:id",async c=>{
   const target=id(c.req.param("id")),u=currentUser(c),db=database(c.env);
-  await requireUnblocked(c.env,u.id,target);
+  const relationship=await blockRelationship(c.env,u.id,target);
+  if(relationship==="BLOCKED_BY_TARGET") {
+    throw new AppError(403,"BLOCKED_BY_USER","You have been blocked by this person.",{relationship});
+  }
+  if(relationship==="BLOCKED_BY_VIEWER") {
+    throw new AppError(404,"NOT_FOUND","This student profile is not available.",{relationship});
+  }
   const profile=firstRow(await db.execute(sql`select p.user_id,p.display_name,p.username,p.biography,p.profile_image_url,p.cover_image_url,p.current_level,
       uni.name as university_name,d.name as department_name,
       case when p.settings->>'hideCgpa' = 'false' then
@@ -90,7 +101,9 @@ function connectionProjection(viewer:AuthenticatedUser){
 peopleRoutes.get("/:id/followers",async c=>{
   const target=id(c.req.param("id")),viewer=currentUser(c),db=database(c.env);
   const cursorValue=c.req.query("cursor"),cursor=cursorValue?id(cursorValue):null;
+  await requireUnblocked(c.env,viewer.id,target);
   await ensureConnectionTarget(db,target);
+  const connectionVisible=await unblockedAuthorIfReady(c.env,viewer.id,sql`p.user_id`);
   const result=await db.execute(sql`
     select ${connectionProjection(viewer)}
     from public.profile_follows f
@@ -99,6 +112,7 @@ peopleRoutes.get("/:id/followers",async c=>{
     left join public.universities uni on uni.id=p.university_id
     left join public.departments d on d.id=p.department_id
     where f.followed_id=${target}::uuid
+      and ${connectionVisible}
       and (${cursor}::uuid is null or p.user_id>${cursor}::uuid)
     order by p.user_id
     limit ${connectionPageSize+1}
@@ -109,7 +123,9 @@ peopleRoutes.get("/:id/followers",async c=>{
 peopleRoutes.get("/:id/following",async c=>{
   const target=id(c.req.param("id")),viewer=currentUser(c),db=database(c.env);
   const cursorValue=c.req.query("cursor"),cursor=cursorValue?id(cursorValue):null;
+  await requireUnblocked(c.env,viewer.id,target);
   await ensureConnectionTarget(db,target);
+  const connectionVisible=await unblockedAuthorIfReady(c.env,viewer.id,sql`p.user_id`);
   const result=await db.execute(sql`
     select ${connectionProjection(viewer)}
     from public.profile_follows f
@@ -118,6 +134,7 @@ peopleRoutes.get("/:id/following",async c=>{
     left join public.universities uni on uni.id=p.university_id
     left join public.departments d on d.id=p.department_id
     where f.follower_id=${target}::uuid
+      and ${connectionVisible}
       and (${cursor}::uuid is null or p.user_id>${cursor}::uuid)
     order by p.user_id
     limit ${connectionPageSize+1}
