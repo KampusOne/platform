@@ -51,7 +51,9 @@ describe("post likes", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(await response.json()).toEqual({ id, liked, like_count: liked ? 1 : 0 });
-    const query = dialect.sqlToQuery(mocks.execute.mock.calls[0]![0]);
+    const visibilityQuery = dialect.sqlToQuery(mocks.execute.mock.calls[0]![0]);
+    expect(visibilityQuery.sql).toContain("public.user_blocks");
+    const query = dialect.sqlToQuery(mocks.execute.mock.calls[1]![0]);
     expect(query.params).toEqual([id, mocks.user.id, mocks.user.universityId, liked]);
     expect(query.sql).toContain("app_private.set_feed_post_like");
   });
@@ -73,10 +75,17 @@ describe("post likes", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ likes: [{ id, liked: false, like_count: 0 }] });
     const query = dialect.sqlToQuery(mocks.execute.mock.calls[0]![0]);
-    expect(query.params).toEqual([mocks.user.id, id, mocks.user.universityId]);
+    expect(query.params).toEqual([
+      mocks.user.id,
+      mocks.user.id,
+      id,
+      mocks.user.universityId,
+      mocks.user.id,
+    ]);
     expect(query.sql).toContain("posts.status in ('PUBLISHED', 'CORRECTED')");
+    expect(query.sql).toContain("public.user_blocks");
     expect(query.sql).toContain("posts.published_at <= now()");
-    expect(query.sql).toContain("posts.university_id = $3::uuid");
+    expect(query.sql).toContain("posts.university_id = $4::uuid");
     expect(query.sql).toContain("posts.audience->>'visibility' = 'PUBLIC'");
   });
 });
