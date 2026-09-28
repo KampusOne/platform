@@ -8,6 +8,10 @@ import { input } from "../lib/input";
 import { sha256 } from "../lib/security";
 import { commentRepliesSchemaReady, nextFeedCursor, parseFeedCursor, socialSchemaReady, visiblePost } from "../lib/feed-social";
 import { currentUser, requireAuth } from "../middleware/auth";
+import {
+  requireUnblocked,
+  unblockedAuthorIfReady,
+} from "../lib/profile-safety";
 import type { Bindings, Variables } from "../types";
 import { notifyFeedInteraction } from "../services/feed-notifications";
 
@@ -70,20 +74,23 @@ function projection(user: User, withViews: boolean) {
       'source_verified', case when quoted.audience->>'studentPost' = 'true' then coalesce((to_jsonb(quoted_author)->>'public_badge_verified')::boolean, quoted_author.verification_status::text='VERIFIED', false) else quoted_source.verified end
     ) end as quoted_post`;
 }
-function joins(user: User) {
+function joins(user: User, quotedAuthorVisible: ReturnType<typeof sql>) {
   return sql`join public.content_sources sources on sources.id = posts.source_id
     left join public.profiles author on author.user_id = posts.author_user_id and author.deleted_at is null
     left join public.feed_posts quoted on quoted.id = posts.quoted_post_id
       and quoted.status in ('PUBLISHED', 'CORRECTED') and quoted.published_at <= now()
       and (quoted.university_id = ${campus(user)}::uuid or quoted.audience->>'visibility' = 'PUBLIC')
+      and ${quotedAuthorVisible}
     left join public.content_sources quoted_source on quoted_source.id = quoted.source_id
     left join public.profiles quoted_author on quoted_author.user_id = quoted.author_user_id and quoted_author.deleted_at is null`;
 }
 async function readPost(c: Context<Env>, postId: string) {
   const user = currentUser(c);
+  const postAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`posts.author_user_id`);
+  const quotedAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`quoted.author_user_id`);
   const result = await database(c.env).execute(sql`
-    select ${projection(user, await feedExperienceReady(c.env))} from public.feed_posts posts ${joins(user)}
-    where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} limit 1
+    select ${projection(user, await feedExperienceReady(c.env))} from public.feed_posts posts ${joins(user, quotedAuthorVisible)}
+    where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} and ${postAuthorVisible} limit 1
   `);
   const post = firstRow(result);
   if (!post) throw new AppError(404, "NOT_FOUND", "This post is unavailable. It may have been deleted or may be campus-restricted.");
@@ -102,7 +109,12 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   const category = c.req.query("category")?.toUpperCase() || null;
   const search = c.req.query("q")?.trim().slice(0, 200) || null;
   const withViews = await feedExperienceReady(c.env);
+  const postAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`posts.author_user_id`);
+  const quotedAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`quoted.author_user_id`);
+  const repostActorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`r.user_id`);
+  if (author) await requireUnblocked(c.env, user.id, author);
   if (repostedBy) {
+    await requireUnblocked(c.env, user.id, repostedBy);
     const privacy = firstRow(await database(c.env).execute<{ hide_reposts: boolean }>(sql`
       select coalesce((p.settings->>'hideReposts')::boolean, false) as hide_reposts
       from public.profiles p
@@ -120,10 +132,11 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
         jsonb_build_object('user_id', target_repost.user_id, 'name', coalesce(reposter.display_name, 'KampusOne user')) as repost_by
       from public.feed_reposts target_repost
       join public.feed_posts posts on posts.id = target_repost.post_id
-      ${joins(user)}
+      ${joins(user, quotedAuthorVisible)}
       left join public.profiles reposter on reposter.user_id = target_repost.user_id and reposter.deleted_at is null
       where target_repost.user_id = ${repostedBy}::uuid
         and ${visiblePost(university)}
+        and ${postAuthorVisible}
         and (${category}::text is null or posts.category = ${category})
         and (${search}::text is null or concat_ws(' ', posts.title, posts.summary, posts.body, author.display_name, sources.name) ilike ${search ? `%${search}%` : null})
         and (${cursor?.at ?? null}::timestamptz is null or
@@ -142,13 +155,15 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
     select ${projection(user, withViews)}, greatest(posts.published_at, latest.created_at) as activity_at,
       to_char(greatest(posts.published_at, latest.created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       case when latest.user_id is null then null else jsonb_build_object('user_id', latest.user_id, 'name', latest.display_name) end as repost_by
-    from public.feed_posts posts ${joins(user)}
+    from public.feed_posts posts ${joins(user, quotedAuthorVisible)}
     left join lateral (
       select r.created_at, r.user_id, p.display_name from public.feed_reposts r
       join public.profiles p on p.user_id = r.user_id and p.deleted_at is null
-      where r.post_id = posts.id order by r.created_at desc, r.user_id desc limit 1
+      where r.post_id = posts.id and ${repostActorVisible}
+      order by r.created_at desc, r.user_id desc limit 1
     ) latest on ${author}::uuid is null
     where ${visiblePost(university)}
+      and ${postAuthorVisible}
       and (${author}::uuid is null or posts.author_user_id=${author}::uuid)
       and (${category}::text is null or posts.category = ${category})
       and (${search}::text is null or concat_ws(' ', posts.title, posts.summary, posts.body, author.display_name, sources.name) ilike ${search ? `%${search}%` : null})
