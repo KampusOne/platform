@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -60,7 +60,17 @@ export default function MessageMediaScreen() {
       </View>
 
       <View style={styles.content}>
-        {loading ? <ActivityIndicator size="large" color="#FFFFFF" /> : null}
+        {loading ? (
+          <View accessibilityLabel="Loading media" style={styles.mediaLoading}>
+            <View style={styles.mediaLoadingFrame}>
+              <Ionicons name={isVideo ? "videocam-outline" : "image-outline"} size={30} color="rgba(255,255,255,0.72)" />
+            </View>
+            <View style={styles.mediaLoadingTrack}>
+              <View style={styles.mediaLoadingBar} />
+            </View>
+            <Text style={styles.mediaLoadingText}>Loading {isVideo ? "video" : "picture"}…</Text>
+          </View>
+        ) : null}
         {!loading && error ? (
           <View style={styles.errorState}>
             <Ionicons name="alert-circle-outline" size={32} color="#FFFFFF" />
@@ -116,6 +126,11 @@ const createStyles = (_theme: Theme) => StyleSheet.create({
   title: { flex: 1, color: "#FFFFFF", fontFamily: _theme.font.semibold, fontSize: 14, textAlign: "center" },
   content: { flex: 1, alignItems: "center", justifyContent: "center" },
   media: { width: "100%", height: "100%" },
+  mediaLoading: { width: "100%", maxWidth: 320, alignItems: "center", gap: 12, paddingHorizontal: 24 },
+  mediaLoadingFrame: { width: "100%", aspectRatio: 4 / 5, maxHeight: 420, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.08)" },
+  mediaLoadingTrack: { width: "72%", height: 3, borderRadius: 2, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.12)" },
+  mediaLoadingBar: { width: "52%", height: "100%", borderRadius: 2, backgroundColor: "rgba(255,255,255,0.75)" },
+  mediaLoadingText: { color: "rgba(255,255,255,0.74)", fontFamily: _theme.font.medium, fontSize: 11 },
   errorState: { alignItems: "center", gap: 12, paddingHorizontal: 28 },
   errorText: { color: "#FFFFFF", fontSize: 13, lineHeight: 19, textAlign: "center" },
   retryButton: { minHeight: 42, paddingHorizontal: 18, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" },
