@@ -101,6 +101,10 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   if (author && repostedBy) throw new AppError(400, "BAD_REQUEST", "Choose either posts or reposts for a profile.");
   const category = c.req.query("category")?.toUpperCase() || null;
   const search = c.req.query("q")?.trim().slice(0, 200) || null;
+  const requestedLimit = Number(c.req.query("limit") ?? pageSize);
+  const pageLimit = Number.isInteger(requestedLimit) && requestedLimit > 0
+    ? Math.max(10, Math.min(pageSize, requestedLimit))
+    : pageSize;
   const withViews = await feedExperienceReady(c.env);
   if (repostedBy) {
     const privacy = firstRow(await database(c.env).execute<{ hide_reposts: boolean }>(sql`
@@ -129,12 +133,12 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
         and (${cursor?.at ?? null}::timestamptz is null or
           (target_repost.created_at, posts.id) < (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
       order by target_repost.created_at desc, posts.id desc
-      limit ${pageSize + 1}
+      limit ${pageLimit + 1}
     `);
-    const reposts = repostResult.rows.slice(0, pageSize);
+    const reposts = repostResult.rows.slice(0, pageLimit);
     return c.json({
       posts: reposts,
-      nextCursor: repostResult.rows.length > pageSize ? nextFeedCursor(reposts[reposts.length - 1]!, "activity_at") : null,
+      nextCursor: repostResult.rows.length > pageLimit ? nextFeedCursor(reposts[reposts.length - 1]!, "activity_at") : null,
     });
   }
 
@@ -154,10 +158,10 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
       and (${search}::text is null or concat_ws(' ', posts.title, posts.summary, posts.body, author.display_name, sources.name) ilike ${search ? `%${search}%` : null})
       and (${cursor?.at ?? null}::timestamptz is null or
         (greatest(posts.published_at, latest.created_at), posts.id) < (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
-    order by activity_at desc, posts.id desc limit ${pageSize + 1}
+    order by activity_at desc, posts.id desc limit ${pageLimit + 1}
   `);
-  const posts = result.rows.slice(0, pageSize);
-  return c.json({ posts, nextCursor: result.rows.length > pageSize ? nextFeedCursor(posts[posts.length - 1]!, "activity_at") : null });
+  const posts = result.rows.slice(0, pageLimit);
+  return c.json({ posts, nextCursor: result.rows.length > pageLimit ? nextFeedCursor(posts[posts.length - 1]!, "activity_at") : null });
 });
 
 feedSocialRoutes.get("/:id", requireAuth, async (c, next) => {
