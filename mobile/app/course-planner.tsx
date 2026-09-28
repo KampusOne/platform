@@ -425,7 +425,7 @@ export default function CoursePlanner() {
               </View>
 
             </View>
-          ) : (
+          ) : importMessage ? null : (
             <View style={styles.emptyState}>
               <View style={styles.emptyIcon}>
                 <Ionicons
