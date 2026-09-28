@@ -28,8 +28,10 @@ describe("profile post push enqueue", () => {
           author_user_id: authorId,
           university_id: "22222222-2222-4222-8222-222222222222",
           author_name: "Poster",
-          post_body: "New campus update",
-          visibility: "PUBLIC",
+          author_username: "poster",
+          body: "New campus update",
+          title: "Campus update",
+          public_visibility: true,
         }],
       })
       .mockResolvedValueOnce({ rows: [{ ready: true }] })
@@ -42,7 +44,7 @@ describe("profile post push enqueue", () => {
     expect(query(3).sql).toContain("public.in_app_notifications");
     expect(query(3).sql).toContain("app_private.notification_outbox");
     expect(query(3).sql).toContain("on conflict(dedupe_key) do nothing");
-    expect(query(3).params).toContain(postId);
+    expect(query(3).params.some((value) => String(value).includes(postId))).toBe(true);
     expect(query(3).params).toContain(authorId);
   });
 });
