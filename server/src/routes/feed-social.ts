@@ -10,7 +10,7 @@ import { commentRepliesSchemaReady, nextFeedCursor, parseFeedCursor, socialSchem
 import { currentUser, requireAuth } from "../middleware/auth";
 import {
   requireUnblocked,
-  unblockedAuthorIfReady,
+  unblockedAuthor,
 } from "../lib/profile-safety";
 import type { Bindings, Variables } from "../types";
 import { notifyFeedInteraction } from "../services/feed-notifications";
@@ -86,8 +86,8 @@ function joins(user: User, quotedAuthorVisible: SQL) {
 }
 async function readPost(c: Context<Env>, postId: string) {
   const user = currentUser(c);
-  const postAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`posts.author_user_id`);
-  const quotedAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`quoted.author_user_id`);
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
+  const quotedAuthorVisible = unblockedAuthor(user.id, sql`quoted.author_user_id`);
   const result = await database(c.env).execute(sql`
     select ${projection(user, await feedExperienceReady(c.env))} from public.feed_posts posts ${joins(user, quotedAuthorVisible)}
     where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} and ${postAuthorVisible} limit 1
@@ -109,9 +109,9 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   const category = c.req.query("category")?.toUpperCase() || null;
   const search = c.req.query("q")?.trim().slice(0, 200) || null;
   const withViews = await feedExperienceReady(c.env);
-  const postAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`posts.author_user_id`);
-  const quotedAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`quoted.author_user_id`);
-  const repostActorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`r.user_id`);
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
+  const quotedAuthorVisible = unblockedAuthor(user.id, sql`quoted.author_user_id`);
+  const repostActorVisible = unblockedAuthor(user.id, sql`r.user_id`);
   if (author) await requireUnblocked(c.env, user.id, author);
   if (repostedBy) {
     await requireUnblocked(c.env, user.id, repostedBy);
@@ -278,7 +278,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
   }
 
   await rateLimit(c, "STUDENT_POST", 10);
-  const quotedTargetVisible = await unblockedAuthorIfReady(c.env, user.id, sql`posts.author_user_id`);
+  const quotedTargetVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   // Quotes retain references, not copies; campus-only originals stay campus-only.
   const result = await database(c.env).execute(sql`
     with target as (
@@ -362,8 +362,8 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
   await readPost(c, postId);
   const parentParam = c.req.query("parentCommentId");
   const parentId = parentParam === undefined ? null : id(parentParam);
-  const parentAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`parent_comment.author_user_id`);
-  const commentAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`comments.author_user_id`);
+  const parentAuthorVisible = unblockedAuthor(user.id, sql`parent_comment.author_user_id`);
+  const commentAuthorVisible = unblockedAuthor(user.id, sql`comments.author_user_id`);
   const parent = parentId ? firstRow(await database(c.env).execute(sql`
     select parent_comment.deleted_at is not null as is_deleted
     from public.feed_comments parent_comment
@@ -410,7 +410,7 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
   const data = await input(c, z.object({ body: z.string().trim().min(1).max(2000), requestId: uuid, parentCommentId: uuid.optional() }));
   await readPost(c, postId);
   const parentId = data.parentCommentId ?? null;
-  const parentAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`parents.author_user_id`);
+  const parentAuthorVisible = unblockedAuthor(user.id, sql`parents.author_user_id`);
   const retry = firstRow(await database(c.env).execute(sql`
     select id, post_id, body, parent_comment_id, deleted_at from public.feed_comments
     where author_user_id = ${user.id}::uuid and client_request_id = ${data.requestId}::uuid limit 1
