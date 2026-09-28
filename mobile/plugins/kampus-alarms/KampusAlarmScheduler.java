@@ -58,6 +58,13 @@ class KampusAlarmScheduler {
     AlarmManager manager=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);
     Iterator<String> old=previous.keys();while(old.hasNext()){String id=old.next();if(!next.has(id)){manager.cancel(pending(c,id));manager.cancel(pending(c,id+"~snooze"));}}
     prefs(c).edit().putString("alarms",next.toString()).apply();
+    File soundDir=new File(c.getFilesDir(),"alarm-sounds");
+    if(soundDir.exists()){
+      HashSet<String> keep=new HashSet<>();
+      Iterator<String> soundKeys=next.keys();
+      while(soundKeys.hasNext()){String soundId=soundKeys.next();JSONObject soundAlarm=next.getJSONObject(soundId);if(soundAlarm.optString("sound","default").startsWith("media:"))keep.add(alarmSoundFile(c,soundId).getName());}
+      File[] files=soundDir.listFiles();if(files!=null)for(File file:files)if(!file.getName().endsWith(".download")&&!keep.contains(file.getName()))file.delete();
+    }
     // Re-register even unchanged alarms: Android can remove pending alarms when
     // permission changes or the app is updated. setAlarmClock replaces by ID.
     boolean scheduled=true;
@@ -71,6 +78,29 @@ class KampusAlarmScheduler {
   static JSONObject alarm(Context c,String id) throws Exception { return new JSONObject(prefs(c).getString("alarms","{}")).optJSONObject(id.replace("~snooze","")); }
   static synchronized void record(Context c,JSONObject alarm,String kind,long firedAt){try{JSONArray all=new JSONArray(prefs(c).getString("events","[]")),out=new JSONArray();for(int i=Math.max(0,all.length()-99);i<all.length();i++)out.put(all.getJSONObject(i));out.put(new JSONObject().put("id",UUID.randomUUID().toString()).put("alarmId",alarm.getString("id")).put("kind",kind).put("firedAt",iso(firedAt)));prefs(c).edit().putString("events",out.toString()).apply();}catch(Exception ignored){}}
   static String iso(long time){java.text.SimpleDateFormat format=new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",Locale.US);format.setTimeZone(TimeZone.getTimeZone("UTC"));return format.format(new Date(time));}
+  static File alarmSoundFile(Context c,String id) {
+    File dir=new File(c.getFilesDir(),"alarm-sounds");if(!dir.exists())dir.mkdirs();
+    String safe=id==null?"unknown":id.replaceAll("[^A-Za-z0-9._-]","_");
+    return new File(dir,safe+".bin");
+  }
+  static void cacheAlarmSound(Context c,String id,String url) throws Exception {
+    if(id==null||id.isEmpty()||url==null||url.isEmpty())return;
+    URL source=new URL(url);if(!source.getProtocol().equals("https"))throw new IOException("Alarm sound must use HTTPS");
+    File target=alarmSoundFile(c,id),temp=new File(target.getParentFile(),target.getName()+".download");
+    String key="alarmSoundUrl:"+id;
+    if(url.equals(prefs(c).getString(key,""))&&target.exists()&&target.length()>0)return;
+    HttpURLConnection connection=(HttpURLConnection)source.openConnection();connection.setConnectTimeout(8000);connection.setReadTimeout(10000);connection.setInstanceFollowRedirects(false);
+    try {
+      if(connection.getResponseCode()!=200)throw new IOException("Alarm sound unavailable");
+      try(InputStream input=connection.getInputStream();OutputStream output=new FileOutputStream(temp)){
+        byte[] buffer=new byte[8192];int count,total=0;
+        while((count=input.read(buffer))!=-1){total+=count;if(total>2*1024*1024)throw new IOException("Alarm sound exceeds 2 MB");output.write(buffer,0,count);}
+      }
+      if(target.exists()&&!target.delete())throw new IOException("Cannot replace alarm sound");
+      if(!temp.renameTo(target))throw new IOException("Cannot save alarm sound");
+      prefs(c).edit().putString(key,url).apply();
+    } finally {connection.disconnect();temp.delete();}
+  }
   static void cacheSound(Context c,String url) throws Exception {
     if(url==null||url.isEmpty()){prefs(c).edit().remove("soundFile").remove("soundUrl").apply();return;}
     if(url.equals(prefs(c).getString("soundUrl",""))&&new File(c.getFilesDir(),"alarm-tone.bin").exists())return;
