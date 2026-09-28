@@ -484,7 +484,7 @@ adminRoutes.get("/tutorials", async (context) => {
 adminRoutes.post("/tutorials/demo", async () => {
   throw new AppError(
     410,
-    "GONE",
+    "FEATURE_DISABLED",
     "Demo tutorials and demo learning materials have been retired.",
   );
 });
