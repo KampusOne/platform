@@ -41,7 +41,9 @@ type CoverageRow = {
   slug: string;
   catalogue_status: string;
   faculty_count: number;
+  faculties_without_departments: number;
   department_count: number;
+  departments_without_programmes: number;
   programme_count: number;
 };
 type CoverageData = { rows: CoverageRow[] };
@@ -582,7 +584,12 @@ function AcademicCoverage({ path }: { path: string }) {
     row.name.toLowerCase().includes(query.toLowerCase()),
   );
   const complete = rows.filter(
-    (row) => row.faculty_count > 0 && row.department_count > 0 && row.programme_count > 0,
+    (row) =>
+      row.faculty_count > 0 &&
+      row.faculties_without_departments === 0 &&
+      row.department_count > 0 &&
+      row.departments_without_programmes === 0 &&
+      row.programme_count > 0,
   ).length;
 
   return (
@@ -611,15 +618,21 @@ function AcademicCoverage({ path }: { path: string }) {
               <th>Faculties</th>
               <th>Departments</th>
               <th>Programmes</th>
-              <th>Coverage</th>
+              <th>Hierarchy gaps</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => {
               const missing = [
-                row.faculty_count === 0 ? "faculties" : null,
-                row.department_count === 0 ? "departments" : null,
-                row.programme_count === 0 ? "programmes" : null,
+                row.faculty_count === 0 ? "no faculties" : null,
+                row.faculties_without_departments > 0
+                  ? `${row.faculties_without_departments} faculties without departments`
+                  : null,
+                row.department_count === 0 ? "no departments" : null,
+                row.departments_without_programmes > 0
+                  ? `${row.departments_without_programmes} departments without programmes`
+                  : null,
+                row.programme_count === 0 ? "no programmes" : null,
               ].filter(Boolean);
               return (
                 <tr key={row.id}>
@@ -627,7 +640,7 @@ function AcademicCoverage({ path }: { path: string }) {
                   <td>{row.faculty_count}</td>
                   <td>{row.department_count}</td>
                   <td>{row.programme_count}</td>
-                  <td>{missing.length ? `Missing ${missing.join(", ")}` : "All levels present"}</td>
+                  <td>{missing.length ? missing.join(" · ") : "Complete hierarchy"}</td>
                 </tr>
               );
             })}
