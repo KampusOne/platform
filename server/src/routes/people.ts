@@ -14,6 +14,7 @@ import {
   unblockedAuthor,
 } from "../lib/profile-safety";
 import { visiblePost } from "../lib/feed-social";
+import { profilePostNotificationsReady } from "../services/profile-post-notifications";
 import type { Bindings, Variables, AuthenticatedUser } from "../types";
 export const peopleRoutes = new Hono<{Bindings:Bindings;Variables:Variables}>();
 peopleRoutes.use("/*",requireAuth);
@@ -65,6 +66,10 @@ peopleRoutes.get("/:id",async c=>{
   if(relationship==="BLOCKED_BY_VIEWER") {
     throw new AppError(404,"NOT_FOUND","This student profile is not available.",{relationship});
   }
+  const notificationSubscriptionsReady=await profilePostNotificationsReady(c.env);
+  const postNotificationsEnabled=notificationSubscriptionsReady
+    ? sql`exists(select 1 from public.profile_post_notification_subscriptions subscriptions where subscriptions.subscriber_id=${u.id}::uuid and subscriptions.target_user_id=p.user_id)`
+    : sql`false`;
   const visibleFollower=unblockedAuthor(u.id,sql`f.follower_id`);
   const visibleFollowing=unblockedAuthor(u.id,sql`f.followed_id`);
   const profile=firstRow(await db.execute(sql`select p.user_id,p.display_name,p.username,p.biography,p.profile_image_url,p.cover_image_url,p.current_level,
@@ -77,6 +82,7 @@ peopleRoutes.get("/:id",async c=>{
       (select count(*)::int from public.profile_follows f where f.followed_id=p.user_id and ${visibleFollower}) as follower_count,
       (select count(*)::int from public.profile_follows f where f.follower_id=p.user_id and ${visibleFollowing}) as following_count,
       exists(select 1 from public.profile_follows f where f.followed_id=p.user_id and f.follower_id=${u.id}::uuid) as followed,
+      ${postNotificationsEnabled} as post_notifications_enabled,
       (select count(*)::int from public.feed_posts posts where posts.author_user_id=p.user_id and ${visiblePost(u.universityId ?? '00000000-0000-0000-0000-000000000000')}) as post_count,
       exists(select 1 from public.feed_posts posts where posts.author_user_id=p.user_id and posts.category='EVENT' and ${visiblePost(u.universityId ?? '00000000-0000-0000-0000-000000000000')}) as has_events
     from public.profiles p join public.users account on account.id=p.user_id and account.status::text='ACTIVE'
@@ -159,6 +165,28 @@ peopleRoutes.put("/:id/follow",async c=>{
   } else await db.execute(sql`delete from public.profile_follows where follower_id=${u.id}::uuid and followed_id=${target}::uuid`);
   const counts=firstRow(await db.execute(sql`select count(*)::int as follower_count from public.profile_follows where followed_id=${target}::uuid`));
   return c.json({followed:d.follow,follower_count:counts?.follower_count ?? 0});
+});
+
+peopleRoutes.put("/:id/notifications",async c=>{
+  const target=id(c.req.param("id")),u=currentUser(c);
+  if(target===u.id) throw new AppError(400,"BAD_REQUEST","You cannot turn on post notifications for yourself.");
+  if(!u.universityId) throw new AppError(409,"CONFLICT","Complete your student profile before changing post notifications.");
+  await requireUnblocked(c.env,u.id,target);
+  if(!await profilePostNotificationsReady(c.env)) throw new AppError(503,"PROVIDER_UNAVAILABLE","Post notifications are being connected. Please try again shortly.");
+  const data=await input(c,z.object({enabled:z.boolean()}).strict());
+  const db=database(c.env);
+  const targetProfile=firstRow(await db.execute(sql`select p.user_id from public.profiles p join public.users account on account.id=p.user_id and account.status::text='ACTIVE' where p.user_id=${target}::uuid and p.deleted_at is null limit 1`));
+  if(!targetProfile) throw new AppError(404,"NOT_FOUND","This student profile is not available.");
+  if(data.enabled) await db.execute(sql`
+    insert into public.profile_post_notification_subscriptions(subscriber_id,target_user_id,institution_id)
+    values(${u.id}::uuid,${target}::uuid,${u.universityId}::uuid)
+    on conflict(subscriber_id,target_user_id) do update set institution_id=excluded.institution_id
+  `);
+  else await db.execute(sql`
+    delete from public.profile_post_notification_subscriptions
+    where subscriber_id=${u.id}::uuid and target_user_id=${target}::uuid
+  `);
+  return c.json({enabled:data.enabled});
 });
 
 peopleRoutes.put("/:id/block",async c=>{
