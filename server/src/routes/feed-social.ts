@@ -10,6 +10,7 @@ import { commentRepliesSchemaReady, nextFeedCursor, parseFeedCursor, socialSchem
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 import { notifyFeedInteraction } from "../services/feed-notifications";
+import { notifyProfilePostPublished } from "../services/profile-post-notifications";
 
 type Env = { Bindings: Bindings; Variables: Variables };
 type User = ReturnType<typeof currentUser>;
@@ -310,9 +311,10 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
         )
     returning id
   `);
-  const post = firstRow(result);
+  const post = firstRow(result) as { id: string } | undefined;
   if (!post)
     throw new AppError(409, "CONFLICT", "The original post is unavailable or this request belongs to a different draft.");
+  await notifyProfilePostPublished(c.env, post.id, user.id);
   return c.json(post, 201);
 });
 
