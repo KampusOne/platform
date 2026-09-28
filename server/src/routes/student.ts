@@ -711,6 +711,8 @@ studentRoutes.post("/campus/route", async (context) => {
     `${routingBase}/${coordinates}` +
     "?overview=full&steps=true&geometries=geojson";
 
+  const routingController = new AbortController();
+  const routingTimeout = setTimeout(() => routingController.abort(), 8_000);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -718,7 +720,7 @@ studentRoutes.post("/campus/route", async (context) => {
         Accept: "application/json",
         "X-Client-Id": "kampusone.app",
       },
-      signal: AbortSignal.timeout(8_000),
+      signal: routingController.signal,
     });
   } catch {
     throw new AppError(
@@ -726,6 +728,8 @@ studentRoutes.post("/campus/route", async (context) => {
       "ROUTING_UNAVAILABLE",
       "Walking directions could not be calculated right now.",
     );
+  } finally {
+    clearTimeout(routingTimeout);
   }
 
   if (response.status === 429) {
