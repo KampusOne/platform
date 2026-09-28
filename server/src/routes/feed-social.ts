@@ -401,7 +401,8 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
     join public.feed_posts posts on posts.id = comments.post_id
     left join public.profiles author on author.user_id = comments.author_user_id and author.deleted_at is null and comments.deleted_at is null
     where comments.post_id = ${postId}::uuid and comments.parent_comment_id is not distinct from ${parentId}::uuid
-      and (comments.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = comments.post_id and child.parent_comment_id = comments.id))
+      and (comments.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = comments.post_id and child.parent_comment_id = comments.id
+        and ${unblockedAuthor(user.id, sql`child.author_user_id`)}))
       and ${visiblePost(campus(user))}
       and ${commentAuthorVisible}
       and (${cursor?.at ?? null}::timestamptz is null or (comments.created_at, comments.id) > (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
@@ -456,7 +457,9 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
       author.user_id as author_user_id, author.profile_image_url as author_image_url, author.username as author_username,
       coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
       (select count(*)::int from public.feed_comments replies where replies.post_id = ${postId}::uuid and replies.parent_comment_id = saved.id
-        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
+        and ${unblockedAuthor(user.id, sql`replies.author_user_id`)}
+        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id
+          and ${unblockedAuthor(user.id, sql`child.author_user_id`)}))) as reply_count
     from saved left join public.profiles author on author.user_id = saved.author_user_id and author.deleted_at is null
   `);
   const comment = firstRow(result);
@@ -481,9 +484,13 @@ feedSocialRoutes.delete("/:id/comments/:commentId", requireAuth, async (c) => {
   if (!firstRow(result)) throw new AppError(404, "NOT_FOUND", "This comment is unavailable or you do not have permission to delete it.");
   // A fresh snapshot sees replies that committed while the delete waited for the parent lock.
   const thread = firstRow(await database(c.env).execute<{ retained: boolean; reply_count: number }>(sql`
-    select exists(select 1 from public.feed_comments where post_id = ${postId}::uuid and parent_comment_id = ${commentId}::uuid) as retained,
+    select exists(select 1 from public.feed_comments retained_reply where retained_reply.post_id = ${postId}::uuid
+        and retained_reply.parent_comment_id = ${commentId}::uuid
+        and ${unblockedAuthor(user.id, sql`retained_reply.author_user_id`)}) as retained,
       (select count(*)::int from public.feed_comments replies where replies.post_id = ${postId}::uuid and replies.parent_comment_id = ${commentId}::uuid
-        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
+        and ${unblockedAuthor(user.id, sql`replies.author_user_id`)}
+        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id
+          and ${unblockedAuthor(user.id, sql`child.author_user_id`)}))) as reply_count
   `));
   return c.json({ id: commentId, deleted: true, retained: thread?.retained ?? false, reply_count: thread?.reply_count ?? 0 });
 });
