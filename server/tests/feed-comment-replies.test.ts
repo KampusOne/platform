@@ -45,6 +45,12 @@ beforeAll(async () => {
     create table public.profiles(user_id uuid primary key, display_name text, profile_image_url text, username text, verification_status text, deleted_at timestamptz);
     create table public.feed_posts(id uuid primary key, university_id uuid not null, source_id uuid, author_user_id uuid, category text, title text, summary text, body text, image_url text, urgent boolean, sponsored boolean, published_at timestamptz, correction_note text, audience jsonb, status text);
     create table public.feed_bookmarks(post_id uuid, user_id uuid);
+    create table public.user_blocks(
+      blocker_id uuid not null references public.users(id),
+      blocked_id uuid not null references public.users(id),
+      primary key(blocker_id, blocked_id),
+      check(blocker_id <> blocked_id)
+    );
   `);
   await pg.exec(readFileSync(new URL("../../database/neon/migrations/20260921180000_feed_social_interactions.sql", import.meta.url), "utf8"));
   // Feed/comment reads now include engagement counts from the existing additive likes migrations.
