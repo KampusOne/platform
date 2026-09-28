@@ -78,7 +78,22 @@ export function CampusMapSurface({
   }, [focusCoordinate, focusToken, focusZoom]);
 
   const boundaryData = useMemo(() => {
-    const boundary = campus?.boundary ?? [];
+    let boundary = campus?.boundary ?? [];
+    if (boundary.length < 3 && campus?.navigation_bounds) {
+      const north = Number(campus.navigation_bounds.north);
+      const south = Number(campus.navigation_bounds.south);
+      const east = Number(campus.navigation_bounds.east);
+      const west = Number(campus.navigation_bounds.west);
+      if ([north, south, east, west].every(Number.isFinite)) {
+        boundary = [
+          [west, north],
+          [east, north],
+          [east, south],
+          [west, south],
+          [west, north],
+        ];
+      }
+    }
     if (boundary.length < 3) return null;
     const closed =
       boundary[0]?.[0] === boundary[boundary.length - 1]?.[0] &&
@@ -90,7 +105,7 @@ export function CampusMapSurface({
       properties: {},
       geometry: { type: "Polygon", coordinates: [closed] },
     } as any;
-  }, [campus?.boundary]);
+  }, [campus?.boundary, campus?.navigation_bounds]);
 
   const routeData = useMemo(() => {
     if (!route || route.geometry.length < 2) return null;
