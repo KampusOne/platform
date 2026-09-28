@@ -10,102 +10,16 @@ export async function profilePostNotificationsReady(env: Bindings) {
   if (saved && saved.expires > Date.now()) return saved.ready;
   const row = firstRow(
     await database(env).execute<{ ready: boolean }>(sql`
-      select to_regclass('public.profile_post_notification_subscriptions') is not null as ready
+      select
+        to_regclass('public.profile_post_notification_subscriptions') is not null
+        and to_regclass('public.profile_social_policies') is not null
+        as ready
     `),
   );
   const ready = row?.ready === true;
   readyCache.set(env, { ready, expires: Date.now() + (ready ? 60_000 : 5_000) });
   return ready;
 }
-
-export async function notifyProfilePostPublished(
-  env: Bindings,
-  postId: string,
-  authorUserId: string,
-) {
-  if (!(await profilePostNotificationsReady(env))) return;
-
-  try {
-    const db = database(env);
-    const post = firstRow(
-      await db.execute<{
-        id: string;
-        author_user_id: string | null;
-        university_id: string;
-        author_name: string;
-        post_body: string;
-        visibility: string;
-      }>(sql`
-        select posts.id,posts.author_user_id,posts.university_id,
-          coalesce(author.display_name,author.username,'Someone') as author_name,
-          left(coalesce(nullif(btrim(posts.body),''),'New post'),160) as post_body,
-          coalesce(posts.audience->>'visibility','CAMPUS') as visibility
-        from public.feed_posts posts
-        left join public.profiles author
-          on author.user_id=posts.author_user_id and author.deleted_at is null
-        where posts.id=${postId}::uuid
-          and posts.author_user_id=${authorUserId}::uuid
-          and posts.status in ('PUBLISHED','CORRECTED')
-          and posts.published_at<=now()
-        limit 1
-      `),
-    );
-
-    if (!post?.author_user_id) return;
-    const title = `${post.author_name} posted`;
-    const path = `/post?id=${post.id}`;
-
-    await db.execute(sql`
-      with eligible as (
-        select subscriptions.subscriber_id as user_id,recipient.university_id as institution_id
-        from public.profile_post_notification_subscriptions subscriptions
-        join public.profiles recipient
-          on recipient.user_id=subscriptions.subscriber_id and recipient.deleted_at is null
-        join public.users account
-          on account.id=subscriptions.subscriber_id
-          and account.deleted_at is null and account.status::text='ACTIVE'
-        where subscriptions.target_user_id=${authorUserId}::uuid
-          and subscriptions.subscriber_id<>${authorUserId}::uuid
-          and coalesce(recipient.settings->>'notifications','true')='true'
-          and (${post.visibility}='PUBLIC' or recipient.university_id=${post.university_id}::uuid)
-          and not exists(
-            select 1 from public.user_blocks blocks
-            where (blocks.blocker_id=subscriptions.subscriber_id and blocks.blocked_id=${authorUserId}::uuid)
-               or (blocks.blocked_id=subscriptions.subscriber_id and blocks.blocker_id=${authorUserId}::uuid)
-          )
-      ), notices as (
-        insert into public.in_app_notifications(
-          user_id,institution_id,actor_user_id,title,body,path,dedupe_key
-        )
-        select
-          eligible.user_id,eligible.institution_id,${authorUserId}::uuid,
-          ${title},${post.post_body},${path},
-          'profile-post:'||${postId}::text||':'||eligible.user_id::text
-        from eligible
-        on conflict(dedupe_key) do nothing
-        returning user_id,title,body,dedupe_key
-      )
-      insert into app_private.notification_outbox(
-        user_id,channel,subject,body,dedupe_key
-      )
-      select user_id,'PUSH',title,body,dedupe_key from notices
-      on conflict(dedupe_key) do nothing
-    `);
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        level: "error",
-        event: "profile_post.notification.enqueue_failed",
-        postId,
-        authorUserId,
-        message: error instanceof Error ? error.message : "unknown",
-      }),
-    );
-  }
-}
-import { sql } from "drizzle-orm";
-import { database, firstRow } from "../lib/database";
-import type { Bindings } from "../types";
 
 type PublishedProfilePost = {
   author_user_id: string | null;
@@ -132,18 +46,19 @@ function isKampusOneNewsletter(name: string, username: string | null) {
 }
 
 /**
- * Fan out a newly published post from an account that is explicitly configured
- * to notify everyone. The official KampusOne Newsletter remains a safe fallback
- * so its post alerts cannot silently disappear if the policy row is missing.
+ * Fan out profile-post notifications without per-recipient API calls.
  *
- * One bulk INSERT creates durable inbox rows; a second bulk INSERT creates push
- * outbox work. There is no per-recipient API loop in the publish request.
+ * Regular accounts notify explicit profile subscribers. Accounts with
+ * notify-all policy fan out to their eligible audience. KampusOne Newsletter
+ * keeps notify-all behavior as a product-level fallback, while delivery-time
+ * notification preferences still let each user mute Newsletter push.
  */
 export async function notifyProfilePostPublished(
   env: Bindings,
   postId: string,
+  expectedAuthorUserId?: string,
 ) {
-  if (env.UNIFIED_SCHEMA_READY !== "true") return;
+  if (!(await profilePostNotificationsReady(env))) return;
 
   try {
     const db = database(env);
@@ -170,6 +85,8 @@ export async function notifyProfilePostPublished(
         left join public.profile_social_policies policy
           on policy.user_id = posts.author_user_id
         where posts.id = ${postId}::uuid
+          and (${expectedAuthorUserId ?? null}::uuid is null
+            or posts.author_user_id = ${expectedAuthorUserId ?? null}::uuid)
           and posts.author_user_id is not null
           and posts.status in ('PUBLISHED','CORRECTED')
           and posts.published_at <= now()
@@ -183,10 +100,8 @@ export async function notifyProfilePostPublished(
       post.author_name,
       post.author_username,
     );
-    const notifyInApp = post.notify_all_in_app || newsletter;
-    const notifyPush = post.notify_all_push || newsletter;
-    if (!notifyInApp && !notifyPush) return;
-
+    const notifyAllInApp = post.notify_all_in_app || newsletter;
+    const notifyAllPush = post.notify_all_push || newsletter;
     const title = `${post.author_name} posted`;
     const body =
       (post.body || post.title || "Tap to view the new post.")
@@ -199,10 +114,47 @@ export async function notifyProfilePostPublished(
       ? sql`true`
       : sql`recipient.university_id = ${post.university_id}::uuid`;
 
-    // Push notifications are mirrored into the in-app inbox so tapping a phone
-    // alert always has a durable notification record and a canonical post path.
-    if (notifyInApp || notifyPush) {
-      await db.execute(sql`
+    await db.execute(sql`
+      with recipients as (
+        select
+          recipient.user_id,
+          recipient.university_id,
+          exists(
+            select 1
+            from public.profile_post_notification_subscriptions subscription
+            where subscription.subscriber_id = recipient.user_id
+              and subscription.target_user_id = ${post.author_user_id}::uuid
+          ) as subscribed
+        from public.profiles recipient
+        join public.users account
+          on account.id = recipient.user_id
+         and account.status::text = 'ACTIVE'
+         and account.deleted_at is null
+        where recipient.deleted_at is null
+          and recipient.user_id <> ${post.author_user_id}::uuid
+          and coalesce(recipient.settings->>'notifications','true')='true'
+          and ${audience}
+          and (
+            ${notifyAllInApp}::boolean
+            or ${notifyAllPush}::boolean
+            or exists(
+              select 1
+              from public.profile_post_notification_subscriptions subscription
+              where subscription.subscriber_id = recipient.user_id
+                and subscription.target_user_id = ${post.author_user_id}::uuid
+            )
+          )
+          and not exists(
+            select 1 from public.user_blocks blocked
+            where (
+              blocked.blocker_id = recipient.user_id
+              and blocked.blocked_id = ${post.author_user_id}::uuid
+            ) or (
+              blocked.blocker_id = ${post.author_user_id}::uuid
+              and blocked.blocked_id = recipient.user_id
+            )
+          )
+      ), notices as (
         insert into public.in_app_notifications(
           user_id,institution_id,actor_user_id,title,body,path,dedupe_key
         )
@@ -214,30 +166,10 @@ export async function notifyProfilePostPublished(
           ${body},
           ${path},
           ${prefix} || recipient.user_id::text
-        from public.profiles recipient
-        join public.users account
-          on account.id = recipient.user_id
-         and account.status::text = 'ACTIVE'
-         and account.deleted_at is null
-        where recipient.deleted_at is null
-          and recipient.user_id <> ${post.author_user_id}::uuid
-          and ${audience}
-          and not exists(
-            select 1 from public.user_blocks blocked
-            where (
-              blocked.blocker_id = recipient.user_id
-              and blocked.blocked_id = ${post.author_user_id}::uuid
-            ) or (
-              blocked.blocker_id = ${post.author_user_id}::uuid
-              and blocked.blocked_id = recipient.user_id
-            )
-          )
-        on conflict do nothing
-      `);
-    }
-
-    if (notifyPush) {
-      await db.execute(sql`
+        from recipients recipient
+        on conflict(dedupe_key) do nothing
+        returning user_id,title,body,dedupe_key
+      ), pushes as (
         insert into app_private.notification_outbox(
           user_id,channel,subject,body,dedupe_key
         )
@@ -247,12 +179,14 @@ export async function notifyProfilePostPublished(
           notice.title,
           notice.body,
           notice.dedupe_key
-        from public.in_app_notifications notice
-        where notice.actor_user_id = ${post.author_user_id}::uuid
-          and notice.dedupe_key = ${prefix} || notice.user_id::text
-        on conflict do nothing
-      `);
-    }
+        from notices notice
+        join recipients recipient on recipient.user_id=notice.user_id
+        where ${notifyAllPush}::boolean or recipient.subscribed
+        on conflict(dedupe_key) do nothing
+        returning id
+      )
+      select count(*)::int as notifications_created from notices
+    `);
   } catch (error) {
     // A notification failure must never turn a successfully published post into
     // a failed/duplicate post. Delivery can be inspected and retried separately.
