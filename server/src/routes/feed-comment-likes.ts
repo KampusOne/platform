@@ -5,7 +5,7 @@ import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import { visiblePost } from "../lib/feed-social";
 import { currentUser, requireAuth } from "../middleware/auth";
-import { unblockedAuthorIfReady } from "../lib/profile-safety";
+import { unblockedAuthor } from "../lib/profile-safety";
 import type { Bindings, Variables } from "../types";
 
 type Environment = { Bindings: Bindings; Variables: Variables };
@@ -39,8 +39,8 @@ feedCommentLikeRoutes.get("/comment-likes", requireAuth, async (context) => {
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose between 1 and 50 valid comments.");
   const ids = [...new Set(parsed.data)];
   await requireCommentLikes(context);
-  const postAuthorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`posts.author_user_id`);
-  const commentAuthorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`comments.author_user_id`);
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
+  const commentAuthorVisible = unblockedAuthor(user.id, sql`comments.author_user_id`);
   const result = await database(context.env).execute(sql`
     select comments.id,
       exists(select 1 from public.feed_comment_likes mine
@@ -63,8 +63,8 @@ async function setLike(context: Context<Environment>, liked: boolean) {
   const parsed = idSchema.safeParse(context.req.param("commentId"));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "This comment link is not valid.");
   await requireCommentLikes(context);
-  const postAuthorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`posts.author_user_id`);
-  const commentAuthorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`comments.author_user_id`);
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
+  const commentAuthorVisible = unblockedAuthor(user.id, sql`comments.author_user_id`);
   const target = firstRow(await database(context.env).execute(sql`
     select comments.id
     from public.feed_comments comments
