@@ -278,11 +278,15 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
   }
 
   await rateLimit(c, "STUDENT_POST", 10);
+  const quotedTargetVisible = await unblockedAuthorIfReady(c.env, user.id, sql`posts.author_user_id`);
   // Quotes retain references, not copies; campus-only originals stay campus-only.
   const result = await database(c.env).execute(sql`
     with target as (
       select posts.id, posts.audience from public.feed_posts posts
-      where posts.id = ${data.quotedPostId ?? null}::uuid and ${visiblePost(university)} for update
+      where posts.id = ${data.quotedPostId ?? null}::uuid
+        and ${visiblePost(university)}
+        and ${quotedTargetVisible}
+      for update
     ), source as (
       insert into public.content_sources(university_id, name, owner_user_id)
       values(${university}::uuid, ${"student:" + user.id}, ${user.id}::uuid)
@@ -358,9 +362,15 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
   await readPost(c, postId);
   const parentParam = c.req.query("parentCommentId");
   const parentId = parentParam === undefined ? null : id(parentParam);
+  const parentAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`parent_comment.author_user_id`);
+  const commentAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`comments.author_user_id`);
   const parent = parentId ? firstRow(await database(c.env).execute(sql`
-    select deleted_at is not null as is_deleted from public.feed_comments
-    where id = ${parentId}::uuid and post_id = ${postId}::uuid limit 1
+    select parent_comment.deleted_at is not null as is_deleted
+    from public.feed_comments parent_comment
+    where parent_comment.id = ${parentId}::uuid
+      and parent_comment.post_id = ${postId}::uuid
+      and ${parentAuthorVisible}
+    limit 1
   `)) : null;
   if (parentId && !parent) throw new AppError(404, "NOT_FOUND", "This comment is unavailable.");
   const cursor = parseFeedCursor(c.req.query("cursor"));
@@ -383,6 +393,7 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
     where comments.post_id = ${postId}::uuid and comments.parent_comment_id is not distinct from ${parentId}::uuid
       and (comments.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = comments.post_id and child.parent_comment_id = comments.id))
       and ${visiblePost(campus(user))}
+      and ${commentAuthorVisible}
       and (${cursor?.at ?? null}::timestamptz is null or (comments.created_at, comments.id) > (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
     order by comments.created_at, comments.id limit ${pageSize + 1}
   `);
@@ -397,7 +408,9 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
   const university = campus(user);
   const postId = id(c.req.param("id"));
   const data = await input(c, z.object({ body: z.string().trim().min(1).max(2000), requestId: uuid, parentCommentId: uuid.optional() }));
+  await readPost(c, postId);
   const parentId = data.parentCommentId ?? null;
+  const parentAuthorVisible = await unblockedAuthorIfReady(c.env, user.id, sql`parents.author_user_id`);
   const retry = firstRow(await database(c.env).execute(sql`
     select id, post_id, body, parent_comment_id, deleted_at from public.feed_comments
     where author_user_id = ${user.id}::uuid and client_request_id = ${data.requestId}::uuid limit 1
@@ -412,7 +425,9 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
     ), parent as (
       select parents.id from public.feed_comments parents
       join target on target.id = parents.post_id and target.university_id = parents.institution_id
-      where parents.id = ${parentId}::uuid and (parents.deleted_at is null or ${retry?.id ?? null}::uuid is not null)
+      where parents.id = ${parentId}::uuid
+        and ${parentAuthorVisible}
+        and (parents.deleted_at is null or ${retry?.id ?? null}::uuid is not null)
       for update of parents
     ), saved as (
       insert into public.feed_comments(post_id, institution_id, author_user_id, body, client_request_id, parent_comment_id)
@@ -464,6 +479,7 @@ feedSocialRoutes.put("/:id/repost", requireAuth, async (c) => {
   await requireSocial(c);
   const user = currentUser(c);
   const postId = id(c.req.param("id"));
+  await readPost(c, postId);
   await rateLimit(c, "FEED_REPOST", 60);
   const result = await database(c.env).execute(sql`
     with target as (
@@ -494,6 +510,7 @@ feedSocialRoutes.put("/:id/bookmark", requireAuth, async (c, next) => {
   if (!await socialSchemaReady(c.env)) return next();
   const user = currentUser(c);
   const postId = id(c.req.param("id"));
+  await readPost(c, postId);
   const result = await database(c.env).execute(sql`
     with target as (select posts.id from public.feed_posts posts where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} for update),
     saved as (insert into public.feed_bookmarks(user_id, post_id) select ${user.id}::uuid, id from target on conflict do nothing)
