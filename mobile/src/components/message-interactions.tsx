@@ -166,11 +166,17 @@ type MessageActionOverlayProps = {
 
 function messagePreview(target: MessageActionTarget) {
   const cleaned = target.body.trim();
-  if (target.mediaType?.startsWith("image/")) return cleaned && cleaned !== "Picture" ? cleaned : "Picture";
-  if (target.mediaType?.startsWith("video/")) return cleaned && cleaned !== "Video" ? cleaned : "Video";
-  if (target.mediaType?.startsWith("audio/")) return cleaned && cleaned !== "Voice note" ? cleaned : "Voice note";
-  if (target.mediaType) return cleaned && cleaned !== "Document" ? cleaned : target.mediaName || "Document";
-  return cleaned || "Message";
+  const fallback = target.mediaType?.startsWith("image/")
+    ? "Picture"
+    : target.mediaType?.startsWith("video/")
+      ? "Video"
+      : target.mediaType?.startsWith("audio/")
+        ? "Voice note"
+        : target.mediaType
+          ? "Document"
+          : "";
+  if (target.mediaType && (!cleaned || cleaned === "Attachment" || cleaned === fallback)) return fallback;
+  return cleaned || fallback || "Message";
 }
 
 export function MessageActionOverlay({
