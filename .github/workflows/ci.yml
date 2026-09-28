@@ -115,7 +115,6 @@ jobs:
         working-directory: mobile
       - name: Test feed text and compact layout
         run: node --experimental-strip-types --test tests/feed-post-text.test.mjs
-        working-directory: mobile
       - name: Test campus navigation geofence and rerouting
         run: node --experimental-strip-types --test tests/campus-navigation.test.mjs
         working-directory: mobile
