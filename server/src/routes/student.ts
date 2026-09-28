@@ -15,10 +15,7 @@ import {
 } from "@kampusone/contracts";
 
 import { database, firstRow, sqlClient } from "../lib/database";
-import {
-  campusDirectoryDefaultForUniversity,
-  filterCampusStarterPlaces,
-} from "../lib/campus-defaults";
+import { campusDirectoryDefaultForUniversity } from "../lib/campus-defaults";
 import { id, input as validatedInput } from "../lib/input";
 import { z } from "@kampusone/contracts";
 import { sha256 } from "../lib/security";
@@ -621,48 +618,73 @@ studentRoutes.delete("/feed/:id/bookmark", async (context) => {
 studentRoutes.get("/campus/places", async (context) => {
   const user = currentUser(context);
   const universityId = requireUniversity(user);
-  const query = context.req.query("q")?.trim();
-  const category = context.req.query("category")?.toUpperCase();
-  const search = query ? `%${query}%` : null;
+  const query = context.req.query("q")?.trim().toLowerCase();
+  const category = context.req.query("category")?.trim().toUpperCase();
   const db = database(context.env);
-  const result = await db.execute(sql`
-    select id, name, category, description, latitude, longitude,
-      accessibility_notes, image_url, verified_at
-    from public.campus_places
-    where university_id = ${universityId}::uuid and status = 'PUBLISHED'
-      and (${category ?? null}::text is null or category = ${category ?? null})
-      and (${search}::text is null or name ilike ${search} or description ilike ${search})
-    order by name limit 100
-  `);
 
-  if (result.rows.length > 0) {
-    return context.json({
-      places: result.rows,
-      directorySource: "DATABASE" as const,
-    });
-  }
+  type CampusPlaceRow = {
+    id: string;
+    name: string;
+    category: string;
+    description: string | null;
+    latitude: string | null;
+    longitude: string | null;
+    accessibility_notes: string | null;
+    image_url: string | null;
+    verified_at: string | null;
+    search_aliases: string[] | null;
+  };
 
-  const university = firstRow(
-    await db.execute<{ name: string }>(sql`
+  const [result, university] = await Promise.all([
+    db.execute<CampusPlaceRow>(sql`
+      select id, name, category, description, latitude, longitude,
+        accessibility_notes, image_url, verified_at, search_aliases
+      from public.campus_places
+      where university_id = ${universityId}::uuid and status = 'PUBLISHED'
+      order by name
+      limit 200
+    `),
+    db.execute<{ name: string }>(sql`
       select name from public.universities
       where id = ${universityId}::uuid and deleted_at is null
       limit 1
     `),
-  );
-  const starter = campusDirectoryDefaultForUniversity(university?.name);
+  ]);
 
-  if (!starter) {
-    return context.json({
-      places: [],
-      campus: null,
-      directorySource: "EMPTY" as const,
-    });
-  }
+  const starter = campusDirectoryDefaultForUniversity(firstRow(university)?.name);
+  const databasePlaces = result.rows;
+  const existingNames = new Set(
+    databasePlaces.map((place) => place.name.trim().toLowerCase()),
+  );
+  const starterFill = starter
+    ? starter.places.filter(
+        (place) => !existingNames.has(place.name.trim().toLowerCase()),
+      )
+    : [];
+  const merged = [...databasePlaces, ...starterFill];
+
+  const places = merged.filter((place) => {
+    if (category && place.category.toUpperCase() !== category) return false;
+    if (!query) return true;
+    const aliases = Array.isArray(place.search_aliases)
+      ? place.search_aliases.join(" ")
+      : "";
+    return `${place.name} ${place.description ?? ""} ${aliases}`
+      .toLowerCase()
+      .includes(query);
+  });
 
   return context.json({
-    campus: starter.campus,
-    places: filterCampusStarterPlaces(starter.places, { category, query }),
-    directorySource: "STARTER" as const,
+    campus: starter?.campus ?? null,
+    places,
+    directorySource:
+      databasePlaces.length > 0
+        ? starterFill.length > 0
+          ? ("DATABASE+STARTER" as const)
+          : ("DATABASE" as const)
+        : starter
+          ? ("STARTER" as const)
+          : ("EMPTY" as const),
   });
 });
 
