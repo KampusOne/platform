@@ -38,6 +38,12 @@
     "HF_REASONING_MODEL": "Qwen/Qwen3-235B-A22B-Instruct-2507:nscale",
     "HF_VISION_MODEL": "Qwen/Qwen3-VL-30B-A3B-Instruct:novita",
     "HF_TRANSCRIPTION_MODEL": "openai/whisper-large-v3",
+    "HF_TRANSCRIPTION_FALLBACK_MODEL": "openai/whisper-large-v3-turbo",
+    "GROQ_TRANSCRIPTION_MODEL": "whisper-large-v3",
+    "GEMINI_TRANSCRIPTION_MODEL": "gemini-3.8-flash",
+    "KIRA_YOUTUBE_ENABLED": "true",
+    "KAMPUSONE_PUBLIC_LAUNCH_DATE": "2026-10-26",
+    "KAMPUSONE_AGENT_APPLICATION_URL": "https://agents.kampusone.app/",
     "AI_CHAT_WINDOW_LIMIT": "15",
     "AI_STUDY_TRIAL_LIMIT": "5"
   },
