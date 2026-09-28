@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { FilterRow, SearchField } from "@/src/components/product-ui";
+import { CampusMapDrawer } from "@/src/components/campus-map-drawer";
 import { ApiError, api } from "@/src/lib/api";
 import { useAuth } from "@/src/auth/auth-context";
 import { theme } from "@/src/theme";
@@ -920,8 +920,8 @@ function PlaceRow({
 export default function MapScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
   const { profile } = useAuth();
-  const { width } = useWindowDimensions();
-  const mapHeight = clamp(width * 1.08, MIN_MAP_HEIGHT, MAX_MAP_HEIGHT);
+  const { height } = useWindowDimensions();
+  const mapHeight = Math.max(MIN_MAP_HEIGHT, height);
 
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedCategory, setSelectedCategory] =
@@ -1027,9 +1027,9 @@ export default function MapScreen() {
     () => new Set(mappedPlaces.map((place) => place.id)),
     [mappedPlaces],
   );
-  const selectedPlace =
-    allMappedPlaces.find((place) => place.id === selectedPlaceId) ??
-    mappedPlaces[0];
+  const selectedPlace = allMappedPlaces.find(
+    (place) => place.id === selectedPlaceId,
+  );
   const routeOrigin = allMappedPlaces.find(
     (place) => place.id === routeOriginId,
   );
@@ -1073,7 +1073,8 @@ export default function MapScreen() {
     setRouteDestinationId(place.id);
     setRouteOriginId("");
     setChoosingOrigin(true);
-    setNotice("Choose a starting pin.");
+    setQuery("");
+    setNotice("");
     AccessibilityInfo.announceForAccessibility(
       "Choose your starting point on the campus map.",
     );
@@ -1099,9 +1100,14 @@ export default function MapScreen() {
         return;
       }
 
-      setSelectedPlaceId(id);
+      const place = places.find((item) => item.id === id);
+      if (place) {
+        beginDirections(place);
+      } else {
+        setSelectedPlaceId(id);
+      }
     },
-    [choosingOrigin, routeDestinationId],
+    [beginDirections, choosingOrigin, places, routeDestinationId],
   );
 
   const updateMapLayout = useCallback((event: LayoutChangeEvent) => {
@@ -1111,181 +1117,118 @@ export default function MapScreen() {
     );
   }, []);
 
-  const canShowDirectory = Boolean(places.length) || (!loading && !error);
-
   return (
     <SafeAreaView edges={["top"]} style={styles.screen}>
-      <FlatList
-        contentContainerStyle={styles.listContent}
-        data={canShowDirectory ? filtered : []}
-        initialNumToRender={7}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        keyExtractor={(place) => place.id}
-        ListEmptyComponent={
-          canShowDirectory ? (
-            <View style={styles.directoryEmpty}>
-              <Ionicons color={theme.brand} name="location-outline" size={29} />
-              <Text style={styles.directoryEmptyTitle}>Place not found</Text>
-              <Text style={styles.directoryEmptyBody}>
-                Try another search or choose a different campus category.
-              </Text>
-            </View>
-          ) : null
-        }
-        ListHeaderComponent={
-          <>
-            <View style={styles.header}>
-              <View>
-                <Text style={styles.eyebrow}>CAMPUS NAVIGATION</Text>
-                <Text style={styles.title}>Find your way around</Text>
-              </View>
-              <View style={styles.headerIcon}>
-                <Ionicons color={theme.brandPressed} name="navigate" size={20} />
-              </View>
-            </View>
+      <View style={styles.mapScreen}>
+        <CampusMap
+          choosingOrigin={choosingOrigin}
+          destination={routeDestination}
+          directoryError={Boolean(error) && !places.length}
+          directoryLoading={loading}
+          height={mapHeight}
+          onCancelRoute={clearRoute}
+          onDirections={beginDirections}
+          onLayout={updateMapLayout}
+          onSelect={selectPlace}
+          origin={routeOrigin}
+          places={allMappedPlaces}
+          route={route}
+          selected={selectedPlace}
+          visiblePlaceIds={visiblePlaceIds}
+          width={mapWidth}
+        />
 
-            <SearchField
-              onChangeText={setQuery}
-              placeholder="Find a building or service"
-              value={query}
+        {notice ? (
+          <View style={styles.floatingNotice}>
+            <Ionicons
+              accessible={false}
+              color={theme.accentText}
+              name="information-circle-outline"
+              size={18}
             />
-            <View style={styles.filters}>
-              <FilterRow
-                items={categories}
-                onSelect={(item) =>
-                  setSelectedCategory(item as typeof selectedCategory)
+            <Text
+              accessibilityLiveRegion="polite"
+              accessibilityRole="alert"
+              numberOfLines={2}
+              style={styles.floatingNoticeText}
+            >
+              {notice}
+            </Text>
+            <Pressable
+              accessibilityLabel="Dismiss map notice"
+              accessibilityRole="button"
+              onPress={() => setNotice("")}
+              style={({ pressed }) => [
+                styles.noticeDismiss,
+                pressed && styles.controlPressed,
+              ]}
+            >
+              <Ionicons color={theme.textSubtle} name="close" size={19} />
+            </Pressable>
+          </View>
+        ) : null}
+
+        <CampusMapDrawer
+          choosingOrigin={choosingOrigin}
+          destinationName={routeDestination?.name ?? ""}
+          error={error}
+          loading={loading}
+          onClearRoute={clearRoute}
+          onPickDestination={(id) => {
+            const place = places.find((item) => item.id === id);
+            if (place) beginDirections(place);
+          }}
+          onPickOrigin={selectPlace}
+          onQueryChange={setQuery}
+          places={places}
+          query={query}
+          route={
+            route && routeOrigin && routeDestination
+              ? {
+                  destinationName: routeDestination.name,
+                  distanceMetres: route.distance,
+                  originName: routeOrigin.name,
                 }
-                selected={selectedCategory}
-              />
-            </View>
-
-            {notice ? (
-              <View style={styles.notice}>
-                <Ionicons
-                  accessible={false}
-                  color={theme.accentText}
-                  name="information-circle-outline"
-                  size={18}
-                />
-                <Text
-                  accessibilityLiveRegion="polite"
-                  accessibilityRole="alert"
-                  style={styles.noticeText}
-                >
-                  {notice}
-                </Text>
-                <Pressable
-                  accessibilityLabel="Dismiss map notice"
-                  accessibilityRole="button"
-                  onPress={() => setNotice("")}
-                  style={({ pressed }) => [
-                    styles.noticeDismiss,
-                    pressed && styles.controlPressed,
-                  ]}
-                >
-                  <Ionicons color={theme.textSubtle} name="close" size={19} />
-                </Pressable>
-              </View>
-            ) : null}
-
-            <CampusMap
-              choosingOrigin={choosingOrigin}
-              destination={routeDestination}
-              directoryError={Boolean(error) && !places.length}
-              directoryLoading={loading}
-              height={mapHeight}
-              onCancelRoute={clearRoute}
-              onDirections={beginDirections}
-              onLayout={updateMapLayout}
-              onSelect={selectPlace}
-              origin={routeOrigin}
-              places={allMappedPlaces}
-              route={route}
-              selected={selectedPlace}
-              visiblePlaceIds={visiblePlaceIds}
-              width={mapWidth}
-            />
-
-            {loading ? (
-              <View
-                accessibilityLiveRegion="polite"
-                style={styles.directoryLoading}
-              >
-                <InlineLoading color={theme.brand} />
-                <Text style={styles.directoryLoadingText}>
-                  Loading campus places…
-                </Text>
-              </View>
-            ) : null}
-
-            {error ? (
-              <Pressable
-                accessibilityLabel={
-                  "The campus directory is unavailable. " + error + ". Retry"
-                }
-                accessibilityRole="button"
-                onPress={() => {
-                  setLoading(true);
-                  void load();
-                }}
-                style={({ pressed }) => [
-                  styles.error,
-                  pressed && styles.controlPressed,
-                ]}
-              >
-                <Ionicons
-                  color={theme.accentText}
-                  name="cloud-offline-outline"
-                  size={20}
-                />
-                <View style={styles.errorCopy}>
-                  <Text style={styles.errorTitle}>
-                    The campus directory is unavailable
-                  </Text>
-                  <Text style={styles.errorText}>{error} Tap to retry.</Text>
-                </View>
-              </Pressable>
-            ) : null}
-
-            {canShowDirectory ? (
-              <View style={styles.sectionHeader}>
-                <View>
-                  <Text style={styles.sectionTitle}>Places on campus</Text>
-                  <Text style={styles.sectionSubtitle}>
-                    {filtered.length}{" "}
-                    {filtered.length === 1 ? "place" : "places"} in this view
-                  </Text>
-                </View>
-                <View style={styles.coordinateKey}>
-                  <View style={styles.coordinateKeyLine} />
-                  <Text style={styles.coordinateKeyText}>In-app directions</Text>
-                </View>
-              </View>
-            ) : null}
-          </>
-        }
-        maxToRenderPerBatch={9}
-        removeClippedSubviews={Platform.OS === "android"}
-        renderItem={({ item: place }) => (
-          <PlaceRow
-            onDirections={beginDirections}
-            onSelect={selectPlace}
-            place={place}
-            selected={place.id === selectedPlaceId}
-          />
-        )}
-        showsVerticalScrollIndicator={false}
-        style={[styles.directory, { width: Math.min(width, 560) }]}
-        windowSize={7}
-      />
+              : null
+          }
+        />
+      </View>
     </SafeAreaView>
   );
 }
 
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
-    screen: { backgroundColor: theme.canvas, flex: 1 },
+    screen: { backgroundColor: theme.canvas, flex: 1, overflow: "hidden" },
+    mapScreen: {
+      flex: 1,
+      overflow: "hidden",
+      position: "relative",
+    },
+    floatingNotice: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceRaised,
+      borderColor: theme.border,
+      borderRadius: 16,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 8,
+      left: 14,
+      minHeight: 52,
+      paddingLeft: 12,
+      paddingRight: 4,
+      position: "absolute",
+      right: 14,
+      top: 12,
+      ...theme.shadow,
+    },
+    floatingNoticeText: {
+      color: theme.text,
+      flex: 1,
+      fontFamily: theme.font.medium,
+      fontSize: 11.5,
+      lineHeight: 17,
+    },
     directory: { alignSelf: "center" },
     listContent: { paddingBottom: 120, paddingHorizontal: 18, paddingTop: 10 },
     header: {
@@ -1346,11 +1289,9 @@ const createStyles = (theme: Theme) =>
     },
     mapFrame: {
       backgroundColor: theme.surfaceRaised,
-      borderColor: "rgba(120,86,66,.18)",
-      borderRadius: 26,
-      borderWidth: 1,
+      borderRadius: 0,
+      borderWidth: 0,
       overflow: "hidden",
-      ...theme.shadow,
     },
     mapViewport: {
       backgroundColor: "#F2E9DC",
