@@ -10,8 +10,13 @@ test('switches to a calendar date at four weeks, not during the first week', () 
   assert.equal(feedTime(at(2419200), now).text, '25 Aug');
   assert.match(feedTime('2025-09-22T12:00:00Z', now).text, /2025/);
 });
+test('normalizes Postgres timestamps before parsing so native Hermes gets the same relative time as web', () => {
+  assert.equal(feedTime('2026-09-22T10:00:00.000000+00', now).text, '2h');
+  assert.equal(feedTime('2026-09-22 10:00:00.123456+0000', now).text, '1h');
+});
 test('invalid and future timestamps stay safe', () => {
-  assert.equal(feedTime('invalid', now).text, '—');
+  assert.equal(feedTime('invalid', now).text, 'Recently');
+  assert.equal(feedTime(undefined, now).text, 'Recently');
   assert.equal(feedTime(at(-100), now).text, 'now');
 });
 test('screen readers get expanded time labels', () => assert.equal(feedTime(at(7200), now).label, '2 hours ago'));

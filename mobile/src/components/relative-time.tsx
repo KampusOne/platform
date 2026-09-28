@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { Text, type StyleProp, type TextStyle } from "react-native";
+import { Platform, Text, type StyleProp, type TextStyle } from "react-native";
 import { feedTime } from "@/src/lib/feed-time";
 
 // One clock for the whole feed, not one interval per post or reply.
@@ -13,9 +13,12 @@ function subscribe(listener: () => void) {
   return () => { listeners.delete(listener); if (!listeners.size && timer) { clearInterval(timer); timer = undefined; } };
 }
 const snapshot = () => now;
-const serverSnapshot = snapshot;
+const serverSnapshot = () => 0;
 export function RelativeTime({ value, style }: { value: string; style?: StyleProp<TextStyle> }) {
   const current = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
-  const formatted = feedTime(value, current);
+  // Web SSR keeps the stable placeholder until hydration. Native has no SSR, so
+  // never allow that placeholder snapshot to become the permanent APK value.
+  const effectiveNow = current || (Platform.OS === "web" ? 0 : Date.now());
+  const formatted = effectiveNow ? feedTime(value, effectiveNow) : { text: "Recently", label: "Publication time", exact: "" };
   return <Text accessibilityLabel={`${formatted.label}${formatted.exact ? `. ${formatted.exact}` : ""}`} style={style}>{formatted.text}</Text>;
 }
