@@ -66,6 +66,7 @@ describe("post detail and author deletion", () => {
       id,
       mocks.user.universityId,
       mocks.user.id,
+      mocks.user.id,
     ]);
     expect(query.sql).toContain("posts.status in ('PUBLISHED', 'CORRECTED')");
     expect(query.sql).toContain("public.user_blocks");
