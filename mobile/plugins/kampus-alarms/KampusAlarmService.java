@@ -6,6 +6,7 @@ import android.media.*;
 import android.net.Uri;
 import android.os.*;
 import org.json.JSONObject;
+import java.io.File;
 public class KampusAlarmService extends Service {
   static final String CHANNEL="kampusone-ringing-v1",MISSED="kampusone-missed-v1";
   static final int NOTIFICATION_ID=73410;
@@ -45,28 +46,34 @@ public class KampusAlarmService extends Service {
     return START_NOT_STICKY;
   }
   void play(){
-    Uri uri=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-    if(uri==null)uri=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-    if(uri==null)uri=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-    if(uri==null){android.util.Log.e("KampusAlarms","This device has no default alarm, notification, or ringtone URI");return;}
+    String selected=alarm==null?"default":alarm.optString("sound","default");
+    File custom=selected.startsWith("media:")&&alarm!=null?KampusAlarmScheduler.alarmSoundFile(this,alarm.optString("id")):null;
+    Uri defaultUri=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+    if(defaultUri==null)defaultUri=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+    if(defaultUri==null)defaultUri=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
     try {
       player=new MediaPlayer();
       player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
-      player.setDataSource(this,uri);
+      if(custom!=null&&custom.exists()&&custom.length()>0)player.setDataSource(custom.getAbsolutePath());
+      else {
+        if(defaultUri==null)throw new IllegalStateException("This device has no alarm, notification, or ringtone sound");
+        player.setDataSource(this,defaultUri);
+      }
       player.setLooping(true);
       player.setVolume(1f,1f);
       player.setOnErrorListener((mp,what,extra)->{android.util.Log.w("KampusAlarms","Alarm audio error "+what+"/"+extra);return false;});
       player.prepare();
       player.start();
-      if(!player.isPlaying())android.util.Log.w("KampusAlarms","Default alarm tone did not enter playing state");
+      if(!player.isPlaying())android.util.Log.w("KampusAlarms","Alarm audio did not enter playing state");
     }catch(Exception e){
-      android.util.Log.e("KampusAlarms","Unable to play the device default alarm tone",e);
+      android.util.Log.e("KampusAlarms","Selected alarm sound failed; using device default",e);
       try{
         if(player!=null){player.release();player=null;}
-        Uri fallback=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        Uri fallback=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+        if(fallback==null)fallback=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
         if(fallback==null)fallback=RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
         player=MediaPlayer.create(this,fallback);
-        if(player!=null){player.setLooping(true);player.setVolume(1f,1f);player.start();}
+        if(player!=null){player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());player.setLooping(true);player.setVolume(1f,1f);player.start();}
       }catch(Exception fallbackError){android.util.Log.e("KampusAlarms","Alarm audio fallback failed",fallbackError);}
     }
   }
