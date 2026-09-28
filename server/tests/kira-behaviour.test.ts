@@ -31,7 +31,9 @@ describe("Kira behaviour boundaries", () => {
   it("adds videos for explicit or deeper learning requests, not casual chat or a basic definition", () => {
     const input = (prompt: string): AIInput => ({ mode: "study", prompt, requestPrompt: prompt });
     expect(shouldSuggestLearningVideo(input("Send me a YouTube video on osmosis"))).toBe(true);
+    expect(shouldSuggestLearningVideo(input("Find me a link for thermodynamics"))).toBe(true);
     expect(shouldSuggestLearningVideo(input("Teach me Bernoulli's equation step by step"))).toBe(true);
+    expect(shouldSuggestLearningVideo(input("Give me the KampusOne agent link"))).toBe(false);
     expect(shouldSuggestLearningVideo(input("What is osmosis?"))).toBe(false);
     expect(shouldSuggestLearningVideo(input("Hi, how are you?"))).toBe(false);
   });
