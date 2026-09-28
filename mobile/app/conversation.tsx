@@ -587,23 +587,29 @@ export default function ConversationScreen() {
     setPendingMedia((current) => current.map((batch) => batch.id === working.id ? working : batch));
 
     try {
+      // Upload the whole selected batch first while its local preview stays visible.
+      // Posting the message records only after uploads are ready keeps a multi-picture
+      // send visually together for both participants even on a slow campus network.
       for (let index = 0; index < working.items.length; index += 1) {
         let item = working.items[index]!;
-        if (item.sent) continue;
+        if (item.mediaId) continue;
         const mediaId = await uploadMedia(item);
         item = { ...item, mediaId };
         working.items[index] = item;
         setPendingMedia((current) => current.map((batch) => batch.id === working.id ? { ...working, items: [...working.items] } : batch));
+      }
 
+      for (let index = 0; index < working.items.length; index += 1) {
+        const item = working.items[index]!;
+        if (item.sent || !item.mediaId) continue;
         await api(`/v1/messages/threads/${id}/messages`, {
           method: "POST",
           body: JSON.stringify({
             id: item.messageId,
             body: index === 0 ? working.caption : "",
-            mediaId,
+            mediaId: item.mediaId,
           }),
         });
-
         working.items[index] = { ...item, sent: true };
         setPendingMedia((current) => current.map((batch) => batch.id === working.id ? { ...working, items: [...working.items] } : batch));
       }
