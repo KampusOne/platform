@@ -44,6 +44,7 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
   const {theme}=useAppearance();
   const recorder=useAudioRecorder(VOICE_RECORDING_OPTIONS);
   const state=useAudioRecorderState(recorder,100);
+  const stateRef=useRef(state);stateRef.current=state;
   const [uri,setUri]=useState<string>(),[savedDuration,setSavedDuration]=useState(0),[working,setWorking]=useState(false),[error,setError]=useState('');
   const [meters,setMeters]=useState<number[]>(()=>Array(WAVE_BARS).fill(-60));
   const id=useRef(randomUUID()),alive=useRef(true),locked=useRef(false),timer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined),durationRef=useRef(0);
@@ -76,7 +77,7 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
     if(locked.current)return uri;
     locked.current=true;if(timer.current){clearTimeout(timer.current);timer.current=undefined;}
     try{
-      const duration=state.durationMillis;
+      const duration=stateRef.current.durationMillis;
       if(recorder.isRecording)await recorder.stop();
       await setAudioModeAsync({allowsRecording:false});
       const saved=recorder.uri??undefined;
@@ -132,7 +133,7 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
   }
   async function finishVoice(intent:'draft'|'send'){
     if(working||disabled)return;
-    const saved=state.isRecording?await stopAndKeep():uri;
+    const saved=(recorder.isRecording||stateRef.current.isRecording)?await stopAndKeep():uri;
     if(!saved)return;
     const transcript=await transcribe(saved);
     if(!transcript||!alive.current)return;
