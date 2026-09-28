@@ -80,6 +80,27 @@ const privateKinds = new Set(["kyc", "support", "resource", "message"]);
 const uploadKinds = new Set(["avatar", "cover", "product", "post", "resource", "kyc", "support", "notification-sound", "message"]);
 const standardUploadLimit = 10 * 1024 * 1024;
 const postVideoUploadLimit = 50 * 1024 * 1024;
+type StreamableMedia = Media & { size_bytes: number };
+const publicRangeMetadata = new Map<string, { expires: number; media: StreamableMedia }>();
+const publicRangeMetadataTtl = 5 * 60_000;
+function readPublicRangeMetadata(mediaId: string): StreamableMedia | undefined {
+  const cached = publicRangeMetadata.get(mediaId);
+  if (!cached) return undefined;
+  if (cached.expires <= Date.now()) {
+    publicRangeMetadata.delete(mediaId);
+    return undefined;
+  }
+  return cached.media;
+}
+function rememberPublicRangeMetadata(media: StreamableMedia) {
+  publicRangeMetadata.delete(media.id);
+  publicRangeMetadata.set(media.id, { expires: Date.now() + publicRangeMetadataTtl, media });
+  while (publicRangeMetadata.size > 256) {
+    const oldest = publicRangeMetadata.keys().next().value as string | undefined;
+    if (!oldest) break;
+    publicRangeMetadata.delete(oldest);
+  }
+}
 function uploadTooLargeMessage(kind: string, mime: string | null | undefined) {
   return kind === "post" && mime?.startsWith("video/")
     ? "Post videos can be up to 50 MB. Trim or choose a smaller video."
@@ -272,18 +293,16 @@ mediaRoutes.post("/:id/access", requireAuth, async (c) => {
   });
 });
 mediaRoutes.get("/:id", async (c) => {
-  const result = await database(c.env).execute<{
-    id: string;
-    owner_user_id: string;
-    institution_id: string | null;
-    kind: string;
-    object_key: string;
-    content_type: string;
-    size_bytes: number;
-  }>(
-    sql`select id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes from public.media_objects where id=${id(c.req.param("id"))}::uuid and deleted_at is null`,
-  );
-  const media = firstRow(result);
+  const mediaId = id(c.req.param("id"));
+  const range = c.req.header("Range");
+  let media = range ? readPublicRangeMetadata(mediaId) : undefined;
+  if (!media) {
+    const result = await database(c.env).execute<StreamableMedia>(
+      sql`select id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes from public.media_objects where id=${mediaId}::uuid and deleted_at is null`,
+    );
+    media = firstRow(result);
+    if (media && range && !privateKinds.has(media.kind)) rememberPublicRangeMetadata(media);
+  }
   if (!media) throw new AppError(404, "NOT_FOUND", "File not found.");
   if (privateKinds.has(media.kind)) {
     let user: AuthenticatedUser;
@@ -337,7 +356,6 @@ mediaRoutes.get("/:id", async (c) => {
   const bucket = privateKinds.has(media.kind)
     ? c.env.PRIVATE_BUCKET
     : c.env.MEDIA_BUCKET;
-  const range=c.req.header("Range");
   const selected=range?byteRange(range,Number(media.size_bytes)):null;
   if(range && !selected) { c.header("Content-Range",`bytes */${media.size_bytes}`);return c.body(null,416); }
   const object = await bucket?.get(media.object_key, selected ? {range:selected} : undefined);
