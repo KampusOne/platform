@@ -78,11 +78,14 @@ export async function fetchCampusWalkingRoute(options: {
   const coordinates = `${options.from.longitude},${options.from.latitude};${options.to.longitude},${options.to.latitude}`;
   const url = `${baseUrl}/${coordinates}?alternatives=false&overview=full&geometries=geojson&steps=true`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 6_500);
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 8_000);
 
   try {
     const response = await fetch(url, {
-      headers: { "User-Agent": "KampusOne campus-navigation/0.3" },
+      headers: {
+        Accept: "application/json",
+        "X-Client-Id": "kampusone.app",
+      },
       signal: controller.signal,
     });
     if (!response.ok) {
