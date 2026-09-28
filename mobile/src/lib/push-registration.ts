@@ -30,7 +30,8 @@ export function pushSetupAvailability() {
 
   const projectId =
     Constants.easConfig?.projectId ??
-    Constants.expoConfig?.extra?.eas?.projectId;
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
 
   if (typeof projectId !== "string" || !projectId)
     return {
@@ -81,9 +82,18 @@ export async function registerPushDevice(userId: string) {
     );
 
   const Notifications = await import("expo-notifications");
-  const token = await Notifications.getExpoPushTokenAsync({
-    projectId: availability.projectId,
-  });
+  let token: Awaited<ReturnType<typeof Notifications.getExpoPushTokenAsync>>;
+  try {
+    token = await Notifications.getExpoPushTokenAsync({
+      projectId: availability.projectId,
+    });
+  } catch {
+    throw new Error(
+      Platform.OS === "android"
+        ? "This KampusOne Android build is missing or cannot use its Firebase push credentials. Install a push-enabled build or retry after reconnecting."
+        : "This KampusOne build could not register for push notifications. Retry when you are online.",
+    );
+  }
 
   const response = await api<{ device?: { id: string }; id?: string }>(
     "/v1/notifications/devices",
