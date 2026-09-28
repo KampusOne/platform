@@ -9,7 +9,7 @@ import { sha256 } from "../lib/security";
 import { commentRepliesSchemaReady, nextFeedCursor, parseFeedCursor, socialSchemaReady, visiblePost } from "../lib/feed-social";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
-import { notifyFeedInteraction } from "../services/feed-notifications";
+import { notifyFeedInteraction } from "../services/feed-notifications";\nimport { notifyProfilePostPublished } from "../services/profile-post-notifications";
 
 type Env = { Bindings: Bindings; Variables: Variables };
 type User = ReturnType<typeof currentUser>;
@@ -314,9 +314,10 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
         )
     returning id
   `);
-  const post = firstRow(result);
+  const post = firstRow(result) as { id: string } | undefined;
   if (!post)
     throw new AppError(409, "CONFLICT", "The original post is unavailable or this request belongs to a different draft.");
+  await notifyProfilePostPublished(c.env, post.id, user.id);
   return c.json(post, 201);
 });
 
