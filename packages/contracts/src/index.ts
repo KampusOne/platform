@@ -249,6 +249,7 @@ export const tutorialListingStateSchema = z.object({
 export const tutorialResourceSchema = z
   .object({
     mediaId: z.string().uuid().optional(),
+    replyToMessageId: z.string().uuid().optional(),
     listingId: z.string().uuid().nullable().optional(),
     courseId: z.string().uuid().nullable().optional(),
     courseCode: z.string().trim().toUpperCase().min(2).max(24),
@@ -607,6 +608,17 @@ export type TimetableEntryInput = z.infer<typeof timetableEntrySchema>;
 export type GpaTermInput = z.infer<typeof gpaTermSchema>;
 export type AgentApplicationInput = z.infer<typeof agentApplicationSchema>;
 
+
+// Direct-message interaction inputs shared by mobile and the Worker.
+export const directMessageReactionSchema = z.enum(["😂", "❤️", "👍", "😮", "😭", "🔥"]);
+
+export const directMessageReportReasonSchema = z.enum([
+  "SPAM",
+  "HARASSMENT",
+  "HATE_OR_ABUSE",
+  "SCAM",
+  "OTHER",
+]);
 
 // Direct-message uploads are private and are authorized again on every read.
 export const directMessageInputSchema = z
