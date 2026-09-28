@@ -408,8 +408,8 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
   const university = campus(user);
   const postId = id(c.req.param("id"));
   const data = await input(c, z.object({ body: z.string().trim().min(1).max(2000), requestId: uuid, parentCommentId: uuid.optional() }));
-  await readPost(c, postId);
   const parentId = data.parentCommentId ?? null;
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   const parentAuthorVisible = unblockedAuthor(user.id, sql`parents.author_user_id`);
   const retry = firstRow(await database(c.env).execute(sql`
     select id, post_id, body, parent_comment_id, deleted_at from public.feed_comments
@@ -421,7 +421,10 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
   const result = await database(c.env).execute(sql`
     with target as (
       select posts.id, posts.university_id from public.feed_posts posts
-      where posts.id = ${postId}::uuid and ${visiblePost(university)} for update
+      where posts.id = ${postId}::uuid
+        and ${visiblePost(university)}
+        and ${postAuthorVisible}
+      for update
     ), parent as (
       select parents.id from public.feed_comments parents
       join target on target.id = parents.post_id and target.university_id = parents.institution_id
@@ -479,12 +482,15 @@ feedSocialRoutes.put("/:id/repost", requireAuth, async (c) => {
   await requireSocial(c);
   const user = currentUser(c);
   const postId = id(c.req.param("id"));
-  await readPost(c, postId);
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   await rateLimit(c, "FEED_REPOST", 60);
   const result = await database(c.env).execute(sql`
     with target as (
       select posts.id, posts.university_id from public.feed_posts posts
-      where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} for update
+      where posts.id = ${postId}::uuid
+        and ${visiblePost(campus(user))}
+        and ${postAuthorVisible}
+      for update
     ), saved as (
       insert into public.feed_reposts(post_id, institution_id, user_id)
       select id, university_id, ${user.id}::uuid from target on conflict(post_id, user_id) do nothing
@@ -510,9 +516,9 @@ feedSocialRoutes.put("/:id/bookmark", requireAuth, async (c, next) => {
   if (!await socialSchemaReady(c.env)) return next();
   const user = currentUser(c);
   const postId = id(c.req.param("id"));
-  await readPost(c, postId);
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   const result = await database(c.env).execute(sql`
-    with target as (select posts.id from public.feed_posts posts where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} for update),
+    with target as (select posts.id from public.feed_posts posts where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} and ${postAuthorVisible} for update),
     saved as (insert into public.feed_bookmarks(user_id, post_id) select ${user.id}::uuid, id from target on conflict do nothing)
     select id from target
   `);
