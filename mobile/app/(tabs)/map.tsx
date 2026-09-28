@@ -13,7 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CampusMapSurface } from "@/src/components/campus-map-surface";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -66,6 +66,8 @@ function errorMessage(error: unknown) {
 
 export default function CampusMapScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
+  const insets = useSafeAreaInsets();
+  const bottomOffset = Math.max(insets.bottom, 8) + 88;
   const [directory, setDirectory] = useState<CampusDirectoryResponse>({
     campus: null,
     places: [],
@@ -575,7 +577,7 @@ export default function CampusMapScreen() {
         ) : null}
 
         {directoryError ? (
-          <View style={styles.bottomCard}>
+          <View style={[styles.bottomCard, { bottom: bottomOffset }]}>
             <Text style={styles.cardTitle}>Campus places unavailable</Text>
             <Text style={styles.cardBody}>{directoryError}</Text>
             <Pressable onPress={loadDirectory} style={styles.primaryButton}>
@@ -583,7 +585,7 @@ export default function CampusMapScreen() {
             </Pressable>
           </View>
         ) : showSearchResults ? (
-          <View style={styles.resultsCard}>
+          <View style={[styles.resultsCard, { bottom: bottomOffset }]}>
             {resultPlaces.map((place, index) => (
               <Pressable
                 key={place.id}
@@ -613,7 +615,7 @@ export default function CampusMapScreen() {
             ))}
           </View>
         ) : route && routeDestination ? (
-          <View style={styles.routeSummary}>
+          <View style={[styles.routeSummary, { bottom: bottomOffset }]}>
             {navigationActive && route.steps[0]?.instruction ? (
               <View style={styles.nextStep}>
                 <Ionicons color="#FFFFFF" name="walk" size={20} />
@@ -659,7 +661,7 @@ export default function CampusMapScreen() {
             {routeError ? <Text style={styles.routeError}>{routeError}</Text> : null}
           </View>
         ) : selectedPlace ? (
-          <View style={styles.placeCard}>
+          <View style={[styles.placeCard, { bottom: bottomOffset }]}>
             <View style={styles.placeCardTop}>
               <View style={styles.placeIcon}>
                 <Ionicons
@@ -701,7 +703,7 @@ export default function CampusMapScreen() {
             {routeError ? <Text style={styles.routeError}>{routeError}</Text> : null}
           </View>
         ) : (
-          <View style={styles.compactHint}>
+          <View style={[styles.compactHint, { bottom: bottomOffset }]}>
             <Ionicons color={theme.deepBrand} name="map-outline" size={18} />
             <Text style={styles.compactHintText}>
               Search or tap a campus place.
