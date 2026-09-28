@@ -71,7 +71,7 @@ type PendingMediaBatch = {
   caption: string;
   items: PendingMediaItem[];
   status: "sending" | "failed";
-  error?: string;
+  error?: string | undefined;
 };
 
 function mediaLabel(type?: string | null, name?: string | null) {
@@ -463,7 +463,7 @@ export default function ConversationScreen() {
           uri: asset.uri,
           name: asset.name,
           mimeType: guessDocumentMime(asset.name, asset.mimeType),
-          size: asset.size,
+          size: asset.size ?? null,
           kind: "document",
         };
       });
@@ -488,9 +488,9 @@ export default function ConversationScreen() {
   }
 
   async function processMediaBatch(initialBatch: PendingMediaBatch) {
-    let working = {
+    let working: PendingMediaBatch = {
       ...initialBatch,
-      status: "sending" as const,
+      status: "sending",
       error: undefined,
       items: initialBatch.items.map((item) => ({ ...item })),
     };
@@ -857,7 +857,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   pendingImage: { width: "100%", height: "100%" },
   pendingPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", gap: 5, padding: 6, backgroundColor: "#FFFFFF" },
   pendingPlaceholderText: { color: theme.deepBrand, fontFamily: theme.font.medium, fontSize: 10 },
-  pendingMore: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.52)" },
+  pendingMore: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.52)" },
   pendingMoreText: { color: "#FFFFFF", fontFamily: theme.font.bold, fontSize: 22 },
   pendingStatusRow: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: 250, paddingHorizontal: 3 },
   pendingStatus: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10 },
