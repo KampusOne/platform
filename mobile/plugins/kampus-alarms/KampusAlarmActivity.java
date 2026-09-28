@@ -24,6 +24,7 @@ public class KampusAlarmActivity extends Activity {
   int snoozeMinutes=5;
   boolean snoozeInitialized=false;
   TextView headline,course,classTitle,classTime,venue,lecturer,remaining,snoozeLabel;
+  LinearLayout details;
   Typeface latoBold,latoBlack,interRegular,interSemibold;
 
   final Runnable refresh=new Runnable(){
@@ -114,7 +115,7 @@ public class KampusAlarmActivity extends Activity {
         classTitle.setVisibility(View.VISIBLE);
       }else classTitle.setVisibility(View.GONE);
       if(!starts.isEmpty()){
-        classTime.setText(ends.isEmpty()?starts:starts+"  –  "+ends);
+        classTime.setText(starts);
         classTime.setVisibility(View.VISIBLE);
       }else classTime.setVisibility(View.GONE);
       if(!room.isEmpty()){
@@ -125,6 +126,7 @@ public class KampusAlarmActivity extends Activity {
         lecturer.setText("Lecturer  ·  "+teacher);
         lecturer.setVisibility(View.VISIBLE);
       }else lecturer.setVisibility(View.GONE);
+      details.setVisibility((!room.isEmpty()||!teacher.isEmpty())?View.VISIBLE:View.GONE);
     }else{
       headline.setText("Reminder");
       course.setText(label.isEmpty()?"Your reminder":label);
@@ -132,6 +134,7 @@ public class KampusAlarmActivity extends Activity {
       classTime.setVisibility(View.GONE);
       venue.setVisibility(View.GONE);
       lecturer.setVisibility(View.GONE);
+      details.setVisibility(View.GONE);
     }
   }
 
@@ -191,7 +194,7 @@ public class KampusAlarmActivity extends Activity {
     classTime.setIncludeFontPadding(false);
     hero.addView(classTime,match(LinearLayout.LayoutParams.WRAP_CONTENT));
 
-    LinearLayout details=new LinearLayout(this);
+    details=new LinearLayout(this);
     details.setOrientation(LinearLayout.VERTICAL);
     details.setPadding(dp(18),dp(14),dp(18),dp(14));
     details.setBackground(bordered(0x1AFFFFFF,0x2EFFFFFF,20));
