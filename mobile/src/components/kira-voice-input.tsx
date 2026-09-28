@@ -8,7 +8,6 @@ import { randomUUID } from 'expo-crypto';
 import { api, ApiError } from '@/src/lib/api';
 import { useAppearance } from '@/src/lib/appearance';
 
-const MAX_RECORDING_MS = 120000;
 const WAVE_BARS = 34;
 const VOICE_RECORDING_OPTIONS = {
   ...RecordingPresets.HIGH_QUALITY,
@@ -20,6 +19,7 @@ const VOICE_RECORDING_OPTIONS = {
 type Props = {
   disabled: boolean;
   enabled: boolean;
+  maxRecordingMs: number;
   sendDisabled: boolean;
   sendBusy?: boolean;
   onAttach: () => void;
@@ -40,14 +40,15 @@ function barHeight(value: number | undefined) {
 }
 
 /** Stop transcribes into an editable draft; the arrow transcribes and sends without an extra tap. */
-export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onAttach,onInfo,onSend,onTranscript,onSendTranscript,onActiveChange}:Props){
+export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sendBusy=false,onAttach,onInfo,onSend,onTranscript,onSendTranscript,onActiveChange}:Props){
   const {theme}=useAppearance();
   const recorder=useAudioRecorder(VOICE_RECORDING_OPTIONS);
   const state=useAudioRecorderState(recorder,100);
   const [uri,setUri]=useState<string>(),[savedDuration,setSavedDuration]=useState(0),[working,setWorking]=useState(false),[error,setError]=useState('');
   const [meters,setMeters]=useState<number[]>(()=>Array(WAVE_BARS).fill(-60));
-  const id=useRef(randomUUID()),alive=useRef(true),locked=useRef(false),timer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
+  const id=useRef(randomUUID()),alive=useRef(true),locked=useRef(false),timer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined),durationRef=useRef(0);
   const active=state.isRecording||Boolean(uri)||working;
+  const recordingLimit=Math.max(1000,maxRecordingMs);
 
   useEffect(()=>{onActiveChange?.(active);},[active,onActiveChange]);
   useEffect(()=>{if(state.isRecording)setMeters(values=>[...values.slice(-(WAVE_BARS-1)),state.metering??-60]);},[state.durationMillis,state.isRecording,state.metering]);
@@ -66,8 +67,8 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
       if(!permission.granted)throw new Error('Allow microphone access in your phone settings to record a question.');
       await setAudioModeAsync({allowsRecording:true,playsInSilentMode:true});
       await recorder.prepareToRecordAsync();recorder.record();
-      setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));id.current=randomUUID();
-      timer.current=setTimeout(()=>{void finishVoice('draft');},MAX_RECORDING_MS);
+      durationRef.current=0;setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));id.current=randomUUID();
+      timer.current=setTimeout(()=>{void finishVoice('draft');},recordingLimit);
     }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Recording could not start.');}
     finally{locked.current=false;}
   }
@@ -80,6 +81,7 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
       await setAudioModeAsync({allowsRecording:false});
       const saved=recorder.uri??undefined;
       if(!saved)throw new Error('The recording could not be saved.');
+      durationRef.current=duration;
       if(alive.current){setSavedDuration(duration);setUri(saved);}return saved;
     }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Try recording again.');return undefined;}
     finally{locked.current=false;}
@@ -88,11 +90,11 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
     if(working||locked.current)return;
     locked.current=true;if(timer.current){clearTimeout(timer.current);timer.current=undefined;}
     try{if(recorder.isRecording)await recorder.stop();await setAudioModeAsync({allowsRecording:false});}catch{}
-    finally{if(alive.current){setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));setError('');}id.current=randomUUID();locked.current=false;}
+    finally{durationRef.current=0;if(alive.current){setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));setError('');}id.current=randomUUID();locked.current=false;}
   }
   function clearRecording(){
     if(!alive.current)return;
-    setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));id.current=randomUUID();
+    durationRef.current=0;setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));id.current=randomUUID();
   }
   async function transcribe(recordingUri:string){
     if(locked.current||disabled)return undefined;
@@ -101,16 +103,18 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
       const body=Platform.OS==='web'?await(await fetch(recordingUri)).blob():new File(recordingUri) as unknown as Blob;
       if(body.size>8*1024*1024)throw new Error('Record a shorter voice message.');
       const contentType=Platform.OS==='web'?body.type||'audio/webm':'audio/mp4';
-      const path='/v1/ai/transcribe?idempotencyKey='+encodeURIComponent(id.current)+'&consent=true';
+      const durationMs=Math.max(1,durationRef.current||savedDuration||state.durationMillis);
+      const path='/v1/ai/transcribe?idempotencyKey='+encodeURIComponent(id.current)+'&consent=true&durationMs='+encodeURIComponent(String(durationMs));
+      const timeoutMs=Math.max(90000,Math.min(180000,Math.ceil(recordingLimit/2)));
       let result:{text:string};
       try{
-        result=await api<{text:string}>(path,{method:'POST',headers:{'Content-Type':contentType},body,timeoutMs:75000});
+        result=await api<{text:string}>(path,{method:'POST',headers:{'Content-Type':contentType},body,timeoutMs});
       }catch(e){
         const retryMultipart=e instanceof ApiError&&e.details?.retryMultipart===true;
         if(!retryMultipart)throw e;
         const form=new FormData();
         form.append('file',body,Platform.OS==='web'?'Kira-voice.webm':'Kira-voice.m4a');
-        result=await api<{text:string}>(path,{method:'POST',body:form,timeoutMs:75000});
+        result=await api<{text:string}>(path,{method:'POST',body:form,timeoutMs});
       }
       const transcript=result.text.trim();
       if(!transcript)throw new Error('No speech was detected. Try recording again.');
@@ -153,7 +157,7 @@ export function KiraVoiceInput({disabled,enabled,sendDisabled,sendBusy=false,onA
   return <View>
     <View accessibilityLiveRegion="polite" accessibilityLabel={working?'Transcribing voice message':state.isRecording?'Recording voice message':'Voice recording saved'} style={{minHeight:64,flexDirection:'row',alignItems:'center',gap:9}}>
       <Pressable accessibilityRole="button" accessibilityLabel="Cancel voice recording" disabled={working} onPress={()=>void cancel()} style={{width:44,height:44,alignItems:'center',justifyContent:'center',opacity:working?0.4:1}}><Ionicons name="close" size={28} color={theme.text}/></Pressable>
-      {!working?<Text style={{color:theme.textMuted,fontFamily:theme.font.semibold,fontSize:12,minWidth:34}}>{durationLabel(duration)}</Text>:null}
+      {!working?<Text style={{color:theme.textMuted,fontFamily:theme.font.semibold,fontSize:12,minWidth:72}}>{durationLabel(duration)} / {durationLabel(recordingLimit)}</Text>:null}
       <View style={{flex:1,height:32,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:2,overflow:'hidden'}}>
         {working?<View style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8}}><InlineLoading color={theme.textMuted} size={34} style={{marginVertical:0}}/><Text style={{color:theme.text,fontFamily:theme.font.semibold,fontSize:15}}>Transcribing…</Text></View>:waveform}
       </View>
