@@ -783,7 +783,7 @@ export default function ConversationScreen() {
                 if (item.media_type?.startsWith("image/")) {
                   for (let nextIndex = index + 1; nextIndex < data.messages.length && pictureGroup.length < 10; nextIndex += 1) {
                     const next = data.messages[nextIndex];
-                    if (!picturesBelongTogether(pictureGroup[pictureGroup.length - 1], next)) break;
+                    if (!next || !picturesBelongTogether(pictureGroup[pictureGroup.length - 1], next)) break;
                     pictureGroup.push(next);
                   }
                 }
