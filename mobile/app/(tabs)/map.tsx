@@ -571,7 +571,7 @@ export default function CampusMapScreen() {
 
         {directoryLoading || !mapReady ? (
           <View style={styles.loadingBadge}>
-            <ActivityIndicator color={theme.deepBrand} size="small" />
+            <InlineLoading color={theme.deepBrand} />
             <Text style={styles.loadingText}>Loading campus map</Text>
           </View>
         ) : null}
