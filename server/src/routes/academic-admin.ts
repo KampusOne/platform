@@ -73,6 +73,29 @@ academicAdminRoutes.post('/guidelines',async c=>{
  return c.json({id:target,version,status:'PUBLISHED'},201);
 });
 
+academicAdminRoutes.get('/coverage',async c=>{
+ const scope=await resolveAdminScope(c.env,currentUser(c),c.req.query('universityId'),'academic.view');
+ const rows=await database(c.env).execute(sql`
+  select
+   u.id,u.name,u.slug,coalesce(config.status,'PREPARING') catalogue_status,
+   count(distinct f.id)::int faculty_count,
+   count(distinct d.id)::int department_count,
+   count(distinct course.id)::int programme_count
+  from public.universities u
+  left join public.institution_config config on config.institution_id=u.id
+  left join public.faculties f on f.university_id=u.id and f.deleted_at is null
+  left join public.departments d on d.faculty_id=f.id and d.deleted_at is null
+  left join public.courses course on course.department_id=d.id and course.deleted_at is null
+  where u.deleted_at is null
+    and (${scope}::uuid is null or u.id=${scope}::uuid)
+  group by u.id,u.name,u.slug,config.status
+  order by
+   case when count(distinct f.id)=0 then 0 when count(distinct d.id)=0 then 1 when count(distinct course.id)=0 then 2 else 3 end,
+   u.name
+ `);
+ return c.json({rows:rows.rows});
+});
+
 academicAdminRoutes.get('/missing',async c=>{
  const status=c.req.query('status')||'PENDING',q=c.req.query('q')?.trim().slice(0,160)||null;
  if(!['PENDING','APPROVED','REJECTED','NEEDS_CORRECTION','ALL'].includes(status))throw new AppError(400,'BAD_REQUEST','Choose a valid review status.');
