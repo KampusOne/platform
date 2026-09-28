@@ -201,9 +201,14 @@ function Video({
       if (!initialAspect && size && size.width > 0 && size.height > 0) setAspect(size.width / size.height);
     };
     update();
-    const timer = setInterval(update, 250);
-    return () => { clearInterval(timer); if (seekHintTimer.current) clearTimeout(seekHintTimer.current); };
-  }, [player]);
+    // Off-screen feed videos stay paused without waking React four times per second.
+    const shouldPoll = !managed || (isViewportVisible && !suspended);
+    const timer = shouldPoll ? setInterval(update, 500) : null;
+    return () => {
+      if (timer) clearInterval(timer);
+      if (seekHintTimer.current) clearTimeout(seekHintTimer.current);
+    };
+  }, [initialAspect, isViewportVisible, managed, player, status, suspended]);
 
   const progress = duration > 0 ? Math.max(0, Math.min(1, position / duration)) : 0;
   function seekBy(seconds: number) {
