@@ -29,10 +29,10 @@ This import fixes the data layer without inventing academic structure.
 
 ## Current generated coverage
 
-- 308 safely matched catalogue rows against the external 2026 university snapshot.
-- 236 non-UNIBEN universities contribute at least one parseable faculty/school/college row.
+- 310 safely matched catalogue rows against the external 2026 university snapshot.
+- 238 non-UNIBEN universities contribute at least one parseable faculty/school/college row.
 - UNIBEN is overridden separately with 21 current faculty/school-level units and 148 department rows.
-- The migration contains 1,434 distinct faculty/school entries and 577 department rows in total.
+- The migration contains 1,451 distinct faculty/school entries and 577 department rows in total.
 - Seed generation found zero faculty-slug collisions and zero department-slug collisions.
 
 These counts are a **coverage baseline, not a claim that every Nigerian university has a complete public department directory**. See `coverage.json` for the explicit research queue.
