@@ -326,9 +326,9 @@ export function MessageActionOverlay({
           intensity={42}
           tint="default"
           blurTarget={blurTarget}
-          blurMethod={
-            Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : undefined
-          }
+          {...(Platform.OS === "android"
+            ? { blurMethod: "dimezisBlurViewSdk31Plus" as const }
+            : {})}
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.actionShade} />
