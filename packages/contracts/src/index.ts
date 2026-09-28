@@ -22,6 +22,7 @@ export const apiErrorCodeSchema = z.enum([
   "INELIGIBLE",
   "UNAUTHENTICATED",
   "FORBIDDEN",
+  "BLOCKED_BY_USER",
   "NOT_FOUND",
   "CONFLICT",
   "RATE_LIMITED",
