@@ -217,7 +217,7 @@ export default function StudentAI() {
         <Text style={{...muted,fontSize:10,textAlign:'center',marginTop:7}}>Kira can make mistakes. Check important details.</Text>
       </View>
     </KeyboardAvoidingView>
-    <AIEdgeGlow active={busy}/>
+    <AIEdgeGlow active={busy || voiceActive}/>
     <Modal visible={sheet!==null} transparent animationType="fade" onRequestClose={()=>setSheet(null)}>
       <View style={{flex:1,justifyContent:'flex-end',backgroundColor:'rgba(0,0,0,0.35)'}}><Pressable accessibilityLabel="Close panel" accessibilityRole="button" onPress={()=>setSheet(null)} style={{flex:1}}/>
         <SafeAreaView edges={['bottom']} style={{backgroundColor:theme.canvas,borderTopLeftRadius:24,borderTopRightRadius:24,width:'100%',maxWidth:760,alignSelf:'center',maxHeight:'82%',padding:22}}>
