@@ -39,6 +39,19 @@ module.exports = function withKampusAlarms(config) {
     const assets = path.join(config.modRequest.platformProjectRoot, 'app/src/main/assets');
     fs.mkdirSync(assets, { recursive: true });
     fs.copyFileSync(path.join(config.modRequest.projectRoot, 'assets/brand/kampusone-horizontal-ink.png'), path.join(assets, 'kampus-download-wordmark.png'));
+    const fontDir = path.join(assets, 'fonts');
+    fs.mkdirSync(fontDir, { recursive: true });
+    const fonts = [
+      ['node_modules/@expo-google-fonts/lato/700Bold/Lato_700Bold.ttf', 'lato-bold.ttf'],
+      ['node_modules/@expo-google-fonts/lato/900Black/Lato_900Black.ttf', 'lato-black.ttf'],
+      ['node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf', 'inter-regular.ttf'],
+      ['node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf', 'inter-semibold.ttf'],
+    ];
+    for (const [relative, name] of fonts) {
+      const source = path.join(config.modRequest.projectRoot, relative);
+      if (!fs.existsSync(source)) throw new Error(`KampusOne alarm font missing: ${relative}`);
+      fs.copyFileSync(source, path.join(fontDir, name));
+    }
     for (const file of fs.readdirSync(path.join(__dirname, 'kampus-alarms'))) if (file.endsWith('.java')) fs.copyFileSync(path.join(__dirname, 'kampus-alarms', file), path.join(destination, file));
     return config;
   }]);
