@@ -35,12 +35,23 @@ jobs:
       - name: Check app types
         run: npm run check
         working-directory: mobile
+      - name: Configure Android push credentials
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > mobile/google-services.json
+          else
+            echo "Firebase push credentials are not configured; APK will build with local alarms only."
+          fi
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
         working-directory: mobile
         env:
           CI: "1"
           EXPO_NO_TELEMETRY: "1"
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID }}
+          GOOGLE_SERVICES_JSON_PATH: ./google-services.json
       - name: Build installable APK with bundled JavaScript
         run: ./gradlew assembleRelease --no-daemon
         working-directory: mobile/android
@@ -49,6 +60,7 @@ jobs:
           NODE_ENV: production
           EXPO_PUBLIC_KAMPUSONE_API_URL: https://kampusone-mobile-preview.vercel.app/api
           EXPO_PUBLIC_KAMPUSONE_API_FALLBACK_URL: https://platformp.divine-haze-54eb.workers.dev
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID }}
       - name: Prepare public APK
         run: cp mobile/android/app/build/outputs/apk/release/*.apk KampusOne-Android.apk
       - name: Save Android testing artifact
