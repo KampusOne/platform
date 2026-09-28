@@ -2,7 +2,7 @@ name: Build Android test APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, release/apk-authfix-20260927-1904]
+    branches: [main, release/apk-authfix-20260927-1904, fix/uniben-live-campus-map]
     paths:
       [
         "mobile/**",
