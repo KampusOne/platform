@@ -21,7 +21,7 @@ const alarmSchema = z
       .max(7)
       .transform((d) => [...new Set(d)]),
     enabled: z.boolean(),
-    sound: z.enum(["default", "silent"]),
+    sound: z.union([z.enum(["default", "silent"]), z.string().regex(/^media:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)]),
     vibration: z.boolean(),
     snoozeMinutes: z.number().int().min(1).max(30),
     firesAt: z.string().datetime({ offset: true }).nullable().optional(),
@@ -35,15 +35,62 @@ const alarmSchema = z
         Date.parse(d.firesAt) < Date.now() + 366 * 86400000),
     { message: "Choose a future time or a repeating day." },
   );
-learningRoutes.get("/alarms", async (c) => {
-  const result = await database(c.env).execute(
-    sql`select id,label,to_char(time,'HH24:MI') time,days,(enabled and (cardinality(days)>0 or fires_at>now())) enabled,sound,vibration,snooze_minutes,timetable_entry_id,fires_at from public.student_alarms where user_id=${currentUser(c).id}::uuid order by time,id limit 150`,
+type AlarmSoundMedia = { id: string; original_name: string };
+function alarmSoundMediaId(sound: string) {
+  return sound.startsWith("media:") ? sound.slice(6) : null;
+}
+async function assertOwnedAlarmSound(env: Bindings, userId: string, sound: string) {
+  const mediaId = alarmSoundMediaId(sound);
+  if (!mediaId) return;
+  const owned = firstRow(
+    await database(env).execute<{ id: string }>(
+      sql`select id from public.media_objects where id=${mediaId}::uuid and owner_user_id=${userId}::uuid and kind='notification-sound' and deleted_at is null limit 1`,
+    ),
   );
-  return c.json({ alarms: result.rows });
+  if (!owned) throw new AppError(400, "BAD_REQUEST", "Choose one of your uploaded alarm sounds.");
+}
+function alarmSoundUrl(c: { env: Bindings; req: { url: string } }, id: string) {
+  const origin = (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin).replace(/\/$/, "");
+  return `${origin}/v1/media/${id}`;
+}
+learningRoutes.get("/alarm-sounds", async (c) => {
+  const result = await database(c.env).execute<AlarmSoundMedia>(
+    sql`select id,original_name from public.media_objects where owner_user_id=${currentUser(c).id}::uuid and kind='notification-sound' and deleted_at is null order by created_at desc limit 30`,
+  );
+  return c.json({
+    sounds: result.rows.map((sound) => ({
+      id: sound.id,
+      name: sound.original_name,
+      url: alarmSoundUrl(c, sound.id),
+    })),
+  });
+});
+learningRoutes.get("/alarms", async (c) => {
+  const user = currentUser(c);
+  const [result, sounds] = await Promise.all([
+    database(c.env).execute<{ id:string;label:string;time:string;days:number[];enabled:boolean;sound:string;vibration:boolean;snooze_minutes:number;timetable_entry_id:string|null;fires_at:string|null }>(
+      sql`select id,label,to_char(time,'HH24:MI') time,days,(enabled and (cardinality(days)>0 or fires_at>now())) enabled,sound,vibration,snooze_minutes,timetable_entry_id,fires_at from public.student_alarms where user_id=${user.id}::uuid order by time,id limit 150`,
+    ),
+    database(c.env).execute<AlarmSoundMedia>(
+      sql`select id,original_name from public.media_objects where owner_user_id=${user.id}::uuid and kind='notification-sound' and deleted_at is null limit 30`,
+    ),
+  ]);
+  const names = new Map(sounds.rows.map((sound) => [sound.id, sound.original_name]));
+  return c.json({
+    alarms: result.rows.map((alarm) => {
+      const mediaId = alarmSoundMediaId(alarm.sound);
+      return {
+        ...alarm,
+        sound_name: mediaId ? names.get(mediaId) ?? null : alarm.sound === "silent" ? "Silent" : "Device default alarm",
+        sound_url: mediaId && names.has(mediaId) ? alarmSoundUrl(c, mediaId) : null,
+      };
+    }),
+  });
 });
 learningRoutes.post("/alarms", async (c) => {
   const user = currentUser(c);
   const d = await input(c, alarmSchema);
+  await assertOwnedAlarmSound(c.env, user.id, d.sound);
   const client = sqlClient(c.env);
   const results = await client.transaction([
     client`select pg_advisory_xact_lock(hashtextextended(${user.id + "-alarms"},0))`,
@@ -54,9 +101,11 @@ learningRoutes.post("/alarms", async (c) => {
   return c.json(created, 201);
 });
 learningRoutes.put("/alarms/:id", async (c) => {
+  const user = currentUser(c);
   const d = await input(c, alarmSchema);
+  await assertOwnedAlarmSound(c.env, user.id, d.sound);
   const result = await database(c.env).execute(
-    sql`update public.student_alarms set label=${d.label},time=${d.time}::time,days=${sql.param(d.days)}::smallint[],fires_at=${d.days.length ? null : d.firesAt!}::timestamptz,enabled=${d.enabled},sound=${d.sound},vibration=${d.vibration},snooze_minutes=${d.snoozeMinutes},updated_at=now() where id=${id(c.req.param("id"))}::uuid and user_id=${currentUser(c).id}::uuid returning id`,
+    sql`update public.student_alarms set label=${d.label},time=${d.time}::time,days=${sql.param(d.days)}::smallint[],fires_at=${d.days.length ? null : d.firesAt!}::timestamptz,enabled=${d.enabled},sound=${d.sound},vibration=${d.vibration},snooze_minutes=${d.snoozeMinutes},updated_at=now() where id=${id(c.req.param("id"))}::uuid and user_id=${user.id}::uuid returning id`,
   );
   if (!firstRow(result))
     throw new AppError(404, "NOT_FOUND", "Alarm not found.");
