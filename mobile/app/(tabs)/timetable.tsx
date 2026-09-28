@@ -2,7 +2,7 @@ import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -60,6 +60,12 @@ export default function TimetableScreen() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -94,6 +100,8 @@ export default function TimetableScreen() {
     [day, entries],
   );
   const selectedDay = days[day] ?? days[0];
+  const selectedIsToday = day === now.getDay();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
   const canSave = title.trim().length > 0 && !saving;
 
@@ -382,24 +390,57 @@ export default function TimetableScreen() {
           accessibilityLabel={`${selectedDay.long} course and activity schedule`}
           style={styles.timeline}
         >
-          {visible.map((entry, index) => (
+          {visible.map((entry, index) => {
+            const endMinutes = timeToMinutes(entry.ends_at);
+            const completed =
+              selectedIsToday &&
+              endMinutes !== null &&
+              currentMinutes >= endMinutes;
+
+            return (
             <View key={entry.id} style={styles.timelineRow}>
-              <View style={styles.timeColumn}>
-                <Text style={styles.start}>{entry.starts_at}</Text>
-                <Text style={styles.end}>{entry.ends_at}</Text>
+              <View
+                style={[
+                  styles.timeColumn,
+                  completed && styles.timeColumnCompleted,
+                ]}
+              >
+                <Text style={[styles.start, completed && styles.completedText]}>
+                  {entry.starts_at}
+                </Text>
+                <Text style={[styles.end, completed && styles.completedText]}>
+                  {entry.ends_at}
+                </Text>
               </View>
               <View style={styles.railColumn}>
-                <View style={styles.dot} />
+                <View style={[styles.dot, completed && styles.dotCompleted]} />
                 {index < visible.length - 1 ? (
-                  <View style={styles.rail} />
+                  <View style={[styles.rail, completed && styles.railCompleted]} />
                 ) : null}
               </View>
-              <View style={styles.classBlock}>
+              <View
+                style={[
+                  styles.classBlock,
+                  completed && styles.classBlockCompleted,
+                ]}
+              >
                 {entry.occurs_on?<Text style={{color:theme.textMuted,fontFamily:theme.font.medium,fontSize:11,marginBottom:6}}>One-time · {entry.occurs_on}</Text>:null}
                 <View style={styles.classTopline}>
-                  <Text style={styles.code}>
-                    {entry.course_code || "ACTIVITY"}
-                  </Text>
+                  <View style={styles.codeRow}>
+                    <Text style={[styles.code, completed && styles.completedText]}>
+                      {entry.course_code || "ACTIVITY"}
+                    </Text>
+                    {completed ? (
+                      <View style={styles.completedBadge}>
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={13}
+                          color={theme.textMuted}
+                        />
+                        <Text style={styles.completedBadgeText}>Done</Text>
+                      </View>
+                    ) : null}
+                  </View>
                   <Pressable
                     accessibilityHint="Removes this course or activity from your timetable"
                     accessibilityLabel={`Delete ${entry.title}`}
@@ -437,7 +478,14 @@ export default function TimetableScreen() {
                     })
                   }
                 >
-                  <Text style={styles.classTitle}>{entry.title}</Text>
+                  <Text
+                    style={[
+                      styles.classTitle,
+                      completed && styles.completedText,
+                    ]}
+                  >
+                    {entry.title}
+                  </Text>
                 </Pressable>
                 <View style={styles.detailRow}>
                   <Ionicons
@@ -484,7 +532,8 @@ export default function TimetableScreen() {
                 </View>
               </View>
             </View>
-          ))}
+            );
+          })}
         </View>
       ) : null}
       <ToolButton
@@ -504,6 +553,25 @@ export default function TimetableScreen() {
       />
     </ProductScreen>
   );
+}
+
+function timeToMinutes(value: string) {
+  const [hoursText, minutesText] = value.split(":");
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+
+  if (
+    !Number.isFinite(hours) ||
+    !Number.isFinite(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
 }
 
 function Field({ label, ...props }: TextInputProps & { label: string }) {
@@ -843,6 +911,7 @@ const createStyles = (theme: Theme) =>
       minHeight: 148,
     },
     timeColumn: { paddingTop: 4, width: 50 },
+    timeColumnCompleted: { opacity: 0.62 },
     start: {
       color: theme.text,
       fontFamily: theme.font.bold,
@@ -866,11 +935,18 @@ const createStyles = (theme: Theme) =>
       marginTop: 5,
       width: 14,
     },
+    dotCompleted: {
+      backgroundColor: theme.textMuted,
+      opacity: 0.55,
+    },
     rail: {
       backgroundColor: "rgba(195,93,56,0.22)",
       flex: 1,
       marginBottom: -5,
       width: 2,
+    },
+    railCompleted: {
+      backgroundColor: theme.border,
     },
     classBlock: {
       backgroundColor: theme.surfaceRaised,
@@ -883,16 +959,44 @@ const createStyles = (theme: Theme) =>
       paddingHorizontal: 16,
       paddingTop: 12,
     },
+    classBlockCompleted: {
+      backgroundColor: theme.surfaceMuted,
+      opacity: 0.72,
+    },
     classTopline: {
       alignItems: "center",
       flexDirection: "row",
       justifyContent: "space-between",
+    },
+    codeRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      flexShrink: 1,
+      gap: 7,
     },
     code: {
       color: theme.deepBrand,
       fontFamily: theme.font.bold,
       fontSize: 11,
       letterSpacing: 0.75,
+    },
+    completedBadge: {
+      alignItems: "center",
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+    },
+    completedBadgeText: {
+      color: theme.textMuted,
+      fontFamily: theme.font.semibold,
+      fontSize: 10.5,
+    },
+    completedText: {
+      color: theme.textMuted,
     },
     delete: {
       alignItems: "center",
