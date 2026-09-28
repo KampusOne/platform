@@ -44,6 +44,8 @@ export type Bindings = {
   HF_PRO_MODEL?: string;
   HF_TRANSCRIPTION_MODEL?: string;
   HF_TRANSCRIPTION_FALLBACK_MODEL?: string;
+  GROQ_API_KEY?: string;
+  GROQ_TRANSCRIPTION_MODEL?: string;
   KIRA_YOUTUBE_ENABLED?: string;
   YOUTUBE_API_KEY?: string;
   KAMPUSONE_PUBLIC_LAUNCH_DATE?: string;
