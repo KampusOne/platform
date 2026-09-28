@@ -718,8 +718,8 @@ export default function CampusMapScreen() {
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
     screen: { backgroundColor: theme.canvas, flex: 1 },
-    map: { ...StyleSheet.absoluteFillObject },
-    overlay: { ...StyleSheet.absoluteFillObject },
+    map: { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
+    overlay: { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
     topArea: { paddingHorizontal: 14, paddingTop: 8 },
     brandRow: {
       alignItems: "center",
