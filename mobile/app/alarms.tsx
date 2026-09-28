@@ -34,6 +34,12 @@ const DAY_LONG_NAMES = [
   "Saturday",
 ];
 
+function currentCampusDay(now = new Date()) {
+  // Campus schedules use Africa/Lagos (UTC+1), so the default weekday should
+  // match the day the alarm scheduler will use even if the device zone differs.
+  return new Date(now.getTime() + 60 * 60 * 1000).getUTCDay();
+}
+
 function nextOccurrence(time: string) {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
   const [h, m] = time.split(":").map(Number);
@@ -507,7 +513,7 @@ export default function Alarms() {
   const [editing, setEditing] = useState<Alarm | null>(null);
   const [label, setLabel] = useState("");
   const [time, setTime] = useState("08:00");
-  const [days, setDays] = useState<number[]>([]);
+  const [days, setDays] = useState<number[]>(() => [currentCampusDay()]);
   const [sound, setSound] = useState<Alarm["sound"]>("default");
   const [sounds, setSounds] = useState<AlarmSoundOption[]>([]);
   const [soundOpen, setSoundOpen] = useState(false);
@@ -578,15 +584,17 @@ export default function Alarms() {
   }
 
   function edit(alarm: Alarm | null) {
+    const initialDays = alarm ? alarm.days : [currentCampusDay()];
     setEditing(alarm);
     setLabel(alarm?.label ?? "");
     setTime(alarm?.time ?? "08:00");
-    setDays(alarm?.days ?? []);
+    setDays(initialDays);
     setSound(alarm?.sound ?? "default");
     setSoundOpen(false);
     setVibration(alarm?.vibration ?? true);
     setSnooze(String(alarm?.snooze_minutes ?? 5));
-    setRepeatOpen(Boolean(alarm?.days.length));
+    // New alarms should show the weekday controls immediately with today selected.
+    setRepeatOpen(alarm ? Boolean(alarm.days.length) : true);
     setForm(true);
   }
 
