@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "102852292089",
+    "project_id": "kampusone-5064e",
+    "storage_bucket": "kampusone-5064e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:102852292089:android:bb48f75890bb9029ab6128",
+        "android_client_info": {
+          "package_name": "app.kampusone.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1uG9jTzU_BvjJeezq_iREOnMfKUzF7Zw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
