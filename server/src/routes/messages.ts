@@ -177,6 +177,7 @@ messageRoutes.get("/inbox", async (c) => {
               where m.thread_id=t.id
                 and m.sender_id<>${user.id}::uuid
                 and m.read_at is null
+                and m.unsent_at is null
             )
           )
           or (
@@ -721,6 +722,9 @@ messageRoutes.post("/threads/:id/messages/:messageId/report", async (c) => {
   const message = await messageFor(c.env, thread.id, id(c.req.param("messageId")));
   if (message.sender_id === user.id) {
     throw new AppError(400, "BAD_REQUEST", "Choose a message from the other person to report.");
+  }
+  if (message.unsent_at) {
+    throw new AppError(409, "CONFLICT", "This message was unsent.");
   }
   const data = await input(
     c,
