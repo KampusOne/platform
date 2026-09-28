@@ -124,7 +124,7 @@ function ConversationSkeleton() {
   );
 }
 
-function Attachment({ message, mine }: { message: Message; mine: boolean }) {
+function MessageMedia({ message, mine }: { message: Message; mine: boolean }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -685,7 +685,7 @@ export default function ConversationScreen() {
                   <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
                     <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
                       {showBody ? <Text selectable style={[styles.messageText, mine && styles.messageTextMine]}>{item.body}</Text> : null}
-                      {item.media_id && item.media_type ? <Attachment message={item} mine={mine} /> : null}
+                      {item.media_id && item.media_type ? <MessageMedia message={item} mine={mine} /> : null}
                     </View>
                     <View style={[styles.messageMeta, mine && styles.messageMetaMine]}>
                       <Text style={styles.messageTime}>{formatMessageTime(item.created_at)}</Text>
