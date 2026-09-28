@@ -32,13 +32,16 @@ function cached(status:string,result:unknown,request_hash="request-hash"){return
 beforeEach(()=>{vi.clearAllMocks();mocks.execute.mockImplementation(async(s:SQL)=>query(s).sql.includes("consume_request_rate_limit")?{rows:[{allowed:true}]}:{rows:[]});mocks.transaction.mockResolvedValue([[],[],[{idempotency_key:key}]]);mocks.fetch.mockResolvedValue(Response.json({choices:[{finish_reason:"stop",message:{content:"Energy explanation"}}]}));vi.stubGlobal("fetch",mocks.fetch);});
 afterEach(()=>vi.unstubAllGlobals());
 describe("AI router security and idempotency",()=>{
-  it("reports voice input only when transcription is configured",async()=>{
-    const r=await get("/ai/status");expect(r.status).toBe(200);expect(await r.json()).toMatchObject({voiceEnabled:true,voice:{maxSeconds:60},askSession:{windowMinutes:15,limit:15,remaining:0}});
+  it("reports plan-aware long-form voice input only when transcription is configured",async()=>{
+    const longFormEnv={...env,GEMINI_API_KEY:"synthetic",GEMINI_TRANSCRIPTION_MODEL:"gemini-3.8-flash"};
+    const r=await app.request("/ai/status",{headers:{Authorization:"Bearer test"}},longFormEnv);expect(r.status).toBe(200);expect(await r.json()).toMatchObject({voiceEnabled:true,voice:{maxSeconds:60,longFormReady:true},askSession:{windowMinutes:15,limit:15,remaining:0}});
+    const shortOnly=await get("/ai/status");expect(await shortOnly.json()).toMatchObject({voiceEnabled:true,voice:{maxSeconds:30,longFormReady:false}});
     const off=await app.request("/ai/status",{headers:{Authorization:"Bearer test"}},{...env,HF_TRANSCRIPTION_MODEL:""});
     expect(await off.json()).toMatchObject({voiceEnabled:false});
   });
   it("enforces the Standard one-minute voice contract before provider I/O",async()=>{
-    const r=await app.request(`/ai/transcribe?idempotencyKey=${key}&consent=true&durationMs=61001`,{method:"POST",headers:{Authorization:"Bearer test","Content-Type":"audio/mp4"},body:new Uint8Array([0,1,2,3,4])},env);
+    const longFormEnv={...env,GEMINI_API_KEY:"synthetic",GEMINI_TRANSCRIPTION_MODEL:"gemini-3.8-flash"};
+    const r=await app.request(`/ai/transcribe?idempotencyKey=${key}&consent=true&durationMs=61001`,{method:"POST",headers:{Authorization:"Bearer test","Content-Type":"audio/mp4"},body:new Uint8Array([0,1,2,3,4])},longFormEnv);
     expect(r.status).toBe(413);
     expect(await r.json()).toMatchObject({error:{details:{reason:"AI_VOICE_DURATION",maxSeconds:60,upgrade:true}}});
     expect(mocks.fetch).not.toHaveBeenCalled();
