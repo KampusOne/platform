@@ -2,6 +2,7 @@ import {campusAdminRoutes} from "./routes/campus-admin";
 import { peopleRoutes } from "./routes/people";
 import { messageRoutes } from "./routes/messages";
 import { publicBadgeAdminRoutes, publicBadgeProfileRoutes } from "./routes/public-badges";
+import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
@@ -9,6 +10,7 @@ import { mediaAwareSecureHeaders } from "./middleware/security-headers";
 import { bodyLimit } from "hono/body-limit";
 
 import { allowedOrigins, getPublicConfig, readiness } from "./lib/config";
+import { database } from "./lib/database";
 import { AppError, errorResponse } from "./lib/errors";
 import { hashPassword, verifyPassword } from "./lib/security";
 import { emailPreferencesRoutes } from "./routes/broadcasts";
@@ -78,9 +80,22 @@ app.use("/v1/*", async (context, next) => {
 });
 app.get("/", (context) => context.json({ service: "kampusone-api", message: "KampusOne privileged API boundary", documentation: "/v1/config/public", requestId: context.get("requestId") }));
 app.get("/health/live", (context) => context.json({ status: "ok" as const, service: "kampusone-api" as const, environment: context.env.ENVIRONMENT, requestId: context.get("requestId") }));
-app.get("/health/ready", (context) => {
-  const state = readiness(context.env);
-  return context.json({ status: state.ready ? "ready" : "not_ready", checks: state.checks, requestId: context.get("requestId") }, state.ready ? 200 : 503);
+app.get("/health/ready", async (context) => {
+  const configured = readiness(context.env);
+  let databaseReady = configured.checks.database;
+  if (databaseReady) {
+    try {
+      await database(context.env).execute(sql`select 1 as ok`);
+    } catch {
+      databaseReady = false;
+    }
+  }
+  const checks = { ...configured.checks, database: databaseReady };
+  const ready = Object.values(checks).every(Boolean);
+  return context.json(
+    { status: ready ? "ready" : "not_ready", checks, requestId: context.get("requestId") },
+    ready ? 200 : 503,
+  );
 });
 app.get("/health/crypto", async (context) => {
   if (context.env.ENVIRONMENT !== "local") return errorResponse(context, 404, "NOT_FOUND", "The requested resource does not exist.");
@@ -124,7 +139,17 @@ app.route("/v1/auth/social", socialAuthRoutes);
 app.notFound((context) => errorResponse(context, 404, "NOT_FOUND", "The requested resource does not exist."));
 app.onError((error, context) => {
   if (error instanceof AppError) return errorResponse(context, error.status, error.code, error.message, error.details);
+  const message = error instanceof Error ? error.message : "";
+  const databaseQuotaUnavailable =
+    /exceeded the quota/i.test(message) || /HTTP status 402/i.test(message);
   // Never log database payloads: they may include private identity or message data.
   console.error(JSON.stringify({ level: "error", event: "request.failed", requestId: context.get("requestId"), method: context.req.method, path: context.req.path, errorName: error.name, errorCode: typeof (error as Error & { code?: unknown }).code === "string" ? (error as Error & { code?: unknown }).code : undefined }));
+  if (databaseQuotaUnavailable)
+    return errorResponse(
+      context,
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "KampusOne is temporarily unavailable. Please try again shortly.",
+    );
   return errorResponse(context, 500, "INTERNAL_ERROR", "The service could not complete this request.");
 });
