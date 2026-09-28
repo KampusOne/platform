@@ -591,7 +591,9 @@ export default function GpaScreen() {
       {!editing && error ? (
         <ErrorNotice message={error} onRetry={retry} />
       ) : null}
-      {!loading && !error && !data?.terms.length ? <GpaEmpty /> : null}
+      {!editing && !importMessage && !loading && !error && !data?.terms.length ? (
+        <GpaEmpty />
+      ) : null}
       {!loading && data?.terms.length ? (
         <View style={styles.history}>
           <View style={styles.historyHeading}>
