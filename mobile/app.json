@@ -16,7 +16,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.kampusone.mobile",
-      "buildNumber": "39"
+      "buildNumber": "39",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Allow KampusOne to use your location for live walking directions on campus."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +30,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.SCHEDULE_EXACT_ALARM"
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "softwareKeyboardLayoutMode": "pan",
       "versionCode": 39
@@ -69,7 +74,8 @@
         }
       ],
       "./plugins/with-kampus-alarms",
-      "./plugins/with-branded-video-trim"
+      "./plugins/with-branded-video-trim",
+      "@maplibre/maplibre-react-native"
     ],
     "extra": {
       "apiUrl": "https://kampusone-mobile-preview.vercel.app/api",
