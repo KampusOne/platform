@@ -46,7 +46,8 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-video-trim": "^8.2.2",
-    "react-native-web": "~0.21.0"
+    "react-native-web": "~0.21.0",
+    "expo-location": "57.0.19"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
