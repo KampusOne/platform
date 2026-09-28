@@ -1,8 +1,8 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Animated,
-  Modal,
+  BackHandler,
   PanResponder,
   Platform,
   Pressable,
@@ -153,6 +153,7 @@ export type MessageActionTarget = {
 type MessageActionOverlayProps = {
   target: MessageActionTarget | null;
   peerName: string;
+  blurTarget: RefObject<View | null>;
   busy?: boolean;
   onClose: () => void;
   onReply: (target: MessageActionTarget) => void;
@@ -182,6 +183,7 @@ function messagePreview(target: MessageActionTarget) {
 export function MessageActionOverlay({
   target,
   peerName,
+  blurTarget,
   busy = false,
   onClose,
   onReply,
@@ -193,6 +195,16 @@ export function MessageActionOverlay({
   onReport,
 }: MessageActionOverlayProps) {
   const { theme, styles } = useThemeStyles(createStyles);
+
+  useEffect(() => {
+    if (!target || Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [onClose, target]);
+
   if (!target) return null;
 
   const run = (action: () => void) => {
@@ -234,14 +246,14 @@ export function MessageActionOverlay({
   ];
 
   return (
-    <Modal
-      visible
-      transparent
-      statusBarTranslucent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.actionBackdrop}>
+    <View style={[StyleSheet.absoluteFill, styles.actionBackdrop]}>
+      <BlurView
+        intensity={42}
+        tint="default"
+        blurTarget={blurTarget}
+        blurMethod={Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : undefined}
+        style={StyleSheet.absoluteFill}
+      />
         <BlurView intensity={38} tint="default" style={StyleSheet.absoluteFill} />
         <View style={styles.actionShade} />
         <Pressable accessibilityRole="button" accessibilityLabel="Close message actions" onPress={onClose} style={StyleSheet.absoluteFill} />
@@ -315,8 +327,8 @@ export function MessageActionOverlay({
             ))}
           </View>
         </View>
-      </View>
-    </Modal>
+
+    </View>
   );
 }
 
