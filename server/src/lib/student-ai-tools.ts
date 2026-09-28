@@ -291,10 +291,14 @@ export async function runStudentAssistant(env: Bindings, user: AuthenticatedUser
   if (!first.calls.length) return { text: first.text, provider: "huggingface" as const, cards, actions };
 
   messages.push({ role: "assistant", content: first.text || null, tool_calls: first.calls });
-  for (const call of first.calls) {
+  // Up to three independent read/prepare tools can be requested at once.
+  // Resolve them concurrently, then preserve the model's original result order.
+  const toolResults = await Promise.all(first.calls.map(async (call) => {
     let args: unknown;
     try { args = JSON.parse(call.function.arguments); } catch { args = null; }
-    const result = await runStudentTool(env, user, call.function.name, args);
+    return { call, result: await runStudentTool(env, user, call.function.name, args) };
+  }));
+  for (const { call, result } of toolResults) {
     cards.push(...(result.cards ?? []));
     if (result.action) actions.push(result.action);
     messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result.data) });
