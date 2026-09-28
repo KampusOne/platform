@@ -60,8 +60,15 @@ describe("post detail and author deletion", () => {
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(await response.json()).toMatchObject({ post: { can_delete: true } });
     const query = dialect.sqlToQuery(mocks.execute.mock.calls[0]![0]);
-    expect(query.params).toEqual([mocks.user.id, mocks.user.id, id, mocks.user.universityId]);
+    expect(query.params).toEqual([
+      mocks.user.id,
+      mocks.user.id,
+      id,
+      mocks.user.universityId,
+      mocks.user.id,
+    ]);
     expect(query.sql).toContain("posts.status in ('PUBLISHED', 'CORRECTED')");
+    expect(query.sql).toContain("public.user_blocks");
     expect(query.sql).toContain("posts.published_at <= now()");
     expect(query.sql).toContain("posts.university_id = $4::uuid");
   });
