@@ -16,6 +16,13 @@ export type Alarm = {
   snooze_minutes: number;
   timetable_entry_id?: string | null;
   fires_at?: string | null;
+  course_code?: string | null;
+  course_title?: string | null;
+  class_starts_at?: string | null;
+  class_ends_at?: string | null;
+  venue?: string | null;
+  lecturer?: string | null;
+  reminder_minutes?: number | null;
 };
 let queue: Promise<unknown> = Promise.resolve();
 export async function syncAlarms(
@@ -104,11 +111,34 @@ export async function syncAlarms(
         await Notifications.scheduleNotificationAsync({
           identifier,
           content: {
-            title: alarm.label,
-            body: alarm.timetable_entry_id ? "Your class starts in 15 minutes" : "Time for your reminder",
+            title: alarm.timetable_entry_id ? alarm.course_code || alarm.label : alarm.label,
+            body: alarm.timetable_entry_id
+              ? [
+                  `Class in ${alarm.reminder_minutes ?? 15} minutes`,
+                  alarm.class_starts_at ? `starts ${alarm.class_starts_at}` : null,
+                  alarm.venue || null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : "Time for your reminder",
             sound: notificationSound === "default" ? "default" : false,
             categoryIdentifier: "k1-alarm",
-            data: { alarmId: alarm.id, snoozeMinutes: alarm.snooze_minutes, alarmSignature:signature, label:alarm.label, path:`/alarm-ring?alarmId=${alarm.id}`, sound:alarm.sound, vibration:alarm.vibration },
+            data: {
+              alarmId: alarm.id,
+              snoozeMinutes: alarm.snooze_minutes,
+              alarmSignature: signature,
+              label: alarm.label,
+              path: `/alarm-ring?alarmId=${alarm.id}`,
+              sound: alarm.sound,
+              vibration: alarm.vibration,
+              courseCode: alarm.course_code ?? undefined,
+              classTitle: alarm.course_title ?? undefined,
+              classStartsAt: alarm.class_starts_at ?? undefined,
+              classEndsAt: alarm.class_ends_at ?? undefined,
+              venue: alarm.venue ?? undefined,
+              lecturer: alarm.lecturer ?? undefined,
+              leadMinutes: alarm.reminder_minutes ?? undefined,
+            },
           },
           trigger:
             day === -1
@@ -162,7 +192,19 @@ export function listenForSnooze() {
       await Notifications.dismissNotificationAsync(r.notification.request.identifier);
       if(r.actionIdentifier==='snooze'){await snoozeNotification(original);return;}
       if(r.actionIdentifier==='dismiss')return;
-      router.push({pathname:'/alarm-ring',params:{alarmId:String(original.data?.alarmId??''),label:original.title??'Alarm',snooze:String(original.data?.snoozeMinutes??5),notificationId:r.notification.request.identifier}});
+      router.push({pathname:'/alarm-ring',params:{
+        alarmId:String(original.data?.alarmId??''),
+        label:String(original.data?.label??original.title??'Alarm'),
+        snooze:String(original.data?.snoozeMinutes??5),
+        notificationId:r.notification.request.identifier,
+        courseCode:typeof original.data?.courseCode==='string'?original.data.courseCode:undefined,
+        classTitle:typeof original.data?.classTitle==='string'?original.data.classTitle:undefined,
+        classStartsAt:typeof original.data?.classStartsAt==='string'?original.data.classStartsAt:undefined,
+        classEndsAt:typeof original.data?.classEndsAt==='string'?original.data.classEndsAt:undefined,
+        venue:typeof original.data?.venue==='string'?original.data.venue:undefined,
+        lecturer:typeof original.data?.lecturer==='string'?original.data.lecturer:undefined,
+        leadMinutes:String(original.data?.leadMinutes??15),
+      }});
     }else{
       const path=original.data?.path;
       if(typeof path==='string'&&path.startsWith('/')&&!path.startsWith('//'))router.push(path as Href);
