@@ -14,6 +14,8 @@ export type Bindings = {
   STORE_ENABLED?: string;
   STORE_DEMO_ENABLED?: string;
   LOGISTICS_ENABLED?: string;
+  CAMPUS_ROUTING_ENABLED?: string;
+  CAMPUS_ROUTING_BASE_URL?: string;
   PAYMENTS_ENABLED: string;
   AI_ASSISTANT_ENABLED: string;
   DATABASE_URL?: string;

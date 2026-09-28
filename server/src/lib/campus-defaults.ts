@@ -25,6 +25,12 @@ export type CampusStarterDirectory = {
     longitude: string;
     map_style: "KAMPUSONE";
     status: "PUBLISHED";
+    navigation_bounds: {
+      north: string;
+      south: string;
+      east: string;
+      west: string;
+    };
   };
   places: readonly CampusStarterPlace[];
 };
@@ -39,6 +45,14 @@ export const UNIBEN_UGBOWO_STARTER: CampusStarterDirectory = {
     longitude: "5.618838",
     map_style: "KAMPUSONE",
     status: "PUBLISHED",
+    // Navigation geofence, not a legal property boundary. Calibrated from
+    // reviewed campus references and must remain admin-replaceable later.
+    navigation_bounds: {
+      north: "6.406500",
+      south: "6.391500",
+      east: "5.629000",
+      west: "5.608000",
+    },
   },
   places: [
     {

@@ -36,3 +36,8 @@ AI_DAILY_GLOBAL_LIMIT=100
 # MEDIA_BUCKET and PRIVATE_BUCKET are R2 bindings, not string secrets.
 # Add their existing bucket names in wrangler configuration. PRIVATE_BUCKET
 # must have no public domain / r2.dev access. No service-role key in clients.
+
+
+# Campus walking navigation (OSM-compatible routing adapter)
+CAMPUS_ROUTING_ENABLED=true
+CAMPUS_ROUTING_BASE_URL=https://routing.openstreetmap.de/routed-foot/route/v1/driving

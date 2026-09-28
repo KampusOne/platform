@@ -20,6 +20,10 @@ import {
   filterCampusStarterPlaces,
 } from "../lib/campus-defaults";
 import { id, input as validatedInput } from "../lib/input";
+import {
+  CampusRoutingProviderError,
+  fetchCampusWalkingRoute,
+} from "../lib/campus-routing";
 import { z } from "@kampusone/contracts";
 import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
@@ -538,6 +542,40 @@ studentRoutes.delete("/feed/:id/bookmark", async (context) => {
   return context.json({ bookmarked: false });
 });
 
+const campusRouteBuckets = new Map<
+  string,
+  { count: number; startedAt: number }
+>();
+
+function consumeCampusRouteQuota(userId: string) {
+  const now = Date.now();
+  const current = campusRouteBuckets.get(userId);
+  if (!current || now - current.startedAt >= 60_000) {
+    campusRouteBuckets.set(userId, { count: 1, startedAt: now });
+    return;
+  }
+  if (current.count >= 12) {
+    throw new AppError(
+      429,
+      "RATE_LIMITED",
+      "Too many route updates. Keep following the current route for a moment.",
+    );
+  }
+  current.count += 1;
+}
+
+function insideNavigationBounds(
+  point: { latitude: number; longitude: number },
+  bounds: { north: string; south: string; east: string; west: string },
+) {
+  return (
+    point.latitude >= Number(bounds.south) &&
+    point.latitude <= Number(bounds.north) &&
+    point.longitude >= Number(bounds.west) &&
+    point.longitude <= Number(bounds.east)
+  );
+}
+
 studentRoutes.get("/campus/places", async (context) => {
   const user = currentUser(context);
   const universityId = requireUniversity(user);
@@ -545,45 +583,211 @@ studentRoutes.get("/campus/places", async (context) => {
   const category = context.req.query("category")?.toUpperCase();
   const search = query ? `%${query}%` : null;
   const db = database(context.env);
-  const result = await db.execute(sql`
-    select id, name, category, description, latitude, longitude,
-      accessibility_notes, image_url, verified_at
-    from public.campus_places
-    where university_id = ${universityId}::uuid and status = 'PUBLISHED'
-      and (${category ?? null}::text is null or category = ${category ?? null})
-      and (${search}::text is null or name ilike ${search} or description ilike ${search})
-    order by name limit 100
-  `);
+
+  const [result, universityResult, campusResult] = await Promise.all([
+    db.execute(sql`
+      select id, name, category, description, latitude, longitude,
+        accessibility_notes, image_url, verified_at
+      from public.campus_places
+      where university_id = ${universityId}::uuid and status = 'PUBLISHED'
+        and (${category ?? null}::text is null or category = ${category ?? null})
+        and (${search}::text is null or name ilike ${search} or description ilike ${search})
+      order by name limit 180
+    `),
+    db.execute<{ name: string }>(sql`
+      select name from public.universities
+      where id = ${universityId}::uuid and deleted_at is null
+      limit 1
+    `),
+    db.execute<{
+      name: string;
+      slug: string;
+      latitude: string | null;
+      longitude: string | null;
+      map_style: string | null;
+      status: string;
+    }>(sql`
+      select name, slug, latitude, longitude, map_style, status
+      from public.institution_campuses
+      where institution_id = ${universityId}::uuid and status = 'PUBLISHED'
+      order by updated_at desc
+      limit 1
+    `),
+  ]);
+
+  const university = firstRow(universityResult);
+  const starter = campusDirectoryDefaultForUniversity(university?.name);
+  const storedCampus = firstRow(campusResult);
+  const campus =
+    storedCampus && storedCampus.latitude !== null && storedCampus.longitude !== null
+      ? {
+          name: storedCampus.name,
+          slug: storedCampus.slug,
+          latitude: String(storedCampus.latitude),
+          longitude: String(storedCampus.longitude),
+          map_style: storedCampus.map_style ?? "KAMPUSONE",
+          status: storedCampus.status,
+          navigation_bounds: starter?.campus.navigation_bounds ?? null,
+        }
+      : starter?.campus ?? null;
 
   if (result.rows.length > 0) {
     return context.json({
+      campus,
       places: result.rows,
       directorySource: "DATABASE" as const,
     });
   }
 
-  const university = firstRow(
-    await db.execute<{ name: string }>(sql`
-      select name from public.universities
-      where id = ${universityId}::uuid and deleted_at is null
-      limit 1
-    `),
-  );
-  const starter = campusDirectoryDefaultForUniversity(university?.name);
-
   if (!starter) {
     return context.json({
       places: [],
-      campus: null,
+      campus,
       directorySource: "EMPTY" as const,
     });
   }
 
   return context.json({
-    campus: starter.campus,
+    campus,
     places: filterCampusStarterPlaces(starter.places, { category, query }),
     directorySource: "STARTER" as const,
   });
+});
+
+studentRoutes.post("/campus/route", async (context) => {
+  if (context.env.CAMPUS_ROUTING_ENABLED !== "true") {
+    throw new AppError(
+      503,
+      "FEATURE_DISABLED",
+      "Campus walking directions are temporarily unavailable.",
+    );
+  }
+
+  const data = await validatedInput(
+    context,
+    z
+      .object({
+        origin: z
+          .object({
+            latitude: z.number().min(-90).max(90),
+            longitude: z.number().min(-180).max(180),
+          })
+          .strict(),
+        destination: z
+          .object({
+            latitude: z.number().min(-90).max(90),
+            longitude: z.number().min(-180).max(180),
+            placeId: z.string().uuid().optional(),
+          })
+          .strict(),
+      })
+      .strict(),
+  );
+
+  const user = currentUser(context);
+  const universityId = requireUniversity(user);
+  const db = database(context.env);
+  const university = firstRow(
+    await db.execute<{ name: string }>(sql`
+      select name
+      from public.universities
+      where id = ${universityId}::uuid and deleted_at is null
+      limit 1
+    `),
+  );
+  const starter = campusDirectoryDefaultForUniversity(university?.name);
+  const bounds = starter?.campus.navigation_bounds;
+
+  if (!bounds) {
+    throw new AppError(
+      503,
+      "FEATURE_DISABLED",
+      "Live walking directions are not configured for this campus yet.",
+    );
+  }
+
+  if (!insideNavigationBounds(data.origin, bounds)) {
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Live walking directions start when you are inside the campus boundary.",
+    );
+  }
+
+  if (data.destination.placeId) {
+    const storedDestination = firstRow(
+      await db.execute<{
+        latitude: string | null;
+        longitude: string | null;
+      }>(sql`
+        select latitude, longitude
+        from public.campus_places
+        where id = ${data.destination.placeId}::uuid
+          and university_id = ${universityId}::uuid
+          and status = 'PUBLISHED'
+        limit 1
+      `),
+    );
+    if (storedDestination?.latitude && storedDestination.longitude) {
+      data.destination.latitude = Number(storedDestination.latitude);
+      data.destination.longitude = Number(storedDestination.longitude);
+    }
+  }
+
+  if (!insideNavigationBounds(data.destination, bounds)) {
+    throw new AppError(
+      400,
+      "BAD_REQUEST",
+      "Choose a destination inside your campus.",
+    );
+  }
+
+  consumeCampusRouteQuota(user.id);
+
+  try {
+    const route = await fetchCampusWalkingRoute({
+      ...(context.env.CAMPUS_ROUTING_BASE_URL
+        ? { baseUrl: context.env.CAMPUS_ROUTING_BASE_URL }
+        : {}),
+      from: data.origin,
+      to: data.destination,
+      timeoutMs: 8_000,
+    });
+
+    const stepInstruction = (step: (typeof route.steps)[number]) => {
+      const type = step.maneuver.type.replace(/_/g, " ");
+      const modifier = step.maneuver.modifier?.replace(/_/g, " ");
+      const name = step.name.trim();
+      if (type === "depart") return name ? `Start on ${name}` : "Start walking";
+      if (type === "arrive") return "You’ve arrived";
+      const movement = modifier ? `${modifier} ${type}` : type;
+      return name ? `${movement} onto ${name}` : movement;
+    };
+
+    return context.json({
+      distanceMeters: route.distance,
+      durationSeconds: route.duration,
+      geometry: route.geometry.coordinates,
+      steps: route.steps.map((step) => ({
+        instruction: stepInstruction(step),
+        distanceMeters: step.distance,
+        durationSeconds: step.duration,
+        name: step.name || null,
+        maneuverType: step.maneuver.type,
+        maneuverModifier: step.maneuver.modifier,
+        location: null,
+      })),
+    });
+  } catch (caught) {
+    if (caught instanceof CampusRoutingProviderError) {
+      throw new AppError(
+        503,
+        "PROVIDER_UNAVAILABLE",
+        "Walking directions could not be calculated right now.",
+      );
+    }
+    throw caught;
+  }
 });
 
 studentRoutes.get("/timetable", async (context) => {
