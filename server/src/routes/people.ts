@@ -11,7 +11,7 @@ import {
   blockRelationship,
   requireProfileSafety,
   requireUnblocked,
-  unblockedAuthorIfReady,
+  unblockedAuthor,
 } from "../lib/profile-safety";
 import { visiblePost } from "../lib/feed-social";
 import type { Bindings, Variables, AuthenticatedUser } from "../types";
@@ -103,7 +103,7 @@ peopleRoutes.get("/:id/followers",async c=>{
   const cursorValue=c.req.query("cursor"),cursor=cursorValue?id(cursorValue):null;
   await requireUnblocked(c.env,viewer.id,target);
   await ensureConnectionTarget(db,target);
-  const connectionVisible=await unblockedAuthorIfReady(c.env,viewer.id,sql`p.user_id`);
+  const connectionVisible=unblockedAuthor(viewer.id,sql`p.user_id`);
   const result=await db.execute(sql`
     select ${connectionProjection(viewer)}
     from public.profile_follows f
