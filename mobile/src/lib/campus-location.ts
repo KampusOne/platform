@@ -47,7 +47,21 @@ export function useCampusLocation() {
   const beginWatching = useCallback(async () => {
     stopWatching();
 
-    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    let servicesEnabled = false;
+    try {
+      servicesEnabled = await Location.hasServicesEnabledAsync();
+    } catch {
+      if (focusedRef.current) {
+        setState((current) => ({
+          ...current,
+          error: "KampusOne could not check your device location service.",
+          loading: false,
+          servicesEnabled: false,
+        }));
+      }
+      return null;
+    }
+
     if (!focusedRef.current) return null;
 
     if (!servicesEnabled) {
@@ -159,9 +173,21 @@ export function useCampusLocation() {
         setState((current) => ({ ...current, loading: true }));
       }
 
-      const permission = request
-        ? await Location.requestForegroundPermissionsAsync()
-        : await Location.getForegroundPermissionsAsync();
+      let permission: Location.LocationPermissionResponse;
+      try {
+        permission = request
+          ? await Location.requestForegroundPermissionsAsync()
+          : await Location.getForegroundPermissionsAsync();
+      } catch {
+        if (focusedRef.current) {
+          setState((current) => ({
+            ...current,
+            error: "KampusOne could not read your location permission.",
+            loading: false,
+          }));
+        }
+        return null;
+      }
 
       if (!focusedRef.current) return null;
 
