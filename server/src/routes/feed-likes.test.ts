@@ -85,7 +85,7 @@ describe("post likes", () => {
     expect(query.sql).toContain("posts.status in ('PUBLISHED', 'CORRECTED')");
     expect(query.sql).toContain("public.user_blocks");
     expect(query.sql).toContain("posts.published_at <= now()");
-    expect(query.sql).toContain("posts.university_id = $3::uuid");
+    expect(query.sql).toContain("posts.university_id = $4::uuid");
     expect(query.sql).toContain("posts.audience->>'visibility' = 'PUBLIC'");
   });
 });
