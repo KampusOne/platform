@@ -105,10 +105,10 @@ function mediaLabel(type?: string | null) {
 
 function messagePreview(message: Pick<Message, "body" | "media_id" | "media_type" | "media_name" | "unsent_at"> | PinnedMessage) {
   if (message.unsent_at) return "Message unsent";
+  const body = message.body?.trim() || "";
   const fallback = message.media_id ? mediaLabel(message.media_type) : "";
-  if (message.body?.trim() && message.body !== fallback) return message.body.trim();
-  if (message.media_id) return message.media_name || fallback;
-  return message.body?.trim() || "Message";
+  if (message.media_id && (!body || body === "Attachment" || body === fallback)) return fallback;
+  return body || "Message";
 }
 
 const reportReasons = [
@@ -608,13 +608,21 @@ export default function ConversationScreen() {
                   );
                 }
                 const fallbackBody = item.media_id ? mediaLabel(item.media_type) : "";
-                const showBody = Boolean(item.body && item.body !== fallbackBody);
+                const showBody = Boolean(
+                  item.body &&
+                  item.body !== "Attachment" &&
+                  item.body !== fallbackBody,
+                );
                 const replyOwner = item.reply_sender_id === user?.id ? "You" : peerName;
                 const replyText = item.reply_unsent_at
                   ? "Message unsent"
-                  : item.reply_body && item.reply_body !== (item.reply_media_id ? mediaLabel(item.reply_media_type) : "")
+                  : item.reply_body &&
+                      item.reply_body !== "Attachment" &&
+                      item.reply_body !== (item.reply_media_id ? mediaLabel(item.reply_media_type) : "")
                     ? item.reply_body
-                    : item.reply_media_name || (item.reply_media_id ? mediaLabel(item.reply_media_type) : "Message");
+                    : item.reply_media_id
+                      ? mediaLabel(item.reply_media_type)
+                      : "Message";
                 return (
                   <SwipeReplyMessage
                     mine={mine}
