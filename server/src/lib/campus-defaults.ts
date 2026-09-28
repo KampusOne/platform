@@ -14,6 +14,7 @@ export type CampusStarterPlace = {
   longitude: string;
   accessibility_notes: string | null;
   image_url: string | null;
+  search_aliases: readonly string[];
   verified_at: string | null;
 };
 
@@ -29,7 +30,1266 @@ export type CampusStarterDirectory = {
   places: readonly CampusStarterPlace[];
 };
 
-const REVIEWED_AT = "2026-09-27T00:00:00.000Z";
+const REVIEWED_AT = "2026-09-28T00:00:00.000Z";
+
+type RawStarterPlace = readonly [
+  id: string,
+  name: string,
+  category: CampusStarterPlace["category"],
+  description: string,
+  latitude: string,
+  longitude: string,
+  aliases: readonly string[],
+  verified: boolean,
+];
+
+const RAW_UNIBEN_UGBOWO_PLACES = [
+  [
+    "5a3e978c-8d07-411c-bd0d-1b08313fe128",
+    "Student Affairs Division",
+    "SERVICE",
+    "Student Affairs Division, University of Benin Ugbowo Campus.",
+    "6.400023",
+    "5.609885",
+    [
+      "Student Affairs",
+      "Dean of Students"
+    ],
+    true
+  ],
+  [
+    "280c87f4-139b-5504-ac0c-f910731ac64c",
+    "Main Gate",
+    "TRANSPORT",
+    "Primary Ugbowo campus entrance and student pickup landmark.",
+    "6.399920",
+    "5.608870",
+    [
+      "UNIBEN Main Gate",
+      "Main Entrance"
+    ],
+    true
+  ],
+  [
+    "7a85539d-13df-5d11-8c95-4cc878ef0657",
+    "Main Gate Bus Terminal",
+    "TRANSPORT",
+    "Campus bus and shuttle pickup area near the Main Gate.",
+    "6.399050",
+    "5.609320",
+    [
+      "Maingate Bus Terminal",
+      "Main Gate Bus Stop"
+    ],
+    false
+  ],
+  [
+    "dfb816ff-345c-5af0-80bc-0383f2c09fca",
+    "Maingate Shopping Complex",
+    "SERVICE",
+    "Student shopping and services complex near the Main Gate.",
+    "6.398288",
+    "5.610109",
+    [
+      "Main Gate Shopping Complex",
+      "Maingate Shops"
+    ],
+    true
+  ],
+  [
+    "52ecce2e-8dac-5b0f-92d6-212536be74a6",
+    "Student Guidance and Counselling Centre",
+    "SERVICE",
+    "Student Guidance and Counselling Centre near the old bookshop and student halls.",
+    "6.396750",
+    "5.619180",
+    [
+      "Guidance and Counselling",
+      "Counselling Centre"
+    ],
+    false
+  ],
+  [
+    "9f040cce-eb71-572a-8dd8-15cbe7799b19",
+    "Main Auditorium",
+    "SERVICE",
+    "University of Benin Main Auditorium.",
+    "6.399710",
+    "5.613300",
+    [
+      "UNIBEN Main Auditorium",
+      "Auditorium"
+    ],
+    true
+  ],
+  [
+    "b446bddc-f6b7-5e4a-a6ef-6f96738a7759",
+    "Central Administration",
+    "SERVICE",
+    "Central administration area on Ugbowo Campus.",
+    "6.399450",
+    "5.612650",
+    [
+      "Central Admin",
+      "Administration Block",
+      "Registry"
+    ],
+    false
+  ],
+  [
+    "2be8a76a-ef9f-5a69-a3cc-3abbd5803bae",
+    "Exams and Records",
+    "SERVICE",
+    "Examinations and records office area.",
+    "6.399000",
+    "5.612100",
+    [
+      "Exams & Records",
+      "Records Office"
+    ],
+    false
+  ],
+  [
+    "63e1a25a-c6be-5386-b53d-aa4f0708db42",
+    "Bursary Department",
+    "SERVICE",
+    "University bursary and finance services.",
+    "6.398100",
+    "5.616850",
+    [
+      "Bursary",
+      "UNIBEN Bursary"
+    ],
+    false
+  ],
+  [
+    "b22357c9-2fdd-51ea-8861-6fefa3fef4a0",
+    "University of Benin Microfinance Bank",
+    "SERVICE",
+    "University of Benin Microfinance Bank campus branch.",
+    "6.397760",
+    "5.617240",
+    [
+      "UNIBEN Microfinance Bank",
+      "UNIBEN MFB"
+    ],
+    false
+  ],
+  [
+    "265d648c-28db-54b4-8eb8-68ddc10a4aef",
+    "Wema Bank - UNIBEN",
+    "SERVICE",
+    "Wema Bank branch on Ugbowo Campus.",
+    "6.400856",
+    "5.610236",
+    [
+      "Wema Bank",
+      "Wema UNIBEN"
+    ],
+    true
+  ],
+  [
+    "c503e423-4b99-5e36-bf3c-dec9ca03406a",
+    "Guaranty Trust Bank - UNIBEN",
+    "SERVICE",
+    "Guaranty Trust Bank campus branch.",
+    "6.400863",
+    "5.610953",
+    [
+      "GTBank",
+      "GTB UNIBEN",
+      "Guaranty Trust Bank"
+    ],
+    true
+  ],
+  [
+    "7fe547f4-1a71-53f0-b674-4c545b41d3c2",
+    "Stanbic IBTC Bank - UNIBEN",
+    "SERVICE",
+    "Stanbic IBTC branch on Ugbowo Campus.",
+    "6.400460",
+    "5.611460",
+    [
+      "Stanbic IBTC",
+      "Stanbic UNIBEN"
+    ],
+    false
+  ],
+  [
+    "ed6428c9-1102-5cd6-9631-db9ec91dbc2e",
+    "Fidelity Bank - UNIBEN",
+    "SERVICE",
+    "Fidelity Bank branch on Ugbowo Campus.",
+    "6.400210",
+    "5.611780",
+    [
+      "Fidelity Bank",
+      "Fidelity UNIBEN"
+    ],
+    false
+  ],
+  [
+    "84973da3-033f-5192-9bc6-f76ff76d428c",
+    "First Bank - UNIBEN",
+    "SERVICE",
+    "First Bank branch on Ugbowo Campus.",
+    "6.399980",
+    "5.611360",
+    [
+      "First Bank",
+      "FirstBank UNIBEN"
+    ],
+    false
+  ],
+  [
+    "2ecc6e0e-ce20-5720-baea-d46173dd6a35",
+    "Zenith Bank - UNIBEN",
+    "SERVICE",
+    "Zenith Bank branch on Ugbowo Campus.",
+    "6.400720",
+    "5.611250",
+    [
+      "Zenith Bank",
+      "Zenith UNIBEN"
+    ],
+    false
+  ],
+  [
+    "24387c80-2642-5a4c-b9d4-29006e7bf9e2",
+    "All Saints Chapel",
+    "SERVICE",
+    "Christian worship centre on Ugbowo Campus.",
+    "6.398900",
+    "5.611700",
+    [
+      "All Saints Chapel UNIBEN"
+    ],
+    false
+  ],
+  [
+    "20be3e9f-67e0-5fe8-989e-4ef0f4ff197e",
+    "St. Albert Catholic Church",
+    "SERVICE",
+    "Catholic worship centre on Ugbowo Campus.",
+    "6.398520",
+    "5.612300",
+    [
+      "Saint Albert Catholic Church",
+      "St Albert"
+    ],
+    false
+  ],
+  [
+    "c35d97e3-bed1-5643-8f3e-7f24fb879a2e",
+    "UNIBEN Mosque",
+    "SERVICE",
+    "Campus mosque near the student halls.",
+    "6.396900",
+    "5.619300",
+    [
+      "Students Mosque",
+      "Mosque"
+    ],
+    false
+  ],
+  [
+    "a64fc253-2c9e-407c-b852-b077e0390d5b",
+    "Faculty of Engineering",
+    "ACADEMIC",
+    "Faculty of Engineering, University of Benin Ugbowo Campus.",
+    "6.401790",
+    "5.615370",
+    [
+      "Engineering",
+      "Engr"
+    ],
+    true
+  ],
+  [
+    "3a19a50f-6dae-5f4e-a6fd-cac0d4df55e4",
+    "Department of Chemical Engineering",
+    "ACADEMIC",
+    "Department of Chemical Engineering in the Engineering cluster.",
+    "6.402250",
+    "5.615720",
+    [
+      "Chemical Engineering",
+      "Chem Eng"
+    ],
+    false
+  ],
+  [
+    "e5b0f8af-acb2-505b-ac88-000ef4acc477",
+    "Mechanical Production Laboratory",
+    "ACADEMIC",
+    "Mechanical Production laboratory in the Engineering cluster.",
+    "6.402070",
+    "5.616080",
+    [
+      "Mechanical Production Lab",
+      "Mechanical Lab"
+    ],
+    false
+  ],
+  [
+    "175bb188-292f-5058-9500-016f43014378",
+    "Engineering Old 1000 LT",
+    "ACADEMIC",
+    "Large lecture theatre in the Engineering area.",
+    "6.401350",
+    "5.614920",
+    [
+      "Old 1000 LT",
+      "Engineering 1000 LT"
+    ],
+    false
+  ],
+  [
+    "4abd5761-6388-46f0-b20d-e3aef1f4f1c2",
+    "Faculty of Physical Sciences",
+    "ACADEMIC",
+    "Faculty of Physical Sciences, University of Benin Ugbowo Campus.",
+    "6.400310",
+    "5.615350",
+    [
+      "Physical Science",
+      "Physical Sciences"
+    ],
+    true
+  ],
+  [
+    "71329ef0-fcc7-5931-96f9-bf100342a72e",
+    "1000 LT Faculty of Physical Sciences",
+    "ACADEMIC",
+    "Large lecture theatre serving Physical Sciences.",
+    "6.400720",
+    "5.617000",
+    [
+      "Physical Science 1000 LT",
+      "1000LT"
+    ],
+    false
+  ],
+  [
+    "65fdfcdf-50c1-5f53-83ff-28d7558fc506",
+    "Computer Science Department",
+    "ACADEMIC",
+    "Computer Science Department, Ugbowo Campus.",
+    "6.401180",
+    "5.617220",
+    [
+      "Computer Science",
+      "Computer Science Department UNIBEN"
+    ],
+    false
+  ],
+  [
+    "fe6bd15a-4934-59cd-9233-99fc40970a66",
+    "UNIBEN International ICT Centre",
+    "SERVICE",
+    "University ICT centre and digital services hub.",
+    "6.400938",
+    "5.616359",
+    [
+      "ICT Centre",
+      "ICTU",
+      "CRPU",
+      "Iyayi Computer Building"
+    ],
+    true
+  ],
+  [
+    "f61bd3ec-dbdf-498d-aaab-c867c8c77522",
+    "Faculty of Life Sciences",
+    "ACADEMIC",
+    "Faculty of Life Sciences, University of Benin Ugbowo Campus.",
+    "6.398940",
+    "5.614870",
+    [
+      "Life Science",
+      "Life Sciences"
+    ],
+    true
+  ],
+  [
+    "6a656590-974f-5ac8-ba5b-6a660e4ddf8d",
+    "Faculty of Life Sciences Dean's Office",
+    "ACADEMIC",
+    "Dean's Office for the Faculty of Life Sciences.",
+    "6.398620",
+    "5.615650",
+    [
+      "Life Science Dean Office",
+      "Dean's Office Life Science"
+    ],
+    false
+  ],
+  [
+    "724a8afe-20bb-56ce-987c-191ec01a7f03",
+    "PBB and AEB Laboratories",
+    "ACADEMIC",
+    "Life Sciences PBB, MCB and AEB laboratory cluster.",
+    "6.398160",
+    "5.616000",
+    [
+      "PBB Labs",
+      "AEB Labs",
+      "MCB",
+      "Faculty of Life Science Labs"
+    ],
+    false
+  ],
+  [
+    "5aeff0e1-9df2-5e13-8c3f-a3b5005a2c01",
+    "Department of Biochemistry",
+    "ACADEMIC",
+    "Department of Biochemistry, Ugbowo Campus.",
+    "6.396250",
+    "5.615050",
+    [
+      "Biochemistry",
+      "Department of Biochemistry UNIBEN"
+    ],
+    false
+  ],
+  [
+    "eb15b248-b922-50a8-a532-4d734a480f2a",
+    "Physical Science Shopping Complex",
+    "SERVICE",
+    "Student food, stationery and everyday services near Physical Sciences.",
+    "6.399563",
+    "5.616578",
+    [
+      "Physical Science Shops",
+      "Physical Science Shopping"
+    ],
+    true
+  ],
+  [
+    "34ae9089-799b-5cb9-8ddc-5026d572faea",
+    "Life Science Shopping Complex",
+    "SERVICE",
+    "Student shopping and food services near Life Sciences.",
+    "6.397238",
+    "5.615359",
+    [
+      "Life Science Shops",
+      "Life Science Shopping"
+    ],
+    true
+  ],
+  [
+    "59368a84-86d1-5c4f-81a8-bdd6ef111e85",
+    "Basement Shopping Complex",
+    "SERVICE",
+    "Student shopping and service complex known as Basement.",
+    "6.396638",
+    "5.615109",
+    [
+      "Basement",
+      "Students Complex"
+    ],
+    true
+  ],
+  [
+    "1a926f1d-222c-581a-80a0-b1d6042e4867",
+    "John Harris Library",
+    "ACADEMIC",
+    "Main academic library on Ugbowo Campus.",
+    "6.396660",
+    "5.616687",
+    [
+      "JHL",
+      "Main Library",
+      "John Harris"
+    ],
+    true
+  ],
+  [
+    "3c9fcb8e-39ff-51f1-a796-07126e17decb",
+    "John Harris Library Extension",
+    "ACADEMIC",
+    "John Harris Library extension and e-learning spaces.",
+    "6.396930",
+    "5.616520",
+    [
+      "Library Extension",
+      "Donald Partridge e-Learning Centre",
+      "MTNF e-Library"
+    ],
+    false
+  ],
+  [
+    "c1a6b966-0cec-427d-8672-fe1df10ae369",
+    "Faculty of Education",
+    "ACADEMIC",
+    "Faculty of Education, University of Benin Ugbowo Campus.",
+    "6.400910",
+    "5.619670",
+    [
+      "Education"
+    ],
+    true
+  ],
+  [
+    "e2d8ea45-9bc9-5789-8133-1cb55893e588",
+    "UNIBEN Education Field",
+    "SPORT",
+    "Open sports and activity field near the Education and Engineering areas.",
+    "6.402480",
+    "5.618650",
+    [
+      "Education Field",
+      "Faculty of Education Field"
+    ],
+    false
+  ],
+  [
+    "9ee9eac7-eeee-5da5-bc97-a0cb34f4b9b5",
+    "Faculty of Management Sciences",
+    "ACADEMIC",
+    "Faculty of Management Sciences building.",
+    "6.399200",
+    "5.618050",
+    [
+      "Management Sciences",
+      "Management Science"
+    ],
+    false
+  ],
+  [
+    "e1ab63c1-5fbd-4a41-9a4d-f2c0b18d7fae",
+    "Faculty of Law",
+    "ACADEMIC",
+    "Faculty of Law, University of Benin Ugbowo Campus.",
+    "6.400530",
+    "5.622440",
+    [
+      "Law"
+    ],
+    true
+  ],
+  [
+    "60cfd3e2-6db6-581a-9048-76b057103a11",
+    "Faculty of Arts",
+    "ACADEMIC",
+    "Faculty of Arts, University of Benin Ugbowo Campus.",
+    "6.403300",
+    "5.622170",
+    [
+      "Arts",
+      "Faculty Arts"
+    ],
+    true
+  ],
+  [
+    "338d121f-da2a-5d76-8a41-fcd266804cb4",
+    "Old Faculty of Agriculture",
+    "ACADEMIC",
+    "Older Faculty of Agriculture building east of the Law area.",
+    "6.400500",
+    "5.623430",
+    [
+      "Old Agric",
+      "Old Agriculture"
+    ],
+    false
+  ],
+  [
+    "d345d3fc-8c25-5a23-88d7-22b34b4d4376",
+    "New Faculty of Agriculture",
+    "ACADEMIC",
+    "New Faculty of Agriculture building.",
+    "6.403350",
+    "5.619650",
+    [
+      "New Agric",
+      "Agriculture"
+    ],
+    false
+  ],
+  [
+    "25931066-ecde-5af0-89c0-ef9a84a30343",
+    "Faculty of Agriculture Shopping Mall",
+    "SERVICE",
+    "Student shopping area serving the Agriculture and Hall 4 axis.",
+    "6.399050",
+    "5.622850",
+    [
+      "Agric Shopping Mall",
+      "Agriculture Shopping"
+    ],
+    false
+  ],
+  [
+    "c3928d61-f327-557e-a243-b5c3ae7bec19",
+    "Faculty of Environmental Sciences",
+    "ACADEMIC",
+    "Faculty of Environmental Sciences campus building.",
+    "6.402800",
+    "5.620650",
+    [
+      "Environmental Science",
+      "Environmental Sciences"
+    ],
+    false
+  ],
+  [
+    "9ce6c230-f7c3-526b-adbe-e819e81ec85b",
+    "Centre for Entrepreneurship Development",
+    "ACADEMIC",
+    "University entrepreneurship teaching and development centre.",
+    "6.402080",
+    "5.621250",
+    [
+      "Entrepreneurship Centre",
+      "CED"
+    ],
+    false
+  ],
+  [
+    "886362e8-0aae-5388-9579-d03a7d177a46",
+    "Petroleum and Energy Research Centre",
+    "ACADEMIC",
+    "Petroleum and energy research centre.",
+    "6.403050",
+    "5.620050",
+    [
+      "Petroleum Research Centre",
+      "Energy Research Centre"
+    ],
+    false
+  ],
+  [
+    "680a996b-b27f-5bda-b76e-9ea577cf9022",
+    "Centre of Excellence in Geosciences and Petroleum Engineering",
+    "ACADEMIC",
+    "Geosciences and petroleum engineering centre.",
+    "6.401850",
+    "5.623500",
+    [
+      "Centre of Excellence in Geosciences",
+      "Geosciences Centre"
+    ],
+    false
+  ],
+  [
+    "6ada12ab-8e39-5938-8a6c-83f4ba5083f5",
+    "Central Research Laboratory",
+    "ACADEMIC",
+    "University of Benin Central Research Laboratory.",
+    "6.403954",
+    "5.618651",
+    [
+      "CRL",
+      "Central Research Lab"
+    ],
+    true
+  ],
+  [
+    "fb6d80b0-d0a7-5812-8790-0a1fb32ae423",
+    "University of Benin Staff School",
+    "ACADEMIC",
+    "University staff school on the Ugbowo campus axis.",
+    "6.404250",
+    "5.620350",
+    [
+      "UNIBEN Staff School",
+      "Staff School"
+    ],
+    false
+  ],
+  [
+    "ab8fedb8-6f20-54fd-b543-22896f4e9d5b",
+    "University Demonstration Secondary School",
+    "ACADEMIC",
+    "University Demonstration Secondary School.",
+    "6.404050",
+    "5.617550",
+    [
+      "UDSS",
+      "University Demonstration School"
+    ],
+    false
+  ],
+  [
+    "f66a29bf-08dc-43b6-be7a-d66c099613a5",
+    "JUPEB Foundation School",
+    "ACADEMIC",
+    "UNIBEN JUPEB Foundation School, Ugbowo Campus.",
+    "6.397003",
+    "5.617815",
+    [
+      "JUPEB",
+      "Foundation School",
+      "JUPEB Building"
+    ],
+    true
+  ],
+  [
+    "f75b3456-471d-55c0-b64d-63b4a885086e",
+    "Festus Iyayi Hall",
+    "ACADEMIC",
+    "Large lecture and event hall in the central academic area.",
+    "6.398438",
+    "5.617391",
+    [
+      "Festus Iyayi Hall",
+      "Iyayi Hall"
+    ],
+    true
+  ],
+  [
+    "eb6b62e3-7ccc-5739-a727-bddccc0f70df",
+    "Faculty of Pharmacy",
+    "ACADEMIC",
+    "Faculty of Pharmacy, Ugbowo Campus.",
+    "6.396050",
+    "5.620350",
+    [
+      "Pharmacy",
+      "Faculty Pharmacy"
+    ],
+    false
+  ],
+  [
+    "bb931009-6d8b-5647-88ec-3603b720f8d9",
+    "Pharmacy Annex",
+    "ACADEMIC",
+    "Pharmacy teaching annex near the medical and hostel axis.",
+    "6.395700",
+    "5.620220",
+    [
+      "Pharmacy Annex UNIBEN"
+    ],
+    false
+  ],
+  [
+    "fd9c8337-c8ce-593b-a3f0-616c261d5d32",
+    "Pharmacy Lecture Theatres",
+    "ACADEMIC",
+    "Lecture theatre cluster serving Pharmacy.",
+    "6.396180",
+    "5.619900",
+    [
+      "Pharmacy LT",
+      "Pharmacy Lecture Theater"
+    ],
+    false
+  ],
+  [
+    "b6476973-c5db-5d17-9464-25dae56e6774",
+    "School of Dentistry",
+    "ACADEMIC",
+    "School of Dentistry, University of Benin.",
+    "6.396400",
+    "5.624700",
+    [
+      "Dentistry",
+      "School Of Dentistry"
+    ],
+    false
+  ],
+  [
+    "7dddb9ff-df5d-5c1d-bd25-affb0df6ce11",
+    "Institute of Health Sciences and Technology",
+    "ACADEMIC",
+    "Health sciences and technology institute near the Main Gate axis.",
+    "6.397950",
+    "5.609050",
+    [
+      "Institute of Health Sciences",
+      "Health Sciences and Technology"
+    ],
+    false
+  ],
+  [
+    "5c706c07-9258-54ed-ab6b-ca29736a398a",
+    "University of Benin Health Centre",
+    "HEALTH",
+    "University health centre with student medical services.",
+    "6.403100",
+    "5.623510",
+    [
+      "Health Centre",
+      "Medical Centre"
+    ],
+    true
+  ],
+  [
+    "25f63f0f-4524-590c-9ac0-6fbe0b56a8ab",
+    "Medical Complex",
+    "HEALTH",
+    "Medical teaching and service complex on Ugbowo Campus.",
+    "6.395438",
+    "5.623172",
+    [
+      "Medical Complex UNIBEN"
+    ],
+    true
+  ],
+  [
+    "dcf11440-5c29-5b36-a05f-e7125d77d228",
+    "UNIBEN Anatomy Back Gate",
+    "TRANSPORT",
+    "Pedestrian access point near Anatomy and the medical hostel axis.",
+    "6.396200",
+    "5.617800",
+    [
+      "Anatomy Back Gate",
+      "Anatomy Gate"
+    ],
+    false
+  ],
+  [
+    "c3b9b0fc-00b8-537b-a417-a3989904a39e",
+    "Back Gate",
+    "TRANSPORT",
+    "Secondary campus access point on the eastern/southern campus edge.",
+    "6.395900",
+    "5.625200",
+    [
+      "UNIBEN Back Gate"
+    ],
+    false
+  ],
+  [
+    "6a96705f-809a-5276-85c8-20a9483704c6",
+    "Ekosodin Gate Security Post",
+    "SERVICE",
+    "Security post at the Ekosodin-side campus access.",
+    "6.404500",
+    "5.624700",
+    [
+      "Ekosodin Gate",
+      "Ekosodin Security Post"
+    ],
+    false
+  ],
+  [
+    "9ca0be2a-0ea6-5305-bebf-7b4315e6c1ad",
+    "Hall 1 Hostel",
+    "HOSTEL",
+    "Hall 1 (Queen Idia Hall), Ugbowo Campus.",
+    "6.396613",
+    "5.618672",
+    [
+      "Hall 1",
+      "Queen Idia Hostel",
+      "Queen Idia Hall"
+    ],
+    true
+  ],
+  [
+    "1e1ddc99-6b48-585c-8df5-fe25b9177045",
+    "Hall 2 Hostel",
+    "HOSTEL",
+    "Hall 2 (Madam Tinubu Hall), Ugbowo Campus.",
+    "6.398438",
+    "5.619672",
+    [
+      "Hall 2",
+      "Tinubu Female Hostel",
+      "Madam Tinubu Hall"
+    ],
+    true
+  ],
+  [
+    "95de09db-4898-589a-8496-4a3814294d66",
+    "Hall 3 Hostel",
+    "HOSTEL",
+    "Hall 3 (Mallam Aminu Kano Hall), Ugbowo Campus.",
+    "6.396913",
+    "5.619953",
+    [
+      "Hall 3",
+      "Aminu Kano Hostel",
+      "Mallam Aminu Kano Hall"
+    ],
+    true
+  ],
+  [
+    "bc5f982b-7509-566e-b62f-29fc7362175c",
+    "Hall 4 Hostel",
+    "HOSTEL",
+    "Hall 4 (Akanu Ibiam Hall), Ugbowo Campus.",
+    "6.398300",
+    "5.622550",
+    [
+      "Hall 4",
+      "Akanu Ibiam Hall"
+    ],
+    false
+  ],
+  [
+    "647a85ab-9396-45c4-b427-bebb7d3dcf3b",
+    "Hall 5 Hostel",
+    "HOSTEL",
+    "Hall 5 student hostel, University of Benin Ugbowo Campus.",
+    "6.397120",
+    "5.623920",
+    [
+      "Hall 5"
+    ],
+    true
+  ],
+  [
+    "68a12e6f-640c-4412-8cf6-63a5502d454c",
+    "Hall 6 Hostel",
+    "HOSTEL",
+    "Hall 6 student hostel, University of Benin Ugbowo Campus.",
+    "6.398220",
+    "5.626190",
+    [
+      "Hall 6"
+    ],
+    true
+  ],
+  [
+    "5931353c-3b42-4b13-a5f6-a48ff024c92d",
+    "Hall 7 Hostel",
+    "HOSTEL",
+    "Hall 7 postgraduate hostel, University of Benin Ugbowo Campus.",
+    "6.397970",
+    "5.625230",
+    [
+      "Hall 7"
+    ],
+    true
+  ],
+  [
+    "99189c22-3c1b-4d07-baf5-81a1544aa283",
+    "Clinical Hostel",
+    "HOSTEL",
+    "Clinical students hostel, University of Benin Ugbowo Campus.",
+    "6.394530",
+    "5.617190",
+    [
+      "Clinical Hall",
+      "Clinical Students Hostel"
+    ],
+    true
+  ],
+  [
+    "8918a6f0-c56a-432f-b8d1-0d6aed349b57",
+    "NDDC Hostel",
+    "HOSTEL",
+    "NDDC student hostel, University of Benin Ugbowo Campus.",
+    "6.394710",
+    "5.617890",
+    [
+      "NDDC Hall"
+    ],
+    true
+  ],
+  [
+    "3b0c31b8-0be6-52b1-a8f1-426284503985",
+    "Medical Hostel",
+    "HOSTEL",
+    "Medical students hostel near the clinical and Anatomy axis.",
+    "6.396050",
+    "5.618950",
+    [
+      "Medical Students Hostel",
+      "Medical Hall"
+    ],
+    false
+  ],
+  [
+    "c56d49e1-8bbb-54be-84e1-542ca9878e9f",
+    "Keystone Hostel",
+    "HOSTEL",
+    "Keystone student hostel, Ugbowo Campus.",
+    "6.398913",
+    "5.625328",
+    [
+      "Keystone Hall"
+    ],
+    true
+  ],
+  [
+    "71afeb51-76f0-5b06-a38f-c79390432a78",
+    "Intercontinental Hostel",
+    "HOSTEL",
+    "Intercontinental postgraduate hostel, Ugbowo Campus.",
+    "6.398000",
+    "5.624400",
+    [
+      "Intercontinental Hall",
+      "Intercontinental Bank PG Hall"
+    ],
+    false
+  ],
+  [
+    "427ff6b3-eaa0-54d9-b043-7658f5f3a00e",
+    "Erastus Akinbola Postgraduate Hostel",
+    "HOSTEL",
+    "Postgraduate residence hall on Ugbowo Campus.",
+    "6.397413",
+    "5.625328",
+    [
+      "Akinbola Hostel",
+      "Festus Akingbola",
+      "Postgraduate Hostel"
+    ],
+    true
+  ],
+  [
+    "f9d9e845-ec23-4ef6-90da-aa84a651a5d6",
+    "Food Court (Buka)",
+    "FOOD",
+    "Campus food court (Buka), University of Benin Ugbowo Campus.",
+    "6.395260",
+    "5.619070",
+    [
+      "Buka",
+      "Food Court"
+    ],
+    true
+  ],
+  [
+    "d5b2d262-6648-5253-93d8-989c2b0f759b",
+    "Helena Food",
+    "FOOD",
+    "Food spot near the student hostel and Buka axis.",
+    "6.395900",
+    "5.617600",
+    [
+      "Helena Food UNIBEN"
+    ],
+    false
+  ],
+  [
+    "8269011d-9152-59a9-a527-97440fd51cb8",
+    "Mat-Ice Restaurant",
+    "FOOD",
+    "Restaurant near the medical and hostel axis.",
+    "6.395800",
+    "5.620300",
+    [
+      "Mat Ice",
+      "Mat-Ice"
+    ],
+    false
+  ],
+  [
+    "637e5efe-cb1c-5826-9e46-f33bf805c87a",
+    "Swift Canteen",
+    "FOOD",
+    "Student canteen near Pharmacy and Buka.",
+    "6.395520",
+    "5.619800",
+    [
+      "Swift Canteen UNIBEN"
+    ],
+    false
+  ],
+  [
+    "36196663-907e-50ec-83ef-eed7cdc307bd",
+    "CERHI Cafe",
+    "FOOD",
+    "Cafe near the health sciences area.",
+    "6.395650",
+    "5.620750",
+    [
+      "CERHI Café",
+      "CERHI"
+    ],
+    false
+  ],
+  [
+    "95ea2f97-b0fb-5104-bec4-b942a477444e",
+    "Nescafe Lounge UNIBEN",
+    "FOOD",
+    "Cafe/lounge in the eastern academic area.",
+    "6.401431",
+    "5.621666",
+    [
+      "Nescafe Lounge",
+      "Nescafe UNIBEN"
+    ],
+    true
+  ],
+  [
+    "7589297a-ce88-5d7d-b020-d60a9fff4fc9",
+    "Home & Away Restaurant Ugbowo",
+    "FOOD",
+    "Restaurant on the Ugbowo campus axis.",
+    "6.396013",
+    "5.614172",
+    [
+      "Home and Away",
+      "Home & Away"
+    ],
+    true
+  ],
+  [
+    "31815e90-5b67-5589-9744-5fb5547481d4",
+    "UNIBEN Book Shop",
+    "SERVICE",
+    "University bookshop and student supplies.",
+    "6.402150",
+    "5.621350",
+    [
+      "Bookshop",
+      "UNIBEN Bookshop"
+    ],
+    false
+  ],
+  [
+    "2ac78f1e-e237-50d1-aab3-0d7396e26833",
+    "June 12 Shopping Complex",
+    "SERVICE",
+    "Student shopping complex in the Law/Hall 4 axis.",
+    "6.398700",
+    "5.621300",
+    [
+      "June 12",
+      "June 12 UNIBEN"
+    ],
+    false
+  ],
+  [
+    "3ffac6ab-3650-5d64-997a-c2864dfdf288",
+    "Hall 1 Bus Stop",
+    "TRANSPORT",
+    "Campus shuttle stop serving the student halls.",
+    "6.396900",
+    "5.618050",
+    [
+      "Hall 1 Bus stop",
+      "Hall One Bus Stop"
+    ],
+    false
+  ],
+  [
+    "e547742a-868a-5349-81a2-f05a81ab06c8",
+    "Hall 1 Car Park",
+    "SERVICE",
+    "Car park serving Hall 1 and nearby facilities.",
+    "6.396350",
+    "5.618250",
+    [
+      "Hall 1 Parking",
+      "Hall 1 Car Park"
+    ],
+    false
+  ],
+  [
+    "ca06a270-05c4-501e-959d-40532503699c",
+    "Medical Hostel Car Park",
+    "SERVICE",
+    "Parking area near Medical Hostel.",
+    "6.395820",
+    "5.618650",
+    [
+      "Medical Hostel Parking"
+    ],
+    false
+  ],
+  [
+    "d9da568f-74da-5dd7-8d73-e63905878062",
+    "Alumni Car Park",
+    "SERVICE",
+    "Parking area near the library and hostel axis.",
+    "6.395950",
+    "5.617050",
+    [
+      "Alumni Parking"
+    ],
+    false
+  ],
+  [
+    "bf0cc0d5-6a6e-52ce-bc46-2c87ed953c49",
+    "Biochemistry Parking Lot",
+    "SERVICE",
+    "Parking area near the Department of Biochemistry.",
+    "6.396100",
+    "5.615350",
+    [
+      "Biochemistry Car Park",
+      "Biochemistry Parking"
+    ],
+    false
+  ],
+  [
+    "65f3124d-3690-50a6-a01e-1a7afe90eec5",
+    "UNIBEN Sports Complex",
+    "SPORT",
+    "University sports complex.",
+    "6.399763",
+    "5.613578",
+    [
+      "Sports Complex",
+      "Stadium"
+    ],
+    true
+  ],
+  [
+    "2436a456-902d-57fb-8310-cf9b8f7d5946",
+    "Main Bowl",
+    "SPORT",
+    "Main sports bowl within the university sports complex.",
+    "6.399200",
+    "5.612950",
+    [
+      "UNIBEN Main Bowl",
+      "Main Stadium Bowl"
+    ],
+    false
+  ],
+  [
+    "95d8aa69-b4a7-53cf-9861-cf7b12831249",
+    "UNIBEN Indoor Sports Hall",
+    "SPORT",
+    "Indoor sports facility on Ugbowo Campus.",
+    "6.398350",
+    "5.612750",
+    [
+      "Indoor Sports Hall",
+      "Indoor Sport Hall"
+    ],
+    false
+  ],
+  [
+    "217ebcc6-f66f-51c5-a856-3271399d5549",
+    "UNIBEN Basketball Court",
+    "SPORT",
+    "Outdoor basketball court on Ugbowo Campus.",
+    "6.397690",
+    "5.610920",
+    [
+      "Basketball Court",
+      "Basketball"
+    ],
+    true
+  ],
+  [
+    "d4b11b3d-dcdc-5f79-a742-97309f67fd59",
+    "Handball Court",
+    "SPORT",
+    "Outdoor handball court in the sports area.",
+    "6.397350",
+    "5.611150",
+    [
+      "UNIBEN Handball Court"
+    ],
+    false
+  ],
+  [
+    "3be9b5a7-6f6d-55ae-8f84-e35daff58078",
+    "Lawn Tennis Court",
+    "SPORT",
+    "Lawn tennis court in the sports area.",
+    "6.397900",
+    "5.611650",
+    [
+      "Tennis Court",
+      "UNIBEN Lawn Tennis"
+    ],
+    false
+  ]
+] satisfies readonly RawStarterPlace[];
 
 export const UNIBEN_UGBOWO_STARTER: CampusStarterDirectory = {
   campus: {
@@ -40,151 +1300,20 @@ export const UNIBEN_UGBOWO_STARTER: CampusStarterDirectory = {
     map_style: "KAMPUSONE",
     status: "PUBLISHED",
   },
-  places: [
-    {
-      id: "5a3e978c-8d07-411c-bd0d-1b08313fe128",
-      name: "Student Affairs Division",
-      category: "SERVICE",
-      description: "Student Affairs Division, University of Benin Ugbowo Campus.",
-      latitude: "6.400023",
-      longitude: "5.609885",
+  places: RAW_UNIBEN_UGBOWO_PLACES.map(
+    ([id, name, category, description, latitude, longitude, aliases, verified]) => ({
+      id,
+      name,
+      category,
+      description,
+      latitude,
+      longitude,
       accessibility_notes: null,
       image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "a64fc253-2c9e-407c-b852-b077e0390d5b",
-      name: "Faculty of Engineering",
-      category: "ACADEMIC",
-      description: "Faculty of Engineering, University of Benin Ugbowo Campus.",
-      latitude: "6.401790",
-      longitude: "5.615370",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "4abd5761-6388-46f0-b20d-e3aef1f4f1c2",
-      name: "Faculty of Physical Sciences",
-      category: "ACADEMIC",
-      description: "Faculty of Physical Sciences, University of Benin Ugbowo Campus.",
-      latitude: "6.400310",
-      longitude: "5.615350",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "f61bd3ec-dbdf-498d-aaab-c867c8c77522",
-      name: "Faculty of Life Sciences",
-      category: "ACADEMIC",
-      description: "Faculty of Life Sciences, University of Benin Ugbowo Campus.",
-      latitude: "6.398940",
-      longitude: "5.614870",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "c1a6b966-0cec-427d-8672-fe1df10ae369",
-      name: "Faculty of Education",
-      category: "ACADEMIC",
-      description: "Faculty of Education, University of Benin Ugbowo Campus.",
-      latitude: "6.400910",
-      longitude: "5.619670",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "e1ab63c1-5fbd-4a41-9a4d-f2c0b18d7fae",
-      name: "Faculty of Law",
-      category: "ACADEMIC",
-      description: "Faculty of Law, University of Benin Ugbowo Campus.",
-      latitude: "6.400530",
-      longitude: "5.622440",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "f66a29bf-08dc-43b6-be7a-d66c099613a5",
-      name: "JUPEB Foundation School",
-      category: "ACADEMIC",
-      description: "UNIBEN JUPEB Foundation School, Ugbowo Campus.",
-      latitude: "6.397003",
-      longitude: "5.617815",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "99189c22-3c1b-4d07-baf5-81a1544aa283",
-      name: "Clinical Hostel",
-      category: "HOSTEL",
-      description: "Clinical Hostel, University of Benin Ugbowo Campus.",
-      latitude: "6.394530",
-      longitude: "5.617190",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "8918a6f0-c56a-432f-b8d1-0d6aed349b57",
-      name: "NDDC Hostel",
-      category: "HOSTEL",
-      description: "NDDC Hostel, University of Benin Ugbowo Campus.",
-      latitude: "6.394710",
-      longitude: "5.617890",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "f9d9e845-ec23-4ef6-90da-aa84a651a5d6",
-      name: "Food Court (Buka)",
-      category: "FOOD",
-      description: "Campus food court (Buka), University of Benin Ugbowo Campus.",
-      latitude: "6.395260",
-      longitude: "5.619070",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "647a85ab-9396-45c4-b427-bebb7d3dcf3b",
-      name: "Hall 5 Hostel",
-      category: "HOSTEL",
-      description: "Hall 5 student hostel, University of Benin Ugbowo Campus.",
-      latitude: "6.397120",
-      longitude: "5.623920",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "68a12e6f-640c-4412-8cf6-63a5502d454c",
-      name: "Hall 6 Hostel",
-      category: "HOSTEL",
-      description: "Hall 6 student hostel, University of Benin Ugbowo Campus.",
-      latitude: "6.398220",
-      longitude: "5.626190",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-    {
-      id: "5931353c-3b42-4b13-a5f6-a48ff024c92d",
-      name: "Hall 7 Hostel",
-      category: "HOSTEL",
-      description: "Hall 7 student hostel, University of Benin Ugbowo Campus.",
-      latitude: "6.397970",
-      longitude: "5.625230",
-      accessibility_notes: null,
-      image_url: null,
-      verified_at: REVIEWED_AT,
-    },
-  ],
+      search_aliases: aliases,
+      verified_at: verified ? REVIEWED_AT : null,
+    }),
+  ),
 };
 
 function normalizeUniversityName(value: string | null | undefined) {
@@ -209,6 +1338,8 @@ export function filterCampusStarterPlaces(
   return places.filter((place) => {
     if (category && place.category !== category) return false;
     if (!query) return true;
-    return `${place.name} ${place.description}`.toLowerCase().includes(query);
+    return `${place.name} ${place.description} ${place.search_aliases.join(" ")}`
+      .toLowerCase()
+      .includes(query);
   });
 }
