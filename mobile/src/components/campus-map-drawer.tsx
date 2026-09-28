@@ -40,9 +40,14 @@ type Props = {
   choosingOrigin: boolean;
   destinationName?: string;
   route: RouteSummary | null;
+  locationAccuracy: number | null;
+  locationError: string;
+  locationLoading: boolean;
+  locationPermission: "granted" | "denied" | "undetermined";
   onQueryChange: (value: string) => void;
   onPickDestination: (id: string) => void;
   onPickOrigin: (id: string) => void;
+  onUseCurrentLocation: () => void;
   onClearRoute: () => void;
 };
 
@@ -151,10 +156,15 @@ export function CampusMapDrawer({
   destinationName,
   error,
   loading,
+  locationAccuracy,
+  locationError,
+  locationLoading,
+  locationPermission,
   onClearRoute,
   onPickDestination,
   onPickOrigin,
   onQueryChange,
+  onUseCurrentLocation,
   places,
   query,
   route,
@@ -443,6 +453,38 @@ export function CampusMapDrawer({
                 </View>
               </View>
 
+              <Pressable
+                accessibilityLabel="Use current location as your starting point"
+                accessibilityRole="button"
+                onPress={onUseCurrentLocation}
+                style={({ pressed }) => [
+                  styles.currentLocationItem,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <View style={styles.currentLocationIcon}>
+                  <Ionicons color="#FFFFFF" name="locate" size={20} />
+                </View>
+                <View style={styles.placeCopy}>
+                  <Text style={styles.placeName}>
+                    {locationLoading
+                      ? "Getting current location…"
+                      : locationPermission === "granted"
+                        ? "Current location"
+                        : "Use current location"}
+                  </Text>
+                  <Text numberOfLines={2} style={styles.placeMeta}>
+                    {locationError ||
+                      (locationAccuracy !== null
+                        ? "Live device position · about ±" +
+                          Math.max(1, Math.round(locationAccuracy)) +
+                          " m accuracy"
+                        : "Use your phone location while KampusOne is open")}
+                  </Text>
+                </View>
+                <Ionicons color={theme.textSubtle} name="chevron-forward" size={18} />
+              </Pressable>
+
               <Text style={styles.sectionLabel}>Campus places</Text>
               {searchResults.length
                 ? searchResults.map((place) => (
@@ -623,6 +665,23 @@ const createStyles = (theme: Theme) =>
       alignItems: "center",
       flexDirection: "row",
       minHeight: 72,
+    },
+    currentLocationItem: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceSoft,
+      borderRadius: 16,
+      flexDirection: "row",
+      marginBottom: 6,
+      minHeight: 72,
+      paddingHorizontal: 10,
+    },
+    currentLocationIcon: {
+      alignItems: "center",
+      backgroundColor: "#2F7CF6",
+      borderRadius: 14,
+      height: 52,
+      justifyContent: "center",
+      width: 52,
     },
     placeIcon: {
       alignItems: "center",
