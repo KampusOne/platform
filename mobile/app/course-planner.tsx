@@ -84,7 +84,7 @@ export default function CoursePlanner() {
       setLoadedFromServer(true);
       setLoadFailed(false);
       setDirty(false);
-      setScale(r.gradingScaleStatus === "VERIFIED" ? r.gradingScale : null);
+      setScale(r.gradingScale ?? null);
     } catch {
       setLoadedFromServer(false);
       setLoadFailed(true);
@@ -424,19 +424,6 @@ export default function CoursePlanner() {
                 <Text style={styles.syncStatusText}>{syncLabel}</Text>
               </View>
 
-              {!scale ? (
-                <View style={styles.scaleNote}>
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={18}
-                    color={theme.info}
-                  />
-                  <Text style={styles.scaleNoteText}>
-                    GPA preview will turn on automatically when your
-                    university's grading scale is verified.
-                  </Text>
-                </View>
-              ) : null}
             </View>
           ) : (
             <View style={styles.emptyState}>
