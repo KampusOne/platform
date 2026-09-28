@@ -58,12 +58,14 @@ aiRoutes.get("/status", async c => {
   const usage = c.env.UNIFIED_SCHEMA_READY === "true" ? await studentAIUsage(c.env, currentUser(c).id) : null;
   // Provider credentials, model IDs and shared/global limits never leave the Worker.
   const askLimit = quota.pro ? 60 : quota.chat;
-  return c.json({ enabled, voiceEnabled: enabled && transcriptionConfiguration(c.env).configured, historyDays: AI_HISTORY_DAYS, maxFileBytes: MAX_AI_MEDIA_BYTES,
+  const speech = transcriptionConfiguration(c.env);
+  const maxVoiceSeconds = speech.longFormConfigured ? (quota.pro ? 300 : 60) : 30;
+  return c.json({ enabled, voiceEnabled: enabled && speech.configured, historyDays: AI_HISTORY_DAYS, maxFileBytes: MAX_AI_MEDIA_BYTES,
     capabilities: { text: enabled && providerConfiguration(c.env,"study").configured,
       images: enabled && providerConfiguration(c.env,"study","image/jpeg").configured,
       documents: enabled && providerConfiguration(c.env,"summary").configured },
     tier: quota.pro ? "pro" : "standard",
-    voice: { maxSeconds: quota.pro ? 300 : 60 },
+    voice: { maxSeconds: maxVoiceSeconds, longFormReady: speech.longFormConfigured },
     askSession: {
       windowMinutes: 15,
       limit: quota.unlimited ? null : askLimit,
@@ -82,12 +84,16 @@ aiRoutes.post("/transcribe", async c => {
   if (c.env.AI_ASSISTANT_ENABLED !== "true" || !transcriptionConfiguration(c.env).configured) throw new AppError(503, "PROVIDER_UNAVAILABLE", "Voice input is temporarily unavailable.");
   const user = currentUser(c);
   const voicePolicy = await studentAIPolicy(c.env, user);
-  const maxVoiceSeconds = voicePolicy.pro ? 300 : 60;
+  const speech = transcriptionConfiguration(c.env);
+  const maxVoiceSeconds = speech.longFormConfigured ? (voicePolicy.pro ? 300 : 60) : 30;
   const durationValue = c.req.query("durationMs");
   const durationMs = durationValue === undefined ? null : Number(durationValue);
   if (durationMs !== null && (!Number.isFinite(durationMs) || durationMs <= 0)) throw new AppError(400, "BAD_REQUEST", "Start a new voice recording and try again.");
   if (durationMs !== null && durationMs > maxVoiceSeconds * 1000 + 1500) {
-    throw new AppError(413, "BAD_REQUEST", voicePolicy.pro ? "Pro voice recordings can be up to 5 minutes." : "Standard voice recordings can be up to 1 minute. Upgrade to Pro for recordings up to 5 minutes.", { reason: "AI_VOICE_DURATION", maxSeconds: maxVoiceSeconds, upgrade: !voicePolicy.pro });
+    const message = speech.longFormConfigured
+      ? (voicePolicy.pro ? "Pro voice recordings can be up to 5 minutes." : "Standard voice recordings can be up to 1 minute. Upgrade to Pro for recordings up to 5 minutes.")
+      : "Long-form voice transcription is temporarily unavailable. Record up to 30 seconds for now.";
+    throw new AppError(413, "BAD_REQUEST", message, { reason: "AI_VOICE_DURATION", maxSeconds: maxVoiceSeconds, upgrade: speech.longFormConfigured && !voicePolicy.pro });
   }
   const contentType = c.req.header("Content-Type") ?? "";
   const multipart = contentType.toLowerCase().startsWith("multipart/form-data");
