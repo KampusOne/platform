@@ -30,6 +30,8 @@
     "STORE_ENABLED": "true",
     "STORE_DEMO_ENABLED": "false",
     "LOGISTICS_ENABLED": "false",
+    "CAMPUS_ROUTING_ENABLED": "true",
+    "CAMPUS_ROUTING_BASE_URL": "https://routing.openstreetmap.de/routed-foot/route/v1/driving",
     "PAYMENTS_ENABLED": "false",
     "AI_ASSISTANT_ENABLED": "true",
     "AI_UNLIMITED_EMAIL_HASHES": "af83a966d0eb435808a4657fce605b89077ab7369a7d32caea01ccba0276d3fb",
@@ -59,6 +61,8 @@
         "STORE_ENABLED": "false",
         "STORE_DEMO_ENABLED": "false",
         "LOGISTICS_ENABLED": "false",
+        "CAMPUS_ROUTING_ENABLED": "true",
+        "CAMPUS_ROUTING_BASE_URL": "https://routing.openstreetmap.de/routed-foot/route/v1/driving",
         "PAYMENTS_ENABLED": "false",
         "AI_ASSISTANT_ENABLED": "false"
       }
