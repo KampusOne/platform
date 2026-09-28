@@ -69,7 +69,7 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
       const permission=await AudioModule.requestRecordingPermissionsAsync();
       if(!permission.granted)throw new Error('Allow microphone access in your phone settings to record a question.');
       await setAudioModeAsync({allowsRecording:true,playsInSilentMode:true});
-      await recorder.prepareToRecordAsync();recorder.record();
+      await recorder.prepareToRecordAsync();recorder.record();onRecordingChange?.(true);
       durationRef.current=0;setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));id.current=randomUUID();
       timer.current=setTimeout(()=>{void finishVoice('draft');},recordingLimit);
     }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Recording could not start.');}
@@ -77,7 +77,7 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
   }
   async function stopAndKeep(){
     if(locked.current)return uri;
-    locked.current=true;if(timer.current){clearTimeout(timer.current);timer.current=undefined;}
+    locked.current=true;if(timer.current){clearTimeout(timer.current);timer.current=undefined;}onRecordingChange?.(false);
     try{
       const duration=stateRef.current.durationMillis;
       if(recorder.isRecording)await recorder.stop();
@@ -91,7 +91,7 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
   }
   async function cancel(){
     if(working||locked.current)return;
-    locked.current=true;if(timer.current){clearTimeout(timer.current);timer.current=undefined;}
+    locked.current=true;if(timer.current){clearTimeout(timer.current);timer.current=undefined;}onRecordingChange?.(false);
     try{if(recorder.isRecording)await recorder.stop();await setAudioModeAsync({allowsRecording:false});}catch{}
     finally{durationRef.current=0;if(alive.current){setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));setError('');}id.current=randomUUID();locked.current=false;}
   }
