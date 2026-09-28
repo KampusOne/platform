@@ -107,6 +107,15 @@ type RepostPage = { posts: SocialFeedPost[]; nextCursor?: string | null };
 type ProfilePayload = { profile: StudentProfile };
 type Tab = "Overview" | "Reposts" | "Activity" | "Classes" | "Transactions";
 type ResourceState = "idle" | "ready" | "stale" | "error";
+type ActivityItem = {
+  id: string;
+  kind: "booking" | "order";
+  resourceId: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  detail: string;
+  date: string;
+};
 
 function safeArrayLength(value: unknown): number {
   return Array.isArray(value) ? value.length : 0;
@@ -285,6 +294,8 @@ export default function ProfileScreen() {
     const rows = [
       ...(purchases?.tutorialBookings ?? []).map((booking) => ({
         id: `booking-${booking.id}`,
+        kind: "booking" as const,
+        resourceId: booking.id,
         icon: "school-outline" as const,
         title: `${booking.course_code} tutorial with ${booking.tutor_name}`,
         detail: booking.status.replaceAll("_", " "),
@@ -292,6 +303,8 @@ export default function ProfileScreen() {
       })),
       ...(purchases?.orders ?? []).map((order) => ({
         id: `order-${order.id}`,
+        kind: "order" as const,
+        resourceId: order.id,
         icon: "bag-handle-outline" as const,
         title: `Order from ${order.vendor_name}`,
         detail: order.status.replaceAll("_", " "),
@@ -302,6 +315,39 @@ export default function ProfileScreen() {
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
   }, [purchases]);
+
+  async function removeActivity(activity: ActivityItem) {
+    const previous = purchases;
+    setPurchases((current) => {
+      if (!current) return current;
+      return activity.kind === "booking"
+        ? {
+            ...current,
+            tutorialBookings: current.tutorialBookings.filter(
+              (booking) => booking.id !== activity.resourceId,
+            ),
+          }
+        : {
+            ...current,
+            orders: current.orders.filter(
+              (order) => order.id !== activity.resourceId,
+            ),
+          };
+    });
+    try {
+      await api(
+        `/v1/student/purchases/activity/${activity.kind}/${activity.resourceId}`,
+        { method: "DELETE" },
+      );
+      toast("Activity removed", "success");
+    } catch (caught) {
+      setPurchases(previous);
+      toast(
+        caught instanceof Error ? caught.message : "Activity could not be removed.",
+        "error",
+      );
+    }
+  }
 
   async function loadMoreReposts() {
     if (!repostCursor || repostPaging.current || repostLoadingMore || !user?.id) return;
@@ -728,6 +774,7 @@ export default function ProfileScreen() {
                       ? undefined
                       : "Purchase activity is unavailable right now. Available records will appear here."
                   }
+                  onRemove={(activity) => void removeActivity(activity)}
                 />
               </View>
             </>
@@ -814,6 +861,7 @@ export default function ProfileScreen() {
                     ? undefined
                     : "Purchase activity is unavailable right now. Available records will appear here."
                 }
+                onRemove={(activity) => void removeActivity(activity)}
               />
             </View>
           ) : null}
@@ -1006,49 +1054,116 @@ function ProfileAction({
 function ActivityList({
   activities,
   emptyMessage,
+  onRemove,
 }: {
-  activities: Array<{
-    id: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    title: string;
-    detail: string;
-    date: string;
-  }>;
+  activities: ActivityItem[];
   emptyMessage?: string | undefined;
+  onRemove: (activity: ActivityItem) => void;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const [selected, setSelected] = useState<ActivityItem | null>(null);
 
   if (!activities.length)
     return (
-      <Text style={styles.quietState}>
-        {emptyMessage ??
-          "Your tutorial bookings and store orders will build your activity here."}
-      </Text>
+      <View style={styles.activityEmpty}>
+        <View accessible={false} style={styles.activityEmptyIllustration}>
+          <View style={styles.activityEmptyHalo}>
+            <Ionicons color={theme.deepBrand} name="sparkles-outline" size={20} />
+          </View>
+          <View style={styles.activityEmptyCard}>
+            <View style={styles.activityEmptyCardLine} />
+            <View style={[styles.activityEmptyCardLine, styles.activityEmptyCardLineShort]} />
+            <View style={styles.activityEmptyClock}>
+              <Ionicons color={theme.deepBrand} name="time-outline" size={25} />
+            </View>
+          </View>
+        </View>
+        <Text style={styles.activityEmptyTitle}>
+          {emptyMessage ? "Activity unavailable" : "No recent activity"}
+        </Text>
+        <Text style={styles.activityEmptyBody}>
+          {emptyMessage ??
+            "Your real bookings, orders and other activity will show up here."}
+        </Text>
+      </View>
     );
   return (
-    <View style={styles.activityList}>
-      {activities.map((activity) => (
-        <View key={activity.id} style={styles.activity}>
-          <View style={styles.activityIcon}>
-            <Ionicons color={theme.deepBrand} name={activity.icon} size={19} />
+    <>
+      <View style={styles.activityList}>
+        {activities.map((activity) => (
+          <View key={activity.id} style={styles.activity}>
+            <View style={styles.activityIcon}>
+              <Ionicons color={theme.deepBrand} name={activity.icon} size={19} />
+            </View>
+            <View style={styles.activityCopy}>
+              <Text numberOfLines={2} style={styles.activityTitle}>
+                {activity.title}
+              </Text>
+              <Text style={styles.activityDetail}>
+                {activity.detail} ·{" "}
+                {safeActivityDate(activity.date)}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityLabel={`Activity options for ${activity.title}`}
+              accessibilityRole="button"
+              hitSlop={10}
+              onPress={() => {
+                void Haptics.selectionAsync();
+                setSelected(activity);
+              }}
+              style={({ pressed }) => [
+                styles.activityMore,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons
+                color={theme.textMuted}
+                name="ellipsis-vertical"
+                size={18}
+              />
+            </Pressable>
           </View>
-          <View style={styles.activityCopy}>
-            <Text numberOfLines={2} style={styles.activityTitle}>
-              {activity.title}
-            </Text>
-            <Text style={styles.activityDetail}>
-              {activity.detail} ·{" "}
-              {safeActivityDate(activity.date)}
-            </Text>
-          </View>
-          <Ionicons
-            color={theme.textMuted}
-            name="ellipsis-vertical"
-            size={17}
+        ))}
+      </View>
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setSelected(null)}
+        statusBarTranslucent
+        transparent
+        visible={Boolean(selected)}
+      >
+        <View style={styles.activityMenuBackdrop}>
+          <Pressable
+            accessibilityLabel="Close activity options"
+            accessibilityRole="button"
+            onPress={() => setSelected(null)}
+            style={StyleSheet.absoluteFill}
           />
+          <View accessibilityViewIsModal style={styles.activityMenuPanel}>
+            <Text numberOfLines={2} style={styles.activityMenuTitle}>
+              {selected?.title}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                if (!selected) return;
+                const activity = selected;
+                setSelected(null);
+                onRemove(activity);
+              }}
+              style={({ pressed }) => [
+                styles.activityDelete,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons color={theme.deepBrand} name="trash-outline" size={20} />
+              <Text style={styles.activityDeleteText}>Delete activity</Text>
+            </Pressable>
+          </View>
         </View>
-      ))}
-    </View>
+      </Modal>
+    </>
   );
 }
 
@@ -1440,6 +1555,83 @@ const createStyles = (theme: Theme) =>
       lineHeight: 13,
       marginTop: 4,
     },
+    activityEmpty: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceGlassStrong,
+      borderColor: theme.border,
+      borderRadius: 18,
+      borderWidth: 1,
+      paddingHorizontal: 24,
+      paddingVertical: 28,
+    },
+    activityEmptyIllustration: {
+      height: 92,
+      justifyContent: "center",
+      marginBottom: 14,
+      position: "relative",
+      width: 120,
+    },
+    activityEmptyHalo: {
+      alignItems: "center",
+      backgroundColor: "rgba(233,177,142,0.18)",
+      borderRadius: 25,
+      height: 50,
+      justifyContent: "center",
+      left: 0,
+      position: "absolute",
+      top: 0,
+      width: 50,
+    },
+    activityEmptyCard: {
+      backgroundColor: theme.canvas,
+      borderColor: theme.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      bottom: 0,
+      height: 64,
+      paddingHorizontal: 13,
+      paddingTop: 15,
+      position: "absolute",
+      right: 0,
+      width: 86,
+      ...theme.shadow,
+    },
+    activityEmptyCardLine: {
+      backgroundColor: theme.border,
+      borderRadius: 3,
+      height: 5,
+      width: 40,
+    },
+    activityEmptyCardLineShort: {
+      marginTop: 8,
+      width: 27,
+    },
+    activityEmptyClock: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceSoft,
+      borderRadius: 18,
+      bottom: -10,
+      height: 36,
+      justifyContent: "center",
+      position: "absolute",
+      right: -8,
+      width: 36,
+    },
+    activityEmptyTitle: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 14,
+      textAlign: "center",
+    },
+    activityEmptyBody: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12,
+      lineHeight: 18,
+      marginTop: 5,
+      maxWidth: 280,
+      textAlign: "center",
+    },
     activityList: {
       backgroundColor: theme.surfaceGlassStrong,
       borderColor: theme.border,
@@ -1464,7 +1656,14 @@ const createStyles = (theme: Theme) =>
       justifyContent: "center",
       width: 40,
     },
-    activityCopy: { flex: 1, marginLeft: 10 },
+    activityCopy: { flex: 1, marginLeft: 10, minWidth: 0 },
+    activityMore: {
+      alignItems: "center",
+      height: 42,
+      justifyContent: "center",
+      marginLeft: 4,
+      width: 38,
+    },
     activityTitle: {
       color: theme.text,
       fontFamily: theme.font.medium,
@@ -1477,6 +1676,42 @@ const createStyles = (theme: Theme) =>
       fontSize: 9.5,
       marginTop: 3,
       textTransform: "capitalize",
+    },
+    activityMenuBackdrop: {
+      backgroundColor: "rgba(41,35,31,0.22)",
+      flex: 1,
+      justifyContent: "flex-end",
+      padding: 16,
+    },
+    activityMenuPanel: {
+      backgroundColor: theme.surfaceGlassStrong,
+      borderColor: theme.border,
+      borderRadius: 20,
+      borderWidth: 1,
+      padding: 14,
+      ...theme.floatingShadow,
+    },
+    activityMenuTitle: {
+      color: theme.textMuted,
+      fontFamily: theme.font.medium,
+      fontSize: 12,
+      lineHeight: 17,
+      paddingHorizontal: 4,
+      paddingBottom: 10,
+    },
+    activityDelete: {
+      alignItems: "center",
+      borderTopColor: theme.border,
+      borderTopWidth: 1,
+      flexDirection: "row",
+      gap: 10,
+      minHeight: 52,
+      paddingHorizontal: 4,
+    },
+    activityDeleteText: {
+      color: theme.deepBrand,
+      fontFamily: theme.font.semibold,
+      fontSize: 14,
     },
     tabPanel: { marginHorizontal: 20 },
     repostPanel: { marginHorizontal: 16, paddingBottom: 8 },
