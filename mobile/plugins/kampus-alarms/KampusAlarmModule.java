@@ -44,4 +44,7 @@ public class KampusAlarmModule extends ReactContextBaseJavaModule {
   @ReactMethod public void cacheSound(String url, Promise promise) {
     new Thread(() -> { try { KampusAlarmScheduler.cacheSound(getReactApplicationContext(),url); promise.resolve(true); } catch(Exception e) { promise.reject("ALARM_SOUND",e); } },"kampus-alarm-sound").start();
   }
+  @ReactMethod public void cacheAlarmSound(String id, String url, Promise promise) {
+    new Thread(() -> { try { KampusAlarmScheduler.cacheAlarmSound(getReactApplicationContext(),id,url); promise.resolve(true); } catch(Exception e) { promise.reject("ALARM_SOUND",e); } },"kampus-alarm-user-sound").start();
+  }
 }
