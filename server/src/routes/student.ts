@@ -34,6 +34,7 @@ import { deriveHandoffCode } from "../lib/security";
 import { demoStoreCatalogue } from "../lib/store-demo";
 import { publishingRoutes } from "./publishing";
 import { currentUser, requireAuth } from "../middleware/auth";
+import { requireUnblocked, unblockedAuthorIfReady } from "../lib/profile-safety";
 import type { Bindings, Variables } from "../types";
 
 export const studentRoutes = new Hono<{
@@ -870,6 +871,8 @@ studentRoutes.get("/tutorials", async (context) => {
       "Choose a valid learning-resource type.",
     );
   }
+  const tutorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`profiles.user_id`);
+  const resourceTutorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`resource_tutor.user_id`);
   const [listings, resources] = await Promise.all([
     database(context.env).execute(sql`
       select listings.id, listings.course_id, listings.tutor_profile_id, listings.course_code, listings.title,
@@ -914,6 +917,7 @@ studentRoutes.get("/tutorials", async (context) => {
         and listings.deleted_at is null
         and (${paidAccessEnabled} or listings.price_kobo = 0)
         and (listings.is_demo or profiles.status = 'ACTIVE')
+        and ${tutorVisible}
         and (${search}::text is null or listings.title ilike ${search}
           or listings.course_code ilike ${search}
           or coalesce(profiles.display_name, listings.publisher_name, '') ilike ${search})
@@ -938,7 +942,9 @@ studentRoutes.get("/tutorials", async (context) => {
         ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`resources.media_object_id` : sql`null::uuid`} media_object_id,
         case when resources.access_model = 'FREE' then resources.file_url else null end as file_url
       from public.tutorial_resources resources
+      left join public.agent_profiles resource_tutor on resource_tutor.id = resources.tutor_profile_id
       where resources.university_id = ${universityId}::uuid
+        and ${resourceTutorVisible}
         and resources.status = 'PUBLISHED' and resources.deleted_at is null
         and (${paidAccessEnabled} or resources.access_model <> 'PAID')
         and (${resourceType ?? null}::text is null or resources.resource_type = ${resourceType ?? null})
@@ -958,6 +964,7 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
     "Learning resources are not enabled in this environment.",
   );
   const user = currentUser(context);
+  const resourceTutorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`resource_tutor.user_id`);
   const result = await database(context.env).execute(sql`
     select resources.id, resources.listing_id, resources.course_code, resources.title,
       resources.description, resources.resource_type, resources.access_model,
@@ -981,8 +988,10 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
           and bookings.listing_id = resources.listing_id
       ))) as can_access
     from public.tutorial_resources resources
+    left join public.agent_profiles resource_tutor on resource_tutor.id = resources.tutor_profile_id
     where resources.id = ${context.req.param("id")}::uuid
       and resources.university_id = ${requireUniversity(user)}::uuid
+      and ${resourceTutorVisible}
       and resources.status = 'PUBLISHED' and resources.deleted_at is null
     limit 1
   `);
@@ -1010,22 +1019,28 @@ studentRoutes.post("/tutorial-bookings", async (context) => {
       "BAD_REQUEST",
       "The tutorial booking request is invalid.",
     );
-  if (!featureEnabled(context.env, "PAYMENTS_ENABLED")) {
-    const listing = await database(context.env).execute<{
-      price_kobo: number;
-    }>(sql`
-      select price_kobo from public.tutorial_listings
-      where id = ${parsed.data.listingId}::uuid
-        and university_id = ${requireUniversity(user)}::uuid
-        and deleted_at is null limit 1
-    `);
-    if (Number(firstRow(listing)?.price_kobo ?? 0) > 0) {
-      throw new AppError(
-        409,
-        "CONFLICT",
-        "Payments are not connected yet. Please try again later.",
-      );
-    }
+  const listing = firstRow(await database(context.env).execute<{
+    price_kobo: number;
+    tutor_user_id: string | null;
+  }>(sql`
+    select listings.price_kobo, profiles.user_id as tutor_user_id
+    from public.tutorial_listings listings
+    left join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
+    where listings.id = ${parsed.data.listingId}::uuid
+      and listings.university_id = ${requireUniversity(user)}::uuid
+      and listings.deleted_at is null
+    limit 1
+  `));
+  if (!listing) throw new AppError(404, "NOT_FOUND", "That tutorial is unavailable.");
+  if (listing.tutor_user_id) {
+    await requireUnblocked(context.env, user.id, listing.tutor_user_id);
+  }
+  if (!featureEnabled(context.env, "PAYMENTS_ENABLED") && Number(listing.price_kobo ?? 0) > 0) {
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Payments are not connected yet. Please try again later.",
+    );
   }
   const id = crypto.randomUUID();
   try {
@@ -1280,6 +1295,7 @@ studentRoutes.get("/store", async (context) => {
   }
 
   const search = query ? `%${query}%` : null;
+  const sellerVisible = await unblockedAuthorIfReady(context.env, user.id, sql`profiles.user_id`);
   const [products, zones] = await Promise.all([
     database(context.env).execute(sql`
       select products.id, products.vendor_profile_id, products.name, products.description,
@@ -1306,6 +1322,7 @@ studentRoutes.get("/store", async (context) => {
       ) reviews on true
       where products.university_id = ${requireUniversity(user)}::uuid and products.status = 'PUBLISHED'
         and products.stock_quantity > 0
+        and ${sellerVisible}
         and (${category ?? null}::text is null or products.category = ${category ?? null})
         and (${search}::text is null or products.name ilike ${search} or products.description ilike ${search})
       order by products.updated_at desc limit 200
@@ -1351,6 +1368,18 @@ studentRoutes.post("/orders", async (context) => {
     );
   }
   const universityId = requireUniversity(user);
+  const vendor = firstRow(await database(context.env).execute<{user_id:string}>(sql`
+    select profiles.user_id
+    from public.agent_profiles profiles
+    where profiles.id=${parsed.data.vendorProfileId}::uuid
+      and profiles.university_id=${universityId}::uuid
+      and profiles.agent_type='VENDOR'
+      and profiles.status='ACTIVE'
+    limit 1
+  `));
+  if (vendor?.user_id) {
+    await requireUnblocked(context.env, user.id, vendor.user_id);
+  }
   const orderId = crypto.randomUUID();
   const [pickup, delivery] = await Promise.all([
     deriveHandoffCode(context.env, orderId, "pickup"),
