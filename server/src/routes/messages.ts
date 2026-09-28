@@ -148,9 +148,18 @@ messageRoutes.get("/inbox", async (c) => {
           select case
             when m.unsent_at is not null and m.sender_id=${user.id}::uuid then 'You unsent a message'
             when m.unsent_at is not null then 'Message unsent'
+            when m.body='Attachment' and m.media_id is not null then
+              case
+                when media.content_type like 'image/%' then 'Picture'
+                when media.content_type like 'video/%' then 'Video'
+                when media.content_type like 'audio/%' then 'Voice note'
+                else 'Document'
+              end
             else m.body
           end
           from public.direct_messages m
+          left join public.media_objects media
+            on media.id=m.media_id and media.deleted_at is null
           where m.thread_id=t.id
           order by m.created_at desc,m.id desc
           limit 1
