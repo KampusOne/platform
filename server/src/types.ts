@@ -43,6 +43,12 @@ export type Bindings = {
   HF_VISION_MODEL?: string;
   HF_PRO_MODEL?: string;
   HF_TRANSCRIPTION_MODEL?: string;
+  HF_TRANSCRIPTION_FALLBACK_MODEL?: string;
+  KIRA_YOUTUBE_ENABLED?: string;
+  YOUTUBE_API_KEY?: string;
+  KAMPUSONE_PUBLIC_LAUNCH_DATE?: string;
+  KAMPUSONE_AGENT_APPLICATION_URL?: string;
+  KAMPUSONE_WAITLIST_URL?: string;
   AI_CHAT_WINDOW_LIMIT?: string;
   AI_STUDY_TRIAL_LIMIT?: string;
   EXPO_ACCESS_TOKEN?: string;
