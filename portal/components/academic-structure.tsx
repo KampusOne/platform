@@ -35,10 +35,20 @@ type MissingRow = {
   review_note?: string | null;
 };
 type MissingData = { rows: MissingRow[] };
+type CoverageRow = {
+  id: string;
+  name: string;
+  slug: string;
+  catalogue_status: string;
+  faculty_count: number;
+  department_count: number;
+  programme_count: number;
+};
+type CoverageData = { rows: CoverageRow[] };
 
 export function AcademicStructure() {
   const { scope, scopedPath, can } = useAdminContext();
-  const [view, setView] = useState<"catalogue" | "reports">("catalogue");
+  const [view, setView] = useState<"catalogue" | "reports" | "coverage">("catalogue");
   return (
     <PortalShell
       active="admin"
@@ -59,6 +69,12 @@ export function AcademicStructure() {
         >
           Missing items
         </button>
+        <button
+          className={`button button--${view === "coverage" ? "primary" : "secondary"}`}
+          onClick={() => setView("coverage")}
+        >
+          Coverage
+        </button>
       </div>
       {view === "catalogue" ? (
         <CatalogueEditor
@@ -67,12 +83,14 @@ export function AcademicStructure() {
           path={scopedPath("/v1/admin/academic/catalogue")}
           editable={can("academic.manage")}
         />
-      ) : (
+      ) : view === "reports" ? (
         <MissingAcademicQueue
           key={scope}
           path={scopedPath("/v1/admin/academic/missing")}
           editable={can("academic.manage")}
         />
+      ) : (
+        <AcademicCoverage key={scope} path={scopedPath("/v1/admin/academic/coverage")} />
       )}
     </PortalShell>
   );
@@ -533,6 +551,89 @@ function MissingAcademicQueue({ path, editable }: { path: string; editable: bool
           </button>
         </form>
       )}
+    </>
+  );
+}
+
+
+function AcademicCoverage({ path }: { path: string }) {
+  const [data, setData] = useState<CoverageData>();
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void portalApi<CoverageData>(path)
+      .then((result) => {
+        if (active) {
+          setData(result);
+          setError("");
+        }
+      })
+      .catch((caught) => {
+        if (active) setError(caught instanceof Error ? caught.message : "Could not load academic coverage.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [path]);
+
+  const rows = (data?.rows ?? []).filter((row) =>
+    row.name.toLowerCase().includes(query.toLowerCase()),
+  );
+  const complete = rows.filter(
+    (row) => row.faculty_count > 0 && row.department_count > 0 && row.programme_count > 0,
+  ).length;
+
+  return (
+    <>
+      <p className="field-help">
+        A university is not treated as structurally complete until it has faculties/schools,
+        departments and programmes. This view exposes the remaining research queue.
+      </p>
+      {error && <p role="alert">{error}</p>}
+      <div className="workspace-toolbar">
+        <strong>
+          {complete} / {rows.length} shown universities have all three catalogue levels
+        </strong>
+        <input
+          aria-label="Search university coverage"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search university"
+        />
+      </div>
+      <div className="table-scroll">
+        <table className="operational-table">
+          <thead>
+            <tr>
+              <th>University</th>
+              <th>Faculties</th>
+              <th>Departments</th>
+              <th>Programmes</th>
+              <th>Coverage</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const missing = [
+                row.faculty_count === 0 ? "faculties" : null,
+                row.department_count === 0 ? "departments" : null,
+                row.programme_count === 0 ? "programmes" : null,
+              ].filter(Boolean);
+              return (
+                <tr key={row.id}>
+                  <td>{row.name}</td>
+                  <td>{row.faculty_count}</td>
+                  <td>{row.department_count}</td>
+                  <td>{row.programme_count}</td>
+                  <td>{missing.length ? `Missing ${missing.join(", ")}` : "All levels present"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
