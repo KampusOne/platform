@@ -1,0 +1,57 @@
+name: Deploy verified Vercel surfaces
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/vercel-prebuilt-deploy.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-prebuilt-production
+  cancel-in-progress: false
+
+jobs:
+  portal:
+    name: Portal production
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+    env:
+      VERCEL_ORG_ID: team_abQOZYY74aXZM3GdxfmQWmxP
+      VERCEL_PROJECT_ID: prj_wFG0WNwuVWk522AL6ocICvgGw2x4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Pull Vercel production settings
+        run: npx --yes vercel@latest pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Build locally for Vercel
+        run: npx --yes vercel@latest build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Deploy prebuilt portal
+        run: npx --yes vercel@latest deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}"
+
+  mobile-preview:
+    name: Mobile preview production
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      VERCEL_ORG_ID: team_abQOZYY74aXZM3GdxfmQWmxP
+      VERCEL_PROJECT_ID: prj_v9SX7CdbfMvkz7Vq2bVjXZdv88un
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Pull Vercel production settings
+        run: npx --yes vercel@latest pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Build locally for Vercel
+        run: npx --yes vercel@latest build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Deploy prebuilt mobile preview
+        run: npx --yes vercel@latest deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}"
