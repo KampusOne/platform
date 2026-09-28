@@ -207,28 +207,30 @@ export default function SettingsScreen() {
         disabled={busy || loading}
         onPress={() => void save()}
       />
-      <ToolRow
-        title="Push on this device"
-        icon="notifications-outline"
-        detail={
-          pushRegistered
-            ? "This device is registered. Registration does not confirm delivery."
-            : pushAvailability.message
-        }
-      />
-      {pushAvailability.available ? (
-        <ToolButton
-          secondary
-          label={
-            pushBusy
-              ? "Updating device…"
-              : pushRegistered
-                ? "Turn off push on this device"
-                : "Set up push on this device"
-          }
-          disabled={pushBusy}
-          onPress={() => void changePush()}
-        />
+      {Platform.OS !== "web" && pushAvailability.available ? (
+        <>
+          <ToolRow
+            title="Push notifications"
+            icon="notifications-outline"
+            detail={
+              pushRegistered
+                ? "On for this device."
+                : "Get important KampusOne updates on this device."
+            }
+          />
+          <ToolButton
+            secondary
+            label={
+              pushBusy
+                ? "Updating…"
+                : pushRegistered
+                  ? "Turn off push"
+                  : "Turn on push"
+            }
+            disabled={pushBusy}
+            onPress={() => void changePush()}
+          />
+        </>
       ) : null}
       <ToolRow title="Blocked accounts" icon="ban-outline" onPress={() => router.push("/blocked")} />
       <ToolRow
