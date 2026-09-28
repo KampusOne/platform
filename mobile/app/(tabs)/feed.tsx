@@ -108,7 +108,7 @@ export default function FeedScreen() {
   useEffect(() => () => setVideoPlayback(null), [setVideoPlayback]);
 
   useEffect(() => { const timer = setTimeout(() => setSearch(query.trim()), 300); return () => clearTimeout(timer); }, [query]);
-  const path = useMemo(() => `/v1/student/feed?q=${encodeURIComponent(search)}${selected === "All" ? "" : `&category=${selected.toUpperCase()}`}`, [search, selected]);
+  const path = useMemo(() => `/v1/student/feed?limit=20&q=${encodeURIComponent(search)}${selected === "All" ? "" : `&category=${selected.toUpperCase()}`}`, [search, selected]);
   const scope = `${user?.id ?? "anonymous"}:${path}`;
   const load = useCallback(async (refresh = false) => {
     const version = ++loadVersion.current;
