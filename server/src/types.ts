@@ -56,6 +56,7 @@ export type Bindings = {
   EXPO_ACCESS_TOKEN?: string;
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
+  GEMINI_TRANSCRIPTION_MODEL?: string;
   KYC_FINGERPRINT_SECRET?: string;
   AI_DAILY_USER_LIMIT?: string;
   AI_DAILY_GLOBAL_LIMIT?: string;
