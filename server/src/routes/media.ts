@@ -51,7 +51,7 @@ async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
     throw new AppError(
       403,
       "FORBIDDEN",
-      "This conversation attachment is unavailable.",
+      "This conversation file is unavailable.",
     );
   }
   const permission=media.kind==='kyc'?'agents.verify':media.kind==='support'?'support.view':'content.view';
@@ -102,9 +102,51 @@ function rememberPublicRangeMetadata(media: StreamableMedia) {
   }
 }
 function uploadTooLargeMessage(kind: string, mime: string | null | undefined) {
-  return kind === "post" && mime?.startsWith("video/")
-    ? "Post videos can be up to 50 MB. Trim or choose a smaller video."
-    : "Choose a file smaller than 10 MB.";
+  if (mime?.startsWith("video/") && ["post", "message"].includes(kind)) {
+    return "Videos can be up to 50 MB. Trim or choose a smaller video.";
+  }
+  return "Choose a file smaller than 10 MB.";
+}
+
+const openXmlDocumentMimes = new Set([
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "application/vnd.oasis.opendocument.presentation",
+]);
+const legacyDocumentMimes = new Set([
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-powerpoint",
+]);
+const textDocumentMimes = new Set(["text/plain", "text/csv", "application/rtf", "text/rtf"]);
+
+function documentMimeFromName(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  if (lower.endsWith(".doc")) return "application/msword";
+  if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
+  if (lower.endsWith(".ppt")) return "application/vnd.ms-powerpoint";
+  if (lower.endsWith(".odt")) return "application/vnd.oasis.opendocument.text";
+  if (lower.endsWith(".ods")) return "application/vnd.oasis.opendocument.spreadsheet";
+  if (lower.endsWith(".odp")) return "application/vnd.oasis.opendocument.presentation";
+  if (lower.endsWith(".csv")) return "text/csv";
+  if (lower.endsWith(".txt")) return "text/plain";
+  if (lower.endsWith(".rtf")) return "application/rtf";
+  return "";
+}
+
+function looksLikeUtf8Text(bytes: Uint8Array) {
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return !/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text);
+  } catch {
+    return false;
+  }
 }
 export function detectedMime(bytes: Uint8Array) {
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
@@ -192,7 +234,29 @@ mediaRoutes.post("/", requireAuth, async (c) => {
       throw new AppError(400, "BAD_REQUEST", "Use an alarm sound smaller than 2 MB.");
   }
 
-  let mime = detectedMime(new Uint8Array(bytes));
+  const byteView = new Uint8Array(bytes);
+  let mime = detectedMime(byteView);
+  if (!mime && kind === "message") {
+    const inferredDocumentMime =
+      openXmlDocumentMimes.has(declaredMime) || legacyDocumentMimes.has(declaredMime) || textDocumentMimes.has(declaredMime)
+        ? declaredMime
+        : documentMimeFromName(originalName);
+    const zipSignature = byteView[0] === 0x50 && byteView[1] === 0x4b && [0x03, 0x05, 0x07].includes(byteView[2] ?? -1);
+    const compoundSignature = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1].every((value, index) => byteView[index] === value);
+    const headText = new TextDecoder().decode(byteView.slice(0, Math.min(byteView.length, 64)));
+
+    if (openXmlDocumentMimes.has(inferredDocumentMime) && zipSignature) {
+      mime = inferredDocumentMime;
+    } else if (legacyDocumentMimes.has(inferredDocumentMime) && compoundSignature) {
+      mime = inferredDocumentMime;
+    } else if (textDocumentMimes.has(inferredDocumentMime)) {
+      if ((inferredDocumentMime === "application/rtf" || inferredDocumentMime === "text/rtf") && headText.startsWith("{\\rtf")) {
+        mime = "application/rtf";
+      } else if (["text/plain", "text/csv"].includes(inferredDocumentMime) && looksLikeUtf8Text(byteView)) {
+        mime = inferredDocumentMime;
+      }
+    }
+  }
   if (!mime && kind === "resource" && declaredMime === "text/plain") {
     try {
       const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -222,7 +286,7 @@ mediaRoutes.post("/", requireAuth, async (c) => {
     throw new AppError(
       400,
       "BAD_REQUEST",
-      "Use a JPG, PNG or WebP image, a PDF document, or an MP4/WebM video for a post.",
+      "Use a JPG, PNG or WebP picture, an MP4/WebM video, audio, PDF, Word, Excel, PowerPoint, OpenDocument, text or CSV file.",
     );
 
   const bucket = privateKinds.has(kind) ? c.env.PRIVATE_BUCKET : c.env.MEDIA_BUCKET;

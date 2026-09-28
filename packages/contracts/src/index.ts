@@ -618,5 +618,5 @@ export const directMessageInputSchema = z
   .strict()
   .refine(
     (value) => Boolean(value.body || value.mediaId),
-    "Write a message or attach a file.",
+    "Write a message or choose a picture, video, voice note or document.",
   );
