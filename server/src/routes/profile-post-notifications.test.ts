@@ -109,6 +109,7 @@ describe("profile post notification subscriptions", () => {
     expect(response.status).toBe(200);
     expect(query(0).sql).toContain("profile_post_notification_subscriptions");
     expect(query(0).sql).toContain("post_notifications_enabled");
-    expect((await response.json()).profile.post_notifications_enabled).toBe(true);
+    const payload = await response.json() as { profile: { post_notifications_enabled: boolean } };
+    expect(payload.profile.post_notifications_enabled).toBe(true);
   });
 });
