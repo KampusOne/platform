@@ -100,7 +100,7 @@ describe('requirements 70–74, 121, 144–156 and 10',()=>{
   delete env.MEDIA_BUCKET;
  });
  it('allows provisional academics at a documented second university without inventing global departments',async()=>{
-  await response(await request('/student/me/onboarding',student,'PATCH',{firstName:'Ada',lastName:'Student',username:'ada_student',universityId:otherSchool,currentLevel:'100',matriculationNumber:'TEST/123',admissionYear:2026,graduationYear:2030,missingAcademic:{facultyName:'Reported faculty',departmentName:'Reported department',programmeName:'Reported programme',sourceNote:'Needs university verification'}}));
+  await response(await request('/student/me/onboarding',student,'PATCH',{firstName:'Ada',lastName:'Student',username:'ada_student',birthDate:'2000-01-01',universityId:otherSchool,currentLevel:'100',matriculationNumber:'TEST/123',admissionYear:2026,graduationYear:2030,missingAcademic:{facultyName:'Reported faculty',departmentName:'Reported department',programmeName:'Reported programme',sourceNote:'Needs university verification'}}));
   const me=await response(await request('/student/me',student));expect(me.profile).toMatchObject({university_id:otherSchool,faculty_id:null,department_id:null,department_name:'Reported department',admission_year:2026});
   expect(me.profile.provisional_academic_submission_id).toBeTruthy();expect((await db.query("select * from public.departments where name='Reported department'")).rows).toHaveLength(0);
   const submissions=await response(await request('/admin/workspaces/academic-submissions?universityId='+otherSchool));expect(submissions.rows).toHaveLength(1);
