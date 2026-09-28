@@ -80,6 +80,7 @@ app.use("/v1/*", async (context, next) => {
 });
 app.get("/", (context) => context.json({ service: "kampusone-api", message: "KampusOne privileged API boundary", documentation: "/v1/config/public", requestId: context.get("requestId") }));
 app.get("/health/live", (context) => context.json({ status: "ok" as const, service: "kampusone-api" as const, environment: context.env.ENVIRONMENT, requestId: context.get("requestId") }));
+// Readiness must prove the database can answer, not merely that DATABASE_URL exists.
 app.get("/health/ready", async (context) => {
   const configured = readiness(context.env);
   let databaseReady = configured.checks.database;
