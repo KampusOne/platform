@@ -167,10 +167,17 @@ async function parse<T>(response: Response): Promise<T> {
       };
     } | null;
     if (failure?.error?.code === "ACCOUNT_RESTRICTED") restrictionListener?.();
+    const code = failure?.error?.code ?? "REQUEST_FAILED";
+    const message =
+      code === "INTERNAL_ERROR" &&
+      (!failure?.error?.message ||
+        failure.error.message === "The service could not complete this request.")
+        ? "KampusOne is temporarily unavailable. Please try again shortly."
+        : failure?.error?.message ?? "KampusOne could not complete this request.";
     throw new ApiError(
       response.status,
-      failure?.error?.code ?? "REQUEST_FAILED",
-      failure?.error?.message ?? "KampusOne could not complete this request.",
+      code,
+      message,
       failure?.error?.details,
     );
   }
