@@ -9,7 +9,9 @@ export type Alarm = {
   time: string;
   days: number[];
   enabled: boolean;
-  sound: "default" | "silent";
+  sound: "default" | "silent" | `media:${string}`;
+  sound_name?: string | null;
+  sound_url?: string | null;
   vibration: boolean;
   snooze_minutes: number;
   timetable_entry_id?: string | null;
@@ -42,6 +44,16 @@ export async function syncAlarms(
         permissions = await Notifications.requestPermissionsAsync();
       if (nativeAlarms) {
         if (requestPermission) await nativeAlarms.requestExactPermission();
+        for (const alarm of alarms) {
+          if (alarm.enabled && alarm.sound.startsWith("media:") && alarm.sound_url) {
+            try {
+              await nativeAlarms.cacheAlarmSound(alarm.id, alarm.sound_url);
+            } catch {
+              // Reliability first: the native service falls back to the device alarm tone
+              // if this particular custom sound cannot be cached.
+            }
+          }
+        }
         const nativeScheduled = await nativeAlarms.sync(JSON.stringify(alarms));
         const nativeReady = await nativeAlarms.status();
         if (nativeScheduled && nativeReady && permissions.granted) {
@@ -84,6 +96,7 @@ export async function syncAlarms(
       for (const [identifier, { alarm, day }] of expected) {
         const signature=JSON.stringify([alarm.time,alarm.days,alarm.fires_at,alarm.label,alarm.sound,alarm.vibration,alarm.snooze_minutes,new Date().getTimezoneOffset()]);
         if(signatures.get(identifier)===signature)continue;
+        const notificationSound = alarm.sound === "silent" ? "silent" : "default";
         const [hour, minute] = alarm.time.split(":").map(Number);
         // Campus timetable hours are Africa/Lagos (UTC+1), even on a device set to another zone.
         const campusNow=new Date(Date.now()+3600000);
@@ -93,7 +106,7 @@ export async function syncAlarms(
           content: {
             title: alarm.label,
             body: alarm.timetable_entry_id ? "Your class starts in 15 minutes" : "Time for your reminder",
-            sound: alarm.sound === "default" ? "default" : false,
+            sound: notificationSound === "default" ? "default" : false,
             categoryIdentifier: "k1-alarm",
             data: { alarmId: alarm.id, snoozeMinutes: alarm.snooze_minutes, alarmSignature:signature, label:alarm.label, path:`/alarm-ring?alarmId=${alarm.id}`, sound:alarm.sound, vibration:alarm.vibration },
           },
@@ -102,14 +115,14 @@ export async function syncAlarms(
               ? {
                   type: Notifications.SchedulableTriggerInputTypes.DATE,
                   date: new Date(alarm.fires_at!),
-                  channelId: `k1-${alarm.sound}-${alarm.vibration}`,
+                  channelId: `k1-${notificationSound}-${alarm.vibration}`,
                 }
               : {
                   type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
                   weekday: date.getDay() + 1,
                   hour: date.getHours(),
                   minute: date.getMinutes(),
-                  channelId: `k1-${alarm.sound}-${alarm.vibration}`,
+                  channelId: `k1-${notificationSound}-${alarm.vibration}`,
                 },
         });
       }
