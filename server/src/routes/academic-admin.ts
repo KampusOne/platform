@@ -73,11 +73,115 @@ academicAdminRoutes.post('/guidelines',async c=>{
  return c.json({id:target,version,status:'PUBLISHED'},201);
 });
 
+academicAdminRoutes.get('/missing',async c=>{
+ const status=c.req.query('status')||'PENDING',q=c.req.query('q')?.trim().slice(0,160)||null;
+ if(!['PENDING','APPROVED','REJECTED','NEEDS_CORRECTION','ALL'].includes(status))throw new AppError(400,'BAD_REQUEST','Choose a valid review status.');
+ const scope=await resolveAdminScope(c.env,currentUser(c),c.req.query('universityId'),'academic.view');
+ const search=q?'%'+q+'%':null;
+ const rows=await database(c.env).execute(sql`
+  select
+   s.id,s.user_id,s.institution_id,s.kind,s.faculty_name,s.department_name,s.programme_name,
+   s.source_note,s.status,s.selected_faculty_id,s.selected_department_id,
+   s.linked_faculty_id,s.linked_department_id,s.linked_course_id,
+   s.review_note,s.reviewed_at,s.created_at,s.updated_at,
+   u.name university_name,
+   coalesce(nullif(p.display_name,''),nullif(p.username,''),users.email) student_name,
+   p.username student_username,users.email student_email,
+   sf.name selected_faculty_name,sd.name selected_department_name
+  from public.academic_missing_submissions s
+  join public.universities u on u.id=s.institution_id
+  join public.users users on users.id=s.user_id
+  left join public.profiles p on p.user_id=s.user_id and p.deleted_at is null
+  left join public.faculties sf on sf.id=s.selected_faculty_id
+  left join public.departments sd on sd.id=s.selected_department_id
+  where (${scope}::uuid is null or s.institution_id=${scope}::uuid)
+    and (${status}='ALL' or s.status=${status})
+    and (
+      ${search}::text is null
+      or u.name ilike ${search}
+      or coalesce(s.faculty_name,'') ilike ${search}
+      or coalesce(s.department_name,'') ilike ${search}
+      or coalesce(s.programme_name,'') ilike ${search}
+      or coalesce(p.username,'') ilike ${search}
+      or users.email ilike ${search}
+    )
+  order by
+    case s.status when 'PENDING' then 0 when 'NEEDS_CORRECTION' then 1 else 2 end,
+    s.created_at desc
+  limit 250
+ `);
+ return c.json({rows:rows.rows});
+});
+
+academicAdminRoutes.post('/missing/:id/review',async c=>{
+ const actor=currentUser(c),target=id(c.req.param('id'));
+ const d=await input(c,z.object({
+  decision:z.enum(['APPROVED','REJECTED','NEEDS_CORRECTION']),
+  reason:z.string().trim().min(10).max(2000),
+  primarySourceUrl:safeUrl.optional(),
+  sourceVerified:z.boolean().default(false),
+  facultyName:z.string().trim().max(180).optional(),
+  departmentName:z.string().trim().max(180).optional(),
+  programmeName:z.string().trim().max(180).optional(),
+  code:z.string().trim().max(24).default(''),
+  award:z.string().trim().max(30).default(''),
+  durationYears:z.number().min(1).max(10).nullable().default(null),
+ }).strict());
+ const submission=firstRow(await database(c.env).execute<{institution_id:string;status:string;kind:string}>(sql`
+  select institution_id,status,kind from public.academic_missing_submissions
+  where id=${target}::uuid
+ `));
+ if(!submission)throw new AppError(404,'NOT_FOUND','This missing academic submission no longer exists.');
+ await resolveAdminScope(c.env,actor,submission.institution_id,'academic.manage');
+ if(!['PENDING','NEEDS_CORRECTION'].includes(submission.status))throw new AppError(409,'CONFLICT','This submission has already been reviewed.');
+
+ if(d.decision!=='APPROVED'){
+  const changed=firstRow(await database(c.env).execute(sql`
+   update public.academic_missing_submissions
+   set status=${d.decision},review_note=${d.reason},reviewed_by=${actor.id}::uuid,reviewed_at=now(),updated_at=now()
+   where id=${target}::uuid and status in ('PENDING','NEEDS_CORRECTION')
+   returning id
+  `));
+  if(!changed)throw new AppError(409,'CONFLICT','This submission was reviewed by someone else. Reload and try again.');
+  await database(c.env).execute(sql`
+   insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata)
+   values(${actor.id}::uuid,${submission.institution_id}::uuid,'academic.missing_submission.reviewed','academic_missing_submission',${target},${c.get('requestId')},'succeeded',${JSON.stringify({decision:d.decision,reason:d.reason})}::jsonb)
+  `);
+  return c.json({id:target,status:d.decision});
+ }
+
+ if(!d.sourceVerified||!d.primarySourceUrl)throw new AppError(400,'BAD_REQUEST','Verify a primary university or regulator source before adding this item to the catalogue.');
+ try{
+  const published=firstRow(await database(c.env).execute<{outcome:string;published_faculty_id:string|null;published_department_id:string|null;published_course_id:string|null}>(sql`
+   select outcome,published_faculty_id,published_department_id,published_course_id
+   from app_private.approve_academic_missing_submission(
+    ${target}::uuid,${actor.id}::uuid,${d.primarySourceUrl},${d.reason},
+    ${d.facultyName??null},${d.departmentName??null},${d.programmeName??null},
+    ${d.code},${d.award},${d.durationYears},${c.get('requestId')}
+   )
+  `));
+  if(!published||published.outcome!=='APPROVED')throw new AppError(409,'CONFLICT','This submission was already reviewed or could not be published.');
+  return c.json({
+   id:target,status:'APPROVED',
+   facultyId:published.published_faculty_id,
+   departmentId:published.published_department_id,
+   courseId:published.published_course_id,
+  });
+ }catch(error){
+  const message=(error as {message?:string}).message||'';
+  if(message.includes('FACULTY_NAME_REQUIRED'))throw new AppError(400,'BAD_REQUEST','Enter the verified faculty or college name.');
+  if(message.includes('DEPARTMENT_NAME_REQUIRED'))throw new AppError(400,'BAD_REQUEST','Enter the verified department name.');
+  if(message.includes('PROGRAMME_NAME_REQUIRED'))throw new AppError(400,'BAD_REQUEST','Enter the verified programme name.');
+  if(message.includes('FACULTY_SCOPE_REQUIRED')||message.includes('DEPARTMENT_SCOPE_REQUIRED'))throw new AppError(409,'CONFLICT','The selected parent academic record is no longer available. Refresh the submission before approving it.');
+  throw error;
+ }
+});
+
 academicAdminRoutes.get('/catalogue',async c=>{
  const scope=await resolveAdminScope(c.env,currentUser(c),c.req.query('universityId'),'academic.view');
  const db=database(c.env),[faculties,departments,programmes]=await Promise.all([
-  db.execute(sql`select id,university_id,name,slug from public.faculties where deleted_at is null and (${scope}::uuid is null or university_id=${scope}::uuid) order by name`),
-  db.execute(sql`select d.id,d.faculty_id,d.name,d.slug from public.departments d join public.faculties f on f.id=d.faculty_id where d.deleted_at is null and f.deleted_at is null and (${scope}::uuid is null or f.university_id=${scope}::uuid) order by d.name`),
+  db.execute(sql`select id,university_id,name,slug,primary_source_url,source_verified_at from public.faculties where deleted_at is null and (${scope}::uuid is null or university_id=${scope}::uuid) order by name`),
+  db.execute(sql`select d.id,d.faculty_id,d.name,d.slug,d.primary_source_url,d.source_verified_at from public.departments d join public.faculties f on f.id=d.faculty_id where d.deleted_at is null and f.deleted_at is null and (${scope}::uuid is null or f.university_id=${scope}::uuid) order by d.name`),
   db.execute(sql`select c.id,c.department_id,c.name,c.code,c.award,c.normal_duration_years,c.primary_source_url from public.courses c join public.departments d on d.id=c.department_id join public.faculties f on f.id=d.faculty_id where c.deleted_at is null and d.deleted_at is null and (${scope}::uuid is null or f.university_id=${scope}::uuid) order by c.name`)
  ]);return c.json({faculties:faculties.rows,departments:departments.rows,programmes:programmes.rows});
 });
@@ -86,10 +190,10 @@ academicAdminRoutes.post('/catalogue',async c=>{
  const u=currentUser(c),db=database(c.env);await resolveAdminScope(c.env,u,d.universityId,'academic.manage');
  let result;
  const slug=d.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
- if(d.kind==='faculty')result=await db.execute(sql`insert into public.faculties(id,university_id,name,slug,updated_at)values(${d.id}::uuid,${d.universityId}::uuid,${d.name},${slug},now()) on conflict(id) do update set name=excluded.name,updated_at=now() where faculties.university_id=excluded.university_id returning id`);
+ if(d.kind==='faculty')result=await db.execute(sql`insert into public.faculties(id,university_id,name,slug,primary_source_url,source_verified_at,updated_at)values(${d.id}::uuid,${d.universityId}::uuid,${d.name},${slug},${d.sourceUrl},now(),now()) on conflict(id) do update set name=excluded.name,primary_source_url=excluded.primary_source_url,source_verified_at=now(),updated_at=now() where faculties.university_id=excluded.university_id returning id`);
  else if(d.kind==='department'){
   if(!d.parentId||!firstRow(await db.execute(sql`select id from public.faculties where id=${d.parentId}::uuid and university_id=${d.universityId}::uuid and deleted_at is null`)))throw new AppError(400,'BAD_REQUEST','Choose a faculty in this university.');
-  result=await db.execute(sql`insert into public.departments(id,faculty_id,name,slug,updated_at)values(${d.id}::uuid,${d.parentId}::uuid,${d.name},${slug},now()) on conflict(id) do update set name=excluded.name,updated_at=now() where departments.faculty_id=excluded.faculty_id returning id`);
+  result=await db.execute(sql`insert into public.departments(id,faculty_id,name,slug,primary_source_url,source_verified_at,updated_at)values(${d.id}::uuid,${d.parentId}::uuid,${d.name},${slug},${d.sourceUrl},now(),now()) on conflict(id) do update set name=excluded.name,primary_source_url=excluded.primary_source_url,source_verified_at=now(),updated_at=now() where departments.faculty_id=excluded.faculty_id returning id`);
  }else{
   if(!d.parentId||!firstRow(await db.execute(sql`select d.id from public.departments d join public.faculties f on f.id=d.faculty_id where d.id=${d.parentId}::uuid and f.university_id=${d.universityId}::uuid and d.deleted_at is null`)))throw new AppError(400,'BAD_REQUEST','Choose a department in this university.');
   result=await db.execute(sql`insert into public.courses(id,department_id,name,code,award,normal_duration_years,primary_source_url,source_verified_at,updated_at)values(${d.id}::uuid,${d.parentId}::uuid,${d.name},${d.code},${d.award},${d.durationYears},${d.sourceUrl},now(),now()) on conflict(id) do update set name=excluded.name,code=excluded.code,award=excluded.award,normal_duration_years=excluded.normal_duration_years,primary_source_url=excluded.primary_source_url,source_verified_at=now(),updated_at=now() where courses.department_id=excluded.department_id returning id`);
