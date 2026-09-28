@@ -484,8 +484,11 @@ export default function OnboardingScreen() {
           username: username.trim(),
           birthDate: normalizedBirthDate ?? "",
           universityId,
-          facultyId: missingAcademic ? null : facultyId,
-          departmentId: missingAcademic ? null : departmentId,
+          facultyId: missingKind === "FACULTY" ? null : facultyId || null,
+          departmentId:
+            missingKind === "FACULTY" || missingKind === "DEPARTMENT"
+              ? null
+              : departmentId || null,
           courseId: missingAcademic ? null : courseId || null,
           ...(missingAcademic && missingKind
             ? {
