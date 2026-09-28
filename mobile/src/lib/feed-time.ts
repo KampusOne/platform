@@ -1,7 +1,7 @@
 /** KampusOne's requested timeline policy: relative for 28 days, then a date. */
 export function feedTime(value: string, now = Date.now()): { text: string; label: string; exact: string } {
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return { text: "Recently", label: "Publication time unavailable", exact: "Publication time unavailable" };
+  if (!Number.isFinite(date.getTime())) return { text: "—", label: "Publication time unavailable", exact: "" };
   const exact = new Intl.DateTimeFormat("en-NG", { day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
   const seconds = Math.max(0, Math.floor((now - date.getTime()) / 1000));
   if (seconds < 60) return { text: "now", label: "Just now", exact };
