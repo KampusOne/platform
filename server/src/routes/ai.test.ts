@@ -41,7 +41,7 @@ describe("AI router security and idempotency",()=>{
   });
   it("enforces the Standard one-minute voice contract before provider I/O",async()=>{
     const longFormEnv={...env,GEMINI_API_KEY:"synthetic",GEMINI_TRANSCRIPTION_MODEL:"gemini-3.8-flash"};
-    const r=await app.request(`/ai/transcribe?idempotencyKey=${key}&consent=true&durationMs=61001`,{method:"POST",headers:{Authorization:"Bearer test","Content-Type":"audio/mp4"},body:new Uint8Array([0,1,2,3,4])},longFormEnv);
+    const r=await app.request(`/ai/transcribe?idempotencyKey=${key}&consent=true&durationMs=62000`,{method:"POST",headers:{Authorization:"Bearer test","Content-Type":"audio/mp4"},body:new Uint8Array([0,1,2,3,4])},longFormEnv);
     expect(r.status).toBe(413);
     expect(await r.json()).toMatchObject({error:{details:{reason:"AI_VOICE_DURATION",maxSeconds:60,upgrade:true}}});
     expect(mocks.fetch).not.toHaveBeenCalled();
