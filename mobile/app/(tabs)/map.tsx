@@ -145,16 +145,12 @@ export default function CampusMapScreen() {
         { timeoutMs: 10_000 },
       );
       setDirectory(response);
-      if (!selectedId && response.places[0]) {
-        const first = mapCampusPlace(response.places[0]);
-        if (first) setSelectedId(first.id);
-      }
     } catch (error) {
       setDirectoryError(errorMessage(error));
     } finally {
       setDirectoryLoading(false);
     }
-  }, [selectedId]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
