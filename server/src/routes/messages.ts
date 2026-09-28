@@ -34,6 +34,15 @@ type Thread = {
   access_ends_at: null;
 };
 
+function messageMediaLabel(contentType: string | null | undefined) {
+  const mime = (contentType ?? "").toLowerCase();
+  if (mime.startsWith("image/")) return "Picture";
+  if (mime.startsWith("video/")) return "Video";
+  if (mime.startsWith("audio/")) return "Voice note";
+  if (mime === "application/pdf") return "PDF";
+  return "Document";
+}
+
 async function threadFor(env: Bindings, userId: string, threadId: string) {
   const thread = firstRow(
     await database(env).execute<Thread>(sql`
@@ -105,7 +114,26 @@ messageRoutes.get("/inbox", async (c) => {
         p.display_name,
         p.profile_image_url,
         to_char(t.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
-        (select body from public.direct_messages m where m.thread_id=t.id order by m.created_at desc,m.id desc limit 1) as last_message,
+        (
+          select case
+            when m.media_id is not null and m.body='Attachment' then message_label.label
+            else m.body
+          end
+          from public.direct_messages m
+          left join public.media_objects media on media.id=m.media_id
+          cross join lateral (
+            select case
+              when media.content_type like 'image/%' then 'Picture'
+              when media.content_type like 'video/%' then 'Video'
+              when media.content_type like 'audio/%' then 'Voice note'
+              when media.content_type='application/pdf' then 'PDF'
+              else 'Document'
+            end as label
+          ) message_label
+          where m.thread_id=t.id
+          order by m.created_at desc,m.id desc
+          limit 1
+        ) as last_message,
         (select count(*)::int from public.direct_messages m where m.thread_id=t.id and m.sender_id<>${user.id}::uuid and m.read_at is null) as unread_count,
         coalesce((select json_agg(a.agent_type) from public.agent_profiles a where a.user_id=p.user_id and a.status='ACTIVE'),'[]'::json) as roles
       from public.direct_threads t
@@ -330,12 +358,12 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
       throw new AppError(
         403,
         "FORBIDDEN",
-        "Attachments are available after the request is accepted.",
+        "Pictures, videos, voice notes and documents are available after the request is accepted.",
       );
     }
     const attachment = firstRow(
-      await db.execute(sql`
-        select id
+      await db.execute<{ id: string; content_type: string; original_name: string }>(sql`
+        select id,content_type,original_name
         from public.media_objects
         where id=${data.mediaId}::uuid
           and owner_user_id=${user.id}::uuid
@@ -347,12 +375,13 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
       throw new AppError(
         404,
         "NOT_FOUND",
-        "Choose an attachment uploaded by this account.",
+        "Choose a file uploaded by this account.",
       );
     }
+    data.body = data.body || messageMediaLabel(attachment.content_type);
   }
 
-  const body = data.body || "Attachment";
+  const body = data.body || "Message";
   const allowed = firstRow(
     await db.execute<{ allowed: boolean }>(sql`
       select app_private.consume_request_rate_limit(
