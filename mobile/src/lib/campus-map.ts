@@ -127,6 +127,17 @@ export function isInsideCampus(
   return distanceMetres(point, campusCenter(campus)) <= 1_900;
 }
 
+export function shouldRefreshWalkingRoute(
+  previous: LngLat | null,
+  current: LngLat,
+  lastRequestedAt: number,
+  now = Date.now(),
+) {
+  if (!previous) return true;
+  if (now - lastRequestedAt < 12_000) return false;
+  return distanceMetres(previous, current) >= 30;
+}
+
 export function formatDistance(metres: number) {
   if (!Number.isFinite(metres)) return "—";
   if (metres < 1000) return `${Math.max(1, Math.round(metres))} m`;
