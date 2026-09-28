@@ -32,6 +32,7 @@ public class KampusAlarmModule extends ReactContextBaseJavaModule {
   }
   @ReactMethod public void dismiss(String id, Promise promise) { KampusAlarmService.command(getReactApplicationContext(), "dismiss", id); promise.resolve(true); }
   @ReactMethod public void snooze(String id, Promise promise) { KampusAlarmService.command(getReactApplicationContext(), "snooze", id); promise.resolve(true); }
+  @ReactMethod public void snoozeFor(String id, int minutes, Promise promise) { KampusAlarmService.command(getReactApplicationContext(), "snooze", id, minutes); promise.resolve(true); }
   @ReactMethod public void active(Promise promise) { promise.resolve(KampusAlarmScheduler.prefs(getReactApplicationContext()).getString("active", null)); }
   @ReactMethod public void events(Promise promise) { promise.resolve(KampusAlarmScheduler.prefs(getReactApplicationContext()).getString("events", "[]")); }
   @ReactMethod public void acknowledge(String ids, Promise promise) {
