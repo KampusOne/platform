@@ -37,6 +37,7 @@ export function ProfileActions({ userId, name, canBlock = true, notifications = 
     setBusy(true);
     try {
       await api(`/v1/people/${userId}/notifications`, { method: "PUT", body: JSON.stringify({ enabled: !notifications }) });
+      clearApiCache();
       setOpen(false); onChanged(); toast(notifications ? "Post notifications turned off" : "Post notifications turned on", "success");
     } catch (error) { toast(error instanceof Error ? error.message : "Notifications could not be updated.", "error"); }
     finally { setBusy(false); }
