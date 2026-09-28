@@ -23,6 +23,7 @@ export type CampusMapDrawerPlace = {
   name: string;
   category: string;
   description: string | null;
+  search_aliases?: readonly string[] | null;
 };
 
 type RouteSummary = {
@@ -284,7 +285,15 @@ export function CampusMapDrawer({
     if (!needle) return [];
     return places
       .filter((place) =>
-        (place.name + " " + (place.description ?? "") + " " + place.category)
+        (
+          place.name +
+          " " +
+          (place.description ?? "") +
+          " " +
+          place.category +
+          " " +
+          (place.search_aliases?.join(" ") ?? "")
+        )
           .toLowerCase()
           .includes(needle),
       )
