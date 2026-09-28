@@ -45,7 +45,7 @@ export default function StudentProfile(){
       // Always revalidate the profile first. A block must beat any previously
       // cached profile/feed snapshot when this screen is opened again.
       const person=await api<PersonResponse>(`/v1/people/${target}`,{cache:"reload"});
-      const page=await api<Page>(feedPath(),{cache:refresh?"reload":undefined});
+      const page=await api<Page>(feedPath(),refresh?{cache:"reload"}:{});
       if(!mounted.current||current.current!==scope||request!==version.current)return;
       setData(person);setPosts(page.posts);setCursor(page.nextCursor??null);setLoadedScope(scope);
     }catch(e){
