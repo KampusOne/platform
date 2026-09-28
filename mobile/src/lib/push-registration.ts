@@ -12,6 +12,27 @@ export type PushDevice = {
   created_at?: string;
 };
 
+export const PUSH_ACTION = {
+  REPLY: "KAMPUSONE_REPLY",
+  MARK_READ: "KAMPUSONE_MARK_READ",
+  MUTE: "KAMPUSONE_MUTE",
+  READ: "KAMPUSONE_READ",
+} as const;
+
+export const PUSH_CATEGORY = {
+  MESSAGE: "KAMPUSONE_MESSAGE",
+  SOCIAL: "KAMPUSONE_SOCIAL",
+  NEWSLETTER: "KAMPUSONE_NEWSLETTER",
+  UPDATE: "KAMPUSONE_UPDATE",
+} as const;
+
+export const PUSH_CHANNEL = {
+  MESSAGES: "kampusone-messages-v1",
+  SOCIAL: "kampusone-social-v1",
+  NEWSLETTER: "kampusone-newsletter-v1",
+  UPDATES: "kampusone-updates-v2",
+} as const;
+
 const registrationKey = (userId: string) => "push-device." + userId;
 
 export function pushSetupAvailability() {
@@ -47,18 +68,111 @@ export function pushSetupAvailability() {
   };
 }
 
-export async function requestNativeNotificationPermission(): Promise<boolean> {
-  if (Platform.OS === "web") return false;
+export async function configureNativeNotifications() {
+  if (Platform.OS === "web") return;
   const Notifications = await import("expo-notifications");
 
   if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("kampusone-updates", {
-      name: "KampusOne updates",
-      importance: Notifications.AndroidImportance.DEFAULT,
-      sound: "default",
+    const common = {
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: "default" as const,
       vibrationPattern: [0, 180, 100, 180],
-    });
+      enableVibrate: true,
+    };
+    await Promise.all([
+      Notifications.setNotificationChannelAsync(PUSH_CHANNEL.MESSAGES, {
+        ...common,
+        name: "Messages",
+        description: "New KampusOne messages and message requests.",
+      }),
+      Notifications.setNotificationChannelAsync(PUSH_CHANNEL.SOCIAL, {
+        ...common,
+        name: "Social activity",
+        description: "KampusOne social activity you choose to receive on your phone.",
+      }),
+      Notifications.setNotificationChannelAsync(PUSH_CHANNEL.NEWSLETTER, {
+        ...common,
+        name: "KampusOne Newsletter",
+        description: "New posts and important updates from KampusOne Newsletter.",
+      }),
+      Notifications.setNotificationChannelAsync(PUSH_CHANNEL.UPDATES, {
+        ...common,
+        name: "KampusOne updates",
+        description: "Classes, announcements and important campus updates.",
+      }),
+    ]);
   }
+
+  await Promise.all([
+    Notifications.setNotificationCategoryAsync(PUSH_CATEGORY.MESSAGE, [
+      {
+        identifier: PUSH_ACTION.REPLY,
+        buttonTitle: "Reply",
+        options: { opensAppToForeground: true },
+        textInput: {
+          submitButtonTitle: "Send",
+          placeholder: "Reply…",
+        },
+      },
+      {
+        identifier: PUSH_ACTION.MARK_READ,
+        buttonTitle: "Mark as read",
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: PUSH_ACTION.MUTE,
+        buttonTitle: "Mute",
+        options: { opensAppToForeground: true },
+      },
+    ]),
+    Notifications.setNotificationCategoryAsync(PUSH_CATEGORY.NEWSLETTER, [
+      {
+        identifier: PUSH_ACTION.READ,
+        buttonTitle: "Read",
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: PUSH_ACTION.MARK_READ,
+        buttonTitle: "Mark as read",
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: PUSH_ACTION.MUTE,
+        buttonTitle: "Mute",
+        options: { opensAppToForeground: true },
+      },
+    ]),
+    Notifications.setNotificationCategoryAsync(PUSH_CATEGORY.SOCIAL, [
+      {
+        identifier: PUSH_ACTION.MARK_READ,
+        buttonTitle: "Mark as read",
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: PUSH_ACTION.MUTE,
+        buttonTitle: "Mute",
+        options: { opensAppToForeground: true },
+      },
+    ]),
+    Notifications.setNotificationCategoryAsync(PUSH_CATEGORY.UPDATE, [
+      {
+        identifier: PUSH_ACTION.MARK_READ,
+        buttonTitle: "Mark as read",
+        options: { opensAppToForeground: true },
+      },
+      {
+        identifier: PUSH_ACTION.MUTE,
+        buttonTitle: "Mute",
+        options: { opensAppToForeground: true },
+      },
+    ]),
+  ]);
+}
+
+export async function requestNativeNotificationPermission(): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+  const Notifications = await import("expo-notifications");
+  await configureNativeNotifications();
 
   let permission = await Notifications.getPermissionsAsync();
   if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
