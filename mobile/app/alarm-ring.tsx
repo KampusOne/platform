@@ -58,14 +58,12 @@ export default function AlarmRing(){
  const courseCode=alarm?.course_code??params.courseCode??'';
  const classTitle=alarm?.course_title??params.classTitle??'';
  const classStartsAt=alarm?.class_starts_at??params.classStartsAt??'';
- const classEndsAt=alarm?.class_ends_at??params.classEndsAt??'';
  const venue=alarm?.venue??params.venue??'';
  const lecturer=alarm?.lecturer??params.lecturer??'';
  const leadMinutes=alarm?.reminder_minutes??(Number(params.leadMinutes)||15);
  const courseDisplay=courseCode||label;
  const showTitle=Boolean(classTitle&&classTitle.toLowerCase()!==courseDisplay.toLowerCase()&&classTitle.toLowerCase()!==label.toLowerCase());
- const start=formatCampusTime(classStartsAt),end=formatCampusTime(classEndsAt);
- const classTime=start?(end?`${start}  –  ${end}`:start):'';
+ const classTime=formatCampusTime(classStartsAt);
  const secondsLeft=alarm?Math.max(0,Math.ceil((alarm.endsAt-now)/1000)):null;
  const ringingText=secondsLeft===null?'Ringing':`Ringing · ${Math.floor(secondsLeft/60)}:${String(secondsLeft%60).padStart(2,'0')} left`;
 
