@@ -107,9 +107,10 @@ export default function StudentAI() {
     try{
       if(file){setUploading(true);file=await uploadAttachment(file);if(!valid()||version!==generation.current)return;setAttachment(file);setUploading(false);}
       const savedFile=file?{name:file.name,type:file.type,...(file.mediaId?{mediaId:file.mediaId}:{})}:undefined;
-      await writeCache(storageKey,{prompt:question,mode,tier,attachment:savedFile,replyTo,key:key.current});
       if(!valid()||version!==generation.current)return;
       setPending({prompt:question,...(file?{file}:{})});setPrompt("");setAttachment(undefined);
+      // Persist the draft without holding up the network request.
+      void writeCache(storageKey,{prompt:question,mode,tier,attachment:savedFile,replyTo,key:key.current});
       const result=await api<Turn>("/v1/ai",{method:"POST",timeoutMs: 240000,body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,replyTo,tier,idempotencyKey:key.current,consent:true})});
       if(!valid()||version!==generation.current)return;
       setTurns(current=>[...current.filter(t=>t.requestId!==result.requestId),{...result,prompt:question,...(file?{file}:{})}]);setReplyTo(result.requestId);key.current=randomUUID();
