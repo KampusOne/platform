@@ -5,7 +5,7 @@ import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import { visiblePost } from "../lib/feed-social";
 import { currentUser, requireAuth } from "../middleware/auth";
-import { unblockedAuthorIfReady } from "../lib/profile-safety";
+import { unblockedAuthor } from "../lib/profile-safety";
 import type { Bindings, Variables } from "../types";
 import { notifyFeedInteraction } from "../services/feed-notifications";
 
@@ -26,7 +26,7 @@ feedLikeRoutes.get("/likes", requireAuth, async (context) => {
   const parsed = idsSchema.safeParse(context.req.query("ids")?.split(","));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose between 1 and 50 valid posts.");
   const ids = [...new Set(parsed.data)];
-  const authorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`posts.author_user_id`);
+  const authorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   const result = await database(context.env).execute(sql`
     select posts.id,
       exists(select 1 from public.feed_likes mine
@@ -45,7 +45,7 @@ async function setLike(context: Context<Environment>, liked: boolean) {
   const user = currentUser(context), campus = campusId(user);
   const parsed = idSchema.safeParse(context.req.param("id"));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "This post link is not valid.");
-  const authorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`posts.author_user_id`);
+  const authorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   const target = firstRow(await database(context.env).execute(sql`
     select posts.id from public.feed_posts posts
     where posts.id=${parsed.data}::uuid
