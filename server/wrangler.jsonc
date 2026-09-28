@@ -10,7 +10,7 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
-  "triggers": { "crons": ["*/5 * * * *"] },
+  "triggers": { "crons": ["* * * * *"] },
   "r2_buckets": [
     { "binding": "MEDIA_BUCKET", "bucket_name": "kampusone-media" },
     { "binding": "PRIVATE_BUCKET", "bucket_name": "kampusone-private" }
