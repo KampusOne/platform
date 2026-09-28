@@ -11,6 +11,7 @@ import { aiDay, AI_AUDIO_MIME_TYPES, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDI
 import { isStudyGeneration, studentAIPolicy, studentAIUsage, studentExperienceReady } from "../lib/student-ai-policy";
 import { extractAIPdf } from "../lib/ai-document";
 import { runStudentAssistant, classDraftSchema, alarmDraftSchema, calendarDraftSchema, type AICard, type AIAction } from "../lib/student-ai-tools";
+import { KAMPUSONE_RESTRICTED_RESPONSE, isRestrictedKampusOneRequest } from "../lib/kampusone-public-context";
 import type { Bindings, Variables } from "../types";
 
 export const aiRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -55,12 +56,20 @@ aiRoutes.get("/status", async c => {
   const enabled = c.env.AI_ASSISTANT_ENABLED === "true" && ready;
   const quota = await studentAIPolicy(c.env, currentUser(c));
   const usage = c.env.UNIFIED_SCHEMA_READY === "true" ? await studentAIUsage(c.env, currentUser(c).id) : null;
-  // Provider credentials, model IDs, internal limits and normal Ask counters never leave the Worker.
+  // Provider credentials, model IDs and shared/global limits never leave the Worker.
+  const askLimit = quota.pro ? 60 : quota.chat;
   return c.json({ enabled, voiceEnabled: enabled && transcriptionConfiguration(c.env).configured, historyDays: AI_HISTORY_DAYS, maxFileBytes: MAX_AI_MEDIA_BYTES,
     capabilities: { text: enabled && providerConfiguration(c.env,"study").configured,
       images: enabled && providerConfiguration(c.env,"study","image/jpeg").configured,
       documents: enabled && providerConfiguration(c.env,"summary").configured },
     tier: quota.pro ? "pro" : "standard",
+    voice: { maxSeconds: quota.pro ? 300 : 60 },
+    askSession: {
+      windowMinutes: 15,
+      limit: quota.unlimited ? null : askLimit,
+      remaining: quota.unlimited ? null : Math.max(0, askLimit - Number(usage?.chat_used ?? 0)),
+      resetsAt: usage?.chat_resets_at ?? null,
+    },
     study: { limit: quota.study, remaining: quota.unlimited || quota.pro ? null : Math.max(0,quota.study-Number(usage?.study_used ?? 0)) },
     subscription: { cadence: "monthly", checkoutEnabled: false, available: false },
   });
@@ -71,6 +80,15 @@ aiRoutes.post("/transcribe", async c => {
   if (!key.success || c.req.query("consent") !== "true") throw new AppError(400, "BAD_REQUEST", "Start a new voice recording and try again.");
   if (!await studentExperienceReady(c.env)) throw new AppError(503, "PROVIDER_UNAVAILABLE", "Voice input is being updated. Your recording is kept.");
   if (c.env.AI_ASSISTANT_ENABLED !== "true" || !transcriptionConfiguration(c.env).configured) throw new AppError(503, "PROVIDER_UNAVAILABLE", "Voice input is temporarily unavailable.");
+  const user = currentUser(c);
+  const voicePolicy = await studentAIPolicy(c.env, user);
+  const maxVoiceSeconds = voicePolicy.pro ? 300 : 60;
+  const durationValue = c.req.query("durationMs");
+  const durationMs = durationValue === undefined ? null : Number(durationValue);
+  if (durationMs !== null && (!Number.isFinite(durationMs) || durationMs <= 0)) throw new AppError(400, "BAD_REQUEST", "Start a new voice recording and try again.");
+  if (durationMs !== null && durationMs > maxVoiceSeconds * 1000 + 1500) {
+    throw new AppError(413, "BAD_REQUEST", voicePolicy.pro ? "Pro voice recordings can be up to 5 minutes." : "Standard voice recordings can be up to 1 minute. Upgrade to Pro for recordings up to 5 minutes.", { reason: "AI_VOICE_DURATION", maxSeconds: maxVoiceSeconds, upgrade: !voicePolicy.pro });
+  }
   const contentType = c.req.header("Content-Type") ?? "";
   const multipart = contentType.toLowerCase().startsWith("multipart/form-data");
   const declaredLength = Number(c.req.header("Content-Length") ?? 0);
@@ -103,8 +121,8 @@ aiRoutes.post("/transcribe", async c => {
   if (!AI_AUDIO_MIME_TYPES.has(mime)) throw new AppError(400, "BAD_REQUEST", "Record a new voice message in a supported audio format.");
   if (!bytes.length || bytes.byteLength > MAX_AI_TRANSCRIPTION_BYTES) throw new AppError(413, "BAD_REQUEST", "Record a shorter voice message.");
 
-  const requestHash = await sha256(JSON.stringify(["voice-v1", mime, bytes.byteLength, await hashBytes(bytes)]));
-  const user = currentUser(c), db = database(c.env);
+  const requestHash = await sha256(JSON.stringify(["voice-v2", mime, bytes.byteLength, durationMs, maxVoiceSeconds, await hashBytes(bytes)]));
+  const db = database(c.env);
   const findRequest = async () => firstRow(await db.execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid`));
   const existing = await findRequest();
   if (existing) return c.json(replayTranscription(existing, requestHash));
@@ -125,7 +143,7 @@ aiRoutes.post("/transcribe", async c => {
   }
 
   try {
-    const text = await transcribeAI(c.env, bytes, mime);
+    const text = await transcribeAI(c.env, bytes, mime, voicePolicy.pro ? "pro" : "standard");
     await db.execute(sql`update app_private.ai_requests set status='COMPLETED',result=${JSON.stringify({version:1,transcriptionText:text})}::jsonb where user_id=${user.id}::uuid and idempotency_key=${key.data}::uuid and status='PROCESSING'`);
     return c.json({ text });
   } catch (error) {
@@ -382,8 +400,12 @@ aiRoutes.post("/", async c => {
   }
   const job = (async () => {
     try {
-      const aiInput={mode:d.mode,prompt,history,tier:d.tier,...(media ? {media} : {})};
-      const generated = d.mode==='study' ? await runStudentAssistant(c.env,u,aiInput) : await generateAI(c.env,aiInput);
+      const aiInput={mode:d.mode,prompt,requestPrompt:d.prompt,history,tier:d.tier,...(media ? {media} : {})};
+      const generated = isRestrictedKampusOneRequest(d.prompt)
+        ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: "huggingface" as const, cards: [] as AICard[], actions: [] as AIAction[] }
+        : d.mode==='timetable'
+          ? await generateAI(c.env,aiInput)
+          : await runStudentAssistant(c.env,u,aiInput);
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
         const extracted = parseScheduleDocument(generated.text, sourceText);
