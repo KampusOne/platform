@@ -33,9 +33,15 @@ beforeEach(()=>{vi.clearAllMocks();mocks.execute.mockImplementation(async(s:SQL)
 afterEach(()=>vi.unstubAllGlobals());
 describe("AI router security and idempotency",()=>{
   it("reports voice input only when transcription is configured",async()=>{
-    const r=await get("/ai/status");expect(r.status).toBe(200);expect(await r.json()).toMatchObject({voiceEnabled:true});
+    const r=await get("/ai/status");expect(r.status).toBe(200);expect(await r.json()).toMatchObject({voiceEnabled:true,voice:{maxSeconds:60},askSession:{windowMinutes:15,limit:15,remaining:0}});
     const off=await app.request("/ai/status",{headers:{Authorization:"Bearer test"}},{...env,HF_TRANSCRIPTION_MODEL:""});
     expect(await off.json()).toMatchObject({voiceEnabled:false});
+  });
+  it("enforces the Standard one-minute voice contract before provider I/O",async()=>{
+    const r=await app.request(`/ai/transcribe?idempotencyKey=${key}&consent=true&durationMs=61001`,{method:"POST",headers:{Authorization:"Bearer test","Content-Type":"audio/mp4"},body:new Uint8Array([0,1,2,3,4])},env);
+    expect(r.status).toBe(413);
+    expect(await r.json()).toMatchObject({error:{details:{reason:"AI_VOICE_DURATION",maxSeconds:60,upgrade:true}}});
+    expect(mocks.fetch).not.toHaveBeenCalled();
   });
   it("transcribes authenticated audio through the server-side speech provider",async()=>{
     mocks.execute.mockImplementation(async(s:SQL)=>{const q=query(s);if(q.sql.includes("consume_request_rate_limit"))return {rows:[{allowed:true}]};if(q.sql.includes("insert into app_private.ai_requests")&&q.sql.includes("transcription"))return {rows:[{idempotency_key:key}]};return {rows:[]};});
