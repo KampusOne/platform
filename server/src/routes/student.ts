@@ -259,12 +259,13 @@ studentRoutes.get("/me", async (context) => {
   if (!profile)
     throw new AppError(404, "NOT_FOUND", "Your profile could not be found.");
   // JSON projection keeps existing profiles readable before the additive migration.
-  let provisional: { department_name: string | null; faculty_name: string | null } | undefined;
+  let provisional: { department_name: string | null; faculty_name: string | null; programme_name: string | null; kind: string } | undefined;
   if (profile.provisional_academic_submission_id) {
     provisional = firstRow(await database(context.env).execute<{
-      department_name: string | null; faculty_name: string | null;
+      department_name: string | null; faculty_name: string | null; programme_name: string | null; kind: string;
     }>(sql`
-      select department_name, faculty_name from public.academic_missing_submissions
+      select department_name, faculty_name, programme_name, kind
+      from public.academic_missing_submissions
       where id = ${profile.provisional_academic_submission_id}::uuid
       limit 1
     `));
@@ -273,18 +274,37 @@ studentRoutes.get("/me", async (context) => {
     ...profile,
     department_name: profile.department_name ?? provisional?.department_name ?? null,
     faculty_name: profile.faculty_name ?? provisional?.faculty_name ?? null,
+    course_name: profile.course_name ?? provisional?.programme_name ?? null,
     provisional_department_name: provisional?.department_name ?? null,
     provisional_faculty_name: provisional?.faculty_name ?? null,
+    provisional_programme_name: provisional?.programme_name ?? null,
+    provisional_academic_kind: provisional?.kind ?? null,
   }, operatorRoles: user.operatorRoles });
 });
 
 studentRoutes.patch("/me/onboarding", async (context) => {
   const user = currentUser(context);
+  const missingAcademicSchema = z.object({
+    kind:z.enum(["FACULTY","DEPARTMENT","PROGRAMME"]),
+    facultyName:z.string().trim().max(180).optional(),
+    departmentName:z.string().trim().max(180).optional(),
+    programmeName:z.string().trim().max(180).optional(),
+    sourceNote:z.string().trim().max(2000).optional(),
+  }).superRefine((value,ctx)=>{
+    if(value.kind==="FACULTY" && (value.facultyName?.length??0)<2) ctx.addIssue({code:"custom",path:["facultyName"],message:"Enter the missing faculty or college."});
+    if(value.kind!=="PROGRAMME" && (value.departmentName?.length??0)<2) ctx.addIssue({code:"custom",path:["departmentName"],message:"Enter your department."});
+    if(value.kind==="PROGRAMME" && (value.programmeName?.length??0)<2) ctx.addIssue({code:"custom",path:["programmeName"],message:"Enter the missing programme."});
+  });
   const parsed = onboardingProfileSchema.extend({
     facultyId:z.string().uuid().nullable().optional(),departmentId:z.string().uuid().nullable().optional(),
     admissionYear:z.number().int().min(1950).max(new Date().getFullYear()+1).optional(),
-    missingAcademic:z.object({facultyName:z.string().trim().max(180).optional(),departmentName:z.string().trim().min(2).max(180),programmeName:z.string().trim().max(180).optional(),sourceNote:z.string().trim().max(2000).optional()}).optional(),
-  }).refine(v=>Boolean(v.missingAcademic)||Boolean(v.facultyId&&v.departmentId),"Select your faculty and department or submit the missing details.").safeParse(await jsonBody(context));
+    missingAcademic:missingAcademicSchema.optional(),
+  }).refine(v=>{
+    if(!v.missingAcademic) return Boolean(v.facultyId&&v.departmentId);
+    if(v.missingAcademic.kind==="FACULTY") return true;
+    if(v.missingAcademic.kind==="DEPARTMENT") return Boolean(v.facultyId);
+    return Boolean(v.facultyId&&v.departmentId);
+  },"Choose the available academic details, then enter the missing item.").safeParse(await jsonBody(context));
   if (!parsed.success) {
     throw new AppError(
       400,
@@ -304,23 +324,54 @@ studentRoutes.patch("/me/onboarding", async (context) => {
       "Something went wrong. We couldn’t finish setting up this account.",
     );
   }
-  const selected = parsed.data.missingAcademic ? await database(context.env).execute<{university_id:string}>(sql`select id university_id from public.universities where id=${parsed.data.universityId}::uuid and deleted_at is null`) : await database(context.env).execute<{
-    university_id: string;
-  }>(sql`
-    select universities.id as university_id
-    from public.universities universities
-    join public.faculties faculties on faculties.university_id = universities.id
-    join public.departments departments on departments.faculty_id = faculties.id
-    left join public.courses courses on courses.department_id = departments.id
-    where universities.id = ${parsed.data.universityId}::uuid
-      and faculties.id = ${parsed.data.facultyId}::uuid
-      and departments.id = ${parsed.data.departmentId}::uuid
-      and (${parsed.data.courseId ?? null}::uuid is null or courses.id = ${parsed.data.courseId ?? null}::uuid)
-      and universities.deleted_at is null
-      and faculties.deleted_at is null
-      and departments.deleted_at is null
-    limit 1
-  `);
+  let selected;
+  if(parsed.data.missingAcademic?.kind==="FACULTY"){
+    selected=await database(context.env).execute<{university_id:string}>(sql`
+      select id university_id from public.universities
+      where id=${parsed.data.universityId}::uuid and deleted_at is null
+    `);
+  }else if(parsed.data.missingAcademic?.kind==="DEPARTMENT"){
+    selected=await database(context.env).execute<{university_id:string}>(sql`
+      select universities.id university_id
+      from public.universities universities
+      join public.faculties faculties on faculties.university_id=universities.id
+      where universities.id=${parsed.data.universityId}::uuid
+        and faculties.id=${parsed.data.facultyId}::uuid
+        and universities.deleted_at is null
+        and faculties.deleted_at is null
+      limit 1
+    `);
+  }else if(parsed.data.missingAcademic?.kind==="PROGRAMME"){
+    selected=await database(context.env).execute<{university_id:string}>(sql`
+      select universities.id university_id
+      from public.universities universities
+      join public.faculties faculties on faculties.university_id=universities.id
+      join public.departments departments on departments.faculty_id=faculties.id
+      where universities.id=${parsed.data.universityId}::uuid
+        and faculties.id=${parsed.data.facultyId}::uuid
+        and departments.id=${parsed.data.departmentId}::uuid
+        and universities.deleted_at is null
+        and faculties.deleted_at is null
+        and departments.deleted_at is null
+      limit 1
+    `);
+  }else{
+    selected=await database(context.env).execute<{university_id:string}>(sql`
+      select universities.id as university_id
+      from public.universities universities
+      join public.faculties faculties on faculties.university_id = universities.id
+      join public.departments departments on departments.faculty_id = faculties.id
+      left join public.courses courses on courses.department_id = departments.id
+      where universities.id = ${parsed.data.universityId}::uuid
+        and faculties.id = ${parsed.data.facultyId}::uuid
+        and departments.id = ${parsed.data.departmentId}::uuid
+        and (${parsed.data.courseId ?? null}::uuid is null or courses.id = ${parsed.data.courseId ?? null}::uuid)
+        and universities.deleted_at is null
+        and faculties.deleted_at is null
+        and departments.deleted_at is null
+      limit 1
+    `);
+  }
   if (!firstRow(selected)) {
     throw new AppError(
       400,
@@ -348,7 +399,36 @@ studentRoutes.patch("/me/onboarding", async (context) => {
   let provisionalId:string|null=null;
   if(parsed.data.missingAcademic){
     const missing=parsed.data.missingAcademic;
-    provisionalId=firstRow(await database(context.env).execute<{id:string}>(sql`insert into public.academic_missing_submissions(user_id,institution_id,faculty_name,department_name,programme_name,source_note) values(${user.id}::uuid,${parsed.data.universityId}::uuid,${missing.facultyName??null},${missing.departmentName},${missing.programmeName??null},${missing.sourceNote??null}) on conflict(user_id,institution_id,department_name) do update set faculty_name=excluded.faculty_name,programme_name=excluded.programme_name,source_note=excluded.source_note,status='PENDING',updated_at=now() returning id`))?.id??null;
+    const facultyName=missing.kind==="FACULTY" ? missing.facultyName??null : null;
+    const departmentName=missing.kind!=="PROGRAMME" ? missing.departmentName??null : null;
+    const programmeName=missing.programmeName??null;
+    provisionalId=firstRow(await database(context.env).execute<{id:string}>(sql`
+      with inserted as (
+        insert into public.academic_missing_submissions(
+          user_id,institution_id,kind,selected_faculty_id,selected_department_id,
+          faculty_name,department_name,programme_name,source_note,status,updated_at
+        ) values(
+          ${user.id}::uuid,${parsed.data.universityId}::uuid,${missing.kind},
+          ${missing.kind==="FACULTY"?null:parsed.data.facultyId??null}::uuid,
+          ${missing.kind==="PROGRAMME"?parsed.data.departmentId??null:null}::uuid,
+          ${facultyName},${departmentName},${programmeName},${missing.sourceNote??null},'PENDING',now()
+        )
+        on conflict do nothing
+        returning id
+      )
+      select id from inserted
+      union all
+      select id from public.academic_missing_submissions
+      where user_id=${user.id}::uuid
+        and institution_id=${parsed.data.universityId}::uuid
+        and kind=${missing.kind}
+        and faculty_name is not distinct from ${facultyName}
+        and department_name is not distinct from ${departmentName}
+        and programme_name is not distinct from ${programmeName}
+        and status in ('PENDING','NEEDS_CORRECTION')
+      order by id
+      limit 1
+    `))?.id??null;
   }
   await database(context.env).execute(sql`
     update public.profiles set
@@ -357,8 +437,8 @@ studentRoutes.patch("/me/onboarding", async (context) => {
       display_name = ${`${parsed.data.firstName} ${parsed.data.lastName}`},
       username = ${parsed.data.username},
       university_id = ${parsed.data.universityId}::uuid,
-      faculty_id = ${provisionalId ? null : parsed.data.facultyId}::uuid,
-      department_id = ${provisionalId ? null : parsed.data.departmentId}::uuid,
+      faculty_id = ${parsed.data.missingAcademic?.kind==="FACULTY" ? null : parsed.data.facultyId}::uuid,
+      department_id = ${parsed.data.missingAcademic && parsed.data.missingAcademic.kind!=="PROGRAMME" ? null : parsed.data.departmentId}::uuid,
       course_id = ${provisionalId ? null : parsed.data.courseId ?? null}::uuid,
       admission_year = ${parsed.data.admissionYear??null},
       settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('birthDate', ${parsed.data.birthDate}::text),
