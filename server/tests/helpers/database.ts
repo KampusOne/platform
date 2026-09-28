@@ -33,6 +33,7 @@ export const unifiedMigrations = [
   "20260925130000_programme_metadata.sql",
   "20260927120000_direct_messages_live.sql",
   "20260927140500_notification_actor_profiles.sql",
+  "20260928120000_profile_post_notifications.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */
