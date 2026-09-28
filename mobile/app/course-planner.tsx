@@ -15,6 +15,26 @@ type Course = {
   grade: string | null;
 };
 
+type GpaResult = {
+  courseCode: string;
+  courseTitle: string;
+  units: string | number;
+  grade: string;
+  gradePoint: string | number;
+};
+
+type GpaTerm = {
+  id: string;
+  session_label: string;
+  semester: number;
+  level_code: string;
+  results: GpaResult[];
+};
+
+type GpaData = {
+  terms: GpaTerm[];
+};
+
 function emptyCourse(): Course {
   return { course_code: "", title: "", units: null, grade: null };
 }
@@ -47,6 +67,10 @@ export default function CoursePlanner() {
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [importingGpa, setImportingGpa] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const [gpaTerms, setGpaTerms] = useState<GpaTerm[]>([]);
+  const [showImportTerms, setShowImportTerms] = useState(false);
 
   const load = useCallback(async () => {
     setError("");
@@ -114,6 +138,92 @@ export default function CoursePlanner() {
     setDirty(true);
     setError("");
     setCourses((items) => items.filter((_, i) => i !== index));
+  }
+
+  function importGpaTerm(term: GpaTerm) {
+    const imported = (term.results ?? [])
+      .filter((result) => {
+        const numericUnits = Number(result.units);
+        return (
+          result.courseCode.trim().length >= 2 &&
+          result.courseTitle.trim().length > 0 &&
+          Boolean(result.grade?.trim()) &&
+          Number.isFinite(numericUnits) &&
+          numericUnits > 0
+        );
+      })
+      .map<Course>((result) => ({
+        course_code: result.courseCode.trim().toUpperCase(),
+        title: result.courseTitle.trim(),
+        units: Number(result.units),
+        grade: result.grade.trim().toUpperCase(),
+      }));
+
+    if (!imported.length) {
+      setImportMessage("Nothing to import.");
+      setShowImportTerms(false);
+      return;
+    }
+
+    const current = courses.filter(
+      (course) => course.course_code.trim() || course.title.trim(),
+    );
+    const existingCodes = new Set(
+      current.map((course) => course.course_code.trim().toUpperCase()),
+    );
+    const additions = imported
+      .filter((course) => !existingCodes.has(course.course_code))
+      .slice(0, Math.max(0, 100 - current.length));
+
+    if (!additions.length) {
+      setImportMessage("Nothing new to import.");
+      setShowImportTerms(false);
+      return;
+    }
+
+    setCourses([...current, ...additions]);
+    setDirty(true);
+    setError("");
+    setShowImportTerms(false);
+    setImportMessage(
+      `${additions.length} ${additions.length === 1 ? "course" : "courses"} imported · ${term.session_label} · Semester ${term.semester}`,
+    );
+  }
+
+  async function importFromGpa() {
+    if (busy || importingGpa) return;
+    setImportingGpa(true);
+    setImportMessage("");
+    setError("");
+    setShowImportTerms(false);
+
+    try {
+      const response = await api<GpaData>("/v1/student/gpa");
+      const terms = (response.terms ?? []).filter(
+        (term) => (term.results ?? []).length > 0,
+      );
+
+      if (!terms.length) {
+        setImportMessage("Nothing to import.");
+        return;
+      }
+
+      if (terms.length === 1) {
+        importGpaTerm(terms[0]);
+        return;
+      }
+
+      setGpaTerms(terms);
+      setShowImportTerms(true);
+    } catch (e) {
+      setImportMessage(
+        e instanceof Error && e.message.trim()
+          ? e.message
+          : "GPA & CGPA could not be loaded.",
+      );
+    } finally {
+      setImportingGpa(false);
+    }
   }
 
   async function save() {
@@ -187,6 +297,56 @@ export default function CoursePlanner() {
         <ScreenSkeleton variant="learning" compact />
       ) : (
         <>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: importingGpa, busy: importingGpa }}
+            disabled={importingGpa}
+            onPress={() => void importFromGpa()}
+            style={({ pressed }) => [
+              styles.importAction,
+              importingGpa && styles.importActionDisabled,
+              pressed && !importingGpa && { opacity: 0.82 },
+            ]}
+          >
+            <Ionicons name="download-outline" size={19} color={theme.accentText} />
+            <Text style={styles.importActionText}>
+              {importingGpa ? "Importing…" : "Import from GPA & CGPA"}
+            </Text>
+          </Pressable>
+
+          {importMessage ? (
+            <Text accessibilityLiveRegion="polite" style={styles.importMessage}>
+              {importMessage}
+            </Text>
+          ) : null}
+
+          {showImportTerms ? (
+            <View style={styles.importPicker}>
+              <Text style={styles.importPickerTitle}>Choose semester</Text>
+              {gpaTerms.map((term) => (
+                <Pressable
+                  accessibilityRole="button"
+                  key={term.id}
+                  onPress={() => importGpaTerm(term)}
+                  style={({ pressed }) => [
+                    styles.importTerm,
+                    pressed && { opacity: 0.72 },
+                  ]}
+                >
+                  <View style={styles.importTermCopy}>
+                    <Text style={styles.importTermTitle}>
+                      {term.session_label} · Semester {term.semester}
+                    </Text>
+                    <Text style={styles.importTermMeta}>
+                      {term.results.length} {term.results.length === 1 ? "course" : "courses"}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
           {loadFailed ? (
             <View style={styles.syncCard}>
               <View style={styles.syncIcon}>
@@ -282,16 +442,11 @@ export default function CoursePlanner() {
               <View style={styles.emptyIcon}>
                 <Ionicons
                   name="school-outline"
-                  size={28}
+                  size={24}
                   color={theme.accentText}
                 />
               </View>
-              <Text style={styles.emptyTitle}>Build your semester plan</Text>
-              <Text style={styles.emptyBody}>
-                Add each course, its unit load and an optional grade. Your plan
-                stays editable, and KampusOne can preview your GPA when your
-                university scale is available.
-              </Text>
+              <Text style={styles.emptyTitle}>No courses yet</Text>
               <Pressable
                 accessibilityRole="button"
                 onPress={addCourse}
@@ -482,9 +637,6 @@ export default function CoursePlanner() {
         </View>
         <View style={styles.completedCopy}>
           <Text style={styles.completedTitle}>Completed GPA & CGPA</Text>
-          <Text style={styles.completedDetail}>
-            Calculate results from completed semesters
-          </Text>
         </View>
         <Ionicons name="chevron-forward" size={19} color={theme.textMuted} />
       </Pressable>
@@ -494,6 +646,68 @@ export default function CoursePlanner() {
 
 const createStyles = (theme: Theme) =>
   StyleSheet.create({
+    importAction: {
+      alignItems: "center",
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 8,
+      justifyContent: "center",
+      minHeight: 50,
+      paddingHorizontal: 16,
+      marginBottom: 10,
+    },
+    importActionText: {
+      color: theme.accentText,
+      fontFamily: theme.font.semibold,
+      fontSize: 14,
+    },
+    importActionDisabled: { opacity: 0.55 },
+    importMessage: {
+      color: theme.textMuted,
+      fontFamily: theme.font.medium,
+      fontSize: 12.5,
+      lineHeight: 18,
+      marginBottom: 12,
+    },
+    importPicker: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderRadius: 16,
+      borderWidth: 1,
+      marginBottom: 16,
+      overflow: "hidden",
+    },
+    importPickerTitle: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    importTerm: {
+      alignItems: "center",
+      borderTopColor: theme.border,
+      borderTopWidth: 1,
+      flexDirection: "row",
+      minHeight: 58,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    importTermCopy: { flex: 1, minWidth: 0 },
+    importTermTitle: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 13.5,
+    },
+    importTermMeta: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12,
+      marginTop: 2,
+    },
     syncCard: {
       flexDirection: "row",
       gap: 12,
@@ -618,7 +832,7 @@ const createStyles = (theme: Theme) =>
       color: theme.textMuted,
     },
     emptyState: {
-      alignItems: "flex-start",
+      alignItems: "center",
       backgroundColor: theme.surface,
       borderWidth: 1,
       borderColor: theme.border,
@@ -628,17 +842,17 @@ const createStyles = (theme: Theme) =>
       ...theme.shadow,
     },
     emptyIcon: {
-      width: 52,
-      height: 52,
-      borderRadius: 16,
+      width: 46,
+      height: 46,
+      borderRadius: 14,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: theme.surfaceMuted,
-      marginBottom: 16,
+      marginBottom: 10,
     },
     emptyTitle: {
       fontFamily: theme.font.display,
-      fontSize: 22,
+      fontSize: 20,
       color: theme.text,
     },
     emptyBody: {
@@ -654,10 +868,10 @@ const createStyles = (theme: Theme) =>
       justifyContent: "center",
       alignSelf: "stretch",
       gap: 8,
-      minHeight: 52,
+      minHeight: 50,
       borderRadius: 14,
       paddingHorizontal: 18,
-      marginTop: 18,
+      marginTop: 14,
       backgroundColor: theme.deepBrand,
     },
     primaryAddText: {
