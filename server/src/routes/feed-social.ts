@@ -59,11 +59,14 @@ function projection(user: User, withViews: boolean) {
     case when posts.audience->>'studentPost'='true' and author.user_id is not null then posts.author_user_id else null end as source_user_id,
     case when posts.audience->>'studentPost' = 'true' then author.profile_image_url else null end as source_image_url,
     ${views} as view_count,
-    (select count(*)::int from public.feed_likes likes where likes.post_id = posts.id) as like_count,
+    (select count(*)::int from public.feed_likes likes where likes.post_id = posts.id
+      and ${unblockedAuthor(user.id, sql`likes.user_id`)}) as like_count,
     exists(select 1 from public.feed_likes likes where likes.post_id = posts.id and likes.user_id = ${user.id}::uuid) as liked,
     exists(select 1 from public.feed_bookmarks b where b.post_id = posts.id and b.user_id = ${user.id}::uuid) as bookmarked,
-    (select count(*)::int from public.feed_comments comments where comments.post_id = posts.id and comments.deleted_at is null) as comment_count,
-    (select count(*)::int from public.feed_reposts r where r.post_id = posts.id) as repost_count,
+    (select count(*)::int from public.feed_comments comments where comments.post_id = posts.id
+      and comments.deleted_at is null and ${unblockedAuthor(user.id, sql`comments.author_user_id`)}) as comment_count,
+    (select count(*)::int from public.feed_reposts r where r.post_id = posts.id
+      and ${unblockedAuthor(user.id, sql`r.user_id`)}) as repost_count,
     exists(select 1 from public.feed_reposts r where r.post_id = posts.id and r.user_id = ${user.id}::uuid) as reposted,
     posts.quoted_post_id,
     case when quoted.id is null then null else jsonb_build_object(
@@ -376,7 +379,8 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
   const cursor = parseFeedCursor(c.req.query("cursor"));
   const result = await database(c.env).execute(sql`
     select comments.id,
-      (select count(*)::int from public.feed_comment_likes l where l.comment_id=comments.id) as like_count,
+      (select count(*)::int from public.feed_comment_likes l where l.comment_id=comments.id
+        and ${unblockedAuthor(user.id, sql`l.user_id`)}) as like_count,
       exists(select 1 from public.feed_comment_likes l where l.comment_id=comments.id and l.user_id=${user.id}::uuid) as liked,
       case when comments.deleted_at is null then comments.body else '' end as body,
       comments.created_at, comments.parent_comment_id, comments.deleted_at is not null as is_deleted,
@@ -386,7 +390,9 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
       coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
       comments.deleted_at is null and comments.author_user_id = ${user.id}::uuid as can_delete,
       (select count(*)::int from public.feed_comments replies where replies.post_id = comments.post_id and replies.parent_comment_id = comments.id
-        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
+        and ${unblockedAuthor(user.id, sql`replies.author_user_id`)}
+        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id
+          and ${unblockedAuthor(user.id, sql`child.author_user_id`)}))) as reply_count
     from public.feed_comments comments
     join public.feed_posts posts on posts.id = comments.post_id
     left join public.profiles author on author.user_id = comments.author_user_id and author.deleted_at is null and comments.deleted_at is null
