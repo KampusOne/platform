@@ -125,6 +125,7 @@ export async function syncAlarms(
             categoryIdentifier: "k1-alarm",
             data: {
               alarmId: alarm.id,
+              alarmTime: alarm.time,
               snoozeMinutes: alarm.snooze_minutes,
               alarmSignature: signature,
               label: alarm.label,
@@ -194,6 +195,7 @@ export function listenForSnooze() {
       if(r.actionIdentifier==='dismiss')return;
       router.push({pathname:'/alarm-ring',params:{
         alarmId:String(original.data?.alarmId??''),
+        alarmTime:typeof original.data?.alarmTime==='string'?original.data.alarmTime:undefined,
         label:String(original.data?.label??original.title??'Alarm'),
         snooze:String(original.data?.snoozeMinutes??5),
         notificationId:r.notification.request.identifier,
