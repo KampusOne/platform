@@ -76,6 +76,23 @@ describe("media upload and delivery regression", () => {
     expect(result.content_type).toBe("image/png");
     expect(state.put).toHaveBeenCalledOnce();
   });
+  it("accepts verified Word documents for private direct messages", async () => {
+    state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValue({ rows: [] });
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00]);
+    const mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const response = await app.request(
+      "https://api.example/v1/media?kind=message&name=lecture-notes.docx",
+      { method: "POST", headers: { ...auth, "Content-Type": mime }, body: bytes },
+      env,
+    );
+    expect(response.status).toBe(201);
+    const result = await response.json() as { kind: string; private: boolean; content_type: string };
+    expect(result.kind).toBe("message");
+    expect(result.private).toBe(true);
+    expect(result.content_type).toBe(mime);
+    expect(state.put).toHaveBeenCalledOnce();
+  });
+
   it("accepts raw post videos larger than the image and document limit", async () => {
     state.execute.mockResolvedValueOnce({ rows: [{ allowed: true }] }).mockResolvedValue({ rows: [] });
     const bytes = new Uint8Array(10 * 1024 * 1024 + 1024);
