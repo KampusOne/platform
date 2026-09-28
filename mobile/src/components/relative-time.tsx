@@ -13,9 +13,9 @@ function subscribe(listener: () => void) {
   return () => { listeners.delete(listener); if (!listeners.size && timer) { clearInterval(timer); timer = undefined; } };
 }
 const snapshot = () => now;
-const serverSnapshot = () => 0;
+const serverSnapshot = snapshot;
 export function RelativeTime({ value, style }: { value: string; style?: StyleProp<TextStyle> }) {
   const current = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
-  const formatted = current ? feedTime(value, current) : { text: "Recently", label: "Publication time", exact: "" };
+  const formatted = feedTime(value, current);
   return <Text accessibilityLabel={`${formatted.label}${formatted.exact ? `. ${formatted.exact}` : ""}`} style={style}>{formatted.text}</Text>;
 }
