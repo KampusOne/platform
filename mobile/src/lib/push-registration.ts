@@ -19,13 +19,13 @@ export function pushSetupAvailability() {
     return {
       available: false,
       message:
-        "Remote push is available in the installed Android and iOS app. This web preview shows your notification inbox; it does not register for native push.",
+        "Push notifications are available in the installed KampusOne app.",
     };
   if (Constants.appOwnership === "expo")
     return {
       available: false,
       message:
-        "Open an installed KampusOne development or release build to set up push notifications.",
+        "Install the latest KampusOne app to manage push notifications.",
     };
 
   const projectId =
@@ -36,12 +36,12 @@ export function pushSetupAvailability() {
     return {
       available: false,
       message:
-        "Local alarms and device notifications work in this build. Remote push needs the KampusOne Expo project ID before this device can register for server pushes.",
+        "Push notifications are not available in this build yet.",
     };
 
   return {
     available: true,
-    message: "Push notifications for this device",
+    message: "Get important KampusOne updates on this device.",
     projectId,
   };
 }
