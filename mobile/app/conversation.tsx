@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
   FlatList,
@@ -8,6 +8,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -18,6 +19,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Crypto from "expo-crypto";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { MessageVoice, VoicePlayback } from "@/src/components/message-voice";
 import { ProfileActions } from "@/src/components/profile-actions";
 import { ProfileAvatar } from "@/src/components/profile-avatar";
@@ -49,6 +51,63 @@ type Data = {
   nextCursor: string | null;
 };
 
+type DraftMedia = {
+  localId: string;
+  uri: string;
+  name: string;
+  mimeType: string;
+  size?: number | null;
+  kind: "image" | "video" | "document";
+};
+
+type PendingMediaItem = DraftMedia & {
+  messageId: string;
+  mediaId?: string;
+  sent: boolean;
+};
+
+type PendingMediaBatch = {
+  id: string;
+  caption: string;
+  items: PendingMediaItem[];
+  status: "sending" | "failed";
+  error?: string;
+};
+
+function mediaLabel(type?: string | null, name?: string | null) {
+  const mime = (type ?? "").toLowerCase();
+  if (mime.startsWith("image/")) return "Picture";
+  if (mime.startsWith("video/")) return "Video";
+  if (mime.startsWith("audio/")) return "Voice note";
+  if (mime === "application/pdf" || name?.toLowerCase().endsWith(".pdf")) return "PDF";
+  return "Document";
+}
+
+function guessDocumentMime(name: string, mime?: string | null) {
+  if (mime && mime !== "application/octet-stream") return mime;
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  if (lower.endsWith(".doc")) return "application/msword";
+  if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
+  if (lower.endsWith(".ppt")) return "application/vnd.ms-powerpoint";
+  if (lower.endsWith(".odt")) return "application/vnd.oasis.opendocument.text";
+  if (lower.endsWith(".ods")) return "application/vnd.oasis.opendocument.spreadsheet";
+  if (lower.endsWith(".odp")) return "application/vnd.oasis.opendocument.presentation";
+  if (lower.endsWith(".csv")) return "text/csv";
+  if (lower.endsWith(".txt")) return "text/plain";
+  if (lower.endsWith(".rtf")) return "application/rtf";
+  return mime || "application/octet-stream";
+}
+
+function shouldShowBody(message: Message) {
+  if (!message.body) return false;
+  if (!message.media_id) return true;
+  return !["Attachment", mediaLabel(message.media_type, message.media_name)].includes(message.body);
+}
+
 function formatMessageTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -70,57 +129,192 @@ function Attachment({ message, mine }: { message: Message; mine: boolean }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const { theme, styles } = useThemeStyles(createStyles);
-  const isImage = message.media_type?.startsWith("image/");
-  const isAudio = message.media_type?.startsWith("audio/");
-  const isVideo = message.media_type?.startsWith("video/");
+  const isImage = Boolean(message.media_type?.startsWith("image/"));
+  const isAudio = Boolean(message.media_type?.startsWith("audio/"));
+  const isVideo = Boolean(message.media_type?.startsWith("video/"));
+  const label = mediaLabel(message.media_type, message.media_name);
+
+  const fetchAccess = useCallback(async () => {
+    if (!message.media_id) return "";
+    const result = await api<{ url: string }>(`/v1/media/${message.media_id}/access`, { method: "POST" });
+    return result.url;
+  }, [message.media_id]);
+
+  useEffect(() => {
+    if (!message.media_id || (!isImage && !isAudio)) return;
+    let cancelled = false;
+    void fetchAccess()
+      .then((nextUrl) => {
+        if (!cancelled) setUrl(nextUrl);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchAccess, isAudio, isImage, message.media_id]);
 
   async function open() {
     if (!message.media_id || busy) return;
-    setBusy(true);
     setError("");
+    if (isImage || isVideo) {
+      router.push({
+        pathname: "/message-media",
+        params: {
+          mediaId: message.media_id,
+          type: message.media_type || "",
+          name: message.media_name || label,
+        },
+      });
+      return;
+    }
+    if (isAudio && url) return;
+    setBusy(true);
     try {
-      const result = await api<{ url: string }>(`/v1/media/${message.media_id}/access`, { method: "POST" });
-      if (isImage || isAudio) setUrl(result.url);
-      else await Linking.openURL(result.url);
+      const nextUrl = await fetchAccess();
+      if (isAudio) setUrl(nextUrl);
+      else await Linking.openURL(nextUrl);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Attachment unavailable.");
+      setError(caught instanceof Error ? caught.message : `${label} unavailable.`);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <View style={styles.attachmentWrap}>
-      {url && isImage ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Open image" onPress={() => void open()}>
+    <View style={styles.mediaWrap}>
+      {isImage && url ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Open picture" onPress={() => void open()} style={styles.pictureCard}>
           <Image
-            accessibilityLabel={message.media_name || "Message image"}
+            accessibilityLabel={message.media_name || "Message picture"}
             source={{ uri: url }}
             resizeMode="cover"
             style={styles.messageImage}
             onError={() => {
               setUrl("");
-              setError("Image link expired. Tap to load it again.");
+              setError("Picture preview expired. Tap to load it again.");
             }}
           />
+          <Text style={[styles.mediaCaption, mine && styles.mediaCaptionMine]}>Picture</Text>
         </Pressable>
-      ) : url && isAudio ? (
-        <View style={[styles.audioPlayback, mine && styles.audioPlaybackMine]}><VoicePlayback uri={url} compact /></View>
+      ) : isAudio && url ? (
+        <View style={[styles.voicePlayback, mine && styles.voicePlaybackMine]}>
+          <VoicePlayback uri={url} compact />
+        </View>
+      ) : isVideo ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Open video" onPress={() => void open()} style={[styles.videoCard, mine && styles.mediaCardMine]}>
+          <View style={styles.videoIcon}><Ionicons name="play" size={22} color="#FFFFFF" /></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={[styles.mediaTitle, mine && styles.mediaTitleMine]}>Video</Text>
+            <Text numberOfLines={1} style={[styles.mediaMeta, mine && styles.mediaMetaMine]}>{message.media_name || "Video"}</Text>
+          </View>
+        </Pressable>
       ) : (
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={`Open ${label}`}
           disabled={busy}
           onPress={() => void open()}
-          style={({ pressed }) => [styles.attachmentButton, mine && styles.attachmentButtonMine, (pressed || busy) && styles.pressed]}
+          style={({ pressed }) => [styles.documentCard, mine && styles.mediaCardMine, (pressed || busy) && styles.pressed]}
         >
-          <Ionicons name={isImage ? "image-outline" : isVideo ? "videocam-outline" : isAudio ? "mic-outline" : "document-outline"} size={19} color={mine ? "#FFFFFF" : theme.deepBrand} />
-          <Text numberOfLines={1} style={[styles.attachmentText, mine && styles.attachmentTextMine]}>{busy ? "Opening…" : message.media_name || "Open attachment"}</Text>
+          <View style={[styles.documentIcon, mine && styles.documentIconMine]}>
+            <Ionicons name={isImage ? "image-outline" : isAudio ? "mic-outline" : "document-text-outline"} size={20} color={mine ? "#FFFFFF" : theme.deepBrand} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={[styles.mediaTitle, mine && styles.mediaTitleMine]}>{busy ? `Opening ${label}…` : message.media_name || label}</Text>
+            <Text style={[styles.mediaMeta, mine && styles.mediaMetaMine]}>{label}</Text>
+          </View>
         </Pressable>
       )}
-      {error ? <Text accessibilityRole="alert" style={[styles.attachmentError, mine && styles.attachmentErrorMine]}>{error}</Text> : null}
+      {error ? <Text accessibilityRole="alert" style={[styles.mediaError, mine && styles.mediaErrorMine]}>{error}</Text> : null}
     </View>
   );
 }
+
+function SelectedMediaPreview({
+  items,
+  onRemove,
+}: {
+  items: DraftMedia[];
+  onRemove: (localId: string) => void;
+}) {
+  const { theme, styles } = useThemeStyles(createStyles);
+  if (!items.length) return null;
+  return (
+    <View style={styles.selectionWrap}>
+      <View style={styles.selectionHeader}>
+        <Text style={styles.selectionTitle}>{items.length} selected</Text>
+        <Text style={styles.selectionMeta}>Maximum 10</Text>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.selectionStrip}>
+        {items.map((item) => (
+          <View key={item.localId} style={styles.selectionItem}>
+            {item.kind === "image" ? (
+              <Image source={{ uri: item.uri }} resizeMode="cover" style={styles.selectionImage} />
+            ) : (
+              <View style={styles.selectionPlaceholder}>
+                <Ionicons name={item.kind === "video" ? "videocam" : "document-text"} size={24} color={theme.deepBrand} />
+                <Text numberOfLines={1} style={styles.selectionPlaceholderText}>{item.kind === "video" ? "Video" : mediaLabel(item.mimeType, item.name)}</Text>
+              </View>
+            )}
+            <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${item.name}`} onPress={() => onRemove(item.localId)} style={styles.selectionRemove}>
+              <Ionicons name="close" size={16} color="#FFFFFF" />
+            </Pressable>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function PendingMediaBubble({
+  batch,
+  onRetry,
+}: {
+  batch: PendingMediaBatch;
+  onRetry: () => void;
+}) {
+  const { theme, styles } = useThemeStyles(createStyles);
+  const sentCount = batch.items.filter((item) => item.sent).length;
+  return (
+    <View style={styles.pendingRow}>
+      <View style={styles.pendingBubble}>
+        {batch.caption ? <Text style={styles.pendingCaption}>{batch.caption}</Text> : null}
+        <View style={styles.pendingGrid}>
+          {batch.items.slice(0, 4).map((item, index) => (
+            <View key={item.localId} style={styles.pendingTile}>
+              {item.kind === "image" ? (
+                <Image source={{ uri: item.uri }} resizeMode="cover" style={styles.pendingImage} />
+              ) : (
+                <View style={styles.pendingPlaceholder}>
+                  <Ionicons name={item.kind === "video" ? "videocam" : "document-text"} size={26} color={theme.deepBrand} />
+                  <Text numberOfLines={1} style={styles.pendingPlaceholderText}>{item.kind === "video" ? "Video" : mediaLabel(item.mimeType, item.name)}</Text>
+                </View>
+              )}
+              {index === 3 && batch.items.length > 4 ? (
+                <View style={styles.pendingMore}><Text style={styles.pendingMoreText}>+{batch.items.length - 4}</Text></View>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      </View>
+      <View style={styles.pendingStatusRow}>
+        {batch.status === "sending" ? (
+          <>
+            <Ionicons name="cloud-upload-outline" size={13} color={theme.textMuted} />
+            <Text style={styles.pendingStatus}>Sending {Math.min(sentCount + 1, batch.items.length)} of {batch.items.length}…</Text>
+          </>
+        ) : (
+          <>
+            <Ionicons name="alert-circle-outline" size={14} color={theme.error} />
+            <Text numberOfLines={1} style={styles.pendingError}>{batch.error || "Couldn’t send media."}</Text>
+            <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retryMediaButton}><Text style={styles.retryMediaText}>Retry</Text></Pressable>
+          </>
+        )}
+      </View>
+    </View>
+  );
+}
+
 
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -130,11 +324,12 @@ export default function ConversationScreen() {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
-  const [attachment, setAttachment] = useState<{ id: string; name: string } | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<DraftMedia[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pendingMedia, setPendingMedia] = useState<PendingMediaBatch[]>([]);
   const [voiceActive, setVoiceActive] = useState(false);
-  const pending = useRef<{ id: string; body: string; mediaId?: string } | null>(null);
+  const pending = useRef<{ id: string; body: string } | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
   const initialScrollDone = useRef(false);
 
@@ -180,48 +375,193 @@ export default function ConversationScreen() {
     }
   }
 
-  async function chooseFile() {
-    if (uploading) return;
-    setUploading(true);
+  function addSelectedMedia(items: DraftMedia[]) {
+    setSelectedMedia((current) => {
+      const room = Math.max(0, 10 - current.length);
+      if (!room) {
+        setError("You can send up to 10 pictures, videos or documents at once.");
+        return current;
+      }
+      const next = [...current, ...items.slice(0, room)];
+      if (items.length > room) setError("Only the first 10 selected items were added.");
+      else setError("");
+      return next;
+    });
+    setPickerOpen(false);
+  }
+
+  async function chooseMedia() {
+    if (selectedMedia.length >= 10) {
+      setError("You can send up to 10 pictures or videos at once.");
+      return;
+    }
+    setError("");
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) throw new Error("Allow photo access to send pictures and videos.");
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images", "videos"],
+        allowsMultipleSelection: true,
+        selectionLimit: Math.max(1, 10 - selectedMedia.length),
+        quality: 1,
+      });
+      if (picked.canceled) return;
+      const files: DraftMedia[] = picked.assets.map((asset) => {
+        const kind = asset.type === "video" ? "video" : "image";
+        const mimeType = asset.mimeType || (kind === "video" ? "video/mp4" : "image/jpeg");
+        const size = asset.fileSize ?? null;
+        if (size && size > (kind === "video" ? 50 : 10) * 1024 * 1024) {
+          throw new Error(kind === "video" ? "Choose videos smaller than 50 MB." : "Choose pictures smaller than 10 MB.");
+        }
+        return {
+          localId: Crypto.randomUUID(),
+          uri: asset.uri,
+          name: asset.fileName || `${kind}-${Date.now()}.${kind === "video" ? "mp4" : "jpg"}`,
+          mimeType,
+          size,
+          kind,
+        };
+      });
+      addSelectedMedia(files);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Pictures or videos could not be selected.");
+    }
+  }
+
+  async function chooseDocument() {
+    if (selectedMedia.length >= 10) {
+      setError("You can send up to 10 items at once.");
+      return;
+    }
     setError("");
     try {
       const picked = await DocumentPicker.getDocumentAsync({
-        type: ["application/pdf", "image/jpeg", "image/png", "image/webp", "audio/mpeg", "audio/mp4", "audio/wav", "video/mp4", "video/webm"],
-        multiple: false,
+        type: [
+          "application/pdf",
+          "application/msword",
+          "application/vnd.ms-excel",
+          "application/vnd.ms-powerpoint",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          "application/vnd.oasis.opendocument.text",
+          "application/vnd.oasis.opendocument.spreadsheet",
+          "application/vnd.oasis.opendocument.presentation",
+          "text/plain",
+          "text/csv",
+          "application/rtf",
+          "text/rtf",
+        ],
+        multiple: true,
         copyToCacheDirectory: true,
       });
       if (picked.canceled) return;
-      const file = picked.assets[0];
-      if (!file) return;
-      if (!file.size || file.size > 50 * 1024 * 1024) throw new Error("Choose a file smaller than 50 MB; images and PDFs must be smaller than 10 MB.");
-      const body = Platform.OS === "web" ? await (await fetch(file.uri)).blob() : new (await import("expo-file-system")).File(file.uri) as unknown as Blob;
-      const result = await api<{ id: string }>(`/v1/media?kind=message&name=${encodeURIComponent(file.name)}`, {
-        method: "POST",
-        body,
-        headers: { "Content-Type": file.mimeType || body.type || "application/octet-stream" },
-        timeoutMs: 180_000,
+      const files = picked.assets.map<DraftMedia>((asset) => {
+        if (asset.size && asset.size > 10 * 1024 * 1024) throw new Error("Choose documents smaller than 10 MB.");
+        return {
+          localId: Crypto.randomUUID(),
+          uri: asset.uri,
+          name: asset.name,
+          mimeType: guessDocumentMime(asset.name, asset.mimeType),
+          size: asset.size,
+          kind: "document",
+        };
       });
-      setAttachment({ id: result.id, name: file.name });
+      addSelectedMedia(files);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Attachment upload failed.");
-    } finally {
-      setUploading(false);
+      setError(caught instanceof Error ? caught.message : "Document could not be selected.");
+    }
+  }
+
+  async function uploadMedia(item: PendingMediaItem) {
+    if (item.mediaId) return item.mediaId;
+    const body = Platform.OS === "web"
+      ? await (await fetch(item.uri)).blob()
+      : new (await import("expo-file-system")).File(item.uri) as unknown as Blob;
+    const result = await api<{ id: string }>(`/v1/media?kind=message&name=${encodeURIComponent(item.name)}`, {
+      method: "POST",
+      body,
+      headers: { "Content-Type": item.mimeType || body.type || "application/octet-stream" },
+      timeoutMs: 180_000,
+    });
+    return result.id;
+  }
+
+  async function processMediaBatch(initialBatch: PendingMediaBatch) {
+    let working = {
+      ...initialBatch,
+      status: "sending" as const,
+      error: undefined,
+      items: initialBatch.items.map((item) => ({ ...item })),
+    };
+    setPendingMedia((current) => current.map((batch) => batch.id === working.id ? working : batch));
+
+    try {
+      for (let index = 0; index < working.items.length; index += 1) {
+        let item = working.items[index]!;
+        if (item.sent) continue;
+        const mediaId = await uploadMedia(item);
+        item = { ...item, mediaId };
+        working.items[index] = item;
+        setPendingMedia((current) => current.map((batch) => batch.id === working.id ? { ...working, items: [...working.items] } : batch));
+
+        await api(`/v1/messages/threads/${id}/messages`, {
+          method: "POST",
+          body: JSON.stringify({
+            id: item.messageId,
+            body: index === 0 ? working.caption : "",
+            mediaId,
+          }),
+        });
+
+        working.items[index] = { ...item, sent: true };
+        setPendingMedia((current) => current.map((batch) => batch.id === working.id ? { ...working, items: [...working.items] } : batch));
+      }
+
+      await load();
+      setPendingMedia((current) => current.filter((batch) => batch.id !== working.id));
+      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Media could not be sent.";
+      working = { ...working, status: "failed", error: message };
+      setPendingMedia((current) => current.map((batch) => batch.id === working.id ? { ...working, items: [...working.items] } : batch));
     }
   }
 
   async function send() {
-    if ((!draft.trim() && !attachment) || sending) return;
+    const caption = draft.trim();
+    if ((!caption && !selectedMedia.length) || sending) return;
+
+    if (selectedMedia.length) {
+      const batch: PendingMediaBatch = {
+        id: Crypto.randomUUID(),
+        caption,
+        status: "sending",
+        items: selectedMedia.map((item) => ({
+          ...item,
+          messageId: Crypto.randomUUID(),
+          sent: false,
+        })),
+      };
+      setDraft("");
+      setSelectedMedia([]);
+      setPickerOpen(false);
+      setPendingMedia((current) => [...current, batch]);
+      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+      void processMediaBatch(batch);
+      return;
+    }
+
     setSending(true);
     setError("");
-    const message = pending.current?.body === draft.trim() && pending.current?.mediaId === attachment?.id
+    const message = pending.current?.body === caption
       ? pending.current
-      : { id: Crypto.randomUUID(), body: draft.trim(), ...(attachment ? { mediaId: attachment.id } : {}) };
+      : { id: Crypto.randomUUID(), body: caption };
     pending.current = message;
     try {
       await api(`/v1/messages/threads/${id}/messages`, { method: "POST", body: JSON.stringify(message) });
       pending.current = null;
       setDraft("");
-      setAttachment(null);
       await load();
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (caught) {
@@ -253,7 +593,7 @@ export default function ConversationScreen() {
   const tutorExpired = data?.thread.kind === "TUTOR" && !data.thread.access_ends_at;
   const canSend = !tutorExpired && (data?.thread.status === "ACCEPTED" || (data?.thread.status === "REQUESTED" && !incoming && data.messages.length === 0));
   const canAttach = data?.thread.status === "ACCEPTED";
-  const locked = sending || uploading || actionBusy;
+  const locked = sending || actionBusy;
   const peerName = data?.profile?.display_name || "Conversation";
   const handleVoiceActive = useCallback((active: boolean) => {
     setVoiceActive(active);
@@ -324,16 +664,23 @@ export default function ConversationScreen() {
                   ) : null}
                 </View>
               )}
-              ListEmptyComponent={(
+              ListEmptyComponent={pendingMedia.length ? null : (
                 <View style={styles.emptyState}>
                   <View style={styles.emptyIcon}><Ionicons name="chatbubble-ellipses-outline" size={29} color={theme.deepBrand} /></View>
                   <Text style={styles.emptyTitle}>Start the conversation</Text>
                   <Text style={styles.emptyBody}>Send a message to {peerName}. Keep it clear and respectful.</Text>
                 </View>
               )}
+              ListFooterComponent={pendingMedia.length ? (
+                <View style={styles.pendingList}>
+                  {pendingMedia.map((batch) => (
+                    <PendingMediaBubble key={batch.id} batch={batch} onRetry={() => void processMediaBatch(batch)} />
+                  ))}
+                </View>
+              ) : null}
               renderItem={({ item }) => {
                 const mine = item.sender_id === user?.id;
-                const showBody = item.body && !(item.body === "Attachment" && item.media_id);
+                const showBody = shouldShowBody(item);
                 return (
                   <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
                     <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
@@ -354,7 +701,7 @@ export default function ConversationScreen() {
             <View style={styles.requestDock}>
               <View style={styles.requestCopy}>
                 <Text style={styles.requestTitle}>Message request</Text>
-                <Text style={styles.requestBody}>Accept to reply and share attachments.</Text>
+                <Text style={styles.requestBody}>Accept to reply and share pictures, videos, voice notes and documents.</Text>
               </View>
               <View style={styles.requestActions}>
                 <Pressable accessibilityRole="button" disabled={actionBusy} onPress={() => void accept(false)} style={({ pressed }) => [styles.declineButton, (pressed || actionBusy) && styles.disabled]}>
@@ -367,12 +714,25 @@ export default function ConversationScreen() {
             </View>
           ) : canSend ? (
             <View style={styles.composerDock}>
-              {attachment ? (
-                <View style={styles.attachmentDraft}>
-                  <Ionicons name="attach" size={18} color={theme.deepBrand} />
-                  <Text numberOfLines={1} style={styles.attachmentDraftText}>{attachment.name}</Text>
-                  <Pressable accessibilityRole="button" accessibilityLabel="Remove attachment" disabled={sending} onPress={() => setAttachment(null)} style={styles.attachmentDraftClose}>
-                    <Ionicons name="close" size={18} color={theme.textMuted} />
+              <SelectedMediaPreview
+                items={selectedMedia}
+                onRemove={(localId) => setSelectedMedia((current) => current.filter((item) => item.localId !== localId))}
+              />
+              {pickerOpen && !voiceActive ? (
+                <View style={styles.pickerMenu}>
+                  <Pressable accessibilityRole="button" onPress={() => void chooseMedia()} style={({ pressed }) => [styles.pickerAction, pressed && styles.pressed]}>
+                    <View style={styles.pickerActionIcon}><Ionicons name="images-outline" size={20} color={theme.deepBrand} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.pickerActionTitle}>Pictures & videos</Text>
+                      <Text style={styles.pickerActionMeta}>Select up to 10 and send immediately</Text>
+                    </View>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" onPress={() => void chooseDocument()} style={({ pressed }) => [styles.pickerAction, pressed && styles.pressed]}>
+                    <View style={styles.pickerActionIcon}><Ionicons name="document-text-outline" size={20} color={theme.deepBrand} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.pickerActionTitle}>Document</Text>
+                      <Text style={styles.pickerActionMeta}>PDF, Word, Excel, PowerPoint and more</Text>
+                    </View>
                   </Pressable>
                 </View>
               ) : null}
@@ -380,12 +740,12 @@ export default function ConversationScreen() {
                 {!voiceActive ? (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Attach file"
-                    disabled={!canAttach || locked}
-                    onPress={() => void chooseFile()}
-                    style={({ pressed }) => [styles.plusButton, (!canAttach || locked) && styles.disabled, pressed && styles.pressed]}
+                    accessibilityLabel={pickerOpen ? "Close media menu" : "Add picture, video or document"}
+                    disabled={!canAttach || actionBusy}
+                    onPress={() => setPickerOpen((value) => !value)}
+                    style={({ pressed }) => [styles.plusButton, (!canAttach || actionBusy) && styles.disabled, pressed && styles.pressed]}
                   >
-                    <Ionicons name={uploading ? "cloud-upload-outline" : "add"} size={24} color={theme.text} />
+                    <Ionicons name={pickerOpen ? "close" : "add"} size={24} color={theme.text} />
                   </Pressable>
                 ) : null}
                 {!voiceActive ? (
@@ -401,7 +761,7 @@ export default function ConversationScreen() {
                     style={styles.composerInput}
                   />
                 ) : null}
-                {canAttach && !draft.trim() && !attachment ? (
+                {canAttach && !draft.trim() && !selectedMedia.length ? (
                   <MessageVoice
                     compact
                     disabled={locked}
@@ -411,13 +771,13 @@ export default function ConversationScreen() {
                     }}
                   />
                 ) : null}
-                {!voiceActive && (!canAttach || Boolean(draft.trim()) || Boolean(attachment)) ? (
+                {!voiceActive && (!canAttach || Boolean(draft.trim()) || Boolean(selectedMedia.length)) ? (
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Send message"
-                    disabled={sending || (!draft.trim() && !attachment)}
+                    disabled={sending || (!draft.trim() && !selectedMedia.length)}
                     onPress={() => void send()}
-                    style={({ pressed }) => [styles.sendButton, (sending || (!draft.trim() && !attachment)) && styles.sendDisabled, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.sendButton, (sending || (!draft.trim() && !selectedMedia.length)) && styles.sendDisabled, pressed && styles.pressed]}
                   >
                     <Ionicons name={sending ? "hourglass-outline" : "send"} size={19} color="#FFFFFF" />
                   </Pressable>
@@ -469,25 +829,62 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   messageMeta: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 3 },
   messageMetaMine: { justifyContent: "flex-end" },
   messageTime: { color: theme.textFaint, fontFamily: theme.font.body, fontSize: 10 },
-  attachmentWrap: { marginTop: 6, gap: 5 },
-  attachmentButton: { minHeight: 40, maxWidth: 230, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, paddingHorizontal: 10, backgroundColor: theme.surfaceMuted },
-  attachmentButtonMine: { backgroundColor: "rgba(255,255,255,0.14)" },
-  attachmentText: { flex: 1, color: theme.deepBrand, fontFamily: theme.font.medium, fontSize: 12 },
-  attachmentTextMine: { color: "#FFFFFF" },
-  attachmentError: { color: theme.error, fontFamily: theme.font.body, fontSize: 10, lineHeight: 14 },
-  attachmentErrorMine: { color: "#FFE5DC" },
+  mediaWrap: { marginTop: 5, gap: 5, minWidth: 180 },
+  pictureCard: { gap: 5 },
   messageImage: { width: 230, height: 180, borderRadius: 12, backgroundColor: theme.surfaceMuted },
-  audioPlayback: { alignSelf: "flex-start", backgroundColor: theme.surfaceMuted, borderRadius: 18, padding: 4 },
-  audioPlaybackMine: { backgroundColor: "rgba(255,255,255,0.14)" },
+  mediaCaption: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 10 },
+  mediaCaptionMine: { color: "rgba(255,255,255,0.82)" },
+  voicePlayback: { minWidth: 230, alignSelf: "stretch", backgroundColor: theme.surfaceMuted, borderRadius: 16, padding: 4 },
+  voicePlaybackMine: { backgroundColor: "rgba(255,255,255,0.14)" },
+  videoCard: { minHeight: 72, maxWidth: 240, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 14, padding: 9, backgroundColor: theme.surfaceMuted },
+  videoIcon: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: theme.deepBrand },
+  documentCard: { minHeight: 58, maxWidth: 250, flexDirection: "row", alignItems: "center", gap: 9, borderRadius: 13, padding: 8, backgroundColor: theme.surfaceMuted },
+  mediaCardMine: { backgroundColor: "rgba(255,255,255,0.14)" },
+  documentIcon: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: theme.surface },
+  documentIconMine: { backgroundColor: "rgba(255,255,255,0.12)" },
+  mediaTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 12 },
+  mediaTitleMine: { color: "#FFFFFF" },
+  mediaMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10, marginTop: 2 },
+  mediaMetaMine: { color: "rgba(255,255,255,0.78)" },
+  mediaError: { color: theme.error, fontFamily: theme.font.body, fontSize: 10, lineHeight: 14 },
+  mediaErrorMine: { color: "#FFE5DC" },
+  pendingList: { gap: 12, paddingTop: 4 },
+  pendingRow: { alignSelf: "flex-end", maxWidth: "82%", alignItems: "flex-end", gap: 4 },
+  pendingBubble: { minWidth: 190, maxWidth: 250, padding: 8, borderRadius: 18, borderBottomRightRadius: 6, backgroundColor: theme.deepBrand, gap: 7 },
+  pendingCaption: { color: "#FFFFFF", fontFamily: theme.font.body, fontSize: 14, lineHeight: 20 },
+  pendingGrid: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  pendingTile: { width: 108, height: 86, borderRadius: 10, overflow: "hidden", backgroundColor: theme.surfaceMuted },
+  pendingImage: { width: "100%", height: "100%" },
+  pendingPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", gap: 5, padding: 6, backgroundColor: "#FFFFFF" },
+  pendingPlaceholderText: { color: theme.deepBrand, fontFamily: theme.font.medium, fontSize: 10 },
+  pendingMore: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.52)" },
+  pendingMoreText: { color: "#FFFFFF", fontFamily: theme.font.bold, fontSize: 22 },
+  pendingStatusRow: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: 250, paddingHorizontal: 3 },
+  pendingStatus: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10 },
+  pendingError: { flex: 1, color: theme.error, fontFamily: theme.font.body, fontSize: 10 },
+  retryMediaButton: { minHeight: 28, paddingHorizontal: 8, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.surfaceMuted },
+  retryMediaText: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 10 },
   composerDock: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, backgroundColor: theme.canvas, gap: 7 },
+  pickerMenu: { borderRadius: 16, padding: 6, gap: 3, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
+  pickerAction: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 7 },
+  pickerActionIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: theme.surfaceMuted },
+  pickerActionTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 13 },
+  pickerActionMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10, marginTop: 2 },
+  selectionWrap: { gap: 6 },
+  selectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2 },
+  selectionTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 11 },
+  selectionMeta: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10 },
+  selectionStrip: { gap: 7, paddingRight: 8 },
+  selectionItem: { width: 74, height: 74, borderRadius: 12, overflow: "hidden", backgroundColor: theme.surfaceMuted, position: "relative" },
+  selectionImage: { width: "100%", height: "100%" },
+  selectionPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", gap: 4, padding: 5 },
+  selectionPlaceholderText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 9 },
+  selectionRemove: { position: "absolute", right: 4, top: 4, width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.65)" },
   composerBar: { minHeight: 50, flexDirection: "row", alignItems: "flex-end", gap: 4 },
   plusButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: theme.surfaceMuted, marginBottom: 3 },
   composerInput: { flex: 1, minHeight: 44, maxHeight: 118, borderRadius: 22, paddingHorizontal: 15, paddingTop: Platform.OS === "ios" ? 12 : 10, paddingBottom: 10, color: theme.text, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border, fontFamily: theme.font.body, fontSize: 14, lineHeight: 20 },
   sendButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: theme.deepBrand, marginBottom: 3 },
   sendDisabled: { backgroundColor: theme.peach, opacity: 0.72 },
-  attachmentDraft: { minHeight: 38, maxWidth: "100%", alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 7, paddingLeft: 11, paddingRight: 4, borderRadius: 12, backgroundColor: theme.surfaceMuted },
-  attachmentDraftText: { maxWidth: 260, color: theme.text, fontFamily: theme.font.medium, fontSize: 12 },
-  attachmentDraftClose: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
   requestDock: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8, backgroundColor: theme.canvas, gap: 10 },
   requestCopy: { gap: 2 },
   requestTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 14 },
