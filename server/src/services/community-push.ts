@@ -55,7 +55,7 @@ export async function deliverCommunityPush(env:Bindings){
     body:row.body,
     path:notice?.path??'/notifications',
     id:attempt.id,
-    notificationId:notice?.id,
+    ...(notice?.id?{notificationId:notice.id}:{}),
     preferenceCategory:category,
    });
    await db.execute(sql`update app_private.community_push_deliveries set status=${result.status},ticket_id=${result.ticketId??null},error_code=${result.errorCode??null} where id=${attempt.id}::uuid`);
