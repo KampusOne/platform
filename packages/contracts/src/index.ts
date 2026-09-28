@@ -607,7 +607,7 @@ export type GpaTermInput = z.infer<typeof gpaTermSchema>;
 export type AgentApplicationInput = z.infer<typeof agentApplicationSchema>;
 
 
-// Direct-message uploads are private and are authorized again on every read.
+// Direct-message interaction inputs shared by mobile and the Worker.
 export const directMessageReactionSchema = z.enum(["😂", "❤️", "👍", "😮", "😭", "🔥"]);
 
 export const directMessageReportReasonSchema = z.enum([
