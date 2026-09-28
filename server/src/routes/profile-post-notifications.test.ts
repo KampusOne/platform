@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono, type Context, type Next } from "hono";
+import { sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { AppError } from "../lib/errors";
 import type { Bindings, Variables } from "../types";
@@ -8,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
   ready: vi.fn(),
   unblocked: vi.fn(),
+  relationship: vi.fn(),
+  visible: vi.fn(),
   user: {
     id: "11111111-1111-4111-8111-111111111111",
     universityId: "22222222-2222-4222-8222-222222222222",
@@ -23,6 +26,8 @@ vi.mock("../lib/database", () => ({
 vi.mock("../lib/profile-safety", () => ({
   requireProfileSafety: vi.fn(),
   requireUnblocked: mocks.unblocked,
+  blockRelationship: mocks.relationship,
+  unblockedAuthor: mocks.visible,
 }));
 vi.mock("../lib/student-ai-policy", () => ({ studentExperienceReady: async () => true }));
 vi.mock("../services/profile-post-notifications", () => ({
@@ -58,6 +63,10 @@ beforeEach(() => {
   mocks.ready.mockResolvedValue(true);
   mocks.unblocked.mockReset();
   mocks.unblocked.mockResolvedValue(undefined);
+  mocks.relationship.mockReset();
+  mocks.relationship.mockResolvedValue("NONE");
+  mocks.visible.mockReset();
+  mocks.visible.mockImplementation(() => sql`true`);
 });
 
 describe("profile post notification subscriptions", () => {
