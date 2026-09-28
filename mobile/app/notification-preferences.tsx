@@ -8,7 +8,7 @@ import { useAppearance } from '@/src/lib/appearance';
 import { useToast } from '@/src/components/toast';
 import { useAuth } from '@/src/auth/auth-context';
 import { getRegisteredPushDevice, pushSetupAvailability, registerPushDevice } from '@/src/lib/push-registration';
-const choices=[['likes','Post likes'],['commentLikes','Comment likes'],['comments','Comments on your posts'],['replies','Replies to your comments'],['reposts','Reposts'],['quotes','Quote posts'],['follows','New followers'],['messages','Messages'],['profilePosts','Profile subscriptions'],['classReminders','Classes and reminders'],['announcements','Community announcements'],['campusUpdates','Important campus updates']] as const;
+const choices=[['likes','Post likes'],['commentLikes','Comment likes'],['comments','Comments on your posts'],['replies','Replies to your comments'],['reposts','Reposts'],['quotes','Quote posts'],['follows','New followers'],['messages','Messages'],['profilePosts','Profile subscriptions'],['classReminders','Classes and reminders'],['announcements','Community announcements'],['newsletter','KampusOne Newsletter'],['campusUpdates','Important campus updates']] as const;
 type Category=(typeof choices)[number][0]|'security';
 type Channels=Record<Category,{in_app_enabled:boolean;push_enabled:boolean}>;
 export default function NotificationPreferences(){
