@@ -934,8 +934,9 @@ studentRoutes.get("/tutorials", async (context) => {
       where listings.university_id = ${universityId}::uuid
         and listings.status = 'PUBLISHED' and listings.review_status = 'APPROVED'
         and listings.deleted_at is null
+        and listings.is_demo = false
         and (${paidAccessEnabled} or listings.price_kobo = 0)
-        and (listings.is_demo or profiles.status = 'ACTIVE')
+        and profiles.status = 'ACTIVE'
         and (${search}::text is null or listings.title ilike ${search}
           or listings.course_code ilike ${search}
           or coalesce(profiles.display_name, listings.publisher_name, '') ilike ${search})
@@ -948,7 +949,7 @@ studentRoutes.get("/tutorials", async (context) => {
                 (window_bookings.status = 'PENDING_PAYMENT' and window_bookings.payment_expires_at > now())
               )) < least(windows.capacity, listings.capacity)
         )
-      order by listings.is_demo desc, listings.updated_at desc limit 100
+      order by listings.updated_at desc limit 100
     `),
     database(context.env).execute(sql`
       select resources.id, resources.listing_id, resources.course_code, resources.title,
@@ -962,12 +963,13 @@ studentRoutes.get("/tutorials", async (context) => {
       from public.tutorial_resources resources
       where resources.university_id = ${universityId}::uuid
         and resources.status = 'PUBLISHED' and resources.deleted_at is null
+        and resources.is_demo = false
         and (${paidAccessEnabled} or resources.access_model <> 'PAID')
         and (${resourceType ?? null}::text is null or resources.resource_type = ${resourceType ?? null})
         and (${search}::text is null or resources.title ilike ${search}
           or resources.description ilike ${search} or resources.course_code ilike ${search}
           or resources.publisher_name ilike ${search})
-      order by resources.is_demo desc, resources.updated_at desc limit 150
+      order by resources.updated_at desc limit 150
     `),
   ]);
   return context.json({ listings: listings.rows, resources: resources.rows });
@@ -1006,6 +1008,7 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
     where resources.id = ${context.req.param("id")}::uuid
       and resources.university_id = ${requireUniversity(user)}::uuid
       and resources.status = 'PUBLISHED' and resources.deleted_at is null
+      and resources.is_demo = false
     limit 1
   `);
   const resource = firstRow(result);
