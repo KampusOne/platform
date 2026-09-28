@@ -4,7 +4,7 @@ import { z } from "@kampusone/contracts";
 import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import { currentUser, requireAuth } from "../middleware/auth";
-import { unblockedAuthorIfReady } from "../lib/profile-safety";
+import { unblockedAuthor } from "../lib/profile-safety";
 import { feedSocialRoutes } from "./feed-social";
 import { feedLikeRoutes } from "./feed-likes";
 import { feedCommentLikeRoutes } from "./feed-comment-likes";
@@ -36,7 +36,7 @@ feedPostRoutes.get("/:id", requireAuth, async (context) => {
   const user = currentUser(context);
   const id = postId(context.req.param("id"));
   const campus = universityId(user);
-  const authorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`posts.author_user_id`);
+  const authorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   const result = await database(context.env).execute(sql`
     select posts.id, posts.category, posts.title, posts.summary, posts.body,
       posts.image_url, posts.urgent, posts.sponsored, posts.published_at,
