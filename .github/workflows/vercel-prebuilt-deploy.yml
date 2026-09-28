@@ -33,7 +33,14 @@ jobs:
       - name: Build locally for Vercel
         run: npx --yes vercel@latest build --prod --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Deploy prebuilt portal
-        run: npx --yes vercel@latest deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}"
+        id: deploy
+        run: |
+          url="$(npx --yes vercel@latest deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Point agent and administration aliases
+        run: |
+          npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" agents.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
+          npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" a7f3c9e1b6d2f8a4c5e9b1d7f3a6c2e8.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
 
   mobile-preview:
     name: Mobile preview production
@@ -55,3 +62,5 @@ jobs:
         run: npx --yes vercel@latest build --prod --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Deploy prebuilt mobile preview
         run: npx --yes vercel@latest deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}"
+
+# Triggered for the verified 2026-09-28 portal/mobile release.
