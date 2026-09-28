@@ -13,10 +13,12 @@ const PATH = [0, 0.25, 0.5, 0.75, 1];
 
 type Corner = { x: number; y: number };
 
-function phasedPath(corners: Corner[], phase: number) {
+function phasedPath(corners: Corner[], phase: number): Corner[] {
+  if (!corners.length) return [{ x: 0, y: 0 }];
   const start = phase % corners.length;
   const ordered = [...corners.slice(start), ...corners.slice(0, start)];
-  return [...ordered, ordered[0]];
+  const first = ordered[0] ?? corners[0] ?? { x: 0, y: 0 };
+  return [...ordered, first];
 }
 
 function SoftLight({
