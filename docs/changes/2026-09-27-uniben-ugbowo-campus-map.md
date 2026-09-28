@@ -1,4 +1,4 @@
-# UNIBEN Ugbowo campus map checkpoint — 2026-09-27
+> **Superseded on 2026-09-28:** the diagram-style coordinate layer and synthetic POI-to-POI routing described below have been replaced by the live MapLibre/OSM navigation architecture in `docs/decisions/20260928-campus-navigation.md`. This file is retained as the earlier checkpoint.\n\n# UNIBEN Ugbowo campus map checkpoint — 2026-09-27
 
 ## Goal
 
