@@ -45,7 +45,8 @@
     "expo-clipboard": "~57.0.2",
     "expo-splash-screen": "~57.0.8",
     "expo-file-system": "~57.0.6",
-    "@vercel/functions": "3.9.9"
+    "@vercel/functions": "3.9.9",
+    "expo-location": "~57.0.19"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

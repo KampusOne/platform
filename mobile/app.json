@@ -27,7 +27,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.SCHEDULE_EXACT_ALARM"
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "softwareKeyboardLayoutMode": "pan",
       "versionCode": 40
@@ -69,7 +71,13 @@
         }
       ],
       "./plugins/with-kampus-alarms",
-      "./plugins/with-branded-video-trim"
+      "./plugins/with-branded-video-trim",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow KampusOne to use your location while you navigate around campus."
+        }
+      ]
     ],
     "extra": {
       "apiUrl": "https://kampusone-mobile-preview.vercel.app/api",
