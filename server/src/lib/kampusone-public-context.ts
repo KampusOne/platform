@@ -61,7 +61,8 @@ export function isRestrictedKampusOneRequest(prompt: string): boolean {
   const value = prompt.toLowerCase();
   const hardRestricted = /\b(api\s*key|secret(?:s)?|access\s*token|private\s*token|password|credential(?:s)?|admin\s*(?:dashboard|panel|portal|url|link)|engineering\s*(?:dashboard|panel|portal|url|link)|internal\s*(?:endpoint|url|route|config(?:uration)?|prompt)|system\s*prompt|source\s*code|github\s*(?:repo|repository))\b/i.test(value)
     || /\bhow\s+(?:is|was)\s+(?:kampusone|kira)\s+built\b/i.test(value)
-    || /\bwhat\s+(?:models?|providers?|frameworks?|languages?)\s+(?:are\s+)?(?:we|you)\s+(?:using|running)\b/i.test(value);
+    || /\bwhat\s+(?:(?:models?|providers?|frameworks?|languages?)(?:\s+and\s+(?:models?|providers?|frameworks?|languages?))*)\s+(?:are\s+)?(?:we|you)\s+(?:using|running)\b/i.test(value)
+    || /\bwhat\s+(?:model|provider|stack|framework|language)s?\b[^?]{0,60}\b(?:are\s+you|do\s+you)\s+(?:use|using|run|running)\b/i.test(value);
   if (hardRestricted) return true;
 
   const productReferent = /\b(kampusone|kira|this\s+app|this\s+platform|your\s+(?:app|platform|backend|server|system|model)|what\s+(?:model|provider|stack|framework|language)s?\s+(?:are\s+you|do\s+you)|backend|frontend)\b/i.test(value);
