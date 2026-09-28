@@ -28,6 +28,7 @@ import {
   formatDuration,
   isInsideCampus,
   mapCampusPlace,
+  shouldRefreshWalkingRoute,
   type CampusDirectoryResponse,
   type CampusLocation,
   type CampusWalkingRoute,
@@ -342,8 +343,15 @@ export default function CampusMapScreen() {
       return;
     }
     const current: LngLat = [userLocation.longitude, userLocation.latitude];
-    const moved = distanceMetres(routeOriginRef.current, current);
-    if (moved < 30 || Date.now() - routeAtRef.current < 12_000) return;
+    if (
+      !shouldRefreshWalkingRoute(
+        routeOriginRef.current,
+        current,
+        routeAtRef.current,
+      )
+    ) {
+      return;
+    }
     void fetchRoute(routeDestination, true);
   }, [
     fetchRoute,
