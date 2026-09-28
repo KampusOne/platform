@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   AppState,
   FlatList,
   Image,
   Keyboard,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -20,13 +23,22 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Crypto from "expo-crypto";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
+import { BlurTargetView } from "expo-blur";
 import { MessageVoice, VoicePlayback } from "@/src/components/message-voice";
+import {
+  MessageActionOverlay,
+  SwipeReplyMessage,
+  type MessageActionTarget,
+  type MessageReaction,
+} from "@/src/components/message-interactions";
 import { ProfileActions } from "@/src/components/profile-actions";
 import { ProfileAvatar } from "@/src/components/profile-avatar";
 import { SkeletonBlock } from "@/src/components/skeleton";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
+
+type ReactionSummary = { reaction: MessageReaction; count: number };
 
 type Message = {
   id: string;
@@ -37,6 +49,29 @@ type Message = {
   media_id: string | null;
   media_type: string | null;
   media_name: string | null;
+  reply_to_message_id: string | null;
+  reply_sender_id: string | null;
+  reply_body: string | null;
+  reply_media_id: string | null;
+  reply_media_type: string | null;
+  reply_media_name: string | null;
+  reply_unsent_at: string | null;
+  forwarded_from_message_id: string | null;
+  unsent_at: string | null;
+  unsent_by: string | null;
+  pinned: boolean;
+  reactions: ReactionSummary[];
+  my_reaction: MessageReaction | null;
+};
+
+type PinnedMessage = {
+  id: string;
+  sender_id: string;
+  body: string;
+  media_id: string | null;
+  media_type: string | null;
+  media_name: string | null;
+  unsent_at: string | null;
 };
 type Data = {
   thread: {
@@ -48,8 +83,12 @@ type Data = {
   };
   profile: { user_id: string; display_name: string; profile_image_url?: string | null };
   messages: Message[];
+  pinnedMessage: PinnedMessage | null;
   nextCursor: string | null;
 };
+
+type ForwardThread = { id: string; display_name: string; profile_image_url?: string | null; status: string };
+type ForwardInbox = { threads: ForwardThread[] };
 
 type DraftMedia = {
   localId: string;
@@ -72,6 +111,7 @@ type PendingMediaBatch = {
   items: PendingMediaItem[];
   status: "sending" | "failed";
   error?: string | undefined;
+  replyToMessageId?: string;
 };
 
 function mediaLabel(type?: string | null, name?: string | null) {
@@ -82,6 +122,22 @@ function mediaLabel(type?: string | null, name?: string | null) {
   if (mime === "application/pdf" || name?.toLowerCase().endsWith(".pdf")) return "PDF";
   return "Document";
 }
+
+function messagePreview(message: Pick<Message, "body" | "media_id" | "media_type" | "media_name" | "unsent_at"> | PinnedMessage) {
+  if (message.unsent_at) return "Message unsent";
+  const body = message.body?.trim() || "";
+  const fallback = message.media_id ? mediaLabel(message.media_type, message.media_name) : "";
+  if (message.media_id && (!body || body === "Attachment" || body === fallback)) return fallback;
+  return body || "Message";
+}
+
+const reportReasons = [
+  { value: "SPAM", label: "Spam" },
+  { value: "HARASSMENT", label: "Harassment" },
+  { value: "HATE_OR_ABUSE", label: "Hate or abuse" },
+  { value: "SCAM", label: "Scam or fraud" },
+  { value: "OTHER", label: "Something else" },
+] as const;
 
 function guessDocumentMime(name: string, mime?: string | null) {
   if (mime && mime !== "application/octet-stream") return mime;
@@ -415,12 +471,23 @@ export default function ConversationScreen() {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [messageActionBusy, setMessageActionBusy] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<DraftMedia[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingMedia, setPendingMedia] = useState<PendingMediaBatch[]>([]);
   const [voiceActive, setVoiceActive] = useState(false);
-  const pending = useRef<{ id: string; body: string } | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [actionTarget, setActionTarget] = useState<MessageActionTarget | null>(null);
+  const [forwardTarget, setForwardTarget] = useState<Message | null>(null);
+  const [forwardThreads, setForwardThreads] = useState<ForwardThread[]>([]);
+  const [forwardLoading, setForwardLoading] = useState(false);
+  const [forwardBusyId, setForwardBusyId] = useState<string | null>(null);
+  const [reportTarget, setReportTarget] = useState<Message | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
+  const pending = useRef<{ id: string; body: string; replyToMessageId?: string } | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
+  const inputRef = useRef<TextInput>(null);
+  const blurTargetRef = useRef<View | null>(null);
   const initialScrollDone = useRef(false);
 
   const load = useCallback(async (before?: string) => {
@@ -608,6 +675,9 @@ export default function ConversationScreen() {
             id: item.messageId,
             body: index === 0 ? working.caption : "",
             mediaId: item.mediaId,
+            ...(index === 0 && working.replyToMessageId
+              ? { replyToMessageId: working.replyToMessageId }
+              : {}),
           }),
         });
         working.items[index] = { ...item, sent: true };
@@ -633,6 +703,7 @@ export default function ConversationScreen() {
         id: Crypto.randomUUID(),
         caption,
         status: "sending",
+        ...(replyingTo?.id ? { replyToMessageId: replyingTo.id } : {}),
         items: selectedMedia.map((item) => ({
           ...item,
           messageId: Crypto.randomUUID(),
@@ -642,6 +713,7 @@ export default function ConversationScreen() {
       setDraft("");
       setSelectedMedia([]);
       setPickerOpen(false);
+      setReplyingTo(null);
       setPendingMedia((current) => [...current, batch]);
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
       void processMediaBatch(batch);
@@ -650,14 +722,22 @@ export default function ConversationScreen() {
 
     setSending(true);
     setError("");
-    const message = pending.current?.body === caption
-      ? pending.current
-      : { id: Crypto.randomUUID(), body: caption };
+    const replyToMessageId = replyingTo?.id;
+    const message =
+      pending.current?.body === caption &&
+      pending.current?.replyToMessageId === replyToMessageId
+        ? pending.current
+        : {
+            id: Crypto.randomUUID(),
+            body: caption,
+            ...(replyToMessageId ? { replyToMessageId } : {}),
+          };
     pending.current = message;
     try {
       await api(`/v1/messages/threads/${id}/messages`, { method: "POST", body: JSON.stringify(message) });
       pending.current = null;
       setDraft("");
+      setReplyingTo(null);
       await load();
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (caught) {
@@ -671,9 +751,15 @@ export default function ConversationScreen() {
     if (sending) throw new Error("Another message is still sending.");
     setSending(true);
     setError("");
-    const message = { id: Crypto.randomUUID(), body: "", mediaId };
+    const message = {
+      id: Crypto.randomUUID(),
+      body: "",
+      mediaId,
+      ...(replyingTo?.id ? { replyToMessageId: replyingTo.id } : {}),
+    };
     try {
       await api(`/v1/messages/threads/${id}/messages`, { method: "POST", body: JSON.stringify(message) });
+      setReplyingTo(null);
       await load();
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (caught) {
@@ -685,11 +771,169 @@ export default function ConversationScreen() {
     }
   }
 
+  function beginReply(message: Message) {
+    if (message.unsent_at) return;
+    setActionTarget(null);
+    setReplyingTo(message);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function openActions(message: Message, mine: boolean, pageY: number) {
+    if (message.unsent_at) return;
+    Keyboard.dismiss();
+    setActionTarget({
+      id: message.id,
+      mine,
+      body: message.body,
+      mediaType: message.media_type,
+      mediaName: message.media_name,
+      myReaction: message.my_reaction,
+      pinned: message.pinned,
+      forwarded: Boolean(message.forwarded_from_message_id),
+      pageY,
+    });
+  }
+
+  async function reactToMessage(target: MessageActionTarget, reaction: MessageReaction | null) {
+    if (messageActionBusy) return;
+    setActionTarget(null);
+    setMessageActionBusy(true);
+    try {
+      await api(`/v1/messages/threads/${id}/messages/${target.id}/reaction`, {
+        method: "PUT",
+        body: JSON.stringify({ reaction }),
+      });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Reaction could not be updated.");
+    } finally {
+      setMessageActionBusy(false);
+    }
+  }
+
+  async function togglePin(target: MessageActionTarget) {
+    if (messageActionBusy) return;
+    setActionTarget(null);
+    setMessageActionBusy(true);
+    try {
+      await api(`/v1/messages/threads/${id}/messages/${target.id}/pin`, {
+        method: "PUT",
+        body: JSON.stringify({ pinned: !target.pinned }),
+      });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Pinned message could not be updated.");
+    } finally {
+      setMessageActionBusy(false);
+    }
+  }
+
+  function unsend(target: MessageActionTarget) {
+    setActionTarget(null);
+    Alert.alert("Unsend message?", "This removes the message for everyone in this chat.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Unsend for everyone",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            if (messageActionBusy) return;
+            setMessageActionBusy(true);
+            try {
+              await api(`/v1/messages/threads/${id}/messages/${target.id}`, { method: "DELETE" });
+              if (replyingTo?.id === target.id) setReplyingTo(null);
+              await load();
+            } catch (caught) {
+              setError(caught instanceof Error ? caught.message : "Message could not be unsent.");
+            } finally {
+              setMessageActionBusy(false);
+            }
+          })();
+        },
+      },
+    ]);
+  }
+
+  async function shareMessage(target: MessageActionTarget) {
+    setActionTarget(null);
+    const message = data?.messages.find((item) => item.id === target.id);
+    if (!message || message.unsent_at) return;
+    try {
+      let mediaUrl = "";
+      if (message.media_id) {
+        const access = await api<{ url: string }>(`/v1/media/${message.media_id}/access`, { method: "POST" });
+        mediaUrl = access.url;
+      }
+      await Share.share({
+        message: [messagePreview(message), mediaUrl, "Shared from KampusOne"].filter(Boolean).join("\n"),
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Message could not be shared.");
+    }
+  }
+
+  async function openForward(target: MessageActionTarget) {
+    setActionTarget(null);
+    const message = data?.messages.find((item) => item.id === target.id);
+    if (!message || message.unsent_at) return;
+    setForwardTarget(message);
+    setForwardLoading(true);
+    setForwardThreads([]);
+    try {
+      const inbox = await api<ForwardInbox>("/v1/messages/inbox?filter=All");
+      setForwardThreads(inbox.threads.filter((thread) => thread.status === "ACCEPTED"));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Conversations could not load.");
+      setForwardTarget(null);
+    } finally {
+      setForwardLoading(false);
+    }
+  }
+
+  async function forwardTo(targetThreadId: string) {
+    if (!forwardTarget || forwardBusyId) return;
+    setForwardBusyId(targetThreadId);
+    try {
+      await api(`/v1/messages/threads/${id}/messages/${forwardTarget.id}/forward`, {
+        method: "POST",
+        body: JSON.stringify({ targetThreadId }),
+      });
+      setForwardTarget(null);
+      setForwardThreads([]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Message could not be forwarded.");
+    } finally {
+      setForwardBusyId(null);
+    }
+  }
+
+  function openReport(target: MessageActionTarget) {
+    setActionTarget(null);
+    const message = data?.messages.find((item) => item.id === target.id);
+    if (message) setReportTarget(message);
+  }
+
+  async function submitReport(reason: (typeof reportReasons)[number]["value"]) {
+    if (!reportTarget || reportBusy) return;
+    setReportBusy(true);
+    try {
+      await api(`/v1/messages/threads/${id}/messages/${reportTarget.id}/report`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      });
+      setReportTarget(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Report could not be submitted.");
+    } finally {
+      setReportBusy(false);
+    }
+  }
+
   const incoming = data?.thread.status === "REQUESTED" && data.thread.recipient_id === user?.id;
   const tutorExpired = data?.thread.kind === "TUTOR" && !data.thread.access_ends_at;
   const canSend = !tutorExpired && (data?.thread.status === "ACCEPTED" || (data?.thread.status === "REQUESTED" && !incoming && data.messages.length === 0));
   const canAttach = data?.thread.status === "ACCEPTED";
-  const locked = sending || actionBusy;
+  const locked = sending || actionBusy || messageActionBusy;
   const peerName = data?.profile?.display_name || "Conversation";
   const handleVoiceActive = useCallback((active: boolean) => {
     setVoiceActive(active);
