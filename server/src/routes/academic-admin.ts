@@ -78,19 +78,54 @@ academicAdminRoutes.get('/coverage',async c=>{
  const rows=await database(c.env).execute(sql`
   select
    u.id,u.name,u.slug,coalesce(config.status,'PREPARING') catalogue_status,
-   count(distinct f.id)::int faculty_count,
-   count(distinct d.id)::int department_count,
-   count(distinct course.id)::int programme_count
+   (select count(*)::int from public.faculties f where f.university_id=u.id and f.deleted_at is null) faculty_count,
+   (select count(*)::int
+      from public.faculties f
+      where f.university_id=u.id and f.deleted_at is null
+        and not exists(
+          select 1 from public.departments d where d.faculty_id=f.id and d.deleted_at is null
+        )
+   ) faculties_without_departments,
+   (select count(*)::int
+      from public.departments d
+      join public.faculties f on f.id=d.faculty_id
+      where f.university_id=u.id and f.deleted_at is null and d.deleted_at is null
+   ) department_count,
+   (select count(*)::int
+      from public.departments d
+      join public.faculties f on f.id=d.faculty_id
+      where f.university_id=u.id and f.deleted_at is null and d.deleted_at is null
+        and not exists(
+          select 1 from public.courses course where course.department_id=d.id and course.deleted_at is null
+        )
+   ) departments_without_programmes,
+   (select count(*)::int
+      from public.courses course
+      join public.departments d on d.id=course.department_id
+      join public.faculties f on f.id=d.faculty_id
+      where f.university_id=u.id and f.deleted_at is null and d.deleted_at is null and course.deleted_at is null
+   ) programme_count
   from public.universities u
   left join public.institution_config config on config.institution_id=u.id
-  left join public.faculties f on f.university_id=u.id and f.deleted_at is null
-  left join public.departments d on d.faculty_id=f.id and d.deleted_at is null
-  left join public.courses course on course.department_id=d.id and course.deleted_at is null
   where u.deleted_at is null
     and (${scope}::uuid is null or u.id=${scope}::uuid)
-  group by u.id,u.name,u.slug,config.status
   order by
-   case when count(distinct f.id)=0 then 0 when count(distinct d.id)=0 then 1 when count(distinct course.id)=0 then 2 else 3 end,
+   case
+    when (select count(*) from public.faculties f where f.university_id=u.id and f.deleted_at is null)=0 then 0
+    when exists(
+      select 1 from public.faculties f
+      where f.university_id=u.id and f.deleted_at is null
+        and not exists(select 1 from public.departments d where d.faculty_id=f.id and d.deleted_at is null)
+    ) then 1
+    when exists(
+      select 1
+      from public.departments d
+      join public.faculties f on f.id=d.faculty_id
+      where f.university_id=u.id and f.deleted_at is null and d.deleted_at is null
+        and not exists(select 1 from public.courses course where course.department_id=d.id and course.deleted_at is null)
+    ) then 2
+    else 3
+   end,
    u.name
  `);
  return c.json({rows:rows.rows});
