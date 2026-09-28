@@ -1,5 +1,5 @@
 import { feedExperienceReady } from "../lib/feed-experience";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "@kampusone/contracts";
 import { database, firstRow } from "../lib/database";
@@ -74,7 +74,7 @@ function projection(user: User, withViews: boolean) {
       'source_verified', case when quoted.audience->>'studentPost' = 'true' then coalesce((to_jsonb(quoted_author)->>'public_badge_verified')::boolean, quoted_author.verification_status::text='VERIFIED', false) else quoted_source.verified end
     ) end as quoted_post`;
 }
-function joins(user: User, quotedAuthorVisible: ReturnType<typeof sql>) {
+function joins(user: User, quotedAuthorVisible: SQL) {
   return sql`join public.content_sources sources on sources.id = posts.source_id
     left join public.profiles author on author.user_id = posts.author_user_id and author.deleted_at is null
     left join public.feed_posts quoted on quoted.id = posts.quoted_post_id
