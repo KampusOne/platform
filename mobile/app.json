@@ -75,7 +75,13 @@
       ],
       "./plugins/with-kampus-alarms",
       "./plugins/with-branded-video-trim",
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow KampusOne to use your location for live campus directions."
+        }
+      ]
     ],
     "extra": {
       "apiUrl": "https://kampusone-mobile-preview.vercel.app/api",
