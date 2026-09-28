@@ -15,7 +15,7 @@ module.exports = function withKampusAlarms(config) {
     application.activity ??= [];
     const add = (collection, entry) => { if (!collection.some(item => item.$['android:name'] === entry.$['android:name'])) collection.push(entry); };
     add(application.service, { $: { 'android:name': 'app.kampusone.alarms.KampusAlarmService', 'android:exported': 'false', 'android:foregroundServiceType': 'mediaPlayback' } });
-    add(application.activity, { $: { 'android:name': 'app.kampusone.alarms.KampusAlarmActivity', 'android:exported': 'false', 'android:excludeFromRecents': 'true', 'android:showWhenLocked': 'true', 'android:turnScreenOn': 'true', 'android:launchMode': 'singleTop', 'android:theme': '@android:style/Theme.Material.Light.NoActionBar' } });
+    add(application.activity, { $: { 'android:name': 'app.kampusone.alarms.KampusAlarmActivity', 'android:exported': 'false', 'android:excludeFromRecents': 'true', 'android:showWhenLocked': 'true', 'android:turnScreenOn': 'true', 'android:launchMode': 'singleTop', 'android:theme': '@android:style/Theme.Material.NoActionBar' } });
     add(application.receiver, { $: { 'android:name': 'app.kampusone.alarms.KampusAlarmReceiver', 'android:exported': 'false' } });
     add(application.receiver, { $: { 'android:name': 'app.kampusone.alarms.KampusAlarmBootReceiver', 'android:exported': 'false' }, 'intent-filter': [{ action: ['BOOT_COMPLETED','MY_PACKAGE_REPLACED','TIME_SET','TIMEZONE_CHANGED'].map(name => ({ $: { 'android:name': `android.intent.action.${name}` } })).concat([{ $: { 'android:name': 'android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED' } }]) }] });
     return config;
