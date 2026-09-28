@@ -208,8 +208,9 @@ export default function CoursePlanner() {
         return;
       }
 
-      if (terms.length === 1) {
-        importGpaTerm(terms[0]);
+      const onlyTerm = terms[0];
+      if (terms.length === 1 && onlyTerm) {
+        importGpaTerm(onlyTerm);
         return;
       }
 
