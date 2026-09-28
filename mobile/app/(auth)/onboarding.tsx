@@ -317,6 +317,7 @@ export default function OnboardingScreen() {
   const [departmentId, setDepartmentId] = useState("");
   const [courseId, setCourseId] = useState("");
   const [missingAcademic, setMissingAcademic] = useState(false);
+  const [missingKind, setMissingKind] = useState<"FACULTY" | "DEPARTMENT" | "PROGRAMME" | null>(null);
   const [missingFaculty, setMissingFaculty] = useState("");
   const [missingDepartment, setMissingDepartment] = useState("");
   const [missingProgramme, setMissingProgramme] = useState("");
@@ -366,7 +367,10 @@ export default function OnboardingScreen() {
         if (!live) return;
         setCatalog((current) => current ? { ...current, faculties: data.faculties, departments: data.departments, courses: data.courses } : data);
         // Do not leave a student at an unusable set of empty pickers.
-        if (!data.faculties.length) setMissingAcademic(true);
+        if (!data.faculties.length) {
+          setMissingKind("FACULTY");
+          setMissingAcademic(true);
+        }
       })
       .catch(() => {
         if (live) setStructureError("Your school’s departments could not load. Try again, or enter your details for review.");
@@ -410,10 +414,7 @@ export default function OnboardingScreen() {
   useEffect(() => {
     if (!courses.some((item) => item.id === courseId)) setCourseId("");
   }, [courseId, courses]);
-  const courseOptions = useMemo<Item[]>(
-    () => [{ id: "", name: "Not listed — skip for now" }, ...courses],
-    [courses],
-  );
+  const courseOptions = useMemo<Item[]>(() => courses, [courses]);
 
   const university = catalog?.universities.find(
     (item) => item.id === universityId,
@@ -432,11 +433,17 @@ export default function OnboardingScreen() {
   }, []);
   const normalizedBirthDate = useMemo(() => birthDateIso(birthDate), [birthDate]);
 
+  const missingAcademicComplete =
+    missingKind === "FACULTY"
+      ? missingFaculty.trim().length >= 2 && missingDepartment.trim().length >= 2
+      : missingKind === "DEPARTMENT"
+        ? Boolean(facultyId) && missingDepartment.trim().length >= 2
+        : missingKind === "PROGRAMME"
+          ? Boolean(facultyId && departmentId) && missingProgramme.trim().length >= 2
+          : false;
   const schoolStepComplete = Boolean(
     universityId && normalizedBirthDate && !structureLoading &&
-    (missingAcademic
-      ? missingDepartment.trim().length >= 2
-      : facultyId && departmentId) &&
+    (missingAcademic ? missingAcademicComplete : facultyId && departmentId) &&
     (!courseId || courses.some((item) => item.id === courseId)),
   );
   const identityStepComplete =
@@ -480,12 +487,15 @@ export default function OnboardingScreen() {
           facultyId: missingAcademic ? null : facultyId,
           departmentId: missingAcademic ? null : departmentId,
           courseId: missingAcademic ? null : courseId || null,
-          ...(missingAcademic
+          ...(missingAcademic && missingKind
             ? {
                 missingAcademic: {
-                  departmentName: missingDepartment.trim(),
+                  kind: missingKind,
                   ...(missingFaculty.trim()
                     ? { facultyName: missingFaculty.trim() }
+                    : {}),
+                  ...(missingDepartment.trim()
+                    ? { departmentName: missingDepartment.trim() }
                     : {}),
                   ...(missingProgramme.trim()
                     ? { programmeName: missingProgramme.trim() }
@@ -618,6 +628,7 @@ export default function OnboardingScreen() {
                   setDepartmentId("");
                   setCourseId("");
                   setMissingAcademic(false);
+                  setMissingKind(null);
                   setMissingFaculty("");
                   setMissingDepartment("");
                   setMissingProgramme("");
@@ -647,6 +658,22 @@ export default function OnboardingScreen() {
                     }}
                     selected={facultyId}
                   />
+                  {universityId ? (
+                    <TextLink
+                      onPress={() => {
+                        setMissingKind("FACULTY");
+                        setMissingAcademic(true);
+                        setFacultyId("");
+                        setDepartmentId("");
+                        setCourseId("");
+                        setMissingFaculty("");
+                        setMissingDepartment("");
+                        setMissingProgramme("");
+                      }}
+                    >
+                      My faculty / college isn’t listed
+                    </TextLink>
+                  ) : null}
                   <Selector
                     disabled={!facultyId}
                     items={departments}
@@ -657,7 +684,21 @@ export default function OnboardingScreen() {
                     }}
                     selected={departmentId}
                   />
-                  {facultyId && !structureLoading && !departments.length ? <Text style={styles.help}>Departments for this faculty are not listed yet. Use “My department isn’t listed” to enter yours.</Text> : null}
+                  {facultyId ? (
+                    <TextLink
+                      onPress={() => {
+                        setMissingKind("DEPARTMENT");
+                        setMissingAcademic(true);
+                        setMissingFaculty("");
+                        setMissingDepartment("");
+                        setMissingProgramme("");
+                        setDepartmentId("");
+                        setCourseId("");
+                      }}
+                    >
+                      My department isn’t listed
+                    </TextLink>
+                  ) : null}
                   <Selector
                     disabled={!departmentId}
                     items={courseOptions}
@@ -666,49 +707,64 @@ export default function OnboardingScreen() {
                     optional
                     selected={courseId}
                   />
+                  {departmentId ? (
+                    <TextLink
+                      onPress={() => {
+                        setMissingKind("PROGRAMME");
+                        setMissingAcademic(true);
+                        setMissingFaculty("");
+                        setMissingDepartment("");
+                        setMissingProgramme("");
+                        setCourseId("");
+                      }}
+                    >
+                      My programme isn’t listed
+                    </TextLink>
+                  ) : null}
                 </>
               ) : (
                 <>
+                  {missingKind === "FACULTY" ? (
+                    <AuthField
+                      label="Faculty / college"
+                      icon="school-outline"
+                      value={missingFaculty}
+                      onChangeText={setMissingFaculty}
+                      maxLength={180}
+                    />
+                  ) : null}
+                  {missingKind !== "PROGRAMME" ? (
+                    <AuthField
+                      label="Department"
+                      icon="school-outline"
+                      value={missingDepartment}
+                      onChangeText={setMissingDepartment}
+                      maxLength={180}
+                    />
+                  ) : null}
                   <AuthField
-                    label="Faculty / college (optional)"
-                    icon="school-outline"
-                    value={missingFaculty}
-                    onChangeText={setMissingFaculty}
-                    maxLength={180}
-                  />
-                  <AuthField
-                    label="Department"
-                    icon="school-outline"
-                    value={missingDepartment}
-                    onChangeText={setMissingDepartment}
-                    maxLength={180}
-                  />
-                  <AuthField
-                    label="Programme / degree (optional)"
+                    label={missingKind === "PROGRAMME" ? "Programme / degree" : "Programme / degree (optional)"}
                     icon="school-outline"
                     value={missingProgramme}
                     onChangeText={setMissingProgramme}
                     maxLength={180}
                   />
                   <Text style={styles.help}>
-                    Your details will be reviewed. You can continue with a
-                    provisional academic profile.
+                    We’ll send this to the academic review queue. You can continue now, and an approved item will be added to your university’s list.
                   </Text>
+                  <TextLink
+                    onPress={() => {
+                      setMissingAcademic(false);
+                      setMissingKind(null);
+                      setMissingFaculty("");
+                      setMissingDepartment("");
+                      setMissingProgramme("");
+                    }}
+                  >
+                    Back to the listed options
+                  </TextLink>
                 </>
               )}
-              {universityId ? (
-                <TextLink
-                  onPress={() => {
-                    setMissingAcademic((value) => !value);
-                    setMissingFaculty((value) => value || faculties.find((item) => item.id === facultyId)?.name || "");
-                    setCourseId("");
-                  }}
-                >
-                  {missingAcademic
-                    ? "Choose from the listed departments"
-                    : "My department / programme isn’t listed"}
-                </TextLink>
-              ) : null}
             </View>
           ) : null}
           {!catalogLoading && !catalog ? (
