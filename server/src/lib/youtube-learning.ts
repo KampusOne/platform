@@ -45,12 +45,12 @@ export function shouldSuggestLearningVideo(input: AIInput): boolean {
   const prompt = originalPrompt(input);
   if (!prompt) return false;
   const productLink = /\b(kampusone|agent|waitlist|website|profile|timetable|calendar|alarm|vendor|tutor|store|marketplace|admin)\b/i.test(prompt);
-  const explicit = /\b(youtube|video|watch|tutorial|lecture|osmosis)\b/i.test(prompt)
-    || (!productLink && /\b(?:send|give|find|share)\s+(?:me\s+)?(?:a\s+|an\s+)?link\b/i.test(prompt));
-  if (explicit) return true;
   if (/^\s*(?:hi|hello|hey|how are you|how's it going|thanks|thank you|good (?:morning|afternoon|evening))\b/i.test(prompt)) return false;
   const basicDefinition = /^\s*(?:what is|what's|define|definition of|meaning of|who is)\b/i.test(prompt) && prompt.length < 140;
   if (basicDefinition) return false;
+  const explicit = /\b(youtube|video|watch|tutorial|lecture)\b/i.test(prompt)
+    || (!productLink && /\b(?:send|give|find|share)\s+(?:me\s+)?(?:a\s+|an\s+)?link\b/i.test(prompt));
+  if (explicit) return true;
   return /\b(?:teach me|deep dive|in detail|step[- ]by[- ]step|worked example|derive|derivation|visuali[sz]e|experiment|demonstrat(?:e|ion)|learn more|understand better|full explanation|coursework|revision)\b/i.test(prompt);
 }
 
