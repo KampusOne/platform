@@ -872,6 +872,7 @@ studentRoutes.get("/tutorials", async (context) => {
     );
   }
   const tutorVisible = unblockedAuthor(user.id, sql`profiles.user_id`);
+  const tutorialReviewerVisible = unblockedAuthor(user.id, sql`reviews.student_user_id`);
   const resourceTutorVisible = unblockedAuthor(user.id, sql`resource_tutor.user_id`);
   const [listings, resources] = await Promise.all([
     database(context.env).execute(sql`
@@ -882,9 +883,11 @@ studentRoutes.get("/tutorials", async (context) => {
         profiles.biography as tutor_biography,
         (profiles.verified_at is not null and not listings.is_demo) as tutor_verified,
         coalesce((select round(avg(reviews.rating)::numeric, 1) from public.tutorial_reviews reviews
-          where reviews.listing_id = listings.id and reviews.status = 'PUBLISHED'), 0) as rating,
+          where reviews.listing_id = listings.id and reviews.status = 'PUBLISHED'
+            and ${tutorialReviewerVisible}), 0) as rating,
         (select count(*)::int from public.tutorial_reviews reviews
-          where reviews.listing_id = listings.id and reviews.status = 'PUBLISHED') as review_count,
+          where reviews.listing_id = listings.id and reviews.status = 'PUBLISHED'
+            and ${tutorialReviewerVisible}) as review_count,
         (select count(*)::int from public.tutorial_bookings completed
           where completed.listing_id = listings.id and completed.status = 'COMPLETED') as completed_sessions,
         coalesce((
@@ -1296,6 +1299,7 @@ studentRoutes.get("/store", async (context) => {
 
   const search = query ? `%${query}%` : null;
   const sellerVisible = unblockedAuthor(user.id, sql`profiles.user_id`);
+  const productReviewerVisible = unblockedAuthor(user.id, sql`product_reviews.buyer_user_id`);
   const [products, zones] = await Promise.all([
     database(context.env).execute(sql`
       select products.id, products.vendor_profile_id, products.name, products.description,
@@ -1319,6 +1323,7 @@ studentRoutes.get("/store", async (context) => {
         select avg(product_reviews.rating)::numeric(3,2) as rating, count(*)::int as review_count
         from public.product_reviews product_reviews
         where product_reviews.product_id = products.id and product_reviews.status = 'PUBLISHED'
+          and ${productReviewerVisible}
       ) reviews on true
       where products.university_id = ${requireUniversity(user)}::uuid and products.status = 'PUBLISHED'
         and products.stock_quantity > 0
