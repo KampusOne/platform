@@ -29,13 +29,15 @@ notificationRoutes.get('/preferences',async c=>{
 });
 notificationRoutes.put('/preferences',async c=>{
  const legacy=Object.fromEntries(Object.keys(defaultNotificationPreferences).map(key=>[key,z.boolean().optional()]));
- const channelShape=Object.fromEntries(notificationCategories.map(key=>[key,z.object({in_app_enabled:z.boolean(),push_enabled:z.boolean()}).strict()]));
+ const channelShape=Object.fromEntries(notificationCategories.map(key=>[key,z.object({in_app_enabled:z.boolean(),push_enabled:z.boolean()}).strict().optional()]));
  const data=await input(c,z.union([z.object({channels:z.object(channelShape).strict()}).strict(),z.object(legacy).strict()]));
  let channels,preferences;
  if('channels' in data){
   channels=notificationChannels(data.channels);
   preferences=notificationPreferences(Object.fromEntries(Object.entries(channels).map(([key,value])=>[key,value.in_app_enabled])));
+  preferences.pushMessages=channels.messages.push_enabled;
   preferences.pushAnnouncements=channels.announcements.push_enabled;
+  preferences.pushNewsletter=channels.newsletter.push_enabled;
   preferences.pushCampusUpdates=channels.campusUpdates.push_enabled;
  } else {
   preferences=notificationPreferences(data);
