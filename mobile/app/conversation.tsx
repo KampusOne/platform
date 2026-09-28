@@ -201,6 +201,7 @@ export default function ConversationScreen() {
   const [messageActionBusy, setMessageActionBusy] = useState(false);
   const [attachment, setAttachment] = useState<{ id: string; name: string } | null>(null);
   const [voiceActive, setVoiceActive] = useState(false);
+  const [composerToolsExpanded, setComposerToolsExpanded] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [actionTarget, setActionTarget] = useState<MessageActionTarget | null>(null);
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null);
@@ -308,6 +309,7 @@ export default function ConversationScreen() {
       pending.current = null;
       setDraft("");
       setAttachment(null);
+      setComposerToolsExpanded(false);
       setReplyingTo(null);
       await load();
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
@@ -407,7 +409,7 @@ export default function ConversationScreen() {
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Unsend",
+          text: "Unsend for everyone",
           style: "destructive",
           onPress: () => {
             void (async () => {
@@ -721,15 +723,27 @@ export default function ConversationScreen() {
               ) : null}
               <View style={styles.composerBar}>
                 {!voiceActive ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Add media or document"
-                    disabled={!canAttach || locked}
-                    onPress={() => void chooseFile()}
-                    style={({ pressed }) => [styles.plusButton, (!canAttach || locked) && styles.disabled, pressed && styles.pressed]}
-                  >
-                    <Ionicons name={uploading ? "cloud-upload-outline" : "add"} size={24} color={theme.text} />
-                  </Pressable>
+                  draft.trim() && canAttach && !composerToolsExpanded ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Show media options"
+                      disabled={locked}
+                      onPress={() => setComposerToolsExpanded(true)}
+                      style={({ pressed }) => [styles.compactComposerButton, locked && styles.disabled, pressed && styles.pressed]}
+                    >
+                      <Ionicons name="chevron-forward" size={25} color={theme.deepBrand} />
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Add media or document"
+                      disabled={!canAttach || locked}
+                      onPress={() => void chooseFile()}
+                      style={({ pressed }) => [styles.plusButton, (!canAttach || locked) && styles.disabled, pressed && styles.pressed]}
+                    >
+                      <Ionicons name={uploading ? "cloud-upload-outline" : "add"} size={24} color={theme.text} />
+                    </Pressable>
+                  )
                 ) : null}
                 {!voiceActive ? (
                   <TextInput
@@ -738,7 +752,10 @@ export default function ConversationScreen() {
                     placeholder={canAttach ? "Type a message…" : "Send your message request…"}
                     placeholderTextColor={theme.textMuted}
                     value={draft}
-                    onChangeText={setDraft}
+                    onChangeText={(value) => {
+                      setDraft(value);
+                      if (!value.trim()) setComposerToolsExpanded(false);
+                    }}
                     multiline
                     maxLength={5000}
                     selectionColor={theme.brand}
@@ -976,6 +993,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   replyDraftClose: { width: 42, alignItems: "center", justifyContent: "center" },
   composerBar: { minHeight: 50, flexDirection: "row", alignItems: "flex-end", gap: 4 },
   plusButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: theme.surfaceMuted, marginBottom: 3 },
+  compactComposerButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginBottom: 3 },
   composerInput: { flex: 1, minHeight: 44, maxHeight: 118, borderRadius: 22, paddingHorizontal: 15, paddingTop: Platform.OS === "ios" ? 12 : 10, paddingBottom: 10, color: theme.text, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border, fontFamily: theme.font.body, fontSize: 14, lineHeight: 20 },
   sendButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: theme.deepBrand, marginBottom: 3 },
   sendDisabled: { backgroundColor: theme.peach, opacity: 0.72 },
