@@ -50,12 +50,16 @@ describe("comment likes", () => {
     expect(mocks.execute).not.toHaveBeenCalled();
   });
   it.each([["PUT", true], ["DELETE", false]] as const)("%s uses the session actor and explicit desired state", async (method, liked) => {
-    mocks.execute.mockResolvedValueOnce({ rows: [{ id, liked, like_count: liked ? 1 : 0 }] });
+    mocks.execute
+      .mockResolvedValueOnce({ rows: [{ id }] })
+      .mockResolvedValueOnce({ rows: [{ id, liked, like_count: liked ? 1 : 0 }] });
     const response = await app.request(`/v1/student/feed/comments/${id}/like`, { method, headers, body: JSON.stringify({ user_id: "forged", institution_id: "forged", post_id: "forged" }) }, env);
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(await response.json()).toEqual({ id, liked, like_count: liked ? 1 : 0 });
-    const query = dialect.sqlToQuery(mocks.execute.mock.calls[1]![0]);
+    const visibilityQuery = dialect.sqlToQuery(mocks.execute.mock.calls[1]![0]);
+    expect(visibilityQuery.sql).toContain("public.user_blocks");
+    const query = dialect.sqlToQuery(mocks.execute.mock.calls[2]![0]);
     expect(query.params).toEqual([id, mocks.user.id, mocks.user.universityId, liked]);
     expect(query.sql).toContain("app_private.set_feed_comment_like");
   });
@@ -64,7 +68,9 @@ describe("comment likes", () => {
     expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method: "PUT", headers }, env)).status).toBe(404);
   });
   it("does not report success when a database write fails", async () => {
-    mocks.execute.mockRejectedValueOnce(new Error("offline"));
+    mocks.execute
+      .mockResolvedValueOnce({ rows: [{ id }] })
+      .mockRejectedValueOnce(new Error("offline"));
     expect((await app.request(`/v1/student/feed/comments/${id}/like`, { method: "PUT", headers }, env)).status).toBe(500);
   });
   it("returns a recoverable 503 before the additive migration exists", async () => {
@@ -87,8 +93,16 @@ describe("comment likes", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ likes: [{ id, liked: false, like_count: 0 }] });
     const query = dialect.sqlToQuery(mocks.execute.mock.calls[1]![0]);
-    expect(query.params).toEqual([mocks.user.id, id, mocks.user.universityId]);
+    expect(query.params).toEqual([
+      mocks.user.id,
+      mocks.user.id,
+      id,
+      mocks.user.universityId,
+      mocks.user.id,
+      mocks.user.id,
+    ]);
     expect(query.sql).toContain("comments.deleted_at is null");
+    expect(query.sql).toContain("public.user_blocks");
     expect(query.sql).toContain("posts.university_id = comments.institution_id");
     expect(query.sql).toContain("posts.status in ('PUBLISHED', 'CORRECTED')");
     expect(query.sql).toContain("posts.published_at <= now()");
