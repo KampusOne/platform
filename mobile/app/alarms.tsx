@@ -5,6 +5,7 @@ import { api } from "@/src/lib/api";
 import { syncAlarms, type Alarm } from "@/src/lib/alarms";
 import { useAppearance, type Theme } from "@/src/lib/appearance";
 import { selectionAsync } from "@/src/lib/haptics";
+import { pickAndUpload } from "@/src/lib/uploads";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -19,6 +20,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+type AlarmSoundOption = { id: string; name: string; url: string };
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_LONG_NAMES = [
@@ -505,7 +508,10 @@ export default function Alarms() {
   const [label, setLabel] = useState("");
   const [time, setTime] = useState("08:00");
   const [days, setDays] = useState<number[]>([]);
-  const [sound, setSound] = useState(true);
+  const [sound, setSound] = useState<Alarm["sound"]>("default");
+  const [sounds, setSounds] = useState<AlarmSoundOption[]>([]);
+  const [soundOpen, setSoundOpen] = useState(false);
+  const [soundBusy, setSoundBusy] = useState(false);
   const [vibration, setVibration] = useState(true);
   const [snooze, setSnooze] = useState("5");
   const [form, setForm] = useState(false);
@@ -524,6 +530,12 @@ export default function Alarms() {
     setLoadError("");
     const response = await api<{ alarms: Alarm[] }>("/v1/learning/alarms");
     setItems(response.alarms);
+    try {
+      const soundResponse = await api<{ sounds: AlarmSoundOption[] }>("/v1/learning/alarm-sounds");
+      setSounds(soundResponse.sounds);
+    } catch {
+      setSounds([]);
+    }
     setReady(true);
     return response.alarms;
   }, []);
@@ -570,7 +582,8 @@ export default function Alarms() {
     setLabel(alarm?.label ?? "");
     setTime(alarm?.time ?? "08:00");
     setDays(alarm?.days ?? []);
-    setSound(alarm?.sound !== "silent");
+    setSound(alarm?.sound ?? "default");
+    setSoundOpen(false);
     setVibration(alarm?.vibration ?? true);
     setSnooze(String(alarm?.snooze_minutes ?? 5));
     setRepeatOpen(Boolean(alarm?.days.length));
@@ -610,6 +623,30 @@ export default function Alarms() {
     }
   }
 
+  function selectedSoundLabel() {
+    if (sound === "default") return "Device default alarm";
+    if (sound === "silent") return "Silent";
+    const id = sound.slice(6);
+    return sounds.find((item) => item.id === id)?.name ?? editing?.sound_name ?? "Uploaded sound";
+  }
+
+  async function uploadAlarmSound() {
+    setSoundBusy(true);
+    try {
+      const uploaded = await pickAndUpload("notification-sound");
+      if (!uploaded) return;
+      const soundResponse = await api<{ sounds: AlarmSoundOption[] }>("/v1/learning/alarm-sounds");
+      setSounds(soundResponse.sounds);
+      setSound(`media:${uploaded.id}` as Alarm["sound"]);
+      setSoundOpen(true);
+      toast("Alarm sound uploaded", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not upload alarm sound", "error");
+    } finally {
+      setSoundBusy(false);
+    }
+  }
+
   function saveAlarm() {
     const normalizedLabel = label.trim() || "Alarm";
     void mutate(
@@ -621,7 +658,7 @@ export default function Alarms() {
         days,
         firesAt: days.length ? null : nextOccurrence(time),
         enabled: editing?.enabled ?? true,
-        sound: sound ? "default" : "silent",
+        sound,
         vibration,
         snoozeMinutes: Math.max(1, Math.min(30, Number(snooze) || 5)),
       },
@@ -814,7 +851,7 @@ export default function Alarms() {
                           time,
                           days,
                           enabled: true,
-                          sound: sound ? "default" : "silent",
+                          sound,
                           vibration,
                           snooze_minutes: Number(snooze) || 5,
                           fires_at: days.length ? null : nextOccurrence(time),
@@ -926,14 +963,53 @@ export default function Alarms() {
                   ) : null}
 
                   <View style={styles.settingDivider} />
-                  <View style={styles.settingRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: soundOpen }}
+                    onPress={() => setSoundOpen((value) => !value)}
+                    style={styles.settingRow}
+                  >
                     <Text style={styles.settingTitle}>Sound</Text>
-                    <BrandSwitch
-                      label="Alarm sound"
-                      value={sound}
-                      onValueChange={setSound}
-                    />
-                  </View>
+                    <View style={styles.settingRight}>
+                      <Text style={styles.settingValue} numberOfLines={1}>{selectedSoundLabel()}</Text>
+                      <Ionicons name={soundOpen ? "chevron-up" : "chevron-forward"} size={18} color={theme.textMuted} />
+                    </View>
+                  </Pressable>
+                  {soundOpen ? (
+                    <View style={styles.soundList}>
+                      {[
+                        { value: "default" as Alarm["sound"], label: "Device default alarm" },
+                        { value: "silent" as Alarm["sound"], label: "Silent" },
+                        ...sounds.map((item) => ({ value: `media:${item.id}` as Alarm["sound"], label: item.name })),
+                      ].map((option) => {
+                        const selected = sound === option.value;
+                        return (
+                          <Pressable
+                            key={option.value}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                            onPress={() => setSound(option.value)}
+                            style={[styles.soundOption, selected && styles.soundOptionSelected]}
+                          >
+                            <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={20} color={selected ? theme.deepBrand : theme.textMuted} />
+                            <Text style={styles.soundOptionText} numberOfLines={1}>{option.label}</Text>
+                          </Pressable>
+                        );
+                      })}
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={soundBusy || busy}
+                        onPress={() => void uploadAlarmSound()}
+                        style={[styles.soundUpload, (soundBusy || busy) && styles.disabled]}
+                      >
+                        <Ionicons name="cloud-upload-outline" size={19} color={theme.deepBrand} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.soundUploadTitle}>{soundBusy ? "Uploading…" : "Upload a sound"}</Text>
+                          <Text style={styles.soundUploadDetail}>MP3 or WAV · up to 2 MB</Text>
+                        </View>
+                      </Pressable>
+                    </View>
+                  ) : null}
                   <View style={styles.settingDivider} />
                   <View style={styles.settingRow}>
                     <Text style={styles.settingTitle}>Vibrate when alarm sounds</Text>
@@ -1254,6 +1330,34 @@ const createStyles = (theme: Theme, isDark: boolean) =>
       textAlign: "right",
     },
     settingDivider: { height: 1, backgroundColor: theme.border },
+    soundList: { paddingBottom: 12, gap: 7 },
+    soundOption: {
+      minHeight: 48,
+      borderRadius: 14,
+      paddingHorizontal: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: isDark ? "rgba(255,255,255,0.04)" : theme.surfaceMuted,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    soundOptionSelected: { borderColor: theme.deepBrand },
+    soundOptionText: { flex: 1, color: theme.text, fontFamily: theme.font.semibold, fontSize: 13 },
+    soundUpload: {
+      minHeight: 54,
+      borderRadius: 14,
+      paddingHorizontal: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: theme.brand,
+      backgroundColor: isDark ? "rgba(168,70,46,0.12)" : "rgba(168,70,46,0.08)",
+    },
+    soundUploadTitle: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 13 },
+    soundUploadDetail: { marginTop: 2, color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11 },
     dayPicker: {
       flexDirection: "row",
       gap: 6,
