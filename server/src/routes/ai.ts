@@ -344,7 +344,7 @@ aiRoutes.post("/", async c => {
     if (!parent || parent.result.deleted) throw new AppError(404, "NOT_FOUND", "The earlier study session is no longer available. Start a new session.");
     if (parent.result.provider !== selectedProvider) throw new AppError(400, "BAD_REQUEST", "Start a new conversation to use the updated AI. Your previous conversation has not been forwarded.", { reason: "AI_PROVIDER_CONTEXT" });
     threadId = parent.result.threadId ?? d.replyTo;
-    const turns = await db.execute<{ prompt: string; text: string }>(sql`select left(coalesce(result->>'prompt',''),2000) as prompt,left(result->>'text',4000) as text from app_private.ai_requests where user_id=${u.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${threadId} and result->>'provider'=${selectedProvider} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc limit 6`);
+    const turns = await db.execute<{ prompt: string; text: string }>(sql`select left(coalesce(result->>'prompt',''),1500) as prompt,left(result->>'text',3000) as text from app_private.ai_requests where user_id=${u.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${threadId} and result->>'provider'=${selectedProvider} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc limit 4`);
     history.push(...turns.rows.reverse());
   }
   if (new TextEncoder().encode(prompt + JSON.stringify(history)).length > 60000) throw new AppError(413, "BAD_REQUEST", "This study context is too long. Use a shorter source or start a new session.");
