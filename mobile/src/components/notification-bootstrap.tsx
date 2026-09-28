@@ -154,7 +154,10 @@ export function NotificationBootstrap() {
           );
         const initialResponse =
           await Notifications.getLastNotificationResponseAsync();
-        if (initialResponse) void openNotification(initialResponse);
+        if (initialResponse) {
+          await openNotification(initialResponse);
+          await Notifications.clearLastNotificationResponseAsync();
+        }
       })
       .catch((error) => {
         console.warn(
