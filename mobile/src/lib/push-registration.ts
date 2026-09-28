@@ -108,7 +108,7 @@ export async function configureNativeNotifications() {
       {
         identifier: PUSH_ACTION.REPLY,
         buttonTitle: "Reply",
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
         textInput: {
           submitButtonTitle: "Send",
           placeholder: "Reply…",
@@ -117,12 +117,12 @@ export async function configureNativeNotifications() {
       {
         identifier: PUSH_ACTION.MARK_READ,
         buttonTitle: "Mark as read",
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
       },
       {
         identifier: PUSH_ACTION.MUTE,
         buttonTitle: "Mute",
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
       },
     ]),
     Notifications.setNotificationCategoryAsync(PUSH_CATEGORY.NEWSLETTER, [
@@ -134,36 +134,36 @@ export async function configureNativeNotifications() {
       {
         identifier: PUSH_ACTION.MARK_READ,
         buttonTitle: "Mark as read",
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
       },
       {
         identifier: PUSH_ACTION.MUTE,
         buttonTitle: "Mute",
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
       },
     ]),
     Notifications.setNotificationCategoryAsync(PUSH_CATEGORY.SOCIAL, [
       {
         identifier: PUSH_ACTION.MARK_READ,
         buttonTitle: "Mark as read",
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
       },
       {
         identifier: PUSH_ACTION.MUTE,
         buttonTitle: "Mute",
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
       },
     ]),
     Notifications.setNotificationCategoryAsync(PUSH_CATEGORY.UPDATE, [
       {
         identifier: PUSH_ACTION.MARK_READ,
         buttonTitle: "Mark as read",
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
       },
       {
         identifier: PUSH_ACTION.MUTE,
         buttonTitle: "Mute",
-        options: { opensAppToForeground: false },
+        options: { opensAppToForeground: true },
       },
     ]),
   ]);
