@@ -39,21 +39,53 @@ export function unblockedAuthor(viewer: string, author: SQL) {
   )`;
 }
 
+export async function unblockedAuthorIfReady(
+  env: Bindings,
+  viewer: string,
+  author: SQL,
+) {
+  return (await profileSafetyReady(env)) ? unblockedAuthor(viewer, author) : sql`true`;
+}
+
+export type BlockRelationship =
+  | "NONE"
+  | "BLOCKED_BY_VIEWER"
+  | "BLOCKED_BY_TARGET";
+
+export async function blockRelationship(
+  env: Bindings,
+  viewer: string,
+  target: string,
+): Promise<BlockRelationship> {
+  if (viewer === target || !(await profileSafetyReady(env))) return "NONE";
+  const row = firstRow(
+    await database(env).execute<{
+      blocked_by_viewer: boolean;
+      blocked_by_target: boolean;
+    }>(sql`
+      select
+        exists(
+          select 1 from public.user_blocks
+          where blocker_id=${viewer}::uuid and blocked_id=${target}::uuid
+        ) as blocked_by_viewer,
+        exists(
+          select 1 from public.user_blocks
+          where blocker_id=${target}::uuid and blocked_id=${viewer}::uuid
+        ) as blocked_by_target
+    `),
+  );
+  if (row?.blocked_by_target) return "BLOCKED_BY_TARGET";
+  if (row?.blocked_by_viewer) return "BLOCKED_BY_VIEWER";
+  return "NONE";
+}
+
 export async function requireUnblocked(
   env: Bindings,
   viewer: string,
   target: string,
 ) {
-  if (viewer === target || !(await profileSafetyReady(env))) return;
-  const row = firstRow(
-    await database(env).execute(sql`
-      select 1 from public.user_blocks
-      where (blocker_id=${viewer}::uuid and blocked_id=${target}::uuid)
-         or (blocked_id=${viewer}::uuid and blocker_id=${target}::uuid)
-      limit 1
-    `),
-  );
-  if (row) {
+  const relationship = await blockRelationship(env, viewer, target);
+  if (relationship !== "NONE") {
     throw new AppError(
       404,
       "NOT_FOUND",
