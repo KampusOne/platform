@@ -35,7 +35,9 @@ notificationRoutes.put('/preferences',async c=>{
  if('channels' in data){
   channels=notificationChannels(data.channels);
   preferences=notificationPreferences(Object.fromEntries(Object.entries(channels).map(([key,value])=>[key,value.in_app_enabled])));
+  preferences.pushMessages=channels.messages.push_enabled;
   preferences.pushAnnouncements=channels.announcements.push_enabled;
+  preferences.pushNewsletter=channels.newsletter.push_enabled;
   preferences.pushCampusUpdates=channels.campusUpdates.push_enabled;
  } else {
   preferences=notificationPreferences(data);
