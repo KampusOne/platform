@@ -43,6 +43,10 @@ export async function deliverCommunityPush(env:Bindings){
   const category=preferenceCategoryFor(row.dedupe_key,notice);
   const devices=await db.execute<{id:string;token:string;university_id:string;channels:unknown;preferences:unknown}>(sql`select d.id,d.token,p.university_id,p.settings->'notificationChannels' as channels,p.settings->'notificationPreferences' as preferences from app_private.push_devices d join public.profiles p on p.user_id=d.user_id join public.users u on u.id=d.user_id where d.user_id=${row.user_id}::uuid and p.university_id=${notice?.institution_id??null}::uuid and d.active and p.deleted_at is null and u.status::text='ACTIVE' and u.deleted_at is null and coalesce(p.settings->>'notifications','true')='true' and exists(select 1 from public.refresh_tokens r where r.user_id=d.user_id and r.family_id=d.session_family_id and r.revoked_at is null and r.expires_at>now()) order by d.updated_at desc limit 5`);
   const eligibleDevices=devices.rows.filter(device=>notificationChannels(device.channels,device.preferences)[category].push_enabled);
+  if(!eligibleDevices.length){
+   await db.execute(sql`update app_private.notification_outbox set state='SENT' where id=${row.id}::uuid`);
+   continue;
+  }
   await Promise.all(eligibleDevices.map(async device=>{
    const attempt=firstRow(await db.execute<{id:string}>(sql`insert into app_private.community_push_deliveries(outbox_id,device_id,user_id,institution_id,status) values(${row.id}::uuid,${device.id}::uuid,${row.user_id}::uuid,${device.university_id}::uuid,'SENDING') on conflict(outbox_id,device_id) do nothing returning id`));
    if(!attempt)return; // Never blindly replay an external send with an uncertain acknowledgement.
