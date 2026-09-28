@@ -138,10 +138,8 @@ learningRoutes.get("/courses", async (c) => {
         where config.institution_id=${u.universityId}::uuid`,
       ),
     );
-    if (config?.grading_source_status === "VERIFIED") {
-      gradingScale = config.grading_scale;
-      gradingScaleStatus = "VERIFIED";
-    }
+    gradingScale = config?.grading_scale ?? null;
+    gradingScaleStatus = config?.grading_source_status ?? "UNVERIFIED";
   }
 
   return c.json({
