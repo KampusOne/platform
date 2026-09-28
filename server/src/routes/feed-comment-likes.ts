@@ -5,6 +5,7 @@ import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import { visiblePost } from "../lib/feed-social";
 import { currentUser, requireAuth } from "../middleware/auth";
+import { unblockedAuthor } from "../lib/profile-safety";
 import type { Bindings, Variables } from "../types";
 
 type Environment = { Bindings: Bindings; Variables: Variables };
@@ -38,15 +39,21 @@ feedCommentLikeRoutes.get("/comment-likes", requireAuth, async (context) => {
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Choose between 1 and 50 valid comments.");
   const ids = [...new Set(parsed.data)];
   await requireCommentLikes(context);
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
+  const commentAuthorVisible = unblockedAuthor(user.id, sql`comments.author_user_id`);
   const result = await database(context.env).execute(sql`
     select comments.id,
       exists(select 1 from public.feed_comment_likes mine
         where mine.comment_id = comments.id and mine.user_id = ${user.id}::uuid) as liked,
-      (select count(*)::integer from public.feed_comment_likes likes where likes.comment_id = comments.id) as like_count
+      (select count(*)::integer from public.feed_comment_likes likes where likes.comment_id = comments.id
+        and ${unblockedAuthor(user.id, sql`likes.user_id`)}) as like_count
     from public.feed_comments comments
     join public.feed_posts posts on posts.id = comments.post_id and posts.university_id = comments.institution_id
     where comments.id = any(string_to_array(${ids.join(",")}, ',')::uuid[])
-      and comments.deleted_at is null and ${visiblePost(campus)}
+      and comments.deleted_at is null
+      and ${visiblePost(campus)}
+      and ${postAuthorVisible}
+      and ${commentAuthorVisible}
   `);
   return context.json({ likes: result.rows });
 });
@@ -57,6 +64,20 @@ async function setLike(context: Context<Environment>, liked: boolean) {
   const parsed = idSchema.safeParse(context.req.param("commentId"));
   if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "This comment link is not valid.");
   await requireCommentLikes(context);
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
+  const commentAuthorVisible = unblockedAuthor(user.id, sql`comments.author_user_id`);
+  const target = firstRow(await database(context.env).execute(sql`
+    select comments.id
+    from public.feed_comments comments
+    join public.feed_posts posts on posts.id=comments.post_id and posts.university_id=comments.institution_id
+    where comments.id=${parsed.data}::uuid
+      and comments.deleted_at is null
+      and ${visiblePost(campus)}
+      and ${postAuthorVisible}
+      and ${commentAuthorVisible}
+    limit 1
+  `));
+  if (!target) throw new AppError(404, "NOT_FOUND", "This comment is unavailable.");
   // The database derives and locks the real parent post. Neither actor nor
   // campus nor parent-post authorization comes from a client-supplied body.
   const result = await database(context.env).execute(sql`
