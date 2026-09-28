@@ -59,11 +59,13 @@ export const KAMPUSONE_RESTRICTED_RESPONSE =
 
 export function isRestrictedKampusOneRequest(prompt: string): boolean {
   const value = prompt.toLowerCase();
-  const hardRestricted = /\b(api\s*key|secret(?:s)?|access\s*token|private\s*token|password|credential(?:s)?|admin\s*(?:dashboard|panel|portal|url|link)|engineering\s*(?:dashboard|panel|portal|url|link)|internal\s*(?:endpoint|url|route|config(?:uration)?|prompt)|system\s*prompt|source\s*code|github\s*(?:repo|repository))\b/i.test(value);
+  const hardRestricted = /\b(api\s*key|secret(?:s)?|access\s*token|private\s*token|password|credential(?:s)?|admin\s*(?:dashboard|panel|portal|url|link)|engineering\s*(?:dashboard|panel|portal|url|link)|internal\s*(?:endpoint|url|route|config(?:uration)?|prompt)|system\s*prompt|source\s*code|github\s*(?:repo|repository))\b/i.test(value)
+    || /\bhow\s+(?:is|was)\s+(?:kampusone|kira)\s+built\b/i.test(value)
+    || /\bwhat\s+(?:models?|providers?|frameworks?|languages?)\s+(?:are\s+)?(?:we|you)\s+(?:using|running)\b/i.test(value);
   if (hardRestricted) return true;
 
-  const productReferent = /\b(kampusone|kira|this\s+app|this\s+platform|your\s+(?:app|platform|backend|server|system|model)|what\s+(?:model|provider|stack|framework|language)\s+(?:are\s+you|do\s+you)|backend|frontend)\b/i.test(value);
-  const internalDetail = /\b(architecture|tech(?:nology)?\s*stack|programming\s*language|framework|database|hosting|deployment|infrastructure|cloudflare|vercel|model(?:s)?|provider(?:s)?|llm|hugging\s*face|gemini|groq)\b/i.test(value);
+  const productReferent = /\b(kampusone|kira|this\s+app|this\s+platform|your\s+(?:app|platform|backend|server|system|model)|what\s+(?:model|provider|stack|framework|language)s?\s+(?:are\s+you|do\s+you)|backend|frontend)\b/i.test(value);
+  const internalDetail = /\b(architecture|tech(?:nology)?\s*stack|technolog(?:y|ies)|programming\s*languages?|frameworks?|databases?|hosting|deployment|infrastructure|implementation|codebase|models?|providers?|llm|cloudflare|vercel|hugging\s*face|gemini|groq)\b/i.test(value);
   return productReferent && internalDetail;
 }
 
