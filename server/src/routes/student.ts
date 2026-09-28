@@ -78,7 +78,7 @@ function campusClock(at = new Date()) {
 }
 
 function hasReachedAge(birthDate: string, minimumAge: number) {
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(birthDate);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
   if (!match) return false;
   const year = Number(match[1]);
   const month = Number(match[2]);

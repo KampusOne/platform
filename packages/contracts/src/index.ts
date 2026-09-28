@@ -109,7 +109,7 @@ export const resetPasswordSchema = z.object({
 export const onboardingProfileSchema = z.object({
   firstName: z.string().trim().min(1).max(60),
   lastName: z.string().trim().min(1).max(60),
-  birthDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   username: z
     .string()
     .trim()
