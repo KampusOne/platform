@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
   safety: vi.fn(),
   unblocked: vi.fn(),
+  relationship: vi.fn(),
+  visible: vi.fn(),
   user: {
     id: "11111111-1111-4111-8111-111111111111",
     universityId: "22222222-2222-4222-8222-222222222222",
@@ -24,6 +26,8 @@ vi.mock("../lib/database", () => ({
 vi.mock("../lib/profile-safety", () => ({
   requireProfileSafety: mocks.safety,
   requireUnblocked: mocks.unblocked,
+  blockRelationship: mocks.relationship,
+  unblockedAuthor: mocks.visible,
 }));
 vi.mock("../lib/student-ai-policy", () => ({ studentExperienceReady: async () => true }));
 vi.mock("../middleware/auth", () => ({
@@ -58,9 +62,31 @@ beforeEach(() => {
   mocks.safety.mockResolvedValue(undefined);
   mocks.unblocked.mockReset();
   mocks.unblocked.mockResolvedValue(undefined);
+  mocks.relationship.mockReset();
+  mocks.relationship.mockResolvedValue("NONE");
+  mocks.visible.mockReset();
 });
 
 describe("profile blocking routes", () => {
+  it("tells the blocked user that the profile owner blocked them", async () => {
+    mocks.relationship.mockResolvedValueOnce("BLOCKED_BY_TARGET");
+    const response = await app.request(`/v1/people/${target}`, { method: "GET", headers }, env);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: { code: "BLOCKED_BY_USER", message: "You have been blocked by this person." },
+    });
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  it("does not expose a profile the viewer has blocked", async () => {
+    mocks.relationship.mockResolvedValueOnce("BLOCKED_BY_VIEWER");
+    const response = await app.request(`/v1/people/${target}`, { method: "GET", headers }, env);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: { code: "NOT_FOUND", message: "This student profile is not available." },
+    });
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
   it("creates a block idempotently and removes both follow directions", async () => {
     mocks.execute
       .mockResolvedValueOnce({ rows: [{ user_id: target, block_protected: false }] })
