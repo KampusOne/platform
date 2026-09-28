@@ -345,7 +345,7 @@ export default function GpaScreen() {
       </View>
 
       {importMessage ? (
-        <Text accessibilityRole="status" style={styles.importMessage}>
+        <Text accessibilityLiveRegion="polite" style={styles.importMessage}>
           {importMessage}
         </Text>
       ) : null}
