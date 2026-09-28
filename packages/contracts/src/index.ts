@@ -22,6 +22,7 @@ export const apiErrorCodeSchema = z.enum([
   "INELIGIBLE",
   "UNAUTHENTICATED",
   "FORBIDDEN",
+  "BLOCKED_BY_USER",
   "NOT_FOUND",
   "CONFLICT",
   "RATE_LIMITED",
@@ -626,6 +627,7 @@ export const directMessageInputSchema = z
     id: z.string().uuid(),
     body: z.string().trim().max(5000).default(""),
     mediaId: z.string().uuid().optional(),
+    replyToMessageId: z.string().uuid().optional(),
   })
   .strict()
   .refine(
