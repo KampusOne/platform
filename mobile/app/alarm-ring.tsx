@@ -15,7 +15,9 @@ const INK='#29231F',MIDNIGHT='#1E1917',DEEP='#A8462E',BRAND='#C35D38',SAND='#F1D
 
 function displayClock(value?:string|null){
  if(!value)return {clock:'',period:''};
- const [hour,minute]=value.split(':').map(Number);
+ const parts=value.split(':');
+ const hour=Number(parts[0]);
+ const minute=Number(parts[1]);
  if(!Number.isFinite(hour)||!Number.isFinite(minute))return {clock:value,period:''};
  const period=hour>=12?'PM':'AM';
  const hour12=hour%12||12;
@@ -222,11 +224,11 @@ export default function AlarmRing(){
 
 const styles=StyleSheet.create({
  page:{backgroundColor:MIDNIGHT,flex:1,overflow:'hidden'},
- backgroundBase:{...StyleSheet.absoluteFillObject,backgroundColor:MIDNIGHT},
+ backgroundBase:{position:'absolute',top:0,right:0,bottom:0,left:0,backgroundColor:MIDNIGHT},
  gradientTop:{backgroundColor:DEEP,borderRadius:360,height:560,left:-230,opacity:0.72,position:'absolute',top:-250,transform:[{rotate:'18deg'}],width:680},
  gradientMiddle:{backgroundColor:BRAND,borderRadius:260,height:430,opacity:0.34,position:'absolute',right:-280,top:150,transform:[{rotate:'-12deg'}],width:560},
  gradientBottom:{backgroundColor:PEACH,borderRadius:320,bottom:-360,height:540,left:-120,opacity:0.18,position:'absolute',transform:[{rotate:'-8deg'}],width:660},
- vignette:{...StyleSheet.absoluteFillObject,backgroundColor:'rgba(20,15,13,0.18)'},
+ vignette:{position:'absolute',top:0,right:0,bottom:0,left:0,backgroundColor:'rgba(20,15,13,0.18)'},
  shell:{flex:1,paddingHorizontal:24,paddingBottom:8},
  shellCompact:{paddingHorizontal:20},
  topbar:{alignItems:'center',flexDirection:'row',justifyContent:'space-between',minHeight:52},
