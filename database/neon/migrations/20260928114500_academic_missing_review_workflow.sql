@@ -75,22 +75,22 @@ returns table(
 )
 language plpgsql
 set search_path=''
-as $
+as $$
 declare
   submission public.academic_missing_submissions%rowtype;
-  faculty_id uuid;
-  department_id uuid;
-  course_id uuid;
-  faculty_name text;
-  department_name text;
-  programme_name text;
-  faculty_slug text;
-  department_slug text;
+  v_faculty_id uuid;
+  v_department_id uuid;
+  v_course_id uuid;
+  v_faculty_name text;
+  v_department_name text;
+  v_programme_name text;
+  v_faculty_slug text;
+  v_department_slug text;
 begin
-  select *
+  select s.*
   into submission
-  from public.academic_missing_submissions
-  where id=p_submission
+  from public.academic_missing_submissions s
+  where s.id=p_submission
   for update;
 
   if not found then
@@ -107,74 +107,74 @@ begin
     raise exception using errcode='22023', message='SOURCE_AND_REASON_REQUIRED';
   end if;
 
-  faculty_name := coalesce(nullif(btrim(p_faculty_name),''),submission.faculty_name);
-  department_name := coalesce(nullif(btrim(p_department_name),''),submission.department_name);
-  programme_name := coalesce(nullif(btrim(p_programme_name),''),submission.programme_name);
+  v_faculty_name := coalesce(nullif(btrim(p_faculty_name),''),submission.faculty_name);
+  v_department_name := coalesce(nullif(btrim(p_department_name),''),submission.department_name);
+  v_programme_name := coalesce(nullif(btrim(p_programme_name),''),submission.programme_name);
 
   if submission.kind='FACULTY' then
-    if faculty_name is null or char_length(faculty_name)<2 then
+    if v_faculty_name is null or char_length(v_faculty_name)<2 then
       raise exception using errcode='22023', message='FACULTY_NAME_REQUIRED';
     end if;
-    faculty_slug := trim(both '-' from regexp_replace(lower(faculty_name),'[^a-z0-9]+','-','g'));
-    select id into faculty_id
-    from public.faculties
-    where university_id=submission.institution_id
-      and deleted_at is null
-      and (lower(name)=lower(faculty_name) or slug=faculty_slug)
+    v_faculty_slug := trim(both '-' from regexp_replace(lower(v_faculty_name),'[^a-z0-9]+','-','g'));
+    select f.id into v_faculty_id
+    from public.faculties f
+    where f.university_id=submission.institution_id
+      and f.deleted_at is null
+      and (lower(f.name)=lower(v_faculty_name) or f.slug=v_faculty_slug)
     limit 1;
-    if faculty_id is null then
-      faculty_id:=gen_random_uuid();
+    if v_faculty_id is null then
+      v_faculty_id:=gen_random_uuid();
       insert into public.faculties(
         id,university_id,name,slug,primary_source_url,source_verified_at,updated_at
       ) values(
-        faculty_id,submission.institution_id,faculty_name,faculty_slug,p_source_url,now(),now()
+        v_faculty_id,submission.institution_id,v_faculty_name,v_faculty_slug,p_source_url,now(),now()
       );
     else
-      update public.faculties
-      set name=faculty_name,primary_source_url=p_source_url,source_verified_at=now(),deleted_at=null,updated_at=now()
-      where id=faculty_id;
+      update public.faculties f
+      set name=v_faculty_name,primary_source_url=p_source_url,source_verified_at=now(),deleted_at=null,updated_at=now()
+      where f.id=v_faculty_id;
     end if;
   else
-    faculty_id:=submission.selected_faculty_id;
-    if faculty_id is null or not exists(
-      select 1 from public.faculties
-      where id=faculty_id and university_id=submission.institution_id and deleted_at is null
+    v_faculty_id:=submission.selected_faculty_id;
+    if v_faculty_id is null or not exists(
+      select 1 from public.faculties f
+      where f.id=v_faculty_id and f.university_id=submission.institution_id and f.deleted_at is null
     ) then
       raise exception using errcode='22023', message='FACULTY_SCOPE_REQUIRED';
     end if;
   end if;
 
   if submission.kind in ('FACULTY','DEPARTMENT') then
-    if department_name is null or char_length(department_name)<2 then
+    if v_department_name is null or char_length(v_department_name)<2 then
       raise exception using errcode='22023', message='DEPARTMENT_NAME_REQUIRED';
     end if;
-    department_slug:=trim(both '-' from regexp_replace(lower(department_name),'[^a-z0-9]+','-','g'));
-    select id into department_id
-    from public.departments
-    where faculty_id=faculty_id
-      and deleted_at is null
-      and (lower(name)=lower(department_name) or slug=department_slug)
+    v_department_slug:=trim(both '-' from regexp_replace(lower(v_department_name),'[^a-z0-9]+','-','g'));
+    select d.id into v_department_id
+    from public.departments d
+    where d.faculty_id=v_faculty_id
+      and d.deleted_at is null
+      and (lower(d.name)=lower(v_department_name) or d.slug=v_department_slug)
     limit 1;
-    if department_id is null then
-      department_id:=gen_random_uuid();
+    if v_department_id is null then
+      v_department_id:=gen_random_uuid();
       insert into public.departments(
         id,faculty_id,name,slug,primary_source_url,source_verified_at,updated_at
       ) values(
-        department_id,faculty_id,department_name,department_slug,p_source_url,now(),now()
+        v_department_id,v_faculty_id,v_department_name,v_department_slug,p_source_url,now(),now()
       );
     else
-      update public.departments
-      set name=department_name,primary_source_url=p_source_url,source_verified_at=now(),deleted_at=null,updated_at=now()
-      where id=department_id;
+      update public.departments d
+      set name=v_department_name,primary_source_url=p_source_url,source_verified_at=now(),deleted_at=null,updated_at=now()
+      where d.id=v_department_id;
     end if;
   else
-    department_id:=submission.selected_department_id;
-    if department_id is null or not exists(
+    v_department_id:=submission.selected_department_id;
+    if v_department_id is null or not exists(
       select 1
       from public.departments d
       join public.faculties f on f.id=d.faculty_id
-      where d.id=department_id
-        and f.id=faculty_id
+      where d.id=v_department_id
+        and f.id=v_faculty_id
         and f.university_id=submission.institution_id
         and d.deleted_at is null
         and f.deleted_at is null
@@ -183,64 +183,64 @@ begin
     end if;
   end if;
 
-  if programme_name is not null and char_length(programme_name)>=2 then
-    select id into course_id
-    from public.courses
-    where department_id=department_id
-      and deleted_at is null
-      and lower(name)=lower(programme_name)
+  if v_programme_name is not null and char_length(v_programme_name)>=2 then
+    select course.id into v_course_id
+    from public.courses course
+    where course.department_id=v_department_id
+      and course.deleted_at is null
+      and lower(course.name)=lower(v_programme_name)
     limit 1;
-    if course_id is null then
-      course_id:=gen_random_uuid();
+    if v_course_id is null then
+      v_course_id:=gen_random_uuid();
       insert into public.courses(
         id,department_id,name,code,award,normal_duration_years,
         primary_source_url,source_verified_at,updated_at
       ) values(
-        course_id,department_id,programme_name,nullif(btrim(p_code),''),
+        v_course_id,v_department_id,v_programme_name,nullif(btrim(p_code),''),
         nullif(btrim(p_award),''),p_duration,p_source_url,now(),now()
       );
     else
-      update public.courses
+      update public.courses course
       set
-        name=programme_name,
-        code=coalesce(nullif(btrim(p_code),''),code),
-        award=coalesce(nullif(btrim(p_award),''),award),
-        normal_duration_years=coalesce(p_duration,normal_duration_years),
+        name=v_programme_name,
+        code=coalesce(nullif(btrim(p_code),''),course.code),
+        award=coalesce(nullif(btrim(p_award),''),course.award),
+        normal_duration_years=coalesce(p_duration,course.normal_duration_years),
         primary_source_url=p_source_url,
         source_verified_at=now(),
         deleted_at=null,
         updated_at=now()
-      where id=course_id;
+      where course.id=v_course_id;
     end if;
   elsif submission.kind='PROGRAMME' then
     raise exception using errcode='22023', message='PROGRAMME_NAME_REQUIRED';
   end if;
 
-  update public.academic_missing_submissions
+  update public.academic_missing_submissions s
   set
-    faculty_name=faculty_name,
-    department_name=department_name,
-    programme_name=programme_name,
+    faculty_name=v_faculty_name,
+    department_name=v_department_name,
+    programme_name=v_programme_name,
     status='APPROVED',
-    linked_faculty_id=faculty_id,
-    linked_department_id=department_id,
-    linked_course_id=course_id,
+    linked_faculty_id=v_faculty_id,
+    linked_department_id=v_department_id,
+    linked_course_id=v_course_id,
     review_note=p_reason,
     reviewed_by=p_actor,
     reviewed_at=now(),
     updated_at=now()
-  where id=p_submission;
+  where s.id=p_submission;
 
-  update public.profiles
+  update public.profiles p
   set
-    faculty_id=faculty_id,
-    department_id=department_id,
-    course_id=course_id,
+    faculty_id=v_faculty_id,
+    department_id=v_department_id,
+    course_id=v_course_id,
     provisional_academic_submission_id=null,
     updated_at=now()
-  where provisional_academic_submission_id=p_submission
-    and university_id=submission.institution_id
-    and deleted_at is null;
+  where p.provisional_academic_submission_id=p_submission
+    and p.university_id=submission.institution_id
+    and p.deleted_at is null;
 
   insert into app_private.audit_events(
     actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata
@@ -251,15 +251,15 @@ begin
       'reason',p_reason,
       'primarySourceUrl',p_source_url,
       'kind',submission.kind,
-      'facultyId',faculty_id,
-      'departmentId',department_id,
-      'courseId',course_id
+      'facultyId',v_faculty_id,
+      'departmentId',v_department_id,
+      'courseId',v_course_id
     )
   );
 
-  return query select 'APPROVED'::text,faculty_id,department_id,course_id;
+  return query select 'APPROVED'::text,v_faculty_id,v_department_id,v_course_id;
 end;
-$;
+$$;
 
 revoke all on function app_private.approve_academic_missing_submission(
   uuid,uuid,text,text,text,text,text,text,text,numeric,text
