@@ -89,7 +89,7 @@ function hasReachedAge(birthDate: string, minimumAge: number) {
     parsed.getUTCMonth() !== month - 1 ||
     parsed.getUTCDate() !== day
   ) return false;
-  const [todayYear, todayMonth, todayDay] = campusClock().date.split("-").map(Number);
+  const [todayYear = 0, todayMonth = 0, todayDay = 0] = campusClock().date.split("-").map(Number);
   let age = todayYear - year;
   if (todayMonth < month || (todayMonth === month && todayDay < day)) age -= 1;
   return age >= minimumAge;
