@@ -23,7 +23,7 @@ type Activity = {
   created_at?: string;
 };
 type Detail = {
-  profile: { email: string; display_name: string; username: string; roles?: string[]; profile_image_url?: string | null; cover_image_url?: string | null; verification_status?: string | null; public_badge_verified?: boolean };
+  profile: { email: string; display_name: string; username: string; roles?: string[]; current_level?: string | null; matriculation_number?: string | null; birth_date?: string | null; profile_image_url?: string | null; cover_image_url?: string | null; verification_status?: string | null; public_badge_verified?: boolean };
   restrictions: Restriction[];
   posts: Activity[];
   orders: Activity[];
@@ -149,6 +149,12 @@ function UserDetailContent({ id }: { id: string }) {
           <section>
             <h2>Profile & media</h2>
             <p>{data.profile.roles?.join(" · ") || "Account role not recorded"}</p>
+            <dl className="account-facts">
+              <div><dt>Username</dt><dd>{data.profile.username ? `@${data.profile.username}` : "Not set"}</dd></div>
+              <div><dt>Date of birth</dt><dd>{data.profile.birth_date || "Not provided"}</dd></div>
+              <div><dt>Matric number</dt><dd>{data.profile.matriculation_number || "Not provided"}</dd></div>
+              <div><dt>Current level</dt><dd>{data.profile.current_level ? `${data.profile.current_level} level` : "Not provided"}</dd></div>
+            </dl>
             <div className="admin-profile-media">
               {profileImage && <Image src={profileImage} alt={`${data.profile.display_name || "Account"} profile photo`} width={120} height={120} unoptimized />}
               {coverImage && <Image src={coverImage} alt="Account cover photo" width={340} height={150} unoptimized />}

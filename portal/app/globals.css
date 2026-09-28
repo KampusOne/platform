@@ -570,3 +570,31 @@ button { color: inherit; }
 .brown-verification{display:inline-grid;place-items:center;background:#6b3c28;color:#fff;width:21px;height:21px;font-size:12px;clip-path:polygon(50% 0,62% 9%,76% 6%,82% 21%,97% 27%,93% 43%,100% 56%,86% 67%,83% 83%,67% 86%,56% 100%,43% 93%,27% 97%,21% 82%,6% 76%,9% 62%,0 50%,9% 38%,6% 24%,21% 18%,27% 3%,43% 7%)}.verification-summary{display:flex;align-items:center;gap:8px;font-size:12px;color:#705343}.workspace-subtitle{font-size:20px;margin:32px 0 14px}
 .application-check-flags{padding-left:18px;font-size:12px}.application-check-flags li{margin:12px 0}.application-check-flags p{margin:3px 0}.application-check-flags small{color:#8d7765}
 .application-bulk-panel{margin-bottom:22px}.application-bulk-panel>summary{cursor:pointer;font-size:13px;font-weight:650}.bulk-selection-scroll{max-height:340px;overflow:auto}.bulk-selection-scroll input{accent-color:#a8462e;min-width:18px;min-height:18px}
+
+
+/* Agent surface refresh · 2026-09-28 */
+.agent-entry-page{min-height:100svh;background:#fbf7f2}
+.agent-entry-shell{display:grid;grid-template-columns:minmax(0,.95fr) minmax(360px,.72fr);align-items:center;gap:clamp(42px,7vw,92px);width:min(1120px,100%);min-height:100svh;margin:0 auto;padding:clamp(32px,6vw,74px)}
+.agent-entry-copy{min-width:0}
+.agent-entry-brand{width:176px;height:auto;margin-bottom:clamp(44px,8vh,82px)}
+.agent-entry-copy h1{max-width:640px;margin:0 0 18px;font-size:clamp(3rem,6vw,5.6rem);font-weight:900;letter-spacing:-.06em;line-height:.94}
+.agent-entry-copy>p:not(.eyebrow){max-width:560px;color:#6f625a;font-size:1rem;line-height:1.7}
+.agent-entry-art{width:min(520px,100%);margin-top:30px}
+.agent-illustration{display:block;width:100%;height:auto}
+.agent-entry-card{width:100%;border:1px solid #e3d6cc;border-radius:22px;background:#fff;padding:clamp(26px,4vw,42px);box-shadow:0 20px 55px rgb(65 44 34 / 8%)}
+.agent-entry-card h2{margin:0 0 9px;font-size:clamp(1.8rem,3vw,2.55rem);letter-spacing:-.04em}
+.agent-entry-card .muted{margin-bottom:0}
+.agent-entry-card .form-stack{margin-top:28px}
+.agent-entry-card .agent-auth-help{margin-top:24px}
+.application-layout{grid-template-columns:minmax(220px,.66fr) minmax(0,1.34fr);gap:38px;max-width:1040px}
+.application-art{top:24px}
+.application-art .agent-illustration{max-height:235px}
+.application-art ol{margin:14px 0 0;padding:0}
+.application-art li{padding:10px 4px}
+.application-form{border-radius:18px;padding:clamp(22px,4vw,34px);box-shadow:0 16px 44px rgb(65 44 34 / 6%)}
+.application-success .agent-illustration{width:min(310px,100%);margin:0 auto 18px}
+.account-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;margin:18px 0 24px;border:1px solid #e5d9ce;border-radius:14px;overflow:hidden;background:#e5d9ce}
+.account-facts div{min-width:0;background:#fff;padding:14px 16px}
+.account-facts dt{color:#82756d;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.account-facts dd{margin:4px 0 0;color:#342c28;font-weight:650;overflow-wrap:anywhere}
+@media(max-width:860px){.agent-entry-shell{grid-template-columns:1fr;gap:28px;min-height:auto;padding:28px 22px 44px}.agent-entry-brand{margin-bottom:38px}.agent-entry-copy h1{font-size:clamp(2.6rem,12vw,4rem)}.agent-entry-art{max-width:520px;margin:22px auto 0}.agent-entry-card{padding:24px}.application-layout{display:block}.application-art{position:static;margin-bottom:22px}.application-art .agent-illustration{max-height:190px}.account-facts{grid-template-columns:1fr}}

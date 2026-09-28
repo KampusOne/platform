@@ -49,6 +49,28 @@ type Catalog = {
   courses: Item[];
 };
 
+function formatBirthDateInput(value: string) {
+  const digits = value.replace(/\\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function birthDateIso(value: string) {
+  const match = /^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/.exec(value.trim());
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function useReducedMotionPreference() {
   const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -301,6 +323,7 @@ export default function OnboardingScreen() {
   const [firstName, setFirstName] = useState(profile?.first_name ?? "");
   const [lastName, setLastName] = useState(profile?.last_name ?? "");
   const [username, setUsername] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [matriculationNumber, setMatriculationNumber] = useState("");
   const [currentLevel, setCurrentLevel] = useState("");
   const [admissionYear, setAdmissionYear] = useState("");
@@ -407,9 +430,10 @@ export default function OnboardingScreen() {
       return { id: year, name: year };
     });
   }, []);
+  const normalizedBirthDate = useMemo(() => birthDateIso(birthDate), [birthDate]);
 
   const schoolStepComplete = Boolean(
-    universityId && !structureLoading &&
+    universityId && normalizedBirthDate && !structureLoading &&
     (missingAcademic
       ? missingDepartment.trim().length >= 2
       : facultyId && departmentId) &&
@@ -451,6 +475,7 @@ export default function OnboardingScreen() {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           username: username.trim(),
+          birthDate: normalizedBirthDate ?? "",
           universityId,
           facultyId: missingAcademic ? null : facultyId,
           departmentId: missingAcademic ? null : departmentId,
@@ -568,6 +593,22 @@ export default function OnboardingScreen() {
           ) : null}
           {!catalogLoading && catalog ? (
             <View>
+              <AuthField
+                icon="calendar-outline"
+                keyboardType="number-pad"
+                label="Date of birth"
+                maxLength={10}
+                onChangeText={(value) => setBirthDate(formatBirthDateInput(value))}
+                placeholder="DD/MM/YYYY"
+                value={birthDate}
+                error={Boolean(birthDate && !normalizedBirthDate)}
+              />
+              <Text style={styles.privacy}>
+                This stays private and is used to set up your account.
+              </Text>
+              {birthDate && !normalizedBirthDate ? (
+                <Text style={styles.help}>Check the date and use DD/MM/YYYY.</Text>
+              ) : null}
               <Selector
                 items={catalog.universities}
                 label="University"

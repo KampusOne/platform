@@ -75,6 +75,7 @@ type UserRecord = {
   current_level: string | null;
   verification_status: string | null;
   onboarding_completed_at: string | null;
+  birth_date: string | null;
   university_name: string | null;
 };
 type AgentApplication = {

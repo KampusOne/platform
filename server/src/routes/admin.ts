@@ -266,6 +266,7 @@ adminRoutes.get("/users", async (context) => {
     select users.id, users.email, users.roles, users.status, users.email_verified_at,
       users.created_at, users.last_login_at, profiles.display_name, profiles.username,
       profiles.current_level, profiles.verification_status, profiles.onboarding_completed_at,
+      to_jsonb(profiles)->'settings'->>'birthDate' as birth_date,
       profiles.profile_image_url, profiles.cover_image_url, profiles.university_id, universities.name as university_name
     from public.users users
     left join public.profiles profiles on profiles.user_id = users.id and profiles.deleted_at is null

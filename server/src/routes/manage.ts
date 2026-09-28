@@ -366,7 +366,7 @@ manageRoutes.get("/users/:id", async (c) => {
   const [profile, restrictions, posts, orders, applications, streak] =
     await Promise.all([
       database(c.env).execute(
-        sql`select u.id,u.email,u.status,u.roles,u.created_at,p.display_name,p.username,p.university_id,p.current_level,p.matriculation_number,p.profile_image_url,p.cover_image_url,p.verification_status,coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) public_badge_verified from public.users u left join public.profiles p on p.user_id=u.id where u.id=${target}::uuid`,
+        sql`select u.id,u.email,u.status,u.roles,u.created_at,p.display_name,p.username,p.university_id,p.current_level,p.matriculation_number,to_jsonb(p)->'settings'->>'birthDate' as birth_date,p.profile_image_url,p.cover_image_url,p.verification_status,coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) public_badge_verified from public.users u left join public.profiles p on p.user_id=u.id where u.id=${target}::uuid`,
       ),
       database(c.env).execute(
         sql`select id,kind,reason,ends_at,revoked_at from public.account_restrictions where user_id=${target}::uuid order by starts_at desc limit 20`,

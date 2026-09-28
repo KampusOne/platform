@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { type FormEvent, useState } from "react";
 
-import authStudyIllustration from "../../mobile/assets/illustrations/auth-study-v2.png";
+import { AgentAccessIllustration } from "@/components/agent-illustrations";
 import { type Session, PortalApiError, webAuth } from "@/lib/api";
 
 type Stage = "email" | "code";
@@ -14,11 +14,7 @@ function messageFrom(error: unknown) {
     : "Something interrupted the request. Please try again.";
 }
 
-export function AgentAccess({
-  onAuthenticated,
-}: {
-  onAuthenticated(session: Session): void;
-}) {
+export function AgentAccess({ onAuthenticated }: { onAuthenticated(session: Session): void }) {
   const [stage, setStage] = useState<Stage>("email");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,14 +33,10 @@ export function AgentAccess({
         await webAuth.requestEmailCode(nextEmail);
         setEmail(nextEmail);
         setStage("code");
-        setNotice(
-          "If this belongs to a verified KampusOne account, a six-digit code is on its way.",
-        );
+        setNotice("Check your email for the six-digit code.");
         return;
       }
-      onAuthenticated(
-        await webAuth.verifyEmailCode(email, String(form.get("code"))),
-      );
+      onAuthenticated(await webAuth.verifyEmailCode(email, String(form.get("code"))));
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -58,9 +50,7 @@ export function AgentAccess({
     setNotice("");
     try {
       await webAuth.requestEmailCode(email);
-      setNotice(
-        "If this belongs to a verified KampusOne account, a new code is on its way.",
-      );
+      setNotice("A new code has been requested.");
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -68,130 +58,56 @@ export function AgentAccess({
     }
   }
 
-  function changeEmail() {
-    setStage("email");
-    setNotice("");
-    setError("");
-  }
-
   return (
-    <main className="agent-login-page">
-      <section
-        className="agent-login-shell"
-        aria-labelledby="agent-access-title"
-      >
-        <header className="agent-login-heading">
-          <h1 id="agent-access-title">
-            {stage === "email"
-              ? "Continue with your KampusOne email"
-              : "Check your email"}
-          </h1>
-          <p>
-            {stage === "email"
-              ? "Use your existing account."
-              : `Enter the six-digit code sent for ${email}. It expires in 10 minutes.`}
-          </p>
-        </header>
+    <main className="agent-entry-page">
+      <div className="agent-entry-shell">
+        <section className="agent-entry-copy">
+          <Image className="agent-entry-brand" src="/kampusone-horizontal-ink.png" alt="KampusOne" width={190} height={46} priority />
+          <p className="eyebrow">Agent network</p>
+          <h1>Work with students on campus.</h1>
+          <p>Apply as a vendor, tutor or rider with the KampusOne account you already use.</p>
+          <div className="agent-entry-art"><AgentAccessIllustration /></div>
+        </section>
 
-        <Image
-          className="agent-login-illustration"
-          src={authStudyIllustration}
-          alt=""
-          aria-hidden="true"
-          preload
-        />
+        <section className="agent-entry-card" aria-labelledby="agent-access-title">
+          <header>
+            <p className="section-kicker">{stage === "email" ? "Sign in" : "Verification"}</p>
+            <h2 id="agent-access-title">{stage === "email" ? "Continue with your email" : "Enter your code"}</h2>
+            <p className="muted">{stage === "email" ? "Use the same email as your KampusOne account." : `We sent a six-digit code for ${email}.`}</p>
+          </header>
 
-        <form className="form-stack agent-login-form" onSubmit={submit}>
-          {stage === "email" ? (
-            <label>
-              Email address
-              <span className="agent-login-input">
-                <svg aria-hidden="true" viewBox="0 0 24 24">
-                  <path d="M4 6.75h16v10.5H4z" />
-                  <path d="m4.75 7.5 7.25 5 7.25-5" />
-                </svg>
-                <input
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  inputMode="email"
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  autoFocus
-                  required
-                />
-              </span>
-            </label>
-          ) : (
-            <label>
-              Verification code
-              <span className="agent-login-input">
-                <svg aria-hidden="true" viewBox="0 0 24 24">
-                  <circle cx="8" cy="12" r="3.25" />
-                  <path d="M11.25 12H20m-3 0v3m-3-3v2" />
-                </svg>
-                <input
-                  name="code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  className="code-input"
-                  placeholder="000000"
-                  autoFocus
-                  required
-                />
-              </span>
-            </label>
-          )}
-          {notice && (
-            <p className="form-notice" role="status" aria-live="polite">
-              {notice}
-            </p>
-          )}
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-          <button
-            className="button button--primary button--wide"
-            disabled={busy}
-          >
-            {busy
-              ? "Please wait…"
-              : stage === "email"
-                ? "Send my code"
-                : "Verify and continue"}
-          </button>
-        </form>
+          <form className="form-stack agent-login-form" onSubmit={submit}>
+            {stage === "email" ? (
+              <label>
+                Email address
+                <span className="agent-login-input">
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6.75h16v10.5H4z" /><path d="m4.75 7.5 7.25 5 7.25-5" /></svg>
+                  <input name="email" type="email" autoComplete="email" inputMode="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} autoFocus required />
+                </span>
+              </label>
+            ) : (
+              <label>
+                Verification code
+                <span className="agent-login-input">
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="8" cy="12" r="3.25" /><path d="M11.25 12H20m-3 0v3m-3-3v2" /></svg>
+                  <input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} className="code-input" placeholder="000000" autoFocus required />
+                </span>
+              </label>
+            )}
+            {notice && <p className="form-notice" role="status" aria-live="polite">{notice}</p>}
+            {error && <p className="form-error" role="alert">{error}</p>}
+            <button className="button button--primary button--wide" disabled={busy}>{busy ? "Please wait…" : stage === "email" ? "Send code" : "Continue"}</button>
+          </form>
 
-        {stage === "code" && (
-          <div className="agent-auth-actions">
-            <button
-              type="button"
-              className="text-button"
-              disabled={busy}
-              onClick={changeEmail}
-            >
-              Use another email
-            </button>
-            <button
-              type="button"
-              className="text-button"
-              disabled={busy}
-              onClick={() => void resend()}
-            >
-              Send a new code
-            </button>
-          </div>
-        )}
-        <p className="agent-auth-help">
-          New to KampusOne? Create your student account in the KampusOne app
-          first, then return here with the same email.
-        </p>
-      </section>
+          {stage === "code" && (
+            <div className="agent-auth-actions">
+              <button type="button" className="text-button" disabled={busy} onClick={() => { setStage("email"); setNotice(""); setError(""); }}>Use another email</button>
+              <button type="button" className="text-button" disabled={busy} onClick={() => void resend()}>Send a new code</button>
+            </div>
+          )}
+          <p className="agent-auth-help">New here? Create your KampusOne student account first, then come back with the same email.</p>
+        </section>
+      </div>
     </main>
   );
 }

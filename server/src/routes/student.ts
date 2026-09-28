@@ -77,6 +77,24 @@ function campusClock(at = new Date()) {
   };
 }
 
+function hasReachedAge(birthDate: string, minimumAge: number) {
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(birthDate);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) return false;
+  const [todayYear, todayMonth, todayDay] = campusClock().date.split("-").map(Number);
+  let age = todayYear - year;
+  if (todayMonth < month || (todayMonth === month && todayDay < day)) age -= 1;
+  return age >= minimumAge;
+}
+
 async function jsonBody(context: { req: { json(): Promise<unknown> } }) {
   return context.req.json().catch(() => null);
 }
@@ -225,6 +243,7 @@ studentRoutes.get("/me", async (context) => {
       (select count(*)::int from public.profile_follows follows where follows.followed_id = users.id) as follower_count,
       (select count(*)::int from public.profile_follows follows where follows.follower_id = users.id) as following_count,
       profiles.onboarding_step, profiles.onboarding_completed_at, (to_jsonb(profiles)->>'admission_year')::integer as admission_year,
+      to_jsonb(profiles)->'settings'->>'birthDate' as birth_date,
       to_jsonb(profiles)->>'provisional_academic_submission_id' as provisional_academic_submission_id,
       ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`profiles.settings` : sql`'{}'::jsonb`} as settings
     from public.users users
@@ -278,6 +297,13 @@ studentRoutes.patch("/me/onboarding", async (context) => {
   }
 
   if(parsed.data.admissionYear && parsed.data.graduationYear<parsed.data.admissionYear) throw new AppError(400,"BAD_REQUEST","Expected graduation cannot precede admission.");
+  if (!hasReachedAge(parsed.data.birthDate, 15)) {
+    throw new AppError(
+      403,
+      "INELIGIBLE",
+      "Something went wrong. We couldn’t finish setting up this account.",
+    );
+  }
   const selected = parsed.data.missingAcademic ? await database(context.env).execute<{university_id:string}>(sql`select id university_id from public.universities where id=${parsed.data.universityId}::uuid and deleted_at is null`) : await database(context.env).execute<{
     university_id: string;
   }>(sql`
@@ -335,6 +361,7 @@ studentRoutes.patch("/me/onboarding", async (context) => {
       department_id = ${provisionalId ? null : parsed.data.departmentId}::uuid,
       course_id = ${provisionalId ? null : parsed.data.courseId ?? null}::uuid,
       admission_year = ${parsed.data.admissionYear??null},
+      settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('birthDate', ${parsed.data.birthDate}::text),
       provisional_academic_submission_id = ${provisionalId}::uuid,
       current_level = ${parsed.data.currentLevel},
       matriculation_number = ${parsed.data.matriculationNumber},
