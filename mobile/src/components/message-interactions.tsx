@@ -194,19 +194,25 @@ export function MessageActionOverlay({
     action();
   };
 
-  const menu = [
-    { key: "reply", label: "Reply", icon: "arrow-undo-outline" as const, action: () => onReply(target) },
-    { key: "forward", label: "Forward", icon: "arrow-redo-outline" as const, action: () => onForward(target) },
-    { key: "share", label: "Share", icon: "share-social-outline" as const, action: () => onShare(target) },
+  const menu: Array<{
+    key: string;
+    label: string;
+    icon: React.ComponentProps<typeof Ionicons>["name"];
+    danger?: boolean;
+    action: () => void;
+  }> = [
+    { key: "reply", label: "Reply", icon: "arrow-undo-outline", action: () => onReply(target) },
+    { key: "forward", label: "Forward", icon: "arrow-redo-outline", action: () => onForward(target) },
+    { key: "share", label: "Share", icon: "share-social-outline", action: () => onShare(target) },
     {
       key: "pin",
       label: target.pinned ? "Unpin" : "Pin",
-      icon: target.pinned ? "pin-outline" as const : "pin" as const,
+      icon: target.pinned ? "pin-outline" : "pin",
       action: () => onPin(target),
     },
     ...(target.mine
-      ? [{ key: "unsend", label: "Unsend", icon: "arrow-undo-circle-outline" as const, danger: true, action: () => onUnsend(target) }]
-      : [{ key: "report", label: "Report", icon: "flag-outline" as const, danger: true, action: () => onReport(target) }]),
+      ? [{ key: "unsend", label: "Unsend", icon: "arrow-undo-circle-outline", danger: true, action: () => onUnsend(target) }]
+      : [{ key: "report", label: "Report", icon: "flag-outline", danger: true, action: () => onReport(target) }]),
   ];
 
   return (
