@@ -21,6 +21,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Crypto from "expo-crypto";
 import * as DocumentPicker from "expo-document-picker";
+import { BlurTargetView } from "expo-blur";
 import { MessageVoice, VoicePlayback } from "@/src/components/message-voice";
 import {
   MessageActionOverlay,
@@ -211,6 +212,7 @@ export default function ConversationScreen() {
   const pending = useRef<{ id: string; body: string; mediaId?: string; replyToMessageId?: string } | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
   const inputRef = useRef<TextInput>(null);
+  const blurTargetRef = useRef<View | null>(null);
   const initialScrollDone = useRef(false);
 
   const load = useCallback(async (before?: string) => {
@@ -516,6 +518,7 @@ export default function ConversationScreen() {
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.screen}>
+      <BlurTargetView ref={blurTargetRef} style={styles.screen}>
       <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={0}>
         <View style={styles.shell}>
           <View style={styles.header}>
@@ -773,10 +776,12 @@ export default function ConversationScreen() {
           ) : null}
         </View>
       </KeyboardAvoidingView>
+      </BlurTargetView>
 
       <MessageActionOverlay
         target={actionTarget}
         peerName={peerName}
+        blurTarget={blurTargetRef}
         busy={messageActionBusy}
         onClose={() => setActionTarget(null)}
         onReply={(target) => {
