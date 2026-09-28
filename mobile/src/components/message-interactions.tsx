@@ -211,8 +211,20 @@ export function MessageActionOverlay({
       action: () => onPin(target),
     },
     ...(target.mine
-      ? [{ key: "unsend", label: "Unsend", icon: "arrow-undo-circle-outline", danger: true, action: () => onUnsend(target) }]
-      : [{ key: "report", label: "Report", icon: "flag-outline", danger: true, action: () => onReport(target) }]),
+      ? [{
+          key: "unsend",
+          label: "Unsend",
+          icon: "arrow-undo-circle-outline" as React.ComponentProps<typeof Ionicons>["name"],
+          danger: true,
+          action: () => onUnsend(target),
+        }]
+      : [{
+          key: "report",
+          label: "Report",
+          icon: "flag-outline" as React.ComponentProps<typeof Ionicons>["name"],
+          danger: true,
+          action: () => onReport(target),
+        }]),
   ];
 
   return (
@@ -319,7 +331,11 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   replyCueOther: { left: 2 },
   actionBackdrop: { flex: 1 },
   actionShade: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     backgroundColor: "rgba(0,0,0,0.24)",
   },
   actionCluster: {
