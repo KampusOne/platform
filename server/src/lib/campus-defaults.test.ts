@@ -14,13 +14,18 @@ describe("campus starter directory", () => {
     expect(campusDirectoryDefaultForUniversity("University of Lagos")).toBeNull();
   });
 
-  it("ships a usable Ugbowo starter map with valid unique coordinates", () => {
+  it("ships a broad Ugbowo starter map with unique valid coordinates", () => {
     const ids = new Set<string>();
-    expect(UNIBEN_UGBOWO_STARTER.places.length).toBeGreaterThanOrEqual(10);
+    const names = new Set<string>();
+    expect(UNIBEN_UGBOWO_STARTER.places.length).toBeGreaterThanOrEqual(90);
 
     for (const place of UNIBEN_UGBOWO_STARTER.places) {
       expect(ids.has(place.id)).toBe(false);
       ids.add(place.id);
+
+      const normalizedName = place.name.trim().toLowerCase();
+      expect(names.has(normalizedName)).toBe(false);
+      names.add(normalizedName);
 
       const latitude = Number(place.latitude);
       const longitude = Number(place.longitude);
@@ -33,7 +38,28 @@ describe("campus starter directory", () => {
     }
   });
 
-  it("filters the starter directory like the database endpoint", () => {
+  it("includes the student-companion landmarks reconstructed from the map set", () => {
+    const names = new Set(UNIBEN_UGBOWO_STARTER.places.map((place) => place.name));
+    for (const expected of [
+      "Main Gate",
+      "John Harris Library",
+      "UNIBEN International ICT Centre",
+      "Hall 1 Hostel",
+      "Hall 2 Hostel",
+      "Hall 3 Hostel",
+      "Hall 4 Hostel",
+      "Keystone Hostel",
+      "UNIBEN Sports Complex",
+      "Food Court (Buka)",
+      "University of Benin Health Centre",
+      "Faculty of Arts",
+      "Central Research Laboratory",
+    ]) {
+      expect(names.has(expected)).toBe(true);
+    }
+  });
+
+  it("filters by category, canonical name, and student search aliases", () => {
     expect(
       filterCampusStarterPlaces(UNIBEN_UGBOWO_STARTER.places, {
         category: "HOSTEL",
@@ -45,5 +71,17 @@ describe("campus starter directory", () => {
         query: "engineering",
       }).map((place) => place.name),
     ).toContain("Faculty of Engineering");
+
+    expect(
+      filterCampusStarterPlaces(UNIBEN_UGBOWO_STARTER.places, {
+        query: "GTB",
+      }).map((place) => place.name),
+    ).toContain("Guaranty Trust Bank - UNIBEN");
+
+    expect(
+      filterCampusStarterPlaces(UNIBEN_UGBOWO_STARTER.places, {
+        query: "Queen Idia",
+      }).map((place) => place.name),
+    ).toContain("Hall 1 Hostel");
   });
 });
