@@ -1,7 +1,7 @@
 import { AIProviderError } from "./ai-error.ts";
 export { AIProviderError } from "./ai-error.ts";
 import { scheduleInstruction, parseScheduleDocument } from "./schedule-document.ts";
-/** All inference stays server-side and goes through one Hugging Face adapter. */
+/** All inference stays server-side behind provider adapters. */
 export type AIMode = "study" | "summary" | "quiz" | "notes" | "timetable";
 export type AITier = "standard" | "pro";
 export type AIProvider = "huggingface";
@@ -9,6 +9,8 @@ export type AIEnvironment = {
   AI_ASSISTANT_ENABLED?: string; HF_TOKEN?: string; HF_CHAT_MODEL?: string;
   HF_REASONING_MODEL?: string; HF_VISION_MODEL?: string; HF_PRO_MODEL?: string; HF_TRANSCRIPTION_MODEL?: string;
   HF_TRANSCRIPTION_FALLBACK_MODEL?: string;
+  GROQ_API_KEY?: string; GROQ_TRANSCRIPTION_MODEL?: string;
+  GEMINI_API_KEY?: string; GEMINI_MODEL?: string; GEMINI_TRANSCRIPTION_MODEL?: string;
   AI_DAILY_USER_LIMIT?: string; AI_DAILY_GLOBAL_LIMIT?: string;
 };
 export type AIMedia = { mimeType: string; data: string };
@@ -123,15 +125,30 @@ export async function generateAI(env: AIEnvironment, input: AIInput, fetcher: ty
 }
 
 export function transcriptionConfiguration(env: AIEnvironment) {
-  const token = env.HF_TOKEN?.trim();
-  const model = env.HF_TRANSCRIPTION_MODEL?.trim();
-  const fallbackModel = env.HF_TRANSCRIPTION_FALLBACK_MODEL?.trim();
+  const hfToken = env.HF_TOKEN?.trim();
+  const hfModel = env.HF_TRANSCRIPTION_MODEL?.trim();
+  const hfFallbackModel = env.HF_TRANSCRIPTION_FALLBACK_MODEL?.trim();
+  const groqToken = env.GROQ_API_KEY?.trim();
+  const groqModel = env.GROQ_TRANSCRIPTION_MODEL?.trim() || "whisper-large-v3";
+  const geminiToken = env.GEMINI_API_KEY?.trim();
+  const geminiModel = env.GEMINI_TRANSCRIPTION_MODEL?.trim() || env.GEMINI_MODEL?.trim() || "gemini-3.8-flash";
+  const hfConfigured = Boolean(hfToken && hfModel);
+  const groqConfigured = Boolean(groqToken);
+  const geminiConfigured = Boolean(geminiToken);
   return {
-    provider: "huggingface" as const,
-    token,
-    model,
-    fallbackModel: fallbackModel && fallbackModel !== model ? fallbackModel : undefined,
-    configured: Boolean(token && model),
+    provider: "speech" as const,
+    hfToken,
+    hfModel,
+    hfFallbackModel: hfFallbackModel && hfFallbackModel !== hfModel ? hfFallbackModel : undefined,
+    groqToken,
+    groqModel,
+    geminiToken,
+    geminiModel,
+    hfConfigured,
+    groqConfigured,
+    geminiConfigured,
+    longFormConfigured: groqConfigured || geminiConfigured,
+    configured: groqConfigured || geminiConfigured || hfConfigured,
   };
 }
 function ownedBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -139,6 +156,99 @@ function ownedBuffer(bytes: Uint8Array): ArrayBuffer {
   copy.set(bytes);
   return copy.buffer;
 }
+function audioBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(binary);
+}
+function audioExtension(mime: string): string {
+  if (mime.includes("webm")) return "webm";
+  if (mime.includes("ogg")) return "ogg";
+  if (mime.includes("mpeg")) return "mp3";
+  if (mime.includes("wav")) return "wav";
+  if (mime.includes("flac")) return "flac";
+  if (mime.includes("aac")) return "aac";
+  return "m4a";
+}
+type SpeechAttempt = { ok: boolean; text?: string; status?: number; timedOut?: boolean };
+
+async function transcribeWithGroq(config: ReturnType<typeof transcriptionConfiguration>, audio: Uint8Array, mime: string, timeoutMs: number, fetcher: typeof fetch): Promise<SpeechAttempt> {
+  if (!config.groqConfigured) return { ok: false };
+  const form = new FormData();
+  form.append("file", new File([ownedBuffer(audio)], `kira-voice.${audioExtension(mime)}`, { type: mime }));
+  form.append("model", config.groqModel);
+  form.append("response_format", "json");
+  form.append("temperature", "0");
+  form.append("prompt", "Transcribe a university student's speech faithfully. Preserve names, course codes, numbers, formulas, Nigerian and other accents, hesitations, and non-standard English instead of correcting the speaker.");
+  try {
+    const response = await fetcher("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.groqToken!}` },
+      body: form,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) { void response.body?.cancel().catch(() => undefined); return { ok: false, status: response.status }; }
+    const payload = await response.json() as { text?: unknown };
+    const text = typeof payload.text === "string" ? payload.text.trim() : "";
+    return text ? { ok: true, text } : { ok: false, status: 422 };
+  } catch (error) {
+    return { ok: false, timedOut: error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name) };
+  }
+}
+
+async function transcribeWithGemini(config: ReturnType<typeof transcriptionConfiguration>, audio: Uint8Array, mime: string, timeoutMs: number, fetcher: typeof fetch): Promise<SpeechAttempt> {
+  if (!config.geminiConfigured) return { ok: false };
+  try {
+    const response = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": config.geminiToken! },
+      body: JSON.stringify({
+        contents: [{
+          role: "user",
+          parts: [
+            { text: "Transcribe this audio faithfully and return only the transcript. Keep the speaker's wording even when English is non-standard. Preserve names, course codes, numbers, formulas, Nigerian and other accents, hesitations and code-switching instead of rewriting or summarising." },
+            { inlineData: { mimeType: mime, data: audioBase64(audio) } },
+          ],
+        }],
+        generationConfig: { temperature: 0 },
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) { void response.body?.cancel().catch(() => undefined); return { ok: false, status: response.status }; }
+    const payload = await response.json() as { candidates?: { content?: { parts?: { text?: unknown }[] } }[] };
+    const text = (payload.candidates?.[0]?.content?.parts ?? []).map(part => typeof part.text === "string" ? part.text : "").join("").trim();
+    return text ? { ok: true, text } : { ok: false, status: 422 };
+  } catch (error) {
+    return { ok: false, timedOut: error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name) };
+  }
+}
+
+async function transcribeWithHF(config: ReturnType<typeof transcriptionConfiguration>, audio: Uint8Array, mime: string, timeoutMs: number, fetcher: typeof fetch): Promise<SpeechAttempt> {
+  if (!config.hfConfigured) return { ok: false };
+  const request = (model: string) => {
+    const modelPath = model.split("/").map(encodeURIComponent).join("/");
+    return fetcher(`https://router.huggingface.co/hf-inference/models/${modelPath}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.hfToken!}`, "Content-Type": mime, Accept: "application/json" },
+      body: ownedBuffer(audio),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  };
+  try {
+    let response = await request(config.hfModel!);
+    if (!response.ok && config.hfFallbackModel && ![401, 403].includes(response.status)) {
+      void response.body?.cancel().catch(() => undefined);
+      response = await request(config.hfFallbackModel);
+    }
+    if (!response.ok) { void response.body?.cancel().catch(() => undefined); return { ok: false, status: response.status }; }
+    const payload = await response.json() as { text?: unknown };
+    const text = typeof payload.text === "string" ? payload.text.trim() : "";
+    return text ? { ok: true, text } : { ok: false, status: 422 };
+  } catch (error) {
+    return { ok: false, timedOut: error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name) };
+  }
+}
+
 export async function transcribeAI(env: AIEnvironment, audio: Uint8Array, mimeType: string, tier: AITier = "standard", fetcher: typeof fetch = fetch): Promise<string> {
   if (env.AI_ASSISTANT_ENABLED !== "true") throw new AIProviderError(503, "AI_DISABLED", "Voice input is temporarily paused.");
   const config = transcriptionConfiguration(env);
@@ -147,38 +257,26 @@ export async function transcribeAI(env: AIEnvironment, audio: Uint8Array, mimeTy
   if (!AI_AUDIO_MIME_TYPES.has(mime)) throw new AIProviderError(400, "AI_UNSUPPORTED_AUDIO", "Record a new voice message in a supported audio format.");
   if (audio.byteLength < 1 || audio.byteLength > MAX_AI_TRANSCRIPTION_BYTES) throw new AIProviderError(400, "AI_AUDIO_SIZE", "Record a shorter voice message.");
 
-  const request = (model: string) => {
-    const modelPath = model.split("/").map(encodeURIComponent).join("/");
-    return fetcher(`https://router.huggingface.co/hf-inference/models/${modelPath}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${config.token!}`, "Content-Type": mime, Accept: "application/json" },
-      body: ownedBuffer(audio),
-      signal: AbortSignal.timeout(tier === "pro" ? 150000 : 90000),
-    });
-  };
+  const timeoutMs = tier === "pro" ? 150000 : 90000;
+  const attempts: SpeechAttempt[] = [];
+  // Long-form-capable paths come first so a 1-5 minute recording is not sent to
+  // a short-window model and rejected before a more suitable provider is tried.
+  if (config.groqConfigured) attempts.push(await transcribeWithGroq(config, audio, mime, timeoutMs, fetcher));
+  if (!attempts.at(-1)?.ok && config.geminiConfigured) attempts.push(await transcribeWithGemini(config, audio, mime, timeoutMs, fetcher));
+  if (!attempts.at(-1)?.ok && config.hfConfigured) attempts.push(await transcribeWithHF(config, audio, mime, timeoutMs, fetcher));
 
-  try {
-    let response = await request(config.model!);
-    if (!response.ok && config.fallbackModel && ![401, 403].includes(response.status)) {
-      void response.body?.cancel().catch(() => undefined);
-      response = await request(config.fallbackModel);
-    }
-    if (!response.ok) {
-      void response.body?.cancel().catch(() => undefined);
-      if ([400, 415, 422].includes(response.status)) throw new AIProviderError(400, "AI_TRANSCRIPTION_REJECTED", "That recording could not be transcribed. Your recording is kept — retry or record again.");
-      if (response.status === 402 || response.status === 429) throw new AIProviderError(503, "AI_PROVIDER_LIMIT", "Voice transcription capacity is temporarily unavailable. Your recording is kept; try again.");
-      throw new AIProviderError(503, response.status === 401 || response.status === 403 ? "AI_PROVIDER_AUTH" : "AI_PROVIDER_UNAVAILABLE", "Voice transcription is temporarily unavailable. Your recording is kept; try again.");
-    }
-    const payload = await response.json() as { text?: unknown };
-    const text = typeof payload.text === "string" ? payload.text.trim() : "";
-    if (!text) throw new AIProviderError(422, "AI_EMPTY_TRANSCRIPT", "No speech was detected. Your recording is kept; try again.");
-    if (text.length > 20000) throw new AIProviderError(502, "AI_INVALID_TRANSCRIPT", "That voice message produced too much text. Record a shorter message.");
-    return text;
-  } catch (error) {
-    if (error instanceof AIProviderError) throw error;
-    if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) throw new AIProviderError(504, "AI_TRANSCRIPTION_TIMEOUT", "Voice transcription took too long. Your recording is kept; try again.");
-    throw new AIProviderError(503, "AI_PROVIDER_UNAVAILABLE", "Voice transcription could not connect. Your recording is kept; try again.");
+  const success = attempts.find(attempt => attempt.ok && attempt.text);
+  if (success?.text) {
+    if (success.text.length > 20000) throw new AIProviderError(502, "AI_INVALID_TRANSCRIPT", "That voice message produced too much text. Record a shorter message.");
+    return success.text;
   }
+
+  if (attempts.some(attempt => attempt.timedOut)) throw new AIProviderError(504, "AI_TRANSCRIPTION_TIMEOUT", "Voice transcription took too long. Your recording is kept; try again.");
+  const statuses = attempts.flatMap(attempt => attempt.status === undefined ? [] : [attempt.status]);
+  if (statuses.some(status => status === 402 || status === 429)) throw new AIProviderError(503, "AI_PROVIDER_LIMIT", "Voice transcription capacity is temporarily unavailable. Your recording is kept; try again.");
+  if (statuses.length && statuses.every(status => [400, 415, 422].includes(status))) throw new AIProviderError(400, "AI_TRANSCRIPTION_REJECTED", "That recording could not be transcribed. Your recording is kept — retry or record again.");
+  if (statuses.some(status => status === 401 || status === 403)) throw new AIProviderError(503, "AI_PROVIDER_AUTH", "Voice transcription is temporarily unavailable. Your recording is kept; try again.");
+  throw new AIProviderError(503, "AI_PROVIDER_UNAVAILABLE", "Voice transcription could not connect. Your recording is kept; try again.");
 }
 
 export function parseTimetableJSON(text: string) { return parseScheduleDocument(text); }
