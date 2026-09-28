@@ -195,6 +195,40 @@ export function MessageActionOverlay({
   onReport,
 }: MessageActionOverlayProps) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const reveal = useRef(new Animated.Value(0)).current;
+  const [reduceOverlayMotion, setReduceOverlayMotion] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
+      if (mounted) setReduceOverlayMotion(value);
+    });
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      setReduceOverlayMotion,
+    );
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!target) {
+      reveal.setValue(0);
+      return;
+    }
+    if (reduceOverlayMotion) {
+      reveal.setValue(1);
+      return;
+    }
+    reveal.setValue(0);
+    Animated.timing(reveal, {
+      toValue: 1,
+      duration: 145,
+      useNativeDriver: true,
+    }).start();
+  }, [reduceOverlayMotion, reveal, target]);
 
   useEffect(() => {
     if (!target || Platform.OS !== "android") return;
@@ -219,9 +253,24 @@ export function MessageActionOverlay({
     danger?: boolean;
     action: () => void;
   }> = [
-    { key: "reply", label: "Reply", icon: "arrow-undo-outline", action: () => onReply(target) },
-    { key: "forward", label: "Forward", icon: "arrow-redo-outline", action: () => onForward(target) },
-    { key: "share", label: "Share", icon: "share-social-outline", action: () => onShare(target) },
+    {
+      key: "reply",
+      label: "Reply",
+      icon: "arrow-undo-outline",
+      action: () => onReply(target),
+    },
+    {
+      key: "forward",
+      label: "Forward",
+      icon: "arrow-redo-outline",
+      action: () => onForward(target),
+    },
+    {
+      key: "share",
+      label: "Share",
+      icon: "share-social-outline",
+      action: () => onShare(target),
+    },
     {
       key: "pin",
       label: target.pinned ? "Unpin" : "Pin",
@@ -229,104 +278,172 @@ export function MessageActionOverlay({
       action: () => onPin(target),
     },
     ...(target.mine
-      ? [{
-          key: "unsend",
-          label: "Unsend",
-          icon: "arrow-undo-circle-outline" as React.ComponentProps<typeof Ionicons>["name"],
-          danger: true,
-          action: () => onUnsend(target),
-        }]
-      : [{
-          key: "report",
-          label: "Report",
-          icon: "flag-outline" as React.ComponentProps<typeof Ionicons>["name"],
-          danger: true,
-          action: () => onReport(target),
-        }]),
+      ? [
+          {
+            key: "unsend",
+            label: "Unsend",
+            icon: "arrow-undo-circle-outline" as React.ComponentProps<typeof Ionicons>["name"],
+            danger: true,
+            action: () => onUnsend(target),
+          },
+        ]
+      : [
+          {
+            key: "report",
+            label: "Report",
+            icon: "flag-outline" as React.ComponentProps<typeof Ionicons>["name"],
+            danger: true,
+            action: () => onReport(target),
+          },
+        ]),
   ];
+
+  const animatedClusterStyle = {
+    opacity: reveal,
+    transform: [
+      {
+        translateY: reveal.interpolate({
+          inputRange: [0, 1],
+          outputRange: [8, 0],
+        }),
+      },
+      {
+        scale: reveal.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.97, 1],
+        }),
+      },
+    ],
+  };
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.actionBackdrop]}>
-      <BlurView
-        intensity={42}
-        tint="default"
-        blurTarget={blurTarget}
-        blurMethod={Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : undefined}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { opacity: reveal }]}
+      >
+        <BlurView
+          intensity={42}
+          tint="default"
+          blurTarget={blurTarget}
+          blurMethod={
+            Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : undefined
+          }
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.actionShade} />
+      </Animated.View>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Close message actions"
+        onPress={onClose}
         style={StyleSheet.absoluteFill}
       />
-      <View style={styles.actionShade} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Close message actions" onPress={onClose} style={StyleSheet.absoluteFill} />
 
-        <View
-          pointerEvents="box-none"
-          style={[
-            styles.actionCluster,
-            target.mine ? styles.actionClusterMine : styles.actionClusterOther,
-            { top: Math.max(78, Math.min(target.pageY - 135, 330)) },
-          ]}
-        >
-          <View style={styles.reactionBar}>
-            {MESSAGE_REACTIONS.map((reaction) => {
-              const selected = target.myReaction === reaction;
-              return (
-                <Pressable
-                  key={reaction}
-                  accessibilityRole="button"
-                  accessibilityLabel={selected ? `Remove ${reaction} reaction` : `React ${reaction}`}
-                  disabled={busy}
-                  onPress={() => {
-                    if (Platform.OS !== "web") void Haptics.selectionAsync();
-                    run(() => onReaction(target, selected ? null : reaction));
-                  }}
-                  style={({ pressed }) => [
-                    styles.reactionButton,
-                    selected && styles.reactionButtonSelected,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.reactionEmoji}>{reaction}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={[styles.focusBubble, target.mine ? styles.focusBubbleMine : styles.focusBubbleOther]}>
-            {target.forwarded ? (
-              <View style={styles.forwardedLabel}>
-                <Ionicons name="arrow-redo-outline" size={13} color={target.mine ? "#FFFFFF" : theme.textMuted} />
-                <Text style={[styles.forwardedText, target.mine && styles.forwardedTextMine]}>Forwarded</Text>
-              </View>
-            ) : null}
-            <Text numberOfLines={4} style={[styles.focusText, target.mine && styles.focusTextMine]}>
-              {messagePreview(target)}
-            </Text>
-            <Text style={[styles.focusOwner, target.mine && styles.focusTextMine]}>
-              {target.mine ? "You" : peerName}
-            </Text>
-          </View>
-
-          <View style={styles.actionMenu}>
-            {menu.map((item) => (
+      <Animated.View
+        pointerEvents="box-none"
+        style={[
+          styles.actionCluster,
+          target.mine ? styles.actionClusterMine : styles.actionClusterOther,
+          { top: Math.max(78, Math.min(target.pageY - 135, 330)) },
+          animatedClusterStyle,
+        ]}
+      >
+        <View style={styles.reactionBar}>
+          {MESSAGE_REACTIONS.map((reaction) => {
+            const selected = target.myReaction === reaction;
+            return (
               <Pressable
-                key={item.key}
+                key={reaction}
                 accessibilityRole="button"
+                accessibilityLabel={
+                  selected
+                    ? `Remove ${reaction} reaction`
+                    : `React ${reaction}`
+                }
                 disabled={busy}
-                onPress={() => run(item.action)}
-                style={({ pressed }) => [styles.actionItem, pressed && styles.actionItemPressed]}
+                onPress={() => {
+                  if (Platform.OS !== "web") void Haptics.selectionAsync();
+                  run(() => onReaction(target, selected ? null : reaction));
+                }}
+                style={({ pressed }) => [
+                  styles.reactionButton,
+                  selected && styles.reactionButtonSelected,
+                  pressed && styles.pressed,
+                ]}
               >
-                <Ionicons
-                  name={item.icon}
-                  size={21}
-                  color={item.danger ? theme.error : theme.text}
-                />
-                <Text style={[styles.actionItemText, item.danger && { color: theme.error }]}>
-                  {item.label}
-                </Text>
+                <Text style={styles.reactionEmoji}>{reaction}</Text>
               </Pressable>
-            ))}
-          </View>
+            );
+          })}
         </View>
 
+        <View
+          style={[
+            styles.focusBubble,
+            target.mine ? styles.focusBubbleMine : styles.focusBubbleOther,
+          ]}
+        >
+          {target.forwarded ? (
+            <View style={styles.forwardedLabel}>
+              <Ionicons
+                name="arrow-redo-outline"
+                size={13}
+                color={target.mine ? "#FFFFFF" : theme.textMuted}
+              />
+              <Text
+                style={[
+                  styles.forwardedText,
+                  target.mine && styles.forwardedTextMine,
+                ]}
+              >
+                Forwarded
+              </Text>
+            </View>
+          ) : null}
+          <Text
+            numberOfLines={4}
+            style={[styles.focusText, target.mine && styles.focusTextMine]}
+          >
+            {messagePreview(target)}
+          </Text>
+          <Text
+            style={[styles.focusOwner, target.mine && styles.focusTextMine]}
+          >
+            {target.mine ? "You" : peerName}
+          </Text>
+        </View>
+
+        <View style={styles.actionMenu}>
+          {menu.map((item) => (
+            <Pressable
+              key={item.key}
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => run(item.action)}
+              style={({ pressed }) => [
+                styles.actionItem,
+                pressed && styles.actionItemPressed,
+              ]}
+            >
+              <Ionicons
+                name={item.icon}
+                size={21}
+                color={item.danger ? theme.error : theme.text}
+              />
+              <Text
+                style={[
+                  styles.actionItemText,
+                  item.danger && { color: theme.error },
+                ]}
+              >
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </Animated.View>
     </View>
   );
 }
