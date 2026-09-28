@@ -3,16 +3,16 @@ import type { PGlite } from "@electric-sql/pglite";
 import {
   createTestDatabase,
   testDatabaseAdapter,
-} from "../../tests/helpers/database";
-import type { Bindings } from "../types";
+} from "./helpers/database";
+import type { Bindings } from "../src/types";
 
 let db: PGlite;
-vi.mock("../lib/database", () => ({
+vi.mock("../src/lib/database", () => ({
   database: () => testDatabaseAdapter(db),
   firstRow: (result: { rows: unknown[] }) => result.rows[0],
 }));
 
-import { notifyProfilePostPublished } from "./profile-post-notifications";
+import { notifyProfilePostPublished } from "../src/services/profile-post-notifications";
 
 const school = "25000000-0000-4000-8000-000000000001";
 const otherSchool = "25000000-0000-4000-8000-000000000002";
@@ -94,9 +94,15 @@ describe("profile post notification fan-out", () => {
     expect(inbox.rows.map((row) => row.user_id)).toEqual(
       [sameCampus, otherCampus].sort(),
     );
-    expect(inbox.rows.every((row) => row.title === "KampusOne Newsletter posted")).toBe(true);
-    expect(inbox.rows.every((row) => row.path === `/post?id=${postId}`)).toBe(true);
-    expect(inbox.rows.every((row) => row.actor_user_id === newsletter)).toBe(true);
+    expect(
+      inbox.rows.every((row) => row.title === "KampusOne Newsletter posted"),
+    ).toBe(true);
+    expect(inbox.rows.every((row) => row.path === `/post?id=${postId}`)).toBe(
+      true,
+    );
+    expect(inbox.rows.every((row) => row.actor_user_id === newsletter)).toBe(
+      true,
+    );
 
     const push = await db.query<{ user_id: string; dedupe_key: string }>(
       "select user_id,dedupe_key from app_private.notification_outbox where channel='PUSH' and dedupe_key like $1 order by user_id",
