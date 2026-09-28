@@ -42,12 +42,14 @@ export async function syncAlarms(
         permissions = await Notifications.requestPermissionsAsync();
       if (nativeAlarms) {
         if (requestPermission) await nativeAlarms.requestExactPermission();
-        // Store alarms even when access is pending; the permission-granted receiver restores them.
-        await nativeAlarms.sync(JSON.stringify(alarms));
-        // Remove the older Expo schedule after ownership moves to the native alarm service.
-        for (const item of await Notifications.getAllScheduledNotificationsAsync())
-          if (item.identifier.startsWith("k1-alarm-") || item.identifier.startsWith("k1-snooze-")) await Notifications.cancelScheduledNotificationAsync(item.identifier);
-        return (await nativeAlarms.status()) && permissions.granted;
+        const nativeScheduled = await nativeAlarms.sync(JSON.stringify(alarms));
+        const nativeReady = await nativeAlarms.status();
+        if (nativeScheduled && nativeReady && permissions.granted) {
+          for (const item of await Notifications.getAllScheduledNotificationsAsync())
+            if (item.identifier.startsWith("k1-alarm-") || item.identifier.startsWith("k1-snooze-"))
+              await Notifications.cancelScheduledNotificationAsync(item.identifier);
+          return true;
+        }
       }
       if (!permissions.granted) return false;
       await Notifications.setNotificationCategoryAsync("k1-alarm", [
