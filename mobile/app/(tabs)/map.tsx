@@ -374,8 +374,6 @@ function CampusMap({
   directoryError,
   directoryLoading,
   height,
-  onCancelRoute,
-  onDirections,
   onLayout,
   onRequestCurrentLocation,
   onSelect,
@@ -393,8 +391,6 @@ function CampusMap({
   directoryError: boolean;
   directoryLoading: boolean;
   height: number;
-  onCancelRoute: () => void;
-  onDirections: (place: Place) => void;
   onLayout: (event: LayoutChangeEvent) => void;
   onRequestCurrentLocation: () => void;
   onSelect: (id: string) => void;
@@ -778,126 +774,7 @@ function CampusMap({
           </View>
         ) : null}
 
-        {choosingOrigin && destination ? (
-          <View style={styles.routePrompt}>
-            <View style={styles.routePromptIcon}>
-              <Ionicons color="#FFFFFF" name="walk" size={17} />
-            </View>
-            <View style={styles.routePromptCopy}>
-              <Text style={styles.routePromptTitle}>Choose where you are starting</Text>
-              <Text numberOfLines={1} style={styles.routePromptText}>
-                Tap a campus pin to start your route to {destination.name}.
-              </Text>
-            </View>
-            <Pressable
-              accessibilityLabel="Cancel directions"
-              accessibilityRole="button"
-              onPress={onCancelRoute}
-              style={({ pressed }) => [
-                styles.routeClose,
-                pressed && styles.controlPressed,
-              ]}
-            >
-              <Ionicons color={theme.text} name="close" size={18} />
-            </Pressable>
-          </View>
-        ) : null}
-
-        {route && origin && destination ? (
-          <View style={styles.routeSummary}>
-            <View style={styles.routeSummaryTop}>
-              <View style={styles.routeSummaryCopy}>
-                <Text numberOfLines={1} style={styles.routeSummaryTitle}>
-                  {origin.name} → {destination.name}
-                </Text>
-                <Text style={styles.routeSummaryMeta}>
-                  {formatDistance(route.distance)} · about{" "}
-                  {Math.max(
-                    1,
-                    Math.ceil(route.distance / WALKING_METRES_PER_MINUTE),
-                  )}{" "}
-                  min walk
-                </Text>
-              </View>
-              <Pressable
-                accessibilityLabel="Clear directions"
-                accessibilityRole="button"
-                onPress={onCancelRoute}
-                style={({ pressed }) => [
-                  styles.routeClose,
-                  pressed && styles.controlPressed,
-                ]}
-              >
-                <Ionicons color={theme.text} name="close" size={18} />
-              </Pressable>
-            </View>
-            <View style={styles.routeLegend}>
-              <View style={styles.routeLegendLine} />
-              <Text style={styles.routeLegendText}>KampusOne campus route</Text>
-            </View>
-          </View>
-        ) : null}
       </View>
-
-      {!choosingOrigin && !route && selected ? (
-        <View style={styles.selectedPlace}>
-          <View
-            style={[
-              styles.selectedPlaceIcon,
-              {
-                backgroundColor: markerColors[selected.category] ?? theme.brand,
-              },
-            ]}
-          >
-            <Ionicons
-              color="#FFFFFF"
-              name={icons[selected.category] ?? "location-outline"}
-              size={17}
-            />
-          </View>
-          <View style={styles.selectedPlaceCopy}>
-            <View style={styles.selectedPlaceNameRow}>
-              <Text
-                accessibilityLabel={
-                  selected.name +
-                  (selected.verified_at ? ", verified campus place" : "")
-                }
-                numberOfLines={1}
-                style={styles.selectedPlaceName}
-              >
-                {selected.name}
-              </Text>
-              {selected.verified_at ? <VerificationBadge /> : null}
-            </View>
-            <Text numberOfLines={1} style={styles.selectedPlaceMeta}>
-              {selected.category.toLowerCase()} · tap directions to route here
-            </Text>
-          </View>
-          <Pressable
-            accessibilityLabel={"Directions to " + selected.name}
-            accessibilityRole="button"
-            onPress={() => onDirections(selected)}
-            style={({ pressed }) => [
-              styles.mapDirection,
-              pressed && styles.controlPressed,
-            ]}
-          >
-            <Ionicons color="#FFFFFF" name="navigate" size={17} />
-          </Pressable>
-        </View>
-      ) : (
-        <View style={styles.mapCaption}>
-          <Ionicons
-            color={theme.brandPressed}
-            name="git-branch-outline"
-            size={16}
-          />
-          <Text style={styles.mapCaptionText}>
-            Drag, zoom, search and route across the Ugbowo campus directory.
-            Map data is cross-checked with OpenStreetMap.
-          </Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -1330,8 +1207,6 @@ export default function MapScreen() {
           directoryError={Boolean(error) && !places.length}
           directoryLoading={loading}
           height={mapHeight}
-          onCancelRoute={clearRoute}
-          onDirections={beginDirections}
           onLayout={updateMapLayout}
           onRequestCurrentLocation={() => {
             void requestCurrentLocation();
