@@ -8,7 +8,12 @@ import org.json.JSONObject;
 public class KampusAlarmModule extends ReactContextBaseJavaModule {
   KampusAlarmModule(ReactApplicationContext context) { super(context); }
   @Override public String getName() { return "KampusAlarms"; }
-  @ReactMethod public void status(Promise promise) { promise.resolve(KampusAlarmScheduler.canSchedule(getReactApplicationContext())); }
+  boolean alarmReady() {
+    ReactApplicationContext context=getReactApplicationContext();
+    if(!KampusAlarmScheduler.canSchedule(context))return false;
+    return android.os.Build.VERSION.SDK_INT<34 || context.getSystemService(android.app.NotificationManager.class).canUseFullScreenIntent();
+  }
+  @ReactMethod public void status(Promise promise) { promise.resolve(alarmReady()); }
   @ReactMethod public void requestExactPermission(Promise promise) {
     try {
       if (!KampusAlarmScheduler.canSchedule(getReactApplicationContext()) && android.os.Build.VERSION.SDK_INT >= 31) {
@@ -18,11 +23,11 @@ public class KampusAlarmModule extends ReactContextBaseJavaModule {
         Intent intent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:"+getReactApplicationContext().getPackageName()));
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); getReactApplicationContext().startActivity(intent);
       }
-      promise.resolve(KampusAlarmScheduler.canSchedule(getReactApplicationContext()));
+      promise.resolve(alarmReady());
     } catch(Exception e) { promise.reject("ALARM_PERMISSION", "Open Settings > Apps > Special app access > Alarms & reminders to enable KampusOne.", e); }
   }
   @ReactMethod public void sync(String json, Promise promise) {
-    try { KampusAlarmScheduler.sync(getReactApplicationContext(), new JSONArray(json)); promise.resolve(true); }
+    try { promise.resolve(KampusAlarmScheduler.sync(getReactApplicationContext(), new JSONArray(json))); }
     catch(Exception e) { promise.reject("ALARM_SYNC", e.getMessage(), e); }
   }
   @ReactMethod public void dismiss(String id, Promise promise) { KampusAlarmService.command(getReactApplicationContext(), "dismiss", id); promise.resolve(true); }
