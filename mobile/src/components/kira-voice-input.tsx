@@ -28,6 +28,7 @@ type Props = {
   onTranscript: (text: string) => void;
   onSendTranscript: (text: string) => Promise<void> | void;
   onActiveChange?: (active: boolean) => void;
+  onRecordingChange?: (recording: boolean) => void;
 };
 
 function durationLabel(milliseconds: number) {
@@ -40,7 +41,7 @@ function barHeight(value: number | undefined) {
 }
 
 /** Stop transcribes into an editable draft; the arrow transcribes and sends without an extra tap. */
-export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sendBusy=false,onAttach,onInfo,onSend,onTranscript,onSendTranscript,onActiveChange}:Props){
+export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sendBusy=false,onAttach,onInfo,onSend,onTranscript,onSendTranscript,onActiveChange,onRecordingChange}:Props){
   const {theme}=useAppearance();
   const recorder=useAudioRecorder(VOICE_RECORDING_OPTIONS);
   const state=useAudioRecorderState(recorder,100);
@@ -52,6 +53,7 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
   const recordingLimit=Math.max(1000,maxRecordingMs);
 
   useEffect(()=>{onActiveChange?.(active);},[active,onActiveChange]);
+  useEffect(()=>{onRecordingChange?.(state.isRecording);},[state.isRecording,onRecordingChange]);
   useEffect(()=>{if(state.isRecording)setMeters(values=>[...values.slice(-(WAVE_BARS-1)),state.metering??-60]);},[state.durationMillis,state.isRecording,state.metering]);
   useEffect(()=>{
     alive.current=true;
