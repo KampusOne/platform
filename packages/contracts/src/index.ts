@@ -608,14 +608,26 @@ export type AgentApplicationInput = z.infer<typeof agentApplicationSchema>;
 
 
 // Direct-message uploads are private and are authorized again on every read.
+export const directMessageReactionSchema = z.enum(["😂", "❤️", "👍", "😮", "😭", "🔥"]);
+
+export const directMessageReportReasonSchema = z.enum([
+  "SPAM",
+  "HARASSMENT",
+  "HATE_OR_ABUSE",
+  "SCAM",
+  "OTHER",
+]);
+
+// Direct-message uploads are private and are authorized again on every read.
 export const directMessageInputSchema = z
   .object({
     id: z.string().uuid(),
     body: z.string().trim().max(5000).default(""),
     mediaId: z.string().uuid().optional(),
+    replyToMessageId: z.string().uuid().optional(),
   })
   .strict()
   .refine(
     (value) => Boolean(value.body || value.mediaId),
-    "Write a message or attach a file.",
+    "Write a message or choose media or a document.",
   );
