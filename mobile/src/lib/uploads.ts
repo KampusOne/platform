@@ -11,7 +11,7 @@ import { videoDimensions } from "./media-downloads";
 export type UploadedFile = { id: string; url: string; kind: string; private: boolean };
 export type PhotoSource = "library" | "camera";
 export type PhotoKind = "avatar" | "cover" | "product" | "post";
-export type UploadKind = PhotoKind | "resource" | "kyc" | "support";
+export type UploadKind = PhotoKind | "resource" | "kyc" | "support" | "notification-sound";
 export type PreparedPhoto = PhotoDimensions & { name: string; type: "image/jpeg" };
 
 /** Pick and prepare locally. Cancelling a profile crop never sends an upload. */
@@ -54,7 +54,7 @@ export function verifyPhoto(url: string): Promise<void> {
   });
 }
 async function upload(kind: UploadKind, file: { uri: string; name: string; type: string }): Promise<UploadedFile> {
-  const limit = kind === "post" && file.type.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+  const limit = kind === "notification-sound" ? 2 * 1024 * 1024 : kind === "post" && file.type.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
   let body: Blob;
   if (Platform.OS === "web") {
     const response = await fetch(file.uri);
@@ -95,6 +95,15 @@ export async function uploadPreparedPhoto(kind: PhotoKind, photo: PreparedPhoto)
   return upload(kind, photo);
 }
 export async function pickAndUpload(kind: UploadKind, source: PhotoSource = "library"): Promise<UploadedFile | null> {
+  if (kind === "notification-sound") {
+    const result = await DocumentPicker.getDocumentAsync({ type: ["audio/mpeg", "audio/wav"], copyToCacheDirectory: true, multiple: false });
+    if (result.canceled) return null;
+    const file = result.assets[0];
+    if (!file) return null;
+    if ((file.size ?? 0) > 2 * 1024 * 1024) throw new Error("Choose an MP3 or WAV sound smaller than 2 MB.");
+    const type = file.mimeType === "audio/wav" || file.name.toLowerCase().endsWith(".wav") ? "audio/wav" : "audio/mpeg";
+    return upload(kind, { uri: file.uri, name: file.name, type });
+  }
   if (kind === "resource" || kind === "kyc" || kind === "support") {
     const result = await DocumentPicker.getDocumentAsync({ type: ["image/jpeg", "image/png", "image/webp", "application/pdf"], copyToCacheDirectory: true });
     if (result.canceled) return null;
