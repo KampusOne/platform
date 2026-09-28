@@ -942,6 +942,7 @@ export default function ConversationScreen() {
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.screen}>
+      <BlurTargetView ref={blurTargetRef} style={styles.screen}>
       <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={0}>
         <View style={styles.shell}>
           <View style={styles.header}>
@@ -996,6 +997,15 @@ export default function ConversationScreen() {
                       <Text style={styles.earlierText}>Load earlier messages</Text>
                     </Pressable>
                   ) : null}
+                  {data.pinnedMessage ? (
+                    <View style={styles.pinnedBanner}>
+                      <Ionicons name="pin" size={15} color={theme.deepBrand} />
+                      <View style={styles.pinnedCopy}>
+                        <Text style={styles.pinnedLabel}>Pinned message</Text>
+                        <Text numberOfLines={1} style={styles.pinnedText}>{messagePreview(data.pinnedMessage)}</Text>
+                      </View>
+                    </View>
+                  ) : null}
                   {data.thread.kind === "TUTOR" ? (
                     <View style={styles.noticeCard}>
                       <Ionicons name="school-outline" size={18} color={theme.deepBrand} />
@@ -1020,12 +1030,27 @@ export default function ConversationScreen() {
               ) : null}
               renderItem={({ item, index }) => {
                 const mine = item.sender_id === user?.id;
+                if (item.unsent_at) {
+                  return (
+                    <View style={styles.unsentRow}>
+                      <Ionicons name="arrow-undo-circle-outline" size={14} color={theme.textFaint} />
+                      <Text style={styles.unsentText}>
+                        {mine ? "You unsent a message." : `${peerName} unsent a message.`}
+                      </Text>
+                      <Text style={styles.unsentTime}>{formatMessageTime(item.created_at)}</Text>
+                    </View>
+                  );
+                }
+
                 const previous = index > 0 ? data.messages[index - 1] : undefined;
                 if (picturesBelongTogether(previous, item)) return null;
-
                 const pictureGroup: Message[] = [item];
                 if (item.media_type?.startsWith("image/")) {
-                  for (let nextIndex = index + 1; nextIndex < data.messages.length && pictureGroup.length < 10; nextIndex += 1) {
+                  for (
+                    let nextIndex = index + 1;
+                    nextIndex < data.messages.length && pictureGroup.length < 10;
+                    nextIndex += 1
+                  ) {
                     const next = data.messages[nextIndex];
                     if (!next || !picturesBelongTogether(pictureGroup[pictureGroup.length - 1], next)) break;
                     pictureGroup.push(next);
@@ -1034,21 +1059,66 @@ export default function ConversationScreen() {
                 const groupedPictures = pictureGroup.length > 1;
                 const metaMessage = pictureGroup[pictureGroup.length - 1] || item;
                 const showBody = shouldShowBody(item);
+                const replyOwner = item.reply_sender_id === user?.id ? "You" : peerName;
+                const replyFallback = item.reply_media_id
+                  ? mediaLabel(item.reply_media_type, item.reply_media_name)
+                  : "";
+                const replyText = item.reply_unsent_at
+                  ? "Message unsent"
+                  : item.reply_body &&
+                      item.reply_body !== "Attachment" &&
+                      item.reply_body !== replyFallback
+                    ? item.reply_body
+                    : replyFallback || "Message";
+
                 return (
-                  <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
-                    <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
-                      {showBody ? <Text selectable style={[styles.messageText, mine && styles.messageTextMine]}>{item.body}</Text> : null}
-                      {groupedPictures ? (
-                        <PictureGroup messages={pictureGroup} mine={mine} />
-                      ) : item.media_id && item.media_type ? (
-                        <MessageMedia message={item} mine={mine} />
+                  <SwipeReplyMessage
+                    mine={mine}
+                    disabled={locked}
+                    onReply={() => beginReply(item)}
+                    onLongPress={(event) => openActions(item, mine, event.nativeEvent.pageY)}
+                  >
+                    <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
+                      <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+                        {item.forwarded_from_message_id ? (
+                          <View style={styles.forwardedLine}>
+                            <Ionicons name="arrow-redo-outline" size={12} color={mine ? "rgba(255,255,255,0.75)" : theme.textMuted} />
+                            <Text style={[styles.forwardedText, mine && styles.forwardedTextMine]}>Forwarded</Text>
+                          </View>
+                        ) : null}
+                        {item.reply_to_message_id ? (
+                          <View style={[styles.replyQuote, mine ? styles.replyQuoteMine : styles.replyQuoteOther]}>
+                            <View style={[styles.replyAccent, mine && styles.replyAccentMine]} />
+                            <View style={styles.replyQuoteCopy}>
+                              <Text numberOfLines={1} style={[styles.replyAuthor, mine && styles.replyAuthorMine]}>{replyOwner}</Text>
+                              <Text numberOfLines={1} style={[styles.replyText, mine && styles.replyTextMine]}>{replyText}</Text>
+                            </View>
+                          </View>
+                        ) : null}
+                        {showBody ? <Text selectable style={[styles.messageText, mine && styles.messageTextMine]}>{item.body}</Text> : null}
+                        {groupedPictures ? (
+                          <PictureGroup messages={pictureGroup} mine={mine} />
+                        ) : item.media_id && item.media_type ? (
+                          <MessageMedia message={item} mine={mine} />
+                        ) : null}
+                      </View>
+                      {item.reactions?.length ? (
+                        <View style={[styles.reactionSummary, mine && styles.reactionSummaryMine]}>
+                          {item.reactions.slice(0, 4).map((reaction) => (
+                            <View key={reaction.reaction} style={[styles.reactionChip, item.my_reaction === reaction.reaction && styles.reactionChipMine]}>
+                              <Text style={styles.reactionChipEmoji}>{reaction.reaction}</Text>
+                              {reaction.count > 1 ? <Text style={styles.reactionCount}>{reaction.count}</Text> : null}
+                            </View>
+                          ))}
+                        </View>
                       ) : null}
+                      <View style={[styles.messageMeta, mine && styles.messageMetaMine]}>
+                        {item.pinned ? <Ionicons name="pin" size={11} color={theme.textFaint} /> : null}
+                        <Text style={styles.messageTime}>{formatMessageTime(metaMessage.created_at)}</Text>
+                        {mine ? <Ionicons name={metaMessage.read_at ? "checkmark-done" : "checkmark"} size={14} color={metaMessage.read_at ? theme.deepBrand : theme.textFaint} /> : null}
+                      </View>
                     </View>
-                    <View style={[styles.messageMeta, mine && styles.messageMetaMine]}>
-                      <Text style={styles.messageTime}>{formatMessageTime(metaMessage.created_at)}</Text>
-                      {mine ? <Ionicons name={metaMessage.read_at ? "checkmark-done" : "checkmark"} size={14} color={metaMessage.read_at ? theme.deepBrand : theme.textFaint} /> : null}
-                    </View>
-                  </View>
+                  </SwipeReplyMessage>
                 );
               }}
             />
@@ -1071,6 +1141,24 @@ export default function ConversationScreen() {
             </View>
           ) : canSend ? (
             <View style={styles.composerDock}>
+              {replyingTo ? (
+                <View style={styles.replyDraft}>
+                  <View style={styles.replyDraftAccent} />
+                  <View style={styles.replyDraftCopy}>
+                    <Text style={styles.replyDraftTitle}>Replying to {replyingTo.sender_id === user?.id ? "yourself" : peerName}</Text>
+                    <Text numberOfLines={1} style={styles.replyDraftText}>{messagePreview(replyingTo)}</Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel reply"
+                    disabled={sending}
+                    onPress={() => setReplyingTo(null)}
+                    style={styles.replyDraftClose}
+                  >
+                    <Ionicons name="close" size={19} color={theme.textMuted} />
+                  </Pressable>
+                </View>
+              ) : null}
               <SelectedMediaPreview
                 items={selectedMedia}
                 onRemove={(localId) => setSelectedMedia((current) => current.filter((item) => item.localId !== localId))}
@@ -1107,6 +1195,7 @@ export default function ConversationScreen() {
                 ) : null}
                 {!voiceActive ? (
                   <TextInput
+                    ref={inputRef}
                     accessibilityLabel="Message"
                     placeholder={canAttach ? "Type a message…" : "Send your message request…"}
                     placeholderTextColor={theme.textMuted}
@@ -1149,6 +1238,124 @@ export default function ConversationScreen() {
           ) : null}
         </View>
       </KeyboardAvoidingView>
+      </BlurTargetView>
+
+      <MessageActionOverlay
+        target={actionTarget}
+        peerName={peerName}
+        blurTarget={blurTargetRef}
+        busy={messageActionBusy}
+        onClose={() => setActionTarget(null)}
+        onReply={(target) => {
+          const message = data?.messages.find((item) => item.id === target.id);
+          if (message) beginReply(message);
+        }}
+        onReaction={(target, reaction) => void reactToMessage(target, reaction)}
+        onForward={(target) => void openForward(target)}
+        onShare={(target) => void shareMessage(target)}
+        onPin={(target) => void togglePin(target)}
+        onUnsend={unsend}
+        onReport={openReport}
+      />
+
+      <Modal
+        visible={Boolean(forwardTarget)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!forwardBusyId) setForwardTarget(null);
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close forward message"
+            onPress={() => {
+              if (!forwardBusyId) setForwardTarget(null);
+            }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.modalSheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetTitleCopy}>
+                <Text style={styles.sheetTitle}>Forward message</Text>
+                <Text numberOfLines={1} style={styles.sheetSubtitle}>{forwardTarget ? messagePreview(forwardTarget) : ""}</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setForwardTarget(null)} style={styles.sheetClose}>
+                <Ionicons name="close" size={22} color={theme.text} />
+              </Pressable>
+            </View>
+            {forwardLoading ? (
+              <View style={styles.sheetEmpty}>
+                <Text style={styles.sheetEmptyText}>Loading conversations…</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={forwardThreads}
+                keyExtractor={(thread) => thread.id}
+                style={styles.forwardList}
+                ListEmptyComponent={(
+                  <View style={styles.sheetEmpty}>
+                    <Text style={styles.sheetEmptyText}>No accepted conversations available yet.</Text>
+                  </View>
+                )}
+                renderItem={({ item }) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={Boolean(forwardBusyId)}
+                    onPress={() => void forwardTo(item.id)}
+                    style={({ pressed }) => [styles.forwardThread, pressed && styles.pressed]}
+                  >
+                    <ProfileAvatar name={item.display_name} imageUrl={item.profile_image_url} size={42} />
+                    <Text numberOfLines={1} style={styles.forwardName}>{item.display_name}</Text>
+                    <Text style={styles.forwardAction}>{forwardBusyId === item.id ? "Sending…" : "Send"}</Text>
+                  </Pressable>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(reportTarget)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!reportBusy) setReportTarget(null);
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close report"
+            onPress={() => {
+              if (!reportBusy) setReportTarget(null);
+            }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.reportSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Report message</Text>
+            <Text style={styles.reportHelp}>Choose the reason that best describes the message. The other person is not told who submitted the report.</Text>
+            <View style={styles.reportReasons}>
+              {reportReasons.map((reason) => (
+                <Pressable
+                  key={reason.value}
+                  accessibilityRole="button"
+                  disabled={reportBusy}
+                  onPress={() => void submitReport(reason.value)}
+                  style={({ pressed }) => [styles.reportReason, pressed && styles.pressed]}
+                >
+                  <Text style={styles.reportReasonText}>{reason.label}</Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1260,6 +1467,57 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   acceptText: { color: "#FFFFFF", fontFamily: theme.font.semibold, fontSize: 13 },
   closedDock: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, backgroundColor: theme.canvas },
   closedText: { flex: 1, color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, lineHeight: 18 },
+  pinnedBanner: { width: "100%", minHeight: 48, flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: theme.surfaceMuted },
+  pinnedCopy: { flex: 1, minWidth: 0, gap: 1 },
+  pinnedLabel: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 10 },
+  pinnedText: { color: theme.text, fontFamily: theme.font.medium, fontSize: 12 },
+  unsentRow: { alignSelf: "center", maxWidth: "88%", flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 5, paddingHorizontal: 10 },
+  unsentText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 11, fontStyle: "italic" },
+  unsentTime: { color: theme.textFaint, fontFamily: theme.font.body, fontSize: 9 },
+  forwardedLine: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 },
+  forwardedText: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 10 },
+  forwardedTextMine: { color: "rgba(255,255,255,0.74)" },
+  replyQuote: { minWidth: 150, maxWidth: 260, flexDirection: "row", gap: 7, borderRadius: 11, paddingVertical: 7, paddingHorizontal: 8, marginBottom: 7 },
+  replyQuoteMine: { backgroundColor: "rgba(255,255,255,0.13)" },
+  replyQuoteOther: { backgroundColor: theme.surfaceMuted },
+  replyAccent: { width: 3, borderRadius: 2, backgroundColor: theme.deepBrand },
+  replyAccentMine: { backgroundColor: "#FFFFFF" },
+  replyQuoteCopy: { flex: 1, minWidth: 0, gap: 1 },
+  replyAuthor: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 10 },
+  replyAuthorMine: { color: "#FFFFFF" },
+  replyText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11 },
+  replyTextMine: { color: "rgba(255,255,255,0.78)" },
+  reactionSummary: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: -2 },
+  reactionSummaryMine: { justifyContent: "flex-end" },
+  reactionChip: { minHeight: 24, flexDirection: "row", alignItems: "center", gap: 2, paddingHorizontal: 6, borderRadius: 12, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
+  reactionChipMine: { borderColor: theme.deepBrand },
+  reactionChipEmoji: { fontSize: 13 },
+  reactionCount: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 9 },
+  replyDraft: { minHeight: 48, flexDirection: "row", alignItems: "stretch", gap: 8, borderRadius: 12, paddingLeft: 9, backgroundColor: theme.surfaceMuted, overflow: "hidden" },
+  replyDraftAccent: { width: 3, backgroundColor: theme.deepBrand, borderRadius: 2, marginVertical: 8 },
+  replyDraftCopy: { flex: 1, minWidth: 0, justifyContent: "center", gap: 1, paddingVertical: 6 },
+  replyDraftTitle: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 11 },
+  replyDraftText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11 },
+  replyDraftClose: { width: 42, alignItems: "center", justifyContent: "center" },
+  modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.34)" },
+  modalSheet: { maxHeight: "72%", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 18, backgroundColor: theme.canvas },
+  reportSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 24, backgroundColor: theme.canvas },
+  sheetHandle: { width: 38, height: 4, borderRadius: 2, alignSelf: "center", marginTop: 9, marginBottom: 13, backgroundColor: theme.border },
+  sheetHeader: { flexDirection: "row", alignItems: "center", gap: 10, paddingBottom: 8 },
+  sheetTitleCopy: { flex: 1, minWidth: 0, gap: 2 },
+  sheetTitle: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 18 },
+  sheetSubtitle: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12 },
+  sheetClose: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: theme.surfaceMuted },
+  sheetEmpty: { minHeight: 120, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 },
+  sheetEmptyText: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13, textAlign: "center" },
+  forwardList: { flexGrow: 0 },
+  forwardThread: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+  forwardName: { flex: 1, color: theme.text, fontFamily: theme.font.medium, fontSize: 14 },
+  forwardAction: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 12 },
+  reportHelp: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, lineHeight: 18, marginTop: 6, marginBottom: 10 },
+  reportReasons: { gap: 2 },
+  reportReason: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+  reportReasonText: { color: theme.text, fontFamily: theme.font.medium, fontSize: 14 },
   pressed: { opacity: 0.7 },
   disabled: { opacity: 0.45 },
 });
