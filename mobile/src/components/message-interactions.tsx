@@ -254,8 +254,7 @@ export function MessageActionOverlay({
         blurMethod={Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : undefined}
         style={StyleSheet.absoluteFill}
       />
-        <BlurView intensity={38} tint="default" style={StyleSheet.absoluteFill} />
-        <View style={styles.actionShade} />
+      <View style={styles.actionShade} />
         <Pressable accessibilityRole="button" accessibilityLabel="Close message actions" onPress={onClose} style={StyleSheet.absoluteFill} />
 
         <View
