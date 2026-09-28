@@ -100,7 +100,7 @@ describe('requirements 70–74, 121, 144–156 and 10',()=>{
   delete env.MEDIA_BUCKET;
  });
  it('allows provisional academics at a documented second university without inventing global departments',async()=>{
-  await response(await request('/student/me/onboarding',student,'PATCH',{firstName:'Ada',lastName:'Student',username:'ada_student',birthDate:'2000-01-01',universityId:otherSchool,currentLevel:'100',matriculationNumber:'TEST/123',admissionYear:2026,graduationYear:2030,missingAcademic:{facultyName:'Reported faculty',departmentName:'Reported department',programmeName:'Reported programme',sourceNote:'Needs university verification'}}));
+  await response(await request('/student/me/onboarding',student,'PATCH',{firstName:'Ada',lastName:'Student',username:'ada_student',birthDate:'2000-01-01',universityId:otherSchool,currentLevel:'100',matriculationNumber:'TEST/123',admissionYear:2026,graduationYear:2030,missingAcademic:{kind:'FACULTY',facultyName:'Reported faculty',departmentName:'Reported department',programmeName:'Reported programme',sourceNote:'Needs university verification'}}));
   const me=await response(await request('/student/me',student));expect(me.profile).toMatchObject({university_id:otherSchool,faculty_id:null,department_id:null,department_name:'Reported department',admission_year:2026});
   expect(me.profile.provisional_academic_submission_id).toBeTruthy();expect((await db.query("select * from public.departments where name='Reported department'")).rows).toHaveLength(0);
   const submissions=await response(await request('/admin/workspaces/academic-submissions?universityId='+otherSchool));expect(submissions.rows).toHaveLength(1);
@@ -138,6 +138,7 @@ describe('requirements 146–159 and238: reviewed sources and scoped guidelines'
   expect((await db.query("select * from app_private.audit_events where action='academic.institution.published' and target_id=$1",[claim])).rows).toHaveLength(1);
  });
  it('publishes source-backed versions and enforces university/faculty/session applicability',async()=>{
+  await db.query('update public.profiles set university_id=$1,faculty_id=null,department_id=null where user_id=$2',[otherSchool,student]);
   const body={universityId:otherSchool,title:'Verified guideline',body:'This is a test guideline paraphrase for the declared university only.',sourceUrl:'https://university.example.invalid/handbook',sourceKey,sourcePage:3,sourceExcerpt:'Test excerpt supplied solely for integration verification.',issuingInstitution:'Test university',sourceVerified:true,reason:'Current source and institutional scope reviewed for this publication.'};
   const first=await response(await request('/admin/academic/guidelines',admin,'POST',body),201);
   await response(await request('/admin/academic/guidelines',finance,'POST',body),403);
@@ -213,6 +214,7 @@ describe('campus and programme administration',()=>{
   expect((await response(await request('/admin/academic/catalogue?universityId='+otherSchool))).programmes.some((p:{id:string})=>p.id===programme)).toBe(false);
  });
  it('restricts notification sound management and resolves an institution default',async()=>{
+  await db.query('update public.profiles set university_id=$1 where user_id=$2',[otherSchool,student]);
   const media=crypto.randomUUID();
   await db.query("insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,$3,'notification-sound',$4,'audio/mpeg',100,'ping.mp3')",[media,admin,school,'sound/'+media]);
   await response(await request('/notifications/admin/sounds',finance),403);
@@ -227,6 +229,7 @@ describe('campus and programme administration',()=>{
 
 describe('measured reports',()=>{
  it('scopes event counts and observed return rates, and exposes no account or source payload',async()=>{
+  await db.query('delete from public.product_events');
   for(const [actor,institution,age,screen] of [[finance,school,20,'today'],[finance,school,18,'timetable'],[student,otherSchool,20,'foreign-screen']])await db.query("insert into product_events(user_id,institution_id,event_name,screen,client_request_id,created_at)values($1,$2,'screen_view',$3,gen_random_uuid(),now()-($4::int*interval '1 day'))",[actor,institution,screen,age]);
   const report=await response(await request('/admin/reports/engagement?days=30',finance));
   expect(report.totals).toMatchObject({events:2,active_users:1});expect(report.retention).toEqual({eligible_users:1,returned_users:1});
