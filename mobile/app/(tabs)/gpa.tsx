@@ -67,7 +67,7 @@ export default function GpaScreen() {
   const [units, setUnits] = useState("");
   const [grade, setGrade] = useState("");
   const [point, setPoint] = useState("");
-  const [gradingScale, setVerifiedScale] = useState<Record<
+  const [gradingScale, setGradingScale] = useState<Record<
     string,
     number
   > | null>(null);
@@ -88,13 +88,9 @@ export default function GpaScreen() {
           gradingScale: Record<string, number> | null;
           gradingScaleStatus?: string;
         }>("/v1/learning/courses");
-        setVerifiedScale(
-          grading.gradingScaleStatus === "VERIFIED"
-            ? grading.gradingScale
-            : null,
-        );
+        setGradingScale(grading.gradingScale ?? null);
       } catch {
-        setVerifiedScale(null);
+        setGradingScale(null);
       }
     } catch (caught) {
       setError(
