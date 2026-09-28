@@ -34,7 +34,7 @@ import { deriveHandoffCode } from "../lib/security";
 import { demoStoreCatalogue } from "../lib/store-demo";
 import { publishingRoutes } from "./publishing";
 import { currentUser, requireAuth } from "../middleware/auth";
-import { requireUnblocked, unblockedAuthorIfReady } from "../lib/profile-safety";
+import { requireUnblocked, unblockedAuthor } from "../lib/profile-safety";
 import type { Bindings, Variables } from "../types";
 
 export const studentRoutes = new Hono<{
@@ -871,8 +871,8 @@ studentRoutes.get("/tutorials", async (context) => {
       "Choose a valid learning-resource type.",
     );
   }
-  const tutorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`profiles.user_id`);
-  const resourceTutorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`resource_tutor.user_id`);
+  const tutorVisible = unblockedAuthor(user.id, sql`profiles.user_id`);
+  const resourceTutorVisible = unblockedAuthor(user.id, sql`resource_tutor.user_id`);
   const [listings, resources] = await Promise.all([
     database(context.env).execute(sql`
       select listings.id, listings.course_id, listings.tutor_profile_id, listings.course_code, listings.title,
@@ -964,7 +964,7 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
     "Learning resources are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const resourceTutorVisible = await unblockedAuthorIfReady(context.env, user.id, sql`resource_tutor.user_id`);
+  const resourceTutorVisible = unblockedAuthor(user.id, sql`resource_tutor.user_id`);
   const result = await database(context.env).execute(sql`
     select resources.id, resources.listing_id, resources.course_code, resources.title,
       resources.description, resources.resource_type, resources.access_model,
@@ -1295,7 +1295,7 @@ studentRoutes.get("/store", async (context) => {
   }
 
   const search = query ? `%${query}%` : null;
-  const sellerVisible = await unblockedAuthorIfReady(context.env, user.id, sql`profiles.user_id`);
+  const sellerVisible = unblockedAuthor(user.id, sql`profiles.user_id`);
   const [products, zones] = await Promise.all([
     database(context.env).execute(sql`
       select products.id, products.vendor_profile_id, products.name, products.description,
