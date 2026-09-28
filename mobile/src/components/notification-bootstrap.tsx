@@ -14,8 +14,12 @@ export function NotificationBootstrap() {
   useEffect(() => {
     if (Platform.OS === "web" || state !== "authenticated" || !user?.id) return;
     let active = true;
-    const timer = setTimeout(() => {
-      void (async () => {
+    let running = false;
+
+    const ensureRegistered = async () => {
+      if (!active || running) return;
+      running = true;
+      try {
         const granted = await requestNativeNotificationPermission();
         if (!active || !granted) return;
 
@@ -25,14 +29,23 @@ export function NotificationBootstrap() {
         const registered = await getRegisteredPushDevice(user.id).catch(() => null);
         if (!active || registered) return;
         await registerPushDevice(user.id);
-      })().catch((error) => {
-        console.warn("kampusone.notifications.bootstrap", error instanceof Error ? error.message : "unknown");
-      });
-    }, 2_500);
+      } catch (error) {
+        console.warn(
+          "kampusone.notifications.bootstrap",
+          error instanceof Error ? error.message : "unknown",
+        );
+      } finally {
+        running = false;
+      }
+    };
+
+    const initial = setTimeout(() => void ensureRegistered(), 2_500);
+    const retry = setInterval(() => void ensureRegistered(), 60_000);
 
     return () => {
       active = false;
-      clearTimeout(timer);
+      clearTimeout(initial);
+      clearInterval(retry);
     };
   }, [state, user?.id]);
 
