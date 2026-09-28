@@ -481,40 +481,12 @@ adminRoutes.get("/tutorials", async (context) => {
   });
 });
 
-adminRoutes.post("/tutorials/demo", async (context) => {
-  requireFeature(
-    context.env,
-    "TUTORIALS_ENABLED",
-    "Tutorial operations are not enabled in this environment.",
+adminRoutes.post("/tutorials/demo", async () => {
+  throw new AppError(
+    410,
+    "GONE",
+    "Demo tutorials and demo learning materials have been retired.",
   );
-  const user = currentUser(context);
-  requireTutorialEditor(user);
-  const parsed = tutorialDemoSeedSchema.safeParse(await body(context));
-  if (!parsed.success)
-    throw new AppError(
-      400,
-      "BAD_REQUEST",
-      "Choose the university that should receive demo tutorials.",
-    );
-  await adminScope(context.env, user, parsed.data.universityId);
-  const result = await database(context.env).execute<{
-    seeded: { listings: number; resources: number };
-  }>(sql`
-    select app_private.seed_tutorial_demo(
-      ${parsed.data.universityId}::uuid, ${user.id}::uuid
-    ) as seeded
-  `);
-  const seeded = firstRow(result)?.seeded ?? { listings: 0, resources: 0 };
-  await recordAudit(context.env, {
-    actorUserId: user.id,
-    universityId: parsed.data.universityId,
-    action: "tutorial.demo.seeded",
-    targetType: "tutorial_demo",
-    targetId: parsed.data.universityId,
-    requestId: context.get("requestId"),
-    metadata: seeded,
-  });
-  return context.json({ status: "READY", ...seeded }, 201);
 });
 
 adminRoutes.delete("/tutorials/demo", async (context) => {
