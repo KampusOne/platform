@@ -1050,9 +1050,11 @@ export default function MapScreen() {
 
   const clearRoute = useCallback(() => {
     void Haptics.selectionAsync();
+    setSelectedPlaceId("");
     setRouteOriginId("");
     setRouteDestinationId("");
     setChoosingOrigin(false);
+    setQuery("");
     setNotice("");
   }, []);
 
@@ -1090,6 +1092,7 @@ export default function MapScreen() {
         }
         setRouteOriginId(id);
         setChoosingOrigin(false);
+        setQuery("");
         setNotice("");
         AccessibilityInfo.announceForAccessibility(
           "Campus directions are ready.",
