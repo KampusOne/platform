@@ -78,6 +78,33 @@ describe('selected-device notification delivery',()=>{
 
 });
 
+
+describe('timetable alarm import',()=>{
+ it('updates selected class reminders without duplicates and leaves other users untouched',async()=>{
+  tokens.set(student,(await createSession(env,{id:student,email:'push1@example.invalid',roles:['STUDENT'],operatorRoles:[],universityId:school})).accessToken);
+  const selected=crypto.randomUUID(),skipped=crypto.randomUUID(),other=crypto.randomUUID();
+  const insert=async(id:string,user:string,institution:string,title:string)=>db.query(
+   'insert into public.timetable_entries(id,user_id,university_id,title,day_of_week,starts_at,ends_at,reminder_minutes,reminder_enabled) values($1,$2,$3,$4,5,\'09:00\',\'10:00\',15,true)',
+   [id,user,institution,title],
+  );
+  await insert(selected,student,school,'Selected class');
+  await insert(skipped,student,school,'Skipped class');
+  await insert(other,outsider,school2,'Other student class');
+
+  expect(await data(await request('/alarms/import-timetable','POST',{entryIds:[selected],reminderMinutes:25},student))).toEqual({imported:1});
+
+  const rows=await db.query<{id:string;reminder_minutes:number;reminder_enabled:boolean}>('select id,reminder_minutes,reminder_enabled from public.timetable_entries where id=any($1::uuid[])',[ [selected,skipped,other] ]);
+  const byId=new Map(rows.rows.map(row=>[row.id,row]));
+  expect(byId.get(selected)).toMatchObject({reminder_minutes:25,reminder_enabled:true});
+  expect(byId.get(skipped)).toMatchObject({reminder_minutes:15,reminder_enabled:false});
+  expect(byId.get(other)).toMatchObject({reminder_minutes:15,reminder_enabled:true});
+
+  expect(await data(await request('/alarms/import-timetable','POST',{entryIds:[selected],reminderMinutes:25},student))).toEqual({imported:1});
+  const linked=await db.query<{count:number}>('select count(*)::int count from public.student_alarms where user_id=$1 and timetable_entry_id=$2',[student,selected]);
+  expect(linked.rows[0]?.count).toBe(1);
+ });
+});
+
 describe('community announcement delivery',()=>{
  async function queue(actor=student,institution=school){
   const announcement=crypto.randomUUID(),key=announcement+':'+actor;
