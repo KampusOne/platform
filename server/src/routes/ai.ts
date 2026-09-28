@@ -65,7 +65,7 @@ aiRoutes.get("/status", async c => {
       images: enabled && providerConfiguration(c.env,"study","image/jpeg").configured,
       documents: enabled && providerConfiguration(c.env,"summary").configured },
     tier: quota.pro ? "pro" : "standard",
-    voice: { maxSeconds: maxVoiceSeconds, longFormReady: speech.longFormConfigured },
+    voice: { maxSeconds: maxVoiceSeconds, standardMaxSeconds: speech.longFormConfigured ? 60 : 30, proMaxSeconds: speech.longFormConfigured ? 300 : 30, longFormReady: speech.longFormConfigured },
     askSession: {
       windowMinutes: 15,
       limit: quota.unlimited ? null : askLimit,
