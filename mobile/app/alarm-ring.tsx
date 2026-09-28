@@ -96,7 +96,7 @@ export default function AlarmRing(){
  }
 
  return <SafeAreaView style={styles.page}>
-  <StatusBar style="light" backgroundColor={INK}/>
+  <StatusBar style="light"/>
   <View pointerEvents="none" style={styles.glowOne}/>
   <View pointerEvents="none" style={styles.glowTwo}/>
 
