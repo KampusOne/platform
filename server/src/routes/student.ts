@@ -674,7 +674,7 @@ studentRoutes.post("/campus/route", async (context) => {
   if (!bounds) {
     throw new AppError(
       503,
-      "CAMPUS_GEOFENCE_UNAVAILABLE",
+      "FEATURE_DISABLED",
       "Live walking directions are not configured for this campus yet.",
     );
   }
@@ -682,7 +682,7 @@ studentRoutes.post("/campus/route", async (context) => {
   if (!insideNavigationBounds(data.origin, bounds)) {
     throw new AppError(
       400,
-      "OFF_CAMPUS",
+      "BAD_REQUEST",
       "Live walking directions start when you are inside the campus boundary.",
     );
   }
@@ -710,7 +710,7 @@ studentRoutes.post("/campus/route", async (context) => {
   if (!insideNavigationBounds(data.destination, bounds)) {
     throw new AppError(
       400,
-      "OUTSIDE_CAMPUS_ROUTE",
+      "BAD_REQUEST",
       "Choose a destination inside your campus.",
     );
   }
@@ -719,7 +719,9 @@ studentRoutes.post("/campus/route", async (context) => {
 
   try {
     const route = await fetchCampusWalkingRoute({
-      baseUrl: context.env.CAMPUS_ROUTING_BASE_URL,
+      ...(context.env.CAMPUS_ROUTING_BASE_URL
+        ? { baseUrl: context.env.CAMPUS_ROUTING_BASE_URL }
+        : {}),
       from: data.origin,
       to: data.destination,
       timeoutMs: 8_000,
@@ -753,7 +755,7 @@ studentRoutes.post("/campus/route", async (context) => {
     if (caught instanceof CampusRoutingProviderError) {
       throw new AppError(
         503,
-        "ROUTING_UNAVAILABLE",
+        "PROVIDER_UNAVAILABLE",
         "Walking directions could not be calculated right now.",
       );
     }
