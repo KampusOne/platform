@@ -43,7 +43,7 @@ export default function StudentAI() {
   const [prompt,setPrompt]=useState("");const [attachment,setAttachment]=useState<StagedAttachment>();
   const [turns,setTurns]=useState<Turn[]>([]);const [replyTo,setReplyTo]=useState<string>();
   const [pending,setPending]=useState<{prompt:string;file?:StagedAttachment}>();
-  const [busy,setBusy]=useState(false);const [uploading,setUploading]=useState(false);const [loaded,setLoaded]=useState(false);const [voiceActive,setVoiceActive]=useState(false);
+  const [busy,setBusy]=useState(false);const [uploading,setUploading]=useState(false);const [loaded,setLoaded]=useState(false);const [voiceActive,setVoiceActive]=useState(false);const [voiceRecording,setVoiceRecording]=useState(false);
   const [error,setError]=useState("");const [status,setStatus]=useState<Status>();
   const [limit,setLimit]=useState<{resetsAt?:string;upgrade?:boolean}>();const [now,setNow]=useState(Date.now());
   const [sheet,setSheet]=useState<"history"|"plans"|"info"|null>(null);const [history,setHistory]=useState<SavedWork[]>([]);
@@ -71,7 +71,7 @@ export default function StudentAI() {
   },[]);
   useEffect(()=>{
     const version=++generation.current;const account=user?.id;draftOwner.current=account;
-    setHistory([]);setSheet(null);setPreview(undefined);setDeleteId(undefined);setHistoryError("");setSearch("");setNextOffset(null);setLoaded(false);setTurns([]);setPrompt("");setAttachment(undefined);setReplyTo(undefined);setPending(undefined);setError("");setLimit(undefined);setBusy(false);setVoiceActive(false);lock.current=false;key.current=randomUUID();setTier("standard");setStatus(undefined);
+    setHistory([]);setSheet(null);setPreview(undefined);setDeleteId(undefined);setHistoryError("");setSearch("");setNextOffset(null);setLoaded(false);setTurns([]);setPrompt("");setAttachment(undefined);setReplyTo(undefined);setPending(undefined);setError("");setLimit(undefined);setBusy(false);setVoiceActive(false);setVoiceRecording(false);lock.current=false;key.current=randomUUID();setTier("standard");setStatus(undefined);
     setMode(workspace==='ask'?'study':initial==='notes'?'notes':'summary');
     if(!account)return;
     void (async()=>{
@@ -212,12 +212,12 @@ export default function StudentAI() {
         {attachment?<AttachmentPreview file={attachment} uploading={uploading} onRemove={()=>{setAttachment(undefined);key.current=randomUUID();}} onOpen={()=>void openFile(attachment)}/>:null}
         <View style={{borderWidth:1,borderColor:theme.border,borderRadius:22,backgroundColor:theme.surface,paddingHorizontal:9,paddingTop:voiceActive?5:12,paddingBottom:5}}>
           {!voiceActive?<TextInput accessibilityLabel="Message Kira" value={prompt} onChangeText={changePrompt} editable={loaded&&!busy} placeholder={workspace==='ask'?'Ask Kira…':'Add instructions or paste your material…'} placeholderTextColor={theme.textMuted} multiline maxLength={20000} textAlignVertical="top" style={[{color:theme.text,fontFamily:theme.font.body,fontSize:16,lineHeight:23,minHeight:43,maxHeight:150,paddingHorizontal:7,paddingBottom:8},webInputStyle]}/>:null}
-          <KiraVoiceInput key={`${user?.id}.${workspace}`} disabled={busy||!loaded} enabled={status?.voiceEnabled===true} maxRecordingMs={(status?.voice?.maxSeconds??(status?.tier==='pro'?300:60))*1000} sendBusy={busy} sendDisabled={busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment)} onAttach={()=>void attach()} onInfo={()=>setSheet('info')} onSend={()=>void send()} onActiveChange={setVoiceActive} onTranscript={value=>changePrompt((prompt?prompt+"\n":"")+value)} onSendTranscript={async value=>{const voicePrompt=(prompt.trim()?prompt.trim()+"\n":"")+value;await send(voicePrompt);}}/>
+          <KiraVoiceInput key={`${user?.id}.${workspace}`} disabled={busy||!loaded} enabled={status?.voiceEnabled===true} maxRecordingMs={(status?.voice?.maxSeconds??(status?.tier==='pro'?300:60))*1000} sendBusy={busy} sendDisabled={busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment)} onAttach={()=>void attach()} onInfo={()=>setSheet('info')} onSend={()=>void send()} onActiveChange={setVoiceActive} onRecordingChange={setVoiceRecording} onTranscript={value=>changePrompt((prompt?prompt+"\n":"")+value)} onSendTranscript={async value=>{const voicePrompt=(prompt.trim()?prompt.trim()+"\n":"")+value;await send(voicePrompt);}}/>
         </View>
         <Text style={{...muted,fontSize:10,textAlign:'center',marginTop:7}}>Kira can make mistakes. Check important details.</Text>
       </View>
     </KeyboardAvoidingView>
-    <AIEdgeGlow active={busy || voiceActive}/>
+    <AIEdgeGlow active={busy || voiceRecording}/>
     <Modal visible={sheet!==null} transparent animationType="fade" onRequestClose={()=>setSheet(null)}>
       <View style={{flex:1,justifyContent:'flex-end',backgroundColor:'rgba(0,0,0,0.35)'}}><Pressable accessibilityLabel="Close panel" accessibilityRole="button" onPress={()=>setSheet(null)} style={{flex:1}}/>
         <SafeAreaView edges={['bottom']} style={{backgroundColor:theme.canvas,borderTopLeftRadius:24,borderTopRightRadius:24,width:'100%',maxWidth:760,alignSelf:'center',maxHeight:'82%',padding:22}}>
