@@ -95,6 +95,7 @@ describe("comment likes", () => {
     const query = dialect.sqlToQuery(mocks.execute.mock.calls[1]![0]);
     expect(query.params).toEqual([
       mocks.user.id,
+      mocks.user.id,
       id,
       mocks.user.universityId,
       mocks.user.id,
