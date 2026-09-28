@@ -32,16 +32,17 @@ describe("profile post push enqueue", () => {
           visibility: "PUBLIC",
         }],
       })
+      .mockResolvedValueOnce({ rows: [{ ready: true }] })
       .mockResolvedValueOnce({ rows: [] });
 
     await notifyProfilePostPublished(env, postId, authorId);
 
-    expect(query(2).sql).toContain("profile_post_notification_subscriptions");
-    expect(query(2).sql).toContain("public.user_blocks");
-    expect(query(2).sql).toContain("public.in_app_notifications");
-    expect(query(2).sql).toContain("app_private.notification_outbox");
-    expect(query(2).sql).toContain("on conflict(dedupe_key) do nothing");
-    expect(query(2).params).toContain(postId);
-    expect(query(2).params).toContain(authorId);
+    expect(query(3).sql).toContain("profile_post_notification_subscriptions");
+    expect(query(3).sql).toContain("public.user_blocks");
+    expect(query(3).sql).toContain("public.in_app_notifications");
+    expect(query(3).sql).toContain("app_private.notification_outbox");
+    expect(query(3).sql).toContain("on conflict(dedupe_key) do nothing");
+    expect(query(3).params).toContain(postId);
+    expect(query(3).params).toContain(authorId);
   });
 });

@@ -119,7 +119,7 @@ describe('community announcement delivery',()=>{
   const outbox=await queue(),fetchMock=vi.fn().mockResolvedValue(new Response(JSON.stringify({data:{status:'ok',id:'community-ticket'}})));vi.stubGlobal('fetch',fetchMock);
   await deliverCommunityPush(env);await deliverCommunityPush(env);
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({to:'ExpoPushToken[test_native_device_123]',title:'Class update',data:{kind:'campus-update',path:'/community?id=test'}});
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({to:'ExpoPushToken[test_native_device_123]',title:'Class update',priority:'high',channelId:'kampusone-updates-v2',categoryId:'KAMPUSONE_UPDATE',data:{kind:'kampusone-notification',path:'/community?id=test',preferenceCategory:'announcements'}});
   expect((await db.query('select status from app_private.community_push_deliveries where outbox_id=$1',[outbox])).rows).toEqual([{status:'ACCEPTED'}]);
   await db.query("update app_private.community_push_deliveries set created_at=now()-interval '16 minutes' where outbox_id=$1",[outbox]);
   fetchMock.mockResolvedValue(new Response(JSON.stringify({data:{'community-ticket':{status:'ok'}}})));

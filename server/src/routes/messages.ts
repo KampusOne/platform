@@ -598,7 +598,7 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
         || ${thread.status === "REQUESTED"
           ? " sent you a message request"
           : " sent you a message"},
-      ${body.slice(0, 180)},
+      ${notificationBody},
       ${"/conversation?id=" + thread.id},
       ${"message:" + result.id}
     from public.profiles recipient_profile
@@ -607,6 +607,22 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
     where recipient_profile.user_id=${recipient}::uuid
       and recipient_profile.deleted_at is null
       and sender_profile.deleted_at is null
+    on conflict do nothing
+  `);
+
+  await db.execute(sql`
+    insert into app_private.notification_outbox(
+      user_id,channel,subject,body,dedupe_key
+    )
+    select
+      notice.user_id,
+      'PUSH',
+      notice.title,
+      notice.body,
+      notice.dedupe_key
+    from public.in_app_notifications notice
+    where notice.user_id=${recipient}::uuid
+      and notice.dedupe_key=${"message:" + result.id}
     on conflict do nothing
   `);
 
