@@ -10,8 +10,11 @@ export const defaultNotificationPreferences = {
   profilePosts: true,
   classReminders: true,
   announcements: true,
+  newsletter: true,
   campusUpdates: true,
+  pushMessages: true,
   pushAnnouncements: true,
+  pushNewsletter: true,
   pushCampusUpdates: true,
 };
 
@@ -29,6 +32,7 @@ export const notificationCategories = [
   "profilePosts",
   "classReminders",
   "announcements",
+  "newsletter",
   "campusUpdates",
   "security",
 ] as const;
@@ -75,11 +79,15 @@ export function notificationChannels(
             category === "security" ||
             (typeof row.push_enabled === "boolean"
               ? row.push_enabled
-              : category === "announcements"
-                ? prefs.pushAnnouncements
-                : category === "campusUpdates"
-                  ? prefs.pushCampusUpdates
-                  : category === "classReminders"),
+              : category === "messages"
+                ? prefs.pushMessages
+                : category === "announcements"
+                  ? prefs.pushAnnouncements
+                  : category === "newsletter"
+                    ? prefs.pushNewsletter
+                    : category === "campusUpdates"
+                      ? prefs.pushCampusUpdates
+                      : category === "classReminders"),
         },
       ];
     }),
