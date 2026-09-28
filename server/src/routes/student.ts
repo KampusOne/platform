@@ -1560,7 +1560,15 @@ studentRoutes.get("/purchases", async (context) => {
         left join public.tutorial_reviews reviews on reviews.booking_id = bookings.id
         left join public.tutorial_availability_windows windows
           on windows.id = bookings.availability_window_id and windows.listing_id = bookings.listing_id
-        where bookings.student_user_id = ${user.id}::uuid order by bookings.created_at desc limit 100
+        where bookings.student_user_id = ${user.id}::uuid
+          and listings.is_demo = false
+          and not exists (
+            select 1 from public.student_activity_dismissals dismissals
+            where dismissals.user_id = ${user.id}::uuid
+              and dismissals.activity_kind = 'TUTORIAL_BOOKING'
+              and dismissals.resource_id = bookings.id
+          )
+        order by bookings.created_at desc limit 100
       `)
     : database(context.env).execute(sql`
         select bookings.id, bookings.status, bookings.amount_kobo, bookings.scheduled_for,
@@ -1573,7 +1581,15 @@ studentRoutes.get("/purchases", async (context) => {
         join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
         left join public.tutorial_availability_windows windows
           on windows.id = bookings.availability_window_id and windows.listing_id = bookings.listing_id
-        where bookings.student_user_id = ${user.id}::uuid order by bookings.created_at desc limit 100
+        where bookings.student_user_id = ${user.id}::uuid
+          and listings.is_demo = false
+          and not exists (
+            select 1 from public.student_activity_dismissals dismissals
+            where dismissals.user_id = ${user.id}::uuid
+              and dismissals.activity_kind = 'TUTORIAL_BOOKING'
+              and dismissals.resource_id = bookings.id
+          )
+        order by bookings.created_at desc limit 100
       `);
   const [bookings, orders] = await Promise.all([
     bookingRecords,
@@ -1581,7 +1597,14 @@ studentRoutes.get("/purchases", async (context) => {
       select orders.id, orders.status, orders.subtotal_kobo, orders.delivery_fee_kobo,
         orders.total_kobo, orders.created_at, profiles.display_name as vendor_name
       from public.orders orders join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
-      where orders.buyer_user_id = ${user.id}::uuid order by orders.created_at desc limit 100
+      where orders.buyer_user_id = ${user.id}::uuid
+        and not exists (
+          select 1 from public.student_activity_dismissals dismissals
+          where dismissals.user_id = ${user.id}::uuid
+            and dismissals.activity_kind = 'ORDER'
+            and dismissals.resource_id = orders.id
+        )
+      order by orders.created_at desc limit 100
     `),
   ]);
   const ordersWithCodes = await Promise.all(
@@ -1602,6 +1625,56 @@ studentRoutes.get("/purchases", async (context) => {
     tutorialBookings: bookings.rows,
     orders: ordersWithCodes,
   });
+});
+
+studentRoutes.delete("/purchases/activity/:kind/:id", async (context) => {
+  const user = currentUser(context);
+  const resourceId = id(context.req.param("id"));
+  const rawKind = context.req.param("kind");
+  const activityKind =
+    rawKind === "booking"
+      ? ("TUTORIAL_BOOKING" as const)
+      : rawKind === "order"
+        ? ("ORDER" as const)
+        : null;
+  if (!activityKind) {
+    throw new AppError(400, "BAD_REQUEST", "Choose a valid activity to remove.");
+  }
+
+  const owned =
+    activityKind === "TUTORIAL_BOOKING"
+      ? await database(context.env).execute(sql`
+          select bookings.id
+          from public.tutorial_bookings bookings
+          join public.tutorial_listings listings on listings.id = bookings.listing_id
+          where bookings.id = ${resourceId}::uuid
+            and bookings.student_user_id = ${user.id}::uuid
+            and listings.is_demo = false
+          limit 1
+        `)
+      : await database(context.env).execute(sql`
+          select orders.id
+          from public.orders orders
+          where orders.id = ${resourceId}::uuid
+            and orders.buyer_user_id = ${user.id}::uuid
+          limit 1
+        `);
+  if (!firstRow(owned)) {
+    throw new AppError(404, "NOT_FOUND", "That activity does not exist.");
+  }
+
+  await database(context.env).execute(sql`
+    insert into public.student_activity_dismissals (
+      university_id, user_id, activity_kind, resource_id
+    ) values (
+      ${requireUniversity(user)}::uuid,
+      ${user.id}::uuid,
+      ${activityKind},
+      ${resourceId}::uuid
+    )
+    on conflict (user_id, activity_kind, resource_id) do nothing
+  `);
+  return context.json({ status: "removed" });
 });
 
 studentRoutes.post("/disputes", async (context) => {
