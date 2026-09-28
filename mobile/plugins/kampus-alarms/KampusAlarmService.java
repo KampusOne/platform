@@ -12,7 +12,8 @@ public class KampusAlarmService extends Service {
   static final int NOTIFICATION_ID=73410;
   final Handler handler=new Handler(Looper.getMainLooper());
   MediaPlayer player; Vibrator vibrator; PowerManager.WakeLock wakeLock; JSONObject alarm;long firedAt;
-  public static void command(Context c,String action,String id) { Intent intent=new Intent(c,KampusAlarmService.class).setAction(action).putExtra("alarmId",id);try{c.startService(intent);}catch(Exception e){android.util.Log.w("KampusAlarms","Alarm action unavailable",e);} }
+  public static void command(Context c,String action,String id) { command(c,action,id,0); }
+  public static void command(Context c,String action,String id,int snoozeMinutes) { Intent intent=new Intent(c,KampusAlarmService.class).setAction(action).putExtra("alarmId",id);if(snoozeMinutes>0)intent.putExtra("snoozeMinutes",Math.max(1,Math.min(30,snoozeMinutes)));try{c.startService(intent);}catch(Exception e){android.util.Log.w("KampusAlarms","Alarm action unavailable",e);} }
   @Override public IBinder onBind(Intent intent){return null;}
   PendingIntent action(String command){Intent intent=new Intent(this,KampusAlarmService.class).setAction(command).putExtra("alarmId",alarm.optString("id"));return PendingIntent.getService(this,command.hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);}
   void channels(){if(Build.VERSION.SDK_INT>=26){NotificationManager manager=getSystemService(NotificationManager.class);NotificationChannel ring=new NotificationChannel(CHANNEL,"Ringing alarms",NotificationManager.IMPORTANCE_HIGH);ring.setDescription("Dismiss or snooze your KampusOne alarm");ring.setSound(null,null);ring.enableVibration(false);manager.createNotificationChannel(ring);manager.createNotificationChannel(new NotificationChannel(MISSED,"Missed alarms",NotificationManager.IMPORTANCE_DEFAULT));}}
@@ -22,7 +23,7 @@ public class KampusAlarmService extends Service {
     String action=intent.getAction();
     if("dismiss".equals(action)||"snooze".equals(action)){
       if(alarm!=null&&alarm.optString("id").equals(intent.getStringExtra("alarmId"))){
-        if("snooze".equals(action)){long at=System.currentTimeMillis()+Math.max(1,Math.min(30,alarm.optInt("snooze_minutes",5)))*60000L;KampusAlarmScheduler.prefs(this).edit().putString("snoozeId",alarm.optString("id")).putLong("snoozeAt",at).apply();KampusAlarmScheduler.schedule(this,alarm.optString("id")+"~snooze",at);}
+        if("snooze".equals(action)){int minutes=Math.max(1,Math.min(30,intent.getIntExtra("snoozeMinutes",alarm.optInt("snooze_minutes",5))));long at=System.currentTimeMillis()+minutes*60000L;KampusAlarmScheduler.prefs(this).edit().putString("snoozeId",alarm.optString("id")).putLong("snoozeAt",at).apply();KampusAlarmScheduler.schedule(this,alarm.optString("id")+"~snooze",at);}
         finish(action);
       } else if(alarm==null)stopSelf();
       return START_NOT_STICKY;
@@ -31,10 +32,22 @@ public class KampusAlarmService extends Service {
       JSONObject incoming=new JSONObject(intent.getStringExtra("alarm"));
       if(alarm!=null){KampusAlarmScheduler.record(this,alarm,"missed",firedAt);stopAudio();handler.removeCallbacksAndMessages(null);}
       alarm=incoming;firedAt=System.currentTimeMillis();channels();
-      String title=alarm.optString("label","KampusOne alarm");
+      boolean classAlarm=!alarm.isNull("timetable_entry_id")&&!alarm.optString("timetable_entry_id","").isEmpty();
+      String label=alarm.optString("label","KampusOne alarm");
+      String courseCode=alarm.optString("course_code","").trim();
+      String title=classAlarm&&!courseCode.isEmpty()?courseCode:label;
+      String detail;
+      if(classAlarm){
+        int lead=Math.max(1,alarm.optInt("reminder_minutes",15));
+        String starts=alarm.optString("class_starts_at","").trim(),venue=alarm.optString("venue","").trim();
+        StringBuilder summary=new StringBuilder("Class in ").append(lead).append(" minutes");
+        if(!starts.isEmpty())summary.append(" · ").append(starts);
+        if(!venue.isEmpty())summary.append(" · ").append(venue);
+        detail=summary.toString();
+      }else detail="Time for your reminder · tap to open";
       Intent screen = new Intent(this,KampusAlarmActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
       PendingIntent ringScreen = PendingIntent.getActivity(this,73411,screen,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-      Notification notification=builder(CHANNEL).setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setContentTitle(title).setContentText("Time for your reminder · tap to open").setCategory(Notification.CATEGORY_ALARM).setOngoing(true).setVisibility(Notification.VISIBILITY_PUBLIC).setContentIntent(ringScreen).setFullScreenIntent(ringScreen,true).addAction(new Notification.Action.Builder(null,"Snooze",action("snooze")).build()).addAction(new Notification.Action.Builder(null,"Dismiss",action("dismiss")).build()).build();
+      Notification notification=builder(CHANNEL).setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setContentTitle(title).setContentText(detail).setCategory(Notification.CATEGORY_ALARM).setOngoing(true).setVisibility(Notification.VISIBILITY_PUBLIC).setContentIntent(ringScreen).setFullScreenIntent(ringScreen,true).addAction(new Notification.Action.Builder(null,"Snooze",action("snooze")).build()).addAction(new Notification.Action.Builder(null,"Dismiss",action("dismiss")).build()).build();
       if(Build.VERSION.SDK_INT>=29)startForeground(NOTIFICATION_ID,notification,ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);else startForeground(NOTIFICATION_ID,notification);
       JSONObject active=new JSONObject(alarm.toString()).put("firedAt",firedAt).put("endsAt",firedAt+180000);KampusAlarmScheduler.prefs(this).edit().putString("active",active.toString()).apply();
       KampusAlarmScheduler.record(this,alarm,"ringing",firedAt);
