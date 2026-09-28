@@ -1,5 +1,5 @@
 import { feedExperienceReady } from "../lib/feed-experience";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "@kampusone/contracts";
 import { database, firstRow } from "../lib/database";
@@ -8,6 +8,10 @@ import { input } from "../lib/input";
 import { sha256 } from "../lib/security";
 import { commentRepliesSchemaReady, nextFeedCursor, parseFeedCursor, socialSchemaReady, visiblePost } from "../lib/feed-social";
 import { currentUser, requireAuth } from "../middleware/auth";
+import {
+  requireUnblocked,
+  unblockedAuthor,
+} from "../lib/profile-safety";
 import type { Bindings, Variables } from "../types";
 import { notifyFeedInteraction } from "../services/feed-notifications";
 import { notifyProfilePostPublished } from "../services/profile-post-notifications";
@@ -56,11 +60,14 @@ function projection(user: User, withViews: boolean) {
     case when posts.audience->>'studentPost'='true' and author.user_id is not null then posts.author_user_id else null end as source_user_id,
     case when posts.audience->>'studentPost' = 'true' then author.profile_image_url else null end as source_image_url,
     ${views} as view_count,
-    (select count(*)::int from public.feed_likes likes where likes.post_id = posts.id) as like_count,
+    (select count(*)::int from public.feed_likes likes where likes.post_id = posts.id
+      and ${unblockedAuthor(user.id, sql`likes.user_id`)}) as like_count,
     exists(select 1 from public.feed_likes likes where likes.post_id = posts.id and likes.user_id = ${user.id}::uuid) as liked,
     exists(select 1 from public.feed_bookmarks b where b.post_id = posts.id and b.user_id = ${user.id}::uuid) as bookmarked,
-    (select count(*)::int from public.feed_comments comments where comments.post_id = posts.id and comments.deleted_at is null) as comment_count,
-    (select count(*)::int from public.feed_reposts r where r.post_id = posts.id) as repost_count,
+    (select count(*)::int from public.feed_comments comments where comments.post_id = posts.id
+      and comments.deleted_at is null and ${unblockedAuthor(user.id, sql`comments.author_user_id`)}) as comment_count,
+    (select count(*)::int from public.feed_reposts r where r.post_id = posts.id
+      and ${unblockedAuthor(user.id, sql`r.user_id`)}) as repost_count,
     exists(select 1 from public.feed_reposts r where r.post_id = posts.id and r.user_id = ${user.id}::uuid) as reposted,
     posts.quoted_post_id,
     case when quoted.id is null then null else jsonb_build_object(
@@ -71,20 +78,23 @@ function projection(user: User, withViews: boolean) {
       'source_verified', case when quoted.audience->>'studentPost' = 'true' then coalesce((to_jsonb(quoted_author)->>'public_badge_verified')::boolean, quoted_author.verification_status::text='VERIFIED', false) else quoted_source.verified end
     ) end as quoted_post`;
 }
-function joins(user: User) {
+function joins(user: User, quotedAuthorVisible: SQL) {
   return sql`join public.content_sources sources on sources.id = posts.source_id
     left join public.profiles author on author.user_id = posts.author_user_id and author.deleted_at is null
     left join public.feed_posts quoted on quoted.id = posts.quoted_post_id
       and quoted.status in ('PUBLISHED', 'CORRECTED') and quoted.published_at <= now()
       and (quoted.university_id = ${campus(user)}::uuid or quoted.audience->>'visibility' = 'PUBLIC')
+      and ${quotedAuthorVisible}
     left join public.content_sources quoted_source on quoted_source.id = quoted.source_id
     left join public.profiles quoted_author on quoted_author.user_id = quoted.author_user_id and quoted_author.deleted_at is null`;
 }
 async function readPost(c: Context<Env>, postId: string) {
   const user = currentUser(c);
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
+  const quotedAuthorVisible = unblockedAuthor(user.id, sql`quoted.author_user_id`);
   const result = await database(c.env).execute(sql`
-    select ${projection(user, await feedExperienceReady(c.env))} from public.feed_posts posts ${joins(user)}
-    where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} limit 1
+    select ${projection(user, await feedExperienceReady(c.env))} from public.feed_posts posts ${joins(user, quotedAuthorVisible)}
+    where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} and ${postAuthorVisible} limit 1
   `);
   const post = firstRow(result);
   if (!post) throw new AppError(404, "NOT_FOUND", "This post is unavailable. It may have been deleted or may be campus-restricted.");
@@ -107,7 +117,12 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
     ? Math.max(10, Math.min(pageSize, requestedLimit))
     : pageSize;
   const withViews = await feedExperienceReady(c.env);
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
+  const quotedAuthorVisible = unblockedAuthor(user.id, sql`quoted.author_user_id`);
+  const repostActorVisible = unblockedAuthor(user.id, sql`r.user_id`);
+  if (author) await requireUnblocked(c.env, user.id, author);
   if (repostedBy) {
+    await requireUnblocked(c.env, user.id, repostedBy);
     const privacy = firstRow(await database(c.env).execute<{ hide_reposts: boolean }>(sql`
       select coalesce((p.settings->>'hideReposts')::boolean, false) as hide_reposts
       from public.profiles p
@@ -125,10 +140,11 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
         jsonb_build_object('user_id', target_repost.user_id, 'name', coalesce(reposter.display_name, 'KampusOne user')) as repost_by
       from public.feed_reposts target_repost
       join public.feed_posts posts on posts.id = target_repost.post_id
-      ${joins(user)}
+      ${joins(user, quotedAuthorVisible)}
       left join public.profiles reposter on reposter.user_id = target_repost.user_id and reposter.deleted_at is null
       where target_repost.user_id = ${repostedBy}::uuid
         and ${visiblePost(university)}
+        and ${postAuthorVisible}
         and (${category}::text is null or posts.category = ${category})
         and (${search}::text is null or concat_ws(' ', posts.title, posts.summary, posts.body, author.display_name, sources.name) ilike ${search ? `%${search}%` : null})
         and (${cursor?.at ?? null}::timestamptz is null or
@@ -147,13 +163,15 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
     select ${projection(user, withViews)}, greatest(posts.published_at, latest.created_at) as activity_at,
       to_char(greatest(posts.published_at, latest.created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       case when latest.user_id is null then null else jsonb_build_object('user_id', latest.user_id, 'name', latest.display_name) end as repost_by
-    from public.feed_posts posts ${joins(user)}
+    from public.feed_posts posts ${joins(user, quotedAuthorVisible)}
     left join lateral (
       select r.created_at, r.user_id, p.display_name from public.feed_reposts r
       join public.profiles p on p.user_id = r.user_id and p.deleted_at is null
-      where r.post_id = posts.id order by r.created_at desc, r.user_id desc limit 1
+      where r.post_id = posts.id and ${repostActorVisible}
+      order by r.created_at desc, r.user_id desc limit 1
     ) latest on ${author}::uuid is null
     where ${visiblePost(university)}
+      and ${postAuthorVisible}
       and (${author}::uuid is null or posts.author_user_id=${author}::uuid)
       and (${category}::text is null or posts.category = ${category})
       and (${search}::text is null or concat_ws(' ', posts.title, posts.summary, posts.body, author.display_name, sources.name) ilike ${search ? `%${search}%` : null})
@@ -268,11 +286,15 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
   }
 
   await rateLimit(c, "STUDENT_POST", 10);
+  const quotedTargetVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   // Quotes retain references, not copies; campus-only originals stay campus-only.
   const result = await database(c.env).execute(sql`
     with target as (
       select posts.id, posts.audience from public.feed_posts posts
-      where posts.id = ${data.quotedPostId ?? null}::uuid and ${visiblePost(university)} for update
+      where posts.id = ${data.quotedPostId ?? null}::uuid
+        and ${visiblePost(university)}
+        and ${quotedTargetVisible}
+      for update
     ), source as (
       insert into public.content_sources(university_id, name, owner_user_id)
       values(${university}::uuid, ${"student:" + user.id}, ${user.id}::uuid)
@@ -349,15 +371,22 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
   await readPost(c, postId);
   const parentParam = c.req.query("parentCommentId");
   const parentId = parentParam === undefined ? null : id(parentParam);
+  const parentAuthorVisible = unblockedAuthor(user.id, sql`parent_comment.author_user_id`);
+  const commentAuthorVisible = unblockedAuthor(user.id, sql`comments.author_user_id`);
   const parent = parentId ? firstRow(await database(c.env).execute(sql`
-    select deleted_at is not null as is_deleted from public.feed_comments
-    where id = ${parentId}::uuid and post_id = ${postId}::uuid limit 1
+    select parent_comment.deleted_at is not null as is_deleted
+    from public.feed_comments parent_comment
+    where parent_comment.id = ${parentId}::uuid
+      and parent_comment.post_id = ${postId}::uuid
+      and ${parentAuthorVisible}
+    limit 1
   `)) : null;
   if (parentId && !parent) throw new AppError(404, "NOT_FOUND", "This comment is unavailable.");
   const cursor = parseFeedCursor(c.req.query("cursor"));
   const result = await database(c.env).execute(sql`
     select comments.id,
-      (select count(*)::int from public.feed_comment_likes l where l.comment_id=comments.id) as like_count,
+      (select count(*)::int from public.feed_comment_likes l where l.comment_id=comments.id
+        and ${unblockedAuthor(user.id, sql`l.user_id`)}) as like_count,
       exists(select 1 from public.feed_comment_likes l where l.comment_id=comments.id and l.user_id=${user.id}::uuid) as liked,
       case when comments.deleted_at is null then comments.body else '' end as body,
       comments.created_at, comments.parent_comment_id, comments.deleted_at is not null as is_deleted,
@@ -367,13 +396,17 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
       coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
       comments.deleted_at is null and comments.author_user_id = ${user.id}::uuid as can_delete,
       (select count(*)::int from public.feed_comments replies where replies.post_id = comments.post_id and replies.parent_comment_id = comments.id
-        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
+        and ${unblockedAuthor(user.id, sql`replies.author_user_id`)}
+        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id
+          and ${unblockedAuthor(user.id, sql`child.author_user_id`)}))) as reply_count
     from public.feed_comments comments
     join public.feed_posts posts on posts.id = comments.post_id
     left join public.profiles author on author.user_id = comments.author_user_id and author.deleted_at is null and comments.deleted_at is null
     where comments.post_id = ${postId}::uuid and comments.parent_comment_id is not distinct from ${parentId}::uuid
-      and (comments.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = comments.post_id and child.parent_comment_id = comments.id))
+      and (comments.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = comments.post_id and child.parent_comment_id = comments.id
+        and ${unblockedAuthor(user.id, sql`child.author_user_id`)}))
       and ${visiblePost(campus(user))}
+      and ${commentAuthorVisible}
       and (${cursor?.at ?? null}::timestamptz is null or (comments.created_at, comments.id) > (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
     order by comments.created_at, comments.id limit ${pageSize + 1}
   `);
@@ -389,6 +422,8 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
   const postId = id(c.req.param("id"));
   const data = await input(c, z.object({ body: z.string().trim().min(1).max(2000), requestId: uuid, parentCommentId: uuid.optional() }));
   const parentId = data.parentCommentId ?? null;
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
+  const parentAuthorVisible = unblockedAuthor(user.id, sql`parents.author_user_id`);
   const retry = firstRow(await database(c.env).execute(sql`
     select id, post_id, body, parent_comment_id, deleted_at from public.feed_comments
     where author_user_id = ${user.id}::uuid and client_request_id = ${data.requestId}::uuid limit 1
@@ -399,11 +434,16 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
   const result = await database(c.env).execute(sql`
     with target as (
       select posts.id, posts.university_id from public.feed_posts posts
-      where posts.id = ${postId}::uuid and ${visiblePost(university)} for update
+      where posts.id = ${postId}::uuid
+        and ${visiblePost(university)}
+        and ${postAuthorVisible}
+      for update
     ), parent as (
       select parents.id from public.feed_comments parents
       join target on target.id = parents.post_id and target.university_id = parents.institution_id
-      where parents.id = ${parentId}::uuid and (parents.deleted_at is null or ${retry?.id ?? null}::uuid is not null)
+      where parents.id = ${parentId}::uuid
+        and ${parentAuthorVisible}
+        and (parents.deleted_at is null or ${retry?.id ?? null}::uuid is not null)
       for update of parents
     ), saved as (
       insert into public.feed_comments(post_id, institution_id, author_user_id, body, client_request_id, parent_comment_id)
@@ -419,7 +459,9 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
       author.user_id as author_user_id, author.profile_image_url as author_image_url, author.username as author_username,
       coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
       (select count(*)::int from public.feed_comments replies where replies.post_id = ${postId}::uuid and replies.parent_comment_id = saved.id
-        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
+        and ${unblockedAuthor(user.id, sql`replies.author_user_id`)}
+        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id
+          and ${unblockedAuthor(user.id, sql`child.author_user_id`)}))) as reply_count
     from saved left join public.profiles author on author.user_id = saved.author_user_id and author.deleted_at is null
   `);
   const comment = firstRow(result);
@@ -444,9 +486,13 @@ feedSocialRoutes.delete("/:id/comments/:commentId", requireAuth, async (c) => {
   if (!firstRow(result)) throw new AppError(404, "NOT_FOUND", "This comment is unavailable or you do not have permission to delete it.");
   // A fresh snapshot sees replies that committed while the delete waited for the parent lock.
   const thread = firstRow(await database(c.env).execute<{ retained: boolean; reply_count: number }>(sql`
-    select exists(select 1 from public.feed_comments where post_id = ${postId}::uuid and parent_comment_id = ${commentId}::uuid) as retained,
+    select exists(select 1 from public.feed_comments retained_reply where retained_reply.post_id = ${postId}::uuid
+        and retained_reply.parent_comment_id = ${commentId}::uuid
+        and ${unblockedAuthor(user.id, sql`retained_reply.author_user_id`)}) as retained,
       (select count(*)::int from public.feed_comments replies where replies.post_id = ${postId}::uuid and replies.parent_comment_id = ${commentId}::uuid
-        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id))) as reply_count
+        and ${unblockedAuthor(user.id, sql`replies.author_user_id`)}
+        and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id
+          and ${unblockedAuthor(user.id, sql`child.author_user_id`)}))) as reply_count
   `));
   return c.json({ id: commentId, deleted: true, retained: thread?.retained ?? false, reply_count: thread?.reply_count ?? 0 });
 });
@@ -455,11 +501,15 @@ feedSocialRoutes.put("/:id/repost", requireAuth, async (c) => {
   await requireSocial(c);
   const user = currentUser(c);
   const postId = id(c.req.param("id"));
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   await rateLimit(c, "FEED_REPOST", 60);
   const result = await database(c.env).execute(sql`
     with target as (
       select posts.id, posts.university_id from public.feed_posts posts
-      where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} for update
+      where posts.id = ${postId}::uuid
+        and ${visiblePost(campus(user))}
+        and ${postAuthorVisible}
+      for update
     ), saved as (
       insert into public.feed_reposts(post_id, institution_id, user_id)
       select id, university_id, ${user.id}::uuid from target on conflict(post_id, user_id) do nothing
@@ -485,8 +535,9 @@ feedSocialRoutes.put("/:id/bookmark", requireAuth, async (c, next) => {
   if (!await socialSchemaReady(c.env)) return next();
   const user = currentUser(c);
   const postId = id(c.req.param("id"));
+  const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   const result = await database(c.env).execute(sql`
-    with target as (select posts.id from public.feed_posts posts where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} for update),
+    with target as (select posts.id from public.feed_posts posts where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} and ${postAuthorVisible} for update),
     saved as (insert into public.feed_bookmarks(user_id, post_id) select ${user.id}::uuid, id from target on conflict do nothing)
     select id from target
   `);
