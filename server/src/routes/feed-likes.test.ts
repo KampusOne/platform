@@ -75,7 +75,13 @@ describe("post likes", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ likes: [{ id, liked: false, like_count: 0 }] });
     const query = dialect.sqlToQuery(mocks.execute.mock.calls[0]![0]);
-    expect(query.params).toEqual([mocks.user.id, id, mocks.user.universityId, mocks.user.id]);
+    expect(query.params).toEqual([
+      mocks.user.id,
+      mocks.user.id,
+      id,
+      mocks.user.universityId,
+      mocks.user.id,
+    ]);
     expect(query.sql).toContain("posts.status in ('PUBLISHED', 'CORRECTED')");
     expect(query.sql).toContain("public.user_blocks");
     expect(query.sql).toContain("posts.published_at <= now()");
