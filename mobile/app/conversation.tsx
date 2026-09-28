@@ -230,6 +230,96 @@ function MessageMedia({ message, mine }: { message: Message; mine: boolean }) {
   );
 }
 
+function PictureGroup({
+  messages,
+  mine,
+}: {
+  messages: Message[];
+  mine: boolean;
+}) {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const { styles } = useThemeStyles(createStyles);
+  const visible = messages.slice(0, 4);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all(
+      visible.map(async (message) => {
+        if (!message.media_id) return null;
+        try {
+          const result = await api<{ url: string }>(`/v1/media/${message.media_id}/access`, { method: "POST" });
+          return [message.id, result.url] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setUrls(Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry))));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [messages.map((message) => message.id).join("|")]);
+
+  const open = (message: Message) => {
+    if (!message.media_id) return;
+    router.push({
+      pathname: "/message-media",
+      params: {
+        mediaId: message.media_id,
+        mediaIds: messages.map((entry) => entry.media_id).filter(Boolean).join(","),
+        type: message.media_type || "image/jpeg",
+        name: "Pictures",
+      },
+    });
+  };
+
+  return (
+    <View style={styles.pictureGroup}>
+      {visible.map((message, index) => {
+        const uri = urls[message.id];
+        const remaining = index === visible.length - 1 ? messages.length - visible.length : 0;
+        return (
+          <Pressable
+            key={message.id}
+            accessibilityRole="button"
+            accessibilityLabel={remaining > 0 ? `Open ${messages.length} pictures` : "Open picture"}
+            onPress={() => open(message)}
+            style={[
+              styles.pictureGroupTile,
+              messages.length === 2 && styles.pictureGroupTileTwo,
+            ]}
+          >
+            {uri ? (
+              <Image source={{ uri }} resizeMode="cover" style={styles.pictureGroupImage} />
+            ) : (
+              <View style={styles.pictureGroupPlaceholder}>
+                <Ionicons name="image-outline" size={23} color={mine ? "#FFFFFF" : "#7A7A7A"} />
+              </View>
+            )}
+            {remaining > 0 ? (
+              <View style={styles.pictureGroupMore}>
+                <Text style={styles.pictureGroupMoreText}>+{remaining}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function picturesBelongTogether(previous: Message | undefined, next: Message | undefined) {
+  if (!previous || !next) return false;
+  if (!previous.media_type?.startsWith("image/") || !next.media_type?.startsWith("image/")) return false;
+  if (previous.sender_id !== next.sender_id) return false;
+  const previousTime = new Date(previous.created_at).getTime();
+  const nextTime = new Date(next.created_at).getTime();
+  if (!Number.isFinite(previousTime) || !Number.isFinite(nextTime)) return false;
+  return nextTime - previousTime >= 0 && nextTime - previousTime <= 15_000;
+}
+
 function SelectedMediaPreview({
   items,
   onRemove,
@@ -678,18 +768,35 @@ export default function ConversationScreen() {
                   ))}
                 </View>
               ) : null}
-              renderItem={({ item }) => {
+              renderItem={({ item, index }) => {
                 const mine = item.sender_id === user?.id;
+                const previous = index > 0 ? data.messages[index - 1] : undefined;
+                if (picturesBelongTogether(previous, item)) return null;
+
+                const pictureGroup: Message[] = [item];
+                if (item.media_type?.startsWith("image/")) {
+                  for (let nextIndex = index + 1; nextIndex < data.messages.length && pictureGroup.length < 10; nextIndex += 1) {
+                    const next = data.messages[nextIndex];
+                    if (!picturesBelongTogether(pictureGroup[pictureGroup.length - 1], next)) break;
+                    pictureGroup.push(next);
+                  }
+                }
+                const groupedPictures = pictureGroup.length > 1;
+                const metaMessage = pictureGroup[pictureGroup.length - 1] || item;
                 const showBody = shouldShowBody(item);
                 return (
                   <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
                     <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
                       {showBody ? <Text selectable style={[styles.messageText, mine && styles.messageTextMine]}>{item.body}</Text> : null}
-                      {item.media_id && item.media_type ? <MessageMedia message={item} mine={mine} /> : null}
+                      {groupedPictures ? (
+                        <PictureGroup messages={pictureGroup} mine={mine} />
+                      ) : item.media_id && item.media_type ? (
+                        <MessageMedia message={item} mine={mine} />
+                      ) : null}
                     </View>
                     <View style={[styles.messageMeta, mine && styles.messageMetaMine]}>
-                      <Text style={styles.messageTime}>{formatMessageTime(item.created_at)}</Text>
-                      {mine ? <Ionicons name={item.read_at ? "checkmark-done" : "checkmark"} size={14} color={item.read_at ? theme.deepBrand : theme.textFaint} /> : null}
+                      <Text style={styles.messageTime}>{formatMessageTime(metaMessage.created_at)}</Text>
+                      {mine ? <Ionicons name={metaMessage.read_at ? "checkmark-done" : "checkmark"} size={14} color={metaMessage.read_at ? theme.deepBrand : theme.textFaint} /> : null}
                     </View>
                   </View>
                 );
@@ -829,6 +936,13 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   messageMeta: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 3 },
   messageMetaMine: { justifyContent: "flex-end" },
   messageTime: { color: theme.textFaint, fontFamily: theme.font.body, fontSize: 10 },
+  pictureGroup: { width: 230, flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 5 },
+  pictureGroupTile: { width: 113, height: 96, borderRadius: 10, overflow: "hidden", backgroundColor: theme.surfaceMuted, position: "relative" },
+  pictureGroupTileTwo: { height: 132 },
+  pictureGroupImage: { width: "100%", height: "100%" },
+  pictureGroupPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(127,127,127,0.16)" },
+  pictureGroupMore: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.52)" },
+  pictureGroupMoreText: { color: "#FFFFFF", fontFamily: theme.font.bold, fontSize: 22 },
   mediaWrap: { marginTop: 5, gap: 5, minWidth: 180 },
   pictureCard: { gap: 5 },
   messageImage: { width: 230, height: 180, borderRadius: 12, backgroundColor: theme.surfaceMuted },
