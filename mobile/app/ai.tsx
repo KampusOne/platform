@@ -21,7 +21,7 @@ import { syncAlarms, type Alarm } from "@/src/lib/alarms";
 
 type Mode="study"|"summary"|"notes"|"quiz";
 type Tier="standard"|"pro";
-type Card={id:string;kind:"product"|"vendor"|"tutor"|"video";title:string;subtitle:string;path:string;thumbnail?:string};
+type Card={id:string;kind:"product"|"vendor"|"tutor"|"video";title:string;subtitle:string;path:string;thumbnail?:string;description?:string;source?:string};
 type ActionState={id:string;confirmed?:boolean;undone?:boolean};
 type Action=
   | (ActionState&{type:"timetable";entry:{title:string;courseCode?:string;venue?:string;dayOfWeek:number;date?:string;startsAt:string;endsAt:string};operation?:"update";entryId?:string})
@@ -29,7 +29,7 @@ type Action=
   | (ActionState&{type:"calendar";event:{title:string;startsOn:string;endsOn:string;semester?:string}});
 type Turn={feedback?:{rating:"like"|"dislike"}|null;requestId:string;text:string;prompt?:string;fileName?:string;mediaId?:string;file?:StagedAttachment;mode?:Mode;cards?:Card[];actions?:Action[]};
 type Draft={prompt:string;mode:Mode;tier:Tier;attachment?:StagedAttachment;replyTo?:string;key:string};
-type Status={voiceEnabled?:boolean;enabled:boolean;capabilities:{text:boolean;images:boolean;documents:boolean};tier:Tier;study:{limit:number;remaining:number|null};subscription:{checkoutEnabled:boolean}};
+type Status={voiceEnabled?:boolean;enabled:boolean;capabilities:{text:boolean;images:boolean;documents:boolean};tier:Tier;voice?:{maxSeconds:number};askSession?:{windowMinutes:number;limit:number|null;remaining:number|null;resetsAt?:string|null};study:{limit:number;remaining:number|null};subscription:{checkoutEnabled:boolean}};
 type SavedWork={id:string;title:string;mode:Mode;created_at:string};
 const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const suggestions=[{icon:"book-outline" as const,label:"Explain a topic",prompt:"Help me understand "},{icon:"calendar-outline" as const,label:"Plan my classes",prompt:"Help me add a class to my timetable."},{icon:"alarm-outline" as const,label:"Set a reminder",prompt:"Set an alarm to remind me "},{icon:"people-outline" as const,label:"Find a tutor",prompt:"Help me find a tutor for "}];
@@ -53,7 +53,7 @@ export default function StudentAI() {
   const [preview,setPreview]=useState<{uri:string;name:string}>();
   const key=useRef(randomUUID()),lock=useRef(false),scroll=useRef<ScrollView>(null);
   const owner=useRef(user?.id);owner.current=user?.id;
-  const generation=useRef(0),alive=useRef(true),draftOwner=useRef<string | undefined>(undefined);
+  const generation=useRef(0),alive=useRef(true),draftOwner=useRef<string | undefined>(undefined),explicitThread=useRef<{id:string;mode:Mode}|undefined>(undefined);
   const text={color:theme.text,fontFamily:theme.font.body,fontSize:15,lineHeight:24};
   const muted={color:theme.textMuted,fontFamily:theme.font.body,fontSize:12,lineHeight:18};
   // Keep the AI composer border clean on Expo web; focus remains available to assistive technology.
@@ -75,10 +75,23 @@ export default function StudentAI() {
     setMode(workspace==='ask'?'study':initial==='notes'?'notes':'summary');
     if(!account)return;
     void (async()=>{
-      const draft=await readCache<Draft>(storageKey);
-      if(!valid() || version!==generation.current)return;
-      if(draft){setPrompt(draft.prompt??"");setMode(workspace==='ask'?'study':draft.mode==='notes'?'notes':'summary');setAttachment(draft.attachment);setReplyTo(draft.replyTo);key.current=draft.key||randomUUID();
-        if(draft.replyTo)try{await restoreThread(draft.replyTo,version);}catch{if(valid()&&version===generation.current){setReplyTo(undefined);setError("Your previous conversation could not be restored. Your draft is kept; open History to try again.");key.current=randomUUID();}}
+      const requestedThread=explicitThread.current;
+      explicitThread.current=undefined;
+      if(requestedThread){
+        setMode(requestedThread.mode==='study'?'study':requestedThread.mode==='notes'?'notes':'summary');
+        setReplyTo(requestedThread.id);key.current=randomUUID();
+        try{await restoreThread(requestedThread.id,version);}
+        catch{if(valid()&&version===generation.current){setReplyTo(undefined);setError("That saved conversation could not be restored. Open History to try again.");key.current=randomUUID();}}
+      }else{
+        const draft=await readCache<Draft>(storageKey);
+        if(!valid() || version!==generation.current)return;
+        if(draft){
+          setPrompt(draft.prompt??"");
+          setMode(workspace==='ask'?'study':draft.mode==='notes'?'notes':'summary');
+          setAttachment(draft.attachment);
+          // A fresh Kira entry always starts a fresh thread. Saved conversations reopen only from History.
+          setReplyTo(undefined);key.current=draft.key||randomUUID();
+        }
       }
       if(valid()&&version===generation.current)setLoaded(true);
     })();
@@ -90,7 +103,7 @@ export default function StudentAI() {
       // Private signed links and image bytes are never persisted. An uploaded file
       // is re-opened through the permission-checked media endpoint when required.
       const savedAttachment=attachment?{name:attachment.name,type:attachment.type,...(attachment.size!==undefined?{size:attachment.size}:{}),...(attachment.mediaId?{mediaId:attachment.mediaId}:{})}:undefined;
-      void writeCache(storageKey,{prompt,mode,tier,attachment:savedAttachment,replyTo,key:key.current});
+      void writeCache(storageKey,{prompt,mode,tier,attachment:savedAttachment,key:key.current});
     },250);return()=>clearTimeout(timer);
   },[prompt,attachment,mode,tier,replyTo,loaded,busy,user?.id,storageKey]);
   useEffect(()=>{if(!limit?.resetsAt)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[limit?.resetsAt]);
@@ -110,7 +123,7 @@ export default function StudentAI() {
       if(!valid()||version!==generation.current)return;
       setPending({prompt:question,...(file?{file}:{})});setPrompt("");setAttachment(undefined);
       // Persist the draft without holding up the network request.
-      void writeCache(storageKey,{prompt:question,mode,tier,attachment:savedFile,replyTo,key:key.current});
+      void writeCache(storageKey,{prompt:question,mode,tier,attachment:savedFile,key:key.current});
       const result=await api<Turn>("/v1/ai",{method:"POST",timeoutMs: 240000,body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,replyTo,tier,idempotencyKey:key.current,consent:true})});
       if(!valid()||version!==generation.current)return;
       setTurns(current=>[...current.filter(t=>t.requestId!==result.requestId),{...result,prompt:question,...(file?{file}:{})}]);setReplyTo(result.requestId);key.current=randomUUID();
@@ -125,7 +138,7 @@ export default function StudentAI() {
   async function loadHistory(query=search,offset=0){const version=generation.current;setHistoryBusy(true);setHistoryError("");try{const data=await api<{sessions:SavedWork[];nextOffset:number|null}>(`/v1/ai/history?q=${encodeURIComponent(query)}&offset=${offset}`);if(!valid()||version!==generation.current)return;setHistory(current=>offset?[...current,...data.sessions.filter(s=>!current.some(c=>c.id===s.id))]:data.sessions);setNextOffset(data.nextOffset);setHistoryQuery(query);}catch(e){if(valid()&&version===generation.current)setHistoryError(e instanceof Error?e.message:"History could not load.");}finally{if(valid()&&version===generation.current)setHistoryBusy(false);}}
   async function openHistory(item:SavedWork){if(lock.current)return;lock.current=true;const version=generation.current;setHistoryBusy(true);try{const data=await restoreThread(item.id,version);if(!valid()||version!==generation.current)return;const last=data.turns.at(-1);if(!last)throw new Error("This conversation is no longer available.");
     const target=item.mode==='study'?'ask':'study';
-    if(target!==workspace){await writeCache(`ai-workspace-v3.${user?.id}.${target}`,{prompt:"",mode:item.mode,tier:"standard",replyTo:last.requestId,key:randomUUID()});setWorkspace(target);}else{setReplyTo(last.requestId);setPrompt("");setAttachment(undefined);setMode(item.mode);key.current=randomUUID();}
+    if(target!==workspace){explicitThread.current={id:last.requestId,mode:item.mode};setWorkspace(target);}else{setReplyTo(last.requestId);setPrompt("");setAttachment(undefined);setMode(item.mode);key.current=randomUUID();}
     setSheet(null);setError("");
   }catch(e){if(valid()&&version===generation.current)setHistoryError(e instanceof Error?e.message:"Could not open this conversation.");}finally{lock.current=false;if(valid()&&version===generation.current)setHistoryBusy(false);}}
   useEffect(()=>{if(openHistoryParam === "1" && loaded){setSheet("history");void loadHistory("",0);}},[openHistoryParam,loaded]);
@@ -185,7 +198,7 @@ export default function StudentAI() {
         {loaded&&draftOwner.current===user?.id?turns.map(turn=>{
           const file=turn.file ?? (turn.fileName?{name:turn.fileName,type:/\.(png|jpe?g|webp)$/i.test(turn.fileName)?'image/jpeg':'application/pdf',...(turn.mediaId?{mediaId:turn.mediaId}:{})}:undefined);
           return <View key={turn.requestId}>{renderUser(turn.prompt??'',file)}<StudyAnswer value={turn.text}/>
-            {turn.cards?.map(card=><Pressable key={card.id} accessibilityRole="button" onPress={()=>{if(card.kind==='video' && /^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(card.path))void Linking.openURL(card.path).catch(()=>toast('Could not open this video.','error'));else if(/^\/student-service\?(id|product)=[0-9a-f-]{36}$/i.test(card.path))router.push(card.path as never);}} style={{marginTop:12,padding:16,borderWidth:1,borderColor:theme.border,borderRadius:13,backgroundColor:theme.surface,flexDirection:'row',alignItems:'center',gap:12}}>{card.kind==='video'&&card.thumbnail?<Image accessibilityLabel={card.title} source={{uri:card.thumbnail}} style={{width:96,height:54,borderRadius:7}}/>:<Ionicons name={card.kind==='tutor'?'person-outline':card.kind==='vendor'?'storefront-outline':'bag-outline'} size={23} color={theme.brand}/>}<View style={{flex:1}}><Text style={{...text,fontFamily:theme.font.semibold,fontSize:14}}>{card.title}</Text><Text style={muted}>{card.subtitle}</Text></View><Ionicons name="chevron-forward" size={17} color={theme.textMuted}/></Pressable>)}
+            {turn.cards?.map(card=><Pressable key={card.id} accessibilityRole="button" accessibilityLabel={card.kind==='video'?`Open YouTube video: ${card.title}`:card.title} onPress={()=>{if(card.kind==='video' && /^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(card.path))void Linking.openURL(card.path).catch(()=>toast('Could not open this video.','error'));else if(/^\/student-service\?(id|product)=[0-9a-f-]{36}$/i.test(card.path))router.push(card.path as never);}} style={{marginTop:12,padding:16,borderWidth:1,borderColor:theme.border,borderRadius:13,backgroundColor:theme.surface,flexDirection:card.kind==='video'?'column':'row',alignItems:card.kind==='video'?'stretch':'center',gap:12}}>{card.kind==='video'&&card.thumbnail?<Image accessibilityLabel={card.title} source={{uri:card.thumbnail}} resizeMode="cover" style={{width:'100%',aspectRatio:16/9,borderRadius:9,backgroundColor:theme.surfaceMuted}}/>:card.kind!=='video'?<Ionicons name={card.kind==='tutor'?'person-outline':card.kind==='vendor'?'storefront-outline':'bag-outline'} size={23} color={theme.brand}/>:null}<View style={{flex:1}}><Text style={{...text,fontFamily:theme.font.semibold,fontSize:14}}>{card.title}</Text><Text style={{...muted,marginTop:2}}>{card.subtitle}</Text>{card.kind==='video'&&card.description?<Text numberOfLines={3} style={{...muted,marginTop:7,color:theme.text}}>{card.description}</Text>:null}</View><View style={{flexDirection:'row',alignItems:'center',justifyContent:'flex-end',gap:5}}>{card.kind==='video'?<Text style={{...muted,color:theme.brand,fontFamily:theme.font.semibold}}>Watch on YouTube</Text>:null}<Ionicons name="chevron-forward" size={17} color={theme.textMuted}/></View></Pressable>)}
              {turn.actions?.map(action=>renderAction(turn,action))}
             <View style={{alignSelf:'flex-start',marginTop:7,flexDirection:'row'}}>{iconButton('copy-outline','Copy answer',()=>void copy(turn.text))}{iconButton('share-outline','Share answer',()=>void share(turn.text))}{iconButton(turn.feedback?.rating==='like'?'thumbs-up':'thumbs-up-outline','Helpful answer',()=>void rate(turn,'like'))}{iconButton(turn.feedback?.rating==='dislike'?'thumbs-down':'thumbs-down-outline','Unhelpful answer',()=>void rate(turn,'dislike'))}</View>
           </View>;
@@ -199,7 +212,7 @@ export default function StudentAI() {
         {attachment?<AttachmentPreview file={attachment} uploading={uploading} onRemove={()=>{setAttachment(undefined);key.current=randomUUID();}} onOpen={()=>void openFile(attachment)}/>:null}
         <View style={{borderWidth:1,borderColor:theme.border,borderRadius:22,backgroundColor:theme.surface,paddingHorizontal:9,paddingTop:voiceActive?5:12,paddingBottom:5}}>
           {!voiceActive?<TextInput accessibilityLabel="Message Kira" value={prompt} onChangeText={changePrompt} editable={loaded&&!busy} placeholder={workspace==='ask'?'Ask Kira…':'Add instructions or paste your material…'} placeholderTextColor={theme.textMuted} multiline maxLength={20000} textAlignVertical="top" style={[{color:theme.text,fontFamily:theme.font.body,fontSize:16,lineHeight:23,minHeight:43,maxHeight:150,paddingHorizontal:7,paddingBottom:8},webInputStyle]}/>:null}
-          <KiraVoiceInput key={`${user?.id}.${workspace}`} disabled={busy||!loaded} enabled={status?.voiceEnabled===true} sendBusy={busy} sendDisabled={busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment)} onAttach={()=>void attach()} onInfo={()=>setSheet('info')} onSend={()=>void send()} onActiveChange={setVoiceActive} onTranscript={value=>changePrompt((prompt?prompt+"\n":"")+value)} onSendTranscript={async value=>{const voicePrompt=(prompt.trim()?prompt.trim()+"\n":"")+value;await send(voicePrompt);}}/>
+          <KiraVoiceInput key={`${user?.id}.${workspace}`} disabled={busy||!loaded} enabled={status?.voiceEnabled===true} maxRecordingMs={(status?.voice?.maxSeconds??(status?.tier==='pro'?300:60))*1000} sendBusy={busy} sendDisabled={busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment)} onAttach={()=>void attach()} onInfo={()=>setSheet('info')} onSend={()=>void send()} onActiveChange={setVoiceActive} onTranscript={value=>changePrompt((prompt?prompt+"\n":"")+value)} onSendTranscript={async value=>{const voicePrompt=(prompt.trim()?prompt.trim()+"\n":"")+value;await send(voicePrompt);}}/>
         </View>
         <Text style={{...muted,fontSize:10,textAlign:'center',marginTop:7}}>Kira can make mistakes. Check important details.</Text>
       </View>
@@ -210,8 +223,9 @@ export default function StudentAI() {
         <SafeAreaView edges={['bottom']} style={{backgroundColor:theme.canvas,borderTopLeftRadius:24,borderTopRightRadius:24,width:'100%',maxWidth:760,alignSelf:'center',maxHeight:'82%',padding:22}}>
           <View style={{flexDirection:'row',alignItems:'center',marginBottom:12}}><Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:25,flex:1}}>{sheet==='history'?'History':sheet==='plans'?'Choose your plan':'About Kira'}</Text>{iconButton('close','Close panel',()=>setSheet(null))}</View>
           <ScrollView keyboardShouldPersistTaps="handled">
-            {sheet==='plans'?<View><Pressable accessibilityRole="radio" accessibilityState={{checked:tier==='standard'}} onPress={()=>{setTier('standard');key.current=randomUUID();setSheet(null);}} style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.border,marginBottom:12}}><Text style={{...text,fontFamily:theme.font.semibold}}>Standard</Text><Text style={muted}>Everyday questions and five shared Summary / Notes trials.</Text></Pressable>
-              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.brand,marginBottom:16}}><Text style={{...text,fontFamily:theme.font.semibold}}>Pro · Monthly</Text><Text style={{...muted,marginTop:5}}>More room for learning, longer study use and an upgraded AI option.</Text>{status?.tier==='pro'?smallButton('Use Pro',()=>{setTier('pro');key.current=randomUUID();setSheet(null);}):<Text style={{...muted,marginTop:16,color:theme.brand}}>Subscriptions are not open yet. No payment will be taken.</Text>}</View>
+            {sheet==='plans'?<View><Pressable accessibilityRole="radio" accessibilityState={{checked:tier==='standard'}} onPress={()=>{setTier('standard');key.current=randomUUID();setSheet(null);}} style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.border,marginBottom:12}}><Text style={{...text,fontFamily:theme.font.semibold}}>Standard</Text><Text style={muted}>Everyday questions, up to 1-minute voice transcription, and five shared Summary / Notes trials.</Text></Pressable>
+              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.brand,marginBottom:16}}><Text style={{...text,fontFamily:theme.font.semibold}}>Pro · Monthly</Text><Text style={{...muted,marginTop:5}}>More room for learning and voice transcription up to 5 minutes.</Text>{status?.tier==='pro'?smallButton('Use Pro',()=>{setTier('pro');key.current=randomUUID();setSheet(null);}):<Text style={{...muted,marginTop:16,color:theme.brand}}>Subscriptions are not open yet. No payment will be taken.</Text>}</View>
+              {status?.askSession?<Text style={{...muted,marginBottom:8}}>{status.askSession.remaining===null?'Your Ask sessions have no personal message cap.':`${status.askSession.remaining} Ask message${status.askSession.remaining===1?'':'s'} left in this ${status.askSession.windowMinutes}-minute session.`}</Text>:null}
             </View>:null}
             {sheet==='info'?<View style={{gap:15}}><Text style={text}>Your chats are scoped to your account and saved for 90 days. When you rate an answer, authorised support staff can review that question and answer to improve Kira. You can remove saved answers from History.</Text><Text style={text}>Questions and attachments are processed by external AI services. Do not include passwords, payment details or other people's confidential information.</Text><Text style={text}>Kira can read your timetable and find published campus services. Timetable changes require you to review a schedule card and confirm it. You can edit the saved entry or undo a change within 24 hours if the entry has not changed again. It cannot manage accounts or perform admin actions.</Text><Text style={text}>Attach one image, PDF or text file per message, up to 8 MB. Long text PDFs are processed in sections, within a 600,000-character and 1,000-page processing budget. Large files take longer. For scanned PDFs, attach the relevant page as an image.</Text></View>:null}
             {sheet==='history'?<View>
