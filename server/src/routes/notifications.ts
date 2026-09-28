@@ -29,7 +29,7 @@ notificationRoutes.get('/preferences',async c=>{
 });
 notificationRoutes.put('/preferences',async c=>{
  const legacy=Object.fromEntries(Object.keys(defaultNotificationPreferences).map(key=>[key,z.boolean().optional()]));
- const channelShape=Object.fromEntries(notificationCategories.map(key=>[key,z.object({in_app_enabled:z.boolean(),push_enabled:z.boolean()}).strict()]));
+ const channelShape=Object.fromEntries(notificationCategories.map(key=>[key,z.object({in_app_enabled:z.boolean(),push_enabled:z.boolean()}).strict().optional()]));
  const data=await input(c,z.union([z.object({channels:z.object(channelShape).strict()}).strict(),z.object(legacy).strict()]));
  let channels,preferences;
  if('channels' in data){
