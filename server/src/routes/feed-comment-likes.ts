@@ -45,7 +45,8 @@ feedCommentLikeRoutes.get("/comment-likes", requireAuth, async (context) => {
     select comments.id,
       exists(select 1 from public.feed_comment_likes mine
         where mine.comment_id = comments.id and mine.user_id = ${user.id}::uuid) as liked,
-      (select count(*)::integer from public.feed_comment_likes likes where likes.comment_id = comments.id) as like_count
+      (select count(*)::integer from public.feed_comment_likes likes where likes.comment_id = comments.id
+        and ${unblockedAuthor(user.id, sql`likes.user_id`)}) as like_count
     from public.feed_comments comments
     join public.feed_posts posts on posts.id = comments.post_id and posts.university_id = comments.institution_id
     where comments.id = any(string_to_array(${ids.join(",")}, ',')::uuid[])
