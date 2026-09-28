@@ -6,11 +6,9 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  FlatList,
   Image,
   type LayoutChangeEvent,
   PanResponder,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -36,7 +34,6 @@ const categories = [
 ] as const;
 
 const MIN_MAP_HEIGHT = 360;
-const MAX_MAP_HEIGHT = 440;
 const MIN_MAP_ZOOM = 0.85;
 const MAX_MAP_ZOOM = 2.35;
 const WALKING_METRES_PER_MINUTE = 75;
