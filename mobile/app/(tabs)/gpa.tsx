@@ -41,6 +41,18 @@ type GpaData = {
   } | null;
 };
 
+type PlannerCourse = {
+  course_code: string;
+  title: string;
+  units: string | number | null;
+  grade: string | null;
+};
+
+type GradePlannerData = {
+  courses: PlannerCourse[];
+  gradingScale: Record<string, number> | null;
+};
+
 export default function GpaScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
@@ -62,6 +74,8 @@ export default function GpaScreen() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -181,8 +195,82 @@ export default function GpaScreen() {
     }
   }
 
+  async function importFromGradePlanner() {
+    if (importing || saving) return;
+    setImporting(true);
+    setError("");
+    setImportMessage("");
+
+    try {
+      const planner = await api<GradePlannerData>("/v1/learning/courses");
+      const scale = planner.gradingScale ?? verifiedScale;
+      const candidates = (planner.courses ?? []).filter((course) => {
+        const numericCourseUnits = Number(course.units);
+        return (
+          course.course_code.trim().length >= 2 &&
+          course.title.trim().length > 0 &&
+          Boolean(course.grade?.trim()) &&
+          Number.isFinite(numericCourseUnits) &&
+          numericCourseUnits > 0
+        );
+      });
+
+      if (!candidates.length) {
+        setImportMessage("Nothing to import.");
+        return;
+      }
+
+      if (!scale) {
+        setImportMessage("A grading scale is needed before these grades can be imported.");
+        return;
+      }
+
+      const imported: Result[] = [];
+      let skipped = 0;
+
+      for (const course of candidates) {
+        const normalizedCourseGrade = course.grade!.trim().toUpperCase();
+        const gradePoint = scale[normalizedCourseGrade];
+        if (gradePoint === undefined) {
+          skipped += 1;
+          continue;
+        }
+
+        imported.push({
+          courseCode: course.course_code.trim().toUpperCase(),
+          courseTitle: course.title.trim(),
+          units: Number(course.units),
+          grade: normalizedCourseGrade,
+          gradePoint,
+        });
+      }
+
+      if (!imported.length) {
+        setImportMessage("Nothing to import.");
+        return;
+      }
+
+      setResults(imported);
+      setEditing(true);
+      setImportMessage(
+        skipped
+          ? `${imported.length} imported · ${skipped} skipped`
+          : `${imported.length} ${imported.length === 1 ? "course" : "courses"} imported`,
+      );
+    } catch (caught) {
+      setImportMessage(
+        caught instanceof ApiError
+          ? caught.message
+          : "Grade Planner could not be loaded.",
+      );
+    } finally {
+      setImporting(false);
+    }
+  }
+
   function toggleEditor() {
     setError("");
+    setImportMessage("");
     setEditing((value) => !value);
   }
 
@@ -209,44 +297,63 @@ export default function GpaScreen() {
         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>ACADEMIC RECORD</Text>
           <Text style={styles.pageTitle}>GPA & CGPA</Text>
-          <Text style={styles.subtitle}>
-            Save completed results and follow your cumulative progress.
-          </Text>
         </View>
       </View>
 
       {loading ? <SummarySkeleton /> : <AcademicSummary data={data} />}
 
-      <Pressable
-        accessibilityLabel={
-          editing ? "Close semester result form" : "Add semester results"
-        }
-        accessibilityRole="button"
-        onPress={toggleEditor}
-        style={({ pressed }) => [
-          styles.addAction,
-          editing && styles.closeAction,
-          pressed && styles.pressed,
-        ]}
-      >
-        <Ionicons
-          name={editing ? "close" : "add"}
-          size={20}
-          color={editing ? theme.deepBrand : "#FFFFFF"}
-        />
-        <Text style={[styles.addActionText, editing && styles.closeActionText]}>
-          {editing ? "Close result form" : "Add semester results"}
+      <View style={styles.actionStack}>
+        {!editing ? (
+          <Pressable
+            accessibilityLabel="Import grades from Grade Planner"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: importing, busy: importing }}
+            disabled={importing}
+            onPress={() => void importFromGradePlanner()}
+            style={({ pressed }) => [
+              styles.importAction,
+              importing && styles.actionDisabled,
+              pressed && !importing && styles.pressed,
+            ]}
+          >
+            <Ionicons name="download-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.importActionText}>
+              {importing ? "Importing…" : "Import from Grade Planner"}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          accessibilityLabel={editing ? "Close semester result form" : "Add grades manually"}
+          accessibilityRole="button"
+          onPress={toggleEditor}
+          style={({ pressed }) => [
+            styles.addAction,
+            editing && styles.closeAction,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Ionicons
+            name={editing ? "close" : "add"}
+            size={20}
+            color={theme.deepBrand}
+          />
+          <Text style={[styles.addActionText, editing && styles.closeActionText]}>
+            {editing ? "Close" : "Add manually"}
+          </Text>
+        </Pressable>
+      </View>
+
+      {importMessage ? (
+        <Text accessibilityRole="status" style={styles.importMessage}>
+          {importMessage}
         </Text>
-      </Pressable>
+      ) : null}
 
       {editing ? (
         <View style={styles.form}>
           <View style={styles.formHeading}>
             <Text style={styles.formTitle}>Semester details</Text>
-            <Text style={styles.formIntro}>
-              Enter your actual session and level. Use grade points from your
-              university’s scale; do not combine different grading scales.
-            </Text>
           </View>
           <View style={styles.double}>
             <View style={styles.half}>
@@ -354,13 +461,7 @@ export default function GpaScreen() {
             </View>
           </View>
           <Text style={styles.courseHint}>
-            {verifiedScale
-              ? "Using your university's reviewed grading scale."
-              : "Personal estimate: your university's grading scale has not been published here. Enter the correct points yourself."}
-          </Text>
-          <Text style={styles.courseHint}>
-            Add the course code, title, units, grade and its correct point
-            value.
+            {verifiedScale ? "Verified grading scale" : "Enter the grade point for this grade"}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -506,7 +607,7 @@ function AcademicSummary({ data }: { data: GpaData | null }) {
     >
       <View style={styles.summaryTop}>
         <View>
-          <Text style={styles.summaryLabel}>Personal CGPA estimate</Text>
+          <Text style={styles.summaryLabel}>CGPA estimate</Text>
           <View style={styles.cgpaRow}>
             <Text style={styles.cgpa}>{cgpa}</Text>
           </View>
@@ -645,32 +746,15 @@ function GpaEmpty() {
   const { theme, styles } = useThemeStyles(createStyles);
 
   return (
-    <View style={styles.empty}>
+    <View style={styles.emptyCompact}>
       <View
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        style={styles.emptyArt}
+        style={styles.emptyCompactIcon}
       >
-        <View style={styles.emptySheet}>
-          <View style={styles.emptyTopline} />
-          <View style={styles.emptyGradeRow}>
-            <View style={styles.emptyCourseLine} />
-            <Text style={styles.emptyGrade}>A</Text>
-          </View>
-          <View style={styles.emptyGradeRow}>
-            <View style={styles.emptyCourseLineShort} />
-            <Text style={styles.emptyGrade}>B</Text>
-          </View>
-          <View style={styles.emptyBadge}>
-            <Ionicons name="trending-up" size={24} color={theme.deepBrand} />
-          </View>
-        </View>
+        <Ionicons name="document-text-outline" size={22} color={theme.deepBrand} />
       </View>
-      <Text style={styles.emptyTitle}>No results saved yet</Text>
-      <Text style={styles.emptyBody}>
-        Add the courses from a completed semester to calculate its GPA and begin
-        your cumulative record.
-      </Text>
+      <Text style={styles.emptyTitle}>No results yet</Text>
     </View>
   );
 }
@@ -798,23 +882,49 @@ const createStyles = (theme: Theme) =>
       height: 13,
       width: 148,
     },
-    addAction: {
+    actionStack: {
+      gap: 10,
+      marginBottom: 12,
+      marginTop: 16,
+    },
+    importAction: {
       alignItems: "center",
-      alignSelf: "flex-start",
       backgroundColor: theme.deepBrand,
       borderRadius: 14,
       flexDirection: "row",
       gap: 8,
-      height: 48,
+      height: 50,
       justifyContent: "center",
-      marginBottom: 22,
-      marginTop: 16,
       paddingHorizontal: 16,
     },
-    addActionText: {
+    importActionText: {
       color: "#FFFFFF",
       fontFamily: theme.font.semibold,
       fontSize: 14,
+    },
+    addAction: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceRaised,
+      borderColor: theme.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 8,
+      height: 48,
+      justifyContent: "center",
+      paddingHorizontal: 16,
+    },
+    addActionText: {
+      color: theme.deepBrand,
+      fontFamily: theme.font.semibold,
+      fontSize: 14,
+    },
+    actionDisabled: { opacity: 0.55 },
+    importMessage: {
+      color: theme.textMuted,
+      fontFamily: theme.font.medium,
+      fontSize: 12.5,
+      marginBottom: 16,
     },
     closeAction: {
       backgroundColor: "transparent",
@@ -830,7 +940,7 @@ const createStyles = (theme: Theme) =>
       marginBottom: 24,
       padding: 18,
     },
-    formHeading: { marginBottom: 17 },
+    formHeading: { marginBottom: 12 },
     formTitle: {
       color: theme.text,
       fontFamily: theme.font.display,
@@ -1173,80 +1283,26 @@ const createStyles = (theme: Theme) =>
       fontFamily: theme.font.semibold,
       fontSize: 12,
     },
-    empty: { alignItems: "center", paddingHorizontal: 18, paddingVertical: 34 },
-    emptyArt: {
+    emptyCompact: {
       alignItems: "center",
-      height: 145,
+      gap: 10,
       justifyContent: "center",
-      width: 180,
+      minHeight: 170,
+      paddingVertical: 30,
     },
-    emptySheet: {
-      backgroundColor: theme.surfaceRaised,
-      borderColor: "rgba(168,70,46,0.20)",
-      borderRadius: 18,
-      borderWidth: 1.5,
-      height: 118,
-      padding: 18,
-      transform: [{ rotate: "2deg" }],
-      width: 144,
-    },
-    emptyTopline: {
-      backgroundColor: theme.brand,
-      borderRadius: 3,
-      height: 7,
-      marginBottom: 17,
-      width: 58,
-    },
-    emptyGradeRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginTop: 9,
-    },
-    emptyCourseLine: {
-      backgroundColor: theme.sand,
-      borderRadius: 4,
-      height: 8,
-      width: 68,
-    },
-    emptyCourseLineShort: {
-      backgroundColor: theme.surfaceTint,
-      borderRadius: 4,
-      height: 8,
-      width: 48,
-    },
-    emptyGrade: {
-      color: theme.deepBrand,
-      fontFamily: theme.font.bold,
-      fontSize: 15,
-    },
-    emptyBadge: {
+    emptyCompactIcon: {
       alignItems: "center",
       backgroundColor: theme.sand,
-      borderColor: theme.canvas,
-      borderRadius: 26,
-      borderWidth: 5,
-      bottom: -23,
-      height: 52,
+      borderRadius: 14,
+      height: 46,
       justifyContent: "center",
-      position: "absolute",
-      right: -23,
-      width: 52,
+      width: 46,
     },
     emptyTitle: {
       color: theme.text,
       fontFamily: theme.font.display,
       fontSize: 20,
       lineHeight: 25,
-      textAlign: "center",
-    },
-    emptyBody: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 14,
-      lineHeight: 21,
-      marginTop: 7,
-      maxWidth: 315,
       textAlign: "center",
     },
     pressed: { opacity: 0.82, transform: [{ scale: 0.97 }] },
