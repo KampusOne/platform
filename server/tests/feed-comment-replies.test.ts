@@ -51,6 +51,30 @@ beforeAll(async () => {
       primary key(blocker_id, blocked_id),
       check(blocker_id <> blocked_id)
     );
+    create table public.in_app_notifications(
+      id uuid primary key default gen_random_uuid(),
+      user_id uuid not null references public.users(id),
+      institution_id uuid references public.universities(id),
+      actor_user_id uuid references public.users(id),
+      title text not null,
+      body text not null,
+      path text,
+      read_at timestamptz,
+      dedupe_key text unique,
+      created_at timestamptz not null default now()
+    );
+    create table app_private.notification_outbox(
+      id uuid primary key default gen_random_uuid(),
+      user_id uuid not null references public.users(id),
+      channel text not null check(channel in ('EMAIL','PUSH')),
+      subject text not null,
+      body text not null,
+      dedupe_key text not null unique,
+      attempts integer not null default 0,
+      state text not null default 'PENDING' check(state in ('PENDING','PROCESSING','SENT','FAILED')),
+      next_attempt_at timestamptz not null default now(),
+      created_at timestamptz not null default now()
+    );
   `);
   await pg.exec(readFileSync(new URL("../../database/neon/migrations/20260921180000_feed_social_interactions.sql", import.meta.url), "utf8"));
   // Feed/comment reads now include engagement counts from the existing additive likes migrations.
