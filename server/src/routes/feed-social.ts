@@ -14,7 +14,7 @@ import { notifyFeedInteraction } from "../services/feed-notifications";
 type Env = { Bindings: Bindings; Variables: Variables };
 type User = ReturnType<typeof currentUser>;
 const uuid = z.string().uuid();
-const pageSize = 20;
+const pageSize = 40;
 export const feedSocialRoutes = new Hono<Env>();
 
 function id(value: string) {
