@@ -1,4 +1,5 @@
 import { InlineLoading } from "@/src/components/skeleton";
+import { useCampusLocation } from "@/src/lib/campus-location";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
@@ -7,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Image,
+  Linking,
   type LayoutChangeEvent,
   PanResponder,
   Pressable,
@@ -37,6 +39,8 @@ const MIN_MAP_HEIGHT = 360;
 const MIN_MAP_ZOOM = 0.85;
 const MAX_MAP_ZOOM = 2.35;
 const WALKING_METRES_PER_MINUTE = 75;
+const CURRENT_LOCATION_ID = "__current_location__";
+const MAX_LIVE_ROUTE_DISTANCE_METRES = 2500;
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type Place = {
@@ -365,6 +369,7 @@ function MapSegment({
 
 function CampusMap({
   choosingOrigin,
+  currentLocation,
   destination,
   directoryError,
   directoryLoading,
@@ -372,15 +377,18 @@ function CampusMap({
   onCancelRoute,
   onDirections,
   onLayout,
+  onRequestCurrentLocation,
   onSelect,
   origin,
   places,
   route,
+  routePlaces,
   selected,
   visiblePlaceIds,
   width,
 }: {
   choosingOrigin: boolean;
+  currentLocation: MappedPlace | undefined;
   destination: MappedPlace | undefined;
   directoryError: boolean;
   directoryLoading: boolean;
@@ -388,10 +396,12 @@ function CampusMap({
   onCancelRoute: () => void;
   onDirections: (place: Place) => void;
   onLayout: (event: LayoutChangeEvent) => void;
+  onRequestCurrentLocation: () => void;
   onSelect: (id: string) => void;
   origin: MappedPlace | undefined;
   places: MappedPlace[];
   route: CampusRoute | null;
+  routePlaces: MappedPlace[];
   selected: MappedPlace | undefined;
   visiblePlaceIds: Set<string>;
   width: number;
@@ -412,11 +422,11 @@ function CampusMap({
     [height, places, width, zoom],
   );
   const edges = useMemo(() => campusEdges(places), [places]);
-  const activeEdges = useMemo(() => routeEdgeKeys(route), [route]);
-  const placeById = useMemo(
-    () => new Map(places.map((place) => [place.id, place] as const)),
-    [places],
+  const routePlaceById = useMemo(
+    () => new Map(routePlaces.map((place) => [place.id, place] as const)),
+    [routePlaces],
   );
+  const pendingLocationCenterRef = useRef(false);
 
   useEffect(() => {
     const centered = { x: 0, y: 0 };
@@ -479,13 +489,37 @@ function CampusMap({
       });
   }, [places, points]);
 
-  const recenter = useCallback(() => {
-    void Haptics.selectionAsync();
-    const centered = { x: 0, y: 0 };
+  const centerOnCurrentLocation = useCallback(() => {
+    if (!projection || !currentLocation) return false;
+    const point = pointFor(
+      currentLocation,
+      projection,
+      width,
+      height,
+      { x: 0, y: 0 },
+    );
+    const centered = {
+      x: width / 2 - point.x,
+      y: height / 2 - point.y,
+    };
     panRef.current = centered;
     setPan(centered);
-    setZoom(1);
-  }, []);
+    return true;
+  }, [currentLocation, height, projection, width]);
+
+  useEffect(() => {
+    if (!pendingLocationCenterRef.current || !currentLocation) return;
+    if (centerOnCurrentLocation()) {
+      pendingLocationCenterRef.current = false;
+    }
+  }, [centerOnCurrentLocation, currentLocation]);
+
+  const recenter = useCallback(() => {
+    void Haptics.selectionAsync();
+    if (centerOnCurrentLocation()) return;
+    pendingLocationCenterRef.current = true;
+    onRequestCurrentLocation();
+  }, [centerOnCurrentLocation, onRequestCurrentLocation]);
 
   const canZoomIn = zoom < MAX_MAP_ZOOM;
   const canZoomOut = zoom > MIN_MAP_ZOOM;
@@ -526,7 +560,7 @@ function CampusMap({
               const key = edge.a < edge.b ? edge.a + ":" + edge.b : edge.b + ":" + edge.a;
               return (
                 <MapSegment
-                  active={activeEdges.has(key)}
+                  active={false}
                   from={from}
                   key={key}
                   to={to}
@@ -534,6 +568,57 @@ function CampusMap({
               );
             })
           : null}
+
+        {projection && route
+          ? route.ids.slice(1).map((toId, index) => {
+              const fromId = route.ids[index];
+              if (!fromId || !toId) return null;
+              const fromPlace = routePlaceById.get(fromId);
+              const toPlace = routePlaceById.get(toId);
+              if (!fromPlace || !toPlace) return null;
+              return (
+                <MapSegment
+                  active
+                  from={pointFor(fromPlace, projection, width, height, pan)}
+                  key={"route:" + fromId + ":" + toId}
+                  to={pointFor(toPlace, projection, width, height, pan)}
+                />
+              );
+            })
+          : null}
+
+        {projection && currentLocation ? (
+          (() => {
+            const position = pointFor(
+              currentLocation,
+              projection,
+              width,
+              height,
+              pan,
+            );
+            if (
+              position.x < -60 ||
+              position.x > width + 60 ||
+              position.y < -60 ||
+              position.y > height + 60
+            ) {
+              return null;
+            }
+            return (
+              <View
+                accessibilityLabel="Your current location"
+                pointerEvents="none"
+                style={[
+                  styles.currentLocationMarker,
+                  { left: position.x, top: position.y },
+                ]}
+              >
+                <View style={styles.currentLocationPulse} />
+                <View style={styles.currentLocationDot} />
+              </View>
+            );
+          })()
+        ) : null}
 
         {projection
           ? places.map((place) => {
@@ -650,7 +735,7 @@ function CampusMap({
           </Pressable>
           <View style={styles.controlDivider} />
           <Pressable
-            accessibilityLabel="Recenter campus map"
+            accessibilityLabel="Center map on current location"
             accessibilityRole="button"
             accessibilityState={{ disabled: !projection }}
             disabled={!projection}
@@ -917,6 +1002,7 @@ function PlaceRow({
 export default function MapScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
   const { profile } = useAuth();
+  const campusLocation = useCampusLocation();
   const { height } = useWindowDimensions();
   const mapHeight = Math.max(MIN_MAP_HEIGHT, height);
 
@@ -1020,6 +1106,47 @@ export default function MapScreen() {
     [filtered],
   );
 
+  const currentLocationPlace = useMemo<MappedPlace | undefined>(() => {
+    if (!campusLocation.position) return undefined;
+    return {
+      id: CURRENT_LOCATION_ID,
+      name: "Current location",
+      category: "TRANSPORT",
+      description: "Live device location",
+      latitude: String(campusLocation.position.latitude),
+      longitude: String(campusLocation.position.longitude),
+      accessibility_notes: null,
+      image_url: null,
+      verified_at: null,
+      search_aliases: ["My location", "Current position"],
+      latitudeValue: campusLocation.position.latitude,
+      longitudeValue: campusLocation.position.longitude,
+    };
+  }, [campusLocation.position]);
+
+  const currentLocationDistance = useMemo(() => {
+    if (!currentLocationPlace || !allMappedPlaces.length) {
+      return Number.POSITIVE_INFINITY;
+    }
+    return Math.min(
+      ...allMappedPlaces.map((place) =>
+        distanceBetween(currentLocationPlace, place),
+      ),
+    );
+  }, [allMappedPlaces, currentLocationPlace]);
+
+  const liveLocationRouteEligible =
+    Boolean(currentLocationPlace) &&
+    currentLocationDistance <= MAX_LIVE_ROUTE_DISTANCE_METRES;
+
+  const routingPlaces = useMemo(
+    () =>
+      currentLocationPlace && liveLocationRouteEligible
+        ? [...allMappedPlaces, currentLocationPlace]
+        : allMappedPlaces,
+    [allMappedPlaces, currentLocationPlace, liveLocationRouteEligible],
+  );
+
   const visiblePlaceIds = useMemo(
     () => new Set(mappedPlaces.map((place) => place.id)),
     [mappedPlaces],
@@ -1027,25 +1154,25 @@ export default function MapScreen() {
   const selectedPlace = allMappedPlaces.find(
     (place) => place.id === selectedPlaceId,
   );
-  const routeOrigin = allMappedPlaces.find(
+  const routeOrigin = routingPlaces.find(
     (place) => place.id === routeOriginId,
   );
   const routeDestination = allMappedPlaces.find(
     (place) => place.id === routeDestinationId,
   );
   const graphEdges = useMemo(
-    () => campusEdges(allMappedPlaces),
-    [allMappedPlaces],
+    () => campusEdges(routingPlaces),
+    [routingPlaces],
   );
   const route = useMemo(
     () =>
       shortestCampusRoute(
-        allMappedPlaces,
+        routingPlaces,
         graphEdges,
         routeOriginId,
         routeDestinationId,
       ),
-    [allMappedPlaces, graphEdges, routeDestinationId, routeOriginId],
+    [graphEdges, routeDestinationId, routeOriginId, routingPlaces],
   );
 
   const clearRoute = useCallback(() => {
@@ -1057,6 +1184,82 @@ export default function MapScreen() {
     setQuery("");
     setNotice("");
   }, []);
+
+  const requestCurrentLocation = useCallback(async () => {
+    if (
+      campusLocation.permission === "denied" &&
+      !campusLocation.canAskAgain
+    ) {
+      setNotice("Enable location for KampusOne in your phone settings.");
+      await Linking.openSettings();
+      return null;
+    }
+
+    const position = await campusLocation.requestLocation();
+    if (!position && campusLocation.error) {
+      setNotice(campusLocation.error);
+    }
+    return position;
+  }, [
+    campusLocation.canAskAgain,
+    campusLocation.error,
+    campusLocation.permission,
+    campusLocation.requestLocation,
+  ]);
+
+  const useCurrentLocationAsOrigin = useCallback(async () => {
+    let position = campusLocation.position;
+    if (!position) {
+      position = await requestCurrentLocation();
+    } else if (campusLocation.error && campusLocation.servicesEnabled) {
+      position = await campusLocation.retryLocation();
+    }
+
+    if (!position) return;
+
+    const livePlace: MappedPlace = {
+      id: CURRENT_LOCATION_ID,
+      name: "Current location",
+      category: "TRANSPORT",
+      description: "Live device location",
+      latitude: String(position.latitude),
+      longitude: String(position.longitude),
+      accessibility_notes: null,
+      image_url: null,
+      verified_at: null,
+      latitudeValue: position.latitude,
+      longitudeValue: position.longitude,
+    };
+
+    const nearestDistance = allMappedPlaces.length
+      ? Math.min(
+          ...allMappedPlaces.map((place) => distanceBetween(livePlace, place)),
+        )
+      : Number.POSITIVE_INFINITY;
+
+    if (nearestDistance > MAX_LIVE_ROUTE_DISTANCE_METRES) {
+      const message =
+        "Your current location is outside the mapped campus area. Choose a campus starting point instead.";
+      setNotice(message);
+      AccessibilityInfo.announceForAccessibility(message);
+      return;
+    }
+
+    setRouteOriginId(CURRENT_LOCATION_ID);
+    setChoosingOrigin(false);
+    setQuery("");
+    setNotice("");
+    AccessibilityInfo.announceForAccessibility(
+      "Using your live current location as the route start.",
+    );
+  }, [
+    allMappedPlaces,
+    campusLocation.error,
+    campusLocation.position,
+    campusLocation.retryLocation,
+    campusLocation.servicesEnabled,
+    requestCurrentLocation,
+  ]);
 
   const beginDirections = useCallback((place: Place) => {
     if (!coordinatesFor(place)) {
@@ -1122,6 +1325,7 @@ export default function MapScreen() {
       <View style={styles.mapScreen}>
         <CampusMap
           choosingOrigin={choosingOrigin}
+          currentLocation={currentLocationPlace}
           destination={routeDestination}
           directoryError={Boolean(error) && !places.length}
           directoryLoading={loading}
@@ -1129,10 +1333,14 @@ export default function MapScreen() {
           onCancelRoute={clearRoute}
           onDirections={beginDirections}
           onLayout={updateMapLayout}
+          onRequestCurrentLocation={() => {
+            void requestCurrentLocation();
+          }}
           onSelect={selectPlace}
           origin={routeOrigin}
           places={allMappedPlaces}
           route={route}
+          routePlaces={routingPlaces}
           selected={selectedPlace}
           visiblePlaceIds={visiblePlaceIds}
           width={mapWidth}
@@ -1173,6 +1381,10 @@ export default function MapScreen() {
           destinationName={routeDestination?.name ?? ""}
           error={error}
           loading={loading}
+          locationAccuracy={campusLocation.position?.accuracy ?? null}
+          locationError={campusLocation.error}
+          locationLoading={campusLocation.loading}
+          locationPermission={campusLocation.permission}
           onClearRoute={clearRoute}
           onPickDestination={(id) => {
             const place = places.find((item) => item.id === id);
@@ -1180,6 +1392,9 @@ export default function MapScreen() {
           }}
           onPickOrigin={selectPlace}
           onQueryChange={setQuery}
+          onUseCurrentLocation={() => {
+            void useCurrentLocationAsOrigin();
+          }}
           places={places}
           query={query}
           route={
@@ -1450,6 +1665,32 @@ const createStyles = (theme: Theme) =>
     pinOrigin: { borderColor: "#F6C453" },
     pinDestination: { borderColor: theme.deepBrand },
     pinPressed: { opacity: 0.82, transform: [{ scale: 0.95 }] },
+    currentLocationMarker: {
+      alignItems: "center",
+      height: 48,
+      justifyContent: "center",
+      marginLeft: -24,
+      marginTop: -24,
+      position: "absolute",
+      width: 48,
+      zIndex: 20,
+    },
+    currentLocationPulse: {
+      backgroundColor: "rgba(47,124,246,.20)",
+      borderRadius: 24,
+      height: 48,
+      position: "absolute",
+      width: 48,
+    },
+    currentLocationDot: {
+      backgroundColor: "#2F7CF6",
+      borderColor: "#FFFFFF",
+      borderRadius: 10,
+      borderWidth: 3,
+      height: 20,
+      width: 20,
+      ...theme.shadow,
+    },
     routePrompt: {
       alignItems: "center",
       backgroundColor: "rgba(255,252,248,.97)",
