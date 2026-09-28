@@ -10,10 +10,7 @@ export async function profilePostNotificationsReady(env: Bindings) {
   if (saved && saved.expires > Date.now()) return saved.ready;
   const row = firstRow(
     await database(env).execute<{ ready: boolean }>(sql`
-      select
-        to_regclass('public.profile_post_notification_subscriptions') is not null
-        and to_regclass('public.profile_social_policies') is not null
-        as ready
+      select to_regclass('public.profile_post_notification_subscriptions') is not null as ready
     `),
   );
   const ready = row?.ready === true;
@@ -29,8 +26,6 @@ type PublishedProfilePost = {
   body: string;
   title: string;
   public_visibility: boolean;
-  notify_all_in_app: boolean;
-  notify_all_push: boolean;
 };
 
 function isKampusOneNewsletter(name: string, username: string | null) {
@@ -46,12 +41,11 @@ function isKampusOneNewsletter(name: string, username: string | null) {
 }
 
 /**
- * Fan out profile-post notifications without per-recipient API calls.
+ * Profile-post alerts use explicit subscriptions for normal accounts.
+ * KampusOne Newsletter is the only built-in notify-all account.
  *
- * Regular accounts notify explicit profile subscribers. Accounts with
- * notify-all policy fan out to their eligible audience. KampusOne Newsletter
- * keeps notify-all behavior as a product-level fallback, while delivery-time
- * notification preferences still let each user mute Newsletter push.
+ * Delivery-time notification preferences still decide whether each recipient
+ * receives phone push, so users can mute Newsletter without losing their inbox.
  */
 export async function notifyProfilePostPublished(
   env: Bindings,
@@ -71,9 +65,7 @@ export async function notifyProfilePostPublished(
           author.username as author_username,
           posts.body,
           posts.title,
-          posts.audience->>'visibility' = 'PUBLIC' as public_visibility,
-          coalesce(policy.notify_all_in_app, false) as notify_all_in_app,
-          coalesce(policy.notify_all_push, false) as notify_all_push
+          posts.audience->>'visibility' = 'PUBLIC' as public_visibility
         from public.feed_posts posts
         join public.profiles author
           on author.user_id = posts.author_user_id
@@ -82,8 +74,6 @@ export async function notifyProfilePostPublished(
           on author_account.id = author.user_id
          and author_account.status::text = 'ACTIVE'
          and author_account.deleted_at is null
-        left join public.profile_social_policies policy
-          on policy.user_id = posts.author_user_id
         where posts.id = ${postId}::uuid
           and (${expectedAuthorUserId ?? null}::uuid is null
             or posts.author_user_id = ${expectedAuthorUserId ?? null}::uuid)
@@ -100,8 +90,27 @@ export async function notifyProfilePostPublished(
       post.author_name,
       post.author_username,
     );
-    const notifyAllInApp = post.notify_all_in_app || newsletter;
-    const notifyAllPush = post.notify_all_push || newsletter;
+    const blocksReady =
+      firstRow(
+        await db.execute<{ ready: boolean }>(sql`
+          select to_regclass('public.user_blocks') is not null as ready
+        `),
+      )?.ready === true;
+    const blockGuard = blocksReady
+      ? sql`
+          and not exists(
+            select 1 from public.user_blocks blocked
+            where (
+              blocked.blocker_id = recipient.user_id
+              and blocked.blocked_id = ${post.author_user_id}::uuid
+            ) or (
+              blocked.blocker_id = ${post.author_user_id}::uuid
+              and blocked.blocked_id = recipient.user_id
+            )
+          )
+        `
+      : sql``;
+
     const title = `${post.author_name} posted`;
     const body =
       (post.body || post.title || "Tap to view the new post.")
@@ -135,8 +144,7 @@ export async function notifyProfilePostPublished(
           and coalesce(recipient.settings->>'notifications','true')='true'
           and ${audience}
           and (
-            ${notifyAllInApp}::boolean
-            or ${notifyAllPush}::boolean
+            ${newsletter}::boolean
             or exists(
               select 1
               from public.profile_post_notification_subscriptions subscription
@@ -144,16 +152,7 @@ export async function notifyProfilePostPublished(
                 and subscription.target_user_id = ${post.author_user_id}::uuid
             )
           )
-          and not exists(
-            select 1 from public.user_blocks blocked
-            where (
-              blocked.blocker_id = recipient.user_id
-              and blocked.blocked_id = ${post.author_user_id}::uuid
-            ) or (
-              blocked.blocker_id = ${post.author_user_id}::uuid
-              and blocked.blocked_id = recipient.user_id
-            )
-          )
+          ${blockGuard}
       ), notices as (
         insert into public.in_app_notifications(
           user_id,institution_id,actor_user_id,title,body,path,dedupe_key
@@ -181,15 +180,13 @@ export async function notifyProfilePostPublished(
           notice.dedupe_key
         from notices notice
         join recipients recipient on recipient.user_id=notice.user_id
-        where ${notifyAllPush}::boolean or recipient.subscribed
+        where ${newsletter}::boolean or recipient.subscribed
         on conflict(dedupe_key) do nothing
         returning id
       )
       select count(*)::int as notifications_created from notices
     `);
   } catch (error) {
-    // A notification failure must never turn a successfully published post into
-    // a failed/duplicate post. Delivery can be inspected and retried separately.
     console.error(
       JSON.stringify({
         level: "error",
