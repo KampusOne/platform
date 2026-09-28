@@ -3,7 +3,6 @@ import * as Location from "expo-location";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Linking,
   Platform,
   Pressable,
@@ -16,6 +15,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CampusMapSurface } from "@/src/components/campus-map-surface";
+import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { ApiError, api } from "@/src/lib/api";
 import * as Haptics from "@/src/lib/haptics";
@@ -517,7 +517,7 @@ export default function CampusMapScreen() {
 
           {permissionStatus === "checking" ? (
             <View style={styles.notice}>
-              <ActivityIndicator color={theme.deepBrand} size="small" />
+              <InlineLoading color={theme.deepBrand} />
               <Text style={styles.noticeText}>Finding your location…</Text>
             </View>
           ) : permissionStatus === "denied" ||
@@ -692,7 +692,7 @@ export default function CampusMapScreen() {
               ]}
             >
               {routeLoading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
+                <InlineLoading color="#FFFFFF" />
               ) : (
                 <Ionicons color="#FFFFFF" name="navigate" size={19} />
               )}
