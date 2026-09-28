@@ -361,7 +361,7 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
         "Pictures, videos, voice notes and documents are available after the request is accepted.",
       );
     }
-    const attachment = firstRow(
+    const media = firstRow(
       await db.execute<{ id: string; content_type: string; original_name: string }>(sql`
         select id,content_type,original_name
         from public.media_objects
@@ -371,14 +371,14 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
           and deleted_at is null
       `),
     );
-    if (!attachment) {
+    if (!media) {
       throw new AppError(
         404,
         "NOT_FOUND",
         "Choose a file uploaded by this account.",
       );
     }
-    data.body = data.body || messageMediaLabel(attachment.content_type);
+    data.body = data.body || messageMediaLabel(media.content_type);
   }
 
   const body = data.body || "Message";
@@ -500,7 +500,7 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
         || ${thread.status === "REQUESTED"
           ? " sent you a message request"
           : " sent you a message"},
-      ${body === "Attachment" ? "Sent an attachment." : body.slice(0, 180)},
+      ${body.slice(0, 180)},
       ${"/conversation?id=" + thread.id},
       ${"message:" + result.id}
     from public.profiles recipient_profile
