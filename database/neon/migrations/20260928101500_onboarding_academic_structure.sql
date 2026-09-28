@@ -1934,7 +1934,10 @@ join public.universities university
   on university.name = seed.university_name
  and university.deleted_at is null
 where faculty.university_id = university.id
-  and lower(faculty.name) = lower(seed.faculty_name);
+  and (
+    lower(faculty.name) = lower(seed.faculty_name)
+    or faculty.slug = seed.faculty_slug
+  );
 
 with faculty_seed as (
   select distinct university_name, faculty_name, faculty_slug
@@ -2011,7 +2014,10 @@ set
   updated_at = now()
 from mapped
 where department.faculty_id = mapped.faculty_id
-  and lower(department.name) = lower(mapped.department_name);
+  and (
+    lower(department.name) = lower(mapped.department_name)
+    or department.slug = mapped.department_slug
+  );
 
 with department_seed as (
   select distinct
@@ -2079,8 +2085,10 @@ set
   status = case when config.status = 'PREPARING' then 'CATALOGUED' else config.status end,
   updated_at = now()
 from (
-  select distinct university_name
+  select university_name
   from onboarding_academic_structure_seed
+  group by university_name
+  having count(department_name) > 0
 ) seed
 join public.universities university
   on university.name = seed.university_name
