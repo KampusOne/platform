@@ -96,8 +96,11 @@ describe("comment likes", () => {
     expect(query.params).toEqual([
       mocks.user.id,
       mocks.user.id,
+      mocks.user.id,
       id,
       mocks.user.universityId,
+      mocks.user.id,
+      mocks.user.id,
       mocks.user.id,
       mocks.user.id,
     ]);
