@@ -38,6 +38,7 @@ type GpaData = {
   summary: {
     cgpa: string | number | null;
     total_units: string | number | null;
+    quality_points?: string | number | null;
   } | null;
 };
 
@@ -66,7 +67,7 @@ export default function GpaScreen() {
   const [units, setUnits] = useState("");
   const [grade, setGrade] = useState("");
   const [point, setPoint] = useState("");
-  const [verifiedScale, setVerifiedScale] = useState<Record<
+  const [gradingScale, setGradingScale] = useState<Record<
     string,
     number
   > | null>(null);
@@ -76,6 +77,7 @@ export default function GpaScreen() {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
+  const [importedFromPlanner, setImportedFromPlanner] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -86,13 +88,9 @@ export default function GpaScreen() {
           gradingScale: Record<string, number> | null;
           gradingScaleStatus?: string;
         }>("/v1/learning/courses");
-        setVerifiedScale(
-          grading.gradingScaleStatus === "VERIFIED"
-            ? grading.gradingScale
-            : null,
-        );
+        setGradingScale(grading.gradingScale ?? null);
       } catch {
-        setVerifiedScale(null);
+        setGradingScale(null);
       }
     } catch (caught) {
       setError(
@@ -113,9 +111,9 @@ export default function GpaScreen() {
 
   const normalizedGrade = grade.trim().toUpperCase();
   const numericUnits = Number(units);
-  const numericPoint = verifiedScale?.[normalizedGrade] ?? Number(point);
+  const numericPoint = gradingScale?.[normalizedGrade] ?? Number(point);
   const hasPoint =
-    verifiedScale?.[normalizedGrade] !== undefined || point.trim().length > 0;
+    gradingScale?.[normalizedGrade] !== undefined || point.trim().length > 0;
   const canSaveTerm =
     results.length > 0 &&
     sessionLabel.trim().length >= 4 &&
@@ -126,7 +124,7 @@ export default function GpaScreen() {
     courseTitle.trim().length >= 2 &&
     normalizedGrade.length > 0 &&
     normalizedGrade.length <= 3 &&
-    (!verifiedScale || verifiedScale[normalizedGrade] !== undefined) &&
+    (!gradingScale || gradingScale[normalizedGrade] !== undefined) &&
     hasPoint &&
     Number.isFinite(numericPoint) &&
     numericPoint >= 0 &&
@@ -182,6 +180,7 @@ export default function GpaScreen() {
         }),
       });
       setEditing(false);
+      setImportedFromPlanner(false);
       setResults([]);
       await load();
     } catch (caught) {
@@ -203,7 +202,7 @@ export default function GpaScreen() {
 
     try {
       const planner = await api<GradePlannerData>("/v1/learning/courses");
-      const scale = planner.gradingScale ?? verifiedScale;
+      const scale = planner.gradingScale ?? gradingScale;
       const candidates = (planner.courses ?? []).filter((course) => {
         const numericCourseUnits = Number(course.units);
         return (
@@ -221,7 +220,7 @@ export default function GpaScreen() {
       }
 
       if (!scale) {
-        setImportMessage("A grading scale is needed before these grades can be imported.");
+        setImportMessage("Grading scale unavailable.");
         return;
       }
 
@@ -251,11 +250,10 @@ export default function GpaScreen() {
       }
 
       setResults(imported);
+      setImportedFromPlanner(true);
       setEditing(true);
       setImportMessage(
-        skipped
-          ? `${imported.length} imported · ${skipped} skipped`
-          : `${imported.length} ${imported.length === 1 ? "course" : "courses"} imported`,
+        skipped ? `${skipped} skipped` : "",
       );
     } catch (caught) {
       setImportMessage(
@@ -271,7 +269,15 @@ export default function GpaScreen() {
   function toggleEditor() {
     setError("");
     setImportMessage("");
-    setEditing((value) => !value);
+    if (editing) {
+      setEditing(false);
+      setImportedFromPlanner(false);
+      setResults([]);
+      return;
+    }
+    setImportedFromPlanner(false);
+    setResults([]);
+    setEditing(true);
   }
 
   function retry() {
@@ -300,7 +306,11 @@ export default function GpaScreen() {
         </View>
       </View>
 
-      {loading ? <SummarySkeleton /> : <AcademicSummary data={data} />}
+      {loading ? (
+        <SummarySkeleton />
+      ) : (
+        <AcademicSummary data={data} previewResults={editing ? results : []} />
+      )}
 
       <View style={styles.actionStack}>
         {!editing ? (
@@ -406,6 +416,8 @@ export default function GpaScreen() {
             })}
           </View>
 
+          {!importedFromPlanner ? (
+            <>
           <View style={styles.formDivider} />
           <Text style={styles.formTitle}>Course result</Text>
           <View style={styles.double}>
@@ -450,18 +462,18 @@ export default function GpaScreen() {
                 label="Grade point"
                 keyboardType="decimal-pad"
                 value={
-                  verifiedScale?.[normalizedGrade] !== undefined
-                    ? String(verifiedScale[normalizedGrade])
+                  gradingScale?.[normalizedGrade] !== undefined
+                    ? String(gradingScale[normalizedGrade])
                     : point
                 }
-                editable={!verifiedScale}
+                editable={!gradingScale}
                 onChangeText={setPoint}
                 placeholder="From your university scale"
               />
             </View>
           </View>
           <Text style={styles.courseHint}>
-            {verifiedScale ? "Verified grading scale" : "Enter the grade point for this grade"}
+            {gradingScale ? "Grade point set automatically" : "Enter the grade point for this grade"}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -488,12 +500,16 @@ export default function GpaScreen() {
               Add course to semester
             </Text>
           </Pressable>
+            </>
+          ) : null}
 
           {results.length > 0 ? (
             <View style={styles.staged}>
               <View style={styles.stagedHeading}>
                 <View>
-                  <Text style={styles.stagedTitle}>Ready to save</Text>
+                  <Text style={styles.stagedTitle}>
+                    {importedFromPlanner ? "Imported grades" : "Ready to save"}
+                  </Text>
                   <Text style={styles.stagedMeta}>
                     {results.length}{" "}
                     {results.length === 1 ? "course" : "courses"}
@@ -575,7 +591,9 @@ export default function GpaScreen() {
       {!editing && error ? (
         <ErrorNotice message={error} onRetry={retry} />
       ) : null}
-      {!loading && !error && !data?.terms.length ? <GpaEmpty /> : null}
+      {!editing && !importMessage && !loading && !error && !data?.terms.length ? (
+        <GpaEmpty />
+      ) : null}
       {!loading && data?.terms.length ? (
         <View style={styles.history}>
           <View style={styles.historyHeading}>
@@ -594,11 +612,44 @@ export default function GpaScreen() {
   );
 }
 
-function AcademicSummary({ data }: { data: GpaData | null }) {
+function AcademicSummary({
+  data,
+  previewResults = [],
+}: {
+  data: GpaData | null;
+  previewResults?: Result[];
+}) {
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const cgpa = data?.summary?.cgpa ?? "—";
-  const totalUnits = data?.summary?.total_units ?? 0;
+  const savedUnits = Number(data?.summary?.total_units ?? 0);
+  const savedCgpa = Number(data?.summary?.cgpa);
+  const savedQualityCandidate = data?.summary?.quality_points;
+  const savedQuality =
+    savedQualityCandidate !== null &&
+    savedQualityCandidate !== undefined &&
+    Number.isFinite(Number(savedQualityCandidate))
+      ? Number(savedQualityCandidate)
+      : Number.isFinite(savedCgpa) && savedUnits > 0
+        ? savedCgpa * savedUnits
+        : 0;
+
+  let stagedUnits = 0;
+  let stagedQuality = 0;
+  for (const result of previewResults) {
+    const resultUnits = Number(result.units);
+    const resultPoint = Number(result.gradePoint);
+    if (!Number.isFinite(resultUnits) || !Number.isFinite(resultPoint)) continue;
+    stagedUnits += resultUnits;
+    stagedQuality += resultUnits * resultPoint;
+  }
+
+  const totalUnits = savedUnits + stagedUnits;
+  const totalQuality = savedQuality + stagedQuality;
+  const cgpa =
+    totalUnits > 0
+      ? (totalQuality / totalUnits).toFixed(2)
+      : data?.summary?.cgpa ?? "—";
+
   return (
     <View
       accessible
