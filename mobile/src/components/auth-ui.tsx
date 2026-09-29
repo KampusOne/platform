@@ -1,7 +1,7 @@
 import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
 import {
@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { theme } from "@/src/theme";
+import { analyticsScreenName, trackAuthAction, trackUiInteraction } from "@/src/lib/analytics";
 import { useAuth } from "@/src/auth/auth-context";
 import {
   beginSocialSignIn,
@@ -44,6 +45,7 @@ export function AuthShell({
   onBack?: (() => void) | undefined;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const pathname = usePathname();
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.safe}>
@@ -66,7 +68,13 @@ export function AuthShell({
                 accessibilityLabel="Go back"
                 accessibilityRole="button"
                 hitSlop={4}
-                onPress={onBack ?? (() => router.back())}
+                onPress={() => {
+                  trackUiInteraction("navigate_back", {
+                    screen: analyticsScreenName(pathname),
+                    component: "auth_header",
+                  });
+                  (onBack ?? (() => router.back()))();
+                }}
                 style={({ pressed }) => [
                   styles.back,
                   pressed && styles.backPressed,
@@ -179,13 +187,16 @@ export function PrimaryButton({
   onPress,
   loading = false,
   disabled = false,
+  analyticsAction = "primary_press",
 }: {
   children: ReactNode;
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
+  analyticsAction?: string;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const pathname = usePathname();
 
   const buttonLabel = typeof children === "string" ? children : "Continue";
   return (
@@ -194,7 +205,13 @@ export function PrimaryButton({
       accessibilityRole="button"
       accessibilityState={{ busy: loading, disabled: disabled || loading }}
       disabled={disabled || loading}
-      onPress={onPress}
+      onPress={() => {
+        trackUiInteraction(analyticsAction, {
+          screen: analyticsScreenName(pathname),
+          component: "auth_primary_button",
+        });
+        onPress();
+      }}
       style={({ pressed }) => [
         styles.primary,
         (disabled || loading) && styles.controlDisabled,
@@ -253,6 +270,7 @@ function GoogleMark() {
 
 export function SocialAuthButtons() {
   const { theme, styles } = useThemeStyles(createStyles);
+  const pathname = usePathname();
   const { beginSession } = useAuth();
   const toast = useToast();
   const [pending, setPending] = useState(false);
@@ -273,14 +291,28 @@ export function SocialAuthButtons() {
   }, []);
 
   async function signIn(provider: "google" | "apple") {
+    const screen = analyticsScreenName(pathname);
+    trackAuthAction(`${provider}_sign_in_started`, {
+      screen,
+      component: "social_auth_button",
+    });
     setPending(true);
     try {
       const session = await beginSocialSignIn(provider);
       if (session) {
         await beginSession(session);
+        trackAuthAction(`${provider}_sign_in_completed`, {
+          screen,
+          component: "social_auth_button",
+        });
         router.replace("/");
       }
     } catch (e) {
+      trackAuthAction(`${provider}_sign_in_failed`, {
+        screen,
+        component: "social_auth_button",
+        errorCode: "SIGN_IN_FAILED",
+      });
       toast(e instanceof Error ? e.message : "Sign-in could not be completed.");
     } finally {
       setPending(false);
@@ -370,19 +402,28 @@ export function TextLink({
   children,
   onPress,
   disabled = false,
+  analyticsAction = "text_link_press",
 }: {
   children: ReactNode;
   onPress: () => void;
   disabled?: boolean;
+  analyticsAction?: string;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const pathname = usePathname();
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
-      onPress={onPress}
+      onPress={() => {
+        trackUiInteraction(analyticsAction, {
+          screen: analyticsScreenName(pathname),
+          component: "auth_text_link",
+        });
+        onPress();
+      }}
       style={({ pressed }) => [
         styles.linkTarget,
         pressed && styles.linkPressed,
