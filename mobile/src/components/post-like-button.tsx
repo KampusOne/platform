@@ -1,13 +1,14 @@
 import { InlineLoading } from "@/src/components/skeleton";
 import { compactCount } from "@/src/lib/feed-time";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, usePathname } from "expo-router";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import {  Pressable, StyleSheet, Text } from "react-native";
 import { useAuth } from "@/src/auth/auth-context";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { initialLikeState, PostLikeStore, type PostLike } from "@/src/lib/post-like-store";
+import { analyticsScreenName, trackContentAction } from "@/src/lib/analytics";
 
 async function request<T>(path: string, method = "GET"): Promise<T> {
   const controller = new AbortController();
@@ -32,6 +33,7 @@ export function PostLikeButton({ postId, title, onFeedback, initialLiked, initia
   postId: string; title: string; initialLiked?: boolean | undefined; initialCount?: number | undefined; onFeedback(message: string): void;
 }) {
   const auth = useAuth();
+  const pathname = usePathname();
   const signedIn = auth.state === "authenticated" && !!auth.user;
   const scope = signedIn ? `${auth.user!.id}:${auth.profile?.university_id ?? auth.user!.universityId ?? ""}` : "anonymous";
   const store = useMemo(() => scopedStore(scope), [scope]);
@@ -51,8 +53,16 @@ export function PostLikeButton({ postId, title, onFeedback, initialLiked, initia
   const press = async () => {
     if (!state.ready) { store.load(postId); return; }
     if (seed) store.seed(seed);
-    try { await store.toggle(postId); }
-    catch (error) { onFeedback(error instanceof Error ? error.message : "Your like could not be saved. Please try again."); }
+    const action = state.liked ? "unlike_post" : "like_post";
+    try {
+      await store.toggle(postId);
+      trackContentAction(action, {
+        screen: analyticsScreenName(pathname),
+        component: "post_action",
+      });
+    } catch (error) {
+      onFeedback(error instanceof Error ? error.message : "Your like could not be saved. Please try again.");
+    }
   };
   const busy = state.loading || state.pending;
   const label = !state.ready
