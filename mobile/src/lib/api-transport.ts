@@ -2,7 +2,7 @@ import { invalidationTargets, matchesRead, waitForRequest } from "./request-poli
 import { withRequestDeadline } from "./request-deadline";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
-import { trackFeatureLifecycle } from "./analytics";
+import { emitFeatureLifecycle } from "./analytics-bridge";
 
 import {
   readRefreshToken,
@@ -463,7 +463,7 @@ export async function api<T>(
     const startedAt = Date.now();
     const action = `${method.toLowerCase()}_request`;
     if (feature) {
-      trackFeatureLifecycle("feature_started", feature, {
+      emitFeatureLifecycle("feature_started", feature, {
         action,
         component: "api_mutation",
       });
@@ -471,7 +471,7 @@ export async function api<T>(
     try {
       const value = await request<T>(path, init, canRefresh);
       if (feature) {
-        trackFeatureLifecycle("feature_completed", feature, {
+        emitFeatureLifecycle("feature_completed", feature, {
           action,
           component: "api_mutation",
           durationMs: Date.now() - startedAt,
@@ -480,7 +480,7 @@ export async function api<T>(
       return value;
     } catch (caught) {
       if (feature) {
-        trackFeatureLifecycle("feature_failed", feature, {
+        emitFeatureLifecycle("feature_failed", feature, {
           action,
           component: "api_mutation",
           durationMs: Date.now() - startedAt,
