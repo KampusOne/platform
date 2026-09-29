@@ -3,6 +3,8 @@ import Constants from "expo-constants";
 import { randomUUID } from "expo-crypto";
 import { Platform } from "react-native";
 
+import { registerAnalyticsLifecycleRecorder } from "./analytics-bridge";
+
 
 export type AnalyticsEventName =
   | "page_view"
@@ -313,3 +315,5 @@ export function trackPerformanceTiming(
 export function flushAnalytics() {
   void flushQueue();
 }
+
+registerAnalyticsLifecycleRecorder(trackFeatureLifecycle);
