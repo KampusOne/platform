@@ -76,7 +76,7 @@ export function ToolPage({
                 component: "tool_header",
               });
               router.canGoBack() ? router.back() : router.replace("/explore");
-            }
+            }}
             style={styles.icon}
           >
             <Ionicons name="arrow-back" size={24} color={theme.text} />
