@@ -20,20 +20,20 @@ export type ProductAnalyticsEvent = {
   name: AnalyticsEventName;
   timestampMs: number;
   sessionId: string;
-  screen?: string;
-  feature?: string;
-  action?: string;
-  component?: string;
-  target?: string;
-  errorCode?: string;
-  durationMs?: number;
+  screen?: string | undefined;
+  feature?: string | undefined;
+  action?: string | undefined;
+  component?: string | undefined;
+  target?: string | undefined;
+  errorCode?: string | undefined;
+  durationMs?: number | undefined;
 };
 
 export type ProductAnalyticsBatch = {
   clientId: string;
   platform: AnalyticsPlatform;
   appVersion: string;
-  buildNumber?: string;
+  buildNumber?: string | undefined;
   events: ProductAnalyticsEvent[];
 };
 
