@@ -27,6 +27,12 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=replace-with-project-publishable-key
 KYC_FINGERPRINT_SECRET=replace-with-at-least-32-random-characters
 
+# Google Analytics 4 Measurement Protocol. GA4_API_SECRET stays Worker-only.
+# Create the secret under Admin > Data Streams > Measurement Protocol.
+GA4_ANALYTICS_ENABLED=false
+GA4_MEASUREMENT_ID=G-REPLACE_ME
+GA4_API_SECRET=replace-with-measurement-protocol-secret
+
 # Optional study/timetable AI. Enable the feature only after setting quotas.
 GEMINI_API_KEY=replace-with-provider-key
 GEMINI_MODEL=replace-with-a-supported-model-id
