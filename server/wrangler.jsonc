@@ -32,8 +32,8 @@
     "LOGISTICS_ENABLED": "false",
     "PAYMENTS_ENABLED": "false",
     "AI_ASSISTANT_ENABLED": "true",
-    "GA4_ANALYTICS_ENABLED": "false",
-    "GA4_MEASUREMENT_ID": "",
+    "GA4_ANALYTICS_ENABLED": "true",
+    "GA4_MEASUREMENT_ID": "G-GWFL9R95B8",
     "AI_UNLIMITED_EMAIL_HASHES": "af83a966d0eb435808a4657fce605b89077ab7369a7d32caea01ccba0276d3fb",
 
     "HF_CHAT_MODEL": "Qwen/Qwen3-4B-Instruct-2507:nscale",

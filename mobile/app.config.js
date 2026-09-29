@@ -6,6 +6,10 @@ module.exports = ({ config }) => {
   const googleServicesFile =
     process.env.GOOGLE_SERVICES_JSON_PATH?.trim() || "./google-services.json";
   const googleServicesPath = path.resolve(__dirname, googleServicesFile);
+  const googleServiceInfoFile =
+    process.env.GOOGLE_SERVICE_INFO_PLIST_PATH?.trim() ||
+    "./GoogleService-Info.plist";
+  const googleServiceInfoPath = path.resolve(__dirname, googleServiceInfoFile);
 
   return {
     ...config,
@@ -18,6 +22,12 @@ module.exports = ({ config }) => {
               projectId,
             },
           }
+        : {}),
+    },
+    ios: {
+      ...config.ios,
+      ...(fs.existsSync(googleServiceInfoPath)
+        ? { googleServicesFile: googleServiceInfoFile }
         : {}),
     },
     android: {

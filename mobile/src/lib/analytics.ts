@@ -4,6 +4,7 @@ import { randomUUID } from "expo-crypto";
 import { Platform } from "react-native";
 
 import { registerAnalyticsLifecycleRecorder } from "./analytics-bridge";
+import { deliverNativeAnalytics } from "./native-analytics";
 
 
 export type AnalyticsEventName =
@@ -28,7 +29,7 @@ type AnalyticsEventData = {
   durationMs?: number | undefined;
 };
 
-type PendingAnalyticsEvent = AnalyticsEventData & {
+export type PendingAnalyticsEvent = AnalyticsEventData & {
   id: string;
   name: AnalyticsEventName;
   timestampMs: number;
@@ -226,6 +227,18 @@ function scheduleFlush(delay: number) {
   }, delay);
 }
 
+function queueForWorker(event: PendingAnalyticsEvent) {
+  void hydrateQueue().then(() => {
+    queue.push(event);
+    if (queue.length > MAX_QUEUE_SIZE)
+      queue.splice(0, queue.length - MAX_QUEUE_SIZE);
+    schedulePersist();
+    scheduleFlush(
+      queue.length >= 10 ? FAST_FLUSH_DELAY_MS : NORMAL_FLUSH_DELAY_MS,
+    );
+  });
+}
+
 function enqueue(name: AnalyticsEventName, data: AnalyticsEventData = {}) {
   const now = Date.now();
   const event: PendingAnalyticsEvent = {
@@ -256,15 +269,17 @@ function enqueue(name: AnalyticsEventName, data: AnalyticsEventData = {}) {
     event.durationMs = Math.min(600_000, Math.round(data.durationMs));
   }
 
-  void hydrateQueue().then(() => {
-    queue.push(event);
-    if (queue.length > MAX_QUEUE_SIZE)
-      queue.splice(0, queue.length - MAX_QUEUE_SIZE);
-    schedulePersist();
-    scheduleFlush(
-      queue.length >= 10 ? FAST_FLUSH_DELAY_MS : NORMAL_FLUSH_DELAY_MS,
-    );
-  });
+  if (Platform.OS !== "web") {
+    void deliverNativeAnalytics(event).then((sent) => {
+      // A missing native module in a development shell should not lose data.
+      // Production Android/iOS builds normally return true and use their
+      // platform Firebase stream instead of the Web Measurement Protocol.
+      if (!sent) queueForWorker(event);
+    });
+    return;
+  }
+
+  queueForWorker(event);
 }
 
 export function analyticsScreenName(pathname: string) {

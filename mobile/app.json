@@ -50,6 +50,15 @@
           }
         }
       ],
+      "@react-native-firebase/app",
+      [
+        "@react-native-firebase/analytics",
+        {
+          "ios": {
+            "withoutAdIdSupport": true
+          }
+        }
+      ],
       "expo-secure-store",
       "expo-web-browser",
       "expo-notifications",
