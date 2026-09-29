@@ -17,13 +17,13 @@ export type AnalyticsEventName =
   | "performance_timing";
 
 type AnalyticsEventData = {
-  screen?: string;
-  feature?: string;
-  action?: string;
-  component?: string;
-  target?: string;
-  errorCode?: string;
-  durationMs?: number;
+  screen?: string | undefined;
+  feature?: string | undefined;
+  action?: string | undefined;
+  component?: string | undefined;
+  target?: string | undefined;
+  errorCode?: string | undefined;
+  durationMs?: number | undefined;
 };
 
 type PendingAnalyticsEvent = AnalyticsEventData & {
