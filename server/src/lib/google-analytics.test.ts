@@ -52,7 +52,10 @@ describe("Google Analytics delivery", () => {
   });
 
   it("keeps the API secret in the Worker request URL and sends only structured product data", async () => {
-    const request = vi.fn(async () => new Response(null, { status: 204 }));
+    const request = vi.fn(
+      async (..._args: Parameters<typeof fetch>): Promise<Response> =>
+        new Response(null, { status: 204 }),
+    );
     vi.stubGlobal("fetch", request);
 
     const result = await sendGoogleAnalyticsBatch(
@@ -70,8 +73,10 @@ describe("Google Analytics delivery", () => {
     const [url, init] = request.mock.calls[0]!;
     expect(String(url)).toContain("measurement_id=G-TEST123");
     expect(String(url)).toContain("api_secret=worker-only-secret");
+    expect(init).toBeDefined();
+    if (!init) throw new Error("Expected fetch request options");
 
-    const payload = JSON.parse(String((init as RequestInit).body));
+    const payload = JSON.parse(String(init.body));
     expect(payload.client_id).toBe(batch.clientId);
     expect(payload.events).toHaveLength(2);
     expect(payload.events[0].name).toBe("page_view");
