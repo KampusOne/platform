@@ -1,8 +1,4 @@
-import {
-  getAnalytics,
-  logEvent,
-  logScreenView,
-} from "@react-native-firebase/analytics";
+import { getAnalytics } from "@react-native-firebase/analytics";
 
 import type { PendingAnalyticsEvent } from "./analytics";
 
@@ -25,14 +21,14 @@ export async function deliverNativeAnalytics(
   try {
     const analytics = getAnalytics();
     if (event.name === "page_view" && event.screen) {
-      await logScreenView(analytics, {
+      await analytics.logScreenView({
         screen_name: event.screen,
         screen_class: event.screen,
       });
       return true;
     }
 
-    await logEvent(analytics, event.name, eventParams(event));
+    await analytics.logEvent(event.name, eventParams(event));
     return true;
   } catch {
     // Analytics must never interrupt navigation or feature completion.
