@@ -3,7 +3,6 @@ import Constants from "expo-constants";
 import { randomUUID } from "expo-crypto";
 import { Platform } from "react-native";
 
-import { api } from "./api";
 
 export type AnalyticsEventName =
   | "page_view"
@@ -42,6 +41,19 @@ const NORMAL_FLUSH_DELAY_MS = 7_000;
 const FAST_FLUSH_DELAY_MS = 250;
 const RETRY_DELAY_MS = 30_000;
 const SESSION_TIMEOUT_MS = 30 * 60_000;
+
+const configuredApiUrl =
+  process.env.EXPO_PUBLIC_KAMPUSONE_API_URL ??
+  process.env.EXPO_PUBLIC_API_URL ??
+  (Constants.expoConfig?.extra?.apiUrl as string | undefined);
+
+const analyticsApiUrl =
+  Platform.OS === "web" &&
+  typeof window !== "undefined" &&
+  !["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? "/api"
+    : (configuredApiUrl ?? "http://localhost:8787").replace(/\/$/, "");
+
 
 let queue: PendingAnalyticsEvent[] = [];
 let hydrated = false;
@@ -170,19 +182,25 @@ async function flushQueue() {
   const batch = queue.slice(0, MAX_BATCH_SIZE);
   try {
     const id = await clientId();
-    await api<{ status: "sent" | "disabled" }>(
-      "/v1/analytics/events",
-      {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    let response: Response;
+    try {
+      response = await fetch(`${analyticsApiUrl}/v1/analytics/events`, {
         method: "POST",
-        timeoutMs: 5_000,
+        headers: { "Content-Type": "application/json" },
+        credentials: "omit",
+        signal: controller.signal,
         body: JSON.stringify({
           clientId: id,
           ...appMetadata(),
           events: batch.map(({ id: _localId, ...event }) => event),
         }),
-      },
-      false,
-    );
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) throw new Error("Analytics delivery failed");
 
     const sent = new Set(batch.map((event) => event.id));
     queue = queue.filter((event) => !sent.has(event.id));
