@@ -1,13 +1,19 @@
 # KampusOne product analytics
 
-KampusOne uses a database-independent product analytics pipeline for mobile and web
-interactions:
+KampusOne uses one GA4 property with separate Android, iOS, and Web streams.
 
 ```
-Expo app -> local bounded queue -> /v1/analytics/events -> Cloudflare Worker -> GA4
-                                    |
-                                    +-- no Neon/PostgreSQL dependency
+Android app -> Firebase Analytics SDK -> Android GA4 stream
+iOS app     -> Firebase Analytics SDK -> iOS GA4 stream
+Web app     -> local bounded queue -> /v1/analytics/events -> Worker -> Web GA4 stream
+                                               |
+                                               +-- no Neon/PostgreSQL dependency
 ```
+
+The Android and iOS builds use their platform Firebase configuration files and native
+Firebase Analytics. Web product events use Measurement Protocol through the Worker.
+If a native development shell does not contain the Firebase module, the client falls
+back to the Worker queue instead of breaking the app.
 
 The existing `/v1/student/events` store remains in place for internal/admin reporting.
 It is intentionally separate from Google Analytics so a database outage does not stop
@@ -51,9 +57,20 @@ Do not send any of the following to Google Analytics:
 Only controlled product taxonomy values matching `[a-z0-9_-]` are accepted by the
 Worker. The analytics route rejects free-form fields.
 
-## Mobile delivery behavior
+## Delivery behavior
 
-- Events are queued outside the render path.
+### Android and iOS
+
+- Native events are logged to Google Analytics for Firebase.
+- Screen events use the native `screen_view` event.
+- Product events use the same small KampusOne event vocabulary across platforms.
+- Firebase handles native app sessions, app versions, device metadata, and offline delivery.
+- The iOS Analytics package is configured without Ad ID support.
+- Analytics failures never interrupt navigation or feature completion.
+
+### Web and native fallback
+
+- Web events are queued outside the render path.
 - Up to 25 events are sent in one batch.
 - The queue is capped at 250 events per installation.
 - The queue is persisted in AsyncStorage so temporary network loss does not block UX.
@@ -65,7 +82,13 @@ Worker. The analytics route rejects free-form fields.
 
 ## GA4 setup
 
-Use a GA4 **Web data stream** for this server-side product stream.
+Use one **KampusOne GA4 property** with three streams:
+
+- Android: Firebase app `app.kampusone.mobile`
+- iOS: Firebase app `app.kampusone.mobile`
+- Web: `https://kampusone.app`
+
+The Worker uses the Web stream only for web/fallback Measurement Protocol events.
 
 1. In Google Analytics, open the KampusOne property.
 2. Go to **Admin -> Data streams** and create/select a Web stream for the app product
@@ -86,7 +109,7 @@ Then set these Worker vars:
 
 ```
 GA4_ANALYTICS_ENABLED=true
-GA4_MEASUREMENT_ID=G-XXXXXXXXXX
+GA4_MEASUREMENT_ID=G-GWFL9R95B8
 ```
 
 Deploy the Worker after the secret and Measurement ID are present. Keep
