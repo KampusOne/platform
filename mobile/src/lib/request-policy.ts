@@ -19,6 +19,7 @@ export function waitForRequest<T>(operation: Promise<T>, signal?: AbortSignal | 
 export function invalidationTargets(path: string): string[] | null {
   if (/^\/v1\/student\/feed\/[^/]+\/view$/.test(path)) return [];
   if (path === "/v1/student/events") return [];
+  if (path === "/v1/analytics/events") return [];
   if (path === "/v1/notifications/alarm-events") return [];
   if (
     path === "/v1/notifications/devices" ||

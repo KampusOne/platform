@@ -1,13 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {  Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { safeCount, type SocialFeedPost } from "@/src/lib/feed-social";
+import { analyticsScreenName, trackContentAction } from "@/src/lib/analytics";
 
 export function RepostAction({ post, onFeedback, onChanged }: { post: SocialFeedPost; onFeedback(message: string): void; onChanged?: ((post: SocialFeedPost) => void) | undefined }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [value, setValue] = useState({ reposted: Boolean(post.reposted), count: safeCount(post.repost_count) });
@@ -33,6 +35,10 @@ export function RepostAction({ post, onFeedback, onChanged }: { post: SocialFeed
         setValue({ reposted: result.reposted, count: safeCount(updated.repost_count) });
         setOpen(false);
         onChanged?.(updated);
+        trackContentAction(next ? "repost_post" : "undo_repost", {
+          screen: analyticsScreenName(pathname),
+          component: "post_action",
+        });
         onFeedback(next ? (post.visibility === "PUBLIC" ? "Reposted to the shared feed." : "Reposted to this campus feed.") : "Your repost was removed.");
       }
     } catch (error) {
@@ -54,7 +60,14 @@ export function RepostAction({ post, onFeedback, onChanged }: { post: SocialFeed
           <View accessibilityViewIsModal style={styles.sheet}>
             <Text accessibilityRole="header" style={styles.heading}>Share this post</Text>
             <Pressable accessibilityRole="button" disabled={busy} onPress={() => void toggle()} style={styles.option}><Ionicons name="repeat-outline" size={22} color={theme.text} /><Text style={styles.label}>{busy ? "Updating…" : value.reposted ? "Undo repost" : "Repost"}</Text></Pressable>
-            <Pressable accessibilityRole="button" disabled={busy} onPress={() => { setOpen(false); router.push({ pathname: "/compose", params: { quote: post.id } }); }} style={styles.option}><Ionicons name="create-outline" size={22} color={theme.text} /><Text style={styles.label}>Quote post</Text></Pressable>
+            <Pressable accessibilityRole="button" disabled={busy} onPress={() => {
+              trackContentAction("quote_post_started", {
+                screen: analyticsScreenName(pathname),
+                component: "post_action",
+              });
+              setOpen(false);
+              router.push({ pathname: "/compose", params: { quote: post.id } });
+            }} style={styles.option}><Ionicons name="create-outline" size={22} color={theme.text} /><Text style={styles.label}>Quote post</Text></Pressable>
             <Pressable accessibilityRole="button" disabled={busy} onPress={() => setOpen(false)} style={styles.option}><Text style={styles.cancel}>Cancel</Text></Pressable>
           </View>
         </View>

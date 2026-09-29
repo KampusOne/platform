@@ -1,6 +1,6 @@
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import { type ReactNode } from "react";
 import {
   KeyboardAvoidingView,
@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "@/src/theme";
+import { analyticsScreenName, trackUiInteraction } from "@/src/lib/analytics";
 export function ToolPage({
   title,
   children,
@@ -31,6 +32,7 @@ export function ToolPage({
   onRefresh?: () => void;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const pathname = usePathname();
   const { width } = useWindowDimensions();
   const compactPhone = width < 400;
 
@@ -68,9 +70,13 @@ export function ToolPage({
           <Pressable
             accessibilityLabel="Go back"
             accessibilityRole="button"
-            onPress={() =>
-              router.canGoBack() ? router.back() : router.replace("/explore")
-            }
+            onPress={() => {
+              trackUiInteraction("navigate_back", {
+                screen: analyticsScreenName(pathname),
+                component: "tool_header",
+              });
+              router.canGoBack() ? router.back() : router.replace("/explore");
+            }}
             style={styles.icon}
           >
             <Ionicons name="arrow-back" size={24} color={theme.text} />
@@ -117,19 +123,28 @@ export function ToolButton({
   onPress,
   disabled = false,
   secondary = false,
+  analyticsAction = "button_press",
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
   secondary?: boolean;
+  analyticsAction?: string;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const pathname = usePathname();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
-      onPress={onPress}
+      onPress={() => {
+        trackUiInteraction(analyticsAction, {
+          screen: analyticsScreenName(pathname),
+          component: "tool_button",
+        });
+        onPress();
+      }}
       style={({ pressed }) => [
         styles.button,
         secondary && styles.secondary,
@@ -151,6 +166,7 @@ export function ToolRow({
   leading,
   onPress,
   trailing,
+  analyticsAction = "row_press",
 }: {
   title: string;
   detail?: string;
@@ -158,12 +174,24 @@ export function ToolRow({
   leading?: ReactNode;
   onPress?: () => void;
   trailing?: ReactNode;
+  analyticsAction?: string;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const pathname = usePathname();
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
-      onPress={onPress}
+      onPress={
+        onPress
+          ? () => {
+              trackUiInteraction(analyticsAction, {
+                screen: analyticsScreenName(pathname),
+                component: "tool_row",
+              });
+              onPress();
+            }
+          : undefined
+      }
       style={styles.row}
     >
       {leading ?? (icon ? <Ionicons name={icon} color={theme.accentText} size={22} /> : null)}

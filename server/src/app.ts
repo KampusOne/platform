@@ -32,6 +32,7 @@ import { manageRoutes } from "./routes/manage";
 import { aiRoutes } from "./routes/ai";
 import { communityRoutes } from "./routes/communities";
 import { socialAuthRoutes } from "./routes/social-auth";
+import { analyticsRoutes } from "./routes/analytics";
 import type { Bindings, Variables } from "./types";
 
 export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -112,6 +113,7 @@ app.use("/v1/*", async (c, next) => {
     throw new AppError(503, "PROVIDER_UNAVAILABLE", "This service is being connected. Please try again shortly.");
   await next();
 });
+app.route("/v1/analytics", analyticsRoutes);
 app.route("/v1/notifications", notificationRoutes);
 app.route("/v1/email", emailPreferencesRoutes);
 app.route("/v1/payout-setup", payoutSetupRoutes);

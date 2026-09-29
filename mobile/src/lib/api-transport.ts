@@ -2,6 +2,7 @@ import { invalidationTargets, matchesRead, waitForRequest } from "./request-poli
 import { withRequestDeadline } from "./request-deadline";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { emitFeatureLifecycle } from "./analytics-bridge";
 
 import {
   readRefreshToken,
@@ -96,6 +97,40 @@ const reads = new Map<string, { expires: number; value: unknown }>();
 const inFlight = new Map<string, Promise<unknown>>();
 const cacheable =
   /^\/v1\/(?!auth(?:\/|$)|media(?:\/|$)|config(?:\/|$))/;
+
+const analyticsFeatureMatchers: Array<[RegExp, string]> = [
+  [/^\/v1\/auth(?:\/|$)/, "authentication"],
+  [/^\/v1\/student\/feed(?:\/|$)/, "social_feed"],
+  [/^\/v1\/student\/timetable(?:\/|$)/, "timetable"],
+  [/^\/v1\/student\/gpa(?:\/|$)/, "gpa"],
+  [/^\/v1\/student\/campus(?:\/|$)/, "campus_map"],
+  [/^\/v1\/student\/(?:orders|product-reviews)(?:\/|$)/, "store"],
+  [/^\/v1\/ai(?:\/|$)/, "kira"],
+  [/^\/v1\/messages(?:\/|$)/, "messages"],
+  [/^\/v1\/media(?:\/|$)/, "media"],
+  [/^\/v1\/learning(?:\/|$)/, "learning"],
+  [/^\/v1\/calendar(?:\/|$)/, "academic_calendar"],
+  [/^\/v1\/communities(?:\/|$)/, "communities"],
+  [/^\/v1\/notifications(?:\/|$)/, "notifications"],
+  [/^\/v1\/agents(?:\/|$)/, "agents"],
+  [/^\/v1\/payments(?:\/|$)/, "payments"],
+  [/^\/v1\/payout-setup(?:\/|$)/, "payouts"],
+  [/^\/v1\/account(?:\/|$)/, "account"],
+  [/^\/v1\/people(?:\/|$)/, "people"],
+  [/^\/v1\/applications(?:\/|$)/, "applications"],
+  [/^\/v1\/student(?:\/|$)/, "student"],
+];
+
+function analyticsFeatureForRequest(path: string) {
+  if (
+    path === "/v1/student/events" ||
+    path === "/v1/auth/refresh" ||
+    path.startsWith("/v1/analytics")
+  ) {
+    return undefined;
+  }
+  return analyticsFeatureMatchers.find(([pattern]) => pattern.test(path))?.[1];
+}
 
 function readCacheTtl(path: string) {
   if (/\/catalog(?:\/|\?|$)|\/campus\/places(?:\/|\?|$)/.test(path))
@@ -420,11 +455,42 @@ export async function api<T>(
   init: ApiRequestInit = {},
   canRefresh = true,
 ): Promise<T> {
-  const isRead = !init.method || init.method.toUpperCase() === "GET";
+  const method = (init.method ?? "GET").toUpperCase();
+  const isRead = method === "GET";
   if (!isRead) {
     invalidateMutation(path);
-    try { return await request<T>(path, init, canRefresh); }
-    finally { invalidateMutation(path); }
+    const feature = analyticsFeatureForRequest(path);
+    const startedAt = Date.now();
+    const action = `${method.toLowerCase()}_request`;
+    if (feature) {
+      emitFeatureLifecycle("feature_started", feature, {
+        action,
+        component: "api_mutation",
+      });
+    }
+    try {
+      const value = await request<T>(path, init, canRefresh);
+      if (feature) {
+        emitFeatureLifecycle("feature_completed", feature, {
+          action,
+          component: "api_mutation",
+          durationMs: Date.now() - startedAt,
+        });
+      }
+      return value;
+    } catch (caught) {
+      if (feature) {
+        emitFeatureLifecycle("feature_failed", feature, {
+          action,
+          component: "api_mutation",
+          durationMs: Date.now() - startedAt,
+          errorCode: caught instanceof ApiError ? caught.code : "REQUEST_FAILED",
+        });
+      }
+      throw caught;
+    } finally {
+      invalidateMutation(path);
+    }
   }
   // Explicit caller headers may alter representation; never share those requests.
   if (!cacheable.test(path) || init.headers || init.cache === "no-store")

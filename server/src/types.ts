@@ -61,6 +61,9 @@ export type Bindings = {
   AI_DAILY_USER_LIMIT?: string;
   AI_DAILY_GLOBAL_LIMIT?: string;
   AI_UNLIMITED_EMAIL_HASHES?: string;
+  GA4_ANALYTICS_ENABLED?: string;
+  GA4_MEASUREMENT_ID?: string;
+  GA4_API_SECRET?: string;
 };
 
 export type AuthenticatedUser = {

@@ -3,7 +3,7 @@ import { PostImage } from "./post-image";
 import { PostMediaSlider } from "./post-media-slider";
 import { PostText } from "./post-text";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import { memo, useCallback, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -20,6 +20,7 @@ import { VerifiedBadge } from "./verified-badge";
 import { RelativeTime } from "./relative-time";
 import { ReplyComposer } from "./reply-composer";
 import { PostMetrics } from "./post-metrics";
+import { analyticsScreenName, trackContentAction } from "@/src/lib/analytics";
 
 const structuredCategories = new Set(["EVENT", "OPPORTUNITY"]);
 export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback, onChanged, onComment, onVideoHandle, videoAutoPlay = false, detail = false }: {
@@ -35,6 +36,8 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
   detail?: boolean;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const pathname = usePathname();
+  const screen = analyticsScreenName(pathname);
   const { width } = useWindowDimensions();
   const [replyOpen, setReplyOpen] = useState(false);
   const category = post.category.toUpperCase();
@@ -51,6 +54,10 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
     onVideoHandle?.(post.id, handle);
   }, [onVideoHandle, post.id]);
   const openVideo = useCallback((state: { position: number; muted: boolean }) => {
+    trackContentAction("open_post_video", {
+      screen,
+      component: "post_media",
+    });
     router.push({
       pathname: "/video",
       params: {
@@ -60,16 +67,50 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
         url: videoUrl,
       },
     });
-  }, [post.id, videoUrl]);
-  const openPost = () => { if (!detail) router.push({ pathname: "/post", params: { id: post.id } }); };
-  const openReply = () => { if (onComment) onComment(); else setReplyOpen(true); };
+  }, [post.id, videoUrl, screen]);
+  const openPost = () => {
+    if (!detail) {
+      trackContentAction("open_post", { screen, component: "post_body" });
+      router.push({ pathname: "/post", params: { id: post.id } });
+    }
+  };
+  const openReply = () => {
+    trackContentAction("open_reply_composer", {
+      screen,
+      component: "post_action",
+    });
+    if (onComment) onComment();
+    else setReplyOpen(true);
+  };
+  const openAuthor = () => {
+    if (post.source_user_id) {
+      trackContentAction("open_author_profile", {
+        screen,
+        component: "post_header",
+      });
+      router.push({ pathname: "/student-profile", params: { id: post.source_user_id } });
+    } else {
+      openPost();
+    }
+  };
+  const bookmarkPost = (target: FeedPostData) => {
+    trackContentAction(post.bookmarked ? "unsave_post" : "save_post", {
+      screen,
+      component: "post_action",
+    });
+    onBookmark(target);
+  };
+  const sharePost = (target: FeedPostData) => {
+    trackContentAction("share_post", { screen, component: "post_action" });
+    onShare(target);
+  };
   const copy = text.title || text.paragraphs.length ? <PostText key={post.id} {...text} detail={detail} style={[styles.postText, detail && styles.detailText]} titleStyle={[styles.postTitle, detail && styles.detailText]} onError={onFeedback} /> : null;
   return <View style={styles.post}>
     {post.repost_by ? <View style={styles.repostedBy}><Ionicons name="repeat-outline" size={13} color={theme.textMuted} /><Text numberOfLines={1} style={styles.repostedText}>{post.repost_by.name || "A KampusOne user"} reposted</Text></View> : null}
     {/* Content and action buttons are separate hit regions. Empty avatar-gutter space opens the post too. */}
     <View style={styles.contentRegion}>
       <View style={styles.postContent}>
-        <Pressable accessibilityRole="button" accessibilityLabel={post.source_user_id ? `View ${post.source_name}'s profile` : `Open conversation by ${post.source_name}`} onPress={()=>post.source_user_id ? router.push({pathname:"/student-profile",params:{id:post.source_user_id}}) : openPost()} style={styles.postHeader}>
+        <Pressable accessibilityRole="button" accessibilityLabel={post.source_user_id ? `View ${post.source_name}'s profile` : `Open conversation by ${post.source_name}`} onPress={openAuthor} style={styles.postHeader}>
           <ProfileAvatar name={post.source_name} imageUrl={post.source_image_url} size={38} />
           <View style={styles.sourceCopy}>
             <View style={styles.sourceNameRow}>
@@ -88,7 +129,7 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
           {post.correction_note ? <View accessibilityRole="alert" style={styles.correction}><Ionicons color={theme.statusAttention} name="information-circle-outline" size={17} /><Text style={styles.correctionText}>Correction: {post.correction_note}</Text></View> : null}
         </Pressable>
       </View>
-      <View style={styles.menu}><PostMenu post={post} onBookmark={onBookmark} onShare={onShare} onDeleted={onDeleted} onFeedback={onFeedback} /></View>
+      <View style={styles.menu}><PostMenu post={post} onBookmark={bookmarkPost} onShare={sharePost} onDeleted={onDeleted} onFeedback={onFeedback} /></View>
     </View>
     {detail ? <View style={styles.detailMeta}><Text style={styles.exactTime}>{feedTime(post.published_at).exact}</Text><PostMetrics post={post} detail /></View> : null}
     <View style={[styles.actions, (detail || width < 390) && styles.fullActions]}>
@@ -98,11 +139,15 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
         <RepostAction post={post} onFeedback={onFeedback} onChanged={onChanged} />
       </> : null}
       {!detail ? <PostMetrics post={post} /> : null}
-      <Pressable accessibilityLabel={post.bookmarked ? "Remove from saved posts" : "Save post"} accessibilityRole="button" accessibilityState={{ selected: post.bookmarked }} onPress={() => onBookmark(post)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Ionicons color={post.bookmarked ? theme.brandPressed : theme.textMuted} name={post.bookmarked ? "bookmark" : "bookmark-outline"} size={18} /></Pressable>
-      <Pressable accessibilityLabel="Share post link" accessibilityRole="button" onPress={() => onShare(post)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Ionicons color={theme.textMuted} name="share-social-outline" size={18} /></Pressable>
+      <Pressable accessibilityLabel={post.bookmarked ? "Remove from saved posts" : "Save post"} accessibilityRole="button" accessibilityState={{ selected: post.bookmarked }} onPress={() => bookmarkPost(post)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Ionicons color={post.bookmarked ? theme.brandPressed : theme.textMuted} name={post.bookmarked ? "bookmark" : "bookmark-outline"} size={18} /></Pressable>
+      <Pressable accessibilityLabel="Share post link" accessibilityRole="button" onPress={() => sharePost(post)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Ionicons color={theme.textMuted} name="share-social-outline" size={18} /></Pressable>
     </View>
     {post.sponsored ? <Text style={styles.sponsored}>SPONSORED</Text> : null}
-    {replyOpen ? <ReplyComposer post={post} onClose={() => setReplyOpen(false)} onSent={() => { onChanged?.({ ...post, comment_count: safeCount(post.comment_count) + 1 }); onFeedback("Reply posted."); }} /> : null}
+    {replyOpen ? <ReplyComposer post={post} onClose={() => setReplyOpen(false)} onSent={() => {
+      trackContentAction("reply_posted", { screen, component: "reply_composer" });
+      onChanged?.({ ...post, comment_count: safeCount(post.comment_count) + 1 });
+      onFeedback("Reply posted.");
+    }} /> : null}
   </View>;
 });
 const createStyles = (theme: Theme) => StyleSheet.create({
