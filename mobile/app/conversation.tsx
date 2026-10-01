@@ -514,7 +514,7 @@ export default function ConversationScreen() {
     if (!user?.id || !id) return;
     void readConversationDraft(user.id, id).then(saved => {
       if (!active) return;
-      if (saved) { setDraft(saved.text); setSelectedMedia(saved.media); setReplyingTo(saved.reply); setVoiceDraft(saved.voice); setPendingMedia(saved.batches); pending.current = saved.pendingText; if (saved.recoveryMessage) setDraftWarning(saved.recoveryMessage); }
+      if (saved) { setDraft(saved.pendingText?.body ?? saved.text); setSelectedMedia(saved.media); setReplyingTo(saved.reply); setVoiceDraft(saved.voice); setPendingMedia(saved.batches); pending.current = saved.pendingText; if (saved.recoveryMessage) setDraftWarning(saved.recoveryMessage); }
       draftChannel.ready = true; setDraftReady(true);
     }).catch(() => { if (active) setDraftWarning("Your saved draft could not be restored. Reopen this conversation to try again."); });
     return () => {
@@ -791,18 +791,68 @@ export default function ConversationScreen() {
             ...(replyToMessageId ? { replyToMessageId } : {}),
           };
     pending.current = message;
+    const replySnapshot = replyingTo;
+    const optimistic: Message = {
+      id: message.id,
+      sender_id: user?.id ?? "",
+      body: message.body,
+      read_at: null,
+      created_at: new Date().toISOString(),
+      media_id: null,
+      media_type: null,
+      media_name: null,
+      reply_to_message_id: replySnapshot?.id ?? null,
+      reply_sender_id: replySnapshot?.sender_id ?? null,
+      reply_body: replySnapshot?.body ?? null,
+      reply_media_id: replySnapshot?.media_id ?? null,
+      reply_media_type: replySnapshot?.media_type ?? null,
+      reply_media_name: replySnapshot?.media_name ?? null,
+      reply_unsent_at: replySnapshot?.unsent_at ?? null,
+      forwarded_from_message_id: null,
+      unsent_at: null,
+      unsent_by: null,
+      pinned: false,
+      reactions: [],
+      my_reaction: null,
+    };
+    setDraft("");
+    setReplyingTo(null);
+    setData((current) => {
+      if (!current || current.messages.some((item) => item.id === optimistic.id))
+        return current;
+      return { ...current, messages: [...current.messages, optimistic] };
+    });
+    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     try {
       if (!user?.id) throw new Error("Sign in again before sending this draft.");
-      draftChannel.value = { ...draftChannel.value, pendingText: message };
+      draftChannel.value = {
+        ...draftChannel.value,
+        text: "",
+        reply: null,
+        pendingText: message,
+      };
       await saveConversationDraft(user.id, id, draftChannel.value);
-      await api(`/v1/messages/threads/${id}/messages`, { method: "POST", body: JSON.stringify(message) });
+      await api(`/v1/messages/threads/${id}/messages`, {
+        method: "POST",
+        body: JSON.stringify(message),
+      });
       pending.current = null;
-      setDraft("");
-      setReplyingTo(null);
+      draftChannel.value = { ...draftChannel.value, pendingText: null };
+      await saveConversationDraft(user.id, id, draftChannel.value).catch(() => undefined);
       await load();
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Message not sent. Your draft is kept.");
+      setData((current) =>
+        current
+          ? { ...current, messages: current.messages.filter((item) => item.id !== message.id) }
+          : current,
+      );
+      setDraft((current) => current || caption);
+      setReplyingTo((current) => current ?? replySnapshot);
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Message not sent. Your draft is kept.",
+      );
     } finally {
       setSending(false);
     }
@@ -1270,7 +1320,7 @@ export default function ConversationScreen() {
                     placeholder={canAttach ? "Type a message…" : "Send your message request…"}
                     placeholderTextColor={theme.textMuted}
                     value={draft}
-                    editable={draftReady && !sending}
+                    editable={draftReady}
                     onChangeText={setDraft}
                     multiline
                     maxLength={5000}
@@ -1461,7 +1511,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   bubble: { paddingHorizontal: 13, paddingVertical: 10, borderRadius: 18, minHeight: 38 },
   bubbleMine: { backgroundColor: theme.deepBrand, borderBottomRightRadius: 6 },
   bubbleOther: { backgroundColor: theme.surface, borderBottomLeftRadius: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
-  messageText: { color: theme.text, fontFamily: theme.font.body, fontSize: 14, lineHeight: 20 },
+  messageText: { color: theme.text, fontFamily: theme.font.body, fontSize: 14, lineHeight: 20, flexShrink: 1, maxWidth: "100%" },
   messageTextMine: { color: "#FFFFFF" },
   messageMeta: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 3 },
   messageMetaMine: { justifyContent: "flex-end" },
