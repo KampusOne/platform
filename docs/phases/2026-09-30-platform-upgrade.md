@@ -64,6 +64,16 @@ All 457 server tests in 47 files, 125 root regression tests and 10 contract test
 
 Validation: all 464 server tests in 47 files, 125 root regression tests and 10 contract tests pass. Server/mobile/portal/contracts type checks, server build, portal lint/production build and mobile production web export pass. Seven new PostgreSQL/API cases cover approved-policy gating, one-seat retry, tenant/owner isolation, immutable prices, exact receipt/net/release, expired money held, fixed ₦6,000 checkout, no activation from pending receipts, one-month idempotency, manual renewal and actual-fee reconciliation. No payment or production migration ran.
 
+## Learning-material checkout checkpoint
+
+- Paid learning resources now use an inclusive, immutable ten-minute quote. The actual resource, private file and approved tutor are locked when the purchase is created. A changed base price or file requires a fresh quote. Repeated requests reuse the purchase and payment attempt instead of charging twice.
+- Only an exact server-verified NGN receipt unlocks a private file for its buyer and campus. Access uses short-lived signed links and the purchased file snapshot. Expired, incorrect or duplicate payments stay in suspense for review without granting access or crediting the tutor.
+- Tutor net enters pending earnings with a seven-day dispute window. A buyer's report atomically pauses access and release. Scoped admin review can restore access while preserving the hold; marking a refund required does not pretend a provider refund occurred. Eligible release journals run once under database locks.
+- Learning checkout and library screens replace calls to missing endpoints with owned, paginated purchase history, explicit inclusive totals, saved payment recovery, signed file access and reports. Payment-status checks remain available when new charges are paused.
+- Transfer initialization now rejects test keys in production, validates HTTPS checkout links and reports an uncertain network result with a saved-reference recovery action.
+
+Validation: all 468 server tests in 47 files and 125 root regression tests pass. Server/mobile/portal type checks, server build, portal lint/production build and mobile production web export pass. PostgreSQL/API cases verify quote privacy, price/file changes, tenant/owner isolation, immutable amounts, exact settlement, single credit, private access, idempotent disputes, admin restoration, delayed release and late receipts held for review. Provider fixtures are synthetic; no production payment or migration ran.
+
 ## Publication and visual checks
 
 Changes are committed locally. Automatic approval review rejected pushing to the public `KampusOne/platform` repository because it would publish source and migration details without specific approval for that public payload and destination. No connector or other execution path was used to bypass the rejection.
@@ -83,17 +93,18 @@ New queued migrations:
 5. `20260930250000_inclusive_store_quotes.sql`
 6. `20260930260000_inclusive_tutorial_bookings.sql`
 7. `20260930270000_verified_kira_subscription.sql`
+8. `20260930280000_verified_learning_materials.sql`
 
 These depend on the current account/agent schema, the Phase 3 commerce foundation and the unified notification tables. Readiness checks let the code be deployed before those migrations without querying absent new columns/functions. No earlier applied migration was edited.
 
 ## Remaining implementation
 
 1. Actual campus road-route integration and reviewed fare coverage; cash commissions, four-debt locking and repayment are implemented with reviewed zone estimates.
-2. Verified learning-material purchases and private access, plus verified payouts with approved transfer-cost policies. Store/tutorial-session/Kira billing and approved provider-rate configuration are implemented.
-4. Common internal/external share sheet; device acceptance of persistent drafts and message interactions.
-5. Search tabs, working filters and profile/brand app links with website fallback.
-6. First-install illustrated introduction and progressive agent documents/selfie onboarding.
-7. Admin workspace redesign, staff accounts, analytics/exports/campaigns/private operations and moderation integration.
-8. Repository exposure audit, ordered migration rehearsal, deployment checks and Android APK.
+2. Verified payouts with approved transfer-cost policies. Store/tutorial-session/material/Kira billing and approved provider-rate configuration are implemented.
+3. Common internal/external share sheet; device acceptance of persistent drafts and message interactions.
+4. Search tabs, working filters and profile/brand app links with website fallback.
+5. First-install illustrated introduction and progressive agent documents/selfie onboarding.
+6. Admin workspace redesign, staff accounts, analytics/exports/campaigns/private operations and moderation integration.
+7. Repository exposure audit, ordered migration rehearsal, deployment checks and Android APK.
 
 Existing main already contains recent GA4 and messaging fixes. Port missing earlier branch work selectively rather than replacing current main or assuming historical pending lists are current.

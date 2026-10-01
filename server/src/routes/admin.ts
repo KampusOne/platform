@@ -1,4 +1,6 @@
 import { sql } from "drizzle-orm";
+import { materialCommerceReady } from '../lib/material-commerce';
+import { inclusiveStoreReady } from '../lib/commerce-pricing';
 import { Hono } from "hono";
 
 import {
@@ -973,6 +975,7 @@ adminRoutes.get("/audit", async (context) => {
 
 adminRoutes.get("/operations", async (context) => {
   const user = currentUser(context);
+  const receiptsReady=await inclusiveStoreReady(context.env);
   const scope = await adminScope(
     context.env,
     user,
@@ -1052,6 +1055,7 @@ adminRoutes.get("/operations", async (context) => {
     database(context.env).execute(sql`
       select disputes.id, disputes.category, disputes.reason, disputes.status,
         disputes.tutorial_booking_id, disputes.order_id, disputes.resolution_code,
+        to_jsonb(disputes)->>'tutorial_purchase_id' as tutorial_purchase_id,
         disputes.resolution_note, disputes.created_at, users.email as opened_by_email
       from public.disputes disputes join public.users users on users.id = disputes.opened_by_user_id
       where ${scope}::uuid is null or disputes.university_id = ${scope}::uuid
@@ -1074,14 +1078,15 @@ adminRoutes.get("/operations", async (context) => {
         events.amount_kobo, events.state, events.resource_type, events.resource_id,
         events.review_reason, events.resolution_code, events.resolution_note,
         events.received_at, events.resolved_at,
-        coalesce(bookings.university_id, orders.university_id) as university_id
+        coalesce(${receiptsReady?sql`receipt.university_id`:sql`null::uuid`},bookings.university_id, orders.university_id) as university_id
       from public.payment_provider_events events
       left join public.tutorial_bookings bookings
         on events.resource_type = 'TUTORIAL_BOOKING' and bookings.id = events.resource_id
       left join public.orders orders
         on events.resource_type = 'STORE_ORDER' and orders.id = events.resource_id
+      ${receiptsReady?sql`left join app_private.verified_paystack_receipts receipt on receipt.provider_reference=events.provider_reference and events.provider='PAYSTACK'`:sql``}
       where ${scope}::uuid is null
-        or coalesce(bookings.university_id, orders.university_id) = ${scope}::uuid
+        or coalesce(${receiptsReady?sql`receipt.university_id`:sql`null::uuid`},bookings.university_id, orders.university_id) = ${scope}::uuid
       order by case events.state when 'REQUIRES_REVIEW' then 0 when 'RECEIVED' then 1 else 2 end,
         events.received_at desc limit 200
     `),
@@ -1469,7 +1474,8 @@ adminRoutes.post("/operations/disputes/:id/review", async (context) => {
     university_id: string;
     tutorial_booking_id: string | null;
     order_id: string | null;
-  }>(sql`select id, university_id, tutorial_booking_id, order_id from public.disputes
+    tutorial_purchase_id:string|null;
+  }>(sql`select id, university_id, tutorial_booking_id, order_id,to_jsonb(disputes)->>'tutorial_purchase_id' as tutorial_purchase_id from public.disputes
     where id = ${context.req.param("id")}::uuid limit 1`);
   const dispute = firstRow(result);
   if (!dispute)
@@ -1503,6 +1509,8 @@ adminRoutes.post("/operations/disputes/:id/review", async (context) => {
       updated_at = now() where id = ${dispute.order_id}::uuid`,
         ]
       : []),
+    ...(release && dispute.tutorial_purchase_id ? [client`update app_private.tutorial_material_purchases set status='PAID',
+      earnings_state=case when release_at<=now() then 'AVAILABLE' else 'PENDING' end where id=${dispute.tutorial_purchase_id}::uuid`] : []),
   ]);
   await recordAudit(context.env, {
     actorUserId: user.id,
@@ -1594,7 +1602,7 @@ adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
     user,
     context.req.query("universityId"),
   );
-  const [bookings, orders, deliveries] = await Promise.all([
+  const [bookings, orders, deliveries,materials] = await Promise.all([
     database(context.env).execute<{ id: string }>(sql`
       update public.tutorial_bookings bookings set earnings_state = 'AVAILABLE', updated_at = now()
       where bookings.status = 'COMPLETED' and bookings.earnings_state = 'PENDING'
@@ -1618,6 +1626,7 @@ adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
         and not exists (select 1 from public.disputes disputes join public.orders orders on orders.id = disputes.order_id
           where orders.id = jobs.order_id and disputes.status in ('OPEN','UNDER_REVIEW')) returning jobs.id
     `),
+    await materialCommerceReady(context.env)?database(context.env).execute<{released:number}>(sql`select app_private.release_due_material_earnings(${scope}::uuid) as released`):Promise.resolve({rows:[{released:0}]}),
   ]);
   await recordAudit(context.env, {
     actorUserId: user.id,
@@ -1630,6 +1639,7 @@ adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
       bookings: bookings.rows.length,
       orders: orders.rows.length,
       deliveries: deliveries.rows.length,
+      materials:Number(materials.rows[0]?.released??0),
     },
   });
   return context.json({
@@ -1637,6 +1647,7 @@ adminRoutes.post("/operations/release-eligible-earnings", async (context) => {
       bookings: bookings.rows.length,
       orders: orders.rows.length,
       deliveries: deliveries.rows.length,
+      materials:Number(materials.rows[0]?.released??0),
     },
   });
 });

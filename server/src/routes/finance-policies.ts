@@ -10,6 +10,7 @@ import { AppError } from "../lib/errors";
 import { inclusiveStoreReady } from "../lib/commerce-pricing";
 import { pricedTutorialReady } from "../lib/tutorial-pricing";
 import { kiraBillingReady } from "../lib/kira-billing";
+import { materialCommerceReady } from "../lib/material-commerce";
 import {
   listingPrice,
   checkoutPrice,
@@ -169,15 +170,17 @@ financePolicyRoutes.get("/receipts", async (c) => {
   if (!(await inclusiveStoreReady(c.env)))
     return c.json({ ready: false, receipts: [] });
   const tutorialReady = await pricedTutorialReady(c.env),
-    kiraReady = await kiraBillingReady(c.env);
+    kiraReady = await kiraBillingReady(c.env),
+    materialReady = await materialCommerceReady(c.env);
   const receipts = await database(c.env)
     .execute(sql`select r.provider_reference,r.university_id,r.purpose,r.resource_id,r.amount_kobo,r.provider_fee_kobo,r.paid_at,
-    coalesce(q.pricing->>'estimatedProcessingKobo',${tutorialReady ? sql`tp.estimated_processing_kobo::text` : sql`null::text`},${kiraReady ? sql`kp.estimated_processing_kobo::text` : sql`null::text`}) as estimated_processing_kobo,
-    exists(select 1 from public.ledger_transactions t where t.idempotency_key in ('priced-payment:'||r.provider_reference,'rider-repayment:'||r.provider_reference,'tutorial-payment:'||r.provider_reference,'kira-payment:'||r.provider_reference)) as allocated
+    coalesce(q.pricing->>'estimatedProcessingKobo',${tutorialReady ? sql`tp.estimated_processing_kobo::text` : sql`null::text`},${kiraReady ? sql`kp.estimated_processing_kobo::text` : sql`null::text`},${materialReady ? sql`mq.pricing->>'estimatedProcessingKobo'` : sql`null::text`}) as estimated_processing_kobo,
+    exists(select 1 from public.ledger_transactions t where t.idempotency_key in ('priced-payment:'||r.provider_reference,'rider-repayment:'||r.provider_reference,'tutorial-payment:'||r.provider_reference,'kira-payment:'||r.provider_reference,'material-payment:'||r.provider_reference)) as allocated
     from app_private.verified_paystack_receipts r left join app_private.order_price_snapshots s on s.order_id=r.resource_id and r.purpose='STORE_ORDER'
       left join app_private.store_checkout_quotes q on q.id=s.quote_id
       ${tutorialReady ? sql`left join app_private.tutorial_booking_prices tp on tp.booking_id=r.resource_id and r.purpose='TUTORIAL_BOOKING'` : sql``}
       ${kiraReady ? sql`left join app_private.kira_checkouts kc on kc.id=r.resource_id and r.purpose='KIRA_SUBSCRIPTION' left join app_private.kira_price_plans kp on kp.id=kc.plan_id` : sql``}
+      ${materialReady ? sql`left join app_private.material_checkout_quotes mq on mq.id=r.resource_id and r.purpose='TUTORIAL_PURCHASE'` : sql``}
     where (${scope}::uuid is null or r.university_id=${scope}::uuid) order by r.recorded_at desc limit 100`);
   return c.json({ ready: true, receipts: receipts.rows });
 });

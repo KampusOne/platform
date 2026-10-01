@@ -22,6 +22,31 @@ const validReceipt = {
 };
 afterEach(() => vi.unstubAllGlobals());
 describe("Paystack receipt boundary", () => {
+  it("keeps initialization network failures controlled and refuses test-key checkout in production", async () => {
+    const fetcher = vi.fn().mockRejectedValue(new Error("synthetic timeout"));
+    vi.stubGlobal("fetch", fetcher);
+    const input = {
+      email: "synthetic@example.invalid",
+      amountKobo: 600000,
+      reference,
+      metadata: {},
+    };
+    await expect(initializePaystack(env, input)).rejects.toMatchObject({
+      status: 503,
+      code: "PROVIDER_UNAVAILABLE",
+    });
+    await expect(
+      initializePaystack(
+        {
+          ...env,
+          ENVIRONMENT: "production",
+          PAYSTACK_SECRET_KEY: "sk_test_synthetic",
+        },
+        input,
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it("initializes exactly the agreed amount and rejects a different provider reference", async () => {
     const fetcher = vi.fn().mockImplementation(async (_url, init) => {
       const input = JSON.parse(init.body);
@@ -59,19 +84,17 @@ describe("Paystack receipt boundary", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it("reads transaction success and actual processing fees independently of API call success", async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValue(
-        Response.json({
-          status: true,
-          data: {
-            ...validReceipt,
-            status: "pending",
-            fees: undefined,
-            paid_at: undefined,
-          },
-        }),
-      );
+    const fetcher = vi.fn().mockResolvedValue(
+      Response.json({
+        status: true,
+        data: {
+          ...validReceipt,
+          status: "pending",
+          fees: undefined,
+          paid_at: undefined,
+        },
+      }),
+    );
     vi.stubGlobal("fetch", fetcher);
     expect((await verifyPaystack(env, reference)).status).toBe("pending");
     fetcher.mockResolvedValue(

@@ -272,13 +272,20 @@ agentRoutes.get("/dashboard", async (context) => {
     `),
   ]);
 
+  const storeLedger=await inclusiveStoreReady(context.env),tutorLedger=await pricedTutorialReady(context.env);
+  const ledger=storeLedger?firstRow(await database(context.env).execute(sql`select
+    app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,'VENDOR_PENDING') as vendor_pending,
+    app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,'VENDOR_AVAILABLE') as vendor_available,
+    app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,'TUTOR_PENDING') as tutor_pending,
+    app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,'TUTOR_AVAILABLE') as tutor_available`)):null;
+  const riderLedger=await riderFinanceSummary(context.env,user.id,user.universityId);
   return context.json({
     applications: applications.rows,
     profiles: profiles.rows,
     metrics: {
-      tutorials: firstRow(tutorialStats),
-      store: firstRow(vendorStats),
-      deliveries: firstRow(deliveryStats),
+      tutorials: {...firstRow(tutorialStats),...(tutorLedger&&ledger?{pending_earnings_kobo:ledger.tutor_pending,available_earnings_kobo:ledger.tutor_available}:{})},
+      store: {...firstRow(vendorStats),...(ledger?{pending_earnings_kobo:ledger.vendor_pending,available_earnings_kobo:ledger.vendor_available}:{})},
+      deliveries: {...firstRow(deliveryStats),...(riderLedger?{pending_earnings_kobo:riderLedger.pending_kobo,available_earnings_kobo:riderLedger.available_kobo}:{})},
     },
     activity: { bookings: recentBookings.rows, orders: recentOrders.rows },
   });

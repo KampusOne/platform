@@ -27,9 +27,18 @@ export async function initializePaystack(
       "Secure payments are not configured yet.",
     );
   }
-  const response = await fetch(
-    "https://api.paystack.co/transaction/initialize",
-    {
+  if (
+    env.ENVIRONMENT === "production" &&
+    !env.PAYSTACK_SECRET_KEY.startsWith("sk_live_")
+  )
+    throw new AppError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "Live payment configuration is not ready. Your purchase remains unpaid.",
+    );
+  let response: Response;
+  try {
+    response = await fetch("https://api.paystack.co/transaction/initialize", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}`,
@@ -44,8 +53,14 @@ export async function initializePaystack(
         ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
       }),
       signal: AbortSignal.timeout(10_000),
-    },
-  );
+    });
+  } catch {
+    throw new AppError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "Checkout could not connect. Your purchase is saved; check its status before retrying.",
+    );
+  }
   const payload = (await response.json().catch(() => null)) as {
     status?: boolean;
     message?: string;
@@ -65,6 +80,16 @@ export async function initializePaystack(
       503,
       "PROVIDER_UNAVAILABLE",
       payload?.message ?? "The payment provider is unavailable.",
+    );
+  }
+  try {
+    if (new URL(payload.data.authorization_url).protocol !== "https:")
+      throw new Error();
+  } catch {
+    throw new AppError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "The payment provider returned an invalid checkout link. Your purchase remains unpaid.",
     );
   }
   return payload.data;

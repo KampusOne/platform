@@ -7,6 +7,7 @@ import { currentUser, requireAuth } from "../middleware/auth";
 import { id } from "../lib/input";
 import { adminAccess, resolveAdminScope } from "../lib/admin-access";
 import { recordAudit } from "../lib/audit";
+import { purchasedMaterialAccess } from '../lib/material-commerce';
 import type { Bindings, Variables } from "../types";
 import { SignJWT, jwtVerify } from "jose";
 import { findUserById, toAuthenticatedUser } from "../services/sessions";
@@ -63,6 +64,7 @@ async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
     } catch(error) {if(!(error instanceof AppError)||error.status!==403)throw error;}
   }
   if (media.kind === "resource" && user.universityId === media.institution_id) {
+    if(await purchasedMaterialAccess(env,user,media.id))return;
     const resource = firstRow(
       await database(env).execute(
         sql`select r.id from public.tutorial_resources r where r.media_object_id=${media.id}::uuid and r.university_id=${user.universityId}::uuid and r.deleted_at is null and r.status='PUBLISHED' and (r.access_model='FREE' or(r.access_model='BOOKING_INCLUDED' and r.listing_id is not null and exists(select 1 from public.tutorial_bookings b where b.listing_id=r.listing_id and b.student_user_id=${user.id}::uuid and b.status in ('CONFIRMED','COMPLETED')))) limit 1`,

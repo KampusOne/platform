@@ -20,6 +20,9 @@ import { paymentRoutes } from "../src/routes/payments";
 import { studentRoutes } from "../src/routes/student";
 import { financePolicyRoutes } from "../src/routes/finance-policies";
 import { aiRoutes } from "../src/routes/ai";
+import { tutorCommerceRoutes } from "../src/routes/tutor-commerce";
+import { mediaRoutes } from "../src/routes/media";
+import { adminRoutes } from "../src/routes/admin";
 import { AppError } from "../src/lib/errors";
 import { riderFinanceSummary } from "../src/lib/rider-finance";
 import { deriveHandoffCode } from "../src/lib/security";
@@ -31,12 +34,13 @@ vi.mock("../src/lib/database", () => ({
   firstRow: (r: { rows: unknown[] }) => r.rows[0],
 }));
 vi.mock("../src/middleware/auth", () => ({
-  currentUser: (c: Context) => ({
-    id: c.req.header("x-user"),
-    universityId: c.req.header("x-campus"),
-    email: "synthetic@example.invalid",
-    roles: ["STUDENT"],
-  }),
+  currentUser: (c: Context) =>
+    c.get("user") ?? {
+      id: c.req.header("x-user"),
+      universityId: c.req.header("x-campus"),
+      email: "synthetic@example.invalid",
+      roles: ["STUDENT"],
+    },
   requireAuth: async (c: Context, n: Next) =>
     c.req.header("x-user") ? n() : c.json({ error: "Unauthorized" }, 401),
 }));
@@ -62,6 +66,7 @@ const env = {
   HF_TOKEN: "synthetic-local-ai-provider-token",
   HF_CHAT_MODEL: "synthetic/standard",
   HF_PRO_MODEL: "synthetic/pro",
+  JWT_SECRET: "synthetic-private-file-test-key-at-least-32-characters",
   LOGISTICS_ENABLED: "true",
   PAYSTACK_SECRET_KEY: "synthetic-not-a-real-key",
 } as Bindings;
@@ -70,6 +75,9 @@ const app = new Hono()
   .route("/payments", paymentRoutes)
   .route("/student", studentRoutes)
   .route("/ai", aiRoutes)
+  .route("/materials", tutorCommerceRoutes)
+  .route("/media", mediaRoutes)
+  .route("/v1/admin", adminRoutes)
   .route("/finance", financePolicyRoutes);
 app.onError((e, c) =>
   c.json({ error: e.message }, e instanceof AppError ? e.status : 500),
@@ -260,6 +268,7 @@ beforeAll(async () => {
     "20260930250000_inclusive_store_quotes.sql",
     "20260930260000_inclusive_tutorial_bookings.sql",
     "20260930270000_verified_kira_subscription.sql",
+    "20260930280000_verified_learning_materials.sql",
   ])
     await pg.exec(
       readFileSync(
@@ -1697,5 +1706,346 @@ describe("fixed-price verified Kira monthly access", () => {
           Number(r.estimated_processing_kobo) === 19000,
       ),
     ).toBe(true);
+  });
+});
+
+async function materialFixture() {
+  const tutor = await person(undefined, campus, "TUTOR"),
+    student = await person(),
+    resource = crypto.randomUUID(),
+    media = crypto.randomUUID();
+  await pg.query(
+    "insert into media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name)values($1,$2,$3,'resource',$1::uuid::text,'application/pdf',123,'synthetic-learning.pdf')",
+    [media, tutor.user, campus],
+  );
+  await pg.query(
+    "insert into tutorial_resources(id,university_id,tutor_profile_id,course_code,title,description,resource_type,access_model,price_kobo,publisher_name,status,media_object_id)values($1,$2,$3,'SYN101','Synthetic material','Local financial fixture only','PDF','PAID',50000,'Synthetic tutor','PUBLISHED',$4)",
+    [resource, campus, tutor.profile, media],
+  );
+  return {
+    tutor,
+    student,
+    resource,
+    media,
+    input: {
+      resourceId: resource,
+      requestId: crypto.randomUUID(),
+      expectedPriceKobo: 50800,
+    },
+  };
+}
+async function materialPurchase(
+  f: Awaited<ReturnType<typeof materialFixture>>,
+) {
+  const quote = await json(
+    await request("/materials/quote", f.student.user, "POST", f.input),
+  );
+  const purchase = await json(
+    await request("/materials/purchases", f.student.user, "POST", {
+      quoteId: quote.quote.id,
+    }),
+    201,
+  );
+  return { quote: quote.quote, purchase: purchase.purchase };
+}
+describe("verified learning-material purchases and private access", () => {
+  it("publishes an inclusive price, hides internal fees, isolates quote ownership and reuses a purchase", async () => {
+    const f = await materialFixture(),
+      catalog = await json(await request("/student/tutorials", f.student.user));
+    expect(
+      catalog.resources.find((r: { id: string }) => r.id === f.resource),
+    ).toMatchObject({ price_kobo: 50800, pricing_ready: true, file_url: null });
+    expect(
+      (
+        await request("/materials/quote", f.student.user, "POST", {
+          ...f.input,
+          expectedPriceKobo: 50000,
+        })
+      ).status,
+    ).toBe(409);
+    const saved = await materialPurchase(f);
+    expect(saved.quote).toMatchObject({ priceKobo: 50800, amountKobo: 50800 });
+    for (const field of [
+      "baseKobo",
+      "sellerNetKobo",
+      "estimatedProcessingKobo",
+      "policyId",
+    ])
+      expect(JSON.stringify(saved.quote)).not.toContain(field);
+    expect(
+      (
+        await json(
+          await request("/materials/purchases", f.student.user, "POST", {
+            quoteId: saved.quote.id,
+          }),
+          201,
+        )
+      ).purchase.id,
+    ).toBe(saved.purchase.id);
+    expect(
+      (
+        await request("/materials/purchases", buyer, "POST", {
+          quoteId: saved.quote.id,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (await json(await request("/materials/purchases", buyer))).purchases.some(
+        (p: { id: string }) => p.id === saved.purchase.id,
+      ),
+    ).toBe(false);
+    expect(
+      (
+        await json(
+          await request(
+            "/materials/purchases",
+            f.student.user,
+            "GET",
+            undefined,
+            otherCampus,
+          ),
+        )
+      ).purchases,
+    ).toHaveLength(0);
+    expect(
+      (
+        await request(
+          "/media/" + f.media + "/access",
+          f.student.user,
+          "POST",
+          {},
+        )
+      ).status,
+    ).toBe(403);
+    await expect(
+      pg.query(
+        "update app_private.tutorial_material_purchases set amount_kobo=amount_kobo+1 where id=$1",
+        [saved.purchase.id],
+      ),
+    ).rejects.toThrow("PURCHASE_SNAPSHOT_IMMUTABLE");
+  });
+  it("unlocks only the purchased private file after exact verified payment and pauses access/earnings for an owned report", async () => {
+    const f = await materialFixture(),
+      saved = await materialPurchase(f);
+    let reference = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, options?: RequestInit) => {
+        if (options?.method === "POST") {
+          const body = JSON.parse(String(options.body));
+          expect(body.amount).toBe(50800);
+          reference = body.reference;
+          return Response.json({
+            status: true,
+            data: {
+              reference,
+              authorization_url: "https://checkout.paystack.com/synthetic",
+              access_code: "synthetic",
+            },
+          });
+        }
+        return Response.json({
+          status: true,
+          data: {
+            reference,
+            status: "success",
+            amount: 50800,
+            currency: "NGN",
+            fees: 762,
+            domain: "live",
+            paid_at: new Date().toISOString(),
+          },
+        });
+      }),
+    );
+    await json(
+      await request(
+        "/materials/purchases/" + saved.purchase.id + "/payment",
+        f.student.user,
+        "POST",
+        { requestId: crypto.randomUUID() },
+      ),
+    );
+    await json(await request("/payments/status/" + reference, f.student.user));
+    await json(await request("/payments/status/" + reference, f.student.user));
+    expect(await balance(f.tutor, "TUTOR_PENDING")).toBe(47500);
+    const access = await json(
+      await request(
+        "/media/" + f.media + "/access",
+        f.student.user,
+        "POST",
+        {},
+      ),
+    );
+    expect(access.expiresIn).toBe(90);
+    expect(
+      (await request("/media/" + f.media + "/access", buyer, "POST", {}))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await json(
+          await request(
+            "/student/tutorial-resources/" + f.resource,
+            f.student.user,
+          ),
+        )
+      ).resource,
+    ).toMatchObject({ can_access: true, media_object_id: f.media });
+    const reported = await json(
+      await request(
+        "/materials/purchases/" + saved.purchase.id + "/dispute",
+        f.student.user,
+        "POST",
+        { reason: "Synthetic report for the purchased resource." },
+      ),
+      201,
+    );
+    expect(
+      (
+        await json(
+          await request(
+            "/materials/purchases/" + saved.purchase.id + "/dispute",
+            f.student.user,
+            "POST",
+            { reason: "Retry the same report safely." },
+          ),
+          201,
+        )
+      ).id,
+    ).toBe(reported.id);
+    expect(
+      (
+        await request(
+          "/media/" + f.media + "/access",
+          f.student.user,
+          "POST",
+          {},
+        )
+      ).status,
+    ).toBe(403);
+    await expect(
+      pg.query(
+        "update app_private.tutorial_material_purchases set earnings_state='AVAILABLE' where id=$1",
+        [saved.purchase.id],
+      ),
+    ).rejects.toThrow("EARNINGS_NOT_ELIGIBLE");
+    await json(
+      await request(
+        "/v1/admin/operations/disputes/" + reported.id + "/review",
+        buyer,
+        "POST",
+        {
+          status: "RESOLVED",
+          resolutionCode: "NO_ACTION",
+          note: "Synthetic review restores the paid resource; earnings retain the seven-day hold.",
+        },
+      ),
+    );
+    expect(
+      (
+        await request(
+          "/media/" + f.media + "/access",
+          f.student.user,
+          "POST",
+          {},
+        )
+      ).status,
+    ).toBe(200);
+    expect(await balance(f.tutor, "TUTOR_AVAILABLE")).toBe(0);
+    await pg.query(
+      "update app_private.tutorial_material_purchases set release_at=now()-interval '1 hour' where id=$1",
+      [saved.purchase.id],
+    );
+    await pg.query("select app_private.release_due_material_earnings($1)", [
+      campus,
+    ]);
+    await pg.query("select app_private.release_due_material_earnings($1)", [
+      campus,
+    ]);
+    expect(await balance(f.tutor, "TUTOR_PENDING")).toBe(0);
+    expect(await balance(f.tutor, "TUTOR_AVAILABLE")).toBe(47500);
+  });
+  it("rejects a changed file or base price before purchase and holds late successful funds without access", async () => {
+    const f = await materialFixture(),
+      quote = await json(
+        await request("/materials/quote", f.student.user, "POST", f.input),
+      );
+    await pg.query(
+      "update tutorial_resources set price_kobo=60000 where id=$1",
+      [f.resource],
+    );
+    expect(
+      (
+        await request("/materials/purchases", f.student.user, "POST", {
+          quoteId: quote.quote.id,
+        })
+      ).status,
+    ).toBe(409);
+    const fileChanged = await materialFixture(),
+      fileQuote = await json(
+        await request(
+          "/materials/quote",
+          fileChanged.student.user,
+          "POST",
+          fileChanged.input,
+        ),
+      ),
+      replacementMedia = crypto.randomUUID();
+    await pg.query(
+      "insert into media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name)values($1,$2,$3,'resource',$1::uuid::text,'application/pdf',123,'synthetic-replacement.pdf')",
+      [replacementMedia, fileChanged.tutor.user, campus],
+    );
+    await pg.query(
+      "update tutorial_resources set media_object_id=$1 where id=$2",
+      [replacementMedia, fileChanged.resource],
+    );
+    expect(
+      (
+        await request(
+          "/materials/purchases",
+          fileChanged.student.user,
+          "POST",
+          { quoteId: fileQuote.quote.id },
+        )
+      ).status,
+    ).toBe(409);
+    const late = await materialFixture(),
+      saved = await materialPurchase(late),
+      reference = "K1-L-" + crypto.randomUUID();
+    await pg.query(
+      "select * from app_private.prepare_material_payment($1,$2,$3,$4,$5,$6)",
+      [
+        crypto.randomUUID(),
+        saved.purchase.id,
+        late.student.user,
+        campus,
+        crypto.randomUUID(),
+        reference,
+      ],
+    );
+    await pg.query(
+      "update app_private.tutorial_material_purchases set payment_expires_at=now()-interval '1 hour' where id=$1",
+      [saved.purchase.id],
+    );
+    expect(
+      (
+        await pg.query<{ result: string }>(
+          "select app_private.record_material_receipt($1,50800,762,now()) as result",
+          [reference],
+        )
+      ).rows[0]!.result,
+    ).toBe("REQUIRES_REVIEW");
+    expect(
+      (
+        await request(
+          "/media/" + late.media + "/access",
+          late.student.user,
+          "POST",
+          {},
+        )
+      ).status,
+    ).toBe(403);
+    expect(await balance(late.tutor, "TUTOR_PENDING")).toBe(0);
   });
 });

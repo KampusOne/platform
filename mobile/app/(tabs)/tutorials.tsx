@@ -297,7 +297,7 @@ function ResourcePreview({
           onClose();
           router.push({
             pathname: "/learning-checkout",
-            params: { resourceId: resource.id },
+            params: { resourceId: resource.id,priceKobo:String(resource.price_kobo) },
           });
           return;
         }

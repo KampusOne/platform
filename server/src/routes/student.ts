@@ -33,6 +33,7 @@ import { fulfilmentSchemaReady } from "../lib/fulfilment";
 import { inclusiveStoreReady,inclusiveListings,storeQuoteSchema,prepareStoreQuote } from '../lib/commerce-pricing';
 import { campusFare } from '../lib/pricing';
 import { pricedTutorialReady,createPricedTutorial } from '../lib/tutorial-pricing';
+import { materialCommerceReady } from '../lib/material-commerce';
 import { publishingRoutes } from "./publishing";
 import { currentUser, requireAuth } from "../middleware/auth";
 import { requireUnblocked, unblockedAuthor } from "../lib/profile-safety";
@@ -987,7 +988,8 @@ studentRoutes.get("/tutorials", async (context) => {
   ]);
   const tutorialPricing = await inclusiveListings(context.env,universityId,'TUTORIAL',listings.rows);
   const tutorialBillingReady=await pricedTutorialReady(context.env);
-  return context.json({ listings: tutorialPricing.items.map(l=>({...l,pricing_ready:Number(l.price_kobo)===0 || (l.pricing_ready && paidAccessEnabled && tutorialBillingReady)})), resources: resources.rows });
+  const materialReady=await materialCommerceReady(context.env),resourcePricing=await inclusiveListings(context.env,universityId,'TUTORIAL',resources.rows);
+  return context.json({ listings: tutorialPricing.items.map(l=>({...l,pricing_ready:Number(l.price_kobo)===0 || (l.pricing_ready && paidAccessEnabled && tutorialBillingReady)})), resources: resourcePricing.items.map(r=>({...r,pricing_ready:r.access_model!=='PAID'||(r.pricing_ready&&paidAccessEnabled&&materialReady)})) });
 });
 
 studentRoutes.get("/tutorial-resources/:id", async (context) => {
@@ -1036,6 +1038,12 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
       "NOT_FOUND",
       "That learning resource is unavailable.",
     );
+  if(resource.access_model==='PAID' && await materialCommerceReady(context.env)) {
+    const owned=firstRow(await database(context.env).execute<{media_object_id:string}>(sql`select media_object_id from app_private.tutorial_material_purchases
+      where resource_id=${resource.id}::uuid and student_user_id=${user.id}::uuid and university_id=${user.universityId}::uuid and status='PAID' limit 1`));
+    const pricing=await inclusiveListings(context.env,user.universityId,'TUTORIAL',[resource]);
+    return context.json({resource:{...pricing.items[0],can_access:!!owned,media_object_id:owned?.media_object_id??resource.media_object_id}});
+  }
   return context.json({ resource });
 });
 

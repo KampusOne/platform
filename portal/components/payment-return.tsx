@@ -123,7 +123,9 @@ export function PaymentReturn({ reference }: { reference: string }) {
                 ? "kampusone://earnings"
                 : payment?.resource_type === "KIRA_SUBSCRIPTION"
                   ? "kampusone://ai-subscription"
-                  : "kampusone://purchases"
+                  : payment?.resource_type === "TUTORIAL_PURCHASE"
+                    ? "kampusone://learning-library"
+                    : "kampusone://purchases"
             }
           >
             Open KampusOne

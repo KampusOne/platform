@@ -19,6 +19,7 @@ import { notificationRoutes } from "./routes/notifications";
 import { purchaseReviewRoutes } from "./routes/purchase-reviews";
 import { authRoutes } from "./routes/auth";
 import { studentRoutes } from "./routes/student";
+import { tutorCommerceRoutes } from './routes/tutor-commerce';
 import { feedPostRoutes } from "./routes/feed-posts";
 import { feedExperienceRoutes } from "./routes/feed-experience";
 import { agentRoutes } from "./routes/agents";
@@ -119,6 +120,7 @@ app.route("/v1/notifications", notificationRoutes);
 app.route("/v1/purchase-review-reminders", purchaseReviewRoutes);
 app.route("/v1/email", emailPreferencesRoutes);
 app.route("/v1/payout-setup", payoutSetupRoutes);
+app.route('/v1/tutor-commerce',tutorCommerceRoutes);
 app.route("/v1/auth", authRoutes);
 // Additive conversation features preserve the original read/deletion authorization.
 app.route("/v1/student/feed", feedExperienceRoutes);

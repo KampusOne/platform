@@ -14,6 +14,7 @@ import {
 import { initializePaystack, validPaystackSignature } from "../lib/paystack";
 import { reconcileRiderCommission } from "../lib/rider-finance";
 import { reconcileKira } from "../lib/kira-billing";
+import { reconcileMaterial } from "../lib/material-commerce";
 import {
   pricedTutorialReady,
   reconcilePricedTutorial,
@@ -340,11 +341,6 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
 });
 
 paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
-  requireFeature(
-    context.env,
-    "PAYMENTS_ENABLED",
-    "Payments are not enabled in this environment.",
-  );
   const user = currentUser(context);
   const reference = context.req.param("reference");
   if (
@@ -371,6 +367,7 @@ paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
   }
   await reconcilePricedStore(context.env, reference, user.id);
   await reconcilePricedTutorial(context.env, reference, user.id);
+  await reconcileMaterial(context.env, reference, user.id);
   const result = await database(context.env).execute<{
     provider_reference: string;
     status: string;
@@ -461,6 +458,8 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
   if (await reconcilePricedStore(context.env, reference))
     return context.json({ status: "reconciled" });
   if (await reconcilePricedTutorial(context.env, reference))
+    return context.json({ status: "reconciled" });
+  if (await reconcileMaterial(context.env, reference))
     return context.json({ status: "reconciled" });
   await database(context.env).execute(sql`
     insert into public.payment_provider_events (
