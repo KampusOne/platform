@@ -37,7 +37,7 @@ jobs:
           assert all(u.encode() in bundle for u in urls), 'Expected production API addresses absent from bundle'
           signature=Path('apk-signature.txt').read_text()
           print(signature)
-          certificate=re.search(r'certificate SHA-256 digest:\\s*([a-fA-F0-9:]+)',signature)
+          certificate=re.search(r'certificate SHA-256 digest: ([0-9a-fA-F]{64})',signature)
           assert certificate, 'APK signing certificate missing'
           proof={'sourceSha':'7e659b5e3ae695a806aeb31c2b8ef4ba2e1f99e8','apkSha256':'16370fe405967aa74149fea974526efa01eaadfa24b18bb0d5c5891fa703854a','package':package.group(1),'versionCode':int(package.group(2)),'versionName':package.group(3),'signatureVerified':True,'signingCertificateSha256':certificate.group(1).replace(':','').lower(),'productionApiAddressesBundled':urls,'notificationPermissionDeclared':True,'physicalDeviceAcceptance':'pending'}
           Path('apk-inspection.json').write_text(json.dumps(proof,indent=2)+'\n')
