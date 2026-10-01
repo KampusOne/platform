@@ -8,7 +8,7 @@ import { memo, useCallback, useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import type { FeedPostData } from "@/src/lib/feed-posts";
-import { safeCount, type SocialFeedPost } from "@/src/lib/feed-social";
+import { safeCount, type FeedPublishing, type SocialFeedPost } from "@/src/lib/feed-social";
 import { feedTime, compactCount } from "@/src/lib/feed-time";
 import { getFeedPostText } from "@/src/lib/feed-post-text";
 import { PostMenu } from "./post-menu";
@@ -31,7 +31,7 @@ function InlinePoll({
   onFeedback,
 }: {
   post: SocialFeedPost;
-  onChanged?(post: SocialFeedPost): void;
+  onChanged: ((post: SocialFeedPost) => void) | undefined;
   onFeedback(message: string): void;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
@@ -55,11 +55,11 @@ function InlinePoll({
 
   async function vote(optionId: number) {
     if (locked) return;
-    const before = poll;
-    const next = {
-      ...poll,
+    const before: FeedPublishing = poll;
+    const next: FeedPublishing = {
+      ...before,
       myVote: optionId,
-      options: poll.options.map((option) =>
+      options: before.options.map((option) =>
         option.id === optionId
           ? { ...option, votes: safeCount(option.votes) + 1 }
           : option,
