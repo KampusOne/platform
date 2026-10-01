@@ -91,12 +91,14 @@ jobs:
         if: steps.credentials.outputs.available == 'true'
         run: |
           npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" agents.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
+          npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" agentinvite.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
           npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" vendors.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
           npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" a7f3c9e1b6d2f8a4c5e9b1d7f3a6c2e8.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Verify the published portal aliases and API boundary
         if: steps.credentials.outputs.available == 'true'
         run: |
           curl --fail --silent --show-error --location --retry 2 --max-time 30 https://agents.kampusone.app/ > /dev/null
+          curl --fail --silent --show-error --location --retry 2 --max-time 30 https://agentinvite.kampusone.app/agents > /dev/null
           curl --fail --silent --show-error --location --retry 2 --max-time 30 https://a7f3c9e1b6d2f8a4c5e9b1d7f3a6c2e8.kampusone.app/ > /dev/null
           status=$(curl --silent --show-error --retry 2 --max-time 20 -o /tmp/kampusone-portal-api-check.json -w '%{http_code}' https://agents.kampusone.app/api/v1/account/guidelines)
           test "$status" = "401" || { echo "Expected portal API authentication boundary (401); received $status."; exit 1; }
