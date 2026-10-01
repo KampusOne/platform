@@ -78,6 +78,35 @@ function markApiOriginUnavailable(origin: string) {
   if (alternate && activeApiUrl === origin) activeApiUrl = alternate;
   return alternate;
 }
+
+function isConnectionFailure(caught: unknown) {
+  if (caught instanceof Error && caught.name === "TimeoutError") return true;
+  if (caught instanceof TypeError) return true;
+  const message =
+    caught instanceof Error
+      ? caught.message
+      : typeof caught === "string"
+        ? caught
+        : "";
+  return /(java\.net\.|connectexception|failed to connect|network request failed|network[_ ]?error|connection (?:reset|refused|closed)|unable to resolve host|dns|socket|econn(?:reset|refused|aborted)|enotfound|etimedout)/i.test(
+    message,
+  );
+}
+
+function networkUnavailableError(caught: unknown) {
+  if (caught instanceof Error && caught.name === "TimeoutError") {
+    return new ApiError(
+      0,
+      "REQUEST_TIMEOUT",
+      "KampusOne took too long to respond. Check your connection and try again.",
+    );
+  }
+  return new ApiError(
+    0,
+    "NETWORK_UNAVAILABLE",
+    "We couldn’t connect to KampusOne. Check your internet connection and try again.",
+  );
+}
 let accessToken: string | null = null;
 let sessionListener: ((session: Session | null) => void) | null = null;
 let restrictionListener: (() => void) | null = null;
@@ -340,11 +369,9 @@ async function refreshSession() {
         // A failed connection, a 5xx, or malformed JSON does not prove that a
         // refresh cookie or the current access token is invalid. Only the API's
         // explicit auth rejection is allowed to end the local session.
-        if (
-          (caught instanceof Error && caught.name === "TimeoutError") ||
-          caught instanceof TypeError
-        ) {
+        if (isConnectionFailure(caught)) {
           markApiOriginUnavailable(restoreOrigin);
+          throw networkUnavailableError(caught);
         }
         if (!isExplicitSessionRejection(caught)) throw caught;
         if (credentialVersion === versionAtStart) {
@@ -402,9 +429,7 @@ async function request<T>(
   try {
     result = await attempt(primaryOrigin);
   } catch (caught) {
-    const connectionFailure =
-      (caught instanceof Error && caught.name === "TimeoutError") ||
-      caught instanceof TypeError;
+    const connectionFailure = isConnectionFailure(caught);
     const alternate = connectionFailure
       ? markApiOriginUnavailable(primaryOrigin)
       : null;
@@ -417,28 +442,12 @@ async function request<T>(
       try {
         result = await attempt(alternate);
       } catch (fallbackError) {
-        if (
-          fallbackError instanceof Error &&
-          fallbackError.name === "TimeoutError"
-        )
-          throw new ApiError(0, "REQUEST_TIMEOUT", fallbackError.message);
-        if (fallbackError instanceof TypeError)
-          throw new ApiError(
-            0,
-            "NETWORK_UNAVAILABLE",
-            "We couldn’t connect to KampusOne. Check your internet connection and try again.",
-          );
+        if (isConnectionFailure(fallbackError))
+          throw networkUnavailableError(fallbackError);
         throw fallbackError;
       }
     } else {
-      if (caught instanceof Error && caught.name === "TimeoutError")
-        throw new ApiError(0, "REQUEST_TIMEOUT", caught.message);
-      if (caught instanceof TypeError)
-        throw new ApiError(
-          0,
-          "NETWORK_UNAVAILABLE",
-          "We couldn’t connect to KampusOne. Check your internet connection and try again.",
-        );
+      if (isConnectionFailure(caught)) throw networkUnavailableError(caught);
       throw caught;
     }
   }
