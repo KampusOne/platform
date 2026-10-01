@@ -26,7 +26,7 @@ async function controls(c:Ctx){return firstRow(await database(c.env).execute<{en
 async function globalManager(c:Ctx){const resolved=await resolveAdminScope(c.env,currentUser(c),undefined,'broadcasts.manage');if(resolved!==null)throw new AppError(403,'FORBIDDEN','Global email settings require platform-wide campaign management access.');}
 
 broadcastRoutes.get('/settings',async c=>{
- await scope(c,'broadcasts.view');const settings=await controls(c);const personas=await database(c.env).execute(sql`select id,display_name,active from app_private.email_personas order by created_at`);
+ await scope(c,'broadcasts.view');const settings=await controls(c);const personas=await database(c.env).execute(sql`select id,display_name,active from app_private.email_personas order by case display_name when 'KampusOne' then 0 when 'George from KampusOne' then 1 else 2 end,created_at`);
  return c.json({settings,personas:personas.rows,provider:emailProviderStatus(c.env),disclosure:'Official KampusOne team sender identities; internal staff authors remain auditable.'});
 });
 broadcastRoutes.put('/settings',async c=>{

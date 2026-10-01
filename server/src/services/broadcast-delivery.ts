@@ -1,6 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { database, firstRow } from '../lib/database';
 import { AppError } from '../lib/errors';
+import { escapeEmailHtml as escapeTemplateHtml, renderBroadcastEmail } from '../lib/email-template';
 import { resolveAdminScope } from '../lib/admin-access';
 import type { Bindings } from '../types';
 
@@ -11,7 +12,7 @@ export type AudienceMember = { user_id:string;email:string;display_name:string;i
 export type EmailContent = { from:string; reply_to?:string; subject:string; body:string; senderName:string; kind:'OPERATIONAL'|'MARKETING'; postalAddress:string; apiOrigin:string };
 export type EmailPayload = { from:string;to:string[];subject:string;html:string;text:string;reply_to?:string;headers?:Record<string,string> };
 
-export const escapeEmailHtml = (text:string) => text.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+export const escapeEmailHtml = escapeTemplateHtml;
 export function emailProviderStatus(env:EmailBindings) {
  return { sendingConfigured:Boolean(env.RESEND_API_KEY&&env.RESEND_FROM_EMAIL),webhookConfigured:Boolean(env.RESEND_WEBHOOK_SECRET),unsubscribeConfigured:Boolean(env.PUBLIC_API_ORIGIN) };
 }
@@ -32,11 +33,16 @@ export function freezeEmailContent(env:EmailBindings,campaign:Campaign,postalAdd
 export function composeBroadcastPayload(content:EmailContent,email:string,token:string,isTest=false):EmailPayload {
  const unsubscribe=`${content.apiOrigin}/v1/email/unsubscribe/${token}`;
  const subject=`${isTest?'[Test] ':''}${content.subject}`;
- const disclosure='An official KampusOne team message. This sender identity is managed by KampusOne.';
- const footer=content.kind==='MARKETING'?`<p>${escapeEmailHtml(content.postalAddress)}</p><p><a href="${escapeEmailHtml(unsubscribe)}" style="color:#713C29">Unsubscribe from promotional email</a></p>`:'';
- const body=content.body.split(/\n{2,}/).map(p=>`<p style="margin:0 0 18px;white-space:pre-wrap">${escapeEmailHtml(p)}</p>`).join('');
- const html=`<!doctype html><html lang="en" dir="ltr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeEmailHtml(subject)}</title></head><body style="margin:0;background:#FBF7F2;color:#29231F"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:28px 16px"><table role="presentation" width="100%" style="max-width:600px;background:#fff;border-top:5px solid #C35D38"><tr><td style="padding:28px;font:16px/1.6 Arial,sans-serif"><p style="color:#713C29;font-weight:bold">KampusOne${isTest?' · Test message':''}</p><h1 style="font-size:26px;line-height:1.25">${escapeEmailHtml(content.subject)}</h1>${body}<hr style="border:0;border-top:1px solid #E9DED5"><p style="font-size:13px">${disclosure}</p>${footer}</td></tr></table></td></tr></table></body></html>`;
- return {from:content.from,to:[email],subject,html,text:`${subject}\n\n${content.body}\n\n${disclosure}${content.kind==='MARKETING'?`\n${content.postalAddress}\nUnsubscribe: ${unsubscribe}`:''}`,...(content.reply_to?{reply_to:content.reply_to}:{}),...(content.kind==='MARKETING'?{headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}:{})};
+ const rendered=renderBroadcastEmail({
+  subject:content.subject,
+  body:content.body,
+  senderName:content.senderName,
+  kind:content.kind,
+  ...(content.postalAddress?{postalAddress:content.postalAddress}:{}),
+  ...(content.kind==='MARKETING'?{unsubscribeUrl:unsubscribe}:{}),
+  ...(isTest?{isTest:true}:{}),
+ });
+ return {from:content.from,to:[email],subject,html:rendered.html,text:rendered.text,...(content.reply_to?{reply_to:content.reply_to}:{}),...(content.kind==='MARKETING'?{headers:{'List-Unsubscribe':`<${unsubscribe}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}:{})};
 }
 
 /** Tenant membership includes assigned staff who do not hold a student profile at that campus. */
