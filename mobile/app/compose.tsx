@@ -1,6 +1,5 @@
 import { HashtagSuggestions } from "@/src/components/hashtag-suggestions";
 import {MentionSuggestions} from '@/src/components/mention-suggestions';
-import {ChoiceField} from '@/src/components/choice-field';
 import {ComposerPreview} from '@/src/components/composer-preview';
 import { MediaPreview } from "@/src/components/media-preview";
 import { InlineLoading } from "@/src/components/skeleton";
@@ -15,7 +14,6 @@ import { useAuth } from "@/src/auth/auth-context";
 
 import { QuotedPostPreview } from "@/src/components/quoted-post";
 import { useToast } from "@/src/components/toast";
-import { languages } from "@/src/lib/discovery";
 import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
 import { validPostId } from "@/src/lib/feed-posts";
@@ -65,7 +63,6 @@ export default function Compose() {
   const [publishing, setPublishing] = useState(false);
   const [publishingFormats,setPublishingFormats]=useState<string[]>([]);
   useEffect(()=>{let live=true;void api<{formats:string[]}>("/v1/student/publishing/capabilities").then(r=>{if(live)setPublishingFormats(r.formats);}).catch(()=>{});return()=>{live=false;};},[user?.id]);
-  const [language, setLanguage] = useState("und");
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const pickerLock = useRef(false);
   const publishLock = useRef(false);
@@ -291,7 +288,7 @@ export default function Compose() {
           body,
           ...(attachments.length ? { media: attachments } : {}),
           requestId: requestId.current,
-          language,
+          language: "und",
           ...(isQuote ? { quotedPostId: quoteId } : {}),
         }),
       });
@@ -387,7 +384,6 @@ export default function Compose() {
           ) : null}
 
           {!isQuote&&publishingFormats.length>0?<Pressable accessibilityRole="button" onPress={()=>router.push("/publishing-create")} style={{paddingVertical:12}}><Text style={{color:theme.brand,fontFamily:theme.font.semibold}}>Create a poll or Q&A</Text></Pressable>:null}
-          <ChoiceField label="Post language" value={language} options={languages.filter(([code])=>code!=="ANY").map(([value,label])=>({value,label}))} disabled={publishing} onChange={value=>{setLanguage(value);requestId.current=randomUUID();}}/>
           {media.length ? (
             <View style={{ marginBottom: 15 }}>
               <ScrollView
