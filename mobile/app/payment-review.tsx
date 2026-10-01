@@ -12,6 +12,11 @@ type Summary = {
   buyer_fee_kobo: number;
   delivery_fee_kobo: number;
   amount_kobo: number;
+  cash_due_kobo?: number;
+  discount_kobo?: number;
+  total_kobo?: number;
+  distance_metres?: number | null;
+  campus_zone_estimate?: boolean;
   fee_snapshot?: {
     delivery?: { distanceMetres: number | null; distanceBasis: string };
   };
@@ -96,11 +101,24 @@ export default function PaymentReview() {
                 : "Delivery uses the configured campus zone fee."}
             </Text>
           ) : null}
-          <Text style={{ color: theme.text }}>
-            Service fee: {money(p.buyer_fee_kobo)}
-          </Text>
+          {p.campus_zone_estimate && p.distance_metres != null ? (
+            <Text style={{ color: theme.textMuted }}>
+              Campus zone estimate ·{" "}
+              {(Number(p.distance_metres) / 1000).toFixed(2)} km
+            </Text>
+          ) : null}
+          {Number(p.discount_kobo) > 0 ? (
+            <Text style={{ color: theme.text }}>
+              Checkout savings: −{money(Number(p.discount_kobo))}
+            </Text>
+          ) : null}
+          {Number(p.cash_due_kobo) > 0 ? (
+            <Text style={{ color: theme.text }}>
+              Cash to rider at delivery: {money(Number(p.cash_due_kobo))}
+            </Text>
+          ) : null}
           <Text style={{ color: theme.text, fontFamily: theme.font.bold }}>
-            Total: {money(p.amount_kobo)}
+            Pay in app: {money(p.amount_kobo)}
           </Text>
           <Text style={{ color: theme.text }}>
             Status: {p.status.replaceAll("_", " ")}

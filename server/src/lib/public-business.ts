@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { database, firstRow } from "./database";
 import { AppError } from "./errors";
 import { requireUnblocked, unblockedAuthor } from "./profile-safety";
+import { inclusiveListings } from './commerce-pricing';
 import type { AuthenticatedUser, Bindings } from "../types";
 
 type Service = {
@@ -187,6 +188,8 @@ export async function readPublicBusiness(
           products.map((item) => String(item.category ?? "")).filter(Boolean),
         ),
       ].slice(0, 8);
+  if(products.length)products=(await inclusiveListings(env,viewer.universityId,'STORE',products)).items;
+  if(tutorials.length)tutorials=(await inclusiveListings(env,viewer.universityId,'TUTORIAL',tutorials)).items;
   return {
     service: {
       id: record.id,

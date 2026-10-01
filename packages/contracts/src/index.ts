@@ -526,6 +526,8 @@ export const storeOrderSchema = z
     vendorProfileId: z.string().uuid(),
     fulfilmentMode: z.enum(["PICKUP", "VENDOR_DELIVERY", "RIDER"]).default("RIDER"),
     deliveryZoneId: z.string().uuid().nullable().optional(),
+    deliveryPaymentMethod:z.enum(['IN_APP','CASH']).default('IN_APP'),
+    quoteId:z.string().uuid().optional(),
     recipientName: z.string().trim().min(2).max(120),
     recipientPhoneE164: z
       .string()
@@ -541,6 +543,7 @@ export const storeOrderSchema = z
         z.object({
           productId: z.string().uuid(),
           quantity: z.number().int().min(1).max(100),
+          expectedUnitPriceKobo:z.number().int().min(0).max(2_000_000_000).optional(),
         }),
       )
       .min(1)

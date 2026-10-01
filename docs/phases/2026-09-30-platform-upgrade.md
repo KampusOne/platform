@@ -37,6 +37,22 @@ Validation: server, mobile and contracts type checks, server build and mobile pr
 - The existing payment review screen called a missing server endpoint. It now reads an ownership/campus-scoped stored total and reflects checkout readiness.
 - Six integration tests execute all three fulfilment modes and tutorial completion in PostgreSQL, checking reservations, immutable pickup details, dispatch, buyer-only completed-purchase reviews, tenant isolation, repeated handoff, five-attempt lockout, delayed/deduplicated reminders, decline-then-review, competing rider claims, contact privacy and payment-summary ownership. No provider payment is invoked by these tests.
 
+## Inclusive store payments and rider accounting checkpoint
+
+- Approved, immutable campus pricing policies publish inclusive product prices. Checkout seals those prices, quantities, recipient and delivery mode for ten minutes. Stock is reserved once under the sealed quote. An edited or stale checkout must obtain a new quote. The quote exposes the listed total, any downward-only checkout saving, delivery and cash due; internal commissions and processing allowances remain private.
+- Commercial buyer/seller commission rates are not invented or seeded. An authorized finance operator must preview and approve a policy, including sufficient processing margin or an explicit platform subsidy, before new paid sales open. Checking Paystack's official pricing page stages evidence for review; it does not silently change prices. Verified receipts retain actual processing fees for reconciliation.
+- Campus rider tariff: **₦300 through 1 km, then ₦50 for each additional started kilometre, capped at ₦450**. This phase uses an explicitly reviewed campus-zone distance estimate, not a road-route claim. Zones without a reviewed distance cannot quote rider delivery. Fare, method and 90% rider earnings are immutable once ordered. The 10% commission is ₦30/₦35/₦40/₦45; rider net is ₦270/₦315/₦360/₦405.
+- Cash fare stays with the rider physically. A verified completed delivery journals the 10% commission receivable, never a digital 90% cash credit. Eligible available earnings offset debt under a per-user financial lock. Four outstanding commission records, including partially unpaid records and debts in another campus, block a new claim and going online. Existing deliveries can still finish.
+- Riders can pay the exact commission balance through a stable Paystack checkout. Only a server-verified live NGN receipt clears debt. Replays do not settle twice; a concurrent earnings offset returns the excess repayment to available earnings. A verified amount mismatch goes to review without clearing debt. The platform currently absorbs collection processing costs for debt repayment rather than adding another charge.
+- New digital fare settles into a delivery liability, then 90% rider pending and 10% platform revenue at verified completion. Vendor pending earnings and rider digital earnings release only after the 48-hour dispute window and with no open dispute. Balances come from append-only balanced journal lines. Cash collected, available funds, pending earnings, reserved funds and commission debt are separate dashboard fields.
+- Every successful verified payment first enters a suspense journal with its actual processing expense. Expired orders, unexpected amounts and a second successful payment for an already-paid order remain traceable there, with no duplicate seller credit or fulfilment. Redirects, API-request success and client flags cannot provide payment proof.
+- The admin Prices & fees workspace supports policy previews/approval, official fee evidence checks, reviewed zone distances, immutable policy history and verified receipt reconciliation. It is campus-scoped, permission-gated and audited.
+- Legacy recorded earnings remain separately labelled. Legacy withdrawal creation is blocked once the new ledger is installed, until verified transfers and approved transfer-cost policies replace the old record-based flow. Tutorial billing, the fixed ₦6,000 AI plan and verified payouts are the next financial checkpoint.
+
+Financial validation includes real PostgreSQL execution of both queued migrations, balanced/append-only/idempotent journals, cash/digital settlement and release, four-debt locking across campuses, exact verified repayments and late/mismatched receipts, policy approval boundaries, inclusive quotes, stale prices, checkout retry/stock reservation, full cash delivery completion and duplicated successful payments. Provider adapters are tested with synthetic receipts; no real payment was made.
+
+All 457 server tests in 47 files, 125 root regression tests and 10 contract tests pass. Server/mobile/portal/contracts type checks, server build, portal lint and production build, and mobile production web export pass. The first concurrent full-suite run hit an existing fixture-setup timeout while mobile and portal builds competed for CPU; rerunning the full suite with two workers and a 30-second setup timeout passed every test.
+
 ## Publication and visual checks
 
 Changes are committed locally. Automatic approval review rejected pushing to the public `KampusOne/platform` repository because it would publish source and migration details without specific approval for that public payload and destination. No connector or other execution path was used to bypass the rejection.
@@ -52,13 +68,15 @@ New queued migrations:
 1. `20260930210000_public_business_profiles.sql`
 2. `20260930220000_store_fulfilment_modes.sql`
 3. `20260930230000_optional_purchase_review_reminders.sql`
+4. `20260930240000_rider_commission_ledger.sql`
+5. `20260930250000_inclusive_store_quotes.sql`
 
 These depend on the current account/agent schema, the Phase 3 commerce foundation and the unified notification tables. Readiness checks let the code be deployed before those migrations without querying absent new columns/functions. No earlier applied migration was edited.
 
 ## Remaining implementation
 
-1. Campus route fares, cash commission debt, repayment and debt-count suspension. Rider claims already use an atomic database function; finance rules must be added to it before cash activation.
-3. Inclusive catalogue/tutorial/subscription pricing, snapshot settlement and approved provider-rate configuration.
+1. Actual campus road-route integration and reviewed fare coverage; cash commissions, four-debt locking and repayment are implemented with reviewed zone estimates.
+2. Inclusive tutorial/subscription billing and verified payouts with approved transfer-cost policies. Inclusive store billing and approved provider-rate configuration are implemented.
 4. Common internal/external share sheet; device acceptance of persistent drafts and message interactions.
 5. Search tabs, working filters and profile/brand app links with website fallback.
 6. First-install illustrated introduction and progressive agent documents/selfie onboarding.

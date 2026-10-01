@@ -13,21 +13,25 @@ import { useToast } from "@/src/components/toast";
 import { useAppearance } from "@/src/lib/appearance";
 import { useCapabilities } from "@/src/components/agent-shortcuts";
 import { api } from "@/src/lib/api";
+import { useAuth } from "@/src/auth/auth-context";
 type Item = {
   id: string;
   title?: string;
   name?: string;
   zone_name?: string;
-  store_name?:string;
-  vendor_name?:string;
-  vendor_user_id?:string;
-  vendor_phone?:string|null;
-  vendor_whatsapp?:string|null;
-  delivery_location?:string|null;
-  pickup_location?:string;
-  delivery_note?:string;
+  store_name?: string;
+  vendor_name?: string;
+  vendor_user_id?: string;
+  vendor_phone?: string | null;
+  vendor_whatsapp?: string | null;
+  delivery_location?: string | null;
+  pickup_location?: string;
+  delivery_note?: string;
   price_kobo?: number;
-  rider_earning_kobo?: number;commission_kobo?:number;
+  rider_earning_kobo?: number;
+  commission_kobo?: number;
+  fare_kobo?: number;
+  fare_payment_method?: "IN_APP" | "CASH";
   status: string;
 };
 const money = (value: number) =>
@@ -35,6 +39,10 @@ const money = (value: number) =>
     value / 100,
   );
 export default function AgentDashboard() {
+  const { user } = useAuth();
+  return <AccountAgentDashboard key={user?.id ?? "anonymous"} />;
+}
+function AccountAgentDashboard() {
   const { role: requested } = useLocalSearchParams<{ role?: string }>();
   const caps = useCapabilities();
   const profile =
@@ -44,12 +52,15 @@ export default function AgentDashboard() {
   const toast = useToast();
   const [items, setItems] = useState<Item[]>([]);
   const [ready, setReady] = useState(false);
-  const [loadError,setLoadError]=useState("");
-  const [rideTab,setRideTab]=useState<"AVAILABLE"|"ACTIVE"|"HISTORY">("AVAILABLE");
+  const [loadError, setLoadError] = useState("");
+  const [rideTab, setRideTab] = useState<"AVAILABLE" | "ACTIVE" | "HISTORY">(
+    "AVAILABLE",
+  );
   const [online, setOnline] = useState(false);
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState("");
   const [selected, setSelected] = useState<Item | null>(null);
+  const [ridesSuspended, setRidesSuspended] = useState(false);
   const load = useCallback(async () => {
     if (!role) return;
     const r = await api<{
@@ -57,6 +68,7 @@ export default function AgentDashboard() {
       listings?: Item[];
       jobs?: Item[];
       presence?: { online: boolean };
+      finance?: { rides_suspended: boolean } | null;
     }>(
       "/v1/agents/" +
         (role === "VENDOR"
@@ -67,15 +79,22 @@ export default function AgentDashboard() {
     );
     setItems(r.products ?? r.listings ?? r.jobs ?? []);
     setOnline(r.presence?.online ?? false);
+    setRidesSuspended(r.finance?.rides_suspended ?? false);
     setReady(true);
     setLoadError("");
   }, [role]);
   useFocusEffect(
     useCallback(() => {
-      const refresh=()=>void load().catch((e) => {setLoadError(e.message);setReady(true);});
+      const refresh = () =>
+        void load().catch((e) => {
+          setLoadError(e.message);
+          setReady(true);
+        });
       refresh();
-      const timer=role === "RIDER" ? setInterval(refresh,30_000) : undefined;
-      return ()=>{if(timer)clearInterval(timer);};
+      const timer = role === "RIDER" ? setInterval(refresh, 30_000) : undefined;
+      return () => {
+        if (timer) clearInterval(timer);
+      };
     }, [load, role]),
   );
   async function action(item: Item, type: string) {
@@ -122,24 +141,91 @@ export default function AgentDashboard() {
           ? "Seller dashboard"
           : role === "TUTOR"
             ? "Tutor dashboard"
-            : role === "RIDER" ? "Available rides" : "Your workspaces"
+            : role === "RIDER"
+              ? "Available rides"
+              : "Your workspaces"
       }
     >
-      {caps.profiles.length>1&&<View style={{flexDirection:"row",gap:8,marginBottom:18}}>{caps.profiles.map(p=><Pressable key={p.id} accessibilityRole="tab" accessibilityState={{selected:role===p.agent_type}} onPress={()=>router.setParams({role:p.agent_type})} style={{padding:12,borderBottomWidth:2,borderColor:role===p.agent_type?theme.brand:"transparent"}}><Text style={{color:theme.text}}>{p.agent_type.toLowerCase()}</Text></Pressable>)}</View>}
-      {(loadError||caps.error)&&<View style={{marginVertical:14}}><Text style={{color:theme.text}}>{loadError||caps.error}</Text><ToolButton secondary label="Try again" onPress={()=>void load().catch(e=>setLoadError(e.message))}/></View>}
-      {caps.ready&&!role&&!caps.error&&<EmptyResult title="No approved role yet" body="Your workspaces appear here once your agent application is approved."/>}
-      {profile ? <ToolRow title={`View ${profile.agent_type === "VENDOR" ? "Vendor" : profile.agent_type === "TUTOR" ? "Tutor" : "Rider"} Profile`} detail={profile.display_name} icon="person-circle-outline" onPress={() => router.push({ pathname: "/student-service", params: { id: profile.id } })} /> : null}
+      {caps.profiles.length > 1 && (
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
+          {caps.profiles.map((p) => (
+            <Pressable
+              key={p.id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: role === p.agent_type }}
+              onPress={() => router.setParams({ role: p.agent_type })}
+              style={{
+                padding: 12,
+                borderBottomWidth: 2,
+                borderColor:
+                  role === p.agent_type ? theme.brand : "transparent",
+              }}
+            >
+              <Text style={{ color: theme.text }}>
+                {p.agent_type.toLowerCase()}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {(loadError || caps.error) && (
+        <View style={{ marginVertical: 14 }}>
+          <Text style={{ color: theme.text }}>{loadError || caps.error}</Text>
+          <ToolButton
+            secondary
+            label="Try again"
+            onPress={() => void load().catch((e) => setLoadError(e.message))}
+          />
+        </View>
+      )}
+      {caps.ready && !role && !caps.error && (
+        <EmptyResult
+          title="No approved role yet"
+          body="Your workspaces appear here once your agent application is approved."
+        />
+      )}
+      {profile ? (
+        <ToolRow
+          title={`View ${profile.agent_type === "VENDOR" ? "Vendor" : profile.agent_type === "TUTOR" ? "Tutor" : "Rider"} Profile`}
+          detail={profile.display_name}
+          icon="person-circle-outline"
+          onPress={() =>
+            router.push({
+              pathname: "/student-service",
+              params: { id: profile.id },
+            })
+          }
+        />
+      ) : null}
       <ToolRow
         title="Earnings & payouts"
         icon="wallet-outline"
         onPress={() => router.push("/earnings")}
       />
+      {role === "RIDER" && ridesSuspended ? (
+        <View style={{ paddingVertical: 16 }}>
+          <Text style={{ color: theme.text, fontFamily: theme.font.semibold }}>
+            Four ride commissions are unpaid. Pay your commission to accept
+            another ride.
+          </Text>
+          <ToolButton
+            label="Pay your commission"
+            onPress={() => router.push("/earnings")}
+          />
+        </View>
+      ) : null}
       <ToolRow
         title="Free trial"
         icon="gift-outline"
         onPress={() => router.push("/trial")}
       />
-      {role === "VENDOR" && <ToolRow title="Orders & delivery" icon="receipt-outline" onPress={()=>router.push("/vendor-orders")}/>}
+      {role === "VENDOR" && (
+        <ToolRow
+          title="Orders & delivery"
+          icon="receipt-outline"
+          onPress={() => router.push("/vendor-orders")}
+        />
+      )}
       {role === "VENDOR" ? (
         <ToolRow
           title="Store profile"
@@ -160,14 +246,40 @@ export default function AgentDashboard() {
           trailing={
             <BrandSwitch
               label="Go online"
-              disabled={busy}
+              disabled={busy || ridesSuspended}
               value={online}
               onValueChange={(v) => void availability(v)}
             />
           }
         />
       ) : null}
-      {role==="RIDER"&&<View style={{flexDirection:"row",gap:12,marginVertical:18}}>{(["AVAILABLE","ACTIVE","HISTORY"] as const).map(tab=><Pressable key={tab} accessibilityRole="tab" accessibilityState={{selected:rideTab===tab}} onPress={()=>setRideTab(tab)} style={{paddingVertical:10,borderBottomWidth:2,borderColor:tab===rideTab?theme.brand:"transparent"}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>{tab==="AVAILABLE"?"Available":tab==="ACTIVE"?"Your deliveries":"History"}</Text></Pressable>)}</View>}
+      {role === "RIDER" && (
+        <View style={{ flexDirection: "row", gap: 12, marginVertical: 18 }}>
+          {(["AVAILABLE", "ACTIVE", "HISTORY"] as const).map((tab) => (
+            <Pressable
+              key={tab}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: rideTab === tab }}
+              onPress={() => setRideTab(tab)}
+              style={{
+                paddingVertical: 10,
+                borderBottomWidth: 2,
+                borderColor: tab === rideTab ? theme.brand : "transparent",
+              }}
+            >
+              <Text
+                style={{ fontFamily: theme.font.semibold, color: theme.text }}
+              >
+                {tab === "AVAILABLE"
+                  ? "Available"
+                  : tab === "ACTIVE"
+                    ? "Your deliveries"
+                    : "History"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
       {ready && !items.length && !loadError ? (
         <EmptyResult
           title={
@@ -179,80 +291,173 @@ export default function AgentDashboard() {
           }
         />
       ) : null}
-      {items.filter(item=>role!=="RIDER" || (rideTab === "AVAILABLE" ? item.status === "AVAILABLE" : rideTab === "ACTIVE" ? ["RESERVED","PICKED_UP"].includes(item.status) : !["AVAILABLE","RESERVED","PICKED_UP"].includes(item.status))).map((item) => (
-        <View
-          key={item.id}
-          style={{
-            paddingVertical: 18,
-            borderBottomWidth: 1,
-            borderColor: theme.border,
-          }}
-        >
-          <Text
+      {items
+        .filter(
+          (item) =>
+            role !== "RIDER" ||
+            (rideTab === "AVAILABLE"
+              ? item.status === "AVAILABLE"
+              : rideTab === "ACTIVE"
+                ? ["RESERVED", "PICKED_UP"].includes(item.status)
+                : !["AVAILABLE", "RESERVED", "PICKED_UP"].includes(
+                    item.status,
+                  )),
+        )
+        .map((item) => (
+          <View
+            key={item.id}
             style={{
-              fontFamily: theme.font.semibold,
-              color: theme.text,
-              fontSize: 17,
+              paddingVertical: 18,
+              borderBottomWidth: 1,
+              borderColor: theme.border,
             }}
           >
-            {item.vendor_name ?? item.store_name ?? item.name ?? item.title ?? item.zone_name}
-          </Text>
-          {role === "RIDER" && <View style={{gap:6,marginVertical:8}}><Text style={{color:theme.textMuted}}>Pickup · {item.pickup_location || item.zone_name || "Campus store"}</Text>{item.delivery_note&&<Text style={{color:theme.text}}>Delivery · {item.delivery_note}</Text>}</View>}
-          {role==='RIDER' && item.delivery_location?<Text style={{color:theme.text,marginBottom:12}}>Drop-off · {item.delivery_location}</Text>:null}
-          {role==='RIDER' && ['RESERVED','PICKED_UP'].includes(item.status)?<View style={{gap:8,marginVertical:10}}>
-            {item.vendor_user_id?<ToolButton secondary label="Message vendor" disabled={busy} onPress={()=>{void api<{thread:{id:string}}>('/v1/messages/threads',{method:'POST',body:JSON.stringify({userId:item.vendor_user_id})}).then(result=>router.push({pathname:'/conversation',params:{id:result.thread.id}})).catch(e=>toast(e instanceof Error?e.message:'Messaging could not open.','error'));}}/>:null}
-            {item.vendor_phone?<ToolButton secondary label="Call vendor" onPress={()=>{void Linking.openURL(`tel:${item.vendor_phone}`).catch(()=>toast('Calling could not open.','error'));}}/>:null}
-            {item.vendor_whatsapp?<ToolButton secondary label="WhatsApp vendor" onPress={()=>{void Linking.openURL(`https://wa.me/${item.vendor_whatsapp!.replace(/\D/g,'')}`).catch(()=>toast('WhatsApp could not open.','error'));}}/>:null}
-          </View>:null}
-          {role === "TUTOR" ? (
-            <ToolButton
-              secondary
-              label="Manage tutorial"
-              onPress={() =>
-                router.push({
-                  pathname: "/tutorial-manage",
-                  params: { id: item.id },
-                })
-              }
-            />
-          ) : null}
-          <Text
-            style={{
-              fontFamily: theme.font.body,
-              color: theme.textMuted,
-              marginVertical: 8,
-            }}
-          >
-            {item.status.replaceAll("_", " ")}
-            {item.price_kobo !== undefined ||
-            item.rider_earning_kobo !== undefined
-              ? " · " +
-                money(Number(item.price_kobo ?? item.rider_earning_kobo ?? 0))
-              : ""}
-          </Text>
-          {role === "RIDER" && item.commission_kobo!==undefined?<Text style={{color:theme.textMuted}}>Commission {money(item.commission_kobo)} · You receive {money(item.rider_earning_kobo??0)}</Text>:null}
-          {role === "RIDER" && item.status === "AVAILABLE" ? (
-            <ToolButton
-              label="Accept delivery"
-              disabled={busy || !online}
-              onPress={() => void action(item, "reserve")}
-            />
-          ) : null}
-          {role === "RIDER" &&
-          ["RESERVED", "PICKED_UP"].includes(item.status) ? (
-            <ToolButton
-              secondary
-              label={
-                item.status === "RESERVED"
-                  ? "Confirm pickup"
-                  : "Complete delivery"
-              }
-              disabled={busy}
-              onPress={() => setSelected(item)}
-            />
-          ) : null}
-        </View>
-      ))}
+            <Text
+              style={{
+                fontFamily: theme.font.semibold,
+                color: theme.text,
+                fontSize: 17,
+              }}
+            >
+              {item.vendor_name ??
+                item.store_name ??
+                item.name ??
+                item.title ??
+                item.zone_name}
+            </Text>
+            {role === "RIDER" && (
+              <View style={{ gap: 6, marginVertical: 8 }}>
+                <Text style={{ color: theme.textMuted }}>
+                  Pickup ·{" "}
+                  {item.pickup_location || item.zone_name || "Campus store"}
+                </Text>
+                {item.delivery_note && (
+                  <Text style={{ color: theme.text }}>
+                    Delivery · {item.delivery_note}
+                  </Text>
+                )}
+              </View>
+            )}
+            {role === "RIDER" && item.delivery_location ? (
+              <Text style={{ color: theme.text, marginBottom: 12 }}>
+                Drop-off · {item.delivery_location}
+              </Text>
+            ) : null}
+            {role === "RIDER" &&
+            ["RESERVED", "PICKED_UP"].includes(item.status) ? (
+              <View style={{ gap: 8, marginVertical: 10 }}>
+                {item.vendor_user_id ? (
+                  <ToolButton
+                    secondary
+                    label="Message vendor"
+                    disabled={busy}
+                    onPress={() => {
+                      void api<{ thread: { id: string } }>(
+                        "/v1/messages/threads",
+                        {
+                          method: "POST",
+                          body: JSON.stringify({ userId: item.vendor_user_id }),
+                        },
+                      )
+                        .then((result) =>
+                          router.push({
+                            pathname: "/conversation",
+                            params: { id: result.thread.id },
+                          }),
+                        )
+                        .catch((e) =>
+                          toast(
+                            e instanceof Error
+                              ? e.message
+                              : "Messaging could not open.",
+                            "error",
+                          ),
+                        );
+                    }}
+                  />
+                ) : null}
+                {item.vendor_phone ? (
+                  <ToolButton
+                    secondary
+                    label="Call vendor"
+                    onPress={() => {
+                      void Linking.openURL(`tel:${item.vendor_phone}`).catch(
+                        () => toast("Calling could not open.", "error"),
+                      );
+                    }}
+                  />
+                ) : null}
+                {item.vendor_whatsapp ? (
+                  <ToolButton
+                    secondary
+                    label="WhatsApp vendor"
+                    onPress={() => {
+                      void Linking.openURL(
+                        `https://wa.me/${item.vendor_whatsapp!.replace(/\D/g, "")}`,
+                      ).catch(() => toast("WhatsApp could not open.", "error"));
+                    }}
+                  />
+                ) : null}
+              </View>
+            ) : null}
+            {role === "TUTOR" ? (
+              <ToolButton
+                secondary
+                label="Manage tutorial"
+                onPress={() =>
+                  router.push({
+                    pathname: "/tutorial-manage",
+                    params: { id: item.id },
+                  })
+                }
+              />
+            ) : null}
+            <Text
+              style={{
+                fontFamily: theme.font.body,
+                color: theme.textMuted,
+                marginVertical: 8,
+              }}
+            >
+              {item.status.replaceAll("_", " ")}
+              {item.price_kobo !== undefined ||
+              item.rider_earning_kobo !== undefined
+                ? " · " +
+                  money(Number(item.price_kobo ?? item.rider_earning_kobo ?? 0))
+                : ""}
+            </Text>
+            {role === "RIDER" && item.commission_kobo != null ? (
+              <Text style={{ color: theme.textMuted }}>
+                Fare {money(item.fare_kobo ?? 0)} ·{" "}
+                {item.fare_payment_method === "CASH"
+                  ? "Collect cash"
+                  : "Paid in app"}{" "}
+                · Commission {money(item.commission_kobo)} · You receive{" "}
+                {money(item.rider_earning_kobo ?? 0)}
+              </Text>
+            ) : null}
+            {role === "RIDER" && item.status === "AVAILABLE" ? (
+              <ToolButton
+                label="Accept delivery"
+                disabled={busy || !online || ridesSuspended}
+                onPress={() => void action(item, "reserve")}
+              />
+            ) : null}
+            {role === "RIDER" &&
+            ["RESERVED", "PICKED_UP"].includes(item.status) ? (
+              <ToolButton
+                secondary
+                label={
+                  item.status === "RESERVED"
+                    ? "Confirm pickup"
+                    : "Complete delivery"
+                }
+                disabled={busy}
+                onPress={() => setSelected(item)}
+              />
+            ) : null}
+          </View>
+        ))}
       {selected ? (
         <View style={{ marginVertical: 20 }}>
           <ToolField

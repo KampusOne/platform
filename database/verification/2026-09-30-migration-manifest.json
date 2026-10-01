@@ -451,6 +451,22 @@
       "historicallyVerifiedApplied": false,
       "sha256": "e766da9fd475cd276d008920f0d1f6865ee3c19cddf3c043c03c4428cc014131",
       "gitBlobSha": "46aae63cd1bae562d3b098d8392d933d244197ab"
+    },
+    {
+      "version": "20260930240000_rider_commission_ledger",
+      "path": "database/neon/migrations/20260930240000_rider_commission_ledger.sql",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false,
+      "sha256": "43d0e5e240beeb17f4959443c1ce8eff26035abb2bfb7570903888e35cdb45e9",
+      "gitBlobSha": "5a2f4d477e3c169b0ed12b609901fb9850e58ecc"
+    },
+    {
+      "version": "20260930250000_inclusive_store_quotes",
+      "path": "database/neon/migrations/20260930250000_inclusive_store_quotes.sql",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false,
+      "sha256": "63c4ba1876a8672ce37ea635448988003392cb93f3d46703b60faf76425f66c8",
+      "gitBlobSha": "1525f4b563b960a78efe58645ba53635a21733ce"
     }
   ]
 }

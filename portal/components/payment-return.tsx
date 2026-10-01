@@ -9,11 +9,7 @@ type PaymentStatus = {
   payment: {
     provider_reference: string;
     status:
-      | "CREATED"
-      | "INITIALIZED"
-      | "SUCCEEDED"
-      | "FAILED"
-      | "REQUIRES_REVIEW";
+      "CREATED" | "INITIALIZED" | "SUCCEEDED" | "FAILED" | "REQUIRES_REVIEW";
     resource_type: string;
     resource_id: string;
   };
@@ -86,7 +82,9 @@ export function PaymentReturn({ reference }: { reference: string }) {
             : "Confirming your payment";
   const body =
     state === "SUCCEEDED"
-      ? "Your booking or order is confirmed. You can safely return to KampusOne."
+      ? payment?.resource_type === "RIDER_COMMISSION"
+        ? "Your ride commission payment is confirmed. Return to Earnings to see your updated balance."
+        : "Your purchase is confirmed. You can safely return to KampusOne."
       : state === "REQUIRES_REVIEW"
         ? "Your payment evidence is safely recorded. Support must reconcile it before the purchase changes state."
         : state === "FAILED"
@@ -116,7 +114,14 @@ export function PaymentReturn({ reference }: { reference: string }) {
         <p>{body}</p>
         {reference && <small>Reference {reference}</small>}
         <div className="payment-return-actions">
-          <a className="button button--primary" href="kampusone://purchases">
+          <a
+            className="button button--primary"
+            href={
+              payment?.resource_type === "RIDER_COMMISSION"
+                ? "kampusone://earnings"
+                : "kampusone://purchases"
+            }
+          >
             Open KampusOne
           </a>
           <button

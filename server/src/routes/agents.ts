@@ -37,6 +37,9 @@ import {
 } from "../lib/features";
 import { deriveHandoffCode, hashOtp } from "../lib/security";
 import { requireFullKyc } from "../lib/kyc";
+import { riderFinanceReady,riderFinanceSummary,reconcileRiderCommission } from '../lib/rider-finance';
+import { initializePaystack } from '../lib/paystack';
+import { inclusiveStoreReady } from '../lib/commerce-pricing';
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 
@@ -1521,6 +1524,9 @@ agentRoutes.get("/deliveries", async (context) => {
     database(context.env).execute(sql`
     select jobs.id, jobs.order_id, zones.name as zone_name, jobs.status,
       jobs.rider_earning_kobo, jobs.earning_formula_version,
+      (to_jsonb(jobs)->>'fare_kobo')::integer as fare_kobo,
+      to_jsonb(jobs)->>'fare_payment_method' as fare_payment_method,
+      case when to_jsonb(jobs)->>'financial_version'='CAMPUS_FARE_V1' then (to_jsonb(jobs)->>'fare_kobo')::integer/10 end as commission_kobo,
       jobs.reserved_at, jobs.picked_up_at, jobs.delivered_at, jobs.created_at
       ,vendors.user_id as vendor_user_id,storefronts.display_name as vendor_name,
       storefronts.pickup_location,
@@ -1546,6 +1552,7 @@ agentRoutes.get("/deliveries", async (context) => {
   ]);
   return context.json({
     jobs: result.rows,
+    finance:await riderFinanceSummary(context.env,user.id,user.universityId),
     presence: firstRow(presence) ?? {
       online: false,
       capacity_status: "AVAILABLE",
@@ -1563,6 +1570,8 @@ agentRoutes.put("/rider-presence", async (context) => {
       "Choose a valid rider availability state.",
     );
   const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
+  if(parsed.data.online && (await riderFinanceSummary(context.env,user.id,user.universityId))?.rides_suspended)
+    throw new AppError(409,'CONFLICT','Pay your four unpaid ride commissions from Earnings before going online.');
   await database(context.env).execute(sql`
     insert into public.rider_presence (rider_profile_id, online, capacity_status, last_seen_at, updated_at)
     values (${profile.id}::uuid, ${parsed.data.online}, ${parsed.data.capacityStatus}, now(), now())
@@ -1592,6 +1601,7 @@ agentRoutes.post("/deliveries/:id/reserve", async (context) => {
     `);
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "";
+    if(message.includes('RIDER_COMMISSION_LIMIT'))throw new AppError(409,'CONFLICT','Four ride commissions are unpaid. Pay your commission from Earnings to accept another ride.');
     if (
       message.includes("RIDER_NOT_AVAILABLE") ||
       message.includes("RIDER_AT_CAPACITY")
@@ -1775,12 +1785,66 @@ agentRoutes.get("/earnings", async (context) => {
       where requests.requested_by_user_id = ${user.id}::uuid order by requests.requested_at desc limit 100
     `),
   ]);
+  const riderFinance=await riderFinanceSummary(context.env,user.id,user.universityId);
+  const storeFinance=await inclusiveStoreReady(context.env)?firstRow(await database(context.env).execute(sql`
+    select app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,'VENDOR_PENDING') as pending_kobo,
+      app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,'VENDOR_AVAILABLE') as available_kobo,
+      0::bigint as reserved_kobo,0::bigint as withdrawn_kobo
+  `)):null;
+  const riderCheckout=riderFinance?firstRow(await database(context.env).execute(sql`select provider_reference as reference,amount_kobo,status
+    from app_private.rider_commission_checkouts where user_id=${user.id}::uuid and university_id=${user.universityId}::uuid
+      and status in ('CREATED','INITIALIZED') order by created_at desc limit 1`)):null;
+  const riderDebts=riderFinance?(await database(context.env).execute(sql`select c.rider_profile_id,c.university_id,u.name as university_name,
+    sum(d.outstanding_kobo)::bigint as amount_kobo from app_private.rider_unpaid_commissions(${user.id}::uuid) d
+      join app_private.rider_cash_commissions c on c.job_id=d.job_id join public.universities u on u.id=c.university_id
+    group by c.rider_profile_id,c.university_id,u.name order by u.name`)).rows:[];
   return context.json({
+    withdrawalsEnabled:false,
+    commissionPaymentsEnabled:Boolean(riderFinance && context.env.PAYMENTS_ENABLED==='true'),
+    riderCommissionCheckout:riderCheckout,
+    riderCommissionDebts:riderDebts,
     tutorials: firstRow(tutorials),
-    store: firstRow(store),
-    deliveries: firstRow(deliveries),
+    store: storeFinance??firstRow(store),
+    legacyRecordedStore:storeFinance?firstRow(store):null,
+    deliveries: riderFinance??firstRow(deliveries),
     payoutRequests: payouts.rows,
   });
+});
+
+agentRoutes.post('/rider-commission-checkout',async context=>{
+  requireFeature(context.env,'PAYMENTS_ENABLED','Commission payments are not enabled yet.');
+  if(!await riderFinanceReady(context.env))throw new AppError(503,'FEATURE_DISABLED','Commission payments are awaiting the scheduled database update.');
+  const user=currentUser(context),data=await input(context,z.object({agentProfileId:z.string().uuid(),requestId:z.string().uuid()}));
+  const own=firstRow(await database(context.env).execute<{university_id:string}>(sql`select id,university_id from public.agent_profiles where
+    id=${data.agentProfileId}::uuid and user_id=${user.id}::uuid and agent_type='RIDER' and status='ACTIVE'`));
+  if(!own)throw new AppError(404,'NOT_FOUND','That rider account is not available.');
+  let intent;
+  try{intent=firstRow(await database(context.env).execute<{id:string;provider_reference:string;amount_kobo:number;authorization_url:string|null;access_code:string|null;status:string}>(sql`
+    select * from app_private.create_rider_commission_checkout(${crypto.randomUUID()}::uuid,${data.agentProfileId}::uuid,
+      ${user.id}::uuid,${data.requestId}::uuid,${`K1-RC-${crypto.randomUUID()}`})
+  `));}catch(e){if(e instanceof Error && e.message.includes('RIDER_NO_COMMISSION_DUE'))throw new AppError(409,'CONFLICT','Your ride commissions are already paid.');throw e;}
+  if(!intent)throw new AppError(409,'CONFLICT','The commission checkout could not be prepared.');
+  if(intent.status==='PAID')return context.json({status:'PAID',reference:intent.provider_reference});
+  if(intent.status==='REQUIRES_REVIEW')return context.json({status:'REQUIRES_REVIEW',reference:intent.provider_reference});
+  if(intent.status==='FAILED')throw new AppError(409,'CONFLICT','That checkout expired. Refresh your balance and start again.');
+  if(intent.authorization_url && intent.access_code)return context.json({authorizationUrl:intent.authorization_url,reference:intent.provider_reference,amountKobo:Number(intent.amount_kobo)});
+  // Stable reference survives a timeout; a receipt can still reconcile a late payment.
+  const initialized=await initializePaystack(context.env,{email:user.email,amountKobo:Number(intent.amount_kobo),reference:intent.provider_reference,
+    ...(context.env.APP_ORIGIN?{callbackUrl:`${context.env.APP_ORIGIN.replace(/\/$/,'')}/payment/return`}:{}),metadata:{resourceType:'RIDER_COMMISSION',resourceId:intent.id}});
+  if(!initialized.access_code)throw new AppError(503,'PROVIDER_UNAVAILABLE','The provider returned an incomplete checkout. Try again.');
+  await database(context.env).execute(sql`update app_private.rider_commission_checkouts set status='INITIALIZED',authorization_url=${initialized.authorization_url!},access_code=${initialized.access_code}
+    where id=${intent.id}::uuid and status='CREATED'`);
+  await recordAudit(context.env,{actorUserId:user.id,universityId:own.university_id,action:'rider.commission_checkout',targetType:'rider_commission',targetId:intent.id,requestId:context.get('requestId'),metadata:{amountKobo:Number(intent.amount_kobo)}});
+  return context.json({authorizationUrl:initialized.authorization_url,reference:intent.provider_reference,amountKobo:Number(intent.amount_kobo)});
+});
+
+agentRoutes.get('/rider-commission-checkout/:reference',async context=>{
+  const user=currentUser(context);
+  requireFeature(context.env,'PAYMENTS_ENABLED','Commission payments are not enabled yet.');
+  if(!await reconcileRiderCommission(context.env,context.req.param('reference'),user.id))throw new AppError(404,'NOT_FOUND','That commission payment could not be found.');
+  const intent=firstRow(await database(context.env).execute(sql`select status,amount_kobo from app_private.rider_commission_checkouts
+    where provider_reference=${context.req.param('reference')} and user_id=${user.id}::uuid`));
+  return context.json({payment:intent});
 });
 
 agentRoutes.post("/payouts", async (context) => {
@@ -1789,6 +1853,7 @@ agentRoutes.post("/payouts", async (context) => {
     "PAYMENTS_ENABLED",
     "Withdrawals are not connected yet. Your earnings remain in your account.",
   );
+  if(await riderFinanceReady(context.env))throw new AppError(503,'FEATURE_DISABLED','Withdrawals are awaiting verified transfer settlement. Your earnings and commission payments remain available.');
   const user = currentUser(context);
   const parsed = payoutRequestSchema.safeParse(await body(context));
   if (!parsed.success)

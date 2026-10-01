@@ -30,6 +30,8 @@ import {
 import { deriveHandoffCode } from "../lib/security";
 import { demoStoreCatalogue } from "../lib/store-demo";
 import { fulfilmentSchemaReady } from "../lib/fulfilment";
+import { inclusiveStoreReady,inclusiveListings,storeQuoteSchema,prepareStoreQuote } from '../lib/commerce-pricing';
+import { campusFare } from '../lib/pricing';
 import { publishingRoutes } from "./publishing";
 import { currentUser, requireAuth } from "../middleware/auth";
 import { requireUnblocked, unblockedAuthor } from "../lib/profile-safety";
@@ -1365,14 +1367,25 @@ studentRoutes.get("/store", async (context) => {
       where university_id = ${requireUniversity(user)}::uuid and active = true order by base_fee_kobo, name
     `),
   ]);
+  const inclusive=await inclusiveListings(context.env,user.universityId,'STORE',products.rows);
   return context.json({
-    products: products.rows,
+    products: inclusive.items,
     sellers: [],
     catalogueMode: "LIVE" as const,
-    checkoutEnabled: true,
+    checkoutEnabled: !!inclusive.policy && featureEnabled(context.env,'PAYMENTS_ENABLED'),
+    inclusivePricing:!!inclusive.policy,
     riderDeliveryEnabled:featureEnabled(context.env,"LOGISTICS_ENABLED"),
-    deliveryZones: zones.rows,
+    deliveryZones: await inclusiveStoreReady(context.env)?(await database(context.env).execute<{id:string;name:string;route_distance_metres:number}>(sql`
+      select id,name,route_distance_metres from public.delivery_zones where university_id=${user.universityId}::uuid and active and route_distance_metres is not null
+    `)).rows.map(zone=>({...zone,base_fee_kobo:campusFare(Number(zone.route_distance_metres)).fareKobo,distance_basis:'CAMPUS_ZONE'})):zones.rows,
   });
+});
+
+studentRoutes.post('/order-quotes',async context=>{
+  requireFeature(context.env,'STORE_ENABLED','Store checkout is not available yet.');
+  requireFeature(context.env,'PAYMENTS_ENABLED','Store payments are not available yet.');
+  const data=await validatedInput(context,storeQuoteSchema);
+  return context.json({quote:await prepareStoreQuote(context.env,currentUser(context),data)},201);
 });
 
 studentRoutes.post("/orders", async (context) => {
@@ -1419,7 +1432,16 @@ studentRoutes.post("/orders", async (context) => {
   if (vendor?.user_id) {
     await requireUnblocked(context.env, user.id, vendor.user_id);
   }
-  const orderId = crypto.randomUUID();
+  const inclusiveReady=await inclusiveStoreReady(context.env);
+  if(inclusiveReady && !parsed.data.quoteId)throw new AppError(409,'CONFLICT','Review the exact checkout total before creating this order.');
+  if(inclusiveReady){
+    const {quoteId,...details}=parsed.data;
+    const matching=firstRow(await database(context.env).execute<{matching:boolean}>(sql`select request_payload-'requestId'-'quoteId'=${JSON.stringify(details)}::jsonb as matching
+      from app_private.store_checkout_quotes where id=${quoteId}::uuid and buyer_user_id=${user.id}::uuid and university_id=${universityId}::uuid`));
+    if(!matching?.matching)throw new AppError(409,'CONFLICT','Your checkout details changed. Review a fresh total before creating the order.');
+  }
+  if(!inclusiveReady && parsed.data.deliveryPaymentMethod==='CASH')throw new AppError(503,'FEATURE_DISABLED','Cash rider fares are awaiting the scheduled financial update.');
+  const orderId = inclusiveReady?parsed.data.quoteId!:crypto.randomUUID();
   const [pickup, delivery] = await Promise.all([
     deriveHandoffCode(context.env, orderId, "pickup"),
     deriveHandoffCode(context.env, orderId, "delivery"),
@@ -1430,7 +1452,8 @@ studentRoutes.post("/orders", async (context) => {
       subtotal_kobo: number;
       delivery_fee_kobo: number;
       total_kobo: number;
-    }>(fulfilmentReady ? sql`
+      status?:string;payable_kobo?:number;cash_due_kobo?:number;
+    }>(inclusiveReady?sql`select * from app_private.create_priced_store_order(${orderId}::uuid,${user.id}::uuid,${universityId}::uuid,${pickup.hash},${delivery.hash})`:fulfilmentReady ? sql`
       select * from app_private.create_store_order_v3(
         ${orderId}::uuid, ${universityId}::uuid, ${user.id}::uuid,
         ${parsed.data.vendorProfileId}::uuid, ${parsed.data.fulfilmentMode}, ${parsed.data.deliveryZoneId ?? null}::uuid,
@@ -1457,15 +1480,17 @@ studentRoutes.post("/orders", async (context) => {
     return context.json(
       {
         id: orderId,
-        status: "PENDING_PAYMENT",
+        status: order?.status??"PENDING_PAYMENT",
         subtotalKobo: Number(order?.subtotal_kobo ?? 0),
         deliveryFeeKobo: Number(order?.delivery_fee_kobo ?? 0),
         totalKobo: Number(order?.total_kobo ?? 0),
+        payableKobo:Number(order?.payable_kobo??order?.total_kobo??0),cashDueKobo:Number(order?.cash_due_kobo??0),
       },
       201,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
+    if(message.includes('PRICE_QUOTE')||message.includes('PRODUCT_PRICE_CHANGED'))throw new AppError(409,'CONFLICT','Your quote expired or an item price changed. Review a fresh checkout total.');
     if (message.includes("PRODUCT_UNAVAILABLE_OR_STOCK_LOW"))
       throw new AppError(
         409,

@@ -1,0 +1,1150 @@
+import { readFileSync } from "node:fs";
+import {
+  beforeAll,
+  afterAll,
+  afterEach,
+  describe,
+  it,
+  expect,
+  vi,
+} from "vitest";
+import { Hono, type Context, type Next } from "hono";
+import type { PGlite } from "@electric-sql/pglite";
+import {
+  createTestDatabase,
+  testDatabaseAdapter,
+  testSqlClient,
+} from "./helpers/database";
+import { agentRoutes } from "../src/routes/agents";
+import { paymentRoutes } from "../src/routes/payments";
+import { studentRoutes } from "../src/routes/student";
+import { financePolicyRoutes } from "../src/routes/finance-policies";
+import { AppError } from "../src/lib/errors";
+import { riderFinanceSummary } from "../src/lib/rider-finance";
+import { deriveHandoffCode } from "../src/lib/security";
+import type { Bindings } from "../src/types";
+let pg: PGlite;
+vi.mock("../src/lib/database", () => ({
+  database: () => testDatabaseAdapter(pg),
+  sqlClient: () => testSqlClient(pg),
+  firstRow: (r: { rows: unknown[] }) => r.rows[0],
+}));
+vi.mock("../src/middleware/auth", () => ({
+  currentUser: (c: Context) => ({
+    id: c.req.header("x-user"),
+    universityId: c.req.header("x-campus"),
+    email: "synthetic@example.invalid",
+    roles: ["STUDENT"],
+  }),
+  requireAuth: async (c: Context, n: Next) =>
+    c.req.header("x-user") ? n() : c.json({ error: "Unauthorized" }, 401),
+}));
+const campus = crypto.randomUUID(),
+  otherCampus = crypto.randomUUID(),
+  vendorUser = crypto.randomUUID(),
+  vendor = crypto.randomUUID(),
+  buyer = crypto.randomUUID(),
+  zone = crypto.randomUUID(),
+  product = crypto.randomUUID(),
+  category = crypto.randomUUID();
+const env = {
+  ENVIRONMENT: "local",
+  STORE_ENABLED: "true",
+  OTP_PEPPER: "synthetic-local-handoff-pepper",
+  PHASE_3_SCHEMA_READY: "true",
+  PHASE_2_SCHEMA_READY: "true",
+  PAYMENTS_ENABLED: "true",
+  LOGISTICS_ENABLED: "true",
+  PAYSTACK_SECRET_KEY: "synthetic-not-a-real-key",
+} as Bindings;
+const app = new Hono()
+  .route("/agents", agentRoutes)
+  .route("/payments", paymentRoutes)
+  .route("/student", studentRoutes)
+  .route("/finance", financePolicyRoutes);
+app.onError((e, c) =>
+  c.json({ error: e.message }, e instanceof AppError ? e.status : 500),
+);
+async function request(
+  path: string,
+  user: string,
+  method = "GET",
+  body?: unknown,
+) {
+  return app.request(
+    path,
+    {
+      method,
+      headers: {
+        "x-user": user,
+        "x-campus": campus,
+        "content-type": "application/json",
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    },
+    env,
+  );
+}
+async function person(
+  user = crypto.randomUUID(),
+  uni = campus,
+  type = "RIDER",
+) {
+  await pg.query(
+    "insert into users(id,email,password_hash,updated_at)values($1,$1::uuid::text||'@example.invalid','synthetic',now()) on conflict do nothing",
+    [user],
+  );
+  await pg.query(
+    "insert into profiles(id,user_id,university_id,username,display_name,updated_at)values($1,$1,$2,'synthetic_'||substring(replace($1::uuid::text,'-',''),1,20),'Synthetic student',now()) on conflict do nothing",
+    [user, uni],
+  );
+  const profile = crypto.randomUUID(),
+    application = crypto.randomUUID();
+  await pg.query(
+    "insert into agent_applications(id,user_id,university_id,agent_type,display_name,phone_e164,statement)values($1,$2,$3,$4,'Synthetic agent','+2348012345678','Synthetic fixture only')",
+    [application, user, uni, type],
+  );
+  await pg.query(
+    "insert into agent_profiles(id,user_id,university_id,application_id,agent_type,display_name,verified_at)values($1,$2,$3,$4,$5,'Synthetic agent',now())",
+    [profile, user, uni, application, type],
+  );
+  if (type === "RIDER")
+    await pg.query(
+      "insert into rider_presence(rider_profile_id,online,capacity_status,last_seen_at,updated_at)values($1,true,'AVAILABLE',now(),now())",
+      [profile],
+    );
+  return { user, profile, uni };
+}
+type Rider = Awaited<ReturnType<typeof person>>;
+async function journal(
+  user: string,
+  amount: number,
+  key = crypto.randomUUID(),
+  code = "RIDER_AVAILABLE",
+) {
+  const lines = [
+    { code: "PAYSTACK_CLEARING", type: "ASSET", direction: "DEBIT", amount },
+    { code, type: "LIABILITY", owner: user, direction: "CREDIT", amount },
+  ];
+  const r = await pg.query<{ id: string }>(
+    "select app_private.post_finance_journal($1,'SYNTHETIC_FIXTURE',$2,$2,'Synthetic ledger fixture',$3::jsonb) as id",
+    [campus, key, JSON.stringify(lines)],
+  );
+  return { id: r.rows[0]!.id, lines, key };
+}
+async function balance(r: Rider, code = "RIDER_AVAILABLE") {
+  return Number(
+    (
+      await pg.query<{ amount: number }>(
+        "select app_private.finance_balance($1,$2,$3) as amount",
+        [r.uni, r.user, code],
+      )
+    ).rows[0]!.amount,
+  );
+}
+async function job(r: Rider, method = "CASH", fare = 30000, verified = true) {
+  const orderId = crypto.randomUUID(),
+    jobId = crypto.randomUUID();
+  await pg.query(
+    "insert into orders(id,university_id,buyer_user_id,vendor_profile_id,delivery_zone_id,subtotal_kobo,delivery_fee_kobo,status,pricing_formula_version)values($1,$2,$3,$4,$5,100000,$6,'IN_DELIVERY','SYNTHETIC_V1')",
+    [orderId, r.uni, buyer, vendor, zone, fare],
+  );
+  await pg.query(
+    "insert into delivery_jobs(id,university_id,order_id,zone_id,rider_profile_id,status,pickup_code_hash,delivery_code_hash,code_expires_at,fare_kobo,rider_earning_kobo,earning_formula_version,fare_payment_method,fare_basis,financial_version,request_posted_at,route_distance_metres)values($1,$2,$3,$4,$5,'PICKED_UP','synthetic-pickup','synthetic-handoff',now()+interval '1 day',$6,$7,'CAMPUS_FARE_V1',$8,'CAMPUS_ZONE','CAMPUS_FARE_V1',now(),$9)",
+    [
+      jobId,
+      r.uni,
+      orderId,
+      zone,
+      r.profile,
+      fare,
+      (fare * 9) / 10,
+      method,
+      fare === 30000 ? 700 : ((fare - 30000) / 5000) * 1000 + 1,
+    ],
+  );
+  if (verified) {
+    const amount = 100000 + (method === "IN_APP" ? fare : 0),
+      reference = "synthetic-" + orderId;
+    const lines = [
+      { code: "PAYSTACK_CLEARING", type: "ASSET", direction: "DEBIT", amount },
+      {
+        code: "VENDOR_PENDING",
+        type: "LIABILITY",
+        owner: vendorUser,
+        direction: "CREDIT",
+        amount: 100000,
+      },
+      ...(method === "IN_APP"
+        ? [
+            {
+              code: "DELIVERY_LIABILITY",
+              type: "LIABILITY",
+              direction: "CREDIT",
+              amount: fare,
+            },
+          ]
+        : []),
+    ];
+    const tx = (
+      await pg.query<{ id: string }>(
+        "select app_private.post_finance_journal($1,'STORE_ORDER',$2,$3,'Synthetic verified order receipt',$4::jsonb) as id",
+        [r.uni, orderId, reference, JSON.stringify(lines)],
+      )
+    ).rows[0]!.id;
+    await pg.query(
+      "insert into app_private.commerce_settlements(order_id,university_id,provider_reference,amount_kobo,seller_net_kobo,digital_fare_kobo,cash_fare_kobo,provider_fee_kobo,journal_id)values($1,$2,$3,$4,100000,$5,$6,0,$7)",
+      [
+        orderId,
+        r.uni,
+        reference,
+        amount,
+        method === "IN_APP" ? fare : 0,
+        method === "CASH" ? fare : 0,
+        tx,
+      ],
+    );
+  }
+  return { orderId, jobId };
+}
+async function complete(r: Rider, j: Awaited<ReturnType<typeof job>>) {
+  return (
+    await pg.query<{ result: string }>(
+      "select app_private.confirm_delivery_completion($1,$2,$3,$4) as result",
+      [j.jobId, r.profile, r.user, "synthetic-handoff"],
+    )
+  ).rows[0]!.result;
+}
+async function checkout(r: Rider) {
+  return (
+    await pg.query<{
+      id: string;
+      amount_kobo: number;
+      provider_reference: string;
+    }>(
+      "select * from app_private.create_rider_commission_checkout($1,$2,$3,$4,$5)",
+      [
+        crypto.randomUUID(),
+        r.profile,
+        r.user,
+        crypto.randomUUID(),
+        "K1-RC-" + crypto.randomUUID(),
+      ],
+    )
+  ).rows[0]!;
+}
+async function receipt(reference: string, amount: number, fee = 0) {
+  return (
+    await pg.query<{ result: string }>(
+      "select app_private.record_rider_commission_receipt($1,$2,$3,now()) as result",
+      [reference, amount, fee],
+    )
+  ).rows[0]!.result;
+}
+beforeAll(async () => {
+  pg = await createTestDatabase();
+  for (const file of [
+    "20260912200000_phase_3_commerce_foundation.sql",
+    "20260930220000_store_fulfilment_modes.sql",
+    "20260930240000_rider_commission_ledger.sql",
+    "20260930250000_inclusive_store_quotes.sql",
+  ])
+    await pg.exec(
+      readFileSync(
+        new URL("../../database/neon/migrations/" + file, import.meta.url),
+        "utf8",
+      ),
+    );
+  for (const uni of [campus, otherCampus])
+    await pg.query(
+      "insert into universities(id,name,slug,updated_at)values($1,'Synthetic campus '||$1::uuid::text,$1::uuid::text,now())",
+      [uni],
+    );
+  await person(buyer, campus, "TUTOR");
+  const appId = crypto.randomUUID();
+  await pg.query(
+    "insert into users(id,email,password_hash,updated_at)values($1,'synthetic-vendor@example.invalid','synthetic',now())",
+    [vendorUser],
+  );
+  await pg.query(
+    "insert into agent_applications(id,user_id,university_id,agent_type,display_name,phone_e164,statement)values($1,$2,$3,'VENDOR','Synthetic vendor','+2348012345678','Synthetic fixture only')",
+    [appId, vendorUser, campus],
+  );
+  await pg.query(
+    "insert into agent_profiles(id,user_id,university_id,application_id,agent_type,display_name,verified_at)values($1,$2,$3,$4,'VENDOR','Synthetic vendor',now())",
+    [vendor, vendorUser, campus, appId],
+  );
+  await pg.query(
+    "insert into delivery_zones(id,university_id,name,base_fee_kobo,active)values($1,$2,'Synthetic campus route',30000,true)",
+    [zone, campus],
+  );
+  await pg.query(
+    "update delivery_zones set route_distance_metres=700 where id=$1",
+    [zone],
+  );
+  await pg.query(
+    "insert into vendor_storefronts(vendor_profile_id,university_id,display_name,description,status,submitted_at,reviewed_by_user_id,reviewed_at,moderated_revision,contact_phone_e164,pickup_location,opening_hours)values($1,$2,'Synthetic shop','A synthetic store description','APPROVED',now(),$3,now(),1,'+2348012345678','Approved campus pickup gate','{\"mon\":\"08:00-17:00\"}'::jsonb)",
+    [vendor, campus, buyer],
+  );
+  await pg.query(
+    "insert into product_categories(id,university_id,name,status)values($1,$2,'Synthetic books','APPROVED')",
+    [category, campus],
+  );
+  await pg.query(
+    "insert into vendor_products(id,university_id,vendor_profile_id,name,description,category,category_id,price_kobo,stock_quantity,status,reviewed_by_user_id,reviewed_at,moderated_revision,package_weight_grams,package_length_cm,package_width_cm,package_height_cm,bicycle_delivery_eligible)values($1,$2,$3,'Synthetic book','A synthetic product description','Synthetic books',$4,350000,40,'PUBLISHED',$5,now(),1,200,20,15,3,true)",
+    [product, campus, vendor, category, buyer],
+  );
+  await pg.query(
+    "insert into operator_roles(user_id,university_id,role)values($1,$2,'FINANCE_REVIEWER')",
+    [buyer, campus],
+  );
+}, 60000);
+afterAll(async () => pg?.close());
+afterEach(() => vi.unstubAllGlobals());
+describe("rider cash commission ledger", () => {
+  it("posts balanced immutable journals and rejects changed idempotency payloads", async () => {
+    const r = await person(),
+      posted = await journal(r.user, 27000);
+    const again = await pg.query<{ id: string }>(
+      "select app_private.post_finance_journal($1,'SYNTHETIC_FIXTURE',$2,$2,'Synthetic ledger fixture',$3::jsonb) as id",
+      [campus, posted.key, JSON.stringify(posted.lines)],
+    );
+    expect(again.rows[0]!.id).toBe(posted.id);
+    expect(await balance(r)).toBe(27000);
+    await expect(
+      pg.query(
+        "select app_private.post_finance_journal($1,'SYNTHETIC_FIXTURE',$2,$2,'Synthetic ledger fixture',$3::jsonb)",
+        [
+          campus,
+          posted.key,
+          JSON.stringify(posted.lines.map((l) => ({ ...l, amount: 28000 }))),
+        ],
+      ),
+    ).rejects.toThrow("IDEMPOTENCY");
+    await expect(
+      pg.query(
+        "update ledger_lines set amount_kobo=1 where transaction_id=$1",
+        [posted.id],
+      ),
+    ).rejects.toThrow("append-only");
+    await expect(
+      pg.query("delete from ledger_transactions where id=$1", [posted.id]),
+    ).rejects.toThrow("append-only");
+    await expect(
+      pg.query(
+        "insert into ledger_lines(transaction_id,account_id,direction,amount_kobo) select transaction_id,account_id,direction,amount_kobo from ledger_lines where transaction_id=$1",
+        [posted.id],
+      ),
+    ).rejects.toThrow("UNBALANCED");
+    await expect(
+      pg.query(
+        "select app_private.post_finance_journal($1,'SYNTHETIC_FIXTURE','x',$2,'Bad balance',$3::jsonb)",
+        [
+          campus,
+          crypto.randomUUID(),
+          JSON.stringify([{ ...posted.lines[0], amount: 1 }, posted.lines[1]]),
+        ],
+      ),
+    ).rejects.toThrow("INVALID_JOURNAL");
+  });
+  it("keeps cash out of withdrawable earnings and charges exactly ten percent once", async () => {
+    const r = await person(),
+      j = await job(r);
+    expect(await complete(r, j)).toBe("DELIVERED");
+    expect(await complete(r, j)).toBe("INVALID_STATE");
+    expect(await balance(r)).toBe(0);
+    expect(await balance(r, "RIDER_COMMISSION_RECEIVABLE")).toBe(3000);
+    expect(await riderFinanceSummary(env, r.user, campus)).toMatchObject({
+      available_kobo: -3000,
+      commission_due_kobo: 3000,
+      unpaid_commissions: 1,
+      cash_collected_kobo: 30000,
+      rides_suspended: false,
+    });
+    expect(
+      (
+        await pg.query<{ earnings_state: string }>(
+          "select earnings_state from delivery_jobs where id=$1",
+          [j.jobId],
+        )
+      ).rows[0]!.earnings_state,
+    ).toBe("NOT_EARNED");
+    await expect(
+      pg.query("update delivery_jobs set financial_version=null where id=$1", [
+        j.jobId,
+      ]),
+    ).rejects.toThrow("IMMUTABLE");
+  });
+  it("requires verified order funds before settling either a cash or digital fare", async () => {
+    const r = await person();
+    for (const method of ["CASH", "IN_APP"])
+      await expect(
+        complete(r, await job(r, method, 30000, false)),
+      ).rejects.toThrow("PAYMENT_UNVERIFIED");
+    expect(await balance(r)).toBe(0);
+    expect(await balance(r, "RIDER_COMMISSION_RECEIVABLE")).toBe(0);
+  });
+  it("credits digital rider net after handoff and releases it only after the dispute window", async () => {
+    const r = await person(),
+      j = await job(r, "IN_APP", 45000);
+    expect(await complete(r, j)).toBe("DELIVERED");
+    expect(await balance(r)).toBe(0);
+    expect(await balance(r, "RIDER_PENDING")).toBe(40500);
+    await expect(
+      pg.query(
+        "update delivery_jobs set earnings_state='AVAILABLE' where id=$1",
+        [j.jobId],
+      ),
+    ).rejects.toThrow("NOT_ELIGIBLE");
+    await pg.query(
+      "update delivery_jobs set delivered_at=now()-interval '49 hours' where id=$1",
+      [j.jobId],
+    );
+    await pg.query(
+      "update delivery_jobs set earnings_state='AVAILABLE' where id=$1",
+      [j.jobId],
+    );
+    expect(await balance(r)).toBe(40500);
+    expect(await balance(r, "RIDER_PENDING")).toBe(0);
+  });
+  it("offsets cash commissions from available digital earnings without crediting cash", async () => {
+    const r = await person();
+    await journal(r.user, 27000);
+    await complete(r, await job(r, "CASH", 45000));
+    expect(await balance(r)).toBe(22500);
+    expect(await balance(r, "RIDER_COMMISSION_RECEIVABLE")).toBe(0);
+    expect(await riderFinanceSummary(env, r.user, campus)).toMatchObject({
+      unpaid_commissions: 0,
+      commission_due_kobo: 0,
+      cash_collected_kobo: 45000,
+    });
+  });
+  it("blocks the next ride at four variable unpaid commissions and restores claims after exact repayment", async () => {
+    const r = await person();
+    for (const fare of [30000, 35000, 40000, 45000])
+      await complete(r, await job(r, "CASH", fare));
+    expect(await riderFinanceSummary(env, r.user, campus)).toMatchObject({
+      available_kobo: -15000,
+      unpaid_commissions: 4,
+      rides_suspended: true,
+    });
+    const next = await job(r);
+    await pg.query(
+      "update delivery_jobs set status='AVAILABLE',rider_profile_id=null where id=$1",
+      [next.jobId],
+    );
+    await pg.query("update orders set status='READY' where id=$1", [
+      next.orderId,
+    ]);
+    await expect(
+      pg.query("select * from app_private.reserve_delivery_job($1,$2)", [
+        next.jobId,
+        r.profile,
+      ]),
+    ).rejects.toThrow("COMMISSION_LIMIT");
+    const blocked = await request(
+      "/agents/deliveries/" + next.jobId + "/reserve",
+      r.user,
+      "POST",
+      {},
+    );
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({
+      error: expect.stringContaining("Four ride commissions"),
+    });
+    const intent = await checkout(r);
+    expect(Number(intent.amount_kobo)).toBe(15000);
+    expect(await receipt(intent.provider_reference, 15000, 225)).toBe("PAID");
+    expect(await receipt(intent.provider_reference, 15000, 225)).toBe(
+      "ALREADY_PAID",
+    );
+    expect(await balance(r)).toBe(0);
+    expect(await balance(r, "RIDER_COMMISSION_RECEIVABLE")).toBe(0);
+    expect(await riderFinanceSummary(env, r.user, campus)).toMatchObject({
+      unpaid_commissions: 0,
+      rides_suspended: false,
+    });
+    const claimed = await pg.query<{ id: string }>(
+      "select * from app_private.reserve_delivery_job($1,$2)",
+      [next.jobId, r.profile],
+    );
+    expect(claimed.rows[0]!.id).toBe(next.jobId);
+    await expect(
+      pg.query("select * from app_private.reserve_delivery_job($1,$2)", [
+        next.jobId,
+        r.profile,
+      ]),
+    ).rejects.toThrow("RIDER_AT_CAPACITY");
+  });
+  it("holds mismatched verified repayment funds without clearing debt or duplicating received money", async () => {
+    const r = await person();
+    await complete(r, await job(r));
+    const intent = await checkout(r);
+    const before = Number(
+      (
+        await pg.query<{ amount: number }>(
+          "select app_private.finance_balance($1,null,'PAYMENT_SUSPENSE') as amount",
+          [campus],
+        )
+      ).rows[0]!.amount,
+    );
+    expect(await receipt(intent.provider_reference, 2999, 44)).toBe(
+      "REQUIRES_REVIEW",
+    );
+    expect(await receipt(intent.provider_reference, 2999, 44)).toBe(
+      "REQUIRES_REVIEW",
+    );
+    expect(await balance(r, "RIDER_COMMISSION_RECEIVABLE")).toBe(3000);
+    expect(
+      Number(
+        (
+          await pg.query<{ amount: number }>(
+            "select app_private.finance_balance($1,null,'PAYMENT_SUSPENSE') as amount",
+            [campus],
+          )
+        ).rows[0]!.amount,
+      ),
+    ).toBe(before + 2999);
+    expect(
+      (
+        await pg.query<{ status: string }>(
+          "select status from app_private.rider_commission_checkouts where id=$1",
+          [intent.id],
+        )
+      ).rows[0]!.status,
+    ).toBe("REQUIRES_REVIEW");
+  });
+  it("credits a late repayment safely when earnings have already cleared its snapshot debt", async () => {
+    const r = await person();
+    await complete(r, await job(r));
+    const intent = await checkout(r);
+    await journal(r.user, 10000);
+    await pg.query("select app_private.offset_rider_commissions($1,$2)", [
+      r.user,
+      campus,
+    ]);
+    expect(await balance(r)).toBe(7000);
+    await receipt(intent.provider_reference, 3000, 45);
+    expect(await balance(r)).toBe(10000);
+    await receipt(intent.provider_reference, 3000, 45);
+    expect(await balance(r)).toBe(10000);
+  });
+  it("checks receipt ownership and transaction success instead of API request success", async () => {
+    const r = await person();
+    await complete(r, await job(r));
+    const intent = await checkout(r),
+      other = await person();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            reference: intent.provider_reference,
+            currency: "NGN",
+            amount: 3000,
+            status: "pending",
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    expect(
+      (
+        await request(
+          "/agents/rider-commission-checkout/" + intent.provider_reference,
+          other.user,
+        )
+      ).status,
+    ).toBe(404);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(
+      (
+        await request(
+          "/agents/rider-commission-checkout/" + intent.provider_reference,
+          r.user,
+        )
+      ).status,
+    ).toBe(200);
+    expect(await balance(r, "RIDER_COMMISSION_RECEIVABLE")).toBe(3000);
+    fetcher.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            reference: intent.provider_reference,
+            currency: "NGN",
+            amount: 3000,
+            fees: 45,
+            status: "success",
+            paid_at: new Date().toISOString(),
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    expect(
+      (
+        await request(
+          "/agents/rider-commission-checkout/" + intent.provider_reference,
+          r.user,
+        )
+      ).status,
+    ).toBe(200);
+    expect(await balance(r, "RIDER_COMMISSION_RECEIVABLE")).toBe(0);
+  });
+  it("initializes exact debt without a customer surcharge and reuses an initialized session", async () => {
+    const r = await person();
+    await complete(r, await job(r));
+    const requestId = crypto.randomUUID();
+    const fetcher = vi.fn().mockImplementation(async (_url, options) => {
+      const data = JSON.parse(options.body);
+      expect(data.amount).toBe(3000);
+      expect(data.currency).toBe("NGN");
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            authorization_url: "https://checkout.paystack.com/synthetic",
+            access_code: "synthetic-access",
+            reference: data.reference,
+          },
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const first = await request(
+      "/agents/rider-commission-checkout",
+      r.user,
+      "POST",
+      { agentProfileId: r.profile, requestId },
+    );
+    expect(first.status).toBe(200);
+    const again = await request(
+      "/agents/rider-commission-checkout",
+      r.user,
+      "POST",
+      { agentProfileId: r.profile, requestId },
+    );
+    expect(again.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(await again.json()).toMatchObject({
+      amountKobo: 3000,
+      authorizationUrl: "https://checkout.paystack.com/synthetic",
+    });
+  });
+});
+
+const syntheticPolicy = {
+  universityId: campus,
+  kind: "STORE",
+  version: "SYNTHETIC_V1",
+  buyerBasisPoints: 0,
+  buyerFlatPerItemKobo: 0,
+  sellerCommissionBasisPoints: 500,
+  collection: {
+    basisPoints: 150,
+    flatKobo: 10000,
+    flatWaivedBelowKobo: 250000,
+    capKobo: 200000,
+  },
+  checkoutSavings: true,
+  allowProcessorSubsidy: false,
+  sourceUrl: "https://paystack.com/pricing",
+  approvalNote: "Synthetic approved policy used only for local tests.",
+};
+function quoteInput(mode = "RIDER", paymentMethod = "IN_APP") {
+  return {
+    vendorProfileId: vendor,
+    fulfilmentMode: mode,
+    deliveryZoneId: mode === "RIDER" ? zone : null,
+    recipientName: "Synthetic buyer",
+    recipientPhoneE164: "+2348012345678",
+    deliveryLocation: mode === "PICKUP" ? null : "Synthetic hostel gate",
+    deliveryPaymentMethod: paymentMethod,
+    items: [{ productId: product, quantity: 1, expectedUnitPriceKobo: 365500 }],
+    requestId: crypto.randomUUID(),
+  };
+}
+async function json(response: Response, expected = 200) {
+  const data = await response.json();
+  expect(response.status, JSON.stringify(data)).toBe(expected);
+  return data;
+}
+async function pricedOrder(mode = "RIDER", method = "IN_APP") {
+  const data = quoteInput(mode, method),
+    q = await json(
+      await request("/student/order-quotes", buyer, "POST", data),
+      201,
+    );
+  const o = await json(
+    await request("/student/orders", buyer, "POST", {
+      ...data,
+      quoteId: q.quote.id,
+    }),
+    201,
+  );
+  return { input: data, quote: q.quote, order: o };
+}
+describe("approved inclusive store checkout", () => {
+  it("keeps checkout gated without an approved policy and restricts approval to the reviewer campus", async () => {
+    const catalog = await json(await request("/student/store", buyer));
+    expect(catalog.checkoutEnabled).toBe(false);
+    expect(
+      (await request("/student/order-quotes", buyer, "POST", quoteInput()))
+        .status,
+    ).toBe(503);
+    const preview = await json(
+      await request("/finance/fee-policy-preview", buyer, "POST", {
+        ...syntheticPolicy,
+        samples: [{ baseKobo: 350000, quantity: 1 }],
+      }),
+    );
+    expect(preview.approved).toBe(false);
+    expect(preview.listings[0].customerPriceKobo).toBe(365500);
+    expect(
+      (
+        await request("/finance/fee-policies", buyer, "POST", {
+          ...syntheticPolicy,
+          universityId: otherCampus,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request("/finance/fee-policies", buyer, "POST", {
+          ...syntheticPolicy,
+          sellerCommissionBasisPoints: 0,
+        })
+      ).status,
+    ).toBe(400);
+    await json(
+      await request("/finance/fee-policies", buyer, "POST", syntheticPolicy),
+      201,
+    );
+    const live = await json(await request("/student/store", buyer));
+    expect(live.checkoutEnabled).toBe(true);
+    expect(
+      Number(
+        live.products.find((p: { id: string }) => p.id === product).price_kobo,
+      ),
+    ).toBe(365500);
+    expect(Number(live.deliveryZones[0].base_fee_kobo)).toBe(30000);
+  });
+  it("holds the displayed product budget, separates cash fare, and reserves stock once across retries", async () => {
+    const data = quoteInput("RIDER", "CASH");
+    const before = (
+      await pg.query<{ stock_quantity: number }>(
+        "select stock_quantity from vendor_products where id=$1",
+        [product],
+      )
+    ).rows[0]!.stock_quantity;
+    const first = await json(
+        await request("/student/order-quotes", buyer, "POST", data),
+        201,
+      ),
+      again = await json(
+        await request("/student/order-quotes", buyer, "POST", data),
+        201,
+      );
+    expect(first.quote.id).toBe(again.quote.id);
+    expect(first.quote.pricing).toEqual({
+      listedItemsKobo: 365500,
+      discountKobo: 0,
+      fareKobo: 30000,
+      payableKobo: 365500,
+      cashDueKobo: 30000,
+      totalKobo: 395500,
+    });
+    for (const hidden of [
+      "sellerNetKobo",
+      "estimatedProcessingKobo",
+      "sellerCommissionKobo",
+      "buyerComponentKobo",
+    ])
+      expect(JSON.stringify(first)).not.toContain(hidden);
+    expect(
+      (
+        await request("/student/order-quotes", buyer, "POST", {
+          ...data,
+          recipientName: "Changed name",
+        })
+      ).status,
+    ).toBe(409);
+    const created = await json(
+      await request("/student/orders", buyer, "POST", {
+        ...data,
+        quoteId: first.quote.id,
+      }),
+      201,
+    );
+    const retried = await json(
+      await request("/student/orders", buyer, "POST", {
+        ...data,
+        quoteId: first.quote.id,
+      }),
+      201,
+    );
+    expect(created.id).toBe(retried.id);
+    expect(
+      (
+        await request("/student/orders", buyer, "POST", {
+          ...data,
+          quoteId: first.quote.id,
+          recipientName: "Changed after quote",
+        })
+      ).status,
+    ).toBe(409);
+    expect(created).toMatchObject({
+      totalKobo: 395500,
+      payableKobo: 365500,
+      cashDueKobo: 30000,
+    });
+    expect(
+      (
+        await pg.query<{ stock_quantity: number }>(
+          "select stock_quantity from vendor_products where id=$1",
+          [product],
+        )
+      ).rows[0]!.stock_quantity,
+    ).toBe(before - 1);
+    const foreign = await person();
+    expect(
+      (
+        await request("/student/orders", foreign.user, "POST", {
+          ...data,
+          quoteId: first.quote.id,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await pg.query<{ fare_payment_method: string }>(
+          "select fare_payment_method from delivery_jobs where order_id=$1",
+          [created.id],
+        )
+      ).rows[0]!.fare_payment_method,
+    ).toBe("CASH");
+  });
+  it("refuses stale catalogue prices and price changes between quote and reservation", async () => {
+    expect(
+      (
+        await request("/student/order-quotes", buyer, "POST", {
+          ...quoteInput(),
+          items: [
+            { productId: product, quantity: 1, expectedUnitPriceKobo: 350000 },
+          ],
+        })
+      ).status,
+    ).toBe(409);
+    const input = quoteInput("PICKUP"),
+      q = await json(
+        await request("/student/order-quotes", buyer, "POST", input),
+        201,
+      );
+    await pg.query("update vendor_products set price_kobo=400000 where id=$1", [
+      product,
+    ]);
+    expect(
+      (
+        await request("/student/orders", buyer, "POST", {
+          ...input,
+          quoteId: q.quote.id,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (await pg.query("select id from orders where id=$1", [q.quote.id])).rows,
+    ).toHaveLength(0);
+    await pg.query("update vendor_products set price_kobo=350000 where id=$1", [
+      product,
+    ]);
+    await pg.query(
+      "update vendor_products set status='PUBLISHED',reviewed_at=now(),reviewed_by_user_id=$2,moderated_revision=listing_revision where id=$1",
+      [product, buyer],
+    );
+  });
+  it("sends only the quoted digital amount to Paystack, verifies receipt fees, and prevents duplicate settlement", async () => {
+    const prepared = await pricedOrder("RIDER", "CASH");
+    const fetcher = vi.fn().mockImplementation(async (url, options) => {
+      expect(url).toContain("/transaction/initialize");
+      const data = JSON.parse(options.body);
+      expect(data.amount).toBe(365500);
+      return Response.json({
+        status: true,
+        data: {
+          reference: data.reference,
+          authorization_url: "https://checkout.paystack.com/synthetic",
+          access_code: "synthetic",
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const initialized = await json(
+      await request("/payments/initialize", buyer, "POST", {
+        resourceType: "STORE_ORDER",
+        resourceId: prepared.order.id,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    );
+    const summary = await json(
+      await request(
+        "/payments/summary?resourceType=STORE_ORDER&resourceId=" +
+          prepared.order.id,
+        buyer,
+      ),
+    );
+    expect(Number(summary.payment.amount_kobo)).toBe(365500);
+    expect(Number(summary.payment.cash_due_kobo)).toBe(30000);
+    fetcher.mockImplementation(async () =>
+      Response.json({
+        status: true,
+        data: {
+          reference: initialized.reference,
+          currency: "NGN",
+          amount: 365500,
+          fees: 15483,
+          paid_at: new Date().toISOString(),
+          status: "success",
+        },
+      }),
+    );
+    expect(
+      (
+        await json(
+          await request("/payments/status/" + initialized.reference, buyer),
+        )
+      ).payment.status,
+    ).toBe("SUCCEEDED");
+    const counts = (
+      await pg.query<{ count: number }>(
+        "select count(*)::int as count from ledger_transactions",
+      )
+    ).rows[0]!.count;
+    expect(
+      (
+        await json(
+          await request("/payments/status/" + initialized.reference, buyer),
+        )
+      ).payment.status,
+    ).toBe("SUCCEEDED");
+    expect(
+      (
+        await pg.query<{ count: number }>(
+          "select count(*)::int as count from ledger_transactions",
+        )
+      ).rows[0]!.count,
+    ).toBe(counts);
+    expect(
+      (
+        await pg.query<{ status: string }>(
+          "select status from orders where id=$1",
+          [prepared.order.id],
+        )
+      ).rows[0]!.status,
+    ).toBe("PAID");
+    expect(
+      (
+        await pg.query<{ request_posted_at: unknown }>(
+          "select request_posted_at from delivery_jobs where order_id=$1",
+          [prepared.order.id],
+        )
+      ).rows[0]!.request_posted_at,
+    ).toBeNull();
+    const settled = (
+      await pg.query<{
+        seller_net_kobo: number;
+        cash_fare_kobo: number;
+        digital_fare_kobo: number;
+        provider_fee_kobo: number;
+      }>("select * from app_private.commerce_settlements where order_id=$1", [
+        prepared.order.id,
+      ])
+    ).rows[0]!;
+    expect(settled).toMatchObject({
+      seller_net_kobo: 332500,
+      cash_fare_kobo: 30000,
+      digital_fare_kobo: 0,
+      provider_fee_kobo: 15483,
+    });
+    const r = await person();
+    for (const status of ["ACCEPTED", "READY"])
+      await json(
+        await request(
+          `/agents/orders/${prepared.order.id}/status`,
+          vendorUser,
+          "PATCH",
+          { status },
+        ),
+      );
+    await json(
+      await request(
+        `/agents/orders/${prepared.order.id}/rider-request`,
+        vendorUser,
+        "POST",
+        {},
+      ),
+    );
+    const delivery = (
+      await pg.query<{ id: string }>(
+        "select id from delivery_jobs where order_id=$1",
+        [prepared.order.id],
+      )
+    ).rows[0]!;
+    await json(
+      await request(
+        `/agents/deliveries/${delivery.id}/reserve`,
+        r.user,
+        "POST",
+        {},
+      ),
+    );
+    await json(
+      await request(
+        `/agents/deliveries/${delivery.id}/pickup`,
+        r.user,
+        "POST",
+        {
+          code: (await deriveHandoffCode(env, prepared.order.id, "pickup"))
+            .code,
+        },
+      ),
+    );
+    await json(
+      await request(
+        `/agents/deliveries/${delivery.id}/complete`,
+        r.user,
+        "POST",
+        {
+          code: (await deriveHandoffCode(env, prepared.order.id, "delivery"))
+            .code,
+        },
+      ),
+    );
+    expect(await balance(r, "RIDER_COMMISSION_RECEIVABLE")).toBe(3000);
+    expect(await balance(r)).toBe(0);
+  });
+  it("holds funds for expired orders and successful second payments for review without funding the seller twice", async () => {
+    const expired = await pricedOrder("PICKUP");
+    const reference = "K1-O-" + crypto.randomUUID();
+    await pg.query(
+      "insert into payment_attempts(id,user_id,university_id,resource_type,resource_id,provider_reference,amount_kobo,idempotency_key,status)values($1,$2,$3,'STORE_ORDER',$4,$5,$6,$1::uuid::text,'INITIALIZED')",
+      [
+        crypto.randomUUID(),
+        buyer,
+        campus,
+        expired.order.id,
+        reference,
+        expired.order.payableKobo,
+      ],
+    );
+    await pg.query(
+      "update inventory_reservations set expires_at=now()-interval '1 minute' where order_id=$1",
+      [expired.order.id],
+    );
+    const before = Number(
+      (
+        await pg.query<{ amount: number }>(
+          "select app_private.finance_balance($1,null,'PAYMENT_SUSPENSE') as amount",
+          [campus],
+        )
+      ).rows[0]!.amount,
+    );
+    expect(
+      (
+        await pg.query<{ result: string }>(
+          "select app_private.record_priced_store_receipt($1,$2,15483,now()) as result",
+          [reference, 365500],
+        )
+      ).rows[0]!.result,
+    ).toBe("REQUIRES_REVIEW");
+    expect(
+      Number(
+        (
+          await pg.query<{ amount: number }>(
+            "select app_private.finance_balance($1,null,'PAYMENT_SUSPENSE') as amount",
+            [campus],
+          )
+        ).rows[0]!.amount,
+      ),
+    ).toBe(before + 365500);
+    expect(
+      (
+        await pg.query(
+          "select * from app_private.commerce_settlements where order_id=$1",
+          [expired.order.id],
+        )
+      ).rows,
+    ).toHaveLength(0);
+    const paid = await pricedOrder("PICKUP");
+    const refs = ["K1-O-" + crypto.randomUUID(), "K1-O-" + crypto.randomUUID()];
+    await pg.query(
+      "insert into payment_attempts(id,user_id,university_id,resource_type,resource_id,provider_reference,amount_kobo,idempotency_key,status)values($1,$2,$3,'STORE_ORDER',$4,$5,365500,$1::uuid::text,'INITIALIZED')",
+      [crypto.randomUUID(), buyer, campus, paid.order.id, refs[0]],
+    );
+    expect(
+      (
+        await pg.query<{ result: string }>(
+          "select app_private.record_priced_store_receipt($1,365500,15483,now()) as result",
+          [refs[0]],
+        )
+      ).rows[0]!.result,
+    ).toBe("PAID");
+    await pg.query(
+      "insert into payment_attempts(id,user_id,university_id,resource_type,resource_id,provider_reference,amount_kobo,idempotency_key,status)values($1,$2,$3,'STORE_ORDER',$4,$5,365500,$1::uuid::text,'INITIALIZED')",
+      [crypto.randomUUID(), buyer, campus, paid.order.id, refs[1]],
+    );
+    expect(
+      (
+        await pg.query<{ result: string }>(
+          "select app_private.record_priced_store_receipt($1,365500,15483,now()) as result",
+          [refs[1]],
+        )
+      ).rows[0]!.result,
+    ).toBe("REQUIRES_REVIEW");
+    expect(
+      (
+        await pg.query(
+          "select * from app_private.commerce_settlements where order_id=$1",
+          [paid.order.id],
+        )
+      ).rows,
+    ).toHaveLength(1);
+    expect(
+      Number(
+        (
+          await pg.query<{ amount: number }>(
+            "select app_private.finance_balance($1,null,'PAYMENT_SUSPENSE') as amount",
+            [campus],
+          )
+        ).rows[0]!.amount,
+      ),
+    ).toBe(before + 731000);
+  });
+  it("stages an official fee check without silently changing approved prices", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            "<p>1.5% + NGN 100; under NGN 2,500; capped at NGN 2,000</p>",
+          ),
+        ),
+    );
+    const check = await json(
+      await request("/finance/check-published-fees", buyer, "POST", {
+        universityId: campus,
+      }),
+    );
+    expect(check).toMatchObject({
+      status: "BASELINE_FOUND",
+      approvalRequired: true,
+    });
+    const policies = await json(
+      await request("/finance/fee-policies?universityId=" + campus, buyer),
+    );
+    expect(policies.policies).toHaveLength(1);
+  });
+});

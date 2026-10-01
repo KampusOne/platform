@@ -24,6 +24,7 @@ import { operationsRoutes } from "./operations";
 import { academicAdminRoutes } from "./academic-admin";
 import { broadcastRoutes } from "./broadcasts";
 import { applicationCheckRoutes } from "./application-checks";
+import { financePolicyRoutes } from './finance-policies';
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
@@ -132,6 +133,7 @@ adminRoutes.route("/",operationsRoutes);
 adminRoutes.route("/academic",academicAdminRoutes);
 adminRoutes.route("/broadcasts",broadcastRoutes);
 adminRoutes.route("/",applicationCheckRoutes);
+adminRoutes.route('/finance',financePolicyRoutes);
 
 adminRoutes.get("/access", async (context) => {
   const user = currentUser(context);
@@ -1493,7 +1495,9 @@ adminRoutes.post("/operations/disputes/:id/review", async (context) => {
     ...(release && dispute.order_id
       ? [
           client`update public.orders set status = 'DELIVERED',
-      earnings_state = 'AVAILABLE', updated_at = now() where id = ${dispute.order_id}::uuid`,
+      completed_at=coalesce(completed_at,now()),
+      earnings_state = case when pricing_formula_version='INCLUSIVE_V1' and (completed_at is null or completed_at>now()-interval '48 hours') then 'PENDING' else 'AVAILABLE' end,
+      updated_at = now() where id = ${dispute.order_id}::uuid`,
         ]
       : []),
   ]);

@@ -64,6 +64,7 @@ export function permissionForAdminRoute(path:string,method:string):string|null{
  if(path==='/access')return 'access';
  if(path.startsWith('/broadcasts'))return read?'broadcasts.view':/(send|test|schedule)$/.test(path)?'broadcasts.send':'broadcasts.manage';
  if(path.startsWith('/staff'))return 'staff.manage';
+ if(path.startsWith('/finance/'))return read?'finance.view':'finance.review';
  if(path.startsWith('/workspaces/'))return ({universities:'universities.view',users:'users.view',agents:'agents.view','academic-submissions':'academic.view',content:'content.view',analytics:'analytics.view',finance:'finance.view',audit:'audit.view',ai:'ai.view',support:'support.view'} as Record<string,string>)[path.split('/')[2]??'']??null;
  if(path==='/reports/engagement')return 'analytics.view';
  if(path==='/reports/ai')return 'ai.view';

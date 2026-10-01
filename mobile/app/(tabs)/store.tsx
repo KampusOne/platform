@@ -1,4 +1,5 @@
-import {CampusPlaceChoice} from "@/src/components/campus-place-choice";
+import { CampusPlaceChoice } from "@/src/components/campus-place-choice";
+import * as Crypto from "expo-crypto";
 import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
@@ -37,16 +38,30 @@ type Product = {
   description: string;
   category: string;
   price_kobo: number;
+  pricing_ready?: boolean;
   stock_quantity: number;
   image_url: string | null;
   vendor_name: string;
-  pickup_enabled?:boolean;
-  self_delivery_enabled?:boolean;
-  pickup_location?:string;
+  pickup_enabled?: boolean;
+  self_delivery_enabled?: boolean;
+  pickup_location?: string;
   is_demo?: boolean;
 };
 
 type Zone = { id: string; name: string; base_fee_kobo: number };
+type CheckoutQuote = {
+  id: string;
+  pricing: {
+    listedItemsKobo: number;
+    discountKobo: number;
+    fareKobo: number;
+    cashDueKobo: number;
+    payableKobo: number;
+    totalKobo: number;
+  };
+  expiresAt: string;
+  fare: { routeMetres: number; distanceBasis: string } | null;
+};
 type Cart = Record<string, number>;
 type CatalogIssue = { code: string; message: string };
 type CatalogueMode = "DEMO" | "LIVE";
@@ -55,7 +70,7 @@ type CatalogResponse = {
   deliveryZones: Zone[];
   catalogueMode?: CatalogueMode;
   checkoutEnabled?: boolean;
-  riderDeliveryEnabled?:boolean;
+  riderDeliveryEnabled?: boolean;
 };
 
 const naira = (kobo: number) =>
@@ -66,8 +81,17 @@ const naira = (kobo: number) =>
   }).format(Number(kobo) / 100);
 
 export default function StoreScreen() {
-  const {product:focusedProduct}=useLocalSearchParams<{product?:string}>();
-  useFocusEffect(useCallback(()=>()=>{if(focusedProduct)router.setParams({product:undefined});},[focusedProduct]));
+  const { product: focusedProduct } = useLocalSearchParams<{
+    product?: string;
+  }>();
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        if (focusedProduct) router.setParams({ product: undefined });
+      },
+      [focusedProduct],
+    ),
+  );
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { width: windowWidth } = useWindowDimensions();
@@ -80,15 +104,17 @@ export default function StoreScreen() {
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
-  const [riderDeliveryEnabled,setRiderDeliveryEnabled]=useState(false);
-  const [fulfilmentMode,setFulfilmentMode]=useState<'RIDER'|'PICKUP'|'VENDOR_DELIVERY'>('RIDER');
-  const [deliveryPlace,setDeliveryPlace]=useState<string|null>(null);
-  const [recipientName,setRecipientName]=useState("");
-  const [recipientPhone,setRecipientPhone]=useState("");
-  const [deliveryLocation,setDeliveryLocation]=useState("");
+  const [riderDeliveryEnabled, setRiderDeliveryEnabled] = useState(false);
+  const [fulfilmentMode, setFulfilmentMode] = useState<
+    "RIDER" | "PICKUP" | "VENDOR_DELIVERY"
+  >("RIDER");
+  const [deliveryPlace, setDeliveryPlace] = useState<string | null>(null);
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [deliveryLocation, setDeliveryLocation] = useState("");
   const [cart, setCart] = useState<Cart>({});
   const [query, setQuery] = useState("");
-  const [selectedShop, setSelectedShop] = useState<string|null>(null);
+  const [selectedShop, setSelectedShop] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
@@ -101,6 +127,14 @@ export default function StoreScreen() {
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [catalogIssue, setCatalogIssue] = useState<CatalogIssue | null>(null);
   const [checkoutError, setCheckoutError] = useState("");
+  const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<
+    "IN_APP" | "CASH"
+  >("IN_APP");
+  const [reviewedQuote, setReviewedQuote] = useState<{
+    payload: string;
+    quote: CheckoutQuote;
+  } | null>(null);
+  const quoteRequest = useRef({ payload: "", id: "" });
   const [notice, setNotice] = useState("");
   const reducedMotion = useReducedMotionPreference();
 
@@ -128,7 +162,7 @@ export default function StoreScreen() {
       const mode = data.catalogueMode ?? "LIVE";
       setProducts(data.products);
       setZones(data.deliveryZones);
-      setRiderDeliveryEnabled(data.riderDeliveryEnabled===true);
+      setRiderDeliveryEnabled(data.riderDeliveryEnabled === true);
       setCatalogueMode(mode);
       setCheckoutEnabled(data.checkoutEnabled ?? mode === "LIVE");
     } catch (caught) {
@@ -165,12 +199,20 @@ export default function StoreScreen() {
     const term = query.trim().toLowerCase();
     return products.filter((item) => {
       const matchesCategory =
-        Boolean(focusedProduct) || selectedCategory === "All" || item.category === selectedCategory;
+        Boolean(focusedProduct) ||
+        selectedCategory === "All" ||
+        item.category === selectedCategory;
       const matchesQuery =
-        Boolean(focusedProduct) || `${item.name} ${item.description} ${item.category} ${item.vendor_name}`
+        Boolean(focusedProduct) ||
+        `${item.name} ${item.description} ${item.category} ${item.vendor_name}`
           .toLowerCase()
           .includes(term);
-      return (!selectedShop || item.vendor_profile_id === selectedShop) && (!focusedProduct || item.id===focusedProduct) && matchesCategory && matchesQuery;
+      return (
+        (!selectedShop || item.vendor_profile_id === selectedShop) &&
+        (!focusedProduct || item.id === focusedProduct) &&
+        matchesCategory &&
+        matchesQuery
+      );
     });
   }, [products, query, selectedCategory, focusedProduct, selectedShop]);
 
@@ -187,12 +229,42 @@ export default function StoreScreen() {
     0,
   );
   const selectedZone = zones.find((zone) => zone.id === selectedZoneId);
-  const vendorProduct=cartItems[0]?.product;
-  const fulfilmentModes=(['RIDER','PICKUP','VENDOR_DELIVERY'] as const).filter(mode=>mode==='RIDER'?riderDeliveryEnabled:mode==='PICKUP'?vendorProduct?.pickup_enabled:vendorProduct?.self_delivery_enabled);
-  const effectiveMode=fulfilmentModes.includes(fulfilmentMode)?fulfilmentMode:fulfilmentModes[0];
-  const deliveryFee=effectiveMode==='RIDER'?Number(selectedZone?.base_fee_kobo??0):0;
+  const vendorProduct = cartItems[0]?.product;
+  const fulfilmentModes = (
+    ["RIDER", "PICKUP", "VENDOR_DELIVERY"] as const
+  ).filter((mode) =>
+    mode === "RIDER"
+      ? riderDeliveryEnabled
+      : mode === "PICKUP"
+        ? vendorProduct?.pickup_enabled
+        : vendorProduct?.self_delivery_enabled,
+  );
+  const effectiveMode = fulfilmentModes.includes(fulfilmentMode)
+    ? fulfilmentMode
+    : fulfilmentModes[0];
+  const deliveryFee =
+    effectiveMode === "RIDER" ? Number(selectedZone?.base_fee_kobo ?? 0) : 0;
   const total = subtotal + deliveryFee;
-  const checkoutReady=!!effectiveMode && (effectiveMode!=='RIDER' || !!selectedZone);
+  const checkoutReady =
+    !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone);
+  const orderPayload = JSON.stringify({
+    vendorProfileId: cartItems[0]?.product.vendor_profile_id,
+    fulfilmentMode: effectiveMode,
+    recipientName,
+    recipientPhoneE164: recipientPhone,
+    deliveryLocation: effectiveMode === "PICKUP" ? null : deliveryLocation,
+    deliveryPaymentMethod:
+      effectiveMode === "RIDER" ? deliveryPaymentMethod : "IN_APP",
+    deliveryZoneId: effectiveMode === "RIDER" ? selectedZone?.id : null,
+    deliveryNote: deliveryNote.trim() || null,
+    items: cartItems.map(({ product, quantity }) => ({
+      productId: product.id,
+      quantity,
+      expectedUnitPriceKobo: Number(product.price_kobo),
+    })),
+  });
+  const validQuote =
+    reviewedQuote?.payload === orderPayload ? reviewedQuote.quote : null;
   const featureDisabled = catalogIssue?.code === "FEATURE_DISABLED";
 
   function retryLoad() {
@@ -216,6 +288,10 @@ export default function StoreScreen() {
   }
 
   function add(product: Product) {
+    if (product.pricing_ready === false) {
+      setNotice("This product is awaiting an approved checkout price.");
+      return;
+    }
     const activeVendor = cartItems[0]?.product.vendor_profile_id;
     if (activeVendor && activeVendor !== product.vendor_profile_id) {
       const activeSeller =
@@ -254,31 +330,53 @@ export default function StoreScreen() {
     setCheckoutError("");
     setNotice("");
     try {
+      if (!validQuote) {
+        if (quoteRequest.current.payload !== orderPayload)
+          quoteRequest.current = {
+            payload: orderPayload,
+            id: Crypto.randomUUID(),
+          };
+        const result = await api<{ quote: CheckoutQuote }>(
+          "/v1/student/order-quotes",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              ...JSON.parse(orderPayload),
+              requestId: quoteRequest.current.id,
+            }),
+          },
+        );
+        setReviewedQuote({ payload: orderPayload, quote: result.quote });
+        return;
+      }
       const order = await api<{ id: string; totalKobo: number }>(
         "/v1/student/orders",
         {
           method: "POST",
           body: JSON.stringify({
-            vendorProfileId: cartItems[0]?.product.vendor_profile_id,
-            fulfilmentMode:effectiveMode,recipientName,recipientPhoneE164:recipientPhone,deliveryLocation:effectiveMode==='PICKUP'?null:deliveryLocation,deliveryPlaceId:deliveryPlace,
-            deliveryZoneId: effectiveMode==='RIDER'?selectedZone?.id:null,
-            deliveryNote: deliveryNote.trim() || null,
-            items: cartItems.map(({ product, quantity }) => ({
-              productId: product.id,
-              quantity,
-            })),
+            ...JSON.parse(orderPayload),
+            quoteId: validQuote.id,
           }),
         },
       );
       setCart({});
+      setReviewedQuote(null);
+      quoteRequest.current = { payload: "", id: "" };
       setCartOpen(false);
       setDeliveryNote("");
       setSelectedZoneId("");
       setNotice(
         `Order #${order.id.slice(0, 8)} was created. You can always resume it from Purchases.`,
       );
-      router.push({pathname:'/payment-review',params:{id:order.id,type:'STORE_ORDER'}});
+      router.push({
+        pathname: "/payment-review",
+        params: { id: order.id, type: "STORE_ORDER" },
+      });
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "CONFLICT") {
+        setReviewedQuote(null);
+        quoteRequest.current = { payload: "", id: "" };
+      }
       setCheckoutError(
         caught instanceof ApiError
           ? caught.message
@@ -439,7 +537,12 @@ export default function StoreScreen() {
                 </Pressable>
               </View>
 
-              {!featureDisabled && catalogueMode === "LIVE" && <PopularShops selected={selectedShop} onSelect={setSelectedShop} />}
+              {!featureDisabled && catalogueMode === "LIVE" && (
+                <PopularShops
+                  selected={selectedShop}
+                  onSelect={setSelectedShop}
+                />
+              )}
               {!featureDisabled && categories.length > 1 ? (
                 <ScrollView
                   accessibilityLabel="Product categories"
@@ -709,70 +812,161 @@ export default function StoreScreen() {
                     </View>
                   ) : null}
 
-                  <Text style={styles.sectionLabel}>How would you like your order?</Text>
-                  <View accessibilityRole="radiogroup" style={styles.zoneList}>{fulfilmentModes.map(mode=><Pressable key={mode} accessibilityRole="radio" accessibilityState={{selected:effectiveMode===mode,disabled:busy}} disabled={busy} onPress={()=>{setFulfilmentMode(mode);setCheckoutError('');}} style={({pressed})=>[styles.zone,effectiveMode===mode&&styles.zoneSelected,pressed&&styles.pressed]}>
-                    <View style={styles.zoneCopy}><Text style={styles.zoneName}>{mode==='RIDER'?'Rider · Recommended':mode==='PICKUP'?'Pick up at the store':'Delivery by the vendor'}</Text><Text style={styles.zoneFee}>{mode==='RIDER'?'A campus rider collects your order':mode==='PICKUP'?vendorProduct?.pickup_location??'Collect from the vendor':'The vendor brings the order to your address'}</Text></View>
-                    <Ionicons name={effectiveMode===mode?'radio-button-on':'radio-button-off'} size={22} color={effectiveMode===mode?theme.brandPressed:theme.textSubtle}/>
-                  </Pressable>)}</View>
-                  {effectiveMode==='RIDER'?<>
-                  <Text style={styles.sectionLabel}>Delivery zone</Text>
+                  <Text style={styles.sectionLabel}>
+                    How would you like your order?
+                  </Text>
                   <View accessibilityRole="radiogroup" style={styles.zoneList}>
-                    {zones.map((zone) => {
-                      const selected = zone.id === selectedZoneId;
-                      return (
-                        <Pressable
-                          accessibilityRole="radio"
-                          accessibilityState={{ selected }}
-                          key={zone.id}
-                          onPress={() => {
-                            setCheckoutError("");
-                            setSelectedZoneId(zone.id);
-                          }}
-                          style={({ pressed }) => [
-                            styles.zone,
-                            selected && styles.zoneSelected,
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          <View style={styles.zoneCopy}>
-                            <Text style={styles.zoneName}>{zone.name}</Text>
-                            <Text style={styles.zoneFee}>
-                              {naira(zone.base_fee_kobo)} delivery
-                            </Text>
-                          </View>
-                          <Ionicons
-                            name={
-                              selected ? "radio-button-on" : "radio-button-off"
-                            }
-                            size={22}
-                            color={
-                              selected ? theme.brandPressed : theme.textSubtle
-                            }
-                          />
-                        </Pressable>
-                      );
-                    })}
+                    {fulfilmentModes.map((mode) => (
+                      <Pressable
+                        key={mode}
+                        accessibilityRole="radio"
+                        accessibilityState={{
+                          selected: effectiveMode === mode,
+                          disabled: busy,
+                        }}
+                        disabled={busy}
+                        onPress={() => {
+                          setFulfilmentMode(mode);
+                          setCheckoutError("");
+                        }}
+                        style={({ pressed }) => [
+                          styles.zone,
+                          effectiveMode === mode && styles.zoneSelected,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <View style={styles.zoneCopy}>
+                          <Text style={styles.zoneName}>
+                            {mode === "RIDER"
+                              ? "Rider · Recommended"
+                              : mode === "PICKUP"
+                                ? "Pick up at the store"
+                                : "Delivery by the vendor"}
+                          </Text>
+                          <Text style={styles.zoneFee}>
+                            {mode === "RIDER"
+                              ? "A campus rider collects your order"
+                              : mode === "PICKUP"
+                                ? (vendorProduct?.pickup_location ??
+                                  "Collect from the vendor")
+                                : "The vendor brings the order to your address"}
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={
+                            effectiveMode === mode
+                              ? "radio-button-on"
+                              : "radio-button-off"
+                          }
+                          size={22}
+                          color={
+                            effectiveMode === mode
+                              ? theme.brandPressed
+                              : theme.textSubtle
+                          }
+                        />
+                      </Pressable>
+                    ))}
                   </View>
-                  {!zones.length ? (
-                    <View style={styles.zoneWarning}>
-                      <Ionicons
-                        name="information-circle-outline"
-                        size={19}
-                        color={theme.warning}
-                      />
-                      <Text style={styles.zoneWarningText}>
-                        Checkout is unavailable until your university publishes
-                        a delivery zone.
-                      </Text>
-                    </View>
+                  {effectiveMode === "RIDER" ? (
+                    <>
+                      <Text style={styles.sectionLabel}>Delivery zone</Text>
+                      <View
+                        accessibilityRole="radiogroup"
+                        style={styles.zoneList}
+                      >
+                        {zones.map((zone) => {
+                          const selected = zone.id === selectedZoneId;
+                          return (
+                            <Pressable
+                              accessibilityRole="radio"
+                              accessibilityState={{ selected }}
+                              key={zone.id}
+                              onPress={() => {
+                                setCheckoutError("");
+                                setSelectedZoneId(zone.id);
+                              }}
+                              style={({ pressed }) => [
+                                styles.zone,
+                                selected && styles.zoneSelected,
+                                pressed && styles.pressed,
+                              ]}
+                            >
+                              <View style={styles.zoneCopy}>
+                                <Text style={styles.zoneName}>{zone.name}</Text>
+                                <Text style={styles.zoneFee}>
+                                  {naira(zone.base_fee_kobo)} delivery
+                                </Text>
+                              </View>
+                              <Ionicons
+                                name={
+                                  selected
+                                    ? "radio-button-on"
+                                    : "radio-button-off"
+                                }
+                                size={22}
+                                color={
+                                  selected
+                                    ? theme.brandPressed
+                                    : theme.textSubtle
+                                }
+                              />
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                      {!zones.length ? (
+                        <View style={styles.zoneWarning}>
+                          <Ionicons
+                            name="information-circle-outline"
+                            size={19}
+                            color={theme.warning}
+                          />
+                          <Text style={styles.zoneWarningText}>
+                            Checkout is unavailable until your university
+                            publishes a delivery zone.
+                          </Text>
+                        </View>
+                      ) : null}
+                    </>
                   ) : null}
-                  </>:null}
 
-                  <Text style={styles.sectionLabel}>Recipient name</Text><TextInput accessibilityLabel="Recipient name" value={recipientName} onChangeText={setRecipientName} maxLength={120} style={styles.noteInput}/>
-                  <Text style={styles.sectionLabel}>Recipient phone (+234)</Text><TextInput accessibilityLabel="Recipient phone" value={recipientPhone} onChangeText={setRecipientPhone} keyboardType="phone-pad" maxLength={14} style={styles.noteInput}/>
-                  {effectiveMode!=='PICKUP'?<><Text style={styles.sectionLabel}>Delivery address</Text><TextInput accessibilityLabel="Delivery address" value={deliveryLocation} onChangeText={setDeliveryLocation} maxLength={500} style={styles.noteInput}/>
-                  <CampusPlaceChoice label="Delivery point on the campus map" value={deliveryPlace} onChange={setDeliveryPlace}/>
-                  </>:null}
+                  <Text style={styles.sectionLabel}>Recipient name</Text>
+                  <TextInput
+                    accessibilityLabel="Recipient name"
+                    value={recipientName}
+                    onChangeText={setRecipientName}
+                    maxLength={120}
+                    style={styles.noteInput}
+                  />
+                  <Text style={styles.sectionLabel}>
+                    Recipient phone (+234)
+                  </Text>
+                  <TextInput
+                    accessibilityLabel="Recipient phone"
+                    value={recipientPhone}
+                    onChangeText={setRecipientPhone}
+                    keyboardType="phone-pad"
+                    maxLength={14}
+                    style={styles.noteInput}
+                  />
+                  {effectiveMode !== "PICKUP" ? (
+                    <>
+                      <Text style={styles.sectionLabel}>Delivery address</Text>
+                      <TextInput
+                        accessibilityLabel="Delivery address"
+                        value={deliveryLocation}
+                        onChangeText={setDeliveryLocation}
+                        maxLength={500}
+                        style={styles.noteInput}
+                      />
+                      <CampusPlaceChoice
+                        label="Delivery point on the campus map"
+                        value={deliveryPlace}
+                        onChange={setDeliveryPlace}
+                      />
+                    </>
+                  ) : null}
                   <Text style={styles.sectionLabel}>
                     Delivery note{" "}
                     <Text style={styles.optional}>(optional)</Text>
@@ -793,6 +987,37 @@ export default function StoreScreen() {
                     value={deliveryNote}
                   />
 
+                  {effectiveMode === "RIDER" ? (
+                    <View style={{ marginVertical: 16 }}>
+                      <Text style={styles.sectionLabel}>
+                        Pay the rider fare
+                      </Text>
+                      <View style={styles.zoneList}>
+                        {(["IN_APP", "CASH"] as const).map((method) => (
+                          <Pressable
+                            key={method}
+                            accessibilityRole="radio"
+                            accessibilityState={{
+                              selected: deliveryPaymentMethod === method,
+                            }}
+                            disabled={busy}
+                            onPress={() => setDeliveryPaymentMethod(method)}
+                            style={[
+                              styles.zone,
+                              method === deliveryPaymentMethod &&
+                                styles.zoneSelected,
+                            ]}
+                          >
+                            <Text style={styles.zoneName}>
+                              {method === "IN_APP"
+                                ? "In app"
+                                : "Cash at delivery"}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
                   <View style={styles.totals}>
                     <View style={styles.totalRow}>
                       <Text style={styles.totalLabel}>Items</Text>
@@ -801,14 +1026,40 @@ export default function StoreScreen() {
                     <View style={styles.totalRow}>
                       <Text style={styles.totalLabel}>Delivery</Text>
                       <Text style={styles.totalValue}>
-                        {effectiveMode!=='RIDER'?naira(0):selectedZone
-                          ? naira(deliveryFee)
-                          : "Select a zone"}
+                        {effectiveMode !== "RIDER"
+                          ? naira(0)
+                          : selectedZone
+                            ? naira(deliveryFee)
+                            : "Select a zone"}
                       </Text>
                     </View>
+                    {Number(validQuote?.pricing.discountKobo) > 0 ? (
+                      <View style={styles.totalRow}>
+                        <Text style={styles.totalLabel}>Checkout savings</Text>
+                        <Text style={styles.totalValue}>
+                          −{naira(validQuote!.pricing.discountKobo)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {effectiveMode === "RIDER" &&
+                    deliveryPaymentMethod === "CASH" ? (
+                      <Text style={styles.totalLabel}>
+                        Pay the product total in app and{" "}
+                        {naira(validQuote?.pricing.cashDueKobo ?? deliveryFee)}{" "}
+                        to the rider at delivery.
+                      </Text>
+                    ) : null}
+                    {validQuote?.fare ? (
+                      <Text style={styles.totalLabel}>
+                        Campus zone estimate ·{" "}
+                        {(validQuote.fare.routeMetres / 1000).toFixed(2)} km
+                      </Text>
+                    ) : null}
                     <View style={[styles.totalRow, styles.grandTotal]}>
-                      <Text style={styles.grandLabel}>Estimate before service fee</Text>
-                      <Text style={styles.grandValue}>{naira(total)}</Text>
+                      <Text style={styles.grandLabel}>Total</Text>
+                      <Text style={styles.grandValue}>
+                        {naira(validQuote?.pricing.totalKobo ?? total)}
+                      </Text>
                     </View>
                   </View>
 
@@ -817,12 +1068,14 @@ export default function StoreScreen() {
                       busy
                         ? "Creating order and opening secure payment"
                         : checkoutReady
-                          ? "Create order and pay securely"
+                          ? validQuote
+                            ? "Confirm order"
+                            : "Review checkout total"
                           : "Select a delivery zone to continue"
                     }
                     accessibilityHint={
                       checkoutReady
-                        ? "Reserves your order and shows the exact delivery and service fees before payment"
+                        ? "Reviews the exact agreed total before reserving your order"
                         : "Select a delivery zone first"
                     }
                     accessibilityRole="button"
@@ -845,16 +1098,18 @@ export default function StoreScreen() {
                         <Ionicons
                           name="lock-closed-outline"
                           size={18}
-                          color={selectedZone ? "#FFFFFF" : theme.textSubtle}
+                          color={checkoutReady ? "#FFFFFF" : theme.textSubtle}
                         />
                         <Text
                           style={[
                             styles.checkoutText,
-                            !selectedZone && styles.checkoutTextDisabled,
+                            !checkoutReady && styles.checkoutTextDisabled,
                           ]}
                         >
-                          {selectedZone
-                            ? "Review final price"
+                          {checkoutReady
+                            ? validQuote
+                              ? "Confirm order"
+                              : "Review total"
                             : "Select a zone to continue"}
                         </Text>
                       </>
