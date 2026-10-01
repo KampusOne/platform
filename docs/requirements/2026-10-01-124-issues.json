@@ -1840,14 +1840,16 @@
       "id": 124,
       "title": "Finish, verify, and release this update as one coordinated version.",
       "requirement": "124. Finish, verify, and release this update as one coordinated version. Keep checkpoint commits so completed work is preserved, but hold the production deployment until the whole batch is ready. Review the combined migration changes together, verify them appropriately, and perform the final production migration rollout once. Deploy the updated Worker and the relevant Vercel applications in the correct order, then build the APK from the matching final code. Confirm that the installed APK connects to the updated services. My final requested deliverable is the new APK download link, with an honest account of any remaining limitations.",
-      "status": "release_in_progress",
+      "status": "released_awaiting_device_verification",
       "evidence": [
         ".github/workflows/deploy-worker.yml",
         ".github/workflows/vercel-prebuilt-deploy.yml",
-        ".github/workflows/android-apk.yml"
+        ".github/workflows/android-apk.yml",
+        "docs/releases/2026-10-01-published-release.json",
+        "docs/releases/2026-10-01-apk-inspection.json"
       ],
-      "verification": "Type checks and applicable automated regressions; see the dated release record for the scope of browser and device acceptance.",
-      "remaining": "Production schema, Worker, Vercel surfaces and APK are published in order from one frozen source revision. Live release evidence will be recorded after publication."
+      "verification": "One coordinated production migration/Worker/Vercel release from 7e659b5e3ae695a806aeb31c2b8ef4ba2e1f99e8; matching Android workflow 36875149946 succeeded. Independent downloaded-APK checksum, Android package/version, signature, notification permission and bundled production API checks passed in workflow 36879784198.",
+      "remaining": "The matching 0.3.11 / Android code 41 APK is published. Installed-phone connection, push receipt, native interactions and field navigation still require physical-device acceptance."
     }
   ],
   "batchVerification": {
@@ -1863,6 +1865,10 @@
     "workerWorkflowRunId": 36873992886,
     "publishedWebVerificationRunId": 36875099643,
     "apkWorkflowRunId": 36875149946,
-    "physicalDeviceAcceptance": "Pending; no installed-phone push receipt was observed."
+    "physicalDeviceAcceptance": "Pending; no installed-phone push receipt was observed.",
+    "apkStatus": "published",
+    "apkInspectionWorkflowRunId": 36879784198,
+    "apkInspectionProof": "docs/releases/2026-10-01-apk-inspection.json",
+    "publishedReleaseProof": "docs/releases/2026-10-01-published-release.json"
   }
 }
