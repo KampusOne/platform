@@ -84,7 +84,9 @@ export function PaymentReturn({ reference }: { reference: string }) {
     state === "SUCCEEDED"
       ? payment?.resource_type === "RIDER_COMMISSION"
         ? "Your ride commission payment is confirmed. Return to Earnings to see your updated balance."
-        : "Your purchase is confirmed. You can safely return to KampusOne."
+        : payment?.resource_type === "KIRA_SUBSCRIPTION"
+          ? "Your monthly Kira Pro access is confirmed. Return to Kira to use your plan."
+          : "Your purchase is confirmed. You can safely return to KampusOne."
       : state === "REQUIRES_REVIEW"
         ? "Your payment evidence is safely recorded. Support must reconcile it before the purchase changes state."
         : state === "FAILED"
@@ -119,7 +121,9 @@ export function PaymentReturn({ reference }: { reference: string }) {
             href={
               payment?.resource_type === "RIDER_COMMISSION"
                 ? "kampusone://earnings"
-                : "kampusone://purchases"
+                : payment?.resource_type === "KIRA_SUBSCRIPTION"
+                  ? "kampusone://ai-subscription"
+                  : "kampusone://purchases"
             }
           >
             Open KampusOne

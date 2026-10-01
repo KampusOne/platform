@@ -17,6 +17,7 @@ RESEND_REPLY_TO=support@kampusone.app
 ADMIN_BOOTSTRAP_TOKEN=replace-with-a-one-time-random-bootstrap-secret
 
 # Phase 2/3 payments. Leave PAYMENTS_ENABLED=false until Paystack approves the flow.
+# Kira monthly checkout also requires KIRA_SUBSCRIPTIONS_ENABLED=true and an approved fixed-price plan.
 PAYSTACK_SECRET_KEY=sk_test_replace_me
 PAYSTACK_WEBHOOK_SECRET=sk_test_replace_me
 

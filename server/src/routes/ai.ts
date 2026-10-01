@@ -12,6 +12,7 @@ import { isStudyGeneration, studentAIPolicy, studentAIUsage, studentExperienceRe
 import { extractAIPdf } from "../lib/ai-document";
 import { runStudentAssistant, classDraftSchema, alarmDraftSchema, calendarDraftSchema, type AICard, type AIAction } from "../lib/student-ai-tools";
 import { KAMPUSONE_RESTRICTED_RESPONSE, isRestrictedKampusOneRequest } from "../lib/kampusone-public-context";
+import { kiraBillingStatus,initializeKira } from '../lib/kira-billing';
 import type { Bindings, Variables } from "../types";
 
 export const aiRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -73,8 +74,13 @@ aiRoutes.get("/status", async c => {
       resetsAt: usage?.chat_resets_at ?? null,
     },
     study: { limit: quota.study, remaining: quota.unlimited || quota.pro ? null : Math.max(0,quota.study-Number(usage?.study_used ?? 0)) },
-    subscription: { cadence: "monthly", checkoutEnabled: false, available: false },
+    subscription: await kiraBillingStatus(c.env,currentUser(c)),
   });
+});
+aiRoutes.get('/subscription',async c=>c.json({subscription:await kiraBillingStatus(c.env,currentUser(c))}));
+aiRoutes.post('/subscription-checkout',async c=>{
+  const d=await input(c,z.object({requestId:z.string().uuid(),consent:z.literal(true)}).strict());
+  return c.json(await initializeKira(c.env,currentUser(c),d.requestId,c.get('requestId')));
 });
 aiRoutes.post("/transcribe", async c => {
   requireSchema(c.env);

@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { portalApi } from "@/lib/api";
 import { PortalShell } from "./portal-shell";
 import { useAdminContext } from "./admin-context";
+import { KiraPricePlan } from "./kira-price-plan";
 
 type Policy = {
   id: string;
@@ -322,6 +323,7 @@ function FinancePolicyEditor() {
               </p>
             </section>
           ) : null}
+          <KiraPricePlan />
           <section className="panel">
             <h2>Approved policy versions</h2>
             <div className="table-scroll">

@@ -32,6 +32,7 @@ import { demoStoreCatalogue } from "../lib/store-demo";
 import { fulfilmentSchemaReady } from "../lib/fulfilment";
 import { inclusiveStoreReady,inclusiveListings,storeQuoteSchema,prepareStoreQuote } from '../lib/commerce-pricing';
 import { campusFare } from '../lib/pricing';
+import { pricedTutorialReady,createPricedTutorial } from '../lib/tutorial-pricing';
 import { publishingRoutes } from "./publishing";
 import { currentUser, requireAuth } from "../middleware/auth";
 import { requireUnblocked, unblockedAuthor } from "../lib/profile-safety";
@@ -984,7 +985,9 @@ studentRoutes.get("/tutorials", async (context) => {
       order by resources.updated_at desc limit 150
     `),
   ]);
-  return context.json({ listings: listings.rows, resources: resources.rows });
+  const tutorialPricing = await inclusiveListings(context.env,universityId,'TUTORIAL',listings.rows);
+  const tutorialBillingReady=await pricedTutorialReady(context.env);
+  return context.json({ listings: tutorialPricing.items.map(l=>({...l,pricing_ready:Number(l.price_kobo)===0 || (l.pricing_ready && paidAccessEnabled && tutorialBillingReady)})), resources: resources.rows });
 });
 
 studentRoutes.get("/tutorial-resources/:id", async (context) => {
@@ -1075,6 +1078,10 @@ studentRoutes.post("/tutorial-bookings", async (context) => {
   }
   const id = crypto.randomUUID();
   try {
+    if(Number(listing.price_kobo)>0 && await pricedTutorialReady(context.env)) {
+      const booking=await createPricedTutorial(context.env,user,parsed.data);
+      return context.json({id:booking.id,status:booking.status,amountKobo:Number(booking.amount_kobo)},201);
+    }
     const result = await database(context.env).execute<{
       id: string;
       amount_kobo: number;
@@ -1096,6 +1103,7 @@ studentRoutes.post("/tutorial-bookings", async (context) => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
+    if(message.includes('QUOTE_PRICE_CHANGED')||message.includes('QUOTE_REQUEST_CONFLICT'))throw new AppError(409,'CONFLICT','The tutorial changed. Refresh it before booking again.');
     if (message.includes("TUTORIAL_FULL"))
       throw new AppError(409, "CONFLICT", "That tutorial is full.");
     if (message.includes("TUTORIAL_ALREADY_BOOKED"))

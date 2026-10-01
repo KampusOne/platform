@@ -6,7 +6,7 @@ import { Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, Scrol
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams,useFocusEffect } from "expo-router";
 import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 import { api, ApiError, clearApiCache } from "@/src/lib/api";
@@ -64,6 +64,7 @@ export default function StudentAI() {
   const valid=()=>alive.current;
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;};},[]);
   const loadStatus=useCallback(async()=>{const account=owner.current;try{const result=await api<Status>("/v1/ai/status");if(valid() && owner.current===account)setStatus(result);}catch{if(valid() && owner.current===account)setStatus(undefined);}},[]);
+  useFocusEffect(useCallback(()=>{void loadStatus();},[loadStatus]));
   const restoreThread=useCallback(async(id:string,version:number)=>{
     const result=await api<{turns:Turn[]}>(`/v1/ai/thread/${id}`);
     if(valid() && version===generation.current)setTurns(result.turns);
@@ -224,7 +225,7 @@ export default function StudentAI() {
           <View style={{flexDirection:'row',alignItems:'center',marginBottom:12}}><Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:25,flex:1}}>{sheet==='history'?'History':sheet==='plans'?'Choose your plan':'About Kira'}</Text>{iconButton('close','Close panel',()=>setSheet(null))}</View>
           <ScrollView keyboardShouldPersistTaps="handled">
             {sheet==='plans'?<View><Pressable accessibilityRole="radio" accessibilityState={{checked:tier==='standard'}} onPress={()=>{setTier('standard');key.current=randomUUID();setSheet(null);}} style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.border,marginBottom:12}}><Text style={{...text,fontFamily:theme.font.semibold}}>Standard</Text><Text style={muted}>Everyday questions, up to {status?.voice?.standardMaxSeconds===30?'30-second':'1-minute'} voice transcription, and five shared Summary / Notes trials.</Text></Pressable>
-              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.brand,marginBottom:16}}><Text style={{...text,fontFamily:theme.font.semibold}}>Pro · Monthly</Text><Text style={{...muted,marginTop:5}}>More room for learning and voice transcription up to {status?.voice?.proMaxSeconds===30?'30 seconds':'5 minutes'}.</Text>{status?.tier==='pro'?smallButton('Use Pro',()=>{setTier('pro');key.current=randomUUID();setSheet(null);}):<Text style={{...muted,marginTop:16,color:theme.brand}}>Subscriptions are not open yet. No payment will be taken.</Text>}</View>
+              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.brand,marginBottom:16}}><Text style={{...text,fontFamily:theme.font.semibold}}>Pro · ₦6,000 / month</Text><Text style={{...muted,marginTop:5}}>More room for learning and voice transcription up to {status?.voice?.proMaxSeconds===30?'30 seconds':'5 minutes'}.</Text>{status?.tier==='pro'?smallButton('Use Pro',()=>{setTier('pro');key.current=randomUUID();setSheet(null);}):<Text style={{...muted,marginTop:16,color:theme.brand}}>{status?.subscription.checkoutEnabled?'One verified payment. No automatic renewal.':'Monthly checkout is not open yet.'}</Text>}{smallButton(status?.tier==='pro'?'Manage my plan':'View monthly plan',()=>{setSheet(null);router.push('/ai-subscription');})}</View>
               {status?.voice?.longFormReady===false?<Text style={{...muted,marginBottom:8,color:theme.brand}}>Long-form voice is temporarily unavailable on this server; the recorder will stop at 30 seconds.</Text>:null}
               {status?.askSession?<Text style={{...muted,marginBottom:8}}>{status.askSession.remaining===null?'Your Ask sessions have no personal message cap.':`${status.askSession.remaining} Ask message${status.askSession.remaining===1?'':'s'} left in this ${status.askSession.windowMinutes}-minute session.`}</Text>:null}
             </View>:null}

@@ -467,6 +467,22 @@
       "historicallyVerifiedApplied": false,
       "sha256": "63c4ba1876a8672ce37ea635448988003392cb93f3d46703b60faf76425f66c8",
       "gitBlobSha": "1525f4b563b960a78efe58645ba53635a21733ce"
+    },
+    {
+      "version": "20260930260000_inclusive_tutorial_bookings",
+      "path": "database/neon/migrations/20260930260000_inclusive_tutorial_bookings.sql",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false,
+      "sha256": "fd07172f7d36dae1deda3d560fc719e50703f0dabe8d576bfccdc191867c99cc",
+      "gitBlobSha": "499dec3d70f01f41a8787682447fc722d2b097ad"
+    },
+    {
+      "version": "20260930270000_verified_kira_subscription",
+      "path": "database/neon/migrations/20260930270000_verified_kira_subscription.sql",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false,
+      "sha256": "0f0235694fdbdf4185e56c61499b0f594f3fa8022a3b2ba196e0011281a688b5",
+      "gitBlobSha": "c95663baa17e733e3203fdaabc4261941bb0da7e"
     }
   ]
 }

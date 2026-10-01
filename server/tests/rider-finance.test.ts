@@ -19,6 +19,7 @@ import { agentRoutes } from "../src/routes/agents";
 import { paymentRoutes } from "../src/routes/payments";
 import { studentRoutes } from "../src/routes/student";
 import { financePolicyRoutes } from "../src/routes/finance-policies";
+import { aiRoutes } from "../src/routes/ai";
 import { AppError } from "../src/lib/errors";
 import { riderFinanceSummary } from "../src/lib/rider-finance";
 import { deriveHandoffCode } from "../src/lib/security";
@@ -54,6 +55,13 @@ const env = {
   PHASE_3_SCHEMA_READY: "true",
   PHASE_2_SCHEMA_READY: "true",
   PAYMENTS_ENABLED: "true",
+  TUTORIALS_ENABLED: "true",
+  KIRA_SUBSCRIPTIONS_ENABLED: "true",
+  UNIFIED_SCHEMA_READY: "true",
+  AI_ASSISTANT_ENABLED: "true",
+  HF_TOKEN: "synthetic-local-ai-provider-token",
+  HF_CHAT_MODEL: "synthetic/standard",
+  HF_PRO_MODEL: "synthetic/pro",
   LOGISTICS_ENABLED: "true",
   PAYSTACK_SECRET_KEY: "synthetic-not-a-real-key",
 } as Bindings;
@@ -61,6 +69,7 @@ const app = new Hono()
   .route("/agents", agentRoutes)
   .route("/payments", paymentRoutes)
   .route("/student", studentRoutes)
+  .route("/ai", aiRoutes)
   .route("/finance", financePolicyRoutes);
 app.onError((e, c) =>
   c.json({ error: e.message }, e instanceof AppError ? e.status : 500),
@@ -70,6 +79,7 @@ async function request(
   user: string,
   method = "GET",
   body?: unknown,
+  uni = campus,
 ) {
   return app.request(
     path,
@@ -77,7 +87,7 @@ async function request(
       method,
       headers: {
         "x-user": user,
-        "x-campus": campus,
+        "x-campus": uni,
         "content-type": "application/json",
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -248,6 +258,8 @@ beforeAll(async () => {
     "20260930220000_store_fulfilment_modes.sql",
     "20260930240000_rider_commission_ledger.sql",
     "20260930250000_inclusive_store_quotes.sql",
+    "20260930260000_inclusive_tutorial_bookings.sql",
+    "20260930270000_verified_kira_subscription.sql",
   ])
     await pg.exec(
       readFileSync(
@@ -654,6 +666,261 @@ const syntheticPolicy = {
   sourceUrl: "https://paystack.com/pricing",
   approvalNote: "Synthetic approved policy used only for local tests.",
 };
+
+async function tutorialFixture() {
+  const tutor = await person(undefined, campus, "TUTOR"),
+    student = await person();
+  const listing = crypto.randomUUID(),
+    window = crypto.randomUUID();
+  await pg.query(
+    "insert into tutorial_listings(id,university_id,tutor_profile_id,course_code,title,description,format,price_kobo,capacity,status,review_status)values($1,$2,$3,'SYN101','Synthetic session','Local financial fixture only','IN_PERSON',350000,5,'PUBLISHED','APPROVED')",
+    [listing, campus, tutor.profile],
+  );
+  await pg.query(
+    "insert into tutorial_availability_windows(id,listing_id,starts_at,ends_at,capacity)values($1,$2,now()+interval '1 day',now()+interval '25 hours',5)",
+    [window, listing],
+  );
+  return {
+    tutor,
+    student,
+    listing,
+    window,
+    input: {
+      listingId: listing,
+      availabilityWindowId: window,
+      requestId: crypto.randomUUID(),
+      expectedPriceKobo: 365500,
+    },
+  };
+}
+describe("inclusive tutorial booking settlement", () => {
+  it("requires an approved policy, keeps the displayed budget and reuses a request without reserving another seat", async () => {
+    const f = await tutorialFixture();
+    expect(
+      (
+        await request(
+          "/student/tutorial-bookings",
+          f.student.user,
+          "POST",
+          f.input,
+        )
+      ).status,
+    ).toBe(409);
+    await json(
+      await request("/finance/fee-policies", buyer, "POST", {
+        ...syntheticPolicy,
+        kind: "TUTORIAL",
+      }),
+      201,
+    );
+    expect(
+      (
+        await request("/student/tutorial-bookings", f.student.user, "POST", {
+          ...f.input,
+          expectedPriceKobo: 350000,
+        })
+      ).status,
+    ).toBe(409);
+    const first = await json(
+      await request(
+        "/student/tutorial-bookings",
+        f.student.user,
+        "POST",
+        f.input,
+      ),
+      201,
+    );
+    const again = await json(
+      await request(
+        "/student/tutorial-bookings",
+        f.student.user,
+        "POST",
+        f.input,
+      ),
+      201,
+    );
+    expect(first).toEqual(again);
+    expect(first.amountKobo).toBe(365500);
+    expect(
+      Number(
+        (
+          await pg.query<{ n: number }>(
+            "select count(*) as n from tutorial_bookings where availability_window_id=$1",
+            [f.window],
+          )
+        ).rows[0]!.n,
+      ),
+    ).toBe(1);
+    expect(
+      (
+        await request("/student/tutorial-bookings", f.student.user, "POST", {
+          ...f.input,
+          availabilityWindowId: crypto.randomUUID(),
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await request(
+          "/payments/summary?resourceType=TUTORIAL_BOOKING&resourceId=" +
+            first.id,
+          buyer,
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await request(
+          "/payments/summary?resourceType=TUTORIAL_BOOKING&resourceId=" +
+            first.id,
+          f.student.user,
+          "GET",
+          undefined,
+          otherCampus,
+        )
+      ).status,
+    ).toBe(404);
+    await expect(
+      pg.query(
+        "update tutorial_bookings set amount_kobo=amount_kobo+1 where id=$1",
+        [first.id],
+      ),
+    ).rejects.toThrow("BOOKING_PRICE_IMMUTABLE");
+  });
+  it("uses the sealed exact total and verified receipt, credits approved tutor net once and releases after completion plus 48 hours", async () => {
+    const f = await tutorialFixture(),
+      booking = await json(
+        await request(
+          "/student/tutorial-bookings",
+          f.student.user,
+          "POST",
+          f.input,
+        ),
+        201,
+      );
+    let providerReference = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, options?: RequestInit) => {
+        if (options?.method === "POST") {
+          const body = JSON.parse(String(options.body));
+          expect(body.amount).toBe(365500);
+          providerReference = body.reference;
+          return Response.json({
+            status: true,
+            data: {
+              authorization_url: "https://checkout.paystack.com/synthetic",
+              access_code: "synthetic",
+              reference: providerReference,
+            },
+          });
+        }
+        return Response.json({
+          status: true,
+          data: {
+            reference: providerReference,
+            status: "success",
+            amount: 365500,
+            fees: 15483,
+            currency: "NGN",
+            domain: "live",
+            paid_at: new Date().toISOString(),
+          },
+        });
+      }),
+    );
+    const initialized = await json(
+      await request("/payments/initialize", f.student.user, "POST", {
+        resourceType: "TUTORIAL_BOOKING",
+        resourceId: booking.id,
+        idempotencyKey: "synthetic-" + booking.id,
+      }),
+    );
+    await json(
+      await request(
+        "/payments/status/" + initialized.reference,
+        f.student.user,
+      ),
+    );
+    await json(
+      await request(
+        "/payments/status/" + initialized.reference,
+        f.student.user,
+      ),
+    );
+    expect(await balance(f.tutor, "TUTOR_PENDING")).toBe(332500);
+    expect(await balance(f.tutor, "TUTOR_AVAILABLE")).toBe(0);
+    expect(
+      (
+        await pg.query<{ status: string }>(
+          "select status from tutorial_bookings where id=$1",
+          [booking.id],
+        )
+      ).rows[0]!.status,
+    ).toBe("CONFIRMED");
+    await pg.query(
+      "update tutorial_bookings set status='COMPLETED',completed_at=now(),dispute_deadline=now()+interval '48 hours',earnings_state='PENDING' where id=$1",
+      [booking.id],
+    );
+    await expect(
+      pg.query(
+        "update tutorial_bookings set earnings_state='AVAILABLE' where id=$1",
+        [booking.id],
+      ),
+    ).rejects.toThrow("EARNINGS_NOT_ELIGIBLE");
+    await pg.query(
+      "update tutorial_bookings set completed_at=now()-interval '49 hours',dispute_deadline=now()-interval '1 hour' where id=$1",
+      [booking.id],
+    );
+    await pg.query(
+      "update tutorial_bookings set earnings_state='AVAILABLE' where id=$1",
+      [booking.id],
+    );
+    expect(await balance(f.tutor, "TUTOR_PENDING")).toBe(0);
+    expect(await balance(f.tutor, "TUTOR_AVAILABLE")).toBe(332500);
+    expect(
+      (await json(await request("/agents/earnings", f.tutor.user))).tutorials
+        .available_kobo,
+    ).toBe(332500);
+  });
+  it("holds a successful payment after booking expiry without activating the tutorial or crediting a tutor", async () => {
+    const f = await tutorialFixture(),
+      booking = await json(
+        await request(
+          "/student/tutorial-bookings",
+          f.student.user,
+          "POST",
+          f.input,
+        ),
+        201,
+      ),
+      reference = "synthetic-late-tutorial-" + booking.id;
+    await pg.query(
+      "insert into payment_attempts(user_id,university_id,resource_type,resource_id,provider_reference,amount_kobo,idempotency_key,status)values($1,$2,'TUTORIAL_BOOKING',$3,$4,365500,$4,'INITIALIZED')",
+      [f.student.user, campus, booking.id, reference],
+    );
+    await pg.query(
+      "update tutorial_bookings set payment_expires_at=now()-interval '1 hour',status='CANCELLED' where id=$1",
+      [booking.id],
+    );
+    const result = (
+      await pg.query<{ result: string }>(
+        "select app_private.record_priced_tutorial_receipt($1,365500,15483,now()) as result",
+        [reference],
+      )
+    ).rows[0]!.result;
+    expect(result).toBe("REQUIRES_REVIEW");
+    expect(await balance(f.tutor, "TUTOR_PENDING")).toBe(0);
+    expect(
+      (
+        await pg.query<{ purpose: string }>(
+          "select purpose from app_private.verified_paystack_receipts where provider_reference=$1",
+          [reference],
+        )
+      ).rows[0]!.purpose,
+    ).toBe("TUTORIAL_BOOKING");
+  });
+});
 function quoteInput(mode = "RIDER", paymentMethod = "IN_APP") {
   return {
     vendorProfileId: vendor,
@@ -1145,6 +1412,290 @@ describe("approved inclusive store checkout", () => {
     const policies = await json(
       await request("/finance/fee-policies?universityId=" + campus, buyer),
     );
-    expect(policies.policies).toHaveLength(1);
+    expect(
+      policies.policies.filter((p: { kind: string }) => p.kind === "STORE"),
+    ).toHaveLength(1);
+  });
+});
+
+describe("fixed-price verified Kira monthly access", () => {
+  it("requires approval, a subscription switch, explicit checkout consent and an owned campus", async () => {
+    const student = await person();
+    const before = await json(await request("/ai/subscription", student.user));
+    expect(before.subscription).toMatchObject({
+      checkoutEnabled: false,
+      amountKobo: 600000,
+      autoRenew: false,
+    });
+    expect(
+      (
+        await request("/ai/subscription-checkout", student.user, "POST", {
+          requestId: crypto.randomUUID(),
+          consent: true,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await request("/ai/subscription-checkout", student.user, "POST", {
+          requestId: crypto.randomUUID(),
+          consent: false,
+        })
+      ).status,
+    ).toBe(400);
+    const approved = await json(
+      await request("/finance/kira-plans", buyer, "POST", {
+        universityId: campus,
+        version: "SYNTHETIC_V1",
+        collection: syntheticPolicy.collection,
+        sourceUrl: syntheticPolicy.sourceUrl,
+        approvalNote: "Synthetic fixture only; no merchant approval.",
+      }),
+      201,
+    );
+    expect(approved.price).toMatchObject({
+      customerPriceKobo: 600000,
+      estimatedProcessingKobo: 19000,
+      estimatedNetKobo: 581000,
+    });
+    expect(
+      (
+        await request(
+          "/ai/subscription",
+          student.user,
+          "GET",
+          undefined,
+          otherCampus,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await json(
+          await request(
+            "/ai/subscription",
+            student.user,
+            "GET",
+            undefined,
+            otherCampus,
+          ),
+        )
+      ).subscription.checkoutEnabled,
+    ).toBe(false);
+  });
+  it("charges exactly ₦6,000, reuses checkout and activates one calendar month only after a successful server receipt", async () => {
+    const student = await person(),
+      requestId = crypto.randomUUID();
+    let reference = "",
+      paid = false;
+    const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+      if (options?.method === "POST") {
+        const body = JSON.parse(String(options.body));
+        expect(body.amount).toBe(600000);
+        expect(body.currency).toBe("NGN");
+        reference = body.reference;
+        return Response.json({
+          status: true,
+          data: {
+            authorization_url: "https://checkout.paystack.com/synthetic",
+            access_code: "synthetic",
+            reference,
+          },
+        });
+      }
+      return Response.json({
+        status: true,
+        data: {
+          reference,
+          amount: 600000,
+          currency: "NGN",
+          status: paid ? "success" : "pending",
+          fees: paid ? 19000 : null,
+          paid_at: paid ? new Date().toISOString() : null,
+          domain: "live",
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const initialized = await json(
+      await request("/ai/subscription-checkout", student.user, "POST", {
+        requestId,
+        consent: true,
+      }),
+    );
+    expect(
+      (
+        await json(
+          await request("/ai/subscription-checkout", student.user, "POST", {
+            requestId: crypto.randomUUID(),
+            consent: true,
+          }),
+        )
+      ).reference,
+    ).toBe(initialized.reference);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect((await json(await request("/ai/status", student.user))).tier).toBe(
+      "standard",
+    );
+    expect((await request("/payments/status/" + reference, buyer)).status).toBe(
+      404,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await json(await request("/payments/status/" + reference, student.user));
+    expect((await json(await request("/ai/status", student.user))).tier).toBe(
+      "standard",
+    );
+    paid = true;
+    await json(await request("/payments/status/" + reference, student.user));
+    expect((await json(await request("/ai/status", student.user))).tier).toBe(
+      "pro",
+    );
+    const period = (
+      await pg.query<{ starts_at: string; ends_at: string }>(
+        "select starts_at,ends_at from app_private.kira_billing_periods where user_id=$1",
+        [student.user],
+      )
+    ).rows[0]!;
+    expect(
+      Date.parse(period.ends_at) - Date.parse(period.starts_at),
+    ).toBeGreaterThanOrEqual(28 * 86400000);
+    await json(await request("/payments/status/" + reference, student.user));
+    expect(
+      Number(
+        (
+          await pg.query<{ n: number }>(
+            "select count(*) as n from app_private.kira_billing_periods where user_id=$1",
+            [student.user],
+          )
+        ).rows[0]!.n,
+      ),
+    ).toBe(1);
+    expect(
+      (
+        await request("/ai/subscription-checkout", student.user, "POST", {
+          requestId: crypto.randomUUID(),
+          consent: true,
+        })
+      ).status,
+    ).toBe(409);
+    await expect(
+      pg.query(
+        "update app_private.kira_billing_periods set ends_at=ends_at+interval '1 month' where user_id=$1",
+        [student.user],
+      ),
+    ).rejects.toThrow();
+  });
+  it("extends the existing paid period on an eligible manual renewal without consuming a free-use counter", async () => {
+    const student = await person(),
+      firstReference = "K1-AI-" + crypto.randomUUID();
+    const first = (
+      await pg.query<{ id: string }>(
+        "select * from app_private.create_kira_checkout($1,$2,$3,$4,$5)",
+        [
+          crypto.randomUUID(),
+          student.user,
+          campus,
+          crypto.randomUUID(),
+          firstReference,
+        ],
+      )
+    ).rows[0]!;
+    await pg.query(
+      "select app_private.record_kira_receipt($1,600000,19000,now())",
+      [firstReference],
+    );
+    await pg.query(
+      "update app_private.ai_subscriptions set current_period_end=now()+interval '3 days' where user_id=$1",
+      [student.user],
+    );
+    const old = (
+      await pg.query<{ current_period_end: string }>(
+        "select current_period_end from app_private.ai_subscriptions where user_id=$1",
+        [student.user],
+      )
+    ).rows[0]!.current_period_end;
+    const reference = "K1-AI-" + crypto.randomUUID();
+    await pg.query(
+      "select * from app_private.create_kira_checkout($1,$2,$3,$4,$5)",
+      [
+        crypto.randomUUID(),
+        student.user,
+        campus,
+        crypto.randomUUID(),
+        reference,
+      ],
+    );
+    await pg.query(
+      "select app_private.record_kira_receipt($1,600000,19000,now())",
+      [reference],
+    );
+    const next = (
+      await pg.query<{ starts_at: string }>(
+        "select starts_at from app_private.kira_billing_periods where provider_reference=$1",
+        [reference],
+      )
+    ).rows[0]!.starts_at;
+    expect(Date.parse(next)).toBe(Date.parse(old));
+    expect(
+      Number(
+        (
+          await pg.query<{ n: number }>(
+            "select count(*) as n from app_private.ai_requests where user_id=$1",
+            [student.user],
+          )
+        ).rows[0]!.n,
+      ),
+    ).toBe(0);
+    await expect(
+      pg.query(
+        "update app_private.kira_checkouts set amount_kobo=599900 where id=$1",
+        [first.id],
+      ),
+    ).rejects.toThrow();
+  });
+  it("holds wrong-total and expired successful payments without granting access, and exposes actual-fee reconciliation", async () => {
+    for (const late of [false, true]) {
+      const student = await person(),
+        reference = "K1-AI-" + crypto.randomUUID();
+      await pg.query(
+        "select * from app_private.create_kira_checkout($1,$2,$3,$4,$5)",
+        [
+          crypto.randomUUID(),
+          student.user,
+          campus,
+          crypto.randomUUID(),
+          reference,
+        ],
+      );
+      if (late)
+        await pg.query(
+          "update app_private.kira_checkouts set expires_at=now()-interval '1 hour' where provider_reference=$1",
+          [reference],
+        );
+      expect(
+        (
+          await pg.query<{ result: string }>(
+            "select app_private.record_kira_receipt($1,$2,19000,now()) as result",
+            [reference, late ? 600000 : 600001],
+          )
+        ).rows[0]!.result,
+      ).toBe("REQUIRES_REVIEW");
+      expect((await json(await request("/ai/status", student.user))).tier).toBe(
+        "standard",
+      );
+    }
+    const receipts = await json(await request("/finance/receipts", buyer));
+    expect(
+      receipts.receipts.some(
+        (r: {
+          purpose: string;
+          allocated: boolean;
+          estimated_processing_kobo: string;
+        }) =>
+          r.purpose === "KIRA_SUBSCRIPTION" &&
+          r.allocated &&
+          Number(r.estimated_processing_kobo) === 19000,
+      ),
+    ).toBe(true);
   });
 });

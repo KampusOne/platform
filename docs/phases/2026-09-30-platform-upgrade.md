@@ -53,6 +53,17 @@ Financial validation includes real PostgreSQL execution of both queued migration
 
 All 457 server tests in 47 files, 125 root regression tests and 10 contract tests pass. Server/mobile/portal/contracts type checks, server build, portal lint and production build, and mobile production web export pass. The first concurrent full-suite run hit an existing fixture-setup timeout while mobile and portal builds competed for CPU; rerunning the full suite with two workers and a 30-second setup timeout passed every test.
 
+## Tutorial and Kira billing checkpoint
+
+- Paid tutorial listings use the approved campus tutorial policy. A booking confirms the displayed inclusive amount, locks the actual listing/window and seals the approved tutor net. Reusing a request returns the same booking/seat; changed sessions, prices, tenants and amounts are rejected. Free sessions keep their existing flow.
+- Tutorial checkout initializes exactly the sealed amount. A successful live NGN server receipt allocates the approved net to tutor pending and records actual provider processing expense. Expired or duplicate successful payments stay in suspense for review. Verified tutor earnings release only after completed service plus 48 hours, with no open dispute; changing a sealed booking's price or identity is prohibited.
+- Kira Pro costs **exactly ₦6,000 per calendar month**. Processing reduces platform net, never the displayed customer total. With Paystack's published local baseline the expected fee is ₦190 and expected net ₦5,810; merchant-specific rules/taxes must be reviewed rather than assumed. Finance approves a versioned fixed-price plan and processing rule per campus. No plan is seeded.
+- Kira checkout also requires `KIRA_SUBSCRIPTIONS_ENABLED`, `PAYMENTS_ENABLED`, a configured Pro provider and the AI switch. The new subscription switch remains false in checked-in runtime configuration. The user explicitly chooses a monthly payment; there is no automatic renewal or saved-card subscription. Renewal opens in the final seven days and extends the current paid period.
+- The billing period is an immutable record backed by one exact verified receipt and balanced journal. Its entitlement projection feeds the existing Pro policy; Standard limits are unchanged. Redirects, pending provider transactions, wrong totals and expired checkouts cannot activate Pro. Repeated verification cannot add another month. Owner-scoped pending checkouts survive app exit and can be resumed/checked from the new plan screen.
+- The admin finance page adds fixed-price plan approval/history and correct quoted-versus-actual processing reconciliation for store, tutorial and Kira receipts. Approval is tenant-scoped, permission-gated and audited.
+
+Validation: all 464 server tests in 47 files, 125 root regression tests and 10 contract tests pass. Server/mobile/portal/contracts type checks, server build, portal lint/production build and mobile production web export pass. Seven new PostgreSQL/API cases cover approved-policy gating, one-seat retry, tenant/owner isolation, immutable prices, exact receipt/net/release, expired money held, fixed ₦6,000 checkout, no activation from pending receipts, one-month idempotency, manual renewal and actual-fee reconciliation. No payment or production migration ran.
+
 ## Publication and visual checks
 
 Changes are committed locally. Automatic approval review rejected pushing to the public `KampusOne/platform` repository because it would publish source and migration details without specific approval for that public payload and destination. No connector or other execution path was used to bypass the rejection.
@@ -70,13 +81,15 @@ New queued migrations:
 3. `20260930230000_optional_purchase_review_reminders.sql`
 4. `20260930240000_rider_commission_ledger.sql`
 5. `20260930250000_inclusive_store_quotes.sql`
+6. `20260930260000_inclusive_tutorial_bookings.sql`
+7. `20260930270000_verified_kira_subscription.sql`
 
 These depend on the current account/agent schema, the Phase 3 commerce foundation and the unified notification tables. Readiness checks let the code be deployed before those migrations without querying absent new columns/functions. No earlier applied migration was edited.
 
 ## Remaining implementation
 
 1. Actual campus road-route integration and reviewed fare coverage; cash commissions, four-debt locking and repayment are implemented with reviewed zone estimates.
-2. Inclusive tutorial/subscription billing and verified payouts with approved transfer-cost policies. Inclusive store billing and approved provider-rate configuration are implemented.
+2. Verified learning-material purchases and private access, plus verified payouts with approved transfer-cost policies. Store/tutorial-session/Kira billing and approved provider-rate configuration are implemented.
 4. Common internal/external share sheet; device acceptance of persistent drafts and message interactions.
 5. Search tabs, working filters and profile/brand app links with website fallback.
 6. First-install illustrated introduction and progressive agent documents/selfie onboarding.

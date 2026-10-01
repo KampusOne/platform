@@ -501,6 +501,8 @@ export const campusPlaceSchema = z.object({
 export const tutorialBookingSchema = z.object({
   listingId: z.string().uuid(),
   availabilityWindowId: z.string().uuid(),
+  requestId: z.string().uuid().optional(),
+  expectedPriceKobo: z.number().int().min(0).max(2_000_000_000).optional(),
 });
 
 export const completionConfirmationSchema = z.object({
@@ -524,10 +526,12 @@ export const disputeSchema = z.object({
 export const storeOrderSchema = z
   .object({
     vendorProfileId: z.string().uuid(),
-    fulfilmentMode: z.enum(["PICKUP", "VENDOR_DELIVERY", "RIDER"]).default("RIDER"),
+    fulfilmentMode: z
+      .enum(["PICKUP", "VENDOR_DELIVERY", "RIDER"])
+      .default("RIDER"),
     deliveryZoneId: z.string().uuid().nullable().optional(),
-    deliveryPaymentMethod:z.enum(['IN_APP','CASH']).default('IN_APP'),
-    quoteId:z.string().uuid().optional(),
+    deliveryPaymentMethod: z.enum(["IN_APP", "CASH"]).default("IN_APP"),
+    quoteId: z.string().uuid().optional(),
     recipientName: z.string().trim().min(2).max(120),
     recipientPhoneE164: z
       .string()
@@ -543,7 +547,12 @@ export const storeOrderSchema = z
         z.object({
           productId: z.string().uuid(),
           quantity: z.number().int().min(1).max(100),
-          expectedUnitPriceKobo:z.number().int().min(0).max(2_000_000_000).optional(),
+          expectedUnitPriceKobo: z
+            .number()
+            .int()
+            .min(0)
+            .max(2_000_000_000)
+            .optional(),
         }),
       )
       .min(1)
@@ -551,10 +560,21 @@ export const storeOrderSchema = z
   })
   .superRefine((value, context) => {
     if (value.fulfilmentMode === "RIDER" && !value.deliveryZoneId) {
-      context.addIssue({code:z.ZodIssueCode.custom,message:"Choose a rider delivery zone.",path:["deliveryZoneId"]});
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Choose a rider delivery zone.",
+        path: ["deliveryZoneId"],
+      });
     }
-    if (value.fulfilmentMode !== "PICKUP" && (value.deliveryLocation?.length ?? 0) < 5) {
-      context.addIssue({code:z.ZodIssueCode.custom,message:"Enter the delivery address.",path:["deliveryLocation"]});
+    if (
+      value.fulfilmentMode !== "PICKUP" &&
+      (value.deliveryLocation?.length ?? 0) < 5
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Enter the delivery address.",
+        path: ["deliveryLocation"],
+      });
     }
     if (
       (value.deliveryLatitude == null) !==
@@ -569,7 +589,9 @@ export const storeOrderSchema = z
     }
   });
 
-export const storeFulfilmentSchema = z.object({pickupEnabled:z.boolean(),selfDeliveryEnabled:z.boolean()}).strict();
+export const storeFulfilmentSchema = z
+  .object({ pickupEnabled: z.boolean(), selfDeliveryEnabled: z.boolean() })
+  .strict();
 
 export const productReviewSchema = z.object({
   orderId: z.string().uuid(),
@@ -621,9 +643,15 @@ export type TimetableEntryInput = z.infer<typeof timetableEntrySchema>;
 export type GpaTermInput = z.infer<typeof gpaTermSchema>;
 export type AgentApplicationInput = z.infer<typeof agentApplicationSchema>;
 
-
 // Direct-message interaction inputs shared by mobile and the Worker.
-export const directMessageReactionSchema = z.enum(["😂", "❤️", "👍", "😮", "😭", "🔥"]);
+export const directMessageReactionSchema = z.enum([
+  "😂",
+  "❤️",
+  "👍",
+  "😮",
+  "😭",
+  "🔥",
+]);
 
 export const directMessageReportReasonSchema = z.enum([
   "SPAM",

@@ -2,6 +2,7 @@ import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
+import { randomUUID } from "expo-crypto";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -36,13 +37,14 @@ type Availability = {
   booked_spaces: number;
 };
 type Listing = {
-  package_days?:number|null;
+  package_days?: number | null;
   id: string;
   course_code: string;
   title: string;
   description: string;
   format: string;
   price_kobo: number;
+  pricing_ready?: boolean;
   capacity: number;
   tutor_profile_id: string | null;
   tutor_name: string;
@@ -185,7 +187,12 @@ function TutorCard({ tutor }: { tutor: TutorSummary }) {
       <Text numberOfLines={2} style={styles.tutorCardBio}>
         {tutor.biography ?? "Approved KampusOne tutor"}
       </Text>
-      {tutor.lectureHouse && <Text numberOfLines={2} style={styles.tutorCardBio}>{tutor.lectureHouse}{tutor.lectureHouseAddress ? ` · ${tutor.lectureHouseAddress}` : ""}</Text>}
+      {tutor.lectureHouse && (
+        <Text numberOfLines={2} style={styles.tutorCardBio}>
+          {tutor.lectureHouse}
+          {tutor.lectureHouseAddress ? ` · ${tutor.lectureHouseAddress}` : ""}
+        </Text>
+      )}
       <View style={styles.courseChips}>
         {tutor.courses.slice(0, 2).map((course) => (
           <View key={course} style={styles.courseChip}>
@@ -198,7 +205,10 @@ function TutorCard({ tutor }: { tutor: TutorSummary }) {
 }
 
 function resourceMeta(resource: Resource) {
-  if (["AUDIOBOOK", "VIDEO"].includes(resource.resource_type) && resource.duration_seconds) {
+  if (
+    ["AUDIOBOOK", "VIDEO"].includes(resource.resource_type) &&
+    resource.duration_seconds
+  ) {
     return `${Math.max(1, Math.round(resource.duration_seconds / 60))} min ${resource.resource_type === "VIDEO" ? "video" : "audio"}`;
   }
   if (resource.page_count)
@@ -283,8 +293,17 @@ function ResourcePreview({
         resource: Resource & { can_access: boolean };
       }>(`/v1/student/tutorial-resources/${resource.id}`);
       if (!access.can_access) {
-        if(resource.access_model==='PAID'){onClose();router.push({pathname:'/learning-checkout',params:{resourceId:resource.id}});return;}
-        throw new Error("An active session or package is needed to open this resource.");
+        if (resource.access_model === "PAID") {
+          onClose();
+          router.push({
+            pathname: "/learning-checkout",
+            params: { resourceId: resource.id },
+          });
+          return;
+        }
+        throw new Error(
+          "An active session or package is needed to open this resource.",
+        );
       }
       const url = access.media_object_id
         ? (
@@ -366,7 +385,11 @@ function ResourcePreview({
               ]}
             >
               <Text style={styles.openResourceButtonText}>
-                {opening ? "Opening…" : resource.access_model === "PAID" ? "View access / buy resource" : "Open full resource"}
+                {opening
+                  ? "Opening…"
+                  : resource.access_model === "PAID"
+                    ? "View access / buy resource"
+                    : "Open full resource"}
               </Text>
               <Ionicons color="#FFFFFF" name="open-outline" size={17} />
             </Pressable>
@@ -515,7 +538,9 @@ function TutorialCard({
         <View style={styles.noWindows}>
           <Ionicons color={theme.textMuted} name="time-outline" size={16} />
           <Text style={styles.noWindowsText}>
-            {listing.package_days?`${listing.package_days} days of tutor access, starting after payment.`:"This tutor has not published a bookable time."}
+            {listing.package_days
+              ? `${listing.package_days} days of tutor access, starting after payment.`
+              : "This tutor has not published a bookable time."}
           </Text>
         </View>
       )}
@@ -523,12 +548,25 @@ function TutorialCard({
       <Pressable
         accessibilityLabel={`Book ${listing.title} with ${listing.tutor_name}`}
         accessibilityRole="button"
-        accessibilityState={{ busy, disabled: disabled || (!selected&&!listing.package_days) }}
-        disabled={disabled || (!selected&&!listing.package_days)}
+        accessibilityState={{
+          busy,
+          disabled:
+            disabled ||
+            (!selected && !listing.package_days) ||
+            listing.pricing_ready === false,
+        }}
+        disabled={
+          disabled ||
+          (!selected && !listing.package_days) ||
+          listing.pricing_ready === false
+        }
         onPress={onBook}
         style={({ pressed }) => [
           styles.bookButton,
-          (disabled || (!selected&&!listing.package_days)) && styles.bookButtonDisabled,
+          (disabled ||
+            (!selected && !listing.package_days) ||
+            listing.pricing_ready === false) &&
+            styles.bookButtonDisabled,
           pressed && !disabled && styles.bookButtonPressed,
         ]}
       >
@@ -536,7 +574,13 @@ function TutorialCard({
           <InlineLoading color="#FFFFFF" />
         ) : (
           <>
-            <Text style={styles.bookButtonText}>{listing.package_days?`Get ${listing.package_days}-day package`:"Book tutorial"}</Text>
+            <Text style={styles.bookButtonText}>
+              {listing.pricing_ready === false
+                ? "Booking temporarily unavailable"
+                : listing.package_days
+                  ? `Get ${listing.package_days}-day package`
+                  : "Book tutorial"}
+            </Text>
             <Ionicons color="#FFFFFF" name="arrow-forward" size={17} />
           </>
         )}
@@ -572,8 +616,17 @@ function TutorialsEmptyState({ filtered }: { filtered: boolean }) {
 }
 
 export default function TutorialsScreen() {
-  const {listing:focusedListing}=useLocalSearchParams<{listing?:string}>();
-  useFocusEffect(useCallback(()=>()=>{if(focusedListing)router.setParams({listing:undefined});},[focusedListing]));
+  const { listing: focusedListing } = useLocalSearchParams<{
+    listing?: string;
+  }>();
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        if (focusedListing) router.setParams({ listing: undefined });
+      },
+      [focusedListing],
+    ),
+  );
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { width } = useWindowDimensions();
@@ -592,6 +645,9 @@ export default function TutorialsScreen() {
     Record<string, string>
   >({});
   const bookingLock = useRef(false);
+  const bookingRequest = useRef<{ fingerprint: string; id: string } | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     try {
@@ -601,17 +657,21 @@ export default function TutorialsScreen() {
         resources?: Resource[];
       }>("/v1/student/tutorials");
       setListings(
-        catalogue.listings.filter((listing) => !listing.is_demo).map((listing) => ({
-          ...listing,
-          completed_sessions: Number(listing.completed_sessions ?? 0),
-          is_demo: Boolean(listing.is_demo),
-          location_text: listing.location_text ?? null,
-          rating: Number(listing.rating ?? 0),
-          review_count: Number(listing.review_count ?? 0),
-          tutor_verified: Boolean(listing.tutor_verified),
-        })),
+        catalogue.listings
+          .filter((listing) => !listing.is_demo)
+          .map((listing) => ({
+            ...listing,
+            completed_sessions: Number(listing.completed_sessions ?? 0),
+            is_demo: Boolean(listing.is_demo),
+            location_text: listing.location_text ?? null,
+            rating: Number(listing.rating ?? 0),
+            review_count: Number(listing.review_count ?? 0),
+            tutor_verified: Boolean(listing.tutor_verified),
+          })),
       );
-      setResources((catalogue.resources ?? []).filter((resource) => !resource.is_demo));
+      setResources(
+        (catalogue.resources ?? []).filter((resource) => !resource.is_demo),
+      );
     } catch (caught) {
       setLoadError(
         caught instanceof ApiError
@@ -650,7 +710,9 @@ export default function TutorialsScreen() {
             .includes(needle);
         const matchesFormat =
           activeFormat === "All" || displayFormat(item.format) === activeFormat;
-        return focusedListing ? item.id===focusedListing : matchesQuery && matchesFormat;
+        return focusedListing
+          ? item.id === focusedListing
+          : matchesQuery && matchesFormat;
       }),
     [activeFormat, listings, query, focusedListing],
   );
@@ -726,12 +788,24 @@ export default function TutorialsScreen() {
             "CONFLICT",
             "Choose an available tutorial time.",
           );
+        const fingerprint = JSON.stringify([
+          listing.id,
+          availabilityWindowId,
+          listing.price_kobo,
+        ]);
+        if (bookingRequest.current?.fingerprint !== fingerprint)
+          bookingRequest.current = { fingerprint, id: randomUUID() };
         const booking = await api<{
           id: string;
           status: string;
           amountKobo: number;
         }>("/v1/student/tutorial-bookings", {
-          body: JSON.stringify({ availabilityWindowId, listingId: listing.id }),
+          body: JSON.stringify({
+            availabilityWindowId,
+            listingId: listing.id,
+            requestId: bookingRequest.current!.id,
+            expectedPriceKobo: listing.price_kobo,
+          }),
           method: "POST",
         });
         savedBookingId = booking.id;
@@ -743,7 +817,10 @@ export default function TutorialsScreen() {
           await load();
           return;
         }
-        router.push({pathname:'/payment-review',params:{id:booking.id,type:'TUTORIAL_BOOKING'}});
+        router.push({
+          pathname: "/payment-review",
+          params: { id: booking.id, type: "TUTORIAL_BOOKING" },
+        });
       } catch (caught) {
         if (savedBookingId) {
           const providerUnavailable =
@@ -1040,7 +1117,14 @@ export default function TutorialsScreen() {
               busy={busy === listing.id}
               disabled={Boolean(busy)}
               listing={listing}
-              onBook={() => listing.package_days ? router.push({pathname:"/learning-checkout",params:{listingId:listing.id}}) : void book(listing)}
+              onBook={() =>
+                listing.package_days
+                  ? router.push({
+                      pathname: "/learning-checkout",
+                      params: { listingId: listing.id },
+                    })
+                  : void book(listing)
+              }
               onSelect={(id) => selectWindow(listing.id, id)}
               selectedId={
                 selectedWindows[listing.id] ?? listing.availability[0]?.id

@@ -13,6 +13,11 @@ import {
 } from "../lib/features";
 import { initializePaystack, validPaystackSignature } from "../lib/paystack";
 import { reconcileRiderCommission } from "../lib/rider-finance";
+import { reconcileKira } from "../lib/kira-billing";
+import {
+  pricedTutorialReady,
+  reconcilePricedTutorial,
+} from "../lib/tutorial-pricing";
 import {
   inclusiveStoreReady,
   reconcilePricedStore,
@@ -52,6 +57,9 @@ paymentRoutes.get("/summary", requireAuth, async (context) => {
     );
   const inclusiveReady =
     resourceType === "STORE_ORDER" && (await inclusiveStoreReady(context.env));
+  const tutorialReady =
+    resourceType === "TUTORIAL_BOOKING" &&
+    (await pricedTutorialReady(context.env));
   const summary = firstRow(
     await database(context.env).execute(
       inclusiveReady
@@ -74,7 +82,16 @@ paymentRoutes.get("/summary", requireAuth, async (context) => {
     from public.orders o join public.vendor_storefronts s on s.vendor_profile_id=o.vendor_profile_id
     where o.id=${parsed.data.resourceId}::uuid and o.buyer_user_id=${user.id}::uuid and o.university_id=${user.universityId}::uuid
   `
-          : sql`
+          : tutorialReady
+            ? sql`
+    select b.id,l.title,b.status,coalesce(p.listed_kobo,b.amount_kobo) as base_kobo,0::integer as buyer_fee_kobo,
+      0::integer as delivery_fee_kobo,b.amount_kobo,coalesce(p.listed_kobo-p.payable_kobo,0) as discount_kobo,
+      (b.amount_kobo=0 or p.booking_id is not null) as pricing_ready
+    from public.tutorial_bookings b join public.tutorial_listings l on l.id=b.listing_id
+      left join app_private.tutorial_booking_prices p on p.booking_id=b.id
+    where b.id=${parsed.data.resourceId}::uuid and b.student_user_id=${user.id}::uuid and b.university_id=${user.universityId}::uuid
+  `
+            : sql`
     select b.id,l.title,b.status,b.amount_kobo as base_kobo,0::integer as buyer_fee_kobo,
       0::integer as delivery_fee_kobo,b.amount_kobo,true as pricing_ready
     from public.tutorial_bookings b join public.tutorial_listings l on l.id=b.listing_id
@@ -124,6 +141,7 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
   }
   const user = currentUser(context);
   const inclusiveReady = await inclusiveStoreReady(context.env);
+  const tutorialReady = await pricedTutorialReady(context.env);
   const resource =
     parsed.data.resourceType === "TUTORIAL_BOOKING"
       ? await database(context.env).execute<{
@@ -131,12 +149,21 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
           amount_kobo: number;
           status: string;
           pricing_formula_version: string | null;
-        }>(sql`
+        }>(
+          tutorialReady
+            ? sql`
+        select b.id,b.amount_kobo,b.status,b.pricing_formula_version from public.tutorial_bookings b
+          join app_private.tutorial_booking_prices p on p.booking_id=b.id
+        where b.id=${parsed.data.resourceId}::uuid and b.student_user_id=${user.id}::uuid
+          and b.university_id=${user.universityId}::uuid and b.payment_expires_at>now()
+      `
+            : sql`
         select id, amount_kobo, status, null::text as pricing_formula_version from public.tutorial_bookings
         where id = ${parsed.data.resourceId}::uuid and student_user_id = ${user.id}::uuid
           and university_id=${user.universityId}::uuid
           and payment_expires_at > now() limit 1
-      `)
+      `,
+        )
       : await database(context.env).execute<{
           id: string;
           amount_kobo: number;
@@ -321,6 +348,17 @@ paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
   const user = currentUser(context);
   const reference = context.req.param("reference");
   if (
+    reference.startsWith("K1-AI-") &&
+    (await reconcileKira(context.env, reference, user.id))
+  ) {
+    const payment = firstRow(
+      await database(context.env)
+        .execute(sql`select provider_reference,case when status='PAID' then 'SUCCEEDED' else status end as status,
+      'KIRA_SUBSCRIPTION' as resource_type,id as resource_id from app_private.kira_checkouts where provider_reference=${reference} and user_id=${user.id}::uuid`),
+    );
+    return context.json({ payment });
+  }
+  if (
     reference.startsWith("K1-RC-") &&
     (await reconcileRiderCommission(context.env, reference, user.id))
   ) {
@@ -332,6 +370,7 @@ paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
     return context.json({ payment });
   }
   await reconcilePricedStore(context.env, reference, user.id);
+  await reconcilePricedTutorial(context.env, reference, user.id);
   const result = await database(context.env).execute<{
     provider_reference: string;
     status: string;
@@ -410,11 +449,18 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
   }
   const reference = event.data.reference;
   if (
+    reference.startsWith("K1-AI-") &&
+    (await reconcileKira(context.env, reference))
+  )
+    return context.json({ status: "reconciled" });
+  if (
     reference.startsWith("K1-RC-") &&
     (await reconcileRiderCommission(context.env, reference))
   )
     return context.json({ status: "reconciled" });
   if (await reconcilePricedStore(context.env, reference))
+    return context.json({ status: "reconciled" });
+  if (await reconcilePricedTutorial(context.env, reference))
     return context.json({ status: "reconciled" });
   await database(context.env).execute(sql`
     insert into public.payment_provider_events (

@@ -40,6 +40,7 @@ import { requireFullKyc } from "../lib/kyc";
 import { riderFinanceReady,riderFinanceSummary,reconcileRiderCommission } from '../lib/rider-finance';
 import { initializePaystack } from '../lib/paystack';
 import { inclusiveStoreReady } from '../lib/commerce-pricing';
+import { pricedTutorialReady } from '../lib/tutorial-pricing';
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 
@@ -1803,7 +1804,11 @@ agentRoutes.get("/earnings", async (context) => {
     commissionPaymentsEnabled:Boolean(riderFinance && context.env.PAYMENTS_ENABLED==='true'),
     riderCommissionCheckout:riderCheckout,
     riderCommissionDebts:riderDebts,
-    tutorials: firstRow(tutorials),
+    tutorials: await pricedTutorialReady(context.env)?firstRow(await database(context.env).execute(sql`
+      select app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,'TUTOR_PENDING') as pending_kobo,
+        app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,'TUTOR_AVAILABLE') as available_kobo,
+        0::bigint as reserved_kobo,0::bigint as withdrawn_kobo
+    `)):firstRow(tutorials),
     store: storeFinance??firstRow(store),
     legacyRecordedStore:storeFinance?firstRow(store):null,
     deliveries: riderFinance??firstRow(deliveries),

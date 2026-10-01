@@ -1489,7 +1489,10 @@ adminRoutes.post("/operations/disputes/:id/review", async (context) => {
     ...(release && dispute.tutorial_booking_id
       ? [
           client`update public.tutorial_bookings set status = 'COMPLETED',
-      earnings_state = 'AVAILABLE', updated_at = now() where id = ${dispute.tutorial_booking_id}::uuid`,
+      completed_at=coalesce(completed_at,now()),dispute_deadline=coalesce(dispute_deadline,now()+interval '48 hours'),
+      earnings_state = case when to_jsonb(tutorial_bookings)->>'pricing_formula_version'='INCLUSIVE_V1' and
+        (completed_at is null or completed_at>now()-interval '48 hours') then 'PENDING' else 'AVAILABLE' end,
+      updated_at = now() where id = ${dispute.tutorial_booking_id}::uuid`,
         ]
       : []),
     ...(release && dispute.order_id
