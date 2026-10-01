@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { portalApi } from "@/lib/api";
 import { useAdminContext } from "./admin-context";
 import { DailyActivity } from "./daily-activity";
+import { DonutBreakdown, HorizontalBars } from "./analytics-visuals";
 type Report =
   | { ready: false; message: string }
   | {
@@ -92,6 +93,36 @@ export function ActivityOverview({ refresh }: { refresh: number }) {
                   <small>{Number(row.events).toLocaleString()} events</small>
                 </article>
               ))}
+            </div>
+            <div className="analytics-visual-grid">
+              <DonutBreakdown
+                title="Active accounts by platform"
+                rows={data.platforms.map((row) => ({
+                  label:
+                    ({
+                      ios: "iPhone / iPad",
+                      android: "Android",
+                      web: "Web",
+                      unknown: "Unclassified",
+                    } as Record<string, string>)[String(row.platform)] ??
+                    String(row.platform),
+                  value: Number(row.active_users) || 0,
+                }))}
+              />
+              <HorizontalBars
+                title="Recorded events by platform"
+                rows={data.platforms.map((row) => ({
+                  label:
+                    ({
+                      ios: "iPhone / iPad",
+                      android: "Android",
+                      web: "Web",
+                      unknown: "Unclassified",
+                    } as Record<string, string>)[String(row.platform)] ??
+                    String(row.platform),
+                  value: Number(row.events) || 0,
+                }))}
+              />
             </div>
             <DailyActivity rows={data.daily} />
             <p className="field-help">
