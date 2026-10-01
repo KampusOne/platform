@@ -22,17 +22,17 @@ const pages = [
   {
     title: "Your day, already ready",
     body: "Keep classes, notes and reminders together.",
-    image: require("@/assets/illustrations/intro-day.png"),
+    image: require("@/assets/illustrations/auth-study-v2.png"),
   },
   {
     title: "Find your campus people",
     body: "Join conversations and share what matters.",
-    image: require("@/assets/illustrations/intro-people.png"),
+    image: require("@/assets/illustrations/feed-empty-v2.png"),
   },
   {
     title: "More from campus life",
     body: "Shop local, learn together and get things delivered.",
-    image: require("@/assets/illustrations/intro-market.png"),
+    image: require("@/assets/illustrations/home-student-v2.png"),
   },
 ] as const;
 export default function FirstInstallIntro() {

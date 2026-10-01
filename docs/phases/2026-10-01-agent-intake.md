@@ -1,6 +1,6 @@
 # Progressive agent application and private identity review
 
-Vendor, tutor and rider applications now have five steps: personal details, campus, work, evidence and review. Categories and teaching levels use choices. Original KampusOne illustrations accompany the steps. Applicants can save a draft, resume it on another signed-in session and review their entries before agreeing to the terms. Vendor school/business evidence is required; CAC registration is optional. Existing age and independent guardian-consent rules remain enforced.
+Vendor, tutor and rider applications now have five steps: personal details, campus, work, evidence and review. Categories and teaching levels use choices. Illustrations from the existing approved KampusOne character family accompany the steps, following the owner's latest visual correction. New original replacements remain blocked by Higgsfield's Basic-plan requirement; see `docs/assets/2026-10-01-onboarding-art.md`. Applicants can save a draft, resume it on another signed-in session and review their entries before agreeing to the terms. Vendor school/business evidence is required; CAC registration is optional. Existing age and independent guardian-consent rules remain enforced.
 
 The evidence step has a front-camera preview, oval guide, capture, confirmation, retake and private upload. Streams stop on leaving the page, closing the camera or hiding the tab. Unsupported/denied cameras have a portrait-upload fallback. A photograph is evidence for human review, not automated liveness, face recognition or verified NIN.
 

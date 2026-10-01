@@ -1,28 +1,29 @@
-# Original onboarding illustrations
+# Onboarding illustration correction
 
-Generated with the built-in image generation tool for the first-install introduction. No reference image was copied or existing illustration edited. Cream backgrounds are intentional; transparency is false. Text stays in native UI for accessibility and small screens. These PNGs are bundled with the application.
+The owner's latest references take precedence over the earlier generated scenes: use the current small, isolated student characters, simple brown outlines, terracotta/cream clothes, restrained shading and generous clear space. Avoid detailed shops, campus buildings, crowds, scenery and collage compositions.
 
-## Your day
+The rejected `intro-day.png`, `intro-people.png` and `intro-market.png` files have been removed. The three first-install screens and progressive agent portal now use the existing approved illustration family:
 
-Saved asset: `mobile/assets/illustrations/intro-day.png`
+| Screen / use | Bundled illustration |
+| --- | --- |
+| Your campus day / study | `mobile/assets/illustrations/auth-study-v2.png` |
+| Campus people / conversations | `mobile/assets/illustrations/feed-empty-v2.png` |
+| Campus services / welcome | `mobile/assets/illustrations/home-student-v2.png` |
 
-Prompt:
+Headings, descriptions, controls and progress remain accessible native/UI text. Artwork is contained rather than cropped and does not introduce text or mock interface panels.
 
-> Use case: illustration-story. Asset type: first-install mobile onboarding illustration for KampusOne, a Nigerian campus app. Primary request: an original warm editorial illustration of a Nigerian university student checking today's timetable on a phone beside a notebook and a simple campus clock, not a screenshot or UI mockup. Style: confident thin dark-ink outlines, flat terracotta and soft peach shapes, quiet hand-painted paper texture, expressive but natural proportions. Composition: square standalone scene with one student and essential study props, generous clean space around subject, no cropping of head or hands. Colors: deep terracotta #A8462E, clay #D9855F, sand #F1DFC8, campus ink #29231F on solid warm cream #FBF7F2. Friendly campus-specific atmosphere, no purple, no gradients, no floating SaaS interface panels, no lettering, no logo, no watermark.
+## Requested new artwork
 
-## Campus people
+Higgsfield was invoked with the owner's attached current welcome illustration as a style reference. The owner selected the personal Gmail connection. Three transparent 3:4, 1K, low-quality GPT Image jobs were prepared and cost-preflighted; submission returned **Requires basic plan or higher**, with zero jobs submitted. No new Higgsfield output was produced, downloaded or substituted. Reusing the existing artwork keeps the current screens consistent; three distinct original replacements remain a visual release dependency.
 
-Saved asset: `mobile/assets/illustrations/intro-people.png`
+Prepared common direction:
 
-Prompt:
+> Match the supplied current KampusOne illustration pattern: an isolated original 2D Nigerian student character with natural proportions, simplified facial features, fine brown outlines, flat terracotta and cream clothing, restrained shading and subtle texture. Use a transparent background, generous clear space and a quiet composition. No words, logo, phone interface, buildings, crowd, scenic background, photographic rendering or 3D styling.
 
-> Use case: illustration-story. Asset type: first-install mobile onboarding illustration for KampusOne, a Nigerian campus app. Primary request: an original warm editorial illustration of two Nigerian university friends, a young woman with natural braids and a young man with short hair, exchanging a campus update using their phones while standing by a small campus noticeboard and tree. Style: confident thin dark-ink outlines, flat terracotta and soft peach shapes, quiet hand-painted paper texture, expressive but natural proportions. Composition: square standalone scene, a purposeful student interaction and just a few campus props, generous clean space around subjects, no cropping of heads or hands. Colors: deep terracotta #A8462E, clay #D9855F, sand #F1DFC8, campus ink #29231F on solid warm cream #FBF7F2. Friendly campus-specific atmosphere, no purple, no gradients, no floating SaaS interface panels, no lettering, no logo, no watermark.
+Prepared subjects:
 
-## Campus services
+1. A student checking a phone with a notebook, to represent planning the campus day.
+2. Two students sharing a campus update with a small friendly gesture, to represent community.
+3. A vendor and student exchanging a small paper bag, with no stall or extra scenery, to represent campus services.
 
-Saved asset: `mobile/assets/illustrations/intro-market.png`
-
-Prompt:
-
-> Use case: illustration-story. Asset type: first-install mobile onboarding illustration for KampusOne, a Nigerian campus app. Primary request: an original warm editorial illustration of a Nigerian student collecting a small purchase from a campus vendor, with a tutor's notebook and a rider bicycle subtly present in the scene to suggest trusted campus services. Show a simple tidy campus stall, a friendly woman vendor and student buyer, a small parcel exchanged naturally. Style: confident thin dark-ink outlines, flat terracotta and soft peach shapes, quiet hand-painted paper texture, expressive but natural proportions. Composition: square standalone scene, a purposeful transaction with a few relevant props, generous clean space around subjects, no cropping of heads or hands. Colors: deep terracotta #A8462E, clay #D9855F, sand #F1DFC8, campus ink #29231F on solid warm cream #FBF7F2. Friendly campus-specific atmosphere, no purple, no gradients, no floating SaaS interface panels, no lettering, no logo, no watermark.
-
+Review any future output against the supplied welcome and Today references before replacing the bundled assets. Generation must use the explicitly selected connection; do not purchase a plan or switch accounts automatically.
