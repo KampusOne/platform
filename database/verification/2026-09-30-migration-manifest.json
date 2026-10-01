@@ -530,6 +530,14 @@
       "gitBlobSha": "c8416d7ad8818c4438b0fd1dd883c2f3d264f38f",
       "status": "queued_in_this_update",
       "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20261001030000_server_only_private_privileges",
+      "path": "database/neon/migrations/20261001030000_server_only_private_privileges.sql",
+      "sha256": "f0cdebbd2a5c614fd56606f44f0adf43b40c8ba1d4bc8e6cda774b10f440d70b",
+      "gitBlobSha": "2c2af64b0153da0ffecf39ebaf2bae39f3226643",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false
     }
   ],
   "liveReconciliation": {
