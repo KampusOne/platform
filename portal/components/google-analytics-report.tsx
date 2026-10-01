@@ -4,6 +4,7 @@ import { portalApi } from "@/lib/api";
 import { useAdminContext } from "./admin-context";
 import { downloadCsv } from "@/lib/csv";
 import { DailyActivity } from "./daily-activity";
+import {ScreenTimeReport} from './screen-time-report';
 type Row = Record<string, string | number>;
 type Report =
   | {
@@ -106,6 +107,7 @@ export function GoogleAnalyticsReport({
   if (!can("analytics.view")) return null;
   return (
     <section className="ga4-workspace">
+      <ScreenTimeReport/>
       <div className="panel-heading">
         <div>
           <p className="section-kicker">Google Analytics 4</p>

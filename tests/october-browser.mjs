@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {execFileSync,spawn} from 'node:child_process';
+import {execFile,spawn} from 'node:child_process';
+import {promisify} from 'node:util';
 import {createServer} from 'node:http';
 import {readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
 import {extname,resolve} from 'node:path';
@@ -40,24 +41,26 @@ const web=createServer((req,res)=>{
  res.setHeader('Content-Type',types[extname(file)]??'application/octet-stream');res.end(readFileSync(file));
 });
 const portal=spawn('npm',['run','start','--','--port','3100'],{cwd:resolve(root,'portal'),stdio:'pipe',env:process.env});let portalLog='';for(const stream of [portal.stdout,portal.stderr])stream.on('data',b=>portalLog+=b.toString());
-function browser(...args){return execFileSync('agent-browser',args,{encoding:'utf8',timeout:60000,env:process.env});}
-function check(js){const out=execFileSync('agent-browser',['eval','--stdin'],{input:js,encoding:'utf8',timeout:60000,env:process.env});writeFileSync(resolve(evidence,'checks.log'),out,{flag:'a'});return out;}
+const execute=promisify(execFile);
+async function browser(...args){return (await execute('agent-browser',args,{encoding:'utf8',timeout:60000,env:process.env})).stdout;}
+async function check(js){const out=await browser('eval','-b',Buffer.from(js).toString('base64'));writeFileSync(resolve(evidence,'checks.log'),out,{flag:'a'});return out;}
 async function awaitServer(url){for(let i=0;i<45;i++){try{if((await fetch(url)).ok)return;}catch{}await new Promise(r=>setTimeout(r,1000));}throw new Error('Local build did not start: '+url);}
 try{
  await new Promise(r=>api.listen(8787,r));await new Promise(r=>web.listen(8100,r));await awaitServer('http://localhost:3100/agents');
- browser('set','viewport','390','844');browser('open','http://localhost:3100/agents');browser('wait','--fn',"Boolean(document.querySelector('.agent-onboarding-form'))");
- writeFileSync(resolve(evidence,'agent-mobile-snapshot.txt'),browser('snapshot','-i'));
- check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Agent screen overflows');const form=document.querySelector('.agent-onboarding-form');if(!form)throw new Error('Onboarding form missing');if(!document.querySelector('[role=progressbar]'))throw new Error('Step progress missing');return 'Mobile agent form fits and step progress is available'})()");
- browser('screenshot',resolve(evidence,'agent-mobile.png'),'--full');browser('find','role','button','click','--name','Continue','--exact');browser('wait','--text','Your campus');
- browser('screenshot',resolve(evidence,'agent-campus-mobile.png'),'--full');
- check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Campus step overflows');if(!document.querySelector('select'))throw new Error('Campus choices missing');return 'Continue advances the saved draft to campus choices'})()");
- browser('set','viewport','1440','1000');browser('screenshot',resolve(evidence,'agent-desktop.png'),'--full');
- browser('set','viewport','390','844');browser('open','http://localhost:8100/__verify-map.html');browser('wait','--fn','window.mapReady===true');
- check("(()=>{const d=document.querySelector('iframe').contentDocument;const c=d.querySelector('canvas');if(!c||c.width<300||c.height<600)throw new Error('Map canvas failed');if(!d.querySelector('.maplibregl-ctrl-attrib').textContent.includes('OpenStreetMap'))throw new Error('Map credit missing');return 'Real MapLibre canvas and OSM attribution are visible'})()");
- browser('wait','1000');browser('screenshot',resolve(evidence,'ugbowo-map-mobile.png'));writeFileSync(resolve(evidence,'map-snapshot.txt'),browser('snapshot','-i'));
- browser('mouse','move','180','350');browser('mouse','wheel','-350');browser('mouse','down','left');browser('mouse','move','260','390','--duration','350','--steps','12');browser('mouse','up','left');browser('screenshot',resolve(evidence,'ugbowo-map-after-gestures.png'));
- check("window.showCampus('ekehuan');'Switched renderer to sourced Ekehuan features'");browser('wait','1000');browser('screenshot',resolve(evidence,'ekehuan-map-mobile.png'));
- check("(()=>{if(window.mapErrors.length)throw new Error(window.mapErrors.join('; '));return 'Both campus payloads render without tile error notices'})()");
- const errors=browser('errors','--json');writeFileSync(resolve(evidence,'browser-errors.json'),errors);const parsed=JSON.parse(errors);assert.equal(parsed.success,true);assert.equal(parsed.data?.errors?.length??0,0,'Browser reported runtime errors');
+ await browser('set','viewport','390','844');await browser('open','http://localhost:3100/agents');await browser('wait','--fn',"Boolean(document.querySelector('.agent-onboarding-form'))");
+ writeFileSync(resolve(evidence,'agent-mobile-snapshot.txt'),await browser('snapshot','-i'));
+ await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Agent screen overflows');const form=document.querySelector('.agent-onboarding-form');if(!form)throw new Error('Onboarding form missing');if(!document.querySelector('[role=progressbar]'))throw new Error('Step progress missing');return 'Mobile agent form fits and step progress is available'})()");
+ await browser('screenshot',resolve(evidence,'agent-mobile.png'),'--full');await browser('find','role','button','click','--name','Continue','--exact');await browser('wait','--text','Your campus');
+ await browser('screenshot',resolve(evidence,'agent-campus-mobile.png'),'--full');
+ await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Campus step overflows');if(!document.querySelector('select'))throw new Error('Campus choices missing');return 'Continue advances the saved draft to campus choices'})()");
+ await browser('set','viewport','1440','1000');await browser('screenshot',resolve(evidence,'agent-desktop.png'),'--full');
+ await browser('set','viewport','390','844');await browser('open','http://localhost:8100/__verify-map.html');await browser('wait','--fn','window.mapReady===true');
+ await check("(()=>{const d=document.querySelector('iframe').contentDocument;const c=d.querySelector('canvas');if(!c||c.width<300||c.height<600)throw new Error('Map canvas failed');if(!d.querySelector('.maplibregl-ctrl-attrib').textContent.includes('OpenStreetMap'))throw new Error('Map credit missing');return 'Real MapLibre canvas and OSM attribution are visible'})()");
+ await browser('wait','1000');await browser('screenshot',resolve(evidence,'ugbowo-map-mobile.png'));writeFileSync(resolve(evidence,'map-snapshot.txt'),await browser('snapshot','-i'));
+ await browser('mouse','move','180','350');await browser('mouse','wheel','-350');await browser('mouse','down','left');await browser('mouse','move','260','390','--duration','350','--steps','12');await browser('mouse','up','left');await browser('screenshot',resolve(evidence,'ugbowo-map-after-gestures.png'));
+ await check("window.showCampus('ekehuan');'Switched renderer to sourced Ekehuan features'");await browser('wait','1000');await browser('screenshot',resolve(evidence,'ekehuan-map-mobile.png'));
+ await check("(()=>{if(window.mapErrors.length)throw new Error(window.mapErrors.join('; '));return 'Both campus payloads render without tile error notices'})()");
+ const errors=await browser('errors','--json');writeFileSync(resolve(evidence,'browser-errors.json'),errors);const parsed=JSON.parse(errors);assert.equal(parsed.success,true);assert.equal(parsed.data?.errors?.length??0,0,'Browser reported runtime errors');
  writeFileSync(resolve(evidence,'result.json'),JSON.stringify({sourceSha:process.env.GITHUB_SHA,verifiedAt:new Date().toISOString(),result:'passed',scope:'Compiled agent form with local draft fixture; real two-campus MapLibre renderer; desktop/mobile layout; map wheel and pan. Native APK gestures, live payments, camera, native push and gallery require separate verification.'},null,2));
-}finally{try{browser('close');}catch{}portal.kill();api.close();web.close();writeFileSync(resolve(evidence,'portal.log'),portalLog);}
+}catch(error){try{writeFileSync(resolve(evidence,'failure-snapshot.txt'),await browser('snapshot','-i'));await browser('screenshot',resolve(evidence,'failure.png'),'--full');writeFileSync(resolve(evidence,'failure-errors.json'),await browser('errors','--json'));}catch{}throw error;
+}finally{try{await browser('close');}catch{}portal.kill();api.close();web.close();writeFileSync(resolve(evidence,'portal.log'),portalLog);}

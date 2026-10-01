@@ -39,6 +39,8 @@ export const unifiedMigrations = [
   "20260928120500_profile_activity_dismissals_and_demo_retirement.sql",
   "20261001183000_poll_privacy.sql",
   "20261001189000_notification_runtime_controls.sql",
+  "20261001192000_trusted_vendor_intake.sql",
+  "20261001194000_foreground_usage_samples.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */

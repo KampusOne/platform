@@ -10,6 +10,7 @@ const compatiblePrerequisites = new Set([
 const manifest = JSON.parse(readFileSync(new URL("../../database/verification/2026-09-30-migration-manifest.json", import.meta.url), "utf8"));
 
 export const groups = {
+  october: JSON.parse(readFileSync(new URL('../../database/verification/2026-10-01-october-manifest.json',import.meta.url),'utf8')).migrations.map(m=>m.version),
   platform: manifest.migrations
     .filter(migration => migration.version >= "20260921000000" && !compatiblePrerequisites.has(migration.version))
     .map(migration => migration.version),
@@ -97,7 +98,7 @@ export function verifySchemaProof(proof, group, loadMigration) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const root = new URL("../../", import.meta.url);
   try {
-    const proofFile = process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
+    const proofFile = process.argv[2] === "october" ? "production-20261001-october.json" : process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
     const proof = JSON.parse(readFileSync(new URL(`database/verification/${proofFile}`, root), "utf8"));
     const count = verifySchemaProof(proof, process.argv[2], (version) =>
       readFileSync(new URL(`database/neon/migrations/${version}.sql`, root)));

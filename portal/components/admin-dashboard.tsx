@@ -21,6 +21,7 @@ import { PortalApiError, portalApi } from "@/lib/api";
 import { useAdminContext } from "./admin-context";
 import{ActivityOverview}from"./activity-overview";
 import { ApplicationBulkReview } from "./application-bulk-review";
+import {TrustedVendorAdmin} from './trusted-vendor-admin';
 import { ApplicationDocuments } from "./application-documents";
 import { TransientNotice } from "./transient-notice";
 
@@ -717,7 +718,7 @@ function ApplicationsView({
 }) {
   const [selected, setSelected] = useState<AgentApplication | null>(null);
   return (
-    <><ApplicationBulkReview applications={applications} onChanged={() => { setSelected(null); onChanged(); }} />
+    <><TrustedVendorAdmin/><ApplicationBulkReview applications={applications} onChanged={() => { setSelected(null); onChanged(); }} />
     <section className="dashboard-grid dashboard-grid--review">
       <article className="panel table-panel">
         <div className="panel-heading">

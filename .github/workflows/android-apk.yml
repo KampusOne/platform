@@ -80,7 +80,7 @@ jobs:
         env:
           CI: "1"
           EXPO_NO_TELEMETRY: "1"
-          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID }}
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID || secrets.EXPO_EAS_PROJECT_ID }}
           GOOGLE_SERVICES_JSON_PATH: ./google-services.json
       - name: Build installable APK with bundled JavaScript
         run: ./gradlew assembleRelease --no-daemon
@@ -90,7 +90,7 @@ jobs:
           NODE_ENV: production
           EXPO_PUBLIC_KAMPUSONE_API_URL: https://platformp.divine-haze-54eb.workers.dev
           EXPO_PUBLIC_KAMPUSONE_API_FALLBACK_URL: https://kampusone-mobile-preview.vercel.app/api
-          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID }}
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID || secrets.EXPO_EAS_PROJECT_ID }}
       - name: Prepare public APK
         run: cp mobile/android/app/build/outputs/apk/release/*.apk KampusOne-Android.apk
       - name: Save Android testing artifact

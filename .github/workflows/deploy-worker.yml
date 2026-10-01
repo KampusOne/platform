@@ -76,13 +76,23 @@ jobs:
         run: node server/scripts/verify-schema-proof.mjs corrections
       - name: Guard current platform and onboarding migrations
         run: node server/scripts/verify-schema-proof.mjs platform
+      - name: Guard October correction migrations
+        run: node server/scripts/verify-schema-proof.mjs october
+      - name: Prepare initial identity encryption for the same release
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node server/scripts/prepare-identity-secrets.mjs "${{ runner.temp }}/kampusone-identity-secrets.json"
       - name: Deploy verified Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: server
-          command: deploy
+          command: deploy --secrets-file ${{ runner.temp }}/kampusone-identity-secrets.json
+      - name: Remove temporary identity configuration
+        if: always()
+        run: rm -f "${{ runner.temp }}/kampusone-identity-secrets.json"
       - name: Verify production health and authenticated route boundary
         env:
           API_URL: https://platformp.divine-haze-54eb.workers.dev

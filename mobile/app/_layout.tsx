@@ -18,6 +18,7 @@ import {
 } from "@expo-google-fonts/lato";
 import { StyleSheet } from "react-native";
 import { ScreenVisitTracker } from "@/src/components/screen-visit-tracker";
+import {ForegroundUsageTracker} from '@/src/components/foreground-usage-tracker';
 import { AuthProvider } from "@/src/auth/auth-context";
 import { ToastProvider } from "@/src/components/toast";
 import { useEffect, useState } from "react";
@@ -80,6 +81,7 @@ export default function RootLayout() {
       <StartupProvider><ToastProvider><AlarmSync/><NotificationBootstrap /><AutoStreak />
         <StatusBar style={isDark ? "light" : "dark"} />
         <ScreenVisitTracker />
+        <ForegroundUsageTracker/>
         <AppErrorBoundary>
           <Stack
             screenOptions={{

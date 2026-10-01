@@ -9,6 +9,8 @@ export async function requireFullKyc(
   applicationId: string,
   requireBank = true,
 ) {
+  const trusted=firstRow(await database(env).execute<{birth_date:string,user_id:string,bank_status:string}>(sql`select t.birth_date::text,a.user_id,a.bank_status from public.agent_applications a join app_private.trusted_vendor_intakes t on t.application_id=a.id join app_private.trusted_vendor_invites i on i.id=t.invite_id join public.users u on u.id=a.user_id where a.id=${applicationId}::uuid and a.agent_type='VENDOR' and a.status='APPROVED' and a.kyc_status='MANUALLY_VERIFIED' and a.phone_verified_at is not null and a.terms_accepted_at is not null and t.approved_at is not null and t.reviewed_by is not null and length(t.review_note)>=20 and i.revoked_at is null and i.institution_id=a.university_id and i.claimed_user_id=a.user_id and lower(i.email)=lower(u.email) and u.status='ACTIVE' and u.deleted_at is null and date_part('year',age(current_date,t.birth_date)) between 18 and 110`));
+  if(trusted){if(requireBank&&trusted.bank_status!=='VERIFIED')throw new AppError(409,'KYC_REQUIRED','Complete bank verification first.');return trusted;}
   const row = firstRow(
     await database(env).execute<{
       birth_date: string;

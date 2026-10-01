@@ -3,7 +3,7 @@ import {createDefaultMapSources} from './providers.js';
 maplibregl.setWorkerUrl(new URL('./maplibre-gl-worker.mjs',import.meta.url).href);
 const post=(value)=>{const text=JSON.stringify(value);if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(text);else parent.postMessage(text,location.origin);};
 let catalog=createDefaultMapSources();let campusId='',focusNonce=0,lastLayer='osm',failures=0,loaded=false;
-const map=new maplibregl.Map({container:'map',style:{version:8,sources:{base:{type:'raster',tiles:catalog.sources[0].tiles,tileSize:256,attribution:catalog.sources[0].attribution}},layers:[{id:'base',type:'raster',source:'base'}]},center:[5.618838,6.398255],zoom:15,minZoom:2,maxZoom:20,dragRotate:true,touchZoomRotate:true,attributionControl:false});
+const map=new maplibregl.Map({container:'map',style:{version:8,glyphs:'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',sources:{base:{type:'raster',tiles:catalog.sources[0].tiles,tileSize:256,attribution:catalog.sources[0].attribution}},layers:[{id:'base',type:'raster',source:'base'}]},center:[5.618838,6.398255],zoom:15,minZoom:2,maxZoom:20,dragRotate:true,touchZoomRotate:true,attributionControl:false});
 map.addControl(new maplibregl.AttributionControl({compact:false}),'top-left');
 map.addControl(new maplibregl.NavigationControl({showCompass:true}),'top-right');
 const empty={type:'FeatureCollection',features:[]};
@@ -19,8 +19,6 @@ map.on('load',()=>{
  map.addLayer({id:'cluster-count',type:'symbol',source:'places',filter:['has','point_count'],layout:{'text-field':['get','point_count_abbreviated'],'text-size':12},paint:{'text-color':'#fff'}});
  map.addLayer({id:'poi',type:'circle',source:'places',filter:['!', ['has','point_count']],paint:{'circle-radius':['case',['get','selected'],10,6],'circle-color':colours,'circle-stroke-width':2,'circle-stroke-color':'#fff'}});
  map.addLayer({id:'poi-label',type:'symbol',source:'places',minzoom:16,filter:['!', ['has','point_count']],layout:{'text-field':['get','name'],'text-size':12,'text-anchor':'top','text-offset':[0,1],'text-max-width':12,'text-allow-overlap':false},paint:{'text-color':'#332821','text-halo-color':'#fff','text-halo-width':2}});
- // MapLibre needs glyphs for cluster labels; use its documented public font endpoint.
- map.setGlyphs('https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf');
  map.addLayer({id:'my-position',type:'circle',source:'position',paint:{'circle-radius':7,'circle-color':'#367cca','circle-stroke-width':3,'circle-stroke-color':'#fff'}});
  map.on('click','clusters',async e=>{const feature=e.features[0];try{const zoom=await map.getSource('places').getClusterExpansionZoom(feature.properties.cluster_id);map.easeTo({center:feature.geometry.coordinates,zoom});}catch{}});
  map.on('click','poi',e=>post({type:'pick',id:String(e.features[0].properties.id)}));post({type:'ready'});

@@ -1,0 +1,84 @@
+{
+  "migrations": [
+    {
+      "version": "20261001180000_map_v2_and_message_uploads",
+      "sourceBlobSha": "f4c8f95371355e2791d05fd6fc15d3996dcca927",
+      "sha256": "1b9cbb2b56d34e37f48c63d8ee5129f7d3e78b892c04fde2713834dec9143940"
+    },
+    {
+      "version": "20261001181000_message_activity_and_alarm_completion",
+      "sourceBlobSha": "d799947e7a7bc78f11cdb0437d432fd85a16fbe6",
+      "sha256": "864a5c425aa7bf491acd662cf4a3399ca790c5a029f744a69e0811048df0f0db"
+    },
+    {
+      "version": "20261001182000_discount_codes_and_newsletter_access",
+      "sourceBlobSha": "a50ddb0982509e73c1d55e848c989bca3f2b53f4",
+      "sha256": "2532db172e40f3b38a380d8494ebccb301c1c48695b5bf60e4706d425d93c672"
+    },
+    {
+      "version": "20261001183000_poll_privacy",
+      "sourceBlobSha": "58a4ec634aca12686e3217e890ddc4a4f4e396d9",
+      "sha256": "734a3a0b571cc894579f708a39807ad1120be04bafd16abb80e734ece3a809b4"
+    },
+    {
+      "version": "20261001184000_atomic_map_review",
+      "sourceBlobSha": "85ebf81c539aaf69db7ac944ae6b5c76468d727e",
+      "sha256": "862a9b9c7a07e45b7462d907162f9eec8be49184e3a8932c0af479e5df8324c4"
+    },
+    {
+      "version": "20261001185000_scoped_commerce_discounts",
+      "sourceBlobSha": "61544279e842c9f2ac57fdb0a5d925a4d7d6ccf6",
+      "sha256": "eb7acde5354c7769ac507a64801645b8521ea9795948d6fe44bda53e1218e7b8"
+    },
+    {
+      "version": "20261001185500_material_discounts",
+      "sourceBlobSha": "0ccd36d1b9d50e01e548d831453df2d8163ff4ad",
+      "sha256": "419e8bb639cb449bad1a8e0b44651a82045342047c8d4cf86dc3854a1e6a180b"
+    },
+    {
+      "version": "20261001186000_sourced_map_import",
+      "sourceBlobSha": "46f09478f6c20c7688c1fbcd443682f5a57a014f",
+      "sha256": "0a73326f8afb749e4a44253e624cc6c92a80c00a48f2602a128004e447e091b7"
+    },
+    {
+      "version": "20261001187000_media_limits_map_capture_controls",
+      "sourceBlobSha": "62f75c845436254703da2ce42bba6a164778ca73",
+      "sha256": "d6b51d724d67ad2c4302605bb7eb2f3c4c106ab31c66ca11b43f9b81bd9d59ac"
+    },
+    {
+      "version": "20261001188000_atomic_map_capture_review",
+      "sourceBlobSha": "5362ce5bd159c5534cf6dda312f1f5a03ecea138",
+      "sha256": "c9793abb1e7ed5e3a17fc9fdcb741d1ba8872a904cb4d39cd886165a1dc30e3d"
+    },
+    {
+      "version": "20261001189000_notification_runtime_controls",
+      "sourceBlobSha": "b984dc60afce957333748917c9707212b2a26615",
+      "sha256": "a07c9f0c820f7480a66cc823655dbd8588a9f920922a5f3b3c90e9fc15f0df2c"
+    },
+    {
+      "version": "20261001190000_atomic_large_upload_allowance",
+      "sourceBlobSha": "70e2131b2995e15b6189b5fbd507aa71f451568c",
+      "sha256": "33823acb739d988b8752b2cc26fb4879d33d05fd0438ef7efa5177bd9687359a"
+    },
+    {
+      "version": "20261001191000_activate_fixed_uniben_kira_plan",
+      "sourceBlobSha": "75dac40842f016faa4c1b94dee6436785a5a351d",
+      "sha256": "0843c2e7773177ab68824b4715fc9b12ce410ef59a7b3024fc8f0c80c02c243c"
+    },
+    {
+      "version": "20261001192000_trusted_vendor_intake",
+      "sourceBlobSha": "3bdab41c915403413bb255cd15b8533a0bbc5141",
+      "sha256": "51abf81a18af5879db08c977448f43e401bb034263e0a252141294062fbb6883"
+    },
+    {
+      "version": "20261001193000_trusted_vendor_verified_bank_guard",
+      "sourceBlobSha": "faa22f202c017f3afa86f6e8e1f02e252a8fa96d",
+      "sha256": "7f70b9dd27ce226a9e9597fa69c24ce77cbd18044d7660e7b6cd9a8bb5688711"
+    },
+    {
+      "version": "20261001194000_foreground_usage_samples",
+      "sourceBlobSha": "229e4bad96ab7eeb84fd6f7f16ec826d708c1447",
+      "sha256": "cde96272fd71f950dee3fbe9ddb03d1f131145bed2b92514a310eea988b680da"
+    }
+  ]
+}

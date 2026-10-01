@@ -12,6 +12,7 @@ const surfaceBySubdomain: Record<string, string> = {
 export function proxy(request: NextRequest) {
   const hostname = request.headers.get("host")?.split(":")[0] ?? "";
   const subdomain = hostname.split(".")[0] ?? "";
+  if(hostname==='vendors.kampusone.app'&&request.nextUrl.pathname==='/'){const target=request.nextUrl.clone();target.pathname='/exclusive';return NextResponse.rewrite(target);}
   if (subdomain === "admin") return new NextResponse("Not found", { status: 404 });
   const surface = surfaceBySubdomain[subdomain];
   if (hostname === "links.kampusone.app") {
