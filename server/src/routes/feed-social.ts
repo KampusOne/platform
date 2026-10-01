@@ -88,6 +88,7 @@ function joins(user: User, quotedAuthorVisible: SQL) {
     left join public.content_sources quoted_source on quoted_source.id = quoted.source_id
     left join public.profiles quoted_author on quoted_author.user_id = quoted.author_user_id and quoted_author.deleted_at is null`;
 }
+export { projection as feedPostProjection, joins as feedPostJoins };
 async function readPost(c: Context<Env>, postId: string) {
   const user = currentUser(c);
   const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
@@ -202,6 +203,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
     c,
     z.object({
       body: z.string().trim().max(5000),
+      language:z.enum(['en','pcm','yo','ig','ha','und']).default('und'),
       requestId: uuid,
       mediaId: uuid.optional(),
       media: z.array(mediaInput).max(5).optional(),
@@ -265,9 +267,10 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
       body: string;
       image_url: string | null;
       quoted_post_id: string | null;
+      language: string;
       media_matches: boolean;
     }>(sql`
-      select id, body, image_url, quoted_post_id,
+      select id, body, image_url, quoted_post_id,coalesce(audience->>'language','und') as language,
         coalesce(audience->'media', '[]'::jsonb) = ${mediaPayloadJson}::jsonb as media_matches
       from public.feed_posts
       where author_user_id = ${user.id}::uuid and client_request_id = ${data.requestId}::uuid
@@ -277,6 +280,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
   if (retry) {
     if (
       retry.body !== data.body ||
+      retry.language !== data.language ||
       (retry.quoted_post_id ?? null) !== (data.quotedPostId ?? null) ||
       (retry.image_url ?? null) !== imageUrl ||
       (hasMediaArray && !retry.media_matches)
@@ -315,6 +319,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
       ${imageUrl},
       jsonb_build_object(
         'studentPost', true,
+        'language',${data.language}::text,
         'mediaType', ${mediaType}::text,
         'media', ${mediaPayloadJson}::jsonb,
         'visibility', case when ${data.quotedPostId ?? null}::uuid is null
@@ -329,6 +334,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
     on conflict(author_user_id, client_request_id) where client_request_id is not null
     do update set client_request_id = excluded.client_request_id
       where feed_posts.body = excluded.body
+        and coalesce(feed_posts.audience->>'language','und')=coalesce(excluded.audience->>'language','und')
         and feed_posts.image_url is not distinct from excluded.image_url
         and feed_posts.quoted_post_id is not distinct from excluded.quoted_post_id
         and (

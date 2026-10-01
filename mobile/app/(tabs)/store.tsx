@@ -29,6 +29,8 @@ import { CreateAction } from "@/src/components/create-action";
 
 import { useReducedMotionPreference } from "@/src/components/visual-system";
 import { ApiError, api } from "@/src/lib/api";
+import { useToast } from "@/src/components/toast";
+import { shareItem } from "@/src/lib/share-content";
 import { theme } from "@/src/theme";
 
 type Product = {
@@ -1146,6 +1148,7 @@ function ProductCard({
   const { theme, styles } = useThemeStyles(createStyles);
 
   const outOfStock = Number(product.stock_quantity) <= 0;
+  const toast = useToast();
 
   return (
     <View style={[styles.card, { width }]}>
@@ -1172,6 +1175,7 @@ function ProductCard({
           <Text numberOfLines={1} style={styles.category}>
             {product.category}
           </Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Share ${product.name}`} onPress={()=>void shareItem("product",product.id,product.name).catch(()=>toast("Sharing could not open.","error"))} style={{minWidth:44,minHeight:44,justifyContent:"center",alignItems:"center",marginLeft:"auto"}}><Ionicons name="share-outline" color={theme.brand} size={19}/></Pressable>
         </View>
         <Text
           android_hyphenationFrequency="none"

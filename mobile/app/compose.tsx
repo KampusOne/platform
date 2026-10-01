@@ -12,6 +12,7 @@ import { useAuth } from "@/src/auth/auth-context";
 
 import { QuotedPostPreview } from "@/src/components/quoted-post";
 import { useToast } from "@/src/components/toast";
+import { languages } from "@/src/lib/discovery";
 import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
 import { validPostId } from "@/src/lib/feed-posts";
@@ -59,6 +60,7 @@ export default function Compose() {
   mediaRef.current = media;
   const [selecting, setSelecting] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [language, setLanguage] = useState("und");
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const pickerLock = useRef(false);
   const publishLock = useRef(false);
@@ -284,6 +286,7 @@ export default function Compose() {
           body,
           ...(attachments.length ? { media: attachments } : {}),
           requestId: requestId.current,
+          language,
           ...(isQuote ? { quotedPostId: quoteId } : {}),
         }),
       });
@@ -376,6 +379,7 @@ export default function Compose() {
             />
           ) : null}
 
+          <Text style={{...text,fontSize:12,color:theme.textMuted,marginBottom:8}}>Post language</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7,paddingBottom:16}}>{languages.filter(([code])=>code!=="ANY").map(([code,label])=><Pressable key={code} accessibilityRole="radio" accessibilityState={{checked:language===code,disabled:publishing}} disabled={publishing} onPress={()=>{setLanguage(code);requestId.current=randomUUID();}} style={{minHeight:44,justifyContent:"center",paddingHorizontal:12,borderRadius:10,borderWidth:1,borderColor:language===code?theme.brand:theme.border,backgroundColor:language===code?theme.surfaceTint:theme.surface}}><Text style={{...text,fontSize:12,color:language===code?theme.brand:theme.textMuted}}>{label}</Text></Pressable>)}</ScrollView>
           {media.length ? (
             <View style={{ marginBottom: 15 }}>
               <ScrollView

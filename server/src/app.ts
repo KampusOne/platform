@@ -1,3 +1,4 @@
+import { discoveryRoutes } from './routes/discovery';
 import {campusAdminRoutes} from "./routes/campus-admin";
 import { peopleRoutes } from "./routes/people";
 import { messageRoutes } from "./routes/messages";
@@ -134,6 +135,7 @@ app.route("/v1/payments", paymentRoutes);
 app.route("/v1/account", accountRoutes);
 app.route("/v1/people", peopleRoutes);
 app.route("/v1/messages", messageRoutes);
+app.route("/v1/discovery", discoveryRoutes);
 app.route("/v1/media", mediaRoutes);
 app.route("/v1/learning", learningRoutes);
 app.route("/v1/calendar", calendarRoutes);

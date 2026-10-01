@@ -513,7 +513,7 @@ export default function OnboardingScreen() {
         }),
       });
       await reloadProfile();
-      router.replace("/(tabs)");
+      router.replace("/");
     } catch (caught) {
       setError(
         caught instanceof ApiError

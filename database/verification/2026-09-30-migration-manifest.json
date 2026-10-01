@@ -499,6 +499,14 @@
       "historicallyVerifiedApplied": false,
       "sha256": "8dd76169ebfb843c13ba1eff48ffaf99aa244514d9a7105d1cb4e5c533434bb9",
       "gitBlobSha": "dd3196362c57042c7d0a7102c94099c1166252cc"
+    },
+    {
+      "version": "20261001000000_discovery_search_indexes",
+      "path": "database/neon/migrations/20261001000000_discovery_search_indexes.sql",
+      "sha256": "eec8db149c9b0897eac395bbc185c707a9c3fd7ea33f0e8b9185eda507853199",
+      "gitBlobSha": "c824a333bbed0b1e8f8adf351db0815509bc2153",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false
     }
   ]
 }

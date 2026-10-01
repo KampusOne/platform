@@ -38,6 +38,7 @@ import { useToast } from "@/src/components/toast";
 import { FeedPost as FeedPostCard } from "@/src/components/feed-post";
 import { PostLinkDialog } from "@/src/components/post-menu";
 import { sharePostLink, type FeedPostData } from "@/src/lib/feed-posts";
+import { shareItem } from "@/src/lib/share-content";
 import { safeCount, type SocialFeedPost } from "@/src/lib/feed-social";
 import { ScreenSkeleton, ProfileSkeleton, ListSkeleton, FeedSkeleton } from "@/src/components/skeleton";
 import { theme } from "@/src/theme";
@@ -514,6 +515,7 @@ export default function ProfileScreen() {
             <Text style={styles.username}>
               @{profile?.username ?? "student"}
             </Text>
+            {user?.id?<Pressable accessibilityRole="button" accessibilityLabel="Share your public profile" onPress={()=>void shareItem("profile",user.id,name).catch(()=>toast("Sharing could not open.","error"))} style={{minWidth:44,minHeight:44,justifyContent:"center",alignItems:"center",marginLeft:"auto"}}><Ionicons name="share-outline" size={21} color={theme.brand}/></Pressable>:null}
           </View>
           {profile?.biography ? (
             <Text style={styles.bio}>{profile.biography}</Text>

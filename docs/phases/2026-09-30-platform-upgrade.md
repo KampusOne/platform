@@ -88,6 +88,12 @@ Validation: the full 475-test server suite in 47 files passes; three additional 
 
 Official references: https://paystack.com/docs/transfers/single-transfers/ · https://paystack.com/docs/api/transfer/ · https://support.paystack.com/en/articles/2130370 · https://support.paystack.com/en/articles/7573314 · https://support.paystack.com/en/articles/2130306
 
+## Discovery, sharing and introduction checkpoint
+
+Dedicated feed search now has real Top/Latest/People/Media tabs, username mode, author/date/language/activity/reply filters, visibility checks and cursor pagination. A common share sheet supports explicit sends to recent conversations, WhatsApp, copy and native sharing. Canonical business/profile/post/product/tutorial/material links preserve their destination through sign-in and have a website fallback with signing-identity association handlers. Three original illustrated first-install pages lead into the existing account screen. Implementation and release configuration are recorded in `docs/phases/2026-10-01-discovery-sharing.md`.
+
+Validation: all 483 server tests in 49 files, 130 root regression tests, 11 post-link tests and 10 contract tests pass. Server/mobile/portal/contracts type checks, server build, portal lint/production build and mobile production web export pass. The full publishing regression caught a missing parameter cast introduced with language metadata; it was corrected and the entire suite passed. Release certificate/domain configuration and browser/native acceptance remain outstanding.
+
 ## Publication and visual checks
 
 Changes are committed locally. Automatic approval review rejected pushing to the public `KampusOne/platform` repository because it would publish source and migration details without specific approval for that public payload and destination. No connector or other execution path was used to bypass the rejection.
@@ -109,6 +115,7 @@ New queued migrations:
 7. `20260930270000_verified_kira_subscription.sql`
 8. `20260930280000_verified_learning_materials.sql`
 9. `20260930290000_verified_agent_payouts.sql`
+10. `20261001000000_discovery_search_indexes.sql`
 
 These depend on the current account/agent schema, the Phase 3 commerce foundation and the unified notification tables. Readiness checks let the code be deployed before those migrations without querying absent new columns/functions. No earlier applied migration was edited.
 
@@ -116,9 +123,8 @@ These depend on the current account/agent schema, the Phase 3 commerce foundatio
 
 1. Actual campus road-route integration and reviewed fare coverage; cash commissions, four-debt locking and repayment are implemented with reviewed zone estimates.
 2. Merchant fee-setting acceptance, transfer-duty statement reconciliation and provider refunds/held-receipt recovery. Store/tutorial-session/material/Kira billing, verified payout reservations/transfers and approved provider-rate configuration are implemented.
-3. Common internal/external share sheet; device acceptance of persistent drafts and message interactions.
-4. Search tabs, working filters and profile/brand app links with website fallback.
-5. First-install illustrated introduction and progressive agent documents/selfie onboarding.
+3. Device acceptance of persistent drafts, focused message interactions, the common share sheet and signed app links.
+4. Progressive agent documents/selfie/NIN onboarding.
 6. Admin workspace redesign, staff accounts, analytics/exports/campaigns/private operations and moderation integration.
 7. Repository exposure audit, ordered migration rehearsal, deployment checks and Android APK.
 

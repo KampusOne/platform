@@ -16,6 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.kampusone.mobile",
+      "associatedDomains": ["applinks:links.kampusone.app"],
       "buildNumber": "40"
     },
     "android": {
@@ -24,6 +25,7 @@
         "backgroundColor": "#F1DFC7"
       },
       "package": "app.kampusone.mobile",
+      "intentFilters": [{ "action": "VIEW", "autoVerify": true, "data": [{ "scheme": "https", "host": "links.kampusone.app", "pathPrefix": "/s/" }], "category": ["BROWSABLE", "DEFAULT"] }],
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",

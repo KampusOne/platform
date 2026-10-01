@@ -115,8 +115,10 @@ export function SearchField({
   onChangeText,
   placeholder,
   onFilterPress,
-}: Pick<TextInputProps, "value" | "onChangeText" | "placeholder"> & {
-  onFilterPress?: () => void;
+  autoFocus,
+  onSubmitEditing,
+}: Pick<TextInputProps, "value" | "onChangeText" | "placeholder" | "autoFocus" | "onSubmitEditing"> & {
+  onFilterPress?: (() => void) | undefined;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
 
@@ -127,6 +129,8 @@ export function SearchField({
       <TextInput
         accessibilityLabel={placeholder}
         autoCapitalize="none"
+        autoFocus={autoFocus}
+        onSubmitEditing={onSubmitEditing}
         onBlur={() => setFocused(false)}
         onChangeText={onChangeText}
         onFocus={() => setFocused(true)}
@@ -146,7 +150,8 @@ export function SearchField({
         >
           <Ionicons color={theme.textMuted} name="close" size={20} />
         </Pressable>
-      ) : onFilterPress ? (
+      ) : null}
+      {onFilterPress ? (
         <Pressable
           accessibilityLabel="Open filters"
           accessibilityRole="button"

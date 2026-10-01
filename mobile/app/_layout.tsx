@@ -34,6 +34,8 @@ import { AndroidBackNavigation } from "@/src/components/android-back-navigation"
 import { AutoStreak } from "@/src/components/auto-streak";
 import { DownloadTray } from "@/src/components/download-tray";
 import { PurchaseReviewPrompt } from "@/src/components/purchase-review-prompt";
+import { ShareSheetHost } from "@/src/components/share-sheet";
+import { initializeEntryPreferences } from "@/src/lib/entry-preferences";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -42,7 +44,7 @@ export default function RootLayout() {
   const [appearanceReady, setAppearanceReady] = useState(false);
   useEffect(() => { void SystemUI.setBackgroundColorAsync(theme.canvas).catch(() => undefined); }, [theme.canvas]);
   useEffect(() => {
-    void initializeAppearance().finally(() => setAppearanceReady(true));
+    void Promise.all([initializeAppearance(), initializeEntryPreferences()]).finally(() => setAppearanceReady(true));
     void checkBuildVersion();
   }, []);
 
@@ -91,6 +93,7 @@ export default function RootLayout() {
         <AndroidBackNavigation />
         <DownloadTray />
         <PurchaseReviewPrompt />
+        <ShareSheetHost />
         <BrandIntro fontsReady={fontsLoaded || Boolean(fontError)} appearanceReady={appearanceReady} />
       </ToastProvider></StartupProvider>
     </AuthProvider>

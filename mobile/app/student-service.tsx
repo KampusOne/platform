@@ -4,7 +4,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  Share,
   Text,
   View,
 } from "react-native";
@@ -14,7 +13,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
-import { appLink } from "@/src/lib/app-links";
+import { shareItem } from "@/src/lib/share-content";
 import { validPostId } from "@/src/lib/feed-posts";
 import { ProfileAvatar } from "@/src/components/profile-avatar";
 import { MediaImage } from "@/src/components/media-image";
@@ -279,9 +278,7 @@ export default function StudentService() {
           </Text>
           {b
             ? iconButton("share-outline", "Share business profile", () => {
-                void Share.share({
-                  message: `${b.display_name}\n${appLink(`/student-service?id=${b.id}`)}`,
-                }).catch(() => toast("Sharing could not open.", "error"));
+                void shareItem("business", b.id, b.display_name).catch(() => toast("Sharing could not open.", "error"));
               })
             : null}
         </View>

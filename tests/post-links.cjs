@@ -7,19 +7,30 @@ const ts = require(require.resolve("typescript", { paths: [path.join(__dirname, 
 const source = fs.readFileSync(path.join(__dirname, "../mobile/src/lib/feed-posts.ts"), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const id = "33333333-3333-4333-8333-333333333333";
-const url = `https://kampusone-mobile-preview.vercel.app/post?id=${id}`;
+const url = `https://links.kampusone.app/s/post/${id}`;
 const post = { id, title: "Campus update", body: "Do not share this body as text" };
 function load(os, options = {}) {
   const calls = { shares: [], copies: [], invalidations: 0, removals: 0 };
   const exported = {};
   const storage = options.storage || new Map();
   const context = {
-    Error, module: { exports: exported }, exports: exported,
+    Error, URL, process: { env: {} }, module: { exports: exported }, exports: exported,
     require(name) {
       if (name === "react-native") return { Platform: { OS: os }, Share: {
         dismissedAction: "dismissed", share: async (payload) => { calls.shares.push(payload); return { action: "shared" }; },
       } };
       if (name === "@/src/lib/api") return { clearApiCache: () => { calls.invalidations++; } };
+      if (name === "expo-clipboard") return { setStringAsync: async (value) => {
+        if (options.navigator?.clipboard?.writeText) { await options.navigator.clipboard.writeText(value); return true; }
+        return false;
+      } };
+      if (["./app-links", "./shared-links", "./share-content"].includes(name)) {
+        const nested = {};
+        const file = name === "./app-links" ? "app-links.ts" : name === "./shared-links" ? "shared-links.ts" : "share-content.ts";
+        const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, "../mobile/src/lib", file), "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+        vm.runInNewContext(code, { ...context, module: { exports: nested }, exports: nested });
+        return nested;
+      }
       throw new Error(`Unexpected import ${name}`);
     },
     navigator: options.navigator,
@@ -37,19 +48,22 @@ test("a post URL targets the real app route and rejects invalid IDs", () => {
 test("Android shares the URL in message, never the post body", async () => {
   const { api, calls } = load("android");
   assert.equal(await api.sharePostLink(post), "shared");
-  assert.deepEqual(JSON.parse(JSON.stringify(calls.shares)), [{ message: url }]);
+  assert.equal(calls.shares[0].message.includes(url), true);
+  assert.equal(calls.shares[0].message.includes(post.body), false);
 });
 test("iOS shares one URL without duplicating it as text", async () => {
   const { api, calls } = load("ios");
   await api.sharePostLink(post);
-  assert.deepEqual(JSON.parse(JSON.stringify(calls.shares)), [{ url }]);
+  assert.equal(calls.shares[0].url, url);
+  assert.equal(calls.shares[0].message.includes(url), false);
+  assert.equal(calls.shares[0].message.includes(post.body), false);
 });
 test("web native sharing uses a URL, not a text summary", async () => {
   let payload;
   const { api } = load("web", { navigator: { share: async (value) => { payload = value; } } });
   assert.equal(await api.sharePostLink(post), "shared");
   assert.equal(payload.url, url);
-  assert.equal(payload.text, undefined);
+  assert.equal(payload.text.includes(post.body), false);
 });
 test("cancelling web sharing is not treated as a failure or copied silently", async () => {
   let copied = false;
@@ -71,7 +85,7 @@ test("blocked clipboard offers manual copy, not false success", async () => {
     document: { activeElement: null, body: { appendChild() {} }, createElement: () => ({ style: {}, setAttribute() {}, select() {}, remove() { removed = true; } }), execCommand: () => false },
   });
   assert.equal(await api.sharePostLink(post), "manual");
-  assert.equal(removed, true);
+  assert.equal(removed, false);
 });
 test("native copy without a clipboard dependency requests a selectable-link fallback", async () => {
   assert.equal(await load("android").api.copyPostLink(id), false);

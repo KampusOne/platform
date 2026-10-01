@@ -3,10 +3,17 @@ import { Redirect, router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "@/src/auth/auth-context";
 import { pendingPostLink } from "@/src/lib/feed-posts";
+import { useEffect, useMemo } from "react";
+import { clearPendingSharedTarget, finishFirstInstallIntro, pendingSharedDestination, useFirstInstallIntro } from "@/src/lib/entry-preferences";
 
 export default function EntryScreen() {
   const { styles } = useThemeStyles(createStyles);
   const { state, sessionRestoreError, profile, profileError, profileState, retrySessionRestore, reloadProfile, signOut } = useAuth();
+  const introduction = useFirstInstallIntro();
+  const entryReady = introduction !== "loading";
+  const sharedDestination = useMemo(() => entryReady ? pendingSharedDestination() : null, [entryReady]);
+  useEffect(() => { if (state === "authenticated" && introduction === "new") void finishFirstInstallIntro(); }, [state, introduction]);
+  useEffect(() => { if (state === "authenticated" && profile?.onboarding_completed_at && sharedDestination) clearPendingSharedTarget(); }, [state, profile?.onboarding_completed_at, sharedDestination]);
   if (state === "loading" && sessionRestoreError) {
     return (
       <View accessibilityLiveRegion="polite" style={styles.errorState}>
@@ -21,11 +28,11 @@ export default function EntryScreen() {
   // BrandIntro stays above the router while session/profile restoration is in
   // progress, so startup never flashes a second loading/auth screen.
   if (
-    state === "loading" ||
+    state === "loading" || introduction === "loading" ||
     (state === "authenticated" && profileState === "loading" && !profile)
   )
     return null;
-  if (state === "anonymous") return <Redirect href="/(auth)/welcome" />;
+  if (state === "anonymous") return introduction === "loading" ? null : <Redirect href={introduction === "new" ? "/(auth)/intro" : "/(auth)/welcome"} />;
   if (profileState === "error") {
     return (
       <View style={styles.errorState}>
@@ -39,7 +46,7 @@ export default function EntryScreen() {
   }
   if (!profile?.onboarding_completed_at) return <Redirect href="/(auth)/onboarding" />;
   const postId = pendingPostLink();
-  return <Redirect href={postId ? { pathname: "/post", params: { id: postId } } : "/(tabs)"} />;
+  return <Redirect href={sharedDestination ?? (postId ? { pathname: "/post", params: { id: postId } } : "/(tabs)")} />;
 }
 
 const createStyles = (theme: Theme) => StyleSheet.create({

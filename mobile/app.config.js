@@ -2,6 +2,8 @@ const fs = require("fs");
 const path = require("path");
 
 module.exports = ({ config }) => {
+  const shareOrigin = new URL(process.env.EXPO_PUBLIC_SHARE_ORIGIN || "https://links.kampusone.app");
+  if (shareOrigin.protocol !== "https:" || !["links.kampusone.app", "kampusone.app"].includes(shareOrigin.hostname) || shareOrigin.username || shareOrigin.password || shareOrigin.port || shareOrigin.pathname !== "/" || shareOrigin.search || shareOrigin.hash) throw new Error("Configure a verified KampusOne share origin.");
   const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim();
   const googleServicesFile =
     process.env.GOOGLE_SERVICES_JSON_PATH?.trim() || "./google-services.json";
@@ -26,12 +28,14 @@ module.exports = ({ config }) => {
     },
     ios: {
       ...config.ios,
+      associatedDomains: [`applinks:${shareOrigin.hostname}`],
       ...(fs.existsSync(googleServiceInfoPath)
         ? { googleServicesFile: googleServiceInfoFile }
         : {}),
     },
     android: {
       ...config.android,
+      intentFilters: [{ action: "VIEW", autoVerify: true, data: [{ scheme: "https", host: shareOrigin.hostname, pathPrefix: "/s/" }], category: ["BROWSABLE", "DEFAULT"] }],
       ...(fs.existsSync(googleServicesPath) ? { googleServicesFile } : {}),
     },
   };

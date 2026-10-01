@@ -25,6 +25,7 @@ import { CreateAction } from "@/src/components/create-action";
 import { FilterRow, SearchField } from "@/src/components/product-ui";
 import { ApiError, api } from "@/src/lib/api";
 import { useToast } from "@/src/components/toast";
+import { shareItem } from "@/src/lib/share-content";
 import { theme } from "@/src/theme";
 
 const tutorialsEmptyIllustration = require("@/assets/illustrations/tutorials-empty-v2.png");
@@ -226,6 +227,7 @@ function ResourceRow({
   resource: Resource;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const toast = useToast();
 
   const icons = {
     PAST_QUESTION: "help-circle-outline",
@@ -270,7 +272,7 @@ function ResourceRow({
           {resourceMeta(resource)}
         </Text>
       </View>
-      <Ionicons color={theme.textSubtle} name="chevron-forward" size={18} />
+      <Pressable accessibilityRole="button" accessibilityLabel={`Share ${resource.title}`} onPress={(event)=>{event.stopPropagation();void shareItem("material",resource.id,resource.title).catch(()=>toast("Sharing could not open.","error"));}} style={{minWidth:44,minHeight:44,justifyContent:"center",alignItems:"center"}}><Ionicons name="share-outline" color={theme.brand} size={20}/></Pressable>
     </Pressable>
   );
 }
@@ -425,6 +427,7 @@ function TutorialCard({
   selectedId: string | undefined;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
+  const toast = useToast();
 
   const selected =
     listing.availability.find((window) => window.id === selectedId) ??
@@ -444,6 +447,7 @@ function TutorialCard({
         </View>
         <View style={styles.listingCopy}>
           <View style={styles.listingMetaRow}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Share ${listing.title}`} onPress={()=>void shareItem("tutorial",listing.id,listing.title).catch(()=>toast("Sharing could not open.","error"))} style={{minWidth:44,minHeight:44,justifyContent:"center",alignItems:"center"}}><Ionicons name="share-outline" color={theme.brand} size={19}/></Pressable>
             <View style={styles.formatChip}>
               <Text style={styles.formatChipText}>
                 {displayFormat(listing.format)}

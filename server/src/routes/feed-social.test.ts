@@ -131,7 +131,7 @@ describe("shared feed, comments, reposts and quotes", () => {
     expect(mocks.execute).toHaveBeenCalledTimes(1);
   });
   it("retries a confirmed post before consuming another quota token", async () => {
-    mocks.execute.mockResolvedValueOnce({ rows: [{ id, body: "Same body", image_url: null, quoted_post_id: null }] });
+    mocks.execute.mockResolvedValueOnce({ rows: [{ id, body: "Same body", image_url: null, quoted_post_id: null, language: "und" }] });
     expect((await request("", "POST", { body: "Same body", requestId })).status).toBe(200);
     expect(mocks.execute).toHaveBeenCalledTimes(1);
   });

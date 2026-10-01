@@ -1,5 +1,6 @@
-import { APP_ORIGIN as appOrigin } from "./app-links";
-import { Platform, Share } from "react-native";
+import { Platform } from "react-native";
+import { sharedLink } from "./shared-links";
+import { shareItem } from "./share-content";
 import { clearApiCache } from "@/src/lib/api";
 
 export type FeedPostData = {
@@ -34,7 +35,7 @@ export function validPostId(value: unknown): value is string {
 
 export function postUrl(id: string): string {
   if (!validPostId(id)) throw new Error("This post link is not valid.");
-  return `${appOrigin}/post?id=${encodeURIComponent(id)}`;
+  return sharedLink("post", id);
 }
 
 export function markPostDeleted(id: string): void {
@@ -103,21 +104,7 @@ export async function copyPostLink(id: string): Promise<boolean> {
 }
 
 export async function sharePostLink(post: Pick<FeedPostData, "id" | "title"> & Partial<Pick<FeedPostData, "source_name" | "source_username">>): Promise<"shared" | "copied" | "cancelled" | "manual"> {
-  const url = postUrl(post.id);
   const author = post.source_username ? `@${post.source_username}` : post.source_name;
   const message = `Check out this post${author ? ` by ${author}` : ""} on KampusOne.`;
-  if (Platform.OS === "web") {
-    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-      try {
-        await navigator.share({ url, title: post.title, text: message });
-        return "shared";
-      } catch (error) {
-        if (typeof error === "object" && error !== null && "name" in error && error.name === "AbortError") return "cancelled";
-      }
-    }
-    return (await copyPostLink(post.id)) ? "copied" : "manual";
-  }
-  // React Native's `url` field is iOS-only; Android must receive the URL in message.
-  const result = await Share.share(Platform.OS === "ios" ? { url, message } : { message: `${message}\n${url}` });
-  return result.action === Share.dismissedAction ? "cancelled" : "shared";
+  return shareItem("post", post.id, post.title || "KampusOne post", message);
 }

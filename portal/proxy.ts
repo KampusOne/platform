@@ -14,6 +14,10 @@ export function proxy(request: NextRequest) {
   const subdomain = hostname.split(".")[0] ?? "";
   if (subdomain === "admin") return new NextResponse("Not found", { status: 404 });
   const surface = surfaceBySubdomain[subdomain];
+  if (hostname === "links.kampusone.app") {
+    if (request.nextUrl.pathname === "/") return NextResponse.redirect("https://kampusone.app");
+    if (!["/s/", "/.well-known/", "/api/", "/_next/", "/brand/"].some((prefix) => request.nextUrl.pathname.startsWith(prefix))) return new NextResponse("Not found", { status: 404 });
+  }
 
   if (
     surface &&

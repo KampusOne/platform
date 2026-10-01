@@ -70,6 +70,8 @@ describe('requirements 70–74, 121, 144–156 and 10',()=>{
  it('permits ordinary one-character posts and stable retries, rejects key reuse and cross-owner deletion',async()=>{
   const requestId=crypto.randomUUID();const created=await response(await request('/student/feed',student,'POST',{body:'A',requestId}),201);
   expect(await response(await request('/student/feed',student,'POST',{body:'A',requestId}))).toEqual(created);
+  await response(await request('/student/feed',student,'POST',{body:'A',language:'pcm',requestId}),409);
+  expect((await db.query('select audience->>\'language\' as language from public.feed_posts where id=$1',[created.id])).rows[0]).toEqual({language:'und'});
   await response(await request('/student/feed',student,'POST',{body:'Changed',requestId}),409);
   await response(await request('/student/feed/'+created.id,finance,'DELETE'),404);
   await response(await request('/student/feed/'+created.id,student,'DELETE'));
