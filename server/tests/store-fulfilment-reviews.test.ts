@@ -22,6 +22,7 @@ vi.mock("../src/lib/database", () => ({
   sqlClient: () => testSqlClient(pg),
   firstRow: (r: { rows: unknown[] }) => r.rows[0],
 }));
+vi.mock('../src/lib/delivery-routing',()=>({mappedDeliveryPoint:async()=>({campus_id:campus,name:'Synthetic mapped pickup',latitude:6.3,longitude:5.6}),currentAgentPosition:async()=>({latitude:6.3,longitude:5.6,captured_at:new Date().toISOString(),accuracy_metres:10}),campusDeliveryRoute:async()=>({distanceMetres:700,geometry:{type:'LineString',coordinates:[[5.6,6.3],[5.601,6.3]]},source:'ISOLATED_FINANCE_FIXTURE'})}));
 vi.mock("../src/middleware/auth", () => ({
   currentUser: (c: Context) => ({
     id: c.req.header("x-user"),
@@ -129,6 +130,7 @@ beforeAll(async () => {
     "20260912200000_phase_3_commerce_foundation.sql",
     "20260930220000_store_fulfilment_modes.sql",
     "20260930230000_optional_purchase_review_reminders.sql",
+    "20261001195000_delivery_route_positions.sql",
   ])
     await pg.exec(
       readFileSync(
@@ -165,8 +167,9 @@ beforeAll(async () => {
       [agent.profile, agent.user, campus, application, agent.type],
     );
   }
+  await pg.query("insert into campus_places(id,university_id,name,category,status)values($1,$2,'Synthetic mapped pickup','SERVICE','PUBLISHED')",[vendor,campus]);
   await pg.query(
-    "insert into vendor_storefronts(vendor_profile_id,university_id,display_name,description,status,submitted_at,reviewed_by_user_id,reviewed_at,moderated_revision,contact_phone_e164,pickup_location,opening_hours)values($1,$2,'Synthetic shop','A synthetic store description','APPROVED',now(),$3,now(),1,'+2348012345678','Approved campus pickup gate','{\"mon\":\"08:00-17:00\"}'::jsonb)",
+    "insert into vendor_storefronts(vendor_profile_id,university_id,display_name,description,status,submitted_at,reviewed_by_user_id,reviewed_at,moderated_revision,contact_phone_e164,pickup_location,pickup_place_id,opening_hours)values($1,$2,'Synthetic shop','A synthetic store description','APPROVED',now(),$3,now(),1,'+2348012345678','Approved campus pickup gate',$1,'{\"mon\":\"08:00-17:00\"}'::jsonb)",
     [vendor, campus, buyer],
   );
   await pg.query(

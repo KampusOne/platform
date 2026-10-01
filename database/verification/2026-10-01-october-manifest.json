@@ -79,6 +79,11 @@
       "version": "20261001194000_foreground_usage_samples",
       "sourceBlobSha": "229e4bad96ab7eeb84fd6f7f16ec826d708c1447",
       "sha256": "cde96272fd71f950dee3fbe9ddb03d1f131145bed2b92514a310eea988b680da"
+    },
+    {
+      "version": "20261001195000_delivery_route_positions",
+      "sourceBlobSha": "229d6c62fb1bd7146ea341d3ba3fc4945d2daa2e",
+      "sha256": "dd98c733725b9f89f0e137c74340652dd342a36ca9e33d81c40ebbb6d7486154"
     }
   ]
 }

@@ -124,6 +124,7 @@ export default function StoreSettings() {
       />
       <CampusPlaceChoice
         label="Pickup point on the campus map"
+        endpoint="/v1/agents/storefront"
         value={pickupPlace}
         onChange={setPickupPlace}
       />

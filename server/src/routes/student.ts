@@ -32,7 +32,6 @@ import { deriveHandoffCode } from "../lib/security";
 import { demoStoreCatalogue } from "../lib/store-demo";
 import { fulfilmentSchemaReady } from "../lib/fulfilment";
 import { inclusiveStoreReady,inclusiveListings,storeQuoteSchema,prepareStoreQuote } from '../lib/commerce-pricing';
-import { campusFare } from '../lib/pricing';
 import { pricedTutorialReady,createPricedTutorial } from '../lib/tutorial-pricing';
 import { materialCommerceReady } from '../lib/material-commerce';
 import { publishingRoutes } from "./publishing";
@@ -1333,6 +1332,10 @@ studentRoutes.post("/tutorial-reviews", async (context) => {
   return context.json({ id, status: "PUBLISHED" }, 201);
 });
 
+studentRoutes.get('/delivery-places',async c=>{const u=currentUser(c);const r=await database(c.env).execute(sql`
+ select p.id,p.name,p.campus_id,c.name campus_name from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.status='PUBLISHED'
+ where p.university_id=${u.universityId}::uuid and p.status='PUBLISHED'and ((p.source_provider='OSM'and p.confidence>=.8 and p.latitude is not null and p.longitude is not null)or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null)) order by c.name,p.name limit 1000`);return c.json({places:r.rows});});
+
 studentRoutes.get("/store", async (context) => {
   const user = currentUser(context);
   requireUniversity(user);
@@ -1410,8 +1413,8 @@ studentRoutes.get("/store", async (context) => {
     inclusivePricing:!!inclusive.policy,
     riderDeliveryEnabled:featureEnabled(context.env,"LOGISTICS_ENABLED"),
     deliveryZones: await inclusiveStoreReady(context.env)?(await database(context.env).execute<{id:string;name:string;route_distance_metres:number}>(sql`
-      select id,name,route_distance_metres from public.delivery_zones where university_id=${user.universityId}::uuid and active and route_distance_metres is not null
-    `)).rows.map(zone=>({...zone,base_fee_kobo:campusFare(Number(zone.route_distance_metres)).fareKobo,distance_basis:'CAMPUS_ZONE'})):zones.rows,
+      select id,name,route_distance_metres from public.delivery_zones where university_id=${user.universityId}::uuid and active
+    `)).rows.map(zone=>({...zone,base_fee_kobo:0,distance_basis:'QUOTE_REQUIRED'})):zones.rows,
   });
 });
 

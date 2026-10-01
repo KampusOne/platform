@@ -1,7 +1,8 @@
+import {shareAgentLocation} from '@/src/lib/agent-location';
 import { BrandSwitch } from "@/src/components/brand-switch";
 import { useCallback, useState } from "react";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Linking, Pressable, Text, View } from "react-native";
+import { AppState, Linking, Pressable, Text, View } from "react-native";
 import {
   ToolPage,
   ToolButton,
@@ -58,6 +59,7 @@ function AccountAgentDashboard() {
   );
   const [online, setOnline] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [locationStatus,setLocationStatus]=useState("Share your current location for delivery routes.");
   const [code, setCode] = useState("");
   const [selected, setSelected] = useState<Item | null>(null);
   const [ridesSuspended, setRidesSuspended] = useState(false);
@@ -97,9 +99,19 @@ function AccountAgentDashboard() {
       };
     }, [load, role]),
   );
+  useFocusEffect(useCallback(()=>{
+    if(role!=='RIDER'||!online||!profile?.id)return;
+    let active=true,pending=false;
+    const refresh=async()=>{if(!active||pending||AppState.currentState!=='active')return;pending=true;try{await shareAgentLocation(profile.id,false);if(active)setLocationStatus('Current location shared while this screen is open.');}catch(e){if(active)setLocationStatus(e instanceof Error?e.message:'Refresh your location for rider routes.');}finally{pending=false;}};
+    void refresh();const timer=setInterval(()=>void refresh(),30000);return()=>{active=false;clearInterval(timer);};
+  },[role,online,profile?.id]));
+  async function refreshPosition(){if(!profile)return;setBusy(true);try{await shareAgentLocation(profile.id);setLocationStatus('Current location shared for delivery routes.');}catch(e){toast(e instanceof Error?e.message:'Location could not refresh.','error');}finally{setBusy(false);}}
+  async function reviewPickup(item:Item){setBusy(true);try{if(!profile)return;await shareAgentLocation(profile.id);router.push({pathname:'/delivery-route',params:{jobId:item.id}});}catch(e){toast(e instanceof Error?e.message:'Pickup route could not be reviewed.','error');}finally{setBusy(false);}}
+
   async function action(item: Item, type: string) {
     setBusy(true);
     try {
+      if(type==="reserve"&&profile)await shareAgentLocation(profile.id);
       await api("/v1/agents/deliveries/" + item.id + "/" + type, {
         method: "POST",
         body: JSON.stringify({ code }),
@@ -120,6 +132,7 @@ function AccountAgentDashboard() {
   async function availability(value: boolean) {
     setBusy(true);
     try {
+      if(value&&profile)await shareAgentLocation(profile.id);
       await api("/v1/agents/rider-presence", {
         method: "PUT",
         body: JSON.stringify({ online: value, capacityStatus: "AVAILABLE" }),
@@ -254,6 +267,7 @@ function AccountAgentDashboard() {
           }
         />
       ) : null}
+      {(role==='RIDER'||role==='VENDOR')?<View style={{gap:8,marginVertical:12}}><ToolButton secondary disabled={busy} label="Refresh delivery location" onPress={()=>void refreshPosition()}/><Text style={{color:theme.textMuted,fontFamily:theme.font.body,fontSize:12}}>{locationStatus}</Text></View>:null}
       {role === "RIDER" && (
         <View style={{ flexDirection: "row", gap: 12, marginVertical: 18 }}>
           {(["AVAILABLE", "ACTIVE", "HISTORY"] as const).map((tab) => (
@@ -281,6 +295,7 @@ function AccountAgentDashboard() {
           ))}
         </View>
       )}
+      {role==='RIDER'&&rideTab==='AVAILABLE'?items.filter(i=>i.status==='AVAILABLE').map(i=><ToolButton key={'route-'+i.id} secondary disabled={busy} label={`Review pickup route · ${i.vendor_name??i.pickup_location??i.zone_name??'Available ride'}`} onPress={()=>void reviewPickup(i)}/>):null}
       {ready && !items.length && !loadError ? (
         <EmptyResult
           title={

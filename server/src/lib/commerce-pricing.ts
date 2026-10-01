@@ -1,3 +1,4 @@
+import {mappedDeliveryPoint,currentAgentPosition,campusDeliveryRoute} from './delivery-routing';
 import {discountError} from "./discount-error";
 import { sql } from "drizzle-orm";
 import { storeOrderSchema, z } from "@kampusone/contracts";
@@ -100,7 +101,7 @@ function responseQuote(q: {
   fare: unknown;
   expires_at: string;
 }) {
-  const f = q.fare as ReturnType<typeof campusFare> | null;
+  const f = q.fare as (ReturnType<typeof campusFare>&{route?:unknown;distanceBasis?:string;pickupLocationBasis?:string}) | null;
   return {
     id: q.id,
     pricing: publicQuotePricing(q.pricing),
@@ -108,7 +109,8 @@ function responseQuote(q: {
       ? {
           fareKobo: f.fareKobo,
           routeMetres: f.routeMetres,
-          distanceBasis: "CAMPUS_ZONE",
+          distanceBasis: f.distanceBasis??'CAMPUS_ZONE',
+          route:f.route??null,pickupLocationBasis:f.pickupLocationBasis??null,
         }
       : null,
     expiresAt: q.expires_at,
@@ -170,8 +172,9 @@ export async function prepareStoreQuote(
       user_id: string;
       pickup_enabled: boolean;
       self_delivery_enabled: boolean;
+      pickup_place_id:string|null;
     }>(sql`
-    select a.user_id,s.pickup_enabled,s.self_delivery_enabled from public.agent_profiles a join public.vendor_storefronts s on s.vendor_profile_id=a.id
+    select a.user_id,s.pickup_enabled,s.self_delivery_enabled,s.pickup_place_id from public.agent_profiles a join public.vendor_storefronts s on s.vendor_profile_id=a.id
     where a.id=${data.vendorProfileId}::uuid and a.university_id=${user.universityId}::uuid and a.status='ACTIVE' and a.agent_type='VENDOR' and s.status='APPROVED'
   `),
   );
@@ -239,7 +242,7 @@ export async function prepareStoreQuote(
       customer_unit_kobo: price.customerPriceKobo,
     };
   });
-  let fare: ReturnType<typeof campusFare> | null = null;
+  let fare:(ReturnType<typeof campusFare>&{route:unknown;distanceBasis:string;pickupLocationBasis:string})|null=null;
   if (data.fulfilmentMode === "RIDER") {
     if (env.LOGISTICS_ENABLED !== "true")
       throw new AppError(
@@ -247,19 +250,15 @@ export async function prepareStoreQuote(
         "FEATURE_DISABLED",
         "Rider delivery is not available yet.",
       );
-    const zone = firstRow(
-      await database(env).execute<{
-        route_distance_metres: number | null;
-      }>(sql`select route_distance_metres from public.delivery_zones
-      where id=${data.deliveryZoneId ?? null}::uuid and university_id=${user.universityId}::uuid and active`),
-    );
-    if (!zone || zone.route_distance_metres === null)
-      throw new AppError(
-        409,
-        "CONFLICT",
-        "This campus delivery zone needs a reviewed distance before fares can be quoted. Choose another option.",
-      );
-    fare = campusFare(Number(zone.route_distance_metres));
+    const zone=firstRow(await database(env).execute<{id:string}>(sql`select id from public.delivery_zones where id=${data.deliveryZoneId??null}::uuid and university_id=${user.universityId}::uuid and active`));
+    if(!zone)throw new AppError(409,'CONFLICT','Choose an active delivery coverage zone.');
+    if(!vendor.pickup_place_id||!data.deliveryPlaceId)throw new AppError(422,'BAD_REQUEST','The store pickup and your delivery point must be selected on the campus map before a rider fare can be reviewed.');
+    const pickup=await mappedDeliveryPoint(env,user.universityId!,vendor.pickup_place_id),destination=await mappedDeliveryPoint(env,user.universityId!,data.deliveryPlaceId);
+    if(pickup.campus_id!==destination.campus_id)throw new AppError(422,'BAD_REQUEST','Cross-campus rider delivery is outside the mapped campus route coverage.');
+    const position=await currentAgentPosition(env,data.vendorProfileId,user.universityId!);
+    const origin:[number,number]=position?[position.longitude,position.latitude]:[pickup.longitude,pickup.latitude];
+    const route=await campusDeliveryRoute(env,user.universityId!,pickup.campus_id,origin,[destination.longitude,destination.latitude]);
+    fare={...campusFare(route.distanceMetres),route,distanceBasis:'OSM_BICYCLE_NETWORK',pickupLocationBasis:position?'CURRENT_VENDOR_POSITION':'APPROVED_STOREFRONT_PICKUP'};
   }
   let pricing;
   try {

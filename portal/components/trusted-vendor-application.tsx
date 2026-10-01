@@ -9,7 +9,8 @@ import {AgentApplicationIllustration} from './agent-illustrations';
 type VendorDraft={businessName:string;legalName:string;description:string;address:string;category:string;campus:string;phone:string;birth:string;photo:string;request:string};
 const blank:VendorDraft={businessName:'',legalName:'',description:'',address:'',category:'Groceries',campus:'',phone:'',birth:'',photo:'',request:''};
 const categories=['Restaurant','Supermarket','Groceries','Fashion','Beauty','Electronics','Printing','Other'];
-export function TrustedVendorApplication(){
+export function TrustedVendorApplication(){const {user}=usePortalAuth(),params=useSearchParams();return <TrustedVendorForm key={`${user?.id}:${params.get('invite')??''}`}/>;}
+function TrustedVendorForm(){
  const params=useSearchParams(),{user}=usePortalAuth(),token=params.get('invite')??'';
  const [invite,setInvite]=useState<{university_name:string,application_id:string|null}|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[submitted,setSubmitted]=useState(false),[draft,setDraft]=useState<VendorDraft>(blank),[draftKey,setDraftKey]=useState('');
  const update=(field:keyof VendorDraft,value:string)=>setDraft(d=>({...d,[field]:value}));
@@ -34,7 +35,7 @@ export function TrustedVendorApplication(){
   catch(e){setError(e instanceof Error?e.message:'Your application is kept. Try again.');}finally{setBusy(false);}
  }
  const uniben=invite?.university_name.toLowerCase()==='university of benin';
- return <main className="agent-login-page"><section className="agent-login-shell agent-onboarding-form" style={{maxWidth:620}}>
+ return <main className="agent-login-page"><section className="agent-login-shell agent-onboarding-form trusted-vendor-onboarding" style={{maxWidth:620}}>
   <AgentApplicationIllustration step={2} complete={submitted}/><p className="eyebrow">By invitation</p><h1>{submitted?'Your business is under review':'Set up your vendor profile'}</h1><p>{invite?.university_name}</p>
   <p className="field-help">Your inviting team has waived ordinary application documents. An administrator will verify your business and contact details before approval.</p>
   {error?<p role="alert" className="form-error">{error}</p>:null}

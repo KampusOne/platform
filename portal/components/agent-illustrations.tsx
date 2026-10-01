@@ -28,6 +28,7 @@ export function AgentApplicationIllustration({
       src={art}
       sizes="(max-width: 800px) 90vw, 360px"
       alt=""
+      priority
     />
   );
 }

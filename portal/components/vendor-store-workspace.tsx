@@ -12,6 +12,7 @@ type Storefront = {
   description: string | null;
   contact_phone_e164: string | null;
   pickup_location: string | null;
+  pickup_place_id:string|null;
   pickup_instructions: string | null;
   opening_hours: Record<string, unknown>;
   default_preparation_minutes: Scalar;
@@ -174,7 +175,7 @@ function InlineState({ error }: { error: PortalApiError }) {
 
 export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
   const [refreshKey, setRefreshKey] = useState(0);
-  const storefrontResource = useResource<{ storefront: Storefront | null }>(
+  const storefrontResource = useResource<{ storefront: Storefront | null;pickupPoints:{id:string;name:string;campus_name:string}[] }>(
     "/v1/agents/storefront",
     refreshKey,
   );
@@ -228,6 +229,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
           description: form.get("description"),
           contactPhoneE164: form.get("contactPhoneE164"),
           pickupLocation: form.get("pickupLocation"),
+          pickupPlaceId:form.get("pickupPlaceId")||null,
           pickupInstructions: form.get("pickupInstructions") || null,
           openingHours: { summary: form.get("openingHours") },
           defaultPreparationMinutes: Number(form.get("defaultPreparationMinutes")),
@@ -496,6 +498,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
               Opening hours
               <input name="openingHours" minLength={3} maxLength={160} required placeholder="Monday to Friday, 09:00–18:00" defaultValue={String(storefront?.opening_hours.summary ?? "")} disabled={storeLocked} />
             </label>
+            <label>Pickup point on the campus map<select name="pickupPlaceId" defaultValue={storefront?.pickup_place_id??''}><option value="">Select a mapped pickup point</option>{storefrontResource.data?.pickupPoints?.map(p=><option key={p.id} value={p.id}>{p.name} · {p.campus_name}</option>)}</select></label>
             <label>
               Pickup instructions <span className="optional-label">Optional</span>
               <textarea name="pickupInstructions" maxLength={1000} defaultValue={storefront?.pickup_instructions ?? ""} disabled={storeLocked} />

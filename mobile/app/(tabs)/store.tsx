@@ -247,7 +247,7 @@ export default function StoreScreen() {
     ? fulfilmentMode
     : fulfilmentModes[0];
   const deliveryFee =
-    effectiveMode === "RIDER" ? Number(selectedZone?.base_fee_kobo ?? 0) : 0;
+    effectiveMode === "RIDER" ? Number(reviewedQuote?.quote.pricing.fareKobo ?? 0) : 0;
   const total = subtotal + deliveryFee;
   const checkoutReady =
     !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone);
@@ -261,6 +261,7 @@ export default function StoreScreen() {
     deliveryPaymentMethod:
       effectiveMode === "RIDER" ? deliveryPaymentMethod : "IN_APP",
     deliveryZoneId: effectiveMode === "RIDER" ? selectedZone?.id : null,
+    deliveryPlaceId: effectiveMode === "PICKUP" ? null : deliveryPlace,
     deliveryNote: deliveryNote.trim() || null,
     items: cartItems.map(({ product, quantity }) => ({
       productId: product.id,
@@ -901,7 +902,7 @@ export default function StoreScreen() {
                               <View style={styles.zoneCopy}>
                                 <Text style={styles.zoneName}>{zone.name}</Text>
                                 <Text style={styles.zoneFee}>
-                                  {naira(zone.base_fee_kobo)} delivery
+                                  Fare shown after route review
                                 </Text>
                               </View>
                               <Ionicons
@@ -1035,7 +1036,7 @@ export default function StoreScreen() {
                         {effectiveMode !== "RIDER"
                           ? naira(0)
                           : selectedZone
-                            ? naira(deliveryFee)
+                            ? validQuote ? naira(validQuote.pricing.fareKobo) : "Review route for fare"
                             : "Select a zone"}
                       </Text>
                     </View>
@@ -1051,20 +1052,20 @@ export default function StoreScreen() {
                     deliveryPaymentMethod === "CASH" ? (
                       <Text style={styles.totalLabel}>
                         Pay the product total in app and{" "}
-                        {naira(validQuote?.pricing.cashDueKobo ?? deliveryFee)}{" "}
+                        {validQuote?naira(validQuote.pricing.cashDueKobo):"the reviewed fare"}{" "}
                         to the rider at delivery.
                       </Text>
                     ) : null}
                     {validQuote?.fare ? (
                       <Text style={styles.totalLabel}>
-                        Campus zone estimate ·{" "}
+                        Mapped rider route ·{" "}
                         {(validQuote.fare.routeMetres / 1000).toFixed(2)} km
                       </Text>
                     ) : null}
                     <View style={[styles.totalRow, styles.grandTotal]}>
                       <Text style={styles.grandLabel}>Total</Text>
                       <Text style={styles.grandValue}>
-                        {naira(validQuote?.pricing.totalKobo ?? total)}
+                        {effectiveMode==="RIDER"&&!validQuote?"Review route for total":naira(validQuote?.pricing.totalKobo ?? total)}
                       </Text>
                     </View>
                   </View>
@@ -1076,7 +1077,7 @@ export default function StoreScreen() {
                         : checkoutReady
                           ? validQuote
                             ? "Confirm order"
-                            : "Review checkout total"
+                            : "Review route and checkout total"
                           : "Select a delivery zone to continue"
                     }
                     accessibilityHint={

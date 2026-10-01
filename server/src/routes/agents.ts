@@ -1,3 +1,4 @@
+import {mappedDeliveryPoint,currentAgentPosition,campusDeliveryRoute} from '../lib/delivery-routing';
 import { z } from "@kampusone/contracts";
 import { input, id } from "../lib/input";
 import { readPublicBusiness } from "../lib/public-business";
@@ -807,7 +808,7 @@ agentRoutes.get("/storefront", async (context) => {
   const result = await database(context.env).execute(sql`
     select storefronts.vendor_profile_id, storefronts.university_id,
       storefronts.display_name, storefronts.description,
-      storefronts.contact_phone_e164, storefronts.pickup_location,
+      storefronts.contact_phone_e164, storefronts.pickup_location, storefronts.pickup_place_id,
       storefronts.pickup_instructions, storefronts.opening_hours,
       storefronts.default_preparation_minutes, storefronts.status,
       storefronts.submitted_at, storefronts.listing_revision,
@@ -820,7 +821,7 @@ agentRoutes.get("/storefront", async (context) => {
       and storefronts.university_id = ${profile.university_id}::uuid
     limit 1
   `);
-  return context.json({ storefront: firstRow(result) ?? null, fulfilmentReady:await fulfilmentSchemaReady(context.env) });
+  return context.json({ storefront: firstRow(result) ?? null, pickupPoints:(await database(context.env).execute(sql`select p.id,p.name,c.name campus_name from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.status='PUBLISHED' where p.university_id=${profile.university_id}::uuid and p.status='PUBLISHED'and ((p.source_provider='OSM'and p.confidence>=.8 and p.latitude is not null and p.longitude is not null)or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null))order by c.name,p.name limit 1000`)).rows, fulfilmentReady:await fulfilmentSchemaReady(context.env) });
 });
 
 agentRoutes.put("/storefront/fulfilment", async context => {
@@ -856,6 +857,7 @@ agentRoutes.put("/storefront", async (context) => {
     );
   }
   const profile = await operationalVendorProfile(context.env, user.id);
+  if(parsed.data.pickupPlaceId)await mappedDeliveryPoint(context.env,profile.university_id,parsed.data.pickupPlaceId);
   const result = await database(context.env).execute<{
     vendor_profile_id: string;
     status: string;
@@ -863,12 +865,12 @@ agentRoutes.put("/storefront", async (context) => {
   }>(sql`
     insert into public.vendor_storefronts (
       vendor_profile_id, university_id, display_name, description,
-      contact_phone_e164, pickup_location, pickup_instructions,
+      contact_phone_e164, pickup_location, pickup_place_id, pickup_instructions,
       opening_hours, default_preparation_minutes
     ) values (
       ${profile.id}::uuid, ${profile.university_id}::uuid,
       ${parsed.data.displayName}, ${parsed.data.description},
-      ${parsed.data.contactPhoneE164}, ${parsed.data.pickupLocation},
+      ${parsed.data.contactPhoneE164}, ${parsed.data.pickupLocation}, ${parsed.data.pickupPlaceId??null}::uuid,
       ${parsed.data.pickupInstructions ?? null},
       ${JSON.stringify(parsed.data.openingHours)}::jsonb,
       ${parsed.data.defaultPreparationMinutes}
@@ -878,6 +880,7 @@ agentRoutes.put("/storefront", async (context) => {
       description = excluded.description,
       contact_phone_e164 = excluded.contact_phone_e164,
       pickup_location = excluded.pickup_location,
+      pickup_place_id = excluded.pickup_place_id,
       pickup_instructions = excluded.pickup_instructions,
       opening_hours = excluded.opening_hours,
       default_preparation_minutes = excluded.default_preparation_minutes,
@@ -1568,6 +1571,28 @@ agentRoutes.get("/deliveries", async (context) => {
   });
 });
 
+agentRoutes.put('/location',async c=>{
+ const u=currentUser(c),d=await input(c,z.object({profileId:z.string().uuid(),latitude:z.number().min(-90).max(90),longitude:z.number().min(-180).max(180),accuracyMetres:z.number().min(0).max(50),capturedAt:z.iso.datetime()}).strict());
+ if(Math.abs(Date.now()-Date.parse(d.capturedAt))>120000)throw new AppError(422,'BAD_REQUEST','Refresh your current location before sharing it for a delivery route.');
+ const db=database(c.env),p=firstRow(await db.execute<{university_id:string}>(sql`select university_id from public.agent_profiles where id=${d.profileId}::uuid and user_id=${u.id}::uuid and status='ACTIVE'and agent_type in('VENDOR','RIDER')`));
+ if(!p)throw new AppError(403,'FORBIDDEN','This active agent profile does not belong to you.');
+ const rate=firstRow(await db.execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('AGENT_ROUTE_POSITION',${u.id},300,3600,3600)allowed`));if(!rate?.allowed)throw new AppError(429,'RATE_LIMITED','Location updates will resume shortly.');
+ await db.execute(sql`insert into app_private.agent_route_positions(agent_profile_id,institution_id,latitude,longitude,accuracy_metres,captured_at)values(${d.profileId}::uuid,${p.university_id}::uuid,${d.latitude},${d.longitude},${d.accuracyMetres},${d.capturedAt}::timestamptz)on conflict(agent_profile_id)do update set latitude=excluded.latitude,longitude=excluded.longitude,accuracy_metres=excluded.accuracy_metres,captured_at=excluded.captured_at,updated_at=now()where agent_route_positions.captured_at<excluded.captured_at`);
+ return c.json({saved:true});
+});
+async function routeRiderToPickup(env:Bindings,profile:{id:string;university_id:string},jobId:string){
+ const db=database(env),job=firstRow(await db.execute<{pickup_place_id:string|null;vendor_profile_id:string;rider_profile_id:string|null}>(sql`select s.pickup_place_id,o.vendor_profile_id,j.rider_profile_id from public.delivery_jobs j join public.orders o on o.id=j.order_id join public.vendor_storefronts s on s.vendor_profile_id=o.vendor_profile_id and s.university_id=j.university_id where j.id=${jobId}::uuid and j.university_id=${profile.university_id}::uuid and ((j.status='AVAILABLE'and o.status in('PAID','ACCEPTED','READY'))or j.rider_profile_id=${profile.id}::uuid)`));
+ if(!job)throw new AppError(404,'NOT_FOUND','This delivery is not available to your rider profile.');
+ if(!job.pickup_place_id)throw new AppError(422,'BAD_REQUEST','The store needs its pickup point mapped before a rider route is available.');
+ const position=await currentAgentPosition(env,profile.id,profile.university_id);if(!position)throw new AppError(422,'BAD_REQUEST','Share a current location accurate to 50 metres before reserving or reviewing a ride.');
+ const pickup=await mappedDeliveryPoint(env,profile.university_id,job.pickup_place_id),vendor=await currentAgentPosition(env,job.vendor_profile_id,profile.university_id);
+ const route=await campusDeliveryRoute(env,profile.university_id,pickup.campus_id,[position.longitude,position.latitude],vendor?[vendor.longitude,vendor.latitude]:[pickup.longitude,pickup.latitude]);
+ const centre=firstRow(await db.execute<{latitude:number;longitude:number}>(sql`select latitude::float8 latitude,longitude::float8 longitude from public.institution_campuses where id=${pickup.campus_id}::uuid and institution_id=${profile.university_id}::uuid`));
+ let quotedDeliveryRoute:unknown=null;if(job.rider_profile_id===profile.id&&await inclusiveStoreReady(env)){quotedDeliveryRoute=firstRow(await db.execute<{route:unknown}>(sql`select q.fare->'route'route from app_private.store_checkout_quotes q join app_private.order_price_snapshots s on s.quote_id=q.id join public.delivery_jobs j on j.order_id=s.order_id where j.id=${jobId}::uuid and j.university_id=${profile.university_id}::uuid and j.rider_profile_id=${profile.id}::uuid`))?.route??null;}
+ return {...route,campusId:pickup.campus_id,centre:centre?[centre.longitude,centre.latitude]:[pickup.longitude,pickup.latitude],quotedDeliveryRoute,pickupName:pickup.name,pickupLocationBasis:vendor?'CURRENT_VENDOR_POSITION':'APPROVED_STOREFRONT_PICKUP',pricingNote:'The reviewed fare covers pickup to the customer. The rider-to-pickup distance is shown separately and adds no charge.'};
+}
+agentRoutes.get('/deliveries/:id/route',async c=>{requireFeature(c.env,'LOGISTICS_ENABLED','Rider delivery is not available yet.');const p=await approvedProfile(c.env,currentUser(c).id,'RIDER',currentUser(c).universityId);return c.json({route:await routeRiderToPickup(c.env,p,id(c.req.param('id')))});});
+
 agentRoutes.put("/rider-presence", async (context) => {
   const user = currentUser(context);
   const parsed = riderPresenceSchema.safeParse(await body(context));
@@ -1600,6 +1625,7 @@ agentRoutes.post("/deliveries/:id/reserve", async (context) => {
   );
   const user = currentUser(context);
   const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
+  const pickupRoute=await routeRiderToPickup(context.env,profile,id(context.req.param('id')));
   let result;
   try {
     result = await database(context.env).execute<{ id: string }>(sql`
@@ -1643,7 +1669,7 @@ agentRoutes.post("/deliveries/:id/reserve", async (context) => {
     targetId: context.req.param("id"),
     requestId: context.get("requestId"),
   });
-  return context.json({ status: "RESERVED" });
+  return context.json({ status: "RESERVED",pickupRoute });
 });
 
 agentRoutes.post("/deliveries/:id/pickup", async (context) => {

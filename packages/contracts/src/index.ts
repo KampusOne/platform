@@ -400,6 +400,7 @@ export const vendorStorefrontSchema = z.object({
     .trim()
     .regex(/^\+234[789][0-9]{9}$/),
   pickupLocation: z.string().trim().min(5).max(500),
+  pickupPlaceId: z.string().uuid().nullable().optional(),
   pickupInstructions: z.string().trim().max(1000).nullable().optional(),
   openingHours: z
     .record(z.string().trim().min(2).max(40), z.string().trim().min(1).max(160))
@@ -540,6 +541,7 @@ export const storeOrderSchema = z
       .regex(/^\+234[789][0-9]{9}$/),
     deliveryLocation: z.string().trim().max(500).nullable().optional(),
     deliveryLandmark: z.string().trim().min(2).max(200).nullable().optional(),
+    deliveryPlaceId: z.string().uuid().nullable().optional(),
     deliveryLatitude: z.number().min(-90).max(90).nullable().optional(),
     deliveryLongitude: z.number().min(-180).max(180).nullable().optional(),
     deliveryNote: z.string().trim().max(500).nullable().optional(),

@@ -1,5 +1,6 @@
 "use client";
 
+import {shareAgentLocation} from '@/lib/agent-location';
 import Image from "next/image";
 import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
@@ -311,7 +312,7 @@ export function AgentDashboard() {
         <VendorStoreWorkspace onChanged={reload} />
       )}
       {!loading && !error && view === "deliveries" && (
-        <DeliveryWorkspace onChanged={reload} />
+        <DeliveryWorkspace profileId={dashboard?.profiles.find(p=>p.agent_type==="RIDER")?.id??""} onChanged={reload} />
       )}
       {!loading && !error && dashboard && view === "earnings" && (
         <EarningsWorkspace profiles={dashboard.profiles} />
@@ -1290,7 +1291,7 @@ function TutorialBookingPanel({ onChanged }: { onChanged(): void }) {
   );
 }
 
-function DeliveryWorkspace({ onChanged }: { onChanged(): void }) {
+function DeliveryWorkspace({ onChanged,profileId }: { onChanged(): void;profileId:string }) {
   const [key, setKey] = useState(0);
   const { data, loading, error } = useWorkspaceData<{
     jobs: Delivery[];
@@ -1298,10 +1299,13 @@ function DeliveryWorkspace({ onChanged }: { onChanged(): void }) {
   }>("/v1/agents/deliveries", key);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+  const [routeNotice,setRouteNotice]=useState('');
+  async function reviewRoute(id:string){setBusyId(id);setActionError('');try{await shareAgentLocation(profileId);const r=await portalApi<{route:{distanceMetres:number;pickupName:string;pricingNote:string}}>(`/v1/agents/deliveries/${id}/route`);setRouteNotice(`${(r.route.distanceMetres/1000).toFixed(2)} km to ${r.route.pickupName}. ${r.route.pricingNote}`);}catch(e){setActionError(e instanceof Error?e.message:'Route could not be reviewed.');}finally{setBusyId(null);}}
   async function reserve(id: string) {
     setBusyId(id);
     setActionError("");
     try {
+      await shareAgentLocation(profileId);
       await portalApi(`/v1/agents/deliveries/${id}/reserve`, {
         method: "POST",
         body: "{}",
@@ -1321,6 +1325,7 @@ function DeliveryWorkspace({ onChanged }: { onChanged(): void }) {
   async function updatePresence(online: boolean) {
     setActionError("");
     try {
+      if(online)await shareAgentLocation(profileId);
       await portalApi("/v1/agents/rider-presence", {
         method: "PUT",
         body: JSON.stringify({
@@ -1412,6 +1417,7 @@ function DeliveryWorkspace({ onChanged }: { onChanged(): void }) {
         )}
         {error && <WorkspaceGate error={error} />}
         {actionError && <p className="form-error">{actionError}</p>}
+        {routeNotice?<p className="form-notice" role="status">{routeNotice}</p>:null}
         {data?.jobs.map((job) => (
           <div className="delivery-job" key={job.id}>
             <div className="delivery-row">
@@ -1437,6 +1443,7 @@ function DeliveryWorkspace({ onChanged }: { onChanged(): void }) {
                 </button>
               )}
             </div>
+            {(job.status==="AVAILABLE"||job.status==="RESERVED")?<button className="button button--secondary button--small" disabled={busyId===job.id} onClick={()=>void reviewRoute(job.id)}>Review route to pickup</button>:null}
             {job.status === "RESERVED" && (
               <form
                 className="handoff-form"
