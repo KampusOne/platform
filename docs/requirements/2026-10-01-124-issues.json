@@ -1858,6 +1858,11 @@
     "additionalTestsPassed": 132,
     "browserChecks": "passed",
     "productionMigrationProof": "database/verification/production-20261001-october.json",
-    "statusMeaning": "Implemented means the source change and applicable automated checks passed. It does not claim unobserved installed-phone or external-provider acceptance."
+    "statusMeaning": "Implemented means the source change and applicable automated checks passed. It does not claim unobserved installed-phone or external-provider acceptance.",
+    "deployedSource": "7e659b5e3ae695a806aeb31c2b8ef4ba2e1f99e8",
+    "workerWorkflowRunId": 36873992886,
+    "publishedWebVerificationRunId": 36875099643,
+    "apkWorkflowRunId": 36875149946,
+    "physicalDeviceAcceptance": "Pending; no installed-phone push receipt was observed."
   }
 }

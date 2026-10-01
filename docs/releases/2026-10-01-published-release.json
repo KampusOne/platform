@@ -1,0 +1,23 @@
+{
+  "sourceSha": "7e659b5e3ae695a806aeb31c2b8ef4ba2e1f99e8",
+  "runId": "36875099643",
+  "workerRunId": "36873992886",
+  "portalUrl": "https://vercel.com/warriorpikins-projects/kampusone-platform-preview/2qCfAgnv7UJTWq81KkkfLAwqgMu1",
+  "mobileUrl": "https://vercel.com/warriorpikins-projects/kampusone-mobile-preview/AXAkuVh9euKuXvnxuVtFpbqGPRmz",
+  "verifiedAt": "2026-10-01T14:17:10.806Z",
+  "method": "verified-vercel-production-status",
+  "workerVersion": "b7af5e32-c6af-4a7a-a014-664c49e0937c",
+  "portalDeploymentId": "dpl_2qCfAgnv7UJTWq81KkkfLAwqgMu1",
+  "mobileDeploymentId": "dpl_AXAkuVh9euKuXvnxuVtFpbqGPRmz",
+  "portalProductionPublications": 1,
+  "mobileProductionPublications": 1,
+  "workerProductionPublications": 1,
+  "vendorDomain": "https://vendors.kampusone.app",
+  "vendorDomainConfiguration": "Valid Configuration; Production",
+  "apkWorkflowRunId": 36875149946,
+  "apkStatus": "building",
+  "expectedAppVersion": "0.3.11",
+  "expectedAndroidVersionCode": 41,
+  "physicalDeviceAcceptance": "pending; no installed-phone push receipt or field navigation was observed",
+  "providerAcceptance": "No live checkout charge, payout, identity verification, or messages were sent for acceptance fixtures."
+}
