@@ -10,6 +10,7 @@ import { recordAudit } from '../lib/audit';
 import { expoTokenPattern, sendTestPush, fetchPushReceipt } from '../lib/push';
 import { unblockedAuthor } from '../lib/profile-safety';
 import type { Bindings, Variables } from '../types';
+import { queueDuePurchaseReviews } from '../services/purchase-reviews';
 import {
   defaultNotificationPreferences,
   notificationPreferences,
@@ -48,6 +49,7 @@ notificationRoutes.put('/preferences',async c=>{
 });
 notificationRoutes.get('/inbox',async c=>{
  const user=currentUser(c),db=database(c.env),limit=30;
+ await queueDuePurchaseReviews(c.env,user.id);
  let before:{time:string;id:string}|null=null;
  const cursor=c.req.query('before');
  if(cursor){

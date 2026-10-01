@@ -7,10 +7,14 @@ import type { Bindings } from "./types";
 import { deliverQueuedNotifications } from "./services/notification-outbox";
 import { deliverQueuedBroadcasts } from "./services/broadcast-delivery";
 import { closeDueElections } from "./services/community-elections";
+import { queueDuePurchaseReviews } from "./services/purchase-reviews";
 
 export default {
   fetch: app.fetch,
   scheduled(_controller, env, executionContext) {
+    executionContext.waitUntil(queueDuePurchaseReviews(env).catch(() => {
+      console.error(JSON.stringify({level:"error",event:"purchase_reviews.notification_queue_failed"}));
+    }));
     executionContext.waitUntil(deliverQueuedNotifications(env));
     executionContext.waitUntil(deliverCommunityPush(env));
     executionContext.waitUntil(checkCommunityPushReceipts(env));

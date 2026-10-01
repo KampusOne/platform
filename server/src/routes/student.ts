@@ -29,6 +29,7 @@ import {
 } from "../lib/features";
 import { deriveHandoffCode } from "../lib/security";
 import { demoStoreCatalogue } from "../lib/store-demo";
+import { fulfilmentSchemaReady } from "../lib/fulfilment";
 import { publishingRoutes } from "./publishing";
 import { currentUser, requireAuth } from "../middleware/auth";
 import { requireUnblocked, unblockedAuthor } from "../lib/profile-safety";
@@ -1256,11 +1257,7 @@ studentRoutes.post("/tutorial-bookings/:id/cancel", async (context) => {
 });
 
 studentRoutes.post("/tutorial-reviews", async (context) => {
-  requireFeature(
-    context.env,
-    "TUTORIALS_ENABLED",
-    "Tutorial reviews are not enabled in this environment.",
-  );
+  if(!phase2SchemaReady(context.env))throw new AppError(503,"FEATURE_DISABLED","Tutorial reviews are unavailable until the account service is ready.");
   const user = currentUser(context);
   const parsed = tutorialReviewSchema.safeParse(await jsonBody(context));
   if (!parsed.success)
@@ -1276,6 +1273,7 @@ studentRoutes.post("/tutorial-reviews", async (context) => {
   }>(sql`
     select id, university_id, listing_id from public.tutorial_bookings
     where id = ${parsed.data.bookingId}::uuid and student_user_id = ${user.id}::uuid
+      and university_id=${user.universityId}::uuid
       and status = 'COMPLETED' limit 1
   `);
   const booking = firstRow(bookingResult);
@@ -1330,6 +1328,9 @@ studentRoutes.get("/store", async (context) => {
       select products.id, products.vendor_profile_id, products.name, products.description,
         products.category, products.price_kobo, products.stock_quantity, products.image_url,
         products.preparation_minutes, storefronts.display_name as vendor_name,
+        storefronts.pickup_location,
+        coalesce((to_jsonb(storefronts)->>'pickup_enabled')::boolean,false) as pickup_enabled,
+        coalesce((to_jsonb(storefronts)->>'self_delivery_enabled')::boolean,false) as self_delivery_enabled,
         coalesce(reviews.rating, 0) as rating, coalesce(reviews.review_count, 0)::int as review_count
       from public.vendor_products products
       join public.agent_profiles profiles
@@ -1369,6 +1370,7 @@ studentRoutes.get("/store", async (context) => {
     sellers: [],
     catalogueMode: "LIVE" as const,
     checkoutEnabled: true,
+    riderDeliveryEnabled:featureEnabled(context.env,"LOGISTICS_ENABLED"),
     deliveryZones: zones.rows,
   });
 });
@@ -1398,6 +1400,13 @@ studentRoutes.post("/orders", async (context) => {
     );
   }
   const universityId = requireUniversity(user);
+  const fulfilmentReady = await fulfilmentSchemaReady(context.env);
+  if (!fulfilmentReady && parsed.data.fulfilmentMode !== "RIDER") {
+    throw new AppError(503,"FEATURE_DISABLED","Pickup and vendor delivery are awaiting the scheduled database update.");
+  }
+  if (parsed.data.fulfilmentMode === "RIDER") {
+    requireFeature(context.env,"LOGISTICS_ENABLED","Rider delivery is not available yet. Choose store pickup if offered.");
+  }
   const vendor = firstRow(await database(context.env).execute<{user_id:string}>(sql`
     select profiles.user_id
     from public.agent_profiles profiles
@@ -1421,12 +1430,23 @@ studentRoutes.post("/orders", async (context) => {
       subtotal_kobo: number;
       delivery_fee_kobo: number;
       total_kobo: number;
-    }>(sql`
+    }>(fulfilmentReady ? sql`
+      select * from app_private.create_store_order_v3(
+        ${orderId}::uuid, ${universityId}::uuid, ${user.id}::uuid,
+        ${parsed.data.vendorProfileId}::uuid, ${parsed.data.fulfilmentMode}, ${parsed.data.deliveryZoneId ?? null}::uuid,
+        ${parsed.data.recipientName}, ${parsed.data.recipientPhoneE164},
+        ${parsed.data.deliveryLocation ?? null}, ${parsed.data.deliveryLandmark ?? null},
+        ${parsed.data.deliveryLatitude ?? null}, ${parsed.data.deliveryLongitude ?? null},
+        ${parsed.data.deliveryNote ?? null},
+        ${JSON.stringify(parsed.data.items.map((item) => ({ product_id: item.productId, quantity: item.quantity })))}::jsonb,
+        ${pickup.hash}, ${delivery.hash}
+      )
+    ` : sql`
       select * from app_private.create_store_order_v2(
         ${orderId}::uuid, ${universityId}::uuid, ${user.id}::uuid,
-        ${parsed.data.vendorProfileId}::uuid, ${parsed.data.deliveryZoneId}::uuid,
+        ${parsed.data.vendorProfileId}::uuid, ${parsed.data.deliveryZoneId ?? null}::uuid,
         ${parsed.data.recipientName}, ${parsed.data.recipientPhoneE164},
-        ${parsed.data.deliveryLocation}, ${parsed.data.deliveryLandmark ?? null},
+        ${parsed.data.deliveryLocation ?? null}, ${parsed.data.deliveryLandmark ?? null},
         ${parsed.data.deliveryLatitude ?? null}, ${parsed.data.deliveryLongitude ?? null},
         ${parsed.data.deliveryNote ?? null},
         ${JSON.stringify(parsed.data.items.map((item) => ({ product_id: item.productId, quantity: item.quantity })))}::jsonb,
@@ -1454,6 +1474,8 @@ studentRoutes.post("/orders", async (context) => {
       );
     if (message.includes("DELIVERY_ZONE_UNAVAILABLE"))
       throw new AppError(400, "BAD_REQUEST", "Choose an active delivery zone.");
+    if (message.includes("FULFILMENT_MODE_UNAVAILABLE"))
+      throw new AppError(409,"CONFLICT","That store no longer offers this delivery option. Refresh and choose another option.");
     if (message.includes("BUYER_TENANT_MISMATCH")) {
       throw new AppError(
         403,
@@ -1488,18 +1510,22 @@ studentRoutes.get("/orders/:id", async (context) => {
   }>(sql`
     select orders.id, orders.status, orders.university_id,
       orders.subtotal_kobo, orders.delivery_fee_kobo, orders.total_kobo,
+      coalesce(to_jsonb(orders)->>'fulfilment_mode','RIDER') as fulfilment_mode,
       orders.delivery_note, orders.pricing_formula_version,
       orders.created_at, orders.updated_at, profiles.display_name as vendor_name,
       zones.name as zone_name,
       snapshots.recipient_name, snapshots.recipient_phone_e164,
       snapshots.delivery_location, snapshots.delivery_landmark,
       snapshots.latitude, snapshots.longitude
+      ,to_jsonb(snapshots)->>'pickup_location' as pickup_location,
+      to_jsonb(snapshots)->>'pickup_instructions' as pickup_instructions
     from public.orders orders
     join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
     left join public.delivery_zones zones on zones.id = orders.delivery_zone_id
     left join public.order_delivery_snapshots snapshots on snapshots.order_id = orders.id
-    where orders.id = ${context.req.param("id")}::uuid
+    where orders.id = ${id(context.req.param("id"))}::uuid
       and orders.buyer_user_id = ${user.id}::uuid
+      and orders.university_id = ${user.universityId}::uuid
     limit 1
   `);
   const order = firstRow(result);
@@ -1557,11 +1583,18 @@ studentRoutes.post("/product-reviews", async (context) => {
       "BAD_REQUEST",
       "Choose a rating and add a useful review.",
     );
-  const id = crypto.randomUUID();
+  const reviewId = crypto.randomUUID();
+  const purchase = firstRow(await database(context.env).execute(sql`
+    select o.id from public.orders o join public.order_items i on i.order_id=o.id
+    where o.id=${parsed.data.orderId}::uuid and o.buyer_user_id=${user.id}::uuid
+      and o.university_id=${user.universityId}::uuid and o.status='DELIVERED'
+      and i.product_id=${parsed.data.productId}::uuid
+  `));
+  if (!purchase) throw new AppError(403,"FORBIDDEN","Only the buyer of a completed product purchase can review it.");
   try {
     await database(context.env).execute(sql`
       select * from app_private.create_product_review(
-        ${id}::uuid, ${parsed.data.orderId}::uuid, ${parsed.data.productId}::uuid,
+        ${reviewId}::uuid, ${parsed.data.orderId}::uuid, ${parsed.data.productId}::uuid,
         ${user.id}::uuid, ${parsed.data.rating}::smallint, ${parsed.data.body ?? null}
       )
     `);
@@ -1579,7 +1612,7 @@ studentRoutes.post("/product-reviews", async (context) => {
     }
     throw error;
   }
-  return context.json({ id, status: "PUBLISHED" }, 201);
+  return context.json({ id:reviewId, status: "PUBLISHED" }, 201);
 });
 
 studentRoutes.get("/purchases", async (context) => {
@@ -1620,9 +1653,11 @@ studentRoutes.get("/purchases", async (context) => {
     bookingRecords,
     database(context.env).execute(sql`
       select orders.id, orders.status, orders.subtotal_kobo, orders.delivery_fee_kobo,
+        coalesce(to_jsonb(orders)->>'fulfilment_mode','RIDER') as fulfilment_mode,
         orders.total_kobo, orders.created_at, profiles.display_name as vendor_name
       from public.orders orders join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
       where orders.buyer_user_id = ${user.id}::uuid
+        and orders.university_id=${user.universityId}::uuid
       order by orders.created_at desc limit 100
     `),
   ]);

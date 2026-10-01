@@ -1,7 +1,7 @@
 import { BrandSwitch } from "@/src/components/brand-switch";
 import { useCallback, useState } from "react";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Pressable, Text, View } from "react-native";
+import { Linking, Pressable, Text, View } from "react-native";
 import {
   ToolPage,
   ToolButton,
@@ -19,6 +19,11 @@ type Item = {
   name?: string;
   zone_name?: string;
   store_name?:string;
+  vendor_name?:string;
+  vendor_user_id?:string;
+  vendor_phone?:string|null;
+  vendor_whatsapp?:string|null;
+  delivery_location?:string|null;
   pickup_location?:string;
   delivery_note?:string;
   price_kobo?: number;
@@ -190,9 +195,15 @@ export default function AgentDashboard() {
               fontSize: 17,
             }}
           >
-            {item.store_name ?? item.name ?? item.title ?? item.zone_name}
+            {item.vendor_name ?? item.store_name ?? item.name ?? item.title ?? item.zone_name}
           </Text>
           {role === "RIDER" && <View style={{gap:6,marginVertical:8}}><Text style={{color:theme.textMuted}}>Pickup · {item.pickup_location || item.zone_name || "Campus store"}</Text>{item.delivery_note&&<Text style={{color:theme.text}}>Delivery · {item.delivery_note}</Text>}</View>}
+          {role==='RIDER' && item.delivery_location?<Text style={{color:theme.text,marginBottom:12}}>Drop-off · {item.delivery_location}</Text>:null}
+          {role==='RIDER' && ['RESERVED','PICKED_UP'].includes(item.status)?<View style={{gap:8,marginVertical:10}}>
+            {item.vendor_user_id?<ToolButton secondary label="Message vendor" disabled={busy} onPress={()=>{void api<{thread:{id:string}}>('/v1/messages/threads',{method:'POST',body:JSON.stringify({userId:item.vendor_user_id})}).then(result=>router.push({pathname:'/conversation',params:{id:result.thread.id}})).catch(e=>toast(e instanceof Error?e.message:'Messaging could not open.','error'));}}/>:null}
+            {item.vendor_phone?<ToolButton secondary label="Call vendor" onPress={()=>{void Linking.openURL(`tel:${item.vendor_phone}`).catch(()=>toast('Calling could not open.','error'));}}/>:null}
+            {item.vendor_whatsapp?<ToolButton secondary label="WhatsApp vendor" onPress={()=>{void Linking.openURL(`https://wa.me/${item.vendor_whatsapp!.replace(/\D/g,'')}`).catch(()=>toast('WhatsApp could not open.','error'));}}/>:null}
+          </View>:null}
           {role === "TUTOR" ? (
             <ToolButton
               secondary

@@ -75,6 +75,7 @@ type Result = {
   selectedProductId?: string;
   commerceAvailable: boolean;
   isOwner: boolean;
+  reviewPurchase?:{resourceType:"STORE_ORDER"|"TUTORIAL_BOOKING";resourceId:string}|null;
 };
 const money = (value: number) =>
   new Intl.NumberFormat("en-NG", {
@@ -608,6 +609,11 @@ export default function StudentService() {
                     : "No ratings yet"}
                 </Text>
               </View>
+              {data.reviewPurchase?<Pressable accessibilityRole="button" onPress={()=>{
+                const purchase=data.reviewPurchase!;
+                if(purchase.resourceType==='STORE_ORDER')router.push({pathname:'/order-detail',params:{id:purchase.resourceId,review:'1'}});
+                else router.push('/(tabs)/purchases');
+              }} style={({pressed})=>({paddingHorizontal:20,paddingTop:16,opacity:pressed?0.6:1})}><Text style={{...body,color:theme.accentText,fontFamily:theme.font.semibold}}>Review your purchase</Text></Pressable>:null}
               {data.reviews.length ? (
                 <ScrollView
                   horizontal

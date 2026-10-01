@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { Linking, Pressable, Text, TextInput, View } from "react-native";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ToolButton, ToolPage } from "@/src/components/toolkit";
 import { ScreenSkeleton } from "@/src/components/skeleton";
@@ -16,6 +16,7 @@ type Order = {
   item_count: number;
   created_at: string;
   zone_name: string | null;
+  fulfilment_mode: string;
 };
 type Detail = {
   order: Order & {
@@ -32,6 +33,14 @@ type Detail = {
     unit_price_kobo: number;
   }[];
   timeline: { status: string; occurred_at: string; note: string | null }[];
+  delivery: {
+    status: string;
+    request_posted_at: string | null;
+    rider_user_id: string | null;
+    rider_name: string | null;
+    rider_phone: string | null;
+  } | null;
+  fulfilmentReady: boolean;
 };
 const money = (value: number) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(
@@ -58,6 +67,7 @@ export default function VendorOrders() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pickupCode, setPickupCode] = useState("");
+  const [handoffCode, setHandoffCode] = useState("");
   const generation = useRef(0);
   const load = useCallback(async () => {
     const version = ++generation.current;
@@ -139,6 +149,35 @@ export default function VendorOrders() {
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "The pickup code is unavailable.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function fulfil(action: "rider-request" | "dispatch" | "handoff") {
+    if (!selected || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/v1/agents/orders/${selected}/${action}`, {
+        method: "POST",
+        ...(action === "handoff"
+          ? { body: JSON.stringify({ code: handoffCode }) }
+          : {}),
+      });
+      setHandoffCode("");
+      await Promise.all([load(), readDetail(selected)]);
+      toast(
+        action === "rider-request"
+          ? "Rider request posted"
+          : action === "dispatch"
+            ? "Delivery started"
+            : "Buyer handoff confirmed",
+        "success",
+      );
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "This order could not be updated.",
       );
     } finally {
       setBusy(false);
@@ -298,13 +337,127 @@ export default function VendorOrders() {
                   onPress={() => void update("READY")}
                 />
               ) : null}
-              {detail.order.status === "READY" ? (
+              {detail.order.status === "READY" &&
+              detail.order.fulfilment_mode === "RIDER" ? (
+                <>
+                  {detail.fulfilmentReady &&
+                  !detail.delivery?.request_posted_at ? (
+                    <ToolButton
+                      label="Request a rider"
+                      disabled={busy}
+                      onPress={() => void fulfil("rider-request")}
+                    />
+                  ) : null}
+                  <ToolButton
+                    secondary
+                    label="Show rider pickup code"
+                    disabled={busy}
+                    onPress={() => void showPickupCode()}
+                  />
+                </>
+              ) : null}
+              {detail.order.fulfilment_mode === "VENDOR_DELIVERY" &&
+              detail.order.status === "READY" ? (
                 <ToolButton
-                  secondary
-                  label="Show rider pickup code"
+                  label="Start vendor delivery"
                   disabled={busy}
-                  onPress={() => void showPickupCode()}
+                  onPress={() => void fulfil("dispatch")}
                 />
+              ) : null}
+              {(detail.order.fulfilment_mode === "PICKUP" &&
+                detail.order.status === "READY") ||
+              (detail.order.fulfilment_mode === "VENDOR_DELIVERY" &&
+                detail.order.status === "IN_DELIVERY") ? (
+                <View style={{ gap: 12, marginVertical: 18 }}>
+                  <Text style={text}>
+                    Ask the buyer for their confirmation code after handing over
+                    the order.
+                  </Text>
+                  <TextInput
+                    accessibilityLabel="Buyer confirmation code"
+                    value={handoffCode}
+                    onChangeText={(value) =>
+                      setHandoffCode(value.replace(/\D/g, ""))
+                    }
+                    editable={!busy}
+                    maxLength={6}
+                    keyboardType="number-pad"
+                    placeholder="6-digit confirmation code"
+                    placeholderTextColor={theme.textMuted}
+                    style={{
+                      ...text,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                      borderRadius: 10,
+                      padding: 14,
+                    }}
+                  />
+                  <ToolButton
+                    label="Confirm buyer handoff"
+                    disabled={busy || handoffCode.length !== 6}
+                    onPress={() => void fulfil("handoff")}
+                  />
+                </View>
+              ) : null}
+              {detail.delivery?.rider_user_id ? (
+                <View style={{ gap: 12, marginVertical: 18 }}>
+                  <Text style={{ ...text, fontFamily: theme.font.semibold }}>
+                    Rider · {detail.delivery.rider_name}
+                  </Text>
+                  <ToolButton
+                    secondary
+                    label="Message rider"
+                    disabled={busy}
+                    onPress={() => {
+                      void api<{ thread: { id: string } }>(
+                        "/v1/messages/threads",
+                        {
+                          method: "POST",
+                          body: JSON.stringify({
+                            userId: detail.delivery!.rider_user_id,
+                          }),
+                        },
+                      )
+                        .then((result) =>
+                          router.push({
+                            pathname: "/conversation",
+                            params: { id: result.thread.id },
+                          }),
+                        )
+                        .catch((e) =>
+                          toast(
+                            e instanceof Error
+                              ? e.message
+                              : "Messaging could not open.",
+                            "error",
+                          ),
+                        );
+                    }}
+                  />
+                  {detail.delivery.rider_phone ? (
+                    <ToolButton
+                      secondary
+                      label="Call rider"
+                      onPress={() => {
+                        void Linking.openURL(
+                          `tel:${detail.delivery!.rider_phone}`,
+                        ).catch(() =>
+                          toast("Calling could not open.", "error"),
+                        );
+                      }}
+                    />
+                  ) : null}
+                </View>
+              ) : detail.delivery?.request_posted_at ? (
+                <Text
+                  style={{
+                    ...text,
+                    color: theme.textMuted,
+                    marginVertical: 12,
+                  }}
+                >
+                  Your request is visible to available campus riders.
+                </Text>
               ) : null}
               {pickupCode ? (
                 <View

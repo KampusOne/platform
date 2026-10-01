@@ -40,6 +40,9 @@ type Product = {
   stock_quantity: number;
   image_url: string | null;
   vendor_name: string;
+  pickup_enabled?:boolean;
+  self_delivery_enabled?:boolean;
+  pickup_location?:string;
   is_demo?: boolean;
 };
 
@@ -52,6 +55,7 @@ type CatalogResponse = {
   deliveryZones: Zone[];
   catalogueMode?: CatalogueMode;
   checkoutEnabled?: boolean;
+  riderDeliveryEnabled?:boolean;
 };
 
 const naira = (kobo: number) =>
@@ -76,6 +80,8 @@ export default function StoreScreen() {
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [riderDeliveryEnabled,setRiderDeliveryEnabled]=useState(false);
+  const [fulfilmentMode,setFulfilmentMode]=useState<'RIDER'|'PICKUP'|'VENDOR_DELIVERY'>('RIDER');
   const [deliveryPlace,setDeliveryPlace]=useState<string|null>(null);
   const [recipientName,setRecipientName]=useState("");
   const [recipientPhone,setRecipientPhone]=useState("");
@@ -122,6 +128,7 @@ export default function StoreScreen() {
       const mode = data.catalogueMode ?? "LIVE";
       setProducts(data.products);
       setZones(data.deliveryZones);
+      setRiderDeliveryEnabled(data.riderDeliveryEnabled===true);
       setCatalogueMode(mode);
       setCheckoutEnabled(data.checkoutEnabled ?? mode === "LIVE");
     } catch (caught) {
@@ -180,7 +187,12 @@ export default function StoreScreen() {
     0,
   );
   const selectedZone = zones.find((zone) => zone.id === selectedZoneId);
-  const total = subtotal + Number(selectedZone?.base_fee_kobo ?? 0);
+  const vendorProduct=cartItems[0]?.product;
+  const fulfilmentModes=(['RIDER','PICKUP','VENDOR_DELIVERY'] as const).filter(mode=>mode==='RIDER'?riderDeliveryEnabled:mode==='PICKUP'?vendorProduct?.pickup_enabled:vendorProduct?.self_delivery_enabled);
+  const effectiveMode=fulfilmentModes.includes(fulfilmentMode)?fulfilmentMode:fulfilmentModes[0];
+  const deliveryFee=effectiveMode==='RIDER'?Number(selectedZone?.base_fee_kobo??0):0;
+  const total = subtotal + deliveryFee;
+  const checkoutReady=!!effectiveMode && (effectiveMode!=='RIDER' || !!selectedZone);
   const featureDisabled = catalogIssue?.code === "FEATURE_DISABLED";
 
   function retryLoad() {
@@ -237,7 +249,7 @@ export default function StoreScreen() {
   }
 
   async function checkout() {
-    if (!checkoutEnabled || !cartItems.length || !selectedZone) return;
+    if (!checkoutEnabled || !cartItems.length || !checkoutReady) return;
     setBusy(true);
     setCheckoutError("");
     setNotice("");
@@ -248,8 +260,8 @@ export default function StoreScreen() {
           method: "POST",
           body: JSON.stringify({
             vendorProfileId: cartItems[0]?.product.vendor_profile_id,
-            recipientName,recipientPhoneE164:recipientPhone,deliveryLocation,deliveryPlaceId:deliveryPlace,
-            deliveryZoneId: selectedZone.id,
+            fulfilmentMode:effectiveMode,recipientName,recipientPhoneE164:recipientPhone,deliveryLocation:effectiveMode==='PICKUP'?null:deliveryLocation,deliveryPlaceId:deliveryPlace,
+            deliveryZoneId: effectiveMode==='RIDER'?selectedZone?.id:null,
             deliveryNote: deliveryNote.trim() || null,
             items: cartItems.map(({ product, quantity }) => ({
               productId: product.id,
@@ -697,6 +709,12 @@ export default function StoreScreen() {
                     </View>
                   ) : null}
 
+                  <Text style={styles.sectionLabel}>How would you like your order?</Text>
+                  <View accessibilityRole="radiogroup" style={styles.zoneList}>{fulfilmentModes.map(mode=><Pressable key={mode} accessibilityRole="radio" accessibilityState={{selected:effectiveMode===mode,disabled:busy}} disabled={busy} onPress={()=>{setFulfilmentMode(mode);setCheckoutError('');}} style={({pressed})=>[styles.zone,effectiveMode===mode&&styles.zoneSelected,pressed&&styles.pressed]}>
+                    <View style={styles.zoneCopy}><Text style={styles.zoneName}>{mode==='RIDER'?'Rider · Recommended':mode==='PICKUP'?'Pick up at the store':'Delivery by the vendor'}</Text><Text style={styles.zoneFee}>{mode==='RIDER'?'A campus rider collects your order':mode==='PICKUP'?vendorProduct?.pickup_location??'Collect from the vendor':'The vendor brings the order to your address'}</Text></View>
+                    <Ionicons name={effectiveMode===mode?'radio-button-on':'radio-button-off'} size={22} color={effectiveMode===mode?theme.brandPressed:theme.textSubtle}/>
+                  </Pressable>)}</View>
+                  {effectiveMode==='RIDER'?<>
                   <Text style={styles.sectionLabel}>Delivery zone</Text>
                   <View accessibilityRole="radiogroup" style={styles.zoneList}>
                     {zones.map((zone) => {
@@ -748,11 +766,13 @@ export default function StoreScreen() {
                       </Text>
                     </View>
                   ) : null}
+                  </>:null}
 
                   <Text style={styles.sectionLabel}>Recipient name</Text><TextInput accessibilityLabel="Recipient name" value={recipientName} onChangeText={setRecipientName} maxLength={120} style={styles.noteInput}/>
                   <Text style={styles.sectionLabel}>Recipient phone (+234)</Text><TextInput accessibilityLabel="Recipient phone" value={recipientPhone} onChangeText={setRecipientPhone} keyboardType="phone-pad" maxLength={14} style={styles.noteInput}/>
-                  <Text style={styles.sectionLabel}>Delivery address</Text><TextInput accessibilityLabel="Delivery address" value={deliveryLocation} onChangeText={setDeliveryLocation} maxLength={500} style={styles.noteInput}/>
+                  {effectiveMode!=='PICKUP'?<><Text style={styles.sectionLabel}>Delivery address</Text><TextInput accessibilityLabel="Delivery address" value={deliveryLocation} onChangeText={setDeliveryLocation} maxLength={500} style={styles.noteInput}/>
                   <CampusPlaceChoice label="Delivery point on the campus map" value={deliveryPlace} onChange={setDeliveryPlace}/>
+                  </>:null}
                   <Text style={styles.sectionLabel}>
                     Delivery note{" "}
                     <Text style={styles.optional}>(optional)</Text>
@@ -781,8 +801,8 @@ export default function StoreScreen() {
                     <View style={styles.totalRow}>
                       <Text style={styles.totalLabel}>Delivery</Text>
                       <Text style={styles.totalValue}>
-                        {selectedZone
-                          ? naira(selectedZone.base_fee_kobo)
+                        {effectiveMode!=='RIDER'?naira(0):selectedZone
+                          ? naira(deliveryFee)
                           : "Select a zone"}
                       </Text>
                     </View>
@@ -796,26 +816,26 @@ export default function StoreScreen() {
                     accessibilityLabel={
                       busy
                         ? "Creating order and opening secure payment"
-                        : selectedZone
+                        : checkoutReady
                           ? "Create order and pay securely"
                           : "Select a delivery zone to continue"
                     }
                     accessibilityHint={
-                      selectedZone
+                      checkoutReady
                         ? "Reserves your order and shows the exact delivery and service fees before payment"
                         : "Select a delivery zone first"
                     }
                     accessibilityRole="button"
                     accessibilityState={{
                       busy,
-                      disabled: busy || !selectedZone,
+                      disabled: busy || !checkoutReady,
                     }}
-                    disabled={busy || !selectedZone}
+                    disabled={busy || !checkoutReady}
                     onPress={() => void checkout()}
                     style={({ pressed }) => [
                       styles.checkout,
-                      (busy || !selectedZone) && styles.checkoutDisabled,
-                      pressed && !busy && selectedZone && styles.buttonPressed,
+                      (busy || !checkoutReady) && styles.checkoutDisabled,
+                      pressed && !busy && checkoutReady && styles.buttonPressed,
                     ]}
                   >
                     {busy ? (

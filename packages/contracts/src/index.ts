@@ -524,13 +524,14 @@ export const disputeSchema = z.object({
 export const storeOrderSchema = z
   .object({
     vendorProfileId: z.string().uuid(),
-    deliveryZoneId: z.string().uuid(),
+    fulfilmentMode: z.enum(["PICKUP", "VENDOR_DELIVERY", "RIDER"]).default("RIDER"),
+    deliveryZoneId: z.string().uuid().nullable().optional(),
     recipientName: z.string().trim().min(2).max(120),
     recipientPhoneE164: z
       .string()
       .trim()
       .regex(/^\+234[789][0-9]{9}$/),
-    deliveryLocation: z.string().trim().min(5).max(500),
+    deliveryLocation: z.string().trim().max(500).nullable().optional(),
     deliveryLandmark: z.string().trim().min(2).max(200).nullable().optional(),
     deliveryLatitude: z.number().min(-90).max(90).nullable().optional(),
     deliveryLongitude: z.number().min(-180).max(180).nullable().optional(),
@@ -546,6 +547,12 @@ export const storeOrderSchema = z
       .max(30),
   })
   .superRefine((value, context) => {
+    if (value.fulfilmentMode === "RIDER" && !value.deliveryZoneId) {
+      context.addIssue({code:z.ZodIssueCode.custom,message:"Choose a rider delivery zone.",path:["deliveryZoneId"]});
+    }
+    if (value.fulfilmentMode !== "PICKUP" && (value.deliveryLocation?.length ?? 0) < 5) {
+      context.addIssue({code:z.ZodIssueCode.custom,message:"Enter the delivery address.",path:["deliveryLocation"]});
+    }
     if (
       (value.deliveryLatitude == null) !==
       (value.deliveryLongitude == null)
@@ -558,6 +565,8 @@ export const storeOrderSchema = z
       });
     }
   });
+
+export const storeFulfilmentSchema = z.object({pickupEnabled:z.boolean(),selfDeliveryEnabled:z.boolean()}).strict();
 
 export const productReviewSchema = z.object({
   orderId: z.string().uuid(),

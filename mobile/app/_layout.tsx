@@ -33,6 +33,7 @@ import { StartupProvider } from "@/src/lib/startup";
 import { AndroidBackNavigation } from "@/src/components/android-back-navigation";
 import { AutoStreak } from "@/src/components/auto-streak";
 import { DownloadTray } from "@/src/components/download-tray";
+import { PurchaseReviewPrompt } from "@/src/components/purchase-review-prompt";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -89,6 +90,7 @@ export default function RootLayout() {
         <VideoEditorHost />
         <AndroidBackNavigation />
         <DownloadTray />
+        <PurchaseReviewPrompt />
         <BrandIntro fontsReady={fontsLoaded || Boolean(fontError)} appearanceReady={appearanceReady} />
       </ToastProvider></StartupProvider>
     </AuthProvider>

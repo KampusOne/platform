@@ -435,6 +435,22 @@
       "gitBlobSha": "851552f6970a428d5bd132c2d7d336f1aa0f3c69",
       "status": "queued_in_this_update",
       "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260930220000_store_fulfilment_modes",
+      "path": "database/neon/migrations/20260930220000_store_fulfilment_modes.sql",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false,
+      "sha256": "8459920332654a22f7d16ae27ec4be76236ffa447e4d691927d50bb76f4e78b4",
+      "gitBlobSha": "13ed85b8733259713298788250f905bf409b1b06"
+    },
+    {
+      "version": "20260930230000_optional_purchase_review_reminders",
+      "path": "database/neon/migrations/20260930230000_optional_purchase_review_reminders.sql",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false,
+      "sha256": "e766da9fd475cd276d008920f0d1f6865ee3c19cddf3c043c03c4428cc014131",
+      "gitBlobSha": "46aae63cd1bae562d3b098d8392d933d244197ab"
     }
   ]
 }

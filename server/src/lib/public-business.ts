@@ -58,6 +58,10 @@ export async function readPublicBusiness(
     reviews: Item[] = [];
   let commerceAvailable = false,
     completedTrips = 0;
+  let reviewPurchase: {
+    resourceType: "STORE_ORDER" | "TUTORIAL_BOOKING";
+    resourceId: string;
+  } | null = null;
   const reviewVisible = unblockedAuthor(viewer.id, sql`reviewer.user_id`);
   if (record.agent_type === "VENDOR" && env.PHASE_3_SCHEMA_READY === "true") {
     store = firstRow(
@@ -103,6 +107,23 @@ export async function readPublicBusiness(
       ]);
       products = results[0].rows;
       reviews = results[1].rows;
+      if (schema?.reviews) {
+        const eligible = firstRow(
+          await db.execute<{ id: string }>(sql`
+          select o.id from public.orders o join public.order_items i on i.order_id=o.id
+          join public.vendor_products p on p.id=i.product_id and p.vendor_profile_id=o.vendor_profile_id and p.university_id=o.university_id
+          where o.vendor_profile_id=${record.id}::uuid and o.university_id=${viewer.universityId}::uuid
+            and o.buyer_user_id=${viewer.id}::uuid and o.status='DELIVERED'
+            and not exists(select 1 from public.product_reviews r where r.order_id=o.id and r.product_id=i.product_id)
+          order by o.completed_at desc nulls last,o.created_at desc,o.id limit 1
+        `),
+        );
+        if (eligible)
+          reviewPurchase = {
+            resourceType: "STORE_ORDER",
+            resourceId: eligible.id,
+          };
+      }
     }
   } else if (record.agent_type === "TUTOR") {
     commerceAvailable =
@@ -132,6 +153,20 @@ export async function readPublicBusiness(
       ]);
       tutorials = results[0].rows;
       reviews = results[1].rows;
+      const eligible = firstRow(
+        await db.execute<{ id: string }>(sql`
+        select b.id from public.tutorial_bookings b join public.tutorial_listings l on l.id=b.listing_id and l.university_id=b.university_id
+        where l.tutor_profile_id=${record.id}::uuid and b.university_id=${viewer.universityId}::uuid
+          and b.student_user_id=${viewer.id}::uuid and b.status='COMPLETED'
+          and not exists(select 1 from public.tutorial_reviews r where r.booking_id=b.id)
+        order by b.created_at desc,b.id limit 1
+      `),
+      );
+      if (eligible)
+        reviewPurchase = {
+          resourceType: "TUTORIAL_BOOKING",
+          resourceId: eligible.id,
+        };
     }
   } else if (record.agent_type === "RIDER") {
     completedTrips = Number(
@@ -187,6 +222,7 @@ export async function readPublicBusiness(
     products,
     tutorials,
     reviews,
+    reviewPurchase,
     commerceAvailable,
     isOwner: viewer.id === record.user_id,
   };

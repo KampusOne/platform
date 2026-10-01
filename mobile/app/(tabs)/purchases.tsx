@@ -473,6 +473,9 @@ function OrderRecord({
           ) : null}
         </View>
       ) : null}
+      <Pressable accessibilityRole="button" accessibilityLabel={`View order ${orderReference}`} onPress={()=>router.push({pathname:'/order-detail',params:{id:item.id}})} style={styles.problemAction}>
+        <Text style={styles.problemActionText}>{item.status==='DELIVERED'?'View order & reviews':'View order details'}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -609,7 +612,7 @@ export default function PurchasesScreen() {
     null,
   );
   const [reviewTarget, setReviewTarget] = useState<Booking | null>(null);
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [reviewBody, setReviewBody] = useState("");
   const [dispute, setDispute] = useState<DisputeTarget | null>(null);
   const [reason, setReason] = useState("");
@@ -780,7 +783,7 @@ export default function PurchasesScreen() {
   }
 
   async function submitReview() {
-    if (!reviewTarget) return;
+    if (!reviewTarget || rating===0) return;
     setBusy(reviewTarget.id);
     setError("");
     try {
@@ -795,7 +798,7 @@ export default function PurchasesScreen() {
       setNotice("Thanks — your verified tutorial review is now published.");
       setReviewTarget(null);
       setReviewBody("");
-      setRating(5);
+      setRating(0);
       await load();
     } catch (caught) {
       setError(
@@ -1273,12 +1276,12 @@ export default function PurchasesScreen() {
               <Pressable
                 accessibilityLabel="Publish tutorial review"
                 accessibilityRole="button"
-                accessibilityState={{ busy: reviewBusy, disabled: reviewBusy }}
-                disabled={reviewBusy}
+                accessibilityState={{ busy: reviewBusy, disabled: reviewBusy || rating===0 }}
+                disabled={reviewBusy || rating===0}
                 onPress={() => void submitReview()}
                 style={({ pressed }) => [
                   styles.submitAction,
-                  reviewBusy && styles.actionDisabled,
+                  (reviewBusy || rating===0) && styles.actionDisabled,
                   pressed && !reviewBusy && styles.pressed,
                 ]}
               >

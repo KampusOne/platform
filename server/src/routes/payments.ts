@@ -13,6 +13,28 @@ import type { Bindings, Variables } from "../types";
 
 export const paymentRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+paymentRoutes.get("/summary",requireAuth,async context=>{
+  const user=currentUser(context),resourceId=context.req.query("resourceId"),resourceType=context.req.query("resourceType");
+  const parsed=paymentInitializationSchema.omit({idempotencyKey:true}).safeParse({resourceId,resourceType});
+  if(!parsed.success)throw new AppError(400,"BAD_REQUEST","Choose a valid purchase to view its payment.");
+  if(resourceType==='STORE_ORDER' && !phase3SchemaReady(context.env))throw new AppError(503,"FEATURE_DISABLED","Store payments are unavailable yet.");
+  if(resourceType==='TUTORIAL_BOOKING' && !phase2SchemaReady(context.env))throw new AppError(503,"FEATURE_DISABLED","Tutorial payments are unavailable yet.");
+  const summary=firstRow(await database(context.env).execute(resourceType==='STORE_ORDER'?sql`
+    select o.id,s.display_name as title,o.status,o.subtotal_kobo as base_kobo,
+      0::integer as buyer_fee_kobo,o.delivery_fee_kobo,o.total_kobo as amount_kobo,
+      (o.pricing_formula_version<>'UNCONFIGURED') as pricing_ready
+    from public.orders o join public.vendor_storefronts s on s.vendor_profile_id=o.vendor_profile_id
+    where o.id=${parsed.data.resourceId}::uuid and o.buyer_user_id=${user.id}::uuid and o.university_id=${user.universityId}::uuid
+  `:sql`
+    select b.id,l.title,b.status,b.amount_kobo as base_kobo,0::integer as buyer_fee_kobo,
+      0::integer as delivery_fee_kobo,b.amount_kobo,true as pricing_ready
+    from public.tutorial_bookings b join public.tutorial_listings l on l.id=b.listing_id
+    where b.id=${parsed.data.resourceId}::uuid and b.student_user_id=${user.id}::uuid and b.university_id=${user.universityId}::uuid
+  `));
+  if(!summary)throw new AppError(404,"NOT_FOUND","That purchase could not be found.");
+  return context.json({payment:summary,checkoutEnabled:context.env.PAYMENTS_ENABLED==='true' && summary.pricing_ready===true});
+});
+
 paymentRoutes.post("/initialize", requireAuth, async (context) => {
   requireFeature(context.env, "PAYMENTS_ENABLED", "Payments are not enabled in this environment.");
   const parsed = paymentInitializationSchema.safeParse(await context.req.json().catch(() => null));

@@ -1,6 +1,7 @@
 import { z } from "@kampusone/contracts";
 import { input, id } from "../lib/input";
 import { readPublicBusiness } from "../lib/public-business";
+import { fulfilmentSchemaReady, requireFulfilmentSchema } from "../lib/fulfilment";
 import { sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 
@@ -23,6 +24,7 @@ import {
   vendorProductUpdateSchema,
   vendorStorefrontSchema,
   vendorStorefrontStateSchema,
+  storeFulfilmentSchema,
 } from "@kampusone/contracts";
 
 import { recordAudit } from "../lib/audit";
@@ -52,6 +54,7 @@ async function approvedProfile(
   env: Bindings,
   userId: string,
   type: "TUTOR" | "VENDOR" | "RIDER",
+  universityId?: string | null,
 ) {
   const result = await database(env).execute<{
     id: string;
@@ -59,6 +62,7 @@ async function approvedProfile(
   }>(sql`
     select id, university_id from public.agent_profiles
     where user_id = ${userId}::uuid and agent_type = ${type} and status = 'ACTIVE'
+      and (${universityId === undefined} or university_id=${universityId ?? null}::uuid)
     limit 1
   `);
   const profile = firstRow(result);
@@ -798,12 +802,31 @@ agentRoutes.get("/storefront", async (context) => {
       storefronts.submitted_at, storefronts.listing_revision,
       storefronts.moderated_revision, storefronts.reviewed_at,
       storefronts.review_note, storefronts.created_at, storefronts.updated_at
+      ,coalesce((to_jsonb(storefronts)->>'pickup_enabled')::boolean,false) as pickup_enabled,
+      coalesce((to_jsonb(storefronts)->>'self_delivery_enabled')::boolean,false) as self_delivery_enabled
     from public.vendor_storefronts storefronts
     where storefronts.vendor_profile_id = ${profile.id}::uuid
       and storefronts.university_id = ${profile.university_id}::uuid
     limit 1
   `);
-  return context.json({ storefront: firstRow(result) ?? null });
+  return context.json({ storefront: firstRow(result) ?? null, fulfilmentReady:await fulfilmentSchemaReady(context.env) });
+});
+
+agentRoutes.put("/storefront/fulfilment", async context => {
+  requireFeature(context.env,"STORE_ENABLED","Store operations are not enabled yet.");
+  await requireFulfilmentSchema(context.env);
+  const user=currentUser(context),data=await input(context,storeFulfilmentSchema);
+  const updated=firstRow(await database(context.env).execute<{vendor_profile_id:string}>(sql`
+    update public.vendor_storefronts s set pickup_enabled=${data.pickupEnabled},
+      self_delivery_enabled=${data.selfDeliveryEnabled},updated_at=now()
+    from public.agent_profiles a where a.id=s.vendor_profile_id and a.user_id=${user.id}::uuid
+      and a.university_id=${user.universityId}::uuid and s.university_id=a.university_id
+      and a.agent_type='VENDOR' and a.status='ACTIVE' and s.status<>'SUSPENDED'
+    returning s.vendor_profile_id
+  `));
+  if(!updated)throw new AppError(404,"NOT_FOUND","Save an active storefront before choosing delivery options.");
+  await recordAudit(context.env,{actorUserId:user.id,universityId:user.universityId,action:"storefront.fulfilment_updated",targetType:"agent_profile",targetId:updated.vendor_profile_id,requestId:context.get("requestId"),metadata:data});
+  return context.json({saved:true});
 });
 
 agentRoutes.put("/storefront", async (context) => {
@@ -1269,6 +1292,7 @@ agentRoutes.get("/orders", async (context) => {
   const result = await database(context.env).execute(sql`
     select orders.id, orders.status, orders.subtotal_kobo, orders.delivery_fee_kobo,
       orders.total_kobo, orders.created_at, orders.updated_at,
+      coalesce(to_jsonb(orders)->>'fulfilment_mode','RIDER') as fulfilment_mode,
       zones.name as zone_name, count(items.id)::int as item_count
     from public.orders orders
     join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
@@ -1296,6 +1320,7 @@ agentRoutes.get("/orders/:id", async (context) => {
   }>(sql`
     select orders.id, orders.status, orders.university_id,
       orders.subtotal_kobo, orders.delivery_fee_kobo, orders.total_kobo,
+      coalesce(to_jsonb(orders)->>'fulfilment_mode','RIDER') as fulfilment_mode,
       case when orders.status in (
         'PAID', 'ACCEPTED', 'READY', 'IN_DELIVERY', 'DELIVERED', 'REFUNDED', 'DISPUTED'
       ) then orders.delivery_note else null end as delivery_note,
@@ -1321,7 +1346,7 @@ agentRoutes.get("/orders/:id", async (context) => {
   const order = firstRow(result);
   if (!order)
     throw new AppError(404, "NOT_FOUND", "That vendor order does not exist.");
-  const [items, timeline] = await Promise.all([
+  const [items, timeline, delivery] = await Promise.all([
     database(context.env).execute(sql`
       select items.product_id, items.quantity, items.unit_price_kobo,
         products.name, products.image_url
@@ -1336,15 +1361,68 @@ agentRoutes.get("/orders/:id", async (context) => {
       where order_id = ${order.id}::uuid
       order by occurred_at, id
     `),
+    database(context.env).execute(sql`
+      select j.status, to_jsonb(j)->>'request_posted_at' as request_posted_at,
+        a.user_id as rider_user_id,a.display_name as rider_name,
+        to_jsonb(a)->'public_details'->>'phone' as rider_phone
+      from public.delivery_jobs j left join public.agent_profiles a on a.id=j.rider_profile_id
+      where j.order_id=${order.id}::uuid and j.university_id=${user.universityId}::uuid
+    `),
   ]);
   return context.json({
     order,
     items: items.rows,
     timeline: timeline.rows,
+    delivery:firstRow(delivery) ?? null,
+    fulfilmentReady:await fulfilmentSchemaReady(context.env),
     actionDueAt: null,
     actionPolicyStatus: "UNCONFIGURED",
     serverTime: new Date().toISOString(),
   });
+});
+
+agentRoutes.post("/orders/:id/rider-request",async context=>{
+  requireFeature(context.env,"LOGISTICS_ENABLED","Rider delivery is not enabled yet.");
+  await requireFulfilmentSchema(context.env);
+  const user=currentUser(context),orderId=id(context.req.param("id"));
+  let job;
+  try {
+    job=firstRow(await database(context.env).execute<{id:string}>(sql`select app_private.post_vendor_rider_request(${orderId}::uuid,${user.id}::uuid,${user.universityId}::uuid) as id`));
+  } catch (e) {
+    if(e instanceof Error && /ORDER_NOT_READY_FOR_RIDER|DELIVERY_UNAVAILABLE/.test(e.message))throw new AppError(409,"CONFLICT","A rider request can be posted for your ready order. Refresh to see its current state.");
+    throw e;
+  }
+  await recordAudit(context.env,{actorUserId:user.id,universityId:user.universityId,action:"delivery.request_posted",targetType:"order",targetId:orderId,requestId:context.get("requestId")});
+  return context.json({jobId:job?.id,status:"AVAILABLE"});
+});
+
+agentRoutes.post("/orders/:id/dispatch",async context=>{
+  await requireFulfilmentSchema(context.env);
+  const user=currentUser(context),orderId=id(context.req.param("id"));
+  const result=firstRow(await database(context.env).execute(sql`
+    update public.orders o set status='IN_DELIVERY',updated_at=now()
+    from public.agent_profiles a,public.vendor_storefronts s
+    where o.id=${orderId}::uuid and o.university_id=${user.universityId}::uuid
+      and o.vendor_profile_id=a.id and a.user_id=${user.id}::uuid and a.status='ACTIVE' and a.agent_type='VENDOR'
+      and s.vendor_profile_id=a.id and s.university_id=o.university_id and s.status='APPROVED'
+      and o.fulfilment_mode='VENDOR_DELIVERY' and o.status='READY' returning o.id
+  `));
+  if(!result)throw new AppError(409,"CONFLICT","Only your ready vendor delivery can be dispatched.");
+  await recordAudit(context.env,{actorUserId:user.id,universityId:user.universityId,action:"order.vendor_dispatched",targetType:"order",targetId:orderId,requestId:context.get("requestId")});
+  return context.json({status:"IN_DELIVERY"});
+});
+
+agentRoutes.post("/orders/:id/handoff",async context=>{
+  await requireFulfilmentSchema(context.env);
+  const user=currentUser(context),orderId=id(context.req.param("id")),data=await input(context,handoffCodeSchema);
+  const result=firstRow(await database(context.env).execute<{result:string}>(sql`
+    select app_private.confirm_vendor_order_handoff(${orderId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${await hashOtp(context.env,data.code)}) as result
+  `))?.result;
+  if(result==='LOCKED')throw new AppError(429,"RATE_LIMITED","This handoff code is locked or expired. Contact support.");
+  if(result==='INCORRECT')throw new AppError(400,"BAD_REQUEST","That handoff code is not correct.");
+  if(result!=='DELIVERED')throw new AppError(409,"CONFLICT","This order is not ready for a buyer handoff.");
+  await recordAudit(context.env,{actorUserId:user.id,universityId:user.universityId,action:"order.buyer_handoff_verified",targetType:"order",targetId:orderId,requestId:context.get("requestId")});
+  return context.json({status:"DELIVERED"});
 });
 
 agentRoutes.patch("/orders/:id/status", async (context) => {
@@ -1416,7 +1494,8 @@ agentRoutes.get("/orders/:id/pickup-code", async (context) => {
     select orders.id from public.orders orders
     join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
     join public.delivery_jobs jobs on jobs.order_id = orders.id
-    where orders.id = ${context.req.param("id")}::uuid and profiles.user_id = ${user.id}::uuid
+    where orders.id = ${id(context.req.param("id"))}::uuid and profiles.user_id = ${user.id}::uuid
+      and orders.university_id=${user.universityId}::uuid
       and orders.status in ('READY','IN_DELIVERY') and jobs.status in ('AVAILABLE','RESERVED') limit 1
   `);
   const order = firstRow(result);
@@ -1437,16 +1516,26 @@ agentRoutes.get("/deliveries", async (context) => {
     "Delivery operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const profile = await approvedProfile(context.env, user.id, "RIDER");
+  const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
   const [result, presence] = await Promise.all([
     database(context.env).execute(sql`
     select jobs.id, jobs.order_id, zones.name as zone_name, jobs.status,
       jobs.rider_earning_kobo, jobs.earning_formula_version,
       jobs.reserved_at, jobs.picked_up_at, jobs.delivered_at, jobs.created_at
+      ,vendors.user_id as vendor_user_id,storefronts.display_name as vendor_name,
+      storefronts.pickup_location,
+      case when jobs.rider_profile_id=${profile.id}::uuid then storefronts.contact_phone_e164 end as vendor_phone,
+      case when jobs.rider_profile_id=${profile.id}::uuid then to_jsonb(vendors)->'public_details'->>'whatsapp' end as vendor_whatsapp,
+      case when jobs.rider_profile_id=${profile.id}::uuid then snapshots.delivery_location end as delivery_location,
+      case when jobs.rider_profile_id=${profile.id}::uuid then orders.delivery_note end as delivery_note
     from public.delivery_jobs jobs
     join public.delivery_zones zones on zones.id = jobs.zone_id
+    join public.orders orders on orders.id=jobs.order_id
+    join public.agent_profiles vendors on vendors.id=orders.vendor_profile_id
+    left join public.vendor_storefronts storefronts on storefronts.vendor_profile_id=vendors.id
+    left join public.order_delivery_snapshots snapshots on snapshots.order_id=orders.id
     where jobs.university_id = ${profile.university_id}::uuid
-      and (jobs.status = 'AVAILABLE' or jobs.rider_profile_id = ${profile.id}::uuid)
+      and ((jobs.status = 'AVAILABLE' and orders.status in ('PAID','ACCEPTED','READY') and (not ${await fulfilmentSchemaReady(context.env)} or to_jsonb(jobs)->>'request_posted_at' is not null)) or jobs.rider_profile_id = ${profile.id}::uuid)
     order by case when jobs.status = 'AVAILABLE' then 0 else 1 end, jobs.created_at
     limit 100
   `),
@@ -1473,7 +1562,7 @@ agentRoutes.put("/rider-presence", async (context) => {
       "BAD_REQUEST",
       "Choose a valid rider availability state.",
     );
-  const profile = await approvedProfile(context.env, user.id, "RIDER");
+  const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
   await database(context.env).execute(sql`
     insert into public.rider_presence (rider_profile_id, online, capacity_status, last_seen_at, updated_at)
     values (${profile.id}::uuid, ${parsed.data.online}, ${parsed.data.capacityStatus}, now(), now())
@@ -1493,12 +1582,12 @@ agentRoutes.post("/deliveries/:id/reserve", async (context) => {
     "Delivery operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const profile = await approvedProfile(context.env, user.id, "RIDER");
+  const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
   let result;
   try {
     result = await database(context.env).execute<{ id: string }>(sql`
       select * from app_private.reserve_delivery_job(
-        ${context.req.param("id")}::uuid, ${profile.id}::uuid
+        ${id(context.req.param("id"))}::uuid, ${profile.id}::uuid
       )
     `);
   } catch (caught) {
@@ -1541,13 +1630,13 @@ agentRoutes.post("/deliveries/:id/reserve", async (context) => {
 
 agentRoutes.post("/deliveries/:id/pickup", async (context) => {
   const user = currentUser(context);
-  const profile = await approvedProfile(context.env, user.id, "RIDER");
+  const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
   const parsed = handoffCodeSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(400, "BAD_REQUEST", "Enter the six-digit pickup code.");
   const result = await database(context.env).execute<{ result: string }>(sql`
     select app_private.confirm_delivery_pickup(
-      ${context.req.param("id")}::uuid, ${profile.id}::uuid, ${user.id}::uuid,
+      ${id(context.req.param("id"))}::uuid, ${profile.id}::uuid, ${user.id}::uuid,
       ${await hashOtp(context.env, parsed.data.code)}
     ) as result
   `);
@@ -1585,7 +1674,7 @@ agentRoutes.post("/deliveries/:id/pickup", async (context) => {
 
 agentRoutes.post("/deliveries/:id/complete", async (context) => {
   const user = currentUser(context);
-  const profile = await approvedProfile(context.env, user.id, "RIDER");
+  const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
   const parsed = handoffCodeSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
@@ -1595,7 +1684,7 @@ agentRoutes.post("/deliveries/:id/complete", async (context) => {
     );
   const result = await database(context.env).execute<{ result: string }>(sql`
     select app_private.confirm_delivery_completion(
-      ${context.req.param("id")}::uuid, ${profile.id}::uuid, ${user.id}::uuid,
+      ${id(context.req.param("id"))}::uuid, ${profile.id}::uuid, ${user.id}::uuid,
       ${await hashOtp(context.env, parsed.data.code)}
     ) as result
   `);
