@@ -44,7 +44,7 @@ describe("KampusOne email templates", () => {
   });
 
   it("escapes campaign content instead of treating authored copy as HTML", () => {
-    const messae = renderBroadcastEmail({
+    const message = renderBroadcastEmail({
       subject: "Update",
       body: "<script>alert(1)</script> & goodbye",
       senderName: "KampusOne",

@@ -129,7 +129,7 @@ export async function sendMail(env: Bindings, input: MailInput) {
 
 export function requireEmailProvider(
   env: Bindings,
-): asserts env is Binds & { RESEND_API_KEY: string; RESEND_FROM_EMAIL: string } {
+): asserts env is Bindings & { RESEND_API_KEY: string; RESEND_FROM_EMAIL: string } {
   if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) {
     throw new AppError(503, "PROVIDER_UNAVAILABLE", "Email delivery is not configured yet.", {
       requirement: "RESEND_API_KEY and RESEND_FROM_EMAIL",
