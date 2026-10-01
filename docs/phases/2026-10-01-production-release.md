@@ -21,6 +21,16 @@ The performance workflow installs server dependencies but does not install mobil
 
 The corrected main revision will repeat the Worker → Vercel → Android sequence. The same-source checks, migration guards, alias and API smoke checks, receipt transfer and superseded-APK publication checks remain in place. Do not publish an old or unverified APK to disguise a failed portal release. Repository/environment secrets are not readable through the connected GitHub app, the Vercel deployment connector reports `UNAVAILABLE`, and local deployment credentials are absent; no browser/session fallback was used.
 
+## Corrected release result
+
+The correction is published on main as `0019b6d81588642b44b508a1ad29d9d38dd0ee9d`. Every source-verification and regression workflow passed, including all 513 server tests and 130 root tests. [Worker run 36816190655](https://github.com/KampusOne/platform/actions/runs/36816190655) deployed successfully at 04:42 UTC with version `725a55ac-c489-41ec-8219-ffea1526f446`; readiness and authenticated-route checks passed.
+
+[Vercel retry 36816351275](https://github.com/KampusOne/platform/actions/runs/36816351275) selected the `production` environment and failed its explicit credential check at 04:42:27 UTC: `VERCEL_TOKEN` is still missing. This confirms the token is unavailable to the release even with the corrected scope; no Vercel deployment was made. [APK run 36816365158](https://github.com/KampusOne/platform/actions/runs/36816365158) correctly skipped. The previous portals and APK remain the previous versions.
+
+The remaining concrete action is to configure `VERCEL_TOKEN` as a GitHub `production` environment or repository secret with access to the existing Vercel team and both projects, then rerun the failed portal job while main remains `0019b6d81588642b44b508a1ad29d9d38dd0ee9d`. Existing aliases and the public landing site must be preserved. A successful Vercel retry creates the checked source receipt and starts the matching APK build automatically. Do not paste deployment tokens into chat or commit them. Browser fallback requires the owner's explicit approval because the connected deployment tool is unavailable; it has not been used.
+
+This final evidence is retained on a separate release-evidence branch so main stays at the successful Worker revision and the failed Vercel job can be rerun without invalidating its source-freshness check.
+
 ## Scope still requiring acceptance
 
 Build success and API readiness do not prove physical-device behavior or real provider delivery. Real payment/payout/subscription flags remain disabled pending commercial/provider acceptance. Camera, drafts, gestures, reviews, fulfilment, signing identities and App Links need physical-device acceptance. Department coverage remains 62 of 328 institutions; preserve existing verified academic data and use the reviewed submission path for missing data. GA4 property access, private KYC encryption configuration and receipt/approval email delivery require their independent live checks.
