@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { runInNewContext } from "node:vm";
 const require = createRequire(
-  new URL("../mobile/package.json", import.meta.url),
+  new URL("../server/package.json", import.meta.url),
 );
 const ts = require("typescript"),
   uuid = "33333333-3333-4333-8333-333333333333";

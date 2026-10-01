@@ -1,8 +1,8 @@
 # KampusOne platform upgrade: release handoff
 
-The requested implementation is on `feat/business-platform-20260930`, based on main `f8f2f5b312a7793ec938439c97080a94760cfe87`. A final fetch confirmed main has not advanced. Changes are committed locally. The 41 reviewed migrations have succeeded on a fresh production child and production; 50 versions are now registered with matching source hashes. Publishing the reviewed public code, deployment and the updated testing APK are still pending.
+The reviewed implementation and migration evidence are published on public main at `5038a1cbbe49440900e69b1d36d3fd417cf17810`, with an exact match to the reviewed local source tree. All 41 selected migrations succeeded; 50 registered versions have matching source hashes. The updated Worker is deployed and healthy. Vercel stopped before deployment because its token resolved to an empty value; the matching APK correctly skipped. The production credential-scope correction and retry are the current release work.
 
-Current live evidence and release ordering are recorded in `docs/phases/2026-10-01-live-migration-rollout.md`. The earlier settings/catalogue record is a historical preparation checkpoint. The approved archived-branch deletion resolved Neon capacity; the public source-publication rejection remains the release blocker.
+Current deployment evidence is `docs/phases/2026-10-01-production-release.md`; migration evidence and release ordering are in `2026-10-01-live-migration-rollout.md`. The earlier settings/catalogue and release-attempt records are historical preparation checkpoints. The approved archived-branch deletion resolved Neon capacity, and the owner's explicit public-source approval resolved the publication block.
 
 ## What is implemented
 
@@ -81,14 +81,14 @@ The production proof lists all 41 newly applied versions and 50 exact ledger mat
 
 ## Release dependencies
 
-1. Approve publishing the reviewed source and migration evidence to existing public `KampusOne/platform` on main. Automatic approval review rejected the earlier push for missing explicit authorization of that payload/public destination. The owner retains public visibility; do not change it or bypass the rejected push. The latest approval covered the specific archived Neon branch deletion, now complete. App code cannot restrict AI readers of public GitHub pages. The public landing site is unchanged.
+1. Public source publication is complete under the owner's explicit approval. Keep the existing public visibility and public landing site unchanged. The earlier automatic rejection is historical; do not request the same approval again. App code cannot restrict readers of public GitHub pages.
 2. Deploy through the ordered Worker → Vercel → APK workflows. Recorded live migration proof now passes. Portal and mobile Git auto-deploy are disabled so they cannot race the verified backend. A successful matching Worker run is required before Vercel publication; verified portal aliases/mobile preview create a source receipt used by the APK build. Only a successful verified release can publish the current main APK. Manual APK runs save test artifacts. See the live rollout record for exact hostnames and workflow behavior.
 3. Configure server-only KYC encryption/fingerprint secrets, GA4 reporting access and operational mail/push providers. Verify permission revocation and actual application receipt/approval delivery; API readiness alone does not verify provider delivery.
 4. Approve commercial policies and complete real signed payment/transfer/refund/provider-fee acceptance. Payment, payout and Kira subscription flags remain false; no price policy was seeded. Exact displayed/charged amounts require the merchant settings and receipt reconciliation already documented.
 5. Supply the existing owned Expo project ID for push registration and real release signing identities for distribution. The GitHub Gradle workflow can compile a sideload test APK without EAS using Expo-generated testing signing; a real upload/release keystore is required before Play Store publication.
 6. Publish actual signing identities to the link host and run physical Android/iOS camera, draft persistence, gestures, reviews, fulfilment and App Links acceptance. Configure the download URL only after the matching APK exists. Department coverage remains 62 of 328 institutions; unsourced records use the submission/review path.
 
-The database rollout is complete for the reviewed apply list, and the existing API remains ready. No updated Worker/Vercel release, new APK, repository visibility change or provider transaction was made. Compilation and synthetic acceptance do not establish full live/native readiness.
+The database rollout is complete for the reviewed apply list, and the updated Worker is live and ready. The first Vercel release failed before deployment, so no new matching APK was produced. Production-scoped Vercel credentials are the next check. No repository visibility change or provider transaction was made. Compilation and synthetic acceptance do not establish full live/native readiness.
 
 ## Delivery and further detail
 
