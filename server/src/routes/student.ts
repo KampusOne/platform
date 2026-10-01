@@ -505,6 +505,17 @@ studentRoutes.get("/home", async (context) => {
       where posts.university_id = ${universityId}::uuid
         and posts.status in ('PUBLISHED', 'CORRECTED')
         and posts.published_at <= now()
+        and posts.author_user_id is not null
+        and exists (
+          select 1
+          from app_private.managed_publishers managed
+          where managed.user_id = posts.author_user_id
+            and managed.active
+            and (
+              managed.all_universities
+              or managed.institution_id = posts.university_id
+            )
+        )
       order by posts.urgent desc, posts.published_at desc limit 5
     `),
     database(context.env).execute(sql`
