@@ -90,15 +90,31 @@ Official references: https://paystack.com/docs/transfers/single-transfers/ · ht
 
 ## Discovery, sharing and introduction checkpoint
 
-Dedicated feed search now has real Top/Latest/People/Media tabs, username mode, author/date/language/activity/reply filters, visibility checks and cursor pagination. A common share sheet supports explicit sends to recent conversations, WhatsApp, copy and native sharing. Canonical business/profile/post/product/tutorial/material links preserve their destination through sign-in and have a website fallback with signing-identity association handlers. Three original illustrated first-install pages lead into the existing account screen. Implementation and release configuration are recorded in `docs/phases/2026-10-01-discovery-sharing.md`.
+Dedicated feed search now has real Top/Latest/People/Media tabs, username mode, author/date/language/activity/reply filters, visibility checks and cursor pagination. A common share sheet supports explicit sends to recent conversations, WhatsApp, copy and native sharing. Canonical business/profile/post/product/tutorial/material links preserve their destination through sign-in and have a website fallback with signing-identity association handlers. Three illustrated first-install pages using the existing approved character family lead into the existing account screen. Implementation and release configuration are recorded in `docs/phases/2026-10-01-discovery-sharing.md`.
 
 Validation: all 483 server tests in 49 files, 130 root regression tests, 11 post-link tests and 10 contract tests pass. Server/mobile/portal/contracts type checks, server build, portal lint/production build and mobile production web export pass. The full publishing regression caught a missing parameter cast introduced with language metadata; it was corrected and the entire suite passed. Release certificate/domain configuration and browser/native acceptance remain outstanding.
 
 ## Agent onboarding checkpoint
 
-Five progressive application steps, original illustrations, camera capture/retake, optional-CAC business evidence, encrypted NIN drafts/submissions and scoped current-identity review are implemented. Receipt retries are deduplicated; submission cannot activate a role. NIN reveal requires a reason and audit record, and new approval checks the current submitted fingerprint and documents. Details and release configuration are in `docs/phases/2026-10-01-agent-intake.md`.
+Five progressive application steps, illustrations matching the current app pattern, camera capture/retake, optional-CAC business evidence, encrypted NIN drafts/submissions and scoped current-identity review are implemented. Receipt retries are deduplicated; submission cannot activate a role. NIN reveal requires a reason and audit record, and new approval checks the current submitted fingerprint and documents. Details and release configuration are in `docs/phases/2026-10-01-agent-intake.md`.
 
 Validation: all 490 server tests in 50 files and 130 root regression tests pass. Server/mobile/portal type checks, server build, portal lint/production build and mobile production web export pass. Private encryption secrets, actual email delivery and browser/device camera acceptance remain release dependencies.
+
+## Admin and final verification checkpoint
+
+The preferred white-panel admin layout now includes recorded activity and separate GA4 graphs, permission-aware finance, individual email/password staff provisioning, scoped all-page CSV exports, private operations documents, a current/scheduled blocklist and reviewed publishing-account policies. Existing support, verification, sound and campaign controls retain their boundaries. Mutable account names no longer grant newsletter authority. Details, measurements and GA4 configuration are in `docs/phases/2026-10-01-admin-workspace.md`.
+
+All **506 server tests in 53 files**, 130 root tests, 11 post-link tests and 10 contract tests pass. Server/mobile/portal/contracts type checks, server build, portal lint/production build (28 generated static pages) and mobile production web export (89 routes) pass. The exact twelve queued migrations apply in order on the schema-only test baseline, with matching manifest SHA-256/git-blob hashes, validated checks and private ACLs.
+
+The owner's latest illustration references supersede the earlier detailed scenes. Those three generated scene assets were removed; intro and agent screens use the existing isolated-character artwork. The selected personal Higgsfield connection rejected all three prepared replacement jobs with “Requires basic plan or higher”; zero jobs were submitted. Current assets and future generation direction are recorded in `docs/assets/2026-10-01-onboarding-art.md`.
+
+## October 1 read-only migration reconciliation
+
+Neon is responding again. The observed production ledger has nine versions and all nine registered git-blob hashes match the repository. Forty-four older inventory versions are unregistered and need structural/data-effect review; missing ledger entries cannot be treated as missing SQL. Twelve versions are newly queued and not registered. Read-only schema observations include table/column/function names and hashes of index/constraint/function definitions; no customer rows or credentials were exported.
+
+`database/neon/reconcile-migrations.mjs` verifies every inventory checksum and produces `database/verification/2026-10-01-migration-reconciliation.json` from the dated structural snapshot. It deliberately produces no automatic apply list. Live tables required for staff access and recorded product events are absent, as are the new identity/document/publisher tables. The new UI distinguishes these pending updates from empty activity and keeps unavailable actions disabled.
+
+A local ordered migration rehearsal passes, but a clone of the current production branch and review of older unregistered versions are still required before production execution. No production schema or ledger write ran.
 
 ## Publication and visual checks
 
@@ -108,7 +124,7 @@ No deployment, production migration, payment, campaign, approval email or Androi
 
 ## Migration queue
 
-`database/verification/2026-09-30-migration-manifest.json` inventories exact repository versions and checksums. It records September 20 historical attestations separately from current live status. **No production migrations ran in this checkpoint.** Reconcile the live migration ledger after database availability returns, apply only missing versions, and record exact checksums/results. Do not treat every inventory entry as pending or replay applied migrations.
+`database/verification/2026-09-30-migration-manifest.json` inventories exact repository versions and checksums. It records September 20 historical attestations separately from current live status. **No production migrations ran in this checkpoint.** October 1 read-only reconciliation is now available; review the unregistered versions on an isolated production branch, apply only genuinely missing reviewed versions, and record exact checksums/results. Do not treat every inventory entry as pending or replay applied migrations.
 
 New queued migrations:
 
@@ -123,6 +139,7 @@ New queued migrations:
 9. `20260930290000_verified_agent_payouts.sql`
 10. `20261001000000_discovery_search_indexes.sql`
 11. `20261001010000_private_agent_identity_submissions.sql`
+12. `20261001020000_admin_workspace_extensions.sql`
 
 These depend on the current account/agent schema, the Phase 3 commerce foundation and the unified notification tables. Readiness checks let the code be deployed before those migrations without querying absent new columns/functions. No earlier applied migration was edited.
 
@@ -131,7 +148,7 @@ These depend on the current account/agent schema, the Phase 3 commerce foundatio
 1. Actual campus road-route integration and reviewed fare coverage; cash commissions, four-debt locking and repayment are implemented with reviewed zone estimates.
 2. Merchant fee-setting acceptance, transfer-duty statement reconciliation and provider refunds/held-receipt recovery. Store/tutorial-session/material/Kira billing, verified payout reservations/transfers and approved provider-rate configuration are implemented.
 3. Device acceptance of persistent drafts, focused message interactions, the common share sheet and signed app links.
-4. Admin workspace redesign, staff accounts, analytics/exports/campaigns/private operations and moderation integration.
-5. Repository exposure audit, ordered migration rehearsal, deployment checks and Android APK.
+4. Live GA4 property access/custom-dimension setup and actual campaign/approval-email acceptance. Admin redesign, staff accounts, exports, private operations and scoped moderation are implemented.
+5. Publication destination decision, isolated production-branch reconciliation/rehearsal, deployment checks and Android APK. The checkout exposure scan and ordered local twelve-migration rehearsal are complete; see `docs/phases/2026-10-01-repository-exposure.md`.
 
 Existing main already contains recent GA4 and messaging fixes. Port missing earlier branch work selectively rather than replacing current main or assuming historical pending lists are current.

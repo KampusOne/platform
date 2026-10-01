@@ -4,7 +4,9 @@ KampusOne uses one Neon PostgreSQL project as the system of record. Application 
 
 ## Migration order
 
-Apply files in `migrations/` in filename order with a direct, non-pooled Neon connection. Test each migration on a Neon branch created from production before promoting the same reviewed SQL to production.
+Reconcile the live ledger and structural state before selecting files in `migrations/`. Apply only genuinely missing reviewed versions in filename order with a direct, non-pooled Neon connection. Test each migration on a Neon branch created from production before promoting the same reviewed SQL to production. Never replay every inventory file simply because its ledger entry is absent.
+
+The October 1 inventory contains 65 files: nine registered source matches, 44 older unregistered versions requiring review, and twelve new queued versions. Run `node database/neon/reconcile-migrations.mjs` from the repository root to verify the inventory and inspect the dated read-only snapshot; add `--output database/verification/2026-10-01-migration-reconciliation.json` to regenerate its report. This script makes no network call or database write and intentionally produces no automatic apply list. The new twelve-file chain has passed the schema-only PostgreSQL rehearsal in `server/tests/platform-migration-rehearsal.test.ts`; this does not replace a current production-branch rehearsal.
 
 `20260912010000_shared_agent_email_login.sql` adds the private, hashed, one-time email challenges used to issue a separate agent-portal session for an existing verified KampusOne account. It is independent from email-verification and password-reset tokens.
 

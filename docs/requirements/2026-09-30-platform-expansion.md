@@ -1,7 +1,7 @@
 # KampusOne implementation plan and migration addendum
 Prepared: 30 September 2026, Africa/Lagos  
 Target deployment window: 1 October 2026, once database capacity and deployment prerequisites are confirmed  
-Status: requirements drafted; new code, new SQL, production migrations and a new APK have not been produced in this turn
+Status: implementation is on `feat/business-platform-20260930`; twelve new SQL versions are queued and locally rehearsed. See `docs/phases/2026-09-30-platform-upgrade.md` for current verification and release dependencies. Production migrations and a new APK remain pending.
 
 ## Scope and continuity
 
@@ -9,7 +9,7 @@ This plan captures Gideon's latest instructions and the supplied UI references. 
 
 The earlier **KampusOne-Round2-Report.txt**, version 2, contains a 27 September follow-up and an appendix of 30 reviewed, pending production migrations. Its historical checkpoint reported only eight migrations registered in production, a portal origin problem, a prepared proxy fix that was not live, and different active/pending Worker versions. Those figures describe that checkpoint, not a fresh inspection of today's production.
 
-No repository checkout or SQL files are present in the supplied workspace. The 30 filenames and hashes below are copied from the report for reconciliation. This document adds new requirements to that backlog; it does not create executable migrations or certify current deployment state.
+The original planning snapshot preceded repository access. The 30 filenames and hashes below preserve the supplied report for historical reconciliation. A checkout and executable SQL now exist; the dated migration manifest and October 1 read-only reconciliation supersede this planning snapshot for current delivery state.
 
 The July PRDs are planning baselines. This request and the existing implementation take precedence over older stack or pricing assumptions. The recent supplied security screenshots describe an Expo app, Next.js portals, a Cloudflare Worker API and Neon. Retain the actual deployed architecture after inspecting the repository; do not rebuild the project or switch database providers.
 
@@ -238,7 +238,7 @@ Store NIN, identity documents and selfies privately with restricted reviewer acc
 
 Submission queues a confirmation email saying pending approval. Approval/rejection queues a status email and, on approval, grants the selected role and exposes its features in the user's app. Use an email outbox with retries and deduplication so a temporary mail failure does not lose the application.
 
-Create distinct, original KampusOne illustrations for the role choice and progress stages, rather than recycling existing generic artwork.
+Use the current isolated-character KampusOne illustration pattern. Distinct original replacements should match the owner's latest welcome/Today references; existing approved assets are used until generation is available.
 
 **Acceptance:** A user completes an application on a phone, confirms/retakes a selfie, reviews private documents, receives the submission message, and gains only the approved role after staff approval. Repeated submission/retry does not create duplicate applications or emails.
 
@@ -304,7 +304,7 @@ After the existing branded launch, show three brief illustration-led slides only
 2. **Find your people**: campus community, information and messaging.
 3. **Get campus life sorted**: verified stores, tutors and delivery.
 
-Each screen has an original branded illustration, header, one short description and appropriate Next/Back/Skip controls. The final action opens the existing Create account / Already have an account screen.
+Each screen has an illustration matching the current approved character family, header, one short description and appropriate Next/Back/Skip controls. The final action opens the existing Create account / Already have an account screen.
 
 Persist completion locally. Do not replay after an app update or normal restart, or block returning signed-in users. Review existing-user marker handling before adding the new flow. This is separate from agent application onboarding and should not introduce an extra loading sequence.
 
