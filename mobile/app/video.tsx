@@ -407,17 +407,17 @@ export default function VideoViewerScreen() {
           </Pressable>
           <View style={styles.controls}>
             <Pressable accessibilityRole="button" accessibilityLabel={isPlaying ? "Pause video" : "Play video"} onPress={togglePlayback} style={styles.controlButton}>
-              <Ionicons name={isPlaying ? "pause" : "play"} size={31} color={theme.textMuted} />
+              <Ionicons name={isPlaying ? "pause" : "play"} size={31} color="#FFFFFF" />
             </Pressable>
             <Text style={[styles.remaining, { fontFamily: theme.font.medium }]}>-{formatClock(Math.max(0, duration - position))}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel={"Playback speed " + String(speed) + " times"} onPress={cycleSpeed} style={styles.controlButton}>
               <Text style={[styles.speed, { fontFamily: theme.font.semibold }]}>{speed}x</Text>
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel={isMuted ? "Unmute video" : "Mute video"} onPress={() => { player.muted = !isMuted; writeVideoPlaybackSession(post.id, position, !isMuted); }} style={styles.controlButton}>
-              <Ionicons name={isMuted ? "volume-mute-outline" : "volume-high-outline"} size={25} color={theme.textMuted} />
+              <Ionicons name={isMuted ? "volume-mute-outline" : "volume-high-outline"} size={25} color="#FFFFFF" />
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="Use native full screen" onPress={() => void videoRef.current?.enterFullscreen()} style={styles.controlButton}>
-              <Ionicons name="expand-outline" size={25} color={theme.textMuted} />
+              <Ionicons name="expand-outline" size={25} color="#FFFFFF" />
             </Pressable>
           </View>
         </View>
@@ -476,7 +476,7 @@ export default function VideoViewerScreen() {
             <Pressable accessibilityRole="button" onPress={() => { setMenuOpen(false); void toggleBookmark(); }} style={styles.menuRow}><Ionicons name={post.bookmarked ? "bookmark" : "bookmark-outline"} color={theme.text} size={21} /><Text style={[styles.menuText, { fontFamily: theme.font.medium }]}>{post.bookmarked ? "Remove from saved" : "Save video post"}</Text></Pressable>
             <Pressable accessibilityRole="button" onPress={() => { setMenuOpen(false); void share(); }} style={styles.menuRow}><Ionicons name="share-social-outline" color={theme.text} size={21} /><Text style={[styles.menuText, { fontFamily: theme.font.medium }]}>Share post</Text></Pressable>
             <Pressable accessibilityRole="button" onPress={() => { setMenuOpen(false); router.push({ pathname: "/post", params: { id: post.id } }); }} style={styles.menuRow}><Ionicons name="reader-outline" color={theme.text} size={21} /><Text style={[styles.menuText, { fontFamily: theme.font.medium }]}>Open full post</Text></Pressable>
-            <Pressable accessibilityRole="button" onPress={() => setMenuOpen(false)} style={styles.menuRow}><Ionicons name="close-outline" color={theme.textMuted} size={21} /><Text style={[styles.menuText, { color: "#AEB4BA", fontFamily: theme.font.medium }]}>Close</Text></Pressable>
+            <Pressable accessibilityRole="button" onPress={() => setMenuOpen(false)} style={styles.menuRow}><Ionicons name="close-outline" color={theme.textMuted} size={21} /><Text style={[styles.menuText, { color: theme.textMuted, fontFamily: theme.font.medium }]}>Close</Text></Pressable>
           </View>
         </View>
       </Modal>
@@ -524,42 +524,319 @@ export default function VideoViewerScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#000000" },
-  header: { minHeight: 62, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 4 },
-  headerButton: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: "#1B242C" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28 },
-  stateText: { color: "#FFFFFF", fontSize: 14, textAlign: "center" },
-  mediaStage: { width: "100%", backgroundColor: "#000000", alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  videoState: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: "rgba(0,0,0,0.42)" },
-  videoStateText: { color: "#FFFFFF", fontSize: 13 },
-  meta: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 12, gap: 12 },
-  authorRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  authorIdentity: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12 },
-  authorCopy: { flex: 1, minWidth: 0 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  authorName: { color: "#FFFFFF", fontSize: 18, flexShrink: 1 },
-  username: { color: "#AEB4BA", fontSize: 13, marginTop: 2 },
-  followButton: { minHeight: 44, minWidth: 98, paddingHorizontal: 18, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: "#202830" },
-  followingButton: { borderWidth: 1, borderColor: "#5C656D", backgroundColor: "transparent" },
-  followText: { color: "#FFFFFF", fontSize: 14 },
-  description: { color: "#FFFFFF", fontSize: 15, lineHeight: 21 },
-  actions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  actionButton: { flex: 1, minHeight: 50, minWidth: 0, paddingHorizontal: 7, borderRadius: 25, backgroundColor: "#202830", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
-  iconAction: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#202830", alignItems: "center", justifyContent: "center" },
-  actionCount: { color: "#FFFFFF", fontSize: 14 },
-  playbackDock: { marginTop: "auto", paddingHorizontal: 0, paddingBottom: 4 },
-  progressTouch: { minHeight: 25, justifyContent: "center" },
-  progressTrack: { height: 4, backgroundColor: "#3C3C3C", overflow: "hidden" },
-  progressFill: { height: "100%", backgroundColor: "#FFFFFF" },
-  controls: { minHeight: 78, paddingHorizontal: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  controlButton: { minWidth: 48, minHeight: 48, alignItems: "center", justifyContent: "center" },
-  remaining: { color: "#FFFFFF", fontSize: 16 },
-  speed: { color: "#FFFFFF", fontSize: 17 },
-  notice: { position: "absolute", left: 18, right: 18, bottom: 108, alignItems: "center" },
-  noticeText: { color: "#FFFFFF", backgroundColor: "rgba(27,36,44,0.96)", borderRadius: 14, paddingHorizontal: 16, paddingVertical: 11, fontSize: 12.5, overflow: "hidden" },
-  modalRoot: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)", padding: 14 },
-  menu: { width: "100%", maxWidth: 540, alignSelf: "center", backgroundColor: "#11171C", borderRadius: 22, padding: 16, borderWidth: 1, borderColor: "#2B353D" },
-  menuTitle: { color: "#FFFFFF", fontSize: 18, paddingHorizontal: 8, paddingBottom: 8 },
-  menuRow: { minHeight: 52, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", gap: 13 },
-  menuText: { color: "#FFFFFF", fontSize: 14 },
+  screen: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
+  preloadStage: {
+    flex: 1,
+    backgroundColor: "#000000",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  header: {
+    minHeight: 62,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    zIndex: 4,
+    backgroundColor: "#000000",
+  },
+  headerButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(24,31,37,.88)",
+  },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 28,
+  },
+  stateText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    textAlign: "center",
+  },
+  mediaStage: {
+    width: "100%",
+    backgroundColor: "#000000",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  videoState: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  videoStateText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+  },
+  playbackOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,.52)",
+  },
+  progressTouch: {
+    minHeight: 20,
+    justifyContent: "flex-end",
+  },
+  progressTrack: {
+    height: 3,
+    backgroundColor: "rgba(255,255,255,.28)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#FFFFFF",
+  },
+  controls: {
+    minHeight: 62,
+    paddingHorizontal: 19,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  controlButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  remaining: {
+    color: "#FFFFFF",
+    fontSize: 14,
+  },
+  speed: {
+    color: "#FFFFFF",
+    fontSize: 14,
+  },
+  meta: {
+    flex: 1,
+    marginTop: -1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+    gap: 14,
+    backgroundColor: "#FBF7F2",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+  },
+  authorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  authorIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  authorCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  authorName: {
+    color: "#29231F",
+    fontSize: 18,
+    flexShrink: 1,
+  },
+  username: {
+    color: "#756961",
+    fontSize: 13,
+    marginTop: 2,
+  },
+  followButton: {
+    minHeight: 42,
+    minWidth: 94,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#29231F",
+  },
+  followingButton: {
+    borderWidth: 1,
+    borderColor: "#CFC1B6",
+    backgroundColor: "transparent",
+  },
+  followText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+  },
+  description: {
+    color: "#29231F",
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  actions: {
+    minHeight: 56,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#E7DCD3",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E7DCD3",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  actionButton: {
+    flex: 1,
+    minHeight: 54,
+    minWidth: 0,
+    paddingHorizontal: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "transparent",
+  },
+  iconAction: {
+    minWidth: 46,
+    height: 54,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+  },
+  actionCount: {
+    color: "#5F554F",
+    fontSize: 12,
+  },
+  notice: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: 28,
+    alignItems: "center",
+  },
+  noticeText: {
+    color: "#FFFFFF",
+    backgroundColor: "rgba(41,35,31,0.94)",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    fontSize: 12.5,
+    overflow: "hidden",
+  },
+  modalRoot: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.35)",
+    padding: 12,
+  },
+  menu: {
+    width: "100%",
+    maxWidth: 540,
+    alignSelf: "center",
+    backgroundColor: "#FBF7F2",
+    borderRadius: 22,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#E5D9CE",
+  },
+  menuTitle: {
+    color: "#29231F",
+    fontSize: 18,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+  },
+  menuRow: {
+    minHeight: 52,
+    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#ECE2DA",
+  },
+  menuText: {
+    color: "#29231F",
+    fontSize: 14,
+  },
+  commentsBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,.42)",
+  },
+  commentsSheet: {
+    height: "76%",
+    width: "100%",
+    maxWidth: 620,
+    alignSelf: "center",
+    backgroundColor: "#FBF7F2",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: "hidden",
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 48,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#D8CEC6",
+    marginTop: 9,
+    marginBottom: 5,
+  },
+  commentsHeader: {
+    minHeight: 54,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E6DBD3",
+  },
+  commentsTitle: {
+    color: "#29231F",
+    fontSize: 17,
+  },
+  commentsClose: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  commentsContent: {
+    paddingHorizontal: 15,
+    paddingBottom: 24,
+  },
+  replyBar: {
+    minHeight: 58,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: 29,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    backgroundColor: "#F1EBE5",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#DED3CB",
+  },
+  replyPlaceholder: {
+    flex: 1,
+    color: "#756961",
+    fontSize: 13,
+  },
 });
