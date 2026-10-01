@@ -69,6 +69,22 @@ function projection(user: User, withViews: boolean) {
     (select count(*)::int from public.feed_reposts r where r.post_id = posts.id
       and ${unblockedAuthor(user.id, sql`r.user_id`)}) as repost_count,
     exists(select 1 from public.feed_reposts r where r.post_id = posts.id and r.user_id = ${user.id}::uuid) as reposted,
+    (select jsonb_build_object(
+      'format', publishing.format,
+      'anonymousPoll', publishing.anonymous_poll,
+      'closesAt', publishing.closes_at,
+      'myVote', (select vote.option_id from app_private.poll_votes vote where vote.post_id=posts.id and vote.user_id=${user.id}::uuid limit 1),
+      'options', case when publishing.format='POLL' then (
+        select coalesce(jsonb_agg(jsonb_build_object(
+          'id', option.id,
+          'label', option.label,
+          'votes', (select count(*)::int from app_private.poll_votes tally where tally.post_id=option.post_id and tally.option_id=option.id)
+        ) order by option.id),'[]'::jsonb)
+        from public.poll_options option where option.post_id=posts.id
+      ) else '[]'::jsonb end
+    ) from public.publishing_posts publishing
+      where publishing.post_id=posts.id and publishing.institution_id=posts.university_id
+      limit 1) as publishing,
     posts.quoted_post_id,
     case when quoted.id is null then null else jsonb_build_object(
       'id', quoted.id, 'title', quoted.title, 'summary', quoted.summary, 'body', quoted.body,
