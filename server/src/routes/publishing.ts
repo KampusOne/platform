@@ -45,15 +45,36 @@ publishingRoutes.get("/publishing/capabilities", async c => {
 });
 publishingRoutes.post("/publishing/posts", async c => {
   if (c.env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "Publishing is awaiting the server update.");
-  const data = await input(c, z.object({ requestId: z.string().uuid(), format, anonymousPoll:z.boolean().default(false), body: z.string().trim().min(1).max(5000), options: z.array(z.string().trim().min(1).max(100)).min(2).max(6).optional(), closesAt: z.string().datetime({ offset: true }).optional() }).strict());
+  const data = await input(c, z.object({ requestId: z.string().uuid(), format, anonymousPoll:z.boolean().default(false), body: z.string().trim().min(1).max(5000), options: z.array(z.string().trim().min(1).max(100)).min(2).max(6).optional(), closesAt: z.string().datetime({ offset: true }).optional(), mediaId: z.string().uuid().optional() }).strict());
   if(data.anonymousPoll && data.format!=='POLL') throw new AppError(400,'BAD_REQUEST','Anonymous voting applies only to polls.');
   if (data.format === "POLL" && (!data.options || new Set(data.options.map(x => x.toLowerCase())).size !== data.options.length)) throw new AppError(400, "BAD_REQUEST", "Add two to six distinct poll options.");
   if (data.format !== "POLL" && data.options) throw new AppError(400, "BAD_REQUEST", "Only polls have answer options.");
   if (data.closesAt && Date.parse(data.closesAt) > Date.now() + 30 * 86400000) throw new AppError(400, "BAD_REQUEST", "Choose a closing time within the next 30 days.");
   const closeTime = data.closesAt ? new Date(data.closesAt).toISOString() : null;
-  const hash = await sha256(JSON.stringify([school(c), data.format, data.body, data.options ?? null, closeTime, data.anonymousPoll]));
+  const media = data.mediaId ? firstRow(await database(c.env).execute<{id:string;content_type:string}>(sql`
+    select id,content_type from public.media_objects
+    where id=${data.mediaId}::uuid and owner_user_id=${currentUser(c).id}::uuid
+      and kind='post' and deleted_at is null and content_type in ('image/jpeg','image/png','image/webp')
+    limit 1
+  `)) : null;
+  if(data.mediaId && !media) throw new AppError(400,'BAD_REQUEST','Choose an image uploaded from this account.');
+  const hash = await sha256(JSON.stringify([school(c), data.format, data.body, data.options ?? null, closeTime, data.anonymousPoll, media?.id ?? null]));
   const saved = firstRow(await database(c.env).execute<{ outcome: string; id: string }>(sql`select * from app_private.create_publishing_post_with_privacy(${currentUser(c).id}::uuid,${school(c)}::uuid,${data.requestId}::uuid,${hash},${data.format},${data.body},${data.options ? JSON.stringify(data.options) : null}::jsonb,${closeTime}::timestamptz,${data.anonymousPoll})`));
   failOutcome(saved?.outcome);
+  if(media){
+    const origin=(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'');
+    const mediaUrl=origin+'/v1/media/'+media.id;
+    await database(c.env).execute(sql`
+      update public.feed_posts
+      set image_url=${mediaUrl},
+          audience=jsonb_set(
+            jsonb_set(coalesce(audience,'{}'::jsonb),'{mediaType}',to_jsonb(${media.content_type}::text),true),
+            '{media}',jsonb_build_array(jsonb_build_object('url',${mediaUrl},'type',${media.content_type}::text)),true
+          ),
+          updated_at=case when image_url is distinct from ${mediaUrl} then now() else updated_at end
+      where id=${saved!.id}::uuid and author_user_id=${currentUser(c).id}::uuid
+    `);
+  }
   if (saved!.outcome === "CREATED") await notifyProfilePostPublished(c.env, saved!.id);
   return c.json({ id: saved!.id }, saved!.outcome === "CREATED" ? 201 : 200);
 });
