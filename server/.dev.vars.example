@@ -27,6 +27,7 @@ PUBLIC_API_ORIGIN=https://platformp.divine-haze-54eb.workers.dev
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=replace-with-project-publishable-key
 KYC_FINGERPRINT_SECRET=replace-with-at-least-32-random-characters
+KYC_ENCRYPTION_KEY=replace-with-64-hex-characters-from-32-random-bytes
 
 # Google Analytics 4 Measurement Protocol. GA4_API_SECRET stays Worker-only.
 # Create the secret under Admin > Data Streams > Measurement Protocol.

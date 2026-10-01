@@ -417,8 +417,13 @@ adminRoutes.post("/applications/:id/review", async (context) => {
     );
   }
 
-  if(parsed.data.decision==='APPROVED')await requireAgentIdentity(context.env,application.id);
-  const decision=firstRow(await database(context.env).execute<{outcome:string}>(sql`select app_private.review_agent_application(${user.id}::uuid,${application.id}::uuid,${parsed.data.decision},${parsed.data.note},${context.get('requestId')},${application.revision}) outcome`));
+  if(parsed.data.decision==='APPROVED'){
+    if(application.user_id===user.id)throw new AppError(403,'FORBIDDEN','Another authorized reviewer must approve your application.');
+    await requireAgentIdentity(context.env,application.id);
+  }
+  let decision: {outcome:string}|undefined;
+  try { decision=firstRow(await database(context.env).execute<{outcome:string}>(sql`select app_private.review_agent_application(${user.id}::uuid,${application.id}::uuid,${parsed.data.decision},${parsed.data.note},${context.get('requestId')},${application.revision}) outcome`)); }
+  catch(error){if(/CURRENT_IDENTITY_REVIEW_REQUIRED|BUSINESS_EVIDENCE_REQUIRED/.test(error instanceof Error?error.message:String(error)))throw new AppError(409,'KYC_REQUIRED','The application evidence changed. Reload and review its current identity and business documents.');throw error;}
   if(decision?.outcome!=='REVIEWED')throw new AppError(409,'CONFLICT','This application or its verification changed. Reload before deciding.');
   return context.json({status:parsed.data.decision});
 });

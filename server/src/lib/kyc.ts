@@ -2,8 +2,13 @@ import { sql } from "drizzle-orm";
 import { database, firstRow } from "./database";
 import { AppError } from "./errors";
 import { ageOn } from "./platform-policy";
+import { agentIntakeReady } from "./agent-intake";
 import type { Bindings } from "../types";
-export async function requireFullKyc(env: Bindings, applicationId: string, requireBank = true) {
+export async function requireFullKyc(
+  env: Bindings,
+  applicationId: string,
+  requireBank = true,
+) {
   const row = firstRow(
     await database(env).execute<{
       birth_date: string;
@@ -17,8 +22,9 @@ export async function requireFullKyc(env: Bindings, applicationId: string, requi
       verified_person: boolean;
       phone_verified_at: string | null;
       terms_accepted_at: string | null;
+      intake_version: string | null;
     }>(
-      sql`select d.birth_date::text,d.guardian_consent_at,d.guardian_reviewed_by,a.bank_status,a.kyc_status,a.user_id,d.is_student,a.phone_verified_at,a.terms_accepted_at,exists(select 1 from app_private.verified_people v where v.user_id=a.user_id) verified_person,(select count(*)::int from public.media_objects m where m.owner_user_id=a.user_id and m.deleted_at is null and m.kind='kyc' and m.id in(d.identity_document_id,d.portrait_document_id,case when d.is_student then d.student_document_id else null end)) documents from public.agent_applications a join public.agent_application_details d on d.application_id=a.id where a.id=${applicationId}::uuid`,
+      sql`select d.birth_date::text,d.guardian_consent_at,d.guardian_reviewed_by,a.bank_status,a.kyc_status,a.user_id,d.is_student,a.phone_verified_at,a.terms_accepted_at,d.role_details->>'intakeVersion' intake_version,exists(select 1 from app_private.verified_people v where v.user_id=a.user_id) verified_person,(select count(*)::int from public.media_objects m where m.owner_user_id=a.user_id and(m.institution_id is null or m.institution_id=a.university_id)and m.deleted_at is null and m.kind='kyc' and m.id in(d.identity_document_id,d.portrait_document_id,case when d.is_student then d.student_document_id else null end)) documents from public.agent_applications a join public.agent_application_details d on d.application_id=a.id where a.id=${applicationId}::uuid`,
     ),
   );
   if (
@@ -34,7 +40,9 @@ export async function requireFullKyc(env: Bindings, applicationId: string, requi
     throw new AppError(
       409,
       "KYC_REQUIRED",
-      "Complete identity, document and bank verification first.",
+      requireBank
+        ? "Complete identity, document and bank verification first."
+        : "Complete identity, document and telephone verification first.",
     );
   if (
     ageOn(row.birth_date) < 18 &&
@@ -45,8 +53,37 @@ export async function requireFullKyc(env: Bindings, applicationId: string, requi
       "GUARDIAN_REQUIRED",
       "Guardian approval must be verified before activating this account.",
     );
+  if (row.intake_version === "2") {
+    if (!(await agentIntakeReady(env)))
+      throw new AppError(
+        409,
+        "KYC_REQUIRED",
+        "Current identity review is being connected.",
+      );
+    const intake = firstRow(
+      await database(env).execute<{
+        identity_matches: boolean;
+        business_evidence: boolean;
+      }>(
+        sql`select exists(select 1 from app_private.agent_identity_submissions s join app_private.verified_people v on v.user_id=s.user_id and v.identity_fingerprint=s.nin_fingerprint where s.application_id=a.id and s.user_id=a.user_id and s.institution_id=a.university_id and s.client_request_id::text=d.role_details->>'clientRequestId') identity_matches,(a.agent_type<>'VENDOR' or(jsonb_array_length(coalesce(d.role_details->'businessDocumentIds','[]'::jsonb))>0 and not exists(select 1 from jsonb_array_elements_text(coalesce(d.role_details->'businessDocumentIds','[]'::jsonb)) doc where not exists(select 1 from public.media_objects m where m.id=doc::uuid and m.owner_user_id=a.user_id and(m.institution_id is null or m.institution_id=a.university_id)and m.kind='kyc'and m.deleted_at is null)))) business_evidence from public.agent_applications a join public.agent_application_details d on d.application_id=a.id where a.id=${applicationId}::uuid`,
+      ),
+    );
+    if (!intake?.identity_matches)
+      throw new AppError(
+        409,
+        "KYC_REQUIRED",
+        "Verify the NIN in the current application before approval.",
+      );
+    if (!intake.business_evidence)
+      throw new AppError(
+        409,
+        "KYC_REQUIRED",
+        "Review the current school or business evidence before approval.",
+      );
+  }
   return row;
 }
 
 /** Identity approval is separate from bank/payout eligibility. */
-export const requireAgentIdentity = (env: Bindings, applicationId: string) => requireFullKyc(env, applicationId, false);
+export const requireAgentIdentity = (env: Bindings, applicationId: string) =>
+  requireFullKyc(env, applicationId, false);

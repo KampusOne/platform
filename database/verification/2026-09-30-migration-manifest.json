@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-30",
+  "generatedAt": "2026-10-01",
   "scope": "Repository inventory; no production migration executed",
   "baselineCommit": "f8f2f5b312a7793ec938439c97080a94760cfe87",
   "executionPolicy": "Reconcile with the live migration ledger, then apply only unapplied verified versions in order. Never replay applied migrations.",
@@ -505,6 +505,14 @@
       "path": "database/neon/migrations/20261001000000_discovery_search_indexes.sql",
       "sha256": "eec8db149c9b0897eac395bbc185c707a9c3fd7ea33f0e8b9185eda507853199",
       "gitBlobSha": "c824a333bbed0b1e8f8adf351db0815509bc2153",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20261001010000_private_agent_identity_submissions",
+      "path": "database/neon/migrations/20261001010000_private_agent_identity_submissions.sql",
+      "sha256": "6d9f0dacc66e4f3df58226e6309e029a2329eec89c35b8bf85075e725c9991e2",
+      "gitBlobSha": "4a500fab8ef40615f607057ca630ab3dbfd28850",
       "status": "queued_in_this_update",
       "historicallyVerifiedApplied": false
     }

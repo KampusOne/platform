@@ -7,6 +7,7 @@ import { AppError } from "../lib/errors";
 import { adminAccess, assertPermission, resolveAdminScope, type AdminUser } from "../lib/admin-access";
 import { recordAudit } from "../lib/audit";
 import { identityFingerprint } from "../lib/identity-fingerprint";
+import { agentIntakeReady, decryptAgentNin, type IdentityEnvelope } from "../lib/agent-intake";
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
 export const manageRoutes = new Hono<{
@@ -14,6 +15,7 @@ export const manageRoutes = new Hono<{
   Variables: Variables;
 }>();
 manageRoutes.use("/*", requireAuth);
+manageRoutes.use("/*",async(c,next)=>{c.header('Cache-Control','private, no-store');await next();});
 manageRoutes.use("/*", async (c, next) => {
   const user=currentUser(c),path=c.req.path.replace('/v1/manage',''),read=c.req.method==='GET';
   const domain=path.split('/')[1],target=path.split('/')[2];
@@ -470,10 +472,21 @@ manageRoutes.get("/applications/:id/documents", async (c) => {
     requestId: c.get("requestId"),
   });
   const details=firstRow(result)??null;
+  if(details&&await agentIntakeReady(c.env)){const submission=firstRow(await database(c.env).execute<{nin_last4:string;created_at:string;identity_matches:boolean}>(sql`select s.nin_last4,s.created_at,exists(select 1 from app_private.verified_people v where v.user_id=s.user_id and v.identity_fingerprint=s.nin_fingerprint) identity_matches from app_private.agent_identity_submissions s join public.agent_application_details d on d.application_id=s.application_id where s.application_id=${id(c.req.param('id'))}::uuid and s.client_request_id::text=d.role_details->>'clientRequestId' limit 1`));details.identity_submission=submission?{last4:submission.nin_last4,submittedAt:submission.created_at,verified:submission.identity_matches}:null;if(submission)details.identity_recorded=submission.identity_matches;}
   if(details&&!(await adminAccess(c.env,currentUser(c))).permissions.includes('finance.view')){
     delete details.bank_account_name;delete details.bank_account_last4;
   }
   return c.json({details});
+});
+manageRoutes.post('/applications/:id/nin',async c=>{
+ const d=await input(c,z.object({reason:z.string().trim().min(10).max(200)}).strict()),actor=currentUser(c),target=id(c.req.param('id'));
+ if(!await agentIntakeReady(c.env))throw new AppError(409,'CONFLICT','This application has no private NIN submission.');
+ const rate=firstRow(await database(c.env).execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('NIN_REVEAL',${actor.id},20,3600,3600) allowed`));if(!rate?.allowed)throw new AppError(429,'RATE_LIMITED','Private identity viewing limit reached. Try again later.');
+ const submission=firstRow(await database(c.env).execute<{user_id:string;institution_id:string;identity_envelope:IdentityEnvelope}>(sql`select s.user_id,s.institution_id,s.identity_envelope from app_private.agent_identity_submissions s join public.agent_application_details d on d.application_id=s.application_id where s.application_id=${target}::uuid and s.client_request_id::text=d.role_details->>'clientRequestId' limit 1`));
+ if(!submission)throw new AppError(404,'NOT_FOUND','This application has no current NIN submission.');
+ const nin=await decryptAgentNin(c.env,submission.identity_envelope,submission.user_id);
+ await recordAudit(c.env,{actorUserId:actor.id,universityId:submission.institution_id,action:'identity.submission.viewed',targetType:'agent_application',targetId:target,requestId:c.get('requestId'),metadata:{reason:d.reason.replace(/\d{11}/g,'[identity redacted]')}});
+ return c.json({nin,verified:false});
 });
 manageRoutes.post("/applications/:id/identity", async (c) => {
   const applicationId = id(c.req.param("id"));
@@ -487,6 +500,9 @@ manageRoutes.post("/applications/:id/identity", async (c) => {
       .strict(),
   );
   const fingerprint = await identityFingerprint(c.env, d.nin);
+  const applicant=firstRow(await database(c.env).execute<{user_id:string}>(sql`select user_id from public.agent_applications where id=${applicationId}::uuid`));
+  if(applicant?.user_id===currentUser(c).id)throw new AppError(403,'FORBIDDEN','Another authorized reviewer must verify your identity.');
+  if(await agentIntakeReady(c.env)){const submitted=firstRow(await database(c.env).execute<{fingerprint:string}>(sql`select s.nin_fingerprint as fingerprint from app_private.agent_identity_submissions s join public.agent_application_details details on details.application_id=s.application_id where s.application_id=${applicationId}::uuid and s.client_request_id::text=details.role_details->>'clientRequestId' limit 1`));if(submitted&&submitted.fingerprint!==fingerprint)throw new AppError(409,'CONFLICT','The reviewed NIN does not match the current applicant submission. Request a correction before recording identity approval.');}
   const result = await database(c.env).execute(sql`with recorded as (
     insert into app_private.verified_people(user_id,identity_fingerprint,verified_by)
     select a.user_id,${fingerprint},${currentUser(c).id}::uuid from public.agent_applications a
@@ -507,7 +523,7 @@ manageRoutes.post("/applications/:id/identity", async (c) => {
     targetType: "agent_application",
     targetId: applicationId,
     requestId: c.get("requestId"),
-    metadata: { evidence: d.evidence },
+    metadata: { evidence: d.evidence.replace(/\d{11}/g,'[identity redacted]') },
   });
   return c.json({ status: "recorded" });
 });

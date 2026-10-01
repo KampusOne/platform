@@ -1,5 +1,11 @@
 "use client";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { portalApi } from "@/lib/api";
 import { ApplicationChecks } from "./application-checks";
 import { TransientNotice } from "./transient-notice";
@@ -20,7 +26,25 @@ type Details = {
   guardian_relationship: string | null;
   guardian_consent_at: string | null;
   identity_recorded: boolean;
-  role_details?: { whatsappPhone?: string; campus?: string; serviceLocation?: string; campusPermission?: string; tutorSubjects?: string[]; tutorLevels?: string[]; experience?: string; riderDocumentIds?: string[] };
+  identity_submission?: {
+    last4: string;
+    submittedAt: string;
+    verified: boolean;
+  } | null;
+  role_details?: {
+    whatsappPhone?: string;
+    campus?: string;
+    serviceLocation?: string;
+    campusPermission?: string;
+    tutorSubjects?: string[];
+    tutorLevels?: string[];
+    experience?: string;
+    riderDocumentIds?: string[];
+    businessDocumentIds?: string[];
+    businessCategories?: string[];
+    publishContacts?: boolean;
+    portraitSource?: string;
+  };
 };
 export function ApplicationDocuments({ id }: { id: string }) {
   const [details, setDetails] = useState<Details | null>(null);
@@ -28,6 +52,56 @@ export function ApplicationDocuments({ id }: { id: string }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [fileLink, setFileLink] = useState<string | null>(null);
+  const [revealReason, setRevealReason] = useState("");
+  const [identityValue, setIdentityValue] = useState<{
+    applicationId: string;
+    nin: string;
+  } | null>(null);
+  const currentId = useRef(id);
+  useEffect(() => {
+    currentId.current = id;
+    return () => {
+      currentId.current = "";
+    };
+  }, [id]);
+  useEffect(() => {
+    const hide = () => setIdentityValue(null);
+    const hidden = () => {
+      if (document.hidden) hide();
+    };
+    document.addEventListener("visibilitychange", hidden);
+    const timer = identityValue ? window.setTimeout(hide, 120000) : undefined;
+    return () => {
+      document.removeEventListener("visibilitychange", hidden);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [identityValue]);
+  async function revealIdentity() {
+    if (busy || revealReason.trim().length < 10) return;
+    const target = id;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await portalApi<{ nin: string }>(
+        `/v1/manage/applications/${target}/nin`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reason: revealReason.trim() }),
+        },
+      );
+      if (currentId.current === target && !document.hidden)
+        setIdentityValue({ applicationId: target, nin: result.nin });
+    } catch (e) {
+      if (currentId.current === target)
+        setError(
+          e instanceof Error
+            ? e.message
+            : "The private identity could not be opened.",
+        );
+    } finally {
+      if (currentId.current === target) setBusy(false);
+    }
+  }
   const load = useCallback(async () => {
     const r = await portalApi<{ details: Details | null }>(
       `/v1/manage/applications/${id}/documents`,
@@ -92,6 +166,7 @@ export function ApplicationDocuments({ id }: { id: string }) {
         }),
       });
       form.reset();
+      setIdentityValue(null);
       await load();
     } catch (e) {
       setError(
@@ -154,9 +229,47 @@ export function ApplicationDocuments({ id }: { id: string }) {
           </div>
         ) : null}
       </dl>
-      {details.role_details && <dl className="detail-list">
-        {([ ["WhatsApp", details.role_details.whatsappPhone], ["Campus", details.role_details.campus], ["Service area", details.role_details.serviceLocation], ["Campus permission", details.role_details.campusPermission], ["Teaching subjects", details.role_details.tutorSubjects?.join(", ")], ["Teaching levels", details.role_details.tutorLevels?.join(", ")], ["Background", details.role_details.experience] ] as const).filter(([, value]) => Boolean(value)).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
-      </dl>}
+      {details.role_details && (
+        <dl className="detail-list">
+          {(
+            [
+              ["WhatsApp", details.role_details.whatsappPhone],
+              ["Campus", details.role_details.campus],
+              ["Service area", details.role_details.serviceLocation],
+              ["Campus permission", details.role_details.campusPermission],
+              [
+                "Business categories",
+                details.role_details.businessCategories?.join(", "),
+              ],
+              [
+                "Public contact consent",
+                details.role_details.publishContacts
+                  ? "Telephone and WhatsApp"
+                  : "Contacts remain private",
+              ],
+              [
+                "Face photograph",
+                details.role_details.portraitSource === "CAMERA"
+                  ? "Captured with camera"
+                  : "Uploaded photograph",
+              ],
+              [
+                "Teaching subjects",
+                details.role_details.tutorSubjects?.join(", "),
+              ],
+              ["Teaching levels", details.role_details.tutorLevels?.join(", ")],
+              ["Background", details.role_details.experience],
+            ] as const
+          )
+            .filter(([, value]) => Boolean(value))
+            .map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+        </dl>
+      )}
       <div className="button-row">
         {(
           [
@@ -176,7 +289,26 @@ export function ApplicationDocuments({ id }: { id: string }) {
             </button>
           ) : null,
         )}
-        {details.role_details?.riderDocumentIds?.map((mediaId, index) => <button className="button button--secondary" key={mediaId} disabled={busy} onClick={() => void openFile(mediaId)}>Rider evidence {index + 1}</button>)}
+        {details.role_details?.riderDocumentIds?.map((mediaId, index) => (
+          <button
+            className="button button--secondary"
+            key={mediaId}
+            disabled={busy}
+            onClick={() => void openFile(mediaId)}
+          >
+            Rider evidence {index + 1}
+          </button>
+        ))}
+        {details.role_details?.businessDocumentIds?.map((mediaId, index) => (
+          <button
+            className="button button--secondary"
+            key={"business-" + mediaId}
+            disabled={busy}
+            onClick={() => void openFile(mediaId)}
+          >
+            Business evidence {index + 1}
+          </button>
+        ))}
       </div>
       {fileLink ? (
         <a
@@ -189,6 +321,55 @@ export function ApplicationDocuments({ id }: { id: string }) {
           Open document · link expires in 90 seconds
         </a>
       ) : null}
+      {details.identity_submission && (
+        <section className="private-evidence form-stack">
+          <h3>Submitted NIN · ending {details.identity_submission.last4}</h3>
+          <p className="field-help">
+            This is the applicant’s submission. Confirm it with your
+            verification provider and compare the portrait with the evidence
+            before recording a review.
+          </p>
+          {identityValue?.applicationId === id ? (
+            <>
+              <p className="identity-reveal" aria-label="Submitted NIN">
+                {identityValue.nin}
+              </p>
+              <p className="field-help">
+                Hides after two minutes or when you leave this tab.
+              </p>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setIdentityValue(null)}
+              >
+                Hide NIN
+              </button>
+            </>
+          ) : (
+            <>
+              <label>
+                Reason for viewing
+                <input
+                  value={revealReason}
+                  onChange={(e) => setRevealReason(e.target.value)}
+                  minLength={10}
+                  maxLength={200}
+                  autoComplete="off"
+                  placeholder="Identity verification for this application"
+                />
+              </label>
+              <button
+                type="button"
+                className="button button--secondary"
+                disabled={busy || revealReason.trim().length < 10}
+                onClick={() => void revealIdentity()}
+              >
+                View submitted NIN · audited
+              </button>
+            </>
+          )}
+        </section>
+      )}
       {details.identity_recorded ? (
         <p className="status-label">Identity review recorded</p>
       ) : (

@@ -598,3 +598,13 @@ button { color: inherit; }
 .account-facts dt{color:#82756d;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .account-facts dd{margin:4px 0 0;color:#342c28;font-weight:650;overflow-wrap:anywhere}
 @media(max-width:860px){.agent-entry-shell{grid-template-columns:1fr;gap:28px;min-height:auto;padding:28px 22px 44px}.agent-entry-brand{margin-bottom:38px}.agent-entry-copy h1{font-size:clamp(2.6rem,12vw,4rem)}.agent-entry-art{max-width:520px;margin:22px auto 0}.agent-entry-card{padding:24px}.application-layout{display:block}.application-art{position:static;margin-bottom:22px}.application-art .agent-illustration{max-height:190px}.account-facts{grid-template-columns:1fr}}
+
+/* Progressive private agent evidence intake. */
+fieldset.wizard-step{border:0;padding:0;margin:0;min-width:0;display:grid;gap:18px}
+.agent-category-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;border:1px solid var(--border,#E3D6CB);border-radius:12px;padding:16px}
+.face-capture{border:1px solid var(--border,#E3D6CB);border-radius:16px;padding:18px;background:var(--surface,#fff)}
+.face-capture h3{font-family:var(--font-lato);margin:0 0 8px}.face-capture-panel{margin-top:16px;display:grid;gap:10px}
+.face-frame{position:relative;width:min(100%,340px);aspect-ratio:4/5;margin:auto;background:#29231F;border-radius:18px;overflow:hidden}
+.face-frame video,.face-frame img{width:100%;height:100%;object-fit:contain}.face-oval{position:absolute;width:67%;height:73%;left:16.5%;top:10%;border:3px solid #F1DFC8;border-radius:50%;box-shadow:0 0 0 90px #0005;pointer-events:none}
+.face-capture .button-row{flex-wrap:wrap}.face-capture video:focus-visible{outline:2px solid #C35D38}
+@media(max-width:500px){.agent-category-options{grid-template-columns:1fr}.application-art .agent-illustration{max-height:210px;object-fit:contain}}

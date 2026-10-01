@@ -80,6 +80,7 @@ export default function LearningPreview() {
       if (resource.media_object_id) {
         const r = await api<{ url: string }>(
           `/v1/media/${resource.media_object_id}/access`,
+          { method: "POST" },
         );
         url = r.url;
       }

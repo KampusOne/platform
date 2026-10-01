@@ -94,6 +94,12 @@ Dedicated feed search now has real Top/Latest/People/Media tabs, username mode, 
 
 Validation: all 483 server tests in 49 files, 130 root regression tests, 11 post-link tests and 10 contract tests pass. Server/mobile/portal/contracts type checks, server build, portal lint/production build and mobile production web export pass. The full publishing regression caught a missing parameter cast introduced with language metadata; it was corrected and the entire suite passed. Release certificate/domain configuration and browser/native acceptance remain outstanding.
 
+## Agent onboarding checkpoint
+
+Five progressive application steps, original illustrations, camera capture/retake, optional-CAC business evidence, encrypted NIN drafts/submissions and scoped current-identity review are implemented. Receipt retries are deduplicated; submission cannot activate a role. NIN reveal requires a reason and audit record, and new approval checks the current submitted fingerprint and documents. Details and release configuration are in `docs/phases/2026-10-01-agent-intake.md`.
+
+Validation: all 490 server tests in 50 files and 130 root regression tests pass. Server/mobile/portal type checks, server build, portal lint/production build and mobile production web export pass. Private encryption secrets, actual email delivery and browser/device camera acceptance remain release dependencies.
+
 ## Publication and visual checks
 
 Changes are committed locally. Automatic approval review rejected pushing to the public `KampusOne/platform` repository because it would publish source and migration details without specific approval for that public payload and destination. No connector or other execution path was used to bypass the rejection.
@@ -116,6 +122,7 @@ New queued migrations:
 8. `20260930280000_verified_learning_materials.sql`
 9. `20260930290000_verified_agent_payouts.sql`
 10. `20261001000000_discovery_search_indexes.sql`
+11. `20261001010000_private_agent_identity_submissions.sql`
 
 These depend on the current account/agent schema, the Phase 3 commerce foundation and the unified notification tables. Readiness checks let the code be deployed before those migrations without querying absent new columns/functions. No earlier applied migration was edited.
 
@@ -124,8 +131,7 @@ These depend on the current account/agent schema, the Phase 3 commerce foundatio
 1. Actual campus road-route integration and reviewed fare coverage; cash commissions, four-debt locking and repayment are implemented with reviewed zone estimates.
 2. Merchant fee-setting acceptance, transfer-duty statement reconciliation and provider refunds/held-receipt recovery. Store/tutorial-session/material/Kira billing, verified payout reservations/transfers and approved provider-rate configuration are implemented.
 3. Device acceptance of persistent drafts, focused message interactions, the common share sheet and signed app links.
-4. Progressive agent documents/selfie/NIN onboarding.
-6. Admin workspace redesign, staff accounts, analytics/exports/campaigns/private operations and moderation integration.
-7. Repository exposure audit, ordered migration rehearsal, deployment checks and Android APK.
+4. Admin workspace redesign, staff accounts, analytics/exports/campaigns/private operations and moderation integration.
+5. Repository exposure audit, ordered migration rehearsal, deployment checks and Android APK.
 
 Existing main already contains recent GA4 and messaging fixes. Port missing earlier branch work selectively rather than replacing current main or assuming historical pending lists are current.
