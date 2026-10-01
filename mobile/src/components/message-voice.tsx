@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -11,6 +11,8 @@ import {
   useAudioRecorderState,
 } from "expo-audio";
 import { File } from "expo-file-system";
+import * as Crypto from "expo-crypto";
+import type { VoiceDraft } from "@/src/lib/message-drafts";
 import { ToolButton } from "./toolkit";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -58,16 +60,35 @@ export function MessageVoice({
   onReady,
   onActiveChange,
   compact = false,
+  initialDraft,
+  onDraftChange,
 }: {
   disabled: boolean;
   onReady: (id: string, name: string) => void | Promise<void>;
   onActiveChange?: (active: boolean) => void;
   compact?: boolean;
+  initialDraft?: VoiceDraft | null;
+  onDraftChange?: (draft: VoiceDraft | null) => void;
 }) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const state = useAudioRecorderState(recorder, 120);
-  const [uri, setUri] = useState<string>();
-  const [recordedDuration, setRecordedDuration] = useState(0);
+  const [uri, setUri] = useState<string>(initialDraft?.uri ?? "");
+  const [recordedDuration, setRecordedDuration] = useState(initialDraft?.durationMs ?? 0);
+  const durationRef = useRef(0); durationRef.current = state.durationMillis;
+  const draftRef = useRef(initialDraft);
+  const recordingPending = useRef(false);
+  const draftCallback = useRef(onDraftChange); draftCallback.current = onDraftChange;
+  function publishDraft(nextUri?: string) {
+    const next = nextUri ? { localId: draftRef.current?.uri === nextUri ? draftRef.current.localId : Crypto.randomUUID(), uri: nextUri, durationMs: durationRef.current } : null;
+    draftRef.current = next;
+    draftCallback.current?.(next);
+  }
+  useEffect(() => {
+    if (initialDraft && !recorder.isRecording) {
+      draftRef.current = initialDraft;
+      setUri(initialDraft.uri); setRecordedDuration(initialDraft.durationMs);
+    }
+  }, [initialDraft, recorder]);
   const [busy, setBusy] = useState(false);
   const [paused, setPaused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -83,10 +104,12 @@ export function MessageVoice({
 
   useEffect(() => {
     const stop = async () => {
-      if (recorder.isRecording) {
+      if (recorder.isRecording || recordingPending.current) {
         await recorder.stop();
-        setRecordedDuration(state.durationMillis);
-        setUri(recorder.uri ?? undefined);
+        recordingPending.current = false;
+        setRecordedDuration(durationRef.current);
+        setUri(recorder.uri ?? "");
+        publishDraft(recorder.uri ?? undefined);
       }
       setPaused(false);
       await setAudioModeAsync({ allowsRecording: false });
@@ -96,10 +119,13 @@ export function MessageVoice({
     });
     return () => {
       sub.remove();
-      if (recorder.isRecording) void recorder.stop().catch(() => undefined);
+      if (recorder.isRecording || recordingPending.current) void recorder.stop().then(() => {
+        recordingPending.current = false;
+        publishDraft(recorder.uri ?? undefined);
+      }).catch(() => undefined);
       void setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
     };
-  }, [recorder, state.durationMillis]);
+  }, [recorder]);
 
   useEffect(() => {
     if (state.isRecording && state.durationMillis >= 120_000) {
@@ -117,9 +143,10 @@ export function MessageVoice({
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
+      recordingPending.current = true;
       setPaused(false);
       setRecordedDuration(0);
-      setUri(undefined);
+      setUri(""); publishDraft();
       setPreviewSpeed(1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Recording failed.");
@@ -134,8 +161,9 @@ export function MessageVoice({
     setError("");
     try {
       await recorder.stop();
+      recordingPending.current = false;
       setRecordedDuration(state.durationMillis);
-      setUri(recorder.uri ?? undefined);
+      setUri(recorder.uri ?? ""); publishDraft(recorder.uri ?? undefined);
       setPaused(false);
       await setAudioModeAsync({ allowsRecording: false });
     } catch (caught) {
@@ -164,11 +192,12 @@ export function MessageVoice({
     if (busy) return;
     setError("");
     try {
-      if (state.isRecording || paused) await recorder.stop();
+      if (state.isRecording || paused || recordingPending.current) await recorder.stop();
     } catch {
       // Reset the composer even if the native recorder has already stopped.
     } finally {
-      setUri(undefined);
+      recordingPending.current = false;
+      setUri(""); publishDraft();
       setRecordedDuration(0);
       setPaused(false);
       setSettingsOpen(false);
@@ -186,16 +215,18 @@ export function MessageVoice({
     setBusy(true);
     setError("");
     try {
-      const body = Platform.OS === "web" ? await (await fetch(uri)).blob() : new File(uri) as unknown as Blob;
-      if (body.size > 10 * 1024 * 1024) throw new Error("Record a shorter voice note.");
-      const result = await api<{ id: string }>("/v1/media?kind=message&name=Voice-note.m4a", {
-        method: "POST",
-        body,
-        headers: { "Content-Type": Platform.OS === "web" ? body.type || "audio/webm" : "audio/mp4" },
-        timeoutMs: 180_000,
-      });
-      await onReady(result.id, "Voice note");
-      setUri(undefined);
+      let mediaId = initialDraft?.mediaId;
+      if (!mediaId) {
+        const body = Platform.OS === "web" ? await (await fetch(uri)).blob() : new File(uri) as unknown as Blob;
+        if (body.size > 10 * 1024 * 1024) throw new Error("Record a shorter voice note.");
+        mediaId = (await api<{ id: string }>("/v1/media?kind=message&name=Voice-note.m4a", {
+          method: "POST", body,
+          headers: { "Content-Type": Platform.OS === "web" ? body.type || "audio/webm" : "audio/mp4" },
+          timeoutMs: 180_000,
+        })).id;
+      }
+      await onReady(mediaId, "Voice note");
+      setUri(""); publishDraft();
       setRecordedDuration(0);
       setSettingsOpen(false);
     } catch (caught) {

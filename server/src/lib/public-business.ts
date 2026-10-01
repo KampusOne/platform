@@ -5,19 +5,33 @@ import { requireUnblocked, unblockedAuthor } from "./profile-safety";
 import type { AuthenticatedUser, Bindings } from "../types";
 
 type Service = {
-  id: string; agent_type: "VENDOR" | "TUTOR" | "RIDER"; user_id: string;
-  display_name: string; biography: string | null; owner_name: string; username: string | null;
-  profile_image_url: string | null; cover_image_url: string | null;
-  public_details: Record<string, unknown>; follower_count: number; followed: boolean;
+  id: string;
+  agent_type: "VENDOR" | "TUTOR" | "RIDER";
+  user_id: string;
+  display_name: string;
+  biography: string | null;
+  owner_name: string;
+  username: string | null;
+  profile_image_url: string | null;
+  cover_image_url: string | null;
+  public_details: Record<string, unknown>;
+  follower_count: number;
+  followed: boolean;
 };
 type Item = Record<string, unknown>;
-const text = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
+const text = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
 
 /** Public projection only. Never serialize application evidence or the full profile. */
-export async function readPublicBusiness(env: Bindings, viewer: AuthenticatedUser, serviceId: string) {
+export async function readPublicBusiness(
+  env: Bindings,
+  viewer: AuthenticatedUser,
+  serviceId: string,
+) {
   const db = database(env);
   const followerVisible = unblockedAuthor(viewer.id, sql`f.follower_id`);
-  const record = firstRow(await db.execute<Service>(sql`
+  const record = firstRow(
+    await db.execute<Service>(sql`
     select a.id,a.agent_type,a.user_id,a.display_name,a.biography,
       p.display_name as owner_name,p.username,p.profile_image_url,p.cover_image_url,
       coalesce(to_jsonb(a)->'public_details','{}'::jsonb) as public_details,
@@ -28,22 +42,38 @@ export async function readPublicBusiness(env: Bindings, viewer: AuthenticatedUse
     join public.users u on u.id=a.user_id and u.status::text='ACTIVE'
     where a.id=${serviceId}::uuid and a.university_id=${viewer.universityId}::uuid and a.status='ACTIVE'
     limit 1
-  `));
-  if (!record) throw new AppError(404, "NOT_FOUND", "This campus business is not available.");
+  `),
+  );
+  if (!record)
+    throw new AppError(
+      404,
+      "NOT_FOUND",
+      "This campus business is not available.",
+    );
   await requireUnblocked(env, viewer.id, record.user_id);
   const details = record.public_details;
-  let store: Item | undefined, products: Item[] = [], tutorials: Item[] = [], reviews: Item[] = [];
-  let commerceAvailable = false, completedTrips = 0;
+  let store: Item | undefined,
+    products: Item[] = [],
+    tutorials: Item[] = [],
+    reviews: Item[] = [];
+  let commerceAvailable = false,
+    completedTrips = 0;
   const reviewVisible = unblockedAuthor(viewer.id, sql`reviewer.user_id`);
   if (record.agent_type === "VENDOR" && env.PHASE_3_SCHEMA_READY === "true") {
-    store = firstRow(await db.execute(sql`
+    store = firstRow(
+      await db.execute(sql`
       select display_name,description,contact_phone_e164,pickup_location,pickup_instructions,status
       from public.vendor_storefronts where vendor_profile_id=${record.id}::uuid
         and university_id=${viewer.universityId}::uuid and status='APPROVED'
-    `));
+    `),
+    );
     commerceAvailable = !!store && env.STORE_ENABLED === "true";
     if (commerceAvailable) {
-      const schema = firstRow(await db.execute<{ reviews: boolean }>(sql`select to_regclass('public.product_reviews') is not null as reviews`));
+      const schema = firstRow(
+        await db.execute<{ reviews: boolean }>(
+          sql`select to_regclass('public.product_reviews') is not null as reviews`,
+        ),
+      );
       const results = await Promise.all([
         db.execute(sql`
           select p.id,p.name,p.description,p.price_kobo,p.stock_quantity,p.image_url,cat.name as category,
@@ -53,7 +83,8 @@ export async function readPublicBusiness(env: Bindings, viewer: AuthenticatedUse
           where p.vendor_profile_id=${record.id}::uuid and p.university_id=${viewer.universityId}::uuid and p.status='PUBLISHED'
           order by p.updated_at desc,p.id limit 100
         `),
-        schema?.reviews ? db.execute(sql`
+        schema?.reviews
+          ? db.execute(sql`
           select r.id,r.rating,r.body,r.created_at,reviewer.display_name as reviewer_name,
             reviewer.profile_image_url as reviewer_image_url,reviewer.user_id as reviewer_id,
             p.name as item_name,true as verified_purchase,
@@ -67,13 +98,15 @@ export async function readPublicBusiness(env: Bindings, viewer: AuthenticatedUse
             and r.status='PUBLISHED' and ${reviewVisible}
             and exists(select 1 from public.order_items item where item.order_id=o.id and item.product_id=p.id)
           order by r.created_at desc,r.id limit 20
-        `) : Promise.resolve({ rows: [] }),
+        `)
+          : Promise.resolve({ rows: [] }),
       ]);
       products = results[0].rows;
       reviews = results[1].rows;
     }
   } else if (record.agent_type === "TUTOR") {
-    commerceAvailable = env.TUTORIALS_ENABLED === "true" && env.PHASE_2_SCHEMA_READY === "true";
+    commerceAvailable =
+      env.TUTORIALS_ENABLED === "true" && env.PHASE_2_SCHEMA_READY === "true";
     if (commerceAvailable) {
       const results = await Promise.all([
         db.execute(sql`
@@ -97,32 +130,64 @@ export async function readPublicBusiness(env: Bindings, viewer: AuthenticatedUse
           order by r.created_at desc,r.id limit 20
         `),
       ]);
-      tutorials = results[0].rows; reviews = results[1].rows;
+      tutorials = results[0].rows;
+      reviews = results[1].rows;
     }
   } else if (record.agent_type === "RIDER") {
-    completedTrips = Number(firstRow(await db.execute(sql`
+    completedTrips = Number(
+      firstRow(
+        await db.execute(sql`
       select count(*)::int as total from public.delivery_jobs
       where rider_profile_id=${record.id}::uuid and university_id=${viewer.universityId}::uuid and status='DELIVERED'
-    `))?.total ?? 0);
+    `),
+      )?.total ?? 0,
+    );
   }
   const categories = Array.isArray(details.categories)
-    ? details.categories.filter((value): value is string => typeof value === "string").slice(0,8)
-    : [...new Set(products.map(item => String(item.category ?? "")).filter(Boolean))].slice(0,8);
+    ? details.categories
+        .filter((value): value is string => typeof value === "string")
+        .slice(0, 8)
+    : [
+        ...new Set(
+          products.map((item) => String(item.category ?? "")).filter(Boolean),
+        ),
+      ].slice(0, 8);
   return {
     service: {
-      id: record.id, agent_type: record.agent_type, user_id: record.user_id,
-      display_name: text(details.displayName) ?? text(store?.display_name) ?? record.display_name,
-      biography: typeof details.biography === "string" ? details.biography : text(store?.description) ?? record.biography,
-      owner_name: record.owner_name, username: record.username,
-      profile_image_url: text(details.profileImageUrl) ?? record.profile_image_url,
+      id: record.id,
+      agent_type: record.agent_type,
+      user_id: record.user_id,
+      display_name:
+        text(details.displayName) ??
+        text(store?.display_name) ??
+        record.display_name,
+      biography:
+        typeof details.biography === "string"
+          ? details.biography
+          : (text(store?.description) ?? record.biography),
+      owner_name: record.owner_name,
+      username: record.username,
+      profile_image_url:
+        text(details.profileImageUrl) ?? record.profile_image_url,
       cover_image_url: text(details.coverImageUrl) ?? record.cover_image_url,
-      contact_phone_e164: text(details.phone), whatsapp_e164: text(details.whatsapp),
-      pickup_location: text(details.pickupLocation) ?? text(store?.pickup_location),
-      categories, follower_count: Number(record.follower_count), followed: record.followed,
-      product_count: Number(products[0]?.total_count ?? 0), tutorial_count: Number(tutorials[0]?.total_count ?? 0),
-      completed_trip_count: completedTrips, rating: Number(reviews[0]?.average_rating ?? 0),
-      review_count: Number(reviews[0]?.total_count ?? 0), verified: true,
+      contact_phone_e164: text(details.phone),
+      whatsapp_e164: text(details.whatsapp),
+      pickup_location:
+        text(details.pickupLocation) ?? text(store?.pickup_location),
+      categories,
+      follower_count: Number(record.follower_count),
+      followed: record.followed,
+      product_count: Number(products[0]?.total_count ?? 0),
+      tutorial_count: Number(tutorials[0]?.total_count ?? 0),
+      completed_trip_count: completedTrips,
+      rating: Number(reviews[0]?.average_rating ?? 0),
+      review_count: Number(reviews[0]?.total_count ?? 0),
+      verified: true,
     },
-    products, tutorials, reviews, commerceAvailable, isOwner: viewer.id === record.user_id,
+    products,
+    tutorials,
+    reviews,
+    commerceAvailable,
+    isOwner: viewer.id === record.user_id,
   };
 }

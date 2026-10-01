@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   AppState,
@@ -37,6 +37,7 @@ import { SkeletonBlock } from "@/src/components/skeleton";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
+import { readConversationDraft, saveConversationDraft, type ConversationDraft, type DraftReply, type VoiceDraft } from "@/src/lib/message-drafts";
 
 type ReactionSummary = { reaction: MessageReaction; count: number };
 
@@ -476,7 +477,11 @@ export default function ConversationScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingMedia, setPendingMedia] = useState<PendingMediaBatch[]>([]);
   const [voiceActive, setVoiceActive] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [replyingTo, setReplyingTo] = useState<DraftReply | null>(null);
+  const [voiceDraft, setVoiceDraft] = useState<VoiceDraft | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftWarning, setDraftWarning] = useState("");
+  const [draftRetry, setDraftRetry] = useState(0);
   const [actionTarget, setActionTarget] = useState<MessageActionTarget | null>(null);
   const [forwardTarget, setForwardTarget] = useState<Message | null>(null);
   const [forwardThreads, setForwardThreads] = useState<ForwardThread[]>([]);
@@ -489,11 +494,50 @@ export default function ConversationScreen() {
   const inputRef = useRef<TextInput>(null);
   const blurTargetRef = useRef<View | null>(null);
   const initialScrollDone = useRef(false);
+  const scope = `${user?.id}:${id}`;
+  const activeScope = useRef(scope); activeScope.current = scope;
+  const draftChannel = useMemo(() => ({ ready: false, value: { text: "", media: [], reply: null, voice: null, batches: [], pendingText: null } as ConversationDraft }), [scope]);
+  if (draftChannel.ready) draftChannel.value = { text: draft, media: selectedMedia, reply: replyingTo, voice: voiceDraft, batches: pendingMedia, pendingText: pending.current };
+  useEffect(() => {
+    let active = true;
+    draftChannel.ready = false;
+    setDraftReady(false); setDraftWarning(""); setData(null); setDraft(""); setSelectedMedia([]); setReplyingTo(null); setVoiceDraft(null); setPendingMedia([]); pending.current = null;
+    if (!user?.id || !id) return;
+    void readConversationDraft(user.id, id).then(saved => {
+      if (!active) return;
+      if (saved) { setDraft(saved.text); setSelectedMedia(saved.media); setReplyingTo(saved.reply); setVoiceDraft(saved.voice); setPendingMedia(saved.batches); pending.current = saved.pendingText; if (saved.recoveryMessage) setDraftWarning(saved.recoveryMessage); }
+      draftChannel.ready = true; setDraftReady(true);
+    }).catch(() => { if (active) setDraftWarning("Your saved draft could not be restored. Reopen this conversation to try again."); });
+    return () => {
+      active = false;
+      if (draftChannel.ready) void saveConversationDraft(user.id, id, draftChannel.value).catch(() => undefined);
+    };
+  }, [scope, user?.id, id, draftChannel, draftRetry]);
+  useEffect(() => {
+    if (!draftReady || !draftChannel.ready || !user?.id || !id) return;
+    void saveConversationDraft(user.id, id, draftChannel.value).then(() => { if (activeScope.current === scope) setDraftWarning(""); }).catch(() => { if (activeScope.current === scope) setDraftWarning("This draft could not be saved on your device. Keep this screen open and try again."); });
+  }, [draftReady, draft, selectedMedia, replyingTo, voiceDraft, pendingMedia, sending, scope, user?.id, id, draftChannel]);
+  const handleVoiceDraft = useCallback((voice: VoiceDraft | null) => {
+    // The recorder may finish during navigation. Persist to its original thread.
+    const next = { ...draftChannel.value, voice };
+    draftChannel.value = next;
+    if (activeScope.current === scope) setVoiceDraft(voice);
+    if (draftChannel.ready && user?.id && id) void saveConversationDraft(user.id, id, next).catch(() => { if (activeScope.current === scope) setDraftWarning("Your voice draft could not be saved. Keep this conversation open."); });
+  }, [draftChannel, scope, user?.id, id]);
+  async function persistBatch(batch: PendingMediaBatch) {
+    if (!user?.id) throw new Error("Sign in again before sending this draft.");
+    const batches = draftChannel.value.batches.some(value => value.id === batch.id)
+      ? draftChannel.value.batches.map(value => value.id === batch.id ? batch : value)
+      : [...draftChannel.value.batches, batch];
+    draftChannel.value = { ...draftChannel.value, batches };
+    await saveConversationDraft(user.id, id, draftChannel.value);
+  }
 
   const load = useCallback(async (before?: string) => {
     if (!id) return;
     try {
       const result = await api<Data>(`/v1/messages/threads/${id}${before ? `?before=${before}` : ""}`);
+      if (activeScope.current !== scope) return;
       setData((previous) => {
         const all = new Map((previous?.messages ?? []).map((message) => [message.id, message]));
         for (const message of result.messages) all.set(message.id, message);
@@ -506,9 +550,9 @@ export default function ConversationScreen() {
       setError("");
       await api(`/v1/messages/threads/${id}/read`, { method: "PUT" });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Conversation could not load.");
+      if (activeScope.current === scope) setError(caught instanceof Error ? caught.message : "Conversation could not load.");
     }
-  }, [id]);
+  }, [id, scope]);
 
   useFocusEffect(useCallback(() => {
     initialScrollDone.current = false;
@@ -664,6 +708,7 @@ export default function ConversationScreen() {
         item = { ...item, mediaId };
         working.items[index] = item;
         setPendingMedia((current) => current.map((batch) => batch.id === working.id ? { ...working, items: [...working.items] } : batch));
+        await persistBatch(working);
       }
 
       for (let index = 0; index < working.items.length; index += 1) {
@@ -682,6 +727,7 @@ export default function ConversationScreen() {
         });
         working.items[index] = { ...item, sent: true };
         setPendingMedia((current) => current.map((batch) => batch.id === working.id ? { ...working, items: [...working.items] } : batch));
+        await persistBatch(working);
       }
 
       await load();
@@ -699,6 +745,7 @@ export default function ConversationScreen() {
     if ((!caption && !selectedMedia.length) || sending) return;
 
     if (selectedMedia.length) {
+      setSending(true);
       const batch: PendingMediaBatch = {
         id: Crypto.randomUUID(),
         caption,
@@ -710,11 +757,21 @@ export default function ConversationScreen() {
           sent: false,
         })),
       };
-      setDraft("");
-      setSelectedMedia([]);
-      setPickerOpen(false);
-      setReplyingTo(null);
-      setPendingMedia((current) => [...current, batch]);
+      const originalDraft = { text: draft, media: selectedMedia, reply: replyingTo };
+      setDraft(""); setSelectedMedia([]); setPickerOpen(false); setReplyingTo(null);
+      setPendingMedia(current => [...current, batch]);
+      try {
+        if (!user?.id) throw new Error("Sign in again before sending this draft.");
+        draftChannel.value = { ...draftChannel.value, text: "", media: [], reply: null, batches: [...draftChannel.value.batches, batch] };
+        await saveConversationDraft(user.id, id, draftChannel.value);
+      } catch {
+        setDraft(originalDraft.text); setSelectedMedia(originalDraft.media); setReplyingTo(originalDraft.reply);
+        setPendingMedia(current => current.filter(value => value.id !== batch.id));
+        setSending(false);
+        setError("This media draft could not be saved on your device. Keep this conversation open and try again.");
+        return;
+      }
+      setSending(false);
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
       void processMediaBatch(batch);
       return;
@@ -734,6 +791,9 @@ export default function ConversationScreen() {
           };
     pending.current = message;
     try {
+      if (!user?.id) throw new Error("Sign in again before sending this draft.");
+      draftChannel.value = { ...draftChannel.value, pendingText: message };
+      await saveConversationDraft(user.id, id, draftChannel.value);
       await api(`/v1/messages/threads/${id}/messages`, { method: "POST", body: JSON.stringify(message) });
       pending.current = null;
       setDraft("");
@@ -751,13 +811,20 @@ export default function ConversationScreen() {
     if (sending) throw new Error("Another message is still sending.");
     setSending(true);
     setError("");
+    const retainedVoice = draftChannel.value.voice;
+    const replyToMessageId = retainedVoice?.messageId ? retainedVoice.replyToMessageId : replyingTo?.id;
     const message = {
-      id: Crypto.randomUUID(),
+      id: retainedVoice?.messageId ?? Crypto.randomUUID(),
       body: "",
       mediaId,
-      ...(replyingTo?.id ? { replyToMessageId: replyingTo.id } : {}),
+      ...(replyToMessageId ? { replyToMessageId } : {}),
     };
     try {
+      if (!user?.id || !retainedVoice) throw new Error("Your voice recording could not be saved. Record it again.");
+      const nextVoice = { ...retainedVoice, mediaId, messageId: message.id, ...(replyToMessageId ? { replyToMessageId } : {}) };
+      draftChannel.value = { ...draftChannel.value, voice: nextVoice };
+      setVoiceDraft(nextVoice);
+      await saveConversationDraft(user.id, id, draftChannel.value);
       await api(`/v1/messages/threads/${id}/messages`, { method: "POST", body: JSON.stringify(message) });
       setReplyingTo(null);
       await load();
@@ -933,7 +1000,7 @@ export default function ConversationScreen() {
   const tutorExpired = data?.thread.kind === "TUTOR" && !data.thread.access_ends_at;
   const canSend = !tutorExpired && (data?.thread.status === "ACCEPTED" || (data?.thread.status === "REQUESTED" && !incoming && data.messages.length === 0));
   const canAttach = data?.thread.status === "ACCEPTED";
-  const locked = sending || actionBusy || messageActionBusy;
+  const locked = sending || actionBusy || messageActionBusy || !draftReady;
   const peerName = data?.profile?.display_name || "Conversation";
   const handleVoiceActive = useCallback((active: boolean) => {
     setVoiceActive(active);
@@ -1141,6 +1208,8 @@ export default function ConversationScreen() {
             </View>
           ) : canSend ? (
             <View style={styles.composerDock}>
+              {draftWarning ? <Text accessibilityRole="alert" style={{ color: theme.error, fontFamily: theme.font.body, fontSize: 12, padding: 10 }}>{draftWarning}</Text> : null}
+              {!draftReady && draftWarning ? <Pressable accessibilityRole="button" onPress={() => setDraftRetry(value => value + 1)} style={{ padding: 12 }}><Text style={{ color: theme.accentText }}>Retry draft recovery</Text></Pressable> : null}
               {replyingTo ? (
                 <View style={styles.replyDraft}>
                   <View style={styles.replyDraftAccent} />
@@ -1200,6 +1269,7 @@ export default function ConversationScreen() {
                     placeholder={canAttach ? "Type a message…" : "Send your message request…"}
                     placeholderTextColor={theme.textMuted}
                     value={draft}
+                    editable={draftReady && !sending}
                     onChangeText={setDraft}
                     multiline
                     maxLength={5000}
@@ -1210,6 +1280,8 @@ export default function ConversationScreen() {
                 {canAttach && !draft.trim() && !selectedMedia.length ? (
                   <MessageVoice
                     compact
+                    initialDraft={voiceDraft}
+                    onDraftChange={handleVoiceDraft}
                     disabled={locked}
                     onActiveChange={handleVoiceActive}
                     onReady={async (mediaId) => {
@@ -1221,7 +1293,7 @@ export default function ConversationScreen() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Send message"
-                    disabled={sending || (!draft.trim() && !selectedMedia.length)}
+                    disabled={locked || (!draft.trim() && !selectedMedia.length)}
                     onPress={() => void send()}
                     style={({ pressed }) => [styles.sendButton, (sending || (!draft.trim() && !selectedMedia.length)) && styles.sendDisabled, pressed && styles.pressed]}
                   >

@@ -1264,6 +1264,7 @@ agentRoutes.patch("/products/:id/status", async (context) => {
 });
 
 agentRoutes.get("/orders", async (context) => {
+  if (!phase3SchemaReady(context.env)) throw new AppError(503,"FEATURE_DISABLED","Store orders are awaiting the scheduled database update.");
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
     select orders.id, orders.status, orders.subtotal_kobo, orders.delivery_fee_kobo,
@@ -1273,7 +1274,8 @@ agentRoutes.get("/orders", async (context) => {
     join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
     left join public.delivery_zones zones on zones.id = orders.delivery_zone_id
     left join public.order_items items on items.order_id = orders.id
-    where profiles.user_id = ${user.id}::uuid
+    where profiles.user_id = ${user.id}::uuid and profiles.agent_type='VENDOR'
+      and orders.university_id=${user.universityId}::uuid
     group by orders.id, zones.name order by orders.created_at desc limit 200
   `);
   return context.json({ orders: result.rows });
@@ -1310,9 +1312,10 @@ agentRoutes.get("/orders/:id", async (context) => {
       and orders.status in (
         'PAID', 'ACCEPTED', 'READY', 'IN_DELIVERY', 'DELIVERED', 'REFUNDED', 'DISPUTED'
       )
-    where orders.id = ${context.req.param("id")}::uuid
+    where orders.id = ${id(context.req.param("id"))}::uuid
       and profiles.user_id = ${user.id}::uuid
       and profiles.agent_type = 'VENDOR'
+      and orders.university_id=${user.universityId}::uuid
     limit 1
   `);
   const order = firstRow(result);
@@ -1346,6 +1349,14 @@ agentRoutes.get("/orders/:id", async (context) => {
 
 agentRoutes.patch("/orders/:id/status", async (context) => {
   const user = currentUser(context);
+  if (!phase3SchemaReady(context.env)) throw new AppError(503,"FEATURE_DISABLED","Store orders are awaiting the scheduled database update.");
+  const owned = firstRow(await database(context.env).execute(sql`
+    select o.id from public.orders o join public.agent_profiles a on a.id=o.vendor_profile_id
+    join public.vendor_storefronts s on s.vendor_profile_id=a.id
+    where o.id=${id(context.req.param("id"))}::uuid and o.university_id=${user.universityId}::uuid
+      and a.user_id=${user.id}::uuid and a.agent_type='VENDOR' and a.status='ACTIVE' and s.status='APPROVED'
+  `));
+  if (!owned) throw new AppError(404,"NOT_FOUND","This active store order is not available.");
   const parsed = orderStateSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(400, "BAD_REQUEST", "Choose a valid order action.");
@@ -1373,6 +1384,10 @@ agentRoutes.patch("/orders/:id/status", async (context) => {
         from public.agent_profiles profiles
         where orders.id = ${context.req.param("id")}::uuid and orders.vendor_profile_id = profiles.id
           and profiles.user_id = ${user.id}::uuid and profiles.status = 'ACTIVE'
+          and orders.university_id=${user.universityId}::uuid and profiles.agent_type='VENDOR'
+          and exists (select 1 from public.vendor_storefronts storefront
+            where storefront.vendor_profile_id=profiles.id
+              and storefront.university_id=orders.university_id and storefront.status='APPROVED')
           and orders.status = ${parsed.data.status === "ACCEPTED" ? "PAID" : "ACCEPTED"}
         returning orders.id, orders.university_id
       `);

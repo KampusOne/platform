@@ -17,6 +17,7 @@ import { SkeletonBlock } from "@/src/components/skeleton";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
+import { onMessageDraftChange, readDraftSummaries, type DraftSummary } from "@/src/lib/message-drafts";
 
 type Thread = {
   id: string;
@@ -69,6 +70,15 @@ export default function MessagesScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
   const { user } = useAuth();
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, DraftSummary>>({});
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    setDrafts({});
+    const refresh = () => { if (user?.id) void readDraftSummaries(user.id).then(value => { if (active) setDrafts(value); }).catch(() => undefined); };
+    refresh();
+    const unsubscribe = onMessageDraftChange(account => { if (account === user?.id) refresh(); });
+    return () => { active = false; unsubscribe(); };
+  }, [user?.id]));
   const [filter, setFilter] = useState<Filter>("All");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
@@ -129,11 +139,9 @@ export default function MessagesScreen() {
 
   const visibleThreads = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("en-NG");
-    if (!needle) return threads;
-    return threads.filter((thread) =>
-      `${thread.display_name} ${thread.last_message ?? ""}`.toLocaleLowerCase("en-NG").includes(needle),
-    );
-  }, [query, threads]);
+    return threads.filter(thread => !needle || `${thread.display_name} ${thread.last_message ?? ""} ${drafts[thread.id]?.preview ?? ""}`.toLocaleLowerCase("en-NG").includes(needle))
+      .sort((a,b) => Math.max(Date.parse(b.updated_at), Date.parse(drafts[b.id]?.updatedAt ?? "") || 0) - Math.max(Date.parse(a.updated_at), Date.parse(drafts[a.id]?.updatedAt ?? "") || 0));
+  }, [query, threads, drafts]);
 
   return (
     <SafeAreaView edges={["top"]} style={styles.screen}>
@@ -223,7 +231,7 @@ export default function MessagesScreen() {
                   </View>
                   <View style={styles.threadBottomLine}>
                     <Text numberOfLines={1} style={[styles.preview, item.unread_count > 0 && styles.previewUnread]}>
-                      {item.last_message || (item.status === "REQUESTED" ? "Message request" : "Start a conversation")}
+                      {drafts[item.id] ? <><Text style={{ color: theme.accentText, fontFamily: theme.font.semibold }}>Draft: </Text>{drafts[item.id]!.preview}</> : item.last_message || (item.status === "REQUESTED" ? "Message request" : "Start a conversation")}
                     </Text>
                     {item.unread_count > 0 ? (
                       <View accessibilityLabel={`${item.unread_count} unread messages`} style={styles.unreadBadge}>

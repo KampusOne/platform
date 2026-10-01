@@ -38,7 +38,7 @@ export function SwipeReplyMessage({
   const offset = useRef(new Animated.Value(0)).current;
   const crossed = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const direction = mine ? -1 : 1;
+  const direction = mine ? 1 : -1;
 
   useEffect(() => {
     let mounted = true;
@@ -461,8 +461,8 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     justifyContent: "center",
     backgroundColor: theme.surfaceMuted,
   },
-  replyCueMine: { right: 2 },
-  replyCueOther: { left: 2 },
+  replyCueMine: { left: 2 },
+  replyCueOther: { right: 2 },
   actionBackdrop: { flex: 1 },
   actionShade: {
     position: "absolute",
