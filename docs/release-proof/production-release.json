@@ -1,0 +1,63 @@
+{
+  "sourceSha": "c1256d552a5643b0d1d5979ed17d4e870d91e1be",
+  "sourceTree": "f360e35f979cfd191a0f2c0b5646938686ce4783",
+  "checkedAt": "2026-10-01T06:02:01.593278+00:00",
+  "registeredMigrations": 51,
+  "emailMigration": "20261001040000_email_sender_personas",
+  "emailSourceBlob": "add6b97deb748243cf62381156ca4843b6d34239",
+  "worker": {
+    "workflowRun": 36819819015,
+    "version": "a6aabb0e-c9cd-4a36-8a00-113e665e2e16",
+    "state": "deployed",
+    "readyStatus": 200,
+    "serverTests": 516
+  },
+  "portal": {
+    "deployment": "dpl_EkY4ssTYQeCohNqnaeWXBzSDVofu",
+    "state": "READY",
+    "agents": "https://agents.kampusone.app/",
+    "admin": "https://a7f3c9e1b6d2f8a4c5e9b1d7f3a6c2e8.kampusone.app/",
+    "sourceStamp": "c1256d552a5643b0d1d5979ed17d4e870d91e1be"
+  },
+  "mobileWeb": {
+    "deployment": "dpl_DaFU6wdzFZzZomkKsXKssktv61Ti",
+    "state": "READY",
+    "url": "https://kampusone-mobile-preview.vercel.app/",
+    "sourceStamp": "c1256d552a5643b0d1d5979ed17d4e870d91e1be"
+  },
+  "verification": {
+    "platformWorkflowRun": 36819819013,
+    "browserReleaseRun": 36820314742,
+    "rootRegressionTests": 126,
+    "webReleaseGuardTests": 6,
+    "anonymousApiStatus": 401,
+    "sharedFallbackStatus": 200
+  },
+  "apk": {
+    "workflowRun": 36820342030,
+    "job": 110234355288,
+    "state": "success",
+    "releaseId": 400685893,
+    "artifactId": 11144067316,
+    "releaseUrl": "https://github.com/KampusOne/platform/releases/tag/apk-latest",
+    "downloadUrl": "https://github.com/KampusOne/platform/releases/download/apk-latest/KampusOne-Android.apk",
+    "sizeBytes": 142425816,
+    "sha256": "b615c3bb8271e5a0596581d5466c77cadf598cd14898448f8661641e4fcbee09",
+    "compilerResult": "BUILD SUCCESSFUL in 23m 37s",
+    "completedAt": "2026-10-01T05:58:21Z",
+    "downloadVerified": true,
+    "bundledJavaScript": {
+      "path": "assets/index.android.bundle",
+      "sizeBytes": 4294384
+    },
+    "manifestPresent": true,
+    "dexPresent": true,
+    "nativeLibraryCount": 110
+  },
+  "remainingAcceptance": {
+    "productionSigning": "not provisioned; current pipeline creates a sideload test build",
+    "verifiedAppLinks": "awaits the production signing certificate",
+    "paymentsAndPayouts": "provider gates remain in place; no financial transaction was initiated",
+    "emailCampaigns": "no campaign was sent"
+  }
+}
