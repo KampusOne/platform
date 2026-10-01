@@ -4,8 +4,8 @@ alter table app_private.map_place_history enable row level security;
 revoke all on app_private.map_place_history from public;
 create or replace function app_private.track_map_place_change() returns trigger language plpgsql set search_path='' as $$
 begin
- if (OLD.latitude,OLD.longitude) is distinct from (NEW.latitude,NEW.longitude) and OLD.geom is not distinct from NEW.geom then NEW.geom=case when NEW.latitude is null or NEW.longitude is null then null else public.ST_SetSRID(public.ST_MakePoint(NEW.longitude,NEW.latitude),4326) end;end if;
- if (OLD.geom,OLD.name,OLD.source_provider) is distinct from(NEW.geom,NEW.name,NEW.source_provider) then
+ if (OLD.latitude,OLD.longitude) is distinct from (NEW.latitude,NEW.longitude) and public.ST_AsEWKB(OLD.geom) is not distinct from public.ST_AsEWKB(NEW.geom) then NEW.geom=case when NEW.latitude is null or NEW.longitude is null then null else public.ST_SetSRID(public.ST_MakePoint(NEW.longitude,NEW.latitude),4326) end;end if;
+ if (public.ST_AsEWKB(OLD.geom),OLD.name,OLD.source_provider) is distinct from(public.ST_AsEWKB(NEW.geom),NEW.name,NEW.source_provider) then
   insert into app_private.map_place_history(place_id,institution_id,actor_user_id,before_value) values(OLD.id,OLD.university_id,nullif(current_setting('app.map_actor',true),'')::uuid,to_jsonb(OLD)||jsonb_build_object('geometry',public.ST_AsGeoJSON(OLD.geom)::jsonb));
  end if;return NEW;
 end $$;
