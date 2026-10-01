@@ -1,6 +1,12 @@
 name: Deploy verified Vercel surfaces
+run-name: >-
+  ${{ github.event_name == 'status' &&
+      (github.event.state == 'success' && github.event.context == 'Vercel – kampusone-mobile-preview' && github.event.sha == github.sha &&
+       format('Verify published Vercel release {0}', github.event.sha) || 'Ignore deployment status event') ||
+      'Deploy verified Vercel surfaces' }}
 
 on:
+  status:
   workflow_run:
     workflows: ["Deploy Worker"]
     types: [completed]
@@ -10,6 +16,7 @@ on:
 permissions:
   contents: read
   actions: read
+  statuses: read
 
 concurrency:
   group: vercel-prebuilt-production
@@ -18,7 +25,7 @@ concurrency:
 jobs:
   portal:
     name: Portal production
-    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -130,7 +137,46 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  verify-browser-release:
+    name: Verify production deployments made through Vercel
+    if: github.event_name == 'status' && github.event.state == 'success' && github.event.context == 'Vercel – kampusone-mobile-preview' && github.event.sha == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Read matching deployment records
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.event.sha }}
+        run: |
+          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-worker.yml/runs" -f branch=main -f head_sha="$RELEASE_SHA" -f status=success > /tmp/kampusone-worker-runs.json
+          gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/status" > /tmp/kampusone-vercel-statuses.json
+      - name: Verify schema, production aliases, and authentication boundaries
+        env:
+          RELEASE_SHA: ${{ github.event.sha }}
+          RELEASE_RUN_ID: ${{ github.run_id }}
+        run: |
+          node --test tests/published-web-release.test.mjs
+          node server/scripts/verify-schema-proof.mjs platform
+          node server/scripts/verify-published-web-release.mjs /tmp/kampusone-worker-runs.json /tmp/kampusone-vercel-statuses.json mobile/verified-web-release.json
+      - name: Save the verified source for the matching APK build
+        uses: actions/upload-artifact@v4
+        with:
+          name: kampusone-verified-web-release
+          path: mobile/verified-web-release.json
+          if-no-files-found: error
+          retention-days: 14
+
 # The portal follows a successful Worker release of the same commit. Manual
 # deployment requires recorded production evidence and a matching Worker run.
 # Vercel Git auto-deploy is disabled in each app's vercel.json so this ordered
 # path controls publication. The APK reads the source receipt from this run.
+# Browser production deployment is also supported without creating credentials:
+# publish the portal first, then mobile, after the matching Worker succeeds.
+# Vercel's mobile success status verifies both aliases against the current main
+# revision before issuing the same receipt used by the ordered CLI release.

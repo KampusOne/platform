@@ -1,0 +1,15 @@
+{
+  "verifiedAt": "2026-10-01T05:25:37.060945Z",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "migration": "20261001040000_email_sender_personas",
+  "sourceBlobSha": "add6b97deb748243cf62381156ca4843b6d34239",
+  "appliedAt": "2026-10-01T05:01:19.130224Z",
+  "registeredMigrationCount": 51,
+  "persona": {
+    "id": "00000000-0000-4000-8000-000000000053",
+    "displayName": "George from KampusOne",
+    "active": true
+  }
+}

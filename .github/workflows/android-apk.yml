@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   apk:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository && (github.event.workflow_run.event != 'status' || startsWith(github.event.workflow_run.display_title, 'Verify published Vercel release ')))
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 45
@@ -33,9 +33,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           MANUAL_SHA: ${{ github.sha }}
           RELEASE_RUN_ID: ${{ github.event.workflow_run.id }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           if [ "$EVENT_NAME" = "workflow_run" ]; then
-            source_sha=$(jq -er --arg run_id "$RELEASE_RUN_ID" 'select(.runId == $run_id) | .sourceSha | select(test("^[0-9a-f]{40}$"))' verified-release/verified-web-release.json)
+            source_sha=$(jq -er --arg run_id "$RELEASE_RUN_ID" --arg sha "$RELEASE_SHA" 'select(.runId == $run_id and .sourceSha == $sha) | .sourceSha | select(test("^[0-9a-f]{40}$"))' verified-release/verified-web-release.json)
           else
             source_sha="$MANUAL_SHA"
           fi
