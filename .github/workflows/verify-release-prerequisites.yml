@@ -1,0 +1,47 @@
+name: Verify October release prerequisites
+on:
+  push:
+    branches: [fix/october-124-issues]
+    paths: [.github/workflows/verify-release-prerequisites.yml]
+permissions:
+  contents: read
+jobs:
+  prerequisites:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install Worker tooling
+        run: npm ci
+        working-directory: server
+      - name: Check configuration presence without revealing values
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          EXPO_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: server
+        run: |
+          node --input-type=module - <<'JS'
+          import {spawnSync} from 'node:child_process';
+          import {writeFileSync} from 'node:fs';
+          const cf=spawnSync('npx',['wrangler','secret','list','--name','platformp'],{encoding:'utf8'});
+          const start=cf.stdout.indexOf('['),end=cf.stdout.lastIndexOf(']');
+          if(cf.status!==0||start<0)throw new Error('Unable to read Worker secret names.');
+          const names=new Set(JSON.parse(cf.stdout.slice(start,end+1)).map(x=>x.name));
+          let firebase=false;
+          try{const value=JSON.parse(Buffer.from(process.env.GOOGLE_SERVICES_JSON_BASE64||'','base64').toString());firebase=value.client?.some(x=>x.client_info?.android_client_info?.package_name==='app.kampusone.mobile')===true;}catch{}
+          const result={firebaseAndroid:firebase,expoProject:/^[a-f0-9-]{36}$/i.test(process.env.EXPO_EAS_PROJECT_ID||''),vercelToken:Boolean(process.env.VERCEL_TOKEN),kycEncryption:names.has('KYC_ENCRYPTION_KEY'),kycFingerprint:names.has('KYC_FINGERPRINT_SECRET'),paymentProvider:names.has('PAYSTACK_SECRET_KEY'),emailProvider:names.has('RESEND_API_KEY'),database:names.has('DATABASE_URL'),signedMedia:names.has('JWT_SECRET')};
+          console.log(JSON.stringify(result));writeFileSync('release-prerequisites.json',JSON.stringify(result,null,2));
+          JS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: October-release-prerequisites
+          path: server/release-prerequisites.json
