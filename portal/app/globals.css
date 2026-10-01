@@ -630,3 +630,30 @@ fieldset.wizard-step{border:0;padding:0;margin:0;min-width:0;display:grid;gap:18
 @media(prefers-reduced-motion:reduce){.onboarding-progress>span{transition:none}}
 
 .trusted-vendor-onboarding>.agent-illustration{width:100%;height:145px;object-fit:contain;margin:6px auto 20px}.trusted-vendor-onboarding>.eyebrow{margin-top:0}.trusted-vendor-onboarding h1{font-size:28px;line-height:1.25}
+
+
+/* Analytics visualizations */
+.analytics-chart-panel { overflow: hidden; }
+.analytics-line-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+  color: var(--k1-brand-600);
+  overflow: visible;
+}
+.analytics-grid-line {
+  stroke: #e9dfd7;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.analytics-axis-label {
+  fill: #8a7c72;
+  font-size: 11px;
+  font-family: var(--font-inter), Inter, sans-serif;
+}
+.analytics-axis-label--date { font-size: 10px; }
+@media (max-width: 720px) {
+  .analytics-line-chart { min-width: 560px; }
+  .analytics-chart-panel { overflow-x: auto; }
+}
