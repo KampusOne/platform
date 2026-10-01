@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: vercel-prebuilt-production
@@ -17,7 +18,7 @@ concurrency:
 jobs:
   portal:
     name: Portal production
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -25,10 +26,24 @@ jobs:
     env:
       VERCEL_ORG_ID: team_abQOZYY74aXZM3GdxfmQWmxP
       VERCEL_PROJECT_ID: prj_wFG0WNwuVWk522AL6ocICvgGw2x4
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Require the matching successful Worker release for manual deployment
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          count=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-worker.yml/runs" -f branch=main -f head_sha="$RELEASE_SHA" -f status=success --jq '.total_count')
+          test "$count" -gt 0 || { echo "Deploy this source revision through the Worker workflow first."; exit 1; }
+      - name: Reject a superseded source revision
+        working-directory: .
+        run: test "$(git rev-parse HEAD)" = "$(git ls-remote --heads origin main | cut -f1)"
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -49,6 +64,12 @@ jobs:
         run: |
           npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" agents.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
           npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" a7f3c9e1b6d2f8a4c5e9b1d7f3a6c2e8.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
+      - name: Verify the published portal aliases and API boundary
+        run: |
+          curl --fail --silent --show-error --location --retry 2 --max-time 30 https://agents.kampusone.app/ > /dev/null
+          curl --fail --silent --show-error --location --retry 2 --max-time 30 https://a7f3c9e1b6d2f8a4c5e9b1d7f3a6c2e8.kampusone.app/ > /dev/null
+          status=$(curl --silent --show-error --retry 2 --max-time 20 -o /tmp/kampusone-portal-api-check.json -w '%{http_code}' https://agents.kampusone.app/api/v1/account/guidelines)
+          test "$status" = "401" || { echo "Expected portal API authentication boundary (401); received $status."; exit 1; }
 
   mobile-preview:
     name: Mobile preview production
@@ -71,8 +92,37 @@ jobs:
         run: npx --yes vercel@latest pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Build locally for Vercel
         run: npx --yes vercel@latest build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+        env:
+          VERCEL_GIT_COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Deploy prebuilt mobile preview
-        run: npx --yes vercel@latest deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}"
+        id: deploy
+        run: |
+          url="$(npx --yes vercel@latest deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Verify mobile preview and record the actual deployed source
+        env:
+          PORTAL_URL: ${{ needs.portal.outputs.url }}
+          MOBILE_URL: ${{ steps.deploy.outputs.url }}
+          RELEASE_RUN_ID: ${{ github.run_id }}
+        run: |
+          curl --fail --silent --show-error --retry 2 --max-time 30 https://kampusone-mobile-preview.vercel.app/app-version.json > /tmp/kampusone-app-version.json
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+          const { version } = JSON.parse(readFileSync('/tmp/kampusone-app-version.json', 'utf8'));
+          if (version !== sourceSha) throw new Error('The published preview does not match the verified source revision');
+          writeFileSync('verified-web-release.json', JSON.stringify({ sourceSha, runId: process.env.RELEASE_RUN_ID, portalUrl: process.env.PORTAL_URL, mobileUrl: process.env.MOBILE_URL, verifiedAt: new Date().toISOString() }, null, 2));
+          JS
+      - name: Save the verified source for the matching APK build
+        uses: actions/upload-artifact@v4
+        with:
+          name: kampusone-verified-web-release
+          path: mobile/verified-web-release.json
+          if-no-files-found: error
+          retention-days: 14
 
 # The portal follows a successful Worker release of the same commit. Manual
-# deployment still requires recorded, verified production migration evidence.
+# deployment requires recorded production evidence and a matching Worker run.
+# Vercel Git auto-deploy is disabled in each app's vercel.json so this ordered
+# path controls publication. The APK reads the source receipt from this run.

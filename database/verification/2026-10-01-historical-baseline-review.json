@@ -1,0 +1,596 @@
+{
+  "observedAt": "2026-10-01T03:38:11.641Z",
+  "snapshot": "database/verification/2026-10-01-production-platform-schema.json",
+  "snapshotSha256": "80f63f132b935111282bd1b504f2394bad399e386f472fc4be19c8dac107f736",
+  "scope": "Read-only historical baseline review; object names and effective trimmed function-body hashes, plus formatting comparison for eight registered function variants. No raw function bodies, customer rows or credentials.",
+  "unregisteredBaselineVersions": [
+    {
+      "version": "20260910200000_phase_1_3_live",
+      "sha256": "d4b7bc284f527c599df9c05030582f21ba5bdd167e7574524e9dd87081b790e8",
+      "gitBlobSha": "ade49d41376cbdd78200adc39fd628e0581c5fcd",
+      "observedNames": {
+        "present": [
+          "table:app_private.audit_events",
+          "function:app_private.prevent_append_only_mutation",
+          "table:public.operator_roles",
+          "table:public.timetable_entries",
+          "table:public.gpa_terms",
+          "table:public.gpa_results",
+          "table:public.content_sources",
+          "table:public.feed_posts",
+          "table:public.feed_bookmarks",
+          "table:public.campus_places",
+          "table:public.agent_applications",
+          "table:public.agent_profiles",
+          "table:public.tutorial_listings",
+          "table:public.tutorial_bookings",
+          "table:public.vendor_products",
+          "table:public.orders",
+          "table:public.order_items",
+          "table:public.delivery_zones",
+          "table:public.delivery_jobs",
+          "table:public.delivery_events",
+          "table:public.disputes",
+          "table:public.ledger_accounts",
+          "table:public.ledger_transactions",
+          "table:public.ledger_lines",
+          "function:app_private.validate_balanced_ledger_transaction",
+          "table:public.release_phases"
+        ],
+        "absent": [],
+        "presentAddedColumns": [
+          "public.refresh_tokens.device_label"
+        ],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.prevent_append_only_mutation",
+          "effectiveSource": "database/neon/migrations/20260910200000_phase_1_3_live.sql",
+          "sourceTrimmedBodyMd5": "38378f6bd5f8da5dca2ddb3a4ab28a9a",
+          "liveTrimmedBodyMd5s": [
+            "38378f6bd5f8da5dca2ddb3a4ab28a9a"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.validate_balanced_ledger_transaction",
+          "effectiveSource": "database/neon/migrations/20260910200000_phase_1_3_live.sql",
+          "sourceTrimmedBodyMd5": "72409093657d2688ee14618b55479ec4",
+          "liveTrimmedBodyMd5s": [
+            "72409093657d2688ee14618b55479ec4"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910210000_phase_2_3_operations",
+      "sha256": "6517ee8fc4d1d360ce23cc3ef732cb13b4aac90eb0781ab540d3c288e9c16a05",
+      "gitBlobSha": "bd032746883a1816b1b33c6728560152b4957805",
+      "observedNames": {
+        "present": [
+          "table:public.tutorial_availability_windows",
+          "table:public.product_categories",
+          "table:public.inventory_reservations",
+          "table:public.rider_presence",
+          "table:public.payout_requests",
+          "function:app_private.create_tutorial_booking",
+          "function:app_private.create_store_order"
+        ],
+        "absent": [],
+        "presentAddedColumns": [
+          "public.agent_applications.legal_name",
+          "public.tutorial_bookings.availability_window_id",
+          "public.vendor_products.category_id",
+          "public.orders.delivery_zone_id",
+          "public.delivery_jobs.code_expires_at",
+          "public.disputes.category"
+        ],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.create_tutorial_booking",
+          "effectiveSource": "database/neon/migrations/20260912000000_phase_2_learning_pilot.sql",
+          "sourceTrimmedBodyMd5": "5b029d9883019f32d60f9f0eed7de7c5",
+          "liveTrimmedBodyMd5s": [
+            "5b029d9883019f32d60f9f0eed7de7c5"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.create_store_order",
+          "effectiveSource": "database/neon/migrations/20260910210000_phase_2_3_operations.sql",
+          "sourceTrimmedBodyMd5": "27a64029d8d602ccdd71e165f1fc6d21",
+          "liveTrimmedBodyMd5s": [
+            "27a64029d8d602ccdd71e165f1fc6d21"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910220000_commerce_expiry_and_payment_audit",
+      "sha256": "6153c27ce05d92bd7a2e4542d9de7257005424a904dc9389115d7a8c5ae7201d",
+      "gitBlobSha": "2163da4e9f34a711cb3e4276b5ad9defbf5556a6",
+      "observedNames": {
+        "present": [
+          "table:public.payment_provider_events",
+          "function:app_private.cancel_vendor_order",
+          "function:app_private.expire_stale_commerce"
+        ],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.cancel_vendor_order",
+          "effectiveSource": "database/neon/migrations/20260910220000_commerce_expiry_and_payment_audit.sql",
+          "sourceTrimmedBodyMd5": "187be7d7b378b761cec18181f6b77018",
+          "liveTrimmedBodyMd5s": [
+            "187be7d7b378b761cec18181f6b77018"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.expire_stale_commerce",
+          "effectiveSource": "database/neon/migrations/20260910220000_commerce_expiry_and_payment_audit.sql",
+          "sourceTrimmedBodyMd5": "d8e510ea596b267617c68176fa4206b5",
+          "liveTrimmedBodyMd5s": [
+            "d8e510ea596b267617c68176fa4206b5"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910230000_payment_event_resolution",
+      "sha256": "001f44fb6e7b6a509957bfe1f262159bb38a4b65d43e7d9807017d8fba0b49b2",
+      "gitBlobSha": "c82891464c65a764273a78e63dc0aef9003ed593",
+      "observedNames": {
+        "present": [],
+        "absent": [],
+        "presentAddedColumns": [
+          "public.payment_provider_events.resolution_code"
+        ],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910240000_atomic_auth_consumption",
+      "sha256": "a998c0d7e91c36b22748dd6b61df0b799dcb50e3346ae6b2fbbed82f0e139dfd",
+      "gitBlobSha": "3faeed6856b34f99ba07288d6b7638cb57591078",
+      "observedNames": {
+        "present": [
+          "function:app_private.consume_email_verification",
+          "function:app_private.consume_password_reset"
+        ],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.consume_email_verification",
+          "effectiveSource": "database/neon/migrations/20260910240000_atomic_auth_consumption.sql",
+          "sourceTrimmedBodyMd5": "01234983f8fe5cbec6b43df66bc68a44",
+          "liveTrimmedBodyMd5s": [
+            "01234983f8fe5cbec6b43df66bc68a44"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.consume_password_reset",
+          "effectiveSource": "database/neon/migrations/20260910240000_atomic_auth_consumption.sql",
+          "sourceTrimmedBodyMd5": "9884632cccd0fe026ebb650a5e067423",
+          "liveTrimmedBodyMd5s": [
+            "9884632cccd0fe026ebb650a5e067423"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910250000_tutorial_window_booking",
+      "sha256": "e898159c382ce78eb7441754b0d0bc0ea14872d06df455c8a4a21b3aa4d8127d",
+      "gitBlobSha": "ec45edc49c18cb7ae314dde0e5281dda52f92815",
+      "observedNames": {
+        "present": [
+          "function:app_private.create_tutorial_booking"
+        ],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.create_tutorial_booking",
+          "effectiveSource": "database/neon/migrations/20260912000000_phase_2_learning_pilot.sql",
+          "sourceTrimmedBodyMd5": "5b029d9883019f32d60f9f0eed7de7c5",
+          "liveTrimmedBodyMd5s": [
+            "5b029d9883019f32d60f9f0eed7de7c5"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910260000_operational_indexes",
+      "sha256": "7deb26d520c8b4dd7f149fac4c55bb7c47df0f510cb92c357ac40fc1010bb101",
+      "gitBlobSha": "7c556027e980e48d5a31020fd4b20e7efcbcc6bb",
+      "observedNames": {
+        "present": [],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910270000_atomic_agent_payouts",
+      "sha256": "0942805f767ce56c8e02f36dd4f2b68e1f33afd0e022beb7a981098014355b7c",
+      "gitBlobSha": "1ea1c51004f5e4e9fbd407bf77eeea22fdb2884d",
+      "observedNames": {
+        "present": [
+          "function:app_private.request_agent_payout"
+        ],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.request_agent_payout",
+          "effectiveSource": "database/neon/migrations/20260910310000_failed_payout_reservations.sql",
+          "sourceTrimmedBodyMd5": "9d936e82761a19407d6b200a762ebf14",
+          "liveTrimmedBodyMd5s": [
+            "9d936e82761a19407d6b200a762ebf14"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910280000_atomic_admin_bootstrap",
+      "sha256": "137bb30ce09784d554703bd3918d95654f5e462463158b0fe50768331d47d402",
+      "gitBlobSha": "2d4c5f049b5b5442e01203d37944eb6f5951e8d5",
+      "observedNames": {
+        "present": [
+          "function:app_private.bootstrap_platform_admin"
+        ],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.bootstrap_platform_admin",
+          "effectiveSource": "database/neon/migrations/20260910280000_atomic_admin_bootstrap.sql",
+          "sourceTrimmedBodyMd5": "2306557f57dc5d14ac184b492e57a45b",
+          "liveTrimmedBodyMd5s": [
+            "2306557f57dc5d14ac184b492e57a45b"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910290000_atomic_otp_attempts",
+      "sha256": "af5056d5ccb84313f753215358ffcbe04a3dd48a2b6fcdb7894b81efb8445811",
+      "gitBlobSha": "93fb32ae975a1264d7db78641e5326871585e69a",
+      "observedNames": {
+        "present": [
+          "function:app_private.check_and_consume_email_verification",
+          "function:app_private.check_and_consume_password_reset"
+        ],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.check_and_consume_email_verification",
+          "effectiveSource": "database/neon/migrations/20260912000000_phase_2_learning_pilot.sql",
+          "sourceTrimmedBodyMd5": "aed4475386c290ab4ac595d3413f7a1c",
+          "liveTrimmedBodyMd5s": [
+            "aed4475386c290ab4ac595d3413f7a1c"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.check_and_consume_password_reset",
+          "effectiveSource": "database/neon/migrations/20260910290000_atomic_otp_attempts.sql",
+          "sourceTrimmedBodyMd5": "15eb34a040bfca73bdcee3dfb4b200ed",
+          "liveTrimmedBodyMd5s": [
+            "15eb34a040bfca73bdcee3dfb4b200ed"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910300000_request_rate_limits",
+      "sha256": "f55e41bf720d8830f311d28e2222a1a98c4275161c382df73b4d67f79378cdbe",
+      "gitBlobSha": "4ce34dfc53a5c7fa154f880af74518a285bc260b",
+      "observedNames": {
+        "present": [
+          "table:app_private.request_rate_limits",
+          "function:app_private.consume_request_rate_limit",
+          "function:app_private.clear_request_rate_limit",
+          "function:app_private.cleanup_request_rate_limits"
+        ],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.consume_request_rate_limit",
+          "effectiveSource": "database/neon/migrations/20260910300000_request_rate_limits.sql",
+          "sourceTrimmedBodyMd5": "71edd3e6ebba8fa340a8ed4627f425a3",
+          "liveTrimmedBodyMd5s": [
+            "71edd3e6ebba8fa340a8ed4627f425a3"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.clear_request_rate_limit",
+          "effectiveSource": "database/neon/migrations/20260910300000_request_rate_limits.sql",
+          "sourceTrimmedBodyMd5": "028595df06f28ec4506272314d332e97",
+          "liveTrimmedBodyMd5s": [
+            "028595df06f28ec4506272314d332e97"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.cleanup_request_rate_limits",
+          "effectiveSource": "database/neon/migrations/20260910300000_request_rate_limits.sql",
+          "sourceTrimmedBodyMd5": "11b8e58a364f795820581c641c0d64ac",
+          "liveTrimmedBodyMd5s": [
+            "11b8e58a364f795820581c641c0d64ac"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910310000_failed_payout_reservations",
+      "sha256": "0b11cf09da3c1b716088903ccf7bdfe7bb8bc4ab8a322d692f79a40445ed44b5",
+      "gitBlobSha": "b17348a575afb1e6716b57eedfd8247b4c2f2788",
+      "observedNames": {
+        "present": [
+          "function:app_private.request_agent_payout"
+        ],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.request_agent_payout",
+          "effectiveSource": "database/neon/migrations/20260910310000_failed_payout_reservations.sql",
+          "sourceTrimmedBodyMd5": "9d936e82761a19407d6b200a762ebf14",
+          "liveTrimmedBodyMd5s": [
+            "9d936e82761a19407d6b200a762ebf14"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260910320000_atomic_delivery_handoffs",
+      "sha256": "48e5fc91a08f901e08b711b165e49fe3c0eab4af6b4bf3f97e0cb96bfe3743a5",
+      "gitBlobSha": "b1a16ab4b5c1fd4e379ed587e1dc0312fa6756c3",
+      "observedNames": {
+        "present": [
+          "function:app_private.reserve_delivery_job",
+          "function:app_private.confirm_delivery_pickup",
+          "function:app_private.confirm_delivery_completion"
+        ],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.reserve_delivery_job",
+          "effectiveSource": "database/neon/migrations/20260930240000_rider_commission_ledger.sql",
+          "sourceTrimmedBodyMd5": "ad59e72b39164c040a8e642c68978648",
+          "liveTrimmedBodyMd5s": [
+            "ad59e72b39164c040a8e642c68978648"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.confirm_delivery_pickup",
+          "effectiveSource": "database/neon/migrations/20260910320000_atomic_delivery_handoffs.sql",
+          "sourceTrimmedBodyMd5": "8fa80bace6600e186c565742659283e7",
+          "liveTrimmedBodyMd5s": [
+            "8fa80bace6600e186c565742659283e7"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.confirm_delivery_completion",
+          "effectiveSource": "database/neon/migrations/20260910320000_atomic_delivery_handoffs.sql",
+          "sourceTrimmedBodyMd5": "04f40c0086651adc80bd68ebc8a78432",
+          "liveTrimmedBodyMd5s": [
+            "04f40c0086651adc80bd68ebc8a78432"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260912000000_phase_2_learning_pilot",
+      "sha256": "e87ca6e6f7f3d99e05e339a35576fe8af82fe477004a4243dd86f2a1622e698f",
+      "gitBlobSha": "9c6886a43d3704a74aab55f15ed00239db4abf33",
+      "observedNames": {
+        "present": [
+          "table:public.tutorial_resources",
+          "table:public.tutorial_reviews",
+          "table:public.payment_attempts",
+          "table:app_private.pending_registrations",
+          "function:app_private.check_and_consume_email_verification",
+          "function:app_private.create_tutorial_booking",
+          "function:app_private.seed_tutorial_demo",
+          "function:app_private.remove_tutorial_demo"
+        ],
+        "absent": [],
+        "presentAddedColumns": [
+          "public.tutorial_listings.publisher_name",
+          "public.tutorial_bookings.cancellation_reason"
+        ],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [
+        {
+          "name": "app_private.check_and_consume_email_verification",
+          "effectiveSource": "database/neon/migrations/20260912000000_phase_2_learning_pilot.sql",
+          "sourceTrimmedBodyMd5": "aed4475386c290ab4ac595d3413f7a1c",
+          "liveTrimmedBodyMd5s": [
+            "aed4475386c290ab4ac595d3413f7a1c"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.create_tutorial_booking",
+          "effectiveSource": "database/neon/migrations/20260912000000_phase_2_learning_pilot.sql",
+          "sourceTrimmedBodyMd5": "5b029d9883019f32d60f9f0eed7de7c5",
+          "liveTrimmedBodyMd5s": [
+            "5b029d9883019f32d60f9f0eed7de7c5"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.seed_tutorial_demo",
+          "effectiveSource": "database/neon/migrations/20260912000000_phase_2_learning_pilot.sql",
+          "sourceTrimmedBodyMd5": "9241eba44b6c915c29a24e2e501d897a",
+          "liveTrimmedBodyMd5s": [
+            "9241eba44b6c915c29a24e2e501d897a"
+          ],
+          "trimmedBodyMatch": true
+        },
+        {
+          "name": "app_private.remove_tutorial_demo",
+          "effectiveSource": "database/neon/migrations/20260912000000_phase_2_learning_pilot.sql",
+          "sourceTrimmedBodyMd5": "12998537013ee41a77d2fd6a5896a81e",
+          "liveTrimmedBodyMd5s": [
+            "12998537013ee41a77d2fd6a5896a81e"
+          ],
+          "trimmedBodyMatch": true
+        }
+      ],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    },
+    {
+      "version": "20260912010000_shared_agent_email_login",
+      "sha256": "5346a44e29b85698cd04dcb3301ae5700d6f7f279e73a822bcaa29af79613706",
+      "gitBlobSha": "9ca07982210aa69f0f32f8e41c964b104b2520cd",
+      "observedNames": {
+        "present": [
+          "table:app_private.email_login_codes"
+        ],
+        "absent": [],
+        "presentAddedColumns": [],
+        "absentAddedColumns": []
+      },
+      "effectiveFunctions": [],
+      "originalMigrationExecutionProven": false,
+      "replayed": false
+    }
+  ],
+  "registeredFunctionFormattingVariants": [
+    {
+      "name": "app_private.capture_order_status_event",
+      "effectiveSource": "database/neon/migrations/20260912200000_phase_3_commerce_foundation.sql",
+      "sourceTrimmedBodyMd5": "f3cf18b469ed128c07ed29fd46c73699",
+      "liveTrimmedBodyMd5": "5d4e979b04fe953312f34e02528573d5",
+      "quotedTextPreservedWhitespaceCaseComparison": true
+    },
+    {
+      "name": "app_private.capture_refund_status_event",
+      "effectiveSource": "database/neon/migrations/20260912200000_phase_3_commerce_foundation.sql",
+      "sourceTrimmedBodyMd5": "99a843be1fc2d728c8a1acae2e1fd845",
+      "liveTrimmedBodyMd5": "c020da335a3b3bf5d20253d0c3421501",
+      "quotedTextPreservedWhitespaceCaseComparison": true
+    },
+    {
+      "name": "app_private.create_product_review",
+      "effectiveSource": "database/neon/migrations/20260912200000_phase_3_commerce_foundation.sql",
+      "sourceTrimmedBodyMd5": "47f28aabd841dbb751dd7224dfd599e5",
+      "liveTrimmedBodyMd5": "a628832e85a9c8bba42f04ea8f3d60d7",
+      "quotedTextPreservedWhitespaceCaseComparison": true
+    },
+    {
+      "name": "app_private.create_store_order_v2",
+      "effectiveSource": "database/neon/migrations/20260912200000_phase_3_commerce_foundation.sql",
+      "sourceTrimmedBodyMd5": "bb1ca2506e4b7143f4f944a714a82e7d",
+      "liveTrimmedBodyMd5": "044eecf6a2201b824413cc9f631345b8",
+      "quotedTextPreservedWhitespaceCaseComparison": true
+    },
+    {
+      "name": "app_private.finalize_community_election",
+      "effectiveSource": "database/neon/migrations/20260913230000_community_workflows.sql",
+      "sourceTrimmedBodyMd5": "766bc49a299243ed6e5ea485c467ef16",
+      "liveTrimmedBodyMd5": "c301869ec6bdf811cb0a66e26b97feab",
+      "quotedTextPreservedWhitespaceCaseComparison": true
+    },
+    {
+      "name": "app_private.guard_product_material_change",
+      "effectiveSource": "database/neon/migrations/20260912200000_phase_3_commerce_foundation.sql",
+      "sourceTrimmedBodyMd5": "26a849740b2d3108ec710fd9d321fe6d",
+      "liveTrimmedBodyMd5": "90ec5fac358db8988e05028b7a13f2b9",
+      "quotedTextPreservedWhitespaceCaseComparison": true
+    },
+    {
+      "name": "app_private.guard_storefront_material_change",
+      "effectiveSource": "database/neon/migrations/20260912200000_phase_3_commerce_foundation.sql",
+      "sourceTrimmedBodyMd5": "1e9089e2d03133e4b82de722654f6564",
+      "liveTrimmedBodyMd5": "8e229ec81966186cf1983f9f3dd3f9dc",
+      "quotedTextPreservedWhitespaceCaseComparison": true
+    },
+    {
+      "name": "app_private.set_feed_post_like",
+      "effectiveSource": "database/neon/migrations/20260921183000_feed_post_likes.sql",
+      "sourceTrimmedBodyMd5": "b0cb2dceb8154c1482bca7080fb0e944",
+      "liveTrimmedBodyMd5": "878a9497c100a0cd4823ebe4b7c9552e",
+      "quotedTextPreservedWhitespaceCaseComparison": true
+    }
+  ],
+  "limitations": [
+    "Name and added-column presence does not prove every original historical constraint, data statement or migration was executed.",
+    "Effective definitions may come from later registered migrations. The fifteen older baseline files remain unregistered and were not replayed.",
+    "Function variant comparison preserves quoted text and folds unquoted case/whitespace; it is supplementary review, not proof original SQL bytes were executed."
+  ]
+}

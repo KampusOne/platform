@@ -1,6 +1,8 @@
 # Account settings, original introduction art and release preparation
 
-Code is prepared locally on `feat/business-platform-20260930`. The October 1 live recheck still finds nine registered migration versions. No production migration, source publication, Vercel/Worker deployment, repository visibility change, branch deletion or APK build was performed in this update.
+Historical preparation checkpoint; its migration/capacity blockers are superseded by `docs/phases/2026-10-01-live-migration-rollout.md`. All 41 reviewed versions have since succeeded on the production child and production; deployment and the updated APK remain pending. The observations below retain the earlier pre-rollout state.
+
+Code was prepared locally on `feat/business-platform-20260930`. The October 1 live recheck still finds nine registered migration versions. No production migration, source publication, Vercel/Worker deployment, repository visibility change, branch deletion or APK build was performed in this update.
 
 ## App changes
 

@@ -1,25 +1,47 @@
 name: Build Android test APK
 on:
   workflow_dispatch:
-  push:
-    branches: [main, release/apk-authfix-20260927-1904]
-    paths:
-      [
-        "mobile/**",
-        "packages/design-tokens/**",
-        ".github/workflows/android-apk.yml",
-      ]
+  workflow_run:
+    workflows: ["Deploy verified Vercel surfaces"]
+    types: [completed]
+    branches: [main]
 permissions:
   contents: write
+  actions: read
 concurrency:
-  group: android-apk-${{ github.ref }}
-  cancel-in-progress: true
+  group: android-apk-verified
+  cancel-in-progress: false
 jobs:
   apk:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Download source receipt from the successful portal release
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: kampusone-verified-web-release
+          path: verified-release
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Select the verified source revision
+        id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_SHA: ${{ github.sha }}
+          RELEASE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            source_sha=$(jq -er --arg run_id "$RELEASE_RUN_ID" 'select(.runId == $run_id) | .sourceSha | select(test("^[0-9a-f]{40}$"))' verified-release/verified-web-release.json)
+          else
+            source_sha="$MANUAL_SHA"
+          fi
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -35,6 +57,12 @@ jobs:
       - name: Check app types
         run: npm run check
         working-directory: mobile
+      - name: Verify production schema and API before packaging
+        env:
+          API_URL: https://platformp.divine-haze-54eb.workers.dev
+        run: |
+          node server/scripts/verify-schema-proof.mjs platform
+          curl --fail --silent --show-error --retry 2 --max-time 20 "$API_URL/health/ready"
       - name: Configure Android push credentials
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
@@ -66,24 +94,21 @@ jobs:
       - name: Save Android testing artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KampusOne-Android-test-${{ github.sha }}
+          name: KampusOne-Android-test-${{ steps.source.outputs.sha }}
           path: KampusOne-Android.apk
           if-no-files-found: error
           retention-days: 14
       - name: Publish shareable APK release
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'workflow_run'
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILD_SHA: ${{ steps.source.outputs.sha }}
         run: |
+          test "$BUILD_SHA" = "$(git ls-remote --heads origin main | cut -f1)" || { echo "This build has been superseded; keeping the current public APK."; exit 1; }
           gh release delete apk-latest --yes --cleanup-tag || true
-          gh release create apk-latest KampusOne-Android.apk --target "$GITHUB_SHA" --title "KampusOne Android Test" --notes "Latest KampusOne Android testing APK built from main. Direct Worker API primary; Vercel proxy retained as fallback. Sideload testing build." --prerelease
+          gh release create apk-latest KampusOne-Android.apk --target "$BUILD_SHA" --title "KampusOne Android Test" --notes "KampusOne Android testing APK built from the verified Worker and Vercel release revision. Direct Worker API primary; Vercel proxy retained as fallback. Sideload testing build." --prerelease
 # Expo's generated test signing is for sideload testing only. A separately
 # provisioned release/upload keystore is required before Play Store publication.
 
-      - name: Publish auth-fix APK release
-        if: github.ref == 'refs/heads/release/apk-authfix-20260927-1904'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release delete apk-authfix-20260927-1904 --yes --cleanup-tag || true
-          gh release create apk-authfix-20260927-1904 KampusOne-Android.apk --target "$GITHUB_SHA" --title "KampusOne Android Auth Fix 2026-09-27" --notes "Stable snapshot with direct Worker API primary and Vercel proxy fallback for native Android auth."
+# Manual runs save a test artifact; only a successful verified portal release
+# can publish apk-latest. Historical APK snapshots are left unchanged.

@@ -1,7 +1,7 @@
 # KampusOne implementation plan and migration addendum
 Prepared: 30 September 2026, Africa/Lagos  
 Target deployment window: 1 October 2026, once database capacity and deployment prerequisites are confirmed  
-Status: implementation is on `feat/business-platform-20260930`; thirteen new SQL versions are queued, and forty candidate versions pass an offline rehearsal against refreshed live structure. See `docs/phases/2026-10-01-settings-catalogue-release-preparation.md` for current evidence and release blockers. Production migrations, deployments and a new APK remain pending.
+Status: all 41 reviewed migrations succeeded on a fresh production child and production; 50 versions are registered with matching source hashes. Implementation remains on `feat/business-platform-20260930`. See `docs/phases/2026-10-01-live-migration-rollout.md` for live evidence and ordered release. Public source publication, deployments and a new APK remain pending.
 
 ## Scope and continuity
 
@@ -19,7 +19,7 @@ The July PRDs are planning baselines. This request and the existing implementati
 - Use three new illustrations of one original character doing different activities in the current terracotta/cream drawing style. Existing illustrations may inform style, but must not be substituted as the final originals.
 - Preserve the full institution catalogue and the selected institution's faculties/departments in separate state. Ignore obsolete requests and preserve existing academic/student IDs across imports. Fill missing structure from sourced data rather than inventing it.
 - Reconcile and rehearse the necessary migrations before production; update the API before releasing the matching Vercel agent/admin portal. Verify the actual project, owned hostnames and source revision. Prepare an APK only after deployed service checks succeed.
-- Current academic seeds provide departments for 62 of 328 institutions; full national coverage remains open. Neon branch capacity and repository publication authorization are separate release blockers, recorded in the latest phase report.
+- Current academic seeds provide departments for 62 of 328 institutions; full national coverage remains open. The approved archived branch deletion resolved Neon capacity and the reviewed migrations are live. Public source publication remains a release blocker, recorded in the latest phase report.
 - The owner explicitly keeps `KampusOne/platform` public. Do not make it private. GitHub public visibility allows anyone on the internet to read it, including AI tools that fetch public pages; an app-side crawler rule cannot restrict GitHub access. Repository-link discovery alone does not establish a private-data breach.
 
 ## 1. Public business profiles and seller dashboard

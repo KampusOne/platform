@@ -1,29 +1,29 @@
 # KampusOne platform upgrade: release handoff
 
-The requested implementation is on `feat/business-platform-20260930`, based on main `f8f2f5b312a7793ec938439c97080a94760cfe87`. A final fetch confirmed main has not advanced. Changes are committed locally; publishing, production migration, deployment and the signed APK are still pending. This is a tested implementation checkpoint, not a claim that the live app has changed.
+The requested implementation is on `feat/business-platform-20260930`, based on main `f8f2f5b312a7793ec938439c97080a94760cfe87`. A final fetch confirmed main has not advanced. Changes are committed locally. The 41 reviewed migrations have succeeded on a fresh production child and production; 50 versions are now registered with matching source hashes. Publishing the reviewed public code, deployment and the updated testing APK are still pending.
 
-The latest settings, original-art, academic catalogue and deployment preparation is recorded in `docs/phases/2026-10-01-settings-catalogue-release-preparation.md`. That record supersedes the earlier illustration and twelve-version rehearsal checkpoint. Neon branch capacity and the public source-publication rejection still block live rollout.
+Current live evidence and release ordering are recorded in `docs/phases/2026-10-01-live-migration-rollout.md`. The earlier settings/catalogue record is a historical preparation checkpoint. The approved archived-branch deletion resolved Neon capacity; the public source-publication rejection remains the release blocker.
 
 ## What is implemented
 
 | Area | Result | Release dependency |
 | --- | --- | --- |
-| Public business profiles | Approved Vendor/Tutor/Rider links; business name, owner, username, photos, tags, editable bio/contact, shared followers, reviews and catalogue; no following list | New profile migration; device layout acceptance |
+| Public business profiles | Approved Vendor/Tutor/Rider links; business name, owner, username, photos, tags, editable bio/contact, shared followers, reviews and catalogue; no following list | Deployed code and device layout acceptance |
 | Seller fulfilment | Seller order workspace; pickup, opted-in vendor delivery and recommended rider; pickup codes, staged handoffs and one atomic rider claim | Reviewed delivery coverage; fulfilment acceptance |
 | Reviews | Completed-purchase eligibility, optional stars/review, delayed three-hour prompt, Later/No thanks and app notification | Scheduled worker and device acceptance |
 | Rider finance | Distance-banded fares, 10% commission, cash debt, available-earnings offsets, four-unpaid-commission claim block and verified exact repayment | Reviewed zone distances and live provider acceptance |
 | Inclusive prices | Sealed store/tutorial/material checkout; no increasing checkout surcharge; exactly ₦6,000 Kira monthly plan; versioned rate evidence and receipt reconciliation | Approved commercial policies and merchant fee settings |
 | Withdrawals | Atomic ledger reservation, verified recipient, scoped review, stable transfer reference, recovery/OTP, verified settlement and reversals | Bank/KYC eligibility, transfer-duty reconciliation and provider acceptance |
-| Discovery | Top/Latest/People/Media, `@` usernames, author/date/language/activity filters, reply exclusion and cursor pagination | Search indexes and visual acceptance |
+| Discovery | Top/Latest/People/Media, `@` usernames, author/date/language/activity filters, reply exclusion and cursor pagination | Deployed code and visual acceptance |
 | Sharing | Common inbox-recipient share sheet, explicit Send/retry, WhatsApp/Copy/More, canonical app destinations and branded website fallback | Public link host, real signing identities and installed/absent-device acceptance |
 | Messages | Per-account persistent text/media/reply/voice drafts and inbox Draft; interrupted-send recovery; received-left/own-right swipe reply; existing focused long-press menu retained | Physical app kill/reopen, attachment, voice and gesture acceptance |
 | First-install introduction | Three simple Skip/Back/Next screens with a new original character in three poses; persisted completion and existing account screen | Native layout acceptance |
 | Account settings | Settings → Account manager → Profile settings → Account ownership → Delete account; existing confirmation preserved | Native navigation acceptance |
-| Academic onboarding | Institution list separated from selected university structure; parent-scoped choices and stale-response protection; repeat imports preserve existing IDs | Academic structure migration; department data remains incomplete outside the 62 covered institutions |
+| Academic onboarding | Institution list separated from selected university structure; parent-scoped choices and stale-response protection; repeat imports preserve existing IDs | Deployed code; department data remains incomplete outside the 62 covered institutions |
 | Agent application | Five progressive steps, saved draft, camera oval/capture/retake, optional CAC, private evidence, encrypted NIN, deduplicated receipt and scoped current-identity review | Encryption secrets, manual verification procedure and actual receipt/approval email delivery |
 | Administration | Preferred white-panel layout; staff email/password accounts, scoped permissions, account/detail CSV, support/review/blocklists, private documents, sounds, reviewed publishers and existing campaign controls | Operations prerequisites, GA4 access/configuration, live notification/email acceptance |
 | Analytics | Actual first-party account/platform/action/scroll reports plus separate validated, read-only GA4 reports and graphs; explicit setup/readiness states | GA4 property service account, optional registered custom dimensions, consent/device verification |
-| Repository privacy | Checkout credential-pattern review; no private KYC/public-profile leakage; source visibility assessment | Explicit public/private publication choice |
+| Repository privacy | Checkout credential-pattern review; no private KYC/public-profile leakage; source visibility assessment | Public visibility retained; reviewed public-payload publication approval |
 
 ## Rider calculation
 
@@ -42,25 +42,25 @@ The current distance is an explicitly reviewed delivery-zone estimate, not a roa
 
 ## Verified checkpoint
 
-- 509 server tests in 54 files pass in the full regression run. Five deployment-proof tests pass after the final guard change, including two additional tests. The 130 root regression tests, 11 post-link tests and previously verified 10 shared-contract tests pass.
+- The final full server regression passes: 513 tests in 55 files, including migration statement splitting, source proofs and the fourteen-version rehearsal. The 130 root regression tests, 11 post-link tests and previously verified 10 shared-contract tests passed at the unchanged app checkpoint.
 - Server/mobile/portal type checks and server build pass; portal lint and production build pass (28 generated static pages); mobile web production export passes (91 routes). Shared-contract checks passed in the preceding unchanged checkpoint.
-- Thirteen queued SQL files apply in exact order on the schema-only PostgreSQL baseline. Forty candidate versions additionally pass against the freshly exported live structure and public academic rows. Source hashes, constraints, private ACLs and financial invariants are checked; an actual current-production child with customer data still requires rehearsal before promotion.
+- All 41 selected versions succeeded on the actual current-production child and production. All 14 introduced versions also pass the schema-only ordered rehearsal. Exact registered hashes, preservation fingerprints, validated constraints, private privileges and rollback-only commerce/financial acceptance pass. No reviewed newly introduced version remains queued.
 - Browser/native visual acceptance remains pending because this environment has no functioning browser/device runner. No real payment, transfer, email campaign, push broadcast or GA4 property request was made.
 - The rejected detailed illustrations are removed. Three built-in image-generation originals replace the reused drawings after the selected personal Higgsfield account's plan blocked submission. Final transparent assets were visually inspected and total 434,225 bytes.
 
 ## Migration state and execution order
 
-The October 1 read-only Neon ledger has **nine registered versions with matching source hashes**. **44 older versions lack ledger entries**; some corresponding objects already exist, so replaying every file is unsafe. **Thirteen new versions are queued and unregistered**, including a compatible legacy-prerequisite migration. The current live schema lacks staff-access/product-event prerequisites and the new identity/document/publisher tables.
+Production has **50 registered versions with matching source hashes** after 41 reviewed atomic transactions. The 67-source inventory retains **15 older unregistered baseline versions** that already have their named objects/effective functions and **2 deliberately superseded prerequisites**. These 17 historical sources were not replayed or falsely registered. The compatible replacement preserves message attachments and six existing bookings. All fourteen versions introduced by this update have succeeded.
 
-The exact inventory is `database/verification/2026-09-30-migration-manifest.json`. The latest read-only schema and report are `database/verification/2026-10-01-live-schema-refresh.json` and `database/verification/2026-10-01-migration-reconciliation-refresh.json`; the earlier snapshots remain historical. They contain structural metadata and definition hashes, not customer rows or credentials. Verify them with:
+Current metadata and read-only reconciliation are `database/verification/2026-10-01-production-platform-schema.json` and `2026-10-01-production-platform-reconciliation.json`. Actual production/rehearsal proof and the baseline review are linked in the live rollout record. They contain hashes/counts/structure, not customer rows or credentials. Verify with:
 
 ```sh
 node database/neon/reconcile-migrations.mjs
+node server/scripts/verify-schema-proof.mjs platform
+node server/scripts/verify-schema-proof.mjs corrections
 ```
 
-The script intentionally supplies no automatic production apply list. Review older unregistered SQL, function/constraint/index signatures and data effects on an isolated branch of current production, then record genuinely applied source versions and apply only reviewed missing versions. Run the same account, tenant, fulfilment, ledger and notification verification before promotion. Do not alter a source file already registered as applied.
-
-The new ordered chain is:
+Read-only reconciliation intentionally supplies no automatic apply list. Do not edit registered source SQL or replay old scripts solely because their ledger entries are absent. The introduced chain, now applied, is:
 
 1. `20260930190000_live_legacy_prerequisites.sql`
 2. `20260930210000_public_business_profiles.sql`
@@ -75,20 +75,20 @@ The new ordered chain is:
 11. `20261001000000_discovery_search_indexes.sql`
 12. `20261001010000_private_agent_identity_submissions.sql`
 13. `20261001020000_admin_workspace_extensions.sql`
+14. `20261001030000_server_only_private_privileges.sql`
 
-The complete forty-version candidate order is in `database/verification/2026-10-01-offline-live-schema-rehearsal.json`. Do not bulk-replay the two superseded older prerequisite sources: their media constraint and demo-booking retirement conflict with existing live rows. The compatible replacement preserves those records without falsely registering the original sources.
+The production proof lists all 41 newly applied versions and 50 exact ledger matches. Eighty-six of 91 original table fingerprints match; the only five expected changes update the campus/academic catalogue. All account, media, booking and finance records checked are preserved.
 
 ## Release dependencies
 
-1. Resolve publication of the reviewed payload to the existing public repository. Automatic approval review blocked that push. The owner explicitly declined making the repository private; retain public visibility. App code cannot hide a public GitHub repository from AI tools that read public pages. The public landing site remains unchanged.
-2. Obtain approval to delete archived `phase-3-rehearsal-20260912` (`br-gentle-art-ayea2p50`) to free one of the ten occupied Neon branch slots. Then rehearse current production on a fresh child, preserve existing account/media/booking counts and private privileges, and record exact migration proof. The forty-version offline rehearsal does not establish live-data effects.
-3. Configure server-only `KYC_ENCRYPTION_KEY`, `KYC_FINGERPRINT_SECRET`, GA4 reporting access and the operational mail/push providers. Test permission revocation, privacy and actual receipt/approval delivery. See the agent/admin phase records.
-4. Approve store/tutorial/Kira and transfer-cost policies. Verify exact displayed checkout amounts, merchant fee handling, signed callbacks, held-receipt recovery, refunds and transfer-duty statements. Payment, payout and Kira subscription flags remain false until this acceptance succeeds; no price policy is seeded.
-5. Deploy the Worker and portal with the correct same-origin API proxy and hostname routing. Source routing maps the intended anonymous admin subdomain to `/admin`; `admin` returns 404. The intended hostname still needs attachment to the observed Vercel project. The paired workflows require verified production proof, release the Worker first, and use the same commit for Vercel. Service authority comes from server permissions.
-6. Establish the Expo project/owner for push registration and real release signing identities for distribution. The checked-in app has no EAS project ID; provide the existing owned project via `EXPO_PUBLIC_EAS_PROJECT_ID` rather than silently creating an account/project. Preserve existing Android/iOS Firebase configuration. The GitHub Gradle workflow can compile a test APK without EAS; the existing `internal` EAS profile is an alternative APK path. Neither a test artifact nor compilation establishes live readiness.
-7. Publish actual release certificate fingerprints and the Apple application prefix to the link host; run physical Android/iOS camera, draft, gesture, review, fulfilment and App Links acceptance. Build the signed APK only against the reviewed deployed API. Configure the APK download URL after that artifact exists.
+1. Approve publishing the reviewed source and migration evidence to existing public `KampusOne/platform` on main. Automatic approval review rejected the earlier push for missing explicit authorization of that payload/public destination. The owner retains public visibility; do not change it or bypass the rejected push. The latest approval covered the specific archived Neon branch deletion, now complete. App code cannot restrict AI readers of public GitHub pages. The public landing site is unchanged.
+2. Deploy through the ordered Worker → Vercel → APK workflows. Recorded live migration proof now passes. Portal and mobile Git auto-deploy are disabled so they cannot race the verified backend. A successful matching Worker run is required before Vercel publication; verified portal aliases/mobile preview create a source receipt used by the APK build. Only a successful verified release can publish the current main APK. Manual APK runs save test artifacts. See the live rollout record for exact hostnames and workflow behavior.
+3. Configure server-only KYC encryption/fingerprint secrets, GA4 reporting access and operational mail/push providers. Verify permission revocation and actual application receipt/approval delivery; API readiness alone does not verify provider delivery.
+4. Approve commercial policies and complete real signed payment/transfer/refund/provider-fee acceptance. Payment, payout and Kira subscription flags remain false; no price policy was seeded. Exact displayed/charged amounts require the merchant settings and receipt reconciliation already documented.
+5. Supply the existing owned Expo project ID for push registration and real release signing identities for distribution. The GitHub Gradle workflow can compile a sideload test APK without EAS using Expo-generated testing signing; a real upload/release keystore is required before Play Store publication.
+6. Publish actual signing identities to the link host and run physical Android/iOS camera, draft persistence, gestures, reviews, fulfilment and App Links acceptance. Configure the download URL only after the matching APK exists. Department coverage remains 62 of 328 institutions; unsourced records use the submission/review path.
 
-No production migration, repository visibility change, deployment or APK build has happened in this checkpoint. Do not enable financial gates or describe the live release as complete based solely on compilation and synthetic provider tests.
+The database rollout is complete for the reviewed apply list, and the existing API remains ready. No updated Worker/Vercel release, new APK, repository visibility change or provider transaction was made. Compilation and synthetic acceptance do not establish full live/native readiness.
 
 ## Delivery and further detail
 

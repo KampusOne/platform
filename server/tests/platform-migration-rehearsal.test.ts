@@ -5,8 +5,8 @@ import type{PGlite}from"@electric-sql/pglite";
 import{createTestDatabase}from"./helpers/database";
 let db:PGlite;
 const root=new URL("../../",import.meta.url);
-const manifest=JSON.parse(readFileSync(new URL("database/verification/2026-09-30-migration-manifest.json",root),"utf8"))as{migrations:{version:string;path:string;sha256:string;gitBlobSha:string;status:string}[]};
-const queued=manifest.migrations.filter(m=>m.status==="queued_in_this_update");
+const manifest=JSON.parse(readFileSync(new URL("database/verification/2026-09-30-migration-manifest.json",root),"utf8"))as{migrations:{version:string;path:string;sha256:string;gitBlobSha:string;status:string;introducedInPlatformUpdate?:boolean}[]};
+const queued=manifest.migrations.filter(m=>m.introducedInPlatformUpdate);
 beforeAll(async()=>{
  db=await createTestDatabase();
  await db.exec(readFileSync(new URL("database/neon/migrations/20260912200000_phase_3_commerce_foundation.sql",root),"utf8"));

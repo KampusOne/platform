@@ -1,0 +1,1781 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-01T03:21:32Z",
+    "scope": "Continue the requested necessary migration execution after approval to delete archived phase-3-rehearsal-20260912 and create a fresh production child."
+  },
+  "verifiedAt": "2026-10-01T03:41:22.569Z",
+  "method": "Each exact reviewed source migration and its git-blob ledger entry committed in one Neon transaction after current-production-child rehearsal; aggregate fingerprints and self-rolling-back functional acceptance verified before and after.",
+  "rehearsal": {
+    "branchId": "br-fragrant-paper-ayq7ay0y",
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "createdAt": "2026-10-01T03:22:28Z",
+    "proof": "database/verification/2026-10-01-live-platform-rehearsal.json"
+  },
+  "checks": {
+    "platform": "passed",
+    "corrections": "passed",
+    "fixturesRolledBack": true,
+    "currentLiveBranchRehearsal": "passed",
+    "existingAccountCountsPreserved": true,
+    "mediaAndBookingsPreserved": true,
+    "privatePrivileges": "passed",
+    "constraintsValidated": true,
+    "commerceAcceptance": "passed",
+    "financeJournalAndReceiptAcceptance": "passed"
+  },
+  "migrations": [
+    {
+      "version": "20260912200000_phase_3_commerce_foundation",
+      "sourceBlobSha": "515ae32e25a34d18934e623e04955d124657e765",
+      "appliedAt": "2026-09-20T17:54:14.292621+00:00",
+      "appliedBy": "neondb_owner"
+    },
+    {
+      "version": "20260913200000_unified_student_platform",
+      "sourceBlobSha": "a11789d089540255bc43b2aa7c7b6892a750639c",
+      "appliedAt": "2026-09-20T17:51:33.799491+00:00",
+      "appliedBy": "neondb_owner"
+    },
+    {
+      "version": "20260913210000_timetable_course_alarm_sync",
+      "sourceBlobSha": "d9fb42c811e938d654d53a5432c6b22b02bd19d6",
+      "appliedAt": "2026-09-20T17:52:18.412065+00:00",
+      "appliedBy": "neondb_owner"
+    },
+    {
+      "version": "20260913220000_ai_requests",
+      "sourceBlobSha": "a268c541c9a4cc9ef906fbfba3aff9424b9fb585",
+      "appliedAt": "2026-09-20T17:52:18.412065+00:00",
+      "appliedBy": "neondb_owner"
+    },
+    {
+      "version": "20260913230000_community_workflows",
+      "sourceBlobSha": "e43fb436802ce1ceb740fc5e5dc6e487fcdacfbf",
+      "appliedAt": "2026-09-20T17:52:18.412065+00:00",
+      "appliedBy": "neondb_owner"
+    },
+    {
+      "version": "20260913240000_verified_identity_and_resources",
+      "sourceBlobSha": "c029c956c8324d352e8011b83eab12d6974e29d1",
+      "appliedAt": "2026-09-20T17:52:18.412065+00:00",
+      "appliedBy": "neondb_owner"
+    },
+    {
+      "version": "20260913250000_one_time_alarms",
+      "sourceBlobSha": "a57fcb2720ca2aa2fee0bd193664fa4e0cbabb21",
+      "appliedAt": "2026-09-20T17:52:18.412065+00:00",
+      "appliedBy": "neondb_owner"
+    },
+    {
+      "version": "20260921100000_operations_permissions_academic",
+      "sourceBlobSha": "b3a2e8085882da2b52816d65513b632e0b277135",
+      "appliedAt": "2026-10-01T03:34:38.369661+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921110000_ai_history_and_streak_activity",
+      "sourceBlobSha": "917a7ffb0e0774db994a57cc1d677f38a8ef05bb",
+      "appliedAt": "2026-10-01T03:34:39.810008+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921120000_publishing_capabilities",
+      "sourceBlobSha": "2aeed8a191c5d09a8ccaf0fda548fdbdd82a19f5",
+      "appliedAt": "2026-10-01T03:34:41.163932+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921130000_academic_publication",
+      "sourceBlobSha": "be9a4c1be674c2488f31a8880f3f0994000feada",
+      "appliedAt": "2026-10-01T03:34:42.559701+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921140000_notification_delivery",
+      "sourceBlobSha": "6ebfa7ef42afe5452023bc494210d83998fdb4a0",
+      "appliedAt": "2026-10-01T03:34:43.819266+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921150000_broadcasts",
+      "sourceBlobSha": "33de23c19018d2aacabe74a169961b71fcbfdf61",
+      "appliedAt": "2026-10-01T03:34:45.117749+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921160000_payout_setup",
+      "sourceBlobSha": "4a61a536e0b33332e79a43cd6071d17be471e94a",
+      "appliedAt": "2026-10-01T03:34:46.541987+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921170000_application_checks",
+      "sourceBlobSha": "6e52913e88122c39a8a7e6fe1f02563c69adeb75",
+      "appliedAt": "2026-10-01T03:34:47.894443+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921180000_feed_social_interactions",
+      "sourceBlobSha": "491f4bb9fc5a95adbe041f2d3d0576e428d35d55",
+      "appliedAt": "2026-10-01T03:34:49.259908+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921180000_idempotent_timetable_import",
+      "sourceBlobSha": "a1c78e3ec6f91a62713a4304007831011dd31d9c",
+      "appliedAt": "2026-10-01T03:34:50.960959+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921183000_feed_post_likes",
+      "sourceBlobSha": "2f10abc8459efe67e4ce8e4b8cc1964e225ba3ae",
+      "appliedAt": "2026-09-21T17:42:50.156445+00:00",
+      "appliedBy": "neondb_owner"
+    },
+    {
+      "version": "20260921184500_feed_comment_likes",
+      "sourceBlobSha": "758b90186ca0c6d499c2fa43eb58a3ad60ed8aaf",
+      "appliedAt": "2026-10-01T03:34:57.333355+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260921200000_feed_comment_replies",
+      "sourceBlobSha": "596ca647b51db1e9bdfbcd558dc13e5b8db60d9a",
+      "appliedAt": "2026-10-01T03:34:58.681374+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260922140000_feed_conversation_experience",
+      "sourceBlobSha": "a8efb5ef473eefdcf733d8d9132dd4adeb9eb68b",
+      "appliedAt": "2026-10-01T03:35:00.105194+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260924000000_student_ai_profiles",
+      "sourceBlobSha": "c5525e6c2be11a107da231b05d099edce0047b61",
+      "appliedAt": "2026-10-01T03:35:01.530084+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260925090000_calendar_and_campus_places",
+      "sourceBlobSha": "8b8e152ada9d7d111677efbfe40cea1dd7a05ccf",
+      "appliedAt": "2026-09-27T05:08:55.704845+00:00",
+      "appliedBy": "neondb_owner"
+    },
+    {
+      "version": "20260925100000_campus_map_foundation",
+      "sourceBlobSha": "2c1b96cd7eb2d4ef43ef6a6b141ab7be362627d0",
+      "appliedAt": "2026-10-01T03:35:03.238907+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260925120000_community_push_delivery",
+      "sourceBlobSha": "cd9234ade82609afc2a814b18aaad7b84ca1c5ba",
+      "appliedAt": "2026-10-01T03:35:04.523906+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260925130000_programme_metadata",
+      "sourceBlobSha": "aa2a0a26626c5c0629805e7094555d46a1915cfd",
+      "appliedAt": "2026-10-01T03:35:05.745036+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260927120000_direct_messages_live",
+      "sourceBlobSha": "5690caf9abdaea134bb53ef36cf8f62a165764d5",
+      "appliedAt": "2026-10-01T03:35:06.911418+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260927130000_multi_university_onboarding_catalogue",
+      "sourceBlobSha": "404e0a6634343f61eea6951b24e0ee364879fc02",
+      "appliedAt": "2026-10-01T03:35:08.359608+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260927140500_notification_actor_profiles",
+      "sourceBlobSha": "8587326bd19f6738238a92340eb0bb7cc56bece3",
+      "appliedAt": "2026-10-01T03:35:09.651274+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260927164000_publish_nigerian_university_identities",
+      "sourceBlobSha": "82b3dd7bd4950b4ba36a951dfa69f100f4376f1b",
+      "appliedAt": "2026-10-01T03:35:17.34986+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260927170000_uniben_ugbowo_campus_map",
+      "sourceBlobSha": "2cb9f7c55004ac6b3aded3ea062760b8140b4f45",
+      "appliedAt": "2026-10-01T03:35:18.691105+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260928022000_direct_message_interactions",
+      "sourceBlobSha": "2ffdaf27176a5b4ba8d3312ddeb471010886e44e",
+      "appliedAt": "2026-10-01T03:35:19.820029+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260928101500_onboarding_academic_structure",
+      "sourceBlobSha": "4623f62e23e33f4fba8528b3505d0d2ddcc4365e",
+      "appliedAt": "2026-10-01T03:35:21.786671+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260928114500_academic_missing_review_workflow",
+      "sourceBlobSha": "ed9355a7a80ab8c2c431c042f75f2050cf80c707",
+      "appliedAt": "2026-10-01T03:35:24.042225+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260928120000_profile_post_notifications",
+      "sourceBlobSha": "2b6645941767ebe4158c371f0cc1ad11dffed2ca",
+      "appliedAt": "2026-10-01T03:35:25.249558+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260928130000_uniben_ugbowo_map_expansion",
+      "sourceBlobSha": "ba8534d6ad5a822cb888b82ac26d60fb294a2316",
+      "appliedAt": "2026-10-01T03:35:26.871484+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260930190000_live_legacy_prerequisites",
+      "sourceBlobSha": "5d430753da17363c555341fcdfeadf9dc5aff4db",
+      "appliedAt": "2026-10-01T03:35:28.24986+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260930210000_public_business_profiles",
+      "sourceBlobSha": "851552f6970a428d5bd132c2d7d336f1aa0f3c69",
+      "appliedAt": "2026-10-01T03:35:29.360002+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260930220000_store_fulfilment_modes",
+      "sourceBlobSha": "13ed85b8733259713298788250f905bf409b1b06",
+      "appliedAt": "2026-10-01T03:35:30.572321+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260930230000_optional_purchase_review_reminders",
+      "sourceBlobSha": "46aae63cd1bae562d3b098d8392d933d244197ab",
+      "appliedAt": "2026-10-01T03:35:43.517085+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260930240000_rider_commission_ledger",
+      "sourceBlobSha": "6356cf7b51f1802006d5769a7063e63e65db4803",
+      "appliedAt": "2026-10-01T03:35:44.912542+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260930250000_inclusive_store_quotes",
+      "sourceBlobSha": "1525f4b563b960a78efe58645ba53635a21733ce",
+      "appliedAt": "2026-10-01T03:35:46.37254+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260930260000_inclusive_tutorial_bookings",
+      "sourceBlobSha": "6e130ba7207cf6041b77c4b85052585741bba247",
+      "appliedAt": "2026-10-01T03:35:47.638573+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260930270000_verified_kira_subscription",
+      "sourceBlobSha": "c95663baa17e733e3203fdaabc4261941bb0da7e",
+      "appliedAt": "2026-10-01T03:35:48.853316+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260930280000_verified_learning_materials",
+      "sourceBlobSha": "7e1da62a27542611275c966a020f6de25ab94507",
+      "appliedAt": "2026-10-01T03:35:50.522877+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20260930290000_verified_agent_payouts",
+      "sourceBlobSha": "dd3196362c57042c7d0a7102c94099c1166252cc",
+      "appliedAt": "2026-10-01T03:35:52.132437+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20261001000000_discovery_search_indexes",
+      "sourceBlobSha": "c824a333bbed0b1e8f8adf351db0815509bc2153",
+      "appliedAt": "2026-10-01T03:35:53.485395+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20261001010000_private_agent_identity_submissions",
+      "sourceBlobSha": "4a500fab8ef40615f607057ca630ab3dbfd28850",
+      "appliedAt": "2026-10-01T03:35:54.716521+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20261001020000_admin_workspace_extensions",
+      "sourceBlobSha": "c8416d7ad8818c4438b0fd1dd883c2f3d264f38f",
+      "appliedAt": "2026-10-01T03:35:55.892667+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    },
+    {
+      "version": "20261001030000_server_only_private_privileges",
+      "sourceBlobSha": "2c2af64b0153da0ffecf39ebaf2bae39f3226643",
+      "appliedAt": "2026-10-01T03:35:57.124726+00:00",
+      "appliedBy": "codex-20261001-reviewed-platform"
+    }
+  ],
+  "newlyAppliedMigrations": [
+    {
+      "version": "20260921100000_operations_permissions_academic",
+      "sourceBlobSha": "b3a2e8085882da2b52816d65513b632e0b277135",
+      "completedAt": "2026-10-01T03:34:38.621Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921110000_ai_history_and_streak_activity",
+      "sourceBlobSha": "917a7ffb0e0774db994a57cc1d677f38a8ef05bb",
+      "completedAt": "2026-10-01T03:34:39.961Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921120000_publishing_capabilities",
+      "sourceBlobSha": "2aeed8a191c5d09a8ccaf0fda548fdbdd82a19f5",
+      "completedAt": "2026-10-01T03:34:41.308Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921130000_academic_publication",
+      "sourceBlobSha": "be9a4c1be674c2488f31a8880f3f0994000feada",
+      "completedAt": "2026-10-01T03:34:42.672Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921140000_notification_delivery",
+      "sourceBlobSha": "6ebfa7ef42afe5452023bc494210d83998fdb4a0",
+      "completedAt": "2026-10-01T03:34:43.931Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921150000_broadcasts",
+      "sourceBlobSha": "33de23c19018d2aacabe74a169961b71fcbfdf61",
+      "completedAt": "2026-10-01T03:34:45.354Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921160000_payout_setup",
+      "sourceBlobSha": "4a61a536e0b33332e79a43cd6071d17be471e94a",
+      "completedAt": "2026-10-01T03:34:46.657Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921170000_application_checks",
+      "sourceBlobSha": "6e52913e88122c39a8a7e6fe1f02563c69adeb75",
+      "completedAt": "2026-10-01T03:34:48.019Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921180000_feed_social_interactions",
+      "sourceBlobSha": "491f4bb9fc5a95adbe041f2d3d0576e428d35d55",
+      "completedAt": "2026-10-01T03:34:49.369Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921180000_idempotent_timetable_import",
+      "sourceBlobSha": "a1c78e3ec6f91a62713a4304007831011dd31d9c",
+      "completedAt": "2026-10-01T03:34:51.046Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921184500_feed_comment_likes",
+      "sourceBlobSha": "758b90186ca0c6d499c2fa43eb58a3ad60ed8aaf",
+      "completedAt": "2026-10-01T03:34:57.435Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260921200000_feed_comment_replies",
+      "sourceBlobSha": "596ca647b51db1e9bdfbcd558dc13e5b8db60d9a",
+      "completedAt": "2026-10-01T03:34:58.778Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260922140000_feed_conversation_experience",
+      "sourceBlobSha": "a8efb5ef473eefdcf733d8d9132dd4adeb9eb68b",
+      "completedAt": "2026-10-01T03:35:00.200Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260924000000_student_ai_profiles",
+      "sourceBlobSha": "c5525e6c2be11a107da231b05d099edce0047b61",
+      "completedAt": "2026-10-01T03:35:01.638Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260925100000_campus_map_foundation",
+      "sourceBlobSha": "2c1b96cd7eb2d4ef43ef6a6b141ab7be362627d0",
+      "completedAt": "2026-10-01T03:35:03.360Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260925120000_community_push_delivery",
+      "sourceBlobSha": "cd9234ade82609afc2a814b18aaad7b84ca1c5ba",
+      "completedAt": "2026-10-01T03:35:04.623Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260925130000_programme_metadata",
+      "sourceBlobSha": "aa2a0a26626c5c0629805e7094555d46a1915cfd",
+      "completedAt": "2026-10-01T03:35:05.861Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260927120000_direct_messages_live",
+      "sourceBlobSha": "5690caf9abdaea134bb53ef36cf8f62a165764d5",
+      "completedAt": "2026-10-01T03:35:06.996Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260927130000_multi_university_onboarding_catalogue",
+      "sourceBlobSha": "404e0a6634343f61eea6951b24e0ee364879fc02",
+      "completedAt": "2026-10-01T03:35:08.467Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260927140500_notification_actor_profiles",
+      "sourceBlobSha": "8587326bd19f6738238a92340eb0bb7cc56bece3",
+      "completedAt": "2026-10-01T03:35:09.751Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260927164000_publish_nigerian_university_identities",
+      "sourceBlobSha": "82b3dd7bd4950b4ba36a951dfa69f100f4376f1b",
+      "completedAt": "2026-10-01T03:35:17.504Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260927170000_uniben_ugbowo_campus_map",
+      "sourceBlobSha": "2cb9f7c55004ac6b3aded3ea062760b8140b4f45",
+      "completedAt": "2026-10-01T03:35:18.792Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260928022000_direct_message_interactions",
+      "sourceBlobSha": "2ffdaf27176a5b4ba8d3312ddeb471010886e44e",
+      "completedAt": "2026-10-01T03:35:19.989Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260928101500_onboarding_academic_structure",
+      "sourceBlobSha": "4623f62e23e33f4fba8528b3505d0d2ddcc4365e",
+      "completedAt": "2026-10-01T03:35:22.751Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260928114500_academic_missing_review_workflow",
+      "sourceBlobSha": "ed9355a7a80ab8c2c431c042f75f2050cf80c707",
+      "completedAt": "2026-10-01T03:35:24.166Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260928120000_profile_post_notifications",
+      "sourceBlobSha": "2b6645941767ebe4158c371f0cc1ad11dffed2ca",
+      "completedAt": "2026-10-01T03:35:25.353Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260928130000_uniben_ugbowo_map_expansion",
+      "sourceBlobSha": "ba8534d6ad5a822cb888b82ac26d60fb294a2316",
+      "completedAt": "2026-10-01T03:35:27.002Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260930190000_live_legacy_prerequisites",
+      "sourceBlobSha": "5d430753da17363c555341fcdfeadf9dc5aff4db",
+      "completedAt": "2026-10-01T03:35:28.350Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260930210000_public_business_profiles",
+      "sourceBlobSha": "851552f6970a428d5bd132c2d7d336f1aa0f3c69",
+      "completedAt": "2026-10-01T03:35:29.458Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260930220000_store_fulfilment_modes",
+      "sourceBlobSha": "13ed85b8733259713298788250f905bf409b1b06",
+      "completedAt": "2026-10-01T03:35:30.683Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260930230000_optional_purchase_review_reminders",
+      "sourceBlobSha": "46aae63cd1bae562d3b098d8392d933d244197ab",
+      "completedAt": "2026-10-01T03:35:43.608Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260930240000_rider_commission_ledger",
+      "sourceBlobSha": "6356cf7b51f1802006d5769a7063e63e65db4803",
+      "completedAt": "2026-10-01T03:35:45.117Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260930250000_inclusive_store_quotes",
+      "sourceBlobSha": "1525f4b563b960a78efe58645ba53635a21733ce",
+      "completedAt": "2026-10-01T03:35:46.496Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260930260000_inclusive_tutorial_bookings",
+      "sourceBlobSha": "6e130ba7207cf6041b77c4b85052585741bba247",
+      "completedAt": "2026-10-01T03:35:47.752Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260930270000_verified_kira_subscription",
+      "sourceBlobSha": "c95663baa17e733e3203fdaabc4261941bb0da7e",
+      "completedAt": "2026-10-01T03:35:49.032Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260930280000_verified_learning_materials",
+      "sourceBlobSha": "7e1da62a27542611275c966a020f6de25ab94507",
+      "completedAt": "2026-10-01T03:35:50.681Z",
+      "status": "applied"
+    },
+    {
+      "version": "20260930290000_verified_agent_payouts",
+      "sourceBlobSha": "dd3196362c57042c7d0a7102c94099c1166252cc",
+      "completedAt": "2026-10-01T03:35:52.290Z",
+      "status": "applied"
+    },
+    {
+      "version": "20261001000000_discovery_search_indexes",
+      "sourceBlobSha": "c824a333bbed0b1e8f8adf351db0815509bc2153",
+      "completedAt": "2026-10-01T03:35:53.589Z",
+      "status": "applied"
+    },
+    {
+      "version": "20261001010000_private_agent_identity_submissions",
+      "sourceBlobSha": "4a500fab8ef40615f607057ca630ab3dbfd28850",
+      "completedAt": "2026-10-01T03:35:54.841Z",
+      "status": "applied"
+    },
+    {
+      "version": "20261001020000_admin_workspace_extensions",
+      "sourceBlobSha": "c8416d7ad8818c4438b0fd1dd883c2f3d264f38f",
+      "completedAt": "2026-10-01T03:35:56.034Z",
+      "status": "applied"
+    },
+    {
+      "version": "20261001030000_server_only_private_privileges",
+      "sourceBlobSha": "2c2af64b0153da0ffecf39ebaf2bae39f3226643",
+      "completedAt": "2026-10-01T03:35:57.252Z",
+      "status": "applied"
+    }
+  ],
+  "supersededPrerequisites": [
+    {
+      "version": "20260925110000_notification_sound_catalogue",
+      "by": "20260930190000_live_legacy_prerequisites"
+    },
+    {
+      "version": "20260928120500_profile_activity_dismissals_and_demo_retirement",
+      "by": "20260930190000_live_legacy_prerequisites"
+    }
+  ],
+  "dataPreservation": {
+    "baseline": "database/verification/2026-10-01-production-before-platform.json",
+    "before": {
+      "observed_at": "2026-10-01T03:34:09.640Z",
+      "tables": [
+        {
+          "table_name": "app_private.ai_requests",
+          "row_count": 115,
+          "fingerprint": "2c5d708a638b6f40660cf72eb3feebb4"
+        },
+        {
+          "table_name": "app_private.ai_subscriptions",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "app_private.audit_events",
+          "row_count": 66,
+          "fingerprint": "e821ebf4d61239d57453b987ee67b659"
+        },
+        {
+          "table_name": "app_private.community_votes",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "app_private.email_login_codes",
+          "row_count": 5,
+          "fingerprint": "a4e74bc1dd3b8129812534c88d27154f"
+        },
+        {
+          "table_name": "app_private.notification_outbox",
+          "row_count": 28,
+          "fingerprint": "fd18cbb82f4c51c0e72bd8d3b1f01f67"
+        },
+        {
+          "table_name": "app_private.pending_registrations",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "app_private.request_rate_limits",
+          "row_count": 58,
+          "fingerprint": "661638a9dce770d7b35ba587c1643ca0"
+        },
+        {
+          "table_name": "app_private.timetable_import_requests",
+          "row_count": 2,
+          "fingerprint": "69214d8feb487f55a45374e5a77e352e"
+        },
+        {
+          "table_name": "app_private.verified_people",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public._prisma_migrations",
+          "row_count": 2,
+          "fingerprint": "e1bbe292ee0fc4b01fe57d5038c14fca"
+        },
+        {
+          "table_name": "public.academic_sessions",
+          "row_count": 1,
+          "fingerprint": "170a16dce305695daf7ae6116b8a6f9e"
+        },
+        {
+          "table_name": "public.account_restrictions",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.agent_application_details",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.agent_applications",
+          "row_count": 1,
+          "fingerprint": "105ecc9aa12859750d4b88dff458c9ed"
+        },
+        {
+          "table_name": "public.agent_profiles",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.agent_trials",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.calendar_imports",
+          "row_count": 1,
+          "fingerprint": "44282a72a687ca4235b7b482d1db924a"
+        },
+        {
+          "table_name": "public.campus_places",
+          "row_count": 13,
+          "fingerprint": "696ae92a513235cd8c294298d00888a4"
+        },
+        {
+          "table_name": "public.cohort_communities",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.commerce_refund_events",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.commerce_refunds",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.community_announcements",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.community_candidates",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.community_elections",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.community_members",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.community_rep_transfers",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.content_sources",
+          "row_count": 4,
+          "fingerprint": "32ea2b431e29e1b2917c2b56cfd7633d"
+        },
+        {
+          "table_name": "public.course_drafts",
+          "row_count": 30,
+          "fingerprint": "2a6a133f483e6ad5eb885e6754337fd1"
+        },
+        {
+          "table_name": "public.courses",
+          "row_count": 5,
+          "fingerprint": "328b9f40e7c66760db8eb84700304c82"
+        },
+        {
+          "table_name": "public.delivery_events",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.delivery_jobs",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.delivery_zones",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.departments",
+          "row_count": 5,
+          "fingerprint": "b9d65efc88c71836d4818c20ba6bdb5a"
+        },
+        {
+          "table_name": "public.direct_messages",
+          "row_count": 13,
+          "fingerprint": "0698f07647a12f1cef7431598ecae02e"
+        },
+        {
+          "table_name": "public.direct_threads",
+          "row_count": 3,
+          "fingerprint": "f6a1bcc4b6b221d93871ef86e8fd5f62"
+        },
+        {
+          "table_name": "public.disputes",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.faculties",
+          "row_count": 2,
+          "fingerprint": "b619f17a8c355676b0cd585b625d7cfc"
+        },
+        {
+          "table_name": "public.feed_bookmarks",
+          "row_count": 4,
+          "fingerprint": "1175a6834f3f8c88316938271e25cdf6"
+        },
+        {
+          "table_name": "public.feed_comment_likes",
+          "row_count": 5,
+          "fingerprint": "88618d4bbbb55b6f2829d7c04262057d"
+        },
+        {
+          "table_name": "public.feed_comments",
+          "row_count": 14,
+          "fingerprint": "77ac42b1230b0470aac113c84bb51575"
+        },
+        {
+          "table_name": "public.feed_likes",
+          "row_count": 41,
+          "fingerprint": "5540995e277c630adfd240026fe1fe98"
+        },
+        {
+          "table_name": "public.feed_post_comments",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.feed_post_reposts",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.feed_post_views",
+          "row_count": 79,
+          "fingerprint": "4734acf5854e572b58ac1170459b60ba"
+        },
+        {
+          "table_name": "public.feed_posts",
+          "row_count": 24,
+          "fingerprint": "afbdbff8005145289d4c5d9f46be7d8f"
+        },
+        {
+          "table_name": "public.feed_reposts",
+          "row_count": 6,
+          "fingerprint": "e18852169fed3284a4c9ec32663c9653"
+        },
+        {
+          "table_name": "public.gpa_results",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.gpa_terms",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.in_app_notifications",
+          "row_count": 40,
+          "fingerprint": "a6f4dc2e3b66766a0847ccc64e23f237"
+        },
+        {
+          "table_name": "public.institution_config",
+          "row_count": 328,
+          "fingerprint": "b9bb63102df101e0a841c7b15506f75a"
+        },
+        {
+          "table_name": "public.institution_guidelines",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.inventory_reservations",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.ledger_accounts",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.ledger_lines",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.ledger_transactions",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.legal_acceptances",
+          "row_count": 12,
+          "fingerprint": "2bdb89d6cd8181ea24bf061fbdd40d2e"
+        },
+        {
+          "table_name": "public.media_objects",
+          "row_count": 74,
+          "fingerprint": "8a9a7ddf09150e1d60741b50acb7d4a4"
+        },
+        {
+          "table_name": "public.operator_roles",
+          "row_count": 1,
+          "fingerprint": "91448d2e0e334f834513663345c1ab1f"
+        },
+        {
+          "table_name": "public.order_delivery_snapshots",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.order_items",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.order_status_events",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.orders",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.payment_attempts",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.payment_provider_events",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.payout_requests",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.product_categories",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.product_media",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.product_reviews",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.profile_follows",
+          "row_count": 4,
+          "fingerprint": "73967f891db1ff3b96ff9a2ed36e31dc"
+        },
+        {
+          "table_name": "public.profile_social_policies",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.profiles",
+          "row_count": 14,
+          "fingerprint": "8216961f8cc91307a14c6148e018f702"
+        },
+        {
+          "table_name": "public.refresh_tokens",
+          "row_count": 578,
+          "fingerprint": "f4398bb6459d4fb1fafe70d710fc6eba"
+        },
+        {
+          "table_name": "public.release_phases",
+          "row_count": 3,
+          "fingerprint": "a4ffd2075220e57657e2bb3f595f6c3a"
+        },
+        {
+          "table_name": "public.rider_presence",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.student_alarms",
+          "row_count": 63,
+          "fingerprint": "280da202f5efd62c4caa424b32ccb359"
+        },
+        {
+          "table_name": "public.student_calendar_events",
+          "row_count": 14,
+          "fingerprint": "041aea021a75b94499ed44aff2ebe18e"
+        },
+        {
+          "table_name": "public.support_requests",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.timetable_entries",
+          "row_count": 46,
+          "fingerprint": "73393c034cae4aba29a7e0f86030d133"
+        },
+        {
+          "table_name": "public.tutorial_availability_windows",
+          "row_count": 4,
+          "fingerprint": "88b8d6c45d7b1692c9e0d58f1278f0cb"
+        },
+        {
+          "table_name": "public.tutorial_bookings",
+          "row_count": 6,
+          "fingerprint": "2b14372b136ac3351952aaf48905e2b6"
+        },
+        {
+          "table_name": "public.tutorial_listings",
+          "row_count": 4,
+          "fingerprint": "17a6f5aa7e71407ad2eaf66f0ba3ea54"
+        },
+        {
+          "table_name": "public.tutorial_resources",
+          "row_count": 5,
+          "fingerprint": "f716416269277ee7b67f8c216a1bfde8"
+        },
+        {
+          "table_name": "public.tutorial_reviews",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.universities",
+          "row_count": 328,
+          "fingerprint": "ad27e70533a3195abb317a555e7da489"
+        },
+        {
+          "table_name": "public.user_blocks",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.user_streaks",
+          "row_count": 8,
+          "fingerprint": "4ea26219b911df63fa4c2cd30b0ed25a"
+        },
+        {
+          "table_name": "public.users",
+          "row_count": 14,
+          "fingerprint": "1dcd6825c7d4f5ebd7c5eeff3b5dfed8"
+        },
+        {
+          "table_name": "public.vendor_products",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.vendor_storefronts",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.verification_tokens",
+          "row_count": 14,
+          "fingerprint": "22c4e90c13e3012e89ac1ede0fcb001f"
+        }
+      ]
+    },
+    "after": {
+      "observed_at": "2026-10-01T03:36:22.283Z",
+      "tables": [
+        {
+          "table_name": "app_private.ai_requests",
+          "row_count": 115,
+          "fingerprint": "2c5d708a638b6f40660cf72eb3feebb4"
+        },
+        {
+          "table_name": "app_private.ai_subscriptions",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "app_private.audit_events",
+          "row_count": 66,
+          "fingerprint": "e821ebf4d61239d57453b987ee67b659"
+        },
+        {
+          "table_name": "app_private.community_votes",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "app_private.email_login_codes",
+          "row_count": 5,
+          "fingerprint": "a4e74bc1dd3b8129812534c88d27154f"
+        },
+        {
+          "table_name": "app_private.notification_outbox",
+          "row_count": 28,
+          "fingerprint": "fd18cbb82f4c51c0e72bd8d3b1f01f67"
+        },
+        {
+          "table_name": "app_private.pending_registrations",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "app_private.request_rate_limits",
+          "row_count": 58,
+          "fingerprint": "661638a9dce770d7b35ba587c1643ca0"
+        },
+        {
+          "table_name": "app_private.timetable_import_requests",
+          "row_count": 2,
+          "fingerprint": "69214d8feb487f55a45374e5a77e352e"
+        },
+        {
+          "table_name": "app_private.verified_people",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public._prisma_migrations",
+          "row_count": 2,
+          "fingerprint": "e1bbe292ee0fc4b01fe57d5038c14fca"
+        },
+        {
+          "table_name": "public.academic_sessions",
+          "row_count": 1,
+          "fingerprint": "170a16dce305695daf7ae6116b8a6f9e"
+        },
+        {
+          "table_name": "public.account_restrictions",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.agent_application_details",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.agent_applications",
+          "row_count": 1,
+          "fingerprint": "105ecc9aa12859750d4b88dff458c9ed"
+        },
+        {
+          "table_name": "public.agent_profiles",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.agent_trials",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.calendar_imports",
+          "row_count": 1,
+          "fingerprint": "44282a72a687ca4235b7b482d1db924a"
+        },
+        {
+          "table_name": "public.campus_places",
+          "row_count": 96,
+          "fingerprint": "3d9cc0a99d0f722c435cf23e6c02558d"
+        },
+        {
+          "table_name": "public.cohort_communities",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.commerce_refund_events",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.commerce_refunds",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.community_announcements",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.community_candidates",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.community_elections",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.community_members",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.community_rep_transfers",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.content_sources",
+          "row_count": 4,
+          "fingerprint": "32ea2b431e29e1b2917c2b56cfd7633d"
+        },
+        {
+          "table_name": "public.course_drafts",
+          "row_count": 30,
+          "fingerprint": "2a6a133f483e6ad5eb885e6754337fd1"
+        },
+        {
+          "table_name": "public.courses",
+          "row_count": 5,
+          "fingerprint": "328b9f40e7c66760db8eb84700304c82"
+        },
+        {
+          "table_name": "public.delivery_events",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.delivery_jobs",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.delivery_zones",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.departments",
+          "row_count": 579,
+          "fingerprint": "d1c6e5ee75f732502c45350024bf6915"
+        },
+        {
+          "table_name": "public.direct_messages",
+          "row_count": 13,
+          "fingerprint": "0698f07647a12f1cef7431598ecae02e"
+        },
+        {
+          "table_name": "public.direct_threads",
+          "row_count": 3,
+          "fingerprint": "f6a1bcc4b6b221d93871ef86e8fd5f62"
+        },
+        {
+          "table_name": "public.disputes",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.faculties",
+          "row_count": 1451,
+          "fingerprint": "6d268613cbdb5f5ca0af8f738a0e2b58"
+        },
+        {
+          "table_name": "public.feed_bookmarks",
+          "row_count": 4,
+          "fingerprint": "1175a6834f3f8c88316938271e25cdf6"
+        },
+        {
+          "table_name": "public.feed_comment_likes",
+          "row_count": 5,
+          "fingerprint": "88618d4bbbb55b6f2829d7c04262057d"
+        },
+        {
+          "table_name": "public.feed_comments",
+          "row_count": 14,
+          "fingerprint": "77ac42b1230b0470aac113c84bb51575"
+        },
+        {
+          "table_name": "public.feed_likes",
+          "row_count": 41,
+          "fingerprint": "5540995e277c630adfd240026fe1fe98"
+        },
+        {
+          "table_name": "public.feed_post_comments",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.feed_post_reposts",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.feed_post_views",
+          "row_count": 79,
+          "fingerprint": "4734acf5854e572b58ac1170459b60ba"
+        },
+        {
+          "table_name": "public.feed_posts",
+          "row_count": 24,
+          "fingerprint": "afbdbff8005145289d4c5d9f46be7d8f"
+        },
+        {
+          "table_name": "public.feed_reposts",
+          "row_count": 6,
+          "fingerprint": "e18852169fed3284a4c9ec32663c9653"
+        },
+        {
+          "table_name": "public.gpa_results",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.gpa_terms",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.in_app_notifications",
+          "row_count": 40,
+          "fingerprint": "a6f4dc2e3b66766a0847ccc64e23f237"
+        },
+        {
+          "table_name": "public.institution_config",
+          "row_count": 328,
+          "fingerprint": "b6da8e011a7af5540b4b925f34d82e91"
+        },
+        {
+          "table_name": "public.institution_guidelines",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.inventory_reservations",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.ledger_accounts",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.ledger_lines",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.ledger_transactions",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.legal_acceptances",
+          "row_count": 12,
+          "fingerprint": "2bdb89d6cd8181ea24bf061fbdd40d2e"
+        },
+        {
+          "table_name": "public.media_objects",
+          "row_count": 74,
+          "fingerprint": "8a9a7ddf09150e1d60741b50acb7d4a4"
+        },
+        {
+          "table_name": "public.operator_roles",
+          "row_count": 1,
+          "fingerprint": "91448d2e0e334f834513663345c1ab1f"
+        },
+        {
+          "table_name": "public.order_delivery_snapshots",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.order_items",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.order_status_events",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.orders",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.payment_attempts",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.payment_provider_events",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.payout_requests",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.product_categories",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.product_media",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.product_reviews",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.profile_follows",
+          "row_count": 4,
+          "fingerprint": "73967f891db1ff3b96ff9a2ed36e31dc"
+        },
+        {
+          "table_name": "public.profile_social_policies",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.profiles",
+          "row_count": 14,
+          "fingerprint": "8216961f8cc91307a14c6148e018f702"
+        },
+        {
+          "table_name": "public.refresh_tokens",
+          "row_count": 578,
+          "fingerprint": "f4398bb6459d4fb1fafe70d710fc6eba"
+        },
+        {
+          "table_name": "public.release_phases",
+          "row_count": 3,
+          "fingerprint": "a4ffd2075220e57657e2bb3f595f6c3a"
+        },
+        {
+          "table_name": "public.rider_presence",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.student_alarms",
+          "row_count": 63,
+          "fingerprint": "280da202f5efd62c4caa424b32ccb359"
+        },
+        {
+          "table_name": "public.student_calendar_events",
+          "row_count": 14,
+          "fingerprint": "041aea021a75b94499ed44aff2ebe18e"
+        },
+        {
+          "table_name": "public.support_requests",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.timetable_entries",
+          "row_count": 46,
+          "fingerprint": "73393c034cae4aba29a7e0f86030d133"
+        },
+        {
+          "table_name": "public.tutorial_availability_windows",
+          "row_count": 4,
+          "fingerprint": "88b8d6c45d7b1692c9e0d58f1278f0cb"
+        },
+        {
+          "table_name": "public.tutorial_bookings",
+          "row_count": 6,
+          "fingerprint": "2b14372b136ac3351952aaf48905e2b6"
+        },
+        {
+          "table_name": "public.tutorial_listings",
+          "row_count": 4,
+          "fingerprint": "17a6f5aa7e71407ad2eaf66f0ba3ea54"
+        },
+        {
+          "table_name": "public.tutorial_resources",
+          "row_count": 5,
+          "fingerprint": "f716416269277ee7b67f8c216a1bfde8"
+        },
+        {
+          "table_name": "public.tutorial_reviews",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.universities",
+          "row_count": 328,
+          "fingerprint": "b74f23601139fdf7db442b1ada658bd5"
+        },
+        {
+          "table_name": "public.user_blocks",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.user_streaks",
+          "row_count": 8,
+          "fingerprint": "4ea26219b911df63fa4c2cd30b0ed25a"
+        },
+        {
+          "table_name": "public.users",
+          "row_count": 14,
+          "fingerprint": "1dcd6825c7d4f5ebd7c5eeff3b5dfed8"
+        },
+        {
+          "table_name": "public.vendor_products",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.vendor_storefronts",
+          "row_count": 0,
+          "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        {
+          "table_name": "public.verification_tokens",
+          "row_count": 14,
+          "fingerprint": "22c4e90c13e3012e89ac1ede0fcb001f"
+        }
+      ]
+    },
+    "originalTablesVerified": 91,
+    "unchangedOriginalTables": 86,
+    "expectedCatalogueChanges": [
+      {
+        "table": "public.campus_places",
+        "before": 13,
+        "after": 96,
+        "fingerprintChanged": true
+      },
+      {
+        "table": "public.departments",
+        "before": 5,
+        "after": 579,
+        "fingerprintChanged": true
+      },
+      {
+        "table": "public.faculties",
+        "before": 2,
+        "after": 1451,
+        "fingerprintChanged": true
+      },
+      {
+        "table": "public.institution_config",
+        "before": 328,
+        "after": 328,
+        "fingerprintChanged": true
+      },
+      {
+        "table": "public.universities",
+        "before": 328,
+        "after": 328,
+        "fingerprintChanged": true
+      }
+    ]
+  },
+  "security": {
+    "observed_at": "2026-10-01T03:35:59.962Z",
+    "ledger": [
+      {
+        "version": "20260912200000_phase_3_commerce_foundation",
+        "source_blob_sha": "515ae32e25a34d18934e623e04955d124657e765"
+      },
+      {
+        "version": "20260913200000_unified_student_platform",
+        "source_blob_sha": "a11789d089540255bc43b2aa7c7b6892a750639c"
+      },
+      {
+        "version": "20260913210000_timetable_course_alarm_sync",
+        "source_blob_sha": "d9fb42c811e938d654d53a5432c6b22b02bd19d6"
+      },
+      {
+        "version": "20260913220000_ai_requests",
+        "source_blob_sha": "a268c541c9a4cc9ef906fbfba3aff9424b9fb585"
+      },
+      {
+        "version": "20260913230000_community_workflows",
+        "source_blob_sha": "e43fb436802ce1ceb740fc5e5dc6e487fcdacfbf"
+      },
+      {
+        "version": "20260913240000_verified_identity_and_resources",
+        "source_blob_sha": "c029c956c8324d352e8011b83eab12d6974e29d1"
+      },
+      {
+        "version": "20260913250000_one_time_alarms",
+        "source_blob_sha": "a57fcb2720ca2aa2fee0bd193664fa4e0cbabb21"
+      },
+      {
+        "version": "20260921100000_operations_permissions_academic",
+        "source_blob_sha": "b3a2e8085882da2b52816d65513b632e0b277135"
+      },
+      {
+        "version": "20260921110000_ai_history_and_streak_activity",
+        "source_blob_sha": "917a7ffb0e0774db994a57cc1d677f38a8ef05bb"
+      },
+      {
+        "version": "20260921120000_publishing_capabilities",
+        "source_blob_sha": "2aeed8a191c5d09a8ccaf0fda548fdbdd82a19f5"
+      },
+      {
+        "version": "20260921130000_academic_publication",
+        "source_blob_sha": "be9a4c1be674c2488f31a8880f3f0994000feada"
+      },
+      {
+        "version": "20260921140000_notification_delivery",
+        "source_blob_sha": "6ebfa7ef42afe5452023bc494210d83998fdb4a0"
+      },
+      {
+        "version": "20260921150000_broadcasts",
+        "source_blob_sha": "33de23c19018d2aacabe74a169961b71fcbfdf61"
+      },
+      {
+        "version": "20260921160000_payout_setup",
+        "source_blob_sha": "4a61a536e0b33332e79a43cd6071d17be471e94a"
+      },
+      {
+        "version": "20260921170000_application_checks",
+        "source_blob_sha": "6e52913e88122c39a8a7e6fe1f02563c69adeb75"
+      },
+      {
+        "version": "20260921180000_feed_social_interactions",
+        "source_blob_sha": "491f4bb9fc5a95adbe041f2d3d0576e428d35d55"
+      },
+      {
+        "version": "20260921180000_idempotent_timetable_import",
+        "source_blob_sha": "a1c78e3ec6f91a62713a4304007831011dd31d9c"
+      },
+      {
+        "version": "20260921183000_feed_post_likes",
+        "source_blob_sha": "2f10abc8459efe67e4ce8e4b8cc1964e225ba3ae"
+      },
+      {
+        "version": "20260921184500_feed_comment_likes",
+        "source_blob_sha": "758b90186ca0c6d499c2fa43eb58a3ad60ed8aaf"
+      },
+      {
+        "version": "20260921200000_feed_comment_replies",
+        "source_blob_sha": "596ca647b51db1e9bdfbcd558dc13e5b8db60d9a"
+      },
+      {
+        "version": "20260922140000_feed_conversation_experience",
+        "source_blob_sha": "a8efb5ef473eefdcf733d8d9132dd4adeb9eb68b"
+      },
+      {
+        "version": "20260924000000_student_ai_profiles",
+        "source_blob_sha": "c5525e6c2be11a107da231b05d099edce0047b61"
+      },
+      {
+        "version": "20260925090000_calendar_and_campus_places",
+        "source_blob_sha": "8b8e152ada9d7d111677efbfe40cea1dd7a05ccf"
+      },
+      {
+        "version": "20260925100000_campus_map_foundation",
+        "source_blob_sha": "2c1b96cd7eb2d4ef43ef6a6b141ab7be362627d0"
+      },
+      {
+        "version": "20260925120000_community_push_delivery",
+        "source_blob_sha": "cd9234ade82609afc2a814b18aaad7b84ca1c5ba"
+      },
+      {
+        "version": "20260925130000_programme_metadata",
+        "source_blob_sha": "aa2a0a26626c5c0629805e7094555d46a1915cfd"
+      },
+      {
+        "version": "20260927120000_direct_messages_live",
+        "source_blob_sha": "5690caf9abdaea134bb53ef36cf8f62a165764d5"
+      },
+      {
+        "version": "20260927130000_multi_university_onboarding_catalogue",
+        "source_blob_sha": "404e0a6634343f61eea6951b24e0ee364879fc02"
+      },
+      {
+        "version": "20260927140500_notification_actor_profiles",
+        "source_blob_sha": "8587326bd19f6738238a92340eb0bb7cc56bece3"
+      },
+      {
+        "version": "20260927164000_publish_nigerian_university_identities",
+        "source_blob_sha": "82b3dd7bd4950b4ba36a951dfa69f100f4376f1b"
+      },
+      {
+        "version": "20260927170000_uniben_ugbowo_campus_map",
+        "source_blob_sha": "2cb9f7c55004ac6b3aded3ea062760b8140b4f45"
+      },
+      {
+        "version": "20260928022000_direct_message_interactions",
+        "source_blob_sha": "2ffdaf27176a5b4ba8d3312ddeb471010886e44e"
+      },
+      {
+        "version": "20260928101500_onboarding_academic_structure",
+        "source_blob_sha": "4623f62e23e33f4fba8528b3505d0d2ddcc4365e"
+      },
+      {
+        "version": "20260928114500_academic_missing_review_workflow",
+        "source_blob_sha": "ed9355a7a80ab8c2c431c042f75f2050cf80c707"
+      },
+      {
+        "version": "20260928120000_profile_post_notifications",
+        "source_blob_sha": "2b6645941767ebe4158c371f0cc1ad11dffed2ca"
+      },
+      {
+        "version": "20260928130000_uniben_ugbowo_map_expansion",
+        "source_blob_sha": "ba8534d6ad5a822cb888b82ac26d60fb294a2316"
+      },
+      {
+        "version": "20260930190000_live_legacy_prerequisites",
+        "source_blob_sha": "5d430753da17363c555341fcdfeadf9dc5aff4db"
+      },
+      {
+        "version": "20260930210000_public_business_profiles",
+        "source_blob_sha": "851552f6970a428d5bd132c2d7d336f1aa0f3c69"
+      },
+      {
+        "version": "20260930220000_store_fulfilment_modes",
+        "source_blob_sha": "13ed85b8733259713298788250f905bf409b1b06"
+      },
+      {
+        "version": "20260930230000_optional_purchase_review_reminders",
+        "source_blob_sha": "46aae63cd1bae562d3b098d8392d933d244197ab"
+      },
+      {
+        "version": "20260930240000_rider_commission_ledger",
+        "source_blob_sha": "6356cf7b51f1802006d5769a7063e63e65db4803"
+      },
+      {
+        "version": "20260930250000_inclusive_store_quotes",
+        "source_blob_sha": "1525f4b563b960a78efe58645ba53635a21733ce"
+      },
+      {
+        "version": "20260930260000_inclusive_tutorial_bookings",
+        "source_blob_sha": "6e130ba7207cf6041b77c4b85052585741bba247"
+      },
+      {
+        "version": "20260930270000_verified_kira_subscription",
+        "source_blob_sha": "c95663baa17e733e3203fdaabc4261941bb0da7e"
+      },
+      {
+        "version": "20260930280000_verified_learning_materials",
+        "source_blob_sha": "7e1da62a27542611275c966a020f6de25ab94507"
+      },
+      {
+        "version": "20260930290000_verified_agent_payouts",
+        "source_blob_sha": "dd3196362c57042c7d0a7102c94099c1166252cc"
+      },
+      {
+        "version": "20261001000000_discovery_search_indexes",
+        "source_blob_sha": "c824a333bbed0b1e8f8adf351db0815509bc2153"
+      },
+      {
+        "version": "20261001010000_private_agent_identity_submissions",
+        "source_blob_sha": "4a500fab8ef40615f607057ca630ab3dbfd28850"
+      },
+      {
+        "version": "20261001020000_admin_workspace_extensions",
+        "source_blob_sha": "c8416d7ad8818c4438b0fd1dd883c2f3d264f38f"
+      },
+      {
+        "version": "20261001030000_server_only_private_privileges",
+        "source_blob_sha": "2c2af64b0153da0ffecf39ebaf2bae39f3226643"
+      }
+    ],
+    "public_table_grants": null,
+    "public_private_function_execute": null,
+    "unsafe_definer_search_paths": null,
+    "unvalidated_constraints": null,
+    "public_private_schema_grants": null,
+    "client_private_grants": null
+  },
+  "coverage": {
+    "observed_at": "2026-10-01T03:36:01.359Z",
+    "institutions": 328,
+    "with_faculties": 239,
+    "with_departments": 62,
+    "uniben": {
+      "id": "6a79211e-6e85-4d95-be24-976edb26ba58",
+      "faculties": 21,
+      "departments": 150
+    },
+    "seeded_staff_accounts": 0,
+    "seeded_publishers": 0,
+    "seeded_price_policies": 0
+  },
+  "limitations": [
+    "Fifteen older unregistered baseline sources were not replayed; their existing objects and effective function sources are reviewed separately. These files are not falsely registered as applied.",
+    "Two older prerequisite sources are superseded only for their required tables; their incompatible media constraint and demo-booking retirement were not applied.",
+    "The database update is complete for the reviewed 41-migration apply list. Worker/portal publication and deployment are separate.",
+    "No payment provider, email campaign or push broadcast was contacted. Financial feature flags and commercial/provider acceptance remain separate.",
+    "Academic departments cover 62 of 328 institutions; unsourced schools retain the submission/review path.",
+    "This is a dated verification attestation, not a continuous live service or native-device acceptance check."
+  ]
+}
