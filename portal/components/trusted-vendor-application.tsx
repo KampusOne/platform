@@ -17,7 +17,7 @@ function TrustedVendorForm(){
  const update=(field:keyof VendorDraft,value:string)=>setDraft(d=>({...d,[field]:value}));
  useEffect(()=>{
   let active=true;
-  if(!validToken){setError('Open the full vendor invitation link you received. The secure invitation code is missing or incomplete.');return()=>{active=false;};}
+  if(!validToken)return()=>{active=false;};
   void (async()=>{
    const r=await portalApi<{invite:{university_name:string,application_id:string|null}}>('/v1/trusted-vendors/invite',{method:'POST',body:JSON.stringify({token})});
    // The local draft is bound to this account and invitation. Store a digest,
@@ -49,10 +49,11 @@ function TrustedVendorForm(){
   catch(e){setError(e instanceof Error?e.message:'Your application is kept. Try again.');}finally{setBusy(false);}
  }
  const uniben=invite?.university_name.toLowerCase()==='university of benin';
+ const displayError=!validToken?'Open the full invitation link you received.':error;
  return <main className="agent-login-page"><section className="agent-login-shell agent-onboarding-form trusted-vendor-onboarding" style={{maxWidth:620}}>
   <AgentApplicationIllustration step={2} complete={submitted}/><p className="eyebrow">By invitation</p><h1>{submitted?'Your business is under review':'Set up your vendor profile'}</h1><p>{invite?.university_name}</p>
   <p className="field-help">Your inviting team has waived ordinary application documents. An administrator will verify your business and contact details before approval.</p>
-  {error?<p role="alert" className="form-error">{error}</p>:null}
+  {displayError?<p role="alert" className="form-error">{displayError}</p>:null}
   {submitted?<><p>We’ll email the decision. Once approved, your agent dashboard includes your shop and bank setup.</p><a className="button button--primary" href="https://agents.kampusone.app/agents/dashboard">Open agent dashboard</a></>:invite?<form className="form-stack" onSubmit={submit}>
    <label>Business name<input aria-invalid={Boolean(fieldErrors.businessName)} name="businessName" value={draft.businessName} onChange={e=>update('businessName',e.target.value)} required minLength={2} maxLength={160} placeholder="e.g. Osas Kitchen"/>{fieldErrors.businessName?<span className="field-error">{fieldErrors.businessName}</span>:null}</label>
    <label>Your legal name<input aria-invalid={Boolean(fieldErrors.legalName)} name="legalName" value={draft.legalName} onChange={e=>update('legalName',e.target.value)} required minLength={2} maxLength={160} placeholder="e.g. Osas Egharevba" autoComplete="name"/>{fieldErrors.legalName?<span className="field-error">{fieldErrors.legalName}</span>:null}</label>
@@ -65,6 +66,6 @@ function TrustedVendorForm(){
    <label className="consent-row"><input type="checkbox" required/>I’m at least 18 and authorised to represent this business.</label><label className="consent-row"><input type="checkbox" required/>I accept the KampusOne agent terms and confirm these details are accurate.</label>
    <p className="field-help">Your progress is kept in this browser session until you submit.</p>
    <button className="button button--primary button--wide" disabled={busy||!draft.phone||!draft.birth||!draft.request}>{busy?'Saving…':'Submit vendor profile'}</button>
-  </form>:!error?<p>Checking your invitation…</p>:null}
+  </form>:!displayError?<p>Checking your invitation…</p>:null}
  </section></main>;
 }
