@@ -630,11 +630,11 @@ export function AgentApplication() {
                 </button>
               </section>
             ) : (
-              <form className="form-stack" onSubmit={submit} noValidate>
+              <form className="form-stack agent-onboarding-form" onSubmit={submit} noValidate>
+                <div className="onboarding-stepbar"><button type="button" aria-label="Previous step" disabled={busy||step===0} onClick={()=>{setStep(current=>Math.max(0,current-1));setError("");}} className="onboarding-back">‹</button><div role="progressbar" aria-label="Application progress" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={step+1} className="onboarding-progress"><span style={{width:`${(step+1)/steps.length*100}%`}}/></div><span className="onboarding-stepcount">{step+1} of {steps.length}</span></div>
+                <div className="onboarding-mobile-art"><AgentApplicationIllustration step={step}/></div>
                 <header>
-                  <p className="eyebrow">
-                    Step {step + 1} of {steps.length}
-                  </p>
+
                   <h2 ref={heading} tabIndex={-1}>
                     {steps[step]}
                   </h2>

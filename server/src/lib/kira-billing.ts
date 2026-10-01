@@ -4,6 +4,7 @@ import { initializePaystack, verifyPaystack } from "./paystack";
 import { AppError } from "./errors";
 import { recordAudit } from "./audit";
 import { providerConfiguration } from "./ai-provider";
+import {resolveAIQuota} from './ai-quota';
 import type { AuthenticatedUser, Bindings } from "../types";
 export async function kiraBillingReady(env: Bindings) {
   if (
@@ -23,10 +24,12 @@ export async function kiraBillingStatus(
   env: Bindings,
   user: AuthenticatedUser,
 ) {
+  const complimentary=(await resolveAIQuota(env,user)).unlimited;
   const ready = await kiraBillingReady(env);
   if (!ready)
     return {
       available: false,
+      complimentary,
       checkoutEnabled: false,
       cadence: "monthly",
       amountKobo: 600000,
@@ -51,17 +54,19 @@ export async function kiraBillingStatus(
       status: string;
       amount_kobo: number;
       expires_at: string;
+      request_id:string;discount_code:string|null;
     }>(
-      sql`select provider_reference as reference,status,amount_kobo,expires_at from app_private.kira_checkouts where user_id=${user.id}::uuid and status in ('CREATED','INITIALIZED','REQUIRES_REVIEW') order by created_at desc limit 1`,
+      sql`select k.provider_reference as reference,k.status,k.amount_kobo,k.expires_at,k.request_id,d.code as discount_code from app_private.kira_checkouts k left join app_private.discount_codes d on d.id=k.discount_id where k.user_id=${user.id}::uuid and k.status in ('CREATED','INITIALIZED','REQUIRES_REVIEW') and (k.status='REQUIRES_REVIEW' or k.expires_at>now()) order by k.created_at desc limit 1`,
     ),
   );
   const early =
     subscription?.status === "ACTIVE" &&
     Date.parse(subscription.current_period_end) > Date.now() + 7 * 86400000;
   return {
+    complimentary,
     available: !!plan,
     checkoutEnabled:
-      !!plan &&
+      !complimentary && !!plan &&
       !early &&
       env.KIRA_SUBSCRIPTIONS_ENABLED === "true" &&
       env.PAYMENTS_ENABLED === "true" &&
@@ -84,6 +89,7 @@ export async function initializeKira(
   user: AuthenticatedUser,
   requestId: string,
   traceId?: string,
+  discountCode = '',
 ) {
   const status = await kiraBillingStatus(env, user);
   if (!status.checkoutEnabled)
@@ -105,20 +111,20 @@ export async function initializeKira(
   try {
     checkout = firstRow(
       await database(env).execute<typeof checkout>(
-        sql`select * from app_private.create_kira_checkout(${crypto.randomUUID()}::uuid,${user.id}::uuid,${user.universityId}::uuid,${requestId}::uuid,${"K1-AI-" + crypto.randomUUID()})`,
+        sql`select * from app_private.create_discounted_kira_checkout(${crypto.randomUUID()}::uuid,${user.id}::uuid,${user.universityId}::uuid,${requestId}::uuid,${"K1-AI-" + crypto.randomUUID()},${discountCode.trim().toUpperCase()})`,
       ),
     )!;
   } catch (e) {
     if (
       e instanceof Error &&
-      /KIRA_ALREADY_ACTIVE|KIRA_PLAN_UNAVAILABLE|BUYER_TENANT_MISMATCH/.test(
+      /KIRA_ALREADY_ACTIVE|KIRA_PLAN_UNAVAILABLE|BUYER_TENANT_MISMATCH|DISCOUNT_|KIRA_CHECKOUT_ALREADY_ACTIVE/.test(
         e.message,
       )
     )
       throw new AppError(
         409,
         "CONFLICT",
-        "Refresh your plan or campus before opening checkout.",
+        e.message.includes("DISCOUNT_") ? "This discount is unavailable or its use limit has been reached. Check the code and try again." : e.message.includes("KIRA_CHECKOUT_ALREADY_ACTIVE") ? "You already have an open checkout. Refresh your plan to resume it." : "Refresh your plan or campus before opening checkout.",
       );
     throw e;
   }

@@ -1,3 +1,4 @@
+import {discountError} from "./discount-error";
 import { sql } from "drizzle-orm";
 import { z } from "@kampusone/contracts";
 import { database, firstRow } from "./database";
@@ -26,6 +27,7 @@ export const materialQuoteSchema = z
     resourceId: z.string().uuid(),
     requestId: z.string().uuid(),
     expectedPriceKobo: z.number().int().positive().max(2_000_000_000),
+    discountCode:z.string().trim().toUpperCase().max(32).optional(),
   })
   .strict();
 type Quote = {
@@ -61,7 +63,7 @@ export async function materialQuote(
     if (
       q.university_id !== user.universityId ||
       q.resource_id !== data.resourceId ||
-      Number(q.pricing.listedItemsKobo) !== data.expectedPriceKobo
+      Number(q.pricing.listedItemsKobo) !== data.expectedPriceKobo || ((q.pricing as {couponCode?:string}).couponCode??'')!==(data.discountCode??'')
     )
       throw new AppError(
         409,
@@ -148,9 +150,7 @@ export async function materialQuote(
     );
   const saved = firstRow(
     await database(env)
-      .execute<Quote>(sql`insert into app_private.material_checkout_quotes(id,university_id,student_user_id,resource_id,tutor_user_id,media_object_id,policy_id,request_id,title,base_kobo,pricing)
-    values(${crypto.randomUUID()}::uuid,${user.universityId}::uuid,${user.id}::uuid,${data.resourceId}::uuid,${resource.tutor_user_id}::uuid,${resource.media_object_id}::uuid,${policy.id}::uuid,${data.requestId}::uuid,${resource.title},${Number(resource.price_kobo)},${JSON.stringify(pricing)}::jsonb)
-    on conflict(student_user_id,request_id)do nothing returning id,university_id,resource_id,title,pricing,expires_at`),
+      .execute<Quote>(sql`select * from app_private.create_discounted_material_quote(${crypto.randomUUID()}::uuid,${user.universityId}::uuid,${user.id}::uuid,${data.resourceId}::uuid,${resource.tutor_user_id}::uuid,${resource.media_object_id}::uuid,${policy.id}::uuid,${data.requestId}::uuid,${resource.title},${Number(resource.price_kobo)},${JSON.stringify(pricing)}::jsonb,${data.discountCode??''})`).catch(discountError),
   );
   const q = saved ?? (await find());
   if (!q)

@@ -503,6 +503,7 @@ export const tutorialBookingSchema = z.object({
   availabilityWindowId: z.string().uuid(),
   requestId: z.string().uuid().optional(),
   expectedPriceKobo: z.number().int().min(0).max(2_000_000_000).optional(),
+  discountCode:z.string().trim().toUpperCase().max(32).optional(),
 });
 
 export const completionConfirmationSchema = z.object({

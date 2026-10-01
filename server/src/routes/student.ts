@@ -231,6 +231,11 @@ studentRoutes.get("/catalog", async (context) => {
 studentRoutes.use("/*", requireAuth);
 studentRoutes.route("/",publishingRoutes);
 
+studentRoutes.get('/feed/mentions',async context=>{
+ const user=currentUser(context),query=(context.req.query('q')??'').replace(/^@/,'').trim().slice(0,40);
+ const result=await database(context.env).execute(sql`select p.user_id,p.username,p.display_name from public.profiles p join public.users u on u.id=p.user_id where p.deleted_at is null and u.deleted_at is null and u.status='ACTIVE' and p.username is not null and p.university_id=${user.universityId}::uuid and ${unblockedAuthor(user.id,sql`p.user_id`)} and (${query}='' or p.username ilike ${query+'%'} or p.display_name ilike ${'%'+query+'%'}) order by case when p.username ilike ${query+'%'} then 0 else 1 end,p.username limit 8`);
+ return context.json({profiles:result.rows});
+});
 studentRoutes.get('/username-availability',async context=>{
  const user=currentUser(context),username=(context.req.query('username')??'').trim().toLowerCase();
  if(!/^[a-z0-9_]{3,30}$/.test(username))return context.json({available:false,reason:'Use 3–30 letters, numbers or underscores.'});
@@ -1386,7 +1391,7 @@ studentRoutes.get("/store", async (context) => {
         and products.stock_quantity > 0
         and ${sellerVisible}
         and (${category ?? null}::text is null or products.category = ${category ?? null})
-        and (${search}::text is null or products.name ilike ${search} or products.description ilike ${search})
+        and (${search}::text is null or products.name ilike ${search} or products.description ilike ${search} or storefronts.display_name ilike ${search})
       order by products.updated_at desc limit 200
     `),
     database(context.env).execute(sql`

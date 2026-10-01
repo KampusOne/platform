@@ -20,6 +20,16 @@ beforeEach(async()=>{await db.exec("truncate app_private.publishing_answer_owner
 afterAll(async()=>{await db?.close();});
 
 describe("IDs79–86: capability-based publishing and private answers",()=>{
+ it("shows ordinary voters to campus readers while anonymous polls never disclose identities",async()=>{
+  const post=await create("POLL");await data(await request(`/posts/${post.id}/vote`,"POST",{optionId:1},student));
+  const voters=await data(await request(`/posts/${post.id}/voters`,"GET",undefined,student));expect(voters.voters[0]).toMatchObject({display_name:"Private Student Name",option_id:1});
+  await data(await request(`/posts/${post.id}/voters`,"GET",undefined,outsider),404);
+  const anonymous=await data(await request("/posts","POST",{requestId:crypto.randomUUID(),format:"POLL",anonymousPoll:true,body:"Private voting",options:["Yes","No"]}),201);
+  await data(await request(`/posts/${anonymous.id}/vote`,"POST",{optionId:1},student));
+  const view=await data(await request(`/posts/${anonymous.id}`,"GET",undefined,student));expect(view.post.anonymous_poll).toBe(true);expect(JSON.stringify(view)).not.toContain("Private Student Name");
+  await data(await request(`/posts/${anonymous.id}/voters`,"GET",undefined,student),403);
+ });
+
  it("requires an explicit institution-specific capability and deduplicates creation",async()=>{
   expect((await data(await request("/capabilities"))).formats).toEqual([]);
   const body={requestId:crypto.randomUUID(),format:"POLL",body:"Choose a campus improvement",options:["Library","Transport"]};

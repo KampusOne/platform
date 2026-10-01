@@ -10,7 +10,7 @@ import type { Bindings, Variables } from "../types";
 import { notifyProfilePostPublished } from "../services/profile-post-notifications";
 
 type AppContext = Context<{ Bindings: Bindings; Variables: Variables }>;
-type PublishingPost = { id: string; format: "POLL" | "QA" | "ANONYMOUS_QA"; body: string; closes_at: string | null; author_user_id: string; published_at: string };
+type PublishingPost = { id: string; format: "POLL" | "QA" | "ANONYMOUS_QA"; anonymous_poll: boolean; body: string; closes_at: string | null; author_user_id: string; published_at: string };
 export const publishingRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 publishingRoutes.use("/publishing/*", requireAuth);
 function school(c: AppContext) {
@@ -19,7 +19,7 @@ function school(c: AppContext) {
   return university;
 }
 async function post(c: AppContext) {
-  const row = firstRow(await database(c.env).execute<PublishingPost>(sql`select p.id,x.format,p.body,x.closes_at,p.author_user_id,p.published_at from public.publishing_posts x join public.feed_posts p on p.id=x.post_id where p.id=${id(c.req.param("id") ?? "")}::uuid and p.university_id=${school(c)}::uuid and x.institution_id=${school(c)}::uuid and p.status in ('PUBLISHED','CORRECTED') and p.published_at<=now()`));
+  const row = firstRow(await database(c.env).execute<PublishingPost>(sql`select p.id,x.format,x.anonymous_poll,p.body,x.closes_at,p.author_user_id,p.published_at from public.publishing_posts x join public.feed_posts p on p.id=x.post_id where p.id=${id(c.req.param("id") ?? "")}::uuid and p.university_id=${school(c)}::uuid and x.institution_id=${school(c)}::uuid and p.status in ('PUBLISHED','CORRECTED') and p.published_at<=now()`));
   if (!row) throw new AppError(404, "NOT_FOUND", "Post not found.");
   return row;
 }
@@ -45,13 +45,14 @@ publishingRoutes.get("/publishing/capabilities", async c => {
 });
 publishingRoutes.post("/publishing/posts", async c => {
   if (c.env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "Publishing is awaiting the server update.");
-  const data = await input(c, z.object({ requestId: z.string().uuid(), format, body: z.string().trim().min(1).max(5000), options: z.array(z.string().trim().min(1).max(100)).min(2).max(6).optional(), closesAt: z.string().datetime({ offset: true }).optional() }).strict());
+  const data = await input(c, z.object({ requestId: z.string().uuid(), format, anonymousPoll:z.boolean().default(false), body: z.string().trim().min(1).max(5000), options: z.array(z.string().trim().min(1).max(100)).min(2).max(6).optional(), closesAt: z.string().datetime({ offset: true }).optional() }).strict());
+  if(data.anonymousPoll && data.format!=='POLL') throw new AppError(400,'BAD_REQUEST','Anonymous voting applies only to polls.');
   if (data.format === "POLL" && (!data.options || new Set(data.options.map(x => x.toLowerCase())).size !== data.options.length)) throw new AppError(400, "BAD_REQUEST", "Add two to six distinct poll options.");
   if (data.format !== "POLL" && data.options) throw new AppError(400, "BAD_REQUEST", "Only polls have answer options.");
   if (data.closesAt && Date.parse(data.closesAt) > Date.now() + 30 * 86400000) throw new AppError(400, "BAD_REQUEST", "Choose a closing time within the next 30 days.");
   const closeTime = data.closesAt ? new Date(data.closesAt).toISOString() : null;
-  const hash = await sha256(JSON.stringify([school(c), data.format, data.body, data.options ?? null, closeTime]));
-  const saved = firstRow(await database(c.env).execute<{ outcome: string; id: string }>(sql`select * from app_private.create_publishing_post(${currentUser(c).id}::uuid,${school(c)}::uuid,${data.requestId}::uuid,${hash},${data.format},${data.body},${data.options ? JSON.stringify(data.options) : null}::jsonb,${closeTime}::timestamptz)`));
+  const hash = await sha256(JSON.stringify([school(c), data.format, data.body, data.options ?? null, closeTime, data.anonymousPoll]));
+  const saved = firstRow(await database(c.env).execute<{ outcome: string; id: string }>(sql`select * from app_private.create_publishing_post_with_privacy(${currentUser(c).id}::uuid,${school(c)}::uuid,${data.requestId}::uuid,${hash},${data.format},${data.body},${data.options ? JSON.stringify(data.options) : null}::jsonb,${closeTime}::timestamptz,${data.anonymousPoll})`));
   failOutcome(saved?.outcome);
   if (saved!.outcome === "CREATED") await notifyProfilePostPublished(c.env, saved!.id);
   return c.json({ id: saved!.id }, saved!.outcome === "CREATED" ? 201 : 200);
@@ -62,7 +63,15 @@ publishingRoutes.get("/publishing/posts/:id", async c => {
   const options = row.format === "POLL" ? await db.execute(sql`select o.id,o.label,count(v.user_id)::int votes from public.poll_options o left join app_private.poll_votes v on v.post_id=o.post_id and v.option_id=o.id where o.post_id=${row.id}::uuid group by o.id,o.label order by o.id`) : { rows: [] };
   const vote = row.format === "POLL" ? firstRow(await db.execute<{ option_id: number }>(sql`select option_id from app_private.poll_votes where post_id=${row.id}::uuid and user_id=${currentUser(c).id}::uuid`)) : undefined;
   const answers = row.format !== "POLL" ? await db.execute(sql`select a.id,a.body,a.publisher_reply as reply,a.status,a.created_at,a.published_at,case when ${row.format}='ANONYMOUS_QA' then null else p.display_name end author_name from public.publishing_answers a join app_private.publishing_answer_owners o on o.answer_id=a.id left join public.profiles p on p.user_id=o.user_id and p.deleted_at is null where a.post_id=${row.id}::uuid and a.institution_id=${school(c)}::uuid and a.status='PUBLISHED' order by a.published_at desc,a.id limit 100`) : { rows: [] };
-  return c.json({ post: { id: row.id, format: row.format, body: row.body, closes_at: row.closes_at, published_at: row.published_at, is_owner: row.author_user_id === currentUser(c).id }, options: options.rows, myVote: vote?.option_id ?? null, answers: answers.rows, disclosure: row.format === "ANONYMOUS_QA" ? "Your answer is private to the publisher until they choose to publish it with their reply. Your account name is hidden from the publisher and public. KampusOne keeps a protected account link for moderation. Avoid identifying yourself in your answer." : row.format === "QA" ? "Your answer and account name are visible to the publisher. They may publish your answer and name with their reply. Your answer remains private until then." : "One vote per account. Votes cannot be changed; only totals are displayed." });
+  return c.json({ post: { id: row.id, format: row.format, anonymous_poll: row.anonymous_poll, body: row.body, closes_at: row.closes_at, published_at: row.published_at, is_owner: row.author_user_id === currentUser(c).id }, options: options.rows, myVote: vote?.option_id ?? null, answers: answers.rows, disclosure: row.format === "ANONYMOUS_QA" ? "Your answer is private to the publisher until they choose to publish it with their reply. Your account name is hidden from the publisher and public. KampusOne keeps a protected account link for moderation. Avoid identifying yourself in your answer." : row.format === "QA" ? "Your answer and account name are visible to the publisher. They may publish your answer and name with their reply. Your answer remains private until then." : row.anonymous_poll ? "Anonymous poll. Only totals are shown; voter identities are kept private. One vote per account." : "Your name and chosen option are visible to other students in this campus poll. One vote per account." });
+});
+publishingRoutes.get("/publishing/posts/:id/voters", async c => {
+  const row=await post(c);
+  if(row.format!=="POLL") throw new AppError(400,"BAD_REQUEST","This post is not a poll.");
+  if(row.anonymous_poll) throw new AppError(403,"FORBIDDEN","Voter identities are private in an anonymous poll.");
+  const after=c.req.query("after"); if(after)id(after);
+  const voters=await database(c.env).execute<{user_id:string;option_id:number;display_name:string;username:string}>(sql`select v.user_id,v.option_id,p.display_name,p.username from app_private.poll_votes v join public.profiles p on p.user_id=v.user_id and p.deleted_at is null where v.post_id=${row.id}::uuid and not exists(select 1 from public.user_blocks b where (b.blocker_id=${currentUser(c).id}::uuid and b.blocked_id=v.user_id) or (b.blocker_id=v.user_id and b.blocked_id=${currentUser(c).id}::uuid)) and (${after??null}::uuid is null or v.user_id>${after??null}::uuid) order by v.user_id limit 51`);
+  return c.json({voters:voters.rows.slice(0,50),next:voters.rows.length>50?voters.rows[49]!.user_id:null});
 });
 publishingRoutes.post("/publishing/posts/:id/vote", async c => {
   const row = await post(c);

@@ -1,3 +1,4 @@
+import {discountError} from "./discount-error";
 import { sql } from "drizzle-orm";
 import { z, tutorialBookingSchema } from "@kampusone/contracts";
 import { database, firstRow } from "./database";
@@ -36,9 +37,9 @@ export async function createPricedTutorial(
       status: string;
       listing_id: string;
       availability_window_id: string;
-      university_id: string;
+      university_id: string;discount_code:string|null;
     }>(sql`
-    select b.id,b.amount_kobo,b.status,p.listing_id,p.availability_window_id,p.university_id
+    select b.id,b.amount_kobo,b.status,p.listing_id,p.availability_window_id,p.university_id,(select d.code from app_private.discount_redemptions r join app_private.discount_codes d on d.id=r.discount_id where r.purchase_id=p.booking_id) as discount_code
     from app_private.tutorial_booking_prices p join public.tutorial_bookings b on b.id=p.booking_id
     where p.student_user_id=${user.id}::uuid and p.request_id=${data.requestId}::uuid
   `),
@@ -47,7 +48,7 @@ export async function createPricedTutorial(
     if (
       previous.university_id !== user.universityId ||
       previous.listing_id !== data.listingId ||
-      previous.availability_window_id !== data.availabilityWindowId
+      previous.availability_window_id !== data.availabilityWindowId || (previous.discount_code??'')!==(data.discountCode??'')
     )
       throw new AppError(
         409,
@@ -111,9 +112,9 @@ export async function createPricedTutorial(
       amount_kobo: number;
       status: string;
     }>(sql`
-    select * from app_private.create_priced_tutorial_booking(${crypto.randomUUID()}::uuid,${user.universityId}::uuid,${user.id}::uuid,
-      ${data.listingId}::uuid,${data.availabilityWindowId}::uuid,${data.requestId}::uuid,${policy.id}::uuid,${Number(listing.price_kobo)},${JSON.stringify(price)}::jsonb)
-  `),
+    select * from app_private.create_discounted_tutorial_booking(${crypto.randomUUID()}::uuid,${user.universityId}::uuid,${user.id}::uuid,
+      ${data.listingId}::uuid,${data.availabilityWindowId}::uuid,${data.requestId}::uuid,${policy.id}::uuid,${Number(listing.price_kobo)},${JSON.stringify(price)}::jsonb,${data.discountCode??''})
+  `).catch(discountError),
   )!;
 }
 export async function reconcilePricedTutorial(

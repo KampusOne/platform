@@ -1,3 +1,4 @@
+import {discountError} from "./discount-error";
 import { sql } from "drizzle-orm";
 import { storeOrderSchema, z } from "@kampusone/contracts";
 import { database, firstRow } from "./database";
@@ -80,7 +81,7 @@ export async function inclusiveListings<T extends { price_kobo?: unknown }>(
   };
 }
 export const storeQuoteSchema = storeOrderSchema.and(
-  z.object({ requestId: z.string().uuid() }),
+  z.object({ requestId: z.string().uuid(),discountCode:z.string().trim().toUpperCase().max(32).optional() }),
 );
 export function publicQuotePricing(p: unknown) {
   const v = p as ReturnType<typeof checkoutPrice>;
@@ -289,11 +290,8 @@ export async function prepareStoreQuote(
       fare: unknown;
       expires_at: string;
     }>(sql`
-    insert into app_private.store_checkout_quotes(id,university_id,buyer_user_id,vendor_profile_id,policy_id,request_id,request_payload,items,pricing,fare)
-    values(${crypto.randomUUID()}::uuid,${user.universityId}::uuid,${user.id}::uuid,${data.vendorProfileId}::uuid,${policy.id}::uuid,${data.requestId}::uuid,
-      ${JSON.stringify(data)}::jsonb,${JSON.stringify(items)}::jsonb,${JSON.stringify(pricing)}::jsonb,${JSON.stringify(fare)}::jsonb)
-    on conflict(buyer_user_id,request_id) do nothing returning id,pricing,fare,expires_at
-  `),
+    select * from app_private.create_discounted_store_quote(${crypto.randomUUID()}::uuid,${user.universityId}::uuid,${user.id}::uuid,${data.vendorProfileId}::uuid,${policy.id}::uuid,${data.requestId}::uuid,${JSON.stringify(data)}::jsonb,${JSON.stringify(items)}::jsonb,${JSON.stringify(pricing)}::jsonb,${JSON.stringify(fare)}::jsonb,${data.discountCode??''})
+  `).catch(discountError),
   );
   if (!saved) return prepareStoreQuote(env, user, data);
   return responseQuote(saved);

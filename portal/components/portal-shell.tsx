@@ -63,7 +63,7 @@ export function PortalShell({ active, eyebrow, title, description, actions, chil
   const { access, scope, scopeLabel, setScope, can } = useAdminContext();
   const [signOutError, setSignOutError] = useState("");
   const [approvedAgent,setApprovedAgent]=useState(false);
-  useEffect(()=>{if(active!=='agents'||!user?.id)return;let live=true;void portalApi<{applications:{status:string}[]}>('/v1/applications/mine').then(r=>{if(live)setApprovedAgent(r.applications.some(a=>a.status==='APPROVED'));}).catch(()=>{});return()=>{live=false;};},[active,user?.id]);
+  useEffect(()=>{if(active!=='agents'||!user?.id)return;let live=true;void portalApi<{applications:{status:string}[]}>('/v1/applications').then(r=>{if(live)setApprovedAgent(r.applications.some(a=>a.status==='APPROVED'));}).catch(()=>{});return()=>{live=false;};},[active,user?.id]);
   const pathname = usePathname();
   const routeModules = adminModules.filter((module) => module.href === pathname);
   const current = routeModules.find((module) => can(module.permission)) ?? routeModules[0];

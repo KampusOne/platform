@@ -1,3 +1,4 @@
+import {DiscountCodeField} from "@/src/components/discount-code-field";
 import { CampusPlaceChoice } from "@/src/components/campus-place-choice";
 import * as Crypto from "expo-crypto";
 import { InlineLoading } from "@/src/components/skeleton";
@@ -128,6 +129,7 @@ export default function StoreScreen() {
   const [catalogueMode, setCatalogueMode] = useState<CatalogueMode>("LIVE");
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [catalogIssue, setCatalogIssue] = useState<CatalogIssue | null>(null);
+  const [discountCode,setDiscountCode]=useState("");
   const [checkoutError, setCheckoutError] = useState("");
   const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<
     "IN_APP" | "CASH"
@@ -251,6 +253,7 @@ export default function StoreScreen() {
     !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone);
   const orderPayload = JSON.stringify({
     vendorProfileId: cartItems[0]?.product.vendor_profile_id,
+    ...(discountCode?{discountCode}:{}),
     fulfilmentMode: effectiveMode,
     recipientName,
     recipientPhoneE164: recipientPhone,
@@ -798,6 +801,7 @@ export default function StoreScreen() {
 
               {cartItems.length && checkoutEnabled ? (
                 <>
+                  <DiscountCodeField scope="STORE" disabled={busy} onApply={setDiscountCode}/>
                   {checkoutError ? (
                     <View
                       accessibilityRole="alert"

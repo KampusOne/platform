@@ -11,7 +11,7 @@ import { videoDimensions } from "./media-downloads";
 export type UploadedFile = { id: string; url: string; kind: string; private: boolean };
 export type PhotoSource = "library" | "camera";
 export type PhotoKind = "avatar" | "cover" | "product" | "post";
-export type UploadKind = PhotoKind | "resource" | "kyc" | "support" | "notification-sound";
+export type UploadKind = PhotoKind | "map-capture" | "resource" | "kyc" | "support" | "notification-sound";
 export type PreparedPhoto = PhotoDimensions & { name: string; type: "image/jpeg" };
 
 /** Pick and prepare locally. Cancelling a profile crop never sends an upload. */
@@ -55,7 +55,7 @@ export function verifyPhoto(url: string): Promise<void> {
 }
 async function upload(kind: UploadKind, file: { uri: string; name: string; type: string }): Promise<UploadedFile> {
   const limit = kind === "notification-sound" ? 2 * 1024 * 1024 : kind === "post" && file.type.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-  let body: Blob;
+  let body: Blob | ArrayBuffer;
   if (Platform.OS === "web") {
     const response = await fetch(file.uri);
     if (!response.ok) throw new Error("The selected file could not be read. Choose it again.");
@@ -64,9 +64,11 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
     const { File } = await import("expo-file-system");
     const nativeFile = new File(file.uri);
     if (!nativeFile.exists) throw new Error("The selected file could not be read. Choose it again.");
-    body = new Blob([await nativeFile.arrayBuffer()],{type:file.type});
+    if(nativeFile.size>limit)throw new Error(`Choose a file smaller than ${limit / 1024 / 1024} MB.`);
+    body = await nativeFile.arrayBuffer();
   }
-  if (!body.size || body.size > limit) throw new Error(`Choose a file smaller than ${limit / 1024 / 1024} MB.`);
+  const byteCount=body instanceof ArrayBuffer?body.byteLength:body.size;
+  if (!byteCount || byteCount > limit) throw new Error(`Choose a file smaller than ${limit / 1024 / 1024} MB.`);
   // Raw bytes avoid incompatible native/browser FormData implementations and
   // the extra multipart copy for videos. The server verifies the actual bytes.
   const timeoutMs = file.type.startsWith("video/") ? 180_000 : 60_000;
@@ -82,7 +84,8 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
     if (!(caught instanceof ApiError && caught.status === 500 && caught.code === "INTERNAL_ERROR" && caught.message === "The service could not complete this request.")) throw caught;
     const form = new FormData();
     form.append("kind", kind);
-    form.append("file", body, file.name);
+    if(Platform.OS==="web")form.append("file",body as Blob,file.name);
+    else form.append("file",{uri:file.uri,name:file.name,type:file.type} as unknown as Blob);
     result = await api<UploadedFile>("/v1/media", { method: "POST", body: form, timeoutMs });
   }
   if (!result?.id || !result.url || result.kind !== kind) throw new Error("The upload returned an incomplete response. Refresh before trying again.");
@@ -95,6 +98,7 @@ export async function uploadPreparedPhoto(kind: PhotoKind, photo: PreparedPhoto)
   return upload(kind, photo);
 }
 export async function pickAndUpload(kind: UploadKind, source: PhotoSource = "library"): Promise<UploadedFile | null> {
+  if(kind==="map-capture")throw new Error("Open Campus capture to submit camera and GPS evidence.");
   if (kind === "notification-sound") {
     const result = await DocumentPicker.getDocumentAsync({ type: ["audio/mpeg", "audio/wav"], copyToCacheDirectory: true, multiple: false });
     if (result.canceled) return null;
@@ -316,3 +320,5 @@ export async function uploadPostMedia(
 ): Promise<UploadedFile> {
   return upload("post", file);
 }
+
+export async function uploadCapturedMapPhoto(file:{uri:string;name:string;type:string}){return upload("map-capture",file);}

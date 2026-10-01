@@ -1,3 +1,4 @@
+import {notificationRuntime} from './notification-runtime';
 import {sql} from 'drizzle-orm';
 import {database,firstRow} from '../lib/database';
 import {sendCampusPush,fetchPushReceipt} from '../lib/push';
@@ -41,6 +42,8 @@ export async function deliverCommunityPush(env:Bindings){
   const inboxDedupe=row.dedupe_key.replace('announcement-push:','announcement:');
   const notice=firstRow(await db.execute<Notice>(sql`select n.id,n.path,n.institution_id,coalesce(actor.display_name,actor.username) as actor_name,actor.username as actor_username from public.in_app_notifications n left join public.profiles actor on actor.user_id=n.actor_user_id and actor.deleted_at is null where n.user_id=${row.user_id}::uuid and n.dedupe_key=${inboxDedupe} limit 1`));
   const category=preferenceCategoryFor(row.dedupe_key,notice);
+  const runtime=await notificationRuntime(env,notice?.institution_id??null);
+  if(!runtime.push_enabled||(category==='newsletter'&&!runtime.newsletter_enabled)||(category==='announcements'&&!runtime.announcements_enabled)||(category==='campusUpdates'&&!runtime.campus_updates_enabled)){await db.execute(sql`update app_private.notification_outbox set state='PENDING',attempts=greatest(attempts-1,0),next_attempt_at=now()+interval '5 minutes' where id=${row.id}::uuid`);continue;}
   const devices=await db.execute<{id:string;token:string;university_id:string;channels:unknown;preferences:unknown}>(sql`select d.id,d.token,p.university_id,p.settings->'notificationChannels' as channels,p.settings->'notificationPreferences' as preferences from app_private.push_devices d join public.profiles p on p.user_id=d.user_id join public.users u on u.id=d.user_id where d.user_id=${row.user_id}::uuid and p.university_id=${notice?.institution_id??null}::uuid and d.active and p.deleted_at is null and u.status::text='ACTIVE' and u.deleted_at is null and coalesce(p.settings->>'notifications','true')='true' and exists(select 1 from public.refresh_tokens r where r.user_id=d.user_id and r.family_id=d.session_family_id and r.revoked_at is null and r.expires_at>now()) order by d.updated_at desc limit 5`);
   const eligibleDevices=devices.rows.filter(device=>notificationChannels(device.channels,device.preferences)[category].push_enabled);
   if(!eligibleDevices.length){

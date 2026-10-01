@@ -1,0 +1,3 @@
+import {Text,View} from 'react-native';
+import {useAppearance} from '@/src/lib/appearance';
+export function ComposerPreview({text}:{text:string}){const {theme}=useAppearance();if(!/(?:^|\s)[@#][\p{L}\p{N}_]+/u.test(text))return null;return <View style={{padding:12,borderWidth:1,borderColor:theme.border,borderRadius:12,marginBottom:12}}><Text style={{fontFamily:theme.font.medium,fontSize:10,color:theme.textMuted,marginBottom:5}}>Post preview</Text><Text style={{fontFamily:theme.font.body,fontSize:14,color:theme.text,lineHeight:21}}>{text.split(/([@#][\p{L}\p{N}_]+)/u).map((part,index)=><Text key={index} style={/^[@#]/.test(part)?{color:theme.accentText,fontFamily:theme.font.semibold}:undefined}>{part}</Text>)}</Text></View>;}

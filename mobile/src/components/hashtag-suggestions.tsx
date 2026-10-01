@@ -23,6 +23,6 @@ export function HashtagSuggestions({ text, cursor, onSelect }: { text: string; c
   if (active.query && !options.some((tag) => tag.toLocaleLowerCase() === active.query.toLocaleLowerCase())) options.unshift(active.query);
   if (!options.length) return null;
   return <View style={{ gap: 3, borderTopWidth: 1, borderColor: theme.border, marginBottom: 14 }}>
-    {options.slice(0, 5).map((tag) => <Pressable key={tag} accessibilityRole="button" accessibilityLabel={`Add hashtag ${tag}`} onPress={() => onSelect(`${text.slice(0, active.start)}#${tag} ${text.slice(active.end)}`)} style={{ minHeight: 42, justifyContent: "center", paddingHorizontal: 10 }}><Text style={{ color: theme.accentText, fontFamily: theme.font.semibold }}>#{tag}</Text></Pressable>)}
+    {options.slice(0, 5).map((tag) => <Pressable key={tag} accessibilityRole="button" accessibilityLabel={`Add hashtag ${tag}`} onPress={() => onSelect(`${text.slice(0, active.start)}#${tag} ${text.slice(active.end)}`)} style={{ minHeight: 42, justifyContent: "center", paddingHorizontal: 10 }}><Text style={{ color: theme.accentText, fontFamily: theme.font.semibold }}>#{tag} <Text style={{color:theme.textMuted,fontFamily:theme.font.body,fontSize:11}}>{tags.find(item=>item.tag===tag)?.count??0} posts</Text></Text></Pressable>)}
   </View>;
 }

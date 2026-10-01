@@ -37,6 +37,8 @@ export const unifiedMigrations = [
   "20260928114500_academic_missing_review_workflow.sql",
   "20260928120000_profile_post_notifications.sql",
   "20260928120500_profile_activity_dismissals_and_demo_retirement.sql",
+  "20261001183000_poll_privacy.sql",
+  "20261001189000_notification_runtime_controls.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */

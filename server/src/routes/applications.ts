@@ -387,6 +387,7 @@ applicationRoutes.post("/", async (c) => {
         }
       : {}),
   });
+  if(privateReady && d.portraitSource!=="CAMERA")throw new AppError(400,"BAD_REQUEST","Take a fresh passport photo with the camera before submitting this application.");
   const age = ageOn(d.birthDate);
   if (age < 16 || age > 110)
     throw new AppError(

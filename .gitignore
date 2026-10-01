@@ -25,3 +25,6 @@ mobile/public/maps/maplibre-gl.css
 # Logs
 *.log
 npm-debug.log*
+
+portal/public/maps/
+mobile/public/maps/maplibre-gl*.mjs

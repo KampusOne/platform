@@ -1,5 +1,7 @@
+import { mapCaptureRoutes } from "./routes/map-capture";
 import { discoveryRoutes } from './routes/discovery';
 import {mapRoutes} from './routes/maps';
+import {discountRoutes} from './routes/discounts';
 import {campusAdminRoutes} from "./routes/campus-admin";
 import { peopleRoutes } from "./routes/people";
 import { messageRoutes } from "./routes/messages";
@@ -52,7 +54,8 @@ app.use("/v1/*", async (c, next) => {
     (c.req.header("Content-Type") ?? "").toLowerCase().startsWith("video/");
   const isVoiceTranscription =
     c.req.path === "/v1/ai/transcribe" || c.req.path === "/v1/ai/transcribe/";
-  const maxSize = rawPostVideoUpload
+  const isMessagePart=c.req.method==='PUT' && /^\/v1\/media\/message-uploads\/[0-9a-f-]{36}\/parts\/\d+$/.test(c.req.path);
+  const maxSize = isMessagePart ? 5 * 1024 * 1024 : rawPostVideoUpload
     ? 50 * 1024 * 1024 + 4096
     : isMediaUpload
       ? 10 * 1024 * 1024 + 4096
@@ -119,6 +122,8 @@ app.use("/v1/*", async (c, next) => {
 });
 app.route("/v1/analytics", analyticsRoutes);
 app.route('/v1/maps',mapRoutes);
+app.route('/v1/map-capture',mapCaptureRoutes);
+app.route('/v1/discounts',discountRoutes);
 app.route("/v1/notifications", notificationRoutes);
 app.route("/v1/purchase-review-reminders", purchaseReviewRoutes);
 app.route("/v1/email", emailPreferencesRoutes);

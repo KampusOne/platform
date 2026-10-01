@@ -162,7 +162,7 @@ accountRoutes.post("/support", async (c) => {
 });
 accountRoutes.get("/notifications", async (c) => {
   const result = await database(c.env).execute(
-    sql`select id,title,body,path,read_at,created_at from public.in_app_notifications where user_id=${currentUser(c).id}::uuid order by created_at desc limit 50`,
+    sql`select id,title,body,path,read_at,created_at from public.in_app_notifications where user_id=${currentUser(c).id}::uuid and coalesce(dedupe_key,'') not like 'message:%' and coalesce(path,'') not like '/conversation%' order by created_at desc limit 50`,
   );
   return c.json({ notifications: result.rows });
 });

@@ -271,6 +271,10 @@ beforeAll(async () => {
     "20260930270000_verified_kira_subscription.sql",
     "20260930280000_verified_learning_materials.sql",
     "20260930290000_verified_agent_payouts.sql",
+    "20261001020000_admin_workspace_extensions.sql",
+    "20261001182000_discount_codes_and_newsletter_access.sql",
+    "20261001185000_scoped_commerce_discounts.sql",
+    "20261001185500_material_discounts.sql",
   ])
     await pg.exec(
       readFileSync(

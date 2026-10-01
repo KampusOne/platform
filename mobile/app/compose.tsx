@@ -1,4 +1,7 @@
 import { HashtagSuggestions } from "@/src/components/hashtag-suggestions";
+import {MentionSuggestions} from '@/src/components/mention-suggestions';
+import {ChoiceField} from '@/src/components/choice-field';
+import {ComposerPreview} from '@/src/components/composer-preview';
 import { MediaPreview } from "@/src/components/media-preview";
 import { InlineLoading } from "@/src/components/skeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -60,6 +63,8 @@ export default function Compose() {
   mediaRef.current = media;
   const [selecting, setSelecting] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [publishingFormats,setPublishingFormats]=useState<string[]>([]);
+  useEffect(()=>{let live=true;void api<{formats:string[]}>("/v1/student/publishing/capabilities").then(r=>{if(live)setPublishingFormats(r.formats);}).catch(()=>{});return()=>{live=false;};},[user?.id]);
   const [language, setLanguage] = useState("und");
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const pickerLock = useRef(false);
@@ -367,6 +372,8 @@ export default function Compose() {
             style={{ fontFamily: theme.font.body, color: theme.text, fontSize: 18, lineHeight: 28, minHeight: media.length ? 110 : 160, textAlignVertical: "top", padding: 0, marginBottom: 18 }}
           />
 
+          <ComposerPreview text={body}/>
+          {!publishing ? <MentionSuggestions text={body} cursor={cursor} onSelect={value=>{setBody(value);setCursor(value.length);requestId.current=randomUUID();}}/> : null}
           {!publishing ? (
             <HashtagSuggestions
               text={body}
@@ -379,7 +386,8 @@ export default function Compose() {
             />
           ) : null}
 
-          <Text style={{...text,fontSize:12,color:theme.textMuted,marginBottom:8}}>Post language</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:7,paddingBottom:16}}>{languages.filter(([code])=>code!=="ANY").map(([code,label])=><Pressable key={code} accessibilityRole="radio" accessibilityState={{checked:language===code,disabled:publishing}} disabled={publishing} onPress={()=>{setLanguage(code);requestId.current=randomUUID();}} style={{minHeight:44,justifyContent:"center",paddingHorizontal:12,borderRadius:10,borderWidth:1,borderColor:language===code?theme.brand:theme.border,backgroundColor:language===code?theme.surfaceTint:theme.surface}}><Text style={{...text,fontSize:12,color:language===code?theme.brand:theme.textMuted}}>{label}</Text></Pressable>)}</ScrollView>
+          {!isQuote&&publishingFormats.length>0?<Pressable accessibilityRole="button" onPress={()=>router.push("/publishing-create")} style={{paddingVertical:12}}><Text style={{color:theme.brand,fontFamily:theme.font.semibold}}>Create a poll or Q&A</Text></Pressable>:null}
+          <ChoiceField label="Post language" value={language} options={languages.filter(([code])=>code!=="ANY").map(([value,label])=>({value,label}))} disabled={publishing} onChange={value=>{setLanguage(value);requestId.current=randomUUID();}}/>
           {media.length ? (
             <View style={{ marginBottom: 15 }}>
               <ScrollView

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { randomUUID } from "expo-crypto";
 import { Ionicons } from "@expo/vector-icons";
 import { ToolPage, ToolButton, ToolField } from "@/src/components/toolkit";
@@ -24,6 +24,7 @@ type Details = {
     id: string;
     format: "POLL" | "QA" | "ANONYMOUS_QA";
     body: string;
+    anonymous_poll?: boolean;
     closes_at: string | null;
     is_owner: boolean;
   };
@@ -39,6 +40,8 @@ export default function PublishingPost() {
   const [data, setData] = useState<Details | null>(null);
   const [inbox, setInbox] = useState<Answer[]>([]);
   const [showInbox, setShowInbox] = useState(false);
+  const [voters,setVoters]=useState<{user_id:string;option_id:number;display_name:string;username:string}[]>([]),[showVoters,setShowVoters]=useState(false),[nextVoter,setNextVoter]=useState<string|null>(null);
+  async function loadVoters(after?:string){setBusy(true);setError("");try{const result=await api<{voters:typeof voters;next:string|null}>(path+"/voters"+(after?"?after="+after:""));setVoters(current=>after?[...current,...result.voters]:result.voters);setNextVoter(result.next);setShowVoters(true);}catch(e){setError(e instanceof Error?e.message:"Voters could not load.");}finally{setBusy(false);}}
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -237,12 +240,13 @@ export default function PublishingPost() {
                   lineHeight: 21,
                 }}
               >
-                {totalVotes} {totalVotes === 1 ? "vote" : "votes"} · One vote
+                {data.post.anonymous_poll ? "Anonymous · " : "Visible voters · "}{totalVotes} {totalVotes === 1 ? "vote" : "votes"} · One vote
                 per account
                 {data.post.closes_at
                   ? ` · ${pollClosed ? "Closed" : "Closes"} ${new Date(data.post.closes_at).toLocaleString()}`
                   : ""}
               </Text>
+              {!data.post.anonymous_poll?<View style={{gap:10,marginTop:14}}><ToolButton secondary label={showVoters?"Hide voters":"View voters"} disabled={busy} onPress={()=>showVoters?setShowVoters(false):void loadVoters()}/>{showVoters?<>{voters.length?voters.map(voter=><Pressable key={voter.user_id} accessibilityRole="button" onPress={()=>router.push({pathname:"/profile",params:{id:voter.user_id}})} style={{paddingVertical:10,borderBottomWidth:1,borderBottomColor:theme.border}}><Text style={{color:theme.text,fontFamily:theme.font.medium}}>{voter.display_name} · @{voter.username}</Text><Text style={{color:theme.textMuted}}>{data.options.find(option=>option.id===voter.option_id)?.label}</Text></Pressable>):<Text style={{color:theme.textMuted}}>No votes yet.</Text>}{nextVoter?<ToolButton secondary label="More voters" disabled={busy} onPress={()=>void loadVoters(nextVoter)}/>:null}</>:null}</View>:null}
             </>
           ) : (
             <>

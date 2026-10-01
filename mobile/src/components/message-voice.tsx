@@ -400,6 +400,12 @@ export function VoicePlayback({
   const [wantPlay, setWantPlay] = useState(false);
   const [playError, setPlayError] = useState("");
   const starting = useRef(false);
+  const requested = useRef(false);
+  const generation = useRef(0);
+  const scrubHold = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrubStart = useRef(0);
+  const scrubHeld = useRef(false);
+  useEffect(()=>()=>{if(scrubHold.current)clearTimeout(scrubHold.current);},[]);
   const [localSpeed, setLocalSpeed] = useState<PlaybackSpeed>(1);
   const [waveWidth, setWaveWidth] = useState(1);
   const { theme, styles } = useThemeStyles(createStyles);
@@ -414,27 +420,30 @@ export function VoicePlayback({
     catch { setPlayError("Could not change playback speed."); }
   }, [player, speed, state.isLoaded]);
   useEffect(() => {
-    const stop = (owner: object) => { if (owner !== identity) { setWantPlay(false); starting.current = false; try { player.pause(); } catch {} } };
+    const stop = (owner: object) => { if (owner !== identity) { requested.current=false;generation.current++;setWantPlay(false); starting.current = false; try { player.pause(); } catch {} } };
     playbackListeners.add(stop);
     const app = AppState.addEventListener("change", status => { if (status !== "active") stop({}); });
-    return () => { playbackListeners.delete(stop); app.remove(); };
+    return () => { requested.current=false;generation.current++;playbackListeners.delete(stop); app.remove();try{player.pause();}catch{} };
   }, [player, identity]);
   useEffect(() => {
     if (!wantPlay || !state.isLoaded || starting.current) return;
     starting.current = true;
+    const token=generation.current;
     void (async () => {
       try {
         await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+        if(!requested.current||token!==generation.current)return;
         if (state.didJustFinish || (duration > 0 && current >= duration - .05)) await player.seekTo(0);
+        if(!requested.current||token!==generation.current)return;
         playbackListeners.forEach(listener => listener(identity));
-        player.play(); setWantPlay(false);
-      } catch { setWantPlay(false); setPlayError("Voice note could not play. Tap to retry."); }
-      finally { starting.current = false; }
+        player.play(); requested.current=false;setWantPlay(false);
+      } catch { if(token===generation.current){setWantPlay(false); setPlayError("Voice note could not play. Tap to retry.");} }
+      finally { if(token===generation.current)starting.current = false; }
     })();
   }, [wantPlay, state.isLoaded, state.didJustFinish, duration, current, player, identity]);
   useEffect(() => {
     if (!wantPlay) return;
-    const timer = setTimeout(() => { setWantPlay(false); setPlayError("Voice note took too long to load. Tap to retry."); }, 20000);
+    const timer = setTimeout(() => { requested.current=false;generation.current++;setWantPlay(false); setPlayError("Voice note took too long to load. Tap to retry."); }, 20000);
     return () => clearTimeout(timer);
   }, [wantPlay]);
 
@@ -451,8 +460,9 @@ export function VoicePlayback({
 
   const toggle = () => {
     setPlayError("");
-    if (state.playing || wantPlay) { setWantPlay(false); try { player.pause(); } catch {} }
-    else setWantPlay(true);
+    generation.current++;
+    if (state.playing || wantPlay) { requested.current=false;starting.current=false;setWantPlay(false); try { player.pause(); } catch {} }
+    else {requested.current=true;setWantPlay(true);}
   };
 
   const seekFromX = (x: number) => {
@@ -473,15 +483,17 @@ export function VoicePlayback({
           onLayout={(event) => setWaveWidth(Math.max(1, event.nativeEvent.layout.width))}
           onStartShouldSetResponder={() => true}
           onMoveShouldSetResponder={() => true}
-          onResponderGrant={(event) => seekFromX(event.nativeEvent.locationX)}
-          onResponderMove={(event) => seekFromX(event.nativeEvent.locationX)}
+          onResponderGrant={(event) => {scrubStart.current=event.nativeEvent.locationX;scrubHeld.current=false;const snapshot={...event,nativeEvent:{...event.nativeEvent}};scrubHold.current=setTimeout(()=>{scrubHeld.current=true;onLongPress?.(snapshot);},350);}}
+          onResponderMove={(event) => {if(Math.abs(event.nativeEvent.locationX-scrubStart.current)>6){if(scrubHold.current)clearTimeout(scrubHold.current);if(!scrubHeld.current)seekFromX(event.nativeEvent.locationX);}}}
+          onResponderRelease={(event)=>{if(scrubHold.current)clearTimeout(scrubHold.current);if(!scrubHeld.current)seekFromX(event.nativeEvent.locationX);}}
+          onResponderTerminate={()=>{if(scrubHold.current)clearTimeout(scrubHold.current);}}
           style={styles.scrubber}
         >
           <Waveform progress={progress} light={mine} />
         </View>
         <Text style={[styles.playbackTime, mine && {color:"#fff"}]}>{wantPlay || state.isBuffering ? "Loading…" : formatDuration(state.playing || current > 0 ? current : duration)}</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Playback speed ${speed}x`} onPress={cycleSpeed} style={styles.speedButton}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Playback speed ${speed}x`} onPress={cycleSpeed} onLongPress={onLongPress} delayLongPress={350} style={styles.speedButton}>
         <Text style={styles.speedText}>{speed}x</Text>
       </Pressable>
     </View>

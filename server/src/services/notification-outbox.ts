@@ -1,3 +1,4 @@
+import {notificationRuntime} from './notification-runtime';
 import { sql } from "drizzle-orm";
 import { database } from "../lib/database";
 import type { Bindings } from "../types";
@@ -23,9 +24,11 @@ export async function deliverQueuedNotifications(env: Bindings) {
   // Small bounded batches prevent a broadcast from overwhelming the mail provider.
   for (const row of claimed.rows) {
     try {
-      const recipient = await db.execute<{ email: string }>(
-        sql`select email from public.users where id=${row.user_id}::uuid and deleted_at is null`,
+      const recipient = await db.execute<{ email: string;university_id:string|null }>(
+        sql`select u.email,p.university_id from public.users u left join public.profiles p on p.user_id=u.id where u.id=${row.user_id}::uuid and u.deleted_at is null`,
       );
+      const runtime=await notificationRuntime(env,recipient.rows[0]?.university_id??null);
+      if(!runtime.email_enabled){await db.execute(sql`update app_private.notification_outbox set state='PENDING',attempts=greatest(attempts-1,0),next_attempt_at=now()+interval '5 minutes' where id=${row.id}::uuid`);continue;}
       const email = recipient.rows[0]?.email;
       if (!email) throw new Error("RECIPIENT_UNAVAILABLE");
       const response = await fetch("https://api.resend.com/emails", {

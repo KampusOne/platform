@@ -1,3 +1,4 @@
+import { DiscountCodeField } from "@/src/components/discount-code-field";
 import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
@@ -648,6 +649,7 @@ export default function TutorialsScreen() {
   const [selectedWindows, setSelectedWindows] = useState<
     Record<string, string>
   >({});
+  const [discountCodes,setDiscountCodes]=useState<Record<string,string>>({});
   const bookingLock = useRef(false);
   const bookingRequest = useRef<{ fingerprint: string; id: string } | null>(
     null,
@@ -796,6 +798,7 @@ export default function TutorialsScreen() {
           listing.id,
           availabilityWindowId,
           listing.price_kobo,
+          discountCodes[listing.id] ?? "",
         ]);
         if (bookingRequest.current?.fingerprint !== fingerprint)
           bookingRequest.current = { fingerprint, id: randomUUID() };
@@ -809,6 +812,7 @@ export default function TutorialsScreen() {
             listingId: listing.id,
             requestId: bookingRequest.current!.id,
             expectedPriceKobo: listing.price_kobo,
+            ...(discountCodes[listing.id]?{discountCode:discountCodes[listing.id]}:{}),
           }),
           method: "POST",
         });
@@ -848,7 +852,7 @@ export default function TutorialsScreen() {
         setBusy("");
       }
     },
-    [load, selectedWindows],
+    [load, selectedWindows, discountCodes],
   );
 
   const selectWindow = useCallback((listingId: string, windowId: string) => {
@@ -1117,6 +1121,7 @@ export default function TutorialsScreen() {
         removeClippedSubviews={Platform.OS === "android"}
         renderItem={({ item: listing }) => (
           <View style={styles.listingItem}>
+            {Number(listing.price_kobo)>0?<DiscountCodeField scope="TUTORIAL" disabled={Boolean(busy)} onApply={code=>setDiscountCodes(current=>({...current,[listing.id]:code}))}/>:null}
             <TutorialCard
               busy={busy === listing.id}
               disabled={Boolean(busy)}

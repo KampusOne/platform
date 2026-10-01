@@ -469,7 +469,7 @@ export default function OnboardingScreen() {
   const identityStepComplete =
     firstName.trim().length >= 1 &&
     lastName.trim().length >= 1 &&
-    username.trim().length >= 3 &&
+    username.trim().length >= 3 && usernameState !== "taken" && usernameState !== "checking" &&
     matriculationNumber.trim().length >= 3;
   const timelineStepComplete =
     levels.includes(currentLevel as (typeof levels)[number]) &&
@@ -532,6 +532,8 @@ export default function OnboardingScreen() {
           admissionYear: Number(admissionYear),
         }),
       });
+      setDraftReady(false);
+      if(user?.id) await AsyncStorage.removeItem(`k1.onboarding.${user.id}`);
       await reloadProfile();
       router.replace("/");
     } catch (caught) {

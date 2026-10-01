@@ -1,3 +1,4 @@
+import {DiscountCodeField} from "@/src/components/discount-code-field";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Text, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -36,6 +37,7 @@ function AccountCheckout({
   displayedPrice: string | undefined;
 }) {
   const { theme } = useAppearance(),
+    [discountCode,setDiscountCode]=useState(""),
     [quote, setQuote] = useState<Quote | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -72,6 +74,7 @@ function AccountCheckout({
             resourceId,
             requestId: key.current,
             expectedPriceKobo,
+            ...(discountCode?{discountCode}:{}),
           }),
         });
         if (alive.current && request.current === turn) setQuote(result.quote);
@@ -84,7 +87,7 @@ function AccountCheckout({
           );
       }
     },
-    [resourceId, displayedPrice],
+    [resourceId, displayedPrice,discountCode],
   );
   useFocusEffect(
     useCallback(() => {
@@ -168,6 +171,7 @@ function AccountCheckout({
           />
         </>
       ) : null}
+      {resourceId&&!purchase?<DiscountCodeField scope="MATERIAL" disabled={busy} onApply={code=>{key.current=randomUUID();setQuote(null);setDiscountCode(code);}}/>:null}
       {error ? (
         <>
           <Text accessibilityRole="alert" style={{ color: theme.error }}>

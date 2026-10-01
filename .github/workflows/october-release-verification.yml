@@ -1,0 +1,73 @@
+name: Verify October correction batch
+on:
+  push:
+    branches: [fix/october-124-issues]
+    paths:
+      - 'mobile/**'
+      - 'portal/**'
+      - 'server/**'
+      - 'database/**'
+      - 'packages/**'
+      - 'tests/october-browser.mjs'
+      - '.github/workflows/october-release-verification.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: october-verification-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: packages/contracts
+      - run: npm run check && npm test
+        working-directory: packages/contracts
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run check
+        working-directory: mobile
+      - run: npm ci
+        working-directory: server
+      - run: npm run check && npm test -- --maxWorkers=2 && npm run build
+        working-directory: server
+      - run: node --experimental-strip-types --test tests/*.test.mjs database/imports/academic-importer.test.mjs
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      CI: '1'
+      NEXT_PUBLIC_KAMPUSONE_API_URL: http://localhost:8787
+      EXPO_PUBLIC_KAMPUSONE_API_URL: http://localhost:8787
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci && npm run lint && npm run check && npm run build
+        working-directory: portal
+      - run: npm ci && npm run check && npm run export:web
+        working-directory: mobile
+      - name: Install isolated browser verification CLI
+        run: npm install --global agent-browser@0.38.1
+      - name: Inspect compiled screens and both campus map renderers
+        run: node tests/october-browser.mjs
+        env:
+          AGENT_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          AGENT_BROWSER_SESSION: kampusone-october-${{ github.run_id }}
+          AGENT_BROWSER_ARGS: --enable-unsafe-swiftshader,--use-gl=angle,--use-angle=swiftshader
+      - name: Save browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: october-browser-${{ github.sha }}
+          path: browser-evidence/
+          if-no-files-found: warn
+          retention-days: 14

@@ -146,6 +146,7 @@ function AccountAgentDashboard() {
               : "Your workspaces"
       }
     >
+      {caps.profiles.length>0?<ToolButton secondary label="Campus capture missions" onPress={()=>router.push("/map-capture")}/>:null}
       {caps.profiles.length > 1 && (
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
           {caps.profiles.map((p) => (

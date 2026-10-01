@@ -1,6 +1,8 @@
 export type RuntimeEnvironment = "local" | "staging" | "production";
 
 export type Bindings = {
+  MAP_SATELLITE_TILE_URL?: string;
+  MAP_SATELLITE_ATTRIBUTION?: string;
   ENVIRONMENT: RuntimeEnvironment;
   ALLOWED_ORIGINS: string;
   MINIMUM_APP_VERSION: string;

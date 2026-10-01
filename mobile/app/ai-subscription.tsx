@@ -1,254 +1,33 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, Text, View } from "react-native";
-import { randomUUID } from "expo-crypto";
-import { router, useFocusEffect } from "expo-router";
-import { ToolPage, ToolButton } from "@/src/components/toolkit";
-import { useAuth } from "@/src/auth/auth-context";
-import { useAppearance } from "@/src/lib/appearance";
-import { api } from "@/src/lib/api";
-type Plan = {
-  amountKobo: number;
-  available: boolean;
-  checkoutEnabled: boolean;
-  currentPeriodEnd: string | null;
-  autoRenew: false;
-  checkout: { reference: string; status: string; expires_at: string } | null;
-};
-export default function KiraSubscription() {
-  const { user } = useAuth();
-  return <AccountSubscription key={user?.id} />;
-}
-function AccountSubscription() {
-  const { theme } = useAppearance(),
-    [plan, setPlan] = useState<Plan | null>(null),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState(""),
-    [busy, setBusy] = useState(false);
-  const key = useRef(randomUUID()),
-    alive = useRef(true),
-    opening = useRef(false),
-    request = useRef(0);
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-      request.current++;
-    };
-  }, []);
-  const load = useCallback(async () => {
-    const turn = ++request.current;
-    try {
-      const r = await api<{ subscription: Plan }>("/v1/ai/subscription");
-      if (alive.current && turn === request.current) {
-        setPlan(r.subscription);
-        setError("");
-      }
-    } catch (e) {
-      if (alive.current && turn === request.current)
-        setError(
-          e instanceof Error
-            ? e.message
-            : "Your plan could not load. Try again.",
-        );
-    }
-  }, []);
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
-  const check = useCallback(async () => {
-    if (!plan?.checkout || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      const r = await api<{ payment: { status: string } }>(
-        "/v1/payments/status/" + encodeURIComponent(plan.checkout.reference),
-      );
-      if (!alive.current) return;
-      setNotice(
-        r.payment.status === "SUCCEEDED"
-          ? "Payment confirmed. Your Kira Pro month is active."
-          : r.payment.status === "REQUIRES_REVIEW"
-            ? "Your payment is recorded and awaiting support review. Please keep its reference."
-            : "Payment is still awaiting confirmation. Check again after completing checkout.",
-      );
-      await load();
-    } catch (e) {
-      if (alive.current)
-        setError(
-          e instanceof Error
-            ? e.message
-            : "Confirmation is unavailable. Your payment reference is saved.",
-        );
-    } finally {
-      if (alive.current) setBusy(false);
-    }
-  }, [plan, busy, load]);
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active" && opening.current) {
-        opening.current = false;
-        void load();
-      }
-    });
-    return () => sub.remove();
-  }, [load]);
-  async function pay() {
-    if (busy || !plan?.checkoutEnabled) return;
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      const result = await api<{
-        authorizationUrl: string;
-        reference: string;
-        amountKobo: number;
-      }>("/v1/ai/subscription-checkout", {
-        method: "POST",
-        body: JSON.stringify({ requestId: key.current, consent: true }),
-      });
-      if (!alive.current) return;
-      if (result.amountKobo !== 600000)
-        throw new Error(
-          "The checkout total did not match the displayed plan. Refresh before paying.",
-        );
-      await load();
-      opening.current = true;
-      await Linking.openURL(result.authorizationUrl);
-    } catch (e) {
-      if (alive.current)
-        setError(
-          e instanceof Error
-            ? e.message
-            : "Checkout could not open. Your payment status can be checked safely.",
-        );
-    } finally {
-      if (alive.current) setBusy(false);
-    }
-  }
-  return (
-    <ToolPage title="Kira Pro">
-      <View style={{ gap: 12, paddingVertical: 16 }}>
-        <Text
-          style={{
-            fontFamily: theme.font.display,
-            fontSize: 36,
-            color: theme.text,
-          }}
-        >
-          ₦6,000{" "}
-          <Text
-            style={{
-              fontSize: 16,
-              fontFamily: theme.font.body,
-              color: theme.textMuted,
-            }}
-          >
-            per month
-          </Text>
-        </Text>
-        <Text
-          style={{
-            fontFamily: theme.font.body,
-            color: theme.text,
-            lineHeight: 23,
-          }}
-        >
-          More room for studying, summaries and notes. The amount shown here is
-          your complete plan price.
-        </Text>
-        <Text
-          style={{
-            fontFamily: theme.font.body,
-            color: theme.textMuted,
-            lineHeight: 22,
-          }}
-        >
-          One month at a time. No automatic renewal. Your access starts after
-          payment is verified; an eligible renewal extends your current paid
-          period.
-        </Text>
-        {plan?.currentPeriodEnd ? (
-          <Text
-            accessibilityRole="text"
-            style={{ fontFamily: theme.font.semibold, color: theme.brand }}
-          >
-            Pro active until{" "}
-            {new Date(plan.currentPeriodEnd).toLocaleDateString("en-NG", {
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
-          </Text>
-        ) : null}
-        {!plan && !error ? (
-          <Text style={{ color: theme.textMuted }}>Loading your plan…</Text>
-        ) : null}
-        {plan && !plan.available ? (
-          <Text style={{ color: theme.textMuted }}>
-            Monthly checkout will open after payment setup is approved.
-          </Text>
-        ) : null}
-        {plan?.currentPeriodEnd && !plan.checkoutEnabled ? (
-          <Text style={{ color: theme.textMuted }}>
-            Renewal opens during your final seven days when checkout is
-            available.
-          </Text>
-        ) : null}
-        {error ? (
-          <Text accessibilityRole="alert" style={{ color: theme.error }}>
-            {error}
-          </Text>
-        ) : null}
-        {notice ? (
-          <Text accessibilityRole="text" style={{ color: theme.text }}>
-            {notice}
-          </Text>
-        ) : null}
-        <ToolButton
-          label={
-            busy
-              ? "Please wait…"
-              : plan?.checkout?.status === "INITIALIZED"
-                ? "Resume ₦6,000 checkout"
-                : plan?.currentPeriodEnd
-                  ? "Renew for ₦6,000"
-                  : "Get one month · ₦6,000"
-          }
-          disabled={
-            busy ||
-            !plan?.checkoutEnabled ||
-            plan?.checkout?.status === "REQUIRES_REVIEW"
-          }
-          onPress={() => void pay()}
-        />
-        {plan?.checkout ? (
-          <>
-            <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-              Payment reference: {plan.checkout.reference}
-            </Text>
-            <ToolButton
-              secondary
-              label="Check payment"
-              disabled={busy}
-              onPress={() => void check()}
-            />
-          </>
-        ) : null}
-        <ToolButton
-          secondary
-          label="Refresh plan"
-          disabled={busy}
-          onPress={() => void load()}
-        />
-        <ToolButton
-          secondary
-          label="Open Kira"
-          disabled={busy}
-          onPress={() => router.replace("/ai")}
-        />
-      </View>
-    </ToolPage>
-  );
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Linking, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { randomUUID } from 'expo-crypto';
+import { router, useFocusEffect } from 'expo-router';
+import { ToolPage, ToolButton, ToolField } from '@/src/components/toolkit';
+import { useAuth } from '@/src/auth/auth-context';
+import { useAppearance } from '@/src/lib/appearance';
+import { api } from '@/src/lib/api';
+type Plan={amountKobo:number;available:boolean;checkoutEnabled:boolean;complimentary?:boolean;currentPeriodEnd:string|null;checkout:{reference:string;status:string;expires_at:string;amount_kobo:number;request_id:string;discount_code:string|null}|null};
+type Benefits={historyTurns:number;historyDays:number;maxFileBytes:number;voiceMaxSeconds:number;studyLimit:number;askMessagesPerWindow:number};
+const money=(value:number)=>new Intl.NumberFormat('en-NG',{style:'currency',currency:'NGN',maximumFractionDigits:0}).format(value/100);
+export default function KiraSubscription(){const {user}=useAuth();return <AccountSubscription key={user?.id}/>;}
+function AccountSubscription(){
+ const {user,profile}=useAuth(),{theme}=useAppearance();
+ const [plan,setPlan]=useState<Plan|null>(null),[benefits,setBenefits]=useState<Benefits|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[checkoutScreen,setCheckoutScreen]=useState(false),[coupon,setCoupon]=useState(''),[discount,setDiscount]=useState<{code:string;percent:number}|null>(null);
+ const key=useRef(randomUUID()),alive=useRef(true),opening=useRef(false),request=useRef(0),lock=useRef(false);
+ useEffect(()=>{alive.current=true;return()=>{alive.current=false;request.current++;};},[]);
+ const load=useCallback(async()=>{const turn=++request.current;try{const result=await api<{subscription:Plan;proBenefits:Benefits}>('/v1/ai/status');if(alive.current&&turn===request.current){setPlan(result.subscription);setBenefits(result.proBenefits);setError('');if(result.subscription.checkout){key.current=result.subscription.checkout.request_id;setCoupon(result.subscription.checkout.discount_code??'');setCheckoutScreen(true);}}}catch(e){if(alive.current&&turn===request.current)setError(e instanceof Error?e.message:'Your plan could not load. Try again.');}},[]);
+ useFocusEffect(useCallback(()=>{void load();},[load]));
+ useEffect(()=>{const sub=AppState.addEventListener('change',state=>{if(state==='active'&&opening.current){opening.current=false;void load();}});return()=>sub.remove();},[load]);
+ const amount=plan?.checkout?.amount_kobo??Math.floor((plan?.amountKobo??600000)*(100-(discount?.percent??0))/100);
+ async function run(work:()=>Promise<void>){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await work();}catch(e){if(alive.current)setError(e instanceof Error?e.message:'This could not finish. Your checkout is kept.');}finally{lock.current=false;if(alive.current)setBusy(false);}}
+ async function applyCoupon(){await run(async()=>{const result=await api<{code:string;percent:number}>('/v1/discounts/validate',{method:'POST',body:JSON.stringify({code:coupon,scope:'KIRA'})});if(alive.current){setDiscount(result);key.current=randomUUID();setNotice(`${result.percent}% discount applied`);}});}
+ async function check(){if(!plan?.checkout)return;await run(async()=>{const result=await api<{payment:{status:string}}>('/v1/payments/status/'+encodeURIComponent(plan.checkout!.reference));if(!alive.current)return;setNotice(result.payment.status==='SUCCEEDED'?'Payment confirmed. Your Kira Pro month is active.':result.payment.status==='REQUIRES_REVIEW'?'Your payment is recorded and awaiting support review. Keep its reference.':'Payment is awaiting confirmation. Complete checkout, then check again.');await load();});}
+ async function pay(){if(!plan?.checkoutEnabled)return;await run(async()=>{const result=await api<{authorizationUrl:string;reference:string;amountKobo:number}>('/v1/ai/subscription-checkout',{method:'POST',body:JSON.stringify({requestId:key.current,consent:true,discountCode:plan.checkout?.discount_code??discount?.code??''})});if(!alive.current)return;if(result.amountKobo!==amount)throw new Error('The checkout total changed. Refresh your plan before paying.');await load();opening.current=true;await Linking.openURL(result.authorizationUrl);});}
+ const text={color:theme.text,fontFamily:theme.font.body,lineHeight:23},muted={...text,color:theme.textMuted,fontSize:13};
+ const rows=benefits?[`${benefits.studyLimit} Summary, Notes and Quiz generations per month`,`Up to ${benefits.askMessagesPerWindow} Ask Kira messages every 15 minutes`,`${benefits.historyTurns} recent turns used for conversation context`,`Saved conversations available for ${benefits.historyDays} days`,`Voice transcription up to ${benefits.voiceMaxSeconds<60?`${benefits.voiceMaxSeconds} seconds`:`${benefits.voiceMaxSeconds/60} minutes`}`,`PDFs and supported files up to ${benefits.maxFileBytes/1024/1024} MB each`]:[];
+ return <ToolPage title={checkoutScreen?'Kira checkout':'Kira Pro'}><View style={{gap:16,paddingVertical:16}}><Text style={{...text,fontFamily:theme.font.display,fontSize:34,lineHeight:42}}>{plan?.complimentary?'Complimentary Pro':`${money(600000)} / month`}</Text><Text style={muted}>{plan?.complimentary?'Your account has owner-approved Pro access. No payment is required.':'One month at a time. No automatic renewal. Access starts after payment is verified.'}</Text>{plan?.currentPeriodEnd?<Text style={{...text,color:theme.brand}}>Pro active until {new Date(plan.currentPeriodEnd).toLocaleDateString('en-NG',{day:'numeric',month:'long',year:'numeric'})}</Text>:null}
+ {!checkoutScreen?<View style={{gap:14}}>{rows.map(label=><View key={label} style={{flexDirection:'row',gap:12,alignItems:'flex-start'}}><Ionicons name="checkmark-circle" color={theme.brand} size={23}/><Text style={{...text,flex:1}}>{label}</Text></View>)}<Text style={muted}>Kira uses your programme, level and the conversation you open for context. Shared service limits still apply.</Text></View>:<View style={{gap:14,padding:16,borderWidth:1,borderColor:theme.border,borderRadius:18}}><Text style={{...text,fontFamily:theme.font.semibold}}>Kira Pro · one month</Text><Text style={text}>{profile?.display_name??'Your KampusOne account'}</Text><Text style={muted}>{user?.email}</Text><ToolButton secondary label="Update customer details" disabled={busy||!!plan?.checkout} onPress={()=>router.push('/account')}/><ToolField label="Discount code" value={coupon} autoCapitalize="characters" maxLength={32} editable={!busy&&!plan?.checkout} onChangeText={value=>{setCoupon(value);setDiscount(null);setNotice('');key.current=randomUUID();}}/>{!plan?.checkout?<ToolButton secondary label="Apply code" disabled={busy||coupon.trim().length<3} onPress={()=>void applyCoupon()}/>:null}<View style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={text}>Plan</Text><Text style={text}>{money(600000)}</Text></View>{amount<600000?<View style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={text}>Discount</Text><Text style={{...text,color:theme.brand}}>−{money(600000-amount)}</Text></View>:null}<View style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{...text,fontFamily:theme.font.semibold}}>Total due</Text><Text style={{...text,fontFamily:theme.font.semibold}}>{money(amount)}</Text></View><Text style={muted}>Pay securely by card or bank transfer. Keep the payment reference if you leave checkout.</Text></View>}
+ {error?<Text accessibilityRole="alert" style={{...text,color:theme.error}}>{error}</Text>:null}{notice?<Text style={text}>{notice}</Text>:null}{!plan&&!error?<Text style={muted}>Loading your plan…</Text>:null}{plan&&!plan.available&&!plan.complimentary?<Text style={muted}>Checkout is awaiting approved payment setup.</Text>:null}{plan?.currentPeriodEnd&&!plan.checkoutEnabled?<Text style={muted}>Your active access is kept. Renewal opens during the final seven days.</Text>:null}
+ {!plan?.complimentary?<ToolButton label={busy?'Please wait…':checkoutScreen?`${plan?.checkout?'Resume payment':'Pay'} · ${money(amount)}`:'Continue to checkout'} disabled={busy||!plan?.checkoutEnabled||plan?.checkout?.status==='REQUIRES_REVIEW'} onPress={()=>checkoutScreen?void pay():setCheckoutScreen(true)}/>:null}{plan?.checkout?<><Text selectable style={muted}>Payment reference: {plan.checkout.reference}</Text><ToolButton secondary label="Check payment" disabled={busy} onPress={()=>void check()}/></>:null}{checkoutScreen&&!plan?.checkout?<ToolButton secondary label="Back to benefits" disabled={busy} onPress={()=>setCheckoutScreen(false)}/>:null}<ToolButton secondary label="Refresh plan" disabled={busy} onPress={()=>void load()}/><ToolButton secondary label="Return to Kira" disabled={busy} onPress={()=>router.replace('/ai')}/></View></ToolPage>;
 }

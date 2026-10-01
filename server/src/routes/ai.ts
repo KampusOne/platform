@@ -66,6 +66,9 @@ aiRoutes.get("/status", async c => {
       images: enabled && providerConfiguration(c.env,"study","image/jpeg").configured,
       documents: enabled && providerConfiguration(c.env,"summary").configured },
     tier: quota.pro ? "pro" : "standard",
+    complimentary:quota.complimentary,
+    benefits:{historyTurns:quota.pro?12:6,historyDays:AI_HISTORY_DAYS,maxFileBytes:MAX_AI_MEDIA_BYTES,voiceMaxSeconds:maxVoiceSeconds,studyLimit:quota.unlimited?null:quota.pro?100:quota.study,studyPeriod:quota.pro?"month":"trial",askMessagesPerWindow:quota.unlimited?null:askLimit},
+    proBenefits:{historyTurns:12,historyDays:AI_HISTORY_DAYS,maxFileBytes:MAX_AI_MEDIA_BYTES,voiceMaxSeconds:speech.longFormConfigured?300:30,studyLimit:100,studyPeriod:"month",askMessagesPerWindow:60},
     voice: { maxSeconds: maxVoiceSeconds, standardMaxSeconds: speech.longFormConfigured ? 60 : 30, proMaxSeconds: speech.longFormConfigured ? 300 : 30, longFormReady: speech.longFormConfigured },
     askSession: {
       windowMinutes: 15,
@@ -73,14 +76,14 @@ aiRoutes.get("/status", async c => {
       remaining: quota.unlimited ? null : Math.max(0, askLimit - Number(usage?.chat_used ?? 0)),
       resetsAt: usage?.chat_resets_at ?? null,
     },
-    study: { limit: quota.study, remaining: quota.unlimited || quota.pro ? null : Math.max(0,quota.study-Number(usage?.study_used ?? 0)) },
+    study: { limit: quota.pro?100:quota.study, remaining: quota.unlimited ? null : quota.pro ? Math.max(0,100-Number(usage?.month_used??0)) : Math.max(0,quota.study-Number(usage?.study_used ?? 0)) },
     subscription: await kiraBillingStatus(c.env,currentUser(c)),
   });
 });
 aiRoutes.get('/subscription',async c=>c.json({subscription:await kiraBillingStatus(c.env,currentUser(c))}));
 aiRoutes.post('/subscription-checkout',async c=>{
-  const d=await input(c,z.object({requestId:z.string().uuid(),consent:z.literal(true)}).strict());
-  return c.json(await initializeKira(c.env,currentUser(c),d.requestId,c.get('requestId')));
+  const d=await input(c,z.object({requestId:z.string().uuid(),consent:z.literal(true),discountCode:z.string().trim().max(32).default('')}).strict());
+  return c.json(await initializeKira(c.env,currentUser(c),d.requestId,c.get('requestId'),d.discountCode));
 });
 aiRoutes.post("/transcribe", async c => {
   requireSchema(c.env);
@@ -374,7 +377,7 @@ aiRoutes.post("/", async c => {
     if (!parent || parent.result.deleted) throw new AppError(404, "NOT_FOUND", "The earlier study session is no longer available. Start a new session.");
     if (parent.result.provider !== selectedProvider) throw new AppError(400, "BAD_REQUEST", "Start a new conversation to use the updated AI. Your previous conversation has not been forwarded.", { reason: "AI_PROVIDER_CONTEXT" });
     threadId = parent.result.threadId ?? d.replyTo;
-    const turns = await db.execute<{ prompt: string; text: string }>(sql`select left(coalesce(result->>'prompt',''),1500) as prompt,left(result->>'text',3000) as text from app_private.ai_requests where user_id=${u.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${threadId} and result->>'provider'=${selectedProvider} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc limit 4`);
+    const turns = await db.execute<{ prompt: string; text: string }>(sql`select left(coalesce(result->>'prompt',''),1500) as prompt,left(result->>'text',3000) as text from app_private.ai_requests where user_id=${u.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${threadId} and result->>'provider'=${selectedProvider} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc limit ${d.tier==='pro'?12:6}`);
     history.push(...turns.rows.reverse());
   }
   if (new TextEncoder().encode(prompt + JSON.stringify(history)).length > 60000) throw new AppError(413, "BAD_REQUEST", "This study context is too long. Use a shorter source or start a new session.");

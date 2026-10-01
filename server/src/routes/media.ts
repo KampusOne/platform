@@ -40,6 +40,10 @@ async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
     return;
   }
   if (user.id === media.owner_user_id) return;
+  if(media.kind==='map-capture'){
+    if(user.universityId===media.institution_id&&firstRow(await database(env).execute(sql`select id from public.campus_place_media where media_id=${media.id}::uuid and institution_id=${user.universityId}::uuid and moderation_state='APPROVED'`)))return;
+    try{await resolveAdminScope(env,user,media.institution_id??undefined,'universities.manage');return;}catch{throw new AppError(403,'FORBIDDEN','This map capture is awaiting review or belongs to another campus.');}
+  }
   if (media.kind === "message") {
     const allowed = firstRow(
       await database(env).execute(sql`
@@ -87,8 +91,8 @@ export const mediaRoutes = new Hono<{
   Bindings: Bindings;
   Variables: Variables;
 }>();
-const privateKinds = new Set(["kyc", "support", "resource", "message","operations-document"]);
-const uploadKinds = new Set(["avatar", "cover", "product", "post", "resource", "kyc", "support", "notification-sound", "message","operations-document"]);
+const privateKinds = new Set(["kyc", "support", "resource", "message","operations-document","map-capture"]);
+const uploadKinds = new Set(["avatar", "cover", "product", "post", "resource", "kyc", "support", "notification-sound", "message","operations-document","map-capture"]);
 const standardUploadLimit = 10 * 1024 * 1024;
 const postVideoUploadLimit = 50 * 1024 * 1024;
 type StreamableMedia = Media & { size_bytes: number };
@@ -153,7 +157,7 @@ function documentMimeFromName(name: string) {
 
 function looksLikeUtf8Text(bytes: Uint8Array) {
   try {
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes,{stream:true});
     return !/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text);
   } catch {
     return false;
@@ -271,6 +275,7 @@ mediaRoutes.post("/", requireAuth, async (c) => {
   if (!uploadKinds.has(kind))
     throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
   let institution=user.universityId;
+  if(kind==='map-capture'&&!firstRow(await database(c.env).execute(sql`select id from public.agent_profiles where user_id=${user.id}::uuid and university_id=${user.universityId}::uuid and status='ACTIVE' limit 1`)))throw new AppError(403,'FORBIDDEN','Map capture requires an approved campus agent account.');
   if(kind==='operations-document'){
     await requireAdminWorkspace(c.env);
     institution=await resolveAdminScope(c.env,user,c.req.query('universityId'),'documents.manage');
@@ -334,6 +339,7 @@ mediaRoutes.post("/", requireAuth, async (c) => {
   ) {
     mime = mime === "video/webm" ? "audio/webm" : "audio/mp4";
   }
+  if(kind==='map-capture'&&!mime?.startsWith('image/'))throw new AppError(400,'BAD_REQUEST','Capture a JPG, PNG or WebP campus photo.');
   const finalLimit =
     ["post", "message"].includes(kind) && mime?.startsWith("video/")
       ? postVideoUploadLimit

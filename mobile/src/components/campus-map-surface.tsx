@@ -1,7 +1,7 @@
 import {createElement,useEffect,useRef,useState} from 'react';
 import {Platform,View,Text,StyleSheet} from 'react-native';
 import {WebView} from 'react-native-webview';
-export type MapPayload={campusId:string;centre:[number,number];places:unknown[];features:unknown;selectedId:string|null;location:[number,number]|null;route:unknown;layer:string;focus?:{coordinate:[number,number];nonce:number}|null|undefined};
+export type MapPayload={satellite?:{url:string;attribution:string}|null;campusId:string;centre:[number,number];places:unknown[];features:unknown;selectedId:string|null;location:[number,number]|null;route:unknown;layer:string;focus?:{coordinate:[number,number];nonce:number}|null|undefined};
 const productionViewer='https://kampusone-mobile-preview.vercel.app/maps/view.html';
 export function CampusMapSurface({payload,onPick,onError}:{payload:MapPayload;onPick:(id:string)=>void;onError:(message:string)=>void}){
  const webRef=useRef<WebView>(null),frameRef=useRef<HTMLIFrameElement>(null),[ready,setReady]=useState(false);const latest=useRef(payload);latest.current=payload;

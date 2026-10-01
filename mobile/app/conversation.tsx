@@ -237,8 +237,7 @@ function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: 
     if (isAudio && url) return;
     setBusy(true);
     try {
-      const nextUrl = await fetchAccess();
-      if (isAudio) setUrl(nextUrl);
+      if (isAudio) setUrl(await fetchAccess());
       else await downloadPrivateFile(message.media_id,message.media_name||'document',message.media_type||'application/octet-stream');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : `${label} unavailable.`);
@@ -621,8 +620,8 @@ export default function ConversationScreen() {
         const kind = asset.type === "video" ? "video" : "image";
         const mimeType = asset.mimeType || (kind === "video" ? "video/mp4" : "image/jpeg");
         const size = asset.fileSize ?? null;
-        if (size && size > (kind === "video" ? 50 : 10) * 1024 * 1024) {
-          throw new Error(kind === "video" ? "Choose videos smaller than 50 MB." : "Choose pictures smaller than 10 MB.");
+        if (size && size > 500 * 1024 * 1024) {
+          throw new Error("Choose pictures or videos up to 500 MB.");
         }
         return {
           localId: Crypto.randomUUID(),

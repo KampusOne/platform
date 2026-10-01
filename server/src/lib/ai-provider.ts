@@ -79,7 +79,7 @@ export function aiMessages(input: AIInput): AIMessage[] {
   }
   return [
     { role: "system", content: aiSystemInstruction(input.mode) + (input.systemContext ? "\n" + input.systemContext : "") },
-    ...(input.history ?? []).slice(-6).flatMap(turn => [{ role: "user" as const, content: turn.prompt }, { role: "assistant" as const, content: turn.text }]),
+    ...(input.history ?? []).slice(input.tier==='pro'?-12:-6).flatMap(turn => [{ role: "user" as const, content: turn.prompt }, { role: "assistant" as const, content: turn.text }]),
     { role: "user", content: input.media ? content : input.prompt || "Read the supplied material." },
   ];
 }

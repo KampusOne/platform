@@ -13,7 +13,7 @@ export async function studentExperienceReady(env: Bindings) {
 export async function studentAIPolicy(env: Bindings, user: AuthenticatedUser) {
   const base = await resolveAIQuota(env, user);
   const pro = await studentExperienceReady(env) ? firstRow(await database(env).execute<{ active: boolean }>(sql`select exists(select 1 from app_private.ai_subscriptions where user_id=${user.id}::uuid and status='ACTIVE' and current_period_end>now()) as active`))?.active === true : false;
-  return { ...base, pro, chat: aiLimit(env.AI_CHAT_WINDOW_LIMIT, 15, 60), study: aiLimit(env.AI_STUDY_TRIAL_LIMIT, 5, 50) };
+  return { ...base, pro:pro||base.unlimited, complimentary:base.unlimited, chat: aiLimit(env.AI_CHAT_WINDOW_LIMIT, 15, 60), study: aiLimit(env.AI_STUDY_TRIAL_LIMIT, 5, 50) };
 }
 export async function studentAIUsage(env: Bindings, userId: string) {
   const row = firstRow(await database(env).execute<{ chat_used: number; study_used: number; day_used: number; total: number; chat_resets_at: string | null; burst_resets_at:string|null; month_used:number; timetable_used:number }>(sql`

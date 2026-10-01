@@ -1,3 +1,4 @@
+import {api} from "./api";
 import { syncWebAlarms, stopWebAlarms } from "./web-alarms";
 import { Platform } from "react-native";
 import { router, type Href } from "expo-router";
@@ -29,6 +30,7 @@ export async function syncAlarms(
   alarms: Alarm[],
   requestPermission = false,
 ): Promise<boolean> {
+  try{const runtime=await api<{policy:{alarms_enabled:boolean}}>("/v1/notifications/runtime");if(!runtime.policy.alarms_enabled)alarms=alarms.map(alarm=>({...alarm,enabled:false}));}catch{/* Keep the last known local schedule available offline. */}
   if (Platform.OS === "web") return syncWebAlarms(alarms, requestPermission);
   const operation = queue
     .catch(() => undefined)

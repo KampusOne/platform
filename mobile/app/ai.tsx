@@ -51,6 +51,7 @@ export default function StudentAI() {
   const [nextOffset,setNextOffset]=useState<number|null>(null);const [historyQuery,setHistoryQuery]=useState("");
   const [deleteId,setDeleteId]=useState<string>();const [confirming,setConfirming]=useState<string>();
   const [preview,setPreview]=useState<{uri:string;name:string}>();
+  const tierChosen=useRef(false);
   const key=useRef(randomUUID()),lock=useRef(false),scroll=useRef<ScrollView>(null);
   const owner=useRef(user?.id);owner.current=user?.id;
   const generation=useRef(0),alive=useRef(true),draftOwner=useRef<string | undefined>(undefined),explicitThread=useRef<{id:string;mode:Mode}|undefined>(undefined);
@@ -63,7 +64,7 @@ export default function StudentAI() {
   const storageKey=`ai-workspace-v3.${user?.id}.${workspace}`;
   const valid=()=>alive.current;
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;};},[]);
-  const loadStatus=useCallback(async()=>{const account=owner.current;try{const result=await api<Status>("/v1/ai/status");if(valid() && owner.current===account)setStatus(result);}catch{if(valid() && owner.current===account)setStatus(undefined);}},[]);
+  const loadStatus=useCallback(async()=>{const account=owner.current;try{const result=await api<Status>("/v1/ai/status");if(valid() && owner.current===account){setStatus(result);if(!tierChosen.current||result.tier!=="pro")setTier(result.tier);}}catch{if(valid() && owner.current===account)setStatus(undefined);}},[]);
   useFocusEffect(useCallback(()=>{void loadStatus();},[loadStatus]));
   const restoreThread=useCallback(async(id:string,version:number)=>{
     const result=await api<{turns:Turn[]}>(`/v1/ai/thread/${id}`);
@@ -72,7 +73,7 @@ export default function StudentAI() {
   },[]);
   useEffect(()=>{
     const version=++generation.current;const account=user?.id;draftOwner.current=account;
-    setHistory([]);setSheet(null);setPreview(undefined);setDeleteId(undefined);setHistoryError("");setSearch("");setNextOffset(null);setLoaded(false);setTurns([]);setPrompt("");setAttachment(undefined);setReplyTo(undefined);setPending(undefined);setError("");setLimit(undefined);setBusy(false);setVoiceActive(false);setVoiceRecording(false);lock.current=false;key.current=randomUUID();setTier("standard");setStatus(undefined);
+    setHistory([]);setSheet(null);setPreview(undefined);setDeleteId(undefined);setHistoryError("");setSearch("");setNextOffset(null);setLoaded(false);setTurns([]);setPrompt("");setAttachment(undefined);setReplyTo(undefined);setPending(undefined);setError("");setLimit(undefined);setBusy(false);setVoiceActive(false);setVoiceRecording(false);lock.current=false;key.current=randomUUID();tierChosen.current=false;setTier("standard");setStatus(undefined);
     setMode(workspace==='ask'?'study':initial==='notes'?'notes':'summary');
     if(!account)return;
     void (async()=>{
@@ -224,8 +225,8 @@ export default function StudentAI() {
         <SafeAreaView edges={['bottom']} style={{backgroundColor:theme.canvas,borderTopLeftRadius:24,borderTopRightRadius:24,width:'100%',maxWidth:760,alignSelf:'center',maxHeight:'82%',padding:22}}>
           <View style={{flexDirection:'row',alignItems:'center',marginBottom:12}}><Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:25,flex:1}}>{sheet==='history'?'History':sheet==='plans'?'Choose your plan':'About Kira'}</Text>{iconButton('close','Close panel',()=>setSheet(null))}</View>
           <ScrollView keyboardShouldPersistTaps="handled">
-            {sheet==='plans'?<View><Pressable accessibilityRole="radio" accessibilityState={{checked:tier==='standard'}} onPress={()=>{setTier('standard');key.current=randomUUID();setSheet(null);}} style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.border,marginBottom:12}}><Text style={{...text,fontFamily:theme.font.semibold}}>Standard</Text><Text style={muted}>Everyday questions, up to {status?.voice?.standardMaxSeconds===30?'30-second':'1-minute'} voice transcription, and five shared Summary / Notes trials.</Text></Pressable>
-              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.brand,marginBottom:16}}><Text style={{...text,fontFamily:theme.font.semibold}}>Pro · ₦6,000 / month</Text><Text style={{...muted,marginTop:5}}>More room for learning and voice transcription up to {status?.voice?.proMaxSeconds===30?'30 seconds':'5 minutes'}.</Text>{status?.tier==='pro'?smallButton('Use Pro',()=>{setTier('pro');key.current=randomUUID();setSheet(null);}):<Text style={{...muted,marginTop:16,color:theme.brand}}>{status?.subscription.checkoutEnabled?'One verified payment. No automatic renewal.':'Monthly checkout is not open yet.'}</Text>}{smallButton(status?.tier==='pro'?'Manage my plan':'View monthly plan',()=>{setSheet(null);router.push('/ai-subscription');})}</View>
+            {sheet==='plans'?<View><Pressable accessibilityRole="radio" accessibilityState={{checked:tier==='standard'}} onPress={()=>{tierChosen.current=true;setTier('standard');key.current=randomUUID();setSheet(null);}} style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.border,marginBottom:12}}><Text style={{...text,fontFamily:theme.font.semibold}}>Standard</Text><Text style={muted}>Everyday questions, up to {status?.voice?.standardMaxSeconds===30?'30-second':'1-minute'} voice transcription, and five shared Summary / Notes trials.</Text></Pressable>
+              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:theme.brand,marginBottom:16}}><Text style={{...text,fontFamily:theme.font.semibold}}>Pro · ₦6,000 / month</Text><Text style={{...muted,marginTop:5}}>More room for learning and voice transcription up to {status?.voice?.proMaxSeconds===30?'30 seconds':'5 minutes'}.</Text>{status?.tier==='pro'?smallButton('Use Pro',()=>{tierChosen.current=true;setTier('pro');key.current=randomUUID();setSheet(null);}):<Text style={{...muted,marginTop:16,color:theme.brand}}>{status?.subscription.checkoutEnabled?'One verified payment. No automatic renewal.':'Monthly checkout is not open yet.'}</Text>}{smallButton(status?.tier==='pro'?'Manage my plan':'View monthly plan',()=>{setSheet(null);router.push('/ai-subscription');})}</View>
               {status?.voice?.longFormReady===false?<Text style={{...muted,marginBottom:8,color:theme.brand}}>Long-form voice is temporarily unavailable on this server; the recorder will stop at 30 seconds.</Text>:null}
               {status?.askSession?<Text style={{...muted,marginBottom:8}}>{status.askSession.remaining===null?'Your Ask sessions have no personal message cap.':`${status.askSession.remaining} Ask message${status.askSession.remaining===1?'':'s'} left in this ${status.askSession.windowMinutes}-minute session.`}</Text>:null}
             </View>:null}
