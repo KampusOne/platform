@@ -25,7 +25,7 @@ const api=createServer((req,res)=>{
  res.setHeader('Access-Control-Allow-Origin','http://localhost:3100');res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Access-Control-Allow-Headers','authorization,content-type,x-device-label');res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,OPTIONS');
  if(req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
  const path=new URL(req.url,'http://localhost:8787').pathname;
- if(req.method==='PUT'&&path==='/v1/applications/draft'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({saved:true,updatedAt:new Date().toISOString()}));return;}
+ if(req.method==='PUT'&&path==='/v1/applications/draft'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({draft:{...draft,updated_at:new Date().toISOString()}}));return;}
  res.setHeader('Content-Type','application/json');res.writeHead(fixtures[path]?200:404);res.end(JSON.stringify(fixtures[path]??{error:{code:'FIXTURE_NOT_FOUND',message:path}}));
 });
 const data=JSON.parse(readFileSync(resolve(root,'database/imports/uniben-osm-2026-10-01.json'),'utf8'));
