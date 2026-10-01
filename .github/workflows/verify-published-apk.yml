@@ -1,0 +1,50 @@
+name: Verify published October APK
+on:
+  push:
+    branches: ["fix/october-124-issues"]
+    paths: [".github/workflows/verify-published-apk.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Inspect the exact published APK
+        run: |
+          curl --fail --silent --show-error --location --retry 2 --max-time 90 https://github.com/KampusOne/platform/releases/download/apk-latest/KampusOne-Android.apk -o KampusOne.apk
+          printf '%s  KampusOne.apk\n' 16370fe405967aa74149fea974526efa01eaadfa24b18bb0d5c5891fa703854a | sha256sum --check -
+          apk_aapt="$(rg --files "$ANDROID_HOME/build-tools" | rg '/aapt$' | sort -V | tail -n 1)"
+          test -n "$apk_aapt"
+          "$apk_aapt" dump badging KampusOne.apk > apk-badging.txt
+          "${apk_aapt%/aapt}/apksigner" verify --print-certs KampusOne.apk > apk-signature.txt
+          python - <<'PY'
+          import json,re,zipfile
+          from pathlib import Path
+          manifest=Path('apk-badging.txt').read_text()
+          package=re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'",manifest)
+          assert package and package.groups()==('app.kampusone.mobile','41','0.3.11'), 'Unexpected packaged version'
+          assert 'android.permission.INTERNET' in manifest
+          assert 'android.permission.POST_NOTIFICATIONS' in manifest
+          with zipfile.ZipFile('KampusOne.apk') as z:
+            bundle=z.read('assets/index.android.bundle')
+          urls=['https://platformp.divine-haze-54eb.workers.dev','https://kampusone-mobile-preview.vercel.app/api']
+          assert all(u.encode() in bundle for u in urls), 'Expected production API addresses absent from bundle'
+          signature=Path('apk-signature.txt').read_text()
+          certificate=re.search(r'Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]+)',signature)
+          assert certificate, 'APK signing certificate missing'
+          proof={'sourceSha':'7e659b5e3ae695a806aeb31c2b8ef4ba2e1f99e8','apkSha256':'16370fe405967aa74149fea974526efa01eaadfa24b18bb0d5c5891fa703854a','package':package.group(1),'versionCode':int(package.group(2)),'versionName':package.group(3),'signatureVerified':True,'signingCertificateSha256':certificate.group(1).lower(),'productionApiAddressesBundled':urls,'notificationPermissionDeclared':True,'physicalDeviceAcceptance':'pending'}
+          Path('apk-inspection.json').write_text(json.dumps(proof,indent=2)+'\n')
+          print(json.dumps(proof))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: October-APK-inspection
+          path: apk-inspection.json
+          if-no-files-found: error
+          retention-days: 14
