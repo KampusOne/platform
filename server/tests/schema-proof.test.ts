@@ -17,6 +17,36 @@ const proof = () => ({
   }),
 });
 describe("correction deployment guard", () => {
+  it("requires platform evidence and rejects an offline rehearsal report", () => {
+    const evidence = proof();
+    const platformProof = {
+      ...evidence,
+      rehearsal: { parentBranchId: "br-quiet-butterfly-ayrj264q", branchId: "br-fixture-rehearsal" },
+      checks: { platform: "passed", fixturesRolledBack: true, currentLiveBranchRehearsal: "passed", existingAccountCountsPreserved: true, mediaAndBookingsPreserved: true, privatePrivileges: "passed" },
+      migrations: groups.platform.map((version: string) => {
+        const bytes = load(version);
+        return { version, sourceBlobSha: createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex") };
+      }),
+    };
+    expect(verifySchemaProof(platformProof, "platform", load)).toBe(groups.platform.length);
+    expect(() => verifySchemaProof({ ...platformProof, rehearsal: undefined }, "platform", load)).toThrow(/rehearsal/);
+    expect(() => verifySchemaProof(evidence, "platform", load)).toThrow();
+    const offline = JSON.parse(readFileSync(new URL("../../database/verification/2026-10-01-offline-live-schema-rehearsal.json", import.meta.url), "utf8"));
+    expect(() => verifySchemaProof(offline, "platform", load)).toThrow();
+  });
+  it("requires the exact compatible source and explicit supersession instead of false original-source evidence", () => {
+    const evidence = proof();
+    const compatible = "20260930190000_live_legacy_prerequisites";
+    const bytes = load(compatible);
+    const amended = {
+      ...evidence,
+      migrations: evidence.migrations.filter((item: { version: string }) => item.version !== "20260925110000_notification_sound_catalogue").concat({ version: compatible, sourceBlobSha: createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex") }),
+      supersededPrerequisites: [{ version: "20260925110000_notification_sound_catalogue", by: compatible }],
+    };
+    expect(verifySchemaProof(amended, "corrections", load)).toBe(groups.corrections.length);
+    expect(() => verifySchemaProof({ ...amended, supersededPrerequisites: [] }, "corrections", load)).toThrow();
+    expect(() => verifySchemaProof(amended, "corrections", version => version === compatible ? "changed SQL" : load(version))).toThrow(/changed/);
+  });
   it("requires reviewed evidence for every exact migration file", () => {
     expect(verifySchemaProof(proof(), "corrections", load)).toBe(groups.corrections.length);
     expect(groups.corrections.map((name: string) => `${name}.sql`).sort()).toEqual(readdirSync(new URL("../../database/neon/migrations/", import.meta.url)).filter((name: string) => name.startsWith("20260921") || name.startsWith("20260922") || name.startsWith("20260924") || name.startsWith("20260925")).sort());

@@ -2,7 +2,17 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+const compatibleVersion = "20260930190000_live_legacy_prerequisites";
+const compatiblePrerequisites = new Set([
+  "20260925110000_notification_sound_catalogue",
+  "20260928120500_profile_activity_dismissals_and_demo_retirement",
+]);
+const manifest = JSON.parse(readFileSync(new URL("../../database/verification/2026-09-30-migration-manifest.json", import.meta.url), "utf8"));
+
 export const groups = {
+  platform: manifest.migrations
+    .filter(migration => migration.version >= "20260921000000" && !compatiblePrerequisites.has(migration.version))
+    .map(migration => migration.version),
   corrections: [
     "20260921100000_operations_permissions_academic",
     "20260921110000_ai_history_and_streak_activity",
@@ -52,12 +62,27 @@ export function verifySchemaProof(proof, group, loadMigration) {
     proof?.checks?.fixturesRolledBack !== true ||
     !Array.isArray(proof?.migrations)
   ) throw new Error("Approved and verified production migration proof is required");
+  if (group === "platform" && (
+    proof?.rehearsal?.parentBranchId !== "br-quiet-butterfly-ayrj264q" ||
+    !/^br-[a-z0-9-]+$/.test(proof?.rehearsal?.branchId ?? "") ||
+    proof.rehearsal.branchId === proof.branchId ||
+    proof?.checks?.currentLiveBranchRehearsal !== "passed" ||
+    proof?.checks?.existingAccountCountsPreserved !== true ||
+    proof?.checks?.mediaAndBookingsPreserved !== true ||
+    proof?.checks?.privatePrivileges !== "passed"
+  )) throw new Error("Current production branch rehearsal and data-preservation evidence are required");
   for (const version of required) {
-    const records = proof.migrations.filter((item) => item.version === version);
+    // Never claim the original SQL ran when only its compatible prerequisites
+    // were applied. Accept the specifically reviewed replacement only when its
+    // exact source and the supersession are both recorded in production proof.
+    const replaced = compatiblePrerequisites.has(version) &&
+      proof.supersededPrerequisites?.some(item => item.version === version && item.by === compatibleVersion);
+    const verifiedVersion = replaced ? compatibleVersion : version;
+    const records = proof.migrations.filter((item) => item.version === verifiedVersion);
     if (records.length !== 1 || !/^[a-f0-9]{40}$/.test(records[0].sourceBlobSha)) {
       throw new Error(`Missing or invalid proof for ${version}`);
     }
-    const bytes = Buffer.from(loadMigration(version));
+    const bytes = Buffer.from(loadMigration(verifiedVersion));
     const actual = createHash("sha1")
       .update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
     if (actual !== records[0].sourceBlobSha) {
@@ -72,7 +97,8 @@ export function verifySchemaProof(proof, group, loadMigration) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const root = new URL("../../", import.meta.url);
   try {
-    const proof = JSON.parse(readFileSync(new URL(`database/verification/${process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json"}`, root), "utf8"));
+    const proofFile = process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
+    const proof = JSON.parse(readFileSync(new URL(`database/verification/${proofFile}`, root), "utf8"));
     const count = verifySchemaProof(proof, process.argv[2], (version) =>
       readFileSync(new URL(`database/neon/migrations/${version}.sql`, root)));
     console.log(`Verified recorded production proof: ${process.argv[2]} (${count} migration files).`);

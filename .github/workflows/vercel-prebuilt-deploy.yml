@@ -1,10 +1,11 @@
 name: Deploy verified Vercel surfaces
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Deploy Worker"]
+    types: [completed]
     branches: [main]
-    paths:
-      - ".github/workflows/vercel-prebuilt-deploy.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,6 +17,7 @@ concurrency:
 jobs:
   portal:
     name: Portal production
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -25,9 +27,15 @@ jobs:
       VERCEL_PROJECT_ID: prj_wFG0WNwuVWk522AL6ocICvgGw2x4
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Verify current production migration evidence
+        run: node ../server/scripts/verify-schema-proof.mjs platform
+      - name: Install and check portal
+        run: npm ci && npm run check && npm run lint
       - name: Pull Vercel production settings
         run: npx --yes vercel@latest pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Build locally for Vercel
@@ -44,6 +52,7 @@ jobs:
 
   mobile-preview:
     name: Mobile preview production
+    needs: portal
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -53,6 +62,8 @@ jobs:
       VERCEL_PROJECT_ID: prj_v9SX7CdbfMvkz7Vq2bVjXZdv88un
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -63,4 +74,5 @@ jobs:
       - name: Deploy prebuilt mobile preview
         run: npx --yes vercel@latest deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}"
 
-# Triggered for the verified 2026-09-28 portal/mobile release.
+# The portal follows a successful Worker release of the same commit. Manual
+# deployment still requires recorded, verified production migration evidence.

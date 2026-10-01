@@ -30,7 +30,7 @@ const manifest = JSON.parse(
 );
 const snapshotPath = resolve(
   root,
-  value("--snapshot") ?? "database/verification/2026-10-01-live-schema.json",
+    value("--snapshot") ?? manifest.liveReconciliation?.schema ?? "database/verification/2026-10-01-live-schema.json",
 );
 const snapshotBytes = readFileSync(snapshotPath),
   snapshot = JSON.parse(snapshotBytes.toString("utf8"));

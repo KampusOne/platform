@@ -33,6 +33,8 @@ const knownRoutes = new Set([
   "tutorials",
   "academic-calendar",
   "account-edit",
+  "account-ownership",
+  "profile-settings",
   "account",
   "agent-create",
   "agent",

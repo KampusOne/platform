@@ -1,7 +1,7 @@
 # KampusOne implementation plan and migration addendum
 Prepared: 30 September 2026, Africa/Lagos  
 Target deployment window: 1 October 2026, once database capacity and deployment prerequisites are confirmed  
-Status: implementation is on `feat/business-platform-20260930`; twelve new SQL versions are queued and locally rehearsed. See `docs/phases/2026-09-30-platform-upgrade.md` for current verification and release dependencies. Production migrations and a new APK remain pending.
+Status: implementation is on `feat/business-platform-20260930`; thirteen new SQL versions are queued, and forty candidate versions pass an offline rehearsal against refreshed live structure. See `docs/phases/2026-10-01-settings-catalogue-release-preparation.md` for current evidence and release blockers. Production migrations, deployments and a new APK remain pending.
 
 ## Scope and continuity
 
@@ -12,6 +12,14 @@ The earlier **KampusOne-Round2-Report.txt**, version 2, contains a 27 September 
 The original planning snapshot preceded repository access. The 30 filenames and hashes below preserve the supplied report for historical reconciliation. A checkout and executable SQL now exist; the dated migration manifest and October 1 read-only reconciliation supersede this planning snapshot for current delivery state.
 
 The July PRDs are planning baselines. This request and the existing implementation take precedence over older stack or pricing assumptions. The recent supplied security screenshots describe an Expo app, Next.js portals, a Cloudflare Worker API and Neon. Retain the actual deployed architecture after inspecting the repository; do not rebuild the project or switch database providers.
+
+### October 1 owner corrections
+
+- Move Delete account under Account manager → Profile settings → Account ownership, retaining explicit account-deletion confirmation.
+- Use three new illustrations of one original character doing different activities in the current terracotta/cream drawing style. Existing illustrations may inform style, but must not be substituted as the final originals.
+- Preserve the full institution catalogue and the selected institution's faculties/departments in separate state. Ignore obsolete requests and preserve existing academic/student IDs across imports. Fill missing structure from sourced data rather than inventing it.
+- Reconcile and rehearse the necessary migrations before production; update the API before releasing the matching Vercel agent/admin portal. Verify the actual project, owned hostnames and source revision. Prepare an APK only after deployed service checks succeed.
+- Current academic seeds provide departments for 62 of 328 institutions; full national coverage remains open. Neon branch capacity and repository publication authorization are separate release blockers, recorded in the latest phase report.
 
 ## 1. Public business profiles and seller dashboard
 
@@ -444,4 +452,3 @@ Brand baseline: Terracotta #C35D38, Deep Terracotta #A8462E, Clay #D9855F, Soft 
 - GA4 reporting API: https://developers.google.com/analytics/devguides/reporting/data/v1
 
 Fee examples are indicative arithmetic for the cited local checkout schedule, not a promise of the merchant's final settlement. Verify applicable account-specific/channel rules and actual provider records during implementation.
-

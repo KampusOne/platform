@@ -20,19 +20,19 @@ import {
 } from "@/src/lib/entry-preferences";
 const pages = [
   {
-    title: "Your day, already ready",
+    title: "Plan your campus day",
     body: "Keep classes, notes and reminders together.",
-    image: require("@/assets/illustrations/auth-study-v2.png"),
+    image: require("@/assets/illustrations/intro-plan-original.png"),
   },
   {
-    title: "Find your campus people",
+    title: "Find your people",
     body: "Join conversations and share what matters.",
-    image: require("@/assets/illustrations/feed-empty-v2.png"),
+    image: require("@/assets/illustrations/intro-people-original.png"),
   },
   {
-    title: "More from campus life",
+    title: "Make campus life easier",
     body: "Shop local, learn together and get things delivered.",
-    image: require("@/assets/illustrations/home-student-v2.png"),
+    image: require("@/assets/illustrations/intro-services-original.png"),
   },
 ] as const;
 export default function FirstInstallIntro() {

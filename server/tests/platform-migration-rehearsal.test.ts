@@ -20,8 +20,8 @@ beforeAll(async()=>{
 });
 afterAll(async()=>{await db?.close();});
 describe("ordered platform migration rehearsal",()=>{
- it("applies the exact twelve new versions together on the schema-only baseline",async()=>{
-  expect(queued).toHaveLength(12);expect(queued.map(m=>m.version)).toEqual(queued.map(m=>m.version).sort());
+ it("applies the exact thirteen new versions together on the schema-only baseline",async()=>{
+  expect(queued).toHaveLength(13);expect(queued.map(m=>m.version)).toEqual(queued.map(m=>m.version).sort());
   const tables=(await db.query<{name:string}>("select tablename name from pg_tables where schemaname='app_private'")).rows.map(r=>r.name);
   expect(tables).toEqual(expect.arrayContaining(["staff_account_provisions","operations_documents","managed_publishers","agent_identity_submissions","order_price_snapshots","tutorial_material_purchases","agent_payout_settlements"]));
   const columns=(await db.query<{column_name:string}>("select column_name from information_schema.columns where table_schema='public'and table_name='product_events'")).rows.map(r=>r.column_name);expect(columns).toEqual(expect.arrayContaining(["platform","action","component","percent_scrolled"]));

@@ -6,6 +6,10 @@ on:
     paths:
       - ".github/workflows/deploy-worker.yml"
       - "packages/contracts/**"
+      - "packages/design-tokens/**"
+      - "portal/**"
+      - "mobile/**"
+      - ".github/workflows/vercel-prebuilt-deploy.yml"
       - "server/**"
       - "database/verification/**"
       - "database/neon/migrations/**"
@@ -13,6 +17,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: worker-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -65,6 +73,8 @@ jobs:
           fi
       - name: Guard September 21 correction migrations
         run: node server/scripts/verify-schema-proof.mjs corrections
+      - name: Guard current platform and onboarding migrations
+        run: node server/scripts/verify-schema-proof.mjs platform
       - name: Deploy verified Worker
         uses: cloudflare/wrangler-action@v3
         with:

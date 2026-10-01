@@ -1,14 +1,14 @@
 import Image from "next/image";
-import day from "../../mobile/assets/illustrations/auth-study-v2.png";
-import people from "../../mobile/assets/illustrations/feed-empty-v2.png";
-import market from "../../mobile/assets/illustrations/home-student-v2.png";
+import day from "../../mobile/assets/illustrations/intro-plan-original.png";
+import people from "../../mobile/assets/illustrations/intro-people-original.png";
+import market from "../../mobile/assets/illustrations/intro-services-original.png";
 export function AgentAccessIllustration() {
   return (
     <Image
       className="agent-illustration"
       src={market}
       sizes="(max-width: 800px) 90vw, 480px"
-      alt="A KampusOne student checking their phone"
+      alt="A KampusOne student picking up a campus purchase"
       priority
     />
   );

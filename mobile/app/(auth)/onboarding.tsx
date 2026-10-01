@@ -308,6 +308,10 @@ export default function OnboardingScreen() {
   const { profile, reloadProfile, signOut } = useAuth();
   const [step, setStep] = useState(0);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [academicStructure, setAcademicStructure] = useState<{
+    universityId: string;
+    data: Catalog;
+  } | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [structureLoading, setStructureLoading] = useState(false);
   const [structureError, setStructureError] = useState("");
@@ -357,15 +361,21 @@ export default function OnboardingScreen() {
     void loadCatalog();
   }, [loadCatalog]);
   useEffect(() => {
-    if (!universityId) return;
+    setAcademicStructure(null);
+    setStructureError("");
+    if (!universityId) {
+      setStructureLoading(false);
+      return;
+    }
     let live = true;
     setStructureLoading(true);
-    setStructureError("");
-    setCatalog((current) => current ? { ...current, faculties: [], departments: [], courses: [] } : current);
     void api<Catalog>(`/v1/student/catalog?universityId=${encodeURIComponent(universityId)}`)
       .then((data) => {
         if (!live) return;
-        setCatalog((current) => current ? { ...current, faculties: data.faculties, departments: data.departments, courses: data.courses } : data);
+        if (!data.universities.some((item) => item.id === universityId)) {
+          throw new Error("The selected university is no longer available.");
+        }
+        setAcademicStructure({ universityId, data });
         // Do not leave a student at an unusable set of empty pickers.
         if (!data.faculties.length) {
           setMissingKind("FACULTY");
@@ -385,22 +395,24 @@ export default function OnboardingScreen() {
 
   const faculties = useMemo(
     () =>
-      catalog?.faculties.filter(
+      academicStructure?.universityId === universityId ? academicStructure.data.faculties.filter(
         (item) => item.university_id === universityId,
-      ) ?? [],
-    [catalog, universityId],
+      ) : [],
+    [academicStructure, universityId],
   );
   const departments = useMemo(
     () =>
-      catalog?.departments.filter((item) => item.faculty_id === facultyId) ??
-      [],
-    [catalog, facultyId],
+      academicStructure?.universityId === universityId
+        ? academicStructure.data.departments.filter((item) => item.faculty_id === facultyId && faculties.some((faculty) => faculty.id === item.faculty_id))
+        : [],
+    [academicStructure, universityId, faculties, facultyId],
   );
   const courses = useMemo(
     () =>
-      catalog?.courses.filter((item) => item.department_id === departmentId) ??
-      [],
-    [catalog, departmentId],
+      academicStructure?.universityId === universityId
+        ? academicStructure.data.courses.filter((item) => item.department_id === departmentId && departments.some((department) => department.id === item.department_id))
+        : [],
+    [academicStructure, universityId, departments, departmentId],
   );
 
   useEffect(() => {
@@ -443,6 +455,8 @@ export default function OnboardingScreen() {
           : false;
   const schoolStepComplete = Boolean(
     universityId && normalizedBirthDate && !structureLoading &&
+    ((missingAcademic && missingKind === "FACULTY") ||
+      (!structureError && academicStructure?.universityId === universityId)) &&
     (missingAcademic ? missingAcademicComplete : facultyId && departmentId) &&
     (!courseId || courses.some((item) => item.id === courseId)),
   );

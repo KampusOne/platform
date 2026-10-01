@@ -246,7 +246,7 @@ export default function SettingsScreen() {
         }
       />
       <ToolRow title="Help & support" onPress={() => router.push("/support")} />
-      <ToolRow title="Delete account" icon="trash-outline" detail="Permanently remove your account and personal content" onPress={() => router.push("/delete-account")} />
+      <ToolRow title="Account manager" icon="person-outline" detail="Profile settings, security and device sessions" onPress={() => router.push("/account")} />
     </ToolPage>
   );
 }

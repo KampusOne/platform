@@ -61,9 +61,10 @@ export default function Account() {
     <ToolPage title="Account & security">
       <ToolRow title={user?.email ?? "Account"} icon="mail-outline" />
       <ToolRow
-        title="Edit profile"
+        title="Profile settings"
         icon="person-outline"
-        onPress={() => router.push("/account-edit")}
+        detail="Personal details, privacy and account ownership"
+        onPress={() => router.push("/profile-settings")}
       />
       <ToolRow
         title="Change password"
