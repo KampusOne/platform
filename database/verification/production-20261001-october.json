@@ -238,5 +238,10 @@
       "appliedAt": "2026-10-01T14:05:24.968Z",
       "sha256": "dd98c733725b9f89f0e137c74340652dd342a36ca9e33d81c40ebbb6d7486154"
     }
-  ]
+  ],
+  "identityProvisioning": {
+    "encryptedIdentity": 0,
+    "encryptedDrafts": 0,
+    "checkedAt": "2026-10-01T14:05:46.507Z"
+  }
 }
