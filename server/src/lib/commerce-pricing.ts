@@ -110,7 +110,7 @@ function responseQuote(q: {
           fareKobo: f.fareKobo,
           routeMetres: f.routeMetres,
           distanceBasis: f.distanceBasis??'CAMPUS_ZONE',
-          route:f.route??null,pickupLocationBasis:f.pickupLocationBasis??null,
+          route:f.route??null,routeAccessNotice:(f.route as {notice?:string}|null)?.notice??null,pickupLocationBasis:f.pickupLocationBasis??null,
         }
       : null,
     expiresAt: q.expires_at,

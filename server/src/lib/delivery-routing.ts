@@ -24,5 +24,5 @@ export async function campusDeliveryRoute(env:Bindings,universityId:string,campu
  where p.campus_id=${campusId}::uuid and p.institution_id=${universityId}::uuid and (f.tags->>'highway'in('cycleway','residential','service','unclassified','living_street','tertiary','tertiary_link','secondary','secondary_link','primary','primary_link')or(f.tags->>'highway'in('footway','path','track','pedestrian')and f.tags->>'bicycle'in('yes','designated','permissive')))  limit 5000`)).rows;
  const route=walkingRoute(paths,origin,destination,false,true);
  if(!route)throw new AppError(422,'BAD_REQUEST','A mapped rider route is unavailable between these points. Choose pickup or another mapped delivery point.');
- return {distanceMetres:route.distanceMetres,geometry:route.geometry,originSnapMetres:route.originSnapMetres,destinationSnapMetres:route.destinationSnapMetres,source:'OSM_BICYCLE_NETWORK' as const};
+ return {distanceMetres:route.networkDistanceMetres,geometry:route.geometry,originSnapMetres:route.originSnapMetres,destinationSnapMetres:route.destinationSnapMetres,notice:route.originSnapMetres>10||route.destinationSnapMetres>10?'Road-to-door access still needs verification. The reviewed distance covers the mapped road route.':null,source:'OSM_BICYCLE_NETWORK' as const};
 }

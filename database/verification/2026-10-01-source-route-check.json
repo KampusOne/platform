@@ -1,0 +1,249 @@
+{
+  "dataset": "database/imports/uniben-osm-2026-10-01.json",
+  "mappedRoads": 769,
+  "successfulRoutes": 30,
+  "unavailableRoutes": 0,
+  "routes": [
+    {
+      "from": "ClinicalHostel",
+      "to": "FoodCourt",
+      "mappedRoadDistanceMetres": 209,
+      "segments": 10,
+      "originSnapMetres": 111,
+      "destinationSnapMetres": 31
+    },
+    {
+      "from": "ClinicalHostel",
+      "to": "June12",
+      "mappedRoadDistanceMetres": 882,
+      "segments": 17,
+      "originSnapMetres": 111,
+      "destinationSnapMetres": 23
+    },
+    {
+      "from": "ClinicalHostel",
+      "to": "Management",
+      "mappedRoadDistanceMetres": 478,
+      "segments": 10,
+      "originSnapMetres": 111,
+      "destinationSnapMetres": 100
+    },
+    {
+      "from": "ClinicalHostel",
+      "to": "Medical",
+      "mappedRoadDistanceMetres": 766,
+      "segments": 16,
+      "originSnapMetres": 111,
+      "destinationSnapMetres": 35
+    },
+    {
+      "from": "ClinicalHostel",
+      "to": "Hall6",
+      "mappedRoadDistanceMetres": 1059,
+      "segments": 19,
+      "originSnapMetres": 111,
+      "destinationSnapMetres": 33
+    },
+    {
+      "from": "FoodCourt",
+      "to": "ClinicalHostel",
+      "mappedRoadDistanceMetres": 209,
+      "segments": 10,
+      "originSnapMetres": 31,
+      "destinationSnapMetres": 111
+    },
+    {
+      "from": "FoodCourt",
+      "to": "June12",
+      "mappedRoadDistanceMetres": 775,
+      "segments": 16,
+      "originSnapMetres": 31,
+      "destinationSnapMetres": 23
+    },
+    {
+      "from": "FoodCourt",
+      "to": "Management",
+      "mappedRoadDistanceMetres": 549,
+      "segments": 11,
+      "originSnapMetres": 31,
+      "destinationSnapMetres": 100
+    },
+    {
+      "from": "FoodCourt",
+      "to": "Medical",
+      "mappedRoadDistanceMetres": 658,
+      "segments": 15,
+      "originSnapMetres": 31,
+      "destinationSnapMetres": 35
+    },
+    {
+      "from": "FoodCourt",
+      "to": "Hall6",
+      "mappedRoadDistanceMetres": 951,
+      "segments": 18,
+      "originSnapMetres": 31,
+      "destinationSnapMetres": 33
+    },
+    {
+      "from": "June12",
+      "to": "ClinicalHostel",
+      "mappedRoadDistanceMetres": 882,
+      "segments": 17,
+      "originSnapMetres": 23,
+      "destinationSnapMetres": 111
+    },
+    {
+      "from": "June12",
+      "to": "FoodCourt",
+      "mappedRoadDistanceMetres": 775,
+      "segments": 16,
+      "originSnapMetres": 23,
+      "destinationSnapMetres": 31
+    },
+    {
+      "from": "June12",
+      "to": "Management",
+      "mappedRoadDistanceMetres": 457,
+      "segments": 16,
+      "originSnapMetres": 23,
+      "destinationSnapMetres": 100
+    },
+    {
+      "from": "June12",
+      "to": "Medical",
+      "mappedRoadDistanceMetres": 607,
+      "segments": 14,
+      "originSnapMetres": 23,
+      "destinationSnapMetres": 35
+    },
+    {
+      "from": "June12",
+      "to": "Hall6",
+      "mappedRoadDistanceMetres": 901,
+      "segments": 17,
+      "originSnapMetres": 23,
+      "destinationSnapMetres": 33
+    },
+    {
+      "from": "Management",
+      "to": "ClinicalHostel",
+      "mappedRoadDistanceMetres": 478,
+      "segments": 10,
+      "originSnapMetres": 100,
+      "destinationSnapMetres": 111
+    },
+    {
+      "from": "Management",
+      "to": "FoodCourt",
+      "mappedRoadDistanceMetres": 549,
+      "segments": 11,
+      "originSnapMetres": 100,
+      "destinationSnapMetres": 31
+    },
+    {
+      "from": "Management",
+      "to": "June12",
+      "mappedRoadDistanceMetres": 457,
+      "segments": 16,
+      "originSnapMetres": 100,
+      "destinationSnapMetres": 23
+    },
+    {
+      "from": "Management",
+      "to": "Medical",
+      "mappedRoadDistanceMetres": 1042,
+      "segments": 21,
+      "originSnapMetres": 100,
+      "destinationSnapMetres": 35
+    },
+    {
+      "from": "Management",
+      "to": "Hall6",
+      "mappedRoadDistanceMetres": 1335,
+      "segments": 24,
+      "originSnapMetres": 100,
+      "destinationSnapMetres": 33
+    },
+    {
+      "from": "Medical",
+      "to": "ClinicalHostel",
+      "mappedRoadDistanceMetres": 766,
+      "segments": 16,
+      "originSnapMetres": 35,
+      "destinationSnapMetres": 111
+    },
+    {
+      "from": "Medical",
+      "to": "FoodCourt",
+      "mappedRoadDistanceMetres": 658,
+      "segments": 15,
+      "originSnapMetres": 35,
+      "destinationSnapMetres": 31
+    },
+    {
+      "from": "Medical",
+      "to": "June12",
+      "mappedRoadDistanceMetres": 607,
+      "segments": 14,
+      "originSnapMetres": 35,
+      "destinationSnapMetres": 23
+    },
+    {
+      "from": "Medical",
+      "to": "Management",
+      "mappedRoadDistanceMetres": 1042,
+      "segments": 21,
+      "originSnapMetres": 35,
+      "destinationSnapMetres": 100
+    },
+    {
+      "from": "Medical",
+      "to": "Hall6",
+      "mappedRoadDistanceMetres": 510,
+      "segments": 14,
+      "originSnapMetres": 35,
+      "destinationSnapMetres": 33
+    },
+    {
+      "from": "Hall6",
+      "to": "ClinicalHostel",
+      "mappedRoadDistanceMetres": 1059,
+      "segments": 19,
+      "originSnapMetres": 33,
+      "destinationSnapMetres": 111
+    },
+    {
+      "from": "Hall6",
+      "to": "FoodCourt",
+      "mappedRoadDistanceMetres": 951,
+      "segments": 18,
+      "originSnapMetres": 33,
+      "destinationSnapMetres": 31
+    },
+    {
+      "from": "Hall6",
+      "to": "June12",
+      "mappedRoadDistanceMetres": 901,
+      "segments": 17,
+      "originSnapMetres": 33,
+      "destinationSnapMetres": 23
+    },
+    {
+      "from": "Hall6",
+      "to": "Management",
+      "mappedRoadDistanceMetres": 1335,
+      "segments": 24,
+      "originSnapMetres": 33,
+      "destinationSnapMetres": 100
+    },
+    {
+      "from": "Hall6",
+      "to": "Medical",
+      "mappedRoadDistanceMetres": 510,
+      "segments": 14,
+      "originSnapMetres": 33,
+      "destinationSnapMetres": 35
+    }
+  ],
+  "note": "Actual OSM topology and sourced footprint centroids. Snaps are not surveyed entrances. This offline check does not test a real rider device or live payment."
+}

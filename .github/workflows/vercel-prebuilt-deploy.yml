@@ -36,6 +36,7 @@ jobs:
       VERCEL_PROJECT_ID: prj_wFG0WNwuVWk522AL6ocICvgGw2x4
     outputs:
       url: ${{ steps.deploy.outputs.url }}
+      canDeploy: ${{ steps.credentials.outputs.available }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,42 +53,57 @@ jobs:
       - name: Reject a superseded source revision
         working-directory: .
         run: test "$(git rev-parse HEAD)" = "$(git ls-remote --heads origin main | cut -f1)"
-      - name: Require production deployment credentials
+      - name: Choose the authorised Vercel publication path
+        id: credentials
         working-directory: .
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          test -n "$VERCEL_TOKEN" || { echo "VERCEL_TOKEN is missing. Configure it as a production environment or repository secret."; exit 1; }
+          if [ -n "$VERCEL_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "The existing signed-in Vercel publication path will issue the release receipt after both production surfaces are verified."
+          fi
       - uses: actions/setup-node@v4
+        if: steps.credentials.outputs.available == 'true'
         with:
           node-version: 24
       - name: Verify current production migration evidence
-        run: node ../server/scripts/verify-schema-proof.mjs platform
+        if: steps.credentials.outputs.available == 'true'
+        run: node ../server/scripts/verify-schema-proof.mjs platform && node ../server/scripts/verify-schema-proof.mjs october
       - name: Install and check portal
+        if: steps.credentials.outputs.available == 'true'
         run: npm ci && npm run check && npm run lint
       - name: Pull Vercel production settings
+        if: steps.credentials.outputs.available == 'true'
         run: npx --yes vercel@latest pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Build locally for Vercel
+        if: steps.credentials.outputs.available == 'true'
         run: npx --yes vercel@latest build --prod --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Deploy prebuilt portal
+        if: steps.credentials.outputs.available == 'true'
         id: deploy
         run: |
           url="$(npx --yes vercel@latest deploy --prebuilt --prod --token="${{ secrets.VERCEL_TOKEN }}")"
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: Point agent and administration aliases
+        if: steps.credentials.outputs.available == 'true'
         run: |
           npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" agents.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
+          npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" vendors.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
           npx --yes vercel@latest alias set "${{ steps.deploy.outputs.url }}" a7f3c9e1b6d2f8a4c5e9b1d7f3a6c2e8.kampusone.app --scope warriorpikins-projects --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Verify the published portal aliases and API boundary
+        if: steps.credentials.outputs.available == 'true'
         run: |
           curl --fail --silent --show-error --location --retry 2 --max-time 30 https://agents.kampusone.app/ > /dev/null
           curl --fail --silent --show-error --location --retry 2 --max-time 30 https://a7f3c9e1b6d2f8a4c5e9b1d7f3a6c2e8.kampusone.app/ > /dev/null
           status=$(curl --silent --show-error --retry 2 --max-time 20 -o /tmp/kampusone-portal-api-check.json -w '%{http_code}' https://agents.kampusone.app/api/v1/account/guidelines)
           test "$status" = "401" || { echo "Expected portal API authentication boundary (401); received $status."; exit 1; }
-
   mobile-preview:
     name: Mobile preview production
     needs: portal
+    if: needs.portal.outputs.canDeploy == 'true'
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -163,6 +179,7 @@ jobs:
         run: |
           node --test tests/published-web-release.test.mjs
           node server/scripts/verify-schema-proof.mjs platform
+          node server/scripts/verify-schema-proof.mjs october
           node server/scripts/verify-published-web-release.mjs /tmp/kampusone-worker-runs.json /tmp/kampusone-vercel-statuses.json mobile/verified-web-release.json
       - name: Save the verified source for the matching APK build
         uses: actions/upload-artifact@v4

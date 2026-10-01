@@ -64,6 +64,7 @@ jobs:
           API_URL: https://platformp.divine-haze-54eb.workers.dev
         run: |
           node server/scripts/verify-schema-proof.mjs platform
+          node server/scripts/verify-schema-proof.mjs october
           curl --fail --silent --show-error --retry 2 --max-time 20 "$API_URL/health/ready"
       - name: Configure Android push credentials
         env:

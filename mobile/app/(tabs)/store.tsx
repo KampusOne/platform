@@ -63,7 +63,7 @@ type CheckoutQuote = {
     totalKobo: number;
   };
   expiresAt: string;
-  fare: { routeMetres: number; distanceBasis: string } | null;
+  fare: { routeMetres: number; distanceBasis: string;routeAccessNotice?:string|null } | null;
 };
 type Cart = Record<string, number>;
 type CatalogIssue = { code: string; message: string };
@@ -1062,6 +1062,7 @@ export default function StoreScreen() {
                         {(validQuote.fare.routeMetres / 1000).toFixed(2)} km
                       </Text>
                     ) : null}
+                    {validQuote?.fare?.routeAccessNotice?<Text style={styles.totalLabel}>{validQuote.fare.routeAccessNotice}</Text>:null}
                     <View style={[styles.totalRow, styles.grandTotal]}>
                       <Text style={styles.grandLabel}>Total</Text>
                       <Text style={styles.grandValue}>
