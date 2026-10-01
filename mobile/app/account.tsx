@@ -7,6 +7,7 @@ import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 import { useToast } from "@/src/components/toast";
 import { api } from "@/src/lib/api";
+import { useCapabilities } from "@/src/components/agent-shortcuts";
 type Device = {
   id: string;
   device_label: string;
@@ -17,6 +18,7 @@ export default function Account() {
   const { user, signOut } = useAuth();
   const { theme } = useAppearance();
   const toast = useToast();
+  const capabilities = useCapabilities();
   const [devices, setDevices] = useState<Device[]>([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -68,6 +70,12 @@ export default function Account() {
         icon="key-outline"
         onPress={() => router.push("/forgot-password")}
       />
+      {capabilities.profiles.map(profile => <ToolRow key={profile.id}
+        title={`Edit ${profile.agent_type.toLowerCase()} profile`}
+        detail={profile.display_name}
+        icon={profile.agent_type === "VENDOR" ? "storefront-outline" : profile.agent_type === "TUTOR" ? "school-outline" : "bicycle-outline"}
+        onPress={() => router.push({ pathname: "/business-profile-edit", params: { id: profile.id } })}
+      />)}
       <ToolRow
         title="Data and privacy requests"
         icon="shield-checkmark-outline"

@@ -1,5 +1,8 @@
+import { z } from "@kampusone/contracts";
+import { input, id } from "../lib/input";
+import { readPublicBusiness } from "../lib/public-business";
 import { sql } from "drizzle-orm";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 
 import {
   agentApplicationSchema,
@@ -101,6 +104,85 @@ async function operationalVendorProfile(env: Bindings, userId: string) {
   }
   return profile;
 }
+
+
+// Public business presentation is independent of commerce activation.
+const publicBusinessSchema = z.object({
+  displayName: z.string().trim().min(2).max(120),
+  biography: z.string().trim().max(2000),
+  categories: z.array(z.string().trim().min(2).max(50)).max(8),
+  phone: z.string().trim().regex(/^\+234[789][0-9]{9}$/).nullable(),
+  whatsapp: z.string().trim().regex(/^\+234[789][0-9]{9}$/).nullable(),
+  pickupLocation: z.string().trim().max(500).nullable(),
+  avatarMediaId: z.string().uuid().nullable().optional(),
+  coverMediaId: z.string().uuid().nullable().optional(),
+}).strict();
+
+async function ownBusiness(context: Context<{ Bindings: Bindings; Variables: Variables }>) {
+  const user = currentUser(context);
+  const row = firstRow(await database(context.env).execute<{ id: string; university_id: string; public_details: Record<string, unknown> }>(sql`
+    select a.id,a.university_id,coalesce(to_jsonb(a)->'public_details','{}'::jsonb) as public_details
+    from public.agent_profiles a where a.id=${id(context.req.param("id") ?? "")}::uuid
+      and a.user_id=${user.id}::uuid and a.university_id=${user.universityId}::uuid and a.status='ACTIVE'
+  `));
+  if (!row) throw new AppError(404,"NOT_FOUND","This approved business profile is not available.");
+  return row;
+}
+
+async function businessProfilesWritable(env: Bindings) {
+  return !!firstRow(await database(env).execute<{ ready: boolean }>(sql`
+    select exists(select 1 from information_schema.columns
+      where table_schema='public' and table_name='agent_profiles' and column_name='public_details') as ready
+  `))?.ready;
+}
+
+agentRoutes.get("/public-profile/:id", async context => {
+  const owned = await ownBusiness(context);
+  const result = await readPublicBusiness(context.env,currentUser(context),owned.id);
+  const s = result.service;
+  return context.json({
+    profile: {
+      agentType:s.agent_type,
+      displayName:s.display_name,biography:s.biography ?? "",categories:s.categories,
+      phone:s.contact_phone_e164,whatsapp:s.whatsapp_e164,pickupLocation:s.pickup_location,
+      profileImageUrl:s.profile_image_url,coverImageUrl:s.cover_image_url,
+      avatarMediaId:owned.public_details.avatarMediaId ?? null,
+      coverMediaId:owned.public_details.coverMediaId ?? null,
+    },
+    editable:await businessProfilesWritable(context.env),
+  });
+});
+
+agentRoutes.put("/public-profile/:id", async context => {
+  const owned = await ownBusiness(context);
+  if (!await businessProfilesWritable(context.env))
+    throw new AppError(503,"PROVIDER_UNAVAILABLE","Business profile editing is awaiting the scheduled database update.");
+  const data = await input(context,publicBusinessSchema);
+  const details: Record<string,unknown> = { ...owned.public_details,...data,categories:[...new Set(data.categories)] };
+  for (const [field,urlField] of [["avatarMediaId","profileImageUrl"],["coverMediaId","coverImageUrl"]] as const) {
+    const mediaId = data[field];
+    if (mediaId === undefined) continue;
+    if (!mediaId) { details[urlField]=null; continue; }
+    const media = firstRow(await database(context.env).execute(sql`
+      select id from public.media_objects where id=${mediaId}::uuid
+        and owner_user_id=${currentUser(context).id}::uuid and institution_id=${owned.university_id}::uuid
+        and kind='product' and content_type like 'image/%' and deleted_at is null
+    `));
+    if (!media) throw new AppError(400,"BAD_REQUEST","Choose a business photo uploaded by your own account.");
+    const origin = (context.env.PUBLIC_API_ORIGIN ?? new URL(context.req.url).origin).replace(/\/$/,"");
+    details[urlField]=origin+"/v1/media/"+mediaId;
+  }
+  const saved = firstRow(await database(context.env).execute(sql`
+    update public.agent_profiles set display_name=${data.displayName},biography=${data.biography},
+      public_details=${JSON.stringify(details)}::jsonb,updated_at=now()
+    where id=${owned.id}::uuid and user_id=${currentUser(context).id}::uuid
+      and university_id=${owned.university_id}::uuid and status='ACTIVE' returning id
+  `));
+  if (!saved) throw new AppError(409,"CONFLICT","This business is no longer available for editing.");
+  await recordAudit(context.env,{actorUserId:currentUser(context).id,universityId:owned.university_id,
+    action:"business.profile.updated",targetType:"agent_profile",targetId:owned.id,requestId:context.get("requestId")});
+  return context.json({ saved:true,id:owned.id });
+});
 
 agentRoutes.get("/dashboard", async (context) => {
   const user = currentUser(context);

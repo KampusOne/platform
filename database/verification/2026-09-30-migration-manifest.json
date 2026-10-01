@@ -1,0 +1,440 @@
+{
+  "generatedAt": "2026-09-30",
+  "scope": "Repository inventory; no production migration executed",
+  "baselineCommit": "f8f2f5b312a7793ec938439c97080a94760cfe87",
+  "executionPolicy": "Reconcile with the live migration ledger, then apply only unapplied verified versions in order. Never replay applied migrations.",
+  "migrations": [
+    {
+      "version": "20260910200000_phase_1_3_live",
+      "path": "database/neon/migrations/20260910200000_phase_1_3_live.sql",
+      "sha256": "d4b7bc284f527c599df9c05030582f21ba5bdd167e7574524e9dd87081b790e8",
+      "gitBlobSha": "ade49d41376cbdd78200adc39fd628e0581c5fcd",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910210000_phase_2_3_operations",
+      "path": "database/neon/migrations/20260910210000_phase_2_3_operations.sql",
+      "sha256": "6517ee8fc4d1d360ce23cc3ef732cb13b4aac90eb0781ab540d3c288e9c16a05",
+      "gitBlobSha": "bd032746883a1816b1b33c6728560152b4957805",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910220000_commerce_expiry_and_payment_audit",
+      "path": "database/neon/migrations/20260910220000_commerce_expiry_and_payment_audit.sql",
+      "sha256": "6153c27ce05d92bd7a2e4542d9de7257005424a904dc9389115d7a8c5ae7201d",
+      "gitBlobSha": "2163da4e9f34a711cb3e4276b5ad9defbf5556a6",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910230000_payment_event_resolution",
+      "path": "database/neon/migrations/20260910230000_payment_event_resolution.sql",
+      "sha256": "001f44fb6e7b6a509957bfe1f262159bb38a4b65d43e7d9807017d8fba0b49b2",
+      "gitBlobSha": "c82891464c65a764273a78e63dc0aef9003ed593",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910240000_atomic_auth_consumption",
+      "path": "database/neon/migrations/20260910240000_atomic_auth_consumption.sql",
+      "sha256": "a998c0d7e91c36b22748dd6b61df0b799dcb50e3346ae6b2fbbed82f0e139dfd",
+      "gitBlobSha": "3faeed6856b34f99ba07288d6b7638cb57591078",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910250000_tutorial_window_booking",
+      "path": "database/neon/migrations/20260910250000_tutorial_window_booking.sql",
+      "sha256": "e898159c382ce78eb7441754b0d0bc0ea14872d06df455c8a4a21b3aa4d8127d",
+      "gitBlobSha": "ec45edc49c18cb7ae314dde0e5281dda52f92815",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910260000_operational_indexes",
+      "path": "database/neon/migrations/20260910260000_operational_indexes.sql",
+      "sha256": "7deb26d520c8b4dd7f149fac4c55bb7c47df0f510cb92c357ac40fc1010bb101",
+      "gitBlobSha": "7c556027e980e48d5a31020fd4b20e7efcbcc6bb",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910270000_atomic_agent_payouts",
+      "path": "database/neon/migrations/20260910270000_atomic_agent_payouts.sql",
+      "sha256": "0942805f767ce56c8e02f36dd4f2b68e1f33afd0e022beb7a981098014355b7c",
+      "gitBlobSha": "1ea1c51004f5e4e9fbd407bf77eeea22fdb2884d",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910280000_atomic_admin_bootstrap",
+      "path": "database/neon/migrations/20260910280000_atomic_admin_bootstrap.sql",
+      "sha256": "137bb30ce09784d554703bd3918d95654f5e462463158b0fe50768331d47d402",
+      "gitBlobSha": "2d4c5f049b5b5442e01203d37944eb6f5951e8d5",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910290000_atomic_otp_attempts",
+      "path": "database/neon/migrations/20260910290000_atomic_otp_attempts.sql",
+      "sha256": "af5056d5ccb84313f753215358ffcbe04a3dd48a2b6fcdb7894b81efb8445811",
+      "gitBlobSha": "93fb32ae975a1264d7db78641e5326871585e69a",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910300000_request_rate_limits",
+      "path": "database/neon/migrations/20260910300000_request_rate_limits.sql",
+      "sha256": "f55e41bf720d8830f311d28e2222a1a98c4275161c382df73b4d67f79378cdbe",
+      "gitBlobSha": "4ce34dfc53a5c7fa154f880af74518a285bc260b",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910310000_failed_payout_reservations",
+      "path": "database/neon/migrations/20260910310000_failed_payout_reservations.sql",
+      "sha256": "0b11cf09da3c1b716088903ccf7bdfe7bb8bc4ab8a322d692f79a40445ed44b5",
+      "gitBlobSha": "b17348a575afb1e6716b57eedfd8247b4c2f2788",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260910320000_atomic_delivery_handoffs",
+      "path": "database/neon/migrations/20260910320000_atomic_delivery_handoffs.sql",
+      "sha256": "48e5fc91a08f901e08b711b165e49fe3c0eab4af6b4bf3f97e0cb96bfe3743a5",
+      "gitBlobSha": "b1a16ab4b5c1fd4e379ed587e1dc0312fa6756c3",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260912000000_phase_2_learning_pilot",
+      "path": "database/neon/migrations/20260912000000_phase_2_learning_pilot.sql",
+      "sha256": "e87ca6e6f7f3d99e05e339a35576fe8af82fe477004a4243dd86f2a1622e698f",
+      "gitBlobSha": "9c6886a43d3704a74aab55f15ed00239db4abf33",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260912010000_shared_agent_email_login",
+      "path": "database/neon/migrations/20260912010000_shared_agent_email_login.sql",
+      "sha256": "5346a44e29b85698cd04dcb3301ae5700d6f7f279e73a822bcaa29af79613706",
+      "gitBlobSha": "9ca07982210aa69f0f32f8e41c964b104b2520cd",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260912200000_phase_3_commerce_foundation",
+      "path": "database/neon/migrations/20260912200000_phase_3_commerce_foundation.sql",
+      "sha256": "48fe9d350e4b1b02087d3126dd9ee249e4ef66d4a38e1371f2c370f50396e89f",
+      "gitBlobSha": "515ae32e25a34d18934e623e04955d124657e765",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": true
+    },
+    {
+      "version": "20260913200000_unified_student_platform",
+      "path": "database/neon/migrations/20260913200000_unified_student_platform.sql",
+      "sha256": "574b705c078d55b83ba8fef21a61b5c5b47b58f5c7f608b073c841b23942e158",
+      "gitBlobSha": "a11789d089540255bc43b2aa7c7b6892a750639c",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": true
+    },
+    {
+      "version": "20260913210000_timetable_course_alarm_sync",
+      "path": "database/neon/migrations/20260913210000_timetable_course_alarm_sync.sql",
+      "sha256": "f8cdebb7e7f9e16243cdb9d3dac1c9728f8bc1a205b84ab1a5e68b4d0addf712",
+      "gitBlobSha": "d9fb42c811e938d654d53a5432c6b22b02bd19d6",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": true
+    },
+    {
+      "version": "20260913220000_ai_requests",
+      "path": "database/neon/migrations/20260913220000_ai_requests.sql",
+      "sha256": "f6c279ac05d1876c9e9f032d08e04a6998f78dc7f5e4764790b76290d2d6926b",
+      "gitBlobSha": "a268c541c9a4cc9ef906fbfba3aff9424b9fb585",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": true
+    },
+    {
+      "version": "20260913230000_community_workflows",
+      "path": "database/neon/migrations/20260913230000_community_workflows.sql",
+      "sha256": "d1f50837d437fd7570ab4a4bc100eeb2961ab10183e8887fc4e65d54e76e1176",
+      "gitBlobSha": "e43fb436802ce1ceb740fc5e5dc6e487fcdacfbf",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": true
+    },
+    {
+      "version": "20260913240000_verified_identity_and_resources",
+      "path": "database/neon/migrations/20260913240000_verified_identity_and_resources.sql",
+      "sha256": "d63b5c42b6183b26632e282e80489792b665bc9601e0a4f749a2898d85fe26aa",
+      "gitBlobSha": "c029c956c8324d352e8011b83eab12d6974e29d1",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": true
+    },
+    {
+      "version": "20260913250000_one_time_alarms",
+      "path": "database/neon/migrations/20260913250000_one_time_alarms.sql",
+      "sha256": "fb691842f5c2ded669e305ee0b0e6b9999768cc32b0aa74e3f0f5c12754c004f",
+      "gitBlobSha": "a57fcb2720ca2aa2fee0bd193664fa4e0cbabb21",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": true
+    },
+    {
+      "version": "20260921100000_operations_permissions_academic",
+      "path": "database/neon/migrations/20260921100000_operations_permissions_academic.sql",
+      "sha256": "57362a0553287c9c45dd055cf6c3d3baf42b30beb60e94f8ba8eca3e409aab6d",
+      "gitBlobSha": "b3a2e8085882da2b52816d65513b632e0b277135",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921110000_ai_history_and_streak_activity",
+      "path": "database/neon/migrations/20260921110000_ai_history_and_streak_activity.sql",
+      "sha256": "2970489189e48197b0f4645ab0a63831025951dba14fe11f297dcb82c367fe5a",
+      "gitBlobSha": "917a7ffb0e0774db994a57cc1d677f38a8ef05bb",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921120000_publishing_capabilities",
+      "path": "database/neon/migrations/20260921120000_publishing_capabilities.sql",
+      "sha256": "3bce1c2591f16cf4a1e19f4bde36f67e3754e1b343835b1fbb7b8fdf6a9bd0c7",
+      "gitBlobSha": "2aeed8a191c5d09a8ccaf0fda548fdbdd82a19f5",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921130000_academic_publication",
+      "path": "database/neon/migrations/20260921130000_academic_publication.sql",
+      "sha256": "304f7738dc25cd19fbbb0e5be8b33b96253c1b56243a397cd73cac5834d12ec7",
+      "gitBlobSha": "be9a4c1be674c2488f31a8880f3f0994000feada",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921140000_notification_delivery",
+      "path": "database/neon/migrations/20260921140000_notification_delivery.sql",
+      "sha256": "e6af1feffd3e1d3a16fea8aa633e402e73efc063830fae93a5091a0e1a4279c8",
+      "gitBlobSha": "6ebfa7ef42afe5452023bc494210d83998fdb4a0",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921150000_broadcasts",
+      "path": "database/neon/migrations/20260921150000_broadcasts.sql",
+      "sha256": "822f9bcfc7ae675ba3de8ae765671fc9d21bc5269a3dbc86769fbbd729bc6df8",
+      "gitBlobSha": "33de23c19018d2aacabe74a169961b71fcbfdf61",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921160000_payout_setup",
+      "path": "database/neon/migrations/20260921160000_payout_setup.sql",
+      "sha256": "d46d76e35d169a15885a8685345814d228f0ecaa1a7e2c9c5620127321f66935",
+      "gitBlobSha": "4a61a536e0b33332e79a43cd6071d17be471e94a",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921170000_application_checks",
+      "path": "database/neon/migrations/20260921170000_application_checks.sql",
+      "sha256": "cac796ee16efce1f2645fdeca4610b30b0d443012e6068856a7c706254229b41",
+      "gitBlobSha": "6e52913e88122c39a8a7e6fe1f02563c69adeb75",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921180000_feed_social_interactions",
+      "path": "database/neon/migrations/20260921180000_feed_social_interactions.sql",
+      "sha256": "25815d3414458ba350e31a5bdc8a81a8190bcf1de35a247ae109669c6c7acf26",
+      "gitBlobSha": "491f4bb9fc5a95adbe041f2d3d0576e428d35d55",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921180000_idempotent_timetable_import",
+      "path": "database/neon/migrations/20260921180000_idempotent_timetable_import.sql",
+      "sha256": "257a2dbdc4803bbce8ea06e06b79b79433348b67490b35b0468f555cb1b9aaab",
+      "gitBlobSha": "a1c78e3ec6f91a62713a4304007831011dd31d9c",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921183000_feed_post_likes",
+      "path": "database/neon/migrations/20260921183000_feed_post_likes.sql",
+      "sha256": "26bd585501cb539ad44af37d2bf7da61edc95e1ca13755f0ac67c06ab7969ce0",
+      "gitBlobSha": "2f10abc8459efe67e4ce8e4b8cc1964e225ba3ae",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921184500_feed_comment_likes",
+      "path": "database/neon/migrations/20260921184500_feed_comment_likes.sql",
+      "sha256": "66724bff4ea2040d57f1d940293dd382f2be95d796167e1ba91b29a820ab6c46",
+      "gitBlobSha": "758b90186ca0c6d499c2fa43eb58a3ad60ed8aaf",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260921200000_feed_comment_replies",
+      "path": "database/neon/migrations/20260921200000_feed_comment_replies.sql",
+      "sha256": "b22d8a63fcb3c3062cbd04d17d05ea7f616ddbb3efd7fb55f4db22bf2e70e752",
+      "gitBlobSha": "596ca647b51db1e9bdfbcd558dc13e5b8db60d9a",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260922140000_feed_conversation_experience",
+      "path": "database/neon/migrations/20260922140000_feed_conversation_experience.sql",
+      "sha256": "db8e248037c75403b00f95d709ace3431d38f107e4e630ad64b8a0707484b4ea",
+      "gitBlobSha": "a8efb5ef473eefdcf733d8d9132dd4adeb9eb68b",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260924000000_student_ai_profiles",
+      "path": "database/neon/migrations/20260924000000_student_ai_profiles.sql",
+      "sha256": "634f908d64031ee7bfefcd4cd26f157d38f8ba507741d33882ffffc8437a52c2",
+      "gitBlobSha": "c5525e6c2be11a107da231b05d099edce0047b61",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260925090000_calendar_and_campus_places",
+      "path": "database/neon/migrations/20260925090000_calendar_and_campus_places.sql",
+      "sha256": "14767fe67953f04b9be24c2cff2d4e94ec0d81a856a26662c7e2a4e501e38669",
+      "gitBlobSha": "8b8e152ada9d7d111677efbfe40cea1dd7a05ccf",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260925100000_campus_map_foundation",
+      "path": "database/neon/migrations/20260925100000_campus_map_foundation.sql",
+      "sha256": "2ea815572bcf31a6e8cea8212c98fd82a35b999a246b7f7813c3cdc314bc72ed",
+      "gitBlobSha": "2c1b96cd7eb2d4ef43ef6a6b141ab7be362627d0",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260925110000_notification_sound_catalogue",
+      "path": "database/neon/migrations/20260925110000_notification_sound_catalogue.sql",
+      "sha256": "8b5d8a5a142de748abadbcee951aed5fc6f4582432c8624463506a53700c3a70",
+      "gitBlobSha": "8bc12d1f72ae6913c0710a874369876e39c6c659",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260925120000_community_push_delivery",
+      "path": "database/neon/migrations/20260925120000_community_push_delivery.sql",
+      "sha256": "1c35e39612206c73657e5c443f9e2b930e514bdec41396a6b20f1c439d41b355",
+      "gitBlobSha": "cd9234ade82609afc2a814b18aaad7b84ca1c5ba",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260925130000_programme_metadata",
+      "path": "database/neon/migrations/20260925130000_programme_metadata.sql",
+      "sha256": "f0d016f1d255da7dc4501b2f6612827da6fe07717f307750d558a706008840f6",
+      "gitBlobSha": "aa2a0a26626c5c0629805e7094555d46a1915cfd",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260927120000_direct_messages_live",
+      "path": "database/neon/migrations/20260927120000_direct_messages_live.sql",
+      "sha256": "020eb41c1e528e1fde00453a2f57f11ebd02e868a79712c46f218dbbda3decf9",
+      "gitBlobSha": "5690caf9abdaea134bb53ef36cf8f62a165764d5",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260927130000_multi_university_onboarding_catalogue",
+      "path": "database/neon/migrations/20260927130000_multi_university_onboarding_catalogue.sql",
+      "sha256": "6fa1f56b24c90d8d9d1902f58e974313f882bb79ffe64ba973666f38552fd92c",
+      "gitBlobSha": "404e0a6634343f61eea6951b24e0ee364879fc02",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260927140500_notification_actor_profiles",
+      "path": "database/neon/migrations/20260927140500_notification_actor_profiles.sql",
+      "sha256": "01051cf0ea067d53d0f84ed6f54addf2dc24ed7b58dbdfbe93f2be051da67e36",
+      "gitBlobSha": "8587326bd19f6738238a92340eb0bb7cc56bece3",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260927164000_publish_nigerian_university_identities",
+      "path": "database/neon/migrations/20260927164000_publish_nigerian_university_identities.sql",
+      "sha256": "90384b0d81c8a6d3eaec44ac38b2195e095f5de778fbbb181ebb2d5ab598dd29",
+      "gitBlobSha": "82b3dd7bd4950b4ba36a951dfa69f100f4376f1b",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260927170000_uniben_ugbowo_campus_map",
+      "path": "database/neon/migrations/20260927170000_uniben_ugbowo_campus_map.sql",
+      "sha256": "8340424ed2fc1e5f1689f2b252aa7181a02b22b25bb49a2eb2021690bd6aef18",
+      "gitBlobSha": "2cb9f7c55004ac6b3aded3ea062760b8140b4f45",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260928022000_direct_message_interactions",
+      "path": "database/neon/migrations/20260928022000_direct_message_interactions.sql",
+      "sha256": "71cecbebbca22c57617d31e42412423b6778f9ce378fd7774cf5623e1c77da3d",
+      "gitBlobSha": "2ffdaf27176a5b4ba8d3312ddeb471010886e44e",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260928101500_onboarding_academic_structure",
+      "path": "database/neon/migrations/20260928101500_onboarding_academic_structure.sql",
+      "sha256": "315e03773507f0e1b52583930b52c6607591dcdc111771af70d4f25cd1ff0ed0",
+      "gitBlobSha": "4623f62e23e33f4fba8528b3505d0d2ddcc4365e",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260928114500_academic_missing_review_workflow",
+      "path": "database/neon/migrations/20260928114500_academic_missing_review_workflow.sql",
+      "sha256": "44d3ed930b510bfa05741ea296fa0e9aff400482a1c52f254c992fbde18164a3",
+      "gitBlobSha": "ed9355a7a80ab8c2c431c042f75f2050cf80c707",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260928120000_profile_post_notifications",
+      "path": "database/neon/migrations/20260928120000_profile_post_notifications.sql",
+      "sha256": "d2729bc6aabc6451ad8a0f466783285a16e476a9a13b93da3eb95c6fb5ff94d5",
+      "gitBlobSha": "2b6645941767ebe4158c371f0cc1ad11dffed2ca",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260928120500_profile_activity_dismissals_and_demo_retirement",
+      "path": "database/neon/migrations/20260928120500_profile_activity_dismissals_and_demo_retirement.sql",
+      "sha256": "bdec359b3e62dacf123cda6ab51fa242ba124f50100ace97001e83c7a6ab1c70",
+      "gitBlobSha": "84a1df42cc5c9c2e57081930b192944a950126ce",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260928130000_uniben_ugbowo_map_expansion",
+      "path": "database/neon/migrations/20260928130000_uniben_ugbowo_map_expansion.sql",
+      "sha256": "8262af4a31b87bb15432ec7a912ec1a5011d8ff0e19ff7b447da041fb136fb81",
+      "gitBlobSha": "ba8534d6ad5a822cb888b82ac26d60fb294a2316",
+      "status": "requires_live_ledger_reconciliation",
+      "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20260930210000_public_business_profiles",
+      "path": "database/neon/migrations/20260930210000_public_business_profiles.sql",
+      "sha256": "09fa6a1d9b7f5c055269394b3b518e1252cd1c5f9c6c4f8ebd480980cfba0a67",
+      "gitBlobSha": "851552f6970a428d5bd132c2d7d336f1aa0f3c69",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false
+    }
+  ]
+}

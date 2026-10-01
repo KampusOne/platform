@@ -123,6 +123,7 @@ export default function AgentDashboard() {
       {caps.profiles.length>1&&<View style={{flexDirection:"row",gap:8,marginBottom:18}}>{caps.profiles.map(p=><Pressable key={p.id} accessibilityRole="tab" accessibilityState={{selected:role===p.agent_type}} onPress={()=>router.setParams({role:p.agent_type})} style={{padding:12,borderBottomWidth:2,borderColor:role===p.agent_type?theme.brand:"transparent"}}><Text style={{color:theme.text}}>{p.agent_type.toLowerCase()}</Text></Pressable>)}</View>}
       {(loadError||caps.error)&&<View style={{marginVertical:14}}><Text style={{color:theme.text}}>{loadError||caps.error}</Text><ToolButton secondary label="Try again" onPress={()=>void load().catch(e=>setLoadError(e.message))}/></View>}
       {caps.ready&&!role&&!caps.error&&<EmptyResult title="No approved role yet" body="Your workspaces appear here once your agent application is approved."/>}
+      {profile ? <ToolRow title={`View ${profile.agent_type === "VENDOR" ? "Vendor" : profile.agent_type === "TUTOR" ? "Tutor" : "Rider"} Profile`} detail={profile.display_name} icon="person-circle-outline" onPress={() => router.push({ pathname: "/student-service", params: { id: profile.id } })} /> : null}
       <ToolRow
         title="Earnings & payouts"
         icon="wallet-outline"

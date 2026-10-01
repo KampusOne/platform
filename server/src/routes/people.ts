@@ -1,3 +1,4 @@
+import { readPublicBusiness } from "../lib/public-business";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { z } from "@kampusone/contracts";
@@ -21,31 +22,7 @@ peopleRoutes.use("/*",requireAuth);
 peopleRoutes.use("/*",async(c,next)=>{c.header("Cache-Control","private, no-store"); if(!await studentExperienceReady(c.env)) throw new AppError(503,"PROVIDER_UNAVAILABLE","Student profiles are being updated. Please try again shortly."); await next();});
 
 async function readService(env: Bindings, user: AuthenticatedUser, serviceId: string) {
-  const db=database(env);
-  // Role visibility controls discovery on the personal profile, not ownership on
-  // a published storefront. Private contact/identity/approval data never appears.
-  const service=firstRow(await db.execute<{id:string;agent_type:string;user_id:string;display_name:string;biography:string|null;owner_name:string;profile_image_url:string|null}>(sql`
-    select a.id,a.agent_type,a.user_id,a.display_name,a.biography,p.display_name as owner_name,p.profile_image_url
-    from public.agent_profiles a join public.profiles p on p.user_id=a.user_id and p.deleted_at is null
-    join public.users u on u.id=p.user_id and u.status::text='ACTIVE'
-    where a.id=${serviceId}::uuid and a.university_id=${user.universityId}::uuid and a.status='ACTIVE'`));
-  if(!service) throw new AppError(404,"NOT_FOUND","This campus service is not available.");
-  await requireUnblocked(env,user.id,service.user_id);
-  let products: Record<string,unknown>[]=[],tutorials:Record<string,unknown>[]=[];
-  if(service.agent_type==='VENDOR') {
-    if(env.STORE_ENABLED!=="true" || env.PHASE_3_SCHEMA_READY!=="true") throw new AppError(503,"PROVIDER_UNAVAILABLE","The campus store is not open yet.");
-    const store=firstRow(await db.execute(sql`select display_name,description from public.vendor_storefronts where vendor_profile_id=${service.id}::uuid and university_id=${user.universityId}::uuid and status='APPROVED'`));
-    if(!store) throw new AppError(404,"NOT_FOUND","This storefront is not available.");
-    service.display_name=String(store.display_name); service.biography=String(store.description ?? '');
-    products=(await db.execute(sql`select p.id,p.name,p.description,p.price_kobo,p.stock_quantity,p.image_url
-      from public.vendor_products p join public.product_categories cat on cat.id=p.category_id and cat.university_id=p.university_id and cat.status='APPROVED'
-      where p.vendor_profile_id=${service.id}::uuid and p.university_id=${user.universityId}::uuid and p.status='PUBLISHED' and p.stock_quantity>0 order by p.updated_at desc limit 100`)).rows;
-  }
-  if(service.agent_type==='TUTOR') {
-    if(env.TUTORIALS_ENABLED!=="true" || env.PHASE_2_SCHEMA_READY!=="true") throw new AppError(503,"PROVIDER_UNAVAILABLE","Tutor discovery is not available right now.");
-    tutorials=(await db.execute(sql`select id,title,description,course_code,price_kobo from public.tutorial_listings where tutor_profile_id=${service.id}::uuid and university_id=${user.universityId}::uuid and status='PUBLISHED' and review_status='APPROVED' and deleted_at is null and not is_demo order by updated_at desc limit 100`)).rows;
-  }
-  return {service,products,tutorials};
+  return readPublicBusiness(env, user, serviceId);
 }
 peopleRoutes.get("/services/:id",async c=>c.json(await readService(c.env,currentUser(c),id(c.req.param("id")))));
 peopleRoutes.get("/products/:id",async c=>{

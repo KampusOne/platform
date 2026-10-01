@@ -4,6 +4,7 @@ import { Hono,type Context,type Next } from "hono";
 import type { PGlite } from "@electric-sql/pglite";
 import { createTestDatabase,testDatabaseAdapter,testSqlClient } from "./helpers/database";
 import { peopleRoutes } from "../src/routes/people";
+import { agentRoutes } from "../src/routes/agents";
 import { aiRoutes } from "../src/routes/ai";
 import { runStudentTool,classDraftSchema } from "../src/lib/student-ai-tools";
 import { AppError } from "../src/lib/errors";
@@ -15,7 +16,7 @@ const vendor=crypto.randomUUID(),tutor=crypto.randomUUID(),foreignTutor=crypto.r
 vi.mock("../src/middleware/auth",()=>({currentUser:(c:Context)=>({id:c.req.header("x-user"),universityId:c.req.header("x-campus"),roles:["STUDENT"]}),requireAuth:async(c:Context,next:Next)=>c.req.header("x-user")?next():c.json({error:"Unauthorized"},401)}));
 const env={UNIFIED_SCHEMA_READY:"true",PHASE_2_SCHEMA_READY:"true",PHASE_3_SCHEMA_READY:"true",TUTORIALS_ENABLED:"true",STORE_ENABLED:"true",AI_ASSISTANT_ENABLED:"true"} as Bindings;
 const identity={id:student,universityId:campus,email:"student@example.invalid",roles:["STUDENT"],operatorRoles:[]} as AuthenticatedUser;
-const app=new Hono().route("/people",peopleRoutes).route("/ai",aiRoutes);
+const app=new Hono().route("/people",peopleRoutes).route("/agents",agentRoutes).route("/ai",aiRoutes);
 app.onError((e,c)=>c.json({error:e.message},e instanceof AppError?e.status:500));
 async function request(path:string,method="GET",body?:unknown,user=student,uni=campus){return app.request(path,{method,headers:{"x-user":user,"x-campus":uni,"content-type":"application/json"},...(body===undefined?{}:{body:JSON.stringify(body)})},env);}
 async function result(path:string,method="GET",body?:unknown,user=student,status=200){const r=await request(path,method,body,user);const data=await r.json();expect(r.status,JSON.stringify(data)).toBe(status);return data;}
@@ -46,6 +47,50 @@ describe("public profiles and scoped campus tools",()=>{
  it("follows idempotently and only modifies the current student's relationship",async()=>{for(let i=0;i<2;i++)expect(await result('/people/'+owner+'/follow','PUT',{follow:true})).toMatchObject({followed:true,follower_count:1});await result('/people/'+owner+'/follow','PUT',{follow:false,userId:foreign},student,400);expect((await result('/people/'+owner)).profile.followed).toBe(true);expect((await result('/people/'+student)).profile.following_count).toBe(1);await result('/people/'+student+'/follow','PUT',{follow:true},student,400);expect(await result('/people/'+owner+'/follow','PUT',{follow:false})).toMatchObject({follower_count:0});});
  it("hides personal role tags without concealing service ownership",async()=>{await pg.query(`update profiles set settings='{"publicRoles":{"vendor":false,"tutor":false}}'::jsonb where user_id=$1`,[owner]);expect((await result('/people/'+owner)).roles).toEqual([]);const store=await result('/people/services/'+vendor);expect(store.service).toMatchObject({user_id:owner,owner_name:'Public student',agent_type:'VENDOR'});expect(store.products.map((p:{id:string})=>p.id)).toEqual([product]);expect((await result('/people/products/'+product)).selectedProductId).toBe(product);expect((await result('/people/services/'+tutor)).tutorials).toHaveLength(1);});
  it("cannot read a different campus service and does not advertise it on a profile",async()=>{await result('/people/services/'+foreignTutor,'GET',undefined,student,404);expect((await result('/people/'+foreign)).roles).toEqual([]);});
+ it("keeps business profiles readable before migration and while commerce is paused",async()=>{
+  const owned=await result('/agents/public-profile/'+vendor,'GET',undefined,owner);
+  expect(owned.editable).toBe(false);
+  const r=await app.request('/people/services/'+vendor,{headers:{'x-user':student,'x-campus':campus}},{...env,STORE_ENABLED:'false'});
+  expect(r.status).toBe(200); const data=await r.json();
+  expect(data).toMatchObject({commerceAvailable:false,products:[],service:{display_name:'Test storefront',owner_name:'Public student'}});
+  expect(data.service).not.toHaveProperty('following_count');
+  expect(data.service.contact_phone_e164).toBeNull();
+  await result('/agents/public-profile/'+vendor,'PUT',{},owner,503);
+ });
+ it("only lets the same-campus approved owner edit public fields and validates photo ownership",async()=>{
+  await pg.exec(readFileSync(new URL('../../database/neon/migrations/20260930210000_public_business_profiles.sql',import.meta.url),'utf8'));
+  const body={displayName:'Campus kitchen',biography:'Fresh food daily',categories:['Restaurant','Food','Food'],phone:'+2348012345678',whatsapp:'+2348012345678',pickupLocation:'North gate'};
+  await result('/agents/public-profile/'+vendor,'PUT',body,student,404);
+  await result('/agents/public-profile/'+foreignTutor,'PUT',body,owner,404);
+  await result('/agents/public-profile/'+vendor,'PUT',{...body,verified:true},owner,400);
+  const ownPhoto=crypto.randomUUID(),otherPhoto=crypto.randomUUID(),kycPhoto=crypto.randomUUID();
+  for(const [mediaId,userId,kind]of[[ownPhoto,owner,'product'],[otherPhoto,student,'product'],[kycPhoto,owner,'kyc']])await pg.query("insert into media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name)values($1,$2,$3,$4,$1::uuid::text,'image/jpeg',200,'test.jpg')",[mediaId,userId,campus,kind]);
+  for(const avatarMediaId of[otherPhoto,kycPhoto])await result('/agents/public-profile/'+vendor,'PUT',{...body,avatarMediaId},owner,400);
+  expect(await result('/agents/public-profile/'+vendor,'PUT',{...body,avatarMediaId:ownPhoto},owner)).toMatchObject({saved:true,id:vendor});
+  await result('/people/'+owner+'/follow','PUT',{follow:true});
+  const publicProfile=await result('/people/services/'+vendor);
+  expect(publicProfile.service).toMatchObject({display_name:'Campus kitchen',owner_name:'Public student',categories:['Restaurant','Food'],contact_phone_e164:body.phone,whatsapp_e164:body.whatsapp,follower_count:1,followed:true,product_count:1});
+  expect(publicProfile.service.profile_image_url).toContain('/v1/media/'+ownPhoto);
+  expect(JSON.stringify(publicProfile)).not.toContain('Synthetic application');
+  expect((await pg.query('select profile_image_url from profiles where user_id=$1',[owner])).rows[0].profile_image_url).toBeNull();
+  await result('/agents/public-profile/'+vendor,'PUT',{...body,biography:'',phone:null,whatsapp:null},owner);
+  expect((await result('/people/services/'+vendor)).service).toMatchObject({biography:'',contact_phone_e164:null,whatsapp_e164:null});
+  await result('/people/'+owner+'/follow','PUT',{follow:false});
+ });
+ it("shows only completed purchased-item reviews and their real rating aggregate",async()=>{
+  await pg.exec('create unique index test_order_campus_unique on public.orders(id,university_id); create unique index test_product_campus_unique on public.vendor_products(id,university_id)');
+  const commerce=readFileSync(new URL('../../database/neon/migrations/20260912200000_phase_3_commerce_foundation.sql',import.meta.url),'utf8');
+  const reviewDDL=commerce.match(/create table if not exists public\.product_reviews \([\s\S]*?\n\);/); if(!reviewDDL)throw new Error('Missing review schema'); await pg.exec(reviewDDL[0]);
+  for(const [status,rating,published,purchased]of[['DELIVERED',5,true,true],['DELIVERED',3,true,true],['PAID',1,true,true],['DELIVERED',1,false,true],['DELIVERED',1,true,false]] as const){
+   const order=crypto.randomUUID();await pg.query('insert into orders(id,university_id,buyer_user_id,vendor_profile_id,status,subtotal_kobo)values($1,$2,$3,$4,$5,100000)',[order,campus,student,vendor,status]);
+   if(purchased)await pg.query('insert into order_items(order_id,product_id,quantity,unit_price_kobo)values($1,$2,1,100000)',[order,product]);
+   await pg.query('insert into product_reviews(university_id,order_id,product_id,buyer_user_id,rating,body,status)values($1,$2,$3,$4,$5,\'A useful review\',$6)',[campus,order,product,student,rating,published?'PUBLISHED':'HIDDEN_BY_MODERATION']);
+  }
+  const resultProfile=await result('/people/services/'+vendor);
+  expect(resultProfile.service).toMatchObject({rating:4,review_count:2});
+  expect(resultProfile.reviews).toHaveLength(2);
+  expect(resultProfile.reviews.every((review:{verified_purchase:boolean})=>review.verified_purchase)).toBe(true);
+ });
  it("queries actual published same-campus products, vendors and tutors",async()=>{const products=await runStudentTool(env,identity,'search_products',{query:'Physics'});expect(products.cards?.map(c=>c.id)).toEqual([product]);const vendors=await runStudentTool(env,identity,'search_vendors',{query:'Test'});expect(vendors.cards?.map(c=>c.id)).toEqual([vendor]);expect(vendors.cards?.[0]?.kind).toBe('vendor');const tutors=await runStudentTool(env,identity,'search_tutors',{query:'MTH101'});expect(tutors.cards).toHaveLength(1);expect(tutors.cards?.[0]?.path).toContain(tutor);await pg.query("update profiles set deleted_at=now() where user_id=$1",[owner]);expect((await runStudentTool(env,identity,'search_tutors',{query:'MTH101'})).cards).toEqual([]);await result('/people/services/'+vendor,'GET',undefined,student,404);await pg.query("update profiles set deleted_at=null where user_id=$1",[owner]);});
  it("rejects unknown admin tools and account-ID injection",async()=>{for(const name of['get_admin_url','execute_sql','delete_user'])expect((await runStudentTool(env,identity,name,{})).data).toHaveProperty('error');expect((await runStudentTool(env,identity,'get_my_timetable',{userId:owner})).data).toHaveProperty('error');expect((await runStudentTool(env,identity,'search_products',{query:'Physics',universityId:otherCampus})).data).toHaveProperty('error');});
  it("requires review before a standalone Kira alarm is saved and can undo it",async()=>{
