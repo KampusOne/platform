@@ -457,8 +457,8 @@
       "path": "database/neon/migrations/20260930240000_rider_commission_ledger.sql",
       "status": "queued_in_this_update",
       "historicallyVerifiedApplied": false,
-      "sha256": "43d0e5e240beeb17f4959443c1ce8eff26035abb2bfb7570903888e35cdb45e9",
-      "gitBlobSha": "5a2f4d477e3c169b0ed12b609901fb9850e58ecc"
+      "sha256": "38a349a13d69a084af682432de2450712ee34b2975663fafc4a668a61ea0ca7d",
+      "gitBlobSha": "6356cf7b51f1802006d5769a7063e63e65db4803"
     },
     {
       "version": "20260930250000_inclusive_store_quotes",
@@ -473,8 +473,8 @@
       "path": "database/neon/migrations/20260930260000_inclusive_tutorial_bookings.sql",
       "status": "queued_in_this_update",
       "historicallyVerifiedApplied": false,
-      "sha256": "fd07172f7d36dae1deda3d560fc719e50703f0dabe8d576bfccdc191867c99cc",
-      "gitBlobSha": "499dec3d70f01f41a8787682447fc722d2b097ad"
+      "sha256": "53e80e76bbdb552caac2e0d30a3945985a7881a946b5d62864f06a551b53ed75",
+      "gitBlobSha": "6e130ba7207cf6041b77c4b85052585741bba247"
     },
     {
       "version": "20260930270000_verified_kira_subscription",
@@ -491,6 +491,14 @@
       "historicallyVerifiedApplied": false,
       "sha256": "8e2477be2aa83f3a37de01f0ef86c35fe69cd82a5413b88ddc1934721e4ba331",
       "gitBlobSha": "7e1da62a27542611275c966a020f6de25ab94507"
+    },
+    {
+      "version": "20260930290000_verified_agent_payouts",
+      "path": "database/neon/migrations/20260930290000_verified_agent_payouts.sql",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false,
+      "sha256": "8dd76169ebfb843c13ba1eff48ffaf99aa244514d9a7105d1cb4e5c533434bb9",
+      "gitBlobSha": "dd3196362c57042c7d0a7102c94099c1166252cc"
     }
   ]
 }

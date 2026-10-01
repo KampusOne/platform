@@ -614,10 +614,14 @@ export const handoffCodeSchema = z.object({
   code: z.string().regex(/^\d{6}$/),
 });
 
-export const payoutRequestSchema = z.object({
-  agentProfileId: z.string().uuid(),
-  amountKobo: z.number().int().min(5000_00).max(100_000_000_00),
-});
+export const payoutRequestSchema = z
+  .object({
+    agentProfileId: z.string().uuid(),
+    amountKobo: z.number().int().min(5000_00).max(1_000_000_000),
+    quoteId: z.string().uuid(),
+    requestId: z.string().uuid(),
+  })
+  .strict();
 
 export const paymentInitializationSchema = z.object({
   resourceType: z.enum(["TUTORIAL_BOOKING", "STORE_ORDER"]),

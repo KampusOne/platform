@@ -96,6 +96,8 @@ begin
   if not found then return new; end if;
   if(new.university_id,new.student_user_id,new.listing_id,new.availability_window_id,new.amount_kobo,new.pricing_formula_version) is distinct from
     (old.university_id,old.student_user_id,old.listing_id,old.availability_window_id,old.amount_kobo,old.pricing_formula_version) then raise exception 'BOOKING_PRICE_IMMUTABLE'; end if;
+  if new.status in('CONFIRMED','COMPLETED') and not exists(select 1 from app_private.tutorial_settlements where booking_id=new.id)
+    then raise exception 'TUTORIAL_VERIFIED_PAYMENT_REQUIRED';end if;
   if new.earnings_state='AVAILABLE' and old.earnings_state in ('PENDING','RESERVED') then
     if new.status<>'COMPLETED' or new.completed_at is null or new.completed_at>now()-interval '48 hours' or
       exists(select 1 from public.disputes where tutorial_booking_id=new.id and status in ('OPEN','UNDER_REVIEW')) or

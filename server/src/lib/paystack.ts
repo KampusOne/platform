@@ -49,6 +49,7 @@ export async function initializePaystack(
         amount: input.amountKobo,
         reference: input.reference,
         currency: "NGN",
+        bearer: "account",
         metadata: input.metadata,
         ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
       }),

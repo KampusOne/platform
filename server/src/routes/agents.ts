@@ -36,7 +36,7 @@ import {
   requireFeature,
 } from "../lib/features";
 import { deriveHandoffCode, hashOtp } from "../lib/security";
-import { requireFullKyc } from "../lib/kyc";
+import { ledgerPayoutsReady,requireLedgerPayouts,quotePayout,payoutQuoteSchema,payoutRate,payoutError,reconcilePayout } from "../lib/payouts";
 import { riderFinanceReady,riderFinanceSummary,reconcileRiderCommission } from '../lib/rider-finance';
 import { initializePaystack } from '../lib/paystack';
 import { inclusiveStoreReady } from '../lib/commerce-pricing';
@@ -1806,20 +1806,30 @@ agentRoutes.get("/earnings", async (context) => {
     sum(d.outstanding_kobo)::bigint as amount_kobo from app_private.rider_unpaid_commissions(${user.id}::uuid) d
       join app_private.rider_cash_commissions c on c.job_id=d.job_id join public.universities u on u.id=c.university_id
     group by c.rider_profile_id,c.university_id,u.name order by u.name`)).rows:[];
+  const payoutReady=await ledgerPayoutsReady(context.env);
+  const ledgerSummary=async(type:string)=>payoutReady?firstRow(await database(context.env).execute(sql`
+   select app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,${type+'_PAYOUT_RESERVED'}) as reserved_kobo,
+    (select coalesce(sum(s.bank_net_kobo),0)::bigint from app_private.agent_payout_settlements s join public.payout_requests p on p.id=s.payout_id
+     where s.user_id=${user.id}::uuid and s.university_id=${user.universityId}::uuid and s.agent_type=${type} and p.status='PAID' and s.reversal_journal_id is null) as withdrawn_kobo
+  `)):null;
+  const [tutorPayout,vendorPayout,riderPayout]=await Promise.all(['TUTOR','VENDOR','RIDER'].map(ledgerSummary));
+  if(storeFinance&&vendorPayout)Object.assign(storeFinance,vendorPayout);
+  if(riderFinance&&riderPayout)Object.assign(riderFinance,riderPayout);
   return context.json({
-    withdrawalsEnabled:false,
+    withdrawalsEnabled:context.env.PAYMENTS_ENABLED==='true'&&context.env.PAYOUTS_ENABLED==='true'&&await ledgerPayoutsReady(context.env),
     commissionPaymentsEnabled:Boolean(riderFinance && context.env.PAYMENTS_ENABLED==='true'),
     riderCommissionCheckout:riderCheckout,
     riderCommissionDebts:riderDebts,
     tutorials: await pricedTutorialReady(context.env)?firstRow(await database(context.env).execute(sql`
       select app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,'TUTOR_PENDING') as pending_kobo,
         app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,'TUTOR_AVAILABLE') as available_kobo,
-        0::bigint as reserved_kobo,0::bigint as withdrawn_kobo
+        ${Number(tutorPayout?.reserved_kobo??0)}::bigint as reserved_kobo,${Number(tutorPayout?.withdrawn_kobo??0)}::bigint as withdrawn_kobo
     `)):firstRow(tutorials),
     store: storeFinance??firstRow(store),
     legacyRecordedStore:storeFinance?firstRow(store):null,
     deliveries: riderFinance??firstRow(deliveries),
-    payoutRequests: payouts.rows,
+    payoutRequests: payoutReady?(await database(context.env).execute(sql`select p.id,p.agent_profile_id,p.amount_kobo,p.status,p.requested_at,p.paid_at,s.bank_net_kobo,s.fee_allowance_kobo,
+     p.financial_version from public.payout_requests p left join app_private.agent_payout_settlements s on s.payout_id=p.id where p.requested_by_user_id=${user.id}::uuid and p.university_id=${user.universityId}::uuid order by p.requested_at desc limit 50`)).rows:payouts.rows,
   });
 });
 
@@ -1859,88 +1869,27 @@ agentRoutes.get('/rider-commission-checkout/:reference',async context=>{
   return context.json({payment:intent});
 });
 
-agentRoutes.post("/payouts", async (context) => {
-  requireFeature(
-    context.env,
-    "PAYMENTS_ENABLED",
-    "Withdrawals are not connected yet. Your earnings remain in your account.",
-  );
-  if(await riderFinanceReady(context.env))throw new AppError(503,'FEATURE_DISABLED','Withdrawals are awaiting verified transfer settlement. Your earnings and commission payments remain available.');
-  const user = currentUser(context);
-  const parsed = payoutRequestSchema.safeParse(await body(context));
-  if (!parsed.success)
-    throw new AppError(
-      400,
-      "BAD_REQUEST",
-      "Check the payout amount and account.",
-    );
-  const profileResult = await database(context.env).execute<{
-    id: string;
-    university_id: string;
-    agent_type: string;
-  }>(sql`
-    select id, university_id, agent_type from public.agent_profiles
-    where id = ${parsed.data.agentProfileId}::uuid and user_id = ${user.id}::uuid and status = 'ACTIVE' limit 1
-  `);
-  const profile = firstRow(profileResult);
-  if (!profile)
-    throw new AppError(404, "NOT_FOUND", "That agent profile does not exist.");
-  const application = await database(context.env).execute<{
-    id: string;
-    bank_status: string;
-  }>(sql`
-    select id,bank_status from public.agent_applications where user_id = ${user.id}::uuid
-      and university_id = ${profile.university_id}::uuid and agent_type = ${profile.agent_type} limit 1
-  `);
-  if (firstRow(application)?.bank_status !== "VERIFIED") {
-    throw new AppError(
-      409,
-      "CONFLICT",
-      "A verified payout account is required before requesting a withdrawal.",
-    );
-  }
-  if (context.env.UNIFIED_SCHEMA_READY === "true")
-    await requireFullKyc(context.env, firstRow(application)!.id);
-  const id = crypto.randomUUID();
-  try {
-    await database(context.env).execute(sql`
-      select * from app_private.request_agent_payout(
-        ${id}::uuid, ${profile.id}::uuid, ${user.id}::uuid, ${parsed.data.amountKobo}::bigint
-      )
-    `);
-  } catch (caught) {
-    const message = caught instanceof Error ? caught.message : "";
-    if (message.includes("PAYOUT_BALANCE_INSUFFICIENT")) {
-      throw new AppError(
-        409,
-        "CONFLICT",
-        "The requested amount is more than the available balance.",
-      );
-    }
-    if (message.includes("PAYOUT_ACCOUNT_UNVERIFIED")) {
-      throw new AppError(
-        409,
-        "CONFLICT",
-        "A verified payout account is required before requesting a withdrawal.",
-      );
-    }
-    if (message.includes("PAYOUT_PROFILE_UNAVAILABLE")) {
-      throw new AppError(
-        404,
-        "NOT_FOUND",
-        "That agent profile is no longer available.",
-      );
-    }
-    throw caught;
-  }
-  await recordAudit(context.env, {
-    actorUserId: user.id,
-    universityId: profile.university_id,
-    action: "payout.requested",
-    targetType: "payout_request",
-    targetId: id,
-    requestId: context.get("requestId"),
-    metadata: { amountKobo: parsed.data.amountKobo },
-  });
-  return context.json({ id, status: "REQUESTED" }, 201);
+agentRoutes.post('/payout-quote',async c=>{
+ const data=await input(c,payoutQuoteSchema);
+ return c.json({quote:await quotePayout(c.env,currentUser(c),data)});
+});
+agentRoutes.post('/payouts',async c=>{
+ await requireLedgerPayouts(c.env);const user=currentUser(c),data=await input(c,payoutRequestSchema);
+ const quote=firstRow(await database(c.env).execute<{agent_profile_id:string;amount_kobo:number}>(sql`select agent_profile_id,amount_kobo from app_private.agent_payout_quotes
+  where id=${data.quoteId}::uuid and user_id=${user.id}::uuid and university_id=${user.universityId}::uuid`));
+ if(!quote||quote.agent_profile_id!==data.agentProfileId||Number(quote.amount_kobo)!==data.amountKobo)throw new AppError(409,'CONFLICT','The withdrawal details changed. Review a new quote.');
+ await payoutRate(c.env,user.id,'PAYOUT_REQUEST',20);
+ let payoutId:string;
+ try{payoutId=firstRow(await database(c.env).execute<{id:string}>(sql`select app_private.create_ledger_payout(${data.quoteId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${data.requestId}::uuid) as id`))!.id;}
+ catch(e){payoutError(e);}
+ const payout=firstRow(await database(c.env).execute(sql`select id,status,amount_kobo,provider_reference from public.payout_requests where id=${payoutId}::uuid`));
+ await recordAudit(c.env,{actorUserId:user.id,universityId:user.universityId,action:'payout.requested',targetType:'payout_request',targetId:payoutId,requestId:c.get('requestId'),metadata:{quoteId:data.quoteId,amountKobo:data.amountKobo}});
+ return c.json(payout,201);
+});
+agentRoutes.get('/payouts/:id',async c=>{
+ const user=currentUser(c);if(!await ledgerPayoutsReady(c.env))throw new AppError(503,'FEATURE_DISABLED','Verified withdrawals are awaiting the database update.');
+ const own=firstRow(await database(c.env).execute<{provider_reference:string}>(sql`select provider_reference from app_private.agent_payout_settlements where payout_id=${id(c.req.param('id'))}::uuid and user_id=${user.id}::uuid and university_id=${user.universityId}::uuid`));
+ if(!own)throw new AppError(404,'NOT_FOUND','That withdrawal is not available.');
+ await reconcilePayout(c.env,own.provider_reference,user.id,user.universityId);
+ return c.json({payout:firstRow(await database(c.env).execute(sql`select p.id,p.status,p.amount_kobo,p.requested_at,p.paid_at,s.bank_net_kobo,s.fee_allowance_kobo from public.payout_requests p join app_private.agent_payout_settlements s on s.payout_id=p.id where p.id=${c.req.param('id')}::uuid`))});
 });

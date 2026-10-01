@@ -45,6 +45,8 @@ type Earnings = {
     amount_kobo: number;
     status: string;
     requested_at: string;
+    financial_version?: string | null;
+    bank_net_kobo?: number;
   }[];
 };
 const money = (v: unknown) =>
@@ -68,10 +70,13 @@ function AccountEarnings() {
   const [commissionReference, setCommissionReference] = useState("");
   const repaymentRequest = useRef({ profileId: "", id: "" });
   const [fee, setFee] = useState<{
-    ruleId: string;
+    id: string;
     feeKobo: number;
     netKobo: number;
     requestId: string;
+    bankName: string;
+    accountLast4: string;
+    expiresAt: string;
   } | null>(null);
   const profile =
     caps.profiles.find((p) => p.id === selected) ?? caps.profiles[0];
@@ -176,7 +181,14 @@ function AccountEarnings() {
     setBusy(true);
     try {
       const r = await api<{
-        quote: { ruleId: string; feeKobo: number; netKobo: number };
+        quote: {
+          id: string;
+          feeKobo: number;
+          netKobo: number;
+          bankName: string;
+          accountLast4: string;
+          expiresAt: string;
+        };
       }>("/v1/agents/payout-quote", {
         method: "POST",
         body: JSON.stringify({
@@ -193,15 +205,15 @@ function AccountEarnings() {
     }
   }
   async function withdraw() {
-    if (!profile) return;
+    if (!profile || !fee) return;
     setBusy(true);
     try {
       await api("/v1/agents/payouts", {
         method: "POST",
         body: JSON.stringify({
           agentProfileId: profile.id,
-          feeRuleId: fee?.ruleId,
-          requestId: fee?.requestId,
+          quoteId: fee.id,
+          requestId: fee.requestId,
           amountKobo: Math.round(Number(amount) * 100),
         }),
       });
@@ -375,9 +387,9 @@ function AccountEarnings() {
         {confirm ? (
           <>
             <Text style={{ color: theme.text, marginVertical: 12 }}>
-              Request {money(Math.round(Number(amount) * 100))} to your verified
-              payout account? Fee: {money(fee?.feeKobo)}. You receive{" "}
-              {money(fee?.netKobo)}.
+              Request {money(Math.round(Number(amount) * 100))} to{" "}
+              {fee?.bankName} ·••{fee?.accountLast4}? Transfer fee:{" "}
+              {money(fee?.feeKobo)}. You receive {money(fee?.netKobo)}.
             </Text>
             <ToolButton
               label="Confirm withdrawal"
@@ -406,15 +418,43 @@ function AccountEarnings() {
         )}
       </View>
       {data?.payoutRequests.map((p) => (
-        <ToolRow
-          key={p.id}
-          title={money(p.amount_kobo)}
-          detail={
-            p.status.replaceAll("_", " ") +
-            " · " +
-            new Date(p.requested_at).toLocaleDateString()
-          }
-        />
+        <View key={p.id}>
+          <ToolRow
+            title={money(p.amount_kobo)}
+            detail={
+              p.status.replaceAll("_", " ") +
+              " · " +
+              new Date(p.requested_at).toLocaleDateString()
+            }
+          />
+          {p.financial_version === "LEDGER_PAYOUT_V1" ? (
+            <>
+              <Text style={{ color: theme.textMuted }}>
+                Quoted bank amount · {money(p.bank_net_kobo)}
+              </Text>
+              <ToolButton
+                secondary
+                label="Check withdrawal"
+                disabled={busy}
+                onPress={() => {
+                  setBusy(true);
+                  void api<{ payout: { status: string } }>(
+                    `/v1/agents/payouts/${p.id}`,
+                  )
+                    .then(async (r) => {
+                      await load();
+                      toast(
+                        `Withdrawal · ${r.payout.status.toLowerCase().replaceAll("_", " ")}`,
+                        "info",
+                      );
+                    })
+                    .catch((e) => toast(e.message, "error"))
+                    .finally(() => setBusy(false));
+                }}
+              />
+            </>
+          ) : null}
+        </View>
       ))}
     </ToolPage>
   );

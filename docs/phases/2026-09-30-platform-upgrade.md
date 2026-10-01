@@ -74,6 +74,20 @@ Validation: all 464 server tests in 47 files, 125 root regression tests and 10 c
 
 Validation: all 468 server tests in 47 files and 125 root regression tests pass. Server/mobile/portal type checks, server build, portal lint/production build and mobile production web export pass. PostgreSQL/API cases verify quote privacy, price/file changes, tenant/owner isolation, immutable amounts, exact settlement, single credit, private access, idempotent disputes, admin restoration, delayed release and late receipts held for review. Provider fixtures are synthetic; no production payment or migration ran.
 
+## Verified withdrawals checkpoint
+
+- Withdrawals reserve available ledger funds atomically under the rider financial lock. A ten-minute quote pins the agent, campus, reviewed bank recipient, versioned cost policy and bank amount. Replays reuse the exact request; competing requests cannot reserve the balance twice. Available rider earnings offset same-campus commission debt first, and any remaining debt blocks a withdrawal.
+- Identity documents, age/guardian eligibility, active approval and verified bank ownership are rechecked in the database at reservation and transfer. A pending payout also blocks bank-destination changes. Legacy gross records are never imported as available money, and legacy payout history requires reconciliation before another transfer.
+- Individual finance staff can review a request, initiate an approved transfer, check its provider result and supply a merchant OTP. They cannot review or transfer their own withdrawal. Transfer initiation saves the reference before the provider request, uses that same reference on retry and never marks a payout paid from an acknowledgement. OTP remains in memory and is never persisted or audited.
+- Server GET verification checks the saved reference, NGN amount, provider mode, tokenized recipient, transfer code and actual fee. Signed transfer callbacks use that same verifier. Wrong recipient/amount/mode enters review. Uncertain and failed transfers stay reserved; only a verified reversal or a rejection before initiation releases the funds. Success and reversal journals are append-only and idempotent; a reversal after payment uses a compensating journal.
+- Reviewed cost policies contain transfer bands, additional-duty threshold, cost bearer and evidence. No commercial policy is seeded. The initial rider model absorbs these costs; PAYEE allocation is an explicit reviewed alternative. There is no second platform commission at withdrawal. Unused verified fee allowance returns to available earnings; excess cost is absorbed. The provider's separate duty statement still needs reconciliation and is not guessed from `fee_charged` or presumed refunded on reversal.
+- Staff now have `/admin/withdrawals`; the old manual Paid/Processing/Failed selector is removed. Earnings shows real pending/available/reserved/withdrawn figures and a Check withdrawal action. `PAYOUTS_ENABLED` remains false in checked-in configuration. Existing verification remains possible when new payments/transfers are paused.
+- Inclusive transaction initialization explicitly uses the merchant account as charge bearer. Before enabling real checkout, confirm merchant automatic customer-fee pass-through is disabled and the gateway displays the sealed amount, including exactly ₦6,000 for Kira. This merchant setting is a release check, not an undocumented automatic API promise.
+
+Validation: the full 475-test server suite in 47 files passes; three additional transfer-adapter tests cover production test-key rejection, paused transfers, wrong currency/mode/reference, missing recipient/fee and read-only verification. All 125 root and 10 contract tests pass. Server/mobile/portal/contracts type checks, server build, portal lint/production build and mobile production web export pass. Seven new PostgreSQL/API cases cover KYC/tenant/policy gates, racing reservations, immutable quotes, manual paid-state denial, incorrect provider proof, uncertain/failed retries, exact settlement, reversal, fee-return accounting, cross-campus commission debt and OTP secrecy. No real transfer or production migration ran.
+
+Official references: https://paystack.com/docs/transfers/single-transfers/ · https://paystack.com/docs/api/transfer/ · https://support.paystack.com/en/articles/2130370 · https://support.paystack.com/en/articles/7573314 · https://support.paystack.com/en/articles/2130306
+
 ## Publication and visual checks
 
 Changes are committed locally. Automatic approval review rejected pushing to the public `KampusOne/platform` repository because it would publish source and migration details without specific approval for that public payload and destination. No connector or other execution path was used to bypass the rejection.
@@ -94,13 +108,14 @@ New queued migrations:
 6. `20260930260000_inclusive_tutorial_bookings.sql`
 7. `20260930270000_verified_kira_subscription.sql`
 8. `20260930280000_verified_learning_materials.sql`
+9. `20260930290000_verified_agent_payouts.sql`
 
 These depend on the current account/agent schema, the Phase 3 commerce foundation and the unified notification tables. Readiness checks let the code be deployed before those migrations without querying absent new columns/functions. No earlier applied migration was edited.
 
 ## Remaining implementation
 
 1. Actual campus road-route integration and reviewed fare coverage; cash commissions, four-debt locking and repayment are implemented with reviewed zone estimates.
-2. Verified payouts with approved transfer-cost policies. Store/tutorial-session/material/Kira billing and approved provider-rate configuration are implemented.
+2. Merchant fee-setting acceptance, transfer-duty statement reconciliation and provider refunds/held-receipt recovery. Store/tutorial-session/material/Kira billing, verified payout reservations/transfers and approved provider-rate configuration are implemented.
 3. Common internal/external share sheet; device acceptance of persistent drafts and message interactions.
 4. Search tabs, working filters and profile/brand app links with website fallback.
 5. First-install illustrated introduction and progressive agent documents/selfie onboarding.

@@ -27,6 +27,8 @@ import { academicAdminRoutes } from "./academic-admin";
 import { broadcastRoutes } from "./broadcasts";
 import { applicationCheckRoutes } from "./application-checks";
 import { financePolicyRoutes } from './finance-policies';
+import { payoutAdminRoutes } from './payouts-admin';
+import { ledgerPayoutsReady } from '../lib/payouts';
 import { recordAudit } from "../lib/audit";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { AppError } from "../lib/errors";
@@ -136,6 +138,7 @@ adminRoutes.route("/academic",academicAdminRoutes);
 adminRoutes.route("/broadcasts",broadcastRoutes);
 adminRoutes.route("/",applicationCheckRoutes);
 adminRoutes.route('/finance',financePolicyRoutes);
+adminRoutes.route('/operations/payouts',payoutAdminRoutes);
 
 adminRoutes.get("/access", async (context) => {
   const user = currentUser(context);
@@ -1545,12 +1548,23 @@ adminRoutes.post("/operations/payouts/:id/review", async (context) => {
     id: string;
     university_id: string;
     status: string;
-  }>(sql`select id, university_id, status from public.payout_requests
+    financial_version: string | null;
+  }>(sql`select id, university_id, status, to_jsonb(payout_requests)->>'financial_version' as financial_version from public.payout_requests
     where id = ${context.req.param("id")}::uuid limit 1`);
   const payout = firstRow(result);
   if (!payout)
     throw new AppError(404, "NOT_FOUND", "That payout request does not exist.");
   await adminScope(context.env, user, payout.university_id);
+  if(['PROCESSING','PAID','FAILED'].includes(parsed.data.status))throw new AppError(409,'CONFLICT','Transfer outcomes require provider verification. Use the verified withdrawal workspace.');
+  if(await ledgerPayoutsReady(context.env)){
+    if(payout.financial_version!=='LEDGER_PAYOUT_V1')throw new AppError(409,'CONFLICT','Legacy withdrawals require reconciliation before any further money movement.');
+    if(!['IN_REVIEW','APPROVED','REJECTED'].includes(parsed.data.status))throw new AppError(409,'CONFLICT','Transfer status comes from verified provider results. Use the transfer workspace.');
+    const state=firstRow(await database(context.env).execute<{state:string}>(sql`select app_private.review_ledger_payout(${payout.id}::uuid,${payout.university_id}::uuid,${user.id}::uuid,${parsed.data.status},${parsed.data.note}) as state`))?.state;
+    if(state==='SELF_REVIEW')throw new AppError(403,'FORBIDDEN','Another reviewer must review your withdrawal.');
+    if(state!==parsed.data.status)throw new AppError(409,'CONFLICT','This withdrawal changed or has already started a transfer.');
+    await recordAudit(context.env,{actorUserId:user.id,universityId:payout.university_id,action:'payout.reviewed',targetType:'payout_request',targetId:payout.id,requestId:context.get('requestId'),metadata:{from:payout.status,to:state,note:parsed.data.note}});
+    return context.json({status:state});
+  }
   const transitions: Record<string, string[]> = {
     REQUESTED: ["IN_REVIEW", "REJECTED"],
     IN_REVIEW: ["APPROVED", "REJECTED"],

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { reconcilePayout } from '../lib/payouts';
 
 import { paymentInitializationSchema } from "@kampusone/contracts";
 
@@ -436,6 +437,11 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
       "BAD_REQUEST",
       "The payment event is not valid JSON.",
     );
+  }
+  if(event.event?.startsWith('transfer.') && event.data?.reference?.startsWith('k1-po-')){
+    if(!['transfer.success','transfer.failed','transfer.reversed'].includes(event.event))return context.json({status:'ignored'});
+    const reconciled=await reconcilePayout(context.env,event.data.reference);
+    return context.json({status:reconciled?'reconciled':'unknown_reference'});
   }
   if (
     event.event !== "charge.success" ||

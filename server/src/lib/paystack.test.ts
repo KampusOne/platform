@@ -52,6 +52,7 @@ describe("Paystack receipt boundary", () => {
       const input = JSON.parse(init.body);
       expect(input).toMatchObject({
         amount: 600000,
+        bearer: "account",
         currency: "NGN",
         reference,
       });

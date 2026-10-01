@@ -11,6 +11,7 @@ import { inclusiveStoreReady } from "../lib/commerce-pricing";
 import { pricedTutorialReady } from "../lib/tutorial-pricing";
 import { kiraBillingReady } from "../lib/kira-billing";
 import { materialCommerceReady } from "../lib/material-commerce";
+import { ledgerPayoutsReady } from "../lib/payouts";
 import {
   listingPrice,
   checkoutPrice,
@@ -25,6 +26,87 @@ export const financePolicyRoutes = new Hono<{
   Bindings: Bindings;
   Variables: Variables;
 }>();
+financePolicyRoutes.get("/transfer-policies", async (c) => {
+  const scope = await resolveAdminScope(
+    c.env,
+    currentUser(c),
+    c.req.query("universityId"),
+    "finance.view",
+  );
+  if (!(await ledgerPayoutsReady(c.env)))
+    return c.json({ ready: false, policies: [] });
+  const rows = await database(c.env)
+    .execute(sql`select p.id,p.university_id,p.agent_type,p.version,p.fee_bearer,p.low_fee_kobo,p.middle_fee_kobo,p.high_fee_kobo,p.duty_threshold_kobo,p.duty_kobo,p.source_url,p.approval_note,p.approved_at,a.policy_id=p.id as active
+  from app_private.payout_cost_policies p left join app_private.active_payout_cost_policies a on a.university_id=p.university_id and a.agent_type=p.agent_type where (${scope}::uuid is null or p.university_id=${scope}::uuid) order by p.approved_at desc limit 100`);
+  return c.json({ ready: true, policies: rows.rows });
+});
+financePolicyRoutes.post("/transfer-policies", async (c) => {
+  const data = await input(
+    c,
+    z
+      .object({
+        universityId: z.string().uuid(),
+        agentType: z.enum(["VENDOR", "TUTOR", "RIDER"]),
+        version: z.string().trim().min(3).max(80),
+        feeBearer: z.enum(["PLATFORM", "PAYEE"]),
+        lowFeeKobo: z.number().int().min(0).max(1000000),
+        middleFeeKobo: z.number().int().min(0).max(1000000),
+        highFeeKobo: z.number().int().min(0).max(1000000),
+        dutyThresholdKobo: z.number().int().min(0).max(2000000000),
+        dutyKobo: z.number().int().min(0).max(1000000),
+        sourceUrl: z.url().refine((v) => {
+          const u = new URL(v);
+          return (
+            u.protocol === "https:" &&
+            [
+              "paystack.com",
+              "support.paystack.com",
+              "dashboard.paystack.com",
+            ].includes(u.hostname)
+          );
+        }),
+        approvalNote: z.string().trim().min(10).max(2000),
+      })
+      .strict(),
+  );
+  const user = currentUser(c);
+  await resolveAdminScope(c.env, user, data.universityId, "finance.review");
+  if (!(await ledgerPayoutsReady(c.env)))
+    throw new AppError(
+      503,
+      "FEATURE_DISABLED",
+      "Transfer policies are awaiting the database update.",
+    );
+  const policyId = crypto.randomUUID();
+  try {
+    await database(c.env)
+      .execute(sql`with added as(insert into app_private.payout_cost_policies(id,university_id,agent_type,version,fee_bearer,low_fee_kobo,middle_fee_kobo,high_fee_kobo,duty_threshold_kobo,duty_kobo,source_url,approval_note,approved_by)
+  values(${policyId}::uuid,${data.universityId}::uuid,${data.agentType},${data.version},${data.feeBearer},${data.lowFeeKobo},${data.middleFeeKobo},${data.highFeeKobo},${data.dutyThresholdKobo},${data.dutyKobo},${data.sourceUrl},${data.approvalNote},${user.id}::uuid) returning *)
+  insert into app_private.active_payout_cost_policies(university_id,agent_type,policy_id)select university_id,agent_type,id from added on conflict(university_id,agent_type)do update set policy_id=excluded.policy_id`);
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("unique"))
+      throw new AppError(
+        409,
+        "CONFLICT",
+        "Use a new version for this reviewed transfer policy.",
+      );
+    throw e;
+  }
+  await recordAudit(c.env, {
+    actorUserId: user.id,
+    universityId: data.universityId,
+    action: "finance.transfer_policy_approved",
+    targetType: "payout_cost_policy",
+    targetId: policyId,
+    requestId: c.get("requestId"),
+    metadata: {
+      agentType: data.agentType,
+      version: data.version,
+      feeBearer: data.feeBearer,
+    },
+  });
+  return c.json({ id: policyId }, 201);
+});
 const money = z.number().int().min(0).max(2_000_000_000),
   percentage = z.number().int().min(0).max(9999);
 export const commercePolicySchema = z

@@ -43,3 +43,7 @@ AI_DAILY_GLOBAL_LIMIT=100
 # MEDIA_BUCKET and PRIVATE_BUCKET are R2 bindings, not string secrets.
 # Add their existing bucket names in wrangler configuration. PRIVATE_BUCKET
 # must have no public domain / r2.dev access. No service-role key in clients.
+
+# New bank transfers also require PAYOUTS_ENABLED=true and reviewed per-campus transfer costs.
+# Keep this false until live receipts, balances and bank destinations are reconciled.
+PAYOUTS_ENABLED=false

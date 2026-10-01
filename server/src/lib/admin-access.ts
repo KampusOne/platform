@@ -75,6 +75,7 @@ export function permissionForAdminRoute(path:string,method:string):string|null{
  if(path.startsWith('/applications'))return read?'agents.view':path.endsWith('/verification')?'agents.verify':'agents.review';
  if(path.startsWith('/academic/'))return read?'academic.view':'academic.manage';
  if(path.startsWith('/academic-submissions'))return read?'academic.view':'academic.manage';
+ if(path.startsWith('/operations/payouts')&&path.endsWith('/check'))return 'finance.view';
  if(path.startsWith('/operations/payouts')||path==='/operations/release-eligible-earnings')return read?'finance.view':'payouts.approve';
  if(/^\/operations\/(payment-events|disputes)/.test(path))return read?'finance.view':'finance.review';
  if(path.startsWith('/operations'))return read?'marketplace.view':'marketplace.manage';

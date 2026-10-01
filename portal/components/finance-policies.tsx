@@ -5,6 +5,7 @@ import { portalApi } from "@/lib/api";
 import { PortalShell } from "./portal-shell";
 import { useAdminContext } from "./admin-context";
 import { KiraPricePlan } from "./kira-price-plan";
+import { TransferCostPolicies } from './transfer-cost-policies';
 
 type Policy = {
   id: string;
@@ -324,6 +325,7 @@ function FinancePolicyEditor() {
             </section>
           ) : null}
           <KiraPricePlan />
+          <TransferCostPolicies />
           <section className="panel">
             <h2>Approved policy versions</h2>
             <div className="table-scroll">

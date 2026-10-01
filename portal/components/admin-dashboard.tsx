@@ -1766,31 +1766,7 @@ function OperationsView({
       setBusy(false);
     }
   }
-  async function reviewPayout(event: FormEvent<HTMLFormElement>, id: string) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    setBusy(true);
-    setError("");
-    try {
-      await portalApi(`/v1/admin/operations/payouts/${id}/review`, {
-        method: "POST",
-        body: JSON.stringify({
-          status: form.get("status"),
-          note: form.get("note"),
-          providerReference: form.get("providerReference") || null,
-        }),
-      });
-      onChanged();
-    } catch (caught) {
-      setError(
-        caught instanceof PortalApiError
-          ? caught.message
-          : "Payout review failed.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
+
   async function reviewPaymentEvent(
     event: FormEvent<HTMLFormElement>,
     id: string,
@@ -2168,37 +2144,7 @@ function OperationsView({
                   <small>{label(item.status)}</small>
                 </span>
               </summary>
-              <form
-                className="form-stack"
-                hidden={!can("payouts.approve")}
-                onSubmit={(event) => void reviewPayout(event, item.id)}
-              >
-                <label>
-                  Next state
-                  <select name="status">
-                    <option value="IN_REVIEW">In review</option>
-                    <option value="APPROVED">Approved</option>
-                    <option value="PROCESSING">Processing</option>
-                    <option value="PAID">Paid</option>
-                    <option value="FAILED">Failed</option>
-                    <option value="REJECTED">Rejected</option>
-                  </select>
-                </label>
-                <label>
-                  Provider reference
-                  <input
-                    name="providerReference"
-                    placeholder="Required when marking paid"
-                  />
-                </label>
-                <label>
-                  Finance note
-                  <textarea name="note" minLength={3} required />
-                </label>
-                <button className="button button--small" disabled={busy}>
-                  Save finance decision
-                </button>
-              </form>
+              <Link className="button button--secondary" href="/admin/withdrawals">Open verified withdrawal workspace</Link>
             </details>
           ))}
           {!operations.payoutRequests.length && (

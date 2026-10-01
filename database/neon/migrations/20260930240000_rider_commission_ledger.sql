@@ -30,8 +30,8 @@ begin
       x.code is null or x.type is null or x.direction is null or x.amount is null or x.amount<=0 or x.direction not in ('DEBIT','CREDIT') or
       x.type is distinct from case
         when x.code in ('PAYSTACK_CLEARING','RIDER_COMMISSION_RECEIVABLE') then 'ASSET'
-        when x.code in ('RIDER_PENDING','RIDER_AVAILABLE','RIDER_PAYOUT_RESERVED','VENDOR_PENDING','VENDOR_AVAILABLE','TUTOR_PENDING','TUTOR_AVAILABLE','DELIVERY_LIABILITY','PAYMENT_SUSPENSE') then 'LIABILITY'
-        when x.code in ('PLATFORM_COMMISSION','KIRA_SUBSCRIPTION_REVENUE') then 'REVENUE'
+        when x.code in ('RIDER_PENDING','RIDER_AVAILABLE','RIDER_PAYOUT_RESERVED','VENDOR_PENDING','VENDOR_AVAILABLE','VENDOR_PAYOUT_RESERVED','TUTOR_PENDING','TUTOR_AVAILABLE','TUTOR_PAYOUT_RESERVED','DELIVERY_LIABILITY','PAYMENT_SUSPENSE') then 'LIABILITY'
+        when x.code in ('PLATFORM_COMMISSION','KIRA_SUBSCRIPTION_REVENUE','PAYOUT_COST_RECOVERY') then 'REVENUE'
         when x.code='PROCESSING_EXPENSE' then 'EXPENSE' else null end or
       (x.code like 'RIDER_%' or x.code like 'VENDOR_%' or x.code like 'TUTOR_%') is distinct from (x.owner is not null)
     ) then raise exception 'INVALID_JOURNAL'; end if;

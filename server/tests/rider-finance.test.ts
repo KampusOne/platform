@@ -61,6 +61,7 @@ const env = {
   PAYMENTS_ENABLED: "true",
   TUTORIALS_ENABLED: "true",
   KIRA_SUBSCRIPTIONS_ENABLED: "true",
+  PAYOUTS_ENABLED: "true",
   UNIFIED_SCHEMA_READY: "true",
   AI_ASSISTANT_ENABLED: "true",
   HF_TOKEN: "synthetic-local-ai-provider-token",
@@ -68,7 +69,7 @@ const env = {
   HF_PRO_MODEL: "synthetic/pro",
   JWT_SECRET: "synthetic-private-file-test-key-at-least-32-characters",
   LOGISTICS_ENABLED: "true",
-  PAYSTACK_SECRET_KEY: "synthetic-not-a-real-key",
+  PAYSTACK_SECRET_KEY: "sk_live_synthetic-not-a-real-key",
 } as Bindings;
 const app = new Hono()
   .route("/agents", agentRoutes)
@@ -269,6 +270,7 @@ beforeAll(async () => {
     "20260930260000_inclusive_tutorial_bookings.sql",
     "20260930270000_verified_kira_subscription.sql",
     "20260930280000_verified_learning_materials.sql",
+    "20260930290000_verified_agent_payouts.sql",
   ])
     await pg.exec(
       readFileSync(
@@ -2047,5 +2049,607 @@ describe("verified learning-material purchases and private access", () => {
       ).status,
     ).toBe(403);
     expect(await balance(late.tutor, "TUTOR_PENDING")).toBe(0);
+  });
+});
+
+async function payoutFixture(type = "VENDOR", bearer = "PLATFORM") {
+  const owner = await person(undefined, campus, type),
+    setup = crypto.randomUUID(),
+    policy = crypto.randomUUID(),
+    recipient = "RCP_" + crypto.randomUUID().replaceAll("-", "");
+  const application = (
+    await pg.query<{ application_id: string }>(
+      "select application_id from agent_profiles where id=$1",
+      [owner.profile],
+    )
+  ).rows[0]!.application_id;
+  await pg.query(
+    "update agent_applications set status='APPROVED',legal_name='Synthetic verified owner',kyc_status='MANUALLY_VERIFIED',phone_verified_at=now(),terms_accepted_at=now(),bank_status='VERIFIED',bank_provider='PAYSTACK',bank_recipient_code=$2 where id=$1",
+    [application, recipient],
+  );
+  const identity = crypto.randomUUID(),
+    portrait = crypto.randomUUID();
+  for (const media of [identity, portrait])
+    await pg.query(
+      "insert into media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name)values($1,$2,$3,'kyc',$1::uuid::text,'image/jpeg',10,'Synthetic verification fixture')",
+      [media, owner.user, campus],
+    );
+  await pg.query(
+    "insert into agent_application_details(application_id,birth_date,is_student,identity_document_id,portrait_document_id,terms_version)values($1,'2000-01-01',false,$2,$3,'Synthetic-policy')",
+    [application, identity, portrait],
+  );
+  await pg.query(
+    "insert into app_private.verified_people(user_id,identity_fingerprint,verified_by)values($1,$1::uuid::text,$2)",
+    [owner.user, buyer],
+  );
+  await pg.query(
+    "insert into app_private.payout_account_setups(id,user_id,agent_profile_id,application_id,institution_id,request_hash,status,bank_code,bank_name,account_name,account_last4,recipient_code,provider_mode,reviewed_by,reviewed_at)values($1,$2,$3,$4,$5,'synthetic','APPROVED','058','Synthetic Bank','Synthetic verified owner','1234',$6,'live',$7,now())",
+    [setup, owner.user, owner.profile, application, campus, recipient, buyer],
+  );
+  await pg.query(
+    "insert into app_private.payout_cost_policies(id,university_id,agent_type,version,fee_bearer,low_fee_kobo,middle_fee_kobo,high_fee_kobo,duty_threshold_kobo,duty_kobo,source_url,approval_note,approved_by)values($1,$2,$3,$1::uuid::text,$4,1000,2500,5000,1000000,5000,'https://paystack.com/pricing','Synthetic reviewed merchant fees',$5)",
+    [policy, campus, type, bearer, buyer],
+  );
+  await pg.query(
+    "insert into app_private.active_payout_cost_policies(university_id,agent_type,policy_id)values($1,$2,$3)on conflict(university_id,agent_type)do update set policy_id=excluded.policy_id",
+    [campus, type, policy],
+  );
+  await journal(owner.user, 1000000, crypto.randomUUID(), type + "_AVAILABLE");
+  return { owner, setup, policy, application, recipient };
+}
+async function payoutQuote(
+  f: Awaited<ReturnType<typeof payoutFixture>>,
+  amount = 700000,
+) {
+  return (
+    await json(
+      await request("/agents/payout-quote", f.owner.user, "POST", {
+        agentProfileId: f.owner.profile,
+        amountKobo: amount,
+      }),
+    )
+  ).quote;
+}
+async function payoutRequest(
+  f: Awaited<ReturnType<typeof payoutFixture>>,
+  quote: { id: string; amountKobo: number },
+  requestId = crypto.randomUUID(),
+) {
+  const input = {
+    agentProfileId: f.owner.profile,
+    quoteId: quote.id,
+    requestId,
+    amountKobo: quote.amountKobo,
+  };
+  const saved = await json(
+    await request("/agents/payouts", f.owner.user, "POST", input),
+    201,
+  );
+  return { saved, input };
+}
+async function preparePayout(f: Awaited<ReturnType<typeof payoutFixture>>) {
+  const q = await payoutQuote(f),
+    p = await payoutRequest(f, q);
+  await json(
+    await request(
+      "/v1/admin/operations/payouts/" + p.saved.id + "/review",
+      buyer,
+      "POST",
+      { status: "APPROVED", note: "Reviewed synthetic withdrawal" },
+    ),
+  );
+  await pg.query("select app_private.prepare_ledger_transfer($1,$2)", [
+    p.saved.id,
+    campus,
+  ]);
+  return p.saved;
+}
+async function transferProof(
+  p: { provider_reference: string },
+  f: Awaited<ReturnType<typeof payoutFixture>>,
+  status = "success",
+  fee = 2500,
+  recipient = f.recipient,
+) {
+  return (
+    await pg.query<{ state: string }>(
+      "select app_private.record_ledger_transfer($1,700000,$2,$3,'live',$4,'TRF_synthetic',now()) as state",
+      [p.provider_reference, fee, recipient, status],
+    )
+  ).rows[0]!.state;
+}
+describe("verified agent withdrawals", () => {
+  it("requires owned active identity, a reviewed destination and campus policy, and enforces the withdrawal switch", async () => {
+    const f = await payoutFixture();
+    const q = await payoutQuote(f);
+    expect(q.netKobo).toBe(700000);
+    expect(q.feeKobo).toBe(0);
+    expect(q.accountLast4).toBe("1234");
+    expect(JSON.stringify(q)).not.toContain(f.recipient);
+    expect(
+      (
+        await request("/agents/payout-quote", buyer, "POST", {
+          agentProfileId: f.owner.profile,
+          amountKobo: 700000,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await request(
+          "/agents/payout-quote",
+          f.owner.user,
+          "POST",
+          { agentProfileId: f.owner.profile, amountKobo: 700000 },
+          otherCampus,
+        )
+      ).status,
+    ).toBe(409);
+    await pg.query(
+      "update agent_applications set kyc_status='PENDING' where id=$1",
+      [f.application],
+    );
+    expect(
+      (
+        await request("/agents/payouts", f.owner.user, "POST", {
+          agentProfileId: f.owner.profile,
+          amountKobo: 700000,
+          quoteId: q.id,
+          requestId: crypto.randomUUID(),
+        })
+      ).status,
+    ).toBe(409);
+    env.PAYOUTS_ENABLED = "false";
+    try {
+      expect(
+        (
+          await request("/agents/payout-quote", f.owner.user, "POST", {
+            agentProfileId: f.owner.profile,
+            amountKobo: 700000,
+          })
+        ).status,
+      ).toBe(503);
+    } finally {
+      env.PAYOUTS_ENABLED = "true";
+    }
+    expect(await balance(f.owner, "VENDOR_AVAILABLE")).toBe(1000000);
+    const foreign = await person(undefined, otherCampus, "TUTOR");
+    await pg.query(
+      "insert into operator_roles(user_id,university_id,role)values($1,$2,'FINANCE_REVIEWER')",
+      [foreign.user, otherCampus],
+    );
+    expect(
+      (
+        await request(
+          "/finance/transfer-policies",
+          foreign.user,
+          "POST",
+          {
+            universityId: campus,
+            agentType: "VENDOR",
+            version: crypto.randomUUID(),
+            feeBearer: "PLATFORM",
+            lowFeeKobo: 1000,
+            middleFeeKobo: 2500,
+            highFeeKobo: 5000,
+            dutyThresholdKobo: 1000000,
+            dutyKobo: 5000,
+            sourceUrl: "https://paystack.com/pricing",
+            approvalNote: "Synthetic fee review evidence",
+          },
+          otherCampus,
+        )
+      ).status,
+    ).toBe(403);
+  });
+  it("serializes competing reservations, reuses an exact request and seals balances and destinations", async () => {
+    const f = await payoutFixture("TUTOR"),
+      a = await payoutQuote(f),
+      b = await payoutQuote(f),
+      requestId = crypto.randomUUID();
+    const input = {
+      agentProfileId: f.owner.profile,
+      amountKobo: 700000,
+      quoteId: a.id,
+      requestId,
+    };
+    const results = await Promise.all([
+      request("/agents/payouts", f.owner.user, "POST", input),
+      request("/agents/payouts", f.owner.user, "POST", {
+        ...input,
+        quoteId: b.id,
+        requestId: crypto.randomUUID(),
+      }),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    const winner = (await results.find((r) => r.status === 201)!.json()) as {
+      id: string;
+    };
+    expect(await balance(f.owner, "TUTOR_AVAILABLE")).toBe(300000);
+    expect(await balance(f.owner, "TUTOR_PAYOUT_RESERVED")).toBe(700000);
+    const stored = (
+      await pg.query<{ quote_id: string; request_id: string }>(
+        "select quote_id,request_id from app_private.agent_payout_settlements where payout_id=$1",
+        [winner.id],
+      )
+    ).rows[0]!;
+    const replay = await json(
+      await request("/agents/payouts", f.owner.user, "POST", {
+        ...input,
+        quoteId: stored.quote_id,
+        requestId: stored.request_id,
+      }),
+      201,
+    );
+    expect(replay.id).toBe(winner.id);
+    expect(
+      (
+        await request("/agents/payouts", f.owner.user, "POST", {
+          ...input,
+          amountKobo: 800000,
+        })
+      ).status,
+    ).toBe(409);
+    await expect(
+      pg.query("update payout_requests set amount_kobo=1 where id=$1", [
+        winner.id,
+      ]),
+    ).rejects.toThrow("SEALED_PAYOUT_IMMUTABLE");
+    await expect(
+      pg.query("update payout_requests set status='PAID' where id=$1", [
+        winner.id,
+      ]),
+    ).rejects.toThrow("PAYOUT_VERIFIED_TRANSFER_REQUIRED");
+    expect((await request("/agents/payouts/" + winner.id, buyer)).status).toBe(
+      404,
+    );
+  });
+  it("treats initiation as pending, requires exact provider proof and reports real reserved and withdrawn balances", async () => {
+    const f = await payoutFixture(),
+      q = await payoutQuote(f),
+      p = await payoutRequest(f, q);
+    await json(
+      await request(
+        "/v1/admin/operations/payouts/" + p.saved.id + "/review",
+        buyer,
+        "POST",
+        { status: "APPROVED", note: "Reviewed synthetic bank destination" },
+      ),
+    );
+    let wrong = true;
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const data = {
+        reference: p.saved.provider_reference,
+        amount: 700000,
+        currency: "NGN",
+        domain: "live",
+        status: "success",
+        transfer_code: "TRF_synthetic",
+        updatedAt: new Date().toISOString(),
+        fee_charged: 3200,
+        recipient: {
+          recipient_code: wrong ? "RCP_wrong" : f.recipient,
+          currency: "NGN",
+          domain: "live",
+          details: { account_number: "not-stored" },
+        },
+      };
+      if (init?.method === "POST") {
+        expect(JSON.parse(init.body as string).reference).toBe(
+          p.saved.provider_reference,
+        );
+        return Response.json({ status: true, data });
+      }
+      expect(url).toContain("/transfer/verify/");
+      return Response.json({ status: true, data });
+    });
+    vi.stubGlobal("fetch", fetch);
+    await json(
+      await request(
+        "/v1/admin/operations/payouts/" + p.saved.id + "/transfer",
+        buyer,
+        "POST",
+        { confirm: true },
+      ),
+    );
+    expect(
+      (
+        await pg.query<{ status: string }>(
+          "select status from payout_requests where id=$1",
+          [p.saved.id],
+        )
+      ).rows[0]!.status,
+    ).toBe("PROCESSING");
+    expect(await balance(f.owner, "VENDOR_PAYOUT_RESERVED")).toBe(700000);
+    await json(
+      await request(
+        "/v1/admin/operations/payouts/" + p.saved.id + "/check",
+        buyer,
+        "POST",
+        {},
+      ),
+    );
+    expect(
+      (
+        await pg.query<{ status: string }>(
+          "select status from payout_requests where id=$1",
+          [p.saved.id],
+        )
+      ).rows[0]!.status,
+    ).toBe("REQUIRES_REVIEW");
+    wrong = false;
+    env.PAYOUTS_ENABLED = "false";
+    env.PAYMENTS_ENABLED = "false";
+    try {
+      await json(await request("/agents/payouts/" + p.saved.id, f.owner.user));
+      await json(await request("/agents/payouts/" + p.saved.id, f.owner.user));
+    } finally {
+      env.PAYOUTS_ENABLED = "true";
+      env.PAYMENTS_ENABLED = "true";
+    }
+    expect(await balance(f.owner, "VENDOR_PAYOUT_RESERVED")).toBe(0);
+    expect(await balance(f.owner, "VENDOR_AVAILABLE")).toBe(300000);
+    const earnings = await json(
+      await request("/agents/earnings", f.owner.user),
+    );
+    expect(Number(earnings.store.withdrawn_kobo)).toBe(700000);
+    expect(Number(earnings.store.reserved_kobo)).toBe(0);
+    expect(
+      (
+        await pg.query<{ count: number }>(
+          "select count(*)::int count from ledger_transactions where idempotency_key=$1",
+          ["payout-paid:" + p.saved.provider_reference],
+        )
+      ).rows[0]!.count,
+    ).toBe(1);
+    const proof = await pg.query(
+      "select * from app_private.verified_payout_observations where payout_id=$1",
+      [p.saved.id],
+    );
+    expect(JSON.stringify(proof.rows)).not.toContain("not-stored");
+  });
+  it("keeps an uncertain or failed transfer reserved, retries the same reference, and only releases a verified reversal", async () => {
+    const f = await payoutFixture("RIDER"),
+      p = await preparePayout(f);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Synthetic connection failure");
+      }),
+    );
+    expect(
+      (
+        await request(
+          "/v1/admin/operations/payouts/" + p.id + "/transfer",
+          buyer,
+          "POST",
+          { confirm: true },
+        )
+      ).status,
+    ).toBe(503);
+    expect(await balance(f.owner, "RIDER_PAYOUT_RESERVED")).toBe(700000);
+    expect(await transferProof(p, f, "failed")).toBe("FAILED");
+    expect(
+      (
+        await request(
+          "/v1/admin/operations/payouts/" + p.id + "/review",
+          buyer,
+          "POST",
+          { status: "REJECTED", note: "Cannot reject an initiated transfer" },
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await request(
+          "/v1/admin/operations/payouts/" + p.id + "/review",
+          buyer,
+          "POST",
+          {
+            status: "PAID",
+            providerReference: "fabricated",
+            note: "Cannot fabricate payment proof",
+          },
+        )
+      ).status,
+    ).toBe(409);
+    const transfer = (
+      await pg.query<{ provider_reference: string }>(
+        "select (app_private.prepare_ledger_transfer($1,$2)).*",
+        [p.id, campus],
+      )
+    ).rows[0]!;
+    expect(transfer.provider_reference).toBe(p.provider_reference);
+    expect(await transferProof(p, f, "reversed", 0)).toBe("REVERSED");
+    expect(await transferProof(p, f, "reversed", 0)).toBe("REVERSED");
+    expect(await balance(f.owner, "RIDER_AVAILABLE")).toBe(1000000);
+    expect(await balance(f.owner, "RIDER_PAYOUT_RESERVED")).toBe(0);
+    expect(await transferProof(p, f, "success")).toBe("REQUIRES_REVIEW");
+    expect(await balance(f.owner, "RIDER_AVAILABLE")).toBe(1000000);
+  });
+  it("returns unused fee allowance and compensates a paid reversal without changing journals", async () => {
+    const f = await payoutFixture("TUTOR", "PAYEE"),
+      q = await payoutQuote(f);
+    expect(q.netKobo).toBe(697500);
+    const p = await payoutRequest(f, q);
+    await pg.query(
+      "select app_private.review_ledger_payout($1,$2,$3,'APPROVED','Synthetic approved payout')",
+      [p.saved.id, campus, buyer],
+    );
+    await pg.query("select app_private.prepare_ledger_transfer($1,$2)", [
+      p.saved.id,
+      campus,
+    ]);
+    const record = async (status: string, fee: number) =>
+      (
+        await pg.query<{ state: string }>(
+          "select app_private.record_ledger_transfer($1,697500,$2,$3,'live',$4,'TRF_synthetic',now()) state",
+          [p.saved.provider_reference, fee, f.recipient, status],
+        )
+      ).rows[0]!.state;
+    expect(await record("success", 1000)).toBe("PAID");
+    expect(await record("success", 1000)).toBe("PAID");
+    expect(await balance(f.owner, "TUTOR_AVAILABLE")).toBe(301500);
+    expect(await record("reversed", 0)).toBe("REVERSED");
+    expect(await record("reversed", 0)).toBe("REVERSED");
+    expect(await balance(f.owner, "TUTOR_AVAILABLE")).toBe(1000000);
+    expect(await balance(f.owner, "TUTOR_PAYOUT_RESERVED")).toBe(0);
+    await expect(
+      pg.query(
+        "delete from app_private.verified_payout_observations where payout_id=$1",
+        [p.saved.id],
+      ),
+    ).rejects.toThrow("append-only");
+  });
+  it("blocks withdrawal with outstanding cash commissions and releases a rejection before transfer once", async () => {
+    const f = await payoutFixture("RIDER");
+    const cash = await job(f.owner, "CASH");
+    await complete(f.owner, cash);
+    const q = await payoutQuote(f);
+    const p = await payoutRequest(f, q); // Eligible digital earnings offset the cash commission under the same financial lock.
+    expect(
+      (await riderFinanceSummary(env, f.owner.user, campus))
+        ?.commission_due_kobo,
+    ).toBe(0);
+    expect(await balance(f.owner, "RIDER_AVAILABLE")).toBe(297000);
+    await json(
+      await request(
+        "/v1/admin/operations/payouts/" + p.saved.id + "/review",
+        buyer,
+        "POST",
+        { status: "REJECTED", note: "Synthetic pre-transfer rejection" },
+      ),
+    );
+    expect(await balance(f.owner, "RIDER_AVAILABLE")).toBe(997000);
+    expect(
+      (
+        await request(
+          "/v1/admin/operations/payouts/" + p.saved.id + "/review",
+          buyer,
+          "POST",
+          { status: "REJECTED", note: "Duplicate rejection attempt" },
+        )
+      ).status,
+    ).toBe(409);
+    const debtOwner = await person(f.owner.user, otherCampus, "RIDER"),
+      otherVendor = await person(undefined, otherCampus, "VENDOR");
+    const crossOrder = crypto.randomUUID(),
+      crossJob = crypto.randomUUID(),
+      crossZone = crypto.randomUUID(),
+      crossJournal = crypto.randomUUID();
+    await pg.query(
+      "insert into delivery_zones(id,university_id,name,base_fee_kobo,active)values($1,$2,'Synthetic foreign-campus route',30000,true)",
+      [crossZone, otherCampus],
+    );
+    await pg.query(
+      "insert into orders(id,university_id,buyer_user_id,vendor_profile_id,subtotal_kobo,delivery_fee_kobo,status)values($1,$2,$3,$4,100000,30000,'IN_DELIVERY')",
+      [crossOrder, otherCampus, buyer, otherVendor.profile],
+    );
+    await pg.query(
+      "insert into delivery_jobs(id,university_id,order_id,rider_profile_id,zone_id,pickup_code_hash,delivery_code_hash,status,financial_version,fare_kobo,rider_earning_kobo,fare_basis,route_distance_metres)values($1,$2,$3,$4,$5,'synthetic-pickup','synthetic-delivery','AVAILABLE','CAMPUS_FARE_V1',30000,27000,'CAMPUS_ZONE',700)",
+      [crossJob, otherCampus, crossOrder, debtOwner.profile, crossZone],
+    );
+    const lines = [
+      {
+        code: "RIDER_COMMISSION_RECEIVABLE",
+        type: "ASSET",
+        owner: f.owner.user,
+        direction: "DEBIT",
+        amount: 3000,
+      },
+      {
+        code: "PLATFORM_COMMISSION",
+        type: "REVENUE",
+        direction: "CREDIT",
+        amount: 3000,
+      },
+    ];
+    await pg.query<{ id: string }>(
+      "select app_private.post_finance_journal($1,'DELIVERY_JOB',$2,$3,'Synthetic other-campus cash commission',$4::jsonb)as id",
+      [otherCampus, crossJob, crossJournal, JSON.stringify(lines)],
+    );
+    await pg.query(
+      "insert into app_private.rider_cash_commissions(job_id,university_id,rider_profile_id,rider_user_id,fare_kobo,commission_kobo)values($1,$2,$3,$4,30000,3000)",
+      [crossJob, otherCampus, debtOwner.profile, f.owner.user],
+    );
+    const next = await payoutQuote(f);
+    expect(
+      (
+        await request("/agents/payouts", f.owner.user, "POST", {
+          agentProfileId: f.owner.profile,
+          amountKobo: 700000,
+          quoteId: next.id,
+          requestId: crypto.randomUUID(),
+        })
+      ).status,
+    ).toBe(409);
+    expect(await balance(f.owner, "RIDER_AVAILABLE")).toBe(997000);
+  });
+  it("supports merchant OTP without storing the code or treating its acknowledgement as payment proof", async () => {
+    const f = await payoutFixture(),
+      q = await payoutQuote(f),
+      p = await payoutRequest(f, q),
+      otp = "123456";
+    await json(
+      await request(
+        "/v1/admin/operations/payouts/" + p.saved.id + "/review",
+        buyer,
+        "POST",
+        { status: "APPROVED", note: "Synthetic OTP transfer review" },
+      ),
+    );
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      const sent = JSON.parse(init.body as string);
+      if (url.endsWith("/finalize_transfer"))
+        expect(sent).toEqual({ transfer_code: "TRF_synthetic", otp });
+      return Response.json({
+        status: true,
+        data: {
+          reference: p.saved.provider_reference,
+          amount: 700000,
+          currency: "NGN",
+          domain: "live",
+          status: url.endsWith("/finalize_transfer") ? "pending" : "otp",
+          transfer_code: "TRF_synthetic",
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const start = await json(
+      await request(
+        "/v1/admin/operations/payouts/" + p.saved.id + "/transfer",
+        buyer,
+        "POST",
+        { confirm: true },
+      ),
+    );
+    expect(start.status).toBe("OTP_REQUIRED");
+    await json(
+      await request(
+        "/v1/admin/operations/payouts/" + p.saved.id + "/finalize",
+        buyer,
+        "POST",
+        { otp },
+      ),
+    );
+    expect(
+      (
+        await pg.query<{ status: string }>(
+          "select status from payout_requests where id=$1",
+          [p.saved.id],
+        )
+      ).rows[0]!.status,
+    ).toBe("PROCESSING");
+    expect(await balance(f.owner, "VENDOR_PAYOUT_RESERVED")).toBe(700000);
+    expect(
+      JSON.stringify(
+        (
+          await pg.query(
+            "select metadata from app_private.audit_events where target_id=$1",
+            [p.saved.id],
+          )
+        ).rows,
+      ),
+    ).not.toContain(otp);
   });
 });
