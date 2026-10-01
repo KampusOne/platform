@@ -1,0 +1,242 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-01T14:04:44.906Z",
+    "recordedFrom": "User authorised the complete correction batch and one final production rollout in this session."
+  },
+  "verifiedAt": "2026-10-01T14:05:46.507Z",
+  "codeCheckpoint": "1b0b0025ed351cea673cc38eea324b441d929c31",
+  "rehearsal": {
+    "branchId": "br-fragrant-paper-ayq7ay0y",
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "scope": "Child created from production before the previous migration batch; prerequisites and all 17 October migrations applied sequentially, functional acceptance and source review passed.",
+    "checks": {
+      "checked_at": "2026-10-01T14:03:58.592Z",
+      "map_features": "3714",
+      "campus_paths": "817",
+      "merged_places": "16",
+      "preserved_place_versions": "16",
+      "invalid_geometry": "0",
+      "path_node_mismatches": "0",
+      "private_public_grants": "0",
+      "introduced_tables_without_rls": "0",
+      "source_imports": "0"
+    }
+  },
+  "checks": {
+    "october": "passed",
+    "fixturesRolledBack": true,
+    "existingAccountCountsPreserved": true,
+    "mediaAndBookingsPreserved": true,
+    "existingOrdersAndLedgerPreserved": true,
+    "legacyMigrationRegistryPreserved": true,
+    "privatePrivileges": "passed",
+    "identityInitialization": {
+      "encryptedIdentity": 0,
+      "encryptedDrafts": 0,
+      "checkedAt": "2026-10-01T14:05:46.507Z"
+    }
+  },
+  "rollout": {
+    "transaction": "single repeatable-read transaction",
+    "appliedAt": "2026-10-01T14:05:24.968Z",
+    "legacyVersionsBefore": 51,
+    "registeredVersionsAfter": 68,
+    "preservedRecords": [
+      {
+        "table_name": "ledger_accounts",
+        "row_count": "0",
+        "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      {
+        "table_name": "ledger_lines",
+        "row_count": "0",
+        "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      {
+        "table_name": "ledger_transactions",
+        "row_count": "0",
+        "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      {
+        "table_name": "media_objects",
+        "row_count": "84",
+        "fingerprint": "be69ed1a88994615707a1cd4380d6c38"
+      },
+      {
+        "table_name": "orders",
+        "row_count": "0",
+        "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      {
+        "table_name": "profiles",
+        "row_count": "14",
+        "fingerprint": "dc00915ea93a6c988534e0bde389a822"
+      },
+      {
+        "table_name": "tutorial_bookings",
+        "row_count": "6",
+        "fingerprint": "e9a232ba51b7c35ad3d75d69d3ac500a"
+      },
+      {
+        "table_name": "users",
+        "row_count": "14",
+        "fingerprint": "2272e5a78bf52fe8b1cc7c73966b0997"
+      }
+    ]
+  },
+  "productionCounts": {
+    "checked_at": "2026-10-01T14:05:46.507Z",
+    "users": "14",
+    "profiles": "14",
+    "media": "84",
+    "bookings": "6",
+    "orders": "0",
+    "journals": "0",
+    "encrypted_identity": "0",
+    "encrypted_drafts": "0",
+    "registered_versions": "68",
+    "campus_places": "101",
+    "active_agents": "0",
+    "approved_commerce_policies": "0"
+  },
+  "gis": {
+    "checked_at": "2026-10-01T14:05:46.507Z",
+    "map_features": "3714",
+    "campus_paths": "817",
+    "merged_places": "16",
+    "preserved_place_versions": "16",
+    "invalid_geometry": "0",
+    "path_node_mismatches": "0",
+    "private_public_grants": "0",
+    "introduced_tables_without_rls": "0",
+    "source_imports": "2"
+  },
+  "callablePrivateFunctions": {
+    "public_execute_grants": "0"
+  },
+  "mapSource": {
+    "path": "database/imports/uniben-osm-2026-10-01.json",
+    "sha256": "7ed195ed46c68d05231e232db0349eb87aa4d1f5e3f09aec9b0c8f42d43b0811",
+    "source": "OpenStreetMap",
+    "geometryReview": "16 existing directory places matched to named OSM footprints; IDs, names, aliases and hierarchy retained.",
+    "entranceSurvey": "Still requires field verification; no claim of on-site survey."
+  },
+  "verification": {
+    "githubRunId": 36873102275,
+    "githubRunUrl": "https://github.com/KampusOne/platform/actions/runs/36873102275",
+    "contractsPassed": 10,
+    "serverTestsPassed": 535,
+    "nodeTestsPassed": 132,
+    "browserChecks": "passed",
+    "providerCallsDuringAcceptance": false
+  },
+  "migrations": [
+    {
+      "version": "20261001180000_map_v2_and_message_uploads",
+      "sourceBlobSha": "f4c8f95371355e2791d05fd6fc15d3996dcca927",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "1b9cbb2b56d34e37f48c63d8ee5129f7d3e78b892c04fde2713834dec9143940"
+    },
+    {
+      "version": "20261001181000_message_activity_and_alarm_completion",
+      "sourceBlobSha": "d799947e7a7bc78f11cdb0437d432fd85a16fbe6",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "864a5c425aa7bf491acd662cf4a3399ca790c5a029f744a69e0811048df0f0db"
+    },
+    {
+      "version": "20261001182000_discount_codes_and_newsletter_access",
+      "sourceBlobSha": "a50ddb0982509e73c1d55e848c989bca3f2b53f4",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "2532db172e40f3b38a380d8494ebccb301c1c48695b5bf60e4706d425d93c672"
+    },
+    {
+      "version": "20261001183000_poll_privacy",
+      "sourceBlobSha": "58a4ec634aca12686e3217e890ddc4a4f4e396d9",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "734a3a0b571cc894579f708a39807ad1120be04bafd16abb80e734ece3a809b4"
+    },
+    {
+      "version": "20261001184000_atomic_map_review",
+      "sourceBlobSha": "85ebf81c539aaf69db7ac944ae6b5c76468d727e",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "862a9b9c7a07e45b7462d907162f9eec8be49184e3a8932c0af479e5df8324c4"
+    },
+    {
+      "version": "20261001185000_scoped_commerce_discounts",
+      "sourceBlobSha": "61544279e842c9f2ac57fdb0a5d925a4d7d6ccf6",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "eb7acde5354c7769ac507a64801645b8521ea9795948d6fe44bda53e1218e7b8"
+    },
+    {
+      "version": "20261001185500_material_discounts",
+      "sourceBlobSha": "0ccd36d1b9d50e01e548d831453df2d8163ff4ad",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "419e8bb639cb449bad1a8e0b44651a82045342047c8d4cf86dc3854a1e6a180b"
+    },
+    {
+      "version": "20261001186000_sourced_map_import",
+      "sourceBlobSha": "57aad6b319ea510e7047d20da15b9d258c8404c2",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "abd8a8eb6ead02b148238560511f9ff96810abbd6359039368f1b772c254a3f8"
+    },
+    {
+      "version": "20261001187000_media_limits_map_capture_controls",
+      "sourceBlobSha": "62f75c845436254703da2ce42bba6a164778ca73",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "d6b51d724d67ad2c4302605bb7eb2f3c4c106ab31c66ca11b43f9b81bd9d59ac"
+    },
+    {
+      "version": "20261001188000_atomic_map_capture_review",
+      "sourceBlobSha": "5362ce5bd159c5534cf6dda312f1f5a03ecea138",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "c9793abb1e7ed5e3a17fc9fdcb741d1ba8872a904cb4d39cd886165a1dc30e3d"
+    },
+    {
+      "version": "20261001189000_notification_runtime_controls",
+      "sourceBlobSha": "b984dc60afce957333748917c9707212b2a26615",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "a07c9f0c820f7480a66cc823655dbd8588a9f920922a5f3b3c90e9fc15f0df2c"
+    },
+    {
+      "version": "20261001190000_atomic_large_upload_allowance",
+      "sourceBlobSha": "70e2131b2995e15b6189b5fbd507aa71f451568c",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "33823acb739d988b8752b2cc26fb4879d33d05fd0438ef7efa5177bd9687359a"
+    },
+    {
+      "version": "20261001191000_activate_fixed_uniben_kira_plan",
+      "sourceBlobSha": "75dac40842f016faa4c1b94dee6436785a5a351d",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "0843c2e7773177ab68824b4715fc9b12ce410ef59a7b3024fc8f0c80c02c243c"
+    },
+    {
+      "version": "20261001192000_trusted_vendor_intake",
+      "sourceBlobSha": "3bdab41c915403413bb255cd15b8533a0bbc5141",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "51abf81a18af5879db08c977448f43e401bb034263e0a252141294062fbb6883"
+    },
+    {
+      "version": "20261001193000_trusted_vendor_verified_bank_guard",
+      "sourceBlobSha": "faa22f202c017f3afa86f6e8e1f02e252a8fa96d",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "7f70b9dd27ce226a9e9597fa69c24ce77cbd18044d7660e7b6cd9a8bb5688711"
+    },
+    {
+      "version": "20261001194000_foreground_usage_samples",
+      "sourceBlobSha": "229e4bad96ab7eeb84fd6f7f16ec826d708c1447",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "cde96272fd71f950dee3fbe9ddb03d1f131145bed2b92514a310eea988b680da"
+    },
+    {
+      "version": "20261001195000_delivery_route_positions",
+      "sourceBlobSha": "229d6c62fb1bd7146ea341d3ba3fc4945d2daa2e",
+      "appliedAt": "2026-10-01T14:05:24.968Z",
+      "sha256": "dd98c733725b9f89f0e137c74340652dd342a36ca9e33d81c40ebbb6d7486154"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "c1256d552a5643b0d1d5979ed17d4e870d91e1be",
+  "sourceCommit": "1b0b0025ed351cea673cc38eea324b441d929c31",
   "issues": [
     {
       "id": 1,
@@ -1851,14 +1851,13 @@
     }
   ],
   "batchVerification": {
-    "codeCheckpoint": "b9dea414192f488b9d6cace31043cea92fda6feb",
-    "workflowRun": "https://github.com/KampusOne/platform/actions/runs/36871339145",
-    "serverTests": 534,
-    "contractTests": 10,
-    "rootTests": 132,
-    "browser": "passed: compiled onboarding, invitation flow, transactional emails, both campus maps, wheel/pan, desktop/mobile layout",
-    "lastRouteChange": "Additional separation of mapped road length from unsurveyed access is under final verification.",
-    "nativeDevice": "Not observed in this execution environment.",
-    "claim": "Implemented means the source change is present; it is not a claim that every hardware or external-provider path was exercised."
+    "codeCheckpoint": "1b0b0025ed351cea673cc38eea324b441d929c31",
+    "githubRunId": 36873102275,
+    "serverTestsPassed": 535,
+    "contractTestsPassed": 10,
+    "additionalTestsPassed": 132,
+    "browserChecks": "passed",
+    "productionMigrationProof": "database/verification/production-20261001-october.json",
+    "statusMeaning": "Implemented means the source change and applicable automated checks passed. It does not claim unobserved installed-phone or external-provider acceptance."
   }
 }
