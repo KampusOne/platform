@@ -1,5 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 const capabilities = [
   { label: "Students", value: "Today, feed, timetable, GPA, tutorials and store" },
@@ -7,7 +9,9 @@ const capabilities = [
   { label: "Administrators", value: "Users, approvals, content, revenue and audit" },
 ];
 
-export default function PlatformIndex() {
+export default async function PlatformIndex() {
+  const host = (await headers()).get("host")?.split(":")[0]?.toLowerCase();
+  if (host === "agentinvite.kampusone.app") redirect("/agents");
   return <main className="home-page">
     <header className="home-nav"><Image src="/kampusone-horizontal-ink.png" width={188} height={46} alt="KampusOne" priority /><nav><Link href="/agents">Agent workspace</Link><Link href="/admin" className="button button--primary">Administration</Link></nav></header>
     <section className="home-hero"><div className="home-hero__copy"><p className="eyebrow">The operating system for campus life</p><h1>Everything students need, in one campus.</h1><p>KampusOne connects academic planning, trusted campus updates, tutorials, local commerce, delivery, and the people who run it.</p><div className="hero-actions"><Link href="/agents" className="button button--primary">Start as an agent</Link><Link href="/engineering" className="button button--secondary">View system status</Link></div><div className="trust-line"><span className="status-dot status-dot--online" />Real accounts · verified actions · accountable operations</div></div><div className="home-hero__visual"><div className="visual-card"><Image src="/brand-scenes/campus-life.png" alt="Nigerian students using KampusOne on campus" width={1024} height={1024} priority /></div><div className="visual-float visual-float--top"><span>Today</span><strong>Classes, updates and campus life</strong></div><div className="visual-float visual-float--bottom"><span>One account</span><strong>Student → agent → campus operator</strong></div></div></section>
