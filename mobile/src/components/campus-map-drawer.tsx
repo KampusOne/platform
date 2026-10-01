@@ -211,7 +211,8 @@ export function CampusMapDrawer({
   }, [sheetHeight, targetHeight]);
 
   useEffect(() => {
-    if (choosingOrigin || route) setExpanded(true);
+    if (choosingOrigin) setExpanded(true);
+    else if (route) setExpanded(false);
   }, [choosingOrigin, route]);
 
   const panResponder = useMemo(
@@ -333,6 +334,7 @@ export function CampusMapDrawer({
     }
     rememberDestination(place.id);
     onQueryChange(place.name);
+    setExpanded(false);
     onPickDestination(place.id);
   };
 
