@@ -1,0 +1,21 @@
+name: Prepare campus map data
+on:
+  push:
+    branches: [fix/october-124-issues]
+    paths: [.github/workflows/prepare-campus-map-data.yml, database/imports/campus-map-download.py]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - run: python database/imports/campus-map-download.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uniben-map-source-data
+          path: map-source-data
+          if-no-files-found: error
+          retention-days: 14
