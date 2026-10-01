@@ -58,6 +58,7 @@ const fallbackApiUrl =
     ? null
     : configuredFallbackUrl?.replace(/\/$/, "") ?? null;
 let activeApiUrl = apiUrl;
+let healthyApiOriginUntil = 0;
 
 function currentApiUrl() {
   return Platform.OS === "web" ? apiUrl : activeApiUrl;
@@ -70,13 +71,56 @@ function alternateApiUrl(origin: string) {
 }
 
 function markApiOriginHealthy(origin: string) {
-  if (Platform.OS !== "web") activeApiUrl = origin;
+  if (Platform.OS !== "web") {
+    activeApiUrl = origin;
+    healthyApiOriginUntil = Date.now() + 60_000;
+  }
 }
 
 function markApiOriginUnavailable(origin: string) {
   const alternate = alternateApiUrl(origin);
-  if (alternate && activeApiUrl === origin) activeApiUrl = alternate;
+  if (activeApiUrl === origin) {
+    healthyApiOriginUntil = 0;
+    if (alternate) activeApiUrl = alternate;
+  }
   return alternate;
+}
+
+async function chooseAuthOrigin(
+  timeoutMs: number,
+  parentSignal?: AbortSignal | null,
+) {
+  const preferred = currentApiUrl();
+  const alternate = alternateApiUrl(preferred);
+  if (!alternate || healthyApiOriginUntil > Date.now()) return preferred;
+
+  // Select a reachable route before sending credentials or consuming a one-time
+  // code. Only these credential-free reads race; auth POSTs are never replayed.
+  return withRequestDeadline(async (signal) => {
+    const probes = new AbortController();
+    const cancel = () => probes.abort();
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      const origin = await Promise.any([preferred, alternate].map(async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/health/live`, {
+          signal: probes.signal, credentials: "omit", cache: "no-store",
+        });
+        const payload = await response.json();
+        if (!response.ok || payload?.status !== "ok" || payload?.service !== "kampusone-api")
+          throw new TypeError("The KampusOne API route is unavailable.");
+        return baseUrl;
+      }));
+      if (signal.aborted) throw new Error("Request cancelled");
+      markApiOriginHealthy(origin);
+      return origin;
+    } catch (caught) {
+      if (signal.aborted) throw caught;
+      throw new TypeError("We could not reach a KampusOne API route.");
+    } finally {
+      signal.removeEventListener("abort", cancel);
+      probes.abort();
+    }
+  }, Math.min(timeoutMs, 8_000), parentSignal);
 }
 let accessToken: string | null = null;
 let sessionListener: ((session: Session | null) => void) | null = null;
@@ -304,7 +348,7 @@ async function refreshSession() {
       );
     }
     const versionAtStart = credentialVersion;
-    const restoreOrigin = currentApiUrl();
+    let restoreOrigin = currentApiUrl();
     const restoreController = new AbortController();
     refreshAbortController = restoreController;
     refreshPromise = withRequestDeadline(async (signal) => {
@@ -313,6 +357,7 @@ async function refreshSession() {
         // install or signed-out device has nothing to restore over the network.
         if (Platform.OS !== "web" && !refreshToken) return null;
         if (signal.aborted) throw new Error("Session restoration cancelled");
+        restoreOrigin = await chooseAuthOrigin(6_000, signal);
         const response = await fetch(`${restoreOrigin}/v1/auth/refresh`, {
           method: "POST",
           credentials: "include",
@@ -323,6 +368,7 @@ async function refreshSession() {
           },
           body: JSON.stringify(refreshToken ? { refreshToken } : {}),
         });
+        if (signal.aborted) throw new Error("Session restoration cancelled");
         markApiOriginHealthy(restoreOrigin);
         return parse<Session>(response);
       }, 12_000, restoreController.signal)
@@ -386,21 +432,29 @@ async function request<T>(
   const startedAt = Date.now();
   const remainingTimeoutMs = () =>
     Math.max(1, requestTimeoutMs - (Date.now() - startedAt));
-  const attempt = (baseUrl: string) =>
+  const attempt = (baseUrl: string, attemptTimeoutMs = remainingTimeoutMs()) =>
     withRequestDeadline(async (signal) => {
       const response = await send(`${baseUrl}${path}`, {
         ...requestInit, signal, credentials: "include", headers,
       });
+      if (signal.aborted) throw new Error("Request cancelled");
       markApiOriginHealthy(baseUrl);
       if (response.status === 401 && canRefresh && path !== "/v1/auth/refresh")
         return { response };
       return { response, value: await parse<T>(response) };
-    }, remainingTimeoutMs(), parentSignal);
+    }, attemptTimeoutMs, parentSignal);
 
   let result: { response: Response; value?: T };
-  const primaryOrigin = currentApiUrl();
+  let primaryOrigin = currentApiUrl();
   try {
-    result = await attempt(primaryOrigin);
+    if (!mayRetryOnAnotherOrigin && /^\/v1\/auth(?:\/|$)/.test(path))
+      primaryOrigin = await chooseAuthOrigin(remainingTimeoutMs(), parentSignal);
+    // A timed-out first read must leave time for the configured backup route.
+    // Spending the entire deadline here made the existing fallback unreachable.
+    const firstAttemptMs = mayRetryOnAnotherOrigin && alternateApiUrl(primaryOrigin)
+      ? Math.max(1, Math.floor(remainingTimeoutMs() / 2))
+      : remainingTimeoutMs();
+    result = await attempt(primaryOrigin, firstAttemptMs);
   } catch (caught) {
     const connectionFailure =
       (caught instanceof Error && caught.name === "TimeoutError") ||
