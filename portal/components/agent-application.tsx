@@ -65,6 +65,13 @@ const steps = [
   "Evidence",
   "Review & agree",
 ];
+const stepKickers = [
+  "Let’s start",
+  "Your campus",
+  "Choose your role",
+  "Almost there",
+  "And we’re done",
+];
 const phonePattern = /^\+[1-9]\d{7,14}$/;
 const termsVersion = "2026-09-21";
 const fieldExamples:Record<string,string>={legalName:'e.g. Osas Egharevba',displayName:'e.g. Osas Kitchen',address:'e.g. 12 Uselu Road, Benin City',businessAddress:'e.g. June 12 shopping complex, Ugbowo',emergencyContactName:'e.g. Itohan Egharevba',guardianName:'e.g. Itohan Egharevba',guardianEmail:'e.g. itohan@example.com',matricNumber:'e.g. ENG2200123'};
@@ -634,7 +641,7 @@ export function AgentApplication() {
                 <div className="onboarding-stepbar"><button type="button" aria-label="Previous step" disabled={busy||step===0} onClick={()=>{setStep(current=>Math.max(0,current-1));setError("");}} className="onboarding-back">‹</button><div role="progressbar" aria-label="Application progress" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={step+1} className="onboarding-progress"><span style={{width:`${(step+1)/steps.length*100}%`}}/></div><span className="onboarding-stepcount">{step+1} of {steps.length}</span></div>
                 <div className="onboarding-mobile-art"><AgentApplicationIllustration step={step}/></div>
                 <header>
-
+                  <p className="onboarding-kicker">{stepKickers[step]}</p>
                   <h2 ref={heading} tabIndex={-1}>
                     {steps[step]}
                   </h2>
@@ -726,19 +733,55 @@ export function AgentApplication() {
                   )}
                   {step === 2 && (
                     <>
-                      <label>
-                        Apply as
-                        <select
-                          value={data.agentType}
-                          onChange={(event) =>
-                            update("agentType", event.target.value)
-                          }
-                        >
-                          <option value="VENDOR">Vendor</option>
-                          <option value="TUTOR">Tutor</option>
-                          <option value="RIDER">Rider</option>
-                        </select>
-                      </label>
+                      <fieldset className="agent-role-options">
+                        <legend>Apply as</legend>
+                        {[
+                          {
+                            value: "VENDOR",
+                            label: "Vendor",
+                            copy: "Sell products or run a campus business.",
+                            mark: "V",
+                          },
+                          {
+                            value: "TUTOR",
+                            label: "Tutor",
+                            copy: "Teach courses, cohorts or study sessions.",
+                            mark: "T",
+                          },
+                          {
+                            value: "RIDER",
+                            label: "Rider",
+                            copy: "Handle approved campus deliveries.",
+                            mark: "R",
+                          },
+                        ].map((role) => {
+                          const selected = data.agentType === role.value;
+                          return (
+                            <label
+                              className={`agent-role-card ${selected ? "agent-role-card--selected" : ""}`}
+                              key={role.value}
+                            >
+                              <input
+                                type="radio"
+                                name="agentType"
+                                value={role.value}
+                                checked={selected}
+                                onChange={() => update("agentType", role.value)}
+                              />
+                              <span className="agent-role-mark" aria-hidden="true">
+                                {role.mark}
+                              </span>
+                              <span className="agent-role-copy">
+                                <strong>{role.label}</strong>
+                                <small>{role.copy}</small>
+                              </span>
+                              <span className="agent-role-check" aria-hidden="true">
+                                {selected ? "✓" : ""}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </fieldset>
                       {data.agentType === "VENDOR" && (
                         <>
                           {field(
