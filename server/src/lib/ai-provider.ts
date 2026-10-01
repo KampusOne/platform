@@ -39,12 +39,17 @@ export function providerConfiguration(env: AIEnvironment, mode: AIMode, mimeType
   const image = mimeType?.startsWith("image/") ?? false;
   const token = env.HF_TOKEN?.trim();
   const reasoningModel = mode === "study" ? env.HF_REASONING_MODEL?.trim() : undefined;
-  const model = (image ? env.HF_VISION_MODEL : tier === "pro" ? env.HF_PRO_MODEL : reasoningModel || env.HF_CHAT_MODEL)?.trim();
   const chatModel = env.HF_CHAT_MODEL?.trim();
+  // Pro is a KampusOne entitlement (higher quotas, context and voice), not a
+  // requirement for a separate model credential. If a dedicated Pro model is
+  // configured use it; otherwise use the strongest already-configured study
+  // model so billing is not disabled by an unnecessary environment variable.
+  const proModel = env.HF_PRO_MODEL?.trim() || reasoningModel || chatModel;
+  const model = (image ? env.HF_VISION_MODEL : tier === "pro" ? proModel : reasoningModel || chatModel)?.trim();
   const fallbackModel = !image && tier === "standard" && reasoningModel && chatModel && chatModel !== model ? chatModel : undefined;
   const missing: string[] = [];
   if (!token) missing.push("HF_TOKEN");
-  if (!model) missing.push(image ? "HF_VISION_MODEL" : tier === "pro" ? "HF_PRO_MODEL" : "HF_CHAT_MODEL");
+  if (!model) missing.push(image ? "HF_VISION_MODEL" : "HF_CHAT_MODEL");
   return { provider: "huggingface" as const, token, model, fallbackModel, missing, configured: missing.length === 0 };
 }
 export function assertAIConfiguration(env: AIEnvironment, mode: AIMode, mimeType?: string, requested?: AIProvider, tier: AITier = "standard") {
