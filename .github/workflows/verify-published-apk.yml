@@ -19,7 +19,7 @@ jobs:
         run: |
           curl --fail --silent --show-error --location --retry 2 --max-time 90 https://github.com/KampusOne/platform/releases/download/apk-latest/KampusOne-Android.apk -o KampusOne.apk
           printf '%s  KampusOne.apk\n' 16370fe405967aa74149fea974526efa01eaadfa24b18bb0d5c5891fa703854a | sha256sum --check -
-          apk_aapt="$(rg --files "$ANDROID_HOME/build-tools" | rg '/aapt$' | sort -V | tail -n 1)"
+          apk_aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           test -n "$apk_aapt"
           "$apk_aapt" dump badging KampusOne.apk > apk-badging.txt
           "${apk_aapt%/aapt}/apksigner" verify --print-certs KampusOne.apk > apk-signature.txt
