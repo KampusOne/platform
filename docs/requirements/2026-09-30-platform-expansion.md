@@ -20,6 +20,7 @@ The July PRDs are planning baselines. This request and the existing implementati
 - Preserve the full institution catalogue and the selected institution's faculties/departments in separate state. Ignore obsolete requests and preserve existing academic/student IDs across imports. Fill missing structure from sourced data rather than inventing it.
 - Reconcile and rehearse the necessary migrations before production; update the API before releasing the matching Vercel agent/admin portal. Verify the actual project, owned hostnames and source revision. Prepare an APK only after deployed service checks succeed.
 - Current academic seeds provide departments for 62 of 328 institutions; full national coverage remains open. Neon branch capacity and repository publication authorization are separate release blockers, recorded in the latest phase report.
+- The owner explicitly keeps `KampusOne/platform` public. Do not make it private. GitHub public visibility allows anyone on the internet to read it, including AI tools that fetch public pages; an app-side crawler rule cannot restrict GitHub access. Repository-link discovery alone does not establish a private-data breach.
 
 ## 1. Public business profiles and seller dashboard
 

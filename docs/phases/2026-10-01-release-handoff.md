@@ -80,7 +80,7 @@ The complete forty-version candidate order is in `database/verification/2026-10-
 
 ## Release dependencies
 
-1. Resolve the publication destination. Automatic approval review blocked pushing this payload to the current public repository. Repository privacy requires changing GitHub visibility or using a private destination; app code cannot hide public source from AI. The public landing site remains unchanged.
+1. Resolve publication of the reviewed payload to the existing public repository. Automatic approval review blocked that push. The owner explicitly declined making the repository private; retain public visibility. App code cannot hide a public GitHub repository from AI tools that read public pages. The public landing site remains unchanged.
 2. Obtain approval to delete archived `phase-3-rehearsal-20260912` (`br-gentle-art-ayea2p50`) to free one of the ten occupied Neon branch slots. Then rehearse current production on a fresh child, preserve existing account/media/booking counts and private privileges, and record exact migration proof. The forty-version offline rehearsal does not establish live-data effects.
 3. Configure server-only `KYC_ENCRYPTION_KEY`, `KYC_FINGERPRINT_SECRET`, GA4 reporting access and the operational mail/push providers. Test permission revocation, privacy and actual receipt/approval delivery. See the agent/admin phase records.
 4. Approve store/tutorial/Kira and transfer-cost policies. Verify exact displayed checkout amounts, merchant fee handling, signed callbacks, held-receipt recovery, refunds and transfer-duty statements. Payment, payout and Kira subscription flags remain false until this acceptance succeeds; no price policy is seeded.
