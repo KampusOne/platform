@@ -33,12 +33,14 @@ type RouteSummary = {
 };
 
 type Props = {
+  campusId?: string;
+  bottomInset?: number;
   error: string;
   loading: boolean;
   places: CampusMapDrawerPlace[];
   query: string;
   choosingOrigin: boolean;
-  destinationName?: string;
+  destinationName?: string | undefined;
   route: RouteSummary | null;
   locationAccuracy: number | null;
   locationError: string;
@@ -90,14 +92,14 @@ const travelModes: Array<{
     label: "School shuttle",
     icon: "bus-outline",
     metresPerMinute: 300,
-    price: "₦250",
+    price: "Fare at booking",
   },
   {
     id: "cab",
     label: "Private cab",
     icon: "car-outline",
     metresPerMinute: 400,
-    price: "₦1,250",
+    price: "Fare at booking",
   },
 ];
 
@@ -152,6 +154,8 @@ function PlaceItem({
 }
 
 export function CampusMapDrawer({
+  campusId = 'default',
+  bottomInset = 0,
   choosingOrigin,
   destinationName,
   error,
@@ -171,7 +175,7 @@ export function CampusMapDrawer({
 }: Props) {
   const { theme, styles } = useThemeStyles(createStyles);
   const { height } = useWindowDimensions();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [recentIds, setRecentIds] = useState<string[]>([]);
 
   const expandedHeight = Math.min(520, Math.max(340, height * 0.52));
@@ -182,7 +186,8 @@ export function CampusMapDrawer({
   const dragStart = useRef(targetHeight);
 
   useEffect(() => {
-    void AsyncStorage.getItem(RECENTS_KEY)
+    setRecentIds([]);
+    void AsyncStorage.getItem(RECENTS_KEY + '.' + campusId)
       .then((value) => {
         if (!value) return;
         const parsed = JSON.parse(value) as unknown;
@@ -193,7 +198,7 @@ export function CampusMapDrawer({
         }
       })
       .catch(() => undefined);
-  }, []);
+  }, [campusId]);
 
   useEffect(() => {
     Animated.spring(sheetHeight, {
@@ -313,7 +318,7 @@ export function CampusMapDrawer({
   const rememberDestination = (id: string) => {
     setRecentIds((current) => {
       const next = [id, ...current.filter((item) => item !== id)].slice(0, 5);
-      void AsyncStorage.setItem(RECENTS_KEY, JSON.stringify(next)).catch(
+      void AsyncStorage.setItem(RECENTS_KEY + '.' + campusId, JSON.stringify(next)).catch(
         () => undefined,
       );
       return next;
@@ -344,7 +349,7 @@ export function CampusMapDrawer({
   return (
     <Animated.View
       accessibilityViewIsModal={false}
-      style={[styles.sheet, { height: sheetHeight }]}
+      style={[styles.sheet, { height: sheetHeight, bottom: bottomInset }]}
     >
       <View {...panResponder.panHandlers} style={styles.handleArea}>
         <View style={styles.handle} />
@@ -431,7 +436,7 @@ export function CampusMapDrawer({
                     <View style={styles.modeCopy}>
                       <Text style={styles.modeName}>{mode.label}</Text>
                       <Text style={styles.modeMeta}>
-                        {mode.minutes} min · {formatDistance(route.distanceMetres)}
+                        {mode.id === 'walk' ? `${mode.minutes} min · ${formatDistance(route.distanceMetres)}` : 'Check route and availability at booking'}
                       </Text>
                     </View>
                     <Text style={styles.modePrice}>{mode.price}</Text>

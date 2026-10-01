@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import {portalApi} from '@/lib/api';
 import { usePortalAuth } from "@/components/auth-provider";
 import { useAdminContext } from "@/components/admin-context";
 import { adminGroups, adminModules, type AdminModule } from "@/lib/admin-modules";
@@ -15,7 +16,7 @@ function AdminNavigation({ pathname }: { pathname: string }) {
   const { user } = usePortalAuth();
   const { can } = useAdminContext();
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<string[]>(["overview", "universities", "agents"]);
+  const [expanded, setExpanded] = useState<string[]>(["overview"]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const scroll = useRef<HTMLElement>(null);
@@ -61,6 +62,8 @@ export function PortalShell({ active, eyebrow, title, description, actions, chil
   const { user, signOut } = usePortalAuth();
   const { access, scope, scopeLabel, setScope, can } = useAdminContext();
   const [signOutError, setSignOutError] = useState("");
+  const [approvedAgent,setApprovedAgent]=useState(false);
+  useEffect(()=>{if(active!=='agents'||!user?.id)return;let live=true;void portalApi<{applications:{status:string}[]}>('/v1/applications/mine').then(r=>{if(live)setApprovedAgent(r.applications.some(a=>a.status==='APPROVED'));}).catch(()=>{});return()=>{live=false;};},[active,user?.id]);
   const pathname = usePathname();
   const routeModules = adminModules.filter((module) => module.href === pathname);
   const current = routeModules.find((module) => can(module.permission)) ?? routeModules[0];
@@ -70,7 +73,7 @@ export function PortalShell({ active, eyebrow, title, description, actions, chil
     <aside className="sidebar">
       <Link href={`/${active}`} className="brand-link" aria-label="KampusOne workspace home"><Image src="/kampusone-horizontal-ink.png" width={168} height={41} priority alt="KampusOne" /></Link>
       <p className="workspace-label">{active === "agents" ? "Your agent account" : active === "admin" ? "Administration & operations" : "Engineering"}</p>
-      {active === "admin" ? <AdminNavigation pathname={pathname} /> : <nav className="portal-nav" aria-label="Workspaces"><Link className="nav-item" href={`/${active}`} aria-current={pathname === `/${active}` ? "page" : undefined}>{active === "agents" ? "Applications" : "System status"}</Link>{active === "agents" && <><Link className="nav-item" href="/agents/dashboard" aria-current={pathname === "/agents/dashboard" ? "page" : undefined}>Agent dashboard</Link><Link className="nav-item" href="/agents/payouts" aria-current={pathname === "/agents/payouts" ? "page" : undefined}>Payout setup</Link></>}</nav>}
+      {active === "admin" ? <AdminNavigation pathname={pathname} /> : <nav className="portal-nav" aria-label="Workspaces"><Link className="nav-item" href={`/${active}`} aria-current={pathname === `/${active}` ? "page" : undefined}>{active === "agents" ? approvedAgent ? "My applications" : "Application status" : "System status"}</Link>{active === "agents" && approvedAgent && <><Link className="nav-item" href="/agents/dashboard" aria-current={pathname === "/agents/dashboard" ? "page" : undefined}>Agent dashboard</Link><Link className="nav-item" href="/agents/payouts" aria-current={pathname === "/agents/payouts" ? "page" : undefined}>Payout setup</Link></>}</nav>}
     </aside>
     <div className="portal-content">
       <header className="topbar">

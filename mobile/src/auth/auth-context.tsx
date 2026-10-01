@@ -40,6 +40,8 @@ type Profile = {
   university_name: string | null;
   faculty_name?: string | null;
   department_name?: string | null;
+  level_code?: string | null;
+  current_session?: string | null;
   onboarding_completed_at: string | null;
   settings?: Partial<Preferences>;
 };

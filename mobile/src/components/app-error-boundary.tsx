@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode, useEffect } from "react";
-import { Platform, SafeAreaView, StyleSheet } from "react-native";
+import { Platform, SafeAreaView, StyleSheet, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useStartup } from "@/src/lib/startup";
@@ -61,22 +61,16 @@ export class AppErrorBoundary extends Component<
   }
 
   private recover = () => {
-    this.setState({ failed: false, refreshing: false }, () => {
-      if (router.canGoBack()) {
-        router.back();
-        return;
-      }
-      router.replace("/");
-    });
+    this.setState({ failed: false, refreshing: false });
   };
 
   render() {
     if (!this.state.failed) return this.props.children;
-    return <SilentRecovery recover={this.recover} refreshing={this.state.refreshing} />;
+    return <ScreenRecovery recover={this.recover} refreshing={this.state.refreshing} />;
   }
 }
 
-function SilentRecovery({
+function ScreenRecovery({
   recover,
   refreshing,
 }: {
@@ -88,17 +82,19 @@ function SilentRecovery({
 
   useEffect(() => {
     markHomeReady();
-    if (refreshing) return;
-    const timer = setTimeout(recover, 0);
-    return () => clearTimeout(timer);
-  }, [markHomeReady, recover, refreshing]);
+  }, [markHomeReady]);
 
   return (
     <SafeAreaView
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
       style={styles.safe}
-    />
+    >
+      <View style={styles.recovery}>
+        <Text accessibilityRole="header" style={styles.title}>{refreshing ? "Reopening this screen…" : "This screen needs another try"}</Text>
+        <Text style={styles.message}>You can retry here or return to the previous screen.</Text>
+        {!refreshing && <Pressable accessibilityRole="button" onPress={recover} style={styles.button}><Text style={styles.buttonText}>Try again</Text></Pressable>}
+        {router.canGoBack() && <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.back}><Text style={styles.message}>Go back</Text></Pressable>}
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -108,4 +104,10 @@ const createStyles = (theme: Theme) =>
       backgroundColor: theme.canvas,
       flex: 1,
     },
+    recovery: { flex: 1, padding: 28, alignItems: "center", justifyContent: "center", gap: 16 },
+    title: { color: theme.text, fontSize: 20, fontFamily: theme.font.bold, textAlign: "center" },
+    message: { color: theme.textMuted, fontSize: 14, lineHeight: 22, textAlign: "center" },
+    button: { backgroundColor: theme.brand, borderRadius: 12, minHeight: 48, justifyContent: "center", paddingHorizontal: 28 },
+    buttonText: { color: "#fff", fontFamily: theme.font.semibold },
+    back: { padding: 12 },
   });

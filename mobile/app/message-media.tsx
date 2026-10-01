@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
+import {downloadPrivateFile} from '@/src/lib/private-media-download';
 
 function VideoMedia({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, (instance) => {
@@ -27,6 +28,7 @@ export default function MessageMediaScreen() {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [saving,setSaving]=useState(false);
   const activeId = ids[index] || mediaId;
   const isVideo = String(type ?? "").startsWith("video/");
 
@@ -56,7 +58,7 @@ export default function MessageMediaScreen() {
           <Ionicons name="close" size={28} color="#FFFFFF" />
         </Pressable>
         <Text numberOfLines={1} style={styles.title}>{name || (isVideo ? "Video" : "Picture")}</Text>
-        <View style={styles.headerButton} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Save to gallery" disabled={saving||loading||!url} style={styles.headerButton} onPress={()=>{setSaving(true);void downloadPrivateFile(activeId,name||`${activeId}.${isVideo?'mp4':'jpg'}`,type|| (isVideo?'video/mp4':'image/jpeg'),true).catch(e=>setError(e.message)).finally(()=>setSaving(false));}}><Ionicons name={saving?'hourglass-outline':'download-outline'} size={24} color="#fff"/></Pressable>
       </View>
 
       <View style={styles.content}>

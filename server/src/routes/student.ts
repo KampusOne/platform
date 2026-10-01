@@ -231,6 +231,12 @@ studentRoutes.get("/catalog", async (context) => {
 studentRoutes.use("/*", requireAuth);
 studentRoutes.route("/",publishingRoutes);
 
+studentRoutes.get('/username-availability',async context=>{
+ const user=currentUser(context),username=(context.req.query('username')??'').trim().toLowerCase();
+ if(!/^[a-z0-9_]{3,30}$/.test(username))return context.json({available:false,reason:'Use 3–30 letters, numbers or underscores.'});
+ const taken=firstRow(await database(context.env).execute(sql`select user_id from public.profiles where username=${username} and user_id<>${user.id}::uuid limit 1`));
+ return context.json({available:!taken,reason:taken?'This username is taken.':'Username available.'});
+});
 studentRoutes.get("/me", async (context) => {
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
@@ -242,7 +248,8 @@ studentRoutes.get("/me", async (context) => {
       profiles.faculty_id, faculties.name as faculty_name,
       profiles.department_id, departments.name as department_name,
       profiles.course_id, courses.name as course_name,
-      profiles.current_level, profiles.matriculation_number,
+      profiles.current_level, profiles.current_level as level_code, profiles.matriculation_number,
+      profiles.settings->>'academicSession' as current_session,
       profiles.graduation_year, profiles.verification_status,
       (select count(*)::int from public.profile_follows follows where follows.followed_id = users.id) as follower_count,
       (select count(*)::int from public.profile_follows follows where follows.follower_id = users.id) as following_count,

@@ -6,6 +6,7 @@ import { usePortalAuth } from "./auth-provider";
 import { portalApi } from "@/lib/api";
 import { AgentApplicationIllustration } from "./agent-illustrations";
 import { AgentFaceCapture } from "./agent-face-capture";
+import {PhoneField,BirthDateField} from './intake-fields';
 
 type Application = {
   id: string;
@@ -66,6 +67,7 @@ const steps = [
 ];
 const phonePattern = /^\+[1-9]\d{7,14}$/;
 const termsVersion = "2026-09-21";
+const fieldExamples:Record<string,string>={legalName:'e.g. Osas Egharevba',displayName:'e.g. Osas Kitchen',address:'e.g. 12 Uselu Road, Benin City',businessAddress:'e.g. June 12 shopping complex, Ugbowo',emergencyContactName:'e.g. Itohan Egharevba',guardianName:'e.g. Itohan Egharevba',guardianEmail:'e.g. itohan@example.com',matricNumber:'e.g. ENG2200123'};
 const businessCategories = [
   "Restaurant",
   "Supermarket",
@@ -79,7 +81,7 @@ const businessCategories = [
 function ageOnDate(value: string) {
   const birthday = new Date(value),
     today = new Date();
-  if (Number.isNaN(birthday.getTime())) return 0;
+  if (Number.isNaN(birthday.getTime())||birthday.toISOString().slice(0,10)!==value) return 0;
   let age = today.getFullYear() - birthday.getFullYear();
   if (
     today.getMonth() < birthday.getMonth() ||
@@ -193,6 +195,9 @@ export function AgentApplication() {
     type = "text",
     required = true,
   ) {
+    if(key==='birthDate')return <BirthDateField key={key} value={data.birthDate} onChange={value=>update('birthDate',value)} error={fieldErrors[key]}/>;
+    if(['phoneE164','whatsappPhone','emergencyContactPhone','guardianPhone'].includes(key))return <PhoneField key={key} id={`agent-${key}`} label={label.replace(' with country code','')} value={String(data[key])} onChange={value=>update(key,value as never)} error={fieldErrors[key]}/>;
+    if(key==='guardianRelationship')return <label key={key}>{label}<select value={data.guardianRelationship} onChange={e=>update(key,e.target.value)} required><option value="">Select relationship</option>{['Mother','Father','Guardian','Sibling','Aunt','Uncle','Spouse'].map(value=><option key={value}>{value}</option>)}</select>{fieldErrors[key]?<span className="field-error">{fieldErrors[key]}</span>:null}</label>;
     return (
       <label key={key} htmlFor={`agent-${key}`}>
         {label}
@@ -201,6 +206,7 @@ export function AgentApplication() {
           type={type}
           required={required}
           value={String(data[key])}
+          placeholder={fieldExamples[key]}
           aria-invalid={Boolean(fieldErrors[key])}
           aria-describedby={fieldErrors[key] ? `error-${key}` : undefined}
           onChange={(event) => update(key, event.target.value as never)}
@@ -942,10 +948,6 @@ export function AgentApplication() {
                           return saved;
                         }}
                       />
-                      {document(
-                        "portraitDocumentId",
-                        "Upload a portrait instead (if camera is unavailable)",
-                      )}
                       {field("nin", "NIN (11 digits)")}
                       <p className="field-help">
                         Your NIN is encrypted, stays private and is reviewed

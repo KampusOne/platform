@@ -150,7 +150,7 @@ export const gpaResultSchema = z.object({
 
 export const gpaTermSchema = z.object({
   sessionLabel: z.string().trim().min(4).max(24),
-  semester: z.number().int().min(1).max(3),
+  semester: z.number().int().min(1).max(2),
   levelCode: z.string().trim().min(3).max(12),
   results: z.array(gpaResultSchema).min(1).max(40),
 });

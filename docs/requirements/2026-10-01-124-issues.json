@@ -1,0 +1,873 @@
+{
+  "sourceCommit": "c1256d552a5643b0d1d5979ed17d4e870d91e1be",
+  "issues": [
+    {
+      "id": 1,
+      "title": "Treat everything in this complaint as one complete update.",
+      "requirement": "1. Treat everything in this complaint as one complete update. I am bringing these issues together because I do not want to explain the same problems across different conversations, chase separate fixes, or keep downloading versions that solve one thing while leaving everything else broken. Keep a complete record of this request, connect related problems, and work through the entire batch. I want the map, messaging, onboarding, payments, Kira, admin dashboard, notifications, academic tools, and media interfaces addressed together. The final release should reflect the whole update.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 2,
+      "title": "Use my screenshots and references to guide the actual redesign.",
+      "requirement": "2. Use my screenshots and references to guide the actual redesign. I uploaded screenshots because verbal explanations alone have not produced the interfaces I requested. Some images show broken screens, some show exactly what should be removed, and others show the design direction I want. Review those differences carefully. When I provide an inspiration image, translate its useful layout, spacing, hierarchy, and interaction into our design system. I should be able to recognise that the reference influenced the finished screen.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 3,
+      "title": "Rebuild the map into a feature students can actually use.",
+      "requirement": "3. Rebuild the map into a feature students can actually use. The current map is frustrating because it appears to be a map feature while failing at the basic things people expect from a map. I open it and struggle to move around, understand where I am, identify places, or navigate anywhere. This affects confidence in the entire app. Rework the map experience thoroughly, including its visual presentation, interactions, place information, location handling, directions, and relationship with the rest of the screen.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 4,
+      "title": "Make normal map gestures work properly on a phone.",
+      "requirement": "4. Make normal map gestures work properly on a phone. I should be able to put two fingers on the map and zoom naturally, move my thumbs apart to zoom in, move them together to zoom out, and drag the map around with one finger. These gestures should respond smoothly instead of feeling restricted or broken. Test them on the actual mobile experience. A map that looks acceptable in a desktop preview but cannot be controlled comfortably on a phone has not met the requirement.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 5,
+      "title": "Remove the map badge I circled in the screenshot.",
+      "requirement": "5. Remove the map badge I circled in the screenshot. There is a tag near the top of the map interface that I specifically marked for removal. Take that element out of the main interface instead of repositioning it or rewriting it. It contributes to the clutter and communicates information that does not help a student find a building or navigate campus. Keep necessary map attribution appropriately placed, but remove the decorative or technical tag that I identified in the screenshot.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 6,
+      "title": "Evaluate and use the mapping repository I mentioned for its real capabilities.",
+      "requirement": "6. Evaluate and use the mapping repository I mentioned for its real capabilities. I referred to GOS iView and later described Google Street View because I want better map interaction, better understanding of real locations, and actual place imagery where it is available. Examine the exact repository and establish what it genuinely provides before integrating it. Combine useful capabilities with OpenStreetMap and the campus information already in our system. The finished feature should work coherently, with clear handling wherever a particular imagery or mapping capability is unavailable.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 7,
+      "title": "Keep mapping implementation details out of the student-facing experience.",
+      "requirement": "7. Keep mapping implementation details out of the student-facing experience. A student should open the map and see places, routes, search, and useful controls. They do not need labels announcing the libraries or repositories used to build it. Those implementation choices belong in the code and appropriate documentation. Keep the interface focused on the student\u2019s task. Necessary attribution can remain unobtrusive and readable, while the main screen uses KampusOne\u2019s own language and visual identity consistently.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 8,
+      "title": "Improve the accuracy of the campus directory instead of guessing locations.",
+      "requirement": "8. Improve the accuracy of the campus directory instead of guessing locations. The map needs a stronger understanding of UNIBEN: faculties, lecture theatres, hostels, gates, libraries, student areas, and other places people genuinely use. Review the information we already have, compare it with reliable campus data, and correct inaccurate or confusing records. If I provide additional campus place information from another platform, use it to improve the directory responsibly. Students should recognise the campus from the map and find the places they actually call by familiar names.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 9,
+      "title": "Reduce the visual crowding on the map.",
+      "requirement": "9. Reduce the visual crowding on the map. The current screen looks like a huge cluster, with too many competing labels and elements. Make the information visible at the appropriate level of detail. A broad campus view should help me understand the overall area; closer zoom levels should reveal more specific places. Selected destinations should be easy to distinguish. Avoid filling the entire map with overlapping text. Search, location controls, and place information should each have a clear purpose and enough space.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 10,
+      "title": "Show genuine images of places when someone opens a location.",
+      "requirement": "10. Show genuine images of places when someone opens a location. If I select the Faculty of Engineering, I want to see information about that actual place and an authentic image when one is available. This helps students recognise buildings before they arrive and makes the map feel connected to the real campus. Use existing place photos or supported street imagery where coverage exists. Handle missing imagery cleanly. The place name, location, and directions should remain useful even when a photo has not yet been supplied.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 11,
+      "title": "Fix directions as a complete interaction.",
+      "requirement": "11. Fix directions as a complete interaction. Directions currently do not work in a way that makes the map useful. I should be able to choose a destination, select an appropriate starting point, and receive a route that I can understand. The route should appear clearly on the map, with a meaningful distance and travel estimate where supported. Changing the destination or origin should update it correctly. Loading, unavailable routes, and location permission problems should have understandable states instead of leaving the screen apparently unresponsive.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 12,
+      "title": "Use real routes when calculating delivery distance.",
+      "requirement": "12. Use real routes when calculating delivery distance. Drawing a straight line between two coordinates does not tell us how far someone must travel. Campus roads, entrances, walkways, access restrictions, and the actual route all affect distance. Delivery calculations should use the relevant supported route through the road or path network. The distance displayed to the user and the distance used for pricing should agree. If routing is unavailable, handle that explicitly instead of presenting an invented straight-line journey as a verified route.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 13,
+      "title": "Use the vendor\u2019s and rider\u2019s relevant current locations correctly.",
+      "requirement": "13. Use the vendor\u2019s and rider\u2019s relevant current locations correctly. I specifically complained about calculating delivery fees without properly considering where the vendor and rider are. The system should know the relevant pickup location and rider position, then calculate the applicable route between them. Location freshness and accuracy matter: an old position should not silently be treated as the person\u2019s current position. Make the location flow reliable, and connect it to the existing approved pricing policy so the fee has an understandable basis.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 14,
+      "title": "Keep the map useful when I am outside campus.",
+      "requirement": "14. Keep the map useful when I am outside campus. If I open the map while I am elsewhere in Benin, I should still see the surrounding city and my current position when I grant location access. Being outside the campus boundary should not make the map unusable. I may want to understand where I am, how far I am from school, or browse campus before travelling there. Allow those activities naturally. The map should continue to respond to gestures and location controls outside campus.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 15,
+      "title": "Show my distance back to the selected campus.",
+      "requirement": "15. Show my distance back to the selected campus. When I am off campus, provide a useful indication of how far I am from the campus I am viewing. Make it clear which campus the distance refers to, because UNIBEN has more than one campus. Where a routed distance is available, use it appropriately. If only another form of distance can be shown, label it honestly. The information should help me understand my position without dominating the screen or creating a confusing warning.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 16,
+      "title": "Present the off-campus state as a dismissible notice.",
+      "requirement": "16. Present the off-campus state as a dismissible notice. \u201cYou are off campus\u201d should be ordinary information. Show a small, calm notice that I can dismiss and continue using the map. It should not block the screen, demand repeated acknowledgement, or appear as a serious error. I have done nothing wrong by opening the app outside school. Keep this notice simple and useful, and avoid repeatedly showing it during the same interaction after I have already dismissed it.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 17,
+      "title": "Add a clear way to return the map to campus.",
+      "requirement": "17. Add a clear way to return the map to campus. After I use the current-location control and the map moves to my position outside school, I need a straightforward way to return to the campus view. I should not have to manually drag across the city or repeatedly zoom out until I find UNIBEN again. Add a visible campus control that brings the selected campus into view. It should fit the campus sensibly so I can immediately recognise the area and continue exploring.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 18,
+      "title": "Support both UNIBEN campuses explicitly.",
+      "requirement": "18. Support both UNIBEN campuses explicitly. University of Benin includes the main Ugbowo campus and Ekehuan campus, and the map experience needs to reflect that. Do not structure everything around an assumption that there is only one campus. Each campus should have its own identifiable area and relevant places. Students at Ekehuan should feel that the feature was built for them too. The data structure and interface should support both campuses without mixing their locations into one confusing directory.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 19,
+      "title": "Make switching campuses straightforward.",
+      "requirement": "19. Make switching campuses straightforward. I should be able to select Ugbowo or Ekehuan without hunting through settings or opening a separate unrelated screen. When I switch, the map should move to the chosen campus and show the relevant places. Search results, selected locations, and any route information should remain consistent with that choice. Keep the campus selector compact and understandable. Switching campuses should feel like a normal part of using the map, including when my current location is somewhere else.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 20,
+      "title": "Make Ekehuan search and navigation useful despite the current data gap.",
+      "requirement": "20. Make Ekehuan search and navigation useful despite the current data gap. I acknowledged that we currently have less information for Ekehuan, but that should lead to improving its data rather than leaving it effectively unsupported. Gather and verify the available campus information, organise it properly, and make those places searchable. Clearly distinguish confirmed information from information that still needs review. The experience should provide a usable foundation now and allow additional places and images to be added through the appropriate administrative process.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 21,
+      "title": "Position the map drawer above the bottom navigation.",
+      "requirement": "21. Position the map drawer above the bottom navigation. The bottom navigation is covering parts of the map interface. The drawer should end above the navigation area, including the phone\u2019s safe area, so every control remains usable. Check its expanded, partially collapsed, and search-only positions. Dragging the drawer down should not push important content behind the navigation. The layout needs to work on different screen heights and devices instead of depending on one screenshot-sized viewport.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 22,
+      "title": "Keep every transport option accessible, including the car option.",
+      "requirement": "22. Keep every transport option accessible, including the car option. Walking, bicycle, shuttle, and car options should all remain visible or intentionally scrollable within the available space. The car option currently disappears behind the bottom navigation, which makes the feature look unfinished. Correct the spacing and positioning so users can select every supported mode comfortably. Distances, estimates, and any displayed prices should be labelled according to what they actually represent. Test the controls with the drawer in each supported position.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 23,
+      "title": "Fix the fullscreen video viewing screen.",
+      "requirement": "23. Fix the fullscreen video viewing screen. My complaint is about what happens after I tap a video and open it for proper fullscreen viewing. The layout is distorted, the actions appear in the wrong positions, and there is unnecessary empty space. Rework that screen so the video has an intentional presentation and the surrounding controls are stable. Consider different video shapes, phone sizes, and safe areas. The viewing experience should feel finished instead of looking like a feed card stretched into another screen.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 24,
+      "title": "Apply the same fullscreen viewing quality to images.",
+      "requirement": "24. Apply the same fullscreen viewing quality to images. Images should receive the same attention as videos. When I tap a post image, it should open clearly in a fullscreen viewer where I can inspect it comfortably. The image should fit sensibly without being distorted, and the relevant post actions should remain accessible. Multiple images should behave consistently where supported. Closing the viewer should return me to the content I was viewing, rather than moving me to an unrelated screen or losing my feed position.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 25,
+      "title": "Place the media actions correctly and remove the unexplained gaps.",
+      "requirement": "25. Place the media actions correctly and remove the unexplained gaps. Likes, comments, and repost actions should sit in a clear, deliberate part of the fullscreen media interface. They should not float awkwardly high above a large empty area or collide with the media and navigation controls. Review the screenshot where I marked this problem and correct the layout itself. Account for the phone\u2019s bottom inset. The controls should remain readable, tappable, and visually connected to the post being viewed.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 26,
+      "title": "Build the fullscreen media comment interface using the supplied reference.",
+      "requirement": "26. Build the fullscreen media comment interface using the supplied reference. When I open comments from a fullscreen video or image, I want the distinct comment experience shown in the Twitter reference. It should feel connected to the media viewer, with a clear comment list, reply controls, and appropriate spacing. Use the reference to understand the relationship between the media and the comments. Keep the interface consistent with our colours and typography while preserving the interaction I asked for.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 27,
+      "title": "Keep saving public videos to the gallery functional.",
+      "requirement": "27. Keep saving public videos to the gallery functional. Users should be able to save a public post video through a clear action. The saved result should include the intended KampusOne watermark, and the download should provide appropriate progress and completion feedback. A failed save should be understandable and retryable. Check that the resulting video can actually be opened from the device\u2019s gallery. The option should work from the appropriate post or viewer menu without confusing users about where the file was saved.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 28,
+      "title": "Add saving public post images with the same watermark policy.",
+      "requirement": "28. Add saving public post images with the same watermark policy. The save-to-gallery feature should also cover images. I should not see a save option for a video and then have no equivalent way to save a photo. Add the image action in the appropriate place and apply the watermark to public post images as requested. Preserve useful image quality and proportions. Confirm that the saved image appears on the device and can be viewed normally after the save completes.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 29,
+      "title": "Give alarms an explicit once-or-repeat choice.",
+      "requirement": "29. Give alarms an explicit once-or-repeat choice. When creating an alarm, I need to decide whether it should ring once or repeat. That decision should be visible and easy to understand before saving. If I choose repeat, show the applicable repeat controls. If I choose once, the form should make the one-time behaviour clear. Do not force me to infer the schedule from an unclear set of controls or discover after the alarm rings that it has been repeating automatically.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 30,
+      "title": "Make one-time alarms the default.",
+      "requirement": "30. Make one-time alarms the default. A new alarm should not automatically become a repeating alarm. I often want a reminder for one specific event, and I should be able to create that quickly without undoing a repeat schedule. Default to once, then let me deliberately enable repeating when needed. The saved alarm list should communicate which type I created. Editing an existing alarm should preserve its current schedule until I intentionally change it.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 31,
+      "title": "Automatically disable a one-time alarm after it fires.",
+      "requirement": "31. Automatically disable a one-time alarm after it fires. Once a one-time alarm has triggered, its scheduled enabled state should update automatically so it does not ring again as a repeating alarm. I should not have to return to the alarms screen afterwards and switch it off manually. This should work even if the app was in the background. Keep the ringing, dismissing, and snoozing interaction coherent, while ensuring the underlying one-time schedule is treated as completed.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 32,
+      "title": "Record the daily streak when I first open the app that day.",
+      "requirement": "32. Record the daily streak when I first open the app that day. Opening the app should be enough to count my daily activity for the streak. I should not have to remember to enter the streak screen or press a separate check-in button. Record it automatically once for the applicable day, and display the result consistently wherever the streak appears. Reopening the app several times on the same day should not create multiple check-ins. The process should be reliable and unobtrusive.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 33,
+      "title": "Simplify the voice-note appearance to the brown design I requested.",
+      "requirement": "33. Simplify the voice-note appearance to the brown design I requested. The voice-note bubble currently uses layered colours and styling that do not match the reference. Rebuild it around a simple brown presentation with clear playback controls, duration, and progress. The sender and recipient versions should both remain readable. Avoid adding decorative surfaces that make a basic message feel complicated. I already provided an inspiration for this component, so the final result should reflect that visual direction.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 34,
+      "title": "Support normal long-press actions on voice notes.",
+      "requirement": "34. Support normal long-press actions on voice notes. A voice note is a message and should participate in the same relevant interactions as other message types. When I press and hold it, I should be able to react, pin, forward, and use other appropriate actions. The interaction should not accidentally start playback, download the file repeatedly, or trigger the phone\u2019s text-selection menu. The action menu should be clear and positioned so I can choose an action comfortably.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 35,
+      "title": "Make forwarding voice notes work from end to end.",
+      "requirement": "35. Make forwarding voice notes work from end to end. I should be able to receive a voice note, choose Forward, select a friend or conversation, and send it successfully. The recipient should receive a playable voice note with the correct message type and useful preview. Forwarding should not degrade it into an unexplained attachment or broken link. Show a clear sending state and handle failure within the conversation. The forwarded message should behave normally when the recipient opens or long-presses it.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 36,
+      "title": "Label forwarded content consistently.",
+      "requirement": "36. Label forwarded content consistently. Anything forwarded from another conversation should carry a visible \u201cForwarded\u201d label at the top, following the familiar behaviour I described. Apply that consistently to text, voice notes, images, videos, documents, and other supported forwarded message types. Keep the label small enough that it does not dominate the bubble. The label should communicate that the content was forwarded while preserving the content\u2019s normal appearance and interaction.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 37,
+      "title": "Use accurate message-type previews in the inbox.",
+      "requirement": "37. Use accurate message-type previews in the inbox. Conversation previews should tell users what was sent. A voice note should be identified as a voice note, an image as a photo or image, and a document appropriately as a document or its useful file type. Avoid a generic label that makes every kind of media look the same. These previews help people understand incoming activity before opening a conversation. They should remain consistent with the actual message that appears inside it.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 38,
+      "title": "Show a clear loading state for received voice notes.",
+      "requirement": "38. Show a clear loading state for received voice notes. When a voice note needs to load before it can play, communicate that immediately. I should see that the app is preparing the audio instead of tapping several times and assuming the feature is broken. The loading state should transition cleanly to a ready or playing state. If loading fails, give a useful retry action. Keep the controls predictable so the user knows whether the audio is loading, paused, playing, or unavailable.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 39,
+      "title": "Make voice-note playback predictable from one tap.",
+      "requirement": "39. Make voice-note playback predictable from one tap. The current behaviour makes me tap repeatedly, then sound suddenly starts without a clear relationship to my actions. Correct that interaction. A single deliberate tap should begin the appropriate loading-and-play sequence, and a later tap should pause or resume as expected. Prevent duplicate playback and conflicting requests. The displayed progress should match what I hear, and moving between voice notes should not result in overlapping audio or confusing controls.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 40,
+      "title": "Make sending messages feel immediate and reliable.",
+      "requirement": "40. Make sending messages feel immediate and reliable. Sending a short message such as \u201cHow are you?\u201d should not leave me waiting on a blocking loader. Show the message in the conversation immediately with an understandable sending state, then update it when delivery to the service is confirmed. Media can take longer to upload, but it should have visible progress. Failed messages should remain available to retry. Keep the conversation responsive throughout instead of freezing the composer or moving me away.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 41,
+      "title": "Remove redundant direct-message entries from the notification bell.",
+      "requirement": "41. Remove redundant direct-message entries from the notification bell. The app already has a dedicated messaging area and message indicator. Filling the separate notification bell with \u201cthis person sent you a message\u201d duplicates the same activity and creates clutter. Remove those redundant entries from the bell experience throughout the project. Keep message unread state in the messaging interface where it belongs. The remaining notification categories should clearly serve their own purpose and should not continually repeat information the inbox already communicates.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 42,
+      "title": "Use the app\u2019s message actions instead of the unwanted native selection menu.",
+      "requirement": "42. Use the app\u2019s message actions instead of the unwanted native selection menu. When I hold a message, the phone is currently showing options such as copy, cut, and translate in a way that interferes with reactions and other DM actions. Make the long-press behaviour deliberate. Show our message action menu, with Copy available there when appropriate, alongside relevant actions such as reply, forward, react, and pin. The user should not have to dismiss one menu before reaching the actual messaging controls.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 43,
+      "title": "Reflect reactions in the latest conversation activity.",
+      "requirement": "43. Reflect reactions in the latest conversation activity. If someone reacts to my message, the conversation preview should be able to show that event and the emoji used. This lets me understand what happened without opening every chat. Include enough context to identify the activity naturally, such as who reacted. The reaction preview should correspond to the relevant latest event. It should update promptly and should not remain stuck after more recent conversation activity has occurred.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 44,
+      "title": "Reflect pin events in the conversation preview too.",
+      "requirement": "44. Reflect pin events in the conversation preview too. When someone pins a message, show that as the latest activity where appropriate. The user should be able to understand that a pin happened before entering the chat, in the same preview area normally used for recent messages or drafts. Inside the conversation, the pinned state should also be visible. Keep the wording simple. The event should not disappear because the interface only understands text messages as conversation activity.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 45,
+      "title": "Let newer activity replace older inbox previews.",
+      "requirement": "45. Let newer activity replace older inbox previews. Reaction and pin notices should not occupy the preview forever. If a new message arrives afterwards, the new message should become the latest preview. If another more recent supported activity happens, apply the same ordering correctly. A draft indicator should also behave consistently with the existing draft experience. The conversation list should always communicate the current relevant state instead of preserving an outdated event that makes the inbox look out of sync.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 46,
+      "title": "Fix sending images and documents through DMs.",
+      "requirement": "46. Fix sending images and documents through DMs. I currently cannot reliably send the basic files people expect to share with friends. Make the selection, preview, upload, send, and receive flow work for images and documents. The message should retain its correct type and useful file information. A failed upload should preserve the selected content or provide a straightforward retry. Test the recipient\u2019s experience too, because a successful-looking send is insufficient if the other person cannot open the resulting message.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 47,
+      "title": "Open DM images fullscreen and allow saving without a watermark.",
+      "requirement": "47. Open DM images fullscreen and allow saving without a watermark. When I receive or send an image in a private conversation, tapping it should open a proper fullscreen viewer. I should be able to inspect it and save it to my device through a clear action. Private DM images should not receive the public-post watermark. Keep that distinction consistent. Closing the viewer should return to the same conversation, with its scroll position and draft intact wherever practical.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 48,
+      "title": "Hand documents to the phone\u2019s appropriate viewer.",
+      "requirement": "48. Hand documents to the phone\u2019s appropriate viewer. KampusOne should let me receive a PDF or other document and open it through the device\u2019s supported applications. If the phone has a default viewer, use the appropriate system opening behaviour. If it needs me to choose an application, show the system chooser. Make the file available correctly so the external application can read it. A document message should not open a blank screen, an inaccessible private URL, or an unrelated app route.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 49,
+      "title": "Support large DM files up to 500 MB.",
+      "requirement": "49. Support large DM files up to 500 MB. The file-sharing feature should support the size I requested, including files as large as 500 MB. This needs to work across the selection interface, upload service, storage, message creation, and recipient download. Large transfers should show progress and useful failure feedback instead of freezing the app. Handle interruptions reasonably and keep the conversation usable. Verify the actual transfer path rather than merely increasing a number in the interface while another layer still rejects the file.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 50,
+      "title": "Make links inside messages visibly usable.",
+      "requirement": "50. Make links inside messages visibly usable. When someone sends a link, it should appear as something I can tap. At present, links can look like ordinary text and fail to behave as links. Recognise supported URLs, display them clearly, and route the tap appropriately. Long links should not destroy the message layout. The interaction should also work when a link appears alongside other text. Users should not need to copy it manually just to open shared content.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 51,
+      "title": "Route shared app content directly to its destination screen.",
+      "requirement": "51. Route shared app content directly to its destination screen. If I share a profile, post, tutorial, or another supported KampusOne item, the recipient should be able to tap it and open the corresponding screen inside the app. Use a consistent sharing format and navigation path. The link should preserve the identity of the content being shared. If a user must authenticate first, continue to the intended destination afterwards instead of forgetting the shared item and dropping them at Home.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 52,
+      "title": "Keep shared-content navigation stable.",
+      "requirement": "52. Keep shared-content navigation stable. Opening a shared item should not close the app, unexpectedly switch to a browser, crash, or send me through a loop. Review how these links are handled from messages, notifications, and other entry points. A missing or removed item should show an understandable state with a way back. The app should maintain normal navigation history so I can return to the conversation after viewing the profile, post, or tutorial.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 53,
+      "title": "Fix the widespread bug that throws me back to Home.",
+      "requirement": "53. Fix the widespread bug that throws me back to Home. This is happening in messaging, while attempting to record or send voice notes, in Kira when summarising notes, in settings, and in other screens I cannot fully list from memory. Investigate the shared causes across navigation, authentication, screen errors, and state changes. I should not lose my current task because a background event or recoverable failure resets the interface. Fix the underlying behaviour wherever it affects the app.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 54,
+      "title": "Fix the feed failures during both short and long scrolling.",
+      "requirement": "54. Fix the feed failures during both short and long scrolling. Sometimes only a couple of swipes are enough to throw me out of the feed, and sometimes it happens after scrolling for longer. Reproduce both situations and check the content being loaded when the problem appears. Review pagination, media rendering, item state, and error handling as relevant. Preserve the feed position when recoverable issues occur. A student should be able to browse normally without fearing that the next swipe will abandon the screen.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 55,
+      "title": "Review the app beyond the individual examples I remembered.",
+      "requirement": "55. Review the app beyond the individual examples I remembered. I cannot be expected to remember every place where the same failure occurs. Use the examples as evidence of broader problems, then inspect related screens and shared components. Check important flows from entry to completion, including loading, empty, failure, and retry states. A screen should remain usable when a request fails. The finished release should reduce the repeated experience of entering a feature, trying one action, and being taken somewhere else.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 56,
+      "title": "Make push notifications work on the phone.",
+      "requirement": "56. Make push notifications work on the phone. Push notifications are currently not working reliably, and repeatedly pressing Retry does not solve the issue. Review the complete registration and delivery path, including the installed app\u2019s configuration and the server\u2019s handling of device tokens. Test the behaviour on the actual release build. The feature should continue to work after normal app reopening and relevant device changes. When the operating system requires permission, handle that through the appropriate permission flow.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 57,
+      "title": "Deliver the important campus and community alerts correctly.",
+      "requirement": "57. Deliver the important campus and community alerts correctly. Updates from the authorised Newsletter account, community administrators, and other intended important sources should reach the correct users through the supported notification channels. Ensure the content, recipient scope, and destination screen are correct. Tapping a notification should open the relevant item instead of an unrelated page. Prevent duplicate deliveries caused by retries. The campus update experience should be dependable enough that students can trust it for information they need to see.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 58,
+      "title": "Remove the broken push-retry prompt from the notification interface.",
+      "requirement": "58. Remove the broken push-retry prompt from the notification interface. The notification list should not continually display a technical instruction to retry push registration, especially when the button does not fix anything. Remove that clutter from the main notification experience. Resolve the underlying registration problem and place any genuinely necessary permission guidance in an appropriate context. Ordinary users should see their notifications, relevant controls, and clear empty states. They should not be asked to repeatedly manage an internal system failure.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 59,
+      "title": "Remove haptics as an app setting while preserving the actual feedback.",
+      "requirement": "59. Remove haptics as an app setting while preserving the actual feedback. Take the haptics option out of settings as requested. This does not mean removing the tactile feedback from buttons and interactions throughout the app. Keep that feedback working where it belongs, with appropriate respect for the device\u2019s system behaviour and accessibility preferences. Review the settings layout after removing the row so it remains coherent. The requirement concerns the unnecessary app-level switch, not the usefulness of haptics themselves.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 60,
+      "title": "Use only first and second semesters in the CGPA flow.",
+      "requirement": "60. Use only first and second semesters in the CGPA flow. The calculator should offer the two semesters relevant to this experience. There should not be a third-semester option confusing the form. Apply the rule consistently to creating, editing, importing, and saving records. Existing interfaces should use the same understandable naming. If the underlying data contains incompatible values, handle them deliberately so users are not left with a form that cannot be saved or a record they cannot interpret.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 61,
+      "title": "Make semester selection a dropdown rather than a typing task.",
+      "requirement": "61. Make semester selection a dropdown rather than a typing task. I should select First Semester or Second Semester from a clear control. Requiring me to type the wording introduces avoidable mistakes and makes a simple academic tool harder to use. The selected value should remain visible and should be included correctly when saving. Use the same form styling as the rest of the app. On mobile, choosing the semester should be quick and should not create an unnecessarily crowded screen.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 62,
+      "title": "Use the student information already available to the app.",
+      "requirement": "62. Use the student information already available to the app. If the app already knows my level from my profile or the relevant academic record, do not unnecessarily ask me to type it again. Show useful context where needed and provide a suitable correction path if the record legitimately requires a different value. Avoid redundant manual fields that become hidden reasons a save fails. The calculator should help me complete the task with the information we already have.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 63,
+      "title": "Fix importing grades and explain anything required before saving.",
+      "requirement": "63. Fix importing grades and explain anything required before saving. I imported grades from the planner and could not save them. I had to search the screen for a reason, fill unclear fields, and still did not get a working result. Correct that flow so imported courses and grades appear properly, the calculation is visible, and saving succeeds when the required information is present. If something is missing, identify it near the relevant control. Preserve the imported work while I correct it.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 64,
+      "title": "Redesign the agents portal as a complete interface.",
+      "requirement": "64. Redesign the agents portal as a complete interface. I have repeatedly requested changes because the current layout still carries the same problems after updates. Reconsider the structure, hierarchy, navigation, spacing, and responsive behaviour together. Use the references I provided and build around the purpose of each stage. I should see a coherent new experience rather than old sections with new components added around them. Review desktop and mobile separately, because each needs to work well in its own available space.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 65,
+      "title": "Make the mobile agents experience compact and easy to read.",
+      "requirement": "65. Make the mobile agents experience compact and easy to read. The illustrations are too large, the text is excessive, and the mobile page feels overwhelming. Resize or reposition visual elements so the actual form takes priority. Break instructions into useful short pieces and keep the next action easy to find. Inputs, buttons, and progress should fit naturally on the phone. Avoid desktop sidebars or wide layouts squeezed into a tiny viewport. A vendor should be able to complete the flow comfortably from their phone.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 66,
+      "title": "Show applicants an onboarding flow appropriate to their status.",
+      "requirement": "66. Show applicants an onboarding flow appropriate to their status. Before approval, the portal\u2019s main purpose is completing and tracking the application. Do not crowd that stage with payout navigation, unrelated dashboard sections, and features the person cannot yet use. Show the current step, required information, saved progress, and application status clearly. If an application needs correction, explain what to fix. The interface should make it obvious what the applicant should do next without requiring them to interpret a dashboard.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 67,
+      "title": "Show the approved dashboard after approval.",
+      "requirement": "67. Show the approved dashboard after approval. Once a vendor has been accepted, the portal should naturally transition to the tools relevant to an approved account. That is where activities, product management, balances, payout information, and other applicable features belong. The dashboard should reflect the actual account status rather than exposing everything from the beginning. Keep its navigation clear and responsive. Approval should visibly change what the person can do, and the interface should communicate that transition confidently.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 68,
+      "title": "Notify vendors when their application is approved.",
+      "requirement": "68. Notify vendors when their application is approved. Approval should not require the vendor to repeatedly open the portal and guess whether something has changed. Send the appropriate phone notification and email informing them that their vendor account or shop has been approved. Include a useful next action that brings them to the correct place. The notification should correspond to the actual saved approval. Avoid duplicate messages if the administrator retries an action or the system processes the same event again.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 69,
+      "title": "Make bank-detail setup complete and persistent.",
+      "requirement": "69. Make bank-detail setup complete and persistent. Approved vendors should be able to enter their bank information, confirm it through the supported process, and see that it has been saved. Those details need to be available to the authorised payout process and reflected correctly in the database. Show clear validation and confirmation states. An unsuccessful verification should preserve the form where appropriate. Administrators should have the necessary visibility to review the payout setup without the user having to resend the same information elsewhere.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 70,
+      "title": "Communicate the real withdrawal process and timeframe.",
+      "requirement": "70. Communicate the real withdrawal process and timeframe. When a vendor requests a withdrawal, explain the expected processing time using the actual payout setup. I mentioned seven to eight hours as an example because I want users informed; verify the correct expectation before displaying it. Show the request status and outcome clearly. If processing is delayed or fails, provide accurate information. The amount, destination, and applicable existing policy should be reviewable before the request is submitted.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 71,
+      "title": "Create a separate exclusive vendor onboarding address.",
+      "requirement": "71. Create a separate exclusive vendor onboarding address. I want a dedicated subdomain for vendors we have already approached and trust, using the appropriate KampusOne domain. It should lead directly into the exclusive onboarding experience and be suitable for sharing through our campaigns. Keep its purpose clear and its mobile presentation polished. The separate address should not simply open the same confusing application dashboard. It should support the intended faster onboarding route while still producing a properly managed vendor record.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 72,
+      "title": "Make the trusted-vendor form shorter and relevant.",
+      "requirement": "72. Make the trusted-vendor form shorter and relevant. In the exclusive route, ask for the business name, profile, description, contact information, and other details needed to set up the vendor. Skip the ordinary document collection that we have deliberately waived for those invited businesses. Use appropriate options and straightforward fields. The person should understand what they are creating and what happens after submission. Keep the route connected to the invitation and approval process so the distinction is recorded correctly.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 73,
+      "title": "Provide a clear administrative approval action for exclusive vendors.",
+      "requirement": "73. Provide a clear administrative approval action for exclusive vendors. When an exclusive vendor submits the form, show that request in the admin dashboard with its special onboarding status. Let the administrator review the submitted details, approve the account, and add a note explaining the verification. Save that note and the approval event. The account should receive the appropriate vendor access after approval. The administrator should be able to see how and why the vendor was approved when reviewing the record later.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 74,
+      "title": "Fix normal onboarding document and image uploads.",
+      "requirement": "74. Fix normal onboarding document and image uploads. The standard application route is currently failing when I try to submit evidence. Repair the complete upload flow so selecting a supported document or image leads to a successful saved submission. Show previews or useful filenames where appropriate, communicate upload progress, and explain actual validation failures. A generic server error should not leave the applicant wondering whether anything was saved. Preserve progress so a failed upload does not require restarting the entire application.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 75,
+      "title": "Let administrators review every part of the application.",
+      "requirement": "75. Let administrators review every part of the application. If a vendor submits a document, image, facial verification photo, or form field, I need to see that information in the admin dashboard. The review screen should organise the evidence clearly and allow the authorised administrator to open it at a useful size. Broken previews or inaccessible files make verification impossible. Ensure the evidence belongs to the correct application. Approval and rejection decisions should be made with the submitted information available in one review experience.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 76,
+      "title": "Require the camera for facial verification.",
+      "requirement": "76. Require the camera for facial verification. Do not offer a gallery-upload alternative for the facial verification image. I specifically want that photo captured through the device camera as part of the flow. Ask for the relevant camera permission, show a usable capture interface, and allow retaking the photo before submission. If access is unavailable, explain the problem in place. Keep ordinary document uploads separate from this requirement so the application does not confuse a saved portrait with the required camera capture.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 77,
+      "title": "Replace the frustrating date-of-birth calendar.",
+      "requirement": "77. Replace the frustrating date-of-birth calendar. I should not have to tap backwards month after month to reach my birth year. Provide direct date entry or a picker that allows quick selection of the year, month, and day. Make the format obvious and validate it clearly. The control should work well on a phone and preserve a previously entered date. A simple personal-information field should not become one of the slowest parts of completing the form.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 78,
+      "title": "Check username availability while the person is typing.",
+      "requirement": "78. Check username availability while the person is typing. When someone enters a username, show an understandable checking state, then indicate availability beside the field. An available username should have a green confirmation icon and the message \u201cUsername available.\u201d An existing or otherwise unavailable username should show \u201cUsername not available,\u201d with useful guidance where needed. Update the result when the input changes. Keep the final submission validation consistent so the user is not told a name is available and then silently rejected later.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 79,
+      "title": "Use a proper Nigerian phone input.",
+      "requirement": "79. Use a proper Nigerian phone input. Show Nigeria as the default country, including the flag and +234 prefix. Let the person enter their local phone number in the number field without manually typing the country code. Provide a country selector where needed and accept normal local formatting sensibly. Store the number in the required consistent format after validation. Instructions such as \u201ctype your number with country code\u201d should not compensate for an input that could handle that work for the user.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 80,
+      "title": "Add useful placeholders throughout the forms.",
+      "requirement": "80. Add useful placeholders throughout the forms. Inputs should give people a clear idea of what belongs in them. Use example email addresses for email fields and suitable Nigerian names such as Aisosa, Oluwatobi, Michael, or Chukwuemeka for name examples. Business names and descriptions should also have helpful examples where appropriate. Keep permanent labels visible so placeholders do not become the only explanation. Review both the website and app, because the lack of guidance is happening across multiple forms.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 81,
+      "title": "Make guardian relationships selectable.",
+      "requirement": "81. Make guardian relationships selectable. A field such as guardian relationship should offer the relevant options rather than requiring everyone to type \u201cfather,\u201d \u201cmother,\u201d or another common relationship. This reduces effort and avoids inconsistent entries. Present the choices in a clean dropdown and make the selected relationship clear. If an additional relationship needs a custom value, handle that intentionally. The general principle is to use a choice wherever the answer naturally comes from a known set.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 82,
+      "title": "Use level options rather than manual level entry.",
+      "requirement": "82. Use level options rather than manual level entry. Students should choose their level from the applicable list instead of typing it in different formats. The choices should fit the selected programme or supported academic structure where relevant. Preserve the selection when moving between form steps. If a university or programme selection changes and affects the available levels, update the control clearly. Avoid forcing students to discover formatting requirements through submission errors.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 83,
+      "title": "Complete faculty and department choices for other supported universities.",
+      "requirement": "83. Complete faculty and department choices for other supported universities. UNIBEN should not be the only institution with a useful academic catalogue. If someone selects Ahmadu Bello University or another supported university, they should find the appropriate faculties and departments where that information is available and verified. Build the dependent selection flow correctly so departments correspond to the selected faculty and institution. Do not fill gaps with invented records. Make remaining data gaps visible to the administrators responsible for completing the catalogue.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 84,
+      "title": "Use academic-session choices for admission information.",
+      "requirement": "84. Use academic-session choices for admission information. Where the field represents an academic session, show choices in formats such as 2025/2026 or 2026/2027. Asking for a bare year can be confusing when the institution uses session-based terminology. Make the field label and options match the information actually required. Keep the choice easy to make from a dropdown. The saved value should appear consistently in the student\u2019s record and any later screens that use it.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 85,
+      "title": "Make expected graduation information selectable.",
+      "requirement": "85. Make expected graduation information selectable. Expected graduation year or session should be offered through a clear selection control with an appropriate range. I should not have to open the keyboard for another predictable value. Use any relevant programme information to make the field easier to complete without locking the user into an incorrect assumption. Show the selected value clearly and preserve it in saved drafts. Validate unreasonable combinations with a useful explanation beside the relevant field.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 86,
+      "title": "Use choices for interests, categories, and other structured answers.",
+      "requirement": "86. Use choices for interests, categories, and other structured answers. Business categories, interests, and similar fields should use the appropriate predefined choices. Keep text entry for things that genuinely need personal wording, such as names, descriptions, and business details. Choosing an option should be faster than typing, and the options should be meaningful. If multiple selections are supported, show them clearly and make editing straightforward. Use the same approach throughout onboarding instead of designing each structured field differently.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 87,
+      "title": "Make dropdowns visually clean and consistent.",
+      "requirement": "87. Make dropdowns visually clean and consistent. I do not want every choice presented as a wall of boxes. Use well-designed dropdowns or another suitable selection control that fits the space and task. Keep the text readable, the selected state clear, and long lists usable. On mobile, the controls should be comfortable to tap and should not extend off screen. Their styling should follow the design system rather than introducing an unrelated pattern on every form.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 88,
+      "title": "Reduce unnecessary typing and protect form progress.",
+      "requirement": "88. Reduce unnecessary typing and protect form progress. The application should feel quick to complete because the interface assists the person with options and sensible defaults. If the network drops or a request fails, retain the information already entered and let the person continue. Do not turn a short form into a repeated typing exercise. Make the current step and saved state understandable. Applicants should be able to recover from ordinary interruptions without starting from the beginning.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 89,
+      "title": "Fix the private identity setup blockage.",
+      "requirement": "89. Fix the private identity setup blockage. I encountered a message saying private identity was being connected and that I should save and return shortly. That interrupts the flow at a point where I expect to proceed. Investigate the underlying configuration and service dependency causing the block. Handle any genuine temporary issue in place, with preserved progress and a useful retry path. The ordinary application journey should not depend on remembering to leave the portal and come back later.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 90,
+      "title": "Fix the widespread admin request failures.",
+      "requirement": "90. Fix the widespread admin request failures. A large portion of the admin dashboard produces request errors or server errors instead of usable information. Review the affected sections systematically, identify the failed requests, and correct their causes. Check authentication, permissions, request formats, missing data dependencies, and server handling as relevant. Each section should provide appropriate loading, empty, and failure states. A dashboard intended to manage the platform cannot remain mostly unusable behind generic error messages.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 91,
+      "title": "Replace the old admin dashboard design thoroughly.",
+      "requirement": "91. Replace the old admin dashboard design thoroughly. I have repeatedly asked for a strong admin interface and provided a green reference. Rework the navigation, page structure, cards, tables, forms, and spacing around that direction. Keep it organised across multiple relevant pages so each area has room to function. Remove the leftover visual patterns that made the old version feel cluttered. I want an interface where I can confidently review users, applications, payments, permissions, and platform activity.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 92,
+      "title": "Provide meaningful analytics visualisations.",
+      "requirement": "92. Provide meaningful analytics visualisations. The analytics area needs diagrams and charts that help me understand what is happening. Choose useful views for the metrics we actually collect, give them readable labels, and support appropriate time ranges. The figures should come from real data and be consistent with the surrounding totals. Show a sensible empty state when there is no information yet. Avoid a screen of disconnected numbers that provides no way to see trends or compare activity.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 93,
+      "title": "Show today\u2019s app screen-time information.",
+      "requirement": "93. Show today\u2019s app screen-time information. I want to see the relevant user screen-time or app-usage information for the current day. Define and measure the supported activity consistently so the value means something. Make the reporting period clear and distinguish the available per-user and aggregate views appropriately. The dashboard should show current data within the limits of the collection system. Do not present an empty section as though the feature is complete when the necessary tracking is not connected.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 94,
+      "title": "Show website engagement and relevant search analytics.",
+      "requirement": "94. Show website engagement and relevant search analytics. I want visibility into website clicks and the other relevant activity measurements we discussed. Connect the tracking to the dashboard and explain the metrics through clear labels. Where search and indexing information is available, make it useful rather than leaving it inaccessible. Keep date ranges consistent across charts and totals. I should be able to assess engagement and identify whether the features people use are functioning as intended.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 95,
+      "title": "Restrict Campus Updates to authorised publishers.",
+      "requirement": "95. Restrict Campus Updates to authorised publishers. Ordinary posts from every account should not appear in Campus Updates. That section has a specific purpose and should draw from the Newsletter account and other accounts that have been deliberately authorised. Correct the publishing and display logic so a normal social post does not become an official-looking campus update. Keep the main feed available for ordinary posts. Students should be able to understand the difference between general activity and authorised updates.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 96,
+      "title": "Let administrators grant update-publishing permission.",
+      "requirement": "96. Let administrators grant update-publishing permission. Provide a clear control for authorising additional accounts to publish Campus Updates. I should be able to find the account, review it, grant the relevant permission, and see the resulting state. The permission should be enforced by the system when content is created and displayed. It should also be removable when needed. Keep a record of administrative changes so the publishing access can be reviewed later.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 97,
+      "title": "Give the existing Newsletter account its intended access.",
+      "requirement": "97. Give the existing Newsletter account its intended access. The account named Campus One or KampusOne Newsletter is my concrete example of an authorised update account. Locate the correct existing account and ensure it has the requested capabilities by the time this update is released. Do not rely solely on a name someone else could copy. Its access should be reflected in the admin controls and the account\u2019s own interface. I should be able to test the update features through that account immediately.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 98,
+      "title": "Allow authorised update accounts to create polls.",
+      "requirement": "98. Allow authorised update accounts to create polls. Poll creation should be available to the approved accounts intended for this role. Those accounts should see a clear way to create a question, configure the poll, and publish it. The permissions need to apply to the actual creation process, not just whether a button is shown. Students receiving the poll should be able to understand it and vote through a simple interaction. Keep the feature consistent with the rest of the social experience.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 99,
+      "title": "Make adding poll options straightforward.",
+      "requirement": "99. Make adding poll options straightforward. A poll creator should be able to enter the question, add the choices they need, review them, and publish. Adding or editing options should not make the composer distorted or difficult to use. Handle blank and duplicate choices sensibly and communicate any actual limit clearly. The published poll should preserve the intended order and text. Long option wording should remain readable on mobile without breaking the layout.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 100,
+      "title": "Show vote results and voter names for ordinary polls.",
+      "requirement": "100. Show vote results and voter names for ordinary polls. For a non-anonymous poll, provide the results and the intended view of who voted for each option. Names should link to the correct accounts where appropriate. Keep counts consistent between the poll and the detailed results screen. The voting interaction should prevent confusing duplicate submissions and communicate the user\u2019s selection. If changing a vote is supported, make that behaviour clear and update the results correctly.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 101,
+      "title": "Support anonymous polls properly.",
+      "requirement": "101. Support anonymous polls properly. Let the creator choose anonymity before publishing and clearly label the poll\u2019s anonymous status. Participants should understand what that setting means. Results can still show totals, but voter identity must be handled according to the anonymous setting. Do not leak names through another result screen or ordinary user request. The selection should be saved with the poll and respected throughout the interface and the underlying data-access behaviour.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 102,
+      "title": "Support the exclusive question-and-reply format I described.",
+      "requirement": "102. Support the exclusive question-and-reply format I described. Authorised update accounts should be able to ask questions, receive the relevant replies, and share or publish replies through the intended experience. Use the reference and the described interaction to establish a clear flow. Students should understand how to respond and how their reply may be used. The authorised account should have suitable controls for reviewing responses. Keep these capabilities attached to the approved publishing permissions.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 103,
+      "title": "Repair the post-language selector\u2019s layout.",
+      "requirement": "103. Repair the post-language selector\u2019s layout. The language feature can remain, but its current presentation is distorted and unresponsive. Give it a clear, compact control with sensible choices and a visible selected value. It should fit naturally into the composer instead of competing with the post text and media. Test long labels and smaller screens. The selector should use the same spacing, typography, and interaction conventions as the rest of the form.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 104,
+      "title": "Add mention suggestions and highlight mentions while composing.",
+      "requirement": "104. Add mention suggestions and highlight mentions while composing. When I type @ and begin entering a username or name, show relevant account suggestions. Let me select the intended person and insert the mention correctly. Highlight the mention in the appropriate design-system colour before I publish so I can recognise it. Keep editing and deleting mentions predictable. After publication, the mention should remain associated with the correct account rather than becoming plain text with no useful relationship.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 105,
+      "title": "Improve hashtag suggestions and composing feedback.",
+      "requirement": "105. Improve hashtag suggestions and composing feedback. When I type a hashtag, suggest existing matching hashtags and show their post counts where available. Let me choose one easily. If it is a new hashtag, allow me to create and use it through the normal post flow. Highlight hashtags while I am still composing, then preserve their useful behaviour after publication. Suggestions should not obscure the composer or create a layout that prevents me from continuing to type.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 106,
+      "title": "Make Kira Pro a functioning paid entitlement.",
+      "requirement": "106. Make Kira Pro a functioning paid entitlement. Kira should not effectively be free Pro for every account. Standard users should have the intended limits, and paid Pro users should receive the benefits their subscription actually includes. The payment and entitlement flow needs to work end to end: choose the plan, complete payment, confirm the transaction, activate access, and reflect the new status. Check the server enforcement as well as the interface. Hiding an Upgrade button alone does not implement the plan distinction.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 107,
+      "title": "Preserve my account\u2019s intended complimentary Pro access.",
+      "requirement": "107. Preserve my account\u2019s intended complimentary Pro access. I said that my own account should have the special Pro access we agreed on. Keep that exception attached to the correct account rather than accidentally applying it to everyone. Other users should follow the normal Standard or paid-Pro rules. The interface should show my status correctly. The administrative and billing records should make the distinction understandable so testing my account does not create the impression that subscriptions are free across the platform.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 108,
+      "title": "Clearly display the current Kira plan and upgrade action.",
+      "requirement": "108. Clearly display the current Kira plan and upgrade action. A user should be able to see whether they are using Standard or Pro without searching through settings. Standard users should have a clear Upgrade action in the relevant Kira interface. Pro users should see the correct active state instead of being repeatedly asked to purchase access they already have. Keep the presentation simple and consistent. The status should update after payment confirmation and remain correct when the app is reopened.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 109,
+      "title": "Show Pro benefits before asking the user to pay.",
+      "requirement": "109. Show Pro benefits before asking the user to pay. Selecting Upgrade should first explain what the user will receive. Build a concise benefits screen that follows the reference I supplied and makes the value easy to scan. Use clear individual benefit statements rather than long promotional paragraphs. The user should understand the plan and price before proceeding to checkout. Keep the action to continue visible, and make it easy to return to Kira without accidentally starting a payment.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 110,
+      "title": "Connect the listed benefits to real Pro behaviour.",
+      "requirement": "110. Connect the listed benefits to real Pro behaviour. I mentioned more PDF uploads, more summaries, better responses, improved voice features, and longer or better personal memory. Review the actual implementation and ensure the benefits shown match what Pro provides. Where limits differ, communicate them clearly enough to be useful. Kira should use the profile and supported memory appropriately to know the user better. Do not advertise an improvement that has no corresponding implementation or entitlement difference behind it.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 111,
+      "title": "Build a proper checkout after the benefits screen.",
+      "requirement": "111. Build a proper checkout after the benefits screen. The checkout should follow the supplied inspiration and feel like part of KampusOne. Show the selected purchase, price, relevant customer information, and discount-code field clearly. Use existing name and email information where appropriate while allowing necessary corrections. The payment action should be unambiguous. Preserve the checkout state if the user returns from a cancelled or unsuccessful attempt so they can understand what happened and try again without starting over.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 112,
+      "title": "Let administrators create the requested discount codes.",
+      "requirement": "112. Let administrators create the requested discount codes. Provide controls for creating percentage discounts for the relevant offerings, including Kira and the vendor, rider, or tutor categories where applicable. The administrator should be able to identify the code\u2019s scope and understand how it can be used. Validate the discount during checkout using the actual purchase context. The displayed price should update clearly when a valid code is applied. An invalid or inapplicable code should receive a useful explanation.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 113,
+      "title": "Support targeted discount campaigns by email.",
+      "requirement": "113. Support targeted discount campaigns by email. I want to distribute codes to selected groups of users through the dashboard. Let me choose the intended audience, review the campaign content and discount details, and send through the authorised campaign process. Use a polished email template consistent with the brand. The system should keep enough campaign information to understand what was sent and to whom. Building this capability should not trigger an unintended broadcast while the feature is being tested.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 114,
+      "title": "Remove unnecessary payment-provider advertising from our interface.",
+      "requirement": "114. Remove unnecessary payment-provider advertising from our interface. Our own purchase screens should use straightforward actions such as Pay, Continue, or Complete purchase. I do not want repeated labels announcing Paystack throughout the app. Review the places where that wording appears and remove unnecessary provider promotion from the interfaces we control. Keep the appropriate provider disclosures in terms, privacy information, and other genuinely required contexts. The customer\u2019s main focus should be the purchase and its outcome.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 115,
+      "title": "Show a clear customer-facing price without surprise additions.",
+      "requirement": "115. Show a clear customer-facing price without surprise additions. The marketplace pricing experience should help customers understand what they will pay. Apply the agreed pricing policy consistently and make the displayed amount meaningful. When additional context is needed to calculate an order total, show the complete amount before payment confirmation. The customer should not feel that a price changed unexpectedly after committing to buy. The vendor\u2019s preview, product display, checkout, and final payment record should use consistent pricing information.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 116,
+      "title": "Keep product creation simple and show the price breakdown inline.",
+      "requirement": "116. Keep product creation simple and show the price breakdown inline. Uploading a product should feel as straightforward as creating a post: enter the product name, add images, write the description, set the price, and complete the relevant details. As the vendor enters the price, calculate the applicable fees and show the resulting customer-facing amount in the form. Indicate when the calculation is updating. Let the vendor review and confirm that amount before publishing. Avoid turning this into several unnecessary screens or intrusive pop-ups.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 117,
+      "title": "Search marketplace products and vendors properly.",
+      "requirement": "117. Search marketplace products and vendors properly. The marketplace search should find products through their titles and descriptions, and it should also find vendors. Present the result types clearly so I understand whether I am opening a product or a business profile. Relevant matches should not disappear because the search only checks one field. Handle spelling, partial input, and empty results sensibly within the supported search behaviour. Opening a result should lead directly to the corresponding marketplace screen.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 118,
+      "title": "Improve the payment and completion-state screens.",
+      "requirement": "118. Improve the payment and completion-state screens. Payment success, failure, decline, cancellation, and pending states need clear, polished interfaces. Use appropriate animation and visual feedback without delaying the next useful action. Explain whether the purchase completed, whether access is still being confirmed, or whether another attempt is needed. I also mentioned the deployment-success and other existing completion/error screens; review those consistently. The visual treatment should fit the brand and make the actual outcome understandable.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 119,
+      "title": "Send confirmation emails for confirmed successful payments.",
+      "requirement": "119. Send confirmation emails for confirmed successful payments. When a payment succeeds and is verified, the customer should receive a suitable confirmation email. Include the useful purchase information and the appropriate next step. The email should correspond to a genuine confirmed payment rather than an unverified browser return. Avoid duplicate receipts when an event is retried. The app\u2019s payment state and the email should agree, so the user is not told a purchase succeeded while the purchased access remains unavailable.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 120,
+      "title": "Give administrators visibility into the full payment lifecycle.",
+      "requirement": "120. Give administrators visibility into the full payment lifecycle. I should be able to see successful payments, pending payments, failed attempts, and payments that were initiated but did not complete. Use clear status names and useful purchase information. Let me inspect the relevant details without relying on a customer\u2019s screenshot. Keep the records consistent with the payment provider events and the actual product entitlement. The dashboard should help us test the payment flow and understand where unsuccessful attempts are stopping.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 121,
+      "title": "Redesign the emails using the references already supplied.",
+      "requirement": "121. Redesign the emails using the references already supplied. The email templates still feel generic and unfinished despite the previous design instructions. Rework their layout, logo treatment, typography, spacing, illustrations where appropriate, and action buttons. Make them readable on phones and consistent across approval notices, receipts, and other relevant messages. Check the actual rendered result instead of assuming the template looks good from its code. I want a coherent KampusOne email experience that visibly reflects the references.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 122,
+      "title": "Use the payment configuration correctly and incorporate replacement keys if",
+      "requirement": "122. Use the payment configuration correctly and incorporate replacement keys if provided. I have already configured Paystack and am willing to provide the credentials again if required. Review the actual configuration and feature switches so the payment flow is genuinely available for testing. Keep credentials in the correct protected configuration, and ensure the final Worker release uses them. Diagnose a disabled or misconfigured payment path directly. I should not keep encountering an unavailable checkout while being told that payments are configured.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 123,
+      "title": "Restore Kira\u2019s edge glow and animate it as flowing waves.",
+      "requirement": "123. Restore Kira\u2019s edge glow and animate it as flowing waves. The jumping circular effect is not the design I requested. I preferred the previous glow around the screen edges, and I want that treatment improved with a movement that feels like water travelling around the perimeter. Keep it attached to the edges rather than placing bouncing circles over the content. The effect should feel smooth and fit the intended Kira states. Preserve readability and respect reduced-motion behaviour while implementing the actual visual direction.",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": 124,
+      "title": "Finish, verify, and release this update as one coordinated version.",
+      "requirement": "124. Finish, verify, and release this update as one coordinated version. Keep checkpoint commits so completed work is preserved, but hold the production deployment until the whole batch is ready. Review the combined migration changes together, verify them appropriately, and perform the final production migration rollout once. Deploy the updated Worker and the relevant Vercel applications in the correct order, then build the APK from the matching final code. Confirm that the installed APK connects to the updated services. My final requested deliverable is the new APK download link, with an honest account of any remaining limitations.",
+      "status": "pending",
+      "evidence": []
+    }
+  ]
+}

@@ -137,7 +137,9 @@ messageRoutes.get("/inbox", async (c) => {
         p.display_name,
         p.profile_image_url,
         to_char(t.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
-        (
+        coalesce((select activity.summary from app_private.direct_thread_activity activity
+          where activity.thread_id=t.id and activity.created_at>(select coalesce(latest.unsent_at,latest.created_at) from public.direct_messages latest where latest.thread_id=t.id order by latest.created_at desc,latest.id desc limit 1)
+          order by activity.created_at desc,activity.id desc limit 1),(
           select case
             when m.unsent_at is not null and m.sender_id=${user.id}::uuid then 'You unsent a message'
             when m.unsent_at is not null then 'Message unsent'
@@ -158,7 +160,7 @@ messageRoutes.get("/inbox", async (c) => {
           where m.thread_id=t.id
           order by m.created_at desc,m.id desc
           limit 1
-        ) as last_message,
+        )) as last_message,
         (select count(*)::int from public.direct_messages m where m.thread_id=t.id and m.sender_id<>${user.id}::uuid and m.read_at is null and m.unsent_at is null) as unread_count,
         coalesce((select json_agg(a.agent_type) from public.agent_profiles a where a.user_id=p.user_id and a.status='ACTIVE'),'[]'::json) as roles
       from public.direct_threads t

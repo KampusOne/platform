@@ -1,4 +1,5 @@
 import { BrandSwitch } from "@/src/components/brand-switch";
+import { ChoiceField } from "@/src/components/choice-field";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
 import { api } from "@/src/lib/api";
@@ -513,7 +514,7 @@ export default function Alarms() {
   const [editing, setEditing] = useState<Alarm | null>(null);
   const [label, setLabel] = useState("");
   const [time, setTime] = useState("08:00");
-  const [days, setDays] = useState<number[]>(() => [currentCampusDay()]);
+  const [days, setDays] = useState<number[]>([]);
   const [sound, setSound] = useState<Alarm["sound"]>("default");
   const [sounds, setSounds] = useState<AlarmSoundOption[]>([]);
   const [soundOpen, setSoundOpen] = useState(false);
@@ -584,7 +585,7 @@ export default function Alarms() {
   }
 
   function edit(alarm: Alarm | null) {
-    const initialDays = alarm ? alarm.days : [currentCampusDay()];
+    const initialDays = alarm ? alarm.days : [];
     setEditing(alarm);
     setLabel(alarm?.label ?? "");
     setTime(alarm?.time ?? "08:00");
@@ -593,8 +594,7 @@ export default function Alarms() {
     setSoundOpen(false);
     setVibration(alarm?.vibration ?? true);
     setSnooze(String(alarm?.snooze_minutes ?? 5));
-    // New alarms should show the weekday controls immediately with today selected.
-    setRepeatOpen(alarm ? Boolean(alarm.days.length) : true);
+    setRepeatOpen(Boolean(alarm?.days.length));
     setForm(true);
   }
 
@@ -917,6 +917,7 @@ export default function Alarms() {
                 </View>
 
                 <View style={styles.settingsCard}>
+                  <View style={{padding:14}}><ChoiceField label="Schedule" value={days.length ? "repeat" : "once"} options={[{value:"once",label:"Once"},{value:"repeat",label:"Repeat"}]} onChange={value=>{setDays(value==="repeat"?[currentCampusDay()]:[]);setRepeatOpen(value==="repeat");}} /></View>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityState={{ expanded: repeatOpen }}

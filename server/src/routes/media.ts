@@ -4,7 +4,8 @@ import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import { byteRange } from "../lib/http-range";
 import { currentUser, requireAuth } from "../middleware/auth";
-import { id } from "../lib/input";
+import { id, input } from "../lib/input";
+import {z} from '@kampusone/contracts';
 import { adminAccess, resolveAdminScope } from "../lib/admin-access";
 import { recordAudit } from "../lib/audit";
 import {requireAdminWorkspace}from'../lib/admin-workspace';
@@ -158,6 +159,52 @@ function looksLikeUtf8Text(bytes: Uint8Array) {
     return false;
   }
 }
+export function verifiedMessageMime(bytes:Uint8Array,declaredMime:string,originalName:string){
+ const detected=detectedMime(bytes);if(detected)return detected;
+ const inferred=openXmlDocumentMimes.has(declaredMime)||legacyDocumentMimes.has(declaredMime)||textDocumentMimes.has(declaredMime)?declaredMime:documentMimeFromName(originalName);
+ const zip=bytes[0]===0x50&&bytes[1]===0x4b&&[0x03,0x05,0x07].includes(bytes[2]??-1);
+ const compound=[0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1].every((v,i)=>bytes[i]===v);
+ if(openXmlDocumentMimes.has(inferred)&&zip)return inferred;
+ if(legacyDocumentMimes.has(inferred)&&compound)return inferred;
+ if(inferred==='application/rtf'||inferred==='text/rtf')return new TextDecoder().decode(bytes.slice(0,64)).trimStart().startsWith('{\\rtf')?inferred:null;
+ if(textDocumentMimes.has(inferred)&&looksLikeUtf8Text(bytes))return inferred;
+ return null;
+}
+const messageChunkBytes=5*1024*1024;
+type UploadSession={id:string;object_key:string;multipart_id:string;original_name:string;declared_type:string;content_type:string|null;expected_bytes:number;parts:Record<string,{etag:string;size:number}>;status:string;media_id:string|null;institution_id:string|null};
+async function uploadSession(env:Bindings,userId:string,sessionId:string){const session=firstRow(await database(env).execute<UploadSession>(sql`select * from app_private.media_upload_sessions where id=${sessionId}::uuid and owner_user_id=${userId}::uuid and (expires_at>now() or status='COMPLETE')`));if(!session)throw new AppError(404,'NOT_FOUND','This upload expired. Choose the file again.');if(!env.PRIVATE_BUCKET)throw new AppError(503,'PROVIDER_UNAVAILABLE','Private uploads are temporarily unavailable.');return session;}
+mediaRoutes.post('/message-uploads',requireAuth,async c=>{
+ const user=currentUser(c),data=await input(c,z.object({uploadId:z.string().uuid(),name:z.string().trim().min(1).max(180),type:z.string().max(180),size:z.number().int().min(1).max(500*1024*1024)}).strict()),db=database(c.env);
+ const existing=firstRow(await db.execute<UploadSession>(sql`select * from app_private.media_upload_sessions where id=${data.uploadId}::uuid and owner_user_id=${user.id}::uuid and expires_at>now()`));if(existing){if(Number(existing.expected_bytes)!==data.size||existing.original_name!==data.name)throw new AppError(409,'CONFLICT','This upload belongs to another file.');return c.json({id:existing.id,parts:existing.parts,status:existing.status,mediaId:existing.media_id,chunkBytes:messageChunkBytes});}
+ if(!c.env.PRIVATE_BUCKET)throw new AppError(503,'PROVIDER_UNAVAILABLE','Private uploads are temporarily unavailable.');
+ const allowance=firstRow(await db.execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('MESSAGE_LARGE_UPLOAD',${user.id},12,3600,3600) and (select coalesce(sum(expected_bytes),0)<2147483648 from app_private.media_upload_sessions where owner_user_id=${user.id}::uuid and created_at>now()-interval '24 hours' and status<>'ABORTED') allowed`));if(!allowance?.allowed)throw new AppError(429,'RATE_LIMITED','Your upload allowance is reached. Retry later; your message is saved.');
+ const key=`message/${user.id}/${data.uploadId}`,multipart=await c.env.PRIVATE_BUCKET.createMultipartUpload(key,{customMetadata:{owner:user.id,uploadId:data.uploadId}});
+ try{await db.execute(sql`insert into app_private.media_upload_sessions(id,owner_user_id,institution_id,object_key,multipart_id,original_name,declared_type,expected_bytes) values(${data.uploadId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${key},${multipart.uploadId},${data.name},${data.type},${data.size})`);}catch(error){await multipart.abort();throw error;}
+ return c.json({id:data.uploadId,parts:{},status:'OPEN',mediaId:null,chunkBytes:messageChunkBytes},201);
+});
+mediaRoutes.put('/message-uploads/:id/parts/:part',requireAuth,async c=>{
+ const user=currentUser(c),session=await uploadSession(c.env,user.id,id(c.req.param('id'))),part=Number(c.req.param('part')),count=Math.ceil(Number(session.expected_bytes)/messageChunkBytes);
+ if(session.status!=='OPEN'||!Number.isInteger(part)||part<1||part>count)throw new AppError(409,'CONFLICT','Refresh this upload before retrying.');
+ const expected=part===count?Number(session.expected_bytes)-(part-1)*messageChunkBytes:messageChunkBytes;
+ if(Number(c.req.header('Content-Length')??expected)!==expected)throw new AppError(400,'BAD_REQUEST','Upload chunk has the wrong size.');
+ const reader=c.req.raw.body?.getReader();if(!reader)throw new AppError(400,'BAD_REQUEST','Choose the file again.');const chunks:Uint8Array[]=[];let size=0;while(true){const next=await reader.read();if(next.done)break;size+=next.value.length;if(size>expected){await reader.cancel();throw new AppError(413,'BAD_REQUEST','Upload chunk is too large.');}chunks.push(next.value);}if(size!==expected)throw new AppError(400,'BAD_REQUEST','Upload chunk is incomplete. Retry this file.');
+ const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
+ const mime=part===1?verifiedMessageMime(bytes,session.declared_type,session.original_name):session.content_type;if(!mime)throw new AppError(400,'BAD_REQUEST','Use a supported picture, video, voice note or document.');
+ const multipart=c.env.PRIVATE_BUCKET!.resumeMultipartUpload(session.object_key,session.multipart_id),uploaded=await multipart.uploadPart(part,bytes);
+ await database(c.env).execute(sql`update app_private.media_upload_sessions set parts=parts||jsonb_build_object(${String(part)},${JSON.stringify({etag:uploaded.etag,size})}::jsonb),content_type=coalesce(content_type,${mime}) where id=${session.id}::uuid and status='OPEN'`);return c.json({part,etag:uploaded.etag,size});
+});
+mediaRoutes.post('/message-uploads/:id/complete',requireAuth,async c=>{
+ const user=currentUser(c),session=await uploadSession(c.env,user.id,id(c.req.param('id'))),origin=(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'');
+ if(session.status==='COMPLETE')return c.json({id:session.media_id,url:`${origin}/v1/media/${session.media_id}`,kind:'message',private:true});
+ if(!['OPEN','COMPLETING'].includes(session.status))throw new AppError(409,'CONFLICT','This upload was cancelled.');
+ const count=Math.ceil(Number(session.expected_bytes)/messageChunkBytes),parts=[];let total=0;for(let part=1;part<=count;part++){const saved=session.parts[String(part)];if(!saved)throw new AppError(409,'CONFLICT','Some chunks are missing. Retry the upload to resume.');parts.push({partNumber:part,etag:saved.etag});total+=saved.size;}if(total!==Number(session.expected_bytes)||!session.content_type)throw new AppError(409,'CONFLICT','The file is incomplete. Retry to resume.');
+ await database(c.env).execute(sql`update app_private.media_upload_sessions set status='COMPLETING' where id=${session.id}::uuid and status='OPEN'`);
+ try{await c.env.PRIVATE_BUCKET!.resumeMultipartUpload(session.object_key,session.multipart_id).complete(parts);}catch(error){const head=await c.env.PRIVATE_BUCKET!.head(session.object_key);if(!head||head.size!==total)throw error;}
+ // Deterministic media ID plus a single SQL statement makes completion safe to retry.
+ await database(c.env).execute(sql`with media as(insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values(${session.id}::uuid,${user.id}::uuid,${session.institution_id}::uuid,'message',${session.object_key},${session.content_type},${total},${session.original_name}) on conflict(id) do nothing) update app_private.media_upload_sessions set status='COMPLETE',media_id=${session.id}::uuid where id=${session.id}::uuid`);
+ return c.json({id:session.id,url:`${origin}/v1/media/${session.id}`,kind:'message',private:true},201);
+});
+mediaRoutes.delete('/message-uploads/:id',requireAuth,async c=>{const session=await uploadSession(c.env,currentUser(c).id,id(c.req.param('id')));if(session.status==='COMPLETE')throw new AppError(409,'CONFLICT','This file has already been uploaded.');await c.env.PRIVATE_BUCKET!.resumeMultipartUpload(session.object_key,session.multipart_id).abort();await database(c.env).execute(sql`update app_private.media_upload_sessions set status='ABORTED' where id=${session.id}::uuid`);return c.json({cancelled:true});});
 export function detectedMime(bytes: Uint8Array) {
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
     return "image/jpeg";

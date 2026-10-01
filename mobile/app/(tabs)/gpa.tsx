@@ -1,4 +1,6 @@
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
+import { ChoiceField } from "@/src/components/choice-field";
+import { useAuth } from "@/src/auth/auth-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
@@ -57,11 +59,12 @@ type GradePlannerData = {
 export default function GpaScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
+  const { profile } = useAuth();
   const [data, setData] = useState<GpaData | null>(null);
   const [editing, setEditing] = useState(false);
-  const [sessionLabel, setSessionLabel] = useState("");
-  const [semester, setSemester] = useState("");
-  const [levelCode, setLevelCode] = useState("");
+  const [sessionLabel, setSessionLabel] = useState(`${new Date().getFullYear()}/${new Date().getFullYear()+1}`);
+  const [semester, setSemester] = useState("1");
+  const [levelCode, setLevelCode] = useState(profile?.level_code ?? "100");
   const [courseCode, setCourseCode] = useState("");
   const [courseTitle, setCourseTitle] = useState("");
   const [units, setUnits] = useState("");
@@ -118,7 +121,7 @@ export default function GpaScreen() {
     results.length > 0 &&
     sessionLabel.trim().length >= 4 &&
     levelCode.trim().length >= 3 &&
-    ["1", "2", "3"].includes(semester);
+    ["1", "2"].includes(semester);
   const canAddCourse =
     courseCode.trim().length >= 2 &&
     courseTitle.trim().length >= 2 &&
@@ -367,54 +370,13 @@ export default function GpaScreen() {
           </View>
           <View style={styles.double}>
             <View style={styles.half}>
-              <Field
-                label="Session"
-                onChangeText={setSessionLabel}
-                value={sessionLabel}
-              />
+              <ChoiceField label="Session" value={sessionLabel} onChange={setSessionLabel} options={Array.from({length:15},(_,i)=>{const year=new Date().getFullYear()+1-i;return {value:`${year}/${year+1}`,label:`${year}/${year+1}`};})} />
             </View>
             <View style={styles.half}>
-              <Field
-                keyboardType="number-pad"
-                label="Level"
-                onChangeText={setLevelCode}
-                value={levelCode}
-              />
+              <ChoiceField label="Level" value={levelCode} onChange={setLevelCode} options={["100","200","300","400","500","600","700"].map(value=>({value,label:value+" level"}))} />
             </View>
           </View>
-          <Text style={styles.label}>Semester</Text>
-          <View
-            accessibilityLabel="Choose semester"
-            accessibilityRole="radiogroup"
-            style={styles.segmented}
-          >
-            {["1", "2", "3"].map((item) => {
-              const selected = semester === item;
-              return (
-                <Pressable
-                  accessibilityLabel={`Semester ${item}`}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  key={item}
-                  onPress={() => setSemester(item)}
-                  style={({ pressed }) => [
-                    styles.segment,
-                    selected && styles.segmentActive,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      selected && styles.segmentTextActive,
-                    ]}
-                  >
-                    Semester {item}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <ChoiceField label="Semester" value={semester} options={[{value:"1",label:"First Semester"},{value:"2",label:"Second Semester"}]} onChange={setSemester} />
 
           {!importedFromPlanner ? (
             <>

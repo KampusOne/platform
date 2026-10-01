@@ -15,6 +15,7 @@ module.exports = ({ config }) => {
 
   return {
     ...config,
+    plugins: [...(config.plugins || []), "expo-sharing", ["expo-media-library", { photosPermission: "Allow KampusOne to save photos you choose.", savePhotosPermission: "Allow KampusOne to save downloaded photos and videos." }]],
     extra: {
       ...config.extra,
       ...(projectId

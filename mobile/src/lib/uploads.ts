@@ -64,7 +64,7 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
     const { File } = await import("expo-file-system");
     const nativeFile = new File(file.uri);
     if (!nativeFile.exists) throw new Error("The selected file could not be read. Choose it again.");
-    body = nativeFile;
+    body = new Blob([await nativeFile.arrayBuffer()],{type:file.type});
   }
   if (!body.size || body.size > limit) throw new Error(`Choose a file smaller than ${limit / 1024 / 1024} MB.`);
   // Raw bytes avoid incompatible native/browser FormData implementations and

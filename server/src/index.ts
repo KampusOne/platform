@@ -24,6 +24,7 @@ export default {
     executionContext.waitUntil(deliverQueuedBroadcasts(env));
     executionContext.waitUntil(
       Promise.all([
+        database(env).execute(sql`update public.student_alarms set enabled=false,updated_at=now() where enabled and cardinality(days)=0 and fires_at<=now()`),
         database(env).execute(
           sql`select * from app_private.expire_stale_commerce()`,
         ),
@@ -44,7 +45,7 @@ export default {
             ) select count(*)::int as deleted from removed`)
           : Promise.resolve({ rows: [] }),
       ])
-        .then(([commerce, rateLimits, aiRetention]) => {
+        .then(([_alarms,commerce, rateLimits, aiRetention]) => {
           console.log(
             JSON.stringify({
               level: "info",

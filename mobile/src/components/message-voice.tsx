@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Platform, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
   AudioModule,
@@ -17,6 +17,8 @@ import { ToolButton } from "./toolkit";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 
+const playbackListeners = new Set<(owner: object) => void>();
+
 type PlaybackSpeed = 1 | 1.5 | 2;
 const SPEEDS: PlaybackSpeed[] = [1, 1.5, 2];
 const WAVE_BARS = [8, 14, 22, 12, 26, 18, 10, 24, 16, 28, 13, 20, 9, 25, 17, 12, 29, 15, 21, 11, 27, 18, 9, 23, 14, 26, 12, 19];
@@ -30,9 +32,11 @@ function formatDuration(seconds: number) {
 function Waveform({
   progress = 0,
   recording = false,
+  light = false,
 }: {
   progress?: number;
   recording?: boolean;
+  light?: boolean;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
   const activeCount = recording
@@ -47,7 +51,8 @@ function Waveform({
           style={[
             styles.waveBar,
             { height: Math.max(5, height * 0.72) },
-            index < activeCount && { backgroundColor: theme.deepBrand, opacity: 1 },
+            {backgroundColor: light ? "rgba(255,255,255,.5)" : theme.deepBrand},
+            index < activeCount && { backgroundColor: light ? "#fff" : theme.deepBrand, opacity: 1 },
           ]}
         />
       ))}
@@ -379,14 +384,22 @@ export function VoicePlayback({
   compact = false,
   speed: controlledSpeed,
   onSpeedChange,
+  mine = false,
+  onLongPress,
 }: {
   uri: string;
   compact?: boolean;
   speed?: PlaybackSpeed;
   onSpeedChange?: (speed: PlaybackSpeed) => void;
+  mine?: boolean;
+  onLongPress?: (event: GestureResponderEvent) => void;
 }) {
   const player = useAudioPlayer(uri, { updateInterval: 100 });
   const state = useAudioPlayerStatus(player);
+  const identity = useRef({}).current;
+  const [wantPlay, setWantPlay] = useState(false);
+  const [playError, setPlayError] = useState("");
+  const starting = useRef(false);
   const [localSpeed, setLocalSpeed] = useState<PlaybackSpeed>(1);
   const [waveWidth, setWaveWidth] = useState(1);
   const { theme, styles } = useThemeStyles(createStyles);
@@ -396,14 +409,39 @@ export function VoicePlayback({
   const progress = duration > 0 ? Math.min(1, current / duration) : 0;
 
   useEffect(() => {
-    player.setPlaybackRate(speed);
-    player.shouldCorrectPitch = true;
-  }, [player, speed]);
+    if (!state.isLoaded) return;
+    try { player.setPlaybackRate(speed); player.shouldCorrectPitch = true; }
+    catch { setPlayError("Could not change playback speed."); }
+  }, [player, speed, state.isLoaded]);
+  useEffect(() => {
+    const stop = (owner: object) => { if (owner !== identity) { setWantPlay(false); starting.current = false; try { player.pause(); } catch {} } };
+    playbackListeners.add(stop);
+    const app = AppState.addEventListener("change", status => { if (status !== "active") stop({}); });
+    return () => { playbackListeners.delete(stop); app.remove(); };
+  }, [player, identity]);
+  useEffect(() => {
+    if (!wantPlay || !state.isLoaded || starting.current) return;
+    starting.current = true;
+    void (async () => {
+      try {
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+        if (state.didJustFinish || (duration > 0 && current >= duration - .05)) await player.seekTo(0);
+        playbackListeners.forEach(listener => listener(identity));
+        player.play(); setWantPlay(false);
+      } catch { setWantPlay(false); setPlayError("Voice note could not play. Tap to retry."); }
+      finally { starting.current = false; }
+    })();
+  }, [wantPlay, state.isLoaded, state.didJustFinish, duration, current, player, identity]);
+  useEffect(() => {
+    if (!wantPlay) return;
+    const timer = setTimeout(() => { setWantPlay(false); setPlayError("Voice note took too long to load. Tap to retry."); }, 20000);
+    return () => clearTimeout(timer);
+  }, [wantPlay]);
 
   const setSpeed = (value: PlaybackSpeed) => {
     if (onSpeedChange) onSpeedChange(value);
     else setLocalSpeed(value);
-    player.setPlaybackRate(value);
+    if (state.isLoaded) { try { player.setPlaybackRate(value); } catch { setPlayError("Could not change playback speed."); } }
   };
 
   const cycleSpeed = () => {
@@ -412,23 +450,21 @@ export function VoicePlayback({
   };
 
   const toggle = () => {
-    if (state.playing) player.pause();
-    else {
-      if (state.didJustFinish || (duration > 0 && current >= duration - 0.05)) void player.seekTo(0);
-      player.play();
-    }
+    setPlayError("");
+    if (state.playing || wantPlay) { setWantPlay(false); try { player.pause(); } catch {} }
+    else setWantPlay(true);
   };
 
   const seekFromX = (x: number) => {
     if (!duration || !waveWidth) return;
     const ratio = Math.max(0, Math.min(1, x / waveWidth));
-    void player.seekTo(duration * ratio);
+    void player.seekTo(duration * ratio).catch(() => setPlayError("Could not seek. Try again."));
   };
 
   const playerUi = (
     <View style={[styles.playbackShell, compact && styles.playbackShellCompact]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={state.playing ? "Pause voice note" : "Play voice note"} onPress={toggle} style={styles.playButton}>
-        <Ionicons name={state.playing ? "pause" : "play"} size={compact ? 17 : 19} color={theme.deepBrand} />
+      <Pressable accessibilityRole="button" accessibilityLabel={wantPlay || state.isBuffering ? "Loading voice note" : state.playing ? "Pause voice note" : "Play voice note"} onLongPress={onLongPress} delayLongPress={350} onPress={toggle} style={styles.playButton}>
+        <Ionicons name={wantPlay || state.isBuffering ? "hourglass-outline" : state.playing ? "pause" : "play"} size={compact ? 17 : 19} color={theme.deepBrand} />
       </Pressable>
       <View style={styles.playbackMiddle}>
         <View
@@ -441,9 +477,9 @@ export function VoicePlayback({
           onResponderMove={(event) => seekFromX(event.nativeEvent.locationX)}
           style={styles.scrubber}
         >
-          <Waveform progress={progress} />
+          <Waveform progress={progress} light={mine} />
         </View>
-        <Text style={styles.playbackTime}>{formatDuration(state.playing || current > 0 ? current : duration)}</Text>
+        <Text style={[styles.playbackTime, mine && {color:"#fff"}]}>{wantPlay || state.isBuffering ? "Loading…" : formatDuration(state.playing || current > 0 ? current : duration)}</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel={`Playback speed ${speed}x`} onPress={cycleSpeed} style={styles.speedButton}>
         <Text style={styles.speedText}>{speed}x</Text>
@@ -451,7 +487,7 @@ export function VoicePlayback({
     </View>
   );
 
-  if (compact) return playerUi;
+  if (compact) return <View>{playerUi}{playError ? <Text accessibilityRole="alert" style={[styles.compactError, mine && {color:"#fff",backgroundColor:"transparent"}]}>{playError}</Text> : null}</View>;
   return <View style={styles.fullPlayback}>{playerUi}</View>;
 }
 

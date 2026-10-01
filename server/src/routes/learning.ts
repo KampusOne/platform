@@ -67,6 +67,7 @@ learningRoutes.get("/alarm-sounds", async (c) => {
 });
 learningRoutes.get("/alarms", async (c) => {
   const user = currentUser(c);
+  await database(c.env).execute(sql`update public.student_alarms set enabled=false,updated_at=now() where user_id=${user.id}::uuid and enabled and cardinality(days)=0 and fires_at<=now()`);
   const [result, sounds] = await Promise.all([
     database(c.env).execute<{ id:string;label:string;time:string;days:number[];enabled:boolean;sound:string;vibration:boolean;snooze_minutes:number;timetable_entry_id:string|null;fires_at:string|null;course_code:string|null;course_title:string|null;class_starts_at:string|null;class_ends_at:string|null;venue:string|null;lecturer:string|null;reminder_minutes:number|null }>(
       sql`select alarm.id,alarm.label,to_char(alarm.time,'HH24:MI') time,alarm.days,(alarm.enabled and (cardinality(alarm.days)>0 or alarm.fires_at>now())) enabled,alarm.sound,alarm.vibration,alarm.snooze_minutes,alarm.timetable_entry_id,alarm.fires_at,timetable.course_code,timetable.title course_title,to_char(timetable.starts_at,'HH24:MI') class_starts_at,to_char(timetable.ends_at,'HH24:MI') class_ends_at,timetable.venue,timetable.lecturer,timetable.reminder_minutes from public.student_alarms alarm left join public.timetable_entries timetable on timetable.id=alarm.timetable_entry_id and timetable.user_id=alarm.user_id and timetable.status::text<>'ARCHIVED' where alarm.user_id=${user.id}::uuid order by alarm.time,alarm.id limit 150`,

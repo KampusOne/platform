@@ -182,7 +182,6 @@ export default function SettingsScreen() {
         [
           ["notifications", "Notifications"],
           ["marketing", "Product updates"],
-          ["haptics", "Haptics"],
           ["hideCgpa", "Hide CGPA on my profile"],
           ["hideReposts", "Hide my reposts on my profile"],
         ] as const

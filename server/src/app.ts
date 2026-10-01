@@ -1,4 +1,5 @@
 import { discoveryRoutes } from './routes/discovery';
+import {mapRoutes} from './routes/maps';
 import {campusAdminRoutes} from "./routes/campus-admin";
 import { peopleRoutes } from "./routes/people";
 import { messageRoutes } from "./routes/messages";
@@ -117,6 +118,7 @@ app.use("/v1/*", async (c, next) => {
   await next();
 });
 app.route("/v1/analytics", analyticsRoutes);
+app.route('/v1/maps',mapRoutes);
 app.route("/v1/notifications", notificationRoutes);
 app.route("/v1/purchase-review-reminders", purchaseReviewRoutes);
 app.route("/v1/email", emailPreferencesRoutes);

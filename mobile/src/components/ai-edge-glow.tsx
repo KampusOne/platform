@@ -1,247 +1,33 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  AccessibilityInfo,
-  Animated,
-  Easing,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { AccessibilityInfo, Animated, Easing, StyleSheet, useWindowDimensions } from "react-native";
 
-const READY_PALETTE = ["#A8462E", "#C35D38", "#D9855F", "#E9B18E", "#F1DFC8"] as const;
-const PATH = [0, 0.25, 0.5, 0.75, 1];
-
-type Corner = { x: number; y: number };
-
-function phasedPath(corners: Corner[], phase: number): Corner[] {
-  if (!corners.length) return [{ x: 0, y: 0 }];
-  const start = phase % corners.length;
-  const ordered = [...corners.slice(start), ...corners.slice(0, start)];
-  const first = ordered[0] ?? corners[0] ?? { x: 0, y: 0 };
-  return [...ordered, first];
-}
-
-function SoftLight({
-  progress,
-  color,
-  phase,
-  size,
-  width,
-  height,
-  reduceMotion,
-}: {
-  progress: Animated.Value;
-  color: string;
-  phase: number;
-  size: number;
-  width: number;
-  height: number;
-  reduceMotion: boolean;
-}) {
-  const corners = useMemo<Corner[]>(
-    () => [
-      { x: -size * 0.52, y: -size * 0.58 },
-      { x: width - size * 0.48, y: -size * 0.58 },
-      { x: width - size * 0.48, y: height - size * 0.48 },
-      { x: -size * 0.52, y: height - size * 0.48 },
-    ],
-    [height, size, width],
-  );
-
-  const path = useMemo(() => phasedPath(corners, phase), [corners, phase]);
-  const translateX = progress.interpolate({
-    inputRange: PATH,
-    outputRange: path.map((point) => point.x),
-  });
-  const translateY = progress.interpolate({
-    inputRange: PATH,
-    outputRange: path.map((point) => point.y),
-  });
-  const scale = progress.interpolate({
-    inputRange: PATH,
-    outputRange: reduceMotion ? [1, 1, 1, 1, 1] : [0.92, 1.08, 0.96, 1.05, 0.92],
-  });
-  const opacity = progress.interpolate({
-    inputRange: PATH,
-    outputRange: reduceMotion ? [0.5, 0.5, 0.5, 0.5, 0.5] : [0.46, 0.7, 0.52, 0.64, 0.46],
-  });
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.light,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          opacity,
-          transform: [{ translateX }, { translateY }, { scale }],
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.layer,
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            backgroundColor: color,
-            opacity: 0.035,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.layer,
-          {
-            width: size * 0.76,
-            height: size * 0.76,
-            borderRadius: size,
-            backgroundColor: color,
-            opacity: 0.052,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.layer,
-          {
-            width: size * 0.52,
-            height: size * 0.52,
-            borderRadius: size,
-            backgroundColor: color,
-            opacity: 0.075,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.layer,
-          {
-            width: size * 0.31,
-            height: size * 0.31,
-            borderRadius: size,
-            backgroundColor: color,
-            opacity: 0.1,
-          },
-        ]}
-      />
-    </Animated.View>
-  );
-}
-
-/**
- * Soft, non-blocking Kira activity glow.
- *
- * The light deliberately behaves like a moving field instead of a colored
- * outline: several oversized, feathered KampusOne tones travel around the
- * perimeter and softly bloom into the canvas as Kira listens, transcribes,
- * or works on a response.
- */
+/** A narrow flowing light along the perimeter; content and gestures stay clear. */
 export function AIEdgeGlow({ active }: { active: boolean }) {
   const { width, height } = useWindowDimensions();
-  const progress = useRef(new Animated.Value(0)).current;
-  const fade = useRef(new Animated.Value(0)).current;
-  const [reduceMotion, setReduceMotion] = useState(false);
-
+  const clock = useRef(new Animated.Value(0)).current;
+  const [reduced, setReduced] = useState(false);
   useEffect(() => {
     let live = true;
-    void AccessibilityInfo.isReduceMotionEnabled()
-      .then((enabled) => {
-        if (live) setReduceMotion(enabled);
-      })
-      .catch(() => undefined);
-
-    const listener = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
-    return () => {
-      live = false;
-      listener.remove();
-    };
+    void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (live) setReduced(value); }).catch(() => undefined);
+    const listener = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduced);
+    return () => { live = false; listener.remove(); };
   }, []);
-
   useEffect(() => {
-    fade.stopAnimation();
-
-    if (!active) {
-      Animated.timing(fade, {
-        toValue: 0,
-        duration: 320,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-      return;
-    }
-
-    Animated.timing(fade, {
-      toValue: 1,
-      duration: 420,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [active, fade]);
-
-  useEffect(() => {
-    progress.stopAnimation();
-
-    if (!active || reduceMotion) {
-      progress.setValue(0.08);
-      return;
-    }
-
-    progress.setValue(0);
-    const loop = Animated.loop(
-      Animated.timing(progress, {
-        toValue: 1,
-        duration: 7600,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-
-    loop.start();
-    return () => loop.stop();
-  }, [active, progress, reduceMotion]);
-
-  const size = Math.max(220, Math.min(width, height) * 0.82);
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      accessible={false}
-      style={[StyleSheet.absoluteFill, styles.container, { opacity: fade }]}
-    >
-      {READY_PALETTE.map((color, index) => (
-        <SoftLight
-          key={color}
-          progress={progress}
-          color={color}
-          phase={index % 4}
-          size={size * (index === 4 ? 0.9 : 1)}
-          width={width}
-          height={height}
-          reduceMotion={reduceMotion}
-        />
-      ))}
-    </Animated.View>
-  );
+    clock.stopAnimation(); clock.setValue(0);
+    if (!active || reduced) return;
+    const wave = Animated.loop(Animated.timing(clock, { toValue: 1, duration: 6500, easing: Easing.linear, useNativeDriver: true }));
+    wave.start(); return () => wave.stop();
+  }, [active, reduced, clock]);
+  if (!active) return null;
+  const count = 64;
+  const perimeter = 2 * (width + height);
+  const samples = Array.from({ length: 33 }, (_, index) => index / 32);
+  return <Animated.View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { zIndex: 999, overflow: "hidden" }]}>
+    {Array.from({ length: count }, (_, index) => {
+      const position = perimeter * index / count, length = perimeter / count + 1;
+      const opacity = reduced ? .35 : clock.interpolate({ inputRange: samples, outputRange: samples.map(time => .15 + .7 * Math.pow((1 + Math.cos(2 * Math.PI * (time - index / count))) / 2, 3)) });
+      const geometry = position < width ? { left: position, top: 0, width: length, height: 6 } : position < width + height ? { right: 0, top: position - width, width: 6, height: length } : position < 2 * width + height ? { right: position - width - height, bottom: 0, width: length, height: 6 } : { left: 0, bottom: position - 2 * width - height, width: 6, height: length };
+      return <Animated.View key={index} style={[{ position: "absolute", backgroundColor: index % 3 ? "#C35D38" : "#E9B18E", opacity, shadowColor: "#C35D38", shadowOpacity: .6, shadowRadius: 12 }, geometry]} />;
+    })}
+  </Animated.View>;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    zIndex: 999,
-    elevation: 30,
-    overflow: "hidden",
-  },
-  light: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  layer: {
-    position: "absolute",
-  },
-});

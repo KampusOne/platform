@@ -59,7 +59,7 @@ notificationRoutes.get('/inbox',async c=>{
   before=parsed.data;
  }
  const actorVisible=unblockedAuthor(user.id,sql`n.actor_user_id`);
- const visible=sql`n.user_id=${user.id}::uuid and (n.institution_id is null or n.institution_id=${user.universityId}::uuid) and ${actorVisible}`;
+ const visible=sql`n.user_id=${user.id}::uuid and (n.institution_id is null or n.institution_id=${user.universityId}::uuid) and ${actorVisible} and coalesce(n.dedupe_key,'') not like 'message:%' and coalesce(n.path,'') not like '/conversation%'`;
  const [result,count]=await Promise.all([
   db.execute<{id:string;title:string;body:string;path:string|null;read_at:string|null;created_at:string;actor_user_id:string|null;actor_name:string|null;actor_profile_image_url:string|null}>(sql`select n.id,n.title,n.body,n.path,n.read_at,n.created_at::text,n.actor_user_id,coalesce(actor.display_name,actor.username) as actor_name,actor.profile_image_url as actor_profile_image_url from public.in_app_notifications n left join public.profiles actor on actor.user_id=n.actor_user_id and actor.deleted_at is null where ${visible} and (${before?.time??null}::timestamptz is null or (n.created_at,n.id)<(${before?.time??null}::timestamptz,${before?.id??null}::uuid)) order by n.created_at desc,n.id desc limit ${limit+1}`),
   db.execute<{unread_count:number}>(sql`select count(*)::int as unread_count from public.in_app_notifications n where ${visible} and n.read_at is null`),

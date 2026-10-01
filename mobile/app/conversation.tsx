@@ -16,6 +16,7 @@ import {
   Text,
   TextInput,
   View,
+  type GestureResponderEvent,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -25,6 +26,8 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { BlurTargetView } from "expo-blur";
 import { MessageVoice, VoicePlayback } from "@/src/components/message-voice";
+import {uploadMessageFile} from '@/src/lib/message-upload';
+import {downloadPrivateFile} from '@/src/lib/private-media-download';
 import {
   MessageActionOverlay,
   SwipeReplyMessage,
@@ -37,9 +40,15 @@ import { SkeletonBlock } from "@/src/components/skeleton";
 import { api } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
+import { messageDestination, messageTextParts } from "@/src/lib/message-links";
 import { readConversationDraft, saveConversationDraft, type ConversationDraft, type DraftReply, type VoiceDraft } from "@/src/lib/message-drafts";
 
 type ReactionSummary = { reaction: MessageReaction; count: number };
+
+function MessageBody({ body, mine }: { body: string; mine: boolean }) {
+  const { theme, styles } = useThemeStyles(createStyles);
+  return <Text selectable={false} style={[styles.messageText, mine && styles.messageTextMine]}>{messageTextParts(body).map((part, index) => part.url ? <Text key={index} accessibilityRole="link" style={{ color: mine ? '#fff' : theme.brand, textDecorationLine: 'underline' }} onPress={() => { const target = messageDestination(part.url!); if (target) router.push(target); else void Linking.openURL(part.url!).catch(() => Alert.alert('Could not open link', 'Try again when you are online.')); }}>{part.text}</Text> : part.text)}</Text>;
+}
 
 type Message = {
   id: string;
@@ -101,6 +110,7 @@ type DraftMedia = {
 };
 
 type PendingMediaItem = DraftMedia & {
+  uploadProgress?: number;
   messageId: string;
   mediaId?: string;
   sent: boolean;
@@ -181,7 +191,7 @@ function ConversationSkeleton() {
   );
 }
 
-function MessageMedia({ message, mine }: { message: Message; mine: boolean }) {
+function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: boolean; onLongPress: (event: GestureResponderEvent) => void }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -229,7 +239,7 @@ function MessageMedia({ message, mine }: { message: Message; mine: boolean }) {
     try {
       const nextUrl = await fetchAccess();
       if (isAudio) setUrl(nextUrl);
-      else await Linking.openURL(nextUrl);
+      else await downloadPrivateFile(message.media_id,message.media_name||'document',message.media_type||'application/octet-stream');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : `${label} unavailable.`);
     } finally {
@@ -255,7 +265,7 @@ function MessageMedia({ message, mine }: { message: Message; mine: boolean }) {
         </Pressable>
       ) : isAudio && url ? (
         <View style={[styles.voicePlayback, mine && styles.voicePlaybackMine]}>
-          <VoicePlayback uri={url} compact />
+          <VoicePlayback uri={url} compact mine={mine} onLongPress={onLongPress} />
         </View>
       ) : isVideo ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Open video" onPress={() => void open()} style={[styles.videoCard, mine && styles.mediaCardMine]}>
@@ -448,7 +458,7 @@ function PendingMediaBubble({
         {batch.status === "sending" ? (
           <>
             <Ionicons name="cloud-upload-outline" size={13} color={theme.textMuted} />
-            <Text style={styles.pendingStatus}>Sending {Math.min(sentCount + 1, batch.items.length)} of {batch.items.length}…</Text>
+            <Text style={styles.pendingStatus}>Sending {Math.min(sentCount + 1, batch.items.length)} of {batch.items.length} · {Math.round(100*batch.items.reduce((sum,item)=>sum+(item.mediaId?1:item.uploadProgress??0),0)/Math.max(1,batch.items.length))}%</Text>
           </>
         ) : (
           <>
@@ -658,7 +668,7 @@ export default function ConversationScreen() {
       });
       if (picked.canceled) return;
       const files = picked.assets.map<DraftMedia>((asset) => {
-        if (asset.size && asset.size > 10 * 1024 * 1024) throw new Error("Choose documents smaller than 10 MB.");
+        if (asset.size && asset.size > 500 * 1024 * 1024) throw new Error("Choose documents up to 500 MB.");
         return {
           localId: Crypto.randomUUID(),
           uri: asset.uri,
@@ -676,16 +686,8 @@ export default function ConversationScreen() {
 
   async function uploadMedia(item: PendingMediaItem) {
     if (item.mediaId) return item.mediaId;
-    const body = Platform.OS === "web"
-      ? await (await fetch(item.uri)).blob()
-      : new (await import("expo-file-system")).File(item.uri) as unknown as Blob;
-    const result = await api<{ id: string }>(`/v1/media?kind=message&name=${encodeURIComponent(item.name)}`, {
-      method: "POST",
-      body,
-      headers: { "Content-Type": item.mimeType || body.type || "application/octet-stream" },
-      timeoutMs: 180_000,
-    });
-    return result.id;
+    if(!user?.id)throw new Error('Sign in again to send this file.');
+    return uploadMessageFile(user.id,item,progress=>setPendingMedia(current=>current.map(batch=>({...batch,items:batch.items.map(part=>part.localId===item.localId?{...part,uploadProgress:progress}:part)}))));
   }
 
   async function processMediaBatch(initialBatch: PendingMediaBatch) {
@@ -1162,11 +1164,11 @@ export default function ConversationScreen() {
                             </View>
                           </View>
                         ) : null}
-                        {showBody ? <Text selectable style={[styles.messageText, mine && styles.messageTextMine]}>{item.body}</Text> : null}
+                        {showBody ? <MessageBody body={item.body} mine={mine} /> : null}
                         {groupedPictures ? (
                           <PictureGroup messages={pictureGroup} mine={mine} />
                         ) : item.media_id && item.media_type ? (
-                          <MessageMedia message={item} mine={mine} />
+                          <MessageMedia message={item} mine={mine} onLongPress={event => openActions(item, mine, event.nativeEvent.pageY)} />
                         ) : null}
                       </View>
                       {item.reactions?.length ? (
@@ -1477,8 +1479,8 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   messageImage: { width: 230, height: 180, borderRadius: 12, backgroundColor: theme.surfaceMuted },
   mediaCaption: { color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 10 },
   mediaCaptionMine: { color: "rgba(255,255,255,0.82)" },
-  voicePlayback: { minWidth: 230, alignSelf: "stretch", backgroundColor: theme.surfaceMuted, borderRadius: 16, padding: 4 },
-  voicePlaybackMine: { backgroundColor: "rgba(255,255,255,0.14)" },
+  voicePlayback: { minWidth: 230, alignSelf: "stretch", borderRadius: 16, padding: 0 },
+  voicePlaybackMine: { backgroundColor: "transparent" },
   videoCard: { minHeight: 72, maxWidth: 240, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 14, padding: 9, backgroundColor: theme.surfaceMuted },
   videoIcon: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: theme.deepBrand },
   documentCard: { minHeight: 58, maxWidth: 250, flexDirection: "row", alignItems: "center", gap: 9, borderRadius: 13, padding: 8, backgroundColor: theme.surfaceMuted },

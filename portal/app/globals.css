@@ -599,6 +599,9 @@ button { color: inherit; }
 .account-facts dd{margin:4px 0 0;color:#342c28;font-weight:650;overflow-wrap:anywhere}
 @media(max-width:860px){.agent-entry-shell{grid-template-columns:1fr;gap:28px;min-height:auto;padding:28px 22px 44px}.agent-entry-brand{margin-bottom:38px}.agent-entry-copy h1{font-size:clamp(2.6rem,12vw,4rem)}.agent-entry-art{max-width:520px;margin:22px auto 0}.agent-entry-card{padding:24px}.application-layout{display:block}.application-art{position:static;margin-bottom:22px}.application-art .agent-illustration{max-height:190px}.account-facts{grid-template-columns:1fr}}
 
+/* Compact, accessible intake controls. */
+.phone-input{display:flex;gap:8px;align-items:stretch;min-width:0}.phone-input select{flex:0 1 46%;min-width:0}.phone-input input{flex:1;min-width:0}.date-fields{border:0;padding:0;margin:0;min-width:0}.date-fields legend{font-size:13px;font-weight:600;margin-bottom:8px}.date-fields>div{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:8px}.date-fields select{min-width:0}.application-layout{grid-template-columns:minmax(180px,.65fr) minmax(0,1.65fr);gap:24px}.application-art .agent-illustration{max-height:260px}.application-art{top:24px}.application-art h2{font-size:20px;line-height:1.35}.application-art p{font-size:13px;line-height:1.6}
+@media(max-width:800px){.application-layout{display:block}.application-art{display:none}.application-form{min-width:0}.phone-input{gap:6px}.phone-input select{font-size:12px}.portal-main{padding:18px 14px}.panel{padding:18px}.form-grid{grid-template-columns:1fr}}
 /* Progressive private agent evidence intake. */
 fieldset.wizard-step{border:0;padding:0;margin:0;min-width:0;display:grid;gap:18px}
 .agent-category-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;border:1px solid var(--border,#E3D6CB);border-radius:12px;padding:16px}

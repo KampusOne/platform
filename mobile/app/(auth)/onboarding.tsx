@@ -1,4 +1,5 @@
 import { InlineLoading } from "@/src/components/skeleton";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -305,7 +306,7 @@ function Selector({
 export default function OnboardingScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const { profile, reloadProfile, signOut } = useAuth();
+  const { profile, user, reloadProfile, signOut } = useAuth();
   const [step, setStep] = useState(0);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [academicStructure, setAcademicStructure] = useState<{
@@ -328,6 +329,8 @@ export default function OnboardingScreen() {
   const [firstName, setFirstName] = useState(profile?.first_name ?? "");
   const [lastName, setLastName] = useState(profile?.last_name ?? "");
   const [username, setUsername] = useState("");
+  const [usernameState,setUsernameState]=useState<'idle'|'checking'|'available'|'taken'|'error'>('idle');
+  useEffect(()=>{if(username.length<3){setUsernameState('idle');return;}let active=true;setUsernameState('checking');const timer=setTimeout(()=>{void api<{available:boolean}>(`/v1/student/username-availability?username=${encodeURIComponent(username)}`).then(r=>{if(active)setUsernameState(r.available?'available':'taken');}).catch(()=>{if(active)setUsernameState('error');});},450);return()=>{active=false;clearTimeout(timer);};},[username]);
   const [birthDate, setBirthDate] = useState("");
   const [matriculationNumber, setMatriculationNumber] = useState("");
   const [currentLevel, setCurrentLevel] = useState("");
@@ -336,6 +339,9 @@ export default function OnboardingScreen() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [draftReady,setDraftReady]=useState(false);
+  useEffect(()=>{if(!user?.id)return;let active=true;void AsyncStorage.getItem(`k1.onboarding.${user.id}`).then(text=>{if(!active||!text)return;try{const saved=JSON.parse(text);setFirstName(saved.firstName??'');setLastName(saved.lastName??'');setUsername(saved.username??'');setBirthDate(saved.birthDate??'');setMatriculationNumber(saved.matriculationNumber??'');setCurrentLevel(saved.currentLevel??'');setAdmissionYear(saved.admissionYear??'');setGraduationYear(saved.graduationYear??'');setUniversityId(saved.universityId??'');setFacultyId(saved.facultyId??'');setDepartmentId(saved.departmentId??'');setCourseId(saved.courseId??'');setStep(Math.max(0,Math.min(2,Number(saved.step)||0)));}catch{}}).catch(()=>{}).finally(()=>{if(active)setDraftReady(true);});return()=>{active=false;};},[user?.id]);
+  useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>void AsyncStorage.setItem(`k1.onboarding.${user.id}`,JSON.stringify({firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step})).catch(()=>{}),300);return()=>clearTimeout(timer);},[draftReady,user?.id,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step]);
 
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
@@ -826,6 +832,7 @@ export default function OnboardingScreen() {
             textContentType="username"
             value={username}
           />
+          {usernameState!=='idle'?<Text accessibilityLiveRegion="polite" style={[styles.help,{color:usernameState==='available'?'#24764e':usernameState==='taken'?theme.error:theme.textMuted}]}>{usernameState==='available'?'✓ Username available':usernameState==='taken'?'This username is taken. Choose another.':usernameState==='checking'?'Checking username…':'Availability could not be checked. Your details are saved.'}</Text>:null}
           <Text style={styles.help}>
             Use letters, numbers and underscores. This can be different from
             your full name.

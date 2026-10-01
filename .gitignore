@@ -7,6 +7,8 @@ node_modules/
 dist/
 coverage/
 web-build/
+mobile/public/maps/maplibre-gl.js
+mobile/public/maps/maplibre-gl.css
 *.tsbuildinfo
 
 # Local configuration and credentials
