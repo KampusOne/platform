@@ -5,6 +5,7 @@ import { useAdminContext } from "./admin-context";
 import { downloadCsv } from "@/lib/csv";
 import { DailyActivity } from "./daily-activity";
 import {ScreenTimeReport} from './screen-time-report';
+import {HorizontalBars} from './analytics-visuals';
 type Row = Record<string, string | number>;
 type Report =
   | {
@@ -27,8 +28,33 @@ type Report =
     };
 function Values({ title, rows }: { title: string; rows: Row[] }) {
   const columns = rows.length ? Object.keys(rows[0]!) : [];
+  const labelColumn = columns.find((column) => typeof rows[0]?.[column] === "string");
+  const numericColumn = columns
+    .filter((column) => column !== labelColumn)
+    .sort((a, b) => {
+      const score = (key: string) =>
+        /activeUsers|screenPageViews|eventCount|sessions|userEngagementDuration/i.test(key)
+          ? 1
+          : 0;
+      return score(b) - score(a);
+    })
+    .find((column) => rows.some((row) => Number.isFinite(Number(row[column]))));
+  const chartRows =
+    labelColumn && numericColumn
+      ? rows.map((row) => ({
+          label: String(row[labelColumn]),
+          value: Number(row[numericColumn]) || 0,
+        }))
+      : [];
   return (
     <section className="panel">
+      {chartRows.length ? (
+        <HorizontalBars
+          title={`${title} · ${numericColumn?.replace("customEvent:", "")}`}
+          rows={chartRows}
+          limit={12}
+        />
+      ) : null}
       <div className="panel-heading">
         <h3>{title}</h3>
         <button
