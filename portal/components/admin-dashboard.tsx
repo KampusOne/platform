@@ -19,6 +19,7 @@ import {
 } from "@/components/commerce-moderation";
 import { PortalApiError, portalApi } from "@/lib/api";
 import { useAdminContext } from "./admin-context";
+import{ActivityOverview}from"./activity-overview";
 import { ApplicationBulkReview } from "./application-bulk-review";
 import { ApplicationDocuments } from "./application-documents";
 import { TransientNotice } from "./transient-notice";
@@ -56,9 +57,9 @@ type Dashboard = {
       store_gmv_kobo: Scalar;
       delivery_gmv_kobo: Scalar;
       recognized_revenue_kobo: Scalar;
-    };
+    } | null;
   };
-  revenueTrend: Array<{ day: string; gmv_kobo: Scalar }>;
+  revenueTrend: Array<{ day: string; gmv_kobo: Scalar }> | null;
   queues: { applications: AgentApplication[] };
   generatedAt: string;
 };
@@ -399,7 +400,7 @@ export function AdminDashboard({
 
   const revenue = useMemo(
     () =>
-      dashboard && Object.values(dashboard.metrics.revenue).every((value) => value !== null)
+      dashboard?.metrics.revenue && Object.values(dashboard.metrics.revenue).every((value) => value !== null)
         ? Number(dashboard.metrics.revenue.tutorial_gmv_kobo ?? 0) +
           Number(dashboard.metrics.revenue.store_gmv_kobo ?? 0) +
           Number(dashboard.metrics.revenue.delivery_gmv_kobo ?? 0)
@@ -408,7 +409,7 @@ export function AdminDashboard({
   );
   const maxTrend = Math.max(
     1,
-    ...(dashboard?.revenueTrend.map((item) => Number(item.gmv_kobo ?? 0)) ?? [
+    ...(dashboard?.revenueTrend?.map((item) => Number(item.gmv_kobo ?? 0)) ?? [
       0,
     ]),
   );
@@ -431,13 +432,14 @@ export function AdminDashboard({
       {!loading && error && <ErrorPanel error={error} retry={load} />}
       {!loading && !error && dashboard && view === "overview" && (
         <>
+          <ActivityOverview refresh={refreshKey}/>
           <section className="metric-grid">
+            {dashboard.metrics.revenue&&<>
             <article className="metric-card metric-card--accent">
               <span>Gross transaction value</span>
               <strong>{money(revenue)}</strong>
               <small>
-                Confirmed tutorials + products + delivery fees, with no double
-                counting
+                Lifetime confirmed tutorials, products and delivery fees
               </small>
             </article>
             <article className="metric-card">
@@ -446,10 +448,10 @@ export function AdminDashboard({
                 {money(dashboard.metrics.revenue.recognized_revenue_kobo)}
               </strong>
               <small>
-                Posted credits to ledger revenue accounts; commission awaits the
-                approved rate
+                Posted revenue credits less reversals. Processing costs are separate ledger expenses.
               </small>
             </article>
+            </>}
             <article className="metric-card">
               <span>Registered users</span>
               <strong>{number(dashboard.metrics.users.total)}</strong>
@@ -480,13 +482,14 @@ export function AdminDashboard({
             </article>
           </section>
           <section className="dashboard-grid">
+            {dashboard.metrics.revenue&&dashboard.revenueTrend&&
             <article className="panel panel--wide">
               <div className="panel-heading">
                 <div>
                   <p className="section-kicker">Revenue analysis</p>
                   <h2>30-day platform GMV</h2>
                 </div>
-                <span className="data-label">{money(revenue)} total</span>
+                <span className="data-label">{money(dashboard.revenueTrend.reduce((sum,row)=>sum+Number(row.gmv_kobo??0),0))} in 30 days</span>
               </div>
               <div
                 className="revenue-chart"
@@ -500,7 +503,7 @@ export function AdminDashboard({
                   >
                     <span
                       style={{
-                        height: `${Math.max(3, (Number(point.gmv_kobo ?? 0) / maxTrend) * 100)}%`,
+                        height: `${(Number(point.gmv_kobo ?? 0) / maxTrend) * 100}%`,
                       }}
                     />
                     <small>
@@ -534,14 +537,8 @@ export function AdminDashboard({
                   </strong>
                 </div>
               </div>
-            </article>
-            <article className="panel campus-visual">
-              <Image
-                src="/brand-scenes/campus-life.png"
-                alt="KampusOne students on campus"
-                width={1024}
-                height={1024}
-              />
+            </article>}
+            <article className="panel">
               <div>
                 <p className="section-kicker">Community health</p>
                 <h2>
@@ -559,7 +556,7 @@ export function AdminDashboard({
             </article>
           </section>
           <section className="dashboard-grid dashboard-grid--equal">
-            <article className="panel">
+            {can("agents.view")&&<article className="panel">
               <div className="panel-heading">
                 <div>
                   <p className="section-kicker">Review queue</p>
@@ -573,7 +570,7 @@ export function AdminDashboard({
                 </button>
               </div>
               <CompactApplications items={dashboard.queues.applications} />
-            </article>
+            </article>}
             <article className="panel">
               <div className="panel-heading">
                 <div>

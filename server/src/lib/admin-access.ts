@@ -7,7 +7,7 @@ export const ADMIN_PERMISSIONS = [
  'staff.manage','agents.view','agents.review','agents.verify','marketplace.view','marketplace.manage',
  'content.capabilities','content.view','content.create','content.manage','content.delete','academic.view','academic.manage',
  'ai.view','finance.view','finance.review','payouts.approve','analytics.view','audit.view','support.view',
- 'support.manage','system.view','product.manage','broadcasts.view','broadcasts.manage','broadcasts.send','notifications.test','notifications.manage',
+ 'support.manage','system.view','product.manage','broadcasts.view','broadcasts.manage','broadcasts.send','notifications.test','notifications.manage','documents.view','documents.manage',
 ] as const;
 const legacy: Record<string,readonly string[]> = {
  PLATFORM_ADMIN:ADMIN_PERMISSIONS,
@@ -64,13 +64,17 @@ export function permissionForAdminRoute(path:string,method:string):string|null{
  if(path==='/access')return 'access';
  if(path.startsWith('/broadcasts'))return read?'broadcasts.view':/(send|test|schedule)$/.test(path)?'broadcasts.send':'broadcasts.manage';
  if(path.startsWith('/staff'))return 'staff.manage';
+ if(path.startsWith('/documents'))return read?'documents.view':'documents.manage';
+ if(path.startsWith('/blocklists'))return 'users.view';
+ if(path.startsWith('/managed-publishers'))return 'notifications.manage';
+ if(path==='/reports/google-analytics')return 'analytics.view';
  if(path.startsWith('/finance/'))return read?'finance.view':'finance.review';
  if(path.startsWith('/workspaces/'))return ({universities:'universities.view',users:'users.view',agents:'agents.view','academic-submissions':'academic.view',content:'content.view',analytics:'analytics.view',finance:'finance.view',audit:'audit.view',ai:'ai.view',support:'support.view'} as Record<string,string>)[path.split('/')[2]??'']??null;
  if(path==='/reports/engagement')return 'analytics.view';
  if(path==='/reports/ai')return 'ai.view';
  if(path==='/dashboard')return 'overview.view';
  if(path.endsWith('/publishing-capabilities'))return 'content.capabilities';
- if(path.startsWith('/users'))return path.endsWith('/verification')?'users.verify':read?'users.view':'users.manage';
+ if(path.startsWith('/users'))return path.endsWith('/verification')?'users.verify':read||path.endsWith('/export')?'users.view':'users.manage';
  if(/^\/applications\/[^/]+\/checks$/.test(path))return 'agents.verify';
  if(path.startsWith('/applications'))return read?'agents.view':path.endsWith('/verification')?'agents.verify':'agents.review';
  if(path.startsWith('/academic/'))return read?'academic.view':'academic.manage';

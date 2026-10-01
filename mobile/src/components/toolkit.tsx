@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "@/src/theme";
 import { analyticsScreenName, trackUiInteraction } from "@/src/lib/analytics";
+import {useScrollAnalytics}from'@/src/lib/scroll-analytics';
 export function ToolPage({
   title,
   children,
@@ -33,6 +34,7 @@ export function ToolPage({
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
   const pathname = usePathname();
+  const scrollAnalytics=useScrollAnalytics(pathname);
   const { width } = useWindowDimensions();
   const compactPhone = width < 400;
 
@@ -45,6 +47,8 @@ export function ToolPage({
         style={styles.safe}
       >
       <ScrollView
+        onScroll={scrollAnalytics}
+        scrollEventThrottle={250}
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,

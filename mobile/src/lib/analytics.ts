@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 
 import { registerAnalyticsLifecycleRecorder } from "./analytics-bridge";
 import { deliverNativeAnalytics } from "./native-analytics";
+import {recordActivityEvent}from'./activity-events';
 
 
 export type AnalyticsEventName =
@@ -295,6 +296,7 @@ export function trackUiInteraction(
   options: Omit<AnalyticsEventData, "action"> = {},
 ) {
   enqueue("ui_interaction", { ...options, action });
+  recordActivityEvent('ui_interaction',{...options,action});
 }
 
 export function trackContentAction(
@@ -302,6 +304,11 @@ export function trackContentAction(
   options: Omit<AnalyticsEventData, "action"> = {},
 ) {
   enqueue("content_action", { ...options, action });
+  recordActivityEvent('content_action',{...options,action});
+}
+export function trackScrollDepth(screen:string,percent:25|50|75|90){
+ enqueue('ui_interaction',{screen,action:`scroll_depth_${percent}`,component:'scroll_view'});
+ recordActivityEvent('scroll_depth',{screen,action:`scroll_depth_${percent}`,component:'scroll_view',percentScrolled:percent});
 }
 
 export function trackAuthAction(

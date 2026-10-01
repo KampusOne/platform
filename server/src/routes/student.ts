@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
+import {adminWorkspaceReady}from'../lib/admin-workspace';
 
 import {
   completionConfirmationSchema,
@@ -594,11 +595,16 @@ studentRoutes.post('/feed/:id/report',async c=>{
  return c.json({status:'reported'},201);
 });
 studentRoutes.post('/events',async c=>{
- const d=await validatedInput(c,z.object({requestId:z.string().uuid(),event:z.enum(['screen_view','feature_started','feature_completed','feature_failed','timetable_import','study_session','application_submitted']),screen:z.string().regex(/^[a-zA-Z0-9_\/-]{1,100}$/).optional(),feature:z.string().regex(/^[a-zA-Z0-9_-]{1,60}$/).optional(),errorCode:z.string().regex(/^[A-Z0-9_]{1,60}$/).optional()}).strict());
+ const token=z.string().regex(/^[a-z0-9][a-z0-9_-]{0,99}$/);
+ const d=await validatedInput(c,z.object({requestId:z.string().uuid(),event:z.enum(['screen_view','feature_started','feature_completed','feature_failed','timetable_import','study_session','application_submitted','ui_interaction','content_action','scroll_depth']),screen:z.string().regex(/^[a-zA-Z0-9_\/-]{1,100}$/).optional(),feature:z.string().regex(/^[a-zA-Z0-9_-]{1,60}$/).optional(),errorCode:z.string().regex(/^[A-Z0-9_]{1,60}$/).optional(),platform:z.enum(['android','ios','web']).optional(),action:token.optional(),component:token.optional(),percentScrolled:z.union([z.literal(25),z.literal(50),z.literal(75),z.literal(90)]).optional()}).strict());
  const u=currentUser(c);
- const allowed=firstRow(await database(c.env).execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('PRODUCT_EVENT',${u.id},300,3600,3600) allowed`));
+ if(d.event==='scroll_depth'&&!d.percentScrolled)throw new AppError(400,'BAD_REQUEST','Choose a supported scroll milestone.');
+ if(!firstRow(await database(c.env).execute<{ready:boolean}>(sql`select to_regclass('public.product_events')is not null ready`))?.ready)return c.json({status:'not_connected'},202);
+ const allowed=firstRow(await database(c.env).execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('PRODUCT_EVENT',${u.id},2000,3600,3600) allowed`));
  if(!allowed?.allowed)throw new AppError(429,'RATE_LIMITED','Too many activity events.');
- await database(c.env).execute(sql`insert into public.product_events(user_id,institution_id,event_name,screen,feature,error_code,client_request_id) values(${u.id}::uuid,${u.universityId}::uuid,${d.event},${d.screen??null},${d.feature??null},${d.errorCode??null},${d.requestId}::uuid) on conflict(user_id,client_request_id) do nothing`);
+ const extended=await adminWorkspaceReady(c.env);
+ if(!extended&&['ui_interaction','content_action','scroll_depth'].includes(d.event))return c.json({status:'not_connected'},202);
+ await database(c.env).execute(sql`insert into public.product_events(user_id,institution_id,event_name,screen,feature,error_code,client_request_id${extended?sql`,platform,action,component,percent_scrolled`:sql``}) values(${u.id}::uuid,${u.universityId}::uuid,${d.event},${d.screen??null},${d.feature??null},${d.errorCode??null},${d.requestId}::uuid${extended?sql`,${d.platform??null},${d.action??null},${d.component??null},${d.percentScrolled??null}`:sql``}) on conflict(user_id,client_request_id) do nothing`);
  return c.json({status:'recorded'},202);
 });
 studentRoutes.put("/feed/:id/bookmark", async (context) => {

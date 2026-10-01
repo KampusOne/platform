@@ -74,6 +74,13 @@ const knownRoutes = new Set([
   "tutor-learners",
   "tutorial-manage",
   "video",
+  "feed-search",
+  "learning-preview",
+  "business-profile-edit",
+  "vendor-orders",
+  "order-detail",
+  "ai-subscription",
+  "intro",
 ]);
 
 export function ScreenVisitTracker() {

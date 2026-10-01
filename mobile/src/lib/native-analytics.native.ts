@@ -1,9 +1,10 @@
 import { getAnalytics } from "@react-native-firebase/analytics";
+import { Platform } from "react-native";
 
 import type { PendingAnalyticsEvent } from "./analytics";
 
 function eventParams(event: PendingAnalyticsEvent) {
-  const params: Record<string, string | number> = {};
+  const params: Record<string, string | number> = {app_platform: Platform.OS === "ios" ? "ios" : "android"};
   if (event.screen) params.screen = event.screen;
   if (event.feature) params.feature = event.feature;
   if (event.action) params.action = event.action;

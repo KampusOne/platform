@@ -23,6 +23,7 @@ import {
 
 import { adminAccess, assertPermission, permissionForAdminRoute, resolveAdminScope, type AdminUser } from "../lib/admin-access";
 import { operationsRoutes } from "./operations";
+import {adminExtensionRoutes}from'./admin-extensions';
 import { academicAdminRoutes } from "./academic-admin";
 import { broadcastRoutes } from "./broadcasts";
 import { applicationCheckRoutes } from "./application-checks";
@@ -122,6 +123,7 @@ adminRoutes.post("/bootstrap", requireAuth, async (context) => {
 
 adminRoutes.use("/*", requireAuth);
 adminRoutes.use("/*", async (c, next) => {
+  c.header('Cache-Control','private, no-store');
   const permission = permissionForAdminRoute(c.req.path.replace("/v1/admin", ""), c.req.method);
   if (!permission) throw new AppError(403,"FORBIDDEN","This administrative action is not available to your account.");
   const user=currentUser(c);
@@ -134,6 +136,7 @@ adminRoutes.use("/*", async (c, next) => {
   await next();
 });
 adminRoutes.route("/",operationsRoutes);
+adminRoutes.route('/',adminExtensionRoutes);
 adminRoutes.route("/academic",academicAdminRoutes);
 adminRoutes.route("/broadcasts",broadcastRoutes);
 adminRoutes.route("/",applicationCheckRoutes);
@@ -161,6 +164,7 @@ adminRoutes.get("/dashboard", async (context) => {
     user,
     context.req.query("universityId"),
   );
+  const overviewAccess = await adminAccess(context.env, user);
   const [users, applications, content, commerce, revenue, trend, queues] =
     await Promise.all([
       database(context.env).execute(sql`
@@ -252,10 +256,10 @@ adminRoutes.get("/dashboard", async (context) => {
       applications: firstRow(applications),
       content: firstRow(content),
       commerce: firstRow(commerce),
-      revenue: (await adminAccess(context.env,user)).permissions.includes("finance.view") ? firstRow(revenue) : null,
+      revenue: overviewAccess.grants.some(g=>g.permissions.includes("finance.view")&&(g.university_id===null||g.university_id===scope)) ? firstRow(revenue) : null,
     },
-    revenueTrend: (await adminAccess(context.env,user)).permissions.includes("finance.view") ? trend.rows : null,
-    queues: { applications: queues.rows },
+    revenueTrend: overviewAccess.grants.some(g=>g.permissions.includes("finance.view")&&(g.university_id===null||g.university_id===scope)) ? trend.rows : null,
+    queues: { applications: overviewAccess.grants.some(g=>g.permissions.includes("agents.view")&&(g.university_id===null||g.university_id===scope)) ? queues.rows : [] },
     generatedAt: new Date().toISOString(),
   });
 });

@@ -8,6 +8,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { PortalShell } from "./portal-shell";
 import { TransientNotice } from "./transient-notice";
 import { portalApi } from "@/lib/api";
+import {RecordExport}from"./record-export";
 type Restriction = {
   id: string;
   kind: string;
@@ -142,6 +143,7 @@ function UserDetailContent({ id }: { id: string }) {
     >
       <TransientNotice message={notice} />
       <Link href="/admin/workspaces/users" prefetch={false}>← Users</Link>
+      {data&&can("users.view")&&<RecordExport path={scopedPath(`/v1/admin/users/${id}/export`)} description="Export this account’s profile and restrictions, plus posts, applications and orders covered by your permissions. Identity documents, NIN, passwords and private chats are excluded."/>}
       {loadError ? <section className="state-panel state-panel--error" role="alert"><p>{loadError}</p><button className="button button--secondary" onClick={() => setVersion((value) => value + 1)}>Try again</button></section> : data ? (
         <div className="user-detail-grid">
           {can("users.verify") && <ProfileVerificationControls key={`verification:${id}:${data.profile.verification_status ?? "UNKNOWN"}`} userId={id} currentStatus={data.profile.verification_status} onSaved={() => setVersion((value) => value + 1)} />}

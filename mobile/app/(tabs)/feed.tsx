@@ -5,6 +5,7 @@ import * as Haptics from "@/src/lib/haptics";
 import { useFocusEffect, useLocalSearchParams, router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, FlatList, Image, Platform, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View, type ViewToken } from "react-native";
+import { useScrollAnalytics } from "@/src/lib/scroll-analytics";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { FilterRow, SearchField } from "@/src/components/product-ui";
@@ -23,6 +24,7 @@ function FeedEmptyState({ filtered }: { filtered: boolean }) {
   return <View style={styles.emptyState}><Image accessible={false} resizeMode="contain" source={emptyFeedIllustration} style={styles.emptyIllustration} /><Text style={styles.emptyTitle}>{filtered ? "No matching posts" : "No posts here yet"}</Text><Text style={styles.emptyBody}>{filtered ? "Try another search or choose a different update type." : "Student posts, campus updates and conversations will appear here."}</Text></View>;
 }
 export default function FeedScreen() {
+  const recordScroll = useScrollAnalytics("/feed");
   const { theme, styles } = useThemeStyles(createStyles);
   const { width } = useWindowDimensions();
   const { user, state: authState } = useAuth();
@@ -179,7 +181,7 @@ export default function FeedScreen() {
   const shareAction = useCallback((post: FeedPostData) => { void sharePost(post); }, [sharePost]);
   const renderPost = useCallback(({ item }: { item: SocialFeedPost }) => <FeedPost post={item} onBookmark={bookmarkAction} onShare={shareAction} onDeleted={removePost} onFeedback={setFeedback} onChanged={changedPost} onVideoHandle={registerVideoHandle} videoAutoPlay />, [bookmarkAction, shareAction, removePost, changedPost, registerVideoHandle]);
   return <SafeAreaView edges={["top"]} style={styles.screen}>
-    <FlatList contentContainerStyle={styles.listContent} data={filtered} initialNumToRender={4} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" keyExtractor={(post) => post.id}
+    <FlatList onScroll={recordScroll} scrollEventThrottle={250} contentContainerStyle={styles.listContent} data={filtered} initialNumToRender={4} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" keyExtractor={(post) => post.id}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="transparent" colors={["transparent"]} progressBackgroundColor="transparent" />} viewabilityConfig={viewabilityConfig} onViewableItemsChanged={onViewableItemsChanged}
       ListEmptyComponent={!loading && !error ? <FeedEmptyState filtered={Boolean(search) || selected !== "All"} /> : null}
       ListHeaderComponent={<><View style={{ height: 4, opacity: refreshing ? 1 : 0 }}><SkeletonBlock height={4} /></View><Pressable accessibilityRole="button" accessibilityLabel="Search posts and people" onPress={()=>router.push({pathname:"/feed-search",params:{q:query}})} style={{flexDirection:"row",alignItems:"center",gap:12,minHeight:54,borderWidth:1,borderColor:theme.border,borderRadius:18,paddingHorizontal:17,backgroundColor:theme.surface}}><Ionicons name="search-outline" size={22} color={theme.brand}/><Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:14,flex:1}}>{query || "Search posts or @username"}</Text><Ionicons name="options-outline" size={20} color={theme.brand}/></Pressable>{query?<Pressable accessibilityRole="button" accessibilityLabel="Clear feed keyword" onPress={()=>setQuery("")} style={{minHeight:44,justifyContent:"center"}}><Text style={{color:theme.brand,fontFamily:theme.font.medium}}>Clear keyword filter</Text></Pressable>:null}<View style={styles.filters}><FilterRow items={categories} onSelect={(item) => setSelected(item as typeof selected)} selected={selected} /></View>{loading ? <FeedSkeleton /> : null}{error ? <Pressable accessibilityRole="button" onPress={() => void load()} style={styles.error}><Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={20} /><Text style={styles.errorText}>{error} Tap to retry.</Text></Pressable> : null}</>}

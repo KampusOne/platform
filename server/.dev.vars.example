@@ -35,6 +35,15 @@ GA4_ANALYTICS_ENABLED=false
 GA4_MEASUREMENT_ID=G-REPLACE_ME
 GA4_API_SECRET=replace-with-measurement-protocol-secret
 
+# Independent GA4 Data API reporting. A Measurement Protocol secret cannot read reports.
+# Keep reporting paused until the Data API is enabled and the service account
+# has Viewer access on the numeric GA4 property. Store the JSON as a Worker secret.
+GA4_REPORTING_ENABLED=false
+GA4_PROPERTY_ID=123456789
+GA4_SERVICE_ACCOUNT_JSON={"client_email":"analytics@example-project.iam.gserviceaccount.com","private_key":"replace-with-server-only-service-account-private-key"}
+# Enable only after event-scoped app_platform, screen and action dimensions are registered.
+GA4_CUSTOM_DIMENSIONS_READY=false
+
 # Optional study/timetable AI. Enable the feature only after setting quotas.
 GEMINI_API_KEY=replace-with-provider-key
 GEMINI_MODEL=replace-with-a-supported-model-id

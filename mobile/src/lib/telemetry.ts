@@ -1,16 +1,7 @@
-import { randomUUID } from "expo-crypto";
-
-import { api } from "./api";
+import { recordActivityEvent,type ActivityEvent } from "./activity-events";
 import { trackFeatureLifecycle } from "./analytics";
 
-export type ActivityEvent =
-  | "screen_view"
-  | "feature_started"
-  | "feature_completed"
-  | "feature_failed"
-  | "timetable_import"
-  | "study_session"
-  | "application_submitted";
+export type {ActivityEvent}from'./activity-events';
 
 // Never accept free-form properties: no prompts, filenames, emails or document contents.
 export function recordActivity(
@@ -40,8 +31,5 @@ export function recordActivity(
 
   // This first-party store remains useful for admin reporting. Google Analytics
   // is independent, so a database outage cannot block the GA delivery queue.
-  void api("/v1/student/events", {
-    method: "POST",
-    body: JSON.stringify({ requestId: randomUUID(), event, ...options }),
-  }).catch(() => undefined);
+  recordActivityEvent(event,options);
 }

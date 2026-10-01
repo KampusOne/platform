@@ -7,6 +7,7 @@ import { currentUser, requireAuth } from "../middleware/auth";
 import { id } from "../lib/input";
 import { adminAccess, resolveAdminScope } from "../lib/admin-access";
 import { recordAudit } from "../lib/audit";
+import {requireAdminWorkspace}from'../lib/admin-workspace';
 import { purchasedMaterialAccess } from '../lib/material-commerce';
 import type { Bindings, Variables } from "../types";
 import { SignJWT, jwtVerify } from "jose";
@@ -30,6 +31,13 @@ function mediaKey(env: Bindings) {
   return new TextEncoder().encode(env.JWT_SECRET);
 }
 async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
+  if(media.kind==='operations-document'){
+    await requireAdminWorkspace(env);
+    const scope=await resolveAdminScope(env,user,media.institution_id??undefined,'documents.view');
+    if(scope!==null&&scope!==media.institution_id)throw new AppError(403,'FORBIDDEN','This document is outside your university scope.');
+    if(!firstRow(await database(env).execute(sql`select id from app_private.operations_documents where media_id=${media.id}::uuid and institution_id is not distinct from ${media.institution_id}::uuid and archived_at is null`)))throw new AppError(404,'NOT_FOUND','This operations document is unavailable.');
+    return;
+  }
   if (user.id === media.owner_user_id) return;
   if (media.kind === "message") {
     const allowed = firstRow(
@@ -78,8 +86,8 @@ export const mediaRoutes = new Hono<{
   Bindings: Bindings;
   Variables: Variables;
 }>();
-const privateKinds = new Set(["kyc", "support", "resource", "message"]);
-const uploadKinds = new Set(["avatar", "cover", "product", "post", "resource", "kyc", "support", "notification-sound", "message"]);
+const privateKinds = new Set(["kyc", "support", "resource", "message","operations-document"]);
+const uploadKinds = new Set(["avatar", "cover", "product", "post", "resource", "kyc", "support", "notification-sound", "message","operations-document"]);
 const standardUploadLimit = 10 * 1024 * 1024;
 const postVideoUploadLimit = 50 * 1024 * 1024;
 type StreamableMedia = Media & { size_bytes: number };
@@ -215,6 +223,11 @@ mediaRoutes.post("/", requireAuth, async (c) => {
 
   if (!uploadKinds.has(kind))
     throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
+  let institution=user.universityId;
+  if(kind==='operations-document'){
+    await requireAdminWorkspace(c.env);
+    institution=await resolveAdminScope(c.env,user,c.req.query('universityId'),'documents.manage');
+  }
   if (bytes.byteLength < 1)
     throw new AppError(400, "BAD_REQUEST", "Choose a file from your device.");
 
@@ -238,7 +251,7 @@ mediaRoutes.post("/", requireAuth, async (c) => {
 
   const byteView = new Uint8Array(bytes);
   let mime = detectedMime(byteView);
-  if (!mime && kind === "message") {
+  if (!mime && ["message","operations-document"].includes(kind)) {
     const inferredDocumentMime =
       openXmlDocumentMimes.has(declaredMime) || legacyDocumentMimes.has(declaredMime) || textDocumentMimes.has(declaredMime)
         ? declaredMime
@@ -304,7 +317,7 @@ mediaRoutes.post("/", requireAuth, async (c) => {
   await bucket.put(key, bytes, { httpMetadata: { contentType: mime } });
   try {
     await database(c.env).execute(
-      sql`insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values(${mediaId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${kind},${key},${mime},${bytes.byteLength},${originalName.slice(0, 180)})`,
+      sql`insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values(${mediaId}::uuid,${user.id}::uuid,${institution}::uuid,${kind},${key},${mime},${bytes.byteLength},${originalName.slice(0, 180)})`,
     );
   } catch (error) {
     await bucket.delete(key);

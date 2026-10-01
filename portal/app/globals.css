@@ -608,3 +608,12 @@ fieldset.wizard-step{border:0;padding:0;margin:0;min-width:0;display:grid;gap:18
 .face-frame video,.face-frame img{width:100%;height:100%;object-fit:contain}.face-oval{position:absolute;width:67%;height:73%;left:16.5%;top:10%;border:3px solid #F1DFC8;border-radius:50%;box-shadow:0 0 0 90px #0005;pointer-events:none}
 .face-capture .button-row{flex-wrap:wrap}.face-capture video:focus-visible{outline:2px solid #C35D38}
 @media(max-width:500px){.agent-category-options{grid-template-columns:1fr}.application-art .agent-illustration{max-height:210px;object-fit:contain}}
+
+/* White operational panels with the KampusOne palette and readable tables. */
+.portal-frame--admin .panel{background:#fff;border-color:#e9dfd7;box-shadow:0 3px 12px #29231f04}
+.portal-frame--admin .operational-table{font-size:13px}.portal-frame--admin .operational-table th{font-size:12px;background:#fbf7f2}.portal-frame--admin .operational-table td{line-height:1.6;overflow-wrap:anywhere}.portal-frame--admin .operational-table .state-badge{font-size:11px}
+.portal-frame--admin .workspace-toolbar label,.portal-frame--admin .workspace-summary,.portal-frame--admin .workspace-pagination,.portal-frame--admin .permission-matrix .checkbox{font-size:12px}.portal-frame--admin .workspace-toolbar .button{font-size:12px}
+.analytics-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:20px 0}.analytics-metrics .metric-card{min-height:130px;background:#fff}.analytics-metrics .metric-card--accent{background:#a8462e;color:#fff}
+.activity-overview,.ga4-workspace{margin:0 0 30px}.ga4-workspace{padding-top:26px;border-top:1px solid #e3d6cc}.ga4-workspace .panel{margin:18px 0}.ga4-workspace h3{margin:0;font-size:18px}.record-meta{display:block;color:#81756d;font-size:12px;margin-top:4px}.record-export{margin:16px 0}.record-export .panel{max-width:640px;margin-top:12px}
+.portal-frame--admin .chart-column span{min-height:0}.portal-frame--admin .nav-item{font-size:12px;line-height:1.5}.portal-frame--admin .field-help{font-size:12px;line-height:1.7}
+@media(max-width:600px){.analytics-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.analytics-metrics .metric-card{padding:16px}.record-export .form-actions{flex-wrap:wrap}}

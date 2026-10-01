@@ -34,17 +34,18 @@ describe("profile post push enqueue", () => {
           public_visibility: true,
         }],
       })
+      .mockResolvedValueOnce({ rows: [{ ready: false }] })
       .mockResolvedValueOnce({ rows: [{ ready: true }] })
       .mockResolvedValueOnce({ rows: [] });
 
     await notifyProfilePostPublished(env, postId, authorId);
 
-    expect(query(3).sql).toContain("profile_post_notification_subscriptions");
-    expect(query(3).sql).toContain("public.user_blocks");
-    expect(query(3).sql).toContain("public.in_app_notifications");
-    expect(query(3).sql).toContain("app_private.notification_outbox");
-    expect(query(3).sql).toContain("on conflict(dedupe_key) do nothing");
-    expect(query(3).params.some((value) => String(value).includes(postId))).toBe(true);
-    expect(query(3).params).toContain(authorId);
+    expect(query(4).sql).toContain("profile_post_notification_subscriptions");
+    expect(query(4).sql).toContain("public.user_blocks");
+    expect(query(4).sql).toContain("public.in_app_notifications");
+    expect(query(4).sql).toContain("app_private.notification_outbox");
+    expect(query(4).sql).toContain("on conflict(dedupe_key) do nothing");
+    expect(query(4).params.some((value) => String(value).includes(postId))).toBe(true);
+    expect(query(4).params).toContain(authorId);
   });
 });

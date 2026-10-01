@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { database, firstRow } from "../lib/database";
 import type { Bindings } from "../types";
+import {adminWorkspaceReady}from'../lib/admin-workspace';
 
 const readyCache = new WeakMap<object, { ready: boolean; expires: number }>();
 
@@ -28,24 +29,10 @@ type PublishedProfilePost = {
   public_visibility: boolean;
 };
 
-function isKampusOneNewsletter(name: string, username: string | null) {
-  const normalizedName = name.trim().toLowerCase();
-  const normalizedUsername = (username ?? "")
-    .replace(/^@/, "")
-    .replace(/[^a-z0-9]/gi, "")
-    .toLowerCase();
-  return (
-    normalizedName === "kampusone newsletter" ||
-    normalizedUsername === "kampusonenewsletter"
-  );
-}
-
 /**
- * Profile-post alerts use explicit subscriptions for normal accounts.
- * KampusOne Newsletter is the only built-in notify-all account.
- *
- * Delivery-time notification preferences still decide whether each recipient
- * receives phone push, so users can mute Newsletter without losing their inbox.
+ * Normal accounts use explicit subscriptions. Notify-all authority is a
+ * reviewed immutable user ID and scope, never an editable name or username.
+ * Delivery-time preferences still let each recipient mute newsletter push.
  */
 export async function notifyProfilePostPublished(
   env: Bindings,
@@ -80,16 +67,15 @@ export async function notifyProfilePostPublished(
           and posts.author_user_id is not null
           and posts.status in ('PUBLISHED','CORRECTED')
           and posts.published_at <= now()
+          and not exists(select 1 from public.account_restrictions r where r.user_id=posts.author_user_id and r.revoked_at is null and r.starts_at<=now()and(r.ends_at is null or r.ends_at>now()))
         limit 1
       `),
     );
 
     if (!post?.author_user_id) return;
 
-    const newsletter = isKampusOneNewsletter(
-      post.author_name,
-      post.author_username,
-    );
+    const managed=await adminWorkspaceReady(env)?firstRow(await db.execute<{scope:string}>(sql`select app_private.reserve_managed_publisher_post(${post.author_user_id}::uuid,${postId}::uuid)scope`))?.scope:'ORDINARY';
+    const newsletter=managed==='GLOBAL'||managed==='CAMPUS';
     const blocksReady =
       firstRow(
         await db.execute<{ ready: boolean }>(sql`
@@ -118,7 +104,7 @@ export async function notifyProfilePostPublished(
         .trim()
         .slice(0, 180) || "Tap to view the new post.";
     const path = `/post?id=${postId}`;
-    const prefix = `profile-post:${postId}:`;
+    const prefix = `${newsletter?'managed-profile-post':'profile-post'}:${postId}:`;
     const audience = post.public_visibility
       ? sql`true`
       : sql`recipient.university_id = ${post.university_id}::uuid`;
@@ -141,10 +127,11 @@ export async function notifyProfilePostPublished(
          and account.deleted_at is null
         where recipient.deleted_at is null
           and recipient.user_id <> ${post.author_user_id}::uuid
+          and not exists(select 1 from public.in_app_notifications n where n.user_id=recipient.user_id and n.dedupe_key in('profile-post:'||${postId}::text||':'||recipient.user_id::text,'managed-profile-post:'||${postId}::text||':'||recipient.user_id::text))
           and coalesce(recipient.settings->>'notifications','true')='true'
           and ${audience}
           and (
-            ${newsletter}::boolean
+            (${newsletter}::boolean and(${managed==='GLOBAL'}::boolean or recipient.university_id=${post.university_id}::uuid))
             or exists(
               select 1
               from public.profile_post_notification_subscriptions subscription
@@ -153,6 +140,7 @@ export async function notifyProfilePostPublished(
             )
           )
           ${blockGuard}
+          and not exists(select 1 from public.account_restrictions r where r.user_id=recipient.user_id and r.revoked_at is null and r.starts_at<=now()and(r.ends_at is null or r.ends_at>now()))
       ), notices as (
         insert into public.in_app_notifications(
           user_id,institution_id,actor_user_id,title,body,path,dedupe_key

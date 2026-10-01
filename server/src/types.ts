@@ -67,6 +67,10 @@ export type Bindings = {
   GA4_ANALYTICS_ENABLED?: string;
   GA4_MEASUREMENT_ID?: string;
   GA4_API_SECRET?: string;
+  GA4_REPORTING_ENABLED?: string;
+  GA4_PROPERTY_ID?: string;
+  GA4_SERVICE_ACCOUNT_JSON?: string;
+  GA4_CUSTOM_DIMENSIONS_READY?: string;
 };
 
 export type AuthenticatedUser = {

@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-01",
-  "scope": "Repository inventory; no production migration executed",
+  "scope": "Repository inventory and October 1 read-only live reconciliation; no production migration executed",
   "baselineCommit": "f8f2f5b312a7793ec938439c97080a94760cfe87",
   "executionPolicy": "Reconcile with the live migration ledger, then apply only unapplied verified versions in order. Never replay applied migrations.",
   "migrations": [
@@ -515,6 +515,23 @@
       "gitBlobSha": "4a500fab8ef40615f607057ca630ab3dbfd28850",
       "status": "queued_in_this_update",
       "historicallyVerifiedApplied": false
+    },
+    {
+      "version": "20261001020000_admin_workspace_extensions",
+      "path": "database/neon/migrations/20261001020000_admin_workspace_extensions.sql",
+      "sha256": "8c85ef414d4e9c818518bcd059a265526d9c0dd330436b454b1022fc6c1d7a69",
+      "gitBlobSha": "c8416d7ad8818c4438b0fd1dd883c2f3d264f38f",
+      "status": "queued_in_this_update",
+      "historicallyVerifiedApplied": false
     }
-  ]
+  ],
+  "liveReconciliation": {
+    "observedAt": "2026-10-01T01:16:40.455057+00:00",
+    "report": "database/verification/2026-10-01-migration-reconciliation.json",
+    "schema": "database/verification/2026-10-01-live-schema.json",
+    "registeredSourceMatches": 9,
+    "olderUnregisteredRequiringReview": 44,
+    "newVersionsNotRegistered": 12,
+    "applyListApproved": false
+  }
 }
