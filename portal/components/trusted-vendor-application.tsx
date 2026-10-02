@@ -49,9 +49,23 @@ function TrustedVendorForm(){
   catch(e){setError(e instanceof Error?e.message:'Your application is kept. Try again.');}finally{setBusy(false);}
  }
  const uniben=invite?.university_name.toLowerCase()==='university of benin';
- const displayError=!validToken?'Open the full invitation link you received.':error;
+ if(!validToken)return <main className="agent-login-page"><section className="agent-login-shell agent-onboarding-form trusted-vendor-onboarding" style={{maxWidth:620}}>
+  <AgentApplicationIllustration step={2} complete={false}/>
+  <p className="eyebrow">Agent network</p>
+  <h1>Choose how you want to work on campus.</h1>
+  <p className="field-help">KampusOne agents can join as a vendor, tutor or rider. Start the normal application below, or reopen the complete private link if an administrator invited you directly.</p>
+  <fieldset className="agent-role-options" aria-label="Available agent roles">
+   <legend>Available roles</legend>
+   <div className="agent-role-card"><span className="agent-role-mark" aria-hidden="true">V</span><span className="agent-role-copy"><strong>Vendor</strong><small>Sell products or run a campus business.</small></span></div>
+   <div className="agent-role-card"><span className="agent-role-mark" aria-hidden="true">T</span><span className="agent-role-copy"><strong>Tutor</strong><small>Teach courses, cohorts or study sessions.</small></span></div>
+   <div className="agent-role-card"><span className="agent-role-mark" aria-hidden="true">R</span><span className="agent-role-copy"><strong>Rider</strong><small>Handle approved campus deliveries.</small></span></div>
+  </fieldset>
+  <a className="button button--primary button--wide" href="/agents">Start agent application</a>
+  <p className="field-help">Have a private invitation? Open the complete invitation link from the message you received.</p>
+ </section></main>;
+ const displayError=error;
  return <main className="agent-login-page"><section className="agent-login-shell agent-onboarding-form trusted-vendor-onboarding" style={{maxWidth:620}}>
-  <AgentApplicationIllustration step={2} complete={submitted}/><p className="eyebrow">By invitation</p><h1>{submitted?'Your business is under review':'Set up your vendor profile'}</h1><p>{invite?.university_name}</p>
+  <AgentApplicationIllustration step={2} complete={submitted}/><p className="eyebrow">By invitation</p><h1>{submitted?'Your business is under review':'Set up your invited vendor profile'}</h1><p>{invite?.university_name}</p>
   <p className="field-help">Your inviting team has waived ordinary application documents. An administrator will verify your business and contact details before approval.</p>
   {displayError?<p role="alert" className="form-error">{displayError}</p>:null}
   {submitted?<><p>We’ll email the decision. Once approved, your agent dashboard includes your shop and bank setup.</p><a className="button button--primary" href="https://agents.kampusone.app/agents/dashboard">Open agent dashboard</a></>:invite?<form className="form-stack" onSubmit={submit}>
