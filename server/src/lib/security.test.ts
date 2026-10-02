@@ -1,3 +1,4 @@
+import { pbkdf2Sync, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import type { Bindings } from "../types";
@@ -16,6 +17,17 @@ describe("password security", () => {
     expect(iterations).toBeLessThanOrEqual(100_000);
     await expect(verifyPassword("correct horse battery staple", hash)).resolves.toBe(true);
     await expect(verifyPassword("wrong password", hash)).resolves.toBe(false);
+  });
+
+  it("verifies pre-migration PBKDF2 hashes above the Workers WebCrypto ceiling", async () => {
+    const password = "legacy account password";
+    const salt = randomBytes(16);
+    const iterations = 120_000;
+    const derived = pbkdf2Sync(password, salt, iterations, 32, "sha256");
+    const hash = `$pbkdf2-sha256${iterations}${salt.toString("base64url")}${derived.toString("base64url")}`;
+
+    await expect(verifyPassword(password, hash)).resolves.toBe(true);
+    await expect(verifyPassword("wrong legacy password", hash)).resolves.toBe(false);
   });
 });
 
