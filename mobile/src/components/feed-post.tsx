@@ -54,7 +54,7 @@ function InlinePoll({
   const locked = busy || closed || Boolean(poll.myVote);
 
   async function vote(optionId: number) {
-    if (locked) return;
+    if (locked || !poll || poll.format !== "POLL") return;
     const before: FeedPublishing = poll;
     const next: FeedPublishing = {
       ...before,
