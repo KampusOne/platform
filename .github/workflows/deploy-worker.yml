@@ -78,6 +78,36 @@ jobs:
         run: node server/scripts/verify-schema-proof.mjs platform
       - name: Guard October correction migrations
         run: node server/scripts/verify-schema-proof.mjs october
+      - name: Verify required production secret names
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        working-directory: server
+        run: |
+          set -euo pipefail
+          npx wrangler secret list --name platformp > "${{ runner.temp }}/kampusone-secret-names.json"
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          const raw = readFileSync(process.env.RUNNER_TEMP + '/kampusone-secret-names.json', 'utf8');
+          const start = raw.indexOf('['), end = raw.lastIndexOf(']');
+          if (start < 0 || end < start) throw new Error('Could not read Worker secret names.');
+          const names = new Set(JSON.parse(raw.slice(start, end + 1)).map((entry) => entry.name));
+          const required = [
+            'DATABASE_URL',
+            'JWT_SECRET',
+            'OTP_PEPPER',
+            'RESEND_API_KEY',
+            'RESEND_WEBHOOK_SECRET',
+            'PAYSTACK_SECRET_KEY',
+            'HF_TOKEN',
+          ];
+          const missing = required.filter((name) => !names.has(name));
+          if (missing.length) {
+            console.error('Missing required production Worker secrets: ' + missing.join(', '));
+            process.exit(1);
+          }
+          console.log('Required production Worker secret names are present.');
+          JS
       - name: Prepare initial identity encryption for the same release
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
