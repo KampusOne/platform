@@ -17,7 +17,7 @@ export default async function ExclusiveInvitePage({
   // /exclusive is only the signed, invitation-only business fast-track.
   // Never strand someone on a vendor form when they only opened the bare route.
   if (!invite || !/^[a-f0-9]{64}$/.test(invite)) {
-    redirect("/agents");
+    redirect("https://agents.kampusone.app/agents");
   }
 
   return (
