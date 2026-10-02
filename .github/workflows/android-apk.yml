@@ -13,11 +13,13 @@ on:
 permissions:
   contents: write
   actions: read
-concurrency:
-  group: android-apk-verified
-  cancel-in-progress: false
 jobs:
   apk:
+    # Apply concurrency only after this job is eligible to run. Workflow-level
+    # concurrency let skipped workflow_run events cancel the real pending APK.
+    concurrency:
+      group: android-apk-verified
+      cancel-in-progress: true
     # Direct main pushes/manual runs can build immediately. Automatic follow-up
     # runs are accepted only from the Vercel status verification that actually
     # publishes kampusone-verified-web-release; Worker-triggered deploy runs may
