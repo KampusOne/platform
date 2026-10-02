@@ -45,7 +45,11 @@ async function rateLimit(c: Context<Env>, kind: string, limit: number) {
   if (!firstRow(result)?.allowed) throw new AppError(429, "RATE_LIMITED", "Please wait before trying that again.");
 }
 
-function projection(user: User, withViews: boolean) {
+export async function publishingFeedReady(env: Bindings) {
+  return env.UNIFIED_SCHEMA_READY === "true";
+}
+
+function projection(user: User, withViews: boolean, withPublishing: boolean) {
   const views = withViews ? sql`(select count(*)::int from public.feed_post_views v where v.post_id = posts.id)` : sql`null::integer`;
   return sql`posts.id, posts.category, posts.title, posts.summary, posts.body,
     posts.image_url, posts.audience->>'mediaType' as media_type, coalesce(posts.audience->'media', '[]'::jsonb) as media, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
@@ -69,6 +73,22 @@ function projection(user: User, withViews: boolean) {
     (select count(*)::int from public.feed_reposts r where r.post_id = posts.id
       and ${unblockedAuthor(user.id, sql`r.user_id`)}) as repost_count,
     exists(select 1 from public.feed_reposts r where r.post_id = posts.id and r.user_id = ${user.id}::uuid) as reposted,
+    ${withPublishing ? sql`(select jsonb_build_object(
+      'format', publishing.format,
+      'anonymousPoll', publishing.anonymous_poll,
+      'closesAt', publishing.closes_at,
+      'myVote', (select vote.option_id from app_private.poll_votes vote where vote.post_id=posts.id and vote.user_id=${user.id}::uuid limit 1),
+      'options', case when publishing.format='POLL' then (
+        select coalesce(jsonb_agg(jsonb_build_object(
+          'id', option.id,
+          'label', option.label,
+          'votes', (select count(*)::int from app_private.poll_votes tally where tally.post_id=option.post_id and tally.option_id=option.id)
+        ) order by option.id),'[]'::jsonb)
+        from public.poll_options option where option.post_id=posts.id
+      ) else '[]'::jsonb end
+    ) from public.publishing_posts publishing
+      where publishing.post_id=posts.id and publishing.institution_id=posts.university_id
+      limit 1)` : sql`null::jsonb`} as publishing,
     posts.quoted_post_id,
     case when quoted.id is null then null else jsonb_build_object(
       'id', quoted.id, 'title', quoted.title, 'summary', quoted.summary, 'body', quoted.body,
@@ -93,8 +113,12 @@ async function readPost(c: Context<Env>, postId: string) {
   const user = currentUser(c);
   const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   const quotedAuthorVisible = unblockedAuthor(user.id, sql`quoted.author_user_id`);
+  const [withViews, withPublishing] = await Promise.all([
+    feedExperienceReady(c.env),
+    publishingFeedReady(c.env),
+  ]);
   const result = await database(c.env).execute(sql`
-    select ${projection(user, await feedExperienceReady(c.env))} from public.feed_posts posts ${joins(user, quotedAuthorVisible)}
+    select ${projection(user, withViews, withPublishing)} from public.feed_posts posts ${joins(user, quotedAuthorVisible)}
     where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} and ${postAuthorVisible} limit 1
   `);
   const post = firstRow(result);
@@ -117,7 +141,10 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   const pageLimit = Number.isInteger(requestedLimit) && requestedLimit > 0
     ? Math.max(10, Math.min(pageSize, requestedLimit))
     : pageSize;
-  const withViews = await feedExperienceReady(c.env);
+  const [withViews, withPublishing] = await Promise.all([
+    feedExperienceReady(c.env),
+    publishingFeedReady(c.env),
+  ]);
   const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   const quotedAuthorVisible = unblockedAuthor(user.id, sql`quoted.author_user_id`);
   const repostActorVisible = unblockedAuthor(user.id, sql`r.user_id`);
@@ -136,7 +163,7 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
       throw new AppError(403, "FORBIDDEN", "This student's reposts are private.");
 
     const repostResult = await database(c.env).execute(sql`
-      select ${projection(user, withViews)}, target_repost.created_at as activity_at,
+      select ${projection(user, withViews, withPublishing)}, target_repost.created_at as activity_at,
         to_char(target_repost.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
         jsonb_build_object('user_id', target_repost.user_id, 'name', coalesce(reposter.display_name, 'KampusOne user')) as repost_by
       from public.feed_reposts target_repost
@@ -161,7 +188,7 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   }
 
   const result = await database(c.env).execute(sql`
-    select ${projection(user, withViews)}, greatest(posts.published_at, latest.created_at) as activity_at,
+    select ${projection(user, withViews, withPublishing)}, greatest(posts.published_at, latest.created_at) as activity_at,
       to_char(greatest(posts.published_at, latest.created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       case when latest.user_id is null then null else jsonb_build_object('user_id', latest.user_id, 'name', latest.display_name) end as repost_by
     from public.feed_posts posts ${joins(user, quotedAuthorVisible)}

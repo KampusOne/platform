@@ -17,8 +17,8 @@ export function emailProviderStatus(env:EmailBindings) {
  return { sendingConfigured:Boolean(env.RESEND_API_KEY&&env.RESEND_FROM_EMAIL),webhookConfigured:Boolean(env.RESEND_WEBHOOK_SECRET),unsubscribeConfigured:Boolean(env.PUBLIC_API_ORIGIN) };
 }
 export function requireBroadcastProvider(env:EmailBindings) {
- if(!env.RESEND_API_KEY||!env.RESEND_FROM_EMAIL||!env.RESEND_WEBHOOK_SECRET||!env.PUBLIC_API_ORIGIN)
-  throw new AppError(503,'PROVIDER_UNAVAILABLE','Campaign email requires the configured sender, signed delivery webhook and public API origin.');
+ if(!env.RESEND_API_KEY||!env.RESEND_FROM_EMAIL||!env.PUBLIC_API_ORIGIN)
+  throw new AppError(503,'PROVIDER_UNAVAILABLE','Campaign email requires a configured Resend sender and public email-preference origin.');
 }
 export function freezeEmailContent(env:EmailBindings,campaign:Campaign,postalAddress:string|null):EmailContent {
  const configured=env.RESEND_FROM_EMAIL?.trim()??'';
@@ -100,7 +100,7 @@ export async function reconcileEmailEvents(env:Bindings,providerId:string) {
 }
 
 export async function deliverQueuedBroadcasts(env:EmailBindings) {
- if(env.UNIFIED_SCHEMA_READY!=='true'||!env.RESEND_API_KEY||!env.RESEND_WEBHOOK_SECRET)return {accepted:0,skipped:0};
+ if(env.UNIFIED_SCHEMA_READY!=='true'||!env.RESEND_API_KEY||!env.RESEND_FROM_EMAIL||!env.PUBLIC_API_ORIGIN)return {accepted:0,skipped:0};
  const db=database(env);const claimed=await db.execute<{id:string;user_id:string;requested_by:string;institution_id:string|null;campaign_id:string;email:string;kind:string;payload:EmailPayload;attempts:number;is_test:boolean}>(sql`select * from app_private.claim_broadcast_deliveries()`);
  let accepted=0,skipped=0;
  for(const row of claimed.rows){

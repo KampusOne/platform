@@ -89,8 +89,11 @@ jobs:
         env:
           CI: "1"
           NODE_ENV: production
-          EXPO_PUBLIC_KAMPUSONE_API_URL: https://platformp.divine-haze-54eb.workers.dev
-          EXPO_PUBLIC_KAMPUSONE_API_FALLBACK_URL: https://kampusone-mobile-preview.vercel.app/api
+          # Phones reach the verified same-origin Vercel proxy first. This avoids
+          # Android/carrier-specific failures against the raw workers.dev hostname while
+          # retaining the Worker as a secondary read fallback.
+          EXPO_PUBLIC_KAMPUSONE_API_URL: https://kampusone-mobile-preview.vercel.app/api
+          EXPO_PUBLIC_KAMPUSONE_API_FALLBACK_URL: https://platformp.divine-haze-54eb.workers.dev
           EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID || secrets.EXPO_EAS_PROJECT_ID }}
       - name: Prepare public APK
         run: cp mobile/android/app/build/outputs/apk/release/*.apk KampusOne-Android.apk
@@ -109,7 +112,7 @@ jobs:
         run: |
           test "$BUILD_SHA" = "$(git ls-remote --heads origin main | cut -f1)" || { echo "This build has been superseded; keeping the current public APK."; exit 1; }
           gh release delete apk-latest --yes --cleanup-tag || true
-          gh release create apk-latest KampusOne-Android.apk --target "$BUILD_SHA" --title "KampusOne Android Test" --notes "KampusOne Android testing APK built from the verified Worker and Vercel release revision. Direct Worker API primary; Vercel proxy retained as fallback. Sideload testing build." --prerelease
+          gh release create apk-latest KampusOne-Android.apk --target "$BUILD_SHA" --title "KampusOne Android Test" --notes "KampusOne Android testing APK built from the verified Worker and Vercel release revision. Verified Vercel API proxy primary for Android reliability; direct Worker retained as fallback. Sideload testing build." --prerelease
 # Expo's generated test signing is for sideload testing only. A separately
 # provisioned release/upload keystore is required before Play Store publication.
 

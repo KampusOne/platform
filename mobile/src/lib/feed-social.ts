@@ -2,6 +2,14 @@ import type { FeedPostData } from "./feed-posts";
 
 export type FeedMediaItem = { url: string; type: string; width?: number | null; height?: number | null };
 
+export type FeedPublishing = {
+  format: "POLL" | "QA" | "ANONYMOUS_QA";
+  anonymousPoll?: boolean;
+  closesAt?: string | null;
+  myVote?: number | null;
+  options: Array<{ id: number; label: string; votes: number }>;
+};
+
 export type QuotedPost = Pick<FeedPostData, "id" | "title" | "summary" | "body" | "image_url" | "published_at" | "source_name" | "source_verified" | "media_width" | "media_height"> & { source_image_url?: string | null; media_type?: string | null; media?: FeedMediaItem[] | null };
 export type SocialFeedPost = FeedPostData & {
   source_user_id?: string | null; media_type?: string | null; media?: FeedMediaItem[] | null;
@@ -18,6 +26,7 @@ export type SocialFeedPost = FeedPostData & {
   quoted_post?: QuotedPost | null;
   activity_at?: string;
   repost_by?: { user_id: string; name: string } | null;
+  publishing?: FeedPublishing | null;
 };
 export type FeedComment = {
   liked?: boolean; like_count?: number;

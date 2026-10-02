@@ -1,3 +1,4 @@
+import { createSHA256, pbkdf2 } from "hash-wasm";
 import { describe, expect, it } from "vitest";
 
 import type { Bindings } from "../types";
@@ -16,6 +17,29 @@ describe("password security", () => {
     expect(iterations).toBeLessThanOrEqual(100_000);
     await expect(verifyPassword("correct horse battery staple", hash)).resolves.toBe(true);
     await expect(verifyPassword("wrong password", hash)).resolves.toBe(false);
+  });
+
+  it("verifies pre-migration PBKDF2 hashes above the Workers WebCrypto ceiling", async () => {
+    const password = "legacy account password";
+    const salt = Uint8Array.from({ length: 16 }, (_, index) => index + 1);
+    const iterations = 120_000;
+    const derived = await pbkdf2({
+      password,
+      salt,
+      iterations,
+      hashLength: 32,
+      hashFunction: createSHA256(),
+      outputType: "binary",
+    });
+    const encode = (value: Uint8Array) =>
+      btoa(String.fromCharCode(...value))
+        .replaceAll("+", "-")
+        .replaceAll("/", "_")
+        .replaceAll("=", "");
+    const hash = ["", "pbkdf2-sha256", String(iterations), encode(salt), encode(derived)].join("$");
+
+    await expect(verifyPassword(password, hash)).resolves.toBe(true);
+    await expect(verifyPassword("wrong legacy password", hash)).resolves.toBe(false);
   });
 });
 

@@ -10,18 +10,18 @@ const empty={type:'FeatureCollection',features:[]};
 const collection=(features)=>({type:'FeatureCollection',features});
 const colours=['match',['get','category'],'ACADEMIC','#4b6599','HOSTEL','#8d6042','FOOD','#cc8449','HEALTH','#428872','TRANSPORT','#605694','SPORT','#4a827a','#6f6253'];
 map.on('load',()=>{
- loaded=true;map.addSource('places',{type:'geojson',data:empty,cluster:true,clusterMaxZoom:15,clusterRadius:42});
+ loaded=true;map.addSource('places',{type:'geojson',data:empty});
  map.addSource('features',{type:'geojson',data:empty});map.addSource('route',{type:'geojson',data:empty});map.addSource('position',{type:'geojson',data:empty});
  map.addLayer({id:'buildings',type:'fill',source:'features',filter:['==',['geometry-type'],'Polygon'],paint:{'fill-color':'#ac9783','fill-opacity':.3,'fill-outline-color':'#8d7560'}});
  map.addLayer({id:'building-height',type:'fill-extrusion',source:'features',filter:['==',['geometry-type'],'Polygon'],minzoom:15,layout:{visibility:'none'},paint:{'fill-extrusion-color':'#b9a390','fill-extrusion-height':['to-number',['get','heightMetres'],0],'fill-extrusion-base':0,'fill-extrusion-opacity':.8}});
  map.addLayer({id:'route-line',type:'line',source:'route',paint:{'line-color':'#825533','line-width':6},layout:{'line-cap':'round','line-join':'round'}});
- map.addLayer({id:'clusters',type:'circle',source:'places',filter:['has','point_count'],paint:{'circle-color':'#815532','circle-radius':19,'circle-stroke-width':3,'circle-stroke-color':'#fff'}});
- map.addLayer({id:'cluster-count',type:'symbol',source:'places',filter:['has','point_count'],layout:{'text-field':['get','point_count_abbreviated'],'text-size':12},paint:{'text-color':'#fff'}});
- map.addLayer({id:'poi',type:'circle',source:'places',filter:['!', ['has','point_count']],paint:{'circle-radius':['case',['get','selected'],10,6],'circle-color':colours,'circle-stroke-width':2,'circle-stroke-color':'#fff'}});
- map.addLayer({id:'poi-label',type:'symbol',source:'places',minzoom:16,filter:['!', ['has','point_count']],layout:{'text-field':['get','name'],'text-size':12,'text-anchor':'top','text-offset':[0,1],'text-max-width':12,'text-allow-overlap':false},paint:{'text-color':'#332821','text-halo-color':'#fff','text-halo-width':2}});
+ map.addLayer({id:'poi',type:'circle',source:'places',paint:{'circle-radius':['case',['get','selected'],10,6],'circle-color':colours,'circle-stroke-width':['case',['get','selected'],3,2],'circle-stroke-color':'#fff'}});
+ map.addLayer({id:'poi-label',type:'symbol',source:'places',minzoom:14.6,layout:{'text-field':['get','name'],'text-size':['interpolate',['linear'],['zoom'],14.6,10.5,17,12.5],'text-anchor':'top','text-offset':[0,1],'text-max-width':11,'text-allow-overlap':false,'text-ignore-placement':false},paint:{'text-color':'#332821','text-halo-color':'rgba(255,255,255,.96)','text-halo-width':2}});
  map.addLayer({id:'my-position',type:'circle',source:'position',paint:{'circle-radius':7,'circle-color':'#367cca','circle-stroke-width':3,'circle-stroke-color':'#fff'}});
- map.on('click','clusters',async e=>{const feature=e.features[0];try{const zoom=await map.getSource('places').getClusterExpansionZoom(feature.properties.cluster_id);map.easeTo({center:feature.geometry.coordinates,zoom});}catch{}});
- map.on('click','poi',e=>post({type:'pick',id:String(e.features[0].properties.id)}));post({type:'ready'});
+ map.on('click','poi',e=>post({type:'pick',id:String(e.features[0].properties.id)}));
+ map.on('mouseenter','poi',()=>{map.getCanvas().style.cursor='pointer';});
+ map.on('mouseleave','poi',()=>{map.getCanvas().style.cursor='';});
+ post({type:'ready'});
 });
 function apply(payload){if(!loaded)return;catalog=createDefaultMapSources(payload.satellite);if(payload.preview){document.documentElement.classList.add('preview');}if(campusId!==payload.campusId){campusId=payload.campusId;map.jumpTo({center:payload.centre,zoom:15.5,pitch:0,bearing:0});}
  const places=payload.places.filter(p=>p.latitude!==null&&p.longitude!==null&&Number.isFinite(Number(p.latitude))&&Number.isFinite(Number(p.longitude))).map(p=>({type:'Feature',geometry:{type:'Point',coordinates:[Number(p.longitude),Number(p.latitude)]},properties:{id:p.id,name:p.name,category:p.category,selected:p.id===payload.selectedId}}));

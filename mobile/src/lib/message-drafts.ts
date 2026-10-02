@@ -69,7 +69,8 @@ export function hasConversationDraft(draft: ConversationDraft) {
     draft.media.length ||
     draft.voice ||
     draft.reply ||
-    draft.batches.length
+    draft.batches.length ||
+    draft.pendingText
   );
 }
 export function onMessageDraftChange(listener: (account: string) => void) {

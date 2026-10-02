@@ -474,25 +474,6 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
   }
 
   const body = data.body || messageMediaLabel(media?.content_type);
-  const allowed = firstRow(
-    await db.execute<{ allowed: boolean }>(sql`
-      select app_private.consume_request_rate_limit(
-        'DIRECT_MESSAGE',
-        ${await sha256(user.id)},
-        60,
-        60,
-        60
-      ) as allowed
-    `),
-  );
-  if (!allowed?.allowed) {
-    throw new AppError(
-      429,
-      "RATE_LIMITED",
-      "Please slow down before sending another message.",
-    );
-  }
-
   const existing = firstRow(
     await db.execute<{
       id: string;
@@ -520,6 +501,25 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
       );
     }
     return c.json({ message: existing });
+  }
+
+  const allowed = firstRow(
+    await db.execute<{ allowed: boolean }>(sql`
+      select app_private.consume_request_rate_limit(
+        'DIRECT_MESSAGE',
+        ${await sha256(user.id)},
+        60,
+        60,
+        60
+      ) as allowed
+    `),
+  );
+  if (!allowed?.allowed) {
+    throw new AppError(
+      429,
+      "RATE_LIMITED",
+      "Please slow down before sending another message.",
+    );
   }
 
   if (

@@ -602,7 +602,7 @@ button { color: inherit; }
 /* Compact, accessible intake controls. */
 .phone-input{display:flex;gap:8px;align-items:stretch;min-width:0}.phone-input select{flex:0 1 46%;min-width:0}.phone-input input{flex:1;min-width:0}.date-fields{border:0;padding:0;margin:0;min-width:0}.date-fields legend{font-size:13px;font-weight:600;margin-bottom:8px}.date-fields>div{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:8px}.date-fields select{min-width:0}.application-layout{grid-template-columns:minmax(180px,.65fr) minmax(0,1.65fr);gap:24px}.application-art .agent-illustration{max-height:260px}.application-art{top:24px}.application-art h2{font-size:20px;line-height:1.35}.application-art p{font-size:13px;line-height:1.6}
 .map-review-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr);gap:24px}.map-studio{margin-top:24px}.map-studio .table-scroll{max-height:440px;overflow:auto}
-.portal-frame--admin{--k1-brand:#237d5c;--k1-deep-brand:#196348;background:#f4f7f5;grid-template-columns:232px minmax(0,1fr)}.portal-frame--admin .sidebar{background:#fff;border-right:1px solid #e1e9e4;padding:24px 14px}.portal-frame--admin .workspace-label{color:#62766b;font-size:11px}.portal-frame--admin .nav-item[aria-current=page]{background:#e9f4ed;color:#196348;border-left-color:#237d5c}.portal-frame--admin .nav-group-toggle{padding:9px 12px;font-size:12px}.portal-frame--admin .nav-controls{font-size:11px}.portal-frame--admin .topbar{background:#fff;border-bottom:1px solid #e1e9e4}.portal-frame--admin .button--primary{background:#237d5c;border-color:#237d5c}.portal-frame--admin .scope-caption{color:#62766b}.portal-frame--admin .metric-card{border-color:#e1e9e4;background:#fff}.portal-frame--admin .chart-bar{background:#237d5c}.portal-frame--admin .portal-header h1{font-size:28px}
+.portal-frame--admin{--k1-brand:#a8462e;--k1-deep-brand:#713c29;background:#fbf7f2;grid-template-columns:232px minmax(0,1fr)}.portal-frame--admin .sidebar{background:#fff;border-right:1px solid #eadfd5;padding:24px 14px}.portal-frame--admin .workspace-label{color:#806d60;font-size:11px}.portal-frame--admin .nav-item[aria-current=page]{background:#f7eae0;color:#713c29;border-left-color:#a8462e}.portal-frame--admin .nav-group-toggle{padding:9px 12px;font-size:12px}.portal-frame--admin .nav-controls{font-size:11px}.portal-frame--admin .topbar{background:#fffdf9;border-bottom:1px solid #eadfd5}.portal-frame--admin .button--primary{background:#a8462e;border-color:#a8462e}.portal-frame--admin .scope-caption{color:#806d60}.portal-frame--admin .metric-card{border-color:#eadfd5;background:#fff}.portal-frame--admin .chart-bar{background:#a8462e}.portal-frame--admin .portal-header h1{font-size:28px}
 @media(max-width:900px){.map-review-grid{grid-template-columns:1fr}.portal-frame--admin{grid-template-columns:1fr}.portal-frame--admin .sidebar{padding:14px;border-right:0;border-bottom:1px solid #e1e9e4}.portal-frame--admin .topbar{flex-wrap:wrap;gap:10px}.operator-menu strong{max-width:180px;overflow:hidden;text-overflow:ellipsis;display:block}}
 @media(max-width:800px){.application-layout{display:block}.application-art{display:none}.application-form{min-width:0}.phone-input{gap:6px}.phone-input select{font-size:12px}.portal-main{padding:18px 14px}.panel{padding:18px}.form-grid{grid-template-columns:1fr}}
 /* Progressive private agent evidence intake. */
@@ -630,3 +630,124 @@ fieldset.wizard-step{border:0;padding:0;margin:0;min-width:0;display:grid;gap:18
 @media(prefers-reduced-motion:reduce){.onboarding-progress>span{transition:none}}
 
 .trusted-vendor-onboarding>.agent-illustration{width:100%;height:145px;object-fit:contain;margin:6px auto 20px}.trusted-vendor-onboarding>.eyebrow{margin-top:0}.trusted-vendor-onboarding h1{font-size:28px;line-height:1.25}
+
+
+/* Analytics visualizations */
+.analytics-chart-panel { overflow: hidden; }
+.analytics-line-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+  color: var(--k1-brand-600);
+  overflow: visible;
+}
+.analytics-grid-line {
+  stroke: #e9dfd7;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.analytics-axis-label {
+  fill: #8a7c72;
+  font-size: 11px;
+  font-family: var(--font-inter), Inter, sans-serif;
+}
+.analytics-axis-label--date { font-size: 10px; }
+@media (max-width: 720px) {
+  .analytics-line-chart { min-width: 560px; }
+  .analytics-chart-panel { overflow-x: auto; }
+}
+
+
+/* Guided agent onboarding — based on the supplied mobile step-form references. */
+.application-layout{max-width:1080px;margin-inline:auto;align-items:start}
+.application-form{background:#fffdf9;border:1px solid #eadfd5;box-shadow:0 18px 56px rgb(65 44 34 / 7%)}
+.agent-onboarding-form{gap:22px}
+.onboarding-kicker{margin:0 0 5px;color:#a8462e;font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}
+.agent-onboarding-form header{padding:2px 0 4px}
+.agent-onboarding-form header h2{font-size:clamp(1.9rem,4vw,2.65rem);letter-spacing:-.04em}
+.onboarding-stepbar{margin-bottom:2px}
+.onboarding-progress{height:6px;background:#eee4db}
+.onboarding-progress>span{background:linear-gradient(90deg,#c35d38,#8d5139)}
+.agent-role-options{display:grid!important;grid-template-columns:1fr!important;gap:10px!important;border:0!important;padding:0!important}
+.agent-role-options legend{margin-bottom:10px!important;padding:0!important;color:#5c4b40!important;font-size:12px!important;font-weight:700!important}
+.agent-role-card{display:grid!important;grid-template-columns:48px 1fr 26px!important;align-items:center!important;gap:13px!important;min-height:82px!important;border:1.5px solid #e5d9ce!important;border-radius:18px!important;background:#fff!important;padding:14px 15px!important;cursor:pointer!important;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease!important}
+.agent-role-card:hover{border-color:#d2b8a6!important;transform:translateY(-1px)!important}
+.agent-role-card--selected{border-color:#a8462e!important;background:#fff8f3!important;box-shadow:0 0 0 3px rgb(168 70 46 / 8%)!important}
+.agent-role-card>input{position:absolute!important;opacity:0!important;pointer-events:none!important}
+.agent-role-mark{display:grid;place-items:center;width:48px;height:48px;border-radius:15px;background:#f4e8df;color:#8b4d37;font-family:var(--font-lato),Lato,sans-serif;font-size:17px;font-weight:900}
+.agent-role-card--selected .agent-role-mark{background:#a8462e;color:#fff}
+.agent-role-copy{display:grid;gap:3px;min-width:0}
+.agent-role-copy strong{color:#332a25;font-size:15px}
+.agent-role-copy small{color:#827369;font-size:11.5px;line-height:1.5}
+.agent-role-check{display:grid;place-items:center;width:24px;height:24px;border:1px solid #d9c9bd;border-radius:50%;color:#fff;font-size:13px;font-weight:800}
+.agent-role-card--selected .agent-role-check{border-color:#a8462e;background:#a8462e}
+.agent-category-options{border:0!important;padding:0!important;gap:8px!important}
+.agent-category-options legend{grid-column:1/-1;padding:0 0 5px!important}
+.agent-category-options .checkbox{min-height:46px;border:1px solid #e6dbd2;border-radius:14px;background:#fff;padding:10px 12px!important}
+.agent-category-options .checkbox:has(input:checked){border-color:#a8462e;background:#fff8f3;color:#713c29}
+.agent-category-options input{accent-color:#a8462e}
+.agent-onboarding-form .checkbox{border-radius:13px}
+.agent-onboarding-form .form-actions{align-items:center;gap:10px;border-top:1px solid #eee3da;margin-top:4px;padding-top:18px}
+.agent-onboarding-form .form-actions .text-button{margin-right:auto}
+.agent-onboarding-form .form-actions>.button{min-height:50px;border-radius:15px}
+.application-review{border:1px solid #eadfd5;border-radius:16px;overflow:hidden;gap:0;background:#fff}
+.application-review dt,.application-review dd{padding:12px 14px;border-bottom:1px solid #f0e7df}
+.application-review dt{background:#fcf7f2}
+@media(max-width:800px){
+ .application-layout{max-width:620px;margin-inline:auto}
+ .application-form{border:0;box-shadow:none;background:transparent;padding:8px 4px 28px}
+ .agent-onboarding-form{gap:18px}
+ .onboarding-mobile-art{max-width:180px;margin:4px auto 0}
+ .onboarding-mobile-art .agent-illustration{height:116px}
+ .agent-onboarding-form .form-actions{position:sticky;z-index:5;bottom:0;margin-inline:-4px;padding:14px 4px max(8px,env(safe-area-inset-bottom));background:linear-gradient(180deg,rgb(251 247 242 / 0%),#fbf7f2 28%)}
+ .agent-onboarding-form .form-actions>.button--primary{width:auto;min-width:132px;margin-left:auto}
+ .agent-onboarding-form .form-actions>.button--secondary{display:none}
+ .application-review{grid-template-columns:1fr}
+ .application-review dt{padding-bottom:4px;border-bottom:0}
+ .application-review dd{padding-top:2px}
+}
+@media(max-width:520px){
+ .onboarding-stepbar{gap:9px}
+ .onboarding-back{width:40px;height:40px;border-radius:12px}
+ .onboarding-stepcount{font-size:11px}
+ .agent-role-card{grid-template-columns:44px 1fr 24px!important;min-height:76px!important;padding:12px!important}
+ .agent-role-mark{width:44px;height:44px;border-radius:14px}
+ .agent-category-options{grid-template-columns:1fr 1fr!important}
+}
+
+
+.analytics-visual-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0}
+.analytics-visual-card{min-width:0;border:1px solid #eadfd5;border-radius:18px;background:#fff;padding:16px}
+.analytics-visual-card .analytics-visual-card{border:0;border-radius:0;padding:0;margin:0 0 18px;background:transparent}
+.analytics-visual-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.analytics-visual-heading h3{margin:0;font-size:15px}
+.analytics-visual-heading span{color:#89786d;font-size:10.5px;font-weight:650}
+.analytics-bars{display:grid;gap:12px}
+.analytics-bar-row{display:grid;gap:6px}
+.analytics-bar-label{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px}
+.analytics-bar-label span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#665a53}
+.analytics-bar-label strong{font-size:11px;font-variant-numeric:tabular-nums}
+.analytics-bar-track{height:8px;border-radius:999px;background:#f0e6de;overflow:hidden}
+.analytics-bar-fill{height:100%;min-width:2px;border-radius:inherit;background:linear-gradient(90deg,#c35d38,#8b4c36)}
+.analytics-donut-layout{display:grid;grid-template-columns:minmax(130px,160px) 1fr;align-items:center;gap:18px}
+.analytics-donut{width:100%;height:auto;transform:rotate(-90deg);color:#a8462e}
+.analytics-donut-base{stroke:#f0e6de;stroke-width:4}
+.analytics-donut-segment{stroke-width:4;transition:stroke-width .15s ease}
+.analytics-donut-segment:hover{stroke-width:5.2}
+.analytics-donut-segment--0,.analytics-legend-dot--0{stroke:#a8462e;background:#a8462e}
+.analytics-donut-segment--1,.analytics-legend-dot--1{stroke:#d27b55;background:#d27b55}
+.analytics-donut-segment--2,.analytics-legend-dot--2{stroke:#775244;background:#775244}
+.analytics-donut-segment--3,.analytics-legend-dot--3{stroke:#c9a58e;background:#c9a58e}
+.analytics-donut-segment--4,.analytics-legend-dot--4{stroke:#5f6d67;background:#5f6d67}
+.analytics-donut-segment--5,.analytics-legend-dot--5{stroke:#8d8177;background:#8d8177}
+.analytics-donut-total,.analytics-donut-caption{transform:rotate(90deg);transform-origin:21px 21px;fill:#29231f;font-family:var(--font-lato),Lato,sans-serif}
+.analytics-donut-total{font-size:4.5px;font-weight:800}
+.analytics-donut-caption{font-size:2.4px;fill:#887b72}
+.analytics-legend{display:grid;gap:9px}
+.analytics-legend-row{display:grid;grid-template-columns:9px minmax(0,1fr) auto;align-items:center;gap:8px;font-size:11px}
+.analytics-legend-dot{width:8px;height:8px;border-radius:50%}
+.analytics-legend-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#675b54}
+.analytics-legend-row strong{font-size:10.5px;font-variant-numeric:tabular-nums}
+@media(max-width:800px){.analytics-visual-grid{grid-template-columns:1fr}.analytics-donut-layout{grid-template-columns:130px 1fr}}
+@media(max-width:480px){.analytics-donut-layout{grid-template-columns:1fr}.analytics-donut{width:150px;margin:auto}}

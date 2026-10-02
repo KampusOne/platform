@@ -12,7 +12,7 @@ import {
 } from "../lib/feed-social";
 import { feedExperienceReady } from "../lib/feed-experience";
 import { profileSafetyReady, unblockedAuthor } from "../lib/profile-safety";
-import { feedPostProjection, feedPostJoins } from "./feed-social";
+import { feedPostProjection, feedPostJoins, publishingFeedReady } from "./feed-social";
 import type { Bindings, Variables } from "../types";
 export const discoveryRoutes = new Hono<{
   Bindings: Bindings;
@@ -196,6 +196,7 @@ discoveryRoutes.get("/search", requireAuth, async (c) => {
   const authorFilter = (who: SQL, username: SQL) =>
     sql`(${from}::text is null or lower(${username})=${from}) and(${d.activity !== "FOLLOWING"} or exists(select 1 from public.profile_follows f where f.follower_id=${user.id}::uuid and f.followed_id=${who}))`;
   const views = await feedExperienceReady(c.env),
+    publishing = await publishingFeedReady(c.env),
     language = (value: SQL) =>
       sql`(${d.language === "ANY"} or coalesce(${value},'und')=${d.language})`;
   const rows = await database(c.env).execute<{
@@ -207,7 +208,7 @@ discoveryRoutes.get("/search", requireAuth, async (c) => {
   }>(sql`
  with matches as(
   select posts.id,'POST'::text as kind,posts.published_at as at,${score(postDocument)} as score,
-   jsonb_build_object('kind','POST','id',posts.id,'post',(select to_jsonb(projection)from(select ${feedPostProjection(user, views)})projection))as result
+   jsonb_build_object('kind','POST','id',posts.id,'post',(select to_jsonb(projection)from(select ${feedPostProjection(user, views, publishing)})projection))as result
   from public.feed_posts posts ${feedPostJoins(user, unblockedAuthor(user.id, sql`quoted.author_user_id`))}
   where ${visiblePost(user.universityId)} and ${unblockedAuthor(user.id, sql`posts.author_user_id`)} and ${match(postDocument)}
    and (posts.author_user_id is null or exists(select 1 from public.users post_user join public.profiles post_profile on post_profile.user_id=post_user.id where post_user.id=posts.author_user_id and post_user.status::text='ACTIVE' and post_profile.deleted_at is null))

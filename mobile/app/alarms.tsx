@@ -1,5 +1,4 @@
 import { BrandSwitch } from "@/src/components/brand-switch";
-import { ChoiceField } from "@/src/components/choice-field";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
 import { api } from "@/src/lib/api";
@@ -48,6 +47,39 @@ function nextOccurrence(time: string) {
   date.setHours(h!, m!, 0, 0);
   if (date.getTime() <= Date.now()) date.setDate(date.getDate() + 1);
   return date.toISOString();
+}
+
+function nextCampusOccurrenceOnDay(
+  time: string,
+  day: number,
+  now = new Date(),
+) {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+  const [hour, minute] = time.split(":").map(Number);
+  const campusNow = new Date(now.getTime() + 60 * 60 * 1000);
+  let offset = (day - campusNow.getUTCDay() + 7) % 7;
+  let timestamp = Date.UTC(
+    campusNow.getUTCFullYear(),
+    campusNow.getUTCMonth(),
+    campusNow.getUTCDate() + offset,
+    hour! - 1,
+    minute!,
+    0,
+    0,
+  );
+  if (timestamp <= now.getTime()) {
+    offset += 7;
+    timestamp = Date.UTC(
+      campusNow.getUTCFullYear(),
+      campusNow.getUTCMonth(),
+      campusNow.getUTCDate() + offset,
+      hour! - 1,
+      minute!,
+      0,
+      0,
+    );
+  }
+  return new Date(timestamp).toISOString();
 }
 
 function getAlarmDate(alarm: Alarm, now = new Date()) {
@@ -522,7 +554,8 @@ export default function Alarms() {
   const [vibration, setVibration] = useState(true);
   const [snooze, setSnooze] = useState("5");
   const [form, setForm] = useState(false);
-  const [repeatOpen, setRepeatOpen] = useState(false);
+  const [repeat, setRepeat] = useState(false);
+  const [oneTimeDay, setOneTimeDay] = useState(() => currentCampusDay());
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -585,16 +618,23 @@ export default function Alarms() {
   }
 
   function edit(alarm: Alarm | null) {
-    const initialDays = alarm ? alarm.days : [];
+    const repeating = Boolean(alarm?.days.length);
+    const initialDays = repeating ? alarm!.days : [];
+    const oneOffDate = alarm?.fires_at ? new Date(alarm.fires_at) : null;
     setEditing(alarm);
     setLabel(alarm?.label ?? "");
     setTime(alarm?.time ?? "08:00");
+    setRepeat(repeating);
     setDays(initialDays);
+    setOneTimeDay(
+      oneOffDate && !Number.isNaN(oneOffDate.getTime())
+        ? new Date(oneOffDate.getTime() + 60 * 60 * 1000).getUTCDay()
+        : currentCampusDay(),
+    );
     setSound(alarm?.sound ?? "default");
     setSoundOpen(false);
     setVibration(alarm?.vibration ?? true);
     setSnooze(String(alarm?.snooze_minutes ?? 5));
-    setRepeatOpen(Boolean(alarm?.days.length));
     setForm(true);
   }
 
@@ -663,8 +703,8 @@ export default function Alarms() {
       {
         label: normalizedLabel,
         time,
-        days,
-        firesAt: days.length ? null : nextOccurrence(time),
+        days: repeat ? days : [],
+        firesAt: repeat ? null : nextCampusOccurrenceOnDay(time, oneTimeDay),
         enabled: editing?.enabled ?? true,
         sound,
         vibration,
@@ -857,12 +897,14 @@ export default function Alarms() {
                           id: editing?.id ?? "draft",
                           label: label.trim() || "Alarm",
                           time,
-                          days,
+                          days: repeat ? days : [],
                           enabled: true,
                           sound,
                           vibration,
                           snooze_minutes: Number(snooze) || 5,
-                          fires_at: days.length ? null : nextOccurrence(time),
+                          fires_at: repeat
+                            ? null
+                            : nextCampusOccurrenceOnDay(time, oneTimeDay),
                         },
                         now,
                       ),
@@ -917,59 +959,72 @@ export default function Alarms() {
                 </View>
 
                 <View style={styles.settingsCard}>
-                  <View style={{padding:14}}><ChoiceField label="Schedule" value={days.length ? "repeat" : "once"} options={[{value:"once",label:"Once"},{value:"repeat",label:"Repeat"}]} onChange={value=>{setDays(value==="repeat"?[currentCampusDay()]:[]);setRepeatOpen(value==="repeat");}} /></View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: repeatOpen }}
-                    onPress={() => setRepeatOpen((value) => !value)}
-                    style={styles.settingRow}
-                  >
-                    <Text style={styles.settingTitle}>Repeat</Text>
-                    <View style={styles.settingRight}>
-                      <Text style={styles.settingValue}>{repeatLabel(days)}</Text>
-                      <Ionicons
-                        name={repeatOpen ? "chevron-up" : "chevron-forward"}
-                        size={18}
-                        color={theme.textMuted}
+                  <View style={styles.scheduleHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.settingTitle}>Day</Text>
+                      <Text style={styles.scheduleHint}>
+                        {repeat
+                          ? "Choose every day this alarm should repeat."
+                          : "Choose the day for this one-time alarm."}
+                      </Text>
+                    </View>
+                    <View style={styles.repeatSwitch}>
+                      <Text style={styles.repeatLabel}>Repeat</Text>
+                      <BrandSwitch
+                        label="Repeat alarm"
+                        disabled={busy}
+                        value={repeat}
+                        onValueChange={(value) => {
+                          setRepeat(value);
+                          if (value && !days.length) setDays([oneTimeDay]);
+                        }}
                       />
                     </View>
-                  </Pressable>
+                  </View>
 
-                  {repeatOpen ? (
-                    <View style={styles.dayPicker}>
-                      {DAY_NAMES.map((day, index) => {
-                        const selected = days.includes(index);
-                        return (
-                          <Pressable
-                            key={DAY_LONG_NAMES[index]}
-                            accessibilityRole="checkbox"
-                            accessibilityLabel={DAY_LONG_NAMES[index]}
-                            accessibilityState={{ checked: selected }}
-                            onPress={() =>
-                              setDays((current) =>
-                                current.includes(index)
-                                  ? current.filter((value) => value !== index)
-                                  : [...current, index],
-                              )
+                  <View style={styles.dayPicker}>
+                    {DAY_NAMES.map((day, index) => {
+                      const selected = repeat
+                        ? days.includes(index)
+                        : oneTimeDay === index;
+                      return (
+                        <Pressable
+                          key={DAY_LONG_NAMES[index]}
+                          accessibilityRole={repeat ? "checkbox" : "radio"}
+                          accessibilityLabel={DAY_LONG_NAMES[index]}
+                          accessibilityState={
+                            repeat ? { checked: selected } : { selected }
+                          }
+                          onPress={() => {
+                            if (!repeat) {
+                              setOneTimeDay(index);
+                              return;
                             }
+                            setDays((current) => {
+                              if (current.includes(index)) {
+                                if (current.length === 1) return current;
+                                return current.filter((value) => value !== index);
+                              }
+                              return [...current, index];
+                            });
+                          }}
+                          style={[
+                            styles.dayButton,
+                            selected && styles.dayButtonSelected,
+                          ]}
+                        >
+                          <Text
                             style={[
-                              styles.dayButton,
-                              selected && styles.dayButtonSelected,
+                              styles.dayText,
+                              selected && styles.dayTextSelected,
                             ]}
                           >
-                            <Text
-                              style={[
-                                styles.dayText,
-                                selected && styles.dayTextSelected,
-                              ]}
-                            >
-                              {day.slice(0, 1)}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  ) : null}
+                            {day.slice(0, 1)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
 
                   <View style={styles.settingDivider} />
                   <Pressable
@@ -1339,6 +1394,32 @@ const createStyles = (theme: Theme, isDark: boolean) =>
       textAlign: "right",
     },
     settingDivider: { height: 1, backgroundColor: theme.border },
+    scheduleHeader: {
+      minHeight: 70,
+      paddingTop: 15,
+      paddingBottom: 10,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    scheduleHint: {
+      marginTop: 3,
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 11,
+      lineHeight: 16,
+    },
+    repeatSwitch: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      flexShrink: 0,
+    },
+    repeatLabel: {
+      color: theme.textMuted,
+      fontFamily: theme.font.semibold,
+      fontSize: 12,
+    },
     soundList: { paddingBottom: 12, gap: 7 },
     soundOption: {
       minHeight: 48,

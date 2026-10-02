@@ -1,4 +1,5 @@
 import { jwtVerify, SignJWT } from "jose";
+import { argon2Verify, createSHA256, pbkdf2 } from "hash-wasm";
 
 import type { AuthenticatedUser, Bindings } from "../types";
 import { AppError } from "./errors";
@@ -94,6 +95,24 @@ async function derivePbkdf2(
   return new Uint8Array(derived);
 }
 
+async function derivePbkdf2Legacy(
+  password: string,
+  salt: Uint8Array,
+  iterations: number,
+): Promise<Uint8Array> {
+  if (iterations <= PBKDF2_ITERATIONS)
+    return derivePbkdf2(password, salt, iterations);
+  const derived = await pbkdf2({
+    password,
+    salt,
+    iterations,
+    hashLength: PBKDF2_HASH_BYTES,
+    hashFunction: createSHA256(),
+    outputType: "binary",
+  });
+  return derived;
+}
+
 export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const derived = await derivePbkdf2(password, salt, PBKDF2_ITERATIONS);
@@ -119,7 +138,7 @@ export async function verifyPassword(
       const expected = fromBase64Url(parts[4] ?? "");
       if (salt.length < 16 || expected.length !== PBKDF2_HASH_BYTES)
         return false;
-      const supplied = await derivePbkdf2(password, salt, iterations);
+      const supplied = await derivePbkdf2Legacy(password, salt, iterations);
       return constantTimeBytesEqual(expected, supplied);
     }
 
@@ -129,7 +148,6 @@ export async function verifyPassword(
     // runtime cannot execute the legacy WASM verifier, fail authentication
     // closed instead of crashing the Worker.
     if (hash.startsWith("$argon2")) {
-      const { argon2Verify } = await import("hash-wasm");
       return await argon2Verify({ password, hash });
     }
 
