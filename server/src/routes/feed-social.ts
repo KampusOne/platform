@@ -46,15 +46,7 @@ async function rateLimit(c: Context<Env>, kind: string, limit: number) {
 }
 
 export async function publishingFeedReady(env: Bindings) {
-  return firstRow(
-    await database(env).execute<{ ready: boolean }>(sql`
-      select
-        to_regclass('public.publishing_posts') is not null
-        and to_regclass('public.poll_options') is not null
-        and to_regclass('app_private.poll_votes') is not null
-        as ready
-    `),
-  )?.ready === true;
+  return env.UNIFIED_SCHEMA_READY === "true";
 }
 
 function projection(user: User, withViews: boolean, withPublishing: boolean) {
