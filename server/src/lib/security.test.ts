@@ -36,7 +36,7 @@ describe("password security", () => {
         .replaceAll("+", "-")
         .replaceAll("/", "_")
         .replaceAll("=", "");
-    const hash = `$pbkdf2-sha256${iterations}${encode(salt)}${encode(derived)}`;
+    const hash = ["", "pbkdf2-sha256", String(iterations), encode(salt), encode(derived)].join("$");
 
     await expect(verifyPassword(password, hash)).resolves.toBe(true);
     await expect(verifyPassword("wrong legacy password", hash)).resolves.toBe(false);
