@@ -44,6 +44,31 @@ beforeAll(async () => {
     create table public.content_sources(id uuid primary key, name text, verified boolean);
     create table public.profiles(user_id uuid primary key, display_name text, profile_image_url text, username text, verification_status text, deleted_at timestamptz);
     create table public.feed_posts(id uuid primary key, university_id uuid not null, source_id uuid, author_user_id uuid, category text, title text, summary text, body text, image_url text, urgent boolean, sponsored boolean, published_at timestamptz, correction_note text, audience jsonb, status text);
+    -- The normal feed now projects poll metadata. This isolated PGlite fixture
+    -- only needs the read-side publishing tables; production gets the full
+    -- schema from the reviewed publishing migrations.
+    create table public.publishing_posts(
+      post_id uuid primary key references public.feed_posts(id),
+      institution_id uuid not null references public.universities(id),
+      format text not null,
+      closes_at timestamptz,
+      request_hash text not null,
+      anonymous_poll boolean not null default false
+    );
+    create table public.poll_options(
+      post_id uuid not null references public.publishing_posts(post_id),
+      id smallint not null,
+      label text not null,
+      primary key(post_id,id)
+    );
+    create table app_private.poll_votes(
+      post_id uuid not null references public.publishing_posts(post_id),
+      user_id uuid not null references public.users(id),
+      option_id smallint not null,
+      created_at timestamptz not null default now(),
+      primary key(post_id,user_id),
+      foreign key(post_id,option_id) references public.poll_options(post_id,id)
+    );
     create table public.feed_bookmarks(post_id uuid, user_id uuid);
     create table public.user_blocks(
       blocker_id uuid not null references public.users(id),
