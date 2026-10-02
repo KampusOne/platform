@@ -30,7 +30,17 @@ function TrustedVendorForm(){
   return()=>{active=false;};
  },[token,user?.id,validToken]);
  useEffect(()=>{if(!draftKey)return;try{if(submitted)sessionStorage.removeItem(draftKey);else sessionStorage.setItem(draftKey,JSON.stringify(draft));}catch{}},[draftKey,draft,submitted]);
+ useEffect(()=>{if(submitted)window.location.replace('https://agents.kampusone.app/agents');},[submitted]);
  async function upload(file:File){setBusy(true);setError('');try{const body=new FormData();body.append('kind','avatar');body.append('file',file);const r=await portalApi<{id:string}>('/v1/media',{method:'POST',body});update('photo',r.id);}catch(e){setError(e instanceof Error?e.message:'Photo could not upload.');}finally{setBusy(false);}}
+ async function uploadDocuments(files:FileList){
+  const selected=Array.from(files).slice(0,Math.max(0,4-draft.businessDocumentIds.length));
+  if(!selected.length)return;
+  const allowed=['image/jpeg','image/png','image/webp','application/pdf'];
+  if(selected.some(file=>!allowed.includes(file.type)||file.size>10*1024*1024)){setFieldErrors(current=>({...current,businessDocumentIds:'Use JPG, PNG, WebP or PDF files up to 10 MB each.'}));return;}
+  setBusy(true);setError('');setFieldErrors(current=>({...current,businessDocumentIds:''}));
+  try{const ids=[...draft.businessDocumentIds];for(const file of selected){const body=new FormData();body.append('kind','kyc');body.append('file',file);const r=await portalApi<{id:string}>('/v1/media',{method:'POST',body});ids.push(r.id);}setDraft(current=>({...current,businessDocumentIds:[...new Set(ids)].slice(0,4)}));}
+  catch(e){setError(e instanceof Error?e.message:'Document could not upload.');}finally{setBusy(false);}
+ }
  async function uploadDocument(file?:File){
   if(!file||busy)return;
   if(!['image/jpeg','image/png','image/webp','application/pdf'].includes(file.type)){setFieldErrors(current=>({...current,businessDocumentIds:'Choose a JPG, PNG, WebP or PDF document.'}));return;}
@@ -88,6 +98,7 @@ function TrustedVendorForm(){
    <label>Business description<textarea name="description" value={draft.description} onChange={e=>update('description',e.target.value)} required minLength={20} maxLength={2000} placeholder="What do you sell and when are you available?"/>{fieldErrors.description?<span className="field-error">{fieldErrors.description}</span>:null}</label>
    <div className="document-upload"><label>School or business documents (CAC optional)<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" disabled={busy||draft.businessDocumentIds.length>=4} onChange={e=>{void uploadDocument(e.target.files?.[0]);e.target.value='';}}/></label><span className="field-help">{draft.businessDocumentIds.length?`${draft.businessDocumentIds.length} private document${draft.businessDocumentIds.length===1?'':'s'} uploaded. You can add up to 4.`:'Upload at least one JPG, PNG, WebP or PDF · up to 10 MB each.'}</span>{fieldErrors.businessDocumentIds?<span className="field-error">{fieldErrors.businessDocumentIds}</span>:null}</div>
    <label>Business profile photo · optional<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)void upload(file);}}/>{draft.photo?<span className="field-help">Photo saved.</span>:null}</label>
+   <label>School or business documents · required<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple disabled={busy||draft.businessDocumentIds.length>=4} onChange={e=>{if(e.target.files?.length)void uploadDocuments(e.target.files);e.currentTarget.value='';}}/><span className="field-help">JPG, PNG, WebP or PDF · up to 10 MB each · maximum 4 files. CAC registration is optional.</span>{draft.businessDocumentIds.length?<span className="field-help">{draft.businessDocumentIds.length} document{draft.businessDocumentIds.length===1?'':'s'} uploaded privately.</span>:null}{fieldErrors.businessDocumentIds?<span className="field-error">{fieldErrors.businessDocumentIds}</span>:null}</label>
    <label className="consent-row"><input type="checkbox" required/>I’m at least 18 and authorised to represent this business.</label><label className="consent-row"><input type="checkbox" required/>I accept the KampusOne agent terms and confirm these details are accurate.</label>
    <p className="field-help">Your progress is kept in this browser session until you submit.</p>
    <button className="button button--primary button--wide" disabled={busy||!draft.phone||!draft.birth||!draft.request}>{busy?'Saving…':'Submit vendor profile'}</button>
