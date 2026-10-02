@@ -45,7 +45,7 @@ async function rateLimit(c: Context<Env>, kind: string, limit: number) {
   if (!firstRow(result)?.allowed) throw new AppError(429, "RATE_LIMITED", "Please wait before trying that again.");
 }
 
-async function publishingFeedReady(env: Bindings) {
+export async function publishingFeedReady(env: Bindings) {
   return firstRow(
     await database(env).execute<{ ready: boolean }>(sql`
       select
