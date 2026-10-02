@@ -17,6 +17,7 @@ function messageFrom(error: unknown) {
 export function AgentAccess({ onAuthenticated }: { onAuthenticated(session: Session): void }) {
   const [stage, setStage] = useState<Stage>("email");
   const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -32,11 +33,12 @@ export function AgentAccess({ onAuthenticated }: { onAuthenticated(session: Sess
         const nextEmail = String(form.get("email")).trim().toLowerCase();
         await webAuth.requestEmailCode(nextEmail);
         setEmail(nextEmail);
+        setCode("");
         setStage("code");
         setNotice("Check your email for the six-digit code.");
         return;
       }
-      onAuthenticated(await webAuth.verifyEmailCode(email, String(form.get("code"))));
+      onAuthenticated(await webAuth.verifyEmailCode(email, code));
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -76,7 +78,7 @@ export function AgentAccess({ onAuthenticated }: { onAuthenticated(session: Sess
             <p className="muted">{stage === "email" ? "Use the same email as your KampusOne account." : `We sent a six-digit code for ${email}.`}</p>
           </header>
 
-          <form className="form-stack agent-login-form" onSubmit={submit}>
+          <form key={stage} className="form-stack agent-login-form" onSubmit={submit}>
             {stage === "email" ? (
               <label>
                 Email address
@@ -90,7 +92,7 @@ export function AgentAccess({ onAuthenticated }: { onAuthenticated(session: Sess
                 Verification code
                 <span className="agent-login-input">
                   <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="8" cy="12" r="3.25" /><path d="M11.25 12H20m-3 0v3m-3-3v2" /></svg>
-                  <input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} className="code-input" placeholder="000000" autoFocus required />
+                  <input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} className="code-input" placeholder="000000" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} autoFocus required />
                 </span>
               </label>
             )}
@@ -101,7 +103,7 @@ export function AgentAccess({ onAuthenticated }: { onAuthenticated(session: Sess
 
           {stage === "code" && (
             <div className="agent-auth-actions">
-              <button type="button" className="text-button" disabled={busy} onClick={() => { setStage("email"); setNotice(""); setError(""); }}>Use another email</button>
+              <button type="button" className="text-button" disabled={busy} onClick={() => { setCode(""); setStage("email"); setNotice(""); setError(""); }}>Use another email</button>
               <button type="button" className="text-button" disabled={busy} onClick={() => void resend()}>Send a new code</button>
             </div>
           )}
