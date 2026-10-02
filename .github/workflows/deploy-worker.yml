@@ -97,7 +97,6 @@ jobs:
             'JWT_SECRET',
             'OTP_PEPPER',
             'RESEND_API_KEY',
-            'RESEND_WEBHOOK_SECRET',
             'PAYSTACK_SECRET_KEY',
             'HF_TOKEN',
           ];
@@ -105,6 +104,9 @@ jobs:
           if (missing.length) {
             console.error('Missing required production Worker secrets: ' + missing.join(', '));
             process.exit(1);
+          }
+          if (!names.has('RESEND_WEBHOOK_SECRET')) {
+            console.warn('RESEND_WEBHOOK_SECRET is not configured; outbound email remains available but signed delivery-event reconciliation stays disabled.');
           }
           console.log('Required production Worker secret names are present.');
           JS
