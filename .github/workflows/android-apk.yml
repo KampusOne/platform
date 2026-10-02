@@ -18,7 +18,11 @@ concurrency:
   cancel-in-progress: false
 jobs:
   apk:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository && (github.event.workflow_run.event != 'status' || startsWith(github.event.workflow_run.display_title, 'Verify published Vercel release ')))
+    # Direct main pushes/manual runs can build immediately. Automatic follow-up
+    # runs are accepted only from the Vercel status verification that actually
+    # publishes kampusone-verified-web-release; Worker-triggered deploy runs may
+    # succeed without that artifact when VERCEL_TOKEN is unavailable.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.event == 'status' && startsWith(github.event.workflow_run.display_title, 'Verify published Vercel release '))
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 45
