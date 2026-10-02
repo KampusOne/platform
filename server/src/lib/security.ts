@@ -1,6 +1,5 @@
 import { jwtVerify, SignJWT } from "jose";
-import { pbkdf2 as nodePbkdf2 } from "node:crypto";
-import { argon2Verify } from "hash-wasm";
+import { argon2Verify, createSHA256, pbkdf2 } from "hash-wasm";
 
 import type { AuthenticatedUser, Bindings } from "../types";
 import { AppError } from "./errors";
@@ -103,22 +102,15 @@ async function derivePbkdf2Legacy(
 ): Promise<Uint8Array> {
   if (iterations <= PBKDF2_ITERATIONS)
     return derivePbkdf2(password, salt, iterations);
-  return new Promise<Uint8Array>((resolve, reject) => {
-    nodePbkdf2(
-      password,
-      salt,
-      iterations,
-      PBKDF2_HASH_BYTES,
-      "sha256",
-      (error, derived) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve(new Uint8Array(derived));
-      },
-    );
+  const derived = await pbkdf2({
+    password,
+    salt,
+    iterations,
+    hashLength: PBKDF2_HASH_BYTES,
+    hashFunction: createSHA256(),
+    outputType: "binary",
   });
+  return derived;
 }
 
 export async function hashPassword(password: string): Promise<string> {
