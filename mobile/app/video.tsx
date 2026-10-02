@@ -364,7 +364,7 @@ export default function VideoViewerScreen() {
   const mediaHeight = Math.max(220, Math.min(height * 0.43, width * 0.95));
 
   if (loading && !post) {
-    return <SafeAreaView style={styles.screen}><StatusBar style="light" /><View style={styles.preloadStage}>{mediaSource ? <VideoView accessibilityLabel="Post video loading" player={player} nativeControls={false} contentFit="contain" surfaceType="textureView" style={StyleSheet.absoluteFill} /> : null}<View pointerEvents="none" style={styles.videoState}><Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>Opening video…</Text></View></View></SafeAreaView>;
+    return <SafeAreaView style={styles.screen}><StatusBar style="light" /><View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/feed")} style={styles.headerButton}><Ionicons name="arrow-back" color="#FFFFFF" size={27} /></Pressable></View><View style={styles.preloadStage}>{mediaSource ? <VideoView accessibilityLabel="Post video" player={player} nativeControls={false} contentFit="contain" surfaceType="textureView" style={StyleSheet.absoluteFill} /> : null}{!mediaSource || status === "loading" ? <View pointerEvents="none" style={styles.videoState}><Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>{mediaSource ? "Loading video…" : "Opening video…"}</Text></View> : null}</View></SafeAreaView>;
   }
 
   if (!post || error) {
