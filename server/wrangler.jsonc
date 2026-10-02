@@ -34,6 +34,8 @@
     "PAYOUTS_ENABLED": "true",
     "AI_ASSISTANT_ENABLED": "true",
     "KIRA_SUBSCRIPTIONS_ENABLED": "true",
+    "PUBLIC_API_ORIGIN": "https://platformp.divine-haze-54eb.workers.dev",
+    "APP_ORIGIN": "https://kampusone-mobile-preview.vercel.app",
     "GA4_ANALYTICS_ENABLED": "true",
     "GA4_REPORTING_ENABLED": "false",
     "GA4_CUSTOM_DIMENSIONS_READY": "false",
