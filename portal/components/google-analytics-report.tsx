@@ -5,7 +5,7 @@ import { useAdminContext } from "./admin-context";
 import { downloadCsv } from "@/lib/csv";
 import { DailyActivity } from "./daily-activity";
 import {ScreenTimeReport} from './screen-time-report';
-import {HorizontalBars} from './analytics-visuals';
+import {DonutBreakdown,HorizontalBars} from './analytics-visuals';
 type Row = Record<string, string | number>;
 type Report =
   | {
@@ -26,34 +26,55 @@ type Report =
       state: "paused" | "setup_required" | "unavailable" | "scope_limited";
       message: string;
     };
+function metricLabel(key: string) {
+  return key
+    .replace("customEvent:", "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^./, (letter) => letter.toUpperCase());
+}
 function Values({ title, rows }: { title: string; rows: Row[] }) {
   const columns = rows.length ? Object.keys(rows[0]!) : [];
   const labelColumn = columns.find((column) => typeof rows[0]?.[column] === "string");
-  const numericColumn = columns
-    .filter((column) => column !== labelColumn)
+  const numericColumns = columns
+    .filter(
+      (column) =>
+        column !== labelColumn &&
+        rows.some((row) => Number.isFinite(Number(row[column]))),
+    )
     .sort((a, b) => {
       const score = (key: string) =>
-        /activeUsers|screenPageViews|eventCount|sessions|userEngagementDuration/i.test(key)
+        /activeUsers|screenPageViews|eventCount|sessions|userEngagementDuration|newUsers|engagedSessions/i.test(
+          key,
+        )
           ? 1
           : 0;
       return score(b) - score(a);
     })
-    .find((column) => rows.some((row) => Number.isFinite(Number(row[column]))));
-  const chartRows =
-    labelColumn && numericColumn
+    .slice(0, 4);
+  const visualRows = (metric: string) =>
+    labelColumn
       ? rows.map((row) => ({
           label: String(row[labelColumn]),
-          value: Number(row[numericColumn]) || 0,
+          value: Number(row[metric]) || 0,
         }))
       : [];
   return (
     <section className="panel">
-      {chartRows.length ? (
-        <HorizontalBars
-          title={`${title} · ${numericColumn?.replace("customEvent:", "")}`}
-          rows={chartRows}
-          limit={12}
-        />
+      {labelColumn && numericColumns.length ? (
+        <div className="analytics-visual-grid">
+          {numericColumns.map((metric) => (
+            <HorizontalBars
+              key={metric}
+              title={`${title} · ${metricLabel(metric)}`}
+              rows={visualRows(metric)}
+              limit={12}
+            />
+          ))}
+          <DonutBreakdown
+            title={`${title} · ${metricLabel(numericColumns[0]!)} share`}
+            rows={visualRows(numericColumns[0]!)}
+          />
+        </div>
       ) : null}
       <div className="panel-heading">
         <h3>{title}</h3>
