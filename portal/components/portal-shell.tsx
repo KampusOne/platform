@@ -69,7 +69,7 @@ export function PortalShell({ active, eyebrow, title, description, actions, chil
   const current = routeModules.find((module) => can(module.permission)) ?? routeModules[0];
   const permitted = active !== "admin" || !routeModules.length || routeModules.some((module) => can(module.permission));
   const initials = user?.email.slice(0, 2).toUpperCase() ?? "K1";
-  return <div className={`portal-frame ${active === "admin" ? "portal-frame--admin" : ""}`}>
+  return <div className={`portal-frame ${active === "admin" ? "portal-frame--admin" : active === "agents" ? "portal-frame--agents" : ""}`}>
     <aside className="sidebar">
       <Link href={`/${active}`} className="brand-link" aria-label="KampusOne workspace home"><Image src="/kampusone-horizontal-ink.png" width={168} height={41} priority alt="KampusOne" /></Link>
       <p className="workspace-label">{active === "agents" ? "Your agent account" : active === "admin" ? "Administration & operations" : "Engineering"}</p>

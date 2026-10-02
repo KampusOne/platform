@@ -502,21 +502,33 @@ export function AgentApplication() {
     const multiple =
       key === "riderDocumentIds" || key === "businessDocumentIds";
     const count = multiple ? (data[key] as string[]).length : data[key] ? 1 : 0;
+    const limit = key === "riderDocumentIds" ? 6 : 4;
     return (
       <div className="document-upload" key={key}>
-        <label>
-          {title}
+        <label className="document-upload__picker">
+          <span className="document-upload__meta">
+            <strong>{title}</strong>
+            <small>
+              {count
+                ? `${count} file${count > 1 ? "s" : ""} added securely`
+                : key === "portraitDocumentId"
+                  ? "JPG, PNG or WebP · up to 10 MB"
+                  : "JPG, PNG, WebP or PDF · up to 10 MB"}
+            </small>
+          </span>
+          <span className="document-upload__action">
+            {count && !multiple ? "Replace file" : count ? "Add another" : "Choose file"}
+          </span>
           <input
+            className="document-upload__input"
             type="file"
+            aria-label={`Upload ${title}`}
             accept={
               key === "portraitDocumentId"
                 ? "image/jpeg,image/png,image/webp"
                 : "image/jpeg,image/png,image/webp,application/pdf"
             }
-            disabled={
-              busy ||
-              (multiple && count >= (key === "riderDocumentIds" ? 6 : 4))
-            }
+            disabled={busy || (multiple && count >= limit)}
             onChange={(event) => {
               void upload(key, event.target.files?.[0]).then((saved) => {
                 if (saved && key === "portraitDocumentId")
@@ -525,18 +537,13 @@ export function AgentApplication() {
               event.target.value = "";
             }}
           />
-          <span>
-            {count
-              ? `${count} file${count > 1 ? "s" : ""} added`
-              : "JPG, PNG, WebP or PDF · up to 10 MB"}
-          </span>
-          {fieldErrors[key] && (
-            <span className="field-error">{fieldErrors[key]}</span>
-          )}
         </label>
+        {fieldErrors[key] ? (
+          <span className="field-error">{fieldErrors[key]}</span>
+        ) : null}
         {multiple &&
           (data[key] as string[]).map((mediaId, index) => (
-            <div className="button-row" key={mediaId}>
+            <div className="document-upload__file" key={mediaId}>
               <span>Evidence {index + 1}</span>
               <button
                 type="button"
@@ -551,7 +558,7 @@ export function AgentApplication() {
                   )
                 }
               >
-                Remove from application
+                Remove
               </button>
             </div>
           ))}
