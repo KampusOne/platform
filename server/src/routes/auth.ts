@@ -851,15 +851,40 @@ authRoutes.post("/login", async (context) => {
     1800,
   );
   const userRecord = await findUserByEmail(context.env, parsed.data.email);
-  if (
-    !userRecord ||
-    !(await verifyPassword(parsed.data.password, userRecord.password_hash))
-  ) {
+  const passwordValid =
+    Boolean(userRecord) &&
+    (await verifyPassword(parsed.data.password, userRecord!.password_hash));
+  if (!userRecord || !passwordValid) {
     throw new AppError(
       401,
       "UNAUTHENTICATED",
       "The email or password is incorrect.",
     );
+  }
+  // Accounts created before the Workers password migration may carry Argon2
+  // or a PBKDF2 work factor above the WebCrypto ceiling. Once that password is
+  // successfully verified, replace it with the current Worker-safe hash so
+  // every later login follows the fast, supported path.
+  const currentHash = userRecord.password_hash;
+  const currentIterations = currentHash.startsWith("$pbkdf2-sha256$")
+    ? Number.parseInt(currentHash.split("$")[2] ?? "", 10)
+    : 0;
+  if (
+    currentHash.startsWith("$argon2") ||
+    (currentHash.startsWith("$pbkdf2-sha256$") &&
+      currentIterations !== 100_000)
+  ) {
+    try {
+      const upgradedHash = await hashPassword(parsed.data.password);
+      await database(context.env).execute(sql`
+        update public.users
+        set password_hash=${upgradedHash},updated_at=now()
+        where id=${userRecord.id}::uuid and password_hash=${currentHash}
+      `);
+      userRecord.password_hash = upgradedHash;
+    } catch {
+      // A rehash failure must not reject a password that was already verified.
+    }
   }
   if (!userRecord.email_verified_at) {
     throw new AppError(
