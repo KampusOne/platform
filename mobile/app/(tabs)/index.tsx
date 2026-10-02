@@ -60,7 +60,7 @@ type Home = {
   streak_days?: number | null;
 };
 
-const HOME_CACHE_VERSION = "v2";
+const HOME_CACHE_VERSION = "v3";
 
 function normalizeHome(input: Home | null | undefined): Home {
   const source =
