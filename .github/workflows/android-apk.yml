@@ -1,6 +1,11 @@
 name: Build Android test APK
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/android-apk.yml"
   workflow_run:
     workflows: ["Deploy verified Vercel surfaces"]
     types: [completed]
@@ -13,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   apk:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository && (github.event.workflow_run.event != 'status' || startsWith(github.event.workflow_run.display_title, 'Verify published Vercel release ')))
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository && (github.event.workflow_run.event != 'status' || startsWith(github.event.workflow_run.display_title, 'Verify published Vercel release ')))
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 45
