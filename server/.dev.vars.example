@@ -8,6 +8,8 @@ OTP_PEPPER=replace-with-at-least-24-random-characters
 RESEND_API_KEY=re_replace_me
 RESEND_FROM_EMAIL=KampusOne <hello@kampusone.app>
 RESEND_REPLY_TO=support@kampusone.app
+# Required for admin email broadcasts and delivery-event verification.
+RESEND_WEBHOOK_SECRET=whsec_replace_me
 
 # Fresh databases only: a verified account at this address may claim the first
 # platform-admin role. Leave unset when an operator role already exists.
