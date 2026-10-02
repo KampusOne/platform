@@ -344,9 +344,6 @@ export function MessageVoice({
               <Waveform recording={!paused} />
               <Text accessibilityLiveRegion="polite" style={styles.recordingTime}>{formatDuration(state.durationMillis / 1000)}</Text>
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel={paused ? "Resume recording" : "Pause recording"} disabled={busy} onPress={() => void togglePause()} style={styles.recordControl}>
-              <Ionicons name={paused ? "play" : "pause"} size={18} color="#FFFFFF" />
-            </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="Stop recording" disabled={busy} onPress={() => void finishRecording()} style={styles.stopButton}>
               <Ionicons name="stop" size={17} color="#FFFFFF" />
             </Pressable>
