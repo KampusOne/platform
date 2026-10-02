@@ -245,7 +245,7 @@ export default function TabLayout() {
     <Tabs
       initialRouteName="index"
       key={user?.id ?? "anonymous"}
-      backBehavior="fullHistory"
+      backBehavior="history"
       tabBar={(props) => <KampusTabBar {...props} />}
       screenOptions={{
         animation: reducedMotion ? "none" : "fade",

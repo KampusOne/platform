@@ -1,104 +1,102 @@
-import { Component, type ErrorInfo, type ReactNode, useEffect } from "react";
-import { Platform, SafeAreaView, StyleSheet } from "react-native";
-import { router } from "expo-router";
+import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { router, usePathname } from "expo-router";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
-import { useStartup } from "@/src/lib/startup";
 
-const REFRESH_RECOVERY_KEY = "kampusone.refresh-recovery";
-const REFRESH_RECOVERY_WINDOW_MS = 60_000;
+type BoundaryProps = {
+  children: ReactNode;
+  resetKey: string;
+};
 
-function isHardRefresh(): boolean {
-  if (Platform.OS !== "web" || typeof performance === "undefined") return false;
-  const [navigation] = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
-  return navigation?.type === "reload";
-}
+type BoundaryState = {
+  failed: boolean;
+};
 
-function tryRefreshRecovery(): boolean {
-  if (
-    Platform.OS !== "web" ||
-    typeof window === "undefined" ||
-    typeof sessionStorage === "undefined" ||
-    !isHardRefresh()
-  )
-    return false;
+class RouteErrorBoundary extends Component<BoundaryProps, BoundaryState> {
+  state: BoundaryState = { failed: false };
 
-  try {
-    const lastAttempt = Number(sessionStorage.getItem(REFRESH_RECOVERY_KEY) ?? 0);
-    const now = Date.now();
-    if (Number.isFinite(lastAttempt) && now - lastAttempt < REFRESH_RECOVERY_WINDOW_MS)
-      return false;
-
-    sessionStorage.setItem(REFRESH_RECOVERY_KEY, String(now));
-    // A hard reload can land between two Vercel/Expo route-bundle versions.
-    // Re-request the document once so the HTML and hashed route chunks agree.
-    window.location.reload();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export class AppErrorBoundary extends Component<
-  { children: ReactNode },
-  { failed: boolean; refreshing: boolean }
-> {
-  state = { failed: false, refreshing: false };
-
-  static getDerivedStateFromError() {
+  static getDerivedStateFromError(): BoundaryState {
     return { failed: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("kampusone.ui.crash", {
+      route: this.props.resetKey,
       message: error.message,
       stack: error.stack,
       componentStack: info.componentStack,
     });
+  }
 
-    if (tryRefreshRecovery()) {
-      this.setState({ refreshing: true });
+  componentDidUpdate(previous: BoundaryProps) {
+    if (this.state.failed && previous.resetKey !== this.props.resetKey) {
+      this.setState({ failed: false });
     }
   }
 
-  private recover = () => {
-    this.setState({ failed: false, refreshing: false }, () => {
-      if (router.canGoBack()) {
-        router.back();
-        return;
-      }
-      router.replace("/");
-    });
+  private retry = () => {
+    this.setState({ failed: false });
+  };
+
+  private goHome = () => {
+    router.replace("/(tabs)");
   };
 
   render() {
     if (!this.state.failed) return this.props.children;
-    return <SilentRecovery recover={this.recover} refreshing={this.state.refreshing} />;
+    return <RouteErrorRecovery onHome={this.goHome} onRetry={this.retry} />;
   }
 }
 
-function SilentRecovery({
-  recover,
-  refreshing,
+/**
+ * Keep render failures isolated to the route that caused them.
+ * Recovery must never call router.back(): doing that from a global boundary
+ * mutates the same history that Android/Expo Router is already unwinding and
+ * can turn one render exception into repeated failures on unrelated screens.
+ */
+export function AppErrorBoundary({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  return (
+    <RouteErrorBoundary resetKey={pathname}>
+      {children}
+    </RouteErrorBoundary>
+  );
+}
+
+function RouteErrorRecovery({
+  onHome,
+  onRetry,
 }: {
-  recover: () => void;
-  refreshing: boolean;
+  onHome: () => void;
+  onRetry: () => void;
 }) {
   const { styles } = useThemeStyles(createStyles);
-  const { markHomeReady } = useStartup();
-
-  useEffect(() => {
-    markHomeReady();
-    if (refreshing) return;
-    const timer = setTimeout(recover, 0);
-    return () => clearTimeout(timer);
-  }, [markHomeReady, recover, refreshing]);
 
   return (
-    <SafeAreaView
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={styles.safe}
-    />
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.recovery}>
+        <Text accessibilityRole="header" style={styles.title}>
+          We couldn’t open this screen
+        </Text>
+        <Text style={styles.message}>
+          Retry this screen, or return home without changing your back history.
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onRetry}
+          style={styles.primary}
+        >
+          <Text style={styles.primaryText}>Retry</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onHome}
+          style={styles.secondary}
+        >
+          <Text style={styles.secondaryText}>Go home</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -107,5 +105,53 @@ const createStyles = (theme: Theme) =>
     safe: {
       backgroundColor: theme.canvas,
       flex: 1,
+    },
+    recovery: {
+      alignItems: "center",
+      flex: 1,
+      justifyContent: "center",
+      paddingHorizontal: 28,
+    },
+    title: {
+      color: theme.text,
+      fontFamily: theme.font.bold,
+      fontSize: 20,
+      textAlign: "center",
+    },
+    message: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 14,
+      lineHeight: 21,
+      marginTop: 8,
+      maxWidth: 360,
+      textAlign: "center",
+    },
+    primary: {
+      alignItems: "center",
+      backgroundColor: theme.deepBrand,
+      borderRadius: 14,
+      justifyContent: "center",
+      marginTop: 20,
+      minHeight: 50,
+      minWidth: 150,
+      paddingHorizontal: 24,
+    },
+    primaryText: {
+      color: "#FFFFFF",
+      fontFamily: theme.font.semibold,
+      fontSize: 14,
+    },
+    secondary: {
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 8,
+      minHeight: 44,
+      paddingHorizontal: 20,
+    },
+    secondaryText: {
+      color: theme.accentText,
+      fontFamily: theme.font.semibold,
+      fontSize: 13,
     },
   });
