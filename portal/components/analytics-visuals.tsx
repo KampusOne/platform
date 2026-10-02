@@ -59,12 +59,12 @@ export function DonutBreakdown({
   const values = rows.filter((row) => Number.isFinite(row.value) && row.value > 0);
   const total = values.reduce((sum, row) => sum + row.value, 0);
   if (!total) return null;
-  let offset = 25;
   const segments = values.map((row, index) => {
     const percent = (row.value / total) * 100;
-    const item = { ...row, percent, offset, index };
-    offset -= percent;
-    return item;
+    const priorPercent = values
+      .slice(0, index)
+      .reduce((sum, previous) => sum + (previous.value / total) * 100, 0);
+    return { ...row, percent, offset: 25 - priorPercent, index };
   });
   return (
     <section className="analytics-visual-card">
