@@ -68,6 +68,13 @@ async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
       "This conversation file is unavailable.",
     );
   }
+  if(media.kind==='kyc'){
+    const trusted=firstRow(await database(env).execute<{institution_id:string}>(sql`select i.institution_id from app_private.trusted_vendor_intakes t join app_private.trusted_vendor_invites i on i.id=t.invite_id where t.document_media_id=${media.id}::uuid limit 1`));
+    if(trusted){
+      try{const scope=await resolveAdminScope(env,user,trusted.institution_id,'agents.review');if(scope===null||scope===trusted.institution_id)return;}
+      catch(error){if(!(error instanceof AppError)||error.status!==403)throw error;}
+    }
+  }
   const permission=media.kind==='kyc'?'agents.verify':media.kind==='support'?'support.view':'content.view';
   const access=await adminAccess(env,user);
   if(access.permissions.includes(permission)){
