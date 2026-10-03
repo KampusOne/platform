@@ -19,6 +19,11 @@ import { recordPostView } from "@/src/lib/post-views";
 
 const categories = ["All", "Update", "Event", "Sports", "Opportunity", "Emergency"] as const;
 const emptyFeedIllustration = require("@/assets/illustrations/feed-empty-v2.png");
+function safePosts(page: FeedPage | null | undefined): SocialFeedPost[] {
+  return Array.isArray(page?.posts)
+    ? page.posts.filter((post) => Boolean(post && typeof post.id === "string"))
+    : [];
+}
 function FeedEmptyState({ filtered }: { filtered: boolean }) {
   const { styles } = useThemeStyles(createStyles);
   return <View style={styles.emptyState}><Image accessible={false} resizeMode="contain" source={emptyFeedIllustration} style={styles.emptyIllustration} /><Text style={styles.emptyTitle}>{filtered ? "No matching posts" : "No posts here yet"}</Text><Text style={styles.emptyBody}>{filtered ? "Try another search or choose a different update type." : "Student posts, campus updates and conversations will appear here."}</Text></View>;
@@ -69,7 +74,7 @@ export default function FeedScreen() {
       if (!token.isViewable || !post?.id) continue;
       const hasVideo =
         post.media?.length === 1
-          ? Boolean(post.media[0]?.type.startsWith("video/"))
+          ? Boolean(post.media[0]?.type?.startsWith("video/"))
           : Boolean(post.image_url && (post.media_type === "video" || post.media_type?.startsWith("video/")));
       if (!nextVideoId && hasVideo) nextVideoId = post.id;
       if (viewerId) {
@@ -118,7 +123,7 @@ export default function FeedScreen() {
     const newScope = loadedScope.current !== scope;
     const cached = !refresh ? peekApiCache<FeedPage>(path) : undefined;
     if (newScope) {
-      setPosts(cached?.posts.filter((post) => !wasPostDeleted(post.id)) ?? []);
+      setPosts(safePosts(cached).filter((post) => !wasPostDeleted(post.id)));
       setCursor(cached?.nextCursor ?? null);
     }
     if (refresh) setRefreshing(true); else if (newScope) setLoading(!cached);
@@ -126,7 +131,7 @@ export default function FeedScreen() {
     try {
       const response = await api<FeedPage>(path, { timeoutMs: 15_000, cache: refresh ? "reload" : "default" });
       if (version === loadVersion.current) {
-        const incoming = response.posts.filter((post) => !wasPostDeleted(post.id));
+        const incoming = safePosts(response).filter((post) => !wasPostDeleted(post.id));
         // Returning from a conversation refreshes visible data without discarding loaded pages.
         setPosts((current) => newScope || refresh ? mergeById([], incoming) : mergeById(incoming, current.filter((post) => !incoming.some((fresh) => fresh.id === post.id))).filter((post) => !wasPostDeleted(post.id)));
         if (newScope || refresh) setCursor(response.nextCursor ?? null);
@@ -151,7 +156,7 @@ export default function FeedScreen() {
     const version = loadVersion.current;
     try {
       const response = await api<FeedPage>(`${path}&cursor=${encodeURIComponent(cursor)}`, { timeoutMs: 15_000 });
-      if (version === loadVersion.current) { setPosts((items) => mergeById(items, response.posts).filter((post) => !wasPostDeleted(post.id))); setCursor(response.nextCursor ?? null); setError(""); }
+      if (version === loadVersion.current) { setPosts((items) => mergeById(items, safePosts(response)).filter((post) => !wasPostDeleted(post.id))); setCursor(response.nextCursor ?? null); setError(""); }
     } catch (caught) { if (version === loadVersion.current) setFeedback(caught instanceof ApiError ? caught.message : "Older posts could not load. Tap Load more to retry."); }
     finally { if (version === loadVersion.current) { paging.current = false; setLoadingMore(false); } }
   }

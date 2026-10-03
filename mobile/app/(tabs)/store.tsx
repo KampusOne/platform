@@ -164,8 +164,27 @@ export default function StoreScreen() {
     try {
       const data = await api<CatalogResponse>("/v1/student/store");
       const mode = data.catalogueMode ?? "LIVE";
-      setProducts(data.products);
-      setZones(data.deliveryZones);
+      setProducts(
+        (Array.isArray(data?.products) ? data.products : [])
+          .filter((product) => Boolean(product && typeof product.id === "string"))
+          .map((product) => ({
+            ...product,
+            name: typeof product.name === "string" ? product.name : "Product",
+            description:
+              typeof product.description === "string" ? product.description : "",
+            category:
+              typeof product.category === "string" ? product.category : "Other",
+            vendor_name:
+              typeof product.vendor_name === "string"
+                ? product.vendor_name
+                : "Vendor",
+          })),
+      );
+      setZones(
+        (Array.isArray(data?.deliveryZones) ? data.deliveryZones : []).filter(
+          (zone) => Boolean(zone && typeof zone.id === "string"),
+        ),
+      );
       setRiderDeliveryEnabled(data.riderDeliveryEnabled === true);
       setCatalogueMode(mode);
       setCheckoutEnabled(data.checkoutEnabled ?? mode === "LIVE");
@@ -247,7 +266,7 @@ export default function StoreScreen() {
     ? fulfilmentMode
     : fulfilmentModes[0];
   const deliveryFee =
-    effectiveMode === "RIDER" ? Number(reviewedQuote?.quote.pricing.fareKobo ?? 0) : 0;
+    effectiveMode === "RIDER" ? Number(reviewedQuote?.quote?.pricing?.fareKobo ?? 0) : 0;
   const total = subtotal + deliveryFee;
   const checkoutReady =
     !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone);

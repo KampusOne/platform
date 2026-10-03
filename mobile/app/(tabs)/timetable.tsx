@@ -70,8 +70,16 @@ export default function TimetableScreen() {
   const load = useCallback(async () => {
     try {
       setError("");
+      const response = await api<{ entries: Entry[] }>("/v1/student/timetable");
       setEntries(
-        (await api<{ entries: Entry[] }>("/v1/student/timetable")).entries,
+        (Array.isArray(response?.entries) ? response.entries : []).filter(
+          (entry) =>
+            Boolean(entry) &&
+            typeof entry.id === "string" &&
+            typeof entry.title === "string" &&
+            typeof entry.starts_at === "string" &&
+            typeof entry.ends_at === "string",
+        ),
       );
     } catch (caught) {
       setError(

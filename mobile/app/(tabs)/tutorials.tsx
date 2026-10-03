@@ -662,21 +662,58 @@ export default function TutorialsScreen() {
         listings: Listing[];
         resources?: Resource[];
       }>("/v1/student/tutorials");
+      const safeListings = Array.isArray(catalogue?.listings)
+        ? catalogue.listings
+        : [];
       setListings(
-        catalogue.listings
-          .filter((listing) => !listing.is_demo)
+        safeListings
+          .filter(
+            (listing) =>
+              Boolean(listing) &&
+              typeof listing.id === "string" &&
+              !listing.is_demo,
+          )
           .map((listing) => ({
             ...listing,
+            availability: Array.isArray(listing.availability)
+              ? listing.availability.filter(
+                  (window) =>
+                    Boolean(window) &&
+                    typeof window.id === "string" &&
+                    typeof window.starts_at === "string",
+                )
+              : [],
             completed_sessions: Number(listing.completed_sessions ?? 0),
+            course_code:
+              typeof listing.course_code === "string"
+                ? listing.course_code
+                : "Tutorial",
+            description:
+              typeof listing.description === "string"
+                ? listing.description
+                : "",
+            format:
+              typeof listing.format === "string" ? listing.format : "IN_PERSON",
             is_demo: Boolean(listing.is_demo),
             location_text: listing.location_text ?? null,
             rating: Number(listing.rating ?? 0),
             review_count: Number(listing.review_count ?? 0),
+            title:
+              typeof listing.title === "string" ? listing.title : "Tutorial",
+            tutor_name:
+              typeof listing.tutor_name === "string"
+                ? listing.tutor_name
+                : "KampusOne tutor",
             tutor_verified: Boolean(listing.tutor_verified),
           })),
       );
       setResources(
-        (catalogue.resources ?? []).filter((resource) => !resource.is_demo),
+        (Array.isArray(catalogue?.resources) ? catalogue.resources : []).filter(
+          (resource) =>
+            Boolean(resource) &&
+            typeof resource.id === "string" &&
+            !resource.is_demo,
+        ),
       );
     } catch (caught) {
       setLoadError(

@@ -180,13 +180,19 @@ export default function ProfileScreen() {
       setDataNotice("");
       const [gpa, bought, feed] = await refreshProfileResources<ProfilePayload, Academic, Purchases, Feed>(api, (result) => {
         if (version !== loadVersion.current) return;
-        if (result.status === "fulfilled") setProfile(result.value.profile);
+        if (result.status === "fulfilled") setProfile(result.value?.profile ?? null);
         else setError(profileFailureMessage(result.reason));
         setLoading(false);
       });
       if (version !== loadVersion.current) return;
       if (gpa.status === "fulfilled") {
-        setAcademics(gpa.value);
+        setAcademics({
+          summary:
+            gpa.value?.summary && typeof gpa.value.summary === "object"
+              ? gpa.value.summary
+              : null,
+          terms: Array.isArray(gpa.value?.terms) ? gpa.value.terms : [],
+        });
         setAcademicState("ready");
       } else {
         setAcademicState((current) =>
@@ -194,7 +200,45 @@ export default function ProfileScreen() {
         );
       }
       if (bought.status === "fulfilled") {
-        setPurchases(bought.value);
+        const tutorialBookings = Array.isArray(bought.value?.tutorialBookings)
+          ? bought.value.tutorialBookings
+              .filter((booking) => Boolean(booking && typeof booking.id === "string"))
+              .map((booking) => ({
+                ...booking,
+                course_code:
+                  typeof booking.course_code === "string"
+                    ? booking.course_code
+                    : "Tutorial",
+                tutor_name:
+                  typeof booking.tutor_name === "string"
+                    ? booking.tutor_name
+                    : "Tutor",
+                status:
+                  typeof booking.status === "string" ? booking.status : "UNKNOWN",
+                created_at:
+                  typeof booking.created_at === "string"
+                    ? booking.created_at
+                    : new Date(0).toISOString(),
+              }))
+          : [];
+        const orders = Array.isArray(bought.value?.orders)
+          ? bought.value.orders
+              .filter((order) => Boolean(order && typeof order.id === "string"))
+              .map((order) => ({
+                ...order,
+                vendor_name:
+                  typeof order.vendor_name === "string"
+                    ? order.vendor_name
+                    : "Vendor",
+                status:
+                  typeof order.status === "string" ? order.status : "UNKNOWN",
+                created_at:
+                  typeof order.created_at === "string"
+                    ? order.created_at
+                    : new Date(0).toISOString(),
+              }))
+          : [];
+        setPurchases({ tutorialBookings, orders });
         setPurchasesState("ready");
       } else {
         setPurchasesState((current) =>
@@ -202,7 +246,8 @@ export default function ProfileScreen() {
         );
       }
       if (feed.status === "fulfilled") {
-        setBookmarks(feed.value.posts.filter((post) => post.bookmarked));
+        const posts = Array.isArray(feed.value?.posts) ? feed.value.posts : [];
+        setBookmarks(posts.filter((post) => post?.bookmarked));
         setFeedState("ready");
       } else {
         setFeedState((current) =>
@@ -242,7 +287,7 @@ export default function ProfileScreen() {
         { cache: refresh ? "reload" : "default", timeoutMs: 15_000 },
       );
       if (version !== repostLoadVersion.current) return;
-      setReposts(page.posts);
+      setReposts(Array.isArray(page?.posts) ? page.posts : []);
       setRepostCursor(page.nextCursor ?? null);
       repostLoaded.current = true;
       setRepostState("ready");
@@ -301,8 +346,10 @@ export default function ProfileScreen() {
     return () => { active = false; };
   }, [user?.id]);
 
-  const name =
+  const rawName =
     profile?.display_name ?? sessionProfile?.display_name ?? "Student";
+  const name =
+    typeof rawName === "string" && rawName.trim() ? rawName : "Student";
   const initials = name
     .split(" ")
     .map((part) => part[0])
@@ -372,7 +419,9 @@ export default function ProfileScreen() {
       if (version !== repostLoadVersion.current) return;
       setReposts((current) => [
         ...current,
-        ...page.posts.filter((post) => !current.some((item) => item.id === post.id)),
+        ...(Array.isArray(page?.posts) ? page.posts : []).filter(
+          (post) => post && typeof post.id === "string" && !current.some((item) => item.id === post.id),
+        ),
       ]);
       setRepostCursor(page.nextCursor ?? null);
       setRepostError("");

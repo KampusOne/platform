@@ -56,6 +56,28 @@ type GradePlannerData = {
   gradingScale: Record<string, number> | null;
 };
 
+function normalizeGpaData(value: GpaData | null | undefined): GpaData {
+  const terms = Array.isArray(value?.terms)
+    ? value.terms
+        .filter((term) => Boolean(term && typeof term.id === "string"))
+        .map((term) => ({
+          ...term,
+          results: Array.isArray(term.results)
+            ? term.results.filter(
+                (result) =>
+                  Boolean(result) &&
+                  typeof result.courseCode === "string" &&
+                  typeof result.courseTitle === "string" &&
+                  typeof result.grade === "string",
+              )
+            : [],
+        }))
+    : [];
+  const summary =
+    value?.summary && typeof value.summary === "object" ? value.summary : null;
+  return { terms, summary };
+}
+
 export default function GpaScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
@@ -85,7 +107,7 @@ export default function GpaScreen() {
   const load = useCallback(async () => {
     try {
       setError("");
-      setData(await api<GpaData>("/v1/student/gpa"));
+      setData(normalizeGpaData(await api<GpaData>("/v1/student/gpa")));
       try {
         const grading = await api<{
           gradingScale: Record<string, number> | null;
@@ -206,12 +228,15 @@ export default function GpaScreen() {
     try {
       const planner = await api<GradePlannerData>("/v1/learning/courses");
       const scale = planner.gradingScale ?? gradingScale;
-      const candidates = (planner.courses ?? []).filter((course) => {
-        const numericCourseUnits = Number(course.units);
+      const candidates = (Array.isArray(planner?.courses) ? planner.courses : []).filter((course) => {
+        const numericCourseUnits = Number(course?.units);
         return (
+          typeof course?.course_code === "string" &&
           course.course_code.trim().length >= 2 &&
+          typeof course?.title === "string" &&
           course.title.trim().length > 0 &&
-          Boolean(course.grade?.trim()) &&
+          typeof course?.grade === "string" &&
+          Boolean(course.grade.trim()) &&
           Number.isFinite(numericCourseUnits) &&
           numericCourseUnits > 0
         );
