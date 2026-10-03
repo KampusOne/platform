@@ -16,6 +16,7 @@ import {
 } from "./agent-illustrations";
 import { AgentFaceCapture } from "./agent-face-capture";
 import { PhoneField, BirthDateField } from "./intake-fields";
+import { normalizeIntakePhone } from "@/lib/intake-phone";
 
 type Application = {
   id: string;
@@ -188,14 +189,20 @@ export function AgentApplication() {
           department: profile.department_name ?? "",
           matricNumber: profile.matriculation_number ?? "",
         };
-        setData({ ...defaults, ...draft.draft?.values });
+        const restored = { ...defaults, ...draft.draft?.values };
+        const contacts = {
+          phoneE164: normalizeIntakePhone(restored.phoneE164),
+          whatsappPhone: normalizeIntakePhone(restored.whatsappPhone),
+          emergencyContactPhone: normalizeIntakePhone(restored.emergencyContactPhone),
+          guardianPhone: normalizeIntakePhone(restored.guardianPhone),
+        };
+        setData({ ...restored, ...contacts });
         if (draft.draft) {
           setStep(Math.min(4, Math.max(0, draft.draft.step)));
           setSavedAt(draft.draft.updated_at);
           setNotice("Your saved application is ready to continue.");
           setWhatsappSame(
-            !draft.draft.values.whatsappPhone ||
-              draft.draft.values.whatsappPhone === draft.draft.values.phoneE164,
+            !contacts.whatsappPhone || contacts.whatsappPhone === contacts.phoneE164,
           );
         }
         setError("");
@@ -338,9 +345,9 @@ export function AgentApplication() {
         errors.birthDate =
           "Check your date of birth. Applicants must be at least 16.";
       if (!phonePattern.test(data.phoneE164))
-        errors.phoneE164 = "Use a country code, for example +2348012345678.";
+        errors.phoneE164 = "Enter a valid phone number.";
       if (!whatsappSame && !phonePattern.test(data.whatsappPhone))
-        errors.whatsappPhone = "Use a valid WhatsApp number with country code.";
+        errors.whatsappPhone = "Enter a valid WhatsApp number.";
       requireField(
         "address",
         10,
@@ -405,12 +412,12 @@ export function AgentApplication() {
         "Enter an emergency contact name.",
       );
       if (!phonePattern.test(data.emergencyContactPhone))
-        errors.emergencyContactPhone = "Use a phone number with country code.";
+        errors.emergencyContactPhone = "Enter a valid emergency contact number.";
       if (ageOnDate(data.birthDate) < 18) {
         requireField("guardianName", 2, "Enter a guardian name.");
         requireField("guardianRelationship", 2, "Describe your relationship.");
         if (!phonePattern.test(data.guardianPhone))
-          errors.guardianPhone = "Use a phone number with country code.";
+          errors.guardianPhone = "Enter a valid guardian phone number.";
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.guardianEmail))
           errors.guardianEmail = "Enter a valid guardian email.";
       }

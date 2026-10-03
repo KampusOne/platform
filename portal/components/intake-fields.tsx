@@ -1,15 +1,10 @@
 "use client";
 
 import { useState } from "react";
-
-const countries = [
-  { code: "+234", name: "Nigeria" },
-  { code: "+233", name: "Ghana" },
-  { code: "+229", name: "Benin" },
-  { code: "+237", name: "Cameroon" },
-  { code: "+44", name: "United Kingdom" },
-  { code: "+1", name: "United States / Canada" },
-] as const;
+import {
+  intakePhoneCountries as countries,
+  normalizeIntakePhone,
+} from "@/lib/intake-phone";
 
 export function PhoneField({
   id,
@@ -24,11 +19,11 @@ export function PhoneField({
   error?: string;
   onChange: (value: string) => void;
 }) {
-  const selected =
-    countries.find(({ code }) => value.startsWith(code)) ?? countries[0];
-  const national = value.startsWith(selected.code)
-    ? value.slice(selected.code.length)
-    : value.replace(/^0/, "");
+  const canonical = normalizeIntakePhone(value);
+  const selected = canonical
+    ? countries.find(({ code }) => canonical.startsWith(code))
+    : countries[0];
+  const national = selected ? canonical.slice(selected.code.length) : canonical;
 
   return (
     <label htmlFor={id}>
@@ -36,11 +31,16 @@ export function PhoneField({
       <span className="phone-input">
         <select
           aria-label={`${label} country code`}
-          value={selected.code}
+          autoComplete="tel-country-code"
+          value={selected?.code ?? ""}
           onChange={(event) =>
-            onChange(event.target.value + national.replace(/^0/, ""))
+            onChange(
+              normalizeIntakePhone(selected ? national : "", event.target.value) ||
+                event.target.value,
+            )
           }
         >
+          {!selected && <option value="" disabled>International</option>}
           {countries.map(({ code, name }) => (
             <option
               key={code}
@@ -55,18 +55,18 @@ export function PhoneField({
         <input
           id={id}
           type="tel"
-          inputMode="numeric"
-          autoComplete="tel-national"
+          inputMode="tel"
+          autoComplete={selected ? "tel-national" : "tel"}
           value={national}
           placeholder={
-            selected.code === "+234" ? "801 234 5678" : "Phone number"
+            selected?.code === "+234" ? "801 234 5678" : "Phone number"
           }
-          maxLength={14}
+          maxLength={40}
           aria-invalid={Boolean(error)}
           onChange={(event) =>
             onChange(
-              selected.code +
-                event.target.value.replace(/\D/g, "").replace(/^0/, ""),
+              normalizeIntakePhone(event.target.value, selected?.code ?? "+234") ||
+                selected?.code || "",
             )
           }
         />

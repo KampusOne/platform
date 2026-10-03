@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { usePortalAuth } from "./auth-provider";
 import { portalApi } from "@/lib/api";
 import { PhoneField, BirthDateField } from "./intake-fields";
+import { normalizeIntakePhone } from "@/lib/intake-phone";
 import { AgentApplicationIllustration } from "./agent-illustrations";
 import { AgentIntakeShell } from "./agent-intake-shell";
 import {
@@ -153,6 +154,8 @@ function TrustedVendorForm() {
       setDraft({
         ...blank,
         ...restored,
+        phone: normalizeIntakePhone(restored.phone ?? ""),
+        whatsapp: normalizeIntakePhone(restored.whatsapp ?? ""),
         operations: { ...emptyOperations, ...restored.operations },
         request: restored.request || crypto.randomUUID(),
       });
