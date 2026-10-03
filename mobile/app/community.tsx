@@ -51,6 +51,49 @@ type Detail = {
   }[];
   isRep: boolean;
 };
+function normalizeCommunityDetail(value: unknown, fallbackId: string): Detail {
+  const raw=value&&typeof value==="object"?value as Record<string,unknown>:{};
+  const c=raw.community&&typeof raw.community==="object"?raw.community as Record<string,unknown>:{};
+  const electionRaw=raw.election&&typeof raw.election==="object"?raw.election as Record<string,unknown>:null;
+  const text=(input:unknown,fallback="")=>typeof input==="string"?input:fallback;
+  return {
+    community:{
+      id:text(c.id,fallbackId),
+      name:text(c.name,"Class community"),
+      rep_name:typeof c.rep_name==="string"?c.rep_name:null,
+      joined_at:typeof c.joined_at==="string"?c.joined_at:null,
+      verified_at:typeof c.verified_at==="string"?c.verified_at:null,
+      archived_at:typeof c.archived_at==="string"?c.archived_at:null,
+    },
+    election:electionRaw&&typeof electionRaw.id==="string"?{
+      id:electionRaw.id,
+      is_open:electionRaw.is_open===true,
+      status:text(electionRaw.status,"CLOSED"),
+      starts_at:text(electionRaw.starts_at),
+      ends_at:text(electionRaw.ends_at),
+      my_vote:typeof electionRaw.my_vote==="string"?electionRaw.my_vote:null,
+    }:null,
+    candidates:Array.isArray(raw.candidates)?raw.candidates.flatMap(entry=>{
+      if(!entry||typeof entry!=="object")return[];
+      const item=entry as Record<string,unknown>;
+      if(typeof item.user_id!=="string")return[];
+      return [{user_id:item.user_id,display_name:text(item.display_name,"Student"),username:text(item.username),votes:Number.isFinite(Number(item.votes))?Math.max(0,Number(item.votes)):0}];
+    }):[],
+    announcements:Array.isArray(raw.announcements)?raw.announcements.flatMap(entry=>{
+      if(!entry||typeof entry!=="object")return[];
+      const item=entry as Record<string,unknown>;
+      if(typeof item.id!=="string")return[];
+      return [{id:item.id,title:text(item.title,"Announcement"),body:text(item.body),created_at:text(item.created_at)}];
+    }):[],
+    transfers:Array.isArray(raw.transfers)?raw.transfers.flatMap(entry=>{
+      if(!entry||typeof entry!=="object")return[];
+      const item=entry as Record<string,unknown>;
+      if(typeof item.id!=="string")return[];
+      return [{id:item.id,to_user_id:text(item.to_user_id),status:text(item.status,"PENDING"),username:text(item.username)}];
+    }):[],
+    isRep:raw.isRep===true,
+  };
+}
 export default function Community() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth(),
@@ -64,7 +107,7 @@ export default function Community() {
     [requestKey, setRequestKey] = useState(Crypto.randomUUID());
   const load = useCallback(async () => {
     try {
-      setData(await api<Detail>("/v1/communities/" + id));
+      setData(normalizeCommunityDetail(await api<Detail>("/v1/communities/" + id),typeof id==="string"?id:""));
     } catch (e) {
       toast(e instanceof Error ? e.message : "Could not open community");
     }

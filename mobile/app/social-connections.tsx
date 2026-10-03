@@ -21,6 +21,25 @@ type ConnectionPerson={
   verified:boolean;
 };
 type ConnectionsPage={people:ConnectionPerson[];nextCursor?:string|null};
+function normalizePeople(value: unknown): ConnectionPerson[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const raw = entry as Record<string, unknown>;
+    if (typeof raw.user_id !== "string") return [];
+    const nullable = (input: unknown) => typeof input === "string" ? input : null;
+    return [{
+      user_id: raw.user_id,
+      display_name: typeof raw.display_name === "string" && raw.display_name.trim() ? raw.display_name : "Student",
+      username: nullable(raw.username),
+      profile_image_url: nullable(raw.profile_image_url),
+      current_level: typeof raw.current_level === "number" || typeof raw.current_level === "string" ? raw.current_level : null,
+      university_name: nullable(raw.university_name),
+      department_name: nullable(raw.department_name),
+      verified: raw.verified === true,
+    }];
+  });
+}
 
 export default function SocialConnectionsScreen(){
   const {id,kind}=useLocalSearchParams<{id?:string;kind?:string}>();
@@ -62,8 +81,8 @@ export default function SocialConnectionsScreen(){
       if(!target)throw new Error("This student link is not valid.");
       const page=await api<ConnectionsPage>(endpoint());
       if(!mounted.current||request!==version.current)return;
-      setPeople(page.people);
-      setCursor(page.nextCursor??null);
+      setPeople(normalizePeople(page?.people));
+      setCursor(typeof page?.nextCursor==="string"?page.nextCursor:null);
       setLoadedScope(scope);
     }catch(caught){
       if(mounted.current&&request===version.current)setError(caught instanceof Error?caught.message:"This list could not load.");
@@ -86,8 +105,9 @@ export default function SocialConnectionsScreen(){
     try{
       const page=await api<ConnectionsPage>(endpoint(cursor));
       if(mounted.current&&request===version.current){
-        setPeople(current=>[...current,...page.people.filter(person=>!current.some(item=>item.user_id===person.user_id))]);
-        setCursor(page.nextCursor??null);
+        const incoming=normalizePeople(page?.people);
+        setPeople(current=>[...current,...incoming.filter(person=>!current.some(item=>item.user_id===person.user_id))]);
+        setCursor(typeof page?.nextCursor==="string"?page.nextCursor:null);
       }
     }catch(caught){
       if(mounted.current&&request===version.current)setError(caught instanceof Error?caught.message:"More people could not load.");

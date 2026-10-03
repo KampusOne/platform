@@ -22,6 +22,56 @@ import { shareItem } from "@/src/lib/share-content";
 type Person={can_block?:boolean;post_notifications_enabled?:boolean;cgpa?:number|string|null;user_id:string;display_name:string;username:string|null;biography:string|null;profile_image_url:string|null;cover_image_url:string|null;university_name:string|null;department_name:string|null;current_level:number|null;verified:boolean;can_view_reposts?:boolean;follower_count:number;following_count:number;post_count:number;followed:boolean;has_events:boolean};
 type PersonResponse={profile:Person;roles:{id:string;agent_type:"VENDOR"|"TUTOR"|"RIDER"}[];isOwner:boolean};
 type Page={posts:SocialFeedPost[];nextCursor?:string|null};
+function safeProfilePage(value: unknown): SocialFeedPost[] {
+  if (!value || typeof value !== "object") return [];
+  const posts = (value as Record<string, unknown>).posts;
+  return Array.isArray(posts)
+    ? posts.filter((post): post is SocialFeedPost =>
+        Boolean(post && typeof post === "object" && typeof (post as {id?:unknown}).id === "string"))
+    : [];
+}
+function normalizePersonResponse(value: unknown): PersonResponse | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (!raw.profile || typeof raw.profile !== "object") return null;
+  const p = raw.profile as Record<string, unknown>;
+  if (typeof p.user_id !== "string") return null;
+  const number = (input: unknown) => Number.isFinite(Number(input)) ? Number(input) : 0;
+  const nullable = (input: unknown) => typeof input === "string" ? input : null;
+  const roles = Array.isArray(raw.roles)
+    ? raw.roles.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const item = entry as Record<string, unknown>;
+        if (typeof item.id !== "string" || !["VENDOR","TUTOR","RIDER"].includes(String(item.agent_type))) return [];
+        return [{id:item.id,agent_type:item.agent_type as "VENDOR"|"TUTOR"|"RIDER"}];
+      })
+    : [];
+  return {
+    profile: {
+      user_id: p.user_id,
+      display_name: typeof p.display_name === "string" && p.display_name.trim() ? p.display_name : "Student",
+      username: nullable(p.username),
+      biography: nullable(p.biography),
+      profile_image_url: nullable(p.profile_image_url),
+      cover_image_url: nullable(p.cover_image_url),
+      university_name: nullable(p.university_name),
+      department_name: nullable(p.department_name),
+      current_level: Number.isFinite(Number(p.current_level)) ? Number(p.current_level) : null,
+      verified: p.verified === true,
+      follower_count: number(p.follower_count),
+      following_count: number(p.following_count),
+      post_count: number(p.post_count),
+      followed: p.followed === true,
+      has_events: p.has_events === true,
+      can_block: p.can_block !== false,
+      post_notifications_enabled: p.post_notifications_enabled === true,
+      can_view_reposts: p.can_view_reposts !== false,
+      cgpa: typeof p.cgpa === "number" || typeof p.cgpa === "string" ? p.cgpa : null,
+    },
+    roles,
+    isOwner: raw.isOwner === true,
+  };
+}
 export default function StudentProfile(){
   const {id}=useLocalSearchParams<{id?:string}>();const {user}=useAuth();const {theme}=useAppearance();const toast=useToast();
   const reducedMotion=useReducedMotionPreference(),followScale=useRef(new Animated.Value(1)).current;
@@ -45,10 +95,11 @@ export default function StudentProfile(){
       if(!target)throw new Error("This student link is not valid.");
       // Always revalidate the profile first. A block must beat any previously
       // cached profile/feed snapshot when this screen is opened again.
-      const person=await api<PersonResponse>(`/v1/people/${target}`,{cache:"reload"});
+      const person=normalizePersonResponse(await api<PersonResponse>(`/v1/people/${target}`,{cache:"reload"}));
+      if(!person)throw new Error("This profile returned incomplete data.");
       const page=await api<Page>(feedPath(),refresh?{cache:"reload"}:{});
       if(!mounted.current||current.current!==scope||request!==version.current)return;
-      setData(person);setPosts(page.posts);setCursor(page.nextCursor??null);setLoadedScope(scope);
+      setData(person);setPosts(safeProfilePage(page));setCursor(typeof page?.nextCursor==="string"?page.nextCursor:null);setLoadedScope(scope);
     }catch(e){
       if(mounted.current&&current.current===scope&&request===version.current){
         const blocked=e instanceof ApiError&&e.code==="BLOCKED_BY_USER";
@@ -62,10 +113,10 @@ export default function StudentProfile(){
   useEffect(()=>{setData(undefined);setPosts([]);setCursor(null);setLoadedScope("");setManualLink("");setBlockedByTarget(false);setFollowing(false);followLock.current=false;},[scope]);
   const person=loadedScope===scope?data?.profile:undefined;
   async function toggleFollow(){if(!person||data?.isOwner||followLock.current)return;followLock.current=true;setFollowing(true);try{const result=await api<{followed:boolean;follower_count:number}>(`/v1/people/${target}/follow`,{method:"PUT",body:JSON.stringify({follow:!person.followed})});if(mounted.current&&current.current===scope){setData(old=>old?{...old,profile:{...old.profile,...result}}:old);if(!reducedMotion){followScale.setValue(0.94);Animated.spring(followScale,{toValue:1,useNativeDriver:true,friction:6}).start();}}}catch(e){if(current.current===scope)toast(e instanceof Error?e.message:"Follow could not be updated.","error");}finally{followLock.current=false;if(mounted.current&&current.current===scope)setFollowing(false);}}
-  async function next(){if(!cursor||moreLock.current||loading)return;const request=version.current;moreLock.current=true;setMore(true);try{const page=await api<Page>(feedPath(cursor));if(mounted.current&&current.current===scope&&request===version.current){setPosts(old=>[...old,...page.posts.filter(p=>!old.some(o=>o.id===p.id))]);setCursor(page.nextCursor??null);}}catch(e){if(current.current===scope)toast(e instanceof Error?e.message:"Could not load more posts.","error");}finally{moreLock.current=false;if(mounted.current)setMore(false);}}
+  async function next(){if(!cursor||moreLock.current||loading)return;const request=version.current;moreLock.current=true;setMore(true);try{const page=await api<Page>(feedPath(cursor));if(mounted.current&&current.current===scope&&request===version.current){const incoming=safeProfilePage(page);setPosts(old=>[...old,...incoming.filter(p=>!old.some(o=>o.id===p.id))]);setCursor(typeof page?.nextCursor==="string"?page.nextCursor:null);}}catch(e){if(current.current===scope)toast(e instanceof Error?e.message:"Could not load more posts.","error");}finally{moreLock.current=false;if(mounted.current)setMore(false);}}
   async function bookmark(post:FeedPostData){try{await api(`/v1/student/feed/${post.id}/bookmark`,{method:post.bookmarked?"DELETE":"PUT"});if(current.current===scope)setPosts(rows=>rows.map(p=>p.id===post.id?{...p,bookmarked:!post.bookmarked}:p));}catch(e){toast(e instanceof Error?e.message:"Could not update saved posts.","error");}}
   async function share(post:FeedPostData){try{const result=await sharePostLink(post);if(current.current!==scope)return;if(result==="manual")setManualLink(postUrl(post.id));else if(result==="copied")toast("Post link copied","success");}catch{toast("The post link could not be shared.","error");}}
-  async function message(){if(messaging)return;setMessaging(true);try{const result=await api<{thread:{id:string}}>("/v1/messages/threads",{method:"POST",body:JSON.stringify({userId:target})});router.push({pathname:"/conversation",params:{id:result.thread.id}});}catch(error){toast(error instanceof Error?error.message:"Could not open messages.","error");}finally{setMessaging(false);}}
+  async function message(){if(messaging)return;setMessaging(true);try{const result=await api<{thread:{id:string}}>("/v1/messages/threads",{method:"POST",body:JSON.stringify({userId:target})});const threadId=result?.thread?.id;if(typeof threadId!=="string"||!threadId)throw new Error("The conversation could not be opened.");router.push({pathname:"/conversation",params:{id:threadId}});}catch(error){toast(error instanceof Error?error.message:"Could not open messages.","error");}finally{setMessaging(false);}}
   const label={fontFamily:theme.font.body,color:theme.text,fontSize:14};
   const button=(title:string,onPress:()=>void,disabled=false,selected=false)=><Pressable accessibilityRole="button" accessibilityState={{disabled,selected}} disabled={disabled} onPress={onPress} style={{paddingHorizontal:19,paddingVertical:11,borderRadius:22,backgroundColor:selected?"transparent":theme.deepBrand,borderWidth:1,borderColor:theme.deepBrand,opacity:disabled?0.5:1}}><Text style={{fontFamily:theme.font.semibold,color:selected?theme.accentText:"#FFFFFF",fontSize:13}}>{title}</Text></Pressable>;
   return <SafeAreaView edges={["top"]} style={{flex:1,backgroundColor:theme.canvas}}><View style={{flex:1,width:"100%",maxWidth:660,alignSelf:"center"}}>

@@ -38,6 +38,48 @@ type GpaData = {
 function emptyCourse(): Course {
   return { course_code: "", title: "", units: null, grade: null };
 }
+function normalizeCourses(value: unknown): Course[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const raw = entry as Record<string, unknown>;
+    return [{
+      course_code: typeof raw.course_code === "string" ? raw.course_code : "",
+      title: typeof raw.title === "string" ? raw.title : "",
+      units: typeof raw.units === "string" || typeof raw.units === "number" ? raw.units : null,
+      grade: typeof raw.grade === "string" ? raw.grade : null,
+    }];
+  });
+}
+function normalizeGpaTerms(value: unknown): GpaTerm[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const raw = entry as Record<string, unknown>;
+    if (typeof raw.id !== "string") return [];
+    const results = Array.isArray(raw.results)
+      ? raw.results.flatMap((result) => {
+          if (!result || typeof result !== "object") return [];
+          const row = result as Record<string, unknown>;
+          if (typeof row.courseCode !== "string" || typeof row.courseTitle !== "string" || typeof row.grade !== "string") return [];
+          return [{
+            courseCode: row.courseCode,
+            courseTitle: row.courseTitle,
+            units: typeof row.units === "string" || typeof row.units === "number" ? row.units : 0,
+            grade: row.grade,
+            gradePoint: typeof row.gradePoint === "string" || typeof row.gradePoint === "number" ? row.gradePoint : 0,
+          }];
+        })
+      : [];
+    return [{
+      id: raw.id,
+      session_label: typeof raw.session_label === "string" ? raw.session_label : "Session",
+      semester: Number.isFinite(Number(raw.semester)) ? Number(raw.semester) : 1,
+      level_code: typeof raw.level_code === "string" ? raw.level_code : "",
+      results,
+    }];
+  });
+}
 
 function saveErrorMessage(error: unknown) {
   if (!(error instanceof Error)) {
@@ -80,11 +122,11 @@ export default function CoursePlanner() {
         gradingScale: Record<string, number> | null;
         gradingScaleStatus?: string;
       }>("/v1/learning/courses");
-      setCourses(r.courses);
+      setCourses(normalizeCourses(r?.courses));
       setLoadedFromServer(true);
       setLoadFailed(false);
       setDirty(false);
-      setScale(r.gradingScale ?? null);
+      setScale(r?.gradingScale && typeof r.gradingScale === "object" ? r.gradingScale : null);
     } catch {
       setLoadedFromServer(false);
       setLoadFailed(true);
@@ -199,8 +241,8 @@ export default function CoursePlanner() {
 
     try {
       const response = await api<GpaData>("/v1/student/gpa");
-      const terms = (response.terms ?? []).filter(
-        (term) => (term.results ?? []).length > 0,
+      const terms = normalizeGpaTerms(response?.terms).filter(
+        (term) => term.results.length > 0,
       );
 
       if (!terms.length) {

@@ -23,6 +23,34 @@ type Purchase = {
   payment_status: string | null;
   payment_expires_at: string;
 };
+function normalizePurchases(value: unknown): Purchase[] {
+  if(!Array.isArray(value))return[];
+  return value.flatMap(entry=>{
+    if(!entry||typeof entry!=="object")return[];
+    const raw=entry as Record<string,unknown>;
+    if(typeof raw.id!=="string")return[];
+    const text=(input:unknown,fallback="")=>typeof input==="string"?input:fallback;
+    const nullable=(input:unknown)=>typeof input==="string"?input:null;
+    const number=(input:unknown)=>Number.isFinite(Number(input))?Number(input):0;
+    return [{
+      id:raw.id,
+      title:text(raw.title,"Learning material"),
+      status:text(raw.status,"UNKNOWN"),
+      access_status:text(raw.access_status,"LOCKED"),
+      amount_kobo:number(raw.amount_kobo),
+      price_kobo:number(raw.price_kobo),
+      resource_id:text(raw.resource_id),
+      media_object_id:text(raw.media_object_id),
+      can_access_resource:raw.can_access_resource===true,
+      tutor_user_id:text(raw.tutor_user_id),
+      tutor_name:text(raw.tutor_name,"Tutor"),
+      release_at:nullable(raw.release_at),
+      reference:nullable(raw.reference),
+      payment_status:nullable(raw.payment_status),
+      payment_expires_at:text(raw.payment_expires_at),
+    }];
+  });
+}
 export default function LearningLibrary() {
   const { user } = useAuth();
   return <AccountLibrary key={user?.id} />;
@@ -61,17 +89,18 @@ function AccountLibrary() {
           (before ? "?before=" + encodeURIComponent(before) : ""),
       );
       if (!alive.current || generation.current !== turn) return;
+      const purchases=normalizePurchases(result?.purchases);
       setItems((old) =>
         before
           ? Array.from(
               new Map(
-                [...old, ...result.purchases].map((p) => [p.id, p]),
+                [...old, ...purchases].map((p) => [p.id, p]),
               ).values(),
             )
-          : result.purchases,
+          : purchases,
       );
-      setNext(result.nextCursor);
-      setReady(result.ready);
+      setNext(typeof result?.nextCursor==="string"?result.nextCursor:null);
+      setReady(result?.ready!==false);
       setError("");
     } catch (e) {
       if (alive.current && generation.current === turn)

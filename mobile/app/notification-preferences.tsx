@@ -11,12 +11,21 @@ import { getRegisteredPushDevice, pushSetupAvailability, registerPushDevice } fr
 const choices=[['likes','Post likes'],['commentLikes','Comment likes'],['comments','Comments on your posts'],['replies','Replies to your comments'],['reposts','Reposts'],['quotes','Quote posts'],['follows','New followers'],['messages','Messages'],['profilePosts','Profile subscriptions'],['classReminders','Classes and reminders'],['announcements','Community announcements'],['newsletter','KampusOne Newsletter'],['campusUpdates','Important campus updates']] as const;
 type Category=(typeof choices)[number][0]|'security';
 type Channels=Record<Category,{in_app_enabled:boolean;push_enabled:boolean}>;
+function normalizeChannels(value: unknown): Channels {
+ const raw=value&&typeof value==="object"?value as Record<string,unknown>:{};
+ const output={} as Channels;
+ for(const key of [...choices.map(([name])=>name),"security"] as Category[]){
+  const row=raw[key]&&typeof raw[key]==="object"?raw[key] as Record<string,unknown>:{};
+  output[key]={in_app_enabled:row.in_app_enabled===true,push_enabled:row.push_enabled===true};
+ }
+ return output;
+}
 export default function NotificationPreferences(){
  const {theme}=useAppearance(),toast=useToast();const {user}=useAuth();const [channels,setChannels]=useState<Channels|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [pushState,setPushState]=useState<'checking'|'registered'|'available'|'unavailable'|'error'>(Platform.OS==='web'?'unavailable':'checking');
  const [pushMessage,setPushMessage]=useState('');
  const [pushBusy,setPushBusy]=useState(false);
- const load=()=>api<{channels:Channels}>('/v1/notifications/preferences').then(r=>{setChannels(r.channels);setError('');}).catch(e=>setError(e.message));
+ const load=()=>api<{channels:Channels}>('/v1/notifications/preferences').then(r=>{setChannels(normalizeChannels(r?.channels));setError('');}).catch(e=>setError(e instanceof Error?e.message:'Notification settings could not load.'));
  async function checkPush(){
   if(Platform.OS==='web'||!user?.id){setPushState('unavailable');setPushMessage('Phone push is available in the installed KampusOne app.');return;}
   const availability=pushSetupAvailability();

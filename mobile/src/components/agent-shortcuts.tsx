@@ -11,6 +11,30 @@ export type Capabilities = {
   }[];
   communities: { id: string; name: string }[];
 };
+function normalizeCapabilities(value: unknown): Capabilities {
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const profiles = Array.isArray(raw.profiles)
+    ? raw.profiles.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const item = entry as Record<string, unknown>;
+        if (typeof item.id !== "string" || !["VENDOR","TUTOR","RIDER"].includes(String(item.agent_type))) return [];
+        return [{
+          id: item.id,
+          agent_type: item.agent_type as "VENDOR"|"TUTOR"|"RIDER",
+          display_name: typeof item.display_name === "string" ? item.display_name : "Workspace",
+        }];
+      })
+    : [];
+  const communities = Array.isArray(raw.communities)
+    ? raw.communities.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const item = entry as Record<string, unknown>;
+        if (typeof item.id !== "string") return [];
+        return [{ id: item.id, name: typeof item.name === "string" ? item.name : "Community" }];
+      })
+    : [];
+  return { profiles, communities };
+}
 export function useCapabilities() {
   const [ready,setReady] = useState(false);
   const [error,setError] = useState("");
@@ -23,7 +47,7 @@ export function useCapabilities() {
       let active = true;
       void api<Capabilities>("/v1/account/capabilities")
         .then((r) => {
-          if (active) {setData(r);setReady(true);setError("");}
+          if (active) {setData(normalizeCapabilities(r));setReady(true);setError("");}
         })
         .catch((caught:unknown) => {
           if (active) {setReady(true);setError(caught instanceof Error ? caught.message : "Your workspaces could not load.");}

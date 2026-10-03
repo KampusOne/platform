@@ -27,8 +27,16 @@ export default function Account() {
   const load = useCallback(async () => {
     setError("");
     try {
+      const response=await api<{ sessions: Device[] }>("/v1/account/sessions");
       setDevices(
-        (await api<{ sessions: Device[] }>("/v1/account/sessions")).sessions,
+        Array.isArray(response?.sessions)
+          ? response.sessions.filter((device):device is Device=>Boolean(device&&typeof device.id==="string")).map(device=>({
+              id:device.id,
+              device_label:typeof device.device_label==="string"?device.device_label:"Signed-in device",
+              last_used_at:typeof device.last_used_at==="string"?device.last_used_at:"",
+              ...(typeof device.created_at==="string"?{created_at:device.created_at}:{}),
+            }))
+          : [],
       );
     } catch (e) {
       setError(
