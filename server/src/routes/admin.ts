@@ -28,6 +28,8 @@ import { academicAdminRoutes } from "./academic-admin";
 import { broadcastRoutes } from "./broadcasts";
 import { applicationCheckRoutes } from "./application-checks";
 import { financePolicyRoutes } from './finance-policies';
+import { paymentPricingRoutes } from './payment-pricing';
+import { financeRefundRoutes } from './finance-refunds';
 import { payoutAdminRoutes } from './payouts-admin';
 import { ledgerPayoutsReady } from '../lib/payouts';
 import { recordAudit } from "../lib/audit";
@@ -141,6 +143,8 @@ adminRoutes.route("/academic",academicAdminRoutes);
 adminRoutes.route("/broadcasts",broadcastRoutes);
 adminRoutes.route("/",applicationCheckRoutes);
 adminRoutes.route('/finance',financePolicyRoutes);
+adminRoutes.route('/finance/payment-pricing',paymentPricingRoutes);
+adminRoutes.route('/finance',financeRefundRoutes);
 adminRoutes.route('/operations/payouts',payoutAdminRoutes);
 
 adminRoutes.get("/access", async (context) => {

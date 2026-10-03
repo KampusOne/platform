@@ -9,6 +9,7 @@ import { AppError } from "../lib/errors";
 import { input, id } from "../lib/input";
 import {
   ledgerPayoutsReady,
+  payoutFeeComponentsReady,
   requireLedgerPayouts,
   payoutRate,
   payoutError,
@@ -31,7 +32,7 @@ payoutAdminRoutes.get("/", async (c) => {
     c.req.query("universityId"),
     "finance.view",
   );
-  if (!(await ledgerPayoutsReady(c.env)))
+  if (!(await payoutFeeComponentsReady(c.env)))
     return c.json({ ready: false, payouts: [], withdrawalsEnabled: false });
   const status = c.req.query("status");
   if (
@@ -53,7 +54,13 @@ payoutAdminRoutes.get("/", async (c) => {
     throw new AppError(400, "BAD_REQUEST", "Choose a valid withdrawal status.");
   const payouts = await database(c.env)
     .execute(sql`select p.id,p.university_id,p.agent_profile_id,p.requested_by_user_id,p.amount_kobo,p.status,p.requested_at,p.paid_at,p.provider_reference,p.financial_version,
- a.display_name,a.agent_type,s.bank_net_kobo,s.fee_allowance_kobo,s.cost_recorded_kobo,s.provider_status,s.initiated_at,s.failure_release_journal_id is not null as returned_to_wallet,q.estimated_fee_kobo,b.bank_name,b.account_last4
+ a.display_name,a.agent_type,s.bank_net_kobo,s.fee_allowance_kobo,s.cost_recorded_kobo,s.provider_status,s.initiated_at,s.failure_release_journal_id is not null as returned_to_wallet,q.estimated_fee_kobo,b.bank_name,b.account_last4,
+ q.expected_transfer_fee_kobo,q.expected_statutory_duty_kobo,q.transfer_fee_allowance_kobo,q.statutory_duty_allowance_kobo,q.minimum_withdrawal_kobo,q.statutory_duty_policy,
+ s.statutory_duty_reserved_kobo,s.actual_statutory_duty_kobo,s.statutory_duty_source,s.last_verified_at,
+ (select o.fee_kobo from app_private.verified_payout_observations o where o.payout_id=p.id order by o.provider_updated_at desc,o.recorded_at desc limit 1) as actual_transfer_fee_kobo,
+ case when s.actual_statutory_duty_kobo is null then 'AWAITING_BALANCE_STATEMENT' else 'RECONCILED' end as statutory_duty_reconciliation,
+ case when s.last_verified_at is not null then 'PAYSTACK_TRANSFER_VERIFY'::text end as transfer_fee_source,s.cost_recorded_kobo-q.expected_transfer_fee_kobo as transfer_fee_variance_kobo,
+ s.actual_statutory_duty_kobo-q.expected_statutory_duty_kobo as statutory_duty_variance_kobo
  from public.payout_requests p join public.agent_profiles a on a.id=p.agent_profile_id
  left join app_private.agent_payout_settlements s on s.payout_id=p.id left join app_private.agent_payout_quotes q on q.id=s.quote_id
  left join app_private.payout_account_setups b on b.id=q.account_setup_id
@@ -64,6 +71,26 @@ payoutAdminRoutes.get("/", async (c) => {
       c.env.PAYOUTS_ENABLED === "true" && c.env.PAYMENTS_ENABLED === "true",
     payouts: payouts.rows,
   });
+});
+payoutAdminRoutes.post("/:id/duty-reconciliation", async (c) => {
+  if (!(await payoutFeeComponentsReady(c.env))) throw new AppError(503, "FEATURE_DISABLED", "Separate duty reconciliation is awaiting the database update.");
+  const payoutId = id(c.req.param("id"));
+  const data = await input(c, z.object({
+    actualDutyKobo: z.number().int().min(0).max(1_000_000),
+    statementReference: z.string().trim().min(3).max(200),
+    note: z.string().trim().min(10).max(2000),
+  }).strict());
+  const settlement = await scoped(c, payoutId, "finance.review");
+  let result;
+  try {
+    result = firstRow(await database(c.env).execute<{ result: string }>(sql`select app_private.reconcile_payout_duty(${payoutId}::uuid,${settlement.university_id}::uuid,${data.actualDutyKobo}::bigint,${data.statementReference},${currentUser(c).id}::uuid,${data.note}) as result`))?.result;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("PAYOUT_DUTY_ALREADY_RECONCILED")) throw new AppError(409, "CONFLICT", "This statement duty observation is already sealed. Escalate a correction for finance review.");
+    throw error;
+  }
+  if (result !== "RECONCILED") throw new AppError(409, "CONFLICT", "Verify a final transfer result before reviewing its statement duty.");
+  await recordAudit(c.env, { actorUserId: currentUser(c).id, universityId: settlement.university_id, action: "payout.statutory_duty_reconciled", targetType: "payout_request", targetId: payoutId, requestId: c.get("requestId"), metadata: { ...data, source: "PAYSTACK_BALANCE_STATEMENT", variancePolicy: "PLATFORM_ABSORBS" } });
+  return c.json({ status: result });
 });
 async function scoped(
   c: Context<{ Bindings: Bindings; Variables: Variables }>,

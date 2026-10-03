@@ -13,7 +13,7 @@ import { extractAIPdf } from "../lib/ai-document";
 import { runStudentAssistant, classDraftSchema, alarmDraftSchema, calendarDraftSchema, type AICard, type AIAction } from "../lib/student-ai-tools";
 import { KAMPUSONE_RESTRICTED_RESPONSE, isRestrictedKampusOneRequest } from "../lib/kampusone-public-context";
 import { academicImportUsage, consumeAcademicImportQuota } from "../lib/ai-quota";
-import { kiraBillingStatus,initializeKira } from '../lib/kira-billing';
+import { kiraBillingStatus,initializeKira,quoteKira } from '../lib/kira-billing';
 import type { Bindings, Variables } from "../types";
 
 export const aiRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -86,9 +86,13 @@ aiRoutes.get("/status", async c => {
   });
 });
 aiRoutes.get('/subscription',async c=>c.json({subscription:await kiraBillingStatus(c.env,currentUser(c))}));
+aiRoutes.post('/subscription-quote',async c=>{
+  const d=await input(c,z.object({tier:z.enum(['standard','pro']),discountCode:z.string().trim().max(32).default(''),requestId:z.string().uuid().optional()}).strict());
+  return c.json({quote:await quoteKira(c.env,currentUser(c),d.tier,d.discountCode,d.requestId)});
+});
 aiRoutes.post('/subscription-checkout',async c=>{
-  const d=await input(c,z.object({requestId:z.string().uuid(),consent:z.literal(true),discountCode:z.string().trim().max(32).default(''),expectedAmountKobo:z.number().int().min(10000).max(100000000).optional()}).strict());
-  return c.json(await initializeKira(c.env,currentUser(c),d.requestId,c.get('requestId'),d.discountCode,d.expectedAmountKobo));
+  const d=await input(c,z.object({requestId:z.string().uuid(),quoteId:z.string().uuid().optional(),tier:z.enum(['standard','pro']).default('pro'),consent:z.literal(true),discountCode:z.string().trim().max(32).default(''),expectedAmountKobo:z.number().int().min(10000).max(100000000)}).strict());
+  return c.json(await initializeKira(c.env,currentUser(c),d.requestId,c.get('requestId'),d.discountCode,d.expectedAmountKobo,d.quoteId,d.tier));
 });
 aiRoutes.post("/transcribe", async c => {
   requireSchema(c.env);

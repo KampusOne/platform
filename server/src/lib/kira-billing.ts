@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import { database, firstRow } from "./database";
 import { initializePaystack, verifyPaystack } from "./paystack";
+import { resolveProviderCollection } from "./payment-pricing";
 import { AppError } from "./errors";
 import { recordAudit } from "./audit";
 import { providerConfiguration } from "./ai-provider";
-import {resolveAIQuota} from './ai-quota';
+import {resolveAIQuota, activePaidAITier, type AITier} from './ai-quota';
+import { kiraSubscriptionPrice, type CollectionFees } from './pricing';
 import type { AuthenticatedUser, Bindings } from "../types";
 export async function kiraBillingReady(env: Bindings) {
   if (
@@ -15,11 +17,24 @@ export async function kiraBillingReady(env: Bindings) {
   return (
     firstRow(
       await database(env).execute<{ ready: boolean }>(
-        sql`select to_regprocedure('app_private.record_kira_receipt(text,bigint,bigint,timestamp with time zone)') is not null and exists(select 1 from information_schema.columns where table_schema='app_private' and table_name='kira_price_plans' and column_name='discount_percent') as ready`,
+        sql`select to_regprocedure('app_private.create_quoted_kira_checkout(uuid,uuid,uuid,text,uuid,text,integer)') is not null as ready`,
       ),
     )?.ready === true
   );
 }
+export type KiraOffer = { offerActive: boolean; offerStartsAt: string | null; offerEndsAt: string | null; discountPercent: number };
+export function resolveKiraPlanPrice(listedAmountKobo: number, offer: KiraOffer, collection: CollectionFees, at = new Date()) {
+  const start = offer.offerStartsAt === null ? null : Date.parse(offer.offerStartsAt);
+  const end = offer.offerEndsAt === null ? null : Date.parse(offer.offerEndsAt);
+  if ((start !== null && !Number.isFinite(start)) || (end !== null && !Number.isFinite(end)) || (start !== null && end !== null && end <= start)) throw new RangeError('Choose a valid discount date range.');
+  const effective = offer.offerActive && (start === null || at.getTime() >= start) && (end === null || at.getTime() < end);
+  const percent = effective ? offer.discountPercent : 0;
+  const calculated = listedAmountKobo === 0
+    ? { listedAmountKobo: 0, discountPercent: 0, discountKobo: 0, customerPriceKobo: 0, estimatedProcessingKobo: 0, estimatedNetKobo: 0, currency: 'NGN' as const, cadence: 'MONTHLY' as const }
+    : kiraSubscriptionPrice(listedAmountKobo,percent,collection);
+  return { ...calculated, amountKobo: calculated.customerPriceKobo, discountAmountKobo: calculated.discountKobo, expectedNetKobo: calculated.estimatedNetKobo, offerActive: effective && percent > 0, offerStartsAt: offer.offerStartsAt, offerEndsAt: offer.offerEndsAt };
+}
+type PlanRow = { id:string; tier:AITier; version:string; listed_amount_kobo:number; discount_percent:number; offer_active:boolean; offer_starts_at:string|null; offer_ends_at:string|null; available:boolean; active_status:boolean; collection:CollectionFees; included_capabilities:unknown; limits:unknown; feature_flags:unknown; model_access:AITier };
 export async function kiraBillingStatus(
   env: Bindings,
   user: AuthenticatedUser,
@@ -40,17 +55,16 @@ export async function kiraBillingStatus(
       autoRenew: false,
       currentPeriodEnd: null,
       checkout: null,
+      currentTier: complimentary ? 'pro' : 'standard',
+      selectedTier: complimentary ? 'pro' : 'standard',
+      catalog: {standard: {tier:'standard',planId:null,version:null,listedAmountKobo:0,amountKobo:0,discountPercent:0,discountAmountKobo:0,available:true,active:true,checkoutEnabled:false,offer:{active:false,startsAt:null,endsAt:null,percent:0}},pro:null},
     };
   const subscription = firstRow(
     await database(env).execute<{ status: string; current_period_end: string }>(
       sql`select status,current_period_end from app_private.ai_subscriptions where user_id=${user.id}::uuid and current_period_end>now()`,
     ),
   );
-  const plan = firstRow(
-    await database(env).execute(
-      sql`select p.id,p.amount_kobo,p.listed_amount_kobo,p.discount_percent,p.version from app_private.active_kira_price_plans a join app_private.kira_price_plans p on p.id=a.plan_id and p.university_id=a.university_id where a.university_id=${user.universityId}::uuid`,
-    ),
-  );
+  const plans = await database(env).execute<PlanRow>(sql`select p.* from app_private.active_kira_price_plans a join app_private.kira_price_plans p on p.id=a.plan_id and p.university_id=a.university_id and p.tier=a.tier where a.university_id=${user.universityId}::uuid`);
   const pending = firstRow(
     await database(env).execute<{
       reference: string;
@@ -61,27 +75,27 @@ export async function kiraBillingStatus(
       expires_at: string;
       request_id:string;discount_code:string|null;
     }>(
-      sql`select k.provider_reference as reference,k.status,k.amount_kobo,k.listed_amount_kobo,k.offer_discount_percent,k.expires_at,k.request_id,d.code as discount_code from app_private.kira_checkouts k left join app_private.discount_codes d on d.id=k.discount_id where k.user_id=${user.id}::uuid and k.status in ('CREATED','INITIALIZED','REQUIRES_REVIEW') and (k.status='REQUIRES_REVIEW' or k.expires_at>now()) order by k.created_at desc limit 1`,
+      sql`select k.provider_reference as reference,k.status,k.amount_kobo,k.listed_amount_kobo,k.offer_discount_percent,k.expires_at,k.request_id,k.tier,k.quote_id,k.listed_amount_kobo-k.amount_kobo as discount_amount_kobo,coalesce(q.coupon_discount_percent,d.percent,0) as coupon_discount_percent,d.code as discount_code from app_private.kira_checkouts k left join app_private.discount_codes d on d.id=k.discount_id left join app_private.kira_subscription_quotes q on q.id=k.quote_id where k.user_id=${user.id}::uuid and k.status in ('CREATED','INITIALIZED','REQUIRES_REVIEW') and (k.status='REQUIRES_REVIEW' or k.expires_at>now()) order by k.created_at desc limit 1`,
     ),
   );
   const early =
     subscription?.status === "ACTIVE" &&
     Date.parse(subscription.current_period_end) > Date.now() + 7 * 86400000;
+  const paidTier = await activePaidAITier(env,user);
+  const catalog = Object.fromEntries(plans.rows.map(plan => {
+    const price=resolveKiraPlanPrice(Number(plan.listed_amount_kobo),{offerActive:plan.offer_active,offerStartsAt:plan.offer_starts_at,offerEndsAt:plan.offer_ends_at,discountPercent:Number(plan.discount_percent)},plan.collection);
+    return [plan.tier,{tier:plan.tier,planId:plan.id,version:plan.version,...price,available:plan.available,active:plan.active_status,checkoutEnabled:!complimentary && plan.available && plan.active_status && price.amountKobo>0 && !early && env.KIRA_SUBSCRIPTIONS_ENABLED==='true' && env.PAYMENTS_ENABLED==='true' && env.AI_ASSISTANT_ENABLED==='true' && providerConfiguration(env,'study',undefined,undefined,plan.tier).configured,offer:{active:price.offerActive,startsAt:plan.offer_starts_at,endsAt:plan.offer_ends_at,percent:price.discountPercent},includedCapabilities:plan.included_capabilities,limits:plan.limits,modelAccess:plan.model_access,featureFlags:plan.feature_flags}];
+  })) as unknown as Record<AITier, { amountKobo:number;listedAmountKobo:number;discountPercent:number;version:string;checkoutEnabled:boolean;available:boolean } | null>;
+  catalog.standard ??= {tier:'standard',planId:null,version:null,listedAmountKobo:0,amountKobo:0,discountPercent:0,discountAmountKobo:0,available:true,active:true,checkoutEnabled:false,offer:{active:false,startsAt:null,endsAt:null,percent:0}} as unknown as NonNullable<typeof catalog.standard>;
+  const plan = catalog.pro;
   return {
     complimentary,
-    available: !!plan,
-    checkoutEnabled:
-      !complimentary && !!plan &&
-      !early &&
-      env.KIRA_SUBSCRIPTIONS_ENABLED === "true" &&
-      env.PAYMENTS_ENABLED === "true" &&
-      env.AI_ASSISTANT_ENABLED === "true" &&
-      providerConfiguration(env, "study", undefined, undefined, "pro")
-        .configured,
+    available: !!plan?.available,
+    checkoutEnabled: plan?.checkoutEnabled ?? false,
     cadence: "monthly",
-    amountKobo: Number(plan?.amount_kobo ?? 600000),
-    listedAmountKobo: Number(plan?.listed_amount_kobo ?? 600000),
-    discountPercent: Number(plan?.discount_percent ?? 0),
+    amountKobo: Number(plan?.amountKobo ?? 600000),
+    listedAmountKobo: Number(plan?.listedAmountKobo ?? 600000),
+    discountPercent: Number(plan?.discountPercent ?? 0),
     version: typeof plan?.version === 'string' ? plan.version : null,
     currency: "NGN",
     autoRenew: false,
@@ -90,7 +104,32 @@ export async function kiraBillingStatus(
         ? subscription.current_period_end
         : null,
     checkout: pending ?? null,
+    currentTier: complimentary ? 'pro' : paidTier ?? 'standard',
+    paidTier,
+    selectedTier: complimentary ? 'pro' : paidTier ?? 'standard',
+    catalog,
   };
+}
+function kiraPricingError(error:unknown):never {
+  if(error instanceof Error && /KIRA_|DISCOUNT_|BUYER_TENANT_MISMATCH/.test(error.message)) {
+    const reason=/KIRA_QUOTE_EXPIRED/.test(error.message)?'KIRA_QUOTE_EXPIRED':/KIRA_PRICE_CHANGED/.test(error.message)?'KIRA_PRICE_CHANGED':/DISCOUNT_CANNOT_COMBINE/.test(error.message)?'DISCOUNT_CANNOT_COMBINE':/DISCOUNT_/.test(error.message)?'DISCOUNT_UNAVAILABLE':'KIRA_CHECKOUT_CONFLICT';
+    throw new AppError(409,'CONFLICT',reason==='DISCOUNT_CANNOT_COMBINE'?'This Kira offer already includes a discount. Discount codes cannot be combined with it.':reason==='DISCOUNT_UNAVAILABLE'?'This discount is unavailable or its use limit has been reached. Check the code and try again.':'Refresh your Kira plan and review its current total before paying.',{reason,reaccept:true});
+  }
+  throw error;
+}
+export async function quoteKira(env:Bindings,user:AuthenticatedUser,tier:AITier,discountCode='',requestId:string=crypto.randomUUID()) {
+  const status=await kiraBillingStatus(env,user);
+  if(!status.catalog[tier]?.checkoutEnabled) throw new AppError(409,'CONFLICT','This Kira plan is not available for payment.',{reason:'KIRA_PLAN_UNAVAILABLE'});
+  if (env.ENVIRONMENT === 'production') {
+    const plan=firstRow(await database(env).execute<{collection:CollectionFees}>(sql`select p.collection from app_private.active_kira_price_plans a join app_private.kira_price_plans p on p.id=a.plan_id where a.university_id=${user.universityId}::uuid and a.tier=${tier}`));
+    await resolveProviderCollection(env,user.universityId,plan?.collection.providerProfileId);
+  }
+  const rate=firstRow(await database(env).execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('KIRA_QUOTE',${user.id},30,3600,3600) as allowed`));
+  if(!rate?.allowed) throw new AppError(429,'RATE_LIMITED','Please wait before requesting another Kira quote.');
+  try {
+    const q=firstRow(await database(env).execute<{id:string;tier:AITier;plan_id:string;plan_version:string;listed_amount_kobo:number;amount_kobo:number;offer_discount_percent:number;coupon_discount_percent:number;discount_code:string;expires_at:string;estimated_processing_kobo:number}>(sql`select * from app_private.quote_kira_subscription(${crypto.randomUUID()}::uuid,${user.id}::uuid,${user.universityId}::uuid,${requestId}::uuid,${tier},${discountCode.trim().toUpperCase()})`))!;
+    return {quoteId:q.id,tier:q.tier,planId:q.plan_id,version:q.plan_version,listedAmountKobo:Number(q.listed_amount_kobo),amountKobo:Number(q.amount_kobo),discountPercent:Number(q.offer_discount_percent)+Number(q.coupon_discount_percent),discountAmountKobo:Number(q.listed_amount_kobo)-Number(q.amount_kobo),offerDiscountPercent:Number(q.offer_discount_percent),couponDiscountPercent:Number(q.coupon_discount_percent),discountCode:q.discount_code,currency:'NGN',expiresAt:q.expires_at,feeBearer:'INCLUDED_IN_PRICE',paystackAmountKobo:Number(q.amount_kobo),estimatedProcessingKobo:Number(q.estimated_processing_kobo)};
+  } catch(e) {kiraPricingError(e);}
 }
 export async function initializeKira(
   env: Bindings,
@@ -99,9 +138,11 @@ export async function initializeKira(
   traceId?: string,
   discountCode = '',
   expectedAmountKobo?: number,
+  quoteId?: string,
+  tier: AITier = 'pro',
 ) {
   const status = await kiraBillingStatus(env, user);
-  if (!status.checkoutEnabled)
+  if (!status.catalog[tier]?.checkoutEnabled)
     throw new AppError(
       409,
       "CONFLICT",
@@ -116,27 +157,21 @@ export async function initializeKira(
     status: string;
     authorization_url: string | null;
     access_code: string | null;
+    expires_at: string;
   };
   try {
     checkout = firstRow(
       await database(env).execute<typeof checkout>(
-        sql`select * from app_private.create_discounted_kira_checkout(${crypto.randomUUID()}::uuid,${user.id}::uuid,${user.universityId}::uuid,${requestId}::uuid,${"K1-AI-" + crypto.randomUUID()},${discountCode.trim().toUpperCase()})`,
+        quoteId && expectedAmountKobo!==undefined
+          ? sql`select * from app_private.create_quoted_kira_checkout(${user.id}::uuid,${user.universityId}::uuid,${requestId}::uuid,${"K1-AI-" + crypto.randomUUID()},${quoteId}::uuid,${tier},${expectedAmountKobo})`
+          : sql`select * from app_private.kira_checkouts where user_id=${user.id}::uuid and university_id=${user.universityId}::uuid and request_id=${requestId}::uuid and tier=${tier} and quote_id is null and amount_kobo=${expectedAmountKobo ?? -1}`,
       ),
     )!;
   } catch (e) {
-    if (
-      e instanceof Error &&
-      /KIRA_ALREADY_ACTIVE|KIRA_PLAN_UNAVAILABLE|BUYER_TENANT_MISMATCH|DISCOUNT_|KIRA_CHECKOUT_ALREADY_ACTIVE/.test(
-        e.message,
-      )
-    )
-      throw new AppError(
-        409,
-        "CONFLICT",
-        e.message.includes("DISCOUNT_CANNOT_COMBINE") ? "This Kira offer already includes a discount. Discount codes cannot be combined with it." : e.message.includes("DISCOUNT_") ? "This discount is unavailable or its use limit has been reached. Check the code and try again." : e.message.includes("KIRA_CHECKOUT_ALREADY_ACTIVE") ? "You already have an open checkout. Refresh your plan to resume it." : "Refresh your plan or campus before opening checkout.",
-      );
-    throw e;
+    kiraPricingError(e);
   }
+  if(!checkout) throw new AppError(409,'CONFLICT','Review a current Kira quote before opening payment.',{reason:'KIRA_QUOTE_REQUIRED',reaccept:true});
+  if(Date.parse(checkout.expires_at)<=Date.now()) throw new AppError(409,'CONFLICT','Your Kira quote expired. Review the current total before paying.',{reason:'KIRA_QUOTE_EXPIRED',reaccept:true});
   if (!["CREATED", "INITIALIZED"].includes(checkout.status))
     throw new AppError(
       409,
@@ -154,6 +189,7 @@ export async function initializeKira(
       authorizationUrl: checkout.authorization_url,
       reference: checkout.provider_reference,
       amountKobo: checkout.amount_kobo,
+      tier,
     };
   const rate = firstRow(
     await database(env).execute<{ allowed: boolean }>(
@@ -177,6 +213,8 @@ export async function initializeKira(
       resourceType: "KIRA_SUBSCRIPTION",
       resourceId: checkout.id,
       userId: user.id,
+      tier,
+      ...(quoteId ? {pricingQuoteId:quoteId} : {}),
     },
   });
   await database(env).execute(
@@ -192,12 +230,15 @@ export async function initializeKira(
     metadata: {
       reference: checkout.provider_reference,
       amountKobo: checkout.amount_kobo,
+      tier,
+      ...(quoteId ? {quoteId} : {}),
     },
   });
   return {
     authorizationUrl: initialized.authorization_url!,
     reference: checkout.provider_reference,
     amountKobo: checkout.amount_kobo,
+    tier,
   };
 }
 export async function reconcileKira(

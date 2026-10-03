@@ -620,7 +620,7 @@ export const handoffCodeSchema = z.object({
 export const payoutRequestSchema = z
   .object({
     agentProfileId: z.string().uuid(),
-    amountKobo: z.number().int().min(5000_00).max(1_000_000_000),
+    amountKobo: z.number().int().positive().max(1_000_000_000),
     quoteId: z.string().uuid(),
     requestId: z.string().uuid(),
   })

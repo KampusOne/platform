@@ -1,5 +1,6 @@
 import type { Bindings } from "../types";
 import { AppError } from "./errors";
+import { prepareCollectionInitialization, recordCollectionReceiptContext, recordPaymentPricingAlert, classifyPaystackContext } from "./payment-pricing";
 
 type InitializeInput = {
   email: string;
@@ -36,6 +37,7 @@ export async function initializePaystack(
       "PROVIDER_UNAVAILABLE",
       "Live payment configuration is not ready. Your purchase remains unpaid.",
     );
+  const pricingSnapshot=await prepareCollectionInitialization(env,input.reference,input.amountKobo,input.metadata);
   let response: Response;
   try {
     response = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -49,10 +51,11 @@ export async function initializePaystack(
         amount: input.amountKobo,
         reference: input.reference,
         currency: "NGN",
-        // Paystack deducts fees from the merchant settlement. It does not add
-        // this projection to the customer's amount: initialize the reviewed gross once.
+        // This assigns settlement fees to the main account for a split. It is
+        // NOT an override of the dashboard's Pass fees to customers setting.
+        // The separately reviewed account setting must be disabled first.
         bearer: "account",
-        metadata: input.metadata,
+        metadata: {...input.metadata,paymentReference:input.reference,...(pricingSnapshot?{pricingSnapshotReference:pricingSnapshot.provider_reference,providerFeeProfileId:pricingSnapshot.fee_profile_id,providerFeeProfileVersion:pricingSnapshot.fee_profile_version}:{})},
         ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
       }),
       signal: AbortSignal.timeout(10_000),
@@ -111,16 +114,18 @@ export async function verifyPaystack(env: Bindings, reference: string) {
       "BAD_REQUEST",
       "That payment reference is invalid.",
     );
-  const response = await fetch(
+  let response:Response;
+  try { response = await fetch(
     `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
     {
       headers: { Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}` },
       signal: AbortSignal.timeout(10000),
     },
-  );
+  ); }catch {throw new AppError(503,"PROVIDER_UNAVAILABLE","The payment receipt could not be fetched. Its saved reference remains available for reconciliation.");}
   const payload = (await response.json().catch(() => null)) as {
     status?: boolean;
     data?: {
+      id?: number|string;
       status?: string;
       reference?: string;
       currency?: string;
@@ -128,9 +133,13 @@ export async function verifyPaystack(env: Bindings, reference: string) {
       fees?: number;
       paid_at?: string;
       domain?: string;
+      channel?:string;
+      authorization?:{country?:string;brand?:string;card_type?:string};
     };
   } | null;
   const data = payload?.data;
+  if (data && (data.reference!==reference || data.currency!=="NGN"))
+    await recordPaymentPricingAlert(env,reference,data.reference!==reference?"PAYMENT_REFERENCE_MISMATCH":"PAYMENT_CURRENCY_MISMATCH",{expectedReference:reference,actualReference:data.reference??null,actualCurrency:data.currency??null});
   if (
     !response.ok ||
     payload?.status !== true ||
@@ -158,12 +167,24 @@ export async function verifyPaystack(env: Bindings, reference: string) {
       "PROVIDER_UNAVAILABLE",
       "The payment receipt is incomplete. It will be reconciled before funds are released.",
     );
+  const providerTransactionId=typeof data.id==="string"&&/^[1-9][0-9]*$/.test(data.id)?data.id:
+    typeof data.id==="number"&&Number.isSafeInteger(data.id)&&data.id>0?String(data.id):null;
+  if(data.id!==undefined&&providerTransactionId===null)throw new AppError(503,"PROVIDER_UNAVAILABLE","The provider returned an invalid transaction identifier.");
+  const channel=typeof data.channel==="string"?data.channel:null,
+    paymentCountry=typeof data.authorization?.country==="string"?data.authorization.country.toUpperCase():null,
+    cardNetwork=typeof data.authorization?.brand==="string"?data.authorization.brand.toUpperCase():typeof data.authorization?.card_type==="string"?data.authorization.card_type.toUpperCase():null;
+  if(data.status==="success")await recordCollectionReceiptContext(env,{reference,amountKobo:Number(data.amount),feeKobo:Number(data.fees),providerTransactionId,channel,paymentCountry,cardNetwork,currency:data.currency!,providerMode:data.domain==="live"?"live":"test",paidAt:data.paid_at??null});
   return {
     status: data.status ?? "pending",
     reference,
     amountKobo: Number(data.amount),
     feeKobo: Number(data.fees ?? 0),
     paidAt: data.paid_at ?? null,
+    providerTransactionId,
+    channel,
+    paymentCountry,
+    cardNetwork,
+    transactionClass:classifyPaystackContext(channel,paymentCountry,cardNetwork),
   };
 }
 

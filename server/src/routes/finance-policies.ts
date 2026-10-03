@@ -9,9 +9,10 @@ import { input } from "../lib/input";
 import { AppError } from "../lib/errors";
 import { inclusiveStoreReady } from "../lib/commerce-pricing";
 import { pricedTutorialReady } from "../lib/tutorial-pricing";
-import { kiraBillingReady } from "../lib/kira-billing";
+import { kiraBillingReady, resolveKiraPlanPrice } from "../lib/kira-billing";
+import { resolveProviderCollection } from "../lib/payment-pricing";
 import { materialCommerceReady } from "../lib/material-commerce";
-import { ledgerPayoutsReady } from "../lib/payouts";
+import { payoutFeeComponentsReady } from "../lib/payouts";
 import {
   listingPrice,
   checkoutPrice,
@@ -33,10 +34,10 @@ financePolicyRoutes.get("/transfer-policies", async (c) => {
     c.req.query("universityId"),
     "finance.view",
   );
-  if (!(await ledgerPayoutsReady(c.env)))
+  if (!(await payoutFeeComponentsReady(c.env)))
     return c.json({ ready: false, policies: [] });
   const rows = await database(c.env)
-    .execute(sql`select p.id,p.university_id,p.agent_type,p.version,p.fee_bearer,p.low_fee_kobo,p.middle_fee_kobo,p.high_fee_kobo,p.duty_threshold_kobo,p.duty_kobo,p.source_url,p.approval_note,p.approved_at,a.policy_id=p.id as active
+    .execute(sql`select p.id,p.university_id,p.agent_type,p.version,p.fee_bearer,p.low_fee_kobo,p.middle_fee_kobo,p.high_fee_kobo,p.duty_threshold_kobo,p.duty_kobo,p.minimum_withdrawal_kobo,p.statutory_duty_policy,p.source_url,p.approval_note,p.approved_at,a.policy_id=p.id as active
   from app_private.payout_cost_policies p left join app_private.active_payout_cost_policies a on a.university_id=p.university_id and a.agent_type=p.agent_type where (${scope}::uuid is null or p.university_id=${scope}::uuid) order by p.approved_at desc limit 100`);
   return c.json({ ready: true, policies: rows.rows });
 });
@@ -54,6 +55,8 @@ financePolicyRoutes.post("/transfer-policies", async (c) => {
         highFeeKobo: z.number().int().min(0).max(1000000),
         dutyThresholdKobo: z.number().int().min(0).max(2000000000),
         dutyKobo: z.number().int().min(0).max(1000000),
+        minimumWithdrawalKobo: z.number().int().min(1).max(1_000_000_000).default(500000),
+        statutoryDutyPolicy: z.literal("PLATFORM_ABSORBS_PENDING_STATEMENT").default("PLATFORM_ABSORBS_PENDING_STATEMENT"),
         sourceUrl: z.url().refine((v) => {
           const u = new URL(v);
           return (
@@ -71,17 +74,18 @@ financePolicyRoutes.post("/transfer-policies", async (c) => {
   );
   const user = currentUser(c);
   await resolveAdminScope(c.env, user, data.universityId, "finance.review");
-  if (!(await ledgerPayoutsReady(c.env)))
+  if (!(await payoutFeeComponentsReady(c.env)))
     throw new AppError(
       503,
       "FEATURE_DISABLED",
       "Transfer policies are awaiting the database update.",
     );
   const policyId = crypto.randomUUID();
+  const previous = (await database(c.env).execute(sql`select p.* from app_private.active_payout_cost_policies a join app_private.payout_cost_policies p on p.id=a.policy_id where a.university_id=${data.universityId}::uuid and a.agent_type=${data.agentType}`)).rows[0] ?? null;
   try {
     await database(c.env)
-      .execute(sql`with added as(insert into app_private.payout_cost_policies(id,university_id,agent_type,version,fee_bearer,low_fee_kobo,middle_fee_kobo,high_fee_kobo,duty_threshold_kobo,duty_kobo,source_url,approval_note,approved_by)
-  values(${policyId}::uuid,${data.universityId}::uuid,${data.agentType},${data.version},${data.feeBearer},${data.lowFeeKobo},${data.middleFeeKobo},${data.highFeeKobo},${data.dutyThresholdKobo},${data.dutyKobo},${data.sourceUrl},${data.approvalNote},${user.id}::uuid) returning *)
+      .execute(sql`with added as(insert into app_private.payout_cost_policies(id,university_id,agent_type,version,fee_bearer,low_fee_kobo,middle_fee_kobo,high_fee_kobo,duty_threshold_kobo,duty_kobo,minimum_withdrawal_kobo,statutory_duty_policy,source_url,approval_note,approved_by)
+  values(${policyId}::uuid,${data.universityId}::uuid,${data.agentType},${data.version},${data.feeBearer},${data.lowFeeKobo},${data.middleFeeKobo},${data.highFeeKobo},${data.dutyThresholdKobo},${data.dutyKobo},${data.minimumWithdrawalKobo},${data.statutoryDutyPolicy},${data.sourceUrl},${data.approvalNote},${user.id}::uuid) returning *)
   insert into app_private.active_payout_cost_policies(university_id,agent_type,policy_id)select university_id,agent_type,id from added on conflict(university_id,agent_type)do update set policy_id=excluded.policy_id`);
   } catch (e) {
     if (e instanceof Error && e.message.includes("unique"))
@@ -100,9 +104,9 @@ financePolicyRoutes.post("/transfer-policies", async (c) => {
     targetId: policyId,
     requestId: c.get("requestId"),
     metadata: {
-      agentType: data.agentType,
-      version: data.version,
-      feeBearer: data.feeBearer,
+      previousPolicy: previous,
+      approvedPolicy: data,
+      reason: data.approvalNote,
     },
   });
   return c.json({ id: policyId }, 201);
@@ -117,6 +121,14 @@ export const commercePolicySchema = z
     buyerBasisPoints: percentage,
     buyerFlatPerItemKobo: money.max(10000000),
     sellerCommissionBasisPoints: percentage,
+    providerProfileId: z.string().uuid().optional(),
+    feeBearer: z.enum(["PLATFORM_ABSORBS","SELLER_ABSORBS","BUYER_VISIBLE","INCLUDED_IN_PRICE","SPLIT"]).optional(),
+    customerFeeDisplay: z.enum(["INCLUDED","SEPARATE"]).optional(),
+    feeSplit: z.object({platformBasisPoints:z.number().int().min(0).max(10000),sellerBasisPoints:z.number().int().min(0).max(10000),buyerBasisPoints:z.number().int().min(0).max(10000)}).strict().optional(),
+    roundingMode: z.enum(["NONE","NEAREST_50","CEIL_50","NEAREST_100","CEIL_100","FRIENDLY_9"]).optional(),
+    maxPricingAdjustmentKobo: money.optional(),
+    minimumCommissionKobo: money.optional(),
+    maximumCommissionKobo: money.nullable().optional(),
     collection: z
       .object({
         basisPoints: percentage,
@@ -142,6 +154,34 @@ export const commercePolicySchema = z
     approvalNote: z.string().trim().min(10).max(2000),
   })
   .strict();
+async function reviewedCommercePolicy(env: Bindings, data: z.infer<typeof commercePolicySchema>, id: string): Promise<CommerceFees> {
+  const collection: CommerceFees["collection"] = data.providerProfileId || env.ENVIRONMENT === "production"
+    ? await resolveProviderCollection(env, data.universityId, data.providerProfileId)
+    : data.collection;
+  if (data.feeBearer === "SPLIT" && (!data.feeSplit || Object.values(data.feeSplit).reduce((sum,value)=>sum+value,0)!==10000))
+    throw new AppError(400,"BAD_REQUEST","The platform, seller and buyer fee shares must total 100%.");
+  if (data.maximumCommissionKobo !== undefined && data.maximumCommissionKobo !== null && (data.minimumCommissionKobo??0)>data.maximumCommissionKobo)
+    throw new AppError(400,"BAD_REQUEST","The minimum commission must not exceed the maximum.");
+  const options = Object.fromEntries(["feeBearer","customerFeeDisplay","feeSplit","roundingMode","maxPricingAdjustmentKobo","minimumCommissionKobo","maximumCommissionKobo"].filter(key=>(data as Record<string,unknown>)[key]!==undefined).map(key=>[key,(data as Record<string,unknown>)[key]])) as Partial<CommerceFees>;
+  return {...options,id,collection,buyerBasisPoints:data.buyerBasisPoints,buyerFlatPerItemKobo:data.buyerFlatPerItemKobo,sellerCommissionBasisPoints:data.sellerCommissionBasisPoints,checkoutSavings:data.checkoutSavings,allowProcessorSubsidy:data.allowProcessorSubsidy,...(collection.providerProfileId?{providerProfileId:collection.providerProfileId}:{})};
+}
+export const kiraPlanSchema = commercePolicySchema.pick({universityId:true,version:true,sourceUrl:true,approvalNote:true}).extend({
+  collection:commercePolicySchema.shape.collection.optional(),providerProfileId:z.string().uuid().optional(),
+  tier:z.enum(['standard','pro']).default('pro'),amountKobo:z.number().int().min(0).max(100000000).default(600000),discountPercent:z.number().int().min(0).max(90).default(0),
+  active:z.boolean().default(true),available:z.boolean().default(true),offerActive:z.boolean().default(true),
+  offerStartsAt:z.string().datetime({offset:true}).nullable().default(null),offerEndsAt:z.string().datetime({offset:true}).nullable().default(null),
+}).strict().superRefine((d,ctx)=>{
+  if((d.tier==='pro' && d.amountKobo<100000)||(d.tier==='standard' && d.amountKobo!==0 && d.amountKobo<100000))ctx.addIssue({code:'custom',path:['amountKobo'],message:'Set a monthly price of at least ₦1,000, or keep Standard free.'});
+  if(d.amountKobo===0 && d.discountPercent!==0)ctx.addIssue({code:'custom',path:['discountPercent'],message:'A free plan cannot claim a discount.'});
+  if(d.offerStartsAt && d.offerEndsAt && Date.parse(d.offerEndsAt)<=Date.parse(d.offerStartsAt))ctx.addIssue({code:'custom',path:['offerEndsAt'],message:'The offer must end after it starts.'});
+});
+async function kiraApprovalPrice(env:Bindings,data:z.infer<typeof kiraPlanSchema>){
+  const collection=env.ENVIRONMENT==='local' && !data.providerProfileId && data.collection?data.collection:await resolveProviderCollection(env,data.universityId,data.providerProfileId);
+  const nominal=resolveKiraPlanPrice(data.amountKobo,{offerActive:true,offerStartsAt:null,offerEndsAt:null,discountPercent:data.discountPercent},collection),price=resolveKiraPlanPrice(data.amountKobo,data,collection);
+  if(data.amountKobo>0 && nominal.expectedNetKobo<=0)throw new AppError(400,'BAD_REQUEST','The processing rule must leave a positive net after the discount.');
+  return {collection,nominal,price};
+}
+financePolicyRoutes.post('/kira-plans/preview',async c=>{const data=await input(c,kiraPlanSchema);await resolveAdminScope(c.env,currentUser(c),data.universityId,'finance.review');const {price,collection}=await kiraApprovalPrice(c.env,data);return c.json({...price,price,collection});});
 financePolicyRoutes.get("/kira-plans", async (c) => {
   const scope = await resolveAdminScope(
     c.env,
@@ -152,25 +192,17 @@ financePolicyRoutes.get("/kira-plans", async (c) => {
   if (!(await kiraBillingReady(c.env)))
     return c.json({ ready: false, plans: [] });
   const plans = await database(c.env)
-    .execute(sql`select p.id,p.university_id,p.version,p.amount_kobo,p.listed_amount_kobo,p.discount_percent,p.collection,p.estimated_processing_kobo,p.approved_at,a.plan_id=p.id as active
-    from app_private.kira_price_plans p left join app_private.active_kira_price_plans a on a.university_id=p.university_id
+    .execute(sql`select p.id,p.university_id,p.tier,p.version,p.amount_kobo,p.listed_amount_kobo,p.discount_percent,p.collection,p.estimated_processing_kobo,p.approved_at,p.available,p.offer_active,p.offer_starts_at,p.offer_ends_at,p.active_status and a.plan_id=p.id as active,a.plan_id=p.id as selected,p.included_capabilities,p.limits,p.model_access,p.feature_flags
+    from app_private.kira_price_plans p left join app_private.active_kira_price_plans a on a.university_id=p.university_id and a.tier=p.tier
     where (${scope}::uuid is null or p.university_id=${scope}::uuid) order by p.approved_at desc limit 100`);
-  return c.json({ ready: true, plans: plans.rows });
+  return c.json({ ready: true, plans: plans.rows.map(row=>{
+    const p=row as unknown as {listed_amount_kobo:number;discount_percent:number;offer_active:boolean;offer_starts_at:string|null;offer_ends_at:string|null;collection:Parameters<typeof resolveKiraPlanPrice>[2]};
+    const price=resolveKiraPlanPrice(Number(p.listed_amount_kobo),{offerActive:p.offer_active,discountPercent:Number(p.discount_percent),offerStartsAt:p.offer_starts_at,offerEndsAt:p.offer_ends_at},p.collection);
+    return {...row,configured_discount_percent:p.discount_percent,amount_kobo:price.amountKobo,discount_percent:price.discountPercent,discount_amount_kobo:price.discountAmountKobo,estimated_processing_kobo:price.estimatedProcessingKobo,effective_offer_active:price.offerActive};
+  }) });
 });
 financePolicyRoutes.post("/kira-plans", async (c) => {
-  const data = await input(
-    c,
-    commercePolicySchema.pick({
-      universityId: true,
-      version: true,
-      collection: true,
-      sourceUrl: true,
-      approvalNote: true,
-    }).extend({
-      amountKobo: z.number().int().min(100000).max(100000000).default(600000),
-      discountPercent: z.number().int().min(0).max(90).default(0),
-    }),
-  );
+  const data = await input(c,kiraPlanSchema);
   const user = currentUser(c);
   await resolveAdminScope(c.env, user, data.universityId, "finance.review");
   if (!(await kiraBillingReady(c.env)))
@@ -179,19 +211,13 @@ financePolicyRoutes.post("/kira-plans", async (c) => {
       "CONFLICT",
       "Kira billing is awaiting its verified subscription database update.",
     );
-  const price = kiraSubscriptionPrice(data.amountKobo, data.discountPercent, data.collection);
-  if (price.estimatedNetKobo <= 0)
-    throw new AppError(
-      400,
-      "BAD_REQUEST",
-      "The processing rule must leave a positive net after the discount.",
-    );
+  const {price,nominal,collection}=await kiraApprovalPrice(c.env,data);
   const id = crypto.randomUUID();
   try {
     await database(c.env).execute(sql`with new_plan as (
-    insert into app_private.kira_price_plans(id,university_id,version,amount_kobo,listed_amount_kobo,discount_percent,collection,estimated_processing_kobo,approved_by,approval_note,source_url)
-    values(${id}::uuid,${data.universityId}::uuid,${data.version},${price.customerPriceKobo},${data.amountKobo},${data.discountPercent},${JSON.stringify(data.collection)}::jsonb,${price.estimatedProcessingKobo},${user.id}::uuid,${data.approvalNote},${data.sourceUrl}) returning id,university_id
-  ) insert into app_private.active_kira_price_plans(university_id,plan_id)select university_id,id from new_plan on conflict(university_id)do update set plan_id=excluded.plan_id`);
+    insert into app_private.kira_price_plans(id,university_id,tier,plan_name,version,amount_kobo,listed_amount_kobo,discount_percent,active_status,available,offer_active,offer_starts_at,offer_ends_at,collection,estimated_processing_kobo,approved_by,approval_note,source_url,model_access,limits,included_capabilities)
+    values(${id}::uuid,${data.universityId}::uuid,${data.tier},${data.tier==='pro'?'Kira Pro':'Kira Standard'},${data.version},${nominal.customerPriceKobo},${data.amountKobo},${data.discountPercent},${data.active},${data.available},${data.offerActive},${data.offerStartsAt}::timestamptz,${data.offerEndsAt}::timestamptz,${JSON.stringify(collection)}::jsonb,${nominal.estimatedProcessingKobo},${user.id}::uuid,${data.approvalNote},${data.sourceUrl},${data.tier},${JSON.stringify(data.tier==='pro'?{studyPerMonth:100,chatPerWindow:60,importsPerWeek:30}:{studyTrials:5,chatPerWindow:15,importsPerWeek:5})}::jsonb,${JSON.stringify(data.tier==='pro'?['Ask Kira','Study tools','Academic imports']:['Ask Kira','Manual academic tools','Standard study trials'])}::jsonb) returning id,university_id,tier
+  ) insert into app_private.active_kira_price_plans(university_id,tier,plan_id)select university_id,tier,id from new_plan on conflict(university_id,tier)do update set plan_id=excluded.plan_id`);
   } catch (e) {
     if (
       e instanceof Error &&
@@ -260,12 +286,12 @@ financePolicyRoutes.get("/receipts", async (c) => {
     materialReady = await materialCommerceReady(c.env);
   const receipts = await database(c.env)
     .execute(sql`select r.provider_reference,r.university_id,r.purpose,r.resource_id,r.amount_kobo,r.provider_fee_kobo,r.paid_at,
-    coalesce(q.pricing->>'estimatedProcessingKobo',${tutorialReady ? sql`tp.estimated_processing_kobo::text` : sql`null::text`},${kiraReady ? sql`kp.estimated_processing_kobo::text` : sql`null::text`},${materialReady ? sql`mq.pricing->>'estimatedProcessingKobo'` : sql`null::text`}) as estimated_processing_kobo,
+    coalesce(q.pricing->>'estimatedProcessingKobo',${tutorialReady ? sql`tp.estimated_processing_kobo::text` : sql`null::text`},${kiraReady ? sql`coalesce(kq.estimated_processing_kobo,kp.estimated_processing_kobo)::text` : sql`null::text`},${materialReady ? sql`mq.pricing->>'estimatedProcessingKobo'` : sql`null::text`}) as estimated_processing_kobo,
     exists(select 1 from public.ledger_transactions t where t.idempotency_key in ('priced-payment:'||r.provider_reference,'rider-repayment:'||r.provider_reference,'tutorial-payment:'||r.provider_reference,'kira-payment:'||r.provider_reference,'material-payment:'||r.provider_reference)) as allocated
     from app_private.verified_paystack_receipts r left join app_private.order_price_snapshots s on s.order_id=r.resource_id and r.purpose='STORE_ORDER'
       left join app_private.store_checkout_quotes q on q.id=s.quote_id
       ${tutorialReady ? sql`left join app_private.tutorial_booking_prices tp on tp.booking_id=r.resource_id and r.purpose='TUTORIAL_BOOKING'` : sql``}
-      ${kiraReady ? sql`left join app_private.kira_checkouts kc on kc.id=r.resource_id and r.purpose='KIRA_SUBSCRIPTION' left join app_private.kira_price_plans kp on kp.id=kc.plan_id` : sql``}
+      ${kiraReady ? sql`left join app_private.kira_checkouts kc on kc.id=r.resource_id and r.purpose='KIRA_SUBSCRIPTION' left join app_private.kira_price_plans kp on kp.id=kc.plan_id left join app_private.kira_subscription_quotes kq on kq.id=kc.quote_id` : sql``}
       ${materialReady ? sql`left join app_private.material_checkout_quotes mq on mq.id=r.resource_id and r.purpose='TUTORIAL_PURCHASE'` : sql``}
     where (${scope}::uuid is null or r.university_id=${scope}::uuid) order by r.recorded_at desc limit 100`);
   return c.json({ ready: true, receipts: receipts.rows });
@@ -342,7 +368,7 @@ financePolicyRoutes.post("/fee-policy-preview", async (c) => {
     data.universityId,
     "finance.review",
   );
-  const policy: CommerceFees = { ...data, id: "preview" };
+  const policy = await reviewedCommercePolicy(c.env, data, "preview");
   try {
     return c.json({
       listings: data.samples.map((i) => listingPrice(i.baseKobo, policy)),
@@ -360,7 +386,7 @@ financePolicyRoutes.post("/fee-policies", async (c) => {
     user = currentUser(c);
   await resolveAdminScope(c.env, user, data.universityId, "finance.review");
   await ready(c.env);
-  const policy: CommerceFees = { ...data, id: "approval-validation" };
+  const policy = await reviewedCommercePolicy(c.env, data, "approval-validation");
   if (data.kind === "TUTORIAL" && !(await pricedTutorialReady(c.env)))
     throw new AppError(
       409,
@@ -378,11 +404,13 @@ financePolicyRoutes.post("/fee-policies", async (c) => {
     throw e;
   }
   const policyId = crypto.randomUUID();
+  const previous = (await database(c.env).execute(sql`select p.* from app_private.commerce_fee_policies p join app_private.active_commerce_fee_policies a on a.policy_id=p.id where a.university_id=${data.universityId}::uuid and a.kind=${data.kind}`)).rows[0]??null;
+  const policyConfig = Object.fromEntries(["feeBearer","customerFeeDisplay","feeSplit","providerProfileId","roundingMode","maxPricingAdjustmentKobo","minimumCommissionKobo","maximumCommissionKobo"].filter(key=>(policy as unknown as Record<string,unknown>)[key]!==undefined).map(key=>[key,(policy as unknown as Record<string,unknown>)[key]]));
   try {
     await database(c.env).execute(sql`with new_policy as (
-    insert into app_private.commerce_fee_policies(id,university_id,kind,version,buyer_basis_points,buyer_flat_per_item_kobo,seller_commission_basis_points,collection,checkout_savings,allow_processor_subsidy,source_url,approval_note,approved_by)
-    values(${policyId}::uuid,${data.universityId}::uuid,${data.kind},${data.version},${data.buyerBasisPoints},${data.buyerFlatPerItemKobo},${data.sellerCommissionBasisPoints},${JSON.stringify(data.collection)}::jsonb,
-      ${data.checkoutSavings},${data.allowProcessorSubsidy},${data.sourceUrl},${data.approvalNote},${user.id}::uuid) returning id,university_id,kind
+    insert into app_private.commerce_fee_policies(id,university_id,kind,version,buyer_basis_points,buyer_flat_per_item_kobo,seller_commission_basis_points,collection,checkout_savings,allow_processor_subsidy,source_url,approval_note,approved_by,policy_config)
+    values(${policyId}::uuid,${data.universityId}::uuid,${data.kind},${data.version},${data.buyerBasisPoints},${data.buyerFlatPerItemKobo},${data.sellerCommissionBasisPoints},${JSON.stringify(policy.collection)}::jsonb,
+      ${data.checkoutSavings},${data.allowProcessorSubsidy},${data.sourceUrl},${data.approvalNote},${user.id}::uuid,${JSON.stringify(policyConfig)}::jsonb) returning id,university_id,kind
   ) insert into app_private.active_commerce_fee_policies(university_id,kind,policy_id) select university_id,kind,id from new_policy
     on conflict(university_id,kind) do update set policy_id=excluded.policy_id`);
   } catch (e) {
@@ -405,9 +433,9 @@ financePolicyRoutes.post("/fee-policies", async (c) => {
     targetId: policyId,
     requestId: c.get("requestId"),
     metadata: {
-      kind: data.kind,
-      version: data.version,
-      allowProcessorSubsidy: data.allowProcessorSubsidy,
+      previousPolicy: previous,
+      approvedPolicy: {...data, collection:policy.collection, ...policyConfig},
+      reason: data.approvalNote,
     },
   });
   return c.json({ id: policyId, active: true }, 201);

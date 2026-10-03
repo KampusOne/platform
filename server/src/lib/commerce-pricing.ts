@@ -12,6 +12,7 @@ import {
   type CommerceFees,
 } from "./pricing";
 import { verifyPaystack } from "./paystack";
+import { resolveProviderCollection } from "./payment-pricing";
 import type { AuthenticatedUser, Bindings } from "../types";
 
 export async function inclusiveStoreReady(env: Bindings) {
@@ -39,11 +40,18 @@ export async function approvedCommercePolicy(
       collection: CommerceFees["collection"];
       checkout_savings: boolean;
       allow_processor_subsidy: boolean;
+      policy_config?: Partial<CommerceFees>;
     }>(sql`
     select p.* from app_private.commerce_fee_policies p join app_private.active_commerce_fee_policies a on a.policy_id=p.id
     where a.university_id=${uni}::uuid and a.kind=${kind}
   `),
   );
+  // New listings and quotes need a currently eligible provider context. Saved
+  // quotes and verified receipts keep their original rules and amounts.
+  if (row && env.ENVIRONMENT === "production") {
+    const pinned = row.collection.providerProfileId ?? row.policy_config?.providerProfileId;
+    await resolveProviderCollection(env, uni, pinned);
+  }
   return row
     ? {
         id: row.id,
@@ -53,6 +61,7 @@ export async function approvedCommercePolicy(
         collection: row.collection,
         checkoutSavings: row.checkout_savings,
         allowProcessorSubsidy: row.allow_processor_subsidy,
+        ...Object.fromEntries(Object.entries(row.policy_config??{}).filter(([key])=>["feeBearer","customerFeeDisplay","feeSplit","providerProfileId","roundingMode","maxPricingAdjustmentKobo","minimumCommissionKobo","maximumCommissionKobo"].includes(key))),
       }
     : null;
 }
@@ -93,7 +102,9 @@ export function publicQuotePricing(p: unknown) {
     payableKobo: v.payableKobo,
     cashDueKobo: v.cashDueKobo,
     totalKobo: v.totalKobo,
-    pricingNotice: 'Includes the approved service and processing allowance. Paystack checkout uses the exact amount reviewed here.',
+    visibleProcessingKobo: v.visibleProcessingKobo??0,
+    pricingAdjustmentKobo: v.pricingAdjustmentKobo??0,
+    pricingNotice: 'Paystack checkout uses this exact reviewed online total. Any processing or price rounding shown here is already included.',
   };
 }
 function responseQuote(q: {

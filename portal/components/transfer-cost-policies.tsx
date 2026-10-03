@@ -12,6 +12,8 @@ type Policy = {
   high_fee_kobo: number;
   duty_kobo: number;
   duty_threshold_kobo: number;
+  minimum_withdrawal_kobo: number;
+  statutory_duty_policy: string;
   active: boolean;
 };
 export function TransferCostPolicies() {
@@ -67,6 +69,8 @@ function ScopedTransferCosts() {
           highFeeKobo: Math.round(Number(data.get("high")) * 100),
           dutyKobo: Math.round(Number(data.get("duty")) * 100),
           dutyThresholdKobo: Math.round(Number(data.get("threshold")) * 100),
+          minimumWithdrawalKobo: Math.round(Number(data.get("minimum")) * 100),
+          statutoryDutyPolicy: "PLATFORM_ABSORBS_PENDING_STATEMENT",
           sourceUrl: data.get("source"),
           approvalNote: data.get("note"),
         }),
@@ -113,6 +117,7 @@ function ScopedTransferCosts() {
         . Review merchant terms and duty before approval. Verified transfer fees
         and separate statement duty require reconciliation.
       </p>
+      <p>Statutory duty is absorbed by KampusOne and remains estimated until its separate Paystack Balance statement entry is reviewed. A transfer fee response does not establish the duty amount. Withdrawal minimums are independent of commission and fees.</p>
       {error ? (
         <p role="alert" className="notice notice--error">
           {error}
@@ -146,6 +151,7 @@ function ScopedTransferCosts() {
                 <th>Up to ₦50,000</th>
                 <th>Above ₦50,000</th>
                 <th>Duty</th>
+                <th>Minimum withdrawal</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -161,8 +167,9 @@ function ScopedTransferCosts() {
                   <td>₦{Number(p.high_fee_kobo) / 100}</td>
                   <td>
                     ₦{Number(p.duty_kobo) / 100} from ₦
-                    {Number(p.duty_threshold_kobo) / 100}
+                    {Number(p.duty_threshold_kobo) / 100} · platform absorbs
                   </td>
+                  <td>₦{Number(p.minimum_withdrawal_kobo) / 100}</td>
                   <td>{p.active ? "Active" : "Historical"}</td>
                 </tr>
               ))}
@@ -203,18 +210,22 @@ function ScopedTransferCosts() {
                 <input name="version" required minLength={3} maxLength={80} />
               </label>
               <label>
-                Transfer costs
+                Transfer fee bearer
                 <select name="feeBearer">
                   <option value="PLATFORM">Absorbed by KampusOne</option>
                   <option value="PAYEE">Deduct the reviewed allowance</option>
                 </select>
+              </label>
+              <label>
+                Seller / agent minimum withdrawal · NGN
+                <input name="minimum" type="number" min="0.01" max="10000000" step="0.01" required defaultValue="5000" />
               </label>
               {(
                 [
                   ["low", "Fee up to ₦5,000", "10"],
                   ["middle", "Fee up to ₦50,000", "25"],
                   ["high", "Fee above ₦50,000", "50"],
-                  ["duty", "Additional duty", "50"],
+                  ["duty", "Expected statutory duty · platform absorbs", "50"],
                   ["threshold", "Duty starts at", "10000"],
                 ] as const
               ).map(([name, label, value]) => (

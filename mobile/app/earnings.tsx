@@ -25,6 +25,7 @@ type Balance = {
 };
 type Earnings = {
   withdrawalsEnabled?: boolean;
+  withdrawalMinimums?: { agent_type: string; minimum_withdrawal_kobo: number }[];
   commissionPaymentsEnabled?: boolean;
   riderCommissionCheckout?: {
     reference: string;
@@ -54,6 +55,20 @@ const money = (v: unknown) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(
     Number(v ?? 0) / 100,
   );
+type PayoutQuote = {
+  id: string;
+  amountKobo: number;
+  walletDebitKobo: number;
+  bankNetKobo: number;
+  transferFeeAllowanceKobo: number;
+  expectedTransferFeeKobo: number;
+  expectedStatutoryDutyKobo: number;
+  minimumWithdrawalKobo: number;
+  feeBearer: "PLATFORM" | "PAYEE";
+  bankName: string;
+  accountLast4: string;
+  expiresAt: string;
+};
 export default function EarningsScreen() {
   const { user } = useAuth();
   return <AccountEarnings key={user?.id ?? "anonymous"} />;
@@ -70,15 +85,7 @@ function AccountEarnings() {
   const [loadError, setLoadError] = useState("");
   const [commissionReference, setCommissionReference] = useState("");
   const repaymentRequest = useRef({ profileId: "", id: "" });
-  const [fee, setFee] = useState<{
-    id: string;
-    feeKobo: number;
-    netKobo: number;
-    requestId: string;
-    bankName: string;
-    accountLast4: string;
-    expiresAt: string;
-  } | null>(null);
+  const [fee, setFee] = useState<(PayoutQuote & { requestId: string }) | null>(null);
   const profile =
     caps.profiles.find((p) => p.id === selected) ?? caps.profiles[0];
   const balance =
@@ -87,6 +94,7 @@ function AccountEarnings() {
       : profile?.agent_type === "TUTOR"
         ? data?.tutorials
         : data?.deliveries;
+  const minimumWithdrawalKobo = data?.withdrawalMinimums?.find((policy) => policy.agent_type === profile?.agent_type)?.minimum_withdrawal_kobo;
   const load = useCallback(async () => {
     const next = await api<Earnings>("/v1/agents/earnings");
     setData(next);
@@ -182,14 +190,7 @@ function AccountEarnings() {
     setBusy(true);
     try {
       const r = await api<{
-        quote: {
-          id: string;
-          feeKobo: number;
-          netKobo: number;
-          bankName: string;
-          accountLast4: string;
-          expiresAt: string;
-        };
+        quote: PayoutQuote;
       }>("/v1/agents/payout-quote", {
         method: "POST",
         body: JSON.stringify({
@@ -215,7 +216,7 @@ function AccountEarnings() {
           agentProfileId: profile.id,
           quoteId: fee.id,
           requestId: fee.requestId,
-          amountKobo: Math.round(Number(amount) * 100),
+          amountKobo: fee.amountKobo,
         }),
       });
       setConfirm(false);
@@ -383,17 +384,17 @@ function AccountEarnings() {
         <Text
           style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}
         >
-          Minimum withdrawal · ₦5,000
+          {minimumWithdrawalKobo == null ? "Withdrawal policy is awaiting approval" : `Minimum withdrawal · ${money(minimumWithdrawalKobo)}`}
         </Text>
         {confirm ? (
           <>
             <Text style={{ color: theme.text, marginVertical: 12 }}>
-              Request {money(Math.round(Number(amount) * 100))} to{" "}
-              {fee?.bankName} ·••{fee?.accountLast4}? Transfer fee:{" "}
-              {money(fee?.feeKobo)}. You receive {money(fee?.netKobo)}.
+              Wallet debit {money(fee?.walletDebitKobo)}. Transfer to {fee?.bankName} ·••{fee?.accountLast4}: {money(fee?.bankNetKobo)}.
+              {"\n"}Transfer fee allowance deducted: {money(fee?.transferFeeAllowanceKobo)}. {fee?.feeBearer === "PLATFORM" ? "KampusOne absorbs the transfer fee." : "Any unused transfer fee allowance returns to your wallet after verification."}
+              {"\n"}Expected statutory duty: {money(fee?.expectedStatutoryDutyKobo)}, absorbed by KampusOne and reconciled separately. Any receiving-bank deduction is unverified.
             </Text>
             <ToolButton
-              label="Confirm withdrawal"
+              label={`Confirm ${money(fee?.walletDebitKobo)} withdrawal`}
               disabled={busy}
               onPress={() => void withdraw()}
             />
@@ -410,7 +411,8 @@ function AccountEarnings() {
               busy ||
               !profile ||
               !data?.withdrawalsEnabled ||
-              Number(amount) < 5000 ||
+              minimumWithdrawalKobo == null ||
+              Number(amount) * 100 < Number(minimumWithdrawalKobo) ||
               !Number.isFinite(Number(amount)) ||
               Number(amount) * 100 > Number(balance?.available_kobo ?? 0)
             }

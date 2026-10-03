@@ -61,6 +61,8 @@ type CheckoutQuote = {
     cashDueKobo: number;
     payableKobo: number;
     totalKobo: number;
+    visibleProcessingKobo?: number;
+    pricingAdjustmentKobo?: number;
     pricingNotice?: string;
   };
   expiresAt: string;
@@ -81,7 +83,8 @@ const naira = (kobo: number) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(Number(kobo) / 100);
 
 export default function StoreScreen() {
@@ -1104,7 +1107,7 @@ export default function StoreScreen() {
                   <View style={styles.totals}>
                     <View style={styles.totalRow}>
                       <Text style={styles.totalLabel}>Items</Text>
-                      <Text style={styles.totalValue}>{naira(subtotal)}</Text>
+                      <Text style={styles.totalValue}>{naira(validQuote?.pricing.listedItemsKobo ?? subtotal)}</Text>
                     </View>
                     <View style={styles.totalRow}>
                       <Text style={styles.totalLabel}>Delivery</Text>
@@ -1124,10 +1127,22 @@ export default function StoreScreen() {
                         </Text>
                       </View>
                     ) : null}
+                    {Number(validQuote?.pricing.visibleProcessingKobo) > 0 ? (
+                      <View style={styles.totalRow}>
+                        <Text style={styles.totalLabel}>Processing (included)</Text>
+                        <Text style={styles.totalValue}>{naira(validQuote!.pricing.visibleProcessingKobo!)}</Text>
+                      </View>
+                    ) : null}
+                    {validQuote?.pricing.pricingAdjustmentKobo ? (
+                      <View style={styles.totalRow}>
+                        <Text style={styles.totalLabel}>Price rounding (included)</Text>
+                        <Text style={styles.totalValue}>{validQuote.pricing.pricingAdjustmentKobo < 0 ? "−" : "+"}{naira(Math.abs(validQuote.pricing.pricingAdjustmentKobo))}</Text>
+                      </View>
+                    ) : null}
                     {effectiveMode === "RIDER" &&
                     deliveryPaymentMethod === "CASH" ? (
                       <Text style={styles.totalLabel}>
-                        Pay the product total in app and{" "}
+                        Pay {validQuote ? naira(validQuote.pricing.payableKobo) : "the reviewed online total"} online and{" "}
                         {validQuote?naira(validQuote.pricing.cashDueKobo):"the reviewed fare"}{" "}
                         to the rider at delivery.
                       </Text>
@@ -1155,7 +1170,7 @@ export default function StoreScreen() {
                         ? "Creating order and opening secure payment"
                         : checkoutReady
                           ? validQuote
-                            ? "Confirm order"
+                            ? `Confirm order and pay ${naira(validQuote.pricing.payableKobo)} online${validQuote.pricing.cashDueKobo > 0 ? `; ${naira(validQuote.pricing.cashDueKobo)} cash to the rider` : ""}`
                             : "Review route and checkout total"
                           : checkoutBlockedLabel
                     }
@@ -1194,7 +1209,7 @@ export default function StoreScreen() {
                         >
                           {checkoutReady
                             ? validQuote
-                              ? "Confirm order"
+                              ? `Confirm order · Pay ${naira(validQuote.pricing.payableKobo)}`
                               : "Review total"
                             : checkoutBlockedLabel}
                         </Text>
@@ -2193,6 +2208,9 @@ const createStyles = (theme: Theme) =>
       color: "#FFFFFF",
       fontFamily: theme.font.semibold,
       fontSize: 14.5,
+      flexShrink: 1,
+      paddingVertical: 10,
+      textAlign: "center",
     },
     checkoutTextDisabled: { color: theme.textSubtle },
     paymentHelp: {

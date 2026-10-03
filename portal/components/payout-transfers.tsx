@@ -14,6 +14,13 @@ type Payout = {
   bank_net_kobo: number | null;
   fee_allowance_kobo: number | null;
   cost_recorded_kobo: number;
+  expected_transfer_fee_kobo: number | null;
+  actual_transfer_fee_kobo: number | null;
+  expected_statutory_duty_kobo: number | null;
+  actual_statutory_duty_kobo: number | null;
+  statutory_duty_reserved_kobo: number;
+  statutory_duty_source: string | null;
+  statutory_duty_reconciliation: string;
   bank_name: string | null;
   account_last4: string | null;
   provider_reference: string | null;
@@ -82,6 +89,8 @@ function ScopedTransfers() {
       setNotice(
         action === "check"
           ? "Provider status checked."
+          : action === "duty-reconciliation"
+            ? "Reviewed statement duty recorded. Its accounting and source are sealed."
           : "Action saved. Only provider verification can confirm payment.",
       );
       setVersion((v) => v + 1);
@@ -240,8 +249,17 @@ function ScopedTransfers() {
                       <dd>{money(p.bank_net_kobo)}</dd>
                       <dt>Reserved fee allowance</dt>
                       <dd>{money(p.fee_allowance_kobo)}</dd>
-                      <dt>Verified processing cost</dt>
+                      <dt>Expected transfer fee</dt>
+                      <dd>{p.expected_transfer_fee_kobo == null ? "Historical combined estimate" : money(p.expected_transfer_fee_kobo)}</dd>
+                      <dt>Verified transfer fee · Paystack transfer GET</dt>
+                      <dd>{p.actual_transfer_fee_kobo == null ? "Awaiting verification" : money(p.actual_transfer_fee_kobo)}</dd>
+                      <dt>Booked transfer expense</dt>
                       <dd>{money(p.cost_recorded_kobo)}</dd>
+                      <dt>Expected statutory duty · platform accounting</dt>
+                      <dd>{p.expected_statutory_duty_kobo == null ? "Historical combined estimate" : money(p.expected_statutory_duty_kobo)}</dd>
+                      <dt>Actual statutory duty · Balance statement</dt>
+                      <dd>{p.actual_statutory_duty_kobo == null ? "Awaiting separate statement reconciliation" : money(p.actual_statutory_duty_kobo)}</dd>
+                      {Number(p.statutory_duty_reserved_kobo) > 0 ? <><dt>Historical duty allowance awaiting statement</dt><dd>{money(p.statutory_duty_reserved_kobo)}</dd></> : null}
                       <dt>Destination</dt>
                       <dd>
                         {p.bank_name} ·••{p.account_last4}
@@ -251,6 +269,23 @@ function ScopedTransfers() {
                         <code>{p.provider_reference}</code>
                       </dd>
                     </dl>
+                    <p>Bank receiving-account deductions are unverified. Transfer proof does not establish the separate statutory duty amount.</p>
+                    {can("finance.review") && p.actual_statutory_duty_kobo == null && ["PAID", "REVERSED", "FAILED"].includes(p.status) ? (
+                      <form onSubmit={(event) => {
+                        event.preventDefault();
+                        const form = new FormData(event.currentTarget);
+                        void act(p, "duty-reconciliation", { actualDutyKobo: Math.round(Number(form.get("actualDuty")) * 100), statementReference: form.get("statement"), note: form.get("note") });
+                      }}>
+                        <fieldset disabled={Boolean(busy)} style={{ border: 0, padding: 0 }}>
+                          <legend>Review statutory duty from the Paystack Balance statement</legend>
+                          <label>Actual statutory duty · NGN<input name="actualDuty" type="number" min="0" max="10000" step="0.01" required /></label>
+                          <label>Statement entry / evidence reference<input name="statement" required minLength={3} maxLength={200} /></label>
+                          <label>Reconciliation evidence<textarea name="note" required minLength={10} maxLength={2000} /></label>
+                          <p>Use the separate statement duty entry. Enter zero only when reviewed statement evidence establishes no duty. KampusOne absorbs any additional cost.</p>
+                          <button type="submit" className="button button--secondary">Record reviewed statement duty</button>
+                        </fieldset>
+                      </form>
+                    ) : null}
                     <div className="action-row">
                       <button
                         className="button button--secondary"

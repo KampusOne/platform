@@ -13,9 +13,9 @@ const fixture = () => ({ environment:'production', projectId:'rough-breeze-36415
   checks:{experience:'passed',fixturesRolledBack:true,currentLiveBranchRehearsal:'passed',existingAccountCountsPreserved:true,mediaAndBookingsPreserved:true,privatePrivileges:'passed'},
   migrations:manifest.migrations.map(({version,sourceBlobSha})=>({version,sourceBlobSha})),
 });
-test('all eight experience migration sources are frozen and match their manifest', () => {
-  assert.equal(groups.experience.length,8);
-  assert.equal(new Set(groups.experience).size,8);
+test('all sixteen experience migration sources are frozen and match their manifest', () => {
+  assert.equal(groups.experience.length,16);
+  assert.equal(new Set(groups.experience).size,16);
   for (const migration of manifest.migrations) {
     const bytes=load(migration.version);
     assert.equal(createHash('sha256').update(bytes).digest('hex'),migration.sha256);
@@ -23,7 +23,7 @@ test('all eight experience migration sources are frozen and match their manifest
   }
 });
 test('experience release needs exact sources and isolated current branch preservation evidence', () => {
-  assert.equal(verifySchemaProof(fixture(),'experience',load),8);
+  assert.equal(verifySchemaProof(fixture(),'experience',load),16);
   const missing=fixture();missing.migrations.pop();assert.throws(()=>verifySchemaProof(missing,'experience',load),/Missing or invalid proof/);
   const noRehearsal=fixture();noRehearsal.rehearsal.branchId=noRehearsal.branchId;assert.throws(()=>verifySchemaProof(noRehearsal,'experience',load),/rehearsal/);
   const lostRecords=fixture();lostRecords.checks.existingAccountCountsPreserved=false;assert.throws(()=>verifySchemaProof(lostRecords,'experience',load),/preservation/);

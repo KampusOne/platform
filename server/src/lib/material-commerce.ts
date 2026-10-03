@@ -45,6 +45,8 @@ function publicQuote(q: Quote) {
     priceKobo: q.pricing.listedItemsKobo,
     amountKobo: q.pricing.payableKobo,
     discountKobo: q.pricing.discountKobo,
+    visibleProcessingKobo: q.pricing.visibleProcessingKobo??0,
+    pricingAdjustmentKobo: q.pricing.pricingAdjustmentKobo??0,
     expiresAt: q.expires_at,
   };
 }

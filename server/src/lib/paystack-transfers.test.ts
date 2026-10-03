@@ -81,6 +81,10 @@ describe("server transfer proof", () => {
     );
     expect(result.status).toBe("pending");
     expect(result.feeKobo).toBe(2500);
+    expect(result.transferFeeKobo).toBe(2500);
+    expect(result.transferFeeSource).toBe("PAYSTACK_TRANSFER_VERIFY");
+    expect(result.statutoryDutyKobo).toBeNull();
+    expect(result.statutoryDutySource).toBe("AWAITING_BALANCE_STATEMENT");
     expect(result.recipientCode).toBe("RCP_synthetic");
   });
 });

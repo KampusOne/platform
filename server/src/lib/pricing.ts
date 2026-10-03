@@ -6,7 +6,13 @@ export type CollectionFees = {
   capKobo: number | null;
   /** Display increment approved with this policy; legacy policies use ₦1. */
   displayRoundKobo?: number;
+  roundingMode?: "NONE" | "NEAREST_50" | "CEIL_50" | "NEAREST_100" | "CEIL_100" | "FRIENDLY_9";
+  maxPricingAdjustmentKobo?: number;
+  providerProfileId?: string;
+  providerProfileVersion?: string;
+  transactionClass?: string;
 };
+export type FeeBearer = "PLATFORM_ABSORBS" | "SELLER_ABSORBS" | "BUYER_VISIBLE" | "INCLUDED_IN_PRICE" | "SPLIT";
 export type CommerceFees = {
   id: string;
   buyerBasisPoints: number;
@@ -15,6 +21,14 @@ export type CommerceFees = {
   collection: CollectionFees;
   checkoutSavings: boolean;
   allowProcessorSubsidy: boolean;
+  feeBearer?: FeeBearer;
+  customerFeeDisplay?: "INCLUDED" | "SEPARATE";
+  feeSplit?: { platformBasisPoints: number; buyerBasisPoints: number; sellerBasisPoints: number };
+  providerProfileId?: string;
+  roundingMode?: CollectionFees["roundingMode"];
+  maxPricingAdjustmentKobo?: number;
+  minimumCommissionKobo?:number;
+  maximumCommissionKobo?:number|null;
 };
 export const publishedNigeriaLocalFees: CollectionFees = {
   basisPoints: 150,
@@ -43,11 +57,20 @@ function validateFees(policy: CollectionFees) {
   if (policy.capKobo !== null) money(policy.capKobo);
   if(policy.displayRoundKobo !== undefined && (!Number.isSafeInteger(policy.displayRoundKobo)||policy.displayRoundKobo<100||policy.displayRoundKobo>100000||policy.displayRoundKobo%100!==0))
     throw new RangeError('Choose a whole-naira display increment between ₦1 and ₦1,000.');
+  if (policy.maxPricingAdjustmentKobo !== undefined) money(policy.maxPricingAdjustmentKobo);
+  if (policy.roundingMode !== undefined && !["NONE", "NEAREST_50", "CEIL_50", "NEAREST_100", "CEIL_100", "FRIENDLY_9"].includes(policy.roundingMode))
+    throw new RangeError("Choose an approved price rounding mode.");
 }
-export function roundDisplayKobo(value:number,policy:CollectionFees){
+export function roundDisplayKobo(value:number,policy:CollectionFees,allowSubsidy=false){
   money(value);validateFees(policy);
-  const increment=BigInt(policy.displayRoundKobo??100);
-  const rounded=Number(ceilRatio(BigInt(value),increment)*increment);
+  if(value===0)return 0;
+  const mode=policy.roundingMode;
+  const increment=BigInt(mode?.endsWith("_50")?5000:mode?.endsWith("_100")?10000:policy.displayRoundKobo??100);
+  const rounded=mode==="NONE"?value:mode==="FRIENDLY_9"?Number(ceilRatio(BigInt(value)+100n,100000n)*100000n-100n):
+    mode?.startsWith("NEAREST")?Number(((BigInt(value)+increment/2n)/increment)*increment):Number(ceilRatio(BigInt(value),increment)*increment);
+  if (rounded < value && !allowSubsidy) throw new RangeError("This rounding mode needs an approved subsidy to cover its economic minimum.");
+  if (policy.maxPricingAdjustmentKobo !== undefined && Math.abs(rounded-value)>policy.maxPricingAdjustmentKobo)
+    throw new RangeError("The price rounding adjustment exceeds the approved maximum.");
   money(rounded);return rounded;
 }
 export function percentageKobo(
@@ -100,6 +123,43 @@ export function inclusiveGrossKobo(net: number, policy: CollectionFees) {
     throw new RangeError("This amount cannot fit the payment limit.");
   return Math.min(...candidates);
 }
+export function collectionFeeAllocation(amountKobo:number,policy:CommerceFees){
+  const fee=collectionFeeKobo(amountKobo,policy.collection),mode=policy.feeBearer??"INCLUDED_IN_PRICE";
+  if (!["PLATFORM_ABSORBS","SELLER_ABSORBS","BUYER_VISIBLE","INCLUDED_IN_PRICE","SPLIT"].includes(mode)) throw new RangeError("Choose an approved fee bearer.");
+  let buyer=mode==="BUYER_VISIBLE"||mode==="INCLUDED_IN_PRICE"?fee:0,seller=mode==="SELLER_ABSORBS"?fee:0;
+  if(mode==="SPLIT"){
+    const split=policy.feeSplit;
+    if(!split||![split.platformBasisPoints,split.buyerBasisPoints,split.sellerBasisPoints].every(v=>Number.isInteger(v)&&v>=0)||split.platformBasisPoints+split.buyerBasisPoints+split.sellerBasisPoints!==10000)throw new RangeError("Fee split shares must total 100%.");
+    buyer=Number(BigInt(fee)*BigInt(split.buyerBasisPoints)/10000n);seller=Number(BigInt(fee)*BigInt(split.sellerBasisPoints)/10000n);
+  }
+  return { buyerKobo:buyer,sellerKobo:seller,platformKobo:fee-buyer-seller,feeKobo:fee,feeBearer:mode };
+}
+function displayPolicy(policy:CommerceFees):CollectionFees{
+  return {...policy.collection,...(policy.roundingMode?{roundingMode:policy.roundingMode}:{}),...(policy.maxPricingAdjustmentKobo!==undefined?{maxPricingAdjustmentKobo:policy.maxPricingAdjustmentKobo}: {})};
+}
+function commissionKobo(base:number,policy:CommerceFees){
+  const minimum=policy.minimumCommissionKobo??0,maximum=policy.maximumCommissionKobo??base;
+  money(minimum);money(maximum);
+  if(minimum>maximum)throw new RangeError("Minimum commission must not exceed its maximum.");
+  const value=Math.min(maximum,Math.max(minimum,percentageKobo(base,policy.sellerCommissionBasisPoints)));
+  if(value>base)throw new RangeError("The commission exceeds the seller's item value.");
+  return value;
+}
+function commercialGrossKobo(net:number,policy:CommerceFees){
+  const mode=policy.feeBearer??"INCLUDED_IN_PRICE";
+  if(mode==="INCLUDED_IN_PRICE"||mode==="BUYER_VISIBLE")return inclusiveGrossKobo(net,policy.collection);
+  if(mode!=="SPLIT"){collectionFeeAllocation(net,policy);return net;}
+  // Find each threshold band separately, because the flat fee jumps at ₦2,500.
+  const threshold=policy.collection.flatWaivedBelowKobo,candidates:number[]=[];
+  for(const [start,end]of threshold>0?[[0,threshold-1],[threshold,MAX_KOBO]]:[[0,MAX_KOBO]]){
+    let low=Math.max(net,start!),high=end!;
+    if(low>high||high-collectionFeeAllocation(high,policy).buyerKobo<net)continue;
+    while(low<high){const mid=low+Math.floor((high-low)/2);if(mid-collectionFeeAllocation(mid,policy).buyerKobo>=net)high=mid;else low=mid+1;}
+    candidates.push(low);
+  }
+  if(!candidates.length)throw new RangeError("This amount cannot fit the payment limit.");
+  return Math.min(...candidates);
+}
 export function listingPrice(baseKobo: number, policy: CommerceFees) {
   money(baseKobo);
   bps(policy.buyerBasisPoints);
@@ -111,6 +171,10 @@ export function listingPrice(baseKobo: number, policy: CommerceFees) {
       buyerComponentKobo: 0,
       customerPriceKobo: 0,
       processingAllowanceKobo: 0,
+      rawRequirementKobo:0,
+      pricingAdjustmentKobo:0,
+      providerProfileId:policy.providerProfileId??policy.collection.providerProfileId??null,
+      providerProfileVersion:policy.collection.providerProfileVersion??null,
       ruleId: policy.id,
     };
   const buyerComponentKobo =
@@ -118,13 +182,18 @@ export function listingPrice(baseKobo: number, policy: CommerceFees) {
     policy.buyerFlatPerItemKobo;
   const target = baseKobo + buyerComponentKobo;
   money(target);
-  const customerPriceKobo = roundDisplayKobo(inclusiveGrossKobo(target, policy.collection),policy.collection);
+  const rawRequirementKobo=commercialGrossKobo(target,policy);
+  const customerPriceKobo = roundDisplayKobo(rawRequirementKobo,displayPolicy(policy),policy.allowProcessorSubsidy);
   money(customerPriceKobo);
   return {
     baseKobo,
     buyerComponentKobo,
     customerPriceKobo,
     processingAllowanceKobo: customerPriceKobo - target,
+    rawRequirementKobo,
+    pricingAdjustmentKobo:customerPriceKobo-rawRequirementKobo,
+    providerProfileId:policy.providerProfileId??policy.collection.providerProfileId??null,
+    providerProfileVersion:policy.collection.providerProfileVersion??null,
     ruleId: policy.id,
   };
 }
@@ -183,22 +252,27 @@ export function checkoutPrice(
     throw new RangeError("Rider net cannot exceed the fare.");
   const budgetPayableKobo = listedItemsKobo + digitalDeliveryKobo;
   money(budgetPayableKobo);
-  const targetGross = roundDisplayKobo(
-      inclusiveGrossKobo(
+  const rawRequirementKobo=commercialGrossKobo(
         baseKobo + buyerComponentKobo + digitalDeliveryKobo,
-        policy.collection,
-      ), policy.collection);
+        policy);
+  const targetGross = roundDisplayKobo(rawRequirementKobo,displayPolicy(policy),policy.allowProcessorSubsidy);
   const discountKobo = policy.checkoutSavings
     ? Math.max(0, budgetPayableKobo - targetGross)
     : 0;
   const payableKobo = budgetPayableKobo - discountKobo,
     totalKobo = payableKobo + cashDueKobo;
+  // New configurable policies bound the selected cart total, not merely an
+  // intermediate rounded target. Legacy policies retain their original math.
+  const pricingAdjustmentKobo=payableKobo-rawRequirementKobo;
+  if(policy.maxPricingAdjustmentKobo!==undefined&&Math.abs(pricingAdjustmentKobo)>policy.maxPricingAdjustmentKobo)
+    throw new RangeError("This cart exceeds the approved price adjustment. Review its items or approve a pricing policy that covers this cart.");
+  if((policy.roundingMode!==undefined||policy.maxPricingAdjustmentKobo!==undefined)&&pricingAdjustmentKobo<0&&!policy.allowProcessorSubsidy)
+    throw new RangeError("The displayed item budget does not cover this cart's economic minimum. Review the items or approve an explicit subsidy.");
   money(totalKobo);
-  const sellerCommissionKobo = percentageKobo(
-      baseKobo,
-      policy.sellerCommissionBasisPoints,
-    ),
-    sellerNetKobo = baseKobo - sellerCommissionKobo;
+  const allocation=collectionFeeAllocation(payableKobo,policy);
+  const sellerCommissionKobo = commissionKobo(baseKobo,policy),
+    sellerNetKobo = baseKobo - sellerCommissionKobo-allocation.sellerKobo;
+  if(sellerNetKobo<0)throw new RangeError("This fee policy exceeds the seller's earnings.");
   const estimatedProcessingKobo = collectionFeeKobo(
     payableKobo,
     policy.collection,
@@ -222,6 +296,13 @@ export function checkoutPrice(
     sellerNetKobo,
     estimatedProcessingKobo,
     projectedPlatformNetKobo,
+    rawRequirementKobo,
+    pricingAdjustmentKobo,
+    visibleProcessingKobo:allocation.feeBearer==="BUYER_VISIBLE"||policy.customerFeeDisplay==="SEPARATE"?allocation.buyerKobo:0,
+    feeAllocation:allocation,
+    feeBearer:allocation.feeBearer,
+    providerProfileId:policy.providerProfileId??policy.collection.providerProfileId??null,
+    providerProfileVersion:policy.collection.providerProfileVersion??null,
     ruleId: policy.id,
   };
 }

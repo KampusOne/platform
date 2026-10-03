@@ -13,6 +13,8 @@ type Quote = {
   priceKobo: number;
   amountKobo: number;
   discountKobo: number;
+  visibleProcessingKobo?: number;
+  pricingAdjustmentKobo?: number;
   expiresAt: string;
 };
 export default function LearningCheckout() {
@@ -211,6 +213,16 @@ function AccountCheckout({
           {quote.discountKobo > 0 ? (
             <Text style={{ color: theme.brand }}>
               Checkout saving · −{money(quote.discountKobo)}
+            </Text>
+          ) : null}
+          {Number(quote.visibleProcessingKobo) > 0 ? (
+            <Text style={{ color: theme.textMuted }}>
+              Processing (included) · {money(quote.visibleProcessingKobo!)}
+            </Text>
+          ) : null}
+          {quote.pricingAdjustmentKobo ? (
+            <Text style={{ color: theme.textMuted }}>
+              Price rounding (included) · {quote.pricingAdjustmentKobo < 0 ? "−" : "+"}{money(Math.abs(quote.pricingAdjustmentKobo))}
             </Text>
           ) : null}
           <Text

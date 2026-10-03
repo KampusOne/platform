@@ -5,7 +5,7 @@ import { reconcilePayout } from '../lib/payouts';
 import { paymentInitializationSchema } from "@kampusone/contracts";
 
 import { recordAudit } from "../lib/audit";
-import { database, firstRow, sqlClient } from "../lib/database";
+import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
 import {
   phase2SchemaReady,
@@ -80,7 +80,7 @@ paymentRoutes.get("/summary", requireAuth, async (context) => {
           ? sql`
     select o.id,s.display_name as title,o.status,o.subtotal_kobo as base_kobo,
       0::integer as buyer_fee_kobo,o.delivery_fee_kobo,o.total_kobo as amount_kobo,
-      (o.pricing_formula_version<>'UNCONFIGURED') as pricing_ready
+      false as pricing_ready
     from public.orders o join public.vendor_storefronts s on s.vendor_profile_id=o.vendor_profile_id
     where o.id=${parsed.data.resourceId}::uuid and o.buyer_user_id=${user.id}::uuid and o.university_id=${user.universityId}::uuid
   `
@@ -88,14 +88,14 @@ paymentRoutes.get("/summary", requireAuth, async (context) => {
             ? sql`
     select b.id,l.title,b.status,coalesce(p.listed_kobo,b.amount_kobo) as base_kobo,0::integer as buyer_fee_kobo,
       0::integer as delivery_fee_kobo,b.amount_kobo,coalesce(p.listed_kobo-p.payable_kobo,0) as discount_kobo,
-      (b.amount_kobo=0 or p.booking_id is not null) as pricing_ready
+      (b.amount_kobo=0 or (p.booking_id is not null and b.pricing_formula_version='INCLUSIVE_V1')) as pricing_ready
     from public.tutorial_bookings b join public.tutorial_listings l on l.id=b.listing_id
       left join app_private.tutorial_booking_prices p on p.booking_id=b.id
     where b.id=${parsed.data.resourceId}::uuid and b.student_user_id=${user.id}::uuid and b.university_id=${user.universityId}::uuid
   `
             : sql`
     select b.id,l.title,b.status,b.amount_kobo as base_kobo,0::integer as buyer_fee_kobo,
-      0::integer as delivery_fee_kobo,b.amount_kobo,true as pricing_ready
+      0::integer as delivery_fee_kobo,b.amount_kobo,false as pricing_ready
     from public.tutorial_bookings b join public.tutorial_listings l on l.id=b.listing_id
     where b.id=${parsed.data.resourceId}::uuid and b.student_user_id=${user.id}::uuid and b.university_id=${user.universityId}::uuid
   `,
@@ -144,6 +144,15 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
   const user = currentUser(context);
   const inclusiveReady = await inclusiveStoreReady(context.env);
   const tutorialReady = await pricedTutorialReady(context.env);
+  if (
+    (parsed.data.resourceType === "STORE_ORDER" && !inclusiveReady) ||
+    (parsed.data.resourceType === "TUTORIAL_BOOKING" && !tutorialReady)
+  )
+    throw new AppError(
+      503,
+      "FEATURE_DISABLED",
+      "Your saved purchase needs verified pricing before payment can begin. Refresh checkout or contact support for a price review.",
+    );
   const resource =
     parsed.data.resourceType === "TUTORIAL_BOOKING"
       ? await database(context.env).execute<{
@@ -154,8 +163,9 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
         }>(
           tutorialReady
             ? sql`
-        select b.id,b.amount_kobo,b.status,b.pricing_formula_version from public.tutorial_bookings b
-          join app_private.tutorial_booking_prices p on p.booking_id=b.id
+        select b.id,b.amount_kobo,b.status,
+          case when p.booking_id is not null then b.pricing_formula_version else null end as pricing_formula_version
+        from public.tutorial_bookings b left join app_private.tutorial_booking_prices p on p.booking_id=b.id
         where b.id=${parsed.data.resourceId}::uuid and b.student_user_id=${user.id}::uuid
           and b.university_id=${user.universityId}::uuid and b.payment_expires_at>now()
       `
@@ -174,8 +184,9 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
         }>(
           inclusiveReady
             ? sql`
-        select o.id,p.payable_kobo as amount_kobo,o.status,o.pricing_formula_version
-        from public.orders o join app_private.order_price_snapshots p on p.order_id=o.id
+        select o.id,coalesce(p.payable_kobo,o.total_kobo) as amount_kobo,o.status,
+          case when p.order_id is not null then o.pricing_formula_version else null end as pricing_formula_version
+        from public.orders o left join app_private.order_price_snapshots p on p.order_id=o.id
         where o.id=${parsed.data.resourceId}::uuid and o.buyer_user_id=${user.id}::uuid and o.university_id=${user.universityId}::uuid
           and exists(select 1 from public.inventory_reservations r where r.order_id=o.id and r.status='HELD' and r.expires_at>now())
       `
@@ -201,13 +212,12 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
       "This item is not waiting for payment.",
     );
   if (
-    parsed.data.resourceType === "STORE_ORDER" &&
-    item.pricing_formula_version === "UNCONFIGURED"
+    item.pricing_formula_version !== "INCLUSIVE_V1"
   ) {
     throw new AppError(
       503,
       "FEATURE_DISABLED",
-      "Store payments are waiting for an approved pricing and settlement policy.",
+      "Your saved purchase needs a current price review. Refresh checkout or contact support before paying.",
     );
   }
   if (Number(item.amount_kobo) <= 0)
@@ -475,159 +485,21 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
       updated_at = now()
   `);
 
-  const bookingResult = phase2SchemaReady(context.env)
-    ? await database(context.env).execute<{
-        id: string;
-        university_id: string;
-        amount_kobo: number;
-        tutor_user_id: string;
-      }>(sql`
-        select bookings.id, bookings.university_id, bookings.amount_kobo,
-          profiles.user_id as tutor_user_id
-        from public.payment_attempts attempts
-        join public.tutorial_bookings bookings
-          on attempts.resource_type = 'TUTORIAL_BOOKING' and bookings.id = attempts.resource_id
-        join public.tutorial_listings listings on listings.id = bookings.listing_id
-        join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
-        where attempts.provider_reference = ${reference}
-          and attempts.status in ('CREATED','INITIALIZED') and bookings.status = 'PENDING_PAYMENT'
-          and bookings.payment_expires_at > now()
-        limit 1
-      `)
-    : { rows: [] };
-  const booking = firstRow(bookingResult);
-  if (booking) {
-    if (Number(event.data.amount) !== Number(booking.amount_kobo)) {
-      await database(context.env).execute(sql`
-        with reviewed_attempt as (
-          update public.payment_attempts set status = 'REQUIRES_REVIEW',
-            failure_code = 'AMOUNT_MISMATCH', updated_at = now()
-          where provider_reference = ${reference}
-        )
-        update public.payment_provider_events set state = 'REQUIRES_REVIEW',
-          resource_type = 'TUTORIAL_BOOKING', resource_id = ${booking.id}::uuid,
-          review_reason = 'AMOUNT_MISMATCH', updated_at = now()
-        where provider = 'PAYSTACK' and provider_reference = ${reference}
-      `);
-      return context.json({ status: "requires_review" });
-    }
-    const client = sqlClient(context.env);
-    await client.transaction([
-      client`update public.tutorial_bookings set status = 'CONFIRMED', updated_at = now() where id = ${booking.id}::uuid and status = 'PENDING_PAYMENT'`,
-      client`insert into public.ledger_accounts (university_id, account_code, account_type) values (${booking.university_id}::uuid, 'PAYSTACK_CLEARING', 'ASSET') on conflict do nothing`,
-      client`insert into public.ledger_accounts (university_id, owner_user_id, account_code, account_type) values (${booking.university_id}::uuid, ${booking.tutor_user_id}::uuid, 'TUTOR_PAYABLE', 'LIABILITY') on conflict do nothing`,
-      client`insert into public.ledger_transactions (university_id, reference_type, reference_id, idempotency_key, description) values (${booking.university_id}::uuid, 'TUTORIAL_BOOKING', ${booking.id}, ${`paystack:${reference}`}, 'Tutorial booking payment') on conflict do nothing`,
-      client`insert into public.ledger_lines (transaction_id, account_id, direction, amount_kobo) select transactions.id, accounts.id, 'DEBIT', ${booking.amount_kobo} from public.ledger_transactions transactions join public.ledger_accounts accounts on accounts.university_id = ${booking.university_id}::uuid and accounts.account_code = 'PAYSTACK_CLEARING' and accounts.owner_user_id is null where transactions.idempotency_key = ${`paystack:${reference}`} and not exists (select 1 from public.ledger_lines lines where lines.transaction_id = transactions.id)`,
-      client`insert into public.ledger_lines (transaction_id, account_id, direction, amount_kobo) select transactions.id, accounts.id, 'CREDIT', ${booking.amount_kobo} from public.ledger_transactions transactions join public.ledger_accounts accounts on accounts.university_id = ${booking.university_id}::uuid and accounts.account_code = 'TUTOR_PAYABLE' and accounts.owner_user_id = ${booking.tutor_user_id}::uuid where transactions.idempotency_key = ${`paystack:${reference}`} and (select count(*) from public.ledger_lines lines where lines.transaction_id = transactions.id) = 1`,
-      client`update public.payment_attempts set status = 'SUCCEEDED', completed_at = now(), updated_at = now() where provider_reference = ${reference} and status in ('CREATED','INITIALIZED')`,
-      client`update public.payment_provider_events set state = 'PROCESSED', resource_type = 'TUTORIAL_BOOKING', resource_id = ${booking.id}::uuid, processed_at = now(), updated_at = now() where provider = 'PAYSTACK' and provider_reference = ${reference}`,
-    ]);
-    return context.json({ status: "processed" });
-  }
-
-  if (!phase3SchemaReady(context.env)) {
-    return context.json({ status: "schema_not_ready" }, 202);
-  }
-
-  const orderResult = await database(context.env).execute<{
-    id: string;
-    university_id: string;
-    total_kobo: number;
-    subtotal_kobo: number;
-    delivery_fee_kobo: number;
-    vendor_user_id: string;
-  }>(sql`
-    select orders.id, orders.university_id, orders.total_kobo, orders.subtotal_kobo,
-      orders.delivery_fee_kobo, profiles.user_id as vendor_user_id
-    from public.payment_attempts attempts
-    join public.orders orders
-      on attempts.resource_type = 'STORE_ORDER' and orders.id = attempts.resource_id
-    join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
-    where attempts.provider_reference = ${reference}
-      and attempts.status in ('CREATED','INITIALIZED') and orders.status = 'PENDING_PAYMENT'
-      and orders.pricing_formula_version <> 'UNCONFIGURED'
-      and exists (
-        select 1 from public.inventory_reservations reservations
-        where reservations.order_id = orders.id and reservations.status = 'HELD'
-          and reservations.expires_at > now()
-      )
-    limit 1
+  // A signed event is a notification, not a verified financial receipt. Older
+  // checkouts lack the sealed pricing and actual-fee settlement contract used by
+  // the reconcilers above; quarantine them without fulfilling or crediting anyone.
+  await database(context.env).execute(sql`
+    with reviewed_attempt as (
+      update public.payment_attempts set status='REQUIRES_REVIEW',
+        failure_code='LEGACY_VERIFIED_SNAPSHOT_REQUIRED',updated_at=now()
+      where provider_reference=${reference} and status in('CREATED','INITIALIZED','REQUIRES_REVIEW')
+      returning resource_type,resource_id
+    )
+    update public.payment_provider_events set state='REQUIRES_REVIEW',
+      resource_type=(select resource_type from public.payment_attempts where provider_reference=${reference} limit 1),
+      resource_id=(select resource_id from public.payment_attempts where provider_reference=${reference} limit 1),
+      review_reason='LEGACY_VERIFIED_SNAPSHOT_REQUIRED',updated_at=now()
+    where provider='PAYSTACK' and provider_reference=${reference}
   `);
-  const order = firstRow(orderResult);
-  if (!order) {
-    const existingResult = await database(context.env).execute<{
-      resource_type: string;
-      resource_id: string;
-      status: string;
-    }>(sql`
-      select attempts.resource_type, attempts.resource_id,
-        coalesce(bookings.status, orders.status, attempts.status) as status
-      from public.payment_attempts attempts
-      left join public.tutorial_bookings bookings
-        on attempts.resource_type = 'TUTORIAL_BOOKING' and bookings.id = attempts.resource_id
-      left join public.orders orders
-        on attempts.resource_type = 'STORE_ORDER' and orders.id = attempts.resource_id
-      where attempts.provider_reference = ${reference}
-      limit 1
-    `);
-    const existing = firstRow(existingResult);
-    const alreadyProcessed = Boolean(
-      existing && !["PENDING_PAYMENT", "CANCELLED"].includes(existing.status),
-    );
-    await database(context.env).execute(sql`
-      with reviewed_attempt as (
-        update public.payment_attempts set
-          status = ${alreadyProcessed ? "SUCCEEDED" : "REQUIRES_REVIEW"},
-          failure_code = ${alreadyProcessed ? null : existing ? "PAYMENT_AFTER_EXPIRY_OR_CANCELLATION" : "UNKNOWN_REFERENCE"},
-          completed_at = ${alreadyProcessed ? new Date().toISOString() : null}::timestamptz,
-          updated_at = now()
-        where provider_reference = ${reference}
-      )
-      update public.payment_provider_events set
-        state = ${alreadyProcessed ? "PROCESSED" : "REQUIRES_REVIEW"},
-        resource_type = ${existing?.resource_type ?? null},
-        resource_id = ${existing?.resource_id ?? null}::uuid,
-        review_reason = ${alreadyProcessed ? null : existing ? "PAYMENT_AFTER_EXPIRY_OR_CANCELLATION" : "UNKNOWN_REFERENCE"},
-        processed_at = ${alreadyProcessed ? new Date().toISOString() : null}::timestamptz,
-        updated_at = now()
-      where provider = 'PAYSTACK' and provider_reference = ${reference}
-    `);
-    return context.json({
-      status: alreadyProcessed ? "already_processed" : "requires_review",
-    });
-  }
-  if (Number(event.data.amount) !== Number(order.total_kobo)) {
-    await database(context.env).execute(sql`
-      with reviewed_attempt as (
-        update public.payment_attempts set status = 'REQUIRES_REVIEW',
-          failure_code = 'AMOUNT_MISMATCH', updated_at = now()
-        where provider_reference = ${reference}
-      )
-      update public.payment_provider_events set state = 'REQUIRES_REVIEW',
-        resource_type = 'STORE_ORDER', resource_id = ${order.id}::uuid,
-        review_reason = 'AMOUNT_MISMATCH', updated_at = now()
-      where provider = 'PAYSTACK' and provider_reference = ${reference}
-    `);
-    return context.json({ status: "requires_review" });
-  }
-  const client = sqlClient(context.env);
-  await client.transaction([
-    client`update public.orders set status = 'PAID', updated_at = now() where id = ${order.id}::uuid and status = 'PENDING_PAYMENT'`,
-    client`update public.delivery_jobs set status = 'AVAILABLE', updated_at = now() where order_id = ${order.id}::uuid and status = 'PAYMENT_PENDING'`,
-    client`update public.inventory_reservations set status = 'CONVERTED' where order_id = ${order.id}::uuid and status = 'HELD'`,
-    client`insert into public.ledger_accounts (university_id, account_code, account_type) values (${order.university_id}::uuid, 'PAYSTACK_CLEARING', 'ASSET') on conflict do nothing`,
-    client`insert into public.ledger_accounts (university_id, owner_user_id, account_code, account_type) values (${order.university_id}::uuid, ${order.vendor_user_id}::uuid, 'VENDOR_PAYABLE', 'LIABILITY') on conflict do nothing`,
-    client`insert into public.ledger_accounts (university_id, account_code, account_type) values (${order.university_id}::uuid, 'DELIVERY_REVENUE', 'REVENUE') on conflict do nothing`,
-    client`insert into public.ledger_transactions (university_id, reference_type, reference_id, idempotency_key, description) values (${order.university_id}::uuid, 'STORE_ORDER', ${order.id}, ${`paystack:${reference}`}, 'Store order payment') on conflict do nothing`,
-    client`insert into public.ledger_lines (transaction_id, account_id, direction, amount_kobo) select transactions.id, accounts.id, 'DEBIT', ${order.total_kobo} from public.ledger_transactions transactions join public.ledger_accounts accounts on accounts.university_id = ${order.university_id}::uuid and accounts.account_code = 'PAYSTACK_CLEARING' and accounts.owner_user_id is null where transactions.idempotency_key = ${`paystack:${reference}`} and not exists (select 1 from public.ledger_lines lines where lines.transaction_id = transactions.id)`,
-    client`insert into public.ledger_lines (transaction_id, account_id, direction, amount_kobo) select transactions.id, accounts.id, 'CREDIT', ${order.subtotal_kobo} from public.ledger_transactions transactions join public.ledger_accounts accounts on accounts.university_id = ${order.university_id}::uuid and accounts.account_code = 'VENDOR_PAYABLE' and accounts.owner_user_id = ${order.vendor_user_id}::uuid where transactions.idempotency_key = ${`paystack:${reference}`} and (select count(*) from public.ledger_lines lines where lines.transaction_id = transactions.id) = 1`,
-    ...(Number(order.delivery_fee_kobo) > 0
-      ? [
-          client`insert into public.ledger_lines (transaction_id, account_id, direction, amount_kobo) select transactions.id, accounts.id, 'CREDIT', ${order.delivery_fee_kobo} from public.ledger_transactions transactions join public.ledger_accounts accounts on accounts.university_id = ${order.university_id}::uuid and accounts.account_code = 'DELIVERY_REVENUE' and accounts.owner_user_id is null where transactions.idempotency_key = ${`paystack:${reference}`} and (select count(*) from public.ledger_lines lines where lines.transaction_id = transactions.id) = 2`,
-        ]
-      : []),
-    client`update public.payment_attempts set status = 'SUCCEEDED', completed_at = now(), updated_at = now() where provider_reference = ${reference} and status in ('CREATED','INITIALIZED')`,
-    client`update public.payment_provider_events set state = 'PROCESSED', resource_type = 'STORE_ORDER', resource_id = ${order.id}::uuid, processed_at = now(), updated_at = now() where provider = 'PAYSTACK' and provider_reference = ${reference}`,
-  ]);
-  return context.json({ status: "processed" });
+  return context.json({status:"requires_review"});
 });

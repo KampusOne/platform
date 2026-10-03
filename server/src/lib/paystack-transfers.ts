@@ -215,6 +215,12 @@ export async function verifyPaystackTransfer(env: Bindings, reference: string) {
     status: verified.data.status,
     amountKobo: verified.data.amount,
     feeKobo: verified.data.fee_charged,
+    transferFeeKobo: verified.data.fee_charged,
+    transferFeeSource: "PAYSTACK_TRANSFER_VERIFY" as const,
+    // Stamp duty is a separate Balance-history charge. Its absence from this
+    // response is not proof of zero duty or of a duty refund.
+    statutoryDutyKobo: null,
+    statutoryDutySource: "AWAITING_BALANCE_STATEMENT" as const,
     recipientCode: verified.data.recipient.recipient_code,
     mode: verified.data.domain,
     transferCode: verified.data.transfer_code,

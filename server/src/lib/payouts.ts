@@ -4,6 +4,7 @@ import { database, firstRow } from "./database";
 import { AppError } from "./errors";
 import { requireFullKyc } from "./kyc";
 import { requireTransfers, verifyPaystackTransfer } from "./paystack-transfers";
+import { payoutCostQuote } from "./payout-costs";
 import type { Bindings, AuthenticatedUser } from "../types";
 export async function ledgerPayoutsReady(env: Bindings) {
   if (
@@ -21,7 +22,7 @@ export async function ledgerPayoutsReady(env: Bindings) {
 }
 export async function requireLedgerPayouts(env: Bindings) {
   const mode = requireTransfers(env);
-  if (!(await ledgerPayoutsReady(env)))
+  if (!(await payoutFeeComponentsReady(env)))
     throw new AppError(
       503,
       "FEATURE_DISABLED",
@@ -29,10 +30,16 @@ export async function requireLedgerPayouts(env: Bindings) {
     );
   return mode;
 }
+export async function payoutFeeComponentsReady(env: Bindings) {
+  if (!(await ledgerPayoutsReady(env))) return false;
+  return firstRow(await database(env).execute<{ ready: boolean }>(
+    sql`select to_regprocedure('app_private.reconcile_payout_duty(uuid,uuid,bigint,text,uuid,text)') is not null as ready`,
+  ))?.ready === true;
+}
 export const payoutQuoteSchema = z
   .object({
     agentProfileId: z.string().uuid(),
-    amountKobo: z.number().int().min(500000).max(1_000_000_000),
+    amountKobo: z.number().int().positive().max(1_000_000_000),
   })
   .strict();
 export async function payoutRate(
@@ -74,10 +81,12 @@ export async function quotePayout(
       high_fee_kobo: number;
       duty_threshold_kobo: number;
       duty_kobo: number;
+      minimum_withdrawal_kobo: number;
+      version: string;
       bank_name: string;
       account_last4: string;
     }>(sql`
- select p.application_id,p.agent_type,s.id as setup_id,s.recipient_code,s.bank_name,s.account_last4,c.id as policy_id,c.fee_bearer,c.low_fee_kobo,c.middle_fee_kobo,c.high_fee_kobo,c.duty_threshold_kobo,c.duty_kobo
+ select p.application_id,p.agent_type,s.id as setup_id,s.recipient_code,s.bank_name,s.account_last4,c.id as policy_id,c.version,c.fee_bearer,c.low_fee_kobo,c.middle_fee_kobo,c.high_fee_kobo,c.duty_threshold_kobo,c.duty_kobo,c.minimum_withdrawal_kobo
  from public.agent_profiles p join public.agent_applications a on a.id=p.application_id
  join app_private.payout_account_setups s on s.agent_profile_id=p.id and s.status='APPROVED' and s.recipient_code=a.bank_recipient_code
  join app_private.active_payout_cost_policies active on active.university_id=p.university_id and active.agent_type=p.agent_type
@@ -92,38 +101,32 @@ export async function quotePayout(
       "Complete bank approval and the campus withdrawal policy before requesting a withdrawal.",
     );
   await requireFullKyc(env, row.application_id);
-  // Band is based on gross requested funds; any variance is absorbed by the platform or returned on verification.
-  const estimated =
-      Number(
-        data.amountKobo <= 500000
-          ? row.low_fee_kobo
-          : data.amountKobo <= 5000000
-            ? row.middle_fee_kobo
-            : row.high_fee_kobo,
-      ) +
-      (data.amountKobo >= Number(row.duty_threshold_kobo)
-        ? Number(row.duty_kobo)
-        : 0),
-    allowance = row.fee_bearer === "PAYEE" ? estimated : 0,
-    net = data.amountKobo - allowance;
-  if (net <= 0)
-    throw new AppError(
-      409,
-      "CONFLICT",
-      "That amount does not cover the reviewed transfer fee.",
-    );
+  let costs;
+  try {
+    costs = payoutCostQuote(data.amountKobo, {
+      feeBearer: row.fee_bearer as "PLATFORM" | "PAYEE",
+      lowFeeKobo: Number(row.low_fee_kobo), middleFeeKobo: Number(row.middle_fee_kobo), highFeeKobo: Number(row.high_fee_kobo),
+      dutyThresholdKobo: Number(row.duty_threshold_kobo), dutyKobo: Number(row.duty_kobo), minimumWithdrawalKobo: Number(row.minimum_withdrawal_kobo),
+    });
+  } catch (error) {
+    if (error instanceof RangeError) throw new AppError(409, "CONFLICT", error.message);
+    throw error;
+  }
   const quote = firstRow(
     await database(env).execute<{
       id: string;
       expires_at: string;
-    }>(sql`insert into app_private.agent_payout_quotes(id,user_id,university_id,agent_profile_id,agent_type,policy_id,account_setup_id,recipient_code,provider_mode,amount_kobo,estimated_fee_kobo,fee_allowance_kobo,bank_net_kobo)
- values(${crypto.randomUUID()}::uuid,${user.id}::uuid,${user.universityId}::uuid,${data.agentProfileId}::uuid,${row.agent_type},${row.policy_id}::uuid,${row.setup_id}::uuid,${row.recipient_code},${mode},${data.amountKobo},${estimated},${allowance},${net}) returning id,expires_at`),
+    }>(sql`insert into app_private.agent_payout_quotes(id,user_id,university_id,agent_profile_id,agent_type,policy_id,account_setup_id,recipient_code,provider_mode,amount_kobo,estimated_fee_kobo,fee_allowance_kobo,bank_net_kobo,expected_transfer_fee_kobo,expected_statutory_duty_kobo,transfer_fee_allowance_kobo,statutory_duty_allowance_kobo,minimum_withdrawal_kobo,statutory_duty_policy)
+ values(${crypto.randomUUID()}::uuid,${user.id}::uuid,${user.universityId}::uuid,${data.agentProfileId}::uuid,${row.agent_type},${row.policy_id}::uuid,${row.setup_id}::uuid,${row.recipient_code},${mode},${data.amountKobo},${costs.expectedTransferFeeKobo + costs.expectedStatutoryDutyKobo},${costs.transferFeeAllowanceKobo},${costs.bankNetKobo},${costs.expectedTransferFeeKobo},${costs.expectedStatutoryDutyKobo},${costs.transferFeeAllowanceKobo},${costs.statutoryDutyAllowanceKobo},${costs.minimumWithdrawalKobo},${costs.statutoryDutyPolicy}) returning id,expires_at`),
   );
   return {
     id: quote!.id,
     amountKobo: data.amountKobo,
-    feeKobo: allowance,
-    netKobo: net,
+    feeKobo: costs.transferFeeAllowanceKobo,
+    netKobo: costs.bankNetKobo,
+    ...costs,
+    policyId: row.policy_id,
+    policyVersion: row.version,
     expiresAt: quote!.expires_at,
     bankName: row.bank_name,
     accountLast4: row.account_last4,

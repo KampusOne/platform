@@ -107,6 +107,10 @@ describe("Paystack receipt boundary", () => {
       feeKobo: 19000,
     });
   });
+  it("retains provider transaction identity and card context for reconciliation",async()=>{
+    vi.stubGlobal("fetch",vi.fn().mockResolvedValue(Response.json({status:true,data:{...validReceipt,id:"90071992547409999",channel:"card",authorization:{country:"US",brand:"american express"}}})));
+    expect(await verifyPaystack(env,reference)).toMatchObject({providerTransactionId:"90071992547409999",channel:"card",paymentCountry:"US",cardNetwork:"AMERICAN EXPRESS",transactionClass:"INTERNATIONAL_AMEX",amountKobo:600000,feeKobo:19000});
+  });
   it("rejects wrong currency or reference, fractional money, missing fees and test receipts in production", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);

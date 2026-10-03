@@ -37,7 +37,7 @@ import {
   requireFeature,
 } from "../lib/features";
 import { deriveHandoffCode, hashOtp } from "../lib/security";
-import { ledgerPayoutsReady,requireLedgerPayouts,quotePayout,payoutQuoteSchema,payoutRate,payoutError,reconcilePayout } from "../lib/payouts";
+import { ledgerPayoutsReady,payoutFeeComponentsReady,requireLedgerPayouts,quotePayout,payoutQuoteSchema,payoutRate,payoutError,reconcilePayout } from "../lib/payouts";
 import { riderFinanceReady,riderFinanceSummary,reconcileRiderCommission } from '../lib/rider-finance';
 import { initializePaystack } from '../lib/paystack';
 import { inclusiveStoreReady } from '../lib/commerce-pricing';
@@ -1833,6 +1833,8 @@ agentRoutes.get("/earnings", async (context) => {
       join app_private.rider_cash_commissions c on c.job_id=d.job_id join public.universities u on u.id=c.university_id
     group by c.rider_profile_id,c.university_id,u.name order by u.name`)).rows:[];
   const payoutReady=await ledgerPayoutsReady(context.env);
+  const payoutCostsReady=await payoutFeeComponentsReady(context.env);
+  const withdrawalMinimums=payoutCostsReady?(await database(context.env).execute(sql`select p.agent_type,p.minimum_withdrawal_kobo from app_private.active_payout_cost_policies a join app_private.payout_cost_policies p on p.id=a.policy_id and p.university_id=a.university_id and p.agent_type=a.agent_type where a.university_id=${user.universityId}::uuid`)).rows:[];
   const ledgerSummary=async(type:string)=>payoutReady?firstRow(await database(context.env).execute(sql`
    select app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,${type+'_PAYOUT_RESERVED'}) as reserved_kobo,
     (select coalesce(sum(s.bank_net_kobo),0)::bigint from app_private.agent_payout_settlements s join public.payout_requests p on p.id=s.payout_id
@@ -1842,7 +1844,8 @@ agentRoutes.get("/earnings", async (context) => {
   if(storeFinance&&vendorPayout)Object.assign(storeFinance,vendorPayout);
   if(riderFinance&&riderPayout)Object.assign(riderFinance,riderPayout);
   return context.json({
-    withdrawalsEnabled:context.env.PAYMENTS_ENABLED==='true'&&context.env.PAYOUTS_ENABLED==='true'&&await ledgerPayoutsReady(context.env),
+    withdrawalsEnabled:context.env.PAYMENTS_ENABLED==='true'&&context.env.PAYOUTS_ENABLED==='true'&&payoutCostsReady,
+    withdrawalMinimums,
     commissionPaymentsEnabled:Boolean(riderFinance && context.env.PAYMENTS_ENABLED==='true'),
     riderCommissionCheckout:riderCheckout,
     riderCommissionDebts:riderDebts,

@@ -1,0 +1,213 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-03T11:04:30Z",
+    "scope": "User-authorized experience fixes, pricing TXT implementation, production migration and release."
+  },
+  "verifiedAt": "2026-10-03T11:37:07.758Z",
+  "rehearsal": {
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "createdAt": "2026-10-03T11:05:15Z",
+    "parentLsn": "0/EF20DE0",
+    "verifiedAt": "2026-10-03T11:36:21.388Z",
+    "migrationCount": 84,
+    "existingTableProjectionsCompared": 181,
+    "security": {
+      "private_schema_client_grants": 0,
+      "private_relation_client_grants": 0,
+      "private_function_client_grants": 0,
+      "unvalidated_constraints": 0,
+      "missing_definer_search_paths": 0,
+      "group_tables_without_rls": 0,
+      "wrong_class_leads": 0,
+      "ledger_transactions": 0,
+      "migration_count": 84
+    }
+  },
+  "checks": {
+    "experience": "passed",
+    "fixturesRolledBack": true,
+    "currentLiveBranchRehearsal": "passed",
+    "existingAccountCountsPreserved": true,
+    "mediaAndBookingsPreserved": true,
+    "privatePrivileges": "passed",
+    "atomicTransaction": "passed",
+    "exactSourceLedger": "passed",
+    "immutableCheckoutPricing": "passed",
+    "standardAndProEntitlements": "passed",
+    "scheduledOffersAndCoupons": "passed",
+    "payoutDutyAndFailedRelease": "passed",
+    "verifiedRefundCompensation": "passed",
+    "receiptFeeVarianceAndReplay": "passed"
+  },
+  "production": {
+    "before": {
+      "observed_at": "2026-10-03T11:35:50.968Z",
+      "users": "14",
+      "profiles": "14",
+      "media": "92",
+      "tutorial_bookings": "6",
+      "kira_checkouts": "3",
+      "ledger_transactions": "0",
+      "migration_count": "68"
+    },
+    "after": {
+      "verified_at": "2026-10-03T11:37:05.153Z",
+      "users": "14",
+      "profiles": "14",
+      "media": "92",
+      "tutorial_bookings": "6",
+      "kira_checkouts": "3",
+      "ledger_transactions": "0",
+      "migration_count": "84"
+    },
+    "security": {
+      "private_schema_client_grants": 0,
+      "private_relation_client_grants": 0,
+      "private_function_client_grants": 0,
+      "unvalidated_constraints": 0,
+      "missing_definer_search_paths": 0,
+      "group_tables_without_rls": 0,
+      "wrong_class_leads": 0,
+      "ledger_transactions": 0,
+      "migration_count": 84
+    },
+    "fixtureSources": [
+      "experience-functional-acceptance.sql",
+      "kira_catalogue_acceptance.sql",
+      "payout-functional-acceptance.sql",
+      "refund-functional-acceptance.sql",
+      "payment-pricing-functional-acceptance.sql"
+    ],
+    "preservation": {
+      "tableProjections": 181,
+      "unchanged": true,
+      "excludedNewDefaults": [
+        "timetable_entries.reminder_minutes",
+        "notification_outbox.state",
+        "notification_outbox.attempts",
+        "notification_outbox.next_attempt_at"
+      ],
+      "newRowsAllowed": "New free Standard catalogue rows only; prior Pro approval projections compared without the new tier field."
+    }
+  },
+  "migrations": [
+    {
+      "version": "20261003080000_push_delivery_reliability",
+      "sourceBlobSha": "bc42173fd20bc032241cb6844bc7fff0fd6fe676",
+      "sha256": "9cc59bbe949dfa970fb848b0d4259dea6b26994fedc22bc5554fadb2244f5c5f",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003081000_verified_failed_payout_release",
+      "sourceBlobSha": "36ac0c15309a3ed00721bde3443fe479372dbcb1",
+      "sha256": "c7346d2d4628d7a23a5f2830bcbc4ae1521aece4d4842dd5e5bde1ba31662607",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003090000_exclusive_question_intake",
+      "sourceBlobSha": "02dfb374132d5c043f4ba9716dcd72041d92e883",
+      "sha256": "803ab8153e7bfeb787689f1f195cf9534f19e1ffb38e2b18fe2919852fdf8d0f",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003091000_student_groups_and_academic_management",
+      "sourceBlobSha": "0664ec83cce7caea4301182d0259357eb8310c04",
+      "sha256": "a920f44ac8ff39a6cafec080190e209614877f6272d9fab12adb2afba29e48f3",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003092000_student_group_notification_queue",
+      "sourceBlobSha": "f34304ee2742409f0572b1e512f7cc3d4f43829e",
+      "sha256": "c9868d57e32b52828ab47d3ffbc13b03fa857788afca9e84b04fc62680cc43b4",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003103000_academic_import_allowance",
+      "sourceBlobSha": "4e26ab28ac6f6313fac12c4901cb8cddeb932c34",
+      "sha256": "653804cfbcf1d05d148ac8d1f963560c6398e792d46c9cb86953a0d53e94b96b",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003110000_admin_daily_reports_and_expenses",
+      "sourceBlobSha": "949d65d688b3c72ba33a43a2d1531ed2ec99be89",
+      "sha256": "204267729ed5f80605e68551d251a7411c14aa85b7efbd10b5f9c63587723c55",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003120000_configurable_kira_pricing",
+      "sourceBlobSha": "ec144cfe483aa53d0b57e395c9f775f766b8ea62",
+      "sha256": "a1065bc20d96a393be06349f8a4bfdec569322660fa63e54bdcb85f90c3d3d7d",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003121000_private_function_privileges",
+      "sourceBlobSha": "f6867d4788c8a2c621719e61f90ca98f6de8a9c8",
+      "sha256": "de6ebd631bab546a88ba3c1b0a80ba58be780f35d05508611c3f3fead0caddcf",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003122000_kira_plan_catalogue",
+      "sourceBlobSha": "fddf7a6950ee06035fb51962a3ae718516787946",
+      "sha256": "1891d0f1f964cbef3820d80b08f2eedae2b655bc772c0c73d56dafd10ce4d578",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003123000_payment_pricing_profiles",
+      "sourceBlobSha": "c3862c0d5e84a6b0c28ca581f2d91528b1a3aa6f",
+      "sha256": "cc9c451799ad24a8f44456f33eabf42375fd66a3e68e31c1119ddcb1a27b84da",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003124000_payout_fee_components",
+      "sourceBlobSha": "12533539e55833e1006785222044a51f3b35cde6",
+      "sha256": "2ab4e11f15d113f427f66db9a48762ef1b6bcfa605bdf75fd35528dda6127551",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003125000_verified_refund_accounting",
+      "sourceBlobSha": "e72fa9488217557f922f22693505b387a75b09e5",
+      "sha256": "c1d4872837540f993cbb21c5224e2278086ed96b74666889881310429e00842c",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003126000_tutorial_pricing_context",
+      "sourceBlobSha": "529ec085572ddd0fc31eb34b1575c1a236acf075",
+      "sha256": "04c3798bc69d3970a62e4ace9620b96e5628c1d05be93a2e664a7c8a53a01d8c",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003127000_payment_snapshot_policy_trace",
+      "sourceBlobSha": "a804339197f52c76e5bd1e88a11fb08967136d07",
+      "sha256": "e7d6eaca4645d859e3f7906ceae438e7a5a568bc12a1f1b00d31bb03ab899b73",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    },
+    {
+      "version": "20261003128000_payment_snapshot_context_eligibility",
+      "sourceBlobSha": "5a207e5f30a320f72ceeeefb28a4b9fc55c34500",
+      "sha256": "632e6ca5ec9e8a134d7312886dd60b74bcb5c043366c4deb952f1369d4d859ab",
+      "appliedAt": "2026-10-03T11:37:05.153Z",
+      "appliedBy": "codex-20261003-reviewed-experience"
+    }
+  ]
+}

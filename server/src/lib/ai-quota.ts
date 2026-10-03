@@ -6,6 +6,28 @@ import { database, firstRow } from "./database";
 import { AppError } from "./errors";
 
 export type AIQuota = { user: number; global: number; unlimited: boolean };
+export type AITier = "standard" | "pro";
+
+/** Read paid entitlements from the period currently in force, not a future renewal. */
+export async function activePaidAITier(env: Bindings, user: AuthenticatedUser): Promise<AITier | null> {
+  if (env.UNIFIED_SCHEMA_READY !== "true") return null;
+  const ready = firstRow(await database(env).execute<{ ready: boolean; catalogue: boolean }>(sql`
+    select to_regclass('app_private.ai_subscriptions') is not null as ready,
+    exists(select 1 from information_schema.columns where table_schema='app_private' and table_name='ai_subscriptions' and column_name='tier') as catalogue
+  `));
+  if (!ready?.ready) return null;
+  if (!ready.catalogue) return firstRow(await database(env).execute<{ active: boolean }>(sql`select exists(select 1 from app_private.ai_subscriptions where user_id=${user.id}::uuid and status='ACTIVE' and current_period_end>now()) as active`))?.active ? "pro" : null;
+  const paid = firstRow(await database(env).execute<{ tier: AITier }>(sql`
+    select p.tier from app_private.kira_billing_periods p join app_private.ai_subscriptions s on s.user_id=p.user_id and s.status='ACTIVE' and s.current_period_end>now()
+    where p.user_id=${user.id}::uuid and p.starts_at<=now() and p.ends_at>now() order by p.starts_at desc limit 1
+  `));
+  if (paid) return paid.tier;
+  // Preserve existing trusted subscriptions with no receipt-backed period.
+  return firstRow(await database(env).execute<{ tier: AITier }>(sql`
+    select tier from app_private.ai_subscriptions where user_id=${user.id}::uuid and status='ACTIVE' and current_period_end>now()
+    and not exists(select 1 from app_private.kira_billing_periods where user_id=${user.id}::uuid)
+  `))?.tier ?? null;
+}
 
 /**
  * The caller must pass currentUser(c), resolved by requireAuth from public.users.
