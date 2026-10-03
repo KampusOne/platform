@@ -19,7 +19,8 @@ permissions:
   statuses: read
 
 concurrency:
-  group: vercel-prebuilt-production
+  # Irrelevant status events must not evict a pending real release receipt.
+  group: ${{ github.event_name == 'status' && !(github.event.state == 'success' && github.event.context == 'Vercel – kampusone-mobile-preview' && github.event.sha == github.sha) && format('vercel-status-ignored-{0}', github.run_id) || 'vercel-prebuilt-production' }}
   cancel-in-progress: false
 
 jobs:
