@@ -66,11 +66,33 @@ const isRealDate = (value: string) => {
   );
 };
 
+const normalizeEvents = (value: unknown): Event[] => {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const raw = row as Record<string, unknown>;
+    if (
+      typeof raw.id !== "string" ||
+      typeof raw.title !== "string" ||
+      typeof raw.starts_on !== "string"
+    )
+      return [];
+    return [{
+      id: raw.id,
+      title: raw.title,
+      starts_on: raw.starts_on,
+      ends_on:
+        typeof raw.ends_on === "string" ? raw.ends_on : raw.starts_on,
+      semester: typeof raw.semester === "string" ? raw.semester : "",
+    } satisfies Event];
+  });
+};
+
 const sortEvents = (rows: Event[]) =>
-  [...rows].sort(
+  normalizeEvents(rows).sort(
     (left, right) =>
-      left.starts_on.localeCompare(right.starts_on) ||
-      left.title.localeCompare(right.title),
+      String(left.starts_on).localeCompare(String(right.starts_on)) ||
+      String(left.title).localeCompare(String(right.title)),
   );
 
 const localCalendarKey = (userId?: string | null) =>
@@ -522,7 +544,7 @@ export default function Calendar() {
 
       void Promise.all([
         api<{ events: Event[] }>("/v1/calendar", { timeoutMs: 12_000 })
-          .then((result) => ({ rows: result.events, error: "" }))
+          .then((result) => ({ rows: normalizeEvents(result?.events), error: "" }))
           .catch((caught) => ({
             rows: [] as Event[],
             error:

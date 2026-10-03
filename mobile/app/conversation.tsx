@@ -29,6 +29,7 @@ import { MessageVoice, VoicePlayback } from "@/src/components/message-voice";
 import {uploadMessageFile} from '@/src/lib/message-upload';
 import {downloadPrivateFile} from '@/src/lib/private-media-download';
 import {
+  MESSAGE_REACTIONS,
   MessageActionOverlay,
   SwipeReplyMessage,
   type MessageActionTarget,
@@ -99,6 +100,135 @@ type Data = {
 
 type ForwardThread = { id: string; display_name: string; profile_image_url?: string | null; status: string };
 type ForwardInbox = { threads: ForwardThread[] };
+
+function nullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function normalizeMessage(value: unknown): Message | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== "string" || !raw.id) return null;
+  const reactions = Array.isArray(raw.reactions)
+    ? raw.reactions.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const item = entry as Record<string, unknown>;
+        const reaction =
+          typeof item.reaction === "string" &&
+          (MESSAGE_REACTIONS as readonly string[]).includes(item.reaction)
+            ? (item.reaction as MessageReaction)
+            : null;
+        if (!reaction) return [];
+        const count = Number(item.count);
+        return [{
+          reaction,
+          count: Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0,
+        } satisfies ReactionSummary];
+      })
+    : [];
+  const myReaction =
+    typeof raw.my_reaction === "string" &&
+    (MESSAGE_REACTIONS as readonly string[]).includes(raw.my_reaction)
+      ? (raw.my_reaction as MessageReaction)
+      : null;
+  return {
+    id: raw.id,
+    sender_id: typeof raw.sender_id === "string" ? raw.sender_id : "",
+    body: typeof raw.body === "string" ? raw.body : "",
+    read_at: nullableString(raw.read_at),
+    created_at: typeof raw.created_at === "string" ? raw.created_at : "",
+    media_id: nullableString(raw.media_id),
+    media_type: nullableString(raw.media_type),
+    media_name: nullableString(raw.media_name),
+    reply_to_message_id: nullableString(raw.reply_to_message_id),
+    reply_sender_id: nullableString(raw.reply_sender_id),
+    reply_body: nullableString(raw.reply_body),
+    reply_media_id: nullableString(raw.reply_media_id),
+    reply_media_type: nullableString(raw.reply_media_type),
+    reply_media_name: nullableString(raw.reply_media_name),
+    reply_unsent_at: nullableString(raw.reply_unsent_at),
+    forwarded_from_message_id: nullableString(raw.forwarded_from_message_id),
+    unsent_at: nullableString(raw.unsent_at),
+    unsent_by: nullableString(raw.unsent_by),
+    pinned: raw.pinned === true,
+    reactions,
+    my_reaction: myReaction,
+  };
+}
+
+function normalizePinnedMessage(value: unknown): PinnedMessage | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== "string" || !raw.id) return null;
+  return {
+    id: raw.id,
+    sender_id: typeof raw.sender_id === "string" ? raw.sender_id : "",
+    body: typeof raw.body === "string" ? raw.body : "",
+    media_id: nullableString(raw.media_id),
+    media_type: nullableString(raw.media_type),
+    media_name: nullableString(raw.media_name),
+    unsent_at: nullableString(raw.unsent_at),
+  };
+}
+
+function normalizeConversationData(value: unknown): Data {
+  const raw =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const thread =
+    raw.thread && typeof raw.thread === "object"
+      ? (raw.thread as Record<string, unknown>)
+      : {};
+  const profile =
+    raw.profile && typeof raw.profile === "object"
+      ? (raw.profile as Record<string, unknown>)
+      : {};
+  return {
+    thread: {
+      ...(typeof thread.kind === "string" ? { kind: thread.kind } : {}),
+      access_ends_at: nullableString(thread.access_ends_at),
+      status: typeof thread.status === "string" ? thread.status : "REQUESTED",
+      recipient_id:
+        typeof thread.recipient_id === "string" ? thread.recipient_id : "",
+      initiator_id:
+        typeof thread.initiator_id === "string" ? thread.initiator_id : "",
+    },
+    profile: {
+      user_id: typeof profile.user_id === "string" ? profile.user_id : "",
+      display_name:
+        typeof profile.display_name === "string" && profile.display_name.trim()
+          ? profile.display_name
+          : "Conversation",
+      profile_image_url: nullableString(profile.profile_image_url),
+    },
+    messages: Array.isArray(raw.messages)
+      ? raw.messages
+          .map(normalizeMessage)
+          .filter((message): message is Message => Boolean(message))
+      : [],
+    pinnedMessage: normalizePinnedMessage(raw.pinnedMessage),
+    nextCursor: typeof raw.nextCursor === "string" ? raw.nextCursor : null,
+  };
+}
+
+function normalizeForwardThreads(value: unknown): ForwardThread[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const raw = entry as Record<string, unknown>;
+    if (typeof raw.id !== "string" || !raw.id) return [];
+    return [{
+      id: raw.id,
+      display_name:
+        typeof raw.display_name === "string" && raw.display_name.trim()
+          ? raw.display_name
+          : "KampusOne user",
+      profile_image_url: nullableString(raw.profile_image_url),
+      status: typeof raw.status === "string" ? raw.status : "ACTIVE",
+    } satisfies ForwardThread];
+  });
+}
 
 type DraftMedia = {
   localId: string;
@@ -545,7 +675,9 @@ export default function ConversationScreen() {
   const load = useCallback(async (before?: string) => {
     if (!id) return;
     try {
-      const result = await api<Data>(`/v1/messages/threads/${id}${before ? `?before=${before}` : ""}`);
+      const result = normalizeConversationData(
+        await api<Data>(`/v1/messages/threads/${id}${before ? `?before=${before}` : ""}`),
+      );
       if (activeScope.current !== scope) return;
       setData((previous) => {
         const all = new Map((previous?.messages ?? []).map((message) => [message.id, message]));
@@ -553,7 +685,11 @@ export default function ConversationScreen() {
         return {
           ...result,
           nextCursor: before || !previous ? result.nextCursor : previous.nextCursor,
-          messages: [...all.values()].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)),
+          messages: [...all.values()].sort(
+            (a, b) =>
+              String(a.created_at || "").localeCompare(String(b.created_at || "")) ||
+              String(a.id || "").localeCompare(String(b.id || "")),
+          ),
         };
       });
       setError("");
@@ -999,7 +1135,11 @@ export default function ConversationScreen() {
     setForwardThreads([]);
     try {
       const inbox = await api<ForwardInbox>("/v1/messages/inbox?filter=All");
-      setForwardThreads(inbox.threads.filter((thread) => thread.status === "ACCEPTED"));
+      setForwardThreads(
+        normalizeForwardThreads(inbox?.threads).filter(
+          (thread) => thread.status === "ACCEPTED",
+        ),
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Conversations could not load.");
       setForwardTarget(null);

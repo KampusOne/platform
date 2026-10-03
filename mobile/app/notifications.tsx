@@ -20,6 +20,31 @@ type Notice = {
   actor_name: string | null;
   actor_profile_image_url: string | null;
 };
+function normalizeNotices(value: unknown): Notice[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const raw = entry as Record<string, unknown>;
+    if (typeof raw.id !== "string" || !raw.id) return [];
+    return [{
+      id: raw.id,
+      title:
+        typeof raw.title === "string" && raw.title.trim()
+          ? raw.title
+          : "KampusOne notification",
+      body: typeof raw.body === "string" ? raw.body : "",
+      path: typeof raw.path === "string" ? raw.path : null,
+      read_at: typeof raw.read_at === "string" ? raw.read_at : null,
+      actor_user_id:
+        typeof raw.actor_user_id === "string" ? raw.actor_user_id : null,
+      actor_name: typeof raw.actor_name === "string" ? raw.actor_name : null,
+      actor_profile_image_url:
+        typeof raw.actor_profile_image_url === "string"
+          ? raw.actor_profile_image_url
+          : null,
+    } satisfies Notice];
+  });
+}
 export default function Notifications() {
   const toast = useToast();
   const { theme } = useAppearance();
@@ -33,7 +58,11 @@ export default function Notifications() {
     setError("");
     try {
       const result=await api<{notifications:Notice[];unreadCount:number;nextCursor:string|null}>("/v1/notifications/inbox");
-      setItems(current=>extended.current?[...result.notifications,...current.filter(n=>!result.notifications.some(f=>f.id===n.id))]:result.notifications);updateNotificationCount(result.unreadCount);if(!extended.current)setNextCursor(result.nextCursor);
+      const incoming=normalizeNotices(result?.notifications);
+      setItems(current=>extended.current?[...incoming,...current.filter(n=>!incoming.some(f=>f.id===n.id))]:incoming);
+      const unread=Number(result?.unreadCount);
+      updateNotificationCount(Number.isFinite(unread)?Math.max(0,Math.trunc(unread)):incoming.filter(n=>!n.read_at).length);
+      if(!extended.current)setNextCursor(typeof result?.nextCursor==="string"?result.nextCursor:null);
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Notifications could not load.",
@@ -43,7 +72,7 @@ export default function Notifications() {
     }
   }, []);
   useFocusEffect(useCallback(() => { void load();const timer=setInterval(()=>void load(),20000);return()=>clearInterval(timer); },[load]));
-  async function loadMore(){if(!nextCursor||moreBusy)return;setMoreBusy(true);extended.current=true;try{const result=await api<{notifications:Notice[];nextCursor:string|null}>("/v1/notifications/inbox?before="+encodeURIComponent(nextCursor));setItems(current=>[...current,...result.notifications.filter(n=>!current.some(old=>old.id===n.id))]);setNextCursor(result.nextCursor);}catch{toast("Could not load older notifications","error");}finally{setMoreBusy(false);}}
+  async function loadMore(){if(!nextCursor||moreBusy)return;setMoreBusy(true);extended.current=true;try{const result=await api<{notifications:Notice[];nextCursor:string|null}>("/v1/notifications/inbox?before="+encodeURIComponent(nextCursor));const incoming=normalizeNotices(result?.notifications);setItems(current=>[...current,...incoming.filter(n=>!current.some(old=>old.id===n.id))]);setNextCursor(typeof result?.nextCursor==="string"?result.nextCursor:null);}catch{toast("Could not load older notifications","error");}finally{setMoreBusy(false);}}
   async function open(n: Notice) {
     const wasUnread=!n.read_at;
     const openedAt=new Date().toISOString();
