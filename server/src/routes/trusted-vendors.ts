@@ -28,16 +28,19 @@ trustedVendorRoutes.use('/submit', async (c, next) => { await requireCampaign(c.
 trustedVendorRoutes.use('*', requireAuth);
 
 trustedVendorRoutes.get('/admin/campaign', async c => {
-  await resolveAdminScope(c.env, currentUser(c), undefined, 'agents.review');
-  return c.json((await campaign(c.env)) ?? { enabled: false, updated_at: null });
+  const scope = await resolveAdminScope(c.env, currentUser(c), undefined, 'agents.review');
+  const state = await campaign(c.env);
+  if (!state) throw new AppError(503, 'FEATURE_DISABLED', 'Campaign controls are unavailable. Please try again shortly.');
+  return c.json({ ...state, canManage: scope === null });
 });
 trustedVendorRoutes.patch('/admin/campaign', async c => {
   const actor = currentUser(c), data = await input(c, z.object({ enabled: z.boolean() }).strict());
   const scope = await resolveAdminScope(c.env, actor, undefined, 'agents.review');
   if (scope !== null) throw new AppError(403, 'FORBIDDEN', 'A platform reviewer manages the Exclusive campaign for all universities.');
   const result = firstRow(await database(c.env).execute(sql`update app_private.agent_campaign_controls set enabled=${data.enabled},updated_by=${actor.id}::uuid,updated_at=now() where campaign_key='exclusive' returning enabled,updated_at::text`));
+  if (!result) throw new AppError(503, 'FEATURE_DISABLED', 'Campaign controls are unavailable. Please try again shortly.');
   await recordAudit(c.env, { actorUserId: actor.id, universityId: null, action: 'exclusive_campaign.updated', targetType: 'agent_campaign', targetId: 'exclusive', requestId: c.get('requestId'), metadata: { enabled: data.enabled } });
-  return c.json(result);
+  return c.json({ ...result, canManage: true });
 });
 trustedVendorRoutes.post('/invite', async c => {
   const data = await input(c, z.object({ token }).strict()), actor = currentUser(c);
