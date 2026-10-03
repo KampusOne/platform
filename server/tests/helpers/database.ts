@@ -41,6 +41,7 @@ export const unifiedMigrations = [
   "20261001189000_notification_runtime_controls.sql",
   "20261001192000_trusted_vendor_intake.sql",
   "20261001194000_foreground_usage_samples.sql",
+  "20261003061000_trusted_vendor_documents.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */
