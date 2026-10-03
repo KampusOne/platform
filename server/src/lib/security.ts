@@ -14,6 +14,13 @@ const PBKDF2_HASH_BYTES = 32;
 const PASSWORD_HASH_PREFIX = "$pbkdf2-sha256$";
 export const REFRESH_TOKEN_SECONDS = 30 * 24 * 60 * 60;
 
+/** Reconstruct a rotation after a lost response without storing a bearer token. */
+export async function refreshSuccessor(env: Bindings, token: string, tokenId: string) {
+  const key = await crypto.subtle.importKey('raw', toArrayBuffer(signingKey(env)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = await crypto.subtle.sign('HMAC', key, encodedBuffer(`kampusone:refresh-successor:v1:${tokenId}:${token}`));
+  return toBase64Url(new Uint8Array(signature));
+}
+
 function signingKey(env: Bindings) {
   if (!env.JWT_SECRET || env.JWT_SECRET.length < 32) {
     throw new AppError(

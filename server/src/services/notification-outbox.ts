@@ -10,6 +10,13 @@ export async function deliverQueuedNotifications(env: Bindings) {
   )
     return { sent: 0 };
   const db = database(env);
+  // An elapsed suspension also restores access; its service email is durable and deduplicated.
+  await db.execute(sql`insert into app_private.notification_outbox(user_id,channel,subject,body,dedupe_key)
+    select r.user_id,'EMAIL','Your KampusOne account has been restored','Your suspension has ended and your KampusOne account has been restored. Open the app to continue. Contact support from account settings if you need help.','account-restored:'||r.id::text
+    from public.account_restrictions r join public.users u on u.id=r.user_id and u.deleted_at is null
+    where r.kind='SUSPENDED' and r.revoked_at is null and r.ends_at<=now() and r.ends_at>now()-interval '1 day'
+      and not exists(select 1 from public.account_restrictions other where other.user_id=r.user_id and other.revoked_at is null and other.starts_at<=now()and(other.ends_at is null or other.ends_at>now()))
+    on conflict(dedupe_key)do nothing`);
   const claimed = await db.execute<{
     id: string;
     user_id: string;

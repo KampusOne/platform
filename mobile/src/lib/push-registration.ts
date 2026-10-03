@@ -10,6 +10,7 @@ export type PushDevice = {
   label: string;
   build_version?: string;
   created_at?: string;
+  registeredAt?: number;
 };
 
 export const PUSH_ACTION = {
@@ -228,19 +229,18 @@ export async function registerPushDevice(userId: string) {
       "The server did not confirm this device registration. Try again.",
     );
 
-  await writeCache(registrationKey(userId), { id }, 365 * 86400_000);
+  await writeCache(registrationKey(userId), { id, registeredAt: Date.now() }, 365 * 86400_000);
   return id;
 }
 
 export async function getRegisteredPushDevice(userId: string) {
-  const saved = await readCache<{ id: string }>(registrationKey(userId));
+  const saved = await readCache<{ id: string; registeredAt?: number }>(registrationKey(userId));
   if (!saved?.id) return null;
   const devices = await listPushDevices();
-  return (
-    devices.find(
+  const device = devices.find(
       (device) => device.id === saved.id && device.active !== false,
-    ) ?? null
-  );
+    );
+  return device ? { ...device, registeredAt: saved.registeredAt } : null;
 }
 
 export async function unregisterPushDevice(userId: string) {

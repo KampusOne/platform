@@ -61,6 +61,7 @@ type CheckoutQuote = {
     cashDueKobo: number;
     payableKobo: number;
     totalKobo: number;
+    pricingNotice?: string;
   };
   expiresAt: string;
   fare: { routeMetres: number; distanceBasis: string;routeAccessNotice?:string|null } | null;
@@ -115,6 +116,8 @@ export default function StoreScreen() {
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [deliveryLocation, setDeliveryLocation] = useState("");
+  const [pickupHandoff, setPickupHandoff] = useState<"STORE" | "AGREED">("STORE");
+  const [meetingPoint, setMeetingPoint] = useState("");
   const [cart, setCart] = useState<Cart>({});
   const [query, setQuery] = useState("");
   const [selectedShop, setSelectedShop] = useState<string | null>(null);
@@ -268,8 +271,19 @@ export default function StoreScreen() {
   const deliveryFee =
     effectiveMode === "RIDER" ? Number(reviewedQuote?.quote?.pricing?.fareKobo ?? 0) : 0;
   const total = subtotal + deliveryFee;
+  const agreedPickup = effectiveMode === "PICKUP" && pickupHandoff === "AGREED";
+  const orderNote = [
+    agreedPickup ? `Agreed pickup meeting point: ${meetingPoint.trim()}` : "",
+    deliveryNote.trim(),
+  ].filter(Boolean).join("\n");
   const checkoutReady =
-    !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone);
+    !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone) &&
+    (!agreedPickup || meetingPoint.trim().length >= 5) && orderNote.length <= 500;
+  const checkoutBlockedLabel = orderNote.length > 500
+    ? "Shorten your handoff note to continue"
+    : agreedPickup && meetingPoint.trim().length < 5
+      ? "Enter the agreed pickup point"
+      : "Select a delivery zone to continue";
   const orderPayload = JSON.stringify({
     vendorProfileId: cartItems[0]?.product.vendor_profile_id,
     ...(discountCode?{discountCode}:{}),
@@ -281,7 +295,7 @@ export default function StoreScreen() {
       effectiveMode === "RIDER" ? deliveryPaymentMethod : "IN_APP",
     deliveryZoneId: effectiveMode === "RIDER" ? selectedZone?.id : null,
     deliveryPlaceId: effectiveMode === "PICKUP" ? null : deliveryPlace,
-    deliveryNote: deliveryNote.trim() || null,
+    deliveryNote: orderNote || null,
     items: cartItems.map(({ product, quantity }) => ({
       productId: product.id,
       quantity,
@@ -329,6 +343,10 @@ export default function StoreScreen() {
     }
     const stock = Number(product.stock_quantity);
     if (stock <= 0) return;
+    if (!activeVendor) {
+      setPickupHandoff("STORE");
+      setMeetingPoint("");
+    }
     setCart((current) => ({
       ...current,
       [product.id]: Math.min((current[product.id] ?? 0) + 1, stock),
@@ -389,6 +407,8 @@ export default function StoreScreen() {
       quoteRequest.current = { payload: "", id: "" };
       setCartOpen(false);
       setDeliveryNote("");
+      setPickupHandoff("STORE");
+      setMeetingPoint("");
       setSelectedZoneId("");
       setNotice(
         `Order #${order.id.slice(0, 8)} was created. You can always resume it from Purchases.`,
@@ -894,6 +914,41 @@ export default function StoreScreen() {
                       </Pressable>
                     ))}
                   </View>
+                  {(effectiveMode === "PICKUP" || effectiveMode === "RIDER") && vendorProduct ? (
+                    <View style={styles.pickupDetails}>
+                      <View style={styles.pickupHeading}>
+                        <Ionicons name="storefront-outline" size={19} color={theme.brandPressed} />
+                        <Text style={styles.zoneName}>Pickup from {vendorProduct.vendor_name}</Text>
+                      </View>
+                      <Text selectable style={styles.pickupAddress}>
+                        {vendorProduct.pickup_location?.trim() || "Ask the vendor to confirm the pickup address."}
+                      </Text>
+                      <Text style={styles.pickupHelp}>
+                        {effectiveMode === "RIDER"
+                          ? "Your rider collects from the vendor’s verified pickup point. The route is reviewed before you confirm."
+                          : "Collect from this address, or use a meeting point already agreed with the vendor."}
+                      </Text>
+                      <Pressable disabled={busy} accessibilityRole="button" onPress={()=>{setCartOpen(false);router.push({pathname:"/student-service",params:{id:vendorProduct.vendor_profile_id}});}} style={styles.vendorContact}>
+                        <Ionicons name="chatbubble-outline" size={16} color={theme.brandPressed} />
+                        <Text style={styles.vendorContactText}>Contact vendor</Text>
+                        <Ionicons name="chevron-forward" size={14} color={theme.brandPressed} />
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  {effectiveMode === "PICKUP" ? (
+                    <>
+                      <Text style={styles.sectionLabel}>Where will you collect?</Text>
+                      <View accessibilityRole="radiogroup" style={styles.zoneList}>
+                        {(["STORE", "AGREED"] as const).map(point=>(
+                          <Pressable key={point} accessibilityRole="radio" accessibilityState={{selected:pickupHandoff===point,disabled:busy}} disabled={busy} onPress={()=>setPickupHandoff(point)} style={[styles.zone,pickupHandoff===point&&styles.zoneSelected]}>
+                            <View style={styles.zoneCopy}><Text style={styles.zoneName}>{point==="STORE"?"At the vendor’s store":"At an agreed meeting point"}</Text><Text style={styles.zoneFee}>{point==="STORE"?"Use the pickup address above":"Confirm the place with the vendor first"}</Text></View>
+                            <Ionicons name={pickupHandoff===point?"radio-button-on":"radio-button-off"} size={22} color={pickupHandoff===point?theme.brandPressed:theme.textSubtle}/>
+                          </Pressable>
+                        ))}
+                      </View>
+                      {agreedPickup ? <><Text style={styles.sectionLabel}>Agreed meeting point</Text><TextInput accessibilityLabel="Meeting point agreed with the vendor" editable={!busy} value={meetingPoint} onChangeText={setMeetingPoint} maxLength={160} placeholder="Building, entrance or clear landmark" placeholderTextColor={theme.textSubtle} style={styles.noteInput}/><Text style={styles.pickupHelp}>This point is saved in your pickup instructions. Select it only after the vendor confirms.</Text></> : null}
+                    </>
+                  ) : null}
                   {effectiveMode === "RIDER" ? (
                     <>
                       <Text style={styles.sectionLabel}>Delivery zone</Text>
@@ -994,17 +1049,18 @@ export default function StoreScreen() {
                     </>
                   ) : null}
                   <Text style={styles.sectionLabel}>
-                    Delivery note{" "}
+                    {effectiveMode === "PICKUP" ? "Pickup note" : "Delivery note"}{" "}
                     <Text style={styles.optional}>(optional)</Text>
                   </Text>
                   <TextInput
-                    accessibilityLabel="Delivery note, optional"
-                    maxLength={500}
+                    accessibilityLabel={effectiveMode === "PICKUP" ? "Pickup note, optional" : "Delivery note, optional"}
+                    editable={!busy}
+                    maxLength={agreedPickup ? 300 : 500}
                     multiline
                     onBlur={() => setNoteFocused(false)}
                     onChangeText={setDeliveryNote}
                     onFocus={() => setNoteFocused(true)}
-                    placeholder="Hostel, landmark, or handoff instruction"
+                    placeholder={effectiveMode === "PICKUP" ? "When you will arrive or a handoff instruction" : "Hostel, landmark, or handoff instruction"}
                     placeholderTextColor={theme.textSubtle}
                     style={[
                       styles.noteInput,
@@ -1012,6 +1068,7 @@ export default function StoreScreen() {
                     ]}
                     value={deliveryNote}
                   />
+                  {orderNote.length > 500 ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>Keep the meeting point and note within 500 characters.</Text> : null}
 
                   {effectiveMode === "RIDER" ? (
                     <View style={{ marginVertical: 16 }}>
@@ -1088,6 +1145,8 @@ export default function StoreScreen() {
                         {effectiveMode==="RIDER"&&!validQuote?"Review route for total":naira(validQuote?.pricing.totalKobo ?? total)}
                       </Text>
                     </View>
+                    {validQuote && validQuote.pricing.cashDueKobo > 0 ? <View style={styles.totalRow}><Text style={styles.totalLabel}>Pay online</Text><Text style={styles.totalValue}>{naira(validQuote.pricing.payableKobo)}</Text></View> : null}
+                    {validQuote?.pricing.pricingNotice ? <Text style={styles.pricingNotice}>{validQuote.pricing.pricingNotice}</Text> : null}
                   </View>
 
                   <Pressable
@@ -1098,12 +1157,12 @@ export default function StoreScreen() {
                           ? validQuote
                             ? "Confirm order"
                             : "Review route and checkout total"
-                          : "Select a delivery zone to continue"
+                          : checkoutBlockedLabel
                     }
                     accessibilityHint={
                       checkoutReady
                         ? "Reviews the exact agreed total before reserving your order"
-                        : "Select a delivery zone first"
+                        : checkoutBlockedLabel
                     }
                     accessibilityRole="button"
                     accessibilityState={{
@@ -1137,7 +1196,7 @@ export default function StoreScreen() {
                             ? validQuote
                               ? "Confirm order"
                               : "Review total"
-                            : "Select a zone to continue"}
+                            : checkoutBlockedLabel}
                         </Text>
                       </>
                     )}
@@ -2017,6 +2076,13 @@ const createStyles = (theme: Theme) =>
       marginTop: 22,
     },
     optional: { color: theme.textMuted, fontFamily: theme.font.body },
+    pickupDetails: { backgroundColor: theme.surfaceMuted, borderRadius: 14, padding: 16, gap: 8, marginTop: 16 },
+    pickupHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
+    pickupAddress: { color: theme.text, fontFamily: theme.font.medium, fontSize: 14, lineHeight: 21 },
+    pickupHelp: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12.5, lineHeight: 19, marginTop: 6 },
+    vendorContact: { flexDirection: "row", gap: 6, alignItems: "center", alignSelf: "flex-start", minHeight: 44 },
+    vendorContactText: { color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 13 },
+    pricingNotice: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, lineHeight: 18, marginTop: 10 },
     zoneList: { gap: 8 },
     zone: {
       alignItems: "center",

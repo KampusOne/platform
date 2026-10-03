@@ -71,7 +71,7 @@ jobs:
           node-version: 24
       - name: Verify current production migration evidence
         if: steps.credentials.outputs.available == 'true'
-        run: node ../server/scripts/verify-schema-proof.mjs platform && node ../server/scripts/verify-schema-proof.mjs october
+        run: node ../server/scripts/verify-schema-proof.mjs platform && node ../server/scripts/verify-schema-proof.mjs october && node ../server/scripts/verify-schema-proof.mjs experience
       - name: Install and check portal
         if: steps.credentials.outputs.available == 'true'
         run: npm ci && npm run check && npm run lint
@@ -182,6 +182,7 @@ jobs:
           node --test tests/published-web-release.test.mjs
           node server/scripts/verify-schema-proof.mjs platform
           node server/scripts/verify-schema-proof.mjs october
+          node server/scripts/verify-schema-proof.mjs experience
           node server/scripts/verify-published-web-release.mjs /tmp/kampusone-worker-runs.json /tmp/kampusone-vercel-statuses.json mobile/verified-web-release.json
       - name: Save the verified source for the matching APK build
         uses: actions/upload-artifact@v4

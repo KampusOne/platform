@@ -51,6 +51,13 @@ beforeEach(async()=>{
 });
 afterAll(async()=>{vi.unstubAllGlobals();await db?.close();});
 describe('broadcast permissions and immutable review',()=>{
+ it('starts an unscheduled reviewed campaign through the request execution context',async()=>{
+  const c=await draft([alice]),p=await preview(c.id),jobs:Promise<unknown>[]=[];
+  const context={waitUntil:(job:Promise<unknown>)=>jobs.push(job),passThroughOnException:()=>{}};
+  await response(await app.request('https://api.example.invalid/v1/admin/broadcasts/'+c.id+'/send?universityId='+school,{method:'POST',headers:{Authorization:'Bearer '+tokens.get(admin),'Content-Type':'application/json'},body:JSON.stringify(sendBody(p))},env,context as any));
+  expect(jobs).toHaveLength(1);await Promise.all(jobs);
+  expect(fetchMock).toHaveBeenCalledTimes(1);expect((await db.query('select status from app_private.email_recipients')).rows).toEqual([{status:'ACCEPTED'}]);
+ });
  it('uses real role/status, buyer and academic segments without exporting unrestricted data',async()=>{
   const segments=await response(await request('/admin/broadcasts/segments?universityId='+school,staff));expect(segments.faculties).toEqual([{id:faculty,name:'Science'}]);expect(segments.departments).toEqual([{id:department,name:'Mathematics',faculty_id:faculty}]);
   for(const [segment,expected] of [[{role:'VENDOR',agentStatus:'ACTIVE'},[]],[{role:'VENDOR',agentStatus:'PAUSED'},[alice]],[{role:'TUTOR'},[bob]],[{role:'BUYER'},[bob]],[{role:'STAFF'},[admin,finance,staff]],[{role:'ALL',facultyId:faculty,departmentId:department},[bob]]] as [Record<string,string>,string[]][]){

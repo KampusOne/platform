@@ -12,6 +12,7 @@ export type FeedPublishing = {
 
 export type QuotedPost = Pick<FeedPostData, "id" | "title" | "summary" | "body" | "image_url" | "published_at" | "source_name" | "source_verified" | "media_width" | "media_height"> & { source_image_url?: string | null; media_type?: string | null; media?: FeedMediaItem[] | null };
 export type SocialFeedPost = FeedPostData & {
+  activity?: {venue?:string|null;startsAt?:string|null;deadline?:string|null;registrationUrl?:string|null}|null;
   source_user_id?: string | null; media_type?: string | null; media?: FeedMediaItem[] | null;
   social_enabled?: boolean;
   liked?: boolean;

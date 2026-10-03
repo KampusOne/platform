@@ -93,6 +93,7 @@ export function publicQuotePricing(p: unknown) {
     payableKobo: v.payableKobo,
     cashDueKobo: v.cashDueKobo,
     totalKobo: v.totalKobo,
+    pricingNotice: 'Includes the approved service and processing allowance. Paystack checkout uses the exact amount reviewed here.',
   };
 }
 function responseQuote(q: {

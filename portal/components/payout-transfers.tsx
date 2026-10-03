@@ -19,6 +19,7 @@ type Payout = {
   provider_reference: string | null;
   requested_at: string;
   initiated_at: string | null;
+  returned_to_wallet?: boolean;
 };
 const money = (v: unknown) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(
@@ -150,9 +151,9 @@ function ScopedTransfers() {
               <div>
                 <h2>Withdrawal queue</h2>
                 <p>
-                  Latest 100 requests in this scope. Failed or uncertain
-                  transfers retain their reservation until verified reversal.
-                  Retries reuse the same reference.
+                  Latest 100 requests in this scope. Unconfirmed transfers keep
+                  their reservation. A verified final failure returns the amount
+                  to the available wallet.
                 </p>
               </div>
               <label>
@@ -223,7 +224,7 @@ function ScopedTransfers() {
                   </span>
                   <span>
                     <strong>{money(p.amount_kobo)}</strong>
-                    <small>{state(p.status)}</small>
+                    <small>{p.returned_to_wallet ? "Returned to wallet" : state(p.status)}</small>
                   </span>
                 </summary>
                 {p.financial_version !== "LEDGER_PAYOUT_V1" ? (
@@ -233,6 +234,7 @@ function ScopedTransfers() {
                   </p>
                 ) : (
                   <>
+                    {p.returned_to_wallet ? <p className="notice">{money(p.amount_kobo)} has been returned to the available wallet. A new withdrawal requires a new quote.</p> : null}
                     <dl className="details-list">
                       <dt>Quoted bank amount</dt>
                       <dd>{money(p.bank_net_kobo)}</dd>
@@ -299,6 +301,7 @@ function ScopedTransfers() {
                       </form>
                     ) : null}
                     {can("payouts.approve") &&
+                    !p.returned_to_wallet &&
                     ["APPROVED", "PROCESSING", "FAILED"].includes(p.status) ? (
                       <div className="action-row">
                         {confirm === p.id ? (

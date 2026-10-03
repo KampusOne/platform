@@ -10,6 +10,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { FilterRow, SearchField } from "@/src/components/product-ui";
 import { FeedPost } from "@/src/components/feed-post";
+import { PostCreationMenu } from "@/src/components/post-creation-menu";
 import type { MediaPlaybackHandle } from "@/src/components/media-preview";
 import { PostLinkDialog } from "@/src/components/post-menu";
 import { ApiError, api, peekApiCache } from "@/src/lib/api";
@@ -46,6 +47,7 @@ export default function FeedScreen() {
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [copyId, setCopyId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const loadVersion = useRef(0);
   const paging = useRef(false);
   const loadedScope = useRef("");
@@ -195,7 +197,8 @@ export default function FeedScreen() {
       renderItem={renderPost}
       showsVerticalScrollIndicator={false} style={[styles.list, { width: Math.min(width, 540) }]} windowSize={5} />
     {feedback ? <View pointerEvents="none" style={styles.feedbackRail}><View accessibilityRole="alert" style={styles.feedback}><Text style={styles.feedbackText}>{feedback}</Text></View></View> : null}
-    <Pressable accessibilityLabel="Create a post" accessibilityRole="button" onPress={() => router.push("/compose")} style={({ pressed }) => [styles.composeFab, { right: Math.max(22, (width - 540) / 2 + 22) }, pressed && styles.pressed]}><Ionicons color="#FFFFFF" name="add" size={29} /></Pressable>
+    <Pressable accessibilityLabel="Share a post, event, sport or opportunity" accessibilityRole="button" onPress={() => setCreating(true)} style={({ pressed }) => [styles.composeFab, { right: Math.max(22, (width - 540) / 2 + 22) }, pressed && styles.pressed]}><Ionicons color="#FFFFFF" name="add" size={29} /></Pressable>
+    <PostCreationMenu visible={creating} onClose={() => setCreating(false)} />
     <PostLinkDialog id={copyId} onClose={() => setCopyId(null)} />
   </SafeAreaView>;
 }

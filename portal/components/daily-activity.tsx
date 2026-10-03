@@ -1,4 +1,15 @@
+"use client";
+import { useId, useSyncExternalStore } from "react";
+import styles from "./admin-reporting.module.css";
 type Row = Record<string, string | number | null>;
+const narrowQuery = "(max-width:650px)";
+function subscribeViewport(notify: () => void) {
+  const query = window.matchMedia(narrowQuery);
+  query.addEventListener("change", notify);
+  return () => query.removeEventListener("change", notify);
+}
+const narrowSnapshot = () => window.matchMedia(narrowQuery).matches;
+const serverSnapshot = () => false;
 
 function compact(value: number) {
   return new Intl.NumberFormat("en-NG", {
@@ -11,15 +22,21 @@ export function DailyActivity({
   rows,
   title = "Active accounts by day",
   description = "Recorded days in West Africa Time. Exact values are in the activity table.",
+  metricKey = "active_users",
+  metricLabel = "active accounts",
 }: {
   rows: Row[];
   title?: string;
   description?: string;
+  metricKey?: string;
+  metricLabel?: string;
 }) {
+  const gradientId = useId();
+  const narrow = useSyncExternalStore(subscribeViewport, narrowSnapshot, serverSnapshot);
   const dated = rows
     .map((row) => ({
       day: String(row.day ?? ""),
-      activeUsers: Math.max(0, Number(row.active_users) || 0),
+      activeUsers: Math.max(0, Number(row[metricKey]) || 0),
       events: Math.max(0, Number(row.events) || 0),
       stamp: Date.parse(String(row.day) + "T00:00:00Z"),
     }))
@@ -30,9 +47,10 @@ export function DailyActivity({
 
   const first = dated[0]!;
   const last = dated.at(-1)!;
-  const maximum = Math.max(1, ...dated.map((row) => row.activeUsers));
+  const observedMaximum = Math.max(0, ...dated.map((row) => row.activeUsers));
+  const maximum = Math.max(1, observedMaximum);
   const totalEvents = dated.reduce((sum, row) => sum + row.events, 0);
-  const width = 720;
+  const width = narrow ? 360 : 720;
   const height = 230;
   const plot = { left: 48, right: 14, top: 16, bottom: 36 };
   const plotWidth = width - plot.left - plot.right;
@@ -62,38 +80,39 @@ export function DailyActivity({
           (_, index) =>
             index === 0 ||
             index === points.length - 1 ||
-            index % Math.ceil(points.length / 6) === 0,
+            index % Math.ceil(points.length / (narrow ? 3 : 6)) === 0,
         );
+  const ticks = [...new Set([0, 0.25, 0.5, 0.75, 1].map(fraction => Math.round(maximum * fraction)))];
 
   return (
-    <section className="panel analytics-chart-panel">
-      <div className="panel-heading">
+    <section className={`panel analytics-chart-panel ${styles.chartPanel}`}>
+      <div className={`panel-heading ${styles.chartHeader}`}>
         <div>
           <h2>{title}</h2>
           <p className="field-help">{description}</p>
         </div>
         <div className="data-label">
-          Peak {maximum.toLocaleString()} · {totalEvents.toLocaleString()} events
+          Peak {observedMaximum.toLocaleString()} · {totalEvents.toLocaleString()} recorded
         </div>
       </div>
 
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label={`${title} from ${first.day} to ${last.day}; highest daily count ${maximum}.`}
-        className="analytics-line-chart"
+        aria-label={`${title} from ${first.day} to ${last.day}; highest daily count ${observedMaximum}.`}
+        className={`analytics-line-chart ${styles.lineChart}`}
       >
         <defs>
-          <linearGradient id="activity-area" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="currentColor" stopOpacity=".18" />
             <stop offset="100%" stopColor="currentColor" stopOpacity=".015" />
           </linearGradient>
         </defs>
 
-        {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
-          const y = plot.top + plotHeight * (1 - fraction);
+        {ticks.map((tick) => {
+          const y = plot.top + plotHeight * (1 - tick / maximum);
           return (
-            <g key={fraction}>
+            <g key={tick}>
               <line
                 x1={plot.left}
                 x2={plot.left + plotWidth}
@@ -107,14 +126,14 @@ export function DailyActivity({
                 textAnchor="end"
                 className="analytics-axis-label"
               >
-                {compact(Math.round(maximum * fraction))}
+                {compact(tick)}
               </text>
             </g>
           );
         })}
 
         {area ? (
-          <polygon points={area} fill="url(#activity-area)" />
+          <polygon points={area} fill={`url(#${gradientId})`} />
         ) : null}
 
         {points.length > 1 ? (
@@ -134,13 +153,13 @@ export function DailyActivity({
             key={point.day}
             cx={point.x}
             cy={point.y}
-            r={points.length === 1 ? 7 : 4.5}
+            r={points.length === 1 ? 7 : narrow ? 3 : 4.5}
             fill="var(--k1-cream)"
             stroke="currentColor"
-            strokeWidth="3"
+            strokeWidth={narrow ? 2 : 3}
             vectorEffect="non-scaling-stroke"
           >
-            <title>{`${point.day}: ${point.activeUsers} active accounts`}</title>
+            <title>{`${point.day}: ${point.activeUsers} ${metricLabel}`}</title>
           </circle>
         ))}
 

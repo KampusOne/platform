@@ -1,3 +1,4 @@
+import {isSingleCourseCode,courseCodeIdentity} from "../lib/course-code";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { z, timetableEntrySchema } from "@kampusone/contracts";
@@ -112,6 +113,16 @@ learningRoutes.put("/alarms/:id", async (c) => {
     throw new AppError(404, "NOT_FOUND", "Alarm not found.");
   return c.json(firstRow(result));
 });
+learningRoutes.post("/alarms/bulk-delete", async (c) => {
+  const user = currentUser(c);
+  const d = await input(c, z.object({ ids: z.array(z.string().uuid()).min(1).max(150) }).strict());
+  const client = sqlClient(c.env);
+  const rows = await client.transaction([
+    client`update public.timetable_entries set reminder_enabled=false,updated_at=now() where user_id=${user.id}::uuid and id in (select timetable_entry_id from public.student_alarms where user_id=${user.id}::uuid and id=any(${d.ids}::uuid[]))`,
+    client`delete from public.student_alarms where user_id=${user.id}::uuid and id=any(${d.ids}::uuid[]) returning id`,
+  ]);
+  return c.json({ deleted: rows[1]?.length ?? 0 });
+});
 learningRoutes.delete("/alarms/:id", async (c) => {
   await database(c.env).execute(
     sql`delete from public.student_alarms where id=${id(c.req.param("id"))}::uuid and user_id=${currentUser(c).id}::uuid`,
@@ -168,7 +179,8 @@ learningRoutes.put("/courses", async (c) => {
         .max(100),
     }),
   );
-  if (new Set(d.courses.map((v) => v.courseCode)).size !== d.courses.length)
+  if(d.courses.some(course=>!isSingleCourseCode(course.courseCode)))throw new AppError(400,"BAD_REQUEST","Enter one course code per row. Separate combined courses and confirm each course’s units.");
+  if (new Set(d.courses.map((v) => courseCodeIdentity(v.courseCode))).size !== d.courses.length)
     throw new AppError(400, "BAD_REQUEST", "Remove duplicate course codes.");
   const config = firstRow(
     await database(c.env).execute<{
@@ -212,7 +224,7 @@ learningRoutes.put("/timetable/:id", async (c) => {
       "The class must end after it starts.",
     );
   const result = await database(c.env).execute(
-    sql`update public.timetable_entries set title=${d.title},course_code=${d.courseCode?.toUpperCase() ?? null},venue=${d.venue ?? null},lecturer=${d.lecturer ?? null},day_of_week=${d.dayOfWeek},starts_at=${d.startsAt}::time,ends_at=${d.endsAt}::time,reminder_minutes=${d.reminderMinutes},reminder_enabled=${d.reminderEnabled},updated_at=now() where id=${id(c.req.param("id"))}::uuid and user_id=${currentUser(c).id}::uuid and status<>'ARCHIVED' returning id`,
+    sql`update public.timetable_entries set title=${d.title},course_code=${d.courseCode?.toUpperCase() ?? null},venue=${d.venue ?? null},lecturer=${d.lecturer ?? null},day_of_week=${d.dayOfWeek},starts_at=${d.startsAt}::time,ends_at=${d.endsAt}::time,reminder_minutes=15,reminder_enabled=${d.reminderEnabled},updated_at=now() where id=${id(c.req.param("id"))}::uuid and user_id=${currentUser(c).id}::uuid and status<>'ARCHIVED' returning id`,
   );
   if (!firstRow(result))
     throw new AppError(404, "NOT_FOUND", "Class not found.");
@@ -226,6 +238,7 @@ learningRoutes.post("/timetable/import", async (c) => {
     c,
     z.object({ requestId:z.string().uuid().optional(), entries: z.array(timetableEntrySchema).min(1).max(40) }),
   );
+  d.entries = d.entries.map(entry => ({ ...entry, reminderMinutes: 15 }));
   for (const e of d.entries)
     if (e.endsAt <= e.startsAt)
       throw new AppError(

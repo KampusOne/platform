@@ -3,7 +3,7 @@ import { z, timetableEntrySchema } from "@kampusone/contracts";
 import { database } from "./database";
 import { aiMessages, completeAI, type AIInput, type AITool } from "./ai-provider";
 import { KAMPUSONE_COMPANION_BEHAVIOUR, kampusOnePublicContext } from "./kampusone-public-context";
-import { findLearningVideo, learningVideoContext } from "./youtube-learning";
+import { findLearningVideo, learningVideoContext, verifiedLearningLinks } from "./youtube-learning";
 import { studentExperienceReady } from "./student-ai-policy";
 import type { AuthenticatedUser, Bindings } from "../types";
 
@@ -297,7 +297,7 @@ export async function runStudentAssistant(env: Bindings, user: AuthenticatedUser
     source: video.channel,
   }] : [];
   const actions: AIAction[] = [];
-  if (!first.calls.length) return { text: first.text, provider: "huggingface" as const, cards, actions };
+  if (!first.calls.length) return { text: verifiedLearningLinks(first.text,video), provider: "huggingface" as const, cards, actions };
 
   messages.push({ role: "assistant", content: first.text || null, tool_calls: first.calls });
   // Up to three independent read/prepare tools can be requested at once.
@@ -313,5 +313,5 @@ export async function runStudentAssistant(env: Bindings, user: AuthenticatedUser
     messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result.data) });
   }
   const final = await completeAI(env, input, messages);
-  return { text: final.text, provider: "huggingface" as const, cards: [...new Map(cards.map(card => [card.id, card])).values()], actions };
+  return { text: verifiedLearningLinks(final.text,video), provider: "huggingface" as const, cards: [...new Map(cards.map(card => [card.id, card])).values()], actions };
 }

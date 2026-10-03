@@ -1,18 +1,18 @@
-export type PostToken = { text: string; kind: "text" | "link" | "hashtag"; target?: string };
+export type PostToken = { text: string; kind: "text" | "link" | "hashtag" | "mention"; target?: string };
 
 /** Links are HTTP(S) only; hashtags support Nigerian names and Unicode letters. */
 export function postTokens(text: string): PostToken[] {
   text = typeof text === "string" ? text : "";
-  const pattern = /https?:\/\/[^\s<>]+|www\.[^\s<>]+|#[\p{L}\p{M}\p{N}_]+/giu;
+  const pattern = /https?:\/\/[^\s<>]+|www\.[^\s<>]+|#[\p{L}\p{M}\p{N}_]+|@[a-zA-Z0-9_]{1,30}/giu;
   const tokens: PostToken[] = [];
   let start = 0;
   for (const match of text.matchAll(pattern)) {
     const at = match.index!;
     const raw = match[0];
-    if (raw.startsWith("#") && at > 0 && /[\p{L}\p{M}\p{N}_/]/u.test(text[at - 1]!)) continue;
+    if ((raw.startsWith("#") || raw.startsWith("@")) && at > 0 && /[\p{L}\p{M}\p{N}_/]/u.test(text[at - 1]!)) continue;
     let value = raw;
     let target: string | undefined;
-    if (!raw.startsWith("#")) {
+    if (!raw.startsWith("#") && !raw.startsWith("@")) {
       value = raw.replace(/[.,!?;:]+$/u, "");
       // Preserve balanced parentheses in article links, strip sentence wrappers.
       while (value.endsWith(")") && (value.match(/\)/g)?.length ?? 0) > (value.match(/\(/g)?.length ?? 0)) value = value.slice(0, -1);
@@ -23,7 +23,7 @@ export function postTokens(text: string): PostToken[] {
       } catch { continue; }
     }
     if (at > start) tokens.push({ text: text.slice(start, at), kind: "text" });
-    tokens.push({ text: value, kind: raw.startsWith("#") ? "hashtag" : "link", target: target ?? raw });
+    tokens.push({ text: value, kind: raw.startsWith("#") ? "hashtag" : raw.startsWith("@") ? "mention" : "link", target: target ?? raw });
     start = at + value.length;
   }
   if (start < text.length) tokens.push({ text: text.slice(start), kind: "text" });

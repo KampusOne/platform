@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { portalApi } from "@/lib/api";
 import { useAdminContext } from "./admin-context";
+import { ExclusiveCampaignControl } from "./exclusive-campaign-control";
 
 type Row = {
   id: string;
@@ -19,6 +20,16 @@ type Row = {
   document_media_id: string | null;
   review_note: string | null;
   invitation_reason: string;
+  business_details?: {
+    primaryOffer?: string;
+    serviceDays?: string[];
+    openingTime?: string;
+    closingTime?: string;
+    fulfilmentMethods?: string[];
+    supportChannel?: string;
+    responseTime?: string;
+    joiningReason?: string;
+  };
 };
 
 export function TrustedVendorAdmin() {
@@ -41,7 +52,9 @@ export function TrustedVendorAdmin() {
       .catch((caught) => {
         if (active)
           setError(
-            caught instanceof Error ? caught.message : "Applications could not load.",
+            caught instanceof Error
+              ? caught.message
+              : "Applications could not load.",
           );
       });
     return () => {
@@ -110,7 +123,6 @@ export function TrustedVendorAdmin() {
           decision: data.get("decision"),
           note: data.get("note"),
           verifiedBusinessAndContact: true,
-          verifiedDocuments: true,
         }),
       });
       setVersion((current) => current + 1);
@@ -127,12 +139,12 @@ export function TrustedVendorAdmin() {
 
   return (
     <section className="panel">
+      <ExclusiveCampaignControl />
       <h2>Invited vendors</h2>
       <p className="field-help">
-        Create a seven day Exclusive invitation for one email address.
-        Exclusive is a question based fast track. The applicant must upload one
-        private verification document, and the reviewer checks it together with
-        the business and authorised contact details.
+        Create a seven day Exclusive invitation for one email address. Exclusive
+        is a question based fast track with no document uploads. Review the
+        business, service availability and authorised contact details.
       </p>
 
       {error ? (
@@ -155,7 +167,12 @@ export function TrustedVendorAdmin() {
         </label>
         <label>
           Invited email
-          <input type="email" name="email" required placeholder="owner@example.com" />
+          <input
+            type="email"
+            name="email"
+            required
+            placeholder="owner@example.com"
+          />
         </label>
         <label>
           Why this business is trusted
@@ -169,7 +186,11 @@ export function TrustedVendorAdmin() {
       {url ? (
         <label>
           Share this link with the invited business
-          <input readOnly value={url} onFocus={(event) => event.target.select()} />
+          <input
+            readOnly
+            value={url}
+            onFocus={(event) => event.target.select()}
+          />
         </label>
       ) : null}
 
@@ -185,12 +206,31 @@ export function TrustedVendorAdmin() {
             {row.category} · {row.campus} · {row.address}
           </p>
           <p>{row.description}</p>
+          {row.business_details && (
+            <dl className="application-review">
+              <dt>Available</dt>
+              <dd>
+                {row.business_details.serviceDays?.join(", ")} ·{" "}
+                {row.business_details.openingTime} to{" "}
+                {row.business_details.closingTime}
+              </dd>
+              <dt>Fulfilment</dt>
+              <dd>{row.business_details.fulfilmentMethods?.join(", ")}</dd>
+              <dt>Support</dt>
+              <dd>
+                {row.business_details.supportChannel} ·{" "}
+                {row.business_details.responseTime}
+              </dd>
+              <dt>Joining reason</dt>
+              <dd>{row.business_details.joiningReason}</dd>
+            </dl>
+          )}
           <p className="field-help">
             Invitation reason: {row.invitation_reason}
           </p>
           <div className="form-actions">
             <span className="field-help">
-              Exclusive fast track · private verification document required.
+              Exclusive fast track · business and contact review required.
             </span>
             {row.document_media_id ? (
               <button
@@ -202,7 +242,7 @@ export function TrustedVendorAdmin() {
                 Open verification document
               </button>
             ) : (
-              <span className="form-error">Verification document missing.</span>
+              <span className="field-help">Question based application</span>
             )}
           </div>
 
@@ -231,10 +271,9 @@ export function TrustedVendorAdmin() {
                 />
               </label>
               <label className="consent-row">
-                <input type="checkbox" required />
-                I reviewed the uploaded verification document and verified the
-                business and authorised adult contact using the submitted
-                details and appropriate reviewer checks.
+                <input type="checkbox" required />I verified the business and
+                authorised adult contact using the submitted answers and
+                appropriate reviewer checks.
               </label>
               <button className="button button--primary" disabled={busy}>
                 Save review

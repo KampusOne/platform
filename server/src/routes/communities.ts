@@ -1,3 +1,4 @@
+import {studentGroupRoutes} from "./student-groups";
 import {deliverCommunityPush} from "../services/community-push";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
@@ -13,6 +14,7 @@ export const communityRoutes = new Hono<{
   Variables: Variables;
 }>();
 communityRoutes.use("/*", requireAuth);
+communityRoutes.route("/groups",studentGroupRoutes);
 function explain(caught: unknown): never {
   const e =
     caught instanceof Error ? caught.message + " " + String(caught.cause) : "";
@@ -42,7 +44,8 @@ communityRoutes.get("/", async (c) => {
   const r = await database(c.env).execute(
     sql`select cc.id,cc.name,cc.level_code,cc.admission_year,cc.archived_at,cc.rep_user_id,m.joined_at,m.verified_at,(select count(*)::int from public.community_members where community_id=cc.id) members from public.cohort_communities cc left join public.community_members m on m.community_id=cc.id and m.user_id=${u.id}::uuid where cc.institution_id=${u.universityId}::uuid and (${search}='' or cc.name ilike ${"%" + search + "%"}) order by (m.user_id is not null) desc,cc.admission_year desc,cc.name limit 100`,
   );
-  return c.json({ rows: r.rows });
+  const groups=await database(c.env).execute(sql`select g.id,g.name,g.kind,g.description,g.keywords,null::text level_code,null::timestamptz archived_at,m.joined_at,(select count(*)::int from public.student_group_members where group_id=g.id) members from public.student_groups g left join public.student_group_members m on m.group_id=g.id and m.user_id=${u.id}::uuid where g.institution_id=${u.universityId}::uuid and (${search}='' or g.name ilike ${"%"+search+"%"} or g.description ilike ${"%"+search+"%"} or array_to_string(g.keywords,' ') ilike ${"%"+search+"%"}) order by (m.user_id is not null) desc,(lower(g.name)=lower(${search})) desc,g.created_at desc limit 100`);
+  return c.json({ rows: [...groups.rows,...r.rows.map(row=>({...row,kind:"CLASS"}))] });
 });
 communityRoutes.get("/:id", async (c) => {
   const u = currentUser(c),

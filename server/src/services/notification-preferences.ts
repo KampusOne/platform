@@ -8,11 +8,13 @@ export const defaultNotificationPreferences = {
   follows: true,
   messages: true,
   profilePosts: true,
+  mentions: true,
   classReminders: true,
   announcements: true,
   newsletter: true,
   campusUpdates: true,
   pushMessages: true,
+  pushMentions: true,
   pushAnnouncements: true,
   pushNewsletter: true,
   pushCampusUpdates: true,
@@ -30,6 +32,7 @@ export const notificationCategories = [
   "follows",
   "messages",
   "profilePosts",
+  "mentions",
   "classReminders",
   "announcements",
   "newsletter",
@@ -81,6 +84,8 @@ export function notificationChannels(
               ? row.push_enabled
               : category === "messages"
                 ? prefs.pushMessages
+                : category === "mentions"
+                  ? prefs.pushMentions
                 : category === "announcements"
                   ? prefs.pushAnnouncements
                   : category === "newsletter"

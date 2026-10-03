@@ -95,7 +95,7 @@ describe('timetable alarm import',()=>{
 
   const rows=await db.query<{id:string;reminder_minutes:number;reminder_enabled:boolean}>('select id,reminder_minutes,reminder_enabled from public.timetable_entries where id=any($1::uuid[])',[ [selected,skipped,other] ]);
   const byId=new Map(rows.rows.map(row=>[row.id,row]));
-  expect(byId.get(selected)).toMatchObject({reminder_minutes:25,reminder_enabled:true});
+  expect(byId.get(selected)).toMatchObject({reminder_minutes:15,reminder_enabled:true});
   expect(byId.get(skipped)).toMatchObject({reminder_minutes:15,reminder_enabled:false});
   expect(byId.get(other)).toMatchObject({reminder_minutes:15,reminder_enabled:true});
 
@@ -121,7 +121,7 @@ describe('community announcement delivery',()=>{
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({to:'ExpoPushToken[test_native_device_123]',title:'Class update',priority:'high',channelId:'kampusone-updates-v2',categoryId:'KAMPUSONE_UPDATE',data:{kind:'kampusone-notification',path:'/community?id=test',preferenceCategory:'announcements'}});
   expect((await db.query('select status from app_private.community_push_deliveries where outbox_id=$1',[outbox])).rows).toEqual([{status:'ACCEPTED'}]);
-  await db.query("update app_private.community_push_deliveries set created_at=now()-interval '16 minutes' where outbox_id=$1",[outbox]);
+  await db.query("update app_private.community_push_deliveries set created_at=now()-interval '16 minutes',updated_at=now()-interval '16 minutes' where outbox_id=$1",[outbox]);
   fetchMock.mockResolvedValue(new Response(JSON.stringify({data:{'community-ticket':{status:'ok'}}})));
   await checkCommunityPushReceipts(env);
   expect((await db.query('select status from app_private.community_push_deliveries where outbox_id=$1',[outbox])).rows).toEqual([{status:'RECEIPT_OK'}]);
@@ -147,6 +147,15 @@ describe('community announcement delivery',()=>{
 
 
 describe('notification inbox read state',()=>{
+ it('saves independent mention preferences and hides muted mention notices from the inbox',async()=>{
+  const notificationId=crypto.randomUUID();
+  await db.query("insert into public.in_app_notifications(id,user_id,institution_id,actor_user_id,title,body,path,dedupe_key)values($1,$2,$3,$4,'Test 0 tagged you in a post','Post title','/post?id=test',$5)",[notificationId,student,school,staff,'post-mention:'+crypto.randomUUID()+':'+student]);
+  const saved=await data(await request('/preferences','PUT',{channels:{mentions:{in_app_enabled:false,push_enabled:true}}},student));
+  expect(saved.channels.mentions).toEqual({in_app_enabled:false,push_enabled:true});expect(saved.preferences).toMatchObject({mentions:false,pushMentions:true});
+  expect((await data(await request('/inbox','GET',undefined,student))).notifications.some((n:any)=>n.id===notificationId)).toBe(false);
+  await data(await request('/preferences','PUT',{channels:{mentions:{in_app_enabled:true,push_enabled:true}}},student));
+  expect((await data(await request('/inbox','GET',undefined,student))).notifications.some((n:any)=>n.id===notificationId)).toBe(true);
+ });
  it('returns the actor profile and persists individual read state',async()=>{
   const notificationId=crypto.randomUUID();
   await db.query('update public.profiles set profile_image_url=$2 where user_id=$1',[staff,'https://images.example.invalid/staff-avatar.jpg']);

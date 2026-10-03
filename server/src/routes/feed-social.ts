@@ -15,12 +15,50 @@ import {
 import type { Bindings, Variables } from "../types";
 import { notifyFeedInteraction } from "../services/feed-notifications";
 import { notifyProfilePostPublished } from "../services/profile-post-notifications";
+import { notifyPostMentions } from "../services/post-mentions";
 
 type Env = { Bindings: Bindings; Variables: Variables };
 type User = ReturnType<typeof currentUser>;
 const uuid = z.string().uuid();
 const pageSize = 40;
 export const feedSocialRoutes = new Hono<Env>();
+
+// Suggestion collections must run before /:id so their names are never parsed as UUIDs.
+feedSocialRoutes.get("/mentions", requireAuth, async c => {
+  const user = currentUser(c), university = campus(user);
+  const query = (c.req.query("q") ?? "").replace(/^@/, "").trim().toLowerCase().slice(0, 30);
+  if (query && !/^[a-z0-9_]+$/.test(query)) return c.json({ profiles: [] });
+  const prefix = query.replace(/[\\%_]/g, "\\$&") + "%";
+  const result = await database(c.env).execute(sql`
+    select p.user_id,p.username,p.display_name,p.profile_image_url,
+      coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified
+    from public.profiles p join public.users account on account.id=p.user_id
+    where p.deleted_at is null and account.deleted_at is null and account.status::text='ACTIVE'
+      and p.username is not null and p.university_id=${university}::uuid
+      and ${unblockedAuthor(user.id,sql`p.user_id`)}
+      and (${query}='' or p.username ilike ${prefix})
+    order by case when lower(p.username)=${query} then 0 else 1 end,lower(p.username),p.user_id limit 8
+  `);
+  c.header("Cache-Control","private, no-store");
+  return c.json({ profiles: result.rows });
+});
+feedSocialRoutes.get("/hashtags", requireAuth, async c => {
+  const user=currentUser(c),university=campus(user);
+  const query=(c.req.query("q")??"").replace(/^#/,"").normalize("NFC").toLowerCase().slice(0,60);
+  if(query&&!/^[\p{L}\p{M}\p{N}_]+$/u.test(query))return c.json({hashtags:[]});
+  const prefix=query.replace(/[\\%_]/g,"\\$&")+"%";
+  const rows=await database(c.env).execute(sql`
+    select tag,count(distinct post_id)::int as count from (
+      select posts.id as post_id,lower((match.parts)[2]) as tag
+      from public.feed_posts posts
+      cross join lateral regexp_matches(concat_ws(' ',posts.title,posts.summary,posts.body),'(^|[^[:alnum:]_/#])#([[:alnum:]_]+)','g') as match(parts)
+      where ${visiblePost(university)} and ${unblockedAuthor(user.id,sql`posts.author_user_id`)}
+    ) tags where tag ilike ${prefix}
+    group by tag order by case when tag=${query} then 0 else 1 end,count(distinct post_id) desc,tag limit 8
+  `);
+  c.header("Cache-Control","private, no-store");
+  return c.json({hashtags:rows.rows});
+});
 
 function id(value: string) {
   const parsed = uuid.safeParse(value);
@@ -52,7 +90,7 @@ export async function publishingFeedReady(env: Bindings) {
 function projection(user: User, withViews: boolean, withPublishing: boolean) {
   const views = withViews ? sql`(select count(*)::int from public.feed_post_views v where v.post_id = posts.id)` : sql`null::integer`;
   return sql`posts.id, posts.category, posts.title, posts.summary, posts.body,
-    posts.image_url, posts.audience->>'mediaType' as media_type, coalesce(posts.audience->'media', '[]'::jsonb) as media, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
+    posts.image_url, posts.audience->>'mediaType' as media_type, coalesce(posts.audience->'media', '[]'::jsonb) as media, posts.audience->'activity' as activity, posts.urgent, posts.sponsored, posts.published_at, posts.correction_note,
     case when posts.audience->>'studentPost' = 'true'
       then coalesce(author.display_name, 'KampusOne student') else sources.name end as source_name,
     case when posts.audience->>'studentPost' = 'true' then nullif(author.username, '') else null end as source_username,
@@ -137,6 +175,11 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   if (author && repostedBy) throw new AppError(400, "BAD_REQUEST", "Choose either posts or reposts for a profile.");
   const category = c.req.query("category")?.toUpperCase() || null;
   const search = c.req.query("q")?.trim().slice(0, 200) || null;
+  const tag = search && /^#[\p{L}\p{M}\p{N}_]+$/u.test(search) ? search.slice(1).toLowerCase() : null;
+  const searchFilter = tag
+    ? sql`concat_ws(' ',posts.title,posts.summary,posts.body) ~* ${'(^|[^[:alnum:]_/#])#'+tag+'($|[^[:alnum:]_])'}`
+    : sql`(${search}::text is null or concat_ws(' ',posts.title,posts.summary,posts.body,author.display_name,sources.name) ilike ${search ? '%'+search.replace(/[\\%_]/g,'\\$&')+'%' : null})`;
+
   const requestedLimit = Number(c.req.query("limit") ?? pageSize);
   const pageLimit = Number.isInteger(requestedLimit) && requestedLimit > 0
     ? Math.max(10, Math.min(pageSize, requestedLimit))
@@ -174,7 +217,7 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
         and ${visiblePost(university)}
         and ${postAuthorVisible}
         and (${category}::text is null or posts.category = ${category})
-        and (${search}::text is null or concat_ws(' ', posts.title, posts.summary, posts.body, author.display_name, sources.name) ilike ${search ? `%${search}%` : null})
+        and ${searchFilter}
         and (${cursor?.at ?? null}::timestamptz is null or
           (target_repost.created_at, posts.id) < (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
       order by target_repost.created_at desc, posts.id desc
@@ -202,7 +245,7 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
       and ${postAuthorVisible}
       and (${author}::uuid is null or posts.author_user_id=${author}::uuid)
       and (${category}::text is null or posts.category = ${category})
-      and (${search}::text is null or concat_ws(' ', posts.title, posts.summary, posts.body, author.display_name, sources.name) ilike ${search ? `%${search}%` : null})
+      and ${searchFilter}
       and (${cursor?.at ?? null}::timestamptz is null or
         (greatest(posts.published_at, latest.created_at), posts.id) < (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
     order by activity_at desc, posts.id desc limit ${pageLimit + 1}
@@ -313,6 +356,8 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
       (hasMediaArray && !retry.media_matches)
     )
       throw new AppError(409, "CONFLICT", "This draft changed. Submit it as a new post.");
+    await notifyProfilePostPublished(c.env,retry.id);
+    await notifyPostMentions(c.env,retry.id,user.id);
     return c.json({ id: retry.id }, 200);
   }
 
@@ -374,6 +419,7 @@ feedSocialRoutes.post("/", requireAuth, async (c) => {
   if (!post)
     throw new AppError(409, "CONFLICT", "The original post is unavailable or this request belongs to a different draft.");
   await notifyProfilePostPublished(c.env, post.id);
+  await notifyPostMentions(c.env,post.id,user.id);
   return c.json(post, 201);
 });
 

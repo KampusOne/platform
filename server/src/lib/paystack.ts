@@ -49,6 +49,8 @@ export async function initializePaystack(
         amount: input.amountKobo,
         reference: input.reference,
         currency: "NGN",
+        // Paystack deducts fees from the merchant settlement. It does not add
+        // this projection to the customer's amount: initialize the reviewed gross once.
         bearer: "account",
         metadata: input.metadata,
         ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),

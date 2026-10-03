@@ -6,7 +6,7 @@ import { resolveAdminScope } from '../lib/admin-access';
 import { currentUser, requireAuth } from '../middleware/auth';
 import { id, input } from '../lib/input';
 import { AppError } from '../lib/errors';
-import { audienceForCampaign, composeBroadcastPayload, emailProviderStatus, emailUniversityMembership, escapeEmailHtml, freezeEmailContent, reconcileEmailEvents, requireBroadcastProvider, verifyResendSignature, type Campaign, type EmailContent, type EmailBindings } from '../services/broadcast-delivery';
+import { deliverQueuedBroadcasts, audienceForCampaign, composeBroadcastPayload, emailProviderStatus, emailUniversityMembership, escapeEmailHtml, freezeEmailContent, reconcileEmailEvents, requireBroadcastProvider, verifyResendSignature, type Campaign, type EmailContent, type EmailBindings } from '../services/broadcast-delivery';
 import type { Variables } from '../types';
 
 type EmailEnvironment={Bindings:EmailBindings;Variables:Variables};
@@ -24,6 +24,10 @@ async function campaign(c:Ctx,permission:string):Promise<Campaign>{
 function requireEditable(row:Campaign){if(!['DRAFT','REVIEWED'].includes(row.status))throw new AppError(409,'CONFLICT','Queued or completed campaigns cannot be edited. Create a new draft.');}
 async function controls(c:Ctx){return firstRow(await database(c.env).execute<{enabled:boolean;max_per_day:number;max_per_minute:number;postal_address:string|null}>(sql`select enabled,max_per_day,max_per_minute,postal_address from app_private.email_delivery_controls where singleton`))!;}
 async function globalManager(c:Ctx){const resolved=await resolveAdminScope(c.env,currentUser(c),undefined,'broadcasts.manage');if(resolved!==null)throw new AppError(403,'FORBIDDEN','Global email settings require platform-wide campaign management access.');}
+function startImmediateDelivery(c:Ctx){
+ // Workers keep the acknowledged queue job alive after the response. Cron is its recovery path.
+ try{c.executionCtx.waitUntil(deliverQueuedBroadcasts(c.env).catch(()=>console.error(JSON.stringify({event:'email.immediate_delivery_failed',level:'error'}))));}catch{/* A local request without an execution context relies on the scheduled worker. */}
+}
 
 broadcastRoutes.get('/settings',async c=>{
  await scope(c,'broadcasts.view');const settings=await controls(c);const personas=await database(c.env).execute(sql`select id,display_name,active from app_private.email_personas order by case display_name when 'KampusOne' then 0 when 'George from KampusOne' then 1 else 2 end,created_at`);
@@ -96,6 +100,7 @@ broadcastRoutes.post('/:id/test',async c=>{
  const token=crypto.randomUUID(),payload=composeBroadcastPayload(content,recipient.email,token,true),actor=currentUser(c);
  const result=firstRow(await database(c.env).execute<{id:string}>(sql`with created as(insert into app_private.email_recipients(campaign_id,campaign_revision,requested_by,user_id,institution_id,email,kind,is_test,request_id,unsubscribe_token,payload,status) select c.id,${d.revision},${actor.id}::uuid,${recipient.user_id}::uuid,${row.institution_id}::uuid,${recipient.email},${row.kind},true,${d.requestId}::uuid,${token}::uuid,${JSON.stringify(payload)}::jsonb,'PENDING' from app_private.email_campaigns c where c.id=${row.id}::uuid and c.revision=${d.revision} and c.status in('DRAFT','REVIEWED') on conflict(campaign_id,request_id) do nothing returning id),audit as(insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,outcome,metadata)select ${actor.id}::uuid,${row.institution_id}::uuid,'email.test.queued','email_campaign',${row.id},'succeeded',${JSON.stringify({recipientId:recipient.user_id,requestId:d.requestId})}::jsonb from created)select id from created union all select id from app_private.email_recipients where campaign_id=${row.id}::uuid and request_id=${d.requestId}::uuid and user_id=${d.userId}::uuid and campaign_revision=${d.revision} limit 1`));
  if(!result)throw new AppError(409,'CONFLICT','The campaign changed before the test was queued.');
+ startImmediateDelivery(c);
  return c.json({queued:true,recipientCount:1,deliveryId:result.id,message:'Only the selected account is queued. Delivery has not yet been confirmed.'});
 });
 broadcastRoutes.post('/:id/send',async c=>{
@@ -103,7 +108,7 @@ broadcastRoutes.post('/:id/send',async c=>{
  if(d.scheduledAt&&Date.parse(d.scheduledAt)<Date.now()+30000)throw new AppError(400,'BAD_REQUEST','Choose a future schedule time, or send without a schedule.');
  if(row.reviewed_snapshot_id===d.snapshotId&&['QUEUED','SENDING','COMPLETED'].includes(row.status))return c.json({queued:true,alreadyQueued:true});
  const actor=currentUser(c);const result=firstRow(await database(c.env).execute<{id:string}>(sql`with approved as(update app_private.email_campaigns c set status='QUEUED',scheduled_at=${d.scheduledAt??null}::timestamptz,updated_by=${actor.id}::uuid,updated_at=now() from app_private.email_audience_snapshots s where c.id=${row.id}::uuid and c.status='REVIEWED' and c.revision=${d.revision} and c.reviewed_snapshot_id=${d.snapshotId}::uuid and s.id=c.reviewed_snapshot_id and s.revision=c.revision and s.eligible_count=${d.recipientCount} and s.expires_at>now() and exists(select 1 from app_private.email_delivery_controls where singleton and enabled) returning c.id,c.reviewed_snapshot_id),queued as(update app_private.email_recipients r set status='PENDING',requested_by=${actor.id}::uuid from approved a where r.snapshot_id=a.reviewed_snapshot_id and r.status='PREVIEW'),audit as(insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,outcome,metadata)select ${actor.id}::uuid,${row.institution_id}::uuid,'email.campaign.queued','email_campaign',id::text,'succeeded',${JSON.stringify({snapshotId:d.snapshotId,recipientCount:d.recipientCount,scheduledAt:d.scheduledAt??null})}::jsonb from approved)select id from approved`));
- if(!result)throw new AppError(409,'CONFLICT','The preview expired, its content/count changed, or campaign delivery is paused. Review the audience again.');return c.json({queued:true,recipientCount:d.recipientCount,scheduledAt:d.scheduledAt??null,message:'The reviewed audience is queued. Preferences and suppressions are checked again before each send.'});
+ if(!result)throw new AppError(409,'CONFLICT','The preview expired, its content/count changed, or campaign delivery is paused. Review the audience again.');if(!d.scheduledAt)startImmediateDelivery(c);return c.json({queued:true,recipientCount:d.recipientCount,scheduledAt:d.scheduledAt??null,message:d.scheduledAt?'The reviewed audience is scheduled. Preferences and suppressions are checked again before each send.':'Sending has started for the reviewed audience. Delivery status updates as provider receipts arrive.'});
 });
 broadcastRoutes.post('/:id/cancel',async c=>{
  const row=await campaign(c,'broadcasts.manage');const actor=currentUser(c);

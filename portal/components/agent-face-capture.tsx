@@ -93,10 +93,10 @@ export function AgentFaceCapture({
         if (version !== generation.current || !live.current) return;
         setError(
           e instanceof DOMException && e.name === "NotSupportedError"
-            ? "Camera access needs a secure browser and a supported camera. You can upload a clear portrait below."
+            ? "Camera access needs a secure browser and a supported camera. Open this application on a device with a camera, then try again."
             : e instanceof DOMException && e.name === "NotAllowedError"
-              ? "Camera permission was denied. Allow camera access in your browser, then try again, or upload a clear portrait."
-              : "We could not open your camera. Check that another app is not using it, then retry or upload a portrait.",
+              ? "Camera permission was denied. Allow camera access in your browser, then close and reopen the camera."
+              : "We could not open your camera. Check that another app is not using it, then close and reopen the camera.",
         );
       });
     return () => {
@@ -134,7 +134,7 @@ export function AgentFaceCapture({
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       setError(
-        "This browser could not capture a photo. Upload a portrait below.",
+        "This browser could not capture a photo. Close and reopen the camera, or try a supported browser.",
       );
       return;
     }

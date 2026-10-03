@@ -76,16 +76,19 @@ jobs:
         run: |
           node server/scripts/verify-schema-proof.mjs platform
           node server/scripts/verify-schema-proof.mjs october
+          node server/scripts/verify-schema-proof.mjs experience
           curl --fail --silent --show-error --retry 2 --max-time 20 "$API_URL/health/ready"
       - name: Configure Android push credentials
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID || secrets.EXPO_EAS_PROJECT_ID }}
         run: |
-          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
-            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > mobile/google-services.json
-          else
-            echo "Firebase push credentials are not configured; APK will build with local alarms only."
+          if [ -z "$GOOGLE_SERVICES_JSON_BASE64" ] || [ -z "$EXPO_PUBLIC_EAS_PROJECT_ID" ]; then
+            echo "Push-enabled release blocked: configure GOOGLE_SERVICES_JSON_BASE64 and EXPO_EAS_PROJECT_ID in the production environment."
+            exit 1
           fi
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > mobile/google-services.json
+          node mobile/scripts/verify-push-build.cjs
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
         working-directory: mobile

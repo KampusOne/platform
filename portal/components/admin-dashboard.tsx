@@ -24,6 +24,11 @@ import { ApplicationBulkReview } from "./application-bulk-review";
 import {TrustedVendorAdmin} from './trusted-vendor-admin';
 import { ApplicationDocuments } from "./application-documents";
 import { TransientNotice } from "./transient-notice";
+import { DailyAppReport } from "./daily-app-report";
+import { FinancialReporting } from "./finance-reporting";
+import { AdminMilestones } from "./admin-milestones";
+import { WorkspaceInsights } from "./workspace-insights";
+import reportingStyles from "./admin-reporting.module.css";
 
 type Scalar = string | number | null;
 type Dashboard = {
@@ -433,10 +438,13 @@ export function AdminDashboard({
       {!loading && error && <ErrorPanel error={error} retry={load} />}
       {!loading && !error && dashboard && view === "overview" && (
         <>
+          <AdminMilestones />
+          <DailyAppReport refresh={refreshKey} />
           <ActivityOverview refresh={refreshKey}/>
+          <FinancialReporting compact refresh={refreshKey} />
           <section className="metric-grid">
             {dashboard.metrics.revenue&&<>
-            <article className="metric-card metric-card--accent">
+            <article className={`metric-card metric-card--accent ${reportingStyles.overviewAccent}`}>
               <span>Gross transaction value</span>
               <strong>{money(revenue)}</strong>
               <small>
@@ -592,6 +600,7 @@ export function AdminDashboard({
         </>
       )}
       {!loading && !error && view === "users" && <UsersView users={users} />}
+      {!loading && !error && ["users", "applications", "content", "operations"].includes(view) && <WorkspaceInsights module={view === "applications" ? "agents" : view === "operations" ? "marketplace" : view as "users" | "content"} refresh={refreshKey} />}
       {!loading && !error && view === "applications" && (
         <ApplicationsView applications={applications} onChanged={load} />
       )}
@@ -1099,7 +1108,7 @@ function TutorialsView({
   return (
     <>
       <section className="metric-grid">
-        <article className="metric-card metric-card--accent">
+        <article className={`metric-card metric-card--accent ${reportingStyles.overviewAccent}`}>
           <span>Published catalogue</span>
           <strong>{data.summary.listings}</strong>
           <small>Live and draft tutorial listings</small>
@@ -1869,7 +1878,7 @@ function OperationsView({
           </strong>
           <small>Late, unknown, or mismatched payments</small>
         </article>
-        <article className="metric-card metric-card--accent">
+        <article className={`metric-card metric-card--accent ${reportingStyles.overviewAccent}`}>
           <span>Payout review queue</span>
           <strong>
             {

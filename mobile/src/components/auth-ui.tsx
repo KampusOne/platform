@@ -5,6 +5,7 @@ import { router, usePathname } from "expo-router";
 import type { ReactNode } from "react";
 import { useState, useEffect } from "react";
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,7 +16,7 @@ import {
   type TextInputProps,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { theme } from "@/src/theme";
 import { analyticsScreenName, trackAuthAction, trackUiInteraction } from "@/src/lib/analytics";
@@ -25,7 +26,6 @@ import {
   socialConfiguration,
   type SocialProvider,
 } from "@/src/lib/social-auth";
-import { useToast } from "./toast";
 
 const DEEP_TERRACOTTA = "#A8462E";
 
@@ -46,6 +46,14 @@ export function AuthShell({
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const node=document.createElement("style");
+    node.textContent=`input[data-testid="kampusone-auth-field"]:autofill, input[data-testid="kampusone-auth-field"]:-webkit-autofill { -webkit-box-shadow: 0 0 0 1000px ${theme.surface} inset; box-shadow: 0 0 0 1000px ${theme.surface} inset; -webkit-text-fill-color: ${theme.text}; caret-color: ${theme.text}; }`;
+    document.head.appendChild(node);
+    return () => node.remove();
+  }, [theme.surface,theme.text]);
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.safe}>
@@ -55,7 +63,8 @@ export function AuthShell({
       >
         <ScrollView
           automaticallyAdjustKeyboardInsets
-          contentContainerStyle={styles.content}
+          style={{flex:1}}
+          contentContainerStyle={[styles.content,{paddingBottom:Math.max(32,insets.bottom+16)}]}
           keyboardDismissMode={
             Platform.OS === "ios" ? "interactive" : "on-drag"
           }
@@ -135,13 +144,16 @@ export function AuthField({
           !editable && styles.fieldDisabled,
         ]}
       >
-        <Ionicons
+        <View pointerEvents="none" style={styles.leadingIcon}><Ionicons
           color={focused ? DEEP_TERRACOTTA : theme.clay}
           name={icon}
           size={20}
-        />
+        /></View>
         <TextInput
           {...props}
+          testID="kampusone-auth-field"
+          underlineColorAndroid="transparent"
+          importantForAutofill="yes"
           accessibilityLabel={label}
           accessibilityState={{ disabled: !editable }}
           editable={editable}
@@ -156,7 +168,7 @@ export function AuthField({
           placeholderTextColor={theme.textMuted}
           secureTextEntry={secureTextEntry && !revealed}
           selectionColor={DEEP_TERRACOTTA}
-          style={[styles.input, code && styles.codeInput, style]}
+          style={[styles.input,secureTextEntry&&{paddingRight:54}, code && styles.codeInput, style]}
         />
         {secureTextEntry ? (
           <Pressable
@@ -226,54 +238,17 @@ export function PrimaryButton({
 }
 
 function GoogleMark() {
-  return (
-    <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={styles.googleMark}
-    >
-      <View style={[styles.googleSlice, styles.googleTopLeft]}>
-        <Ionicons
-          color="#EA4335"
-          name="logo-google"
-          size={22}
-          style={styles.googleGlyphTopLeft}
-        />
-      </View>
-      <View style={[styles.googleSlice, styles.googleTopRight]}>
-        <Ionicons
-          color="#4285F4"
-          name="logo-google"
-          size={22}
-          style={styles.googleGlyphTopRight}
-        />
-      </View>
-      <View style={[styles.googleSlice, styles.googleBottomLeft]}>
-        <Ionicons
-          color="#FBBC05"
-          name="logo-google"
-          size={22}
-          style={styles.googleGlyphBottomLeft}
-        />
-      </View>
-      <View style={[styles.googleSlice, styles.googleBottomRight]}>
-        <Ionicons
-          color="#34A853"
-          name="logo-google"
-          size={22}
-          style={styles.googleGlyphBottomRight}
-        />
-      </View>
-    </View>
-  );
+  // Original approved Google asset, bundled for offline rendering; keep its ratio.
+  // https://developers.google.com/static/identity/images/g-logo.png
+  return <Image accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" source={require("@/assets/auth/google-g.png")} resizeMode="contain" style={{width:20,height:20,flexShrink:0}} />;
 }
 
 export function SocialAuthButtons() {
   const { theme, styles } = useThemeStyles(createStyles);
   const pathname = usePathname();
   const { beginSession } = useAuth();
-  const toast = useToast();
   const [pending, setPending] = useState(false);
+  const [socialError,setSocialError] = useState("");
   const [providers, setProviders] = useState<SocialProvider[]>([]);
 
   useEffect(() => {
@@ -297,6 +272,7 @@ export function SocialAuthButtons() {
       component: "social_auth_button",
     });
     setPending(true);
+    setSocialError("");
     try {
       const session = await beginSocialSignIn(provider);
       if (session) {
@@ -313,7 +289,7 @@ export function SocialAuthButtons() {
         component: "social_auth_button",
         errorCode: "SIGN_IN_FAILED",
       });
-      toast(e instanceof Error ? e.message : "Sign-in could not be completed.");
+      setSocialError(e instanceof Error ? e.message : "Sign-in could not be completed.");
     } finally {
       setPending(false);
     }
@@ -365,6 +341,7 @@ export function SocialAuthButtons() {
         <Text style={styles.socialButtonText}>Continue with Apple</Text>
       </Pressable>
 
+      <FormError message={socialError} />
       {pending ? (
         <Text style={styles.socialHelp} accessibilityLiveRegion="polite">
           Opening sign in
@@ -375,27 +352,14 @@ export function SocialAuthButtons() {
 }
 
 export function FormError({ message }: { message: string }) {
-  const toast = useToast();
-  useEffect(() => {
-    if (message) toast(message, "error");
-  }, [message, toast]);
-  return null;
+  const {theme,styles}=useThemeStyles(createStyles);
+  if(!message)return null;
+  return <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}><Ionicons name="alert-circle-outline" size={20} color={theme.error}/><Text style={styles.errorText}>{message}</Text></View>;
 }
 
 export function FormNotice({ children }: { children: ReactNode }) {
-  const toast = useToast();
-  const message =
-    typeof children === "string"
-      ? children
-      : Array.isArray(children)
-        ? children
-            .filter((x) => typeof x === "string" || typeof x === "number")
-            .join("")
-        : "";
-  useEffect(() => {
-    if (message) toast(message);
-  }, [message, toast]);
-  return null;
+  const {theme,styles}=useThemeStyles(createStyles);
+  return <View accessibilityLiveRegion="polite" style={styles.notice}><Ionicons name="information-circle-outline" size={20} color={theme.clay}/><Text style={styles.noticeText}>{children}</Text></View>;
 }
 
 export function TextLink({
@@ -443,7 +407,7 @@ const createStyles = (theme: Theme) =>
     },
     content: {
       alignSelf: "center",
-      minHeight: "100%",
+      flexGrow: 1,
       paddingBottom: 20,
       paddingHorizontal: 24,
       width: "100%",
@@ -507,21 +471,18 @@ const createStyles = (theme: Theme) =>
     },
     field: {
       alignItems: "center",
-      backgroundColor: theme.surfaceGlassStrong,
+      backgroundColor: theme.surface,
       borderColor: "#9A8D84",
       borderRadius: 14,
       borderWidth: 1.25,
-      flexDirection: "row",
-      gap: 11,
       minHeight: 56,
-      paddingLeft: 15,
-      paddingRight: 9,
+      position: "relative",
+      overflow: "hidden",
     },
     fieldFocused: {
       borderColor: DEEP_TERRACOTTA,
       borderWidth: 2,
-      paddingLeft: 14.25,
-      paddingRight: 8.25,
+
     },
     fieldError: {
       backgroundColor: theme.surfaceSoft,
@@ -532,13 +493,17 @@ const createStyles = (theme: Theme) =>
       borderColor: theme.border,
       opacity: 0.65,
     },
+    leadingIcon: {position:"absolute",left:15,top:0,bottom:0,justifyContent:"center",zIndex:1},
     input: {
       color: theme.text,
-      flex: 1,
+      width: "100%",
       fontFamily: theme.font.body,
       fontSize: 15,
       minHeight: 53,
+      paddingLeft: 46,
+      paddingRight: 14,
       paddingVertical: 0,
+      backgroundColor:"transparent",
     },
     codeInput: {
       fontFamily: theme.font.semibold,
@@ -546,6 +511,10 @@ const createStyles = (theme: Theme) =>
       letterSpacing: 8,
     },
     eye: {
+      position:"absolute",
+      right:6,
+      top:4,
+      zIndex:1,
       alignItems: "center",
       height: 44,
       justifyContent: "center",
@@ -621,53 +590,6 @@ const createStyles = (theme: Theme) =>
       color: theme.text,
       fontFamily: theme.font.semibold,
       fontSize: 14,
-    },
-    googleMark: {
-      height: 22,
-      position: "relative",
-      width: 22,
-    },
-    googleSlice: {
-      height: 11,
-      overflow: "hidden",
-      position: "absolute",
-      width: 11,
-    },
-    googleTopLeft: {
-      left: 0,
-      top: 0,
-    },
-    googleTopRight: {
-      right: 0,
-      top: 0,
-    },
-    googleBottomLeft: {
-      bottom: 0,
-      left: 0,
-    },
-    googleBottomRight: {
-      bottom: 0,
-      right: 0,
-    },
-    googleGlyphTopLeft: {
-      left: 0,
-      position: "absolute",
-      top: 0,
-    },
-    googleGlyphTopRight: {
-      position: "absolute",
-      right: 0,
-      top: 0,
-    },
-    googleGlyphBottomLeft: {
-      bottom: 0,
-      left: 0,
-      position: "absolute",
-    },
-    googleGlyphBottomRight: {
-      bottom: 0,
-      position: "absolute",
-      right: 0,
     },
     socialHelp: {
       color: theme.textSubtle,

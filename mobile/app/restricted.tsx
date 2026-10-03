@@ -7,6 +7,7 @@ import { useToast } from "@/src/components/toast";
 import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
+import { serverDate } from "@/src/lib/server-date";
 export default function Restricted() {
   const { signOut } = useAuth();
   const { theme } = useAppearance();
@@ -16,7 +17,11 @@ export default function Restricted() {
     reason: string;
     ends_at: string | null;
   } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const validUntil = serverDate(r?.ends_at);
   async function check() {
+    if (checking) return;
+    setChecking(true);
     try {
       const result = await api<{ restriction: typeof r }>(
         "/v1/account/restrictions",
@@ -28,6 +33,8 @@ export default function Restricted() {
         e instanceof Error ? e.message : "Could not check account",
         "error",
       );
+    } finally {
+      setChecking(false);
     }
   }
   useEffect(() => {
@@ -50,9 +57,9 @@ export default function Restricted() {
           >
             {r.reason}
           </Text>
-          {r.ends_at ? (
+          {validUntil ? (
             <Text style={{ color: theme.textMuted, marginBottom: 18 }}>
-              Until {new Date(r.ends_at).toLocaleString()}
+              Until {validUntil.toLocaleString()}
             </Text>
           ) : null}
         </>
@@ -65,7 +72,7 @@ export default function Restricted() {
       />
       <ToolButton
         secondary
-        label="Check account status"
+        label={checking ? "Checking account status…" : "Check account status"}
         onPress={() => void check()}
       />
       <ToolButton secondary label="Log out" onPress={() => void signOut()} />

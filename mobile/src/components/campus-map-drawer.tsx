@@ -1,841 +1,125 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "@/src/lib/haptics";
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Animated,
-  PanResponder,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {Ionicons} from '@expo/vector-icons';
+import * as Haptics from '@/src/lib/haptics';
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {Animated,Image,Keyboard,PanResponder,Platform,Pressable,ScrollView,StyleSheet,Text,TextInput,useWindowDimensions,View} from 'react-native';
+import {useReducedMotionPreference} from '@/src/components/visual-system';
+import {useThemeStyles,type Theme} from '@/src/lib/appearance';
 
-import { useThemeStyles, type Theme } from "@/src/lib/appearance";
-
-type IconName = keyof typeof Ionicons.glyphMap;
-
-export type CampusMapDrawerPlace = {
-  id: string;
-  name: string;
-  category: string;
-  description: string | null;
-  search_aliases?: readonly string[] | null;
+type IconName=keyof typeof Ionicons.glyphMap;
+export type CampusMapDrawerPlace={id:string;name:string;category:string;description:string|null;search_aliases?:readonly string[]|null};
+type RouteSummary={distanceMetres:number;durationSeconds:number;notice:string|null;instructions:string[]};
+type Props={
+  campusId:string;bottomInset:number;topInset:number;error:string;loading:boolean;routeBusy:boolean;
+  places:CampusMapDrawerPlace[];query:string;picker:'origin'|'destination'|null;
+  originName:string|null;destinationName:string|null;route:RouteSummary|null;
+  locationError:string;locationLoading:boolean;photo:{url:string;attribution:string}|null;
+  onQueryChange:(value:string)=>void;onPickPlace:(id:string)=>void;
+  onChoose:(kind:'origin'|'destination')=>void;onPickOnMap:()=>void;
+  onUseCurrentLocation:()=>void;onClearRoute:()=>void;onSwap:()=>void;
+  onRetry:()=>void;onHeightChange:(height:number)=>void;
 };
-
-type RouteSummary = {
-  distanceMetres: number;
-  originName: string;
-  destinationName: string;
-};
-
-type Props = {
-  campusId?: string;
-  bottomInset?: number;
-  error: string;
-  loading: boolean;
-  places: CampusMapDrawerPlace[];
-  query: string;
-  choosingOrigin: boolean;
-  destinationName?: string | undefined;
-  route: RouteSummary | null;
-  locationAccuracy: number | null;
-  locationError: string;
-  locationLoading: boolean;
-  locationPermission: "granted" | "denied" | "undetermined";
-  onQueryChange: (value: string) => void;
-  onPickDestination: (id: string) => void;
-  onPickOrigin: (id: string) => void;
-  onUseCurrentLocation: () => void;
-  onClearRoute: () => void;
-};
-
-const RECENTS_KEY = "k1.campus-map.recent-destinations.v1";
-const COLLAPSED_HEIGHT = 92;
-
-const categoryIcons: Record<string, IconName> = {
-  ACADEMIC: "school-outline",
-  FOOD: "restaurant-outline",
-  HEALTH: "medkit-outline",
-  HOSTEL: "bed-outline",
-  SERVICE: "help-buoy-outline",
-  SPORT: "football-outline",
-  TRANSPORT: "bus-outline",
-};
-
-const travelModes: Array<{
-  id: string;
-  label: string;
-  icon: IconName;
-  metresPerMinute: number;
-  price: string;
-}> = [
-  {
-    id: "walk",
-    label: "Walk",
-    icon: "walk-outline",
-    metresPerMinute: 75,
-    price: "Free",
-  },
-  {
-    id: "bicycle",
-    label: "Bicycle",
-    icon: "bicycle-outline",
-    metresPerMinute: 250,
-    price: "Free",
-  },
-  {
-    id: "shuttle",
-    label: "School shuttle",
-    icon: "bus-outline",
-    metresPerMinute: 300,
-    price: "Fare at booking",
-  },
-  {
-    id: "cab",
-    label: "Private cab",
-    icon: "car-outline",
-    metresPerMinute: 400,
-    price: "Fare at booking",
-  },
-];
-
-function clamp(value: number, minimum: number, maximum: number) {
-  return Math.min(maximum, Math.max(minimum, value));
-}
-
-function formatDistance(metres: number) {
-  if (metres < 1000) return Math.max(1, Math.round(metres)) + " m";
-  return (metres / 1000).toFixed(metres >= 10000 ? 0 : 1) + " km";
-}
-
-function PlaceItem({
-  place,
-  recent = false,
-  onPress,
-}: {
-  place: CampusMapDrawerPlace;
-  recent?: boolean;
-  onPress: () => void;
-}) {
-  const { theme, styles } = useThemeStyles(createStyles);
-  return (
-    <Pressable
-      accessibilityLabel={place.name}
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.placeItem,
-        pressed && styles.pressed,
-      ]}
-    >
-      <View style={styles.placeIcon}>
-        <Ionicons
-          color={theme.textMuted}
-          name={recent ? "time-outline" : categoryIcons[place.category] ?? "location-outline"}
-          size={20}
-        />
-      </View>
-      <View style={styles.placeCopy}>
-        <Text numberOfLines={1} style={styles.placeName}>
-          {place.name}
-        </Text>
-        <Text numberOfLines={1} style={styles.placeMeta}>
-          {place.category.charAt(0) + place.category.slice(1).toLowerCase()}
-          {place.description ? " · " + place.description : ""}
-        </Text>
-      </View>
-      <Ionicons color={theme.textSubtle} name="chevron-forward" size={18} />
-    </Pressable>
-  );
-}
-
-export function CampusMapDrawer({
-  campusId = 'default',
-  bottomInset = 0,
-  choosingOrigin,
-  destinationName,
-  error,
-  loading,
-  locationAccuracy,
-  locationError,
-  locationLoading,
-  locationPermission,
-  onClearRoute,
-  onPickDestination,
-  onPickOrigin,
-  onQueryChange,
-  onUseCurrentLocation,
-  places,
-  query,
-  route,
-}: Props) {
-  const { theme, styles } = useThemeStyles(createStyles);
-  const { height } = useWindowDimensions();
-  const [expanded, setExpanded] = useState(false);
-  const [recentIds, setRecentIds] = useState<string[]>([]);
-
-  const expandedHeight = Math.min(520, Math.max(340, height * 0.52));
-  const routeHeight = Math.min(430, Math.max(330, height * 0.44));
-  const maximumHeight = route ? routeHeight : expandedHeight;
-  const targetHeight = expanded ? maximumHeight : COLLAPSED_HEIGHT;
-  const sheetHeight = useRef(new Animated.Value(targetHeight)).current;
-  const dragStart = useRef(targetHeight);
-
-  useEffect(() => {
-    setRecentIds([]);
-    void AsyncStorage.getItem(RECENTS_KEY + '.' + campusId)
-      .then((value) => {
-        if (!value) return;
-        const parsed = JSON.parse(value) as unknown;
-        if (Array.isArray(parsed)) {
-          setRecentIds(
-            parsed.filter((item): item is string => typeof item === "string").slice(0, 5),
-          );
-        }
-      })
-      .catch(() => undefined);
-  }, [campusId]);
-
-  useEffect(() => {
-    Animated.spring(sheetHeight, {
-      toValue: targetHeight,
-      useNativeDriver: false,
-      damping: 23,
-      stiffness: 210,
-      mass: 0.75,
-    }).start();
-  }, [sheetHeight, targetHeight]);
-
-  useEffect(() => {
-    if (choosingOrigin) setExpanded(true);
-    else if (route) setExpanded(false);
-  }, [choosingOrigin, route]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dy) > 3,
-        onPanResponderGrant: () => {
-          sheetHeight.stopAnimation((value) => {
-            dragStart.current = value;
-          });
-        },
-        onPanResponderMove: (_event, gesture) => {
-          sheetHeight.setValue(
-            clamp(
-              dragStart.current - gesture.dy,
-              COLLAPSED_HEIGHT,
-              maximumHeight,
-            ),
-          );
-        },
-        onPanResponderRelease: (_event, gesture) => {
-          const shouldExpand =
-            gesture.vy < -0.35 ||
-            (gesture.vy <= 0.35 &&
-              dragStart.current - gesture.dy >
-                COLLAPSED_HEIGHT + (maximumHeight - COLLAPSED_HEIGHT) * 0.45);
-          setExpanded(shouldExpand);
-          void Haptics.selectionAsync();
-        },
-        onPanResponderTerminate: () => {
-          Animated.spring(sheetHeight, {
-            toValue: targetHeight,
-            useNativeDriver: false,
-          }).start();
-        },
-      }),
-    [maximumHeight, sheetHeight, targetHeight],
-  );
-
-  const placeById = useMemo(
-    () => new Map(places.map((place) => [place.id, place] as const)),
-    [places],
-  );
-
-  const recentPlaces = useMemo(
-    () =>
-      recentIds
-        .map((id) => placeById.get(id))
-        .filter((place): place is CampusMapDrawerPlace => Boolean(place)),
-    [placeById, recentIds],
-  );
-
-  const suggestions = useMemo(() => {
-    const order = [
-      "ACADEMIC",
-      "SERVICE",
-      "TRANSPORT",
-      "FOOD",
-      "HOSTEL",
-      "HEALTH",
-      "SPORT",
-    ];
-    const picked: CampusMapDrawerPlace[] = [];
-    for (const category of order) {
-      const match = places.find(
-        (place) =>
-          place.category.toUpperCase() === category &&
-          !picked.some((item) => item.id === place.id),
-      );
-      if (match) picked.push(match);
-      if (picked.length >= 6) break;
+const RECENTS_KEY='k1.campus-map.recent-destinations.v1';
+const categoryIcons:Record<string,IconName>={ACADEMIC:'school-outline',FOOD:'restaurant-outline',HEALTH:'medkit-outline',HOSTEL:'bed-outline',SERVICE:'help-buoy-outline',SPORT:'football-outline',TRANSPORT:'bus-outline'};
+export function formatMapDistance(metres:number){return metres<1000?`${Math.round(metres)} m`:`${(metres/1000).toFixed(1)} km`;}
+export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,routeBusy,places,query,picker,originName,destinationName,route,locationError,locationLoading,photo,onQueryChange,onPickPlace,onChoose,onPickOnMap,onUseCurrentLocation,onClearRoute,onSwap,onRetry,onHeightChange}:Props){
+  const {theme,styles}=useThemeStyles(makeStyles),{height}=useWindowDimensions(),reducedMotion=useReducedMotionPreference();
+  const [expanded,setExpanded]=useState(false),[recentIds,setRecentIds]=useState<string[]>([]),[keyboard,setKeyboard]=useState(0);
+  const collapsedHeight=route||routeBusy||error?202:166;
+  const sheetBottom=keyboard>0?(Platform.OS==='ios'?keyboard+8:bottomInset):bottomInset;
+  const maximumHeight=Math.max(collapsedHeight,Math.min(520,height-sheetBottom-topInset-82));
+  const targetHeight=expanded?maximumHeight:collapsedHeight;
+  const sheetHeight=useRef(new Animated.Value(targetHeight)).current,dragStart=useRef(targetHeight),previousPicker=useRef(picker);
+  useEffect(()=>{
+    const show=Keyboard.addListener('keyboardDidShow',event=>setKeyboard(event.endCoordinates.height));
+    const hide=Keyboard.addListener('keyboardDidHide',()=>setKeyboard(0));
+    return()=>{show.remove();hide.remove();};
+  },[]);
+  useEffect(()=>{
+    let active=true;setRecentIds([]);
+    void AsyncStorage.getItem(`${RECENTS_KEY}.${campusId}`).then(value=>{
+      if(!active||!value)return;const parsed:unknown=JSON.parse(value);
+      if(Array.isArray(parsed))setRecentIds(parsed.filter((item):item is string=>typeof item==='string').slice(0,5));
+    }).catch(()=>{});
+    return()=>{active=false;};
+  },[campusId]);
+  useEffect(()=>{
+    onHeightChange(targetHeight);
+    if(reducedMotion){sheetHeight.setValue(targetHeight);return;}
+    const animation=Animated.spring(sheetHeight,{toValue:targetHeight,useNativeDriver:false,damping:23,stiffness:210,mass:.75});
+    animation.start();return()=>animation.stop();
+  },[targetHeight,reducedMotion,sheetHeight,onHeightChange]);
+  useEffect(()=>{if(previousPicker.current&&!picker)setExpanded(false);previousPicker.current=picker;},[picker]);
+  const pan=useMemo(()=>PanResponder.create({
+    onStartShouldSetPanResponder:()=>true,onMoveShouldSetPanResponder:(_,gesture)=>Math.abs(gesture.dy)>3,
+    onPanResponderGrant:()=>sheetHeight.stopAnimation(value=>{dragStart.current=value;}),
+    onPanResponderMove:(_,gesture)=>sheetHeight.setValue(Math.max(collapsedHeight,Math.min(maximumHeight,dragStart.current-gesture.dy))),
+    onPanResponderRelease:(_,gesture)=>{setExpanded(gesture.vy<-.35||(gesture.vy<=.35&&dragStart.current-gesture.dy>(collapsedHeight+maximumHeight)/2));void Haptics.selectionAsync();},
+    onPanResponderTerminate:()=>sheetHeight.setValue(targetHeight),
+  }),[sheetHeight,collapsedHeight,maximumHeight,targetHeight]);
+  const results=useMemo(()=>{
+    const needle=query.trim().toLowerCase();
+    if(needle)return places.filter(place=>`${place.name} ${place.description??''} ${place.search_aliases?.join(' ')??''}`.toLowerCase().includes(needle)).sort((a,b)=>Number(b.name.toLowerCase()===needle)-Number(a.name.toLowerCase()===needle)||Number(b.name.toLowerCase().startsWith(needle))-Number(a.name.toLowerCase().startsWith(needle))||a.name.localeCompare(b.name)).slice(0,30);
+    const recent=recentIds.map(id=>places.find(place=>place.id===id)).filter((place):place is CampusMapDrawerPlace=>Boolean(place));
+    return [...recent,...places.filter(place=>!recentIds.includes(place.id))].slice(0,24);
+  },[query,places,recentIds]);
+  const pick=(place:CampusMapDrawerPlace)=>{
+    if(picker!=='origin'){
+      const next=[place.id,...recentIds.filter(id=>id!==place.id)].slice(0,5);setRecentIds(next);
+      void AsyncStorage.setItem(`${RECENTS_KEY}.${campusId}`,JSON.stringify(next)).catch(()=>{});
     }
-    if (picked.length < 6) {
-      for (const place of places) {
-        if (!picked.some((item) => item.id === place.id)) picked.push(place);
-        if (picked.length >= 6) break;
-      }
-    }
-    return picked;
-  }, [places]);
-
-  const searchResults = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return [];
-    return places
-      .filter((place) =>
-        (
-          place.name +
-          " " +
-          (place.description ?? "") +
-          " " +
-          place.category +
-          " " +
-          (place.search_aliases?.join(" ") ?? "")
-        )
-          .toLowerCase()
-          .includes(needle),
-      )
-      .slice(0, 12);
-  }, [places, query]);
-
-  const rememberDestination = (id: string) => {
-    setRecentIds((current) => {
-      const next = [id, ...current.filter((item) => item !== id)].slice(0, 5);
-      void AsyncStorage.setItem(RECENTS_KEY + '.' + campusId, JSON.stringify(next)).catch(
-        () => undefined,
-      );
-      return next;
-    });
+    Keyboard.dismiss();setExpanded(false);onPickPlace(place.id);void Haptics.selectionAsync();
   };
-
-  const pickPlace = (place: CampusMapDrawerPlace) => {
-    void Haptics.selectionAsync();
-    if (choosingOrigin) {
-      onPickOrigin(place.id);
-      return;
-    }
-    rememberDestination(place.id);
-    onQueryChange(place.name);
-    setExpanded(false);
-    onPickDestination(place.id);
-  };
-
-  const routeModes = route
-    ? travelModes.map((mode) => ({
-        ...mode,
-        minutes: Math.max(
-          1,
-          Math.ceil(route.distanceMetres / mode.metresPerMinute),
-        ),
-      }))
-    : [];
-
-  return (
-    <Animated.View
-      accessibilityViewIsModal={false}
-      style={[styles.sheet, { height: sheetHeight, bottom: bottomInset }]}
-    >
-      <View {...panResponder.panHandlers} style={styles.handleArea}>
-        <View style={styles.handle} />
+  const choose=(kind:'origin'|'destination')=>{onChoose(kind);setExpanded(true);};
+  return <Animated.View style={[styles.sheet,{height:sheetHeight,bottom:sheetBottom}]}>
+    <View {...pan.panHandlers} style={styles.handleArea}><View style={styles.handle}/></View>
+    <View style={styles.header}>
+      <Text style={styles.title}>{picker==='origin'?'Choose a starting point':picker==='destination'?'Choose a destination':'Campus directions'}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={expanded?'Collapse directions':'Expand directions'} accessibilityState={{expanded}} onPress={()=>setExpanded(value=>!value)} style={styles.smallButton}><Ionicons name={expanded?'chevron-down':'chevron-up'} size={19} color={theme.text}/></Pressable>
+      {destinationName||originName?<Pressable accessibilityRole="button" accessibilityLabel="Clear directions" onPress={onClearRoute} style={styles.smallButton}><Ionicons name="close" size={20} color={theme.text}/></Pressable>:null}
+    </View>
+    <View style={styles.endpoints}>
+      <View style={styles.endpointFields}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Starting point: ${originName??'Choose on campus'}`} onPress={()=>choose('origin')} style={styles.endpoint}>
+          <View style={[styles.dot,{backgroundColor:'#428872'}]}/><Text style={styles.fieldLabel}>From</Text><Text numberOfLines={1} style={styles.endpointName}>{originName??'Choose a campus start'}</Text><Ionicons name="chevron-forward" size={14} color={theme.textMuted}/>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Destination: ${destinationName??'Choose on campus'}`} onPress={()=>choose('destination')} style={styles.endpoint}>
+          <Ionicons name="location" size={13} color={theme.deepBrand}/><Text style={styles.fieldLabel}>To</Text><Text numberOfLines={1} style={styles.endpointName}>{destinationName??'Where on campus?'}</Text><Ionicons name="chevron-forward" size={14} color={theme.textMuted}/>
+        </Pressable>
       </View>
-
-      {route ? (
-        <View style={styles.routeHeader}>
-          <View style={styles.routeHeaderCopy}>
-            <Text numberOfLines={1} style={styles.routeTitle}>
-              {route.destinationName}
-            </Text>
-            <Text numberOfLines={1} style={styles.routeSubtitle}>
-              {route.originName} → {route.destinationName}
-            </Text>
-          </View>
-          <Pressable
-            accessibilityLabel="Clear campus route"
-            accessibilityRole="button"
-            onPress={onClearRoute}
-            style={({ pressed }) => [
-              styles.closeButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Ionicons color={theme.text} name="close" size={20} />
-          </Pressable>
-        </View>
-      ) : (
-        <View style={styles.searchBox}>
-          <Ionicons color={theme.text} name="search" size={22} />
-          <TextInput
-            accessibilityLabel="Where to?"
-            autoCorrect={false}
-            onChangeText={onQueryChange}
-            onFocus={() => setExpanded(true)}
-            placeholder="Where to?"
-            placeholderTextColor={theme.text}
-            returnKeyType="search"
-            style={styles.searchInput}
-            value={query}
-          />
-          {query ? (
-            <Pressable
-              accessibilityLabel="Clear destination search"
-              accessibilityRole="button"
-              onPress={() => onQueryChange("")}
-              style={({ pressed }) => [
-                styles.clearSearch,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Ionicons color={theme.textMuted} name="close-circle" size={20} />
-            </Pressable>
-          ) : null}
-        </View>
-      )}
-
-      {expanded ? (
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {route ? (
-            <>
-              <View style={styles.distanceRow}>
-                <View style={styles.distanceBadge}>
-                  <Ionicons color={theme.brandPressed} name="navigate-outline" size={18} />
-                </View>
-                <View style={styles.distanceCopy}>
-                  <Text style={styles.distanceValue}>
-                    {formatDistance(route.distanceMetres)}
-                  </Text>
-                  <Text style={styles.distanceLabel}>Campus route distance</Text>
-                </View>
-              </View>
-
-              <View style={styles.modeList}>
-                {routeModes.map((mode) => (
-                  <View key={mode.id} style={styles.modeRow}>
-                    <View style={styles.modeIcon}>
-                      <Ionicons color={theme.text} name={mode.icon} size={22} />
-                    </View>
-                    <View style={styles.modeCopy}>
-                      <Text style={styles.modeName}>{mode.label}</Text>
-                      <Text style={styles.modeMeta}>
-                        {mode.id === 'walk' ? `${mode.minutes} min · ${formatDistance(route.distanceMetres)}` : 'Check route and availability at booking'}
-                      </Text>
-                    </View>
-                    <Text style={styles.modePrice}>{mode.price}</Text>
-                  </View>
-                ))}
-              </View>
-            </>
-          ) : choosingOrigin ? (
-            <>
-              <View style={styles.originNotice}>
-                <View style={styles.originNoticeIcon}>
-                  <Ionicons color="#FFFFFF" name="locate-outline" size={18} />
-                </View>
-                <View style={styles.originNoticeCopy}>
-                  <Text style={styles.originNoticeTitle}>Choose your starting point</Text>
-                  <Text numberOfLines={2} style={styles.originNoticeText}>
-                    Pick a campus place below or tap a pin on the map to route to {destinationName ?? "your destination"}.
-                  </Text>
-                </View>
-              </View>
-
-              <Pressable
-                accessibilityLabel="Use current location as your starting point"
-                accessibilityRole="button"
-                onPress={onUseCurrentLocation}
-                style={({ pressed }) => [
-                  styles.currentLocationItem,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <View style={styles.currentLocationIcon}>
-                  <Ionicons color="#FFFFFF" name="locate" size={20} />
-                </View>
-                <View style={styles.placeCopy}>
-                  <Text style={styles.placeName}>
-                    {locationLoading
-                      ? "Getting current location…"
-                      : locationPermission === "granted"
-                        ? "Current location"
-                        : "Use current location"}
-                  </Text>
-                  <Text numberOfLines={2} style={styles.placeMeta}>
-                    {locationError ||
-                      (locationAccuracy !== null
-                        ? "Live device position · about ±" +
-                          Math.max(1, Math.round(locationAccuracy)) +
-                          " m accuracy"
-                        : "Use your phone location while KampusOne is open")}
-                  </Text>
-                </View>
-                <Ionicons color={theme.textSubtle} name="chevron-forward" size={18} />
-              </Pressable>
-
-              <Text style={styles.sectionLabel}>Campus places</Text>
-              {searchResults.length
-                ? searchResults.map((place) => (
-                    <PlaceItem
-                      key={place.id}
-                      onPress={() => pickPlace(place)}
-                      place={place}
-                    />
-                  ))
-                : suggestions.map((place) => (
-                    <PlaceItem
-                      key={place.id}
-                      onPress={() => pickPlace(place)}
-                      place={place}
-                    />
-                  ))}
-            </>
-          ) : (
-            <>
-              {loading ? (
-                <View style={styles.stateRow}>
-                  <Ionicons color={theme.brand} name="map-outline" size={20} />
-                  <Text style={styles.stateText}>Loading campus places…</Text>
-                </View>
-              ) : null}
-
-              {error ? (
-                <View style={styles.stateRow}>
-                  <Ionicons color={theme.error} name="cloud-offline-outline" size={20} />
-                  <Text style={styles.stateText}>{error}</Text>
-                </View>
-              ) : null}
-
-              {query.trim() ? (
-                <>
-                  <Text style={styles.sectionLabel}>Search results</Text>
-                  {searchResults.length ? (
-                    searchResults.map((place) => (
-                      <PlaceItem
-                        key={place.id}
-                        onPress={() => pickPlace(place)}
-                        place={place}
-                      />
-                    ))
-                  ) : (
-                    <View style={styles.emptyState}>
-                      <Ionicons color={theme.textMuted} name="search-outline" size={22} />
-                      <Text style={styles.emptyText}>No campus place found.</Text>
-                    </View>
-                  )}
-                </>
-              ) : (
-                <>
-                  {recentPlaces.length ? (
-                    <>
-                      <Text style={styles.sectionLabel}>Recent</Text>
-                      {recentPlaces.map((place) => (
-                        <PlaceItem
-                          key={place.id}
-                          onPress={() => pickPlace(place)}
-                          place={place}
-                          recent
-                        />
-                      ))}
-                    </>
-                  ) : null}
-
-                  <Text style={styles.sectionLabel}>Suggested places</Text>
-                  {suggestions.map((place) => (
-                    <PlaceItem
-                      key={place.id}
-                      onPress={() => pickPlace(place)}
-                      place={place}
-                    />
-                  ))}
-                </>
-              )}
-            </>
-          )}
-        </ScrollView>
-      ) : null}
-    </Animated.View>
-  );
+      <Pressable accessibilityRole="button" accessibilityLabel="Swap starting point and destination" disabled={!originName||!destinationName} onPress={onSwap} style={[styles.swap,(!originName||!destinationName)&&{opacity:.35}]}><Ionicons name="swap-vertical" size={21} color={theme.deepBrand}/></Pressable>
+    </View>
+    {route||routeBusy||error?<View style={styles.summary}>
+      <Ionicons name={error?'alert-circle-outline':'walk-outline'} size={17} color={error?theme.error:theme.deepBrand}/>
+      <Text numberOfLines={1} style={styles.summaryText}>{error|| (routeBusy?'Finding a mapped walking route…':route?`${Math.max(1,Math.ceil(route.durationSeconds/60))} min walk · ${formatMapDistance(route.distanceMetres)}`:'')}</Text>
+      {error?<Pressable accessibilityRole="button" accessibilityLabel="Retry map request" onPress={onRetry} style={styles.retry}><Text style={styles.retryText}>Retry</Text></Pressable>:null}
+    </View>:null}
+    {expanded?<ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      {picker||!destinationName?<>
+        <View style={styles.searchBox}><Ionicons name="search" size={19} color={theme.textMuted}/><TextInput accessibilityLabel={picker==='origin'?'Search starting places':'Search campus destinations'} value={query} onChangeText={onQueryChange} placeholder="Search places, halls or lecture theatres" placeholderTextColor={theme.textMuted} style={styles.searchInput} autoCorrect={false} returnKeyType="search"/></View>
+        <Pressable accessibilityRole="button" onPress={()=>{Keyboard.dismiss();setExpanded(false);onPickOnMap();}} style={styles.actionRow}><Ionicons name="pin-outline" size={20} color={theme.deepBrand}/><Text style={styles.actionText}>Choose a point on the map</Text><Ionicons name="chevron-forward" size={16} color={theme.textMuted}/></Pressable>
+        {picker==='origin'?<Pressable accessibilityRole="button" disabled={locationLoading} onPress={()=>{Keyboard.dismiss();setExpanded(false);onUseCurrentLocation();}} style={styles.actionRow}><Ionicons name="locate-outline" size={20} color={theme.deepBrand}/><View style={{flex:1}}><Text style={styles.actionText}>{locationLoading?'Getting your location…':'Use my current location'}</Text><Text style={styles.helper}>{locationError||'Optional. You can plan from anywhere on campus.'}</Text></View></Pressable>:null}
+        {loading?<Text style={styles.helper}>Loading campus places…</Text>:null}
+        <Text style={styles.section}>{query.trim()?'Matching places':'Campus places'}</Text>
+        {results.map(place=><Pressable accessibilityRole="button" key={place.id} onPress={()=>pick(place)} style={styles.place}><View style={styles.placeIcon}><Ionicons name={categoryIcons[place.category]??'location-outline'} size={20} color={theme.deepBrand}/></View><View style={{flex:1,minWidth:0}}><Text numberOfLines={1} style={styles.placeName}>{place.name}</Text><Text numberOfLines={1} style={styles.helper}>{place.category.toLowerCase().replace(/_/g,' ')}</Text></View><Ionicons name="chevron-forward" size={16} color={theme.textMuted}/></Pressable>)}
+        {!loading&&!results.length?<Text style={styles.helper}>{query?'No matching place. Try an alias or select a point on the map.':'This campus directory is awaiting mapped places.'}</Text>:null}
+      </>:<>
+        {!originName?<Pressable accessibilityRole="button" onPress={()=>choose('origin')} style={styles.actionRow}><Ionicons name="navigate-outline" size={20} color={theme.deepBrand}/><Text style={styles.actionText}>Choose where your walk starts</Text><Ionicons name="chevron-forward" size={16} color={theme.textMuted}/></Pressable>:null}
+        {photo?<View style={styles.photoRow}><Image source={{uri:photo.url}} style={styles.photo}/><Text style={[styles.helper,{flex:1}]}>{photo.attribution}</Text></View>:null}
+        {route?.notice?<View style={styles.routeNotice}><Ionicons name="information-circle-outline" size={18} color={theme.deepBrand}/><Text style={[styles.helper,{flex:1}]}>{route.notice}</Text></View>:null}
+        {route?.instructions.length?<><Text style={styles.section}>Mapped paths</Text>{route.instructions.map((instruction,index)=><View key={`${index}.${instruction}`} style={styles.instruction}><Text style={styles.step}>{index+1}</Text><Text style={styles.actionText}>{instruction}</Text></View>)}</>:null}
+        <Text style={styles.helper}>Walking routes follow mapped campus paths. Check signs and local access conditions as you go.</Text>
+      </>}
+    </ScrollView>:null}
+  </Animated.View>;
 }
-
-const createStyles = (theme: Theme) =>
-  StyleSheet.create({
-    sheet: {
-      backgroundColor: theme.surfaceRaised,
-      borderColor: theme.border,
-      borderTopLeftRadius: 28,
-      borderTopRightRadius: 28,
-      borderWidth: 1,
-      bottom: 0,
-      left: 0,
-      overflow: "hidden",
-      position: "absolute",
-      right: 0,
-      ...theme.shadow,
-    },
-    handleArea: {
-      alignItems: "center",
-      height: 26,
-      justifyContent: "center",
-    },
-    handle: {
-      backgroundColor: theme.border,
-      borderRadius: 3,
-      height: 5,
-      width: 58,
-    },
-    searchBox: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceMuted,
-      borderRadius: 14,
-      flexDirection: "row",
-      marginHorizontal: 20,
-      minHeight: 58,
-      paddingHorizontal: 16,
-    },
-    searchInput: {
-      color: theme.text,
-      flex: 1,
-      fontFamily: theme.font.semibold,
-      fontSize: 18,
-      marginLeft: 12,
-      paddingVertical: 0,
-    },
-    clearSearch: {
-      alignItems: "center",
-      height: 40,
-      justifyContent: "center",
-      width: 40,
-    },
-    routeHeader: {
-      alignItems: "center",
-      flexDirection: "row",
-      minHeight: 60,
-      paddingHorizontal: 20,
-    },
-    routeHeaderCopy: {
-      flex: 1,
-      paddingRight: 12,
-    },
-    routeTitle: {
-      color: theme.text,
-      fontFamily: theme.font.semibold,
-      fontSize: 18,
-    },
-    routeSubtitle: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 11.5,
-      marginTop: 3,
-    },
-    closeButton: {
-      alignItems: "center",
-      borderRadius: 20,
-      height: 40,
-      justifyContent: "center",
-      width: 40,
-    },
-    content: {
-      paddingBottom: 28,
-      paddingHorizontal: 20,
-      paddingTop: 14,
-    },
-    sectionLabel: {
-      color: theme.textMuted,
-      fontFamily: theme.font.semibold,
-      fontSize: 11,
-      letterSpacing: 0.25,
-      marginBottom: 6,
-      marginTop: 10,
-      textTransform: "uppercase",
-    },
-    placeItem: {
-      alignItems: "center",
-      flexDirection: "row",
-      minHeight: 72,
-    },
-    currentLocationItem: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceSoft,
-      borderRadius: 16,
-      flexDirection: "row",
-      marginBottom: 6,
-      minHeight: 72,
-      paddingHorizontal: 10,
-    },
-    currentLocationIcon: {
-      alignItems: "center",
-      backgroundColor: "#2F7CF6",
-      borderRadius: 14,
-      height: 52,
-      justifyContent: "center",
-      width: 52,
-    },
-    placeIcon: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceMuted,
-      borderRadius: 14,
-      height: 52,
-      justifyContent: "center",
-      width: 52,
-    },
-    placeCopy: {
-      flex: 1,
-      marginLeft: 14,
-      minWidth: 0,
-    },
-    placeName: {
-      color: theme.text,
-      fontFamily: theme.font.semibold,
-      fontSize: 14.5,
-    },
-    placeMeta: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 11,
-      marginTop: 3,
-    },
-    pressed: {
-      opacity: 0.68,
-    },
-    stateRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      gap: 10,
-      minHeight: 52,
-    },
-    stateText: {
-      color: theme.textMuted,
-      flex: 1,
-      fontFamily: theme.font.body,
-      fontSize: 12,
-    },
-    emptyState: {
-      alignItems: "center",
-      gap: 8,
-      justifyContent: "center",
-      minHeight: 90,
-    },
-    emptyText: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 12.5,
-    },
-    originNotice: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceSoft,
-      borderRadius: 18,
-      flexDirection: "row",
-      gap: 12,
-      marginBottom: 8,
-      padding: 14,
-    },
-    originNoticeIcon: {
-      alignItems: "center",
-      backgroundColor: theme.deepBrand,
-      borderRadius: 14,
-      height: 42,
-      justifyContent: "center",
-      width: 42,
-    },
-    originNoticeCopy: {
-      flex: 1,
-    },
-    originNoticeTitle: {
-      color: theme.text,
-      fontFamily: theme.font.semibold,
-      fontSize: 13,
-    },
-    originNoticeText: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 11,
-      lineHeight: 16,
-      marginTop: 3,
-    },
-    distanceRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      marginBottom: 8,
-      minHeight: 58,
-    },
-    distanceBadge: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceMuted,
-      borderRadius: 14,
-      height: 48,
-      justifyContent: "center",
-      width: 48,
-    },
-    distanceCopy: {
-      marginLeft: 12,
-    },
-    distanceValue: {
-      color: theme.text,
-      fontFamily: theme.font.semibold,
-      fontSize: 16,
-    },
-    distanceLabel: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 10.5,
-      marginTop: 2,
-    },
-    modeList: {
-      marginTop: 4,
-    },
-    modeRow: {
-      alignItems: "center",
-      borderBottomColor: theme.border,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      flexDirection: "row",
-      minHeight: 76,
-    },
-    modeIcon: {
-      alignItems: "center",
-      backgroundColor: theme.surfaceMuted,
-      borderRadius: 14,
-      height: 50,
-      justifyContent: "center",
-      width: 50,
-    },
-    modeCopy: {
-      flex: 1,
-      marginLeft: 14,
-    },
-    modeName: {
-      color: theme.text,
-      fontFamily: theme.font.semibold,
-      fontSize: 14.5,
-    },
-    modeMeta: {
-      color: theme.textMuted,
-      fontFamily: theme.font.body,
-      fontSize: 11,
-      marginTop: 3,
-    },
-    modePrice: {
-      color: theme.text,
-      fontFamily: theme.font.bold,
-      fontSize: 14,
-    },
-  });
+const makeStyles=(theme:Theme)=>StyleSheet.create({
+  sheet:{position:'absolute',left:8,right:8,backgroundColor:theme.surfaceRaised,borderWidth:1,borderColor:theme.border,borderRadius:22,overflow:'hidden',...theme.shadow},
+  handleArea:{height:20,alignItems:'center',justifyContent:'center'},handle:{height:4,width:44,borderRadius:4,backgroundColor:theme.border},
+  header:{height:34,paddingLeft:16,paddingRight:8,flexDirection:'row',alignItems:'center'},title:{flex:1,color:theme.text,fontFamily:theme.font.semibold,fontSize:14},smallButton:{width:36,height:34,alignItems:'center',justifyContent:'center'},
+  endpoints:{flexDirection:'row',paddingHorizontal:12,gap:6},endpointFields:{flex:1,backgroundColor:theme.surfaceMuted,borderRadius:12,paddingHorizontal:10},endpoint:{height:44,flexDirection:'row',alignItems:'center',gap:7},fieldLabel:{width:31,color:theme.textMuted,fontFamily:theme.font.body,fontSize:11},endpointName:{flex:1,color:theme.text,fontFamily:theme.font.medium,fontSize:12.5},dot:{width:9,height:9,borderRadius:6,marginHorizontal:2},swap:{width:38,alignItems:'center',justifyContent:'center'},
+  summary:{height:40,flexDirection:'row',alignItems:'center',gap:7,paddingHorizontal:16},summaryText:{flex:1,color:theme.text,fontFamily:theme.font.medium,fontSize:12},retry:{padding:8},retryText:{color:theme.deepBrand,fontFamily:theme.font.semibold,fontSize:11},
+  content:{paddingHorizontal:16,paddingTop:10,paddingBottom:22,gap:8},searchBox:{minHeight:48,backgroundColor:theme.surfaceMuted,borderRadius:12,paddingHorizontal:12,flexDirection:'row',alignItems:'center',gap:8},searchInput:{flex:1,color:theme.text,fontFamily:theme.font.body,fontSize:12,paddingVertical:10},
+  actionRow:{minHeight:48,flexDirection:'row',alignItems:'center',gap:10},actionText:{flex:1,color:theme.text,fontFamily:theme.font.medium,fontSize:12.5},helper:{color:theme.textMuted,fontFamily:theme.font.body,fontSize:11.5,lineHeight:17},section:{color:theme.textMuted,fontFamily:theme.font.semibold,fontSize:11,marginTop:5},place:{minHeight:58,flexDirection:'row',alignItems:'center',gap:11},placeIcon:{width:38,height:38,borderRadius:12,backgroundColor:theme.surfaceMuted,alignItems:'center',justifyContent:'center'},placeName:{color:theme.text,fontFamily:theme.font.semibold,fontSize:12.5},
+  routeNotice:{flexDirection:'row',alignItems:'flex-start',gap:8,padding:12,backgroundColor:theme.surfaceMuted,borderRadius:12},photoRow:{flexDirection:'row',gap:12,alignItems:'center'},photo:{width:62,height:62,borderRadius:10},instruction:{flexDirection:'row',alignItems:'center',gap:10,minHeight:40},step:{color:theme.deepBrand,fontFamily:theme.font.semibold,width:24,fontSize:12},
+});

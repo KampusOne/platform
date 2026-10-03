@@ -8,6 +8,7 @@ import {
   listingPrice,
   publishedNigeriaLocalFees,
   type CommerceFees,
+  roundDisplayKobo,
 } from "./pricing";
 const policy: CommerceFees = {
   id: "synthetic-policy",
@@ -19,6 +20,24 @@ const policy: CommerceFees = {
   allowProcessorSubsidy: false,
 };
 describe("inclusive campus pricing", () => {
+  it('rounds the inclusive display upward at the approved increment and submits no second processing allowance',()=>{
+    const rounded={...policy,buyerFlatPerItemKobo:5000,collection:{...policy.collection,displayRoundKobo:10000}};
+    const listing=listingPrice(550000,rounded);
+    expect(listing.customerPriceKobo).toBe(580000);
+    const quote=checkoutPrice([{baseKobo:550000,quantity:1}],rounded,null);
+    expect(quote.payableKobo).toBe(580000);
+    expect(quote.totalKobo).toBe(listing.customerPriceKobo);
+    expect(quote.payableKobo-quote.estimatedProcessingKobo).toBeGreaterThanOrEqual(555000);
+    const withDelivery=checkoutPrice([{baseKobo:550000,quantity:1}],rounded,{fareKobo:30000,riderNetKobo:27000,paymentMethod:'IN_APP'});
+    expect(withDelivery.totalKobo).toBe(listing.customerPriceKobo+30000);
+    expect(withDelivery.payableKobo).toBe(withDelivery.totalKobo);
+    expect(withDelivery.projectedPlatformNetKobo).toBeGreaterThanOrEqual(0);
+  });
+  it('uses integer ceiling rounding and rejects unsafe display policies',()=>{
+    expect(roundDisplayKobo(570001,{...policy.collection,displayRoundKobo:10000})).toBe(580000);
+    expect(roundDisplayKobo(580000,{...policy.collection,displayRoundKobo:10000})).toBe(580000);
+    for(const increment of [0,1,150,NaN,Infinity,100001])expect(()=>roundDisplayKobo(50000,{...policy.collection,displayRoundKobo:increment})).toThrow();
+  });
   it("uses the gross amount for the ₦2,500 threshold and applies the cap", () => {
     expect(collectionFeeKobo(50000, policy.collection)).toBe(750);
     expect(collectionFeeKobo(249999, policy.collection)).toBe(3750);

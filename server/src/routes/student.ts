@@ -1,3 +1,4 @@
+import {isSingleCourseCode,courseCodeIdentity} from "../lib/course-code";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import {adminWorkspaceReady}from'../lib/admin-workspace';
@@ -776,12 +777,29 @@ studentRoutes.post("/timetable", async (context) => {
       ${id}::uuid, ${requireUniversity(user)}::uuid, ${user.id}::uuid,
       ${parsed.data.title}, ${parsed.data.courseCode ?? null}, ${parsed.data.venue ?? null},
       ${parsed.data.lecturer ?? null}, ${parsed.data.dayOfWeek}, ${parsed.data.startsAt}::time,
-      ${parsed.data.endsAt}::time, ${parsed.data.reminderMinutes}, ${parsed.data.reminderEnabled}
+      ${parsed.data.endsAt}::time, 15, ${parsed.data.reminderEnabled}
     )
   `);
   return context.json({ id }, 201);
 });
 
+studentRoutes.post("/timetable/bulk-delete", async (context) => {
+  const user = currentUser(context);
+  const d = await validatedInput(context,z.object({ids:z.array(z.string().uuid()).min(1).max(1000)}).strict());
+  const result = await database(context.env).execute(sql`update public.timetable_entries set status='ARCHIVED',updated_at=now() where user_id=${user.id}::uuid and id=any(${sql.param(d.ids)}::uuid[]) and status<>'ARCHIVED' returning id`);
+  return context.json({deleted:result.rows.length});
+});
+studentRoutes.post("/gpa/bulk-delete", async (context) => {
+  const user=currentUser(context);
+  const d=await validatedInput(context,z.object({ids:z.array(z.string().uuid()).max(1000),clearDrafts:z.boolean().optional()}).strict().refine(d=>d.ids.length>0||d.clearDrafts===true));
+  const client=sqlClient(context.env);
+  const rows=await client.transaction([
+    client`delete from public.gpa_results where term_id in(select id from public.gpa_terms where user_id=${user.id}::uuid and id=any(${d.ids}::uuid[]))`,
+    client`delete from public.gpa_terms where user_id=${user.id}::uuid and id=any(${d.ids}::uuid[]) returning id`,
+    client`delete from public.course_drafts where user_id=${user.id}::uuid and ${d.clearDrafts===true}`,
+  ]);
+  return context.json({deleted:rows[1]?.length??0});
+});
 studentRoutes.delete("/timetable/:id", async (context) => {
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
@@ -834,6 +852,7 @@ studentRoutes.post("/gpa", async (context) => {
       },
     );
   }
+  if(parsed.data.results.some(result=>!isSingleCourseCode(result.courseCode)))throw new AppError(400,"BAD_REQUEST","Each grade needs one course code. Separate combined courses and confirm each course’s units before calculating GPA.");
   const termId = crypto.randomUUID();
   const scale =
     context.env.UNIFIED_SCHEMA_READY === "true"
@@ -847,7 +866,7 @@ studentRoutes.post("/gpa", async (context) => {
       : undefined;
   const gradingScale = scale;
   if (
-    new Set(parsed.data.results.map((result) => result.courseCode)).size !==
+    new Set(parsed.data.results.map((result) => courseCodeIdentity(result.courseCode))).size !==
     parsed.data.results.length
   )
     throw new AppError(

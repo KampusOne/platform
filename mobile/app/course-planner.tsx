@@ -1,3 +1,4 @@
+import {isSingleCourseCode,courseCodeIdentity} from "@/src/lib/grade-import";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useMemo, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
@@ -183,11 +184,15 @@ export default function CoursePlanner() {
   }
 
   function importGpaTerm(term: GpaTerm) {
-    const imported = (term.results ?? [])
+    const sourceRows=term.results??[];
+    const counts=new Map<string,number>();
+    for(const row of sourceRows){const key=courseCodeIdentity(row.courseCode);counts.set(key,(counts.get(key)??0)+1);}
+    const imported = sourceRows
       .filter((result) => {
         const numericUnits = Number(result.units);
         return (
-          result.courseCode.trim().length >= 2 &&
+          isSingleCourseCode(result.courseCode) &&
+          counts.get(courseCodeIdentity(result.courseCode))===1 &&
           result.courseTitle.trim().length > 0 &&
           Boolean(result.grade?.trim()) &&
           Number.isFinite(numericUnits) &&
@@ -201,8 +206,9 @@ export default function CoursePlanner() {
         grade: result.grade.trim().toUpperCase(),
       }));
 
+    const skipped=sourceRows.length-imported.length;
     if (!imported.length) {
-      setImportMessage("Nothing to import.");
+      setImportMessage(skipped?"These results need review. Separate combined course codes, resolve duplicates and confirm each course’s units in GPA & CGPA.":"Nothing to import.");
       setShowImportTerms(false);
       return;
     }
@@ -211,10 +217,10 @@ export default function CoursePlanner() {
       (course) => course.course_code.trim() || course.title.trim(),
     );
     const existingCodes = new Set(
-      current.map((course) => course.course_code.trim().toUpperCase()),
+      current.map((course) => courseCodeIdentity(course.course_code)),
     );
     const additions = imported
-      .filter((course) => !existingCodes.has(course.course_code))
+      .filter((course) => !existingCodes.has(courseCodeIdentity(course.course_code)))
       .slice(0, Math.max(0, 100 - current.length));
 
     if (!additions.length) {
@@ -228,7 +234,7 @@ export default function CoursePlanner() {
     setError("");
     setShowImportTerms(false);
     setImportMessage(
-      `${additions.length} ${additions.length === 1 ? "course" : "courses"} imported · ${term.session_label} · Semester ${term.semester}`,
+      `${additions.length} ${additions.length === 1 ? "course" : "courses"} imported · ${term.session_label} · Semester ${term.semester}${skipped?`\n${skipped} rows need review in GPA & CGPA. Confirm separate course codes and units.`:""}`,
     );
   }
 
@@ -295,7 +301,8 @@ export default function CoursePlanner() {
       return;
     }
 
-    if (new Set(codes).size !== codes.length) {
+    if(codes.some(code=>!isSingleCourseCode(code))){setError("Each row needs one course code. Separate combined courses and confirm their units.");return;}
+    if (new Set(codes.map(courseCodeIdentity)).size !== codes.length) {
       setError("Each course code should appear once.");
       return;
     }

@@ -182,6 +182,12 @@ export default function LearningPreview() {
               </Text>
             </View>
           ) : null}
+          <View style={{gap:8,borderTopWidth:1,borderTopColor:theme.border,paddingTop:16}}>
+            <Text style={{color:theme.text,fontFamily:theme.font.semibold}}>Study with Kira</Text>
+            <Text style={{color:theme.textMuted,fontFamily:theme.font.body,fontSize:12,lineHeight:18}}>Use the visible preview or explore this topic. Attach the full file in Kira for a complete document lesson.</Text>
+            {resource.preview_text ? <ToolButton label="Summarise preview" onPress={()=>router.push({pathname:"/ai",params:{mode:"summary",question:`Summarise this preview of ${resource.title}. This is an extract, not the full document:\n\n${resource.preview_text}`}})}/> : null}
+            <ToolButton label="Explain this topic" onPress={()=>router.push({pathname:"/ai",params:{mode:"explanation",question:`Teach me ${resource.title} at my study level. ${resource.preview_text ? "This preview is supporting context, not the complete source:\n\n"+resource.preview_text : resource.description}`}})}/>
+          </View>
           {resource.can_access ? (
             <ToolButton
               label={busy ? "Opening…" : "Open my resource"}

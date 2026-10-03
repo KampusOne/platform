@@ -55,7 +55,7 @@ beforeAll(async () => {
   }
 }, 60000);
 beforeEach(async () => {
-  await db.exec("delete from app_private.ai_requests");
+  await db.exec("delete from app_private.ai_requests; delete from app_private.academic_import_usage");
   env.AI_UNLIMITED_EMAIL_HASHES = await sha256(ownerEmail);
   env.AI_DAILY_USER_LIMIT = "5";
   env.AI_DAILY_GLOBAL_LIMIT = "100";
@@ -86,6 +86,15 @@ describe("account-specific AI daily allowance", () => {
     expect(provider).toHaveBeenCalledTimes(1);
     const rows = await db.query<{ count: number }>("select count(*)::int as count from app_private.ai_requests where user_id=$1", [owner]);
     expect(rows.rows[0]?.count).toBe(16);
+  });
+  it("enforces calendar imports before provider work and preserves the quota error on replay", async () => {
+    for(let i=0;i<3;i++) await json(await request("/ai","POST",{...draft("timetable"),prompt:"Extract this academic calendar exam period."},other));
+    const fourth={...draft("timetable"),prompt:"Extract this academic calendar exam period."};
+    const denied=await json(await request("/ai","POST",fourth,other),429);
+    expect(denied.error.details.reason).toBe("IMPORT_CALENDAR_LIMIT");
+    expect((await json(await request("/ai","POST",fourth,other),429)).error.details.reason).toBe("IMPORT_CALENDAR_LIMIT");
+    expect(provider).toHaveBeenCalledTimes(3);
+    expect((await json(await request("/ai/status","GET",undefined,other))).imports).toMatchObject({used:3,remaining:2,calendar:{used:3,remaining:0}});
   });
   it("rejects a client-supplied exemption or another user's email", async () => {
     await seedAttempts(other);

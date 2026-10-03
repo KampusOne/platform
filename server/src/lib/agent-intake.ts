@@ -2,6 +2,24 @@ import { sql } from "drizzle-orm";
 import { database, firstRow } from "./database";
 import { AppError } from "./errors";
 import type { Bindings } from "../types";
+import { z } from "@kampusone/contracts";
+
+export const agentOperationsSchema = z.object({
+  primaryOffer: z.string().trim().min(2).max(200),
+  joiningReason: z.enum(["Reach more students", "Grow my existing business", "Offer affordable campus services", "Build my teaching experience", "Earn from campus deliveries"]),
+  serviceDays: z.array(z.enum(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])).min(1).max(7).refine(value => new Set(value).size === value.length),
+  openingTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  closingTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  fulfilmentMethods: z.array(z.enum(["Store pickup", "Campus delivery", "Meet at an agreed location", "Online service"])).min(1).max(4).refine(value => new Set(value).size === value.length),
+  supportChannel: z.enum(["KampusOne chat", "WhatsApp", "Phone call"]),
+  responseTime: z.enum(["Within 15 minutes", "Within 1 hour", "Within 3 hours", "Within 24 hours"]),
+}).strict().refine(value => value.openingTime !== value.closingTime, { message: "Choose different opening and closing times.", path: ["closingTime"] });
+
+export const agentOperationsDraftSchema = z.object({
+  primaryOffer: z.string().max(200), joiningReason: z.string().max(80),
+  serviceDays: z.array(z.string().max(20)).max(7), openingTime: z.string().max(5), closingTime: z.string().max(5),
+  fulfilmentMethods: z.array(z.string().max(80)).max(4), supportChannel: z.string().max(30), responseTime: z.string().max(30),
+}).strict();
 export type IdentityEnvelope = {
   version: "v1";
   nonce: string;

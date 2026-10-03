@@ -9,12 +9,14 @@ import {
   useAudioPlayerStatus,
   useAudioRecorder,
   useAudioRecorderState,
+  type RecordingOptions,
 } from "expo-audio";
 import { File } from "expo-file-system";
 import * as Crypto from "expo-crypto";
 import type { VoiceDraft } from "@/src/lib/message-drafts";
 import { ToolButton } from "./toolkit";
-import { api } from "@/src/lib/api";
+import { api, ApiError } from "@/src/lib/api";
+import { createVoiceUploadQueue } from "@/src/lib/voice-upload";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 
 const playbackListeners = new Set<(owner: object) => void>();
@@ -22,6 +24,21 @@ const playbackListeners = new Set<(owner: object) => void>();
 type PlaybackSpeed = 1 | 1.5 | 2;
 const SPEEDS: PlaybackSpeed[] = [1, 1.5, 2];
 const WAVE_BARS = [8, 14, 22, 12, 26, 18, 10, 24, 16, 28, 13, 20, 9, 25, 17, 12, 29, 15, 21, 11, 27, 18, 9, 23, 14, 26, 12, 19];
+// Speech remains AAC/M4A on native, at 48 kbps instead of the 128 kbps stereo preset.
+// Browsers use their supported MediaRecorder codec and the same target bitrate.
+const VOICE_RECORDING_OPTIONS: RecordingOptions = {
+  ...RecordingPresets.HIGH_QUALITY,
+  sampleRate: 24_000,
+  numberOfChannels: 1,
+  bitRate: 48_000,
+  android: { ...RecordingPresets.HIGH_QUALITY.android, sampleRate: 24_000 },
+  ios: { ...RecordingPresets.HIGH_QUALITY.ios, sampleRate: 24_000 },
+  web: { ...RecordingPresets.HIGH_QUALITY.web, bitsPerSecond: 48_000 },
+};
+class VoiceInputError extends Error {}
+function voiceErrorMessage(caught: unknown, fallback: string) {
+  return caught instanceof ApiError || caught instanceof VoiceInputError ? caught.message : fallback;
+}
 
 function formatDuration(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -67,6 +84,7 @@ export function MessageVoice({
   compact = false,
   initialDraft,
   onDraftChange,
+  onSendingChange,
 }: {
   disabled: boolean;
   onReady: (id: string, name: string) => void | Promise<void>;
@@ -74,17 +92,20 @@ export function MessageVoice({
   compact?: boolean;
   initialDraft?: VoiceDraft | null;
   onDraftChange?: (draft: VoiceDraft | null) => void;
+  onSendingChange?: (sending: boolean) => void;
 }) {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(VOICE_RECORDING_OPTIONS);
   const state = useAudioRecorderState(recorder, 120);
   const [uri, setUri] = useState<string>(initialDraft?.uri ?? "");
   const [recordedDuration, setRecordedDuration] = useState(initialDraft?.durationMs ?? 0);
   const durationRef = useRef(0); durationRef.current = state.durationMillis;
   const draftRef = useRef(initialDraft);
   const recordingPending = useRef(false);
+  const operationPending = useRef(false);
   const draftCallback = useRef(onDraftChange); draftCallback.current = onDraftChange;
   function publishDraft(nextUri?: string) {
-    const next = nextUri ? { localId: draftRef.current?.uri === nextUri ? draftRef.current.localId : Crypto.randomUUID(), uri: nextUri, durationMs: durationRef.current } : null;
+    const existing = draftRef.current?.uri === nextUri ? draftRef.current : null;
+    const next = nextUri ? { ...existing, localId: existing?.localId ?? Crypto.randomUUID(), uri: nextUri, durationMs: durationRef.current || existing?.durationMs || 0 } : null;
     draftRef.current = next;
     draftCallback.current?.(next);
   }
@@ -101,6 +122,31 @@ export function MessageVoice({
   const [error, setError] = useState("");
   const { theme, styles } = useThemeStyles(createStyles);
   const active = state.isRecording || Boolean(uri);
+
+  const uploadQueue = useRef(createVoiceUploadQueue(async (localUri: string) => {
+      const source=Platform.OS==='web'?await(await fetch(localUri)).blob():new File(localUri);
+      if(!source.size||source.size>10*1024*1024)throw new VoiceInputError('Record a shorter voice note.');
+      const bytes=Platform.OS==='web'?source as Blob:await source.arrayBuffer();
+      const name = Platform.OS === 'web' ? 'Voice-note.webm' : 'Voice-note.m4a';
+      const result=await api<{id:string}>(`/v1/media?kind=message&name=${name}`,{method:'POST',body:bytes,headers:{'Content-Type':Platform.OS==='web'?(source as Blob).type||'audio/webm':'audio/mp4'},timeoutMs:60000});
+      return result.id;
+  }));
+  async function uploadVoice(recording: VoiceDraft): Promise<string> {
+    const mediaId = await uploadQueue.current.upload(recording);
+    const current = draftRef.current;
+    if (current?.uri === recording.uri && current.localId === recording.localId && current.mediaId !== mediaId) {
+      const next = { ...current, mediaId };
+      draftRef.current = next;
+      draftCallback.current?.(next);
+    }
+    return mediaId;
+  }
+
+  // Upload while the student previews the recording, then sending only posts its reference.
+  useEffect(() => {
+    const recording = draftRef.current;
+    if (uri && recording?.uri === uri && !recording.mediaId) void uploadVoice(recording).catch(() => undefined);
+  }, [uri]);
 
   useEffect(() => {
     onActiveChange?.(active);
@@ -139,12 +185,14 @@ export function MessageVoice({
   }, [state.isRecording, state.durationMillis]);
 
   async function startRecording() {
+    if (operationPending.current || disabled) return;
+    operationPending.current = true;
     setBusy(true);
     setError("");
     setSettingsOpen(false);
     try {
       const permission = await AudioModule.requestRecordingPermissionsAsync();
-      if (!permission.granted) throw new Error("Allow microphone access to record a voice note.");
+      if (!permission.granted) throw new VoiceInputError("Allow microphone access to record a voice note.");
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
@@ -154,14 +202,16 @@ export function MessageVoice({
       setUri(""); publishDraft();
       setPreviewSpeed(1);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Recording failed.");
+      setError(voiceErrorMessage(caught, "Recording could not start. Check microphone access and try again."));
     } finally {
+      operationPending.current = false;
       setBusy(false);
     }
   }
 
   async function finishRecording() {
-    if (!recorder.isRecording && !paused) return;
+    if (operationPending.current || (!recorder.isRecording && !paused)) return;
+    operationPending.current = true;
     setBusy(true);
     setError("");
     try {
@@ -172,8 +222,9 @@ export function MessageVoice({
       setPaused(false);
       await setAudioModeAsync({ allowsRecording: false });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Recording could not be saved.");
+      setError(voiceErrorMessage(caught, "Recording could not be saved. Try recording again."));
     } finally {
+      operationPending.current = false;
       setBusy(false);
     }
   }
@@ -189,7 +240,7 @@ export function MessageVoice({
         setPaused(true);
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not pause the recording.");
+      setError(voiceErrorMessage(caught, "Could not pause the recording. Try again."));
     }
   }
 
@@ -216,28 +267,24 @@ export function MessageVoice({
   }
 
   async function attach() {
-    if (!uri) return;
+    const recording = draftRef.current;
+    if (operationPending.current || disabled || !uri || recording?.uri !== uri) return;
+    operationPending.current = true;
     setBusy(true);
+    onSendingChange?.(true);
     setError("");
     try {
-      let mediaId = initialDraft?.mediaId;
-      if (!mediaId) {
-        const body = Platform.OS === "web" ? await (await fetch(uri)).blob() : new File(uri) as unknown as Blob;
-        if (body.size > 10 * 1024 * 1024) throw new Error("Record a shorter voice note.");
-        mediaId = (await api<{ id: string }>("/v1/media?kind=message&name=Voice-note.m4a", {
-          method: "POST", body,
-          headers: { "Content-Type": Platform.OS === "web" ? body.type || "audio/webm" : "audio/mp4" },
-          timeoutMs: 180_000,
-        })).id;
-      }
+      const mediaId = await uploadVoice(recording);
       await onReady(mediaId, "Voice note");
       setUri(""); publishDraft();
       setRecordedDuration(0);
       setSettingsOpen(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Voice note could not be sent. Your recording is kept.");
+      setError(voiceErrorMessage(caught, "Voice note could not be sent. Your recording is kept. Try again."));
     } finally {
+      operationPending.current = false;
       setBusy(false);
+      onSendingChange?.(false);
     }
   }
 
@@ -287,7 +334,7 @@ export function MessageVoice({
               <View style={styles.qualityIcon}><Ionicons name="sparkles-outline" size={16} color={theme.deepBrand} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.qualityTitle}>Recording quality</Text>
-                <Text style={styles.qualityText}>High quality audio</Text>
+                <Text style={styles.qualityText}>Clear speech · smaller upload</Text>
               </View>
               <Ionicons name="checkmark-circle" size={20} color={theme.deepBrand} />
             </View>

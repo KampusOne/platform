@@ -9,10 +9,14 @@ import { deliverQueuedBroadcasts } from "./services/broadcast-delivery";
 import { closeDueElections } from "./services/community-elections";
 import { queueDuePurchaseReviews } from "./services/purchase-reviews";
 import { materialCommerceReady } from './lib/material-commerce';
+import { reconcileDuePayouts } from './lib/payouts';
+import { captureDailyAppReports } from './services/admin-report-snapshots';
 
 export default {
   fetch: app.fetch,
   scheduled(_controller, env, executionContext) {
+    executionContext.waitUntil(captureDailyAppReports(env));
+    executionContext.waitUntil(reconcileDuePayouts(env));
     executionContext.waitUntil((async()=>{if(await materialCommerceReady(env))await database(env).execute(sql`select app_private.release_due_material_earnings(null::uuid)`);})().catch(()=>console.error(JSON.stringify({level:'error',event:'learning_materials.earnings_release_failed'}))));
     executionContext.waitUntil(queueDuePurchaseReviews(env).catch(() => {
       console.error(JSON.stringify({level:"error",event:"purchase_reviews.notification_queue_failed"}));

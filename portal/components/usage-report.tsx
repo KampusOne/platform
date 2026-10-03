@@ -6,6 +6,7 @@ import { PortalShell } from "./portal-shell";
 import { GoogleAnalyticsReport } from "./google-analytics-report";
 import { DailyActivity } from "./daily-activity";
 import { downloadCsv } from "@/lib/csv";
+import { DailyAppReport } from "./daily-app-report";
 type Row = Record<string, string | number | null>;
 type Engagement = {
   days: number;
@@ -140,6 +141,7 @@ export function UsageReport({ kind }: { kind: "engagement" | "ai" }) {
         </section>
       ) : (
         <>
+          {kind === "engagement" && <DailyAppReport refresh={retry} />}
           <div className="workspace-toolbar">
             {kind === "engagement" && (
               <>

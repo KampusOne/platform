@@ -1,4 +1,5 @@
 import { ImageViewer } from "@/src/components/image-viewer";
+import { AcademicExamStatus } from "@/src/components/academic-exam-status";
 import { hasPublicBadge } from "@/src/lib/public-badges";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
@@ -642,6 +643,7 @@ export default function ProfileScreen() {
         </View>
       ) : null}
       <AgentShortcuts />
+      <AcademicExamStatus />
       {loading && !profile && !sessionProfile ? (
         <ScreenSkeleton variant="profile" compact />
       ) : null}

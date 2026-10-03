@@ -11,7 +11,7 @@ function headers(env: Bindings) {
 function presentationFor(preferenceCategory:string){
  if(preferenceCategory==='messages')return{channelId:'kampusone-messages-v1',categoryId:'KAMPUSONE_MESSAGE'};
  if(preferenceCategory==='newsletter')return{channelId:'kampusone-newsletter-v1',categoryId:'KAMPUSONE_NEWSLETTER'};
- if(['likes','commentLikes','comments','replies','reposts','quotes','follows','profilePosts'].includes(preferenceCategory))
+ if(['likes','commentLikes','comments','replies','reposts','quotes','follows','profilePosts','mentions'].includes(preferenceCategory))
   return{channelId:'kampusone-social-v1',categoryId:'KAMPUSONE_SOCIAL'};
  return{channelId:'kampusone-updates-v2',categoryId:'KAMPUSONE_UPDATE'};
 }
@@ -72,6 +72,7 @@ export async function sendCampusPush(
     body:message.body.slice(0,1500),
     sound:'default',
     priority:'high',
+    ttl:message.preferenceCategory==='newsletter'?86400:message.preferenceCategory==='classReminders'?900:3600,
     channelId:presentation.channelId,
     categoryId:presentation.categoryId,
     data:{

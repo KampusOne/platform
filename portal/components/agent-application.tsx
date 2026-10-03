@@ -1,12 +1,21 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { PortalShell } from "./portal-shell";
+import { AgentIntakeShell } from "./agent-intake-shell";
+import styles from "./agent-intake.module.css";
+import {
+  AgentOperationsFields,
+  emptyOperations,
+  validateOperations,
+} from "./agent-operations-fields";
 import { usePortalAuth } from "./auth-provider";
 import { portalApi } from "@/lib/api";
-import { AgentApplicationIllustration } from "./agent-illustrations";
+import {
+  AgentApplicationIllustration,
+  AgentRoleChoices,
+} from "./agent-illustrations";
 import { AgentFaceCapture } from "./agent-face-capture";
-import {PhoneField,BirthDateField} from './intake-fields';
+import { PhoneField, BirthDateField } from "./intake-fields";
 
 type Application = {
   id: string;
@@ -56,6 +65,8 @@ const initial = {
   clientRequestId: "",
   publishContacts: false,
   portraitSource: "UPLOAD",
+  uploadNames: {} as Record<string, string>,
+  operations: emptyOperations,
 };
 type FormValues = typeof initial;
 const steps = [
@@ -74,7 +85,16 @@ const stepKickers = [
 ];
 const phonePattern = /^\+[1-9]\d{7,14}$/;
 const termsVersion = "2026-09-21";
-const fieldExamples:Record<string,string>={legalName:'e.g. Osas Egharevba',displayName:'e.g. Osas Kitchen',address:'e.g. 12 Uselu Road, Benin City',businessAddress:'e.g. June 12 shopping complex, Ugbowo',emergencyContactName:'e.g. Itohan Egharevba',guardianName:'e.g. Itohan Egharevba',guardianEmail:'e.g. itohan@example.com',matricNumber:'e.g. ENG2200123'};
+const fieldExamples: Record<string, string> = {
+  legalName: "e.g. Osas Egharevba",
+  displayName: "e.g. Osas Kitchen",
+  address: "e.g. 12 Uselu Road, Benin City",
+  businessAddress: "e.g. June 12 shopping complex, Ugbowo",
+  emergencyContactName: "e.g. Itohan Egharevba",
+  guardianName: "e.g. Itohan Egharevba",
+  guardianEmail: "e.g. itohan@example.com",
+  matricNumber: "e.g. ENG2200123",
+};
 const businessCategories = [
   "Restaurant",
   "Supermarket",
@@ -88,7 +108,11 @@ const businessCategories = [
 function ageOnDate(value: string) {
   const birthday = new Date(value),
     today = new Date();
-  if (Number.isNaN(birthday.getTime())||birthday.toISOString().slice(0,10)!==value) return 0;
+  if (
+    Number.isNaN(birthday.getTime()) ||
+    birthday.toISOString().slice(0, 10) !== value
+  )
+    return 0;
   let age = today.getFullYear() - birthday.getFullYear();
   if (
     today.getMonth() < birthday.getMonth() ||
@@ -117,6 +141,9 @@ export function AgentApplication() {
   const [submitted, setSubmitted] = useState(false);
   const [version, setVersion] = useState(0);
   const [privateIdentityReady, setPrivateIdentityReady] = useState(false);
+  const [uploads, setUploads] = useState<
+    Record<string, { file: File; status: "uploading" | "failed" | "uploaded" }>
+  >({});
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     let active = true;
@@ -202,9 +229,60 @@ export function AgentApplication() {
     type = "text",
     required = true,
   ) {
-    if(key==='birthDate')return <BirthDateField key={key} value={data.birthDate} onChange={value=>update('birthDate',value)} error={fieldErrors[key]}/>;
-    if(['phoneE164','whatsappPhone','emergencyContactPhone','guardianPhone'].includes(key))return <PhoneField key={key} id={`agent-${key}`} label={label.replace(' with country code','')} value={String(data[key])} onChange={value=>update(key,value as never)} error={fieldErrors[key]}/>;
-    if(key==='guardianRelationship')return <label key={key}>{label}<select value={data.guardianRelationship} onChange={e=>update(key,e.target.value)} required><option value="">Select relationship</option>{['Mother','Father','Guardian','Sibling','Aunt','Uncle','Spouse'].map(value=><option key={value}>{value}</option>)}</select>{fieldErrors[key]?<span className="field-error">{fieldErrors[key]}</span>:null}</label>;
+    if (key === "birthDate")
+      return (
+        <BirthDateField
+          key={key}
+          value={data.birthDate}
+          onChange={(value) => update("birthDate", value)}
+          error={fieldErrors[key]}
+        />
+      );
+    if (
+      [
+        "phoneE164",
+        "whatsappPhone",
+        "emergencyContactPhone",
+        "guardianPhone",
+      ].includes(key)
+    )
+      return (
+        <PhoneField
+          key={key}
+          id={`agent-${key}`}
+          label={label.replace(" with country code", "")}
+          value={String(data[key])}
+          onChange={(value) => update(key, value as never)}
+          error={fieldErrors[key]}
+        />
+      );
+    if (key === "guardianRelationship")
+      return (
+        <label key={key}>
+          {label}
+          <select
+            value={data.guardianRelationship}
+            onChange={(e) => update(key, e.target.value)}
+            required
+          >
+            <option value="">Select relationship</option>
+            {[
+              "Mother",
+              "Father",
+              "Guardian",
+              "Sibling",
+              "Aunt",
+              "Uncle",
+              "Spouse",
+            ].map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+          {fieldErrors[key] ? (
+            <span className="field-error">{fieldErrors[key]}</span>
+          ) : null}
+        </label>
+      );
     return (
       <label key={key} htmlFor={`agent-${key}`}>
         {label}
@@ -284,11 +362,7 @@ export function AgentApplication() {
       }
     }
     if (currentStep === 2) {
-      requireField(
-        "statement",
-        20,
-        "Write at least 20 characters about the work you plan to offer.",
-      );
+      Object.assign(errors, validateOperations(data.operations));
       if (data.agentType === "VENDOR") {
         requireField("businessName", 2, "Enter the name of your business.");
         requireField("businessAddress", 5, "Enter the business location.");
@@ -308,6 +382,9 @@ export function AgentApplication() {
       }
     }
     if (currentStep === 3) {
+      if (data.portraitSource !== "CAMERA")
+        errors.portraitDocumentId =
+          "Take a fresh face photograph using the camera below.";
       if (!/^\d{11}$/.test(data.nin))
         errors.nin = "Enter your eleven-digit NIN.";
       if (data.agentType === "VENDOR" && !data.businessDocumentIds.length)
@@ -346,6 +423,7 @@ export function AgentApplication() {
   function values() {
     return {
       ...data,
+      statement: `${data.operations.primaryOffer.trim()}. ${data.operations.joiningReason}. Available ${data.operations.serviceDays.join(", ")}, ${data.operations.openingTime}–${data.operations.closingTime}. Customer support: ${data.operations.supportChannel}, ${data.operations.responseTime.toLowerCase()}.`,
       displayName:
         data.agentType === "VENDOR"
           ? data.businessName || data.displayName
@@ -405,7 +483,11 @@ export function AgentApplication() {
     }
     setBusy(true);
     setError("");
-    setNotice(`Uploading ${file.name}…`);
+    setNotice("");
+    setUploads((current) => ({
+      ...current,
+      [key]: { file, status: "uploading" },
+    }));
     try {
       const body = new FormData();
       body.append("kind", "kyc");
@@ -422,15 +504,25 @@ export function AgentApplication() {
             ? [...data.businessDocumentIds, uploaded.id].slice(-4)
             : uploaded.id) as never,
       );
-      setNotice(
-        "Evidence uploaded privately. Save this step to keep it in your application.",
-      );
+      setData((current) => ({
+        ...current,
+        uploadNames: { ...current.uploadNames, [uploaded.id]: file.name },
+      }));
+      setUploads((current) => ({
+        ...current,
+        [key]: { file, status: "uploaded" },
+      }));
       return true;
     } catch (caught) {
+      setNotice("");
+      setUploads((current) => ({
+        ...current,
+        [key]: { file, status: "failed" },
+      }));
       setError(
         caught instanceof Error
           ? caught.message
-          : "Upload failed. Choose the file to retry.",
+          : "Your file could not upload. Your file is kept here so you can retry.",
       );
       return false;
     } finally {
@@ -501,26 +593,34 @@ export function AgentApplication() {
   function document(key: keyof FormValues, title: string) {
     const multiple =
       key === "riderDocumentIds" || key === "businessDocumentIds";
-    const count = multiple ? (data[key] as string[]).length : data[key] ? 1 : 0;
+    const mediaIds = multiple
+      ? (data[key] as string[])
+      : data[key]
+        ? [String(data[key])]
+        : [];
     const limit = key === "riderDocumentIds" ? 6 : 4;
+    const pending = uploads[key];
     return (
-      <div className="document-upload" key={key}>
-        <label className="document-upload__picker">
-          <span className="document-upload__meta">
+      <div className={styles.uploadCard} key={key}>
+        <label className={styles.uploadPicker}>
+          <span className={styles.uploadMeta}>
             <strong>{title}</strong>
             <small>
-              {count
-                ? `${count} file${count > 1 ? "s" : ""} added securely`
-                : key === "portraitDocumentId"
-                  ? "JPG, PNG or WebP · up to 10 MB"
-                  : "JPG, PNG, WebP or PDF · up to 10 MB"}
+              {key === "portraitDocumentId"
+                ? "JPG, PNG or WebP"
+                : "JPG, PNG, WebP or PDF"}{" "}
+              · up to 10 MB
             </small>
           </span>
-          <span className="document-upload__action">
-            {count && !multiple ? "Replace file" : count ? "Add another" : "Choose file"}
+          <span className={styles.uploadAction}>
+            {mediaIds.length && !multiple
+              ? "Replace file"
+              : mediaIds.length
+                ? "Add another"
+                : "Choose file"}
           </span>
           <input
-            className="document-upload__input"
+            className={styles.fileInput}
             type="file"
             aria-label={`Upload ${title}`}
             accept={
@@ -528,9 +628,10 @@ export function AgentApplication() {
                 ? "image/jpeg,image/png,image/webp"
                 : "image/jpeg,image/png,image/webp,application/pdf"
             }
-            disabled={busy || (multiple && count >= limit)}
+            disabled={busy || (multiple && mediaIds.length >= limit)}
             onChange={(event) => {
-              void upload(key, event.target.files?.[0]).then((saved) => {
+              const file = event.target.files?.[0];
+              void upload(key, file).then((saved) => {
                 if (saved && key === "portraitDocumentId")
                   update("portraitSource", "UPLOAD");
               });
@@ -538,39 +639,68 @@ export function AgentApplication() {
             }}
           />
         </label>
-        {fieldErrors[key] ? (
-          <span className="field-error">{fieldErrors[key]}</span>
-        ) : null}
-        {multiple &&
-          (data[key] as string[]).map((mediaId, index) => (
-            <div className="document-upload__file" key={mediaId}>
-              <span>Evidence {index + 1}</span>
+        {pending && pending.status !== "uploaded" && (
+          <div className={styles.uploadState} role="status">
+            <span>
+              {pending.file.name} ·{" "}
+              {pending.status === "uploading"
+                ? "Uploading securely…"
+                : "Upload did not finish"}
+            </span>
+            {pending.status === "failed" && (
               <button
                 type="button"
-                className="text-button"
                 disabled={busy}
-                onClick={() =>
-                  update(
-                    key,
-                    (data[key] as string[]).filter(
-                      (id) => id !== mediaId,
-                    ) as never,
-                  )
-                }
+                onClick={() => void upload(key, pending.file)}
               >
-                Remove
+                Retry
               </button>
-            </div>
-          ))}
+            )}
+          </div>
+        )}
+        {fieldErrors[key] && (
+          <span className="field-error" role="alert">
+            {fieldErrors[key]}
+          </span>
+        )}
+        {mediaIds.map((mediaId, index) => (
+          <div className={styles.uploadFile} key={mediaId}>
+            <span>
+              {data.uploadNames[mediaId] ||
+                `Saved ${title.toLowerCase()}${multiple ? ` ${index + 1}` : ""}`}{" "}
+              · Uploaded privately
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                update(
+                  key,
+                  (multiple
+                    ? mediaIds.filter((id) => id !== mediaId)
+                    : "") as never,
+                );
+                setUploads((current) => {
+                  const next = { ...current };
+                  delete next[key];
+                  return next;
+                });
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
       </div>
     );
   }
   return (
-    <PortalShell
-      active="agents"
-      eyebrow=""
+    <AgentIntakeShell
+      approved={applications.some(
+        (application) => application.status === "APPROVED",
+      )}
       title="Agent application"
-      description="Vendor, tutor or rider — complete one step at a time."
+      description="Bring your business, teaching or deliveries to campus. A few clear steps, then our team reviews your application."
     >
       {loading ? (
         <div className="table-skeleton" aria-label="Loading your application">
@@ -644,9 +774,43 @@ export function AgentApplication() {
                 </button>
               </section>
             ) : (
-              <form className="form-stack agent-onboarding-form" onSubmit={submit} noValidate>
-                <div className="onboarding-stepbar"><button type="button" aria-label="Previous step" disabled={busy||step===0} onClick={()=>{setStep(current=>Math.max(0,current-1));setError("");}} className="onboarding-back">‹</button><div role="progressbar" aria-label="Application progress" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={step+1} className="onboarding-progress"><span style={{width:`${(step+1)/steps.length*100}%`}}/></div><span className="onboarding-stepcount">{step+1} of {steps.length}</span></div>
-                <div className="onboarding-mobile-art"><AgentApplicationIllustration step={step}/></div>
+              <form
+                className="form-stack agent-onboarding-form"
+                onSubmit={submit}
+                noValidate
+              >
+                <div className="onboarding-stepbar">
+                  <button
+                    type="button"
+                    aria-label="Previous step"
+                    disabled={busy || step === 0}
+                    onClick={() => {
+                      setStep((current) => Math.max(0, current - 1));
+                      setError("");
+                    }}
+                    className="onboarding-back"
+                  >
+                    ‹
+                  </button>
+                  <div
+                    role="progressbar"
+                    aria-label="Application progress"
+                    aria-valuemin={0}
+                    aria-valuemax={steps.length}
+                    aria-valuenow={step + 1}
+                    className="onboarding-progress"
+                  >
+                    <span
+                      style={{ width: `${((step + 1) / steps.length) * 100}%` }}
+                    />
+                  </div>
+                  <span className="onboarding-stepcount">
+                    {step + 1} of {steps.length}
+                  </span>
+                </div>
+                <div className="onboarding-mobile-art">
+                  <AgentApplicationIllustration step={step} />
+                </div>
                 <header>
                   <p className="onboarding-kicker">{stepKickers[step]}</p>
                   <h2 ref={heading} tabIndex={-1}>
@@ -662,6 +826,10 @@ export function AgentApplication() {
                 <fieldset className="wizard-step" key={step} disabled={busy}>
                   {step === 0 && (
                     <>
+                      <AgentRoleChoices
+                        value={data.agentType}
+                        onChange={(value) => update("agentType", value)}
+                      />
                       {field("legalName", "Full legal name")}
                       {field("displayName", "Public display name")}
                       {field("birthDate", "Date of birth", "date")}
@@ -740,55 +908,6 @@ export function AgentApplication() {
                   )}
                   {step === 2 && (
                     <>
-                      <fieldset className="agent-role-options">
-                        <legend>Apply as</legend>
-                        {[
-                          {
-                            value: "VENDOR",
-                            label: "Vendor",
-                            copy: "Sell products or run a campus business.",
-                            mark: "V",
-                          },
-                          {
-                            value: "TUTOR",
-                            label: "Tutor",
-                            copy: "Teach courses, cohorts or study sessions.",
-                            mark: "T",
-                          },
-                          {
-                            value: "RIDER",
-                            label: "Rider",
-                            copy: "Handle approved campus deliveries.",
-                            mark: "R",
-                          },
-                        ].map((role) => {
-                          const selected = data.agentType === role.value;
-                          return (
-                            <label
-                              className={`agent-role-card ${selected ? "agent-role-card--selected" : ""}`}
-                              key={role.value}
-                            >
-                              <input
-                                type="radio"
-                                name="agentType"
-                                value={role.value}
-                                checked={selected}
-                                onChange={() => update("agentType", role.value)}
-                              />
-                              <span className="agent-role-mark" aria-hidden="true">
-                                {role.mark}
-                              </span>
-                              <span className="agent-role-copy">
-                                <strong>{role.label}</strong>
-                                <small>{role.copy}</small>
-                              </span>
-                              <span className="agent-role-check" aria-hidden="true">
-                                {selected ? "✓" : ""}
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </fieldset>
                       {data.agentType === "VENDOR" && (
                         <>
                           {field(
@@ -958,25 +1077,18 @@ export function AgentApplication() {
                           will add bike and operating evidence in the next step.
                         </p>
                       )}
-                      <label>
-                        {data.agentType === "TUTOR"
-                          ? "Why would you like to teach on KampusOne?"
-                          : "About your work"}
-                        <textarea
-                          required
-                          minLength={20}
-                          maxLength={1000}
-                          value={data.statement}
-                          onChange={(event) =>
-                            update("statement", event.target.value)
-                          }
-                        />
-                        {fieldErrors.statement && (
-                          <span className="field-error">
-                            {fieldErrors.statement}
-                          </span>
-                        )}
-                      </label>
+                      <AgentOperationsFields
+                        value={data.operations}
+                        onChange={(value) => update("operations", value)}
+                        errors={fieldErrors}
+                        offerLabel={
+                          data.agentType === "TUTOR"
+                            ? "Which courses or subjects do you teach?"
+                            : data.agentType === "RIDER"
+                              ? "What delivery service do you offer?"
+                              : undefined
+                        }
+                      />
                     </>
                   )}
                   {step === 3 && (
@@ -1090,7 +1202,21 @@ export function AgentApplication() {
                         <dt>Contact</dt>
                         <dd>{data.phoneE164}</dd>
                         <dt>About your work</dt>
-                        <dd>{data.statement}</dd>
+                        <dd>
+                          {data.operations.primaryOffer} ·{" "}
+                          {data.operations.joiningReason}
+                        </dd>
+                        <dt>Availability</dt>
+                        <dd>
+                          {data.operations.serviceDays.join(", ")} ·{" "}
+                          {data.operations.openingTime} to{" "}
+                          {data.operations.closingTime}
+                        </dd>
+                        <dt>Customer support</dt>
+                        <dd>
+                          {data.operations.supportChannel} ·{" "}
+                          {data.operations.responseTime}
+                        </dd>
                         <dt>Business categories</dt>
                         <dd>
                           {data.businessCategories.join(", ") ||
@@ -1264,6 +1390,6 @@ export function AgentApplication() {
           </section>
         </div>
       )}
-    </PortalShell>
+    </AgentIntakeShell>
   );
 }

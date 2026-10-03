@@ -124,6 +124,7 @@ function FinancePolicyEditor() {
       ),
     ])
       .then(([r, z, p]) => {
+        if (!r || typeof r.ready !== 'boolean' || !Array.isArray(r.policies) || !Array.isArray(z?.zones) || !Array.isArray(p?.receipts)) throw new Error('Finance settings could not be read. Try again.');
         if (!controller.signal.aborted) {
           setResult(r);
           setZones(z.zones);

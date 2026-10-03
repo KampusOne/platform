@@ -1,0 +1,1 @@
+Google G icon is the original approved asset downloaded from https://developers.google.com/static/identity/images/g-logo.png on 3 October 2026. It is rendered with proportional contain sizing in the sign in button. Branding reference: https://developers.google.com/identity/branding-guidelines.

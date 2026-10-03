@@ -24,6 +24,13 @@ peopleRoutes.use("/*",async(c,next)=>{c.header("Cache-Control","private, no-stor
 async function readService(env: Bindings, user: AuthenticatedUser, serviceId: string) {
   return readPublicBusiness(env, user, serviceId);
 }
+peopleRoutes.get("/by-username/:username",async c=>{
+ const username=c.req.param('username').toLowerCase();
+ if(!/^[a-z0-9_]{1,30}$/.test(username))throw new AppError(400,'BAD_REQUEST','This username is not valid.');
+ const u=currentUser(c),row=firstRow(await database(c.env).execute<{id:string}>(sql`select p.user_id as id from public.profiles p join public.users a on a.id=p.user_id and a.status::text='ACTIVE' and a.deleted_at is null where lower(p.username)=${username} and p.deleted_at is null and p.university_id=${u.universityId}::uuid limit 1`));
+ if(!row)throw new AppError(404,'NOT_FOUND','This profile is unavailable.');
+ await requireUnblocked(c.env,u.id,row.id);return c.json(row);
+});
 peopleRoutes.get("/services/:id",async c=>c.json(await readService(c.env,currentUser(c),id(c.req.param("id")))));
 peopleRoutes.get("/products/:id",async c=>{
   if(c.env.STORE_ENABLED!=="true" || c.env.PHASE_3_SCHEMA_READY!=="true") throw new AppError(503,"PROVIDER_UNAVAILABLE","The campus store is not open yet.");

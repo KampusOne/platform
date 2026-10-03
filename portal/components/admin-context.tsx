@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { PortalApiError, portalApi } from "@/lib/api";
 import { usePortalAuth } from "./auth-provider";
 
-type AdminAccess = { permissions: string[]; universityIds: string[]; allUniversities: boolean; universities?: { id: string; name: string }[] };
+type AdminAccess = { grants?: { permissions: string[]; university_id: string | null }[]; permissions: string[]; universityIds: string[]; allUniversities: boolean; universities?: { id: string; name: string }[] };
 type AdminContextValue = {
   access: AdminAccess | null;
   scope: string;

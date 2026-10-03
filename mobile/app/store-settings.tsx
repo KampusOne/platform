@@ -6,6 +6,7 @@ import { api } from "@/src/lib/api";
 import { Text, View } from "react-native";
 import { BrandSwitch } from "@/src/components/brand-switch";
 import { useAppearance } from "@/src/lib/appearance";
+import { shareAgentLocation } from "@/src/lib/agent-location";
 export default function StoreSettings() {
   const toast = useToast();
   const { theme } = useAppearance();
@@ -16,7 +17,10 @@ export default function StoreSettings() {
   const [description, setDescription] = useState("");
   const [phone, setPhone] = useState("");
   const [pickupPlace, setPickupPlace] = useState<string | null>(null);
+  const [savedPickupPlace, setSavedPickupPlace] = useState<string | null>(null);
   const [pickup, setPickup] = useState("");
+  const [vendorProfileId, setVendorProfileId] = useState<string | null>(null);
+  const [locationStatus, setLocationStatus] = useState("");
   const [instructions, setInstructions] = useState("");
   const [hours, setHours] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,6 +28,7 @@ export default function StoreSettings() {
     void api<{
       fulfilmentReady: boolean;
       storefront: {
+        vendor_profile_id: string;
         display_name: string;
         description: string;
         contact_phone_e164: string;
@@ -38,11 +43,13 @@ export default function StoreSettings() {
       .then(({ storefront: s, fulfilmentReady: ready }) => {
         setFulfilmentReady(ready);
         if (s) {
+          setVendorProfileId(s.vendor_profile_id);
           setName(s.display_name);
           setDescription(s.description ?? "");
           setPhone(s.contact_phone_e164 ?? "");
           setPickup(s.pickup_location ?? "");
           setPickupPlace(s.pickup_place_id ?? null);
+          setSavedPickupPlace(s.pickup_place_id ?? null);
           setInstructions(s.pickup_instructions ?? "");
           setHours(Object.values(s.opening_hours ?? {}).join("; "));
           if (ready) {
@@ -53,10 +60,21 @@ export default function StoreSettings() {
       })
       .catch((e) => toast(e.message, "error"));
   }, [toast]);
+  async function sharePickupPosition() {
+    if (busy || !vendorProfileId || !savedPickupPlace) return;
+    setBusy(true);
+    try {
+      await shareAgentLocation(vendorProfileId);
+      setLocationStatus("Your current pickup position is shared for 2 minutes. Refresh it while you are ready to meet the rider.");
+      toast("Current pickup position shared", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Your pickup position could not be shared.", "error");
+    } finally { setBusy(false); }
+  }
   async function save(submit: boolean) {
     setBusy(true);
     try {
-      await api("/v1/agents/storefront", {
+      const saved = await api<{vendor_profile_id:string}>("/v1/agents/storefront", {
         method: "PUT",
         body: JSON.stringify({
           displayName: name,
@@ -69,6 +87,8 @@ export default function StoreSettings() {
           defaultPreparationMinutes: 60,
         }),
       });
+      setVendorProfileId(saved.vendor_profile_id);
+      setSavedPickupPlace(pickupPlace);
       if (submit)
         await api("/v1/agents/storefront/status", {
           method: "PATCH",
@@ -118,22 +138,32 @@ export default function StoreSettings() {
         keyboardType="phone-pad"
       />
       <ToolField
-        label="Pickup address"
+        label="Vendor pickup address"
         value={pickup}
         onChangeText={setPickup}
       />
       <CampusPlaceChoice
-        label="Pickup point on the campus map"
+        label="Approved store or agreed pickup point on the campus map"
         endpoint="/v1/agents/storefront"
         value={pickupPlace}
         onChange={setPickupPlace}
       />
+      <Text style={{color:theme.textMuted,fontFamily:theme.font.body,lineHeight:21}}>
+        Use your actual store location as the pickup address. If you meet riders at a campus entrance or another agreed point, select that sourced map point and explain the handoff below.
+      </Text>
       <ToolField
         label="Pickup instructions"
         value={instructions}
         onChangeText={setInstructions}
         multiline
       />
+      {vendorProfileId ? <View style={{gap:10,marginVertical:14,padding:16,backgroundColor:theme.surfaceMuted,borderRadius:14}}>
+        <Text style={{color:theme.text,fontFamily:theme.font.semibold,fontSize:15}}>Ready for rider pickup?</Text>
+        <Text style={{color:theme.textMuted,fontFamily:theme.font.body,lineHeight:21}}>Share your location while you are at the pickup point. Riders use this accurate position for 2 minutes, then routes use the approved store map point.</Text>
+        {locationStatus ? <Text accessibilityRole="alert" style={{color:theme.textMuted,fontFamily:theme.font.body,lineHeight:21}}>{locationStatus}</Text> : null}
+        {!savedPickupPlace ? <Text style={{color:theme.textMuted,fontFamily:theme.font.body,lineHeight:21}}>Save a sourced pickup map point first.</Text> : null}
+        <ToolButton secondary label="Share current pickup position" disabled={busy || !savedPickupPlace} onPress={()=>void sharePickupPosition()}/>
+      </View> : null}
       <ToolField
         label="Opening hours"
         value={hours}

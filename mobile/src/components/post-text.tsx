@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Linking, Pressable, Text, View, type TextStyle, type StyleProp } from "react-native";
 import { router } from "expo-router";
 import { useAppearance } from "@/src/lib/appearance";
+import { api } from "@/src/lib/api";
 import { postExcerpt, postTokens } from "@/src/lib/post-rich-text";
 
 export function RichPostText({ text, style, onError }: { text: string; style?: StyleProp<TextStyle>; onError?(message: string): void }) {
@@ -11,6 +12,7 @@ export function RichPostText({ text, style, onError }: { text: string; style?: S
     onPress={(event) => {
       event.stopPropagation();
       if (token.kind === "hashtag") router.push({ pathname: "/(tabs)/feed", params: { hashtag: token.target } });
+      else if(token.kind === "mention") void api<{id:string}>(`/v1/people/by-username/${encodeURIComponent(token.text.slice(1))}`).then(person=>router.push({pathname:'/student-profile',params:{id:person.id}})).catch(()=>onError?.('This profile could not be opened. Try again when you are online.'));
       else void Linking.openURL(token.target!).catch(() => onError?.("This link could not be opened. Please try again."));
     }}
   >{token.text}</Text>)}</Text>;

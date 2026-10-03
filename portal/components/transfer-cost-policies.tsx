@@ -35,6 +35,7 @@ function ScopedTransferCosts() {
       { signal: controller.signal },
     )
       .then((r) => {
+        if (!r || typeof r.ready !== 'boolean' || !Array.isArray(r.policies)) throw new Error('Transfer policies could not be read. Try again.');
         if (!controller.signal.aborted) {
           setResult(r);
           setError("");

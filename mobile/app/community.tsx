@@ -1,3 +1,4 @@
+import {StudentGroup} from "@/src/components/student-group";
 import { useCallback, useState } from "react";
 import { Linking, Pressable, Share, Text, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -94,7 +95,7 @@ function normalizeCommunityDetail(value: unknown, fallbackId: string): Detail {
     isRep:raw.isRep===true,
   };
 }
-export default function Community() {
+function ClassCommunity() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth(),
     { theme } = useAppearance(),
@@ -384,3 +385,5 @@ function LinkedMessage({ body }: { body: string }) {
     </Text>
   );
 }
+
+export default function Community(){const {id,kind}=useLocalSearchParams<{id:string;kind?:string}>();return kind==="COMMUNITY"||kind==="STUDY_GROUP"?<StudentGroup id={id}/>:<ClassCommunity/>;}

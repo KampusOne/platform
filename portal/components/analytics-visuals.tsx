@@ -39,7 +39,7 @@ export function HorizontalBars({
             <div className="analytics-bar-track">
               <div
                 className="analytics-bar-fill"
-                style={{ width: `${Math.max(2, (row.value / maximum) * 100)}%` }}
+                style={{ width: `${row.value === 0 ? 0 : Math.max(2, (row.value / maximum) * 100)}%` }}
               />
             </div>
           </div>

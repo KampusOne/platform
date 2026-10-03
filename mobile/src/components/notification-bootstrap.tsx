@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 import { router, type Href } from "expo-router";
@@ -61,6 +62,15 @@ async function markPushRead(data: Record<string, unknown>) {
   }
 }
 
+async function observePush(data: Record<string, unknown>) {
+  const deliveryId = data.deliveryId;
+  const attemptId = data.attemptId;
+  const value = typeof deliveryId === 'string' ? deliveryId : attemptId;
+  if (typeof value !== 'string' || !/^[0-9a-f-]{36}$/i.test(value)) return;
+  const collection = typeof deliveryId === 'string' ? 'deliveries' : 'attempts';
+  await api(`/v1/notifications/${collection}/${encodeURIComponent(value)}/observed`, { method: 'POST' }).catch(() => undefined);
+}
+
 async function mutePushCategory(data: Record<string, unknown>) {
   const category = data.preferenceCategory;
   if (typeof category !== "string") return;
@@ -87,6 +97,8 @@ export function NotificationBootstrap() {
     let active = true;
     let running = false;
     let responseSubscription: { remove(): void } | undefined;
+    let tokenSubscription: { remove(): void } | undefined;
+    let receivedSubscription: { remove(): void } | undefined;
 
     const openNotification = async (response: NotificationResponseLike) => {
       if (!active) return;
@@ -96,6 +108,7 @@ export function NotificationBootstrap() {
       if (lastHandledResponse.current === responseKey) return;
 
       const data = response.notification.request.content.data ?? {};
+      void observePush(data);
       const path = data.path;
       lastHandledResponse.current = responseKey;
 
@@ -148,6 +161,12 @@ export function NotificationBootstrap() {
             shouldSetBadge: true,
           }),
         });
+        tokenSubscription = Notifications.addPushTokenListener(() => {
+          if(active) void registerPushDevice(user.id).catch(()=>undefined);
+        });
+        receivedSubscription = Notifications.addNotificationReceivedListener(notification => {
+          if (active) void observePush(notification.request.content.data ?? {});
+        });
         responseSubscription =
           Notifications.addNotificationResponseReceivedListener(
             openNotification,
@@ -177,8 +196,9 @@ export function NotificationBootstrap() {
         if (!availability.available) return;
 
         const registered = await getRegisteredPushDevice(user.id).catch(() => null);
-        if (!active || registered) return;
-        await registerPushDevice(user.id);
+        if (!active) return;
+        // Re-register daily so rotated provider tokens and app updates cannot leave a stale device.
+        if (!registered || !registered.registeredAt || Date.now()-registered.registeredAt>86400_000 || registered.build_version !== String(Constants.expoConfig?.version ?? "unknown")) await registerPushDevice(user.id);
       } catch (error) {
         console.warn(
           "kampusone.notifications.bootstrap",
@@ -197,6 +217,8 @@ export function NotificationBootstrap() {
       clearTimeout(initial);
       clearInterval(retry);
       responseSubscription?.remove();
+      tokenSubscription?.remove();
+      receivedSubscription?.remove();
     };
   }, [state, user?.id]);
 

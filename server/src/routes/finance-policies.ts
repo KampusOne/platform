@@ -17,7 +17,7 @@ import {
   checkoutPrice,
   campusFare,
   publishedNigeriaLocalFees,
-  fixedSubscriptionPrice,
+  kiraSubscriptionPrice,
   type CommerceFees,
 } from "../lib/pricing";
 import { sha256 } from "../lib/security";
@@ -123,6 +123,7 @@ export const commercePolicySchema = z
         flatKobo: money,
         flatWaivedBelowKobo: money,
         capKobo: money.nullable(),
+        displayRoundKobo: z.number().int().min(100).max(100000).multipleOf(100).default(10000),
       })
       .strict(),
     checkoutSavings: z.boolean(),
@@ -149,12 +150,12 @@ financePolicyRoutes.get("/kira-plans", async (c) => {
     "finance.view",
   );
   if (!(await kiraBillingReady(c.env)))
-    return c.json({ ready: false, plans: [], amountKobo: 600000 });
+    return c.json({ ready: false, plans: [] });
   const plans = await database(c.env)
-    .execute(sql`select p.id,p.university_id,p.version,p.amount_kobo,p.collection,p.estimated_processing_kobo,p.approved_at,a.plan_id=p.id as active
+    .execute(sql`select p.id,p.university_id,p.version,p.amount_kobo,p.listed_amount_kobo,p.discount_percent,p.collection,p.estimated_processing_kobo,p.approved_at,a.plan_id=p.id as active
     from app_private.kira_price_plans p left join app_private.active_kira_price_plans a on a.university_id=p.university_id
     where (${scope}::uuid is null or p.university_id=${scope}::uuid) order by p.approved_at desc limit 100`);
-  return c.json({ ready: true, plans: plans.rows, amountKobo: 600000 });
+  return c.json({ ready: true, plans: plans.rows });
 });
 financePolicyRoutes.post("/kira-plans", async (c) => {
   const data = await input(
@@ -165,6 +166,9 @@ financePolicyRoutes.post("/kira-plans", async (c) => {
       collection: true,
       sourceUrl: true,
       approvalNote: true,
+    }).extend({
+      amountKobo: z.number().int().min(100000).max(100000000).default(600000),
+      discountPercent: z.number().int().min(0).max(90).default(0),
     }),
   );
   const user = currentUser(c);
@@ -175,18 +179,18 @@ financePolicyRoutes.post("/kira-plans", async (c) => {
       "CONFLICT",
       "Kira billing is awaiting its verified subscription database update.",
     );
-  const price = fixedSubscriptionPrice(data.collection);
+  const price = kiraSubscriptionPrice(data.amountKobo, data.discountPercent, data.collection);
   if (price.estimatedNetKobo <= 0)
     throw new AppError(
       400,
       "BAD_REQUEST",
-      "The processing rule must leave a positive net at the fixed ₦6,000 plan price.",
+      "The processing rule must leave a positive net after the discount.",
     );
   const id = crypto.randomUUID();
   try {
     await database(c.env).execute(sql`with new_plan as (
-    insert into app_private.kira_price_plans(id,university_id,version,collection,estimated_processing_kobo,approved_by,approval_note,source_url)
-    values(${id}::uuid,${data.universityId}::uuid,${data.version},${JSON.stringify(data.collection)}::jsonb,${price.estimatedProcessingKobo},${user.id}::uuid,${data.approvalNote},${data.sourceUrl}) returning id,university_id
+    insert into app_private.kira_price_plans(id,university_id,version,amount_kobo,listed_amount_kobo,discount_percent,collection,estimated_processing_kobo,approved_by,approval_note,source_url)
+    values(${id}::uuid,${data.universityId}::uuid,${data.version},${price.customerPriceKobo},${data.amountKobo},${data.discountPercent},${JSON.stringify(data.collection)}::jsonb,${price.estimatedProcessingKobo},${user.id}::uuid,${data.approvalNote},${data.sourceUrl}) returning id,university_id
   ) insert into app_private.active_kira_price_plans(university_id,plan_id)select university_id,id from new_plan on conflict(university_id)do update set plan_id=excluded.plan_id`);
   } catch (e) {
     if (

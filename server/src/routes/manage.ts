@@ -448,8 +448,9 @@ manageRoutes.post("/users/:id/restrictions", async (c) => {
   return c.json({ id: eventId }, 201);
 });
 manageRoutes.delete("/users/:id/restrictions/:restrictionId", async (c) => {
-  await database(c.env).execute(
-    sql`update public.account_restrictions set revoked_at=now(),revoked_by=${currentUser(c).id}::uuid where id=${id(c.req.param("restrictionId"))}::uuid and user_id=${id(c.req.param("id"))}::uuid and revoked_at is null`,
+  const target=id(c.req.param('id')),restrictionId=id(c.req.param('restrictionId'));
+  const result=await database(c.env).execute(
+    sql`with restored as(update public.account_restrictions set revoked_at=now(),revoked_by=${currentUser(c).id}::uuid where id=${restrictionId}::uuid and user_id=${target}::uuid and revoked_at is null returning id,user_id,institution_id),eligible as(select r.* from restored r where not exists(select 1 from public.account_restrictions other where other.user_id=r.user_id and other.id<>r.id and other.revoked_at is null and other.starts_at<=now() and(other.ends_at is null or other.ends_at>now()))),email as(insert into app_private.notification_outbox(user_id,channel,subject,body,dedupe_key)select user_id,'EMAIL','Your KampusOne account has been restored','Your KampusOne account has been restored. You can open the app and continue using your account. If you need help, contact support from your account settings.','account-restored:'||id::text from eligible on conflict(dedupe_key)do nothing),notice as(insert into public.in_app_notifications(user_id,institution_id,title,body,path,dedupe_key)select user_id,institution_id,'Your account has been restored','You can continue using KampusOne.','/account','account-restored:'||id::text from eligible on conflict(dedupe_key)do nothing)select id from restored`,
   );
   await recordAudit(c.env, {
     actorUserId: currentUser(c).id,
@@ -458,7 +459,7 @@ manageRoutes.delete("/users/:id/restrictions/:restrictionId", async (c) => {
     targetId: c.req.param("id"),
     requestId: c.get("requestId"),
   });
-  return c.json({ status: "revoked" });
+  return c.json({ status: "revoked", changed:result.rows.length>0 });
 });
 manageRoutes.get("/applications/:id/documents", async (c) => {
   const result = await database(c.env).execute(

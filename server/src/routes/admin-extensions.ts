@@ -13,6 +13,7 @@ import { currentUser } from "../middleware/auth";
 import { recordAudit } from "../lib/audit";
 import { googleAnalyticsReport } from "../lib/google-analytics-reporting";
 import type { Bindings, Variables } from "../types";
+import { adminReportingRoutes } from "./admin-reporting";
 export const adminExtensionRoutes = new Hono<{
   Bindings: Bindings;
   Variables: Variables;
@@ -21,6 +22,7 @@ adminExtensionRoutes.use("/*", async (c, next) => {
   c.header("Cache-Control", "private, no-store");
   await next();
 });
+adminExtensionRoutes.route("/", adminReportingRoutes);
 adminExtensionRoutes.post("/users/:id/export", async (c) => {
   const actor = currentUser(c),
     target = id(c.req.param("id")),

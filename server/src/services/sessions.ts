@@ -7,6 +7,7 @@ import {
   issueAccessToken,
   randomToken,
   REFRESH_TOKEN_SECONDS,
+  refreshSuccessor,
   sha256,
 } from "../lib/security";
 
@@ -108,23 +109,23 @@ export async function createSession(
   const expiresAt = new Date(
     Date.now() + REFRESH_TOKEN_SECONDS * 1000,
   ).toISOString();
+  const accessToken = await issueAccessToken(env, { ...user, sessionFamilyId: familyId });
 
   await database(env).execute(sql`
-    insert into public.refresh_tokens (
+    with created as (insert into public.refresh_tokens (
       id, user_id, token_hash, family_id, expires_at,
       device_label, ip_address, user_agent, last_used_at
     ) values (
       ${id}::uuid, ${user.id}::uuid, ${tokenHash}, ${familyId}::uuid, ${expiresAt}::timestamptz,
       ${metadata.deviceLabel ?? null}, ${metadata.ipAddress ?? null}::inet,
       ${metadata.userAgent ?? null}, now()
-    )
+    ) returning id)
+    insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,outcome)
+    select ${user.id}::uuid,${user.universityId}::uuid,'auth.signin','session',id::text,'succeeded' from created
   `);
 
   return {
-    accessToken: await issueAccessToken(env, {
-      ...user,
-      sessionFamilyId: familyId,
-    }),
+    accessToken,
     refreshToken,
     expiresIn: 15 * 60,
     refreshExpiresIn: REFRESH_TOKEN_SECONDS,
@@ -148,8 +149,9 @@ export async function rotateSession(
     family_id: string;
     revoked_at: string | null;
     expires_at: string;
+    replaced_by_token_id: string | null;
   }>(sql`
-    select id, user_id, family_id, revoked_at::text, expires_at::text
+    select id, user_id, family_id, revoked_at::text, expires_at::text, replaced_by_token_id
     from public.refresh_tokens
     where token_hash = ${hash}
     limit 1
@@ -162,7 +164,29 @@ export async function rotateSession(
       "Your session is invalid or has expired.",
     );
 
+  const successorToken = await refreshSuccessor(env, refreshToken, current.id);
+  async function recoverRotation() {
+    const successor = firstRow(await database(env).execute<{ token_hash: string; expires_at: string }>(sql`
+      select next.token_hash, next.expires_at::text
+      from public.refresh_tokens previous join public.refresh_tokens next on next.id=previous.replaced_by_token_id
+      where previous.id=${current!.id}::uuid and previous.family_id=next.family_id and previous.user_id=next.user_id
+        and previous.revoked_at>now()-interval '60 seconds' and next.revoked_at is null and next.expires_at>now()
+    `));
+    if (!successor || successor.token_hash !== await sha256(successorToken)) return null;
+    const account = await findUserById(env, current!.user_id);
+    if (!account?.email_verified_at) return null;
+    const user = toAuthenticatedUser(account);
+    return {
+      accessToken: await issueAccessToken(env, { ...user, sessionFamilyId: current!.family_id }),
+      refreshToken: successorToken, expiresIn: 15 * 60,
+      refreshExpiresIn: Math.max(0, Math.floor((Date.parse(successor.expires_at)-Date.now())/1000)), user,
+    };
+  }
   if (current.revoked_at) {
+    const recovered = await recoverRotation();
+    if (recovered) return recovered;
+    if (current.replaced_by_token_id && Date.now()-Date.parse(current.revoked_at)<60_000)
+      throw new AppError(409, 'CONFLICT', 'Another request refreshed this session. Retry with the saved session.');
     await database(env).execute(sql`
       update public.refresh_tokens
       set revoked_at = coalesce(revoked_at, now())
@@ -191,12 +215,14 @@ export async function rotateSession(
     );
   }
   const user = toAuthenticatedUser(userRecord);
-  const refreshTokenNext = randomToken(48);
+  const refreshTokenNext = successorToken;
   const nextHash = await sha256(refreshTokenNext);
   const nextId = crypto.randomUUID();
   const expiresAt = new Date(
     Date.now() + REFRESH_TOKEN_SECONDS * 1000,
   ).toISOString();
+  // Signing/configuration errors must happen before consuming the existing token.
+  const accessToken = await issueAccessToken(env, { ...user, sessionFamilyId: current.family_id });
   const rotated = await database(env).execute<{ id: string }>(sql`
     with locked as (
       select id from public.refresh_tokens
@@ -217,25 +243,19 @@ export async function rotateSession(
         replaced_by_token_id = ${nextId}::uuid
       where id in (select id from locked) and exists (select 1 from inserted)
       returning id
+    ), audited as (
+      insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,outcome)
+      select ${user.id}::uuid,${user.universityId}::uuid,'auth.resume','session',id::text,'succeeded' from consumed
     )
     select inserted.id from inserted join consumed on true
   `);
   if (!firstRow(rotated)) {
-    await database(env).execute(sql`
-      update public.refresh_tokens set revoked_at = coalesce(revoked_at, now())
-      where family_id = ${current.family_id}::uuid
-    `);
-    throw new AppError(
-      401,
-      "UNAUTHENTICATED",
-      "This session was already used. Sign in again.",
-    );
+    const recovered = await recoverRotation();
+    if (recovered) return recovered;
+    throw new AppError(409, 'CONFLICT', 'Another request refreshed this session. Retry with the saved session.');
   }
   return {
-    accessToken: await issueAccessToken(env, {
-      ...user,
-      sessionFamilyId: current.family_id,
-    }),
+    accessToken,
     refreshToken: refreshTokenNext,
     expiresIn: 15 * 60,
     refreshExpiresIn: REFRESH_TOKEN_SECONDS,

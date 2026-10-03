@@ -2,7 +2,7 @@ import { AIProviderError } from "./ai-error.ts";
 export { AIProviderError } from "./ai-error.ts";
 import { scheduleInstruction, parseScheduleDocument } from "./schedule-document.ts";
 /** All inference stays server-side behind provider adapters. */
-export type AIMode = "study" | "summary" | "quiz" | "notes" | "timetable";
+export type AIMode = "study" | "summary" | "explanation" | "quiz" | "notes" | "timetable";
 export type AITier = "standard" | "pro";
 export type AIProvider = "huggingface";
 export type AIEnvironment = {
@@ -38,15 +38,14 @@ export function selectAIProvider(_mode: AIMode, _mimeType?: string, _requested?:
 export function providerConfiguration(env: AIEnvironment, mode: AIMode, mimeType?: string, _requested?: AIProvider, tier: AITier = "standard") {
   const image = mimeType?.startsWith("image/") ?? false;
   const token = env.HF_TOKEN?.trim();
-  const reasoningModel = mode === "study" ? env.HF_REASONING_MODEL?.trim() : undefined;
   const chatModel = env.HF_CHAT_MODEL?.trim();
   // Pro is a KampusOne entitlement (higher quotas, context and voice), not a
   // requirement for a separate model credential. If a dedicated Pro model is
   // configured use it; otherwise use the strongest already-configured study
   // model so billing is not disabled by an unnecessary environment variable.
-  const proModel = env.HF_PRO_MODEL?.trim() || reasoningModel || chatModel;
-  const model = (image ? env.HF_VISION_MODEL : tier === "pro" ? proModel : reasoningModel || chatModel)?.trim();
-  const fallbackModel = !image && tier === "standard" && reasoningModel && chatModel && chatModel !== model ? chatModel : undefined;
+  const proModel = env.HF_PRO_MODEL?.trim() || env.HF_REASONING_MODEL?.trim() || chatModel;
+  const model = (image ? env.HF_VISION_MODEL : tier === "pro" ? proModel : chatModel)?.trim();
+  const fallbackModel = !image && chatModel && chatModel !== model ? chatModel : undefined;
   const missing: string[] = [];
   if (!token) missing.push("HF_TOKEN");
   if (!model) missing.push(image ? "HF_VISION_MODEL" : "HF_CHAT_MODEL");
@@ -61,6 +60,7 @@ export function assertAIConfiguration(env: AIEnvironment, mode: AIMode, mimeType
 const instructions: Record<AIMode, string> = {
   study: "You are a strong university tutor across engineering, mathematics, computing, science, medicine, humanities, business and other fields. Answer academic questions directly; complex topics are not a reason to refuse ordinary learning questions, and difficulty is never a reason to refuse an ordinary learning question. Match the student's programme and level when available. For advanced STEM work, state assumptions, define symbols, preserve units, derive important equations when useful, show a worked path, discuss edge cases or limitations, and sanity-check numerical results. For conceptual subjects, connect definitions to mechanisms, examples and counterexamples. Do not water an advanced question down unless the student asks for a simpler explanation. Treat short follow-ups such as 'why?', 'derive that', 'what about velocity?' as continuation of the supplied conversation. Do not require an uploaded document to explain general knowledge. Use student-life tools when the user asks about their own timetable, calendar, alarms, products, vendors or tutors. Never claim an action succeeded without a tool result. Never invent a listing, account fact, citation or URL. Changes require a reviewable proposal and student confirmation. Distinguish general knowledge from material actually present in an attachment.",
   summary: "Give a detailed, structured summary of the supplied material with the main argument, important concepts, supporting explanations, and key takeaways. Preserve important detail. Do not invent missing content.",
+  explanation: "Teach the supplied topic or material as a complete A-level or university lesson, matching the student's level. Start with the learning goal and prerequisites, explain each important concept and why it works, define every symbol and keep units, then give at least one fully worked example when appropriate. Show intermediate steps rather than jumping to an answer. Address common mistakes, counterexamples and limitations. Finish with two short practice questions and explained answers. Give enough depth for the student to learn independently; a brief summary is not an explanation. Separate source-supported facts from useful general teaching context and state uncertainty. Never invent material from an unreadable attachment. Use headings and readable equations.",
   notes: "Turn supplied material into thorough revision notes with headings, definitions, worked explanations where supported, and a short recap. Identify gaps instead of inventing facts.",
   quiz: "Create five practice questions grounded in the supplied material, followed by a separated answer key with explanations.",
   timetable: scheduleInstruction,
@@ -88,12 +88,18 @@ export function aiMessages(input: AIInput): AIMessage[] {
     { role: "user", content: input.media ? content : input.prompt || "Read the supplied material." },
   ];
 }
+export function aiCompletionBudget(input: Pick<AIInput,"mode"|"tier">) {
+  if (input.mode === "timetable") return { maxTokens: 4096, timeoutMs: 45000 };
+  const detailed = input.mode === "explanation" || input.mode === "notes";
+  return { maxTokens: input.tier === "pro" ? (detailed ? 8192 : 6144) : (detailed ? 6144 : 3072), timeoutMs: input.tier === "pro" || detailed ? 55000 : 40000 };
+}
 export async function completeAI(env: AIEnvironment, input: AIInput, messages: AIMessage[], tools?: AITool[], fetcher: typeof fetch = fetch): Promise<{ text: string; calls: AIToolCall[] }> {
   const config = assertAIConfiguration(env, input.mode, input.media?.mimeType, input.provider, input.tier);
+  const budget = aiCompletionBudget(input);
   try {
     const requestModel = (model: string) => fetcher("https://router.huggingface.co/v1/chat/completions", {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.token!}` }, signal: AbortSignal.timeout(30000),
-      body: JSON.stringify({ model, messages, max_tokens: 2048, temperature: 0.2, stream: false, ...(tools?.length ? { tools, tool_choice: "auto" } : {}) }),
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.token!}` }, signal: AbortSignal.timeout(budget.timeoutMs),
+      body: JSON.stringify({ model, messages, max_tokens: budget.maxTokens, temperature: 0.2, stream: false, ...(tools?.length ? { tools, tool_choice: "auto" } : {}) }),
     });
     let response = await requestModel(config.model!);
     if (!response.ok && config.fallbackModel && ![401,403].includes(response.status)) {

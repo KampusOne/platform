@@ -22,8 +22,9 @@ import { ReplyComposer } from "./reply-composer";
 import { PostMetrics } from "./post-metrics";
 import { analyticsScreenName, trackContentAction } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
+import { ActivityDetails } from "./activity-details";
 
-const structuredCategories = new Set(["EVENT", "OPPORTUNITY"]);
+const structuredCategories = new Set(["EVENT", "SPORTS", "OPPORTUNITY"]);
 
 function InlinePoll({
   post,
@@ -303,7 +304,7 @@ export const FeedPost = memo(function FeedPost({ post: unsafePost, onBookmark, o
           </View>
         </Pressable>
         <Pressable accessibilityRole={detail ? undefined : "button"} accessibilityLabel={`Open conversation by ${post.source_name}`} onPress={openPost} style={[styles.postBody, detail && styles.detailBody]}>
-          {structured ? <View style={styles.structuredPanel}><Text style={styles.structuredEyebrow}>{category === "EVENT" ? "CAMPUS EVENT" : "CAMPUS OPPORTUNITY"}</Text>{copy}</View> : copy}
+          {structured ? <View style={styles.structuredPanel}><Text style={styles.structuredEyebrow}>{category === "EVENT" ? "CAMPUS EVENT" : category === "SPORTS" ? "CAMPUS SPORTS" : "CAMPUS OPPORTUNITY"}</Text>{copy}</View> : copy}
           {post.urgent ? <Text style={styles.urgent}>Urgent campus update</Text> : null}
           {post.media && post.media.length > 1 ? <PostMediaSlider items={post.media} /> : post.media?.length === 1 ? (post.media[0]!.type?.startsWith("video/") ? <MediaPreview url={post.media[0]!.url} video label="Post video" initialAspect={post.media[0]!.width&&post.media[0]!.height?post.media[0]!.width!/post.media[0]!.height!:undefined} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} {...(post.source_username ? { watermark: post.source_username } : {})} /> : <PostImage initialAspect={post.media[0]!.width&&post.media[0]!.height?post.media[0]!.width!/post.media[0]!.height!:undefined} uri={post.media[0]!.url} />) : post.image_url ? (post.media_type === "video" || post.media_type?.startsWith("video/")) ? <MediaPreview url={post.image_url} video label="Post video" initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} {...(post.source_username ? { watermark: post.source_username } : {})} /> : <PostImage initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} uri={post.image_url} /> : null}
           {post.publishing?.format === "POLL" ? <InlinePoll post={post} onChanged={onChanged} onFeedback={onFeedback} /> : null}
@@ -313,6 +314,7 @@ export const FeedPost = memo(function FeedPost({ post: unsafePost, onBookmark, o
       </View>
       <View style={styles.menu}><PostMenu post={post} onBookmark={bookmarkPost} onShare={sharePost} onDeleted={onDeleted} onFeedback={onFeedback} /></View>
     </View>
+    <ActivityDetails post={post} onError={onFeedback} />
     {detail ? <View style={styles.detailMeta}><Text style={styles.exactTime}>{feedTime(post.published_at).exact}</Text><PostMetrics post={post} detail /></View> : null}
     <View style={[styles.actions, (detail || width < 390) && styles.fullActions]}>
       <PostLikeButton initialLiked={post.liked} initialCount={post.like_count} postId={post.id} title={post.title} onFeedback={onFeedback} />

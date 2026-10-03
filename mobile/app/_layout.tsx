@@ -1,7 +1,7 @@
 import { AlarmSync } from "@/src/components/alarm-sync";
 import { checkBuildVersion } from "@/src/lib/build-version";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
-import { SplashScreen, Stack, router } from "expo-router";
+import { SplashScreen, Stack, router, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useFonts } from "expo-font";
@@ -16,7 +16,7 @@ import {
   Lato_700Bold_Italic,
   Lato_900Black,
 } from "@expo-google-fonts/lato";
-import { StyleSheet } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { ScreenVisitTracker } from "@/src/components/screen-visit-tracker";
 import {ForegroundUsageTracker} from '@/src/components/foreground-usage-tracker';
 import { AuthProvider } from "@/src/auth/auth-context";
@@ -28,7 +28,7 @@ import { onAccountRestriction } from "@/src/lib/api";
 import { PhotoEditorHost } from "@/src/components/photo-editor";
 import { VideoEditorHost } from "@/src/components/video-editor";
 import { BrandIntro } from "@/src/components/brand-intro";
-import { AppErrorBoundary } from "@/src/components/app-error-boundary";
+import { AppErrorBoundary, AppFeatureBoundary, ScreenErrorRecovery } from "@/src/components/app-error-boundary";
 import { NotificationBootstrap } from "@/src/components/notification-bootstrap";
 import { StartupProvider } from "@/src/lib/startup";
 import { AndroidBackNavigation } from "@/src/components/android-back-navigation";
@@ -37,15 +37,24 @@ import { DownloadTray } from "@/src/components/download-tray";
 import { PurchaseReviewPrompt } from "@/src/components/purchase-review-prompt";
 import { ShareSheetHost } from "@/src/components/share-sheet";
 import { initializeEntryPreferences } from "@/src/lib/entry-preferences";
+import { OfflineRecovery } from "@/src/components/offline-recovery";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
+export const unstable_settings = { screenErrorBoundary: ScreenErrorRecovery };
+
 export default function RootLayout() {
+  const pathname = usePathname();
   const { theme, isDark } = useThemeStyles(createStyles);
   const [appearanceReady, setAppearanceReady] = useState(false);
+  // Static web HTML has no query parameters, device storage or local clock.
+  // Mount interactive routes after hydration so every deep link starts from
+  // the same shell instead of replacing mismatched server-rendered content.
+  const [screensReady, setScreensReady] = useState(Platform.OS !== 'web');
+  useEffect(() => setScreensReady(true), []);
   useEffect(() => { void SystemUI.setBackgroundColorAsync(theme.canvas).catch(() => undefined); }, [theme.canvas]);
   useEffect(() => {
-    void Promise.all([initializeAppearance(), initializeEntryPreferences()]).finally(() => setAppearanceReady(true));
+    void Promise.all([initializeAppearance(), initializeEntryPreferences()]).catch(() => undefined).finally(() => setAppearanceReady(true));
     void checkBuildVersion();
   }, []);
 
@@ -61,8 +70,10 @@ export default function RootLayout() {
   }, []);
 
   useEffect(
-    () => onAccountRestriction(() => router.replace("/restricted")),
-    [],
+    () => onAccountRestriction(() => {
+      if (pathname !== "/restricted" && pathname !== "/support") router.replace("/restricted");
+    }),
+    [pathname],
   );
 
   const [fontsLoaded, fontError] = useFonts({
@@ -83,19 +94,20 @@ export default function RootLayout() {
         <ScreenVisitTracker />
         <ForegroundUsageTracker/>
         <AppErrorBoundary>
-          <Stack
+          {screensReady ? <Stack
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: theme.canvas },
             }}
-          />
+          /> : <View accessibilityRole="progressbar" accessibilityLabel="Opening KampusOne" style={{flex:1,backgroundColor:theme.canvas}} />}
         </AppErrorBoundary>
-        <PhotoEditorHost />
-        <VideoEditorHost />
+        <AppFeatureBoundary feature="photo_editor"><PhotoEditorHost /></AppFeatureBoundary>
+        <AppFeatureBoundary feature="video_editor"><VideoEditorHost /></AppFeatureBoundary>
         <AndroidBackNavigation />
-        <DownloadTray />
-        <PurchaseReviewPrompt />
-        <ShareSheetHost />
+        <AppFeatureBoundary feature="download_tray"><DownloadTray /></AppFeatureBoundary>
+        <AppFeatureBoundary feature="purchase_review"><PurchaseReviewPrompt /></AppFeatureBoundary>
+        <AppFeatureBoundary feature="share_sheet"><ShareSheetHost /></AppFeatureBoundary>
+        <AppFeatureBoundary feature="offline_recovery"><OfflineRecovery /></AppFeatureBoundary>
         <BrandIntro fontsReady={fontsLoaded || Boolean(fontError)} appearanceReady={appearanceReady} />
       </ToastProvider></StartupProvider>
     </AuthProvider>

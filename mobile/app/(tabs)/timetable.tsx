@@ -1,3 +1,5 @@
+import {AcademicImportUsage} from "@/src/components/academic-import-usage";
+import { BulkMenu, BulkToolbar, SelectionCheckbox, useBulkSelection } from "@/src/components/bulk-selection";
 import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
@@ -98,14 +100,21 @@ export default function TimetableScreen() {
     }, [load]),
   );
 
+  const selection = useBulkSelection(entries.map(entry => entry.id), async ids => {
+    await api("/v1/student/timetable/bulk-delete", { method:"POST", body:JSON.stringify({ids}) });
+    await load();
+    const { syncAlarms } = await import("@/src/lib/alarms");
+    const response = await api<{alarms: import("@/src/lib/alarms").Alarm[]}>("/v1/learning/alarms");
+    await syncAlarms(response.alarms).catch(() => undefined);
+  }, "classes");
   const visible = useMemo(
     () =>
       entries
-        .filter((entry) => entry.day_of_week === day)
+        .filter((entry) => selection.active || entry.day_of_week === day)
         .sort((first, second) =>
           first.starts_at.localeCompare(second.starts_at),
         ),
-    [day, entries],
+    [day, entries, selection.active],
   );
   const selectedDay = days[day] ?? days[0];
   const selectedIsToday = day === now.getDay();
@@ -213,7 +222,10 @@ export default function TimetableScreen() {
             Courses and activities, with reminders.
           </Text>
         </View>
+        <BulkMenu selection={selection} />
       </View>
+      <BulkToolbar selection={selection} count={entries.length} />
+      <AcademicImportUsage />
 
       <ScrollView
         accessibilityLabel="Choose timetable day"
@@ -407,6 +419,7 @@ export default function TimetableScreen() {
 
             return (
             <View key={entry.id} style={styles.timelineRow}>
+              <SelectionCheckbox selection={selection} id={entry.id} />
               <View
                 style={[
                   styles.timeColumn,

@@ -1,7 +1,7 @@
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { useAuth } from "@/src/auth/auth-context";
 import {
@@ -21,6 +21,8 @@ const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function SignInScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
+  const {height}=useWindowDimensions();
+  const illustrationHeight=Math.max(112,Math.min(218,height*0.2));
   const params = useLocalSearchParams<{ email?: string; reason?: string }>();
   const { beginSession } = useAuth();
   const [email, setEmail] = useState(
@@ -32,6 +34,7 @@ export default function SignInScreen() {
   const validEmail = emailPattern.test(email.trim());
 
   async function submit() {
+    if(loading)return;
     if (!validEmail) {
       setError("Enter a valid email address.");
       return;
@@ -70,7 +73,7 @@ export default function SignInScreen() {
         importantForAccessibility="no-hide-descendants"
         resizeMode="contain"
         source={require("@/assets/illustrations/auth-study-v2.png")}
-        style={styles.illustration}
+        style={[styles.illustration,{height:illustrationHeight}]}
       />
 
       <View style={styles.form}>
@@ -157,6 +160,8 @@ const createStyles = (theme: Theme) =>
       gap: 5,
       justifyContent: "center",
       marginTop: 14,
+      paddingVertical: 8,
+      marginBottom: 8,
     },
     footerText: {
       color: theme.textMuted,

@@ -15,7 +15,7 @@ export async function kiraBillingReady(env: Bindings) {
   return (
     firstRow(
       await database(env).execute<{ ready: boolean }>(
-        sql`select to_regprocedure('app_private.record_kira_receipt(text,bigint,bigint,timestamp with time zone)') is not null as ready`,
+        sql`select to_regprocedure('app_private.record_kira_receipt(text,bigint,bigint,timestamp with time zone)') is not null and exists(select 1 from information_schema.columns where table_schema='app_private' and table_name='kira_price_plans' and column_name='discount_percent') as ready`,
       ),
     )?.ready === true
   );
@@ -33,6 +33,9 @@ export async function kiraBillingStatus(
       checkoutEnabled: false,
       cadence: "monthly",
       amountKobo: 600000,
+      listedAmountKobo: 600000,
+      discountPercent: 0,
+      version: null,
       currency: "NGN",
       autoRenew: false,
       currentPeriodEnd: null,
@@ -45,7 +48,7 @@ export async function kiraBillingStatus(
   );
   const plan = firstRow(
     await database(env).execute(
-      sql`select plan_id from app_private.active_kira_price_plans where university_id=${user.universityId}::uuid`,
+      sql`select p.id,p.amount_kobo,p.listed_amount_kobo,p.discount_percent,p.version from app_private.active_kira_price_plans a join app_private.kira_price_plans p on p.id=a.plan_id and p.university_id=a.university_id where a.university_id=${user.universityId}::uuid`,
     ),
   );
   const pending = firstRow(
@@ -53,10 +56,12 @@ export async function kiraBillingStatus(
       reference: string;
       status: string;
       amount_kobo: number;
+      listed_amount_kobo: number;
+      offer_discount_percent: number;
       expires_at: string;
       request_id:string;discount_code:string|null;
     }>(
-      sql`select k.provider_reference as reference,k.status,k.amount_kobo,k.expires_at,k.request_id,d.code as discount_code from app_private.kira_checkouts k left join app_private.discount_codes d on d.id=k.discount_id where k.user_id=${user.id}::uuid and k.status in ('CREATED','INITIALIZED','REQUIRES_REVIEW') and (k.status='REQUIRES_REVIEW' or k.expires_at>now()) order by k.created_at desc limit 1`,
+      sql`select k.provider_reference as reference,k.status,k.amount_kobo,k.listed_amount_kobo,k.offer_discount_percent,k.expires_at,k.request_id,d.code as discount_code from app_private.kira_checkouts k left join app_private.discount_codes d on d.id=k.discount_id where k.user_id=${user.id}::uuid and k.status in ('CREATED','INITIALIZED','REQUIRES_REVIEW') and (k.status='REQUIRES_REVIEW' or k.expires_at>now()) order by k.created_at desc limit 1`,
     ),
   );
   const early =
@@ -74,7 +79,10 @@ export async function kiraBillingStatus(
       providerConfiguration(env, "study", undefined, undefined, "pro")
         .configured,
     cadence: "monthly",
-    amountKobo: 600000,
+    amountKobo: Number(plan?.amount_kobo ?? 600000),
+    listedAmountKobo: Number(plan?.listed_amount_kobo ?? 600000),
+    discountPercent: Number(plan?.discount_percent ?? 0),
+    version: typeof plan?.version === 'string' ? plan.version : null,
     currency: "NGN",
     autoRenew: false,
     currentPeriodEnd:
@@ -90,6 +98,7 @@ export async function initializeKira(
   requestId: string,
   traceId?: string,
   discountCode = '',
+  expectedAmountKobo?: number,
 ) {
   const status = await kiraBillingStatus(env, user);
   if (!status.checkoutEnabled)
@@ -124,7 +133,7 @@ export async function initializeKira(
       throw new AppError(
         409,
         "CONFLICT",
-        e.message.includes("DISCOUNT_") ? "This discount is unavailable or its use limit has been reached. Check the code and try again." : e.message.includes("KIRA_CHECKOUT_ALREADY_ACTIVE") ? "You already have an open checkout. Refresh your plan to resume it." : "Refresh your plan or campus before opening checkout.",
+        e.message.includes("DISCOUNT_CANNOT_COMBINE") ? "This Kira offer already includes a discount. Discount codes cannot be combined with it." : e.message.includes("DISCOUNT_") ? "This discount is unavailable or its use limit has been reached. Check the code and try again." : e.message.includes("KIRA_CHECKOUT_ALREADY_ACTIVE") ? "You already have an open checkout. Refresh your plan to resume it." : "Refresh your plan or campus before opening checkout.",
       );
     throw e;
   }
@@ -134,6 +143,8 @@ export async function initializeKira(
       "CONFLICT",
       "This payment has finished or needs review. Check its status before starting another.",
     );
+  if (expectedAmountKobo !== undefined && checkout.amount_kobo !== expectedAmountKobo)
+    throw new AppError(409, "CONFLICT", "Your Kira price has changed. Review the updated total before paying.", { reason: "KIRA_PRICE_CHANGED" });
   if (
     checkout.status === "INITIALIZED" &&
     checkout.authorization_url &&

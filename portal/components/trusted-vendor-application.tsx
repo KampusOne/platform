@@ -1,40 +1,45 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePortalAuth } from "./auth-provider";
 import { portalApi } from "@/lib/api";
 import { PhoneField, BirthDateField } from "./intake-fields";
 import { AgentApplicationIllustration } from "./agent-illustrations";
+import { AgentIntakeShell } from "./agent-intake-shell";
+import {
+  AgentOperationsFields,
+  emptyOperations,
+  validateOperations,
+  type AgentOperations,
+} from "./agent-operations-fields";
+import styles from "./agent-intake.module.css";
 
 type VendorDraft = {
   businessName: string;
   legalName: string;
-  description: string;
   address: string;
   category: string;
   campus: string;
   phone: string;
   whatsapp: string;
   birth: string;
-  documentMediaId: string;
   request: string;
+  operations: AgentOperations;
 };
-
 const blank: VendorDraft = {
   businessName: "",
   legalName: "",
-  description: "",
   address: "",
-  category: "Groceries",
+  category: "",
   campus: "",
   phone: "",
   whatsapp: "",
   birth: "",
-  documentMediaId: "",
   request: "",
+  operations: emptyOperations,
 };
-
 const categories = [
   "Restaurant",
   "Supermarket",
@@ -45,14 +50,22 @@ const categories = [
   "Printing",
   "Other",
 ];
-
-const steps = ["Your details", "Your business", "Review & agree"];
-const kickers = ["Let’s start", "Tell us about the business", "Almost done"];
+const steps = [
+  "Your contact details",
+  "Your business",
+  "How you work",
+  "Review & submit",
+];
+type Invitation = { university_name: string; application_id: string | null };
 
 function ageOnDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 0;
   const birthday = new Date(value + "T00:00:00Z");
-  if (Number.isNaN(birthday.getTime())) return 0;
+  if (
+    Number.isNaN(birthday.getTime()) ||
+    birthday.toISOString().slice(0, 10) !== value
+  )
+    return 0;
   const today = new Date();
   let age = today.getUTCFullYear() - birthday.getUTCFullYear();
   if (
@@ -68,9 +81,7 @@ export function TrustedVendorApplication() {
   const { user } = usePortalAuth();
   const params = useSearchParams();
   return (
-    <TrustedVendorForm
-      key={`${user?.id}:${params.get("invite") ?? ""}`}
-    />
+    <TrustedVendorForm key={`${user?.id}:${params.get("invite") ?? ""}`} />
   );
 }
 
@@ -79,11 +90,7 @@ function TrustedVendorForm() {
   const { user } = usePortalAuth();
   const token = params.get("invite") ?? "";
   const validToken = /^[a-f0-9]{64}$/.test(token);
-
-  const [invite, setInvite] = useState<{
-    university_name: string;
-    application_id: string | null;
-  } | null>(null);
+  const [invite, setInvite] = useState<Invitation | null>(null);
   const [draft, setDraft] = useState<VendorDraft>(blank);
   const [draftKey, setDraftKey] = useState("");
   const [step, setStep] = useState(0);
@@ -94,77 +101,77 @@ function TrustedVendorForm() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [saved, setSaved] = useState(false);
+  const heading = useRef<HTMLHeadingElement>(null);
 
-  const update = (field: keyof VendorDraft, value: string) => {
-    setDraft((current) => ({ ...current, [field]: value }));
+  function update<K extends keyof VendorDraft>(
+    field: K,
+    value: VendorDraft[K],
+  ) {
+    setDraft((current) => ({
+      ...current,
+      [field]: value,
+      request: crypto.randomUUID(),
+    }));
     setFieldErrors((current) => ({ ...current, [field]: "" }));
-  };
-
+  }
   useEffect(() => {
     let active = true;
-    if (!validToken) return () => void (active = false);
-
+    if (!validToken) return;
     void (async () => {
-      const response = await portalApi<{
-        invite: { university_name: string; application_id: string | null };
-      }>("/v1/trusted-vendors/invite", {
-        method: "POST",
-        body: JSON.stringify({ token }),
-      });
-
+      const response = await portalApi<{ invite: Invitation }>(
+        "/v1/trusted-vendors/invite",
+        { method: "POST", body: JSON.stringify({ token }) },
+      );
       const digest = await crypto.subtle.digest(
         "SHA-256",
         new TextEncoder().encode(token),
       );
-      const key = `k1.trusted-vendor.${user?.id}.${Array.from(
-        new Uint8Array(digest),
-        (value) => value.toString(16).padStart(2, "0"),
-      ).join("")}`;
-
-      let restored: Partial<VendorDraft> = {};
-      let restoredStep = 0;
-      let restoredWhatsappSame = true;
+      const key = `k1.exclusive.v2.${user?.id}.${Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("")}`;
+      let restored: Partial<VendorDraft> = {},
+        restoredStep = 0,
+        restoredWhatsappSame = true;
       try {
         const raw = sessionStorage.getItem(key);
         if (raw) {
-          const saved = JSON.parse(raw) as {
+          const stored = JSON.parse(raw) as {
             draft?: Partial<VendorDraft>;
             step?: number;
             whatsappSame?: boolean;
           };
-          if (saved.draft) restored = saved.draft;
-          restoredStep = Math.min(2, Math.max(0, Number(saved.step ?? 0)));
-          restoredWhatsappSame = saved.whatsappSame !== false;
+          restored = stored.draft ?? {};
+          restoredStep = Math.min(3, Math.max(0, Number(stored.step ?? 0)));
+          restoredWhatsappSame = stored.whatsappSame !== false;
         }
       } catch {
-        // Session storage is optional.
+        /* Tab storage is optional. */
       }
-
       if (!active) return;
       setInvite(response.invite);
       setSubmitted(Boolean(response.invite.application_id));
       setDraft({
         ...blank,
         ...restored,
+        operations: { ...emptyOperations, ...restored.operations },
         request: restored.request || crypto.randomUUID(),
       });
       setStep(restoredStep);
       setWhatsappSame(restoredWhatsappSame);
       setDraftKey(key);
-    })().catch((caught) => {
+      setError("");
+    })().catch((caught: unknown) => {
       if (active)
         setError(
           caught instanceof Error
             ? caught.message
-            : "Your invitation could not be checked.",
+            : "Your invitation could not be checked. Try again.",
         );
     });
-
     return () => {
       active = false;
     };
-  }, [token, user?.id, validToken]);
-
+  }, [token, user?.id, validToken, version]);
   useEffect(() => {
     if (!draftKey) return;
     try {
@@ -174,8 +181,9 @@ function TrustedVendorForm() {
           draftKey,
           JSON.stringify({ draft, step, whatsappSame }),
         );
+      queueMicrotask(() => setSaved(true));
     } catch {
-      // The form still works if storage is unavailable.
+      queueMicrotask(() => setSaved(false));
     }
   }, [draftKey, draft, step, submitted, whatsappSame]);
 
@@ -183,7 +191,7 @@ function TrustedVendorForm() {
     const errors: Record<string, string> = {};
     if (currentStep === 0) {
       if (draft.legalName.trim().length < 2)
-        errors.legalName = "Enter your legal name.";
+        errors.legalName = "Enter your name.";
       const age = ageOnDate(draft.birth);
       if (age < 18 || age > 110)
         errors.birth = "Invited business representatives must be at least 18.";
@@ -194,81 +202,55 @@ function TrustedVendorForm() {
     }
     if (currentStep === 1) {
       if (draft.businessName.trim().length < 2)
-        errors.businessName = "Enter the business name.";
+        errors.businessName = "Enter your business name.";
+      if (!categories.includes(draft.category))
+        errors.category = "Choose a business category.";
       if (draft.campus.trim().length < 2)
         errors.campus = "Choose or enter the campus you serve.";
       if (draft.address.trim().length < 10)
-        errors.address = "Enter a complete business address.";
-      if (draft.description.trim().length < 20)
-        errors.description =
-          "Tell us what the business offers in at least 20 characters.";
+        errors.address = "Enter your business or pickup address.";
     }
-    if (currentStep === 2) {
-      if (!draft.documentMediaId)
-        errors.documentMediaId = "Upload one verification document before submitting.";
-      if (!authorized) errors.authorized = "Confirm that you represent this business.";
-      if (!terms) errors.terms = "Accept the KampusOne agent terms to continue.";
+    if (currentStep === 2)
+      Object.assign(errors, validateOperations(draft.operations));
+    if (currentStep === 3) {
+      if (!authorized)
+        errors.authorized = "Confirm that you represent this business.";
+      if (!terms) errors.terms = "Accept the agent terms to submit.";
     }
     setFieldErrors(errors);
     if (Object.keys(errors).length)
-      setError("Check the highlighted details below.");
-    return Object.keys(errors).length === 0;
+      setError("Check the highlighted answers below.");
+    return !Object.keys(errors).length;
   }
-
-  async function uploadDocument(file?: File) {
-    if (!file || busy) return;
-    if (
-      !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(
-        file.type,
-      )
-    ) {
-      setFieldErrors((current) => ({
-        ...current,
-        documentMediaId: "Choose a JPG, PNG, WebP or PDF.",
-      }));
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setFieldErrors((current) => ({
-        ...current,
-        documentMediaId: "Choose a file smaller than 10 MB.",
-      }));
-      return;
-    }
-    setBusy(true);
+  function goTo(next: number) {
+    setStep(next);
+    setFieldErrors({});
     setError("");
-    try {
-      const body = new FormData();
-      body.append("kind", "kyc");
-      body.append("file", file);
-      const uploaded = await portalApi<{ id: string }>("/v1/media", {
-        method: "POST",
-        body,
-      });
-      update("documentMediaId", uploaded.id);
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Document could not upload. Choose the file to retry.",
-      );
-    } finally {
-      setBusy(false);
-    }
+    requestAnimationFrame(() => {
+      heading.current?.focus();
+      heading.current?.scrollIntoView({ behavior: "instant", block: "start" });
+    });
   }
-
-  function next(event: FormEvent<HTMLFormElement>) {
+  async function next(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy || !invite) return;
     setError("");
     if (!validate(step)) return;
-    if (step < 2) setStep((current) => current + 1);
-    else void submit();
-  }
-
-  async function submit() {
+    if (step < 3) {
+      goTo(step + 1);
+      return;
+    }
+    for (let index = 0; index < 3; index++) {
+      if (!validate(index)) {
+        setStep(index);
+        requestAnimationFrame(() => heading.current?.focus());
+        return;
+      }
+    }
     setBusy(true);
-    setError("");
     try {
+      const operations = draft.operations;
+      const description = `${operations.primaryOffer.trim()}. ${operations.joiningReason}. Available ${operations.serviceDays.join(", ")} from ${operations.openingTime} to ${operations.closingTime}. Support: ${operations.supportChannel}, ${operations.responseTime.toLowerCase()}.`;
       await portalApi("/v1/trusted-vendors/submit", {
         method: "POST",
         body: JSON.stringify({
@@ -277,346 +259,282 @@ function TrustedVendorForm() {
           businessName: draft.businessName.trim(),
           legalName: draft.legalName.trim(),
           birthDate: draft.birth,
-          description: draft.description.trim(),
+          description,
           address: draft.address.trim(),
           category: draft.category,
           campus: draft.campus.trim(),
           phone: draft.phone,
-          documentMediaId: draft.documentMediaId,
-          ...(whatsappSame
-            ? { whatsapp: draft.phone }
-            : draft.whatsapp
-              ? { whatsapp: draft.whatsapp }
-              : {}),
+          whatsapp: whatsappSame ? draft.phone : draft.whatsapp,
+          operations,
           adultAuthorized: true,
           terms: true,
         }),
       });
       setSubmitted(true);
-      window.location.assign("https://agents.kampusone.app/agents");
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : "Your application is kept. Try again.",
+          : "Your answers are kept. Try submitting again.",
       );
     } finally {
       setBusy(false);
     }
   }
-
-  if (!validToken)
+  function text(
+    field: "legalName" | "businessName" | "address" | "campus",
+    label: string,
+    placeholder: string,
+    maxLength = 160,
+  ) {
     return (
-      <main className="agent-login-page">
-        <section
-          className="agent-login-shell agent-onboarding-form trusted-vendor-onboarding"
-          style={{ maxWidth: 660 }}
-        >
-          <AgentApplicationIllustration step={1} complete={false} />
-          <p className="eyebrow">Agent network</p>
-          <h1>Use your complete private invitation link.</h1>
-          <p className="field-help">
-            Exclusive is invitation only. If you do not have a private link,
-            continue with the standard vendor, tutor or rider application.
-          </p>
-          <a className="button button--primary button--wide" href="/agents">
-            Open standard application
-          </a>
-        </section>
-      </main>
+      <label>
+        {label}
+        <input
+          value={draft[field]}
+          maxLength={maxLength}
+          placeholder={placeholder}
+          autoComplete={
+            field === "legalName"
+              ? "name"
+              : field === "address"
+                ? "street-address"
+                : undefined
+          }
+          aria-invalid={Boolean(fieldErrors[field])}
+          onChange={(event) => update(field, event.target.value)}
+        />
+        {fieldErrors[field] && (
+          <span className="field-error" role="alert">
+            {fieldErrors[field]}
+          </span>
+        )}
+      </label>
     );
-
-  const uniben =
-    invite?.university_name.toLowerCase() === "university of benin";
-
-  if (submitted)
-    return (
-      <main className="agent-login-page">
-        <section
-          className="agent-login-shell agent-onboarding-form trusted-vendor-onboarding exclusive-agent-form"
-          style={{ maxWidth: 680 }}
-        >
-          <AgentApplicationIllustration step={2} complete />
-          <p className="onboarding-kicker">Submitted</p>
-          <h1>Your business is under review</h1>
-          <p className="field-help">
-            We have your Exclusive application. We will email the decision.
-          </p>
-          <a className="button button--primary button--wide" href="/agents">
-            Return to agent applications
-          </a>
-        </section>
-      </main>
-    );
+  }
 
   return (
-    <main className="agent-login-page">
-      <section
-        className="agent-login-shell trusted-vendor-onboarding exclusive-agent-form"
-        style={{ maxWidth: 720 }}
-      >
-        <form className="form-stack agent-onboarding-form" onSubmit={next} noValidate>
-          <div className="onboarding-stepbar">
-            <button
-              type="button"
-              aria-label="Previous step"
-              disabled={busy || step === 0}
-              onClick={() => {
-                setStep((current) => Math.max(0, current - 1));
-                setError("");
-              }}
-              className="onboarding-back"
-            >
-              ‹
-            </button>
-            <div
-              role="progressbar"
-              aria-label="Exclusive application progress"
-              aria-valuemin={1}
-              aria-valuemax={steps.length}
-              aria-valuenow={step + 1}
-              className="onboarding-progress"
-            >
-              <span style={{ width: `${((step + 1) / steps.length) * 100}%` }} />
+    <AgentIntakeShell
+      title="Your Exclusive business profile"
+      description="Tell us about your business and how you serve students. Your invitation takes you through a simple question based application."
+    >
+      <section className={`application-form ${styles.exclusiveCard}`}>
+        {!validToken || (error && !invite) ? (
+          <section className="state-panel" role="alert">
+            <h2>Invitation unavailable</h2>
+            <p>{error || "Open the invitation sent to your business email."}</p>
+            {validToken && (
+              <button
+                className="button button--secondary"
+                onClick={() => setVersion((current) => current + 1)}
+              >
+                Try again
+              </button>
+            )}
+            <Link href="/agents" className="button button--secondary">
+              Regular agent application
+            </Link>
+          </section>
+        ) : !invite ? (
+          <div
+            className={styles.loading}
+            aria-busy="true"
+            aria-label="Checking your invitation"
+          >
+            <span />
+            <span />
+            <span />
+          </div>
+        ) : submitted ? (
+          <section className="application-success" role="status">
+            <AgentApplicationIllustration complete />
+            <h2>We have your business profile</h2>
+            <p>
+              Our team will review your answers and contact you through your
+              KampusOne email. You can check the decision in your applications.
+            </p>
+            <Link className="button button--primary" href="/agents">
+              View application status
+            </Link>
+          </section>
+        ) : (
+          <form
+            className="form-stack agent-onboarding-form"
+            onSubmit={(event) => void next(event)}
+            noValidate
+          >
+            <div className="onboarding-stepbar">
+              <button
+                type="button"
+                className="onboarding-back"
+                aria-label="Previous step"
+                disabled={busy || step === 0}
+                onClick={() => goTo(step - 1)}
+              >
+                ‹
+              </button>
+              <div
+                role="progressbar"
+                className="onboarding-progress"
+                aria-label="Exclusive application progress"
+                aria-valuemin={0}
+                aria-valuemax={4}
+                aria-valuenow={step + 1}
+              >
+                <span style={{ width: `${((step + 1) / 4) * 100}%` }} />
+              </div>
+              <span className="onboarding-stepcount">{step + 1} of 4</span>
             </div>
-            <span className="onboarding-stepcount">
-              {step + 1} of {steps.length}
-            </span>
-          </div>
-
-          <div className="onboarding-mobile-art">
-            <AgentApplicationIllustration step={Math.min(4, step * 2)} />
-          </div>
-
-          <header>
-            <p className="onboarding-kicker">{kickers[step]}</p>
-            <h2>{steps[step]}</h2>
-            <p className="field-help">
-              {invite?.university_name ?? "Checking your invitation…"}
-            </p>
-          </header>
-
-          {error ? (
-            <p role="alert" className="form-error">
-              {error}
-            </p>
-          ) : null}
-
-          {!invite ? (
-            <p className="field-help">Checking your invitation…</p>
-          ) : (
+            <header>
+              <p className="onboarding-kicker">{invite.university_name}</p>
+              <h2 ref={heading} tabIndex={-1}>
+                {steps[step]}
+              </h2>
+              <p className="field-help">
+                {step === 0
+                  ? "A real person we can contact about this business."
+                  : step === 1
+                    ? "Details students will use to find your business."
+                    : step === 2
+                      ? "Choose the options that match your usual service."
+                      : "Check everything before sending your application."}
+              </p>
+            </header>
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
             <fieldset className="wizard-step" disabled={busy}>
               {step === 0 && (
                 <>
-                  <label>
-                    Full legal name
-                    <input
-                      value={draft.legalName}
-                      onChange={(event) => update("legalName", event.target.value)}
-                      required
-                      minLength={2}
-                      maxLength={160}
-                      placeholder="e.g. Osas Egharevba"
-                      autoComplete="name"
-                      aria-invalid={Boolean(fieldErrors.legalName)}
-                    />
-                    {fieldErrors.legalName ? (
-                      <span className="field-error">{fieldErrors.legalName}</span>
-                    ) : null}
-                  </label>
+                  {text(
+                    "legalName",
+                    "Representative name",
+                    "e.g. Osas Egharevba",
+                  )}
                   <BirthDateField
                     value={draft.birth}
-                    minAge={18}
-                    error={fieldErrors.birth}
                     onChange={(value) => update("birth", value)}
+                    error={fieldErrors.birth}
+                    minAge={18}
                   />
                   <PhoneField
-                    id="trusted-phone"
+                    id="exclusive-phone"
                     label="Phone number"
                     value={draft.phone}
-                    error={fieldErrors.phone}
                     onChange={(value) => update("phone", value)}
+                    error={fieldErrors.phone}
                   />
                   <label className="checkbox">
                     <input
                       type="checkbox"
                       checked={whatsappSame}
-                      onChange={(event) => setWhatsappSame(event.target.checked)}
+                      onChange={(event) =>
+                        setWhatsappSame(event.target.checked)
+                      }
                     />
-                    WhatsApp uses this phone number
+                    Use this number for WhatsApp too
                   </label>
-                  {!whatsappSame ? (
+                  {!whatsappSame && (
                     <PhoneField
-                      id="trusted-whatsapp"
+                      id="exclusive-whatsapp"
                       label="WhatsApp number"
                       value={draft.whatsapp}
-                      error={fieldErrors.whatsapp}
                       onChange={(value) => update("whatsapp", value)}
+                      error={fieldErrors.whatsapp}
                     />
-                  ) : null}
+                  )}
                 </>
               )}
-
               {step === 1 && (
                 <>
-                  <label>
-                    Business name
-                    <input
-                      value={draft.businessName}
-                      onChange={(event) =>
-                        update("businessName", event.target.value)
-                      }
-                      required
-                      minLength={2}
-                      maxLength={160}
-                      placeholder="e.g. Osas Kitchen"
-                      aria-invalid={Boolean(fieldErrors.businessName)}
-                    />
-                    {fieldErrors.businessName ? (
-                      <span className="field-error">
-                        {fieldErrors.businessName}
-                      </span>
-                    ) : null}
-                  </label>
+                  {text("businessName", "Business name", "e.g. Osas Kitchen")}
                   <label>
                     Business category
                     <select
                       value={draft.category}
-                      onChange={(event) => update("category", event.target.value)}
+                      onChange={(event) =>
+                        update("category", event.target.value)
+                      }
+                      aria-invalid={Boolean(fieldErrors.category)}
                     >
+                      <option value="">Choose a category</option>
                       {categories.map((category) => (
                         <option key={category}>{category}</option>
                       ))}
                     </select>
-                  </label>
-                  <label>
-                    Campus or service area
-                    {uniben ? (
-                      <select
-                        required
-                        value={draft.campus}
-                        onChange={(event) => update("campus", event.target.value)}
-                        aria-invalid={Boolean(fieldErrors.campus)}
-                      >
-                        <option value="" disabled>
-                          Choose your campus
-                        </option>
-                        <option>Ugbowo</option>
-                        <option>Ekehuan</option>
-                        <option>Both campuses</option>
-                      </select>
-                    ) : (
-                      <input
-                        value={draft.campus}
-                        onChange={(event) => update("campus", event.target.value)}
-                        required
-                        maxLength={100}
-                        placeholder="e.g. Main campus"
-                        aria-invalid={Boolean(fieldErrors.campus)}
-                      />
-                    )}
-                    {fieldErrors.campus ? (
-                      <span className="field-error">{fieldErrors.campus}</span>
-                    ) : null}
-                  </label>
-                  <label>
-                    Business address
-                    <input
-                      value={draft.address}
-                      onChange={(event) => update("address", event.target.value)}
-                      required
-                      minLength={10}
-                      maxLength={500}
-                      placeholder="e.g. June 12 shopping complex"
-                      aria-invalid={Boolean(fieldErrors.address)}
-                    />
-                    {fieldErrors.address ? (
-                      <span className="field-error">{fieldErrors.address}</span>
-                    ) : null}
-                  </label>
-                  <label>
-                    What does your business offer?
-                    <textarea
-                      value={draft.description}
-                      onChange={(event) =>
-                        update("description", event.target.value)
-                      }
-                      required
-                      minLength={20}
-                      maxLength={2000}
-                      placeholder="Tell us what you sell or provide, who you serve, and when you are usually available."
-                      aria-invalid={Boolean(fieldErrors.description)}
-                    />
-                    {fieldErrors.description ? (
+                    {fieldErrors.category && (
                       <span className="field-error">
-                        {fieldErrors.description}
+                        {fieldErrors.category}
                       </span>
-                    ) : null}
+                    )}
                   </label>
+                  {text(
+                    "campus",
+                    "Campus or service area",
+                    "e.g. Ugbowo campus",
+                    100,
+                  )}
+                  {text(
+                    "address",
+                    "Business or pickup address",
+                    "e.g. June 12 shopping complex, Ugbowo",
+                    500,
+                  )}
                 </>
               )}
-
               {step === 2 && (
+                <AgentOperationsFields
+                  value={draft.operations}
+                  onChange={(value) => update("operations", value)}
+                  errors={fieldErrors}
+                />
+              )}
+              {step === 3 && (
                 <>
-                  <div className="exclusive-review">
-                    <div>
-                      <span>Representative</span>
-                      <strong>{draft.legalName}</strong>
-                    </div>
-                    <div>
-                      <span>Business</span>
-                      <strong>{draft.businessName}</strong>
-                    </div>
-                    <div>
-                      <span>Category</span>
-                      <strong>{draft.category}</strong>
-                    </div>
-                    <div>
-                      <span>Campus / area</span>
-                      <strong>{draft.campus}</strong>
-                    </div>
-                    <div>
-                      <span>Phone</span>
-                      <strong>{draft.phone}</strong>
-                    </div>
-                    <div>
-                      <span>Address</span>
-                      <strong>{draft.address}</strong>
-                    </div>
+                  <div className={styles.reviewCard}>
+                    <dl className="application-review">
+                      <dt>Representative</dt>
+                      <dd>
+                        {draft.legalName} · {draft.phone}
+                      </dd>
+                      <dt>Business</dt>
+                      <dd>
+                        {draft.businessName} · {draft.category}
+                      </dd>
+                      <dt>Campus / address</dt>
+                      <dd>
+                        {draft.campus} · {draft.address}
+                      </dd>
+                      <dt>Products / services</dt>
+                      <dd>{draft.operations.primaryOffer}</dd>
+                      <dt>Available</dt>
+                      <dd>
+                        {draft.operations.serviceDays.join(", ")} ·{" "}
+                        {draft.operations.openingTime} to{" "}
+                        {draft.operations.closingTime}
+                      </dd>
+                      <dt>Fulfilment</dt>
+                      <dd>{draft.operations.fulfilmentMethods.join(", ")}</dd>
+                      <dt>Customer support</dt>
+                      <dd>
+                        {draft.operations.supportChannel} ·{" "}
+                        {draft.operations.responseTime}
+                      </dd>
+                    </dl>
                   </div>
-                  <label>
-                    Verification document
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,application/pdf"
-                      required={!draft.documentMediaId}
-                      aria-invalid={Boolean(fieldErrors.documentMediaId)}
-                      onChange={(event) =>
-                        void uploadDocument(event.target.files?.[0])
-                      }
-                    />
-                    {draft.documentMediaId ? (
-                      <span className="field-help">
-                        Document uploaded privately.
-                      </span>
-                    ) : (
-                      <span className="field-help">
-                        Upload one supporting document such as student ID,
-                        business proof, CAC document or another official record.
-                        JPG, PNG, WebP or PDF · up to 10 MB.
-                      </span>
-                    )}
-                    {fieldErrors.documentMediaId ? (
-                      <span className="field-error">
-                        {fieldErrors.documentMediaId}
-                      </span>
-                    ) : null}
-                  </label>
-                  <p className="exclusive-fast-track-note">
-                    Exclusive is still a fast track. Your reviewer will use this
-                    private document together with the information you provide
-                    here to verify the business and authorised contact.
-                  </p>
+                  <details>
+                    <summary>Agent terms</summary>
+                    <p className="field-help">
+                      Provide accurate business and contact details, follow
+                      campus rules, fulfil orders as agreed and respond to
+                      customers. Approval is reviewed by our team. Store access
+                      and payout eligibility are separate; withdrawals require
+                      verified bank details. Your invitation applies only to
+                      this business and account.
+                    </p>
+                  </details>
                   <label className="checkbox">
                     <input
                       type="checkbox"
@@ -625,54 +543,53 @@ function TrustedVendorForm() {
                     />
                     I am at least 18 and authorised to represent this business.
                   </label>
-                  {fieldErrors.authorized ? (
-                    <span className="field-error">{fieldErrors.authorized}</span>
-                  ) : null}
+                  {fieldErrors.authorized && (
+                    <span className="field-error">
+                      {fieldErrors.authorized}
+                    </span>
+                  )}
                   <label className="checkbox">
                     <input
                       type="checkbox"
                       checked={terms}
                       onChange={(event) => setTerms(event.target.checked)}
                     />
-                    I accept the KampusOne agent terms and confirm these details
-                    are accurate.
+                    I accept the agent terms and confirm these answers are
+                    accurate.
                   </label>
-                  {fieldErrors.terms ? (
+                  {fieldErrors.terms && (
                     <span className="field-error">{fieldErrors.terms}</span>
-                  ) : null}
+                  )}
                 </>
               )}
             </fieldset>
-          )}
-
-          <div className="form-actions">
-            {step > 0 ? (
-              <button
-                type="button"
-                className="button button--secondary"
-                disabled={busy}
-                onClick={() => {
-                  setStep((current) => current - 1);
-                  setError("");
-                }}
-              >
-                Back
+            <div className="form-actions">
+              {step > 0 && (
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  disabled={busy}
+                  onClick={() => goTo(step - 1)}
+                >
+                  Back
+                </button>
+              )}
+              <small className="field-help">
+                {saved
+                  ? "Progress saved in this tab"
+                  : "Keep this tab open to preserve your answers"}
+              </small>
+              <button className="button button--primary" disabled={busy}>
+                {busy
+                  ? "Submitting…"
+                  : step === 3
+                    ? "Submit application"
+                    : "Continue"}
               </button>
-            ) : null}
-            <span className="exclusive-save-note">Saved on this device</span>
-            <button
-              className="button button--primary"
-              disabled={busy || !invite}
-            >
-              {busy
-                ? "Saving…"
-                : step === 2
-                  ? "Submit Exclusive application"
-                  : "Continue"}
-            </button>
-          </div>
-        </form>
+            </div>
+          </form>
+        )}
       </section>
-    </main>
+    </AgentIntakeShell>
   );
 }

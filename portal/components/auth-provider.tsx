@@ -67,6 +67,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active = false;
     };
   }, [retryRestore]);
+  useEffect(() => {
+    const resume = () => {
+      if (document.visibilityState === 'visible' && status === 'authenticated') void retryRestore();
+    };
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('online', resume);
+    return () => {
+      document.removeEventListener('visibilitychange', resume);
+      window.removeEventListener('online', resume);
+    };
+  }, [retryRestore, status]);
   const signOut = useCallback(async () => {
     await webAuth.logout();
     setUser(null);

@@ -4,6 +4,8 @@ export type CollectionFees = {
   flatKobo: number;
   flatWaivedBelowKobo: number;
   capKobo: number | null;
+  /** Display increment approved with this policy; legacy policies use ₦1. */
+  displayRoundKobo?: number;
 };
 export type CommerceFees = {
   id: string;
@@ -39,6 +41,14 @@ function validateFees(policy: CollectionFees) {
   money(policy.flatKobo);
   money(policy.flatWaivedBelowKobo);
   if (policy.capKobo !== null) money(policy.capKobo);
+  if(policy.displayRoundKobo !== undefined && (!Number.isSafeInteger(policy.displayRoundKobo)||policy.displayRoundKobo<100||policy.displayRoundKobo>100000||policy.displayRoundKobo%100!==0))
+    throw new RangeError('Choose a whole-naira display increment between ₦1 and ₦1,000.');
+}
+export function roundDisplayKobo(value:number,policy:CollectionFees){
+  money(value);validateFees(policy);
+  const increment=BigInt(policy.displayRoundKobo??100);
+  const rounded=Number(ceilRatio(BigInt(value),increment)*increment);
+  money(rounded);return rounded;
 }
 export function percentageKobo(
   amount: number,
@@ -108,8 +118,7 @@ export function listingPrice(baseKobo: number, policy: CommerceFees) {
     policy.buyerFlatPerItemKobo;
   const target = baseKobo + buyerComponentKobo;
   money(target);
-  const customerPriceKobo =
-    Math.ceil(inclusiveGrossKobo(target, policy.collection) / 100) * 100;
+  const customerPriceKobo = roundDisplayKobo(inclusiveGrossKobo(target, policy.collection),policy.collection);
   money(customerPriceKobo);
   return {
     baseKobo,
@@ -174,13 +183,11 @@ export function checkoutPrice(
     throw new RangeError("Rider net cannot exceed the fare.");
   const budgetPayableKobo = listedItemsKobo + digitalDeliveryKobo;
   money(budgetPayableKobo);
-  const targetGross =
-    Math.ceil(
+  const targetGross = roundDisplayKobo(
       inclusiveGrossKobo(
         baseKobo + buyerComponentKobo + digitalDeliveryKobo,
         policy.collection,
-      ) / 100,
-    ) * 100;
+      ), policy.collection);
   const discountKobo = policy.checkoutSavings
     ? Math.max(0, budgetPayableKobo - targetGross)
     : 0;
@@ -218,14 +225,26 @@ export function checkoutPrice(
     ruleId: policy.id,
   };
 }
-export function fixedSubscriptionPrice(policy: CollectionFees) {
-  const customerPriceKobo = 600000,
+export function kiraSubscriptionPrice(listedAmountKobo: number, discountPercent: number, policy: CollectionFees) {
+  money(listedAmountKobo);
+  if (listedAmountKobo < 100000 || listedAmountKobo > 100000000)
+    throw new RangeError("Set a monthly price between ₦1,000 and ₦1,000,000.");
+  if (!Number.isInteger(discountPercent) || discountPercent < 0 || discountPercent > 90)
+    throw new RangeError("Set a whole-number discount between 0% and 90%.");
+  const discountKobo = percentageKobo(listedAmountKobo, discountPercent * 100);
+  const customerPriceKobo = listedAmountKobo - discountKobo,
     estimatedProcessingKobo = collectionFeeKobo(customerPriceKobo, policy);
   return {
+    listedAmountKobo,
+    discountPercent,
+    discountKobo,
     customerPriceKobo,
     estimatedProcessingKobo,
     estimatedNetKobo: customerPriceKobo - estimatedProcessingKobo,
     currency: "NGN" as const,
     cadence: "MONTHLY" as const,
   };
+}
+export function fixedSubscriptionPrice(policy: CollectionFees) {
+  return kiraSubscriptionPrice(600000, 0, policy);
 }

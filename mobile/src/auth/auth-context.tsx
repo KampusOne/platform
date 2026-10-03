@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Alert } from "react-native";
+import { Alert, AppState } from "react-native";
 
 import {
   api,
@@ -219,6 +219,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
+  }, [retrySessionRestore]);
+
+  useEffect(() => {
+    let previous = AppState.currentState;
+    const subscription = AppState.addEventListener("change", next => {
+      if (next === "active" && previous !== "active" && sessionUserId.current) {
+        void retrySessionRestore();
+      }
+      previous = next;
+    });
+    return () => subscription.remove();
   }, [retrySessionRestore]);
 
   const signOut = useCallback(

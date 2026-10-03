@@ -6,12 +6,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { VideoView, useVideoPlayer } from "expo-video";
@@ -30,8 +30,12 @@ import {
 import { CommentThread } from "@/src/components/comment-thread";
 import { ReplyComposer } from "@/src/components/reply-composer";
 import { useAuth } from "@/src/auth/auth-context";
+import { createVideoPlaybackLifecycle } from "@/src/lib/video-playback-lifecycle";
 
 const speeds = [1, 1.25, 1.5, 2] as const;
+// Expo's web VideoView maps styles directly to DOM CSS. Keep this unregistered
+// and explicit so the video fills its stage rather than its intrinsic dimensions.
+const videoSurfaceStyle = { position: "absolute" as const, top: 0, left: 0, right: 0, bottom: 0, width: "100%" as const, height: "100%" as const };
 
 type PersonResponse = {
   profile: {
@@ -76,7 +80,6 @@ function trustedVideoUrl(value: string | undefined) {
 export default function VideoViewerScreen() {
   const { theme } = useAppearance();
   const { profile } = useAuth();
-  const { height, width } = useWindowDimensions();
   const params = useLocalSearchParams<{
     id?: string | string[];
     position?: string;
@@ -107,9 +110,16 @@ export default function VideoViewerScreen() {
   const videoRef = useRef<VideoView>(null);
   const focused = useRef(false);
   const shouldResume = useRef(true);
-  const sourceVersion = useRef(0);
+  const appActive = useRef(AppState.currentState === "active");
+  const lifecycle = useRef(createVideoPlaybackLifecycle());
+  const initialSeek = useRef<{ version: number; position: number } | null>(null);
+  const [replacementComplete, setReplacementComplete] = useState(false);
+  const playbackKey = post?.id || id;
+  const mediaSource = requestedVideoUrl || post?.image_url || "";
 
-  const player = useVideoPlayer(null, (instance) => {
+  // Expo's web replaceAsync calls play() itself and discards the browser promise.
+  // Initialising a web player with its source avoids that implicit autoplay.
+  const player = useVideoPlayer(Platform.OS === "web" ? mediaSource || null : null, (instance) => {
     instance.loop = false;
     instance.muted = requestedMuted;
     instance.playbackRate = 1;
@@ -128,6 +138,31 @@ export default function VideoViewerScreen() {
   const isMuted = mutedEvent?.muted ?? player.muted;
   const status = statusEvent?.status ?? player.status;
   const playerError = statusEvent?.error;
+  const playIfReady = useCallback(() => {
+    if (!lifecycle.current.canPlay({ focused: focused.current, active: appActive.current, wantsToPlay: shouldResume.current, status: player.status })) return;
+    const version = lifecycle.current.currentVersion();
+    const start = initialSeek.current;
+    try {
+      if (start?.version === version) {
+        player.currentTime = Math.max(0, start.position);
+        initialSeek.current = null;
+      }
+      if (Platform.OS === "web") {
+        // The SDK exposes this element via VideoView's web nativeRef. Its public
+        // play() method returns void, so handle the actual browser promise here.
+        const video = videoRef.current?.nativeRef.current as HTMLVideoElement | null | undefined;
+        if (!video || video.readyState < 3 || !video.paused) return;
+        void video.play().catch((caught: unknown) => {
+          if (version !== lifecycle.current.currentVersion() || !focused.current || !appActive.current) return;
+          if (caught instanceof Error && caught.name === "AbortError") return; // This operation was paused/replaced.
+          shouldResume.current = false;
+          setNotice(caught instanceof Error && caught.name === "NotAllowedError" ? "Tap Play to start this video." : "This video could not play. Try again.");
+        });
+      } else if (!player.playing) player.play();
+    } catch {
+      setNotice("This video could not play. Try again.");
+    }
+  }, [player]);
 
   useEffect(() => {
     let live = true;
@@ -138,6 +173,8 @@ export default function VideoViewerScreen() {
     }
     setLoading(true);
     setError("");
+    setPost(null);
+    setPerson(null);
     void api<{ post: SocialFeedPost }>("/v1/student/feed/" + id)
       .then(({ post: next }) => {
         if (!live) return;
@@ -159,36 +196,36 @@ export default function VideoViewerScreen() {
     return () => { live = false; };
   }, [id]);
 
-  const playbackKey = post?.id || id;
-  const mediaSource = requestedVideoUrl || post?.image_url || "";
   useEffect(() => {
-    if (!mediaSource) return;
-    const version = ++sourceVersion.current;
+    const version = lifecycle.current.beginSource();
+    setReplacementComplete(false);
+    if (!mediaSource) { player.pause(); return () => lifecycle.current.invalidate(version); }
     const remembered = readVideoPlaybackSession(playbackKey);
     const startAt = remembered?.position ?? requestedPosition;
     const startMuted = remembered?.muted ?? requestedMuted;
-    void player.replaceAsync(mediaSource).then(() => {
-      if (version !== sourceVersion.current) return;
-      player.currentTime = Math.max(0, startAt);
+    player.pause();
+    shouldResume.current = true;
+    initialSeek.current = { version, position: startAt };
+    const replace = Platform.OS === "web" ? Promise.resolve() : player.replaceAsync(mediaSource);
+    void replace.then(() => {
+      if (!lifecycle.current.completeSource(version)) return;
       player.muted = startMuted;
       player.playbackRate = speed;
-      shouldResume.current = true;
-      if (focused.current) player.play();
-    }).catch((caught) => {
-      if (version === sourceVersion.current)
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "This video could not load.",
-        );
+      setReplacementComplete(true);
+      playIfReady();
+    }).catch(() => {
+      if (version === lifecycle.current.currentVersion()) setError("This video could not load. Try opening it again.");
     });
+    return () => { lifecycle.current.invalidate(version); player.pause(); };
   }, [
     player,
     mediaSource,
     playbackKey,
     requestedMuted,
     requestedPosition,
+    playIfReady,
   ]);
+  useEffect(() => { if (replacementComplete && status === "readyToPlay") playIfReady(); }, [replacementComplete, status, playIfReady]);
 
   useEffect(() => {
     const update = () => {
@@ -213,27 +250,26 @@ export default function VideoViewerScreen() {
 
   useFocusEffect(useCallback(() => {
     focused.current = true;
-    if (mediaSource && shouldResume.current) player.play();
+    playIfReady();
     return () => {
       focused.current = false;
-      shouldResume.current = player.playing;
       if (post?.id) writeVideoPlaybackSession(post.id, Number(player.currentTime) || 0, player.muted);
       player.pause();
     };
-  }, [player, post?.id, mediaSource]));
+  }, [player, post?.id, playIfReady]));
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
+      appActive.current = state === "active";
       if (state === "active") {
-        if (focused.current && shouldResume.current && mediaSource) player.play();
+        playIfReady();
         return;
       }
-      shouldResume.current = player.playing;
       if (post?.id) writeVideoPlaybackSession(post.id, Number(player.currentTime) || 0, player.muted);
       player.pause();
     });
     return () => subscription.remove();
-  }, [player, post?.id, mediaSource]);
+  }, [player, post?.id, playIfReady]);
 
   useEffect(() => {
     if (!notice) return;
@@ -252,9 +288,10 @@ export default function VideoViewerScreen() {
       shouldResume.current = false;
       player.pause();
     } else {
+      if (!replacementComplete || player.status !== "readyToPlay") return;
       shouldResume.current = true;
       if (duration > 0 && position >= duration - 0.15) player.currentTime = 0;
-      player.play();
+      playIfReady();
     }
   }
 
@@ -266,7 +303,7 @@ export default function VideoViewerScreen() {
   }
 
   function seekFromTrack(locationX: number) {
-    if (!trackWidth || !duration) return;
+    if (!replacementComplete || player.status !== "readyToPlay" || !trackWidth || !duration) return;
     const next = Math.max(0, Math.min(duration, (locationX / trackWidth) * duration));
     player.currentTime = next;
     setPosition(next);
@@ -361,10 +398,9 @@ export default function VideoViewerScreen() {
     }
   }
 
-  const mediaHeight = Math.max(220, Math.min(height * 0.43, width * 0.95));
 
   if (loading && !post) {
-    return <SafeAreaView style={styles.screen}><StatusBar style="light" /><View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/feed")} style={styles.headerButton}><Ionicons name="arrow-back" color="#FFFFFF" size={27} /></Pressable></View><View style={styles.preloadStage}>{mediaSource ? <VideoView accessibilityLabel="Post video" player={player} nativeControls={false} contentFit="contain" surfaceType="textureView" style={StyleSheet.absoluteFill} /> : null}{!mediaSource || status === "loading" ? <View pointerEvents="none" style={styles.videoState}><Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>{mediaSource ? "Loading video…" : "Opening video…"}</Text></View> : null}</View></SafeAreaView>;
+    return <SafeAreaView style={styles.screen}><StatusBar style="light" /><View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.canGoBack() ? router.back() : router.replace("/(tabs)/feed")} style={styles.headerButton}><Ionicons name="arrow-back" color="#FFFFFF" size={27} /></Pressable></View><View style={styles.preloadStage}>{mediaSource ? <VideoView ref={videoRef} accessibilityLabel="Post video" player={player} nativeControls={false} playsInline contentFit="contain" surfaceType="textureView" style={videoSurfaceStyle} /> : null}{!mediaSource || !replacementComplete || status === "loading" || status === "idle" ? <View pointerEvents="none" style={styles.videoState}><Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>{mediaSource ? "Loading video…" : "Opening video…"}</Text></View> : null}</View></SafeAreaView>;
   }
 
   if (!post || error) {
@@ -383,17 +419,18 @@ export default function VideoViewerScreen() {
         </Pressable>
       </View>
 
-      <View style={[styles.mediaStage, { height: mediaHeight }]}>
+      <View style={styles.mediaStage}>
         <VideoView
           ref={videoRef}
           accessibilityLabel="Post video"
           player={player}
           nativeControls={false}
+          playsInline
           contentFit="contain"
           surfaceType="textureView"
-          style={StyleSheet.absoluteFill}
+          style={videoSurfaceStyle}
         />
-        {status === "loading" ? <View pointerEvents="none" style={styles.videoState}><Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>Loading video…</Text></View> : null}
+        {!replacementComplete || status === "loading" || status === "idle" ? <View pointerEvents="none" style={styles.videoState}><Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>Loading video…</Text></View> : null}
         {status === "error" ? <View pointerEvents="none" style={styles.videoState}><Ionicons name="alert-circle-outline" color="#FFFFFF" size={28} /><Text style={[styles.videoStateText, { fontFamily: theme.font.medium }]}>{playerError?.message || "This video could not play."}</Text></View> : null}
         <View style={styles.playbackOverlay}>
           <Pressable
@@ -406,7 +443,7 @@ export default function VideoViewerScreen() {
             <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress * 100}%` as `${number}%` }]} /></View>
           </Pressable>
           <View style={styles.controls}>
-            <Pressable accessibilityRole="button" accessibilityLabel={isPlaying ? "Pause video" : "Play video"} onPress={togglePlayback} style={styles.controlButton}>
+            <Pressable accessibilityRole="button" accessibilityLabel={isPlaying ? "Pause video" : "Play video"} accessibilityState={{ disabled: !isPlaying && (!replacementComplete || status !== "readyToPlay") }} disabled={!isPlaying && (!replacementComplete || status !== "readyToPlay")} onPress={togglePlayback} style={styles.controlButton}>
               <Ionicons name={isPlaying ? "pause" : "play"} size={31} color="#FFFFFF" />
             </Pressable>
             <Text style={[styles.remaining, { fontFamily: theme.font.medium }]}>-{formatClock(Math.max(0, duration - position))}</Text>
@@ -446,22 +483,22 @@ export default function VideoViewerScreen() {
 
         <View style={styles.actions}>
           <Pressable accessibilityRole="button" accessibilityLabel={String(safeCount(post.comment_count)) + " comments"} onPress={() => setCommentsOpen(true)} style={styles.actionButton}>
-            <Ionicons name="chatbubble-outline" size={23} color={theme.textMuted} />
+            <Ionicons name="chatbubble-outline" size={23} color="#FFFFFF" />
             {safeCount(post.comment_count) ? <Text style={[styles.actionCount, { fontFamily: theme.font.medium }]}>{actionLabel(safeCount(post.comment_count))}</Text> : null}
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityState={{ selected: Boolean(post.reposted), busy: busy === "repost" }} disabled={busy === "repost"} onPress={() => void toggleRepost()} style={styles.actionButton}>
-            <Ionicons name="repeat-outline" size={24} color={post.reposted ? theme.deepBrand : theme.textMuted} />
+            <Ionicons name="repeat-outline" size={24} color={post.reposted ? theme.peach : "#FFFFFF"} />
             {safeCount(post.repost_count) ? <Text style={[styles.actionCount, { fontFamily: theme.font.medium }]}>{actionLabel(safeCount(post.repost_count))}</Text> : null}
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityState={{ selected: Boolean(post.liked), busy: busy === "like" }} disabled={busy === "like"} onPress={() => void toggleLike()} style={styles.actionButton}>
-            <Ionicons name={post.liked ? "heart" : "heart-outline"} size={24} color={post.liked ? theme.deepBrand : theme.textMuted} />
+            <Ionicons name={post.liked ? "heart" : "heart-outline"} size={24} color={post.liked ? theme.peach : "#FFFFFF"} />
             {safeCount(post.like_count) ? <Text style={[styles.actionCount, { fontFamily: theme.font.medium }]}>{actionLabel(safeCount(post.like_count))}</Text> : null}
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityState={{ selected: post.bookmarked, busy: busy === "bookmark" }} disabled={busy === "bookmark"} onPress={() => void toggleBookmark()} style={styles.iconAction}>
-            <Ionicons name={post.bookmarked ? "bookmark" : "bookmark-outline"} size={23} color={post.bookmarked ? theme.deepBrand : theme.textMuted} />
+            <Ionicons name={post.bookmarked ? "bookmark" : "bookmark-outline"} size={23} color={post.bookmarked ? theme.peach : "#FFFFFF"} />
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Share video" onPress={() => void share()} style={styles.iconAction}>
-            <Ionicons name="share-social-outline" size={23} color={theme.textMuted} />
+            <Ionicons name="share-social-outline" size={23} color="#FFFFFF" />
           </Pressable>
         </View>
       </View>
@@ -563,6 +600,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   mediaStage: {
+    flex: 1,
+    minHeight: 0,
     width: "100%",
     backgroundColor: "#000000",
     alignItems: "center",
@@ -626,15 +665,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   meta: {
-    flex: 1,
-    marginTop: -1,
+    marginTop: 0,
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
-    gap: 14,
-    backgroundColor: "#FBF7F2",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    paddingTop: 8,
+    paddingBottom: 8,
+    gap: 6,
+    backgroundColor: "#000000",
   },
   authorRow: {
     flexDirection: "row",
@@ -659,13 +695,13 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   authorName: {
-    color: "#29231F",
-    fontSize: 18,
+    color: "#FFFFFF",
+    fontSize: 15,
     flexShrink: 1,
   },
   username: {
-    color: "#756961",
-    fontSize: 13,
+    color: "#CFCFCF",
+    fontSize: 12,
     marginTop: 2,
   },
   followButton: {
@@ -687,16 +723,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   description: {
-    color: "#29231F",
-    fontSize: 15,
+    color: "#FFFFFF",
+    fontSize: 14,
     lineHeight: 21,
   },
   actions: {
     minHeight: 56,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#E7DCD3",
+    borderTopColor: "rgba(255,255,255,.15)",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E7DCD3",
+    borderBottomColor: "rgba(255,255,255,.15)",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -720,7 +756,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   actionCount: {
-    color: "#5F554F",
+    color: "#FFFFFF",
     fontSize: 12,
   },
   notice: {
@@ -756,8 +792,8 @@ const styles = StyleSheet.create({
     borderColor: "#E5D9CE",
   },
   menuTitle: {
-    color: "#29231F",
-    fontSize: 18,
+    color: "#FFFFFF",
+    fontSize: 15,
     paddingHorizontal: 8,
     paddingBottom: 8,
   },

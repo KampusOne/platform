@@ -3,12 +3,12 @@
 import { useState } from "react";
 
 const countries = [
-  { code: "+234", flag: "🇳🇬", name: "Nigeria" },
-  { code: "+233", flag: "🇬🇭", name: "Ghana" },
-  { code: "+229", flag: "🇧🇯", name: "Benin" },
-  { code: "+237", flag: "🇨🇲", name: "Cameroon" },
-  { code: "+44", flag: "🇬🇧", name: "United Kingdom" },
-  { code: "+1", flag: "🇺🇸", name: "United States / Canada" },
+  { code: "+234", name: "Nigeria" },
+  { code: "+233", name: "Ghana" },
+  { code: "+229", name: "Benin" },
+  { code: "+237", name: "Cameroon" },
+  { code: "+44", name: "United Kingdom" },
+  { code: "+1", name: "United States / Canada" },
 ] as const;
 
 export function PhoneField({
@@ -41,14 +41,14 @@ export function PhoneField({
             onChange(event.target.value + national.replace(/^0/, ""))
           }
         >
-          {countries.map(({ code, flag, name }) => (
+          {countries.map(({ code, name }) => (
             <option
               key={code}
               value={code}
               aria-label={`${name} ${code}`}
               title={name}
             >
-              {flag} {code}
+              {code}
             </option>
           ))}
         </select>
@@ -58,7 +58,9 @@ export function PhoneField({
           inputMode="numeric"
           autoComplete="tel-national"
           value={national}
-          placeholder={selected.code === "+234" ? "801 234 5678" : "Phone number"}
+          placeholder={
+            selected.code === "+234" ? "801 234 5678" : "Phone number"
+          }
           maxLength={14}
           aria-invalid={Boolean(error)}
           onChange={(event) =>
@@ -106,9 +108,27 @@ export function BirthDateField({
       <legend>Date of birth</legend>
       <div>
         {[
-          [2, "Day", Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, "0"))],
-          [1, "Month", Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"))],
-          [0, "Year", Array.from({ length: 111 - minAge }, (_, i) => String(year - minAge - i))],
+          [
+            2,
+            "Day",
+            Array.from({ length: 31 }, (_, i) =>
+              String(i + 1).padStart(2, "0"),
+            ),
+          ],
+          [
+            1,
+            "Month",
+            Array.from({ length: 12 }, (_, i) =>
+              String(i + 1).padStart(2, "0"),
+            ),
+          ],
+          [
+            0,
+            "Year",
+            Array.from({ length: 111 - minAge }, (_, i) =>
+              String(year - minAge - i),
+            ),
+          ],
         ].map(([index, label, options]) => (
           <select
             key={String(label)}

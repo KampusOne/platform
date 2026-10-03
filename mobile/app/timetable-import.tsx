@@ -1,3 +1,4 @@
+import {AcademicImportUsage} from "@/src/components/academic-import-usage";
 import { useEffect, useRef, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import { router, useLocalSearchParams } from "expo-router";
@@ -61,6 +62,7 @@ export default function ImportTimetable() {
     }catch(e){if(version===generation.current)setError(e instanceof Error?e.message:"Could not save. Your reviewed draft is kept.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
   function edit(i:number,field:keyof Entry,value:string|number){setEntries(rows=>rows.map((e,n)=>n===i?{...e,[field]:value}:e));saveKey.current=randomUUID();}
   return <ToolPage title={kind==="calendar"?"Upload academic calendar":"Upload timetable"} action={<Ionicons name="sparkles-outline" size={22} color={theme.brand}/> }>
+    <AcademicImportUsage calendar={kind==="calendar"||calendar} revision={busy} />
     <View style={{padding:20,borderRadius:18,backgroundColor:theme.surfaceMuted,alignItems:"center",gap:10,marginBottom:16}}>
       <Ionicons name="calendar-outline" size={34} color={theme.brand}/>
       <Text style={{...body,fontFamily:theme.font.semibold,fontSize:18}}>{kind==="calendar"?"Your session, organised":"Your week, organised"}</Text>

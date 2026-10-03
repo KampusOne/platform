@@ -28,6 +28,7 @@ import { studentRoutes } from "./routes/student";
 import { tutorCommerceRoutes } from './routes/tutor-commerce';
 import { feedPostRoutes } from "./routes/feed-posts";
 import { feedExperienceRoutes } from "./routes/feed-experience";
+import { studentActivityRoutes } from "./routes/student-activities";
 import { agentRoutes } from "./routes/agents";
 import { adminRoutes } from "./routes/admin";
 import { paymentRoutes } from "./routes/payments";
@@ -133,6 +134,7 @@ app.route("/v1/payout-setup", payoutSetupRoutes);
 app.route('/v1/tutor-commerce',tutorCommerceRoutes);
 app.route("/v1/auth", authRoutes);
 // Additive conversation features preserve the original read/deletion authorization.
+app.route("/v1/student/feed", studentActivityRoutes);
 app.route("/v1/student/feed", feedExperienceRoutes);
 app.route("/v1/student/feed", feedPostRoutes);
 app.route("/v1/student", publicBadgeProfileRoutes);

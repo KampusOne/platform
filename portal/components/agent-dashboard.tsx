@@ -160,6 +160,7 @@ type EarningsBucket = {
   withdrawn_kobo: Scalar;
 };
 type Earnings = {
+  withdrawalsEnabled?: boolean;
   tutorials: EarningsBucket;
   store: EarningsBucket;
   deliveries: EarningsBucket;
@@ -170,6 +171,7 @@ type Earnings = {
     requested_at: string;
     agent_type: string;
     display_name: string;
+    returned_to_wallet?: boolean;
   }>;
 };
 type View =
@@ -1514,6 +1516,7 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
   const [notice, setNotice] = useState("");
   const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [quote,setQuote]=useState<{id:string;agentProfileId:string;amountKobo:number;feeKobo:number;netKobo:number;expiresAt:string;bankName:string;accountLast4:string;requestId:string}|null>(null);
   const available =
     Number(data?.tutorials.available_kobo ?? 0) +
     Number(data?.store.available_kobo ?? 0) +
@@ -1535,19 +1538,16 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     setBusy(true);
+    setQuote(null);
     setNotice("");
     setFormError("");
     try {
-      await portalApi("/v1/agents/payouts", {
+      const agentProfileId=String(form.get('agentProfileId')??''),amountKobo=Math.round(Number(form.get('amount'))*100);
+      const result=await portalApi<{id:string;amountKobo:number;feeKobo:number;netKobo:number;expiresAt:string;bankName:string;accountLast4:string}>("/v1/agents/payout-quote", {
         method: "POST",
-        body: JSON.stringify({
-          agentProfileId: form.get("agentProfileId"),
-          amountKobo: Math.round(Number(form.get("amount")) * 100),
-        }),
+        body: JSON.stringify({agentProfileId,amountKobo}),
       });
-      setNotice("Payout request submitted for finance review.");
-      formElement.reset();
-      setKey((value) => value + 1);
+      setQuote({...result,agentProfileId,requestId:crypto.randomUUID()});
     } catch (caught) {
       setFormError(
         caught instanceof PortalApiError
@@ -1557,6 +1557,16 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
     } finally {
       setBusy(false);
     }
+  }
+  async function submitReviewedPayout(){
+    if(!quote||busy)return;
+    if(Date.parse(quote.expiresAt)<=Date.now()){setQuote(null);setFormError('This quote expired. Review the withdrawal again.');return;}
+    setBusy(true);setFormError('');
+    try{
+      await portalApi('/v1/agents/payouts',{method:'POST',body:JSON.stringify({quoteId:quote.id,agentProfileId:quote.agentProfileId,requestId:quote.requestId,amountKobo:quote.amountKobo})});
+      setQuote(null);setNotice('Withdrawal submitted for finance review.');setKey(value=>value+1);
+    }catch(caught){setFormError(caught instanceof Error?caught.message:'Could not submit this withdrawal. The same saved request can be checked or retried.');}
+    finally{setBusy(false);}
   }
   return (
     <>
@@ -1601,10 +1611,10 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
         <article className="panel">
           <p className="section-kicker">Controlled withdrawal</p>
           <h2>Request a payout</h2>
-          <form className="form-stack" onSubmit={requestPayout}>
+          <form className="form-stack" onSubmit={requestPayout} onChange={()=>setQuote(null)}>
             <label>
               Agent account
-              <select name="agentProfileId" defaultValue="" required>
+              <select name="agentProfileId" defaultValue="" required disabled={busy}>
                 <option value="" disabled>
                   Select role
                 </option>
@@ -1619,22 +1629,27 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
             </label>
             <label>
               Amount (₦)
-              <input name="amount" type="number" min="100" step="1" required />
+              <input name="amount" type="number" min="5000" step="1" required disabled={busy} />
             </label>
             <p className="field-help">
-              A verified payout account and sufficient available balance are
-              required. Requests are balance-checked atomically and remain
-              auditable; money is not auto-sent.
+              Minimum withdrawal is ₦5,000. Review your approved bank destination
+              and the amount you will receive before confirming.
             </p>
             {notice && <p className="form-notice">{notice}</p>}
             {formError && <p className="form-error">{formError}</p>}
             <button
               className="button button--primary"
-              disabled={busy || available < 10_000}
+              disabled={busy || available < 500_000 || !data?.withdrawalsEnabled}
             >
-              {busy ? "Submitting…" : "Request payout"}
+              {busy ? "Preparing…" : "Review withdrawal"}
             </button>
           </form>
+          {quote ? <section className="notice" aria-label="Withdrawal review">
+            <h3>Review your withdrawal</h3>
+            <dl className="details-list"><dt>From your wallet</dt><dd>{money(quote.amountKobo)}</dd><dt>Transfer allowance</dt><dd>{money(quote.feeKobo)}</dd><dt>Bank amount</dt><dd>{money(quote.netKobo)}</dd><dt>Approved bank</dt><dd>{quote.bankName} ·••{quote.accountLast4}</dd></dl>
+            <div className="action-row"><button className="button button--primary" disabled={busy} onClick={()=>void submitReviewedPayout()}>{busy?'Submitting…':'Confirm withdrawal'}</button><button className="button button--secondary" disabled={busy} onClick={()=>setQuote(null)}>Cancel</button></div>
+          </section> : null}
+          {data && !data.withdrawalsEnabled ? <p className="field-help">Withdrawals are paused. Your available balance remains in your wallet.</p> : null}
         </article>
         <article className="panel">
           <div className="panel-heading">
@@ -1659,7 +1674,7 @@ function EarningsWorkspace({ profiles }: { profiles: AgentProfile[] }) {
               </span>
               <span>
                 <strong>{money(request.amount_kobo)}</strong>
-                <small>{label(request.status)}</small>
+                <small>{request.returned_to_wallet ? 'Returned to wallet' : label(request.status)}</small>
               </span>
             </div>
           ))}

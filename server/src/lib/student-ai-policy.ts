@@ -4,7 +4,7 @@ import { aiLimit } from "./ai-provider";
 import { resolveAIQuota } from "./ai-quota";
 import type { AuthenticatedUser, Bindings } from "../types";
 export const CHAT_WINDOW_SECONDS = 15 * 60;
-export const STUDY_MODES = ["summary", "notes", "quiz"] as const;
+export const STUDY_MODES = ["summary", "explanation", "notes", "quiz"] as const;
 export const isStudyGeneration = (mode: string) => (STUDY_MODES as readonly string[]).includes(mode);
 export async function studentExperienceReady(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") return false;
@@ -18,10 +18,10 @@ export async function studentAIPolicy(env: Bindings, user: AuthenticatedUser) {
 export async function studentAIUsage(env: Bindings, userId: string) {
   const row = firstRow(await database(env).execute<{ chat_used: number; study_used: number; day_used: number; total: number; chat_resets_at: string | null; burst_resets_at:string|null; month_used:number; timetable_used:number }>(sql`
     select count(*) filter(where user_id=${userId}::uuid and mode='study' and created_at>now()-interval '15 minutes')::int as chat_used,
-      count(*) filter(where user_id=${userId}::uuid and mode in ('summary','notes','quiz') and status in ('COMPLETED','PROCESSING'))::int as study_used,
+      count(*) filter(where user_id=${userId}::uuid and mode in ('summary','explanation','notes','quiz') and status in ('COMPLETED','PROCESSING'))::int as study_used,
       count(*) filter(where user_id=${userId}::uuid and created_at>=(date_trunc('day',now() at time zone 'Africa/Lagos') at time zone 'Africa/Lagos'))::int as day_used,
       count(*) filter(where created_at>=(date_trunc('day',now() at time zone 'Africa/Lagos') at time zone 'Africa/Lagos'))::int as total,
-      count(*) filter(where user_id=${userId}::uuid and mode in ('summary','notes','quiz') and status in ('COMPLETED','PROCESSING') and created_at>=date_trunc('month',now()))::int as month_used,
+      count(*) filter(where user_id=${userId}::uuid and mode in ('summary','explanation','notes','quiz') and status in ('COMPLETED','PROCESSING') and created_at>=date_trunc('month',now()))::int as month_used,
       count(*) filter(where user_id=${userId}::uuid and mode='timetable' and created_at>=(date_trunc('day',now() at time zone 'Africa/Lagos') at time zone 'Africa/Lagos'))::int as timetable_used,
       min(created_at+interval '15 minutes') filter(where user_id=${userId}::uuid and created_at>now()-interval '15 minutes') as burst_resets_at,
       min(created_at+interval '15 minutes') filter(where user_id=${userId}::uuid and mode='study' and created_at>now()-interval '15 minutes') as chat_resets_at

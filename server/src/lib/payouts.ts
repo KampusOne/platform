@@ -132,6 +132,7 @@ export async function quotePayout(
 export function payoutError(error: unknown): never {
   const message = error instanceof Error ? error.message : "";
   const messages: Record<string, string> = {
+    PAYOUT_FAILURE_ALREADY_RELEASED: 'This failed withdrawal has been returned to your available wallet. Review a new withdrawal instead of retrying its old reference.',
     PAYOUT_REQUEST_CHANGED:
       "This request already belongs to another quote. Refresh before continuing.",
     PAYOUT_QUOTE_UNAVAILABLE:
@@ -174,4 +175,22 @@ export async function reconcilePayout(
     sql`select app_private.record_ledger_transfer(${reference},${proof.amountKobo}::bigint,${proof.feeKobo}::bigint,${proof.recipientCode},${proof.mode},${proof.status},${proof.transferCode},${proof.updatedAt}::timestamptz)`,
   );
   return true;
+}
+
+/** Recover provider results even when a webhook or the user's network was missed. */
+export async function reconcileDuePayouts(env:Bindings){
+  if(!env.PAYSTACK_SECRET_KEY||!await ledgerPayoutsReady(env))return {checked:0};
+  const due=await database(env).execute<{provider_reference:string;university_id:string}>(sql`
+    select s.provider_reference,s.university_id from app_private.agent_payout_settlements s
+    join public.payout_requests p on p.id=s.payout_id
+    where s.initiated_at is not null and s.failure_release_journal_id is null
+      and p.status in('PROCESSING','OTP_REQUIRED','FAILED','REQUIRES_REVIEW')
+      and(s.last_verified_at is null or s.last_verified_at<now()-interval '5 minutes')
+    order by s.last_verified_at nulls first,s.created_at limit 20
+  `);
+  let checked=0;
+  for(const row of due.rows){try{await reconcilePayout(env,row.provider_reference,undefined,row.university_id);checked++;}catch{
+    console.error(JSON.stringify({level:'error',event:'payout.scheduled_verification_unavailable'}));
+  }}
+  return {checked};
 }

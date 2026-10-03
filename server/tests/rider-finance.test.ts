@@ -277,6 +277,8 @@ beforeAll(async () => {
     "20261001185000_scoped_commerce_discounts.sql",
     "20261001185500_material_discounts.sql",
     "20261001195000_delivery_route_positions.sql",
+    "20261003081000_verified_failed_payout_release.sql",
+    "20261003120000_configurable_kira_pricing.sql",
   ])
     await pg.exec(
       readFileSync(
@@ -678,6 +680,7 @@ const syntheticPolicy = {
     flatKobo: 10000,
     flatWaivedBelowKobo: 250000,
     capKobo: 200000,
+    displayRoundKobo: 100,
   },
   checkoutSavings: true,
   allowProcessorSubsidy: false,
@@ -1036,7 +1039,7 @@ describe("approved inclusive store checkout", () => {
         201,
       );
     expect(first.quote.id).toBe(again.quote.id);
-    expect(first.quote.pricing).toEqual({
+    expect(first.quote.pricing).toMatchObject({
       listedItemsKobo: 365500,
       discountKobo: 0,
       fareKobo: 30000,
@@ -1467,7 +1470,7 @@ describe("fixed-price verified Kira monthly access", () => {
       await request("/finance/kira-plans", buyer, "POST", {
         universityId: campus,
         version: "SYNTHETIC_V1",
-        collection: syntheticPolicy.collection,
+        collection: {...syntheticPolicy.collection,displayRoundKobo:undefined},
         sourceUrl: syntheticPolicy.sourceUrl,
         approvalNote: "Synthetic fixture only; no merchant approval.",
       }),
@@ -1717,6 +1720,64 @@ describe("fixed-price verified Kira monthly access", () => {
           Number(r.estimated_processing_kobo) === 19000,
       ),
     ).toBe(true);
+  });
+});
+
+describe('versioned Kira prices and percentage offers', () => {
+  const approve = async (amountKobo: number, discountPercent: number) => json(await request('/finance/kira-plans', buyer, 'POST', {
+    universityId: campus, version: 'SYNTHETIC_OFFER_' + crypto.randomUUID(), amountKobo, discountPercent,
+    collection: syntheticPolicy.collection, sourceUrl: syntheticPolicy.sourceUrl, approvalNote: 'Isolated configurable price fixture; no production price change.',
+  }), 201);
+  it('shows the offer, preserves an older checkout, and prevents a changed total from opening Paystack', async () => {
+    const older = await person(), current = await person();
+    await approve(600000, 0);
+    const oldRequest = crypto.randomUUID();
+    const oldIntent = (await pg.query<{amount_kobo: number}>('select * from app_private.create_kira_checkout($1,$2,$3,$4,$5)', [crypto.randomUUID(),older.user,campus,oldRequest,'SYNTHETIC_OLD_' + crypto.randomUUID()])).rows[0]!;
+    expect(oldIntent.amount_kobo).toBe(600000);
+    const approval = await approve(800000, 25);
+    expect(approval.price).toMatchObject({listedAmountKobo:800000,discountPercent:25,customerPriceKobo:600000,discountKobo:200000});
+    const visible = await json(await request('/ai/subscription', current.user));
+    expect(visible.subscription).toMatchObject({listedAmountKobo:800000,discountPercent:25,amountKobo:600000,checkoutEnabled:true});
+    const previous = await json(await request('/ai/subscription', older.user));
+    expect(previous.subscription.checkout).toMatchObject({listed_amount_kobo:600000,offer_discount_percent:0,amount_kobo:600000});
+    const fetcher = vi.fn(); vi.stubGlobal('fetch',fetcher);
+    const blocked = await request('/ai/subscription-checkout', current.user, 'POST', {requestId:crypto.randomUUID(),consent:true,expectedAmountKobo:800000});
+    expect(blocked.status).toBe(409);
+    expect(fetcher).not.toHaveBeenCalled();
+    const refreshed = await json(await request('/ai/subscription', current.user));
+    expect(refreshed.subscription.checkout.amount_kobo).toBe(600000);
+    await expect(pg.query('update app_private.kira_price_plans set discount_percent=10 where id=$1',[approval.id])).rejects.toThrow(/append-only/);
+    await expect(pg.query('update app_private.kira_checkouts set offer_discount_percent=10 where user_id=$1',[current.user])).rejects.toThrow(/SNAPSHOT_IMMUTABLE/);
+  });
+  it('charges the configured discounted total once and activates the verified paid month', async () => {
+    await approve(1000000, 30);
+    const student = await person(), requestId = crypto.randomUUID();
+    let reference = '';
+    const fetcher = vi.fn(async (_url: string, options?: RequestInit) => {
+      const body = JSON.parse(String(options?.body));
+      expect(body.amount).toBe(700000); expect(body.bearer).toBe('account');
+      reference = body.reference;
+      return Response.json({status:true,data:{authorization_url:'https://checkout.paystack.com/synthetic-offer',access_code:'synthetic-offer',reference}});
+    });
+    vi.stubGlobal('fetch',fetcher);
+    const body = {requestId,consent:true,expectedAmountKobo:700000};
+    const initialized = await json(await request('/ai/subscription-checkout',student.user,'POST',body));
+    expect(initialized.amountKobo).toBe(700000);
+    expect((await json(await request('/ai/subscription-checkout',student.user,'POST',body))).reference).toBe(reference);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect((await pg.query<{result: string}>('select app_private.record_kira_receipt($1,$2,$3,now()) as result',[reference,700000,20500])).rows[0]!.result).toBe('PAID');
+    expect((await pg.query<{result: string}>('select app_private.record_kira_receipt($1,$2,$3,now()) as result',[reference,700000,20500])).rows[0]!.result).toBe('ALREADY_PAID');
+    expect((await json(await request('/ai/status',student.user))).tier).toBe('pro');
+  });
+  it('rejects stacked codes and unauthorized approvals, and discounts a custom price in integer kobo', async () => {
+    const student = await person();
+    expect((await request('/finance/kira-plans',student.user,'POST',{universityId:campus,version:'UNAUTHORIZED',amountKobo:1000000,discountPercent:25,collection:syntheticPolicy.collection,sourceUrl:syntheticPolicy.sourceUrl,approvalNote:'No privileged role assigned.'})).status).toBe(403);
+    expect((await request('/ai/subscription-checkout',student.user,'POST',{requestId:crypto.randomUUID(),consent:true,discountCode:'EXTRA20',expectedAmountKobo:560000})).status).toBe(409);
+    const custom = await approve(100001, 33);
+    expect(custom.price.customerPriceKobo).toBe(67001);
+    const row = (await pg.query<{amount_kobo:number;listed_amount_kobo:number}>('select * from app_private.create_kira_checkout($1,$2,$3,$4,$5)',[crypto.randomUUID(),student.user,campus,crypto.randomUUID(),'SYNTHETIC_CUSTOM_' + crypto.randomUUID()])).rows[0]!;
+    expect(row).toMatchObject({amount_kobo:67001,listed_amount_kobo:100001});
+    await approve(600000, 0);
   });
 });
 
@@ -2417,7 +2478,7 @@ describe("verified agent withdrawals", () => {
     );
     expect(JSON.stringify(proof.rows)).not.toContain("not-stored");
   });
-  it("keeps an uncertain or failed transfer reserved, retries the same reference, and only releases a verified reversal", async () => {
+  it("keeps an uncertain transfer reserved and returns a verified conclusive failure to the wallet once", async () => {
     const f = await payoutFixture("RIDER"),
       p = await preparePayout(f);
     vi.stubGlobal(
@@ -2438,6 +2499,9 @@ describe("verified agent withdrawals", () => {
     ).toBe(503);
     expect(await balance(f.owner, "RIDER_PAYOUT_RESERVED")).toBe(700000);
     expect(await transferProof(p, f, "failed")).toBe("FAILED");
+    expect(await transferProof(p, f, "failed")).toBe("FAILED");
+    expect(await balance(f.owner, "RIDER_AVAILABLE")).toBe(1000000);
+    expect(await balance(f.owner, "RIDER_PAYOUT_RESERVED")).toBe(0);
     expect(
       (
         await request(
@@ -2462,19 +2526,18 @@ describe("verified agent withdrawals", () => {
         )
       ).status,
     ).toBe(409);
-    const transfer = (
-      await pg.query<{ provider_reference: string }>(
-        "select (app_private.prepare_ledger_transfer($1,$2)).*",
-        [p.id, campus],
-      )
-    ).rows[0]!;
-    expect(transfer.provider_reference).toBe(p.provider_reference);
-    expect(await transferProof(p, f, "reversed", 0)).toBe("REVERSED");
-    expect(await transferProof(p, f, "reversed", 0)).toBe("REVERSED");
+    await expect(pg.query("select app_private.prepare_ledger_transfer($1,$2)",[p.id,campus])).rejects.toThrow('PAYOUT_FAILURE_ALREADY_RELEASED');
+    expect(await transferProof(p, f, "reversed", 0)).toBe("FAILED");
+    expect(await transferProof(p, f, "reversed", 0)).toBe("FAILED");
     expect(await balance(f.owner, "RIDER_AVAILABLE")).toBe(1000000);
     expect(await balance(f.owner, "RIDER_PAYOUT_RESERVED")).toBe(0);
     expect(await transferProof(p, f, "success")).toBe("REQUIRES_REVIEW");
     expect(await balance(f.owner, "RIDER_AVAILABLE")).toBe(1000000);
+    const releases=await pg.query<{count:number}>('select count(*)::int count from ledger_transactions where idempotency_key=$1',['payout-failure-release:'+p.provider_reference]);
+    expect(releases.rows[0]!.count).toBe(1);
+    const nextQuote=await payoutQuote(f);
+    const next=await payoutRequest(f,nextQuote);
+    expect(next.saved.id).not.toBe(p.id);
   });
   it("returns unused fee allowance and compensates a paid reversal without changing journals", async () => {
     const f = await payoutFixture("TUTOR", "PAYEE"),

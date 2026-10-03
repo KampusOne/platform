@@ -1855,7 +1855,7 @@ agentRoutes.get("/earnings", async (context) => {
     legacyRecordedStore:storeFinance?firstRow(store):null,
     deliveries: riderFinance??firstRow(deliveries),
     payoutRequests: payoutReady?(await database(context.env).execute(sql`select p.id,p.agent_profile_id,p.amount_kobo,p.status,p.requested_at,p.paid_at,s.bank_net_kobo,s.fee_allowance_kobo,
-     p.financial_version from public.payout_requests p left join app_private.agent_payout_settlements s on s.payout_id=p.id where p.requested_by_user_id=${user.id}::uuid and p.university_id=${user.universityId}::uuid order by p.requested_at desc limit 50`)).rows:payouts.rows,
+     p.financial_version,s.failure_release_journal_id is not null as returned_to_wallet from public.payout_requests p left join app_private.agent_payout_settlements s on s.payout_id=p.id where p.requested_by_user_id=${user.id}::uuid and p.university_id=${user.universityId}::uuid order by p.requested_at desc limit 50`)).rows:payouts.rows,
   });
 });
 
@@ -1917,5 +1917,5 @@ agentRoutes.get('/payouts/:id',async c=>{
  const own=firstRow(await database(c.env).execute<{provider_reference:string}>(sql`select provider_reference from app_private.agent_payout_settlements where payout_id=${id(c.req.param('id'))}::uuid and user_id=${user.id}::uuid and university_id=${user.universityId}::uuid`));
  if(!own)throw new AppError(404,'NOT_FOUND','That withdrawal is not available.');
  await reconcilePayout(c.env,own.provider_reference,user.id,user.universityId);
- return c.json({payout:firstRow(await database(c.env).execute(sql`select p.id,p.status,p.amount_kobo,p.requested_at,p.paid_at,s.bank_net_kobo,s.fee_allowance_kobo from public.payout_requests p join app_private.agent_payout_settlements s on s.payout_id=p.id where p.id=${c.req.param('id')}::uuid`))});
+ return c.json({payout:firstRow(await database(c.env).execute(sql`select p.id,p.status,p.amount_kobo,p.requested_at,p.paid_at,s.bank_net_kobo,s.fee_allowance_kobo,s.failure_release_journal_id is not null as returned_to_wallet from public.payout_requests p join app_private.agent_payout_settlements s on s.payout_id=p.id where p.id=${c.req.param('id')}::uuid`))});
 });

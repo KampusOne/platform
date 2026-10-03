@@ -1,5 +1,6 @@
 import { invalidationTargets, matchesRead, waitForRequest } from "./request-policy";
 import { withRequestDeadline } from "./request-deadline";
+import { withSessionLock } from "./session-lock";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { emitFeatureLifecycle } from "./analytics-bridge";
@@ -336,7 +337,7 @@ async function refreshSession() {
     const restoreOrigin = currentApiUrl();
     const restoreController = new AbortController();
     refreshAbortController = restoreController;
-    refreshPromise = withRequestDeadline(async (signal) => {
+    refreshPromise = withSessionLock(() => withRequestDeadline(async (signal) => {
         const refreshToken = await readRefreshToken();
         // Native sessions live in SecureStore, not browser cookies. A fresh
         // install or signed-out device has nothing to restore over the network.
@@ -354,8 +355,8 @@ async function refreshSession() {
         });
         markApiOriginHealthy(restoreOrigin);
         return parse<Session>(response);
-      }, 12_000, restoreController.signal)
-      .then((session) => session ? securelyAcceptSession(session) : null)
+      }, 12_000, restoreController.signal))
+      .then((session) => session && credentialVersion === versionAtStart ? securelyAcceptSession(session) : session)
       .then((session) => {
         // Do not let an older refresh overwrite a session established while it
         // was in flight (for example, a fresh interactive sign-in).

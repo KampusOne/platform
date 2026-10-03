@@ -1,3 +1,5 @@
+import {AcademicImportUsage} from "@/src/components/academic-import-usage";
+import { BulkMenu, BulkToolbar, SelectionCheckbox, useBulkSelection } from "@/src/components/bulk-selection";
 import { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,7 +10,7 @@ import { router, useFocusEffect } from "expo-router";
 import { ToolField, ToolPage } from "@/src/components/toolkit";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useAppearance, type Theme } from "@/src/lib/appearance";
-import { api } from "@/src/lib/api";
+import { api, ApiError } from "@/src/lib/api";
 import { useAuth } from "@/src/auth/auth-context";
 
 type Event = {
@@ -599,6 +601,7 @@ export default function Calendar() {
     setFormError("");
     setRemoving(null);
     setActionError("");
+    createRequestId.current=randomUUID();
     setEditing(event.id);
   }
 
@@ -646,7 +649,7 @@ export default function Calendar() {
       let backedByServer = false;
       try {
         const result =
-          editing === "new"
+          (editing === "new" || editing.startsWith("local:"))
             ? await api<{ event: Event }>("/v1/calendar", {
                 method: "POST",
                 timeoutMs: 12_000,
@@ -662,7 +665,8 @@ export default function Calendar() {
               });
         saved = result.event;
         backedByServer = true;
-      } catch {
+      } catch (caught) {
+        if (!(caught instanceof ApiError) || !["NETWORK_UNAVAILABLE","REQUEST_TIMEOUT"].includes(caught.code)) throw caught;
         saved = {
           id: editing === "new" ? `local:${randomUUID()}` : editing,
           title,
@@ -745,8 +749,18 @@ export default function Calendar() {
     }
   }
 
+  const selection = useBulkSelection(events.map(event => event.id), async ids => {
+    const remoteIds=ids.filter(id=>!id.startsWith("local:"));
+    if(remoteIds.length) await api("/v1/calendar/bulk-delete",{method:"POST",body:JSON.stringify({ids:remoteIds})});
+    const next=localEvents.current.filter(row=>!ids.includes(row.id));
+    await AsyncStorage.setItem(storageKey,JSON.stringify(next));
+    localEvents.current=next;
+    setEvents(rows=>rows.filter(row=>!ids.includes(row.id)));
+  }, "calendar dates");
   return (
-    <ToolPage title="Academic calendar">
+    <ToolPage title="Academic calendar" action={<BulkMenu selection={selection} />}>
+      <BulkToolbar selection={selection} count={events.length} />
+      <AcademicImportUsage calendar />
       <View style={styles.hero}>
         <View style={styles.heroTop}>
           <View style={styles.heroIcon}>
@@ -957,6 +971,7 @@ export default function Calendar() {
           const badge = dateBadge(event.starts_on);
           return (
             <View key={event.id} style={styles.eventCard}>
+              <SelectionCheckbox selection={selection} id={event.id} />
               <View style={styles.dateBox}>
                 <Text style={styles.dateMonth}>{badge.month}</Text>
                 <Text style={styles.dateDay}>{badge.day}</Text>
@@ -970,6 +985,7 @@ export default function Calendar() {
                 >
                   {event.title}
                 </Text>
+                {localEvents.current.some(row=>row.id===event.id)?<Text style={styles.eventDate}>Saved on this device · edit and save after reconnecting to sync</Text>:null}
                 <Text style={styles.eventDate}>
                   {dateLabel(event.starts_on)}
                   {event.ends_on !== event.starts_on

@@ -47,6 +47,7 @@ type Earnings = {
     requested_at: string;
     financial_version?: string | null;
     bank_net_kobo?: number;
+    returned_to_wallet?: boolean;
   }[];
 };
 const money = (v: unknown) =>
@@ -422,7 +423,7 @@ function AccountEarnings() {
           <ToolRow
             title={money(p.amount_kobo)}
             detail={
-              p.status.replaceAll("_", " ") +
+              (p.returned_to_wallet ? 'Returned to wallet' : p.status.replaceAll("_", " ")) +
               " · " +
               new Date(p.requested_at).toLocaleDateString()
             }
@@ -438,13 +439,13 @@ function AccountEarnings() {
                 disabled={busy}
                 onPress={() => {
                   setBusy(true);
-                  void api<{ payout: { status: string } }>(
+                  void api<{ payout: { status: string;returned_to_wallet?:boolean } }>(
                     `/v1/agents/payouts/${p.id}`,
                   )
                     .then(async (r) => {
                       await load();
                       toast(
-                        `Withdrawal · ${r.payout.status.toLowerCase().replaceAll("_", " ")}`,
+                        r.payout.returned_to_wallet ? 'Your withdrawal was returned to your available wallet.' : `Withdrawal · ${r.payout.status.toLowerCase().replaceAll("_", " ")}`,
                         "info",
                       );
                     })

@@ -38,7 +38,7 @@ import {
 import { ProfileActions } from "@/src/components/profile-actions";
 import { ProfileAvatar } from "@/src/components/profile-avatar";
 import { SkeletonBlock } from "@/src/components/skeleton";
-import { api } from "@/src/lib/api";
+import { api, ApiError } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
 import { messageDestination, messageTextParts } from "@/src/lib/message-links";
@@ -618,6 +618,8 @@ export default function ConversationScreen() {
   const [voiceActive, setVoiceActive] = useState(false);
   const [replyingTo, setReplyingTo] = useState<DraftReply | null>(null);
   const [voiceDraft, setVoiceDraft] = useState<VoiceDraft | null>(null);
+  const [voiceSending,setVoiceSending]=useState(false);
+  const voiceSendPending = useRef(new Set<string>());
   const [draftReady, setDraftReady] = useState(false);
   const [draftWarning, setDraftWarning] = useState("");
   const [draftRetry, setDraftRetry] = useState(0);
@@ -640,7 +642,7 @@ export default function ConversationScreen() {
   useEffect(() => {
     let active = true;
     draftChannel.ready = false;
-    setDraftReady(false); setDraftWarning(""); setData(null); setDraft(""); setSelectedMedia([]); setReplyingTo(null); setVoiceDraft(null); setPendingMedia([]); pending.current = null;
+    setDraftReady(false); setDraftWarning(""); setData(null); setDraft(""); setSelectedMedia([]); setReplyingTo(null); setVoiceDraft(null); setVoiceSending(false); setVoiceActive(false); setSending(false); setPendingMedia([]); pending.current = null;
     if (!user?.id || !id) return;
     void readConversationDraft(user.id, id).then(saved => {
       if (!active) return;
@@ -995,9 +997,9 @@ export default function ConversationScreen() {
   }
 
   async function sendVoice(mediaId: string) {
-    if (sending) throw new Error("Another message is still sending.");
-    setSending(true);
-    setError("");
+    if (sending || voiceSendPending.current.has(scope)) throw new Error("Another message is still sending.");
+    voiceSendPending.current.add(scope);
+    if (activeScope.current === scope) { setSending(true); setError(""); }
     const retainedVoice = draftChannel.value.voice;
     const replyToMessageId = retainedVoice?.messageId ? retainedVoice.replyToMessageId : replyingTo?.id;
     const message = {
@@ -1010,18 +1012,42 @@ export default function ConversationScreen() {
       if (!user?.id || !retainedVoice) throw new Error("Your voice recording could not be saved. Record it again.");
       const nextVoice = { ...retainedVoice, mediaId, messageId: message.id, ...(replyToMessageId ? { replyToMessageId } : {}) };
       draftChannel.value = { ...draftChannel.value, voice: nextVoice };
-      setVoiceDraft(nextVoice);
+      if (activeScope.current === scope) setVoiceDraft(nextVoice);
       await saveConversationDraft(user.id, id, draftChannel.value);
-      await api(`/v1/messages/threads/${id}/messages`, { method: "POST", body: JSON.stringify(message) });
-      setReplyingTo(null);
-      await load();
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+      const result = await api<{ message: Record<string, unknown> }>(`/v1/messages/threads/${id}/messages`, { method: "POST", body: JSON.stringify(message) });
+      // Both the first response and an idempotent retry confirm this message.
+      // Render it immediately; thread refresh and read receipts never delay sending.
+      if (activeScope.current === scope) {
+        const reply = draftChannel.value.reply?.id === replyToMessageId ? draftChannel.value.reply : null;
+        const confirmed = normalizeMessage({
+          ...result.message,
+          id: message.id,
+          sender_id: user.id,
+          created_at: typeof result.message?.created_at === "string" ? result.message.created_at : new Date().toISOString(),
+          media_id: mediaId,
+          media_type: Platform.OS === "web" ? "audio/webm" : "audio/mp4",
+          media_name: "Voice note",
+          reply_to_message_id: replyToMessageId ?? null,
+          reply_sender_id: reply?.sender_id ?? null,
+          reply_body: reply?.body ?? null,
+          reply_media_id: reply?.media_id ?? null,
+          reply_media_type: reply?.media_type ?? null,
+          reply_media_name: reply?.media_name ?? null,
+        });
+        if (confirmed) setData(current => current ? {
+          ...current,
+          messages: [...current.messages.filter(item => item.id !== confirmed.id), confirmed],
+        } : current);
+        setReplyingTo(null);
+        requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+      }
     } catch (caught) {
-      const messageText = caught instanceof Error ? caught.message : "Voice note not sent. Your recording is kept.";
-      setError(messageText);
-      throw caught instanceof Error ? caught : new Error(messageText);
+      const messageText = caught instanceof ApiError ? caught.message : "Voice note not sent. Your recording is kept. Try again.";
+      if (activeScope.current === scope) setError(messageText);
+      throw caught instanceof ApiError ? caught : new Error(messageText);
     } finally {
-      setSending(false);
+      voiceSendPending.current.delete(scope);
+      if (activeScope.current === scope) setSending(false);
     }
   }
 
@@ -1191,12 +1217,18 @@ export default function ConversationScreen() {
   const tutorExpired = data?.thread.kind === "TUTOR" && !data.thread.access_ends_at;
   const canSend = !tutorExpired && (data?.thread.status === "ACCEPTED" || (data?.thread.status === "REQUESTED" && !incoming && data.messages.length === 0));
   const canAttach = data?.thread.status === "ACCEPTED";
-  const locked = sending || actionBusy || messageActionBusy || !draftReady;
+  const locked = sending || voiceSending || actionBusy || messageActionBusy || !draftReady;
   const peerName = data?.profile?.display_name || "Conversation";
   const handleVoiceActive = useCallback((active: boolean) => {
+    if (activeScope.current !== scope) return;
     setVoiceActive(active);
     if (active) Keyboard.dismiss();
-  }, []);
+  }, [scope]);
+  const handleVoiceSending = useCallback((active: boolean) => {
+    if (activeScope.current !== scope) return;
+    setVoiceSending(active);
+    if (active) requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+  }, [scope]);
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.screen}>
@@ -1279,8 +1311,9 @@ export default function ConversationScreen() {
                   <Text style={styles.emptyBody}>Send a message to {peerName}. Keep it clear and respectful.</Text>
                 </View>
               )}
-              ListFooterComponent={pendingMedia.length ? (
+              ListFooterComponent={pendingMedia.length || voiceSending ? (
                 <View style={styles.pendingList}>
+                  {voiceSending&&voiceDraft&&!data?.messages.some(message=>message.id===voiceDraft.messageId)?<View style={{alignSelf:'flex-end',width:240,borderRadius:18,padding:12,backgroundColor:theme.deepBrand}}><VoicePlayback uri={voiceDraft.uri} compact mine/><Text accessibilityLiveRegion="polite" style={{color:'#FFFFFF',fontFamily:theme.font.body,fontSize:11,marginTop:4}}>Sending voice note…</Text></View>:null}
                   {pendingMedia.map((batch) => (
                     <PendingMediaBubble key={batch.id} batch={batch} onRetry={() => void processMediaBatch(batch)} />
                   ))}
@@ -1470,9 +1503,11 @@ export default function ConversationScreen() {
                 ) : null}
                 {canAttach && !draft.trim() && !selectedMedia.length ? (
                   <MessageVoice
+                    key={scope}
                     compact
                     initialDraft={voiceDraft}
                     onDraftChange={handleVoiceDraft}
+                    onSendingChange={handleVoiceSending}
                     disabled={locked}
                     onActiveChange={handleVoiceActive}
                     onReady={async (mediaId) => {

@@ -1,0 +1,37 @@
+.section { display: grid; gap: 1.25rem; margin-block: 1.5rem; min-width: 0; }
+.header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+.header h2 { margin: .2rem 0; }
+.header p { margin: .35rem 0; color: #75695f; }
+.controls { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
+.controls label { display: grid; gap: .35rem; font-size: .8rem; font-weight: 600; }
+.controls input, .controls select { min-height: 42px; padding: .55rem .7rem; border: 1px solid #dfd6cc; border-radius: 8px; background: #fff; color: #2d211b; max-width: 100%; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(145px,1fr)); gap: .8rem; }
+.financeGrid { grid-template-columns: repeat(auto-fit,minmax(205px,1fr)); }
+.financeGrid .metric strong { overflow-wrap: normal; font-size: clamp(1.25rem,1.8vw,1.65rem); }
+.overviewAccent:global(.metric-card.metric-card--accent) { background: #38261d; border-color: #38261d; color: #fff; }
+.chartPanel { min-width: 0; }
+.chartHeader { align-items: flex-start; gap: 1rem; }
+.lineChart:global(.analytics-line-chart) { width: 100%; min-width: 0; }
+.metric { border-top: 2px solid #e2d7ca; padding: .85rem .35rem; display: grid; gap: .35rem; }
+.metric strong { font-size: 1.7rem; line-height: 1.15; color: #38261d; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.metric span { font-size: .78rem; color: #74685c; }
+.metric small { color: #75695f; font-size: .74rem; }
+.charts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.coverage { border-left: 3px solid #b08b69; background: #f7f1e9; padding: .8rem 1rem; color: #766355; font-size: .8rem; line-height: 1.6; }
+.form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.form label { display: grid; gap: .45rem; font-size: .85rem; }
+.form fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
+.form input,.form textarea,.form select { padding: .7rem; width: 100%; min-width: 0; border: 1px solid #ddd2c5; background: #fff; border-radius: 8px; }
+.full { grid-column: 1/-1; }
+.calculator { display: grid; gap: 1rem; background: #f7f1e9; padding: 1.2rem; border-radius: 12px; }
+.calculator output { font-size: 1.8rem; font-weight: 700; color: #714527; font-variant-numeric: tabular-nums; }
+.milestone { position: relative; overflow: hidden; display: flex; gap: 1rem; align-items: center; padding: 1.15rem; margin-bottom: 1rem; border: 1px solid #d7c0a5; background: #f6eadb; border-radius: 12px; }
+.milestone h2 { font-size: 1.1rem; margin: 0 0 .25rem; }
+.milestone p { margin: 0; color: #71563d; }
+.milestone button { margin-left: auto; position: relative; z-index: 1; }
+.celebration { width: 44px; height: 44px; display: grid; place-items: center; flex-shrink: 0; color: #96502f; font-size: 1.7rem; animation: celebrate .7s ease-out both; }
+.confetti { position: absolute; top: -8px; width: 5px; height: 9px; border-radius: 1px; background: #bc754d; pointer-events: none; animation: fall 1.8s ease-in both; }
+@keyframes celebrate { from { transform: scale(.7); opacity: .1; } to { transform: scale(1); opacity: 1; } }
+@keyframes fall { from { transform: translateY(-10px) rotate(0); opacity: 1; } to { transform: translateY(140px) rotate(190deg); opacity: 0; } }
+@media(prefers-reduced-motion:reduce) { .celebration { animation: none; } .confetti { display: none; animation: none; } }
+@media(max-width:650px) { .charts,.form { grid-template-columns: 1fr; } .controls { width: 100%; } .controls label { flex: 1; } .metric strong { font-size: 1.45rem; } .financeGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } .financeGrid .metric strong { font-size: 1.25rem; } .milestone { align-items: start; } .chartHeader { flex-direction: column; align-items: flex-start; } }

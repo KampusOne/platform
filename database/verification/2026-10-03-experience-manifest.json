@@ -1,0 +1,54 @@
+{
+  "createdAt": "2026-10-03",
+  "scope": "Experience fixes; source manifest only. Does not attest production application.",
+  "migrations": [
+    {
+      "version": "20261003080000_push_delivery_reliability",
+      "path": "database/neon/migrations/20261003080000_push_delivery_reliability.sql",
+      "sourceBlobSha": "bc42173fd20bc032241cb6844bc7fff0fd6fe676",
+      "sha256": "9cc59bbe949dfa970fb848b0d4259dea6b26994fedc22bc5554fadb2244f5c5f"
+    },
+    {
+      "version": "20261003081000_verified_failed_payout_release",
+      "path": "database/neon/migrations/20261003081000_verified_failed_payout_release.sql",
+      "sourceBlobSha": "36ac0c15309a3ed00721bde3443fe479372dbcb1",
+      "sha256": "c7346d2d4628d7a23a5f2830bcbc4ae1521aece4d4842dd5e5bde1ba31662607"
+    },
+    {
+      "version": "20261003090000_exclusive_question_intake",
+      "path": "database/neon/migrations/20261003090000_exclusive_question_intake.sql",
+      "sourceBlobSha": "02dfb374132d5c043f4ba9716dcd72041d92e883",
+      "sha256": "803ab8153e7bfeb787689f1f195cf9534f19e1ffb38e2b18fe2919852fdf8d0f"
+    },
+    {
+      "version": "20261003091000_student_groups_and_academic_management",
+      "path": "database/neon/migrations/20261003091000_student_groups_and_academic_management.sql",
+      "sourceBlobSha": "0664ec83cce7caea4301182d0259357eb8310c04",
+      "sha256": "a920f44ac8ff39a6cafec080190e209614877f6272d9fab12adb2afba29e48f3"
+    },
+    {
+      "version": "20261003092000_student_group_notification_queue",
+      "path": "database/neon/migrations/20261003092000_student_group_notification_queue.sql",
+      "sourceBlobSha": "f34304ee2742409f0572b1e512f7cc3d4f43829e",
+      "sha256": "c9868d57e32b52828ab47d3ffbc13b03fa857788afca9e84b04fc62680cc43b4"
+    },
+    {
+      "version": "20261003103000_academic_import_allowance",
+      "path": "database/neon/migrations/20261003103000_academic_import_allowance.sql",
+      "sourceBlobSha": "4e26ab28ac6f6313fac12c4901cb8cddeb932c34",
+      "sha256": "653804cfbcf1d05d148ac8d1f963560c6398e792d46c9cb86953a0d53e94b96b"
+    },
+    {
+      "version": "20261003110000_admin_daily_reports_and_expenses",
+      "path": "database/neon/migrations/20261003110000_admin_daily_reports_and_expenses.sql",
+      "sourceBlobSha": "949d65d688b3c72ba33a43a2d1531ed2ec99be89",
+      "sha256": "204267729ed5f80605e68551d251a7411c14aa85b7efbd10b5f9c63587723c55"
+    },
+    {
+      "version": "20261003120000_configurable_kira_pricing",
+      "path": "database/neon/migrations/20261003120000_configurable_kira_pricing.sql",
+      "sourceBlobSha": "ec144cfe483aa53d0b57e395c9f775f766b8ea62",
+      "sha256": "a1065bc20d96a393be06349f8a4bfdec569322660fa63e54bdcb85f90c3d3d7d"
+    }
+  ]
+}

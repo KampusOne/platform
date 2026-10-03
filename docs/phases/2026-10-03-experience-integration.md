@@ -1,0 +1,54 @@
+# October 3 experience integration
+
+The implementation is in `fix/october-3-experience`. This record describes source changes and local verification; it is not a production deployment receipt.
+
+## Implemented behavior
+
+- Native push devices re-register after token changes, daily refresh or app upgrades. Queued newsletter/community/mention delivery no longer treats missing devices as successful delivery, and retryable provider errors use bounded retries. Preferences and current audience/membership/block/restriction rules are rechecked. Delivery diagnostics distinguish queued, provider-accepted, receipt-confirmed and device-observed states. Phone settings expose build availability and pause status. Android packaging requires a real matching Firebase configuration and EAS project ID.
+- Class reminders use a fifteen-minute lead. Timetable, alarms, grades and calendar screens provide top-right overflow selection, select-all/cancel and a reviewed delete action. Timetable removal also resynchronizes device alarms. GPA transfers flag combined or duplicate course codes instead of inventing credits or grades.
+- Calendar exam intervals are derived per semester, including nearby faculty/GST/CED exam rows. Profile displays the next/current exam window. Exams do not silently advance a student's level: the supplied calendar has two semesters and a later new-session date, so academic progression requires confirmation.
+- Standard imports share five weekly uses, with at most three calendar imports; Pro has thirty shared weekly uses. Reservations are atomic and reset on the Lagos week boundary. Reviewed-save retries consume once. Manual entries and GPA transfers do not consume AI import allowance. Usage and reset dates are shown on import screens.
+- Kira has a separate detailed explanation mode, larger bounded teaching budgets, trusted Pro/owner routing, verified relevant/available YouTube recommendations with a clearly labeled search fallback, accurate current-plan selection and changing progress copy. The glow reference is implemented as a diffuse perimeter wash with reduced-motion handling. A measurable tenfold intelligence improvement is not established by configuration or tests.
+- Full-screen video gives the media the available stage, with playback and social controls below. Replies start closed and appear in a sliding sheet only after the comment action. Voice recordings preupload during preview, retain URI-bound retry metadata, use a smaller speech encoding target, and render confirmed messages after POST without waiting for a thread reload.
+- Any active student can publish an event, sports update or opportunity with its specific date/venue/deadline/link fields and owned photos. These appear in All and category filters and reuse existing like/comment/share/report actions. Registration/application opens the organiser's external website. Drafts survive failures and publish requests are idempotent.
+- Username suggestions rank exact matches first and show identity/avatar; selected mentions open the real profile and create deduplicated inbox/push notices. Hashtag counts are computed from existing visible posts, with exact hashtag matching rather than substring counting.
+- Communities and study groups have distinct creation paths. Community admins publish updates, polls and urgent venue changes; members comment/vote/follow. Study-group posts and member study insights remain membership-scoped. Study start/stop persists elapsed time, supports a countdown and shows daily/weekly/monthly activity.
+- Map retains the warm palette while improving sourced roads/buildings, clustered labels and a single compact From/To drawer. Campus start/destination can be searched or tapped without requiring current location. GPS is optional. Routes use the sourced pedestrian graph, have distinct endpoints and disclose snapped/unverified entrances or disconnected paths. Labels and controls respect the device's safe areas.
+- Normal agent onboarding uses illustrated role choices, structured business/availability/fulfilment options, the official brand, and private documents with real filenames/status/retry. Exclusive asks detailed business questions without documents. Its privileged campaign control disables submissions and causes the URL to return HTTP 404. Invitation ownership, expiry, review and verified-bank requirements remain enforced.
+- Admin has saved daily WAT reports and date selection; charts appear on usage, messages, campaigns and finance workspaces. Finance separates marketplace volume/vendor proceeds/provider costs/platform commission/earned revenue; expenses create balanced append-only incurred-payable journals and an estimate calculator. Milestone messages are acknowledged once per staff/scope and respect reduced motion.
+- Checkout quotes use reviewed fee-inclusive pricing and one exact Paystack digital payable amount. New reviewed pricing policies default to upward ₦100 display increments; existing policies keep their approved behavior. Cash delivery remains separate. Verified conclusively failed transfers return their reservation to the wallet once; uncertain responses do not release funds. Returned references cannot be restarted. Agent/admin interfaces expose the returned state and agent withdrawals use quote/review/confirm.
+- Vendor pickup information is visible, store pickup is the default, personal meeting points require agreement, and vendors can share a verified current pickup position. Existing rider-routing accuracy/expiry contracts govern actual pickup coordinates.
+- Session refresh recovers lost/concurrent responses for a short bounded window and retains credentials on transient network errors. App and portal resume recheck sessions. Suspended accounts avoid repeated restriction redirects, show valid dates and retain logout/support. Restoration queues a service email. Immediate broadcasts start after the send action; scheduling remains optional, preferences remain enforced. A disconnected device has one recovery screen regardless of plan.
+
+## Inspection evidence
+
+All 69 JPG images and both MP4 files in the uploaded `Eee.zip` were inspected. The glow clip's 219 frames and map clip's 86 frames were reviewed, with chronology and design observations. Image reviews distinguish app defects from inspiration, source data and states that cannot be established from a still image. Identity document numbers are not repeated in the review.
+
+The complete per-image/video review is delivered separately to the requester. Repo phase records provide implementation details:
+
+- `2026-10-03-backend-reliability.md`
+- `2026-10-03-academics-communities.md`
+- `2026-10-03-kira.md`
+- `2026-10-03-map-experience.md`
+- `2026-10-03-agent-onboarding.md`
+- `2026-10-03-admin-reports.md`
+- `2026-10-03-voice-transport.md`
+- `2026-10-03-video-lifecycle.md`
+
+## Local verification
+
+The combined server suite passed 616 tests across 70 files. Root regression suite passed 128 tests; contracts passed 10 tests; academic importer passed 6 tests; post-like store passed 10 tests and post-link checks passed 11 tests. Final publishing/mention retry changes also passed their six real-DB integration cases. Type checks pass for server/mobile/portal/contracts. Portal lint and production build pass; mobile web export passes with bounded Metro workers. The map harness validates 19 official MapLibre layers, 3595 sourced features and 96 places plus route, selection, viewport and cache behavior.
+
+The compiled portal was rendered in Chromium at 390 and 1280 widths with explicit local account/upload/report fixtures: normal retained upload/retry, complete Exclusive submission/no documents/disabled404, daily historical reports/CSV, finance expense save/calculation, scope changes, empty/error/retry and reduced-motion milestones. Screenshots were visually inspected; discovered overlap, currency wrapping, chart clipping and feedback loss were corrected. The real map renderer and point-selection bridge were browser tested with sourced campus/route fixtures at 390×844 and 1280×800. The compiled mobile web was also checked at 390 and 1280 widths for sports/opportunity creation, mixed All-feed cards, the creation menu, community/study-group creation and video comments closed/open, with no horizontal overflow or JavaScript page errors. The video was additionally verified using H.264 footage: its element matched the stage at 390×629, time and visible frames advanced, pause worked, and replies opened only on click with a sliding transition. The original HEVC clip is not decodable as video by this Linux Chromium; the H.264 control distinguishes that browser codec limit from application behavior. Kira was captured at three animation phases and under reduced motion: the diffuse perimeter stayed fixed, its centre stayed clear, waiting copy changed, and the glow faded out after the answer. All Kira API requests in that verification were local fixtures. Native devices and production providers were not simulated by these fixture checks.
+
+## Deployment prerequisites
+
+Seven new migrations and exact source hashes are recorded in `database/verification/2026-10-03-experience-manifest.json`. Apply them in order after the existing October baseline on an isolated current-production branch, verify preserved account/media/booking/financial data and private privileges, then record actual promoted production proof. Worker deployment now requires that experience proof; no production proof is fabricated in this checkout.
+
+Native push requires a rebuilt phone app with the real EAS project ID, Android FCM and iOS APNs setup and device permission. Newsletter/community/mention delivery needs acceptance/receipt/observed confirmation on physical phones. Live Kira quality/latency, microphone encoding/latency, campus GPS/entrances, merchant fee policy/checkout and Resend delivery require their own current provider/device checks. No live broadcast, payment, payout, migration or deployment was performed by these source/fixture checks.
+
+## Release access assessment
+
+Read-only live Neon verification found 68 existing ledger versions through the October 1 delivery-route baseline, with matching source hashes. None of the seven October 3 versions or their new schema objects is present. An attempt to create a fresh isolated branch from current production returned HTTP 422, `branches limit exceeded`; no branch was created and no existing branch or production data was modified. A free branch slot or increased allowance is required before rehearsal. The experience production proof remains absent and release remains guarded.
+
+The local source commit is ready for review. Publishing its branch to the public GitHub repository was rejected by automatic approval review because the implementation request did not explicitly authorize public publication of the new source. No remote branch or pull request was created.

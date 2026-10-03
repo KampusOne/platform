@@ -165,12 +165,29 @@ describe("requirements 87–92: persistent sessions and security", () => {
   it("still detects replay of consumed refresh token", async () => {
     const first = await createSession(env, person);
     const next = await rotateSession(env, first.refreshToken);
+    await db.exec("update public.refresh_tokens set revoked_at=now()-interval '61 seconds' where revoked_at is not null");
     await expect(rotateSession(env, first.refreshToken)).rejects.toMatchObject({
       status: 401,
     });
     await expect(rotateSession(env, next.refreshToken)).rejects.toMatchObject({
       status: 401,
     });
+  });
+  it('recovers a lost refresh response within a short grace period without revoking the family',async()=>{
+    const first=await createSession(env,person);
+    const next=await rotateSession(env,first.refreshToken);
+    const recovered=await rotateSession(env,first.refreshToken);
+    expect(recovered.refreshToken).toBe(next.refreshToken);
+    expect(recovered.user.id).toBe(person.id);
+    expect((await rotateSession(env,next.refreshToken)).user.id).toBe(person.id);
+    const active=await db.query<{count:number}>('select count(*)::int count from public.refresh_tokens where revoked_at is null and user_id=$1',[person.id]);
+    expect(active.rows[0]!.count).toBeGreaterThan(0);
+  });
+  it('returns the same successor to concurrent refresh requests',async()=>{
+    const first=await createSession(env,person);
+    const outcomes=await Promise.all([rotateSession(env,first.refreshToken),rotateSession(env,first.refreshToken)]);
+    expect(outcomes[0]!.refreshToken).toBe(outcomes[1]!.refreshToken);
+    expect((await rotateSession(env,outcomes[0]!.refreshToken)).user.id).toBe(person.id);
   });
   it("reports email delivery failure instead of claiming a code was sent", async () => {
     sendMail.mockRejectedValueOnce(

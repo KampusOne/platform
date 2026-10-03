@@ -1,3 +1,5 @@
+import {isSingleCourseCode,courseCodeIdentity,prepareGradePlannerImport} from "@/src/lib/grade-import";
+import { BulkMenu, BulkToolbar, SelectionCheckbox, useBulkSelection } from "@/src/components/bulk-selection";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { ChoiceField } from "@/src/components/choice-field";
 import { useAuth } from "@/src/auth/auth-context";
@@ -145,7 +147,7 @@ export default function GpaScreen() {
     levelCode.trim().length >= 3 &&
     ["1", "2"].includes(semester);
   const canAddCourse =
-    courseCode.trim().length >= 2 &&
+    isSingleCourseCode(courseCode) &&
     courseTitle.trim().length >= 2 &&
     normalizedGrade.length > 0 &&
     normalizedGrade.length <= 3 &&
@@ -177,7 +179,7 @@ export default function GpaScreen() {
     if (!canAddCourse) return;
     const normalizedCode = courseCode.trim().toUpperCase();
     setResults((items) => [
-      ...items.filter((item) => item.courseCode !== normalizedCode),
+      ...items.filter((item) => courseCodeIdentity(item.courseCode) !== courseCodeIdentity(normalizedCode)),
       {
         courseCode: normalizedCode,
         courseTitle: courseTitle.trim(),
@@ -228,60 +230,14 @@ export default function GpaScreen() {
     try {
       const planner = await api<GradePlannerData>("/v1/learning/courses");
       const scale = planner.gradingScale ?? gradingScale;
-      const candidates = (Array.isArray(planner?.courses) ? planner.courses : []).filter((course) => {
-        const numericCourseUnits = Number(course?.units);
-        return (
-          typeof course?.course_code === "string" &&
-          course.course_code.trim().length >= 2 &&
-          typeof course?.title === "string" &&
-          course.title.trim().length > 0 &&
-          typeof course?.grade === "string" &&
-          Boolean(course.grade.trim()) &&
-          Number.isFinite(numericCourseUnits) &&
-          numericCourseUnits > 0
-        );
-      });
-
-      if (!candidates.length) {
-        setImportMessage("Nothing to import.");
-        return;
-      }
-
-      if (!scale) {
-        setImportMessage("Grading scale unavailable.");
-        return;
-      }
-
-      const imported: Result[] = [];
-      let skipped = 0;
-
-      for (const course of candidates) {
-        const normalizedCourseGrade = course.grade!.trim().toUpperCase();
-        const gradePoint = scale[normalizedCourseGrade];
-        if (gradePoint === undefined) {
-          skipped += 1;
-          continue;
-        }
-
-        imported.push({
-          courseCode: course.course_code.trim().toUpperCase(),
-          courseTitle: course.title.trim(),
-          units: Number(course.units),
-          grade: normalizedCourseGrade,
-          gradePoint,
-        });
-      }
-
-      if (!imported.length) {
-        setImportMessage("Nothing to import.");
-        return;
-      }
-
+      if (!scale) { setImportMessage("Grading scale unavailable."); return; }
+      const {rows:imported,warnings}=prepareGradePlannerImport(Array.isArray(planner?.courses)?planner.courses:[],scale);
+      if(!imported.length){setImportMessage(warnings.length?warnings.join("\n"):"Nothing to import.");return;}
       setResults(imported);
       setImportedFromPlanner(true);
       setEditing(true);
       setImportMessage(
-        skipped ? `${skipped} skipped` : "",
+        warnings.length ? `${imported.length} courses imported. Review these rows in Grade Planner:\n${warnings.join("\n")}` : "",
       );
     } catch (caught) {
       setImportMessage(
@@ -308,6 +264,11 @@ export default function GpaScreen() {
     setEditing(true);
   }
 
+  const selection = useBulkSelection([...(data?.terms.map(term => term.id) ?? []), "draft-grades"], async ids => {
+    await api("/v1/student/gpa/bulk-delete", {method:"POST",body:JSON.stringify({ids:ids.filter(id=>id!=="draft-grades"),clearDrafts:ids.includes("draft-grades")})});
+    if(ids.includes("draft-grades")){setResults([]);setImportedFromPlanner(false);}
+    await load();
+  }, "semesters");
   function retry() {
     setLoading(true);
     void load();
@@ -332,7 +293,10 @@ export default function GpaScreen() {
           <Text style={styles.eyebrow}>ACADEMIC RECORD</Text>
           <Text style={styles.pageTitle}>GPA & CGPA</Text>
         </View>
+        <BulkMenu selection={selection} />
       </View>
+      <BulkToolbar selection={selection} count={(data?.terms.length ?? 0)+1} />
+      {selection.active?<View style={{flexDirection:"row",alignItems:"center",gap:8,paddingVertical:12}}><SelectionCheckbox selection={selection} id="draft-grades" /><Text style={{fontFamily:theme.font.body,color:theme.text}}>Course planner and unsaved grades</Text></View>:null}
 
       {loading ? (
         <SummarySkeleton />
@@ -591,7 +555,7 @@ export default function GpaScreen() {
             </Text>
           </View>
           {data.terms.map((term) => (
-            <TermResult key={term.id} term={term} />
+            <View key={term.id}><SelectionCheckbox selection={selection} id={term.id} /><TermResult term={term} /></View>
           ))}
         </View>
       ) : null}

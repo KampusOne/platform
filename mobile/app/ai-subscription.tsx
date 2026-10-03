@@ -7,19 +7,23 @@ import { router, useFocusEffect } from "expo-router";
 import { ToolButton, ToolField, ToolPage } from "@/src/components/toolkit";
 import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
-import { api } from "@/src/lib/api";
+import { api, ApiError } from "@/src/lib/api";
 
 type Checkout = {
   reference: string;
   status: string;
   expires_at: string;
   amount_kobo: number;
+  listed_amount_kobo: number;
+  offer_discount_percent: number;
   request_id: string;
   discount_code: string | null;
 };
 
 type Plan = {
   amountKobo: number;
+  listedAmountKobo: number;
+  discountPercent: number;
   available: boolean;
   checkoutEnabled: boolean;
   complimentary?: boolean;
@@ -37,9 +41,12 @@ type Benefits = {
 };
 
 type StatusResponse = {
+  tier: "standard" | "pro";
+  imports?: { limit:number; used:number; remaining:number };
   subscription: Plan;
   benefits: Benefits;
   proBenefits: Benefits;
+  standardBenefits?: Benefits;
   capabilities?: {
     text?: boolean;
     images?: boolean;
@@ -51,7 +58,8 @@ const money = (value: number) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(value / 100);
 
 const fileSize = (bytes: number) =>
@@ -126,7 +134,10 @@ function AccountSubscription() {
   const { theme } = useAppearance();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [benefits, setBenefits] = useState<Benefits | null>(null);
+  const [standardBenefits, setStandardBenefits] = useState<Benefits | null>(null);
   const [capabilities, setCapabilities] = useState<StatusResponse["capabilities"]>();
+  const [currentTier, setCurrentTier] = useState<"standard"|"pro">("standard");
+  const [importLimit, setImportLimit] = useState(30);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -153,7 +164,10 @@ function AccountSubscription() {
       const result = await api<StatusResponse>("/v1/ai/status", { cache: "no-store" });
       if (!alive.current || turn !== request.current) return;
       setPlan(result.subscription);
-      setBenefits(result.proBenefits);
+      setCurrentTier(result.tier=== "pro" ? "pro" : "standard");
+      setImportLimit(result.tier=== "pro" ? result.imports?.limit??30 : 30);
+      setBenefits(result.subscription.complimentary ? result.benefits : result.proBenefits);
+      setStandardBenefits(result.standardBenefits ?? (result.tier === 'standard' ? result.benefits : null));
       setCapabilities(result.capabilities);
       setError("");
       if (result.subscription.checkout) {
@@ -187,10 +201,12 @@ function AccountSubscription() {
     return () => sub.remove();
   }, [load]);
 
-  const listPrice = plan?.amountKobo ?? 600000;
+  const listPrice = plan?.checkout?.listed_amount_kobo ?? plan?.listedAmountKobo ?? plan?.amountKobo ?? 600000;
+  const offerPrice = plan?.amountKobo ?? 600000;
+  const offerPercent = plan?.checkout?.offer_discount_percent ?? plan?.discountPercent ?? 0;
   const amount =
     plan?.checkout?.amount_kobo ??
-    Math.floor(listPrice * (100 - (discount?.percent ?? 0)) / 100);
+    (offerPercent > 0 ? offerPrice : listPrice - Math.floor(listPrice * (discount?.percent ?? 0) / 100));
 
   async function run(work: () => Promise<void>) {
     if (lock.current) return;
@@ -200,6 +216,7 @@ function AccountSubscription() {
     try {
       await work();
     } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 409) await load();
       if (alive.current)
         setError(
           caught instanceof Error
@@ -259,6 +276,7 @@ function AccountSubscription() {
         body: JSON.stringify({
           requestId: key.current,
           consent: true,
+          expectedAmountKobo: amount,
           discountCode:
             plan.checkout?.discount_code ?? discount?.code ?? "",
         }),
@@ -289,12 +307,14 @@ function AccountSubscription() {
 
   const benefitRows = benefits
     ? [
+        { icon: "cloud-upload-outline" as const, title: `${importLimit} imports each week`, detail: "Shared across calendars, timetables and Kira source files. Manual entries and grades stay free." },
+        { icon: "bulb-outline" as const, title: "More room for detailed reasoning", detail: "Longer teaching answers, worked examples and more conversation context." },
         {
           icon: "sparkles-outline" as const,
           title: benefits.studyLimit
             ? `${benefits.studyLimit} study generations every month`
             : "Unlimited personal study allowance",
-          detail: "Turn class material into summaries, notes and quizzes.",
+          detail: "Turn class material into summaries, detailed lessons, notes and quizzes.",
         },
         {
           icon: "chatbubbles-outline" as const,
@@ -346,6 +366,7 @@ function AccountSubscription() {
     return (
       <ToolPage title="Kira checkout">
         <View style={{ gap: 18, paddingVertical: 14 }}>
+        {plan ? <View accessibilityRole="text" style={{flexDirection:"row",alignItems:"center",gap:8,padding:14,backgroundColor:theme.surfaceMuted,borderRadius:12}}><Ionicons name="checkmark-circle" size={18} color={theme.brand}/><Text style={{color:theme.text,fontFamily:theme.font.semibold}}>Current plan: {currentTier=== "pro" ? "Pro" : "Standard"}</Text></View> : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Back to Kira Pro benefits"
@@ -412,7 +433,7 @@ function AccountSubscription() {
               onPress={() => router.push("/account")}
             />
 
-            {!plan?.checkout ? (
+            {!plan?.checkout && offerPercent === 0 ? (
               <>
                 <ToolField
                   label="Discount code"
@@ -450,7 +471,7 @@ function AccountSubscription() {
               </View>
               {amount < listPrice ? (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
-                  <Text style={muted}>Discount</Text>
+                  <Text style={muted}>{offerPercent ? `${offerPercent}% offer` : discount?.percent ? `${discount.percent}% discount` : "Discount"}</Text>
                   <Text style={{ ...text, color: theme.deepBrand }}>
                     −{money(listPrice - amount)}
                   </Text>
@@ -464,6 +485,7 @@ function AccountSubscription() {
                   {money(amount)}
                 </Text>
               </View>
+              <Text style={muted}>This is the amount you’ll pay in Paystack. Processing is included.</Text>
             </View>
           </View>
 
@@ -516,8 +538,9 @@ function AccountSubscription() {
   }
 
   return (
-    <ToolPage title="Kira Pro">
+    <ToolPage title="Kira plans">
       <View style={{ gap: 18, paddingVertical: 14 }}>
+        {plan ? <View accessibilityRole="text" style={{flexDirection:"row",alignItems:"center",gap:8,padding:14,backgroundColor:theme.surfaceMuted,borderRadius:12}}><Ionicons name="checkmark-circle" size={18} color={theme.brand}/><Text style={{color:theme.text,fontFamily:theme.font.semibold}}>Current plan: {currentTier=== "pro" ? "Pro" : "Standard"}</Text></View> : null}
         <View
           style={{
             borderRadius: 28,
@@ -553,8 +576,14 @@ function AccountSubscription() {
             </Text>
           </View>
           <Text style={{ ...heading, fontSize: 37, lineHeight: 43 }}>
-            {plan?.complimentary ? "Pro is active" : `${money(listPrice)} / month`}
+            {plan?.complimentary ? "Pro is active" : `${money(offerPrice)} / month`}
           </Text>
+          {!plan?.complimentary && (plan?.discountPercent ?? 0) > 0 ? (
+            <View style={{flexDirection:"row",flexWrap:"wrap",gap:10,alignItems:"center"}}>
+              <Text style={{...muted,textDecorationLine:"line-through"}}>{money(plan?.listedAmountKobo ?? listPrice)} / month</Text>
+              <Text style={{color:theme.deepBrand,fontFamily:theme.font.semibold,fontSize:13}}>{plan?.discountPercent}% off</Text>
+            </View>
+          ) : null}
           <Text style={{ ...muted, fontSize: 13.5, lineHeight: 21 }}>
             {plan?.complimentary
               ? "Your KampusOne owner account has complimentary Pro access."
@@ -582,6 +611,32 @@ function AccountSubscription() {
             </View>
           ) : null}
         </View>
+
+        {standardBenefits && benefits ? (
+          <View style={{borderRadius:18,borderWidth:1,borderColor:theme.border,backgroundColor:theme.surface,padding:17,gap:12}}>
+            <Text style={{...heading,fontSize:18}}>Choose your study pace</Text>
+            <View style={{flexDirection:"row",gap:12}}>
+              <View style={{flex:1,gap:6}}>
+                <Text style={{...text,fontFamily:theme.font.semibold}}>Standard{currentTier === 'standard' ? ' · Selected' : ''}</Text>
+                <Text style={muted}>Free</Text>
+                <Text style={muted}>5 imports / week</Text>
+                <Text style={muted}>{standardBenefits.studyLimit} study generations in your trial</Text>
+                <Text style={muted}>{standardBenefits.askMessagesPerWindow} messages / 15 min</Text>
+                <Text style={muted}>{standardBenefits.historyTurns} turns of context</Text>
+                <Text style={muted}>Detailed answers for everyday study</Text>
+              </View>
+              <View style={{flex:1,gap:6,borderLeftWidth:1,borderLeftColor:theme.border,paddingLeft:12}}>
+                <Text style={{...text,fontFamily:theme.font.semibold,color:theme.deepBrand}}>Pro{currentTier === 'pro' ? ' · Selected' : ''}</Text>
+                <Text style={muted}>{plan?.complimentary ? 'Complimentary' : `${money(offerPrice)} / month`}</Text>
+                <Text style={muted}>{importLimit} imports / week</Text>
+                <Text style={muted}>{benefits.studyLimit === null ? 'Unlimited personal study allowance' : `${benefits.studyLimit} study generations / month`}</Text>
+                <Text style={muted}>{benefits.askMessagesPerWindow === null ? 'Unlimited personal Ask Kira allowance' : `${benefits.askMessagesPerWindow} messages / 15 min`}</Text>
+                <Text style={muted}>{benefits.historyTurns} turns of context</Text>
+                <Text style={muted}>Longer lessons and more reasoning space</Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
 
         <View
           style={{

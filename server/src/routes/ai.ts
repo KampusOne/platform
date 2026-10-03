@@ -12,29 +12,31 @@ import { isStudyGeneration, studentAIPolicy, studentAIUsage, studentExperienceRe
 import { extractAIPdf } from "../lib/ai-document";
 import { runStudentAssistant, classDraftSchema, alarmDraftSchema, calendarDraftSchema, type AICard, type AIAction } from "../lib/student-ai-tools";
 import { KAMPUSONE_RESTRICTED_RESPONSE, isRestrictedKampusOneRequest } from "../lib/kampusone-public-context";
+import { academicImportUsage, consumeAcademicImportQuota } from "../lib/ai-quota";
 import { kiraBillingStatus,initializeKira } from '../lib/kira-billing';
 import type { Bindings, Variables } from "../types";
 
 export const aiRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
-const modes = z.enum(["study", "summary", "quiz", "notes", "timetable"]);
+const modes = z.enum(["study", "summary", "explanation", "quiz", "notes", "timetable"]);
 const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
-type Saved = { documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
+type Saved = { failureStatus?: number; failureDetails?: Record<string,unknown>; documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
 }
 function publicResult(id: string, value: Saved) {
-  return { requestId: id, threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], feedback: value.feedback ?? null, ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, events: value.events ?? [], documentType: value.documentType ?? "class_timetable", warnings: value.warnings ?? [] } : {}) };
+  return { requestId: id, ...(Array.isArray(value.entries) ? { importRequestId: id } : {}), threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], feedback: value.feedback ?? null, ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, events: value.events ?? [], documentType: value.documentType ?? "class_timetable", warnings: value.warnings ?? [] } : {}) };
 }
 function replay(row: RequestRow, hash: string) {
   if (row.request_hash !== hash) throw new AppError(409, "CONFLICT", "This request reference belongs to a different draft.", { reason: "AI_REQUEST_CONFLICT" });
   if ((row.result?.version ?? 0) >= 2 && Date.now() - new Date(row.created_at).getTime() > AI_HISTORY_DAYS * 86400000) throw new AppError(410, "NOT_FOUND", "This AI result has expired. Start a new request.", { reason: "AI_EXPIRED", retryWithNewKey: true });
   if (row.result?.deleted) throw new AppError(410, "NOT_FOUND", "This saved result has been deleted.", { reason: "AI_DELETED", retryWithNewKey: true });
   if (row.status === "COMPLETED" && row.result) return publicResult(row.idempotency_key, row.result);
+  if (row.status === "FAILED" && row.result?.failureStatus === 429) throw new AppError(429, "RATE_LIMITED", row.result.message ?? "Your import allowance is used.", row.result.failureDetails);
   if (row.status === "FAILED") throw new AppError(503, "PROVIDER_UNAVAILABLE", row.result?.message ?? "That attempt did not finish. Start a new attempt when ready.", { reason: row.result?.reason ?? "AI_FAILED", retryWithNewKey: true });
-  const stale = Date.now() - new Date(row.created_at).getTime() > 120000;
+  const stale = Date.now() - new Date(row.created_at).getTime() > 300000;
   throw new AppError(409, "CONFLICT", stale ? "That attempt did not finish in time. Your draft is kept; try again." : "This request is still processing. Retry to check the same attempt; do not submit it again.", { reason: stale ? "AI_STALE_REQUEST" : "AI_PROCESSING", retryWithNewKey: stale });
 }
 function providerFailure(error: AIProviderError) {
@@ -49,13 +51,14 @@ function replayTranscription(row: RequestRow, hash: string) {
   if (row.request_hash !== hash) throw new AppError(409, "CONFLICT", "This voice request reference belongs to a different recording.", { reason: "AI_VOICE_REQUEST_CONFLICT", retryWithNewKey: true });
   if (row.status === "COMPLETED" && typeof row.result?.transcriptionText === "string") return { text: row.result.transcriptionText };
   if (row.status === "FAILED") throw new AppError(503, "PROVIDER_UNAVAILABLE", row.result?.message ?? "That transcription did not finish. Your recording is kept; try again.", { reason: row.result?.reason ?? "AI_VOICE_FAILED", retryWithNewKey: true });
-  const stale = Date.now() - new Date(row.created_at).getTime() > 120000;
+  const stale = Date.now() - new Date(row.created_at).getTime() > 300000;
   throw new AppError(409, "CONFLICT", stale ? "That transcription did not finish in time. Your recording is kept; try again." : "This recording is still being transcribed.", { reason: stale ? "AI_VOICE_STALE" : "AI_VOICE_PROCESSING", retryWithNewKey: stale });
 }
 aiRoutes.get("/status", async c => {
   const ready = await studentExperienceReady(c.env);
   const enabled = c.env.AI_ASSISTANT_ENABLED === "true" && ready;
   const quota = await studentAIPolicy(c.env, currentUser(c));
+  const imports = ready ? await academicImportUsage(c.env,currentUser(c),quota.pro) : null;
   const usage = c.env.UNIFIED_SCHEMA_READY === "true" ? await studentAIUsage(c.env, currentUser(c).id) : null;
   // Provider credentials, model IDs and shared/global limits never leave the Worker.
   const askLimit = quota.pro ? 60 : quota.chat;
@@ -66,9 +69,11 @@ aiRoutes.get("/status", async c => {
       images: enabled && providerConfiguration(c.env,"study","image/jpeg").configured,
       documents: enabled && providerConfiguration(c.env,"summary").configured },
     tier: quota.pro ? "pro" : "standard",
+    imports,
     complimentary:quota.complimentary,
     benefits:{historyTurns:quota.pro?12:6,historyDays:AI_HISTORY_DAYS,maxFileBytes:MAX_AI_MEDIA_BYTES,voiceMaxSeconds:maxVoiceSeconds,studyLimit:quota.unlimited?null:quota.pro?100:quota.study,studyPeriod:quota.pro?"month":"trial",askMessagesPerWindow:quota.unlimited?null:askLimit},
     proBenefits:{historyTurns:12,historyDays:AI_HISTORY_DAYS,maxFileBytes:MAX_AI_MEDIA_BYTES,voiceMaxSeconds:speech.longFormConfigured?300:30,studyLimit:100,studyPeriod:"month",askMessagesPerWindow:60},
+    standardBenefits:{historyTurns:6,historyDays:AI_HISTORY_DAYS,maxFileBytes:MAX_AI_MEDIA_BYTES,voiceMaxSeconds:speech.longFormConfigured?60:30,studyLimit:quota.study,studyPeriod:"trial",askMessagesPerWindow:quota.chat},
     voice: { maxSeconds: maxVoiceSeconds, standardMaxSeconds: speech.longFormConfigured ? 60 : 30, proMaxSeconds: speech.longFormConfigured ? 300 : 30, longFormReady: speech.longFormConfigured },
     askSession: {
       windowMinutes: 15,
@@ -82,8 +87,8 @@ aiRoutes.get("/status", async c => {
 });
 aiRoutes.get('/subscription',async c=>c.json({subscription:await kiraBillingStatus(c.env,currentUser(c))}));
 aiRoutes.post('/subscription-checkout',async c=>{
-  const d=await input(c,z.object({requestId:z.string().uuid(),consent:z.literal(true),discountCode:z.string().trim().max(32).default('')}).strict());
-  return c.json(await initializeKira(c.env,currentUser(c),d.requestId,c.get('requestId'),d.discountCode));
+  const d=await input(c,z.object({requestId:z.string().uuid(),consent:z.literal(true),discountCode:z.string().trim().max(32).default(''),expectedAmountKobo:z.number().int().min(10000).max(100000000).optional()}).strict());
+  return c.json(await initializeKira(c.env,currentUser(c),d.requestId,c.get('requestId'),d.discountCode,d.expectedAmountKobo));
 });
 aiRoutes.post("/transcribe", async c => {
   requireSchema(c.env);
@@ -325,8 +330,9 @@ aiRoutes.post("/", async c => {
   const cached = await findRequest();
   if (cached) return c.json(replay(cached, hash));
   const quota = await studentAIPolicy(c.env, u), day = aiDay();
+  const effectiveTier = quota.complimentary ? 'pro' : d.tier;
   if(d.tier==='pro' && !quota.pro) throw new AppError(403,"FORBIDDEN","Pro requires an active monthly plan.",{reason:"AI_PRO_REQUIRED",upgrade:true});
-  try { assertAIConfiguration(c.env,d.mode,undefined,undefined,d.tier); } catch(e) {if(e instanceof AIProviderError)throw providerFailure(e);throw e;}
+  try { assertAIConfiguration(c.env,d.mode,undefined,undefined,effectiveTier); } catch(e) {if(e instanceof AIProviderError)throw providerFailure(e);throw e;}
   const preflight=firstRow(await db.execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('AI_INPUT',${await sha256(u.id)},${quota.unlimited?180:quota.pro?120:60},900,900) as allowed`));
   if(!preflight?.allowed){c.header('Retry-After','900');throw new AppError(429,"RATE_LIMITED","Too many attempts. Your draft is kept; try again shortly.",{reason:"AI_INPUT_LIMIT",resetsAt:new Date(Date.now()+900000).toISOString(),retryAfter:900});}
   let prompt = d.prompt, sourceText = d.prompt, media: AIMedia | undefined, fileName: string | undefined;
@@ -336,7 +342,7 @@ aiRoutes.post("/", async c => {
     const mime = (m.content_type.split(";")[0] ?? "").toLowerCase();
     if (!AI_MIME_TYPES.has(mime)) throw new AppError(400, "BAD_REQUEST", "Use a PDF, JPEG, PNG, WebP or plain-text file for AI.");
     if (m.size_bytes > MAX_AI_MEDIA_BYTES) throw new AppError(413, "BAD_REQUEST", "Use a file smaller than 8 MB, or split it into smaller sections.");
-    try { assertAIConfiguration(c.env, d.mode, mime, undefined,d.tier); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
+    try { assertAIConfiguration(c.env, d.mode, mime, undefined,effectiveTier); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
     const obj = await c.env.PRIVATE_BUCKET.get(m.object_key);
     if (!obj) throw new AppError(404, "NOT_FOUND", "The source file could not be found. Reattach it.");
     if (obj.size > MAX_AI_MEDIA_BYTES) throw new AppError(413, "BAD_REQUEST", "Use a file smaller than 8 MB.");
@@ -368,7 +374,7 @@ aiRoutes.post("/", async c => {
   if (d.mode === "timetable" && d.notes) {
     prompt += (prompt ? "\n\n" : "") + "Student timetable preferences (use these only to filter what is visibly present in the source; never invent a class):\n" + d.notes;
   }
-  try { assertAIConfiguration(c.env, d.mode, media?.mimeType, undefined,d.tier); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
+  try { assertAIConfiguration(c.env, d.mode, media?.mimeType, undefined,effectiveTier); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
   const selectedProvider = selectAIProvider(d.mode, media?.mimeType, d.provider);
   let threadId = d.idempotencyKey;
   const history: AITurn[] = [];
@@ -377,11 +383,11 @@ aiRoutes.post("/", async c => {
     if (!parent || parent.result.deleted) throw new AppError(404, "NOT_FOUND", "The earlier study session is no longer available. Start a new session.");
     if (parent.result.provider !== selectedProvider) throw new AppError(400, "BAD_REQUEST", "Start a new conversation to use the updated AI. Your previous conversation has not been forwarded.", { reason: "AI_PROVIDER_CONTEXT" });
     threadId = parent.result.threadId ?? d.replyTo;
-    const turns = await db.execute<{ prompt: string; text: string }>(sql`select left(coalesce(result->>'prompt',''),1500) as prompt,left(result->>'text',3000) as text from app_private.ai_requests where user_id=${u.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${threadId} and result->>'provider'=${selectedProvider} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc limit ${d.tier==='pro'?12:6}`);
+    const turns = await db.execute<{ prompt: string; text: string }>(sql`select left(coalesce(result->>'prompt',''),1500) as prompt,left(result->>'text',3000) as text from app_private.ai_requests where user_id=${u.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${threadId} and result->>'provider'=${selectedProvider} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc limit ${effectiveTier==='pro'?12:6}`);
     history.push(...turns.rows.reverse());
   }
   if (new TextEncoder().encode(prompt + JSON.stringify(history)).length > 60000) throw new AppError(413, "BAD_REQUEST", "This study context is too long. Use a shorter source or start a new session.");
-  const saved: Saved = { version: 3, tier: d.tier, provider: selectedProvider, prompt: d.prompt, threadId, ...(d.replyTo ? {parentId:d.replyTo} : {}), ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}) };
+  const saved: Saved = { version: 3, tier: effectiveTier, provider: selectedProvider, prompt: d.prompt, threadId, ...(d.replyTo ? {parentId:d.replyTo} : {}), ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}) };
   const client = sqlClient(c.env);
   // The lock is a separate statement: READ COMMITTED obtains a fresh snapshot
   // AFTER any wait. Putting lock + count in one CTE would race on stale snapshots.
@@ -389,15 +395,14 @@ aiRoutes.post("/", async c => {
   // Exempt accounts skip only the personal daily cap, never the shared budget.
   const reservation = await client.transaction([
     client`select pg_advisory_xact_lock(734241)`,
-    client`update app_private.ai_requests set status='FAILED',result=result || '{"reason":"AI_TIMEOUT","message":"This attempt timed out. Your draft is kept."}'::jsonb where user_id=${u.id}::uuid and status='PROCESSING' and created_at<now()-interval '2 minutes'`,
+    client`update app_private.ai_requests set status='FAILED',result=result || '{"reason":"AI_TIMEOUT","message":"This attempt timed out. Your draft is kept."}'::jsonb where user_id=${u.id}::uuid and status='PROCESSING' and created_at<now()-interval '5 minutes'`,
     client`insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,result)
       select ${u.id}::uuid,${d.idempotencyKey}::uuid,${hash},${d.mode},${JSON.stringify(saved)}::jsonb
       where (select count(*) from app_private.ai_requests where created_at>=${day.startsAt}::timestamptz)<${quota.global}
       and (${quota.unlimited}::boolean or (
         (select count(*) from app_private.ai_requests where user_id=${u.id}::uuid and created_at>now()-interval '15 minutes')<${quota.pro ? 90 : 30}
         and (${d.mode!=='study'}::boolean or (select count(*) from app_private.ai_requests where user_id=${u.id}::uuid and mode='study' and created_at>now()-interval '15 minutes')<${quota.pro ? 60 : quota.chat})
-        and (${!isStudyGeneration(d.mode)}::boolean or (select count(*) from app_private.ai_requests where user_id=${u.id}::uuid and mode in ('summary','notes','quiz') and status in ('COMPLETED','PROCESSING') and (not ${quota.pro}::boolean or created_at>=date_trunc('month',now())))<${quota.pro ? 100 : quota.study})
-        and (${d.mode!=='timetable'}::boolean or (select count(*) from app_private.ai_requests where user_id=${u.id}::uuid and mode='timetable' and created_at>=${day.startsAt}::timestamptz)<${quota.user})
+        and (${!isStudyGeneration(d.mode)}::boolean or (select count(*) from app_private.ai_requests where user_id=${u.id}::uuid and mode in ('summary','explanation','notes','quiz') and status in ('COMPLETED','PROCESSING') and (not ${quota.pro}::boolean or created_at>=date_trunc('month',now())))<${quota.pro ? 100 : quota.study})
       )) on conflict do nothing returning idempotency_key`,
   ], { isolationLevel: "ReadCommitted" });
   if (!reservation[2]?.length) {
@@ -405,8 +410,7 @@ aiRoutes.post("/", async c => {
     if (existing) return c.json(replay(existing, hash));
     const usage=await studentAIUsage(c.env,u.id);
     if(Number(usage.total)>=quota.global) throw new AppError(429,"RATE_LIMITED","AI is at capacity for today. Your draft is kept.",{reason:"AI_GLOBAL_LIMIT",resetsAt:day.resetsAt});
-    if(!quota.unlimited && !quota.pro && isStudyGeneration(d.mode) && Number(usage.study_used)>=quota.study) throw new AppError(429,"RATE_LIMITED",`You've used your ${quota.study} study trials. Summary and Notes share the same allowance.`,{reason:"AI_STUDY_LIMIT",upgrade:true});
-    if(!quota.unlimited && d.mode==='timetable' && Number(usage.timetable_used)>=quota.user) throw new AppError(429,"RATE_LIMITED","Today's timetable import allowance is used. You can still add classes manually.",{reason:"AI_TIMETABLE_LIMIT",resetsAt:day.resetsAt});
+    if(!quota.unlimited && !quota.pro && isStudyGeneration(d.mode) && Number(usage.study_used)>=quota.study) throw new AppError(429,"RATE_LIMITED",`You've used your ${quota.study} study trials. Summary, Explanation and Notes share the same allowance.`,{reason:"AI_STUDY_LIMIT",upgrade:true});
     if(!quota.unlimited && quota.pro && isStudyGeneration(d.mode) && Number(usage.month_used)>=100) {const date=new Date();const nextMonth=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,1));throw new AppError(429,"RATE_LIMITED","This month's study allowance is used. Your saved studies remain available.",{reason:"AI_STUDY_MONTH_LIMIT",resetsAt:nextMonth.toISOString()});}
     const resetsAt=d.mode==='study' && Number(usage.chat_used)>=(quota.pro?60:quota.chat) && usage.chat_resets_at ? new Date(usage.chat_resets_at).toISOString() : usage.burst_resets_at ? new Date(usage.burst_resets_at).toISOString() : new Date(Date.now()+15*60000).toISOString();
     const retryAfter=Math.max(1,Math.ceil((Date.parse(resetsAt)-Date.now())/1000));
@@ -415,7 +419,11 @@ aiRoutes.post("/", async c => {
   }
   const job = (async () => {
     try {
-      const aiInput={mode:d.mode,prompt,requestPrompt:d.prompt,history,tier:d.tier,...(media ? {media} : {})};
+      if (d.mode === 'timetable' || d.mediaId) {
+        const kind = d.mode === 'timetable' ? (/calendar|exam period|academic dates/i.test(d.prompt) ? 'calendar' : 'timetable') : media ? 'image' : 'document';
+        await consumeAcademicImportQuota(c.env,u,kind,d.idempotencyKey,quota.pro);
+      }
+      const aiInput={mode:d.mode,prompt,requestPrompt:d.prompt,history,tier:effectiveTier,...(media ? {media} : {})};
       const generated = isRestrictedKampusOneRequest(d.prompt)
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: "huggingface" as const, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'
@@ -444,6 +452,10 @@ aiRoutes.post("/", async c => {
       await db.execute(sql`update app_private.ai_requests set status='COMPLETED',result=${JSON.stringify(result)}::jsonb where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid and status='PROCESSING'`);
       return publicResult(d.idempotencyKey, result);
     } catch (caught) {
+      if (caught instanceof AppError) {
+        await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({ ...saved, failureStatus:caught.status, failureDetails:caught.details, reason: caught.details?.reason ?? 'AI_FAILED', message: caught.message })}::jsonb where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid and status='PROCESSING'`).catch(() => undefined);
+        throw caught;
+      }
       const failure = caught instanceof AIProviderError ? caught : new AIProviderError(503, "AI_SAVE_FAILED", "The AI result could not be saved. Retry this same attempt to check for a saved result before starting another.");
       console.warn(JSON.stringify({ event: "ai.request.failed", requestId: c.get("requestId"), mode: d.mode, reason: failure.reason }));
       // A lost acknowledgement must not overwrite a result already committed.

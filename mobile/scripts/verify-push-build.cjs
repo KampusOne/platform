@@ -1,0 +1,10 @@
+const fs=require('fs');
+const path=require('path');
+const projectId=process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim();
+if(!projectId||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId))throw new Error('Configure a valid Expo project ID before publishing a push-enabled build.');
+const root=path.resolve(__dirname,'..');
+const file=path.resolve(root,process.env.GOOGLE_SERVICES_JSON_PATH||'google-services.json');
+const config=JSON.parse(fs.readFileSync(path.join(root,'app.json'),'utf8')).expo;
+const firebase=JSON.parse(fs.readFileSync(file,'utf8'));
+if(!firebase.project_info?.project_id||!firebase.project_info?.project_number||!firebase.client?.some(client=>client.client_info?.android_client_info?.package_name===config.android.package))throw new Error('Firebase configuration must match the KampusOne Android package.');
+console.log('Expo project and Android Firebase configuration validated.');

@@ -14,6 +14,8 @@ import {
   encryptAgentNin,
   decryptAgentNin,
   type IdentityEnvelope,
+  agentOperationsSchema,
+  agentOperationsDraftSchema,
 } from "../lib/agent-intake";
 import { identityFingerprint } from "../lib/identity-fingerprint";
 import { sha256 } from "../lib/security";
@@ -80,6 +82,8 @@ const schema = agentApplicationSchema.extend({
     .optional(),
   publishContacts: z.boolean().default(false),
   portraitSource: z.enum(["CAMERA", "UPLOAD"]).optional(),
+  operations: agentOperationsSchema.optional(),
+  uploadNames: z.record(z.string().uuid(), z.string().max(255)).optional(),
 });
 const draftId = z.union([z.literal(""), z.string().uuid()]);
 const draftValuesSchema = z
@@ -132,6 +136,8 @@ const draftValuesSchema = z
       .max(8),
     publishContacts: z.boolean(),
     portraitSource: z.enum(["CAMERA", "UPLOAD"]),
+    operations: agentOperationsDraftSchema,
+    uploadNames: z.record(z.string().uuid(), z.string().max(255)),
   })
   .partial();
 function restoredDraft(values: Record<string, unknown>) {
@@ -376,6 +382,8 @@ applicationRoutes.post("/", async (c) => {
     tutorLevels: d.tutorLevels,
     experience: d.experience,
     riderDocumentIds: d.riderDocumentIds,
+    operations: d.operations,
+    uploadNames: d.uploadNames,
     ...(privateReady
       ? {
           intakeVersion: 2,

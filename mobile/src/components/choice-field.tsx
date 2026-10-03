@@ -9,7 +9,7 @@ export function ChoiceField({ label, value, options, onChange, disabled = false 
   const { theme } = useAppearance();
   const [open, setOpen] = useState(false), [query, setQuery] = useState('');
   const selected = options.find(item => item.value === value);
-  return <View style={{ gap: 8, flex: 1 }}>
+  return <View style={{ gap: 8, minWidth: 0, width: '100%' }}>
     <Text style={{ color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 12 }}>{label}</Text>
     <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${selected?.label ?? 'Choose'}`} accessibilityState={{ expanded: open, disabled }} disabled={disabled} onPress={() => { setQuery(''); setOpen(true); }} style={{ minHeight: 48, borderWidth: 1, borderColor: theme.border, borderRadius: 12, backgroundColor: theme.surface, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontFamily: theme.font.body }}>{selected?.label ?? `Choose ${label.toLowerCase()}`}</Text><Ionicons name="chevron-down" size={16} color={theme.textMuted} />

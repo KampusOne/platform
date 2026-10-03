@@ -41,6 +41,7 @@ notificationRoutes.put('/preferences',async c=>{
   channels=notificationChannels(data.channels);
   preferences=notificationPreferences(Object.fromEntries(Object.entries(channels).map(([key,value])=>[key,value.in_app_enabled])));
   preferences.pushMessages=channels.messages.push_enabled;
+  preferences.pushMentions=channels.mentions.push_enabled;
   preferences.pushAnnouncements=channels.announcements.push_enabled;
   preferences.pushNewsletter=channels.newsletter.push_enabled;
   preferences.pushCampusUpdates=channels.campusUpdates.push_enabled;
@@ -63,7 +64,7 @@ notificationRoutes.get('/inbox',async c=>{
   before=parsed.data;
  }
  const actorVisible=unblockedAuthor(user.id,sql`n.actor_user_id`);
- const visible=sql`n.user_id=${user.id}::uuid and (n.institution_id is null or n.institution_id=${user.universityId}::uuid) and ${actorVisible} and coalesce(n.dedupe_key,'') not like 'message:%' and coalesce(n.path,'') not like '/conversation%'`;
+ const visible=sql`n.user_id=${user.id}::uuid and (n.institution_id is null or n.institution_id=${user.universityId}::uuid) and ${actorVisible} and coalesce(n.dedupe_key,'') not like 'message:%' and coalesce(n.path,'') not like '/conversation%' and(coalesce(n.dedupe_key,'') not like 'post-mention:%' or exists(select 1 from public.profiles prefs where prefs.user_id=${user.id}::uuid and coalesce(prefs.settings->'notificationChannels'->'mentions'->>'in_app_enabled',prefs.settings->'notificationPreferences'->>'mentions','true')='true'))`;
  const [result,count]=await Promise.all([
   db.execute<{id:string;title:string;body:string;path:string|null;read_at:string|null;created_at:string;actor_user_id:string|null;actor_name:string|null;actor_profile_image_url:string|null}>(sql`select n.id,n.title,n.body,n.path,n.read_at,n.created_at::text,n.actor_user_id,coalesce(actor.display_name,actor.username) as actor_name,actor.profile_image_url as actor_profile_image_url from public.in_app_notifications n left join public.profiles actor on actor.user_id=n.actor_user_id and actor.deleted_at is null where ${visible} and (${before?.time??null}::timestamptz is null or (n.created_at,n.id)<(${before?.time??null}::timestamptz,${before?.id??null}::uuid)) order by n.created_at desc,n.id desc limit ${limit+1}`),
   db.execute<{unread_count:number}>(sql`select count(*)::int as unread_count from public.in_app_notifications n where ${visible} and n.read_at is null`),
@@ -85,6 +86,28 @@ notificationRoutes.post('/read-all',async c=>{
 notificationRoutes.get('/devices',async c=>{
  const result=await database(c.env).execute(sql`select id,platform,label,build_version,active,created_at,updated_at from app_private.push_devices where user_id=${currentUser(c).id}::uuid order by updated_at desc limit 30`);
  return c.json({devices:result.rows});
+});
+notificationRoutes.get('/delivery-status',async c=>{
+ const user=currentUser(c),db=database(c.env);
+ const [devices,outbox,delivery]=await Promise.all([
+  db.execute(sql`select count(*)::int as registered,count(*) filter(where d.active and exists(select 1 from public.refresh_tokens r where r.family_id=d.session_family_id and r.user_id=d.user_id and r.revoked_at is null and r.expires_at>now()))::int as active from app_private.push_devices d where d.user_id=${user.id}::uuid`),
+  db.execute(sql`select state,last_error_code,count(*)::int as count from app_private.notification_outbox where user_id=${user.id}::uuid and channel='PUSH' and created_at>now()-interval '7 days' group by state,last_error_code`),
+  db.execute(sql`select status,error_code,created_at,checked_at,observed_at from app_private.community_push_deliveries where user_id=${user.id}::uuid order by created_at desc limit 20`),
+ ]);
+ return c.json({devices:firstRow(devices),queue:outbox.rows,deliveries:delivery.rows,policy:await notificationRuntime(c.env,user.universityId),receiptMeaning:'Provider acceptance is separate from delivery to this device.'});
+});
+notificationRoutes.post('/deliveries/:id/observed',async c=>{
+ const result=await database(c.env).execute(sql`update app_private.community_push_deliveries set observed_at=coalesce(observed_at,now()) where id=${id(c.req.param('id'))}::uuid and user_id=${currentUser(c).id}::uuid returning id,observed_at`);
+ if(!firstRow(result))throw new AppError(404,'NOT_FOUND','Notification delivery not found.');
+ return c.json({observation:firstRow(result)});
+});
+notificationRoutes.get('/admin/delivery-status',async c=>{
+ const scope=await resolveAdminScope(c.env,currentUser(c),c.req.query('universityId'),'notifications.test');
+ const [queue,deliveries]=await Promise.all([
+  database(c.env).execute(sql`select o.state,o.last_error_code,count(*)::int as count from app_private.notification_outbox o join public.profiles p on p.user_id=o.user_id where o.channel='PUSH' and o.created_at>now()-interval '7 days' and(${scope}::uuid is null or p.university_id=${scope}::uuid) group by o.state,o.last_error_code`),
+  database(c.env).execute(sql`select status,error_code,count(*)::int as count,count(*) filter(where observed_at is not null)::int observed from app_private.community_push_deliveries where created_at>now()-interval '7 days' and(${scope}::uuid is null or institution_id=${scope}::uuid) group by status,error_code`),
+ ]);
+ return c.json({queue:queue.rows,deliveries:deliveries.rows});
 });
 notificationRoutes.post('/devices',async c=>{
  const u=currentUser(c),data=await input(c,z.object({expoPushToken:z.string().regex(expoTokenPattern),platform:z.enum(['ios','android']),label:z.string().trim().min(1).max(100),buildVersion:z.string().trim().min(1).max(60)}).strict());
@@ -158,7 +181,7 @@ notificationRoutes.post('/alarms/import-timetable',async c=>{
  const results=await client.transaction([
   client`select pg_advisory_xact_lock(hashtextextended(${u.id+'-class-alarms'},0))`,
   client`update public.timetable_entries set reminder_enabled=false,updated_at=now() where user_id=${u.id}::uuid and status<>'ARCHIVED' and reminder_enabled`,
-  client`update public.timetable_entries set reminder_minutes=${data.reminderMinutes},reminder_enabled=true,updated_at=now() where user_id=${u.id}::uuid and status<>'ARCHIVED' and id=any(${data.entryIds}::uuid[]) returning id`
+  client`update public.timetable_entries set reminder_minutes=15,reminder_enabled=true,updated_at=now() where user_id=${u.id}::uuid and status<>'ARCHIVED' and id=any(${data.entryIds}::uuid[]) returning id`
  ]);
  return c.json({imported:(results[2]??[]).length});
 });

@@ -1,3 +1,4 @@
+import {extractExamPeriods} from "../lib/academic-calendar";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { z } from "@kampusone/contracts";
@@ -36,9 +37,13 @@ calendarRoutes.get("/", async (c) => {
     order by starts_on,id
     limit 1000
   `);
-  return c.json({ events: result.rows });
+  return c.json({ events: result.rows, examPeriods: extractExamPeriods(result.rows) });
 });
 
+calendarRoutes.get("/exam-periods", async (c) => {
+  const result=await database(c.env).execute<CalendarRow>(sql`select title,starts_on::text,ends_on::text,semester from public.student_calendar_events where user_id=${currentUser(c).id}::uuid order by starts_on`);
+  return c.json({examPeriods:extractExamPeriods(result.rows),progressionRequiresConfirmation:true});
+});
 calendarRoutes.post("/", async (c) => {
   const user = currentUser(c);
   if (!user.universityId)
@@ -246,6 +251,11 @@ calendarRoutes.post("/import", async (c) => {
   return c.json({ saved: true, count: data.events.length }, 201);
 });
 
+calendarRoutes.post("/bulk-delete", async (c) => {
+  const d=await input(c,z.object({ids:z.array(z.string().uuid()).min(1).max(1000)}).strict());
+  const result=await database(c.env).execute(sql`delete from public.student_calendar_events where user_id=${currentUser(c).id}::uuid and id=any(${sql.param(d.ids)}::uuid[]) returning id`);
+  return c.json({deleted:result.rows.length});
+});
 calendarRoutes.patch("/:id", async (c) => {
   const data = await input(
     c,

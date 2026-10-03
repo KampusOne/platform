@@ -1,3 +1,4 @@
+import { BulkMenu, BulkToolbar, SelectionCheckbox, useBulkSelection } from "@/src/components/bulk-selection";
 import { BrandSwitch } from "@/src/components/brand-switch";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
@@ -592,6 +593,11 @@ export default function Alarms() {
     }, [load]),
   );
 
+  const selection = useBulkSelection(items.map(alarm=>alarm.id), async ids=> {
+    await api("/v1/learning/alarms/bulk-delete",{method:"POST",body:JSON.stringify({ids})});
+    const next=await load();
+    await syncAlarms(next);
+  }, "alarms");
   const nextAlarm = useMemo(() => {
     return items
       .map((alarm) => ({ alarm, date: getAlarmDate(alarm, now) }))
@@ -729,7 +735,7 @@ export default function Alarms() {
             <Ionicons name="arrow-back" size={23} color={theme.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Alarm</Text>
-          <View style={styles.headerIcon} />
+          <BulkMenu selection={selection} />
         </View>
 
         <ScrollView
@@ -737,6 +743,7 @@ export default function Alarms() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
+          <BulkToolbar selection={selection} count={items.length} />
           <View style={styles.nextAlarmBlock}>
             <Text style={styles.nextAlarmText}>
               {durationLabel(nextAlarm?.date ?? null, now)}
@@ -804,13 +811,14 @@ export default function Alarms() {
                   key={alarm.id}
                   accessibilityRole="button"
                   accessibilityLabel={`Edit ${alarm.label}`}
-                  onPress={() => edit(alarm)}
+                  onPress={() => selection.active ? selection.toggle(alarm.id) : edit(alarm)}
                   style={({ pressed }) => [
                     styles.alarmCard,
                     !alarm.enabled && styles.alarmCardDisabled,
                     pressed && styles.alarmCardPressed,
                   ]}
                 >
+                  <SelectionCheckbox selection={selection} id={alarm.id} />
                   <View style={styles.alarmCopy}>
                     <View style={styles.alarmTimeRow}>
                       <Text style={styles.alarmTime}>{shown.clock}</Text>

@@ -1,0 +1,10 @@
+import {Modal,Pressable,Text,View} from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
+import {router} from 'expo-router';
+import {Ionicons} from '@expo/vector-icons';
+import {useAppearance} from '@/src/lib/appearance';
+export function PostCreationMenu({visible,onClose}:{visible:boolean;onClose:()=>void}){
+ const {theme}=useAppearance();
+ const options=[{title:'Post',detail:'Start a conversation',icon:'chatbubble-outline',kind:''},{title:'Event',detail:'Share the venue, date and registration link',icon:'calendar-outline',kind:'EVENT'},{title:'Sports',detail:'Share a match or campus activity',icon:'football-outline',kind:'SPORTS'},{title:'Opportunity',detail:'Share an application link and deadline',icon:'briefcase-outline',kind:'OPPORTUNITY'}] as const;
+ return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={{flex:1,justifyContent:'flex-end',backgroundColor:'rgba(0,0,0,.3)'}}><Pressable accessibilityRole="button" accessibilityLabel="Close post options" onPress={onClose} style={{position:'absolute',inset:0}}/><SafeAreaView edges={['bottom']} style={{backgroundColor:theme.canvas,borderTopLeftRadius:24,borderTopRightRadius:24,padding:20,width:'100%',maxWidth:540,alignSelf:'center'}}><Text accessibilityRole="header" style={{fontFamily:theme.font.display,fontSize:23,color:theme.text,marginBottom:10}}>What would you like to share?</Text>{options.map(option=><Pressable key={option.title} accessibilityRole="button" onPress={()=>{onClose();if(option.kind)router.push({pathname:'/campus-update-create',params:{kind:option.kind}});else router.push('/compose');}} style={{flexDirection:'row',alignItems:'center',gap:14,minHeight:72,borderBottomWidth:1,borderColor:theme.border}}><Ionicons name={option.icon} size={24} color={theme.deepBrand}/><View style={{flex:1,gap:4}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>{option.title}</Text><Text style={{fontFamily:theme.font.body,fontSize:12,color:theme.textMuted}}>{option.detail}</Text></View><Ionicons name="chevron-forward" size={18} color={theme.textMuted}/></Pressable>)}</SafeAreaView></View></Modal>;
+}
