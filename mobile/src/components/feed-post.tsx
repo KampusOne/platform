@@ -195,7 +195,7 @@ function InlinePoll({
     </View>
   );
 }
-export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDeleted, onFeedback, onChanged, onComment, onVideoHandle, videoAutoPlay = false, detail = false }: {
+export const FeedPost = memo(function FeedPost({ post: unsafePost, onBookmark, onShare, onDeleted, onFeedback, onChanged, onComment, onVideoHandle, videoAutoPlay = false, detail = false }: {
   post: SocialFeedPost;
   onBookmark(post: FeedPostData): void;
   onShare(post: FeedPostData): void;
@@ -212,20 +212,21 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
   const screen = analyticsScreenName(pathname);
   const { width } = useWindowDimensions();
   const [replyOpen, setReplyOpen] = useState(false);
-  const category = typeof post.category === "string" ? post.category.toUpperCase() : "UPDATE";
-  const text = getFeedPostText(post);
-  const structured = structuredCategories.has(category);
-  const media = Array.isArray(post.media)
-    ? post.media.filter(
+  const media = Array.isArray(unsafePost.media)
+    ? unsafePost.media.filter(
         (item) =>
           Boolean(item) &&
           typeof item.url === "string" &&
           typeof item.type === "string",
       )
     : [];
+  const post: SocialFeedPost = { ...unsafePost, media };
+  const category = typeof post.category === "string" ? post.category.toUpperCase() : "UPDATE";
+  const text = getFeedPostText(post);
+  const structured = structuredCategories.has(category);
   const videoUrl =
-    media.length === 1 && media[0]?.type?.startsWith("video/")
-      ? media[0].url
+    post.media?.length === 1 && post.media[0]?.type?.startsWith("video/")
+      ? post.media[0].url
       : post.image_url &&
           (post.media_type === "video" || post.media_type?.startsWith("video/"))
         ? post.image_url
@@ -304,7 +305,7 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
         <Pressable accessibilityRole={detail ? undefined : "button"} accessibilityLabel={`Open conversation by ${post.source_name}`} onPress={openPost} style={[styles.postBody, detail && styles.detailBody]}>
           {structured ? <View style={styles.structuredPanel}><Text style={styles.structuredEyebrow}>{category === "EVENT" ? "CAMPUS EVENT" : "CAMPUS OPPORTUNITY"}</Text>{copy}</View> : copy}
           {post.urgent ? <Text style={styles.urgent}>Urgent campus update</Text> : null}
-          {media.length > 1 ? <PostMediaSlider items={media} /> : media.length === 1 ? (media[0]!.type?.startsWith("video/") ? <MediaPreview url={media[0]!.url} video label="Post video" initialAspect={media[0]!.width&&media[0]!.height?media[0]!.width!/media[0]!.height!:undefined} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} {...(post.source_username ? { watermark: post.source_username } : {})} /> : <PostImage initialAspect={media[0]!.width&&media[0]!.height?media[0]!.width!/media[0]!.height!:undefined} uri={media[0]!.url} />) : post.image_url ? (post.media_type === "video" || post.media_type?.startsWith("video/")) ? <MediaPreview url={post.image_url} video label="Post video" initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} {...(post.source_username ? { watermark: post.source_username } : {})} /> : <PostImage initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} uri={post.image_url} /> : null}
+          {post.media && post.media.length > 1 ? <PostMediaSlider items={post.media} /> : post.media?.length === 1 ? (post.media[0]!.type?.startsWith("video/") ? <MediaPreview url={post.media[0]!.url} video label="Post video" initialAspect={post.media[0]!.width&&post.media[0]!.height?post.media[0]!.width!/post.media[0]!.height!:undefined} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} {...(post.source_username ? { watermark: post.source_username } : {})} /> : <PostImage initialAspect={post.media[0]!.width&&post.media[0]!.height?post.media[0]!.width!/post.media[0]!.height!:undefined} uri={post.media[0]!.url} />) : post.image_url ? (post.media_type === "video" || post.media_type?.startsWith("video/")) ? <MediaPreview url={post.image_url} video label="Post video" initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} {...(post.source_username ? { watermark: post.source_username } : {})} /> : <PostImage initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} uri={post.image_url} /> : null}
           {post.publishing?.format === "POLL" ? <InlinePoll post={post} onChanged={onChanged} onFeedback={onFeedback} /> : null}
           {post.quoted_post_id ? <QuotedPostPreview post={post.quoted_post ?? null} /> : null}
           {post.correction_note ? <View accessibilityRole="alert" style={styles.correction}><Ionicons color={theme.statusAttention} name="information-circle-outline" size={17} /><Text style={styles.correctionText}>Correction: {post.correction_note}</Text></View> : null}
