@@ -17,6 +17,7 @@ type VendorDraft = {
   phone: string;
   whatsapp: string;
   birth: string;
+  documentMediaId: string;
   request: string;
 };
 
@@ -30,6 +31,7 @@ const blank: VendorDraft = {
   phone: "",
   whatsapp: "",
   birth: "",
+  documentMediaId: "",
   request: "",
 };
 
@@ -202,6 +204,8 @@ function TrustedVendorForm() {
           "Tell us what the business offers in at least 20 characters.";
     }
     if (currentStep === 2) {
+      if (!draft.documentMediaId)
+        errors.documentMediaId = "Upload one verification document before submitting.";
       if (!authorized) errors.authorized = "Confirm that you represent this business.";
       if (!terms) errors.terms = "Accept the KampusOne agent terms to continue.";
     }
@@ -209,6 +213,48 @@ function TrustedVendorForm() {
     if (Object.keys(errors).length)
       setError("Check the highlighted details below.");
     return Object.keys(errors).length === 0;
+  }
+
+  async function uploadDocument(file?: File) {
+    if (!file || busy) return;
+    if (
+      !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(
+        file.type,
+      )
+    ) {
+      setFieldErrors((current) => ({
+        ...current,
+        documentMediaId: "Choose a JPG, PNG, WebP or PDF.",
+      }));
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setFieldErrors((current) => ({
+        ...current,
+        documentMediaId: "Choose a file smaller than 10 MB.",
+      }));
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const body = new FormData();
+      body.append("kind", "kyc");
+      body.append("file", file);
+      const uploaded = await portalApi<{ id: string }>("/v1/media", {
+        method: "POST",
+        body,
+      });
+      update("documentMediaId", uploaded.id);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Document could not upload. Choose the file to retry.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   function next(event: FormEvent<HTMLFormElement>) {
@@ -236,6 +282,7 @@ function TrustedVendorForm() {
           category: draft.category,
           campus: draft.campus.trim(),
           phone: draft.phone,
+          documentMediaId: draft.documentMediaId,
           ...(whatsappSame
             ? { whatsapp: draft.phone }
             : draft.whatsapp
@@ -537,10 +584,38 @@ function TrustedVendorForm() {
                       <strong>{draft.address}</strong>
                     </div>
                   </div>
+                  <label>
+                    Verification document
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      required={!draft.documentMediaId}
+                      aria-invalid={Boolean(fieldErrors.documentMediaId)}
+                      onChange={(event) =>
+                        void uploadDocument(event.target.files?.[0])
+                      }
+                    />
+                    {draft.documentMediaId ? (
+                      <span className="field-help">
+                        Document uploaded privately.
+                      </span>
+                    ) : (
+                      <span className="field-help">
+                        Upload one supporting document such as student ID,
+                        business proof, CAC document or another official record.
+                        JPG, PNG, WebP or PDF · up to 10 MB.
+                      </span>
+                    )}
+                    {fieldErrors.documentMediaId ? (
+                      <span className="field-error">
+                        {fieldErrors.documentMediaId}
+                      </span>
+                    ) : null}
+                  </label>
                   <p className="exclusive-fast-track-note">
-                    This Exclusive application is reviewed from the information
-                    you provide here. No document upload is required in this
-                    fast track.
+                    Exclusive is still a fast track. Your reviewer will use this
+                    private document together with the information you provide
+                    here to verify the business and authorised contact.
                   </p>
                   <label className="checkbox">
                     <input

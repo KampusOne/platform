@@ -16,6 +16,7 @@ type Row = {
   address: string;
   category: string;
   campus: string;
+  document_media_id: string | null;
   review_note: string | null;
   invitation_reason: string;
 };
@@ -77,6 +78,25 @@ export function TrustedVendorAdmin() {
     }
   }
 
+  async function openDocument(row: Row) {
+    if (!row.document_media_id) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await portalApi<{ url: string }>(
+        "/v1/media/" + row.document_media_id + "/access",
+        { method: "POST" },
+      );
+      window.open(response.url, "_blank", "noopener,noreferrer");
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Document could not open.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function review(event: FormEvent<HTMLFormElement>, row: Row) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -90,6 +110,7 @@ export function TrustedVendorAdmin() {
           decision: data.get("decision"),
           note: data.get("note"),
           verifiedBusinessAndContact: true,
+          verifiedDocuments: true,
         }),
       });
       setVersion((current) => current + 1);
@@ -109,9 +130,9 @@ export function TrustedVendorAdmin() {
       <h2>Invited vendors</h2>
       <p className="field-help">
         Create a seven day Exclusive invitation for one email address.
-        Exclusive is a question based fast track: ordinary document uploads are
-        waived, and the reviewer verifies the business and authorised contact
-        from the submitted details and their own checks.
+        Exclusive is a question based fast track. The applicant must upload one
+        private verification document, and the reviewer checks it together with
+        the business and authorised contact details.
       </p>
 
       {error ? (
@@ -167,9 +188,23 @@ export function TrustedVendorAdmin() {
           <p className="field-help">
             Invitation reason: {row.invitation_reason}
           </p>
-          <p className="field-help">
-            Exclusive fast track: no applicant document upload required.
-          </p>
+          <div className="form-actions">
+            <span className="field-help">
+              Exclusive fast track · private verification document required.
+            </span>
+            {row.document_media_id ? (
+              <button
+                type="button"
+                className="button button--secondary"
+                disabled={busy}
+                onClick={() => void openDocument(row)}
+              >
+                Open verification document
+              </button>
+            ) : (
+              <span className="form-error">Verification document missing.</span>
+            )}
+          </div>
 
           {row.review_note ? <p>Reviewer note: {row.review_note}</p> : null}
 
@@ -197,8 +232,9 @@ export function TrustedVendorAdmin() {
               </label>
               <label className="consent-row">
                 <input type="checkbox" required />
-                I verified the business and the authorised adult contact using
-                the submitted details and appropriate reviewer checks.
+                I reviewed the uploaded verification document and verified the
+                business and authorised adult contact using the submitted
+                details and appropriate reviewer checks.
               </label>
               <button className="button button--primary" disabled={busy}>
                 Save review
