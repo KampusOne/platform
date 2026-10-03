@@ -6,7 +6,7 @@ import { MediaImage } from "./media-image";
 import { SkeletonBlock } from "./skeleton";
 export function AttachmentPreview({file,uploading=false,onRemove,onOpen}:{file:StagedAttachment;uploading?:boolean;onRemove?:()=>void;onOpen?:()=>void}) {
   const {theme}=useAppearance();
-  const fileName=typeof file?.name==="string"&&fileName?fileName:"Attachment";
+  const fileName=typeof file?.name==="string"&&file.name?file.name:"Attachment";
   const fileType=typeof file?.type==="string"?file.type:"application/octet-stream";
   const fileUri=typeof file?.uri==="string"?file.uri:undefined;
   const fileSize=Number(file?.size);
