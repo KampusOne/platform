@@ -29,6 +29,28 @@ type Thread = {
   status: string;
 };
 type Inbox = { threads: Thread[]; nextCursor: string | null };
+function normalizeThreads(value: unknown): Thread[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const raw = item as Record<string, unknown>;
+    if (typeof raw.id !== "string" || !raw.id) return [];
+    return [{
+      id: raw.id,
+      display_name:
+        typeof raw.display_name === "string" && raw.display_name.trim()
+          ? raw.display_name
+          : "KampusOne user",
+      profile_image_url:
+        typeof raw.profile_image_url === "string" ? raw.profile_image_url : null,
+      last_message:
+        typeof raw.last_message === "string" ? raw.last_message : null,
+      unread_count: Math.max(0, Math.trunc(Number(raw.unread_count) || 0)),
+      updated_at: typeof raw.updated_at === "string" ? raw.updated_at : "",
+      status: typeof raw.status === "string" ? raw.status : "ACTIVE",
+    } satisfies Thread];
+  });
+}
 const filters = ["All", "Unread", "Requests", "Tutor", "Vendor", "Rider"] as const;
 type Filter = (typeof filters)[number];
 
@@ -97,12 +119,13 @@ export default function MessagesScreen() {
     try {
       const r = await api<Inbox>(`/v1/messages/inbox?filter=${filter}${before ? `&before=${encodeURIComponent(before)}` : ""}`);
       if (version !== epoch.current) return;
+      const incoming = normalizeThreads(r?.threads);
       setThreads((current) =>
         before
-          ? [...current, ...r.threads.filter((thread) => !current.some((old) => old.id === thread.id))]
-          : r.threads,
+          ? [...current, ...incoming.filter((thread) => !current.some((old) => old.id === thread.id))]
+          : incoming,
       );
-      setCursor(r.nextCursor);
+      setCursor(typeof r?.nextCursor === "string" ? r.nextCursor : null);
       setError("");
       paged.current = Boolean(before);
     } catch (caught) {

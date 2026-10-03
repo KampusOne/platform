@@ -25,12 +25,68 @@ export type Alarm = {
   lecturer?: string | null;
   reminder_minutes?: number | null;
 };
+export function normalizeAlarm(value: unknown): Alarm | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== "string" || !raw.id) return null;
+  const alarmDays = Array.isArray(raw.days)
+    ? raw.days
+        .map(Number)
+        .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+    : [];
+  const rawSound = typeof raw.sound === "string" ? raw.sound : "default";
+  const sound: Alarm["sound"] =
+    rawSound === "silent" || rawSound === "default" || rawSound.startsWith("media:")
+      ? (rawSound as Alarm["sound"])
+      : "default";
+  const time =
+    typeof raw.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(raw.time)
+      ? raw.time
+      : "08:00";
+  const snooze = Number(raw.snooze_minutes);
+  return {
+    id: raw.id,
+    label:
+      typeof raw.label === "string" && raw.label.trim() ? raw.label : "Alarm",
+    time,
+    days: Array.from(new Set(alarmDays)),
+    enabled: raw.enabled !== false,
+    sound,
+    sound_name: typeof raw.sound_name === "string" ? raw.sound_name : null,
+    sound_url: typeof raw.sound_url === "string" ? raw.sound_url : null,
+    vibration: raw.vibration !== false,
+    snooze_minutes: Number.isFinite(snooze)
+      ? Math.max(1, Math.min(30, Math.trunc(snooze)))
+      : 5,
+    timetable_entry_id:
+      typeof raw.timetable_entry_id === "string" ? raw.timetable_entry_id : null,
+    fires_at: typeof raw.fires_at === "string" ? raw.fires_at : null,
+    course_code: typeof raw.course_code === "string" ? raw.course_code : null,
+    course_title: typeof raw.course_title === "string" ? raw.course_title : null,
+    class_starts_at:
+      typeof raw.class_starts_at === "string" ? raw.class_starts_at : null,
+    class_ends_at:
+      typeof raw.class_ends_at === "string" ? raw.class_ends_at : null,
+    venue: typeof raw.venue === "string" ? raw.venue : null,
+    lecturer: typeof raw.lecturer === "string" ? raw.lecturer : null,
+    reminder_minutes: Number.isFinite(Number(raw.reminder_minutes))
+      ? Number(raw.reminder_minutes)
+      : null,
+  };
+}
+export function normalizeAlarms(value: unknown): Alarm[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(normalizeAlarm)
+    .filter((alarm): alarm is Alarm => Boolean(alarm));
+}
 let queue: Promise<unknown> = Promise.resolve();
 export async function syncAlarms(
   alarms: Alarm[],
   requestPermission = false,
 ): Promise<boolean> {
-  try{const runtime=await api<{policy:{alarms_enabled:boolean}}>("/v1/notifications/runtime");if(!runtime.policy.alarms_enabled)alarms=alarms.map(alarm=>({...alarm,enabled:false}));}catch{/* Keep the last known local schedule available offline. */}
+  alarms = normalizeAlarms(alarms);
+  try{const runtime=await api<{policy:{alarms_enabled:boolean}}>("/v1/notifications/runtime");if(runtime?.policy?.alarms_enabled===false)alarms=alarms.map(alarm=>({...alarm,enabled:false}));}catch{/* Keep the last known local schedule available offline. */}
   if (Platform.OS === "web") return syncWebAlarms(alarms, requestPermission);
   const operation = queue
     .catch(() => undefined)

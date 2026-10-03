@@ -2,7 +2,7 @@
   "expo": {
     "name": "KampusOne",
     "slug": "kampusone",
-    "version": "0.3.14",
+    "version": "0.3.15",
     "orientation": "portrait",
     "icon": "./assets/kampusone-app-icon.jpg",
     "scheme": "kampusone",
@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.kampusone.mobile",
       "associatedDomains": ["applinks:links.kampusone.app"],
-      "buildNumber": "44"
+      "buildNumber": "45"
     },
     "android": {
       "adaptiveIcon": {
@@ -34,7 +34,7 @@
         "android.permission.ACCESS_FINE_LOCATION"
       ],
       "softwareKeyboardLayoutMode": "pan",
-      "versionCode": 44
+      "versionCode": 45
     },
     "web": {
       "bundler": "metro",

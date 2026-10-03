@@ -199,8 +199,9 @@ function MathBlock({ value }: { value: string }) {
 }
 
 /** Text formatting and validated HTTP(S) links; never render model HTML. */
-export function StudyAnswer({ value }: { value: string }) {
+export function StudyAnswer({ value }: { value?: string | null }) {
   const { theme } = useAppearance();
+  const answer = typeof value === "string" ? value : "";
   const toast = useToast();
   const base = { fontFamily: theme.font.body, color: theme.text, fontSize: 16, lineHeight: 27 };
   const links = (text: string) => postTokens(text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2')).map((token,index) => token.kind === 'link' ? <Text key={index} accessibilityRole="link" style={{color:theme.accentText,textDecorationLine:'underline'}} onPress={()=>void Linking.openURL(token.target!).catch(()=>toast('This link could not open.','error'))}>{token.text}</Text> : token.text);
@@ -255,7 +256,7 @@ export function StudyAnswer({ value }: { value: string }) {
     math = null;
   };
 
-  for (const [index, line] of value.split("\n").entries()) {
+  for (const [index, line] of answer.split("\n").entries()) {
     const trimmed = line.trim();
 
     if (line.startsWith(codeFence)) {

@@ -2,7 +2,7 @@ import { BrandSwitch } from "@/src/components/brand-switch";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
 import { api } from "@/src/lib/api";
-import { syncAlarms, type Alarm } from "@/src/lib/alarms";
+import { normalizeAlarms, syncAlarms, type Alarm } from "@/src/lib/alarms";
 import { useAppearance, type Theme } from "@/src/lib/appearance";
 import { selectionAsync } from "@/src/lib/haptics";
 import { pickAndUpload } from "@/src/lib/uploads";
@@ -569,15 +569,16 @@ export default function Alarms() {
   const load = useCallback(async () => {
     setLoadError("");
     const response = await api<{ alarms: Alarm[] }>("/v1/learning/alarms");
-    setItems(response.alarms);
+    const safeAlarms = normalizeAlarms(response?.alarms);
+    setItems(safeAlarms);
     try {
       const soundResponse = await api<{ sounds: AlarmSoundOption[] }>("/v1/learning/alarm-sounds");
-      setSounds(soundResponse.sounds);
+      setSounds(Array.isArray(soundResponse?.sounds) ? soundResponse.sounds.filter((item) => Boolean(item && typeof item.id === "string" && typeof item.name === "string")) : []);
     } catch {
       setSounds([]);
     }
     setReady(true);
-    return response.alarms;
+    return safeAlarms;
   }, []);
 
   useFocusEffect(
@@ -684,7 +685,7 @@ export default function Alarms() {
       const uploaded = await pickAndUpload("notification-sound");
       if (!uploaded) return;
       const soundResponse = await api<{ sounds: AlarmSoundOption[] }>("/v1/learning/alarm-sounds");
-      setSounds(soundResponse.sounds);
+      setSounds(Array.isArray(soundResponse?.sounds) ? soundResponse.sounds.filter((item) => Boolean(item && typeof item.id === "string" && typeof item.name === "string")) : []);
       setSound(`media:${uploaded.id}` as Alarm["sound"]);
       setSoundOpen(true);
       toast("Alarm sound uploaded", "success");

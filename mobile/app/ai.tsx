@@ -34,6 +34,200 @@ type SavedWork={id:string;title:string;mode:Mode;created_at:string};
 const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const suggestions=[{icon:"book-outline" as const,label:"Explain a topic",prompt:"Help me understand "},{icon:"calendar-outline" as const,label:"Plan my classes",prompt:"Help me add a class to my timetable."},{icon:"alarm-outline" as const,label:"Set a reminder",prompt:"Set an alarm to remind me "},{icon:"people-outline" as const,label:"Find a tutor",prompt:"Help me find a tutor for "}];
 
+function recordOf(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+function finite(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+function nullableFinite(value: unknown, fallback: number | null = null) {
+  if (value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+function normalizeStatus(value: unknown): Status | undefined {
+  const raw = recordOf(value);
+  if (!raw) return undefined;
+  const capabilities = recordOf(raw.capabilities);
+  const voice = recordOf(raw.voice);
+  const ask = recordOf(raw.askSession);
+  const study = recordOf(raw.study);
+  const subscription = recordOf(raw.subscription);
+  return {
+    enabled: raw.enabled === true,
+    voiceEnabled: raw.voiceEnabled === true,
+    capabilities: {
+      text: capabilities?.text === true,
+      images: capabilities?.images === true,
+      documents: capabilities?.documents === true,
+    },
+    tier: raw.tier === "pro" ? "pro" : "standard",
+    ...(voice
+      ? {
+          voice: {
+            maxSeconds: Math.max(1, finite(voice.maxSeconds, 60)),
+            standardMaxSeconds: Math.max(1, finite(voice.standardMaxSeconds, 60)),
+            proMaxSeconds: Math.max(1, finite(voice.proMaxSeconds, 300)),
+            longFormReady: voice.longFormReady !== false,
+          },
+        }
+      : {}),
+    ...(ask
+      ? {
+          askSession: {
+            windowMinutes: Math.max(1, finite(ask.windowMinutes, 15)),
+            limit: nullableFinite(ask.limit),
+            remaining: nullableFinite(ask.remaining),
+            resetsAt: typeof ask.resetsAt === "string" ? ask.resetsAt : null,
+          },
+        }
+      : {}),
+    study: {
+      limit: Math.max(0, finite(study?.limit, 0)),
+      remaining: nullableFinite(study?.remaining),
+    },
+    subscription: {
+      checkoutEnabled: subscription?.checkoutEnabled === true,
+    },
+  };
+}
+function normalizeCards(value: unknown): Card[] {
+  if (!Array.isArray(value)) return [];
+  const output: Card[] = [];
+  for (const item of value) {
+    const raw = recordOf(item);
+    if (!raw || typeof raw.id !== "string") continue;
+    if (!["product", "vendor", "tutor", "video"].includes(String(raw.kind))) continue;
+    output.push({
+      id: raw.id,
+      kind: raw.kind as Card["kind"],
+      title: typeof raw.title === "string" ? raw.title : "KampusOne",
+      subtitle: typeof raw.subtitle === "string" ? raw.subtitle : "",
+      path: typeof raw.path === "string" ? raw.path : "",
+      ...(typeof raw.thumbnail === "string" ? { thumbnail: raw.thumbnail } : {}),
+      ...(typeof raw.description === "string" ? { description: raw.description } : {}),
+      ...(typeof raw.source === "string" ? { source: raw.source } : {}),
+    });
+  }
+  return output;
+}
+function normalizeActions(value: unknown): Action[] {
+  if (!Array.isArray(value)) return [];
+  const output: Action[] = [];
+  for (const item of value) {
+    const raw = recordOf(item);
+    if (!raw || typeof raw.id !== "string") continue;
+    const state = {
+      id: raw.id,
+      ...(raw.confirmed === true ? { confirmed: true } : {}),
+      ...(raw.undone === true ? { undone: true } : {}),
+    };
+    if (raw.type === "alarm") {
+      const alarm = recordOf(raw.alarm);
+      if (!alarm) continue;
+      const alarmDays = Array.isArray(alarm.days)
+        ? alarm.days
+            .map(Number)
+            .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+        : [];
+      output.push({
+        ...state,
+        type: "alarm",
+        alarm: {
+          label: typeof alarm.label === "string" ? alarm.label : "Alarm",
+          time: typeof alarm.time === "string" ? alarm.time : "08:00",
+          days: Array.from(new Set(alarmDays)),
+          ...(typeof alarm.firesAt === "string" || alarm.firesAt === null
+            ? { firesAt: alarm.firesAt as string | null }
+            : {}),
+          sound: alarm.sound === "silent" ? "silent" : "default",
+          vibration: alarm.vibration !== false,
+          snoozeMinutes: Math.max(1, Math.min(30, finite(alarm.snoozeMinutes, 5))),
+        },
+      });
+      continue;
+    }
+    if (raw.type === "timetable") {
+      const entry = recordOf(raw.entry);
+      if (!entry || typeof entry.title !== "string") continue;
+      output.push({
+        ...state,
+        type: "timetable",
+        entry: {
+          title: entry.title,
+          ...(typeof entry.courseCode === "string" ? { courseCode: entry.courseCode } : {}),
+          ...(typeof entry.venue === "string" ? { venue: entry.venue } : {}),
+          dayOfWeek: Math.max(0, Math.min(6, Math.trunc(finite(entry.dayOfWeek, 1)))),
+          ...(typeof entry.date === "string" ? { date: entry.date } : {}),
+          startsAt: typeof entry.startsAt === "string" ? entry.startsAt : "09:00",
+          endsAt: typeof entry.endsAt === "string" ? entry.endsAt : "10:00",
+        },
+        ...(raw.operation === "update" ? { operation: "update" as const } : {}),
+        ...(typeof raw.entryId === "string" ? { entryId: raw.entryId } : {}),
+      });
+      continue;
+    }
+    if (raw.type === "calendar") {
+      const event = recordOf(raw.event);
+      if (!event || typeof event.title !== "string") continue;
+      output.push({
+        ...state,
+        type: "calendar",
+        event: {
+          title: event.title,
+          startsOn: typeof event.startsOn === "string" ? event.startsOn : "",
+          endsOn: typeof event.endsOn === "string" ? event.endsOn : "",
+          ...(typeof event.semester === "string" ? { semester: event.semester } : {}),
+        },
+      });
+    }
+  }
+  return output;
+}
+function normalizeTurn(value: unknown, fallbackId?: string): Turn | null {
+  const raw = recordOf(value);
+  if (!raw) return null;
+  const requestId =
+    typeof raw.requestId === "string" && raw.requestId
+      ? raw.requestId
+      : fallbackId;
+  if (!requestId) return null;
+  const feedback = recordOf(raw.feedback);
+  const rating =
+    feedback?.rating === "like" || feedback?.rating === "dislike"
+      ? feedback.rating
+      : null;
+  return {
+    requestId,
+    text: typeof raw.text === "string" ? raw.text : "",
+    ...(typeof raw.prompt === "string" ? { prompt: raw.prompt } : {}),
+    ...(typeof raw.fileName === "string" ? { fileName: raw.fileName } : {}),
+    ...(typeof raw.mediaId === "string" ? { mediaId: raw.mediaId } : {}),
+    ...(raw.mode === "study" || raw.mode === "summary" || raw.mode === "notes" || raw.mode === "quiz"
+      ? { mode: raw.mode }
+      : {}),
+    cards: normalizeCards(raw.cards),
+    actions: normalizeActions(raw.actions),
+    feedback: rating ? { rating } : null,
+  };
+}
+function normalizeSavedWork(value: unknown): SavedWork[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const raw = recordOf(item);
+    if (!raw || typeof raw.id !== "string") return [];
+    return [{
+      id: raw.id,
+      title: typeof raw.title === "string" && raw.title.trim() ? raw.title : "Saved conversation",
+      mode: raw.mode === "summary" || raw.mode === "notes" ? raw.mode : "study",
+      created_at: typeof raw.created_at === "string" ? raw.created_at : "",
+    } satisfies SavedWork];
+  });
+}
+
 export default function StudentAI() {
   const {mode:initial,history:openHistoryParam}=useLocalSearchParams<{mode?:string;history?:string}>();
   const {user,profile}=useAuth();const {theme}=useAppearance();const toast=useToast();
@@ -64,12 +258,15 @@ export default function StudentAI() {
   const storageKey=`ai-workspace-v3.${user?.id}.${workspace}`;
   const valid=()=>alive.current;
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;};},[]);
-  const loadStatus=useCallback(async()=>{const account=owner.current;try{const result=await api<Status>("/v1/ai/status");if(valid() && owner.current===account){setStatus(result);if(!tierChosen.current||result.tier!=="pro")setTier(result.tier);}}catch{if(valid() && owner.current===account)setStatus(undefined);}},[]);
+  const loadStatus=useCallback(async()=>{const account=owner.current;try{const result=normalizeStatus(await api<Status>("/v1/ai/status"));if(valid() && owner.current===account){setStatus(result);if(result && (!tierChosen.current||result.tier!=="pro"))setTier(result.tier);}}catch{if(valid() && owner.current===account)setStatus(undefined);}},[]);
   useFocusEffect(useCallback(()=>{void loadStatus();},[loadStatus]));
   const restoreThread=useCallback(async(id:string,version:number)=>{
     const result=await api<{turns:Turn[]}>(`/v1/ai/thread/${id}`);
-    if(valid() && version===generation.current)setTurns(result.turns);
-    return result;
+    const safeTurns=(Array.isArray(result?.turns)?result.turns:[])
+      .map(turn=>normalizeTurn(turn))
+      .filter((turn):turn is Turn=>Boolean(turn));
+    if(valid() && version===generation.current)setTurns(safeTurns);
+    return {turns:safeTurns};
   },[]);
   useEffect(()=>{
     const version=++generation.current;const account=user?.id;draftOwner.current=account;
@@ -90,7 +287,7 @@ export default function StudentAI() {
         if(draft){
           setPrompt(draft.prompt??"");
           setMode(workspace==='ask'?'study':draft.mode==='notes'?'notes':'summary');
-          setAttachment(draft.attachment);
+          setAttachment(draft.attachment && typeof draft.attachment.name==="string" && typeof draft.attachment.type==="string" ? draft.attachment : undefined);
           // A fresh Kira entry always starts a fresh thread. Saved conversations reopen only from History.
           setReplyTo(undefined);key.current=draft.key||randomUUID();
         }
@@ -113,7 +310,7 @@ export default function StudentAI() {
   function changePrompt(value:string){setPrompt(value);key.current=randomUUID();setError("");}
   function newConversation(){if(lock.current)return;setTurns([]);setReplyTo(undefined);setPrompt("");setAttachment(undefined);setError("");key.current=randomUUID();}
   async function attach(){if(lock.current)return;const version=generation.current;try{const file=await pickAttachment();if(file && valid()&&version===generation.current){setAttachment(file);setError("");key.current=randomUUID();}}catch(e){if(valid()&&version===generation.current)setError(e instanceof Error?e.message:"This file could not be attached.");}}
-  async function openFile(file:StagedAttachment){const version=generation.current;try{let uri=file.uri;if(!uri&&file.mediaId)uri=(await api<{url:string}>(`/v1/media/${file.mediaId}/access`,{method:"POST"})).url;if(!uri)throw new Error("Reattach this file to preview it.");if(!valid()||version!==generation.current)return;if(file.type.startsWith('image/'))setPreview({uri,name:file.name});else await Linking.openURL(uri);}catch(e){if(valid()&&version===generation.current)toast(e instanceof Error?e.message:"Could not open this file.","error");}}
+  async function openFile(file:StagedAttachment){const version=generation.current;try{let uri=file.uri;if(!uri&&file.mediaId)uri=(await api<{url:string}>(`/v1/media/${file.mediaId}/access`,{method:"POST"})).url;if(!uri)throw new Error("Reattach this file to preview it.");if(!valid()||version!==generation.current)return;if((typeof file.type==="string"?file.type:"").startsWith('image/'))setPreview({uri,name:typeof file.name==="string"?file.name:"Attachment"});else await Linking.openURL(uri);}catch(e){if(valid()&&version===generation.current)toast(e instanceof Error?e.message:"Could not open this file.","error");}}
   async function send(promptOverride?:string){
     const outgoing=(promptOverride??prompt).trim();
     if(lock.current||!loaded||(!outgoing&&!attachment))return;
@@ -126,7 +323,8 @@ export default function StudentAI() {
       setPending({prompt:question,...(file?{file}:{})});setPrompt("");setAttachment(undefined);
       // Persist the draft without holding up the network request.
       void writeCache(storageKey,{prompt:question,mode,tier,attachment:savedFile,key:key.current});
-      const result=await api<Turn>("/v1/ai",{method:"POST",timeoutMs: 240000,body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,replyTo,tier,idempotencyKey:key.current,consent:true})});
+      const result=normalizeTurn(await api<Turn>("/v1/ai",{method:"POST",timeoutMs: 240000,body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,replyTo,tier,idempotencyKey:key.current,consent:true})}),key.current);
+      if(!result)throw new Error("Kira returned an incomplete response. Your draft is kept.");
       if(!valid()||version!==generation.current)return;
       setTurns(current=>[...current.filter(t=>t.requestId!==result.requestId),{...result,prompt:question,...(file?{file}:{})}]);setReplyTo(result.requestId);key.current=randomUUID();
       void loadStatus();
@@ -137,7 +335,7 @@ export default function StudentAI() {
       void loadStatus();
     }finally{if(valid()&&version===generation.current){lock.current=false;setBusy(false);setUploading(false);setPending(undefined);}}
   }
-  async function loadHistory(query=search,offset=0){const version=generation.current;setHistoryBusy(true);setHistoryError("");try{const data=await api<{sessions:SavedWork[];nextOffset:number|null}>(`/v1/ai/history?q=${encodeURIComponent(query)}&offset=${offset}`);if(!valid()||version!==generation.current)return;setHistory(current=>offset?[...current,...data.sessions.filter(s=>!current.some(c=>c.id===s.id))]:data.sessions);setNextOffset(data.nextOffset);setHistoryQuery(query);}catch(e){if(valid()&&version===generation.current)setHistoryError(e instanceof Error?e.message:"History could not load.");}finally{if(valid()&&version===generation.current)setHistoryBusy(false);}}
+  async function loadHistory(query=search,offset=0){const version=generation.current;setHistoryBusy(true);setHistoryError("");try{const data=await api<{sessions:SavedWork[];nextOffset:number|null}>(`/v1/ai/history?q=${encodeURIComponent(query)}&offset=${offset}`);if(!valid()||version!==generation.current)return;const sessions=normalizeSavedWork(data?.sessions);setHistory(current=>offset?[...current,...sessions.filter(s=>!current.some(c=>c.id===s.id))]:sessions);setNextOffset(Number.isFinite(Number(data?.nextOffset))?Number(data.nextOffset):null);setHistoryQuery(query);}catch(e){if(valid()&&version===generation.current)setHistoryError(e instanceof Error?e.message:"History could not load.");}finally{if(valid()&&version===generation.current)setHistoryBusy(false);}}
   async function openHistory(item:SavedWork){if(lock.current)return;lock.current=true;const version=generation.current;setHistoryBusy(true);try{const data=await restoreThread(item.id,version);if(!valid()||version!==generation.current)return;const last=data.turns.at(-1);if(!last)throw new Error("This conversation is no longer available.");
     const target=item.mode==='study'?'ask':'study';
     if(target!==workspace){explicitThread.current={id:last.requestId,mode:item.mode};setWorkspace(target);}else{setReplyTo(last.requestId);setPrompt("");setAttachment(undefined);setMode(item.mode);key.current=randomUUID();}
@@ -188,7 +386,7 @@ export default function StudentAI() {
         {iconButton('create-outline','New conversation',newConversation,busy)}
       </View>
       <View style={{flexDirection:'row',paddingHorizontal:24,gap:26}}>{(['ask','study'] as const).map(value=><Pressable key={value} accessibilityRole="tab" accessibilityState={{selected:workspace===value,disabled:busy}} disabled={busy} onPress={()=>setWorkspace(value)} style={{paddingVertical:14,borderBottomWidth:2,borderBottomColor:workspace===value?theme.brand:'transparent'}}><Text style={{...text,fontFamily:workspace===value?theme.font.semibold:theme.font.body,color:workspace===value?theme.text:theme.textMuted}}>{value==='ask'?'Ask':'Summary & Notes'}</Text></Pressable>)}</View>
-      {workspace==='study'?<View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingTop:8}}>{(['summary','notes'] as const).map(value=><Pressable key={value} accessibilityRole="radio" accessibilityState={{checked:mode===value}} disabled={busy} onPress={()=>{setMode(value);key.current=randomUUID();}} style={{paddingVertical:9,paddingHorizontal:13,backgroundColor:mode===value?theme.surfaceMuted:'transparent',borderRadius:8}}><Text style={{...muted,color:theme.text}}>{value==='summary'?'Summary':'Notes'}</Text></Pressable>)}<View style={{flex:1}}/>{status?.study.remaining!==null&&status?.study.remaining!==undefined?<Text style={muted}>{status.study.remaining} free studies left</Text>:null}</View>:null}
+      {workspace==='study'?<View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingTop:8}}>{(['summary','notes'] as const).map(value=><Pressable key={value} accessibilityRole="radio" accessibilityState={{checked:mode===value}} disabled={busy} onPress={()=>{setMode(value);key.current=randomUUID();}} style={{paddingVertical:9,paddingHorizontal:13,backgroundColor:mode===value?theme.surfaceMuted:'transparent',borderRadius:8}}><Text style={{...muted,color:theme.text}}>{value==='summary'?'Summary':'Notes'}</Text></Pressable>)}<View style={{flex:1}}/>{status?.study?.remaining!==null&&status?.study?.remaining!==undefined?<Text style={muted}>{status.study.remaining} free studies left</Text>:null}</View>:null}
       <ScrollView ref={scroll} style={{flex:1}} contentContainerStyle={{flexGrow:1,paddingHorizontal:24,paddingBottom:16}} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" onContentSizeChange={()=>{if(pending)scroll.current?.scrollToEnd({animated:false});}}>
         {!loaded||draftOwner.current!==user?.id?<View style={{gap:16,paddingTop:40}}><SkeletonBlock width="55%" height={30}/><SkeletonBlock width="80%"/><ListSkeleton count={2}/></View>:null}
         {loaded&&draftOwner.current===user?.id&&!turns.length&&!pending?<View style={{flex:1,justifyContent:'center',paddingVertical:35}}>

@@ -4,19 +4,20 @@ import {AppState,Platform} from 'react-native';
 import {router} from 'expo-router';
 import {useAuth} from '@/src/auth/auth-context';
 import {api} from '@/src/lib/api';
-import {syncAlarms,type Alarm} from '@/src/lib/alarms';
+import {normalizeAlarms,syncAlarms,type Alarm} from '@/src/lib/alarms';
 import {getAlarmEvents,getRingingAlarm,nativeAlarms} from '@/src/lib/native-alarms';
 export function AlarmSync(){
  const {user}=useAuth();
  useEffect(()=>{
   if(!user)return;let active=true,lastRing='',syncing=false;
-  async function transferEvents(){if(!nativeAlarms)return;const events=await getAlarmEvents();if(events.length){const result=await api<{acknowledged:string[]}>('/v1/notifications/alarm-events',{method:'POST',body:JSON.stringify({events})});await nativeAlarms.acknowledge(JSON.stringify(result.acknowledged));}}
+  async function transferEvents(){if(!nativeAlarms)return;const events=await getAlarmEvents();if(events.length){const result=await api<{acknowledged:string[]}>('/v1/notifications/alarm-events',{method:'POST',body:JSON.stringify({events})});const acknowledged=Array.isArray(result?.acknowledged)?result.acknowledged:[];await nativeAlarms.acknowledge(JSON.stringify(acknowledged));}}
   async function restore(){
    if(syncing)return;syncing=true;
    try{const result=await api<{alarms:Alarm[]}>('/v1/learning/alarms');if(!active)return;
-    const hasEnabledAlarm=result.alarms.some(alarm=>alarm.enabled);
+    const alarms=normalizeAlarms(result?.alarms);
+    const hasEnabledAlarm=alarms.some(alarm=>alarm.enabled);
     const requestExact=Boolean(hasEnabledAlarm&&Platform.OS==='android'&&nativeAlarms&&!(await nativeAlarms.status()));
-    await syncAlarms(result.alarms,requestExact);
+    await syncAlarms(alarms,requestExact);
     try{
       if(Platform.OS==='web'){
         const {sound}=await api<{sound:{url:string}|null}>('/v1/notifications/sounds/default');

@@ -7,7 +7,8 @@ type PostTextFields = {
 /** Keep complete copy once, even when the API also supplies generated excerpts. */
 export function getFeedPostText(post: PostTextFields): { title: string; paragraphs: string[] } {
   const fields = (["title", "summary", "body"] as const).map((kind) => {
-    const text = (post[kind] ?? "").trim();
+    const raw = post[kind];
+    const text = typeof raw === "string" ? raw.trim() : "";
     return { kind, text, normalized: text.replace(/\s+/gu, " ") };
   }).filter((field) => field.text.length > 0);
 

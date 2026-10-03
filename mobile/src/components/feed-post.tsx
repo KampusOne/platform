@@ -43,8 +43,17 @@ function InlinePoll({
   }, [post.publishing]);
 
   if (!poll || poll.format !== "POLL") return null;
+  const options = Array.isArray(poll.options)
+    ? poll.options.filter(
+        (option) =>
+          Boolean(option) &&
+          Number.isFinite(Number(option.id)) &&
+          typeof option.label === "string",
+      )
+    : [];
+  if (!options.length) return null;
 
-  const totalVotes = poll.options.reduce(
+  const totalVotes = options.reduce(
     (sum, option) => sum + safeCount(option.votes),
     0,
   );
@@ -59,7 +68,7 @@ function InlinePoll({
     const next: FeedPublishing = {
       ...before,
       myVote: optionId,
-      options: before.options.map((option) =>
+      options: options.map((option) =>
         option.id === optionId
           ? { ...option, votes: safeCount(option.votes) + 1 }
           : option,
@@ -103,7 +112,7 @@ function InlinePoll({
       </View>
 
       <View style={styles.pollOptions}>
-        {poll.options.map((option) => {
+        {options.map((option) => {
           const selected = poll.myVote === option.id;
           const votes = safeCount(option.votes);
           const denominator = Math.max(
@@ -203,12 +212,20 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
   const screen = analyticsScreenName(pathname);
   const { width } = useWindowDimensions();
   const [replyOpen, setReplyOpen] = useState(false);
-  const category = post.category.toUpperCase();
+  const category = typeof post.category === "string" ? post.category.toUpperCase() : "UPDATE";
   const text = getFeedPostText(post);
   const structured = structuredCategories.has(category);
+  const media = Array.isArray(post.media)
+    ? post.media.filter(
+        (item) =>
+          Boolean(item) &&
+          typeof item.url === "string" &&
+          typeof item.type === "string",
+      )
+    : [];
   const videoUrl =
-    post.media?.length === 1 && post.media[0]?.type.startsWith("video/")
-      ? post.media[0].url
+    media.length === 1 && media[0]?.type?.startsWith("video/")
+      ? media[0].url
       : post.image_url &&
           (post.media_type === "video" || post.media_type?.startsWith("video/"))
         ? post.image_url
@@ -287,7 +304,7 @@ export const FeedPost = memo(function FeedPost({ post, onBookmark, onShare, onDe
         <Pressable accessibilityRole={detail ? undefined : "button"} accessibilityLabel={`Open conversation by ${post.source_name}`} onPress={openPost} style={[styles.postBody, detail && styles.detailBody]}>
           {structured ? <View style={styles.structuredPanel}><Text style={styles.structuredEyebrow}>{category === "EVENT" ? "CAMPUS EVENT" : "CAMPUS OPPORTUNITY"}</Text>{copy}</View> : copy}
           {post.urgent ? <Text style={styles.urgent}>Urgent campus update</Text> : null}
-          {post.media && post.media.length > 1 ? <PostMediaSlider items={post.media} /> : post.media?.length === 1 ? (post.media[0]!.type.startsWith("video/") ? <MediaPreview url={post.media[0]!.url} video label="Post video" initialAspect={post.media[0]!.width&&post.media[0]!.height?post.media[0]!.width!/post.media[0]!.height!:undefined} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} {...(post.source_username ? { watermark: post.source_username } : {})} /> : <PostImage initialAspect={post.media[0]!.width&&post.media[0]!.height?post.media[0]!.width!/post.media[0]!.height!:undefined} uri={post.media[0]!.url} />) : post.image_url ? (post.media_type === "video" || post.media_type?.startsWith("video/")) ? <MediaPreview url={post.image_url} video label="Post video" initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} {...(post.source_username ? { watermark: post.source_username } : {})} /> : <PostImage initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} uri={post.image_url} /> : null}
+          {media.length > 1 ? <PostMediaSlider items={media} /> : media.length === 1 ? (media[0]!.type?.startsWith("video/") ? <MediaPreview url={media[0]!.url} video label="Post video" initialAspect={media[0]!.width&&media[0]!.height?media[0]!.width!/media[0]!.height!:undefined} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} {...(post.source_username ? { watermark: post.source_username } : {})} /> : <PostImage initialAspect={media[0]!.width&&media[0]!.height?media[0]!.width!/media[0]!.height!:undefined} uri={media[0]!.url} />) : post.image_url ? (post.media_type === "video" || post.media_type?.startsWith("video/")) ? <MediaPreview url={post.image_url} video label="Post video" initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} playbackMode={videoAutoPlay ? "feed-autoplay" : onVideoHandle ? "manual-managed" : "unmanaged"} onPlaybackHandle={onVideoHandle ? setVideoHandle : undefined} suspended={replyOpen} playbackKey={post.id} onOpen={openVideo} {...(post.source_username ? { watermark: post.source_username } : {})} /> : <PostImage initialAspect={post.media_width&&post.media_height?post.media_width/post.media_height:undefined} uri={post.image_url} /> : null}
           {post.publishing?.format === "POLL" ? <InlinePoll post={post} onChanged={onChanged} onFeedback={onFeedback} /> : null}
           {post.quoted_post_id ? <QuotedPostPreview post={post.quoted_post ?? null} /> : null}
           {post.correction_note ? <View accessibilityRole="alert" style={styles.correction}><Ionicons color={theme.statusAttention} name="information-circle-outline" size={17} /><Text style={styles.correctionText}>Correction: {post.correction_note}</Text></View> : null}

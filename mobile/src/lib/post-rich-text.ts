@@ -2,6 +2,7 @@ export type PostToken = { text: string; kind: "text" | "link" | "hashtag"; targe
 
 /** Links are HTTP(S) only; hashtags support Nigerian names and Unicode letters. */
 export function postTokens(text: string): PostToken[] {
+  text = typeof text === "string" ? text : "";
   const pattern = /https?:\/\/[^\s<>]+|www\.[^\s<>]+|#[\p{L}\p{M}\p{N}_]+/giu;
   const tokens: PostToken[] = [];
   let start = 0;
@@ -31,6 +32,7 @@ export function postTokens(text: string): PostToken[] {
 
 /** Collapse copy only, with a bound for both long paragraphs and many short lines. */
 export function postExcerpt(text: string, maxCharacters = 220, maxLines = 4): { text: string; collapsed: boolean } {
+  text = typeof text === "string" ? text : "";
   const lineEnd = text.split("\n").slice(0, maxLines).join("\n").length;
   const limit = Math.min(maxCharacters, lineEnd);
   if (text.length <= limit) return { text, collapsed: false };
@@ -43,6 +45,8 @@ export function postExcerpt(text: string, maxCharacters = 220, maxLines = 4): { 
 }
 
 export function activeHashtag(text: string, cursor = text.length) {
+  text = typeof text === "string" ? text : "";
+  cursor = Number.isFinite(cursor) ? Math.max(0, Math.min(text.length, cursor)) : text.length;
   const match = text.slice(0, cursor).match(/(?:^|\s)#([\p{L}\p{M}\p{N}_]*)$/u);
   return match ? { query: match[1]!, start: cursor - match[1]!.length - 1, end: cursor } : null;
 }

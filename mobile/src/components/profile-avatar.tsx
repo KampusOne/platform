@@ -8,11 +8,12 @@ export function ProfileAvatar({ name, imageUrl, size = 36 }: {
 }) {
   const { styles } = useThemeStyles(createStyles);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const safeName = typeof name === "string" && name.trim() ? name : "KampusOne user";
   const uri = typeof imageUrl === "string" && (/^(https?:\/\/|\/api\/v1\/media\/)/i.test(imageUrl)) ? imageUrl : null;
-  const initials = name.trim().split(/\s+/).filter(Boolean).slice(0, 2)
+  const initials = safeName.trim().split(/\s+/).filter(Boolean).slice(0, 2)
     .map((part) => Array.from(part)[0] ?? "").join("").toLocaleUpperCase("en-NG") || "?";
   const dimensions = { width: size, height: size, borderRadius: size / 2 };
-  return <View accessible accessibilityRole="image" accessibilityLabel={`${name}'s profile picture`} style={[styles.avatar, dimensions]}>
+  return <View accessible accessibilityRole="image" accessibilityLabel={`${safeName}'s profile picture`} style={[styles.avatar, dimensions]}>
     {uri && failedUrl !== uri
       ? <Image accessible={false} accessibilityIgnoresInvertColors source={{ uri }} resizeMode="cover" onError={() => setFailedUrl(uri)} style={dimensions} />
       : <Text accessible={false} style={[styles.initials, { fontSize: size * 0.3 }]}>{initials}</Text>}
