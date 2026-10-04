@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { createNativeMediaLifetime, isReleasedNativeMediaError } from '../mobile/src/lib/native-media-lifetime.ts';
 import { postVideoSource } from '../mobile/src/lib/video-source.ts';
 
-const require = createRequire(new URL('../mobile/package.json', import.meta.url));
+const require = createRequire(new URL('../server/package.json', import.meta.url));
 const ts = require('typescript');
 const root = new URL('../', import.meta.url).pathname;
 

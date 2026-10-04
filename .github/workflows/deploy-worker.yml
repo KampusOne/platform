@@ -12,6 +12,7 @@ on:
       - ".github/workflows/vercel-prebuilt-deploy.yml"
       - ".github/workflows/android-apk.yml"
       - "server/**"
+      - "tests/**"
       - "database/verification/**"
       - "database/neon/migrations/**"
   workflow_dispatch:
