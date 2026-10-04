@@ -39,4 +39,10 @@ describe("scoped payment pricing administration",()=>{
     stubs.scope.mockResolvedValueOnce(universityId);stubs.ready.mockResolvedValueOnce(true);stubs.execute.mockResolvedValueOnce({rows:[]});
     const response=await app().request("/pricing/profiles",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(profile)},env);expect(response.status).toBe(201);expect(stubs.execute).toHaveBeenCalledTimes(1);
   });
+  it("lets a platform finance reviewer confirm checkout setup without typing evidence",async()=>{
+    stubs.permission.mockResolvedValueOnce({grants:[{university_id:null,permissions:["finance.review"]}]});stubs.ready.mockResolvedValueOnce(true);stubs.execute.mockResolvedValueOnce({rows:[]});
+    const response=await app().request("/pricing/account-review",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({providerMode:"test",passFeesDisabled:true})},env);
+    expect(response.status).toBe(201);expect(await response.json()).toMatchObject({passFeesDisabled:true});expect(stubs.execute).toHaveBeenCalledOnce();
+    expect(accountReviewSchema.parse({providerMode:"test",passFeesDisabled:true}).evidence).toContain('explicitly confirmed');
+  });
 });

@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform, Pressable, Text, View } from 'react-native';
 import { InlineLoading } from './skeleton';
 import { Ionicons } from '@expo/vector-icons';
-import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
+import { AudioModule, RecordingPresets, setAudioModeAsync, type AudioRecorder, type RecorderState } from 'expo-audio';
 import { File } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import { api, ApiError } from '@/src/lib/api';
 import { useAppearance } from '@/src/lib/appearance';
+import { createNativeMediaLifetime } from '@/src/lib/native-media-lifetime';
+import { nativeKiraVoiceBody, MAX_KIRA_VOICE_BYTES } from '@/src/lib/kira-voice-upload';
 
 const WAVE_BARS = 34;
 const VOICE_RECORDING_OPTIONS = {
@@ -43,8 +45,11 @@ function barHeight(value: number | undefined) {
 /** Stop transcribes into an editable draft; the arrow transcribes and sends without an extra tap. */
 export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sendBusy=false,onAttach,onInfo,onSend,onTranscript,onSendTranscript,onActiveChange,onRecordingChange}:Props){
   const {theme}=useAppearance();
-  const recorder=useAudioRecorder(VOICE_RECORDING_OPTIONS);
-  const state=useAudioRecorderState(recorder,100);
+  // Allocate native recording only after a mic tap. Opening Kira, attaching a
+  // PDF or typing must not create or poll an AudioRecorder SharedObject.
+  const recorder=useRef<{value:AudioRecorder;lifetime:ReturnType<typeof createNativeMediaLifetime>}|undefined>(undefined);
+  const [recorderEpoch,setRecorderEpoch]=useState(0);
+  const [state,setState]=useState<RecorderState>({isRecording:false,durationMillis:0,canRecord:false,mediaServicesDidReset:false,url:null});
   const stateRef=useRef(state);stateRef.current=state;
   const [uri,setUri]=useState<string>(),[savedDuration,setSavedDuration]=useState(0),[working,setWorking]=useState(false),[error,setError]=useState('');
   const [meters,setMeters]=useState<number[]>(()=>Array(WAVE_BARS).fill(-60));
@@ -55,24 +60,54 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
   useEffect(()=>{onActiveChange?.(active);},[active,onActiveChange]);
   useEffect(()=>{onRecordingChange?.(state.isRecording);},[state.isRecording,onRecordingChange]);
   useEffect(()=>{if(state.isRecording)setMeters(values=>[...values.slice(-(WAVE_BARS-1)),state.metering??-60]);},[state.durationMillis,state.isRecording,state.metering]);
-  useEffect(()=>{
+  function releaseRecording(session:NonNullable<typeof recorder.current>){
+    session.lifetime.dispose();
+    if(recorder.current===session)recorder.current=undefined;
+    try{session.value.release();}catch{/* Already released native resources have no work left. */}
+    if(alive.current)setRecorderEpoch(value=>value+1);
+  }
+  useLayoutEffect(()=>{
     alive.current=true;
-    const sub=AppState.addEventListener('change',value=>{if(value!=='active'&&recorder.isRecording)void stopAndKeep();});
-    return()=>{alive.current=false;sub.remove();if(timer.current)clearTimeout(timer.current);if(recorder.isRecording)void recorder.stop().catch(()=>undefined);void setAudioModeAsync({allowsRecording:false}).catch(()=>undefined);};
-  },[recorder]);
+    return()=>{
+      alive.current=false;if(timer.current)clearTimeout(timer.current);
+      const session=recorder.current;recorder.current=undefined;
+      if(session){session.lifetime.dispose();try{void session.value.stop().catch(()=>undefined).finally(()=>{try{session.value.release();}catch{}});}catch{try{session.value.release();}catch{}}}
+      void setAudioModeAsync({allowsRecording:false}).catch(()=>undefined);
+    };
+  },[]);
+  useEffect(()=>{
+    const sub=AppState.addEventListener('change',value=>{if(value!=='active'&&alive.current&&stateRef.current.isRecording)void stopAndKeep();});
+    return()=>sub.remove();
+  },[]);
+  useEffect(()=>{
+    const session=recorder.current;if(!session)return;
+    const poll=setInterval(()=>{
+      if(!alive.current||!session.lifetime.isActive()||recorder.current!==session)return;
+      try{setState(session.value.getStatus());}
+      catch{releaseRecording(session);setState(current=>({...current,isRecording:false}));setError('Voice recording became unavailable. Tap the microphone to try again.');}
+    },100);
+    return()=>clearInterval(poll);
+  },[recorderEpoch]);
 
   async function start(){
-    if(locked.current||disabled)return;
+    if(locked.current||disabled||recorder.current?.lifetime.isActive())return;
     if(!enabled){setError('Voice input is temporarily unavailable.');return;}
     locked.current=true;setError('');
     try{
       const permission=await AudioModule.requestRecordingPermissionsAsync();
+      if(!alive.current)return;
       if(!permission.granted)throw new Error('Allow microphone access in your phone settings to record a question.');
       await setAudioModeAsync({allowsRecording:true,playsInSilentMode:true});
-      await recorder.prepareToRecordAsync();recorder.record();onRecordingChange?.(true);
+      if(!alive.current)return;
+      const {android,ios,web,...common}=VOICE_RECORDING_OPTIONS;
+      const value=new AudioModule.AudioRecorder({...common,...(Platform.OS==='android'?android:Platform.OS==='ios'?ios:web)});
+      const session={value,lifetime:createNativeMediaLifetime()};recorder.current=session;setRecorderEpoch(epoch=>epoch+1);
+      await value.prepareToRecordAsync();
+      if(!alive.current||!session.lifetime.isActive()||recorder.current!==session)return;
+      value.record();setState(value.getStatus());onRecordingChange?.(true);
       durationRef.current=0;setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));id.current=randomUUID();
       timer.current=setTimeout(()=>{void finishVoice('draft');},recordingLimit);
-    }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Recording could not start.');}
+    }catch(e){const session=recorder.current;if(session)releaseRecording(session);if(alive.current){setState(current=>({...current,isRecording:false}));setError(e instanceof Error?e.message:'Recording could not start.');}}
     finally{locked.current=false;}
   }
   async function stopAndKeep(){
@@ -80,20 +115,26 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
     locked.current=true;if(timer.current){clearTimeout(timer.current);timer.current=undefined;}onRecordingChange?.(false);
     try{
       const duration=stateRef.current.durationMillis;
-      if(recorder.isRecording)await recorder.stop();
+      const session=recorder.current;
+      if(!session||!session.lifetime.isActive())return uri;
+      await session.value.stop();
+      if(!alive.current||!session.lifetime.isActive()||recorder.current!==session)return undefined;
+      const saved=session.value.uri??undefined;
+      releaseRecording(session);
+      setState(current=>({...current,isRecording:false,durationMillis:duration}));
       await setAudioModeAsync({allowsRecording:false});
-      const saved=recorder.uri??undefined;
       if(!saved)throw new Error('The recording could not be saved.');
       durationRef.current=duration;
       if(alive.current){setSavedDuration(duration);setUri(saved);}return saved;
-    }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Try recording again.');return undefined;}
+    }catch(e){const session=recorder.current;if(session)releaseRecording(session);if(alive.current){setState(current=>({...current,isRecording:false}));setError(e instanceof Error?e.message:'Try recording again.');}return undefined;}
     finally{locked.current=false;}
   }
   async function cancel(){
     if(working||locked.current)return;
     locked.current=true;if(timer.current){clearTimeout(timer.current);timer.current=undefined;}onRecordingChange?.(false);
-    try{if(recorder.isRecording)await recorder.stop();await setAudioModeAsync({allowsRecording:false});}catch{}
-    finally{durationRef.current=0;if(alive.current){setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));setError('');}id.current=randomUUID();locked.current=false;}
+    const session=recorder.current;
+    try{if(session&&session.lifetime.isActive())await session.value.stop();await setAudioModeAsync({allowsRecording:false});}catch{}
+    finally{if(session&&session.lifetime.isActive())releaseRecording(session);durationRef.current=0;if(alive.current){setState(current=>({...current,isRecording:false,durationMillis:0}));setUri(undefined);setSavedDuration(0);setMeters(Array(WAVE_BARS).fill(-60));setError('');}id.current=randomUUID();locked.current=false;}
   }
   function clearRecording(){
     if(!alive.current)return;
@@ -103,9 +144,19 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
     if(locked.current||disabled)return undefined;
     locked.current=true;setWorking(true);setError('');
     try{
-      const body=Platform.OS==='web'?await(await fetch(recordingUri)).blob():new File(recordingUri) as unknown as Blob;
-      if(body.size>8*1024*1024)throw new Error('Record a shorter voice message.');
-      const contentType=Platform.OS==='web'?body.type||'audio/webm':'audio/mp4';
+      let body:Blob|ArrayBuffer;
+      if(Platform.OS==='web'){
+        const response=await fetch(recordingUri);if(!response.ok)throw new Error('The recording could not be read. Record it again.');body=await response.blob();
+      }else{
+        // Expo File is a native host object, not a React Native fetch Blob.
+        // Send raw bytes just like image/document uploads.
+        body=await nativeKiraVoiceBody(new File(recordingUri));
+      }
+      const bytes=body instanceof ArrayBuffer?body.byteLength:body.size;
+      if(!bytes)throw new Error('This recording is empty. Record it again.');
+      if(bytes>MAX_KIRA_VOICE_BYTES)throw new Error('Record a shorter voice message.');
+      if(!alive.current)return undefined;
+      const contentType=body instanceof ArrayBuffer?'audio/mp4':body.type||'audio/webm';
       const durationMs=Math.max(1,durationRef.current||savedDuration||state.durationMillis);
       const path='/v1/ai/transcribe?idempotencyKey='+encodeURIComponent(id.current)+'&consent=true&durationMs='+encodeURIComponent(String(durationMs));
       const timeoutMs=Math.max(90000,Math.min(180000,Math.ceil(recordingLimit/2)));
@@ -116,10 +167,11 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
         const retryMultipart=e instanceof ApiError&&e.details?.retryMultipart===true;
         if(!retryMultipart)throw e;
         const form=new FormData();
-        form.append('file',body,Platform.OS==='web'?'Kira-voice.webm':'Kira-voice.m4a');
+        if(Platform.OS==='web')form.append('file',body as Blob,'Kira-voice.webm');
+        else form.append('file',{uri:recordingUri,name:'Kira-voice.m4a',type:contentType} as unknown as Blob);
         result=await api<{text:string}>(path,{method:'POST',body:form,timeoutMs});
       }
-      const transcript=result.text.trim();
+      const transcript=typeof result?.text==='string'?result.text.trim():'';
       if(!transcript)throw new Error('No speech was detected. Try recording again.');
       return transcript;
     }catch(e){
@@ -135,7 +187,7 @@ export function KiraVoiceInput({disabled,enabled,maxRecordingMs,sendDisabled,sen
   }
   async function finishVoice(intent:'draft'|'send'){
     if(working||disabled)return;
-    const saved=(recorder.isRecording||stateRef.current.isRecording)?await stopAndKeep():uri;
+    const saved=stateRef.current.isRecording?await stopAndKeep():uri;
     if(!saved)return;
     const transcript=await transcribe(saved);
     if(!transcript||!alive.current)return;

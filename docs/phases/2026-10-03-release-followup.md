@@ -21,10 +21,10 @@
 
 These checks do not replace Android/iOS device tests, real FCM delivery, provider evaluation or live payment verification.
 
-## Release gate
+## Published release
 
-The current production database has 68 recorded migrations. Eight October 3 migrations, including `20261003120000_configurable_kira_pricing`, are pending. Their source hashes are in the experience manifest; the production proof is intentionally absent.
+The October 3 experience migrations were rehearsed on `experience-release-rehearsal-20261003` (`br-mute-sunset-ayzh9xrc`) and applied to production. `database/verification/production-20261003-experience.json` records the actual verification, preservation checks and exact source hashes. The production ledger contains 84 migrations through `20261003128000_payment_snapshot_context_eligibility`; a read-only October 4 probe confirmed that ledger state.
 
-Neon currently has ten branches and rejects creation of a fresh production-copy rehearsal at its branch limit. The existing October 1 rehearsal predates the current live database. Deleting or resetting a branch requires separate explicit authorization. A proposed candidate is the archived `phase-1-platform-foundation` rehearsal (`br-wispy-poetry-ayipah1e`); production and the pre-production backup are excluded from that proposal.
+Main revision `690fc6b283d05b759060220df7c5ca4997c0daae` completed Worker deployment, verified Vercel publication and Android packaging. The matching successful Actions runs are `37128221620` (Worker), `37128342891` (verified Vercel receipt) and `37128389278` (APK). The APK was published at 2026-10-03T14:22:55Z as version 0.3.17, build 47.
 
-After capacity is available: rehearse exact migrations against the current production branch, verify preservation and private privileges, apply the authorized production changes, record actual evidence, update main, deploy and verify Worker/Vercel, then build the push-enabled APK. Publication approval has been received; no production-proof substitute is acceptable.
+The project still has ten occupied branch slots. The October 4 correction work will rehearse additive migrations on the existing October 3 rehearsal branch, without resetting or deleting branches. That isolated rehearsal predates subsequent production activity and must be described accurately in the new verification record. New corrections and a new APK remain in progress; the published October 3 build does not establish that the new fixes are delivered.

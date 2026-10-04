@@ -87,6 +87,7 @@ type UserRecord = {
 };
 type AgentApplication = {
   id: string;
+  revision?: string;
   agent_type: string;
   display_name: string;
   phone_e164?: string;
@@ -600,9 +601,12 @@ export function AdminDashboard({
         </>
       )}
       {!loading && !error && view === "users" && <UsersView users={users} />}
-      {!loading && !error && ["users", "applications", "content", "operations"].includes(view) && <WorkspaceInsights module={view === "applications" ? "agents" : view === "operations" ? "marketplace" : view as "users" | "content"} refresh={refreshKey} />}
+      {!loading && !error && ["users", "content", "operations"].includes(view) && <WorkspaceInsights module={view === "operations" ? "marketplace" : view as "users" | "content"} refresh={refreshKey} />}
       {!loading && !error && view === "applications" && (
-        <ApplicationsView applications={applications} onChanged={load} />
+        <>
+          <ApplicationsView applications={applications} onChanged={load} />
+          <WorkspaceInsights module="agents" refresh={refreshKey} />
+        </>
       )}
       {!loading && !error && view === "tutorials" && (
         <TutorialsView data={tutorials} context={context} onChanged={load} />
@@ -772,6 +776,7 @@ function ApplicationsView({
         )}
       </article>
       <ApplicationInspector
+        key={selected?.id ?? "empty"}
         item={selected}
         onChanged={() => {
           setSelected(null);
@@ -789,9 +794,12 @@ function ApplicationInspector({
   item: AgentApplication | null;
   onChanged(): void;
 }) {
-  const { can, scopeLabel } = useAdminContext();
+  const { can, scopeLabel, access } = useAdminContext();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [missingFields, setMissingFields] = useState<string[]>([]);
+  const mayOverride = Boolean(access?.grants?.some((grant) => grant.university_id === null && grant.permissions.includes("agents.review") && grant.permissions.includes("agents.verify")));
+
   if (!item)
     return (
       <aside className="panel inspector">
@@ -804,6 +812,20 @@ function ApplicationInspector({
       </aside>
     );
   const itemId = item.id;
+  async function approveReviewed(overrideIncomplete = false) {
+    if (busy || !item?.revision) return;
+    setBusy(true); setError("");
+    try {
+      await portalApi(`/v1/admin/applications/${itemId}/approve`, { method: "POST", body: JSON.stringify({
+        revision: item.revision, reviewedEvidence: true, overrideIncomplete,
+      }) });
+      setMissingFields([]); onChanged();
+    } catch (caught) {
+      if (caught instanceof PortalApiError && caught.details?.reason === "APPLICATION_INCOMPLETE")
+        setMissingFields(Array.isArray(caught.details.missingFields) ? caught.details.missingFields.filter((value): value is string => typeof value === "string") : []);
+      setError(caught instanceof Error ? caught.message : "Approval could not finish.");
+    } finally { setBusy(false); }
+  }
   async function review(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -866,6 +888,15 @@ function ApplicationInspector({
       <p className="section-kicker">{label(item.agent_type)} application</p>
       <h2>{item.display_name}</h2>
       <p className="scope-caption">{scopeLabel}</p>
+      {reviewable && can("agents.review") && can("agents.verify") ? <div className="sub-form form-stack">
+        <p>Review the documents and contact details below, then approve once. Bank verification stays separate.</p>
+        <button type="button" className="button button--primary" disabled={busy || !item.revision} onClick={() => void approveReviewed()}>{busy ? "Approving…" : `Approve reviewed ${label(item.agent_type).toLowerCase()}`}</button>
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
+        {missingFields.length > 0 && mayOverride ? <div className="sub-form form-stack">
+          <p>Incomplete fields: {missingFields.join(", ")}. You can explicitly approve this business after your own review. Withdrawals still require full identity and bank verification.</p>
+          <button type="button" className="button button--primary" disabled={busy} onClick={() => void approveReviewed(true)}>Approve despite the listed missing fields</button>
+        </div> : null}
+      </div> : null}
       {can("agents.verify") && <ApplicationDocuments key={item.id} id={item.id} />}
       <dl className="detail-list">
         <div>
@@ -906,6 +937,7 @@ function ApplicationInspector({
         </div>
       )}
       {reviewable && can("agents.verify") ? (
+        <details><summary>Other verification options</summary>
         <form className="form-stack sub-form" onSubmit={verify}>
           <div>
             <p className="section-kicker">Layered verification</p>
@@ -976,6 +1008,7 @@ function ApplicationInspector({
             {busy ? "Saving…" : "Record verification"}
           </button>
         </form>
+        </details>
       ) : null}
       {reviewable && can("agents.review") ? (
         <form className="form-stack sub-form" onSubmit={review}>

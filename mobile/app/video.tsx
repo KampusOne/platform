@@ -2,7 +2,7 @@ import { useEvent } from "expo";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
   Modal,
@@ -31,6 +31,8 @@ import { CommentThread } from "@/src/components/comment-thread";
 import { ReplyComposer } from "@/src/components/reply-composer";
 import { useAuth } from "@/src/auth/auth-context";
 import { createVideoPlaybackLifecycle } from "@/src/lib/video-playback-lifecycle";
+import { createNativeMediaLifetime } from "@/src/lib/native-media-lifetime";
+import { postVideoSource } from "@/src/lib/video-source";
 
 const speeds = [1, 1.25, 1.5, 2] as const;
 // Expo's web VideoView maps styles directly to DOM CSS. Keep this unregistered
@@ -107,6 +109,7 @@ export default function VideoViewerScreen() {
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState<(typeof speeds)[number]>(1);
   const [trackWidth, setTrackWidth] = useState(0);
+  const playbackSnapshot = useRef({ position: requestedPosition, muted: requestedMuted });
   const videoRef = useRef<VideoView>(null);
   const focused = useRef(false);
   const shouldResume = useRef(true);
@@ -115,7 +118,7 @@ export default function VideoViewerScreen() {
   const initialSeek = useRef<{ version: number; position: number } | null>(null);
   const [replacementComplete, setReplacementComplete] = useState(false);
   const playbackKey = post?.id || id;
-  const mediaSource = requestedVideoUrl || post?.image_url || "";
+  const mediaSource = post ? postVideoSource(post) : requestedVideoUrl;
 
   // Expo's web replaceAsync calls play() itself and discards the browser promise.
   // Initialising a web player with its source avoids that implicit autoplay.
@@ -124,6 +127,8 @@ export default function VideoViewerScreen() {
     instance.muted = requestedMuted;
     instance.playbackRate = 1;
   });
+  const lifetime = useMemo(() => createNativeMediaLifetime(), [player]);
+  useLayoutEffect(() => { lifetime.activate(); return () => lifetime.dispose(); }, [lifetime]);
 
   const playingEvent = useEvent(player, "playingChange", {
     isPlaying: player.playing,
@@ -139,6 +144,7 @@ export default function VideoViewerScreen() {
   const status = statusEvent?.status ?? player.status;
   const playerError = statusEvent?.error;
   const playIfReady = useCallback(() => {
+    if (!lifetime.isActive()) return;
     if (!lifecycle.current.canPlay({ focused: focused.current, active: appActive.current, wantsToPlay: shouldResume.current, status: player.status })) return;
     const version = lifecycle.current.currentVersion();
     const start = initialSeek.current;
@@ -153,7 +159,7 @@ export default function VideoViewerScreen() {
         const video = videoRef.current?.nativeRef.current as HTMLVideoElement | null | undefined;
         if (!video || video.readyState < 3 || !video.paused) return;
         void video.play().catch((caught: unknown) => {
-          if (version !== lifecycle.current.currentVersion() || !focused.current || !appActive.current) return;
+          if (!lifetime.isActive() || version !== lifecycle.current.currentVersion() || !focused.current || !appActive.current) return;
           if (caught instanceof Error && caught.name === "AbortError") return; // This operation was paused/replaced.
           shouldResume.current = false;
           setNotice(caught instanceof Error && caught.name === "NotAllowedError" ? "Tap Play to start this video." : "This video could not play. Try again.");
@@ -162,7 +168,7 @@ export default function VideoViewerScreen() {
     } catch {
       setNotice("This video could not play. Try again.");
     }
-  }, [player]);
+  }, [player, lifetime]);
 
   useEffect(() => {
     let live = true;
@@ -178,7 +184,7 @@ export default function VideoViewerScreen() {
     void api<{ post: SocialFeedPost }>("/v1/student/feed/" + id)
       .then(({ post: next }) => {
         if (!live) return;
-        if (!next.image_url || !(next.media_type === "video" || next.media_type?.startsWith("video/"))) {
+        if (!postVideoSource(next)) {
           throw new Error("This post does not contain a playable video.");
         }
         setPost(next);
@@ -197,6 +203,7 @@ export default function VideoViewerScreen() {
   }, [id]);
 
   useEffect(() => {
+    if (!lifetime.isActive()) return;
     const version = lifecycle.current.beginSource();
     setReplacementComplete(false);
     if (!mediaSource) { player.pause(); return () => lifecycle.current.invalidate(version); }
@@ -208,15 +215,15 @@ export default function VideoViewerScreen() {
     initialSeek.current = { version, position: startAt };
     const replace = Platform.OS === "web" ? Promise.resolve() : player.replaceAsync(mediaSource);
     void replace.then(() => {
-      if (!lifecycle.current.completeSource(version)) return;
+      if (!lifetime.isActive() || !lifecycle.current.completeSource(version)) return;
       player.muted = startMuted;
       player.playbackRate = speed;
       setReplacementComplete(true);
       playIfReady();
     }).catch(() => {
-      if (version === lifecycle.current.currentVersion()) setError("This video could not load. Try opening it again.");
+      if (lifetime.isActive() && version === lifecycle.current.currentVersion()) setError("This video could not load. Try opening it again.");
     });
-    return () => { lifecycle.current.invalidate(version); player.pause(); };
+    return () => { lifecycle.current.invalidate(version); lifetime.run(() => player.pause()); };
   }, [
     player,
     mediaSource,
@@ -224,15 +231,18 @@ export default function VideoViewerScreen() {
     requestedMuted,
     requestedPosition,
     playIfReady,
+    lifetime,
   ]);
   useEffect(() => { if (replacementComplete && status === "readyToPlay") playIfReady(); }, [replacementComplete, status, playIfReady]);
 
   useEffect(() => {
     const update = () => {
+      if (!lifetime.isActive()) return;
       const nextPosition = Number(player.currentTime);
       const nextDuration = Number(player.duration);
       if (Number.isFinite(nextPosition)) {
         const safePosition = Math.max(0, nextPosition);
+        playbackSnapshot.current = { position: safePosition, muted: player.muted };
         setPosition(safePosition);
         if (post?.id && (player.playing || focused.current)) {
           writeVideoPlaybackSession(post.id, safePosition, player.muted);
@@ -244,22 +254,23 @@ export default function VideoViewerScreen() {
     const timer = setInterval(update, 250);
     return () => {
       clearInterval(timer);
-      if (post?.id) writeVideoPlaybackSession(post.id, Number(player.currentTime) || 0, player.muted);
+      if (post?.id) writeVideoPlaybackSession(post.id, playbackSnapshot.current.position, playbackSnapshot.current.muted);
     };
-  }, [player, post?.id]);
+  }, [player, post?.id, lifetime]);
 
   useFocusEffect(useCallback(() => {
     focused.current = true;
     playIfReady();
     return () => {
       focused.current = false;
-      if (post?.id) writeVideoPlaybackSession(post.id, Number(player.currentTime) || 0, player.muted);
-      player.pause();
+      lifetime.run(() => { playbackSnapshot.current = { position: Number(player.currentTime) || 0, muted: player.muted }; player.pause(); });
+      if (post?.id) writeVideoPlaybackSession(post.id, playbackSnapshot.current.position, playbackSnapshot.current.muted);
     };
-  }, [player, post?.id, playIfReady]));
+  }, [player, post?.id, playIfReady, lifetime]));
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
+      if (!lifetime.isActive()) return;
       appActive.current = state === "active";
       if (state === "active") {
         playIfReady();
@@ -269,7 +280,7 @@ export default function VideoViewerScreen() {
       player.pause();
     });
     return () => subscription.remove();
-  }, [player, post?.id, playIfReady]);
+  }, [player, post?.id, playIfReady, lifetime]);
 
   useEffect(() => {
     if (!notice) return;
@@ -284,6 +295,7 @@ export default function VideoViewerScreen() {
   }, [post]);
 
   function togglePlayback() {
+    if (!lifetime.isActive()) return;
     if (isPlaying) {
       shouldResume.current = false;
       player.pause();
@@ -296,6 +308,7 @@ export default function VideoViewerScreen() {
   }
 
   function cycleSpeed() {
+    if (!lifetime.isActive()) return;
     const index = speeds.indexOf(speed);
     const next = speeds[(index + 1) % speeds.length] ?? 1;
     player.playbackRate = next;
@@ -303,7 +316,7 @@ export default function VideoViewerScreen() {
   }
 
   function seekFromTrack(locationX: number) {
-    if (!replacementComplete || player.status !== "readyToPlay" || !trackWidth || !duration) return;
+    if (!lifetime.isActive() || !replacementComplete || player.status !== "readyToPlay" || !trackWidth || !duration) return;
     const next = Math.max(0, Math.min(duration, (locationX / trackWidth) * duration));
     player.currentTime = next;
     setPosition(next);
@@ -450,7 +463,7 @@ export default function VideoViewerScreen() {
             <Pressable accessibilityRole="button" accessibilityLabel={"Playback speed " + String(speed) + " times"} onPress={cycleSpeed} style={styles.controlButton}>
               <Text style={[styles.speed, { fontFamily: theme.font.semibold }]}>{speed}x</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={isMuted ? "Unmute video" : "Mute video"} onPress={() => { player.muted = !isMuted; writeVideoPlaybackSession(post.id, position, !isMuted); }} style={styles.controlButton}>
+            <Pressable accessibilityRole="button" accessibilityLabel={isMuted ? "Unmute video" : "Mute video"} onPress={() => { if (!lifetime.isActive()) return; player.muted = !isMuted; writeVideoPlaybackSession(post.id, position, !isMuted); }} style={styles.controlButton}>
               <Ionicons name={isMuted ? "volume-mute-outline" : "volume-high-outline"} size={25} color="#FFFFFF" />
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="Use native full screen" onPress={() => void videoRef.current?.enterFullscreen()} style={styles.controlButton}>

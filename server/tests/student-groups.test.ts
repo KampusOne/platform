@@ -1,7 +1,9 @@
 import {beforeAll,afterAll,describe,it,expect,vi} from 'vitest';
+import {readFileSync} from 'node:fs';
 import {Hono,type Context,type Next} from 'hono';
 import type {PGlite} from '@electric-sql/pglite';
 import {studentGroupRoutes} from '../src/routes/student-groups';
+import {communityRoutes} from '../src/routes/communities';
 import {calendarRoutes} from '../src/routes/calendar';
 import {learningRoutes} from '../src/routes/learning';
 import {studentRoutes} from '../src/routes/student';
@@ -11,7 +13,7 @@ let db:PGlite;const owner=crypto.randomUUID(),member=crypto.randomUUID(),nonmemb
 vi.mock('../src/lib/database',()=>({database:()=>testDatabaseAdapter(db),sqlClient:()=>testSqlClient(db),firstRow:(r:{rows:unknown[]})=>r.rows[0]}));
 vi.mock('../src/middleware/auth',()=>({requireAuth:async(_c:Context,n:Next)=>n(),currentUser:(c:Context)=>({id:c.req.header('x-user'),universityId:c.req.header('x-user')===foreign?otherCampus:campus,roles:['STUDENT']})}));
 vi.mock('../src/services/community-push',()=>({deliverCommunityPush:async()=>({})}));
-const app=new Hono().route('/groups',studentGroupRoutes).route('/calendar',calendarRoutes).route('/learning',learningRoutes).route('/student',studentRoutes);
+const app=new Hono().route('/communities',communityRoutes).route('/groups',studentGroupRoutes).route('/calendar',calendarRoutes).route('/learning',learningRoutes).route('/student',studentRoutes);
 app.onError((e,c)=>c.json({error:e.message},e instanceof AppError?e.status:500));
 const req=(path:string,method='GET',body?:unknown,user=owner)=>app.request(path,{method,headers:{'x-user':user,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
 beforeAll(async()=>{db=await createTestDatabase();for(const [i,uni] of [campus,otherCampus].entries())await db.query("insert into public.universities(id,name,slug,updated_at) values($1,$2,$3,now())",[uni,'Group campus '+i,'group-campus-'+i]);for(const [i,user] of [owner,member,nonmember,foreign].entries()){await db.query("insert into public.users(id,email,password_hash,updated_at) values($1,$2,'test-only',now())",[user,'groups'+i+'@example.invalid']);await db.query("insert into public.profiles(id,user_id,university_id,username,display_name,updated_at) values(gen_random_uuid(),$1,$2,$3,$4,now())",[user,user===foreign?otherCampus:campus,'groupuser'+i,'Group person '+i]);}},60000);
@@ -23,6 +25,7 @@ describe('student communities and private study groups',()=>{
   expect((await (await req('/groups','POST',draft)).json()).group.id).toBe(group.id);
   expect((await req('/groups','POST',{...draft,name:'Changed name'})).status).toBe(409);
   expect((await req('/groups/'+group.id+'/posts')).status).toBe(200);
+  expect((await req('/groups/'+group.id+'/notifications','PATCH',{enabled:true})).status).toBe(200);
   expect((await req('/groups/'+group.id+'/posts','GET',undefined,nonmember)).status).toBe(403);
   expect((await req('/groups/'+group.id,'GET',undefined,foreign)).status).toBe(404);
   expect((await req('/groups/'+group.id+'/join','POST',{},member)).status).toBe(200);
@@ -47,15 +50,35 @@ describe('student communities and private study groups',()=>{
   expect((await req('/groups/'+group.id+'/join','DELETE',{},member)).status).toBe(200);
   expect((await req('/groups/'+group.id+'/posts','GET',undefined,member)).status).toBe(403);
  });
- it('limits community publishing to admins and queues immediate/urgent member notifications once',async()=>{
+ it('allows members to post by default, lets admins restrict posting and respects notification opt-in',async()=>{
   const created=await req('/groups','POST',{requestId:crypto.randomUUID(),kind:'COMMUNITY',name:'Faculty notices'});const group=(await created.json()).group;
   await req('/groups/'+group.id+'/join','POST',{},member);
-  expect((await req('/groups/'+group.id+'/posts','POST',{requestId:crypto.randomUUID(),title:'Hello',body:'Not an admin'},member)).status).toBe(403);
+  expect((await req('/groups/'+group.id+'/posts','POST',{requestId:crypto.randomUUID(),title:'Hello',body:'A member post'},member)).status).toBe(201);
+  const before=await(await req('/groups/'+group.id,'GET',undefined,member)).json();expect(before.group.notifications_enabled).toBe(false);expect(before.canPost).toBe(true);
+  expect((await req('/groups/'+group.id,'PATCH',{name:'Faculty notices',description:'Member feed',membersCanPost:false},member)).status).toBe(403);
+  expect((await req('/groups/'+group.id,'PATCH',{name:'Faculty notices',description:'Admin feed',membersCanPost:false})).status).toBe(200);
+  expect((await req('/groups/'+group.id+'/posts','POST',{requestId:crypto.randomUUID(),title:'Hello',body:'Member after restriction'},member)).status).toBe(403);
+  expect((await(await req('/groups/'+group.id,'GET',undefined,member)).json()).canPost).toBe(false);
+  expect((await req('/groups/'+group.id+'/notifications','PATCH',{enabled:true},member)).status).toBe(200);
   const draft={requestId:crypto.randomUUID(),title:'Venue changed',body:'Meet at LT 2.',urgent:true,venue:'LT 2'};
   const posted=await req('/groups/'+group.id+'/posts','POST',draft);expect(posted.status).toBe(201);const post=(await posted.json()).post;
   await req('/groups/'+group.id+'/posts','POST',draft);
   expect((await db.query("select id from app_private.notification_outbox where dedupe_key like $1",['community-urgent:'+post.id+':%'])).rows).toHaveLength(1);
   expect((await req('/groups/'+group.id+'/members','POST',{username:'groupuser3'})).status).toBe(409);
+  const feed=await(await req('/groups/'+group.id+'/posts','GET',undefined,member)).json();expect(feed.posts.find((p:any)=>p.id===post.id).author_role).toBe('ADMIN');
+  expect((await req('/groups/'+group.id+'/notifications','PATCH',{enabled:false},member)).status).toBe(200);
+  const muted=await req('/groups/'+group.id+'/posts','POST',{requestId:crypto.randomUUID(),title:'Silent update',body:'Muted member receives no alert.'});expect(muted.status).toBe(201);const mutedId=(await muted.json()).post.id;
+  expect((await db.query('select id from public.in_app_notifications where dedupe_key like $1',['community-post:'+mutedId+':%'])).rows).toHaveLength(0);
+  expect((await db.query('select id from app_private.notification_outbox where dedupe_key like $1',['community-post:'+mutedId+':%'])).rows).toHaveLength(0);
+  expect((await req('/groups/'+group.id+'/notifications','PATCH',{enabled:true},nonmember)).status).toBe(403);
+  const ownImage=crypto.randomUUID(),stolenImage=crypto.randomUUID();for(const[id,actor]of[[ownImage,owner],[stolenImage,member]])await db.query("insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,$3,'post',$4,'image/jpeg',12,'Test photo')",[id,actor,campus,'test/'+id]);
+  expect((await req('/groups/'+group.id,'PATCH',{name:'Updated faculty',description:'New description',membersCanPost:true,avatarMediaId:stolenImage})).status).toBe(400);
+  expect((await req('/groups/'+group.id,'PATCH',{name:'Updated faculty',description:'New description',membersCanPost:true,avatarMediaId:ownImage})).status).toBe(200);
+  const updated=await(await req('/groups/'+group.id,'GET',undefined,member)).json();expect(updated.group).toMatchObject({name:'Updated faculty',description:'New description',members_can_post:true});expect(updated.group.avatar_url).toContain('/v1/media/'+ownImage);expect(updated.canPost).toBe(true);
+  const searchResponse=await req('/communities?q=Updated');expect(searchResponse.status).toBe(200);const search=await searchResponse.json();expect(search.rows.find((row:any)=>row.id===group.id)).toMatchObject({name:'Updated faculty',description:'New description',members:2});expect(search.rows.find((row:any)=>row.id===group.id).avatar_url).toContain('/v1/media/'+ownImage);
+  expect((await(await req('/communities?q=Updated','GET',undefined,foreign)).json()).rows).toEqual([]);
+  const members=await(await req('/groups/'+group.id+'/members','GET',undefined,nonmember)).json();expect(members.members).toHaveLength(2);expect(members.members[0].role).toBe('ADMIN');
+  expect((await req('/groups/'+group.id,'PATCH',{name:'Updated faculty',description:'',membersCanPost:true},foreign)).status).toBe(404);
  });
 
  it('keeps class alarms fifteen minutes early including midnight and scopes batch removal',async()=>{
@@ -86,3 +109,24 @@ describe('student communities and private study groups',()=>{
   expect((await (await req('/calendar/bulk-delete','POST',{ids:details.events.map((e:any)=>e.id)})).json()).deleted).toBe(4);
  });
 });
+
+ describe('community migration preserves existing memberships and post roles',()=>{
+  it('backfills existing notifications and admin badges while new followers remain opted out',async()=>{
+   const legacy=await createTestDatabase({excludeMigrations:['20261004101000_community_profiles_and_posting.sql']});
+   try{
+    await legacy.query("insert into public.universities(id,name,slug,updated_at) values($1,'Legacy campus','legacy-campus',now())",[campus]);
+    for(const[i,actor]of[owner,member,nonmember].entries())await legacy.query("insert into public.users(id,email,password_hash,updated_at) values($1,$2,'test-only',now())",[actor,'legacy'+i+'@example.invalid']);
+    const group=crypto.randomUUID(),post=crypto.randomUUID();
+    await legacy.query("insert into public.student_groups(id,institution_id,owner_user_id,kind,name,request_id) values($1,$2,$3,'COMMUNITY','Existing community',gen_random_uuid())",[group,campus,owner]);
+    for(const[actor,role]of[[owner,'ADMIN'],[member,'MEMBER']])await legacy.query('insert into public.student_group_members(group_id,institution_id,user_id,role) values($1,$2,$3,$4)',[group,campus,actor,role]);
+    await legacy.query("insert into public.student_group_posts(id,group_id,institution_id,author_user_id,request_id,title,body) values($1,$2,$3,$4,gen_random_uuid(),'Existing admin update','Keep this existing post')",[post,group,campus,owner]);
+    await legacy.exec(readFileSync(new URL('../../database/neon/migrations/20261004101000_community_profiles_and_posting.sql',import.meta.url),'utf8'));
+    expect((await legacy.query('select user_id,notifications_enabled from public.student_group_members where group_id=$1 order by role',[group])).rows).toHaveLength(2);
+    expect((await legacy.query('select notifications_enabled from public.student_group_members where group_id=$1',[group])).rows.every((row:any)=>row.notifications_enabled===true)).toBe(true);
+    expect((await legacy.query('select author_role,body from public.student_group_posts where id=$1',[post])).rows[0]).toEqual({author_role:'ADMIN',body:'Keep this existing post'});
+    expect((await legacy.query('select members_can_post,avatar_media_id from public.student_groups where id=$1',[group])).rows[0]).toEqual({members_can_post:true,avatar_media_id:null});
+    await legacy.query('insert into public.student_group_members(group_id,institution_id,user_id) values($1,$2,$3)',[group,campus,nonmember]);
+    expect((await legacy.query('select notifications_enabled from public.student_group_members where group_id=$1 and user_id=$2',[group,nonmember])).rows[0]).toEqual({notifications_enabled:false});
+   }finally{await legacy.close();}
+  },60000);
+ });

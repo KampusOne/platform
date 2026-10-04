@@ -62,6 +62,11 @@ const oldProfile={id:"33333333-3333-4333-8333-333333333333",version:"v1",transac
 const latestProfile={...oldProfile,id:"44444444-4444-4444-8444-444444444444",version:"v2"};
 const env={ENVIRONMENT:"staging",DATABASE_URL:"postgres://synthetic.invalid/db",PAYSTACK_SECRET_KEY:"sk_test_synthetic"}as Bindings;
 describe("current provider eligibility",()=>{
+  it("accepts a durably imported approved native rule for ordinary checkout",async()=>{
+    const imported={...oldProfile,version:'LEGACY_approved-native-policy'};
+    dbStub.execute.mockResolvedValueOnce({rows:[{ready:true}]}).mockResolvedValueOnce({rows:[imported]}).mockResolvedValueOnce({rows:[imported]});
+    expect(await resolveProviderCollection(env,"11111111-1111-4111-8111-111111111111")).toMatchObject({providerProfileId:imported.id,providerProfileVersion:imported.version,basisPoints:150});
+  });
   it("refuses new quotes pinned to a superseded profile or a disabled current successor",async()=>{
     dbStub.execute.mockResolvedValueOnce({rows:[{ready:true}]}).mockResolvedValueOnce({rows:[oldProfile]}).mockResolvedValueOnce({rows:[latestProfile]});
     await expect(resolveProviderCollection(env,"11111111-1111-4111-8111-111111111111",oldProfile.id)).rejects.toThrow("previous provider version");

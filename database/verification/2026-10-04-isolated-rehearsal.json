@@ -1,0 +1,179 @@
+{
+  "verifiedAt": "2026-10-04T00:41:59.242Z",
+  "environment": "isolated-rehearsal",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-mute-sunset-ayzh9xrc",
+  "parentBranchId": "br-quiet-butterfly-ayrj264q",
+  "branchCreatedAt": "2026-10-03T11:05:15Z",
+  "sourceLimitation": "Existing October 3 rehearsal reused without reset. It predates later production community rows and uploads; it is not a fresh copy of current production.",
+  "before": {
+    "media": 92,
+    "users": 14,
+    "profiles": 14,
+    "kira_checkouts": 3,
+    "student_groups": {
+      "count": 0,
+      "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "migration_count": 84,
+    "kira_price_plans": {
+      "count": 2,
+      "projectionHash": "0c8d943750ac3fe468d2f4ac56dfd65b"
+    },
+    "student_group_posts": {
+      "count": 0,
+      "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "payment_fee_profiles": {
+      "count": 0,
+      "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "commerce_fee_policies": {
+      "count": 0,
+      "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "student_group_members": {
+      "count": 0,
+      "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+  },
+  "after": {
+    "media": 92,
+    "users": 14,
+    "profiles": 14,
+    "kira_checkouts": 3,
+    "student_groups": {
+      "count": 0,
+      "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "migration_count": 86,
+    "kira_price_plans": {
+      "count": 2,
+      "projectionHash": "0c8d943750ac3fe468d2f4ac56dfd65b"
+    },
+    "student_group_posts": {
+      "count": 0,
+      "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "payment_fee_profiles": {
+      "count": 2,
+      "projectionHash": "4819d7ebe7e0f8e63bd39c5fb1c993ac"
+    },
+    "commerce_fee_policies": {
+      "count": 0,
+      "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "student_group_members": {
+      "count": 0,
+      "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+  },
+  "checks": {
+    "exactMigrationSources": "passed",
+    "communityNotificationOptInAndBlocks": "passed",
+    "approvedProviderProfileProvenance": "passed",
+    "fixturesRolledBack": true,
+    "priorRowProjectionsPreserved": true,
+    "privateSchemaClientGrants": 0,
+    "privateRelationClientGrants": 0,
+    "privateFunctionClientGrants": 0,
+    "groupTablesWithoutRls": 0,
+    "unvalidatedConstraints": 0,
+    "merchantAccountReviewNotInvented": true
+  },
+  "migrations": [
+    {
+      "version": "20261004013000_restore_approved_collection_profiles",
+      "path": "database/neon/migrations/20261004013000_restore_approved_collection_profiles.sql",
+      "sourceBlobSha": "e3091e18117afad8371ecaa07b891dfc0dcb87c7",
+      "sha256": "afe4bd6b5444432b59cd65326c61b297ec9f2e55191f53300c4e9f177a1c1f5e"
+    },
+    {
+      "version": "20261004101000_community_profiles_and_posting",
+      "path": "database/neon/migrations/20261004101000_community_profiles_and_posting.sql",
+      "sourceBlobSha": "57af291556486b5dacedf480095d75c83f3273c7",
+      "sha256": "f7a798e7e322502b985c3a692aaedc6d0edcb27fc1642c0b96a98f1e3db7e762"
+    }
+  ],
+  "acceptanceSources": [
+    "2026-10-04-community-functional-acceptance.sql",
+    "restored_collection_profiles_acceptance.sql"
+  ],
+  "additionalVendorMigration": {
+    "verifiedAt": "2026-10-04T00:48:29.116Z",
+    "migration": {
+      "version": "20261004014000_manual_agent_approval",
+      "path": "database/neon/migrations/20261004014000_manual_agent_approval.sql",
+      "sourceBlobSha": "9231c781a46ddc589f5e8627e9ea76ef9a74a118",
+      "sha256": "5d8e52d69165aab11b0a26541d4389fb0edc1d422609fa3c1249e978dee0d035"
+    },
+    "before": {
+      "media": 92,
+      "users": 14,
+      "profiles": 14,
+      "audit_events": {
+        "count": 254,
+        "projectionHash": "bdf3ea49d5c50ebc740e3a895288faf6"
+      },
+      "agent_profiles": {
+        "count": 0,
+        "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "migration_count": 86,
+      "verified_people": {
+        "count": 0,
+        "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "agent_applications": {
+        "count": 1,
+        "projectionHash": "fbeed918a84b69356a750e6bb2f22205"
+      },
+      "agent_application_details": {
+        "count": 0,
+        "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+      }
+    },
+    "after": {
+      "media": 92,
+      "users": 14,
+      "profiles": 14,
+      "audit_events": {
+        "count": 254,
+        "projectionHash": "bdf3ea49d5c50ebc740e3a895288faf6"
+      },
+      "agent_profiles": {
+        "count": 0,
+        "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "migration_count": 87,
+      "verified_people": {
+        "count": 0,
+        "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "agent_applications": {
+        "count": 1,
+        "projectionHash": "fbeed918a84b69356a750e6bb2f22205"
+      },
+      "agent_application_details": {
+        "count": 0,
+        "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+      }
+    },
+    "checks": {
+      "existingApplicationDetailsProfilesIdentitiesAuditsPreserved": true,
+      "fixturesRolledBack": true,
+      "approvalIdempotency": "passed",
+      "explicitOwnerExceptionAudit": "passed",
+      "selfReviewStaleRevisionMinimumAge": "passed",
+      "noFabricatedIdentity": "passed",
+      "unchangedBankAndPayoutBoundary": "passed",
+      "manualApprovalsAfterFixtures": 0,
+      "privateSchemaRelationRoutineClientGrants": 0
+    },
+    "localEvidence": "manual-agent-approval.test.ts: 3 passed; agent-intake.test.ts: 7 passed (reported by owning agent).",
+    "acceptanceSources": [
+      "2026-10-04-agent-approval-acceptance.sql",
+      "manual_agent_approval_acceptance.sql"
+    ]
+  }
+}

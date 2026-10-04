@@ -92,9 +92,9 @@ export default function FeedScreen() {
   }).current;
 
   const registerVideoHandle = useCallback((postId: string, handle: MediaPlaybackHandle | null) => {
-    const existing = videoHandles.current.get(postId);
     if (!handle) {
-      existing?.setViewportVisible(false);
+      // The child unregisters during teardown, after Expo may have released its
+      // player. Unregistering is bookkeeping; the native hook owns its release.
       videoHandles.current.delete(postId);
       return;
     }

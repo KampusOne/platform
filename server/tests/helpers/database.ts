@@ -48,10 +48,11 @@ export const unifiedMigrations = [
   "20261003080000_push_delivery_reliability.sql",
   "20261003091000_student_groups_and_academic_management.sql",
   "20261003092000_student_group_notification_queue.sql",
+  "20261004101000_community_profiles_and_posting.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */
-export async function createTestDatabase() {
+export async function createTestDatabase({excludeMigrations=[]}:{excludeMigrations?:string[]}={}) {
   const db = new PGlite();
   await db.exec("create schema app_private");
   for (const statement of [...snapshot.enums, ...snapshot.tables])
@@ -80,7 +81,7 @@ export async function createTestDatabase() {
   }
   for (const statement of [...snapshot.functions, ...snapshot.triggers])
     await db.exec(statement);
-  for (const migration of unifiedMigrations)
+  for (const migration of unifiedMigrations.filter(name=>!excludeMigrations.includes(name)))
     await db.exec(
       readFileSync(
         new URL(

@@ -1,0 +1,24 @@
+{
+  "createdAt": "2026-10-04",
+  "scope": "October 4 payment compatibility, reviewed vendor approval and community corrections; exact-source manifest only, not production application proof.",
+  "migrations": [
+    {
+      "version": "20261004013000_restore_approved_collection_profiles",
+      "path": "database/neon/migrations/20261004013000_restore_approved_collection_profiles.sql",
+      "sourceBlobSha": "e3091e18117afad8371ecaa07b891dfc0dcb87c7",
+      "sha256": "afe4bd6b5444432b59cd65326c61b297ec9f2e55191f53300c4e9f177a1c1f5e"
+    },
+    {
+      "version": "20261004014000_manual_agent_approval",
+      "path": "database/neon/migrations/20261004014000_manual_agent_approval.sql",
+      "sourceBlobSha": "9231c781a46ddc589f5e8627e9ea76ef9a74a118",
+      "sha256": "5d8e52d69165aab11b0a26541d4389fb0edc1d422609fa3c1249e978dee0d035"
+    },
+    {
+      "version": "20261004101000_community_profiles_and_posting",
+      "path": "database/neon/migrations/20261004101000_community_profiles_and_posting.sql",
+      "sourceBlobSha": "57af291556486b5dacedf480095d75c83f3273c7",
+      "sha256": "f7a798e7e322502b985c3a692aaedc6d0edcb27fc1642c0b96a98f1e3db7e762"
+    }
+  ]
+}

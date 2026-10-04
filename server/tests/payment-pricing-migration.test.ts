@@ -10,7 +10,7 @@ async function financialFixture(){
   create table app_private.order_price_snapshots(order_id uuid,quote_id uuid);create table app_private.store_checkout_quotes(id uuid,policy_id uuid,pricing jsonb,created_at timestamptz,expires_at timestamptz);
   create table app_private.tutorial_booking_prices(booking_id uuid,policy_id uuid,created_at timestamptz);
   create table app_private.material_checkout_quotes(id uuid,policy_id uuid,pricing jsonb,created_at timestamptz,expires_at timestamptz);
-  create table app_private.kira_price_plans(id uuid,version text,collection jsonb,approved_by uuid,approval_note text,source_url text,approved_at timestamptz);
+  create table app_private.kira_price_plans(id uuid,university_id uuid,version text,collection jsonb,approved_by uuid,approval_note text,source_url text,approved_at timestamptz);
   create table app_private.kira_checkouts(id uuid,university_id uuid,plan_id uuid,provider_reference text,amount_kobo bigint,created_at timestamptz,expires_at timestamptz);
   create table app_private.rider_commission_checkouts(id uuid,university_id uuid,provider_reference text,amount_kobo bigint,created_at timestamptz,expires_at timestamptz);`);
   await db.exec(await readFile(new URL("../../database/neon/migrations/20261003123000_payment_pricing_profiles.sql",import.meta.url),"utf8"));
@@ -22,6 +22,19 @@ async function financialFixture(){
   return db;
 }
 describe("immutable collection pricing database",()=>{
+  it("imports existing approved rules before the first checkout without inventing an account review",async()=>{
+    const db=await financialFixture();try{
+      await db.exec(`insert into app_private.kira_price_plans values('66666666-6666-4666-8666-666666666666','11111111-1111-4111-8111-111111111111','existing-approved-kira','{"basisPoints":150,"flatKobo":10000,"flatWaivedBelowKobo":250000,"capKobo":200000}','22222222-2222-4222-8222-222222222222','Previously approved subscription rules','https://paystack.com/pricing','2026-10-02');`);
+      const migration=await readFile(new URL("../../database/neon/migrations/20261004013000_restore_approved_collection_profiles.sql",import.meta.url),"utf8");
+      await db.exec(migration);await db.exec(migration);
+      const profiles=(await db.query<{version:string;approved_by:string;approval_note:string;status:string}>("select * from app_private.payment_fee_profiles order by effective_from")).rows;
+      expect(profiles).toHaveLength(2);
+      expect(profiles[1]).toMatchObject({version:'LEGACY_66666666-6666-4666-8666-666666666666',approved_by:'22222222-2222-4222-8222-222222222222',approval_note:'Previously approved subscription rules',status:'APPROVED'});
+      expect((await db.query("select * from app_private.paystack_account_reviews")).rows).toHaveLength(0);
+      await db.exec("select app_private.snapshot_collection_payment('K1-O-fixture',600000,'{}')");
+      expect((await db.query("select * from app_private.collection_payment_pricing")).rows).toHaveLength(1);
+    }finally{await db.close();}
+  },15000);
   it("freezes original policy, rejects changed initialization amounts, and reconciles duplicate success once",async()=>{
     const db=await financialFixture();try{
       await db.query("select app_private.snapshot_collection_payment($1,$2,$3)",["K1-O-fixture",600000,{}]);

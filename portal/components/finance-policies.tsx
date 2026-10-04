@@ -216,6 +216,7 @@ function FinancePolicyEditor() {
     [policyError, setPolicyError] = useState(""),
     [version, setVersion] = useState(0),
     [busy, setBusy] = useState(false);
+  const [paymentSetupVersion, setPaymentSetupVersion] = useState(0);
   const [form, setForm] = useState({
     universityId: scope,
     kind: "STORE",
@@ -566,7 +567,7 @@ function FinancePolicyEditor() {
       active="admin"
       eyebrow="Finance controls"
       title="Payment & pricing"
-      description="Review provider terms, customer totals, subscription offers and withdrawal economics with an audited version history."
+      description="Set Kira prices and discounts, confirm checkout setup, and review your payment records."
     >
       {!allowed ? (
         <section className="state-panel">
@@ -605,15 +606,24 @@ function FinancePolicyEditor() {
               </p>
             </section>
           ) : null}
-          <PaymentPricingControls
-            onProfilesChanged={() => {
-              setVersion((value) => value + 1);
-              setPreview(null);
-              setAcceptedPreview(false);
-            }}
+          <KiraPricePlan
+            onPaymentSetupSaved={() => setPaymentSetupVersion((value) => value + 1)}
           />
-          <KiraPricePlan />
-          <TransferCostPolicies />
+          <details className="panel">
+            <summary>Advanced provider and payment policies</summary>
+            <p className="field-help">
+              Review detailed provider rates, account attestations and pricing alerts when you need them.
+            </p>
+            <PaymentPricingControls
+              key={paymentSetupVersion}
+              onProfilesChanged={() => {
+                setVersion((value) => value + 1);
+                setPreview(null);
+                setAcceptedPreview(false);
+              }}
+            />
+            <TransferCostPolicies />
+          </details>
           <FinanceRefunds />
           <DiscountCodes />
           <section className="panel">

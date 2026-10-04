@@ -1,0 +1,405 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-04T00:43:43.483Z",
+    "scope": "User-requested recurring screen failure and payment/community corrections, with root review of the exact two additive migration hashes and isolated acceptance. No monetary writes or merchant-account setting attestation."
+  },
+  "verifiedAt": "2026-10-04T00:49:30.407Z",
+  "rehearsal": {
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "createdAt": "2026-10-03T11:05:15Z",
+    "reusedWithoutReset": true,
+    "verifiedAt": "2026-10-04T00:41:59.242Z",
+    "limitation": "Existing October 3 rehearsal reused without reset. It predates later production community rows and uploads; it is not a fresh copy of current production.",
+    "sourceReport": "2026-10-04-isolated-rehearsal.json"
+  },
+  "checks": {
+    "october4": "passed",
+    "fixturesRolledBack": true,
+    "isolatedBranchRehearsal": "passed",
+    "existingAccountCountsPreserved": true,
+    "mediaAndBookingsPreserved": true,
+    "communityProjectionsPreserved": true,
+    "privatePrivileges": "passed",
+    "atomicTransaction": "passed",
+    "exactSourceLedger": "passed",
+    "approvedPaymentProfileProvenance": "passed",
+    "existingCommunitySubscriptionsPreserved": true,
+    "existingAdminPostRolesBackfilled": true,
+    "notificationOptInAndBlocks": "passed",
+    "merchantAccountAttestationNotInvented": true,
+    "agentApprovalProjectionsPreserved": true,
+    "bankAndPayoutBoundaryUnchanged": true,
+    "reviewedAgentApprovalLimits": "passed"
+  },
+  "production": {
+    "before": {
+      "media": 105,
+      "users": 14,
+      "profiles": 14,
+      "kira_checkouts": 3,
+      "student_groups": {
+        "count": 1,
+        "projectionHash": "8370d951c70ba00153e14626cdd3b458"
+      },
+      "migration_count": 84,
+      "kira_price_plans": {
+        "count": 2,
+        "projectionHash": "d8cd998ba895f4a1eb0e0d867e8d890b"
+      },
+      "student_group_posts": {
+        "count": 1,
+        "projectionHash": "2b5876a054c0c0184671e9fdbc8aa026"
+      },
+      "payment_fee_profiles": {
+        "count": 0,
+        "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "commerce_fee_policies": {
+        "count": 0,
+        "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "student_group_members": {
+        "count": 2,
+        "projectionHash": "2a1f7d5505d02d5985fefea8fcfce86d"
+      }
+    },
+    "after": {
+      "media": 105,
+      "users": 14,
+      "profiles": 14,
+      "kira_checkouts": 3,
+      "student_groups": {
+        "count": 1,
+        "projectionHash": "8370d951c70ba00153e14626cdd3b458"
+      },
+      "migration_count": 87,
+      "kira_price_plans": {
+        "count": 2,
+        "projectionHash": "d8cd998ba895f4a1eb0e0d867e8d890b"
+      },
+      "student_group_posts": {
+        "count": 1,
+        "projectionHash": "2b5876a054c0c0184671e9fdbc8aa026"
+      },
+      "payment_fee_profiles": {
+        "count": 2,
+        "projectionHash": "5cedfa7807c8d2353a4f3ec4bc6aad7e"
+      },
+      "commerce_fee_policies": {
+        "count": 0,
+        "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "student_group_members": {
+        "count": 2,
+        "projectionHash": "2a1f7d5505d02d5985fefea8fcfce86d"
+      }
+    },
+    "committedMetadata": {
+      "verified_at": "2026-10-04T00:49:30.407Z",
+      "migration_count": "87",
+      "manual_approvals": "0",
+      "merchant_reviews": "0",
+      "applied_sources": [
+        {
+          "version": "20261004013000_restore_approved_collection_profiles",
+          "appliedAt": "2026-10-04T00:43:44.727869+00:00",
+          "appliedBy": "codex-20261004-reviewed-corrections",
+          "sourceBlobSha": "e3091e18117afad8371ecaa07b891dfc0dcb87c7"
+        },
+        {
+          "version": "20261004014000_manual_agent_approval",
+          "appliedAt": "2026-10-04T00:49:05.02769+00:00",
+          "appliedBy": "codex-20261004-reviewed-corrections",
+          "sourceBlobSha": "9231c781a46ddc589f5e8627e9ea76ef9a74a118"
+        },
+        {
+          "version": "20261004101000_community_profiles_and_posting",
+          "appliedAt": "2026-10-04T00:43:44.727869+00:00",
+          "appliedBy": "codex-20261004-reviewed-corrections",
+          "sourceBlobSha": "57af291556486b5dacedf480095d75c83f3273c7"
+        }
+      ],
+      "agent_function_ready": true,
+      "private_schema_grants": "0",
+      "private_relation_grants": "0",
+      "private_function_grants": "0"
+    },
+    "preservation": {
+      "comparedOriginalProjections": [
+        "student_groups",
+        "student_group_members",
+        "student_group_posts",
+        "kira_price_plans",
+        "commerce_fee_policies"
+      ],
+      "comparedOriginalCounts": [
+        "users",
+        "profiles",
+        "media",
+        "kira_checkouts"
+      ],
+      "excludedNewColumns": [
+        "student_groups.avatar_media_id",
+        "student_groups.members_can_post",
+        "student_group_members.notifications_enabled",
+        "student_group_posts.author_role"
+      ],
+      "allowedNewRecords": "Two compatible payment_fee_profiles imported from already approved Kira plans with their reviewer/time/source/collection unchanged.",
+      "unchanged": true
+    },
+    "security": {
+      "privateSchemaClientGrants": 0,
+      "privateRelationClientGrants": 0,
+      "privateFunctionClientGrants": 0,
+      "groupTablesWithoutRls": 0,
+      "unvalidatedConstraints": 0
+    },
+    "fixtureSources": [
+      "2026-10-04-community-functional-acceptance.sql",
+      "restored_collection_profiles_acceptance.sql"
+    ],
+    "firstTransaction": {
+      "before": {
+        "media": 105,
+        "users": 14,
+        "profiles": 14,
+        "kira_checkouts": 3,
+        "student_groups": {
+          "count": 1,
+          "projectionHash": "8370d951c70ba00153e14626cdd3b458"
+        },
+        "migration_count": 84,
+        "kira_price_plans": {
+          "count": 2,
+          "projectionHash": "d8cd998ba895f4a1eb0e0d867e8d890b"
+        },
+        "student_group_posts": {
+          "count": 1,
+          "projectionHash": "2b5876a054c0c0184671e9fdbc8aa026"
+        },
+        "payment_fee_profiles": {
+          "count": 0,
+          "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        "commerce_fee_policies": {
+          "count": 0,
+          "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        "student_group_members": {
+          "count": 2,
+          "projectionHash": "2a1f7d5505d02d5985fefea8fcfce86d"
+        }
+      },
+      "after": {
+        "media": 105,
+        "users": 14,
+        "profiles": 14,
+        "kira_checkouts": 3,
+        "student_groups": {
+          "count": 1,
+          "projectionHash": "8370d951c70ba00153e14626cdd3b458"
+        },
+        "migration_count": 86,
+        "kira_price_plans": {
+          "count": 2,
+          "projectionHash": "d8cd998ba895f4a1eb0e0d867e8d890b"
+        },
+        "student_group_posts": {
+          "count": 1,
+          "projectionHash": "2b5876a054c0c0184671e9fdbc8aa026"
+        },
+        "payment_fee_profiles": {
+          "count": 2,
+          "projectionHash": "5cedfa7807c8d2353a4f3ec4bc6aad7e"
+        },
+        "commerce_fee_policies": {
+          "count": 0,
+          "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        "student_group_members": {
+          "count": 2,
+          "projectionHash": "2a1f7d5505d02d5985fefea8fcfce86d"
+        }
+      },
+      "committedMetadata": {
+        "verified_at": "2026-10-04T00:44:03.514Z",
+        "migration_count": "86",
+        "merchant_review_count": "0",
+        "applied_sources": [
+          {
+            "version": "20261004013000_restore_approved_collection_profiles",
+            "sourceBlobSha": "e3091e18117afad8371ecaa07b891dfc0dcb87c7"
+          },
+          {
+            "version": "20261004101000_community_profiles_and_posting",
+            "sourceBlobSha": "57af291556486b5dacedf480095d75c83f3273c7"
+          }
+        ],
+        "community_columns": [
+          {
+            "table": "student_group_members",
+            "column": "notifications_enabled",
+            "default": "false",
+            "nullable": "NO"
+          },
+          {
+            "table": "student_group_posts",
+            "column": "author_role",
+            "default": "'MEMBER'::text",
+            "nullable": "NO"
+          },
+          {
+            "table": "student_groups",
+            "column": "avatar_media_id",
+            "default": null,
+            "nullable": "YES"
+          },
+          {
+            "table": "student_groups",
+            "column": "members_can_post",
+            "default": "true",
+            "nullable": "NO"
+          }
+        ],
+        "enabled_existing_members": "2",
+        "admin_post_count": "1",
+        "notification_preference_filter": true,
+        "block_filter": true
+      },
+      "appliedVersions": [
+        "20261004013000_restore_approved_collection_profiles",
+        "20261004101000_community_profiles_and_posting"
+      ]
+    },
+    "thirdMigrationTransaction": {
+      "before": {
+        "media": 105,
+        "users": 14,
+        "profiles": 14,
+        "audit_events": {
+          "count": 419,
+          "projectionHash": "8bd9625de9f706f5a963bccef61495bc"
+        },
+        "agent_profiles": {
+          "count": 0,
+          "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        "migration_count": 86,
+        "verified_people": {
+          "count": 1,
+          "projectionHash": "ee79f482ab13e650a5784d1e8f5e1bbf"
+        },
+        "agent_applications": {
+          "count": 2,
+          "projectionHash": "284d5b809a70cd7b3bceba6ad4074228"
+        },
+        "agent_application_details": {
+          "count": 1,
+          "projectionHash": "eb8cc59152441bdaee9388fe01e33dfa"
+        }
+      },
+      "after": {
+        "media": 105,
+        "users": 14,
+        "profiles": 14,
+        "audit_events": {
+          "count": 419,
+          "projectionHash": "8bd9625de9f706f5a963bccef61495bc"
+        },
+        "agent_profiles": {
+          "count": 0,
+          "projectionHash": "d41d8cd98f00b204e9800998ecf8427e"
+        },
+        "migration_count": 87,
+        "verified_people": {
+          "count": 1,
+          "projectionHash": "ee79f482ab13e650a5784d1e8f5e1bbf"
+        },
+        "agent_applications": {
+          "count": 2,
+          "projectionHash": "284d5b809a70cd7b3bceba6ad4074228"
+        },
+        "agent_application_details": {
+          "count": 1,
+          "projectionHash": "eb8cc59152441bdaee9388fe01e33dfa"
+        }
+      },
+      "committedMetadata": {
+        "verified_at": "2026-10-04T00:49:30.407Z",
+        "migration_count": "87",
+        "manual_approvals": "0",
+        "merchant_reviews": "0",
+        "applied_sources": [
+          {
+            "version": "20261004013000_restore_approved_collection_profiles",
+            "appliedAt": "2026-10-04T00:43:44.727869+00:00",
+            "appliedBy": "codex-20261004-reviewed-corrections",
+            "sourceBlobSha": "e3091e18117afad8371ecaa07b891dfc0dcb87c7"
+          },
+          {
+            "version": "20261004014000_manual_agent_approval",
+            "appliedAt": "2026-10-04T00:49:05.02769+00:00",
+            "appliedBy": "codex-20261004-reviewed-corrections",
+            "sourceBlobSha": "9231c781a46ddc589f5e8627e9ea76ef9a74a118"
+          },
+          {
+            "version": "20261004101000_community_profiles_and_posting",
+            "appliedAt": "2026-10-04T00:43:44.727869+00:00",
+            "appliedBy": "codex-20261004-reviewed-corrections",
+            "sourceBlobSha": "57af291556486b5dacedf480095d75c83f3273c7"
+          }
+        ],
+        "agent_function_ready": true,
+        "private_schema_grants": "0",
+        "private_relation_grants": "0",
+        "private_function_grants": "0"
+      },
+      "fixturesRolledBack": true,
+      "unchangedOriginalAgentProjections": true,
+      "acceptanceSources": [
+        "2026-10-04-agent-approval-acceptance.sql",
+        "manual_agent_approval_acceptance.sql"
+      ]
+    }
+  },
+  "migrations": [
+    {
+      "version": "20261004013000_restore_approved_collection_profiles",
+      "path": "database/neon/migrations/20261004013000_restore_approved_collection_profiles.sql",
+      "sourceBlobSha": "e3091e18117afad8371ecaa07b891dfc0dcb87c7",
+      "sha256": "afe4bd6b5444432b59cd65326c61b297ec9f2e55191f53300c4e9f177a1c1f5e",
+      "appliedAt": "2026-10-04T00:43:44.727869+00:00",
+      "appliedBy": "codex-20261004-reviewed-corrections"
+    },
+    {
+      "version": "20261004014000_manual_agent_approval",
+      "path": "database/neon/migrations/20261004014000_manual_agent_approval.sql",
+      "sourceBlobSha": "9231c781a46ddc589f5e8627e9ea76ef9a74a118",
+      "sha256": "5d8e52d69165aab11b0a26541d4389fb0edc1d422609fa3c1249e978dee0d035",
+      "appliedAt": "2026-10-04T00:49:05.02769+00:00",
+      "appliedBy": "codex-20261004-reviewed-corrections"
+    },
+    {
+      "version": "20261004101000_community_profiles_and_posting",
+      "path": "database/neon/migrations/20261004101000_community_profiles_and_posting.sql",
+      "sourceBlobSha": "57af291556486b5dacedf480095d75c83f3273c7",
+      "sha256": "f7a798e7e322502b985c3a692aaedc6d0edcb27fc1642c0b96a98f1e3db7e762",
+      "appliedAt": "2026-10-04T00:43:44.727869+00:00",
+      "appliedBy": "codex-20261004-reviewed-corrections"
+    }
+  ],
+  "additionalApprovals": [
+    {
+      "productionMigrationApproved": true,
+      "at": "2026-10-04T00:49:03.653Z",
+      "sourceBlobSha": "9231c781a46ddc589f5e8627e9ea76ef9a74a118",
+      "scope": "Root reviewed exact additive vendor approval migration, route authorization and independent review. Preserve genuine application/identity/audit data; no money or merchant attestation writes."
+    }
+  ]
+}

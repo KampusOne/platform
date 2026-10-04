@@ -5,6 +5,8 @@ import { createSession } from "../src/services/sessions";
 import { sha256 } from "../src/lib/security";
 import { app } from "../src/app";
 import type { AuthenticatedUser, Bindings } from "../src/types";
+import { pdfFixture } from "./helpers/pdf";
+import { nativeKiraVoiceBody } from "../../mobile/src/lib/kira-voice-upload";
 
 let db: PGlite;
 vi.mock("../src/lib/database", () => ({ database: () => testDatabaseAdapter(db), sqlClient: () => testSqlClient(db), firstRow: (r: { rows: unknown[] }) => r.rows[0] }));
@@ -42,6 +44,7 @@ beforeAll(async () => {
 }, 60000);
 beforeEach(async () => {
   await db.exec("delete from app_private.ai_requests;delete from app_private.request_rate_limits");
+  delete env.PRIVATE_BUCKET;
   env.AI_UNLIMITED_EMAIL_HASHES = await sha256(ownerEmail);
   env.AI_DAILY_USER_LIMIT = "5"; env.AI_DAILY_GLOBAL_LIMIT = "100"; env.AI_ASSISTANT_ENABLED = "true";
   env.HF_TOKEN = "hf_SYNTHETIC";env.AI_CHAT_WINDOW_LIMIT="15";env.AI_STUDY_TRIAL_LIMIT="5";
@@ -56,12 +59,36 @@ beforeEach(async () => {
 afterAll(async () => { vi.unstubAllGlobals(); await db?.close(); });
 
 describe("student AI persistence and quota boundaries",()=>{
+  it.each(['text/plain','application/pdf'])("extracts an attached %s, saves its type and replays one inference",async mime=>{
+    const mediaId=crypto.randomUUID(),bytes=mime==='application/pdf'?pdfFixture(['Physics 101: Ohm law states V = I times R.']):new TextEncoder().encode('Physics 101: Ohm law states V = I times R.');
+    const filename=mime==='application/pdf'?'Physics.pdf':'Physics.txt';
+    await db.query("insert into public.media_objects(id,owner_user_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,'resource',$3,$4,$5,$6)",[mediaId,owner,'private-'+mediaId,mime,bytes.byteLength,filename]);
+    env.PRIVATE_BUCKET={get:async key=>key==='private-'+mediaId?{size:bytes.byteLength,arrayBuffer:async()=>Uint8Array.from(bytes).buffer}:null} as unknown as R2Bucket;
+    const body={...draft('summary'),prompt:'',mediaId};
+    const result=await json(await request('/ai','POST',body));
+    expect(result.text).toContain('Voltage');
+    const payload=JSON.parse(String(provider.mock.calls[0]?.[1]?.body));
+    expect(String(payload.messages.at(-1).content)).toContain('Ohm law states V = I times R.');
+    expect((await json(await request(`/ai/history/${body.idempotencyKey}`))).fileType).toBe(mime);
+    expect(await json(await request('/ai','POST',body))).toEqual(result);
+    expect((await json(await request(`/ai/requests/${body.idempotencyKey}`))).status).toBe('completed');
+    await json(await request(`/ai/requests/${body.idempotencyKey}`,'GET',undefined,other),404);
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+  it('reads processing reservations without starting another metered call',async()=>{
+    const key=crypto.randomUUID();await db.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) values($1,$2,repeat('a',64),'summary','PROCESSING','{}'::jsonb)",[owner,key]);
+    expect(await json(await request(`/ai/requests/${key}`))).toEqual({requestId:key,status:'processing'});
+    expect(provider).not.toHaveBeenCalled();
+    await db.query("update app_private.ai_requests set created_at=now()-interval '6 minutes' where idempotency_key=$1",[key]);
+    const stale=await json(await request(`/ai/requests/${key}`),409);expect(stale.error.details).toMatchObject({reason:'AI_STALE_REQUEST',retryWithNewKey:true});
+  });
   it("stores and replays Kira voice transcription against the real AI request schema",async()=>{
     const requestKey=crypto.randomUUID();
+    const voiceBody=await nativeKiraVoiceBody({exists:true,size:5,arrayBuffer:async()=>new Uint8Array([0,1,2,3,4]).buffer});
     const makeRequest=()=>app.request(`https://api.example.invalid/v1/ai/transcribe?idempotencyKey=${requestKey}&consent=true`,{
       method:"POST",
       headers:{Authorization:`Bearer ${tokens.get(owner)}`,"Content-Type":"audio/mp4"},
-      body:new Uint8Array([0,1,2,3,4]),
+      body:voiceBody,
     },env);
     expect(await json(await makeRequest())).toEqual({text:"Explain Newton's second law."});
     expect(await json(await makeRequest())).toEqual({text:"Explain Newton's second law."});

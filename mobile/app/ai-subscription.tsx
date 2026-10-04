@@ -281,13 +281,11 @@ function AccountSubscription() {
 
   const selected = plan?.catalog?.[selectedTier];
   const selectedName = selectedTier === "standard" ? "Standard" : "Pro";
-  const selectedBenefits = selectedTier === "standard" ? standardBenefits : benefits;
   const checkout = plan?.checkout;
   const offerLive = Boolean(selected?.active && selected.available && selected.offer.active && selected.discountPercent > 0 && selected.discountAmountKobo > 0 &&
     (!selected.offer.startsAt || Date.parse(selected.offer.startsAt) <= now) &&
     (!selected.offer.endsAt || Date.parse(selected.offer.endsAt) > now));
   const listPrice = checkout?.listed_amount_kobo ?? quote?.listedAmountKobo ?? selected?.listedAmountKobo;
-  const offerPrice = selected?.amountKobo;
   const offerPercent = checkout?.offer_discount_percent ?? quote?.offerDiscountPercent ?? (offerLive ? selected?.discountPercent ?? 0 : 0);
   const amount = checkout?.amount_kobo ?? quote?.amountKobo ?? selected?.amountKobo;
   const discountAmount = checkout?.discount_amount_kobo ?? quote?.discountAmountKobo ?? selected?.discountAmountKobo ?? 0;
@@ -329,13 +327,13 @@ function AccountSubscription() {
     });
   }
 
-  async function fetchQuote(discountCode = "") {
+  async function fetchQuote(discountCode = "", tier: Tier = selectedTier) {
     const result = await api<{ quote: PricingQuote }>("/v1/ai/subscription-quote", {
       method: "POST",
-      body: JSON.stringify({ tier: selectedTier, discountCode: discountCode.trim(), requestId: key.current }),
+      body: JSON.stringify({ tier, discountCode: discountCode.trim(), requestId: key.current }),
     });
     const next = result?.quote;
-    if (!next || next.tier !== selectedTier || !next.quoteId || !Number.isSafeInteger(next.amountKobo) || next.amountKobo < 0 || next.paystackAmountKobo !== next.amountKobo || !Number.isFinite(Date.parse(next.expiresAt)))
+    if (!next || next.tier !== tier || !next.quoteId || !Number.isSafeInteger(next.amountKobo) || next.amountKobo < 0 || next.paystackAmountKobo !== next.amountKobo || !Number.isFinite(Date.parse(next.expiresAt)))
       throw new Error("Your checkout quote could not be read. Try again.");
     if (!alive.current) return null;
     setQuote(next);
@@ -343,12 +341,12 @@ function AccountSubscription() {
     return next;
   }
 
-  async function enterCheckout() {
-    if (!checkoutEnabled || busy) return;
+  async function enterCheckout(tier: Tier = selectedTier) {
+    if (!plan?.catalog?.[tier]?.checkoutEnabled || busy) return;
     await run(async () => {
       if (!checkout) {
         key.current = randomUUID();
-        await fetchQuote();
+        await fetchQuote("", tier);
       }
       if (alive.current) {
         setNotice("");
@@ -427,42 +425,42 @@ function AccountSubscription() {
     lineHeight: 19,
   };
 
-  const benefitRows = selectedBenefits
+  const benefitRows = (tier: Tier, allowance: Benefits | null) => allowance
     ? [
-        { icon: "cloud-upload-outline" as const, title: `${selectedTier === "standard" ? 5 : importLimit} imports each week`, detail: "Shared across calendars, timetables and Kira source files. Manual entries and grades stay free." },
-        { icon: "bulb-outline" as const, title: selectedTier === "standard" ? "Detailed everyday study answers" : "More room for detailed reasoning", detail: selectedTier === "standard" ? "Teaching answers and worked examples for your everyday study." : "Longer teaching answers, worked examples and more conversation context." },
+        { icon: "cloud-upload-outline" as const, title: `${tier === "standard" ? 5 : importLimit} imports each week`, detail: "Shared across calendars, timetables and Kira source files. Manual entries and grades stay free." },
+        { icon: "bulb-outline" as const, title: tier === "standard" ? "Detailed everyday study answers" : "More room for detailed reasoning", detail: tier === "standard" ? "Teaching answers and worked examples for your everyday study." : "Longer teaching answers, worked examples and more conversation context." },
         {
           icon: "sparkles-outline" as const,
-          title: selectedBenefits.studyLimit
-            ? `${selectedBenefits.studyLimit} study generations ${selectedTier === "standard" ? "in your trial" : "every month"}`
+          title: allowance.studyLimit
+            ? `${allowance.studyLimit} study generations ${tier === "standard" ? "in your trial" : "every month"}`
             : "Unlimited personal study allowance",
           detail: "Turn class material into summaries, detailed lessons, notes and quizzes.",
         },
         {
           icon: "chatbubbles-outline" as const,
-          title: selectedBenefits.askMessagesPerWindow
-            ? `Up to ${selectedBenefits.askMessagesPerWindow} Ask Kira messages every 15 minutes`
+          title: allowance.askMessagesPerWindow
+            ? `Up to ${allowance.askMessagesPerWindow} Ask Kira messages every 15 minutes`
             : "Unlimited personal Ask Kira allowance",
           detail: "Keep longer study conversations moving without losing the thread.",
         },
         {
           icon: "layers-outline" as const,
-          title: `${selectedBenefits.historyTurns} turns of conversation context`,
+          title: `${allowance.historyTurns} turns of conversation context`,
           detail: "Kira can follow your recent questions instead of treating every message as new.",
         },
         {
           icon: "time-outline" as const,
-          title: `${selectedBenefits.historyDays} days of saved conversations`,
+          title: `${allowance.historyDays} days of saved conversations`,
           detail: "Come back to recent study sessions when you need them again.",
         },
         {
           icon: "mic-outline" as const,
-          title: `Voice transcription up to ${Math.max(1, Math.round(selectedBenefits.voiceMaxSeconds / 60))} minutes`,
+          title: `Voice transcription up to ${Math.max(1, Math.round(allowance.voiceMaxSeconds / 60))} minutes`,
           detail: "Speak a question or study prompt instead of typing it.",
         },
         {
           icon: "document-text-outline" as const,
-          title: `Files up to ${fileSize(selectedBenefits.maxFileBytes)} each`,
+          title: `Files up to ${fileSize(allowance.maxFileBytes)} each`,
           detail: capabilities?.documents === false
             ? "File support appears automatically when the study service is available."
             : "Study from supported PDFs and documents inside Kira.",
@@ -671,167 +669,45 @@ function AccountSubscription() {
   return (
     <ToolPage title="Kira plans" refreshing={loading} onRefresh={() => void load()}>
       <View style={{ gap: 18, paddingVertical: 14 }}>
-        {plan ? <View accessibilityRole="text" style={{flexDirection:"row",alignItems:"center",gap:8,padding:14,backgroundColor:theme.surfaceMuted,borderRadius:12}}><Ionicons name="checkmark-circle" size={18} color={theme.brand}/><Text style={{color:theme.text,fontFamily:theme.font.semibold}}>Current plan: {currentTier=== "pro" ? "Pro" : "Standard"}</Text></View> : null}
-        <View
-          style={{
-            borderRadius: 28,
-            backgroundColor: theme.surfaceSoft,
-            borderWidth: 1,
-            borderColor: theme.border,
-            padding: 22,
-            gap: 10,
-          }}
-        >
-          <View
-            style={{
-              alignSelf: "flex-start",
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 7,
-              backgroundColor: theme.surface,
-              paddingHorizontal: 11,
-              paddingVertical: 7,
-              borderRadius: 999,
-            }}
-          >
-            <Ionicons name="sparkles" size={15} color={theme.deepBrand} />
-            <Text
-              style={{
-                color: theme.deepBrand,
-                fontFamily: theme.font.semibold,
-                fontSize: 11,
-                letterSpacing: 0.4,
-              }}
-            >
-              KIRA {selectedName.toUpperCase()}
+        {plan ? <View accessibilityRole="text" style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 14, backgroundColor: theme.surfaceMuted, borderRadius: 12 }}>
+          <Ionicons name="checkmark-circle" size={18} color={theme.brand} />
+          <Text style={{ color: theme.text, fontFamily: theme.font.semibold }}>Current plan: {currentTier === "pro" ? "Pro" : "Standard"}</Text>
+        </View> : null}
+        <Text style={muted}>Choose the study support that works for you. Each plan includes the features below.</Text>
+        {(["standard", "pro"] as const).map((tier) => {
+          const catalog = plan?.catalog?.[tier];
+          const allowance = tier === "standard" ? standardBenefits : benefits;
+          const name = tier === "standard" ? "Standard" : "Pro";
+          const complimentary = tier === "pro" && plan?.complimentary;
+          const free = catalog?.amountKobo === 0;
+          const isCurrent = currentTier === tier;
+          return <View key={tier} style={{ borderRadius: 22, borderWidth: 1, borderColor: tier === "pro" ? theme.brand : theme.border, backgroundColor: tier === "pro" ? theme.surfaceSoft : theme.surface, padding: 18 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <Text style={{ ...heading, fontSize: 24 }}>Kira {name}</Text>
+              {isCurrent ? <Text style={{ ...muted, color: theme.deepBrand }}>Current plan</Text> : null}
+            </View>
+            <Text style={{ ...heading, fontSize: 29, lineHeight: 36, marginTop: 10 }}>
+              {complimentary ? "Complimentary" : free ? "Free" : catalog ? `${money(catalog.amountKobo)} / month` : plan ? "Pricing unavailable" : "Loading price…"}
             </Text>
-          </View>
-          <Text style={{ ...heading, fontSize: 37, lineHeight: 43 }}>
-            {plan?.complimentary && selectedTier === "pro" ? "Pro is active" : offerPrice === 0 ? "Free" : selected ? `${money(offerPrice)} / month` : plan ? "Pricing unavailable" : "Loading price…"}
-          </Text>
-          {!plan?.complimentary && offerLive ? (
-            <View style={{flexDirection:"row",flexWrap:"wrap",gap:10,alignItems:"center"}}>
-              <Text style={{...muted,textDecorationLine:"line-through"}}>{money(selected?.listedAmountKobo)} / month</Text>
-              <Text style={{color:theme.deepBrand,fontFamily:theme.font.semibold,fontSize:13}}>{selected?.discountPercent}% off</Text>
-            </View>
-          ) : null}
-          {offerLive && !plan?.complimentary && selected?.offer ? <Text style={muted}>{offerDates(selected.offer.startsAt, selected.offer.endsAt)}</Text> : null}
-          <Text style={{ ...muted, fontSize: 13.5, lineHeight: 21 }}>
-            {plan?.complimentary && selectedTier === "pro"
-              ? "Your KampusOne owner account has complimentary Pro access."
-              : selectedTier === "standard" ? "Detailed everyday study answers with Standard allowances." : "More study generations, longer context, voice and file support. One month at a time with no automatic renewal."}
-          </Text>
-          {plan?.currentPeriodEnd && selectedTier === currentTier ? (
-            <View
-              style={{
-                alignSelf: "flex-start",
-                flexDirection: "row",
-                gap: 6,
-                alignItems: "center",
-                marginTop: 2,
+            {!complimentary ? <CatalogOffer plan={catalog} now={now} /> : null}
+            <Text style={{ ...muted, marginTop: 7, marginBottom: 8 }}>{tier === "standard" ? "Everyday study help, teaching answers and worked examples." : "More generations, longer lessons and more room to reason through your material."}</Text>
+            {benefitRows(tier, allowance).map((row) => <BenefitRow key={row.title} {...row} />)}
+            {isCurrent && plan?.currentPeriodEnd ? <Text style={{ ...muted, marginVertical: 10 }}>Active until {new Date(plan.currentPeriodEnd).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}</Text> : null}
+            {complimentary ? <Text style={muted}>Your owner account has complimentary Pro access.</Text> : <ToolButton
+              label={free ? "Standard is included" : checkout && (checkout.tier ?? "pro") === tier ? "Continue your payment" : catalog?.checkoutEnabled ? `Continue with ${name}` : isCurrent ? `${name} is active` : `${name} is unavailable`}
+              disabled={busy || free || !catalog?.checkoutEnabled || Boolean(checkout && (checkout.tier ?? "pro") !== tier)}
+              onPress={() => {
+                setSelectedTier(tier); setQuote(null); setCoupon(checkout?.discount_code ?? ""); setNotice("");
+                if (!checkout) key.current = randomUUID();
+                // Quote the selected card explicitly; state updates are async.
+                void enterCheckout(tier);
               }}
-            >
-              <Ionicons name="checkmark-circle" size={17} color={theme.deepBrand} />
-              <Text style={{ ...muted, color: theme.deepBrand }}>
-                Active until{" "}
-                {new Date(plan.currentPeriodEnd).toLocaleDateString("en-NG", {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        {standardBenefits && benefits ? (
-          <View style={{borderRadius:18,borderWidth:1,borderColor:theme.border,backgroundColor:theme.surface,padding:17,gap:12}}>
-            <Text style={{...heading,fontSize:18}}>Choose your study pace</Text>
-            <View style={{flexDirection:"row",gap:12}}>
-              <View style={{flex:1,gap:6}}>
-                <Text style={{...text,fontFamily:theme.font.semibold}}>Standard{currentTier === 'standard' ? ' · Selected' : ''}</Text>
-                <Text style={muted}>{plan?.catalog?.standard?.amountKobo === 0 ? "Free" : plan?.catalog?.standard ? `${money(plan.catalog.standard.amountKobo)} / month` : "Pricing unavailable"}</Text>
-                <CatalogOffer plan={plan?.catalog?.standard} now={now} />
-                <Text style={muted}>5 imports / week</Text>
-                <Text style={muted}>{standardBenefits.studyLimit} study generations in your trial</Text>
-                <Text style={muted}>{standardBenefits.askMessagesPerWindow} messages / 15 min</Text>
-                <Text style={muted}>{standardBenefits.historyTurns} turns of context</Text>
-                <Text style={muted}>Detailed answers for everyday study</Text>
-                <ToolButton secondary label={selectedTier === "standard" ? "Viewing Standard" : "View Standard"} disabled={busy || Boolean(checkout)} onPress={() => { setSelectedTier("standard"); setQuote(null); setCoupon(""); setNotice(""); key.current = randomUUID(); }} />
-              </View>
-              <View style={{flex:1,gap:6,borderLeftWidth:1,borderLeftColor:theme.border,paddingLeft:12}}>
-                <Text style={{...text,fontFamily:theme.font.semibold,color:theme.deepBrand}}>Pro{currentTier === 'pro' ? ' · Selected' : ''}</Text>
-                <Text style={muted}>{plan?.complimentary ? 'Complimentary' : plan?.catalog?.pro ? `${money(plan.catalog.pro.amountKobo)} / month` : "Pricing unavailable"}</Text>
-                {!plan?.complimentary ? <CatalogOffer plan={plan?.catalog?.pro} now={now} /> : null}
-                <Text style={muted}>{importLimit} imports / week</Text>
-                <Text style={muted}>{benefits.studyLimit === null ? 'Unlimited personal study allowance' : `${benefits.studyLimit} study generations / month`}</Text>
-                <Text style={muted}>{benefits.askMessagesPerWindow === null ? 'Unlimited personal Ask Kira allowance' : `${benefits.askMessagesPerWindow} messages / 15 min`}</Text>
-                <Text style={muted}>{benefits.historyTurns} turns of context</Text>
-                <Text style={muted}>Longer lessons and more reasoning space</Text>
-                <ToolButton secondary label={selectedTier === "pro" ? "Viewing Pro" : "View Pro"} disabled={busy || Boolean(checkout)} onPress={() => { setSelectedTier("pro"); setQuote(null); setCoupon(""); setNotice(""); key.current = randomUUID(); }} />
-              </View>
-            </View>
-          </View>
-        ) : null}
-
-        <View
-          style={{
-            borderRadius: 22,
-            borderWidth: 1,
-            borderColor: theme.border,
-            backgroundColor: theme.surface,
-            paddingHorizontal: 17,
-            paddingVertical: 8,
-          }}
-        >
-          <Text
-            style={{
-              color: theme.text,
-              fontFamily: theme.font.semibold,
-              fontSize: 16,
-              paddingTop: 9,
-              paddingBottom: 3,
-            }}
-          >
-            What you get
-          </Text>
-          {benefitRows.map((row) => (
-            <BenefitRow key={row.title} {...row} />
-          ))}
-        </View>
-
-        {error ? (
-          <Text accessibilityRole="alert" style={{ ...text, color: theme.error }}>
-            {error}
-          </Text>
-        ) : null}
-        {!plan && !error ? <Text style={muted}>Loading your plan…</Text> : null}
+            />}
+          </View>;
+        })}
+        {error ? <Text accessibilityRole="alert" style={{ ...text, color: theme.error }}>{error}</Text> : null}
         {error ? <ToolButton secondary label="Try again" disabled={busy || loading} onPress={() => void load()} /> : null}
-        {plan && !selected?.available && !plan.complimentary ? (
-          <Text style={muted}>
-            Kira {selectedName} checkout is not available for this campus yet.
-          </Text>
-        ) : null}
-
-        {!plan?.complimentary ? (
-          <ToolButton
-            label={
-              offerPrice === 0 ? "Standard is included" : plan?.currentPeriodEnd && selectedTier === currentTier && !checkoutEnabled
-                ? `${selectedName} is active`
-                : `Continue with ${selectedName}`
-            }
-            disabled={
-              busy ||
-              !checkoutEnabled ||
-              offerPrice === 0
-            }
-            onPress={() => void enterCheckout()}
-          />
-        ) : null}
-
-        <Text style={{ ...muted, textAlign: "center", paddingHorizontal: 16 }}>
-          No automatic renewal. Access starts when payment is confirmed.
-        </Text>
+        <Text style={{ ...muted, textAlign: "center", paddingHorizontal: 16 }}>Processing is included. No automatic renewal. Access starts when payment is confirmed.</Text>
       </View>
     </ToolPage>
   );

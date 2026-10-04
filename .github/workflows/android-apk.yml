@@ -72,6 +72,7 @@ jobs:
           node server/scripts/verify-schema-proof.mjs platform
           node server/scripts/verify-schema-proof.mjs october
           node server/scripts/verify-schema-proof.mjs experience
+          node server/scripts/verify-schema-proof.mjs october4
           curl --fail --silent --show-error --retry 2 --max-time 20 "$API_URL/health/ready"
       - name: Configure Android push credentials
         env:
@@ -106,6 +107,44 @@ jobs:
           EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID || secrets.EXPO_EAS_PROJECT_ID }}
       - name: Prepare public APK
         run: cp mobile/android/app/build/outputs/apk/release/*.apk KampusOne-Android.apk
+      - name: Verify packaged APK identity and record the build receipt
+        env:
+          BUILD_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          node --input-type=module <<'JS'
+          import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, createReadStream } from 'node:fs';
+          import { join } from 'node:path';
+          import { spawnSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          const expected = JSON.parse(readFileSync('mobile/app.json', 'utf8')).expo;
+          const sdkRoot = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+          if (!sdkRoot) throw new Error('Android SDK path is required to inspect the built APK.');
+          const buildTools = join(sdkRoot, 'build-tools');
+          const aapt = readdirSync(buildTools).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+            .map(version => join(buildTools, version, 'aapt')).find(existsSync);
+          if (!aapt) throw new Error('Android build tools must include aapt for APK identity verification.');
+          const inspected = spawnSync(aapt, ['dump', 'badging', 'KampusOne-Android.apk'], { encoding: 'utf8' });
+          if (inspected.status !== 0) throw new Error('The built APK could not be inspected.');
+          const packageLine = inspected.stdout.split('\n').find(line => line.startsWith('package: ')) || '';
+          const values = Object.fromEntries([...packageLine.matchAll(/([A-Za-z][A-Za-z0-9]*)='([^']*)'/g)].map(match => [match[1], match[2]]));
+          if (values.name !== expected.android.package || values.versionName !== expected.version || Number(values.versionCode) !== expected.android.versionCode)
+            throw new Error('The packaged APK identity does not match the reviewed application configuration.');
+          if (!/^[a-f0-9]{40}$/.test(process.env.BUILD_SHA || '')) throw new Error('A verified source revision is required for the APK receipt.');
+          const digest = createHash('sha256');
+          for await (const chunk of createReadStream('KampusOne-Android.apk')) digest.update(chunk);
+          const receipt = { sourceSha: process.env.BUILD_SHA, packageName: values.name, versionName: values.versionName,
+            versionCode: Number(values.versionCode), apkSha256: digest.digest('hex'), apkSizeBytes: statSync('KampusOne-Android.apk').size,
+            verifiedAt: new Date().toISOString() };
+          writeFileSync('KampusOne-Android-build.json', JSON.stringify(receipt, null, 2) + '\n');
+          console.log(JSON.stringify(receipt));
+          JS
+      - name: Save the verified APK build receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: KampusOne-Android-build-${{ steps.source.outputs.sha }}
+          path: KampusOne-Android-build.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Save Android testing artifact
         uses: actions/upload-artifact@v4
         with:
@@ -120,8 +159,9 @@ jobs:
           BUILD_SHA: ${{ steps.source.outputs.sha }}
         run: |
           test "$BUILD_SHA" = "$(git ls-remote --heads origin main | cut -f1)" || { echo "This build has been superseded; keeping the current public APK."; exit 1; }
+          version=$(jq -er '.versionName' KampusOne-Android-build.json)
           gh release delete apk-latest --yes --cleanup-tag || true
-          gh release create apk-latest KampusOne-Android.apk --target "$BUILD_SHA" --title "KampusOne Android Test" --notes "KampusOne Android testing APK built from the verified Worker and Vercel release revision. Verified Vercel API proxy primary for Android reliability; direct Worker retained as fallback. Sideload testing build." --prerelease
+          gh release create apk-latest KampusOne-Android.apk KampusOne-Android-build.json --target "$BUILD_SHA" --title "KampusOne Android $version" --notes "KampusOne Android testing APK built from the verified Worker and Vercel release revision. Packaged Android identity and SHA256 are recorded in the attached build receipt. Verified Vercel API proxy primary for Android reliability; direct Worker retained as fallback. Sideload testing build." --prerelease
 # Expo's generated test signing is for sideload testing only. A separately
 # provisioned release/upload keystore is required before Play Store publication.
 

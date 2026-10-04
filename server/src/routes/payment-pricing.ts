@@ -24,7 +24,7 @@ export const providerProfileSchema=z.object({
   if(v.transactionClass==="INTERNATIONAL_CARD"&&v.cardNetwork==="AMEX")ctx.addIssue({code:"custom",path:["cardNetwork"],message:"Use the American Express profile for this network."});
   if(["LOCAL_COLLECTION","INTERNATIONAL_CARD"].includes(v.transactionClass)&&(v.channel!=="ANY"||v.cardNetwork!=="ANY"))ctx.addIssue({code:"custom",path:["channel"],message:"Ordinary checkout cannot promise a channel or card network before payment. Use a generic ANY profile; separately identified products have their own rules."});
 });
-export const accountReviewSchema=z.object({providerMode:z.enum(["live","test"]),passFeesDisabled:z.boolean(),reason:z.string().trim().min(10).max(2000),evidence:z.string().trim().min(10).max(4000),expiresAt:z.string().datetime({offset:true}).nullable().default(null)}).strict();
+export const accountReviewSchema=z.object({providerMode:z.enum(["live","test"]),passFeesDisabled:z.boolean(),reason:z.string().trim().min(10).max(2000).default('Administrator confirmed the merchant checkout fee setting.'),evidence:z.string().trim().min(10).max(4000).default('Administrator explicitly confirmed Pass fees to customers is disabled in Paystack Settings > Preferences.'),expiresAt:z.string().datetime({offset:true}).nullable().default(null)}).strict();
 export const paymentPricingRoutes=new Hono<{Bindings:Bindings;Variables:Variables}>();
 paymentPricingRoutes.use("*",requireAuth);
 async function ready(env:Bindings){if(!await paymentPricingReady(env))throw new AppError(503,"FEATURE_DISABLED","Payment pricing controls are awaiting the reviewed database update.");}

@@ -3,14 +3,18 @@ import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { router, usePathname, type ErrorBoundaryProps } from "expo-router";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { recordActivityEvent } from '@/src/lib/activity-events';
-import { renderFailureCode } from '@/src/lib/render-diagnostics';
+import { renderFailureFingerprint } from '@/src/lib/render-diagnostics';
 import { useAuth } from '@/src/auth/auth-context';
 
-function reportRenderFailure(error: Error, pathname: string, feature = 'screen_render') {
+function reportRenderFailure(error: Error, pathname: string, feature = 'screen_render', componentStack = '') {
   try {
     const first = pathname.split('/').filter(Boolean)[0] ?? 'today';
     const screen = /^[a-z][a-z-]{0,59}$/.test(first) ? first : 'unknown';
-    recordActivityEvent('feature_failed', { screen, feature, errorCode: renderFailureCode(error) });
+    const errorCode = renderFailureFingerprint(error, componentStack);
+    recordActivityEvent('feature_failed', { screen, feature, errorCode });
+    // Keep production logs actionable without exposing a prompt, account name,
+    // private media URL or file name embedded in an exception or stack path.
+    console.error('kampusone.ui.crash', { screen, feature, errorCode });
   } catch { /* Recovery must remain usable even if reporting fails. */ }
 }
 
@@ -39,13 +43,7 @@ class RouteErrorBoundary extends Component<BoundaryProps, BoundaryState> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    reportRenderFailure(error, this.props.resetKey, 'navigation_render');
-    console.error("kampusone.ui.crash", {
-      route: this.props.resetKey,
-      message: error.message,
-      stack: error.stack,
-      componentStack: info.componentStack,
-    });
+    reportRenderFailure(error, this.props.resetKey, 'navigation_render', info.componentStack ?? '');
   }
 
   componentDidUpdate(previous: BoundaryProps) {
@@ -128,7 +126,7 @@ type FeatureProps = {children: ReactNode; feature: string; resetKey: string};
 class FeatureBoundary extends Component<FeatureProps, {failed: boolean; dismissed: boolean}> {
   state = {failed: false, dismissed: false};
   static getDerivedStateFromError() { return {failed: true}; }
-  componentDidCatch(error: Error) { reportRenderFailure(error, this.props.resetKey, this.props.feature); }
+  componentDidCatch(error: Error, info: ErrorInfo) { reportRenderFailure(error, this.props.resetKey, this.props.feature, info.componentStack ?? ''); }
   componentDidUpdate(previous: FeatureProps) {
     if (this.state.failed && previous.resetKey !== this.props.resetKey) this.setState({failed: false, dismissed: false});
   }

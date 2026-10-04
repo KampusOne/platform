@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Text } from 'react-native';
 import { useLocalSearchParams } from "expo-router";
 import {
   ToolButton,
@@ -8,33 +9,32 @@ import {
 } from "@/src/components/toolkit";
 import { useToast } from "@/src/components/toast";
 import { api } from "@/src/lib/api";
-type Request = {
-  id: string;
-  subject: string;
-  status: string;
-  reply: string | null;
-};
+import { supportRequests, type SupportRequest } from '@/src/lib/support-requests';
+import { useAppearance } from '@/src/lib/appearance';
 export default function Support() {
   const params = useLocalSearchParams<{ category?: string }>();
   const toast = useToast();
+  const { theme } = useAppearance();
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
-  const [requests, setRequests] = useState<Request[]>([]);
+  const [requests, setRequests] = useState<SupportRequest[]>([]);
   const [busy, setBusy] = useState(false);
-  async function load() {
+  const [loadError, setLoadError] = useState('');
+  async function load(signal?: AbortSignal) {
     try {
-      setRequests(
-        (await api<{ requests: Request[] }>("/v1/account/support")).requests,
-      );
+      const payload = await api<unknown>("/v1/account/support", signal ? { signal } : {});
+      if (signal?.aborted) return;
+      setRequests(supportRequests(payload));
+      setLoadError('');
     } catch (e) {
-      toast(
-        e instanceof Error ? e.message : "Could not load requests",
-        "error",
-      );
+      if (signal?.aborted) return;
+      setLoadError(e instanceof Error ? e.message : 'Could not load requests');
     }
   }
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, []);
   async function send() {
     setBusy(true);
@@ -89,6 +89,10 @@ export default function Support() {
         disabled={busy || subject.trim().length < 3 || body.trim().length < 5}
         onPress={() => void send()}
       />
+      {loadError ? <>
+        <Text accessibilityRole="alert" style={{ color: theme.error, marginTop: 18 }}>{loadError}</Text>
+        <ToolButton label="Reload my requests" secondary onPress={() => void load()} />
+      </> : null}
       {requests.map((r) => (
         <ToolRow
           key={r.id}

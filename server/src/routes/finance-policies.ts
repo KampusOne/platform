@@ -165,7 +165,12 @@ async function reviewedCommercePolicy(env: Bindings, data: z.infer<typeof commer
   const options = Object.fromEntries(["feeBearer","customerFeeDisplay","feeSplit","roundingMode","maxPricingAdjustmentKobo","minimumCommissionKobo","maximumCommissionKobo"].filter(key=>(data as Record<string,unknown>)[key]!==undefined).map(key=>[key,(data as Record<string,unknown>)[key]])) as Partial<CommerceFees>;
   return {...options,id,collection,buyerBasisPoints:data.buyerBasisPoints,buyerFlatPerItemKobo:data.buyerFlatPerItemKobo,sellerCommissionBasisPoints:data.sellerCommissionBasisPoints,checkoutSavings:data.checkoutSavings,allowProcessorSubsidy:data.allowProcessorSubsidy,...(collection.providerProfileId?{providerProfileId:collection.providerProfileId}:{})};
 }
-export const kiraPlanSchema = commercePolicySchema.pick({universityId:true,version:true,sourceUrl:true,approvalNote:true}).extend({
+export const kiraPlanSchema = commercePolicySchema.pick({universityId:true}).extend({
+  // Routine changes need only the actual price and offer. The server records
+  // the actor and generates the immutable version and change note.
+  version:commercePolicySchema.shape.version.default(()=>`KIRA_${new Date().toISOString()}_${crypto.randomUUID().slice(0,8)}`),
+  sourceUrl:commercePolicySchema.shape.sourceUrl.default('https://paystack.com/pricing'),
+  approvalNote:commercePolicySchema.shape.approvalNote.default('Administrator saved Kira monthly pricing and offer settings.'),
   collection:commercePolicySchema.shape.collection.optional(),providerProfileId:z.string().uuid().optional(),
   tier:z.enum(['standard','pro']).default('pro'),amountKobo:z.number().int().min(0).max(100000000).default(600000),discountPercent:z.number().int().min(0).max(90).default(0),
   active:z.boolean().default(true),available:z.boolean().default(true),offerActive:z.boolean().default(true),

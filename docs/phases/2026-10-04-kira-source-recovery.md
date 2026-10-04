@@ -1,0 +1,24 @@
+# Kira source processing and native microphone recovery
+
+## Problems and resulting behaviour
+
+The student report showed an image/document shrinking to a narrow line, a TXT study request returning `AI took too long`, and repeated screen failures when entering Kira or attaching material.
+
+- The sent-source container had `alignSelf: flex-end` and only a maximum width. Its flexible attachment children had no defined width. Sent sources now have an explicit 90% width; their cards fill that width. Photos have a 230-pixel uncropped preview. PDF/TXT cards show their filename, document type, size where available and submission state. The pending source appears immediately, followed by upload/read/answer status and skeletons. Reopened private images obtain a fresh account-authorised URL, with cancellation on unmount.
+- Kira previously created an Expo native recorder and polled native getters whenever the screen mounted. The recorder is now allocated only after a microphone tap and permission. Rendering uses a JavaScript status snapshot. Per-recorder lifetime checks guard polling and asynchronous preparation/stopping. Layout teardown invalidates callbacks before stopping and releasing the object; no subsequent callback reads the released object.
+- Native voice upload previously cast an Expo `File` host object to `Blob` and sent it through React Native global fetch. It now validates the file and reads `ArrayBuffer` bytes before sending. Multipart compatibility retries use native URI metadata. Empty, oversized, invalid-size and unexpected host-object results fail locally, preserve the recording URI and remain inside the composer.
+- Standard document inference previously used a 40-second deadline. Documents and detailed lessons now allow up to 90 seconds. Pro/chat and document requests can fall back once from their separately configured study model to the configured chat model after a timeout, connection failure or eligible provider HTTP failure. Both attempts share one deadline and one existing quota reservation. Authentication failures are never retried.
+- The PDF extractor previously rejected the entire source whenever any page had no text. It now processes readable pages and explicitly identifies any unreadable page. Scanned-only PDFs still return a clear request to attach a page as an image; there is no OCR, external document fetch or invented page content. The 8 MB, 40-page and 45,000-character bounds remain enforced.
+- Plain text supports UTF-8 and BOM-marked UTF-16 LE/BE, normalises editor line endings, and rejects binary, empty and overlong material before inference. Generic document-picker MIME types fall back to known filename extensions. Resource uploads validate TXT bytes with the same decoder.
+- Saved source records retain MIME type, so TXT history no longer presents a PDF icon/type. Tools and recommendation queries inspect the student's original prompt instead of treating words inside an uploaded document as requests to access campus services.
+- A new authenticated, account-scoped `GET /v1/ai/requests/:id` reads an existing reservation. After a lost network acknowledgement, the mobile client checks that reservation without another inference POST or upload. Checks bypass client caches, have a 60-second recovery bound and stop after three consecutive connection failures or a screen/account transition. Definitive provider/file/quota failures remain visible and drafts remain editable. This does not introduce an early-202/background job: the existing live Worker request and reservation model remains in place.
+- Kira's plan chooser no longer embeds a fixed Pro price; the subscription catalogue screen supplies the campus's current price and offer.
+
+## Verification
+
+- Mobile and Worker TypeScript checks passed.
+- 43 focused extraction/adapter/recovery/schedule tests passed, including real PDF extraction, mixed readable/unreadable pages, UTF-8/UTF-16, text limits, one model fallback, definitive failures and cancellation.
+- 22 real-database provider/reservation tests passed. New cases attach TXT and a real PDF, verify their source text reaches the model, save the source MIME, replay one provider call, recover the saved answer and deny another account's reservation lookup. Processing and stale reservations were checked without a provider call.
+- Three native voice transport regressions verify bytes instead of an Expo host object, reject unavailable/oversized recordings before disk I/O, and reject invalid host-object/empty/size-mismatched results. The real-database transcription test now sends the client helper's returned bytes through the Worker and replays one saved transcription.
+
+Native microphone recording and physical Android navigation still require the release device smoke check. Provider availability and response time depend on the configured external service; failures remain bounded and visible instead of replacing the screen.

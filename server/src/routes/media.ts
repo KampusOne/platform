@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { decodeAIText } from "../lib/ai-document";
 import { sql } from "drizzle-orm";
 import { database, firstRow } from "../lib/database";
 import { AppError } from "../lib/errors";
@@ -333,12 +334,12 @@ mediaRoutes.post("/", requireAuth, async (c) => {
       }
     }
   }
-  if (!mime && kind === "resource" && declaredMime === "text/plain") {
+  if (!mime && kind === "resource" && (declaredMime === "text/plain" || originalName.toLowerCase().endsWith(".txt"))) {
     try {
-      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      if (!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)) mime = "text/plain";
+      decodeAIText(byteView);
+      mime = "text/plain";
     } catch {
-      /* Not a UTF-8 source. */
+      /* Binary, invalid encoding or oversized plain-text material. */
     }
   }
   if (

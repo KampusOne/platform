@@ -309,7 +309,7 @@ adminRoutes.get("/applications", async (context) => {
       applications.kyc_status, applications.kyc_provider, applications.kyc_reference,
       applications.bank_status, applications.bank_account_name, applications.bank_account_last4,
       applications.status, applications.review_note, applications.submitted_at,
-      applications.reviewed_at, users.email, profiles.username
+      applications.reviewed_at, applications.updated_at::text revision, users.email, profiles.username
     from public.agent_applications applications
     join public.users users on users.id = applications.user_id
     left join public.profiles profiles on profiles.user_id = applications.user_id
@@ -325,6 +325,37 @@ adminRoutes.get("/applications", async (context) => {
     return safe;
   });
   return context.json({ applications });
+});
+
+adminRoutes.post("/applications/:id/approve", async (context) => {
+  const user = currentUser(context);
+  const parsed = z.object({
+    revision: z.string().min(1), reviewedEvidence: z.literal(true),
+    overrideIncomplete: z.boolean().default(false),
+    note: z.string().trim().min(10).max(2000).optional(),
+  }).strict().safeParse(await body(context));
+  if (!parsed.success) throw new AppError(400, "BAD_REQUEST", "Review the application details before approving.");
+  const applicationId = z.string().uuid().safeParse(context.req.param("id"));
+  if (!applicationId.success) throw new AppError(400, "BAD_REQUEST", "Choose a valid application.");
+  const db = database(context.env);
+  const application = firstRow(await db.execute<{ university_id: string; user_id: string }>(sql`select university_id,user_id from public.agent_applications where id=${applicationId.data}::uuid`));
+  if (!application) throw new AppError(404, "NOT_FOUND", "That application does not exist.");
+  await resolveAdminScope(context.env, user, application.university_id, "agents.review");
+  await resolveAdminScope(context.env, user, application.university_id, "agents.verify");
+  if (application.user_id === user.id) throw new AppError(403, "FORBIDDEN", "Another authorized reviewer must approve your application.");
+  if (parsed.data.overrideIncomplete) {
+    const access = await adminAccess(context.env, user);
+    if (!access.grants.some((grant) => grant.university_id === null && grant.permissions.includes("agents.review") && grant.permissions.includes("agents.verify")))
+      throw new AppError(403, "FORBIDDEN", "Only the platform administrator can approve an incomplete application.");
+  }
+  const note = parsed.data.note ?? (parsed.data.overrideIncomplete ? "Platform administrator approved despite the listed incomplete fields after reviewing the application." : "Administrator reviewed the submitted application and approved it.");
+  const ready = firstRow(await db.execute<{ ready: boolean }>(sql`select to_regprocedure('app_private.approve_reviewed_agent(uuid,uuid,text,boolean,text,text)') is not null as ready`));
+  if (!ready?.ready) throw new AppError(503, "FEATURE_DISABLED", "Application approval is being updated. Please try again shortly.");
+  const result = firstRow(await db.execute<{ result: { outcome: string; missingFields?: string[] } }>(sql`select app_private.approve_reviewed_agent(${user.id}::uuid,${applicationId.data}::uuid,${parsed.data.revision},${parsed.data.overrideIncomplete},${note},${context.get("requestId")}) result`))?.result;
+  if (result?.outcome === "INCOMPLETE") throw new AppError(409, "CONFLICT", "Some application fields are incomplete. You can approve with an explicit administrator exception after reviewing them.", { reason: "APPLICATION_INCOMPLETE", missingFields: result.missingFields ?? [] });
+  const messages: Record<string, string> = { BIRTH_DATE_REQUIRED: "The date of birth is needed to confirm the applicant is at least 16.", AGE_REQUIRED: "Applicants must be at least 16.", GUARDIAN_REQUIRED: "Confirm guardian consent for this applicant under 18.", IDENTITY_CONFLICT: "This identity conflicts with another account or a previous submission. Review it before approval.", STALE: "The application changed. Refresh its details before approving." };
+  if (!result || !["APPROVED", "EXISTING"].includes(result.outcome)) throw new AppError(409, "CONFLICT", messages[result?.outcome ?? ""] ?? "This application could not be approved. Refresh and try again.");
+  return context.json({ status: "APPROVED", missingFields: result.missingFields ?? [], bankVerificationChanged: false });
 });
 
 adminRoutes.post("/applications/:id/verification", async (context) => {

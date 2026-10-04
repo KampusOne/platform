@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { AppState, Platform, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
   AudioModule,
   RecordingPresets,
   setAudioModeAsync,
-  useAudioPlayer,
-  useAudioPlayerStatus,
-  useAudioRecorder,
-  useAudioRecorderState,
+  createAudioPlayer,
   type RecordingOptions,
+  type AudioStatus,
+  type AudioRecorder,
 } from "expo-audio";
 import { File } from "expo-file-system";
 import * as Crypto from "expo-crypto";
@@ -17,6 +16,9 @@ import type { VoiceDraft } from "@/src/lib/message-drafts";
 import { ToolButton } from "./toolkit";
 import { api, ApiError } from "@/src/lib/api";
 import { createVoiceUploadQueue } from "@/src/lib/voice-upload";
+import { createVoicePlaybackSession } from "@/src/lib/voice-playback";
+import { recordActivityEvent } from "@/src/lib/activity-events";
+import { renderFailureFingerprint } from "@/src/lib/render-diagnostics";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 
 const playbackListeners = new Set<(owner: object) => void>();
@@ -77,15 +79,7 @@ function Waveform({
   );
 }
 
-export function MessageVoice({
-  disabled,
-  onReady,
-  onActiveChange,
-  compact = false,
-  initialDraft,
-  onDraftChange,
-  onSendingChange,
-}: {
+type MessageVoiceProps = {
   disabled: boolean;
   onReady: (id: string, name: string) => void | Promise<void>;
   onActiveChange?: (active: boolean) => void;
@@ -93,9 +87,42 @@ export function MessageVoice({
   initialDraft?: VoiceDraft | null;
   onDraftChange?: (draft: VoiceDraft | null) => void;
   onSendingChange?: (sending: boolean) => void;
-}) {
-  const recorder = useAudioRecorder(VOICE_RECORDING_OPTIONS);
-  const state = useAudioRecorderState(recorder, 120);
+};
+
+class VoiceRecorderBoundary extends Component<{ children: ReactNode; onRetry: () => void }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    recordActivityEvent('feature_failed', { screen: 'conversation', feature: 'message_recording', errorCode: renderFailureFingerprint(error, info.componentStack ?? '') });
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <Pressable accessibilityRole="button" accessibilityLabel="Retry microphone" onPress={this.props.onRetry} style={{ minWidth: 44, minHeight: 44, justifyContent: 'center' }}><Text>Retry mic</Text></Pressable>;
+  }
+}
+
+/** Browsing a chat or typing must never create or release a native recorder. */
+export function MessageVoice(props: MessageVoiceProps) {
+  const { theme, styles } = useThemeStyles(createStyles);
+  const [requested, setRequested] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  if (!requested && !props.initialDraft) return <Pressable accessibilityRole="button" accessibilityLabel="Record voice note" disabled={props.disabled} onPress={() => setRequested(true)} style={({ pressed }) => [styles.micButton, (pressed || props.disabled) && styles.disabled]}><Ionicons name="mic-outline" size={22} color={theme.textMuted} /></Pressable>;
+  return <VoiceRecorderBoundary key={attempt} onRetry={() => setAttempt(value => value + 1)}><ActiveMessageVoice {...props} startOnMount={requested && !props.initialDraft} /></VoiceRecorderBoundary>;
+}
+
+function ActiveMessageVoice({
+  disabled,
+  onReady,
+  onActiveChange,
+  compact = false,
+  initialDraft,
+  onDraftChange,
+  onSendingChange,
+  startOnMount,
+}: MessageVoiceProps & { startOnMount: boolean }) {
+  const mounted = useRef(true);
+  const recorderRef = useRef<AudioRecorder | null>(null);
+  const [state, setRecorderState] = useState({ isRecording: false, durationMillis: 0 });
   const [uri, setUri] = useState<string>(initialDraft?.uri ?? "");
   const [recordedDuration, setRecordedDuration] = useState(initialDraft?.durationMs ?? 0);
   const durationRef = useRef(0); durationRef.current = state.durationMillis;
@@ -110,18 +137,19 @@ export function MessageVoice({
     draftCallback.current?.(next);
   }
   useEffect(() => {
-    if (initialDraft && !recorder.isRecording) {
+    if (initialDraft && !recordingPending.current) {
       draftRef.current = initialDraft;
       setUri(initialDraft.uri); setRecordedDuration(initialDraft.durationMs);
     }
-  }, [initialDraft, recorder]);
+  }, [initialDraft]);
+  useEffect(() => { if (startOnMount) void startRecording(); }, []);
   const [busy, setBusy] = useState(false);
   const [paused, setPaused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [previewSpeed, setPreviewSpeed] = useState<PlaybackSpeed>(1);
   const [error, setError] = useState("");
   const { theme, styles } = useThemeStyles(createStyles);
-  const active = state.isRecording || Boolean(uri);
+  const active = state.isRecording || paused || recordingPending.current || Boolean(uri);
 
   const uploadQueue = useRef(createVoiceUploadQueue(async (localUri: string) => {
       const source=Platform.OS==='web'?await(await fetch(localUri)).blob():new File(localUri);
@@ -154,29 +182,47 @@ export function MessageVoice({
   }, [active, onActiveChange]);
 
   useEffect(() => {
-    const stop = async () => {
-      if (recorder.isRecording || recordingPending.current) {
-        await recorder.stop();
-        recordingPending.current = false;
-        setRecordedDuration(durationRef.current);
-        setUri(recorder.uri ?? "");
-        publishDraft(recorder.uri ?? undefined);
-      }
-      setPaused(false);
-      await setAudioModeAsync({ allowsRecording: false });
-    };
-    const sub = AppState.addEventListener("change", (status) => {
-      if (status !== "active") void stop().catch(() => undefined);
+    mounted.current = true;
+    const sub = AppState.addEventListener("change", status => {
+      if (status !== "active" && recordingPending.current) void finishRecording();
     });
     return () => {
+      mounted.current = false;
       sub.remove();
-      if (recorder.isRecording || recordingPending.current) void recorder.stop().then(() => {
-        recordingPending.current = false;
-        publishDraft(recorder.uri ?? undefined);
-      }).catch(() => undefined);
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      if (!recorder) return;
+      // Stop before releasing. Late controls are blocked by mounted/ref checks.
+      void (async () => {
+        try {
+          if (recordingPending.current) {
+            await recorder.stop();
+            const savedUri = recorder.uri;
+            if (savedUri) publishDraft(savedUri);
+          }
+        } catch { /* The microphone may already have been interrupted by the OS. */ }
+        finally {
+          try { recorder.release(); } catch { /* Already released. */ }
+        }
+      })();
       void setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
     };
-  }, [recorder]);
+  }, []);
+
+  useEffect(() => {
+    if (!state.isRecording) return;
+    const timer = setInterval(() => {
+      const recorder = recorderRef.current;
+      if (!mounted.current || !recorder) return;
+      try { setRecorderState(recorder.getStatus()); }
+      catch {
+        recordingPending.current = false;
+        setRecorderState(current => ({ ...current, isRecording: false }));
+        setError("Recording was interrupted. Try recording again.");
+      }
+    }, 250);
+    return () => clearInterval(timer);
+  }, [state.isRecording]);
 
   useEffect(() => {
     if (state.isRecording && state.durationMillis >= 120_000) {
@@ -185,18 +231,28 @@ export function MessageVoice({
   }, [state.isRecording, state.durationMillis]);
 
   async function startRecording() {
-    if (operationPending.current || disabled) return;
+    if (!mounted.current || operationPending.current || disabled) return;
     operationPending.current = true;
     setBusy(true);
     setError("");
     setSettingsOpen(false);
     try {
       const permission = await AudioModule.requestRecordingPermissionsAsync();
+      if (!mounted.current) return;
       if (!permission.granted) throw new VoiceInputError("Allow microphone access to record a voice note.");
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      if (!mounted.current) return;
+      let recorder = recorderRef.current;
+      if (!recorder) {
+        const { android, ios, web, ...common } = VOICE_RECORDING_OPTIONS;
+        recorder = new AudioModule.AudioRecorder({ ...common, ...(Platform.OS === 'android' ? android : Platform.OS === 'ios' ? ios : web) });
+        recorderRef.current = recorder;
+      }
       await recorder.prepareToRecordAsync();
+      if (!mounted.current) return;
       recorder.record();
       recordingPending.current = true;
+      setRecorderState(recorder.getStatus());
       setPaused(false);
       setRecordedDuration(0);
       setUri(""); publishDraft();
@@ -210,14 +266,17 @@ export function MessageVoice({
   }
 
   async function finishRecording() {
-    if (operationPending.current || (!recorder.isRecording && !paused)) return;
+    const recorder = recorderRef.current;
+    if (!mounted.current || !recorder || operationPending.current || !recordingPending.current) return;
     operationPending.current = true;
     setBusy(true);
     setError("");
     try {
       await recorder.stop();
+      if (!mounted.current) return;
       recordingPending.current = false;
-      setRecordedDuration(state.durationMillis);
+      setRecorderState(current => ({ ...current, isRecording: false }));
+      setRecordedDuration(durationRef.current);
       setUri(recorder.uri ?? ""); publishDraft(recorder.uri ?? undefined);
       setPaused(false);
       await setAudioModeAsync({ allowsRecording: false });
@@ -230,7 +289,8 @@ export function MessageVoice({
   }
 
   async function togglePause() {
-    if (busy) return;
+    const recorder = recorderRef.current;
+    if (!mounted.current || !recorder || busy) return;
     try {
       if (paused) {
         recorder.record();
@@ -239,20 +299,24 @@ export function MessageVoice({
         recorder.pause();
         setPaused(true);
       }
+      setRecorderState(recorder.getStatus());
     } catch (caught) {
       setError(voiceErrorMessage(caught, "Could not pause the recording. Try again."));
     }
   }
 
   async function cancelRecording() {
-    if (busy) return;
+    const recorder = recorderRef.current;
+    if (!mounted.current || busy) return;
     setError("");
     try {
-      if (state.isRecording || paused || recordingPending.current) await recorder.stop();
+      if (recorder && recordingPending.current) await recorder.stop();
     } catch {
       // Reset the composer even if the native recorder has already stopped.
     } finally {
       recordingPending.current = false;
+      if (!mounted.current) return;
+      setRecorderState(current => ({ ...current, isRecording: false }));
       setUri(""); publishDraft();
       setRecordedDuration(0);
       setPaused(false);
@@ -424,32 +488,29 @@ export function MessageVoice({
 }
 
 export function VoicePlayback({
-  uri,
+  uri = "",
+  loadUri,
   compact = false,
   speed: controlledSpeed,
   onSpeedChange,
   mine = false,
   onLongPress,
 }: {
-  uri: string;
+  uri?: string;
+  loadUri?: () => Promise<string>;
   compact?: boolean;
   speed?: PlaybackSpeed;
   onSpeedChange?: (speed: PlaybackSpeed) => void;
   mine?: boolean;
   onLongPress?: (event: GestureResponderEvent) => void;
 }) {
-  const player = useAudioPlayer(uri, { updateInterval: 100 });
-  const state = useAudioPlayerStatus(player);
+  const [state, setState] = useState<Partial<AudioStatus>>({});
   const identity = useRef({}).current;
   const [wantPlay, setWantPlay] = useState(false);
   const [playError, setPlayError] = useState("");
-  const starting = useRef(false);
-  const requested = useRef(false);
-  const generation = useRef(0);
   const scrubHold = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubStart = useRef(0);
   const scrubHeld = useRef(false);
-  useEffect(()=>()=>{if(scrubHold.current)clearTimeout(scrubHold.current);},[]);
   const [localSpeed, setLocalSpeed] = useState<PlaybackSpeed>(1);
   const [waveWidth, setWaveWidth] = useState(1);
   const { theme, styles } = useThemeStyles(createStyles);
@@ -457,62 +518,48 @@ export function VoicePlayback({
   const duration = Math.max(0, state.duration || 0);
   const current = Math.max(0, state.currentTime || 0);
   const progress = duration > 0 ? Math.min(1, current / duration) : 0;
+  const sessionRef = useRef<ReturnType<typeof createVoicePlaybackSession> | null>(null);
 
   useEffect(() => {
-    if (!state.isLoaded) return;
-    try { player.setPlaybackRate(speed); player.shouldCorrectPitch = true; }
-    catch { setPlayError("Could not change playback speed."); }
-  }, [player, speed, state.isLoaded]);
-  useEffect(() => {
-    const stop = (owner: object) => { if (owner !== identity) { requested.current=false;generation.current++;setWantPlay(false); starting.current = false; try { player.pause(); } catch {} } };
+    const session = createVoicePlaybackSession({
+      createPlayer: source => createAudioPlayer(source, { updateInterval: 250 }),
+      prepareAudio: () => setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }),
+      onStatus: setState,
+      onLoading: setWantPlay,
+      onError: message => {
+        setPlayError(message);
+        if (message) recordActivityEvent('feature_failed', { screen: 'conversation', feature: 'voice_playback', errorCode: 'VOICE_PLAYBACK_FAILED' });
+      },
+    });
+    sessionRef.current = session;
+    const stop = (owner: object) => { if (owner !== identity) session.stop(); };
     playbackListeners.add(stop);
-    const app = AppState.addEventListener("change", status => { if (status !== "active") stop({}); });
-    return () => { requested.current=false;generation.current++;playbackListeners.delete(stop); app.remove();try{player.pause();}catch{} };
-  }, [player, identity]);
-  useEffect(() => {
-    if (!wantPlay || !state.isLoaded || starting.current) return;
-    starting.current = true;
-    const token=generation.current;
-    void (async () => {
-      try {
-        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
-        if(!requested.current||token!==generation.current)return;
-        if (state.didJustFinish || (duration > 0 && current >= duration - .05)) await player.seekTo(0);
-        if(!requested.current||token!==generation.current)return;
-        playbackListeners.forEach(listener => listener(identity));
-        player.play(); requested.current=false;setWantPlay(false);
-      } catch { if(token===generation.current){setWantPlay(false); setPlayError("Voice note could not play. Tap to retry.");} }
-      finally { if(token===generation.current)starting.current = false; }
-    })();
-  }, [wantPlay, state.isLoaded, state.didJustFinish, duration, current, player, identity]);
-  useEffect(() => {
-    if (!wantPlay) return;
-    const timer = setTimeout(() => { requested.current=false;generation.current++;setWantPlay(false); setPlayError("Voice note took too long to load. Tap to retry."); }, 20000);
-    return () => clearTimeout(timer);
-  }, [wantPlay]);
+    const app = AppState.addEventListener("change", status => { if (status !== "active") session.stop(); });
+    return () => {
+      if (scrubHold.current) clearTimeout(scrubHold.current);
+      playbackListeners.delete(stop);
+      app.remove();
+      session.dispose();
+      if (sessionRef.current === session) sessionRef.current = null;
+    };
+  }, [identity, uri, loadUri]);
+
+  useEffect(() => { sessionRef.current?.setSpeed(speed); }, [speed, uri, loadUri]);
 
   const setSpeed = (value: PlaybackSpeed) => {
     if (onSpeedChange) onSpeedChange(value);
     else setLocalSpeed(value);
-    if (state.isLoaded) { try { player.setPlaybackRate(value); } catch { setPlayError("Could not change playback speed."); } }
+    sessionRef.current?.setSpeed(value);
   };
-
-  const cycleSpeed = () => {
-    const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1;
-    setSpeed(next);
-  };
-
+  const cycleSpeed = () => setSpeed(speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1);
   const toggle = () => {
-    setPlayError("");
-    generation.current++;
-    if (state.playing || wantPlay) { requested.current=false;starting.current=false;setWantPlay(false); try { player.pause(); } catch {} }
-    else {requested.current=true;setWantPlay(true);}
+    playbackListeners.forEach(listener => listener(identity));
+    void sessionRef.current?.toggle(() => loadUri ? loadUri() : uri);
   };
-
   const seekFromX = (x: number) => {
     if (!duration || !waveWidth) return;
     const ratio = Math.max(0, Math.min(1, x / waveWidth));
-    void player.seekTo(duration * ratio).catch(() => setPlayError("Could not seek. Try again."));
+    void sessionRef.current?.seek(duration * ratio);
   };
 
   const playerUi = (
@@ -544,7 +591,7 @@ export function VoicePlayback({
   );
 
   if (compact) return <View>{playerUi}{playError ? <Text accessibilityRole="alert" style={[styles.compactError, mine && {color:"#fff",backgroundColor:"transparent"}]}>{playError}</Text> : null}</View>;
-  return <View style={styles.fullPlayback}>{playerUi}</View>;
+  return <View style={styles.fullPlayback}>{playerUi}{playError ? <Text accessibilityRole="alert" style={styles.compactError}>{playError}</Text> : null}</View>;
 }
 
 const createStyles = (theme: Theme) => StyleSheet.create({

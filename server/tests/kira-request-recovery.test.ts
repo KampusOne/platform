@@ -1,0 +1,8 @@
+import { describe,expect,it,vi } from 'vitest';
+import { requestKiraResult } from '../../mobile/src/lib/kira-request';
+describe('Kira acknowledgement recovery',()=>{
+ it('checks one reservation after a lost response without another inference POST',async()=>{const submit=vi.fn().mockRejectedValue({code:'NETWORK_UNAVAILABLE'});const check=vi.fn().mockResolvedValueOnce({status:'processing'}).mockResolvedValueOnce({status:'completed',text:'Saved answer'});const recovered=await requestKiraResult({submit,check,isCurrent:()=>true,wait:async()=>{}});expect(recovered.text).toBe('Saved answer');expect(submit).toHaveBeenCalledTimes(1);expect(check).toHaveBeenCalledTimes(2);});
+ it('keeps definite provider failures visible without polling or retrying',async()=>{const error={code:'PROVIDER_UNAVAILABLE',details:{reason:'AI_TIMEOUT'}};const submit=vi.fn().mockRejectedValue(error),check=vi.fn();await expect(requestKiraResult({submit,check,isCurrent:()=>true})).rejects.toBe(error);expect(check).not.toHaveBeenCalled();});
+ it('stops repeated offline checks and keeps the same draft reservation',async()=>{const error={code:'NETWORK_UNAVAILABLE'};const submit=vi.fn().mockRejectedValue(error),check=vi.fn().mockRejectedValue(error);await expect(requestKiraResult({submit,check,isCurrent:()=>true,wait:async()=>{}})).rejects.toBe(error);expect(submit).toHaveBeenCalledTimes(1);expect(check).toHaveBeenCalledTimes(3);});
+ it('does not touch another screen or account after navigation',async()=>{const error={code:'REQUEST_TIMEOUT'};const submit=vi.fn().mockRejectedValue(error),check=vi.fn();await expect(requestKiraResult({submit,check,isCurrent:()=>false})).rejects.toBe(error);expect(check).not.toHaveBeenCalled();});
+});

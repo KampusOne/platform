@@ -5,6 +5,8 @@ import {Ionicons} from '@expo/vector-icons';
 import {randomUUID} from 'expo-crypto';
 import {ToolPage,ToolField,ToolButton} from '@/src/components/toolkit';
 import {ChoiceField} from '@/src/components/choice-field';
+import {ActivityDatePicker} from '@/src/components/activity-date-picker';
+import {selectedActivityDate} from '@/src/lib/campus-activity-date';
 import {useAuth} from '@/src/auth/auth-context';
 import {useAppearance} from '@/src/lib/appearance';
 import {api} from '@/src/lib/api';
@@ -27,9 +29,9 @@ function UpdateForm({owner}:{owner:string}){
  async function publish(){
   if(lock.current||!owner||!ready)return;lock.current=true;setBusy(true);setError('');
   try{
-   const when=draft.date?new Date(draft.date+'T'+(draft.kind==='OPPORTUNITY'?'23:59':draft.time||'00:00')+':00'):null;
-   if(!when||!Number.isFinite(when.getTime())||!/^\d{4}-\d{2}-\d{2}$/.test(draft.date)||when.getFullYear()!==Number(draft.date.slice(0,4))||when.getMonth()+1!==Number(draft.date.slice(5,7))||when.getDate()!==Number(draft.date.slice(8,10)))throw new Error('Enter a valid date using YYYY-MM-DD.');
-   if(draft.kind!=='OPPORTUNITY'&&!/^\d{2}:\d{2}$/.test(draft.time))throw new Error('Enter the start time using HH:mm.');
+   const when=selectedActivityDate(draft.date,draft.kind==='OPPORTUNITY'?'23:59':draft.time);
+   if(!when)throw new Error(draft.date?'Choose the start time before publishing.':'Choose a date before publishing.');
+
    const result=await api<{id:string}>('/v1/student/feed/activity',{method:'POST',body:JSON.stringify({requestId:draft.requestId,category:draft.kind,title:draft.title,description:draft.description,mediaIds:draft.images.map(image=>image.id),...(draft.kind==='OPPORTUNITY'?{deadline:when.toISOString()}:{venue:draft.venue,startsAt:when.toISOString()}),...(draft.link.trim()?{registrationUrl:draft.link.trim()}:{} )})});
    await writeCache(key,null);router.replace({pathname:'/post',params:{id:result.id}});
   }catch(e){setError(e instanceof Error?e.message:'Your update could not publish. Your draft is kept.');}finally{lock.current=false;setBusy(false);}
@@ -40,7 +42,7 @@ function UpdateForm({owner}:{owner:string}){
   <ToolField label="Title" value={draft.title} maxLength={180} editable={!busy} onChangeText={title=>update({title})} placeholder="What should students know?"/>
   <ToolField label="Description" value={draft.description} maxLength={5000} multiline editable={!busy} onChangeText={description=>update({description})} placeholder="Add the useful details"/>
   {draft.kind!=='OPPORTUNITY'?<ToolField label="Venue" value={draft.venue} editable={!busy} onChangeText={venue=>update({venue})} placeholder="Where is it happening?"/>:null}
-  <View style={{flexDirection:'row',gap:12}}><View style={{flex:1}}><ToolField label={draft.kind==='OPPORTUNITY'?'Application deadline':'Date'} value={draft.date} editable={!busy} onChangeText={date=>update({date})} placeholder="YYYY-MM-DD" maxLength={10}/></View>{draft.kind!=='OPPORTUNITY'?<View style={{flex:1}}><ToolField label="Start time" value={draft.time} editable={!busy} onChangeText={time=>update({time})} placeholder="HH:mm" maxLength={5}/></View>:null}</View>
+  <ActivityDatePicker label={draft.kind==='OPPORTUNITY'?'Application deadline':'Date'} value={draft.date} disabled={busy} onChange={date=>update({date})}/>{draft.kind!=='OPPORTUNITY'?<ActivityDatePicker label="Start time" mode="time" value={draft.time} disabled={busy} onChange={time=>update({time})}/>:null}
   <ToolField label={draft.kind==='OPPORTUNITY'?'Application link':'Registration link (optional)'} value={draft.link} editable={!busy} autoCapitalize="none" keyboardType="url" onChangeText={link=>update({link})} placeholder="https://…"/>
   <Text style={{fontFamily:theme.font.medium,color:theme.text}}>Photos · {draft.images.length}/5</Text>
   <View style={{flexDirection:'row',flexWrap:'wrap',gap:10}}>{draft.images.map(image=><View key={image.id} style={{width:96,height:96}}><Image source={{uri:image.url}} style={{width:96,height:96,borderRadius:12}}/><Pressable accessibilityRole="button" accessibilityLabel="Remove photo" disabled={busy} onPress={()=>update({images:draft.images.filter(item=>item.id!==image.id)})} style={{position:'absolute',right:0,top:0,padding:9,backgroundColor:theme.surface,borderRadius:18}}><Ionicons name="close" size={18} color={theme.text}/></Pressable></View>)}</View>

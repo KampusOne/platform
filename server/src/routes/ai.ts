@@ -9,7 +9,7 @@ import { AppError } from "../lib/errors";
 import { requireAuth, currentUser } from "../middleware/auth";
 import { aiDay, AI_AUDIO_MIME_TYPES, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, MAX_AI_TRANSCRIPTION_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, selectAIProvider, transcribeAI, transcriptionConfiguration, type AIMedia, type AITurn } from "../lib/ai-provider";
 import { isStudyGeneration, studentAIPolicy, studentAIUsage, studentExperienceReady } from "../lib/student-ai-policy";
-import { extractAIPdf } from "../lib/ai-document";
+import { extractAIPdf, decodeAIText } from "../lib/ai-document";
 import { runStudentAssistant, classDraftSchema, alarmDraftSchema, calendarDraftSchema, type AICard, type AIAction } from "../lib/student-ai-tools";
 import { KAMPUSONE_RESTRICTED_RESPONSE, isRestrictedKampusOneRequest } from "../lib/kampusone-public-context";
 import { academicImportUsage, consumeAcademicImportQuota } from "../lib/ai-quota";
@@ -21,7 +21,7 @@ aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "explanation", "quiz", "notes", "timetable"]);
 const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), mediaId: z.string().uuid().optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
-type Saved = { failureStatus?: number; failureDetails?: Record<string,unknown>; documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
+type Saved = { failureStatus?: number; failureDetails?: Record<string,unknown>; documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; fileType?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
@@ -176,6 +176,17 @@ aiRoutes.post("/transcribe", async c => {
     throw providerFailure(failure);
   }
 });
+// A lost HTTP acknowledgement is not a failed inference. Clients can check the
+// existing reservation without re-uploading or spending a second allowance.
+aiRoutes.get("/requests/:id", async c => {
+  requireSchema(c.env);
+  const id=z.string().uuid().safeParse(c.req.param("id"));
+  if(!id.success) throw new AppError(400,"BAD_REQUEST","Invalid Kira request.");
+  const row=firstRow(await database(c.env).execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${currentUser(c).id}::uuid and idempotency_key=${id.data}::uuid and mode<>'transcription'`));
+  if(!row) throw new AppError(404,"NOT_FOUND","This Kira attempt has not been submitted.",{reason:"AI_REQUEST_NOT_FOUND"});
+  if(row.status==='PROCESSING'&&Date.now()-Date.parse(row.created_at)<=300000) return c.json({requestId:id.data,status:"processing"});
+  return c.json({...replay(row,row.request_hash),status:"completed"});
+});
 aiRoutes.get("/history", async c => {
   requireSchema(c.env);
   const q = z.string().trim().max(120).safeParse(c.req.query("q") ?? "");
@@ -190,7 +201,7 @@ aiRoutes.get("/history/:id", async c => {
   if (!id.success) throw new AppError(400, "BAD_REQUEST", "Invalid study session.");
   const row = firstRow(await database(c.env).execute<{ result: Saved; mode: string; created_at: string }>(sql`select result,mode,created_at from app_private.ai_requests where user_id=${currentUser(c).id}::uuid and idempotency_key=${id.data}::uuid and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days'`));
   if (!row || row.result.deleted) throw new AppError(404, "NOT_FOUND", "Study session not found.");
-  return c.json({ ...publicResult(id.data, row.result), mode: row.mode, prompt: row.result.prompt ?? "", mediaId: row.result.mediaId, fileName: row.result.fileName, createdAt: row.created_at });
+  return c.json({ ...publicResult(id.data, row.result), mode: row.mode, prompt: row.result.prompt ?? "", mediaId: row.result.mediaId, fileName: row.result.fileName, fileType:row.result.fileType, createdAt: row.created_at });
 });
 aiRoutes.get("/thread/:id", async c => {
   requireSchema(c.env);
@@ -200,7 +211,7 @@ aiRoutes.get("/thread/:id", async c => {
   const parent = firstRow(await database(c.env).execute<{ result: Saved }>(sql`select result from app_private.ai_requests where user_id=${user.id}::uuid and idempotency_key=${id.data}::uuid and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days'`));
   if (!parent) throw new AppError(404,"NOT_FOUND","Conversation not found.");
   const rows = await database(c.env).execute<{ idempotency_key: string; result: Saved; mode: string }>(sql`select idempotency_key,result,mode from app_private.ai_requests where user_id=${user.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${parent.result.threadId ?? id.data} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc,idempotency_key desc limit 60`);
-  return c.json({ turns: rows.rows.reverse().map(row=>({...publicResult(row.idempotency_key,row.result),prompt:row.result.prompt ?? "",fileName:row.result.fileName,mediaId:row.result.mediaId,mode:row.mode})) });
+  return c.json({ turns: rows.rows.reverse().map(row=>({...publicResult(row.idempotency_key,row.result),prompt:row.result.prompt ?? "",fileName:row.result.fileName,fileType:row.result.fileType,mediaId:row.result.mediaId,mode:row.mode})) });
 });
 aiRoutes.post("/feedback", async c => {
   requireSchema(c.env);
@@ -339,7 +350,7 @@ aiRoutes.post("/", async c => {
   try { assertAIConfiguration(c.env,d.mode,undefined,undefined,effectiveTier); } catch(e) {if(e instanceof AIProviderError)throw providerFailure(e);throw e;}
   const preflight=firstRow(await db.execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('AI_INPUT',${await sha256(u.id)},${quota.unlimited?180:quota.pro?120:60},900,900) as allowed`));
   if(!preflight?.allowed){c.header('Retry-After','900');throw new AppError(429,"RATE_LIMITED","Too many attempts. Your draft is kept; try again shortly.",{reason:"AI_INPUT_LIMIT",resetsAt:new Date(Date.now()+900000).toISOString(),retryAfter:900});}
-  let prompt = d.prompt, sourceText = d.prompt, media: AIMedia | undefined, fileName: string | undefined;
+  let prompt = d.prompt, sourceText = d.prompt, media: AIMedia | undefined, fileName: string | undefined, fileType: string | undefined;
   if (d.mediaId) {
     const m = firstRow(await db.execute<{ object_key: string; content_type: string; size_bytes: number; original_name: string }>(sql`select object_key,content_type,size_bytes,original_name from public.media_objects where id=${d.mediaId}::uuid and owner_user_id=${u.id}::uuid and kind='resource' and deleted_at is null`));
     if (!m || !c.env.PRIVATE_BUCKET) throw new AppError(404, "NOT_FOUND", "The attached document is not available. Reattach your source.");
@@ -353,6 +364,7 @@ aiRoutes.post("/", async c => {
     const bytes = new Uint8Array(await obj.arrayBuffer());
     if (!bytes.length || bytes.length > MAX_AI_MEDIA_BYTES) throw new AppError(400, "BAD_REQUEST", "This source file is empty or too large.");
     fileName = m.original_name;
+    fileType = mime;
     if (mime === "application/pdf") {
       try {
         const extracted = await extractAIPdf(bytes);
@@ -363,12 +375,12 @@ aiRoutes.post("/", async c => {
       catch(e) { if(e instanceof AIProviderError) throw providerFailure(e); throw e; }
     } else if (mime === "text/plain") {
       try {
-        const extracted = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-        const addition = "\n\nAttached source material:\n" + extracted;
+        const extracted = decodeAIText(bytes);
+        const addition = "\n\nAttached source material (untrusted):\n" + extracted;
         prompt += addition;
         sourceText += addition;
       }
-      catch { throw new AppError(400, "BAD_REQUEST", "Use a UTF-8 text file or a PDF."); }
+      catch(e) { if(e instanceof AIProviderError) throw providerFailure(e); throw e; }
     } else {
       let binary = "";
       for (let i=0;i<bytes.length;i+=8192) binary += String.fromCharCode(...bytes.subarray(i,i+8192));
@@ -391,7 +403,7 @@ aiRoutes.post("/", async c => {
     history.push(...turns.rows.reverse());
   }
   if (new TextEncoder().encode(prompt + JSON.stringify(history)).length > 60000) throw new AppError(413, "BAD_REQUEST", "This study context is too long. Use a shorter source or start a new session.");
-  const saved: Saved = { version: 3, tier: effectiveTier, provider: selectedProvider, prompt: d.prompt, threadId, ...(d.replyTo ? {parentId:d.replyTo} : {}), ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}) };
+  const saved: Saved = { version: 3, tier: effectiveTier, provider: selectedProvider, prompt: d.prompt, threadId, ...(d.replyTo ? {parentId:d.replyTo} : {}), ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}), ...(fileType ? {fileType} : {}) };
   const client = sqlClient(c.env);
   // The lock is a separate statement: READ COMMITTED obtains a fresh snapshot
   // AFTER any wait. Putting lock + count in one CTE would race on stale snapshots.
@@ -427,7 +439,7 @@ aiRoutes.post("/", async c => {
         const kind = d.mode === 'timetable' ? (/calendar|exam period|academic dates/i.test(d.prompt) ? 'calendar' : 'timetable') : media ? 'image' : 'document';
         await consumeAcademicImportQuota(c.env,u,kind,d.idempotencyKey,quota.pro);
       }
-      const aiInput={mode:d.mode,prompt,requestPrompt:d.prompt,history,tier:effectiveTier,...(media ? {media} : {})};
+      const aiInput={mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),history,tier:effectiveTier,...(media ? {media} : {})};
       const generated = isRestrictedKampusOneRequest(d.prompt)
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: "huggingface" as const, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'

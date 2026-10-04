@@ -130,7 +130,9 @@ export async function pickAttachment(): Promise<StagedAttachment | null> {
   if(result.canceled) return null;
   const file=result.assets[0]; if(!file) return null;
   if((file.size ?? 0)>8*1024*1024) throw new Error("Choose a file smaller than 8 MB.");
-  return {uri:file.uri,name:file.name,type:file.mimeType || ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain', pdf: 'application/pdf' }[file.name.toLowerCase().split('.').pop() ?? ''] ?? 'application/octet-stream'),size:file.size};
+  const inferred=({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain', pdf: 'application/pdf' }[file.name.toLowerCase().split('.').pop() ?? '']);
+  const type=file.mimeType && !['application/octet-stream','binary/octet-stream'].includes(file.mimeType) ? file.mimeType : inferred ?? 'application/octet-stream';
+  return {uri:file.uri,name:file.name,type,size:file.size};
 }
 export async function uploadAttachment(file: StagedAttachment): Promise<StagedAttachment> {
   if(file.mediaId) return file;

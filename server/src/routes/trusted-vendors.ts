@@ -85,7 +85,7 @@ trustedVendorRoutes.post('/admin/invites', async c => {
   return c.json({ id: row!.id, url: 'https://agents.kampusone.app/exclusive?invite=' + value, expiresInDays: 7 }, 201);
 });
 trustedVendorRoutes.post('/admin/:id/review', async c => {
-  const actor = currentUser(c), applicationId = id(c.req.param('id')), data = await input(c, z.object({ revision: z.string().min(1), decision: z.enum(['APPROVED', 'REJECTED']), note: z.string().trim().min(20).max(2000), verifiedBusinessAndContact: z.literal(true) }).strict()), db = database(c.env);
+  const actor = currentUser(c), applicationId = id(c.req.param('id')), data = await input(c, z.object({ revision: z.string().min(1), decision: z.enum(['APPROVED', 'REJECTED']), note: z.string().trim().min(20).max(2000).default('Administrator reviewed the submitted business details and authorised contact and approved this vendor.'), verifiedBusinessAndContact: z.literal(true) }).strict()), db = database(c.env);
   const application = firstRow(await db.execute<{ university_id: string; user_id: string }>(sql`select university_id,user_id from public.agent_applications where id=${applicationId}::uuid`));
   if (!application) throw new AppError(404, 'NOT_FOUND', 'Application not found.');
   await resolveAdminScope(c.env, actor, application.university_id, 'agents.review');

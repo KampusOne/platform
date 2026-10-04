@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { isFeedRoutePath, isFeedRoutePlaybackActive, pickFullyVisibleVideo, setFeedRoutePlaybackActive, subscribeFeedRoutePlayback } from "../mobile/src/lib/feed-video-playback.ts";
 import { clearVideoPlaybackSession, readVideoPlaybackSession, writeVideoPlaybackSession } from "../mobile/src/lib/video-playback-session.ts";
+import { postVideoSource } from "../mobile/src/lib/video-source.ts";
 
 test("feed video activates only when the whole video is inside the usable viewport", () => {
   assert.equal(
@@ -100,4 +101,20 @@ test("only the feed pathname enables feed playback", () => {
   assert.equal(isFeedRoutePath("/post"), false);
   assert.equal(isFeedRoutePath("/video"), false);
   assert.equal(isFeedRoutePath("/notifications"), false);
+});
+
+test('current media-array videos play when legacy image_url and media_type are absent', () => {
+  const url = 'https://api.kampusone.app/v1/media/8ea652a5-7061-4b16-a0cb-609f24470de4?access=signed.token';
+  assert.equal(postVideoSource({ image_url: null, media_type: null, media: [{ type: 'video/mp4', url }] }), url);
+  assert.equal(postVideoSource({ media: [{ type: 'image/jpeg', url: 'https://example.com/photo.jpg' }, { type: 'video/webm', url }] }), url);
+});
+
+test('validated API video metadata takes priority over a stale legacy source', () => {
+  assert.equal(postVideoSource({ image_url: 'https://example.com/old.mp4', media_type: 'video', media: [{ type: 'video/mp4', url: '/api/v1/media/current' }] }), '/api/v1/media/current');
+  assert.equal(postVideoSource({ image_url: 'https://example.com/old.mp4', media_type: 'video/mp4', media: [{ type: 7, url: 'https://example.com/bad' }] }), 'https://example.com/old.mp4');
+});
+
+test('malformed, image-only and unsupported video URLs never create a video source', () => {
+  for (const value of [null, {}, { media: [null, { type: 'video/mp4', url: {} }] }, { media: [{ type: 'image/jpeg', url: 'https://example.com/photo.jpg' }] }, { media: [{ type: 'video/mp4', url: 'javascript:alert(1)' }] }, { media_type: 7, image_url: 'https://example.com/photo.jpg' }])
+    assert.equal(postVideoSource(value), '');
 });

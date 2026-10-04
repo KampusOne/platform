@@ -15,7 +15,7 @@ export type AIEnvironment = {
 };
 export type AIMedia = { mimeType: string; data: string };
 export type AITurn = { prompt: string; text: string };
-export type AIInput = { mode: AIMode; prompt: string; requestPrompt?: string; media?: AIMedia; history?: AITurn[]; provider?: AIProvider; tier?: AITier; systemContext?: string };
+export type AIInput = { mode: AIMode; prompt: string; requestPrompt?: string; sourceDocument?: boolean; media?: AIMedia; history?: AITurn[]; provider?: AIProvider; tier?: AITier; systemContext?: string };
 export type AITool = { type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } };
 export type AIToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 export type AIMessage = { role: "system" | "user" | "assistant" | "tool"; content: unknown; tool_calls?: AIToolCall[]; tool_call_id?: string };
@@ -88,23 +88,36 @@ export function aiMessages(input: AIInput): AIMessage[] {
     { role: "user", content: input.media ? content : input.prompt || "Read the supplied material." },
   ];
 }
-export function aiCompletionBudget(input: Pick<AIInput,"mode"|"tier">) {
+export function aiCompletionBudget(input: Pick<AIInput,"mode"|"tier"|"sourceDocument">) {
   if (input.mode === "timetable") return { maxTokens: 4096, timeoutMs: 45000 };
   const detailed = input.mode === "explanation" || input.mode === "notes";
-  return { maxTokens: input.tier === "pro" ? (detailed ? 8192 : 6144) : (detailed ? 6144 : 3072), timeoutMs: input.tier === "pro" || detailed ? 55000 : 40000 };
+  // Reading a document and producing revision notes needs more time than a
+  // short Ask turn. The deadline covers every model attempt, including fallback.
+  return { maxTokens: input.tier === "pro" ? (detailed ? 8192 : 6144) : (detailed ? 6144 : 3072), timeoutMs: input.sourceDocument || detailed ? 90000 : input.tier === "pro" ? 75000 : 40000 };
 }
 export async function completeAI(env: AIEnvironment, input: AIInput, messages: AIMessage[], tools?: AITool[], fetcher: typeof fetch = fetch): Promise<{ text: string; calls: AIToolCall[] }> {
   const config = assertAIConfiguration(env, input.mode, input.media?.mimeType, input.provider, input.tier);
   const budget = aiCompletionBudget(input);
+  const deadline = Date.now() + budget.timeoutMs;
   try {
-    const requestModel = (model: string) => fetcher("https://router.huggingface.co/v1/chat/completions", {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.token!}` }, signal: AbortSignal.timeout(budget.timeoutMs),
+    const requestModel = (model: string, fallback = false) => fetcher("https://router.huggingface.co/v1/chat/completions", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.token!}` }, signal: AbortSignal.timeout(Math.max(1,Math.min(deadline-Date.now(),!fallback && config.fallbackModel ? 55000 : budget.timeoutMs))),
       body: JSON.stringify({ model, messages, max_tokens: budget.maxTokens, temperature: 0.2, stream: false, ...(tools?.length ? { tools, tool_choice: "auto" } : {}) }),
     });
-    let response = await requestModel(config.model!);
-    if (!response.ok && config.fallbackModel && ![401,403].includes(response.status)) {
+    let response: Response;
+    let usedFallback = false;
+    try { response = await requestModel(config.model!); }
+    catch (error) {
+      // Only one fallback is possible, within the same reservation and deadline.
+      // A slow/unreachable study model must not prevent the configured chat
+      // model from answering a document. Never retry an authentication error.
+      if (!config.fallbackModel || deadline-Date.now()<1000) throw error;
+      usedFallback = true;
+      response = await requestModel(config.fallbackModel,true);
+    }
+    if (!response.ok && !usedFallback && config.fallbackModel && ![401,403].includes(response.status) && deadline-Date.now()>=1000) {
       void response.body?.cancel().catch(() => undefined);
-      response = await requestModel(config.fallbackModel);
+      response = await requestModel(config.fallbackModel,true);
     }
     if (!response.ok) {
       void response.body?.cancel().catch(() => undefined);

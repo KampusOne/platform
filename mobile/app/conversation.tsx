@@ -338,7 +338,7 @@ function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: 
   }, [message.media_id]);
 
   useEffect(() => {
-    if (!message.media_id || (!isImage && !isAudio)) return;
+    if (!message.media_id || !isImage) return;
     let cancelled = false;
     void fetchAccess()
       .then((nextUrl) => {
@@ -348,7 +348,7 @@ function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: 
     return () => {
       cancelled = true;
     };
-  }, [fetchAccess, isAudio, isImage, message.media_id]);
+  }, [fetchAccess, isImage, message.media_id]);
 
   async function open() {
     if (!message.media_id || busy) return;
@@ -392,9 +392,9 @@ function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: 
           />
           <Text style={[styles.mediaCaption, mine && styles.mediaCaptionMine]}>Picture</Text>
         </Pressable>
-      ) : isAudio && url ? (
+      ) : isAudio ? (
         <View style={[styles.voicePlayback, mine && styles.voicePlaybackMine]}>
-          <VoicePlayback uri={url} compact mine={mine} onLongPress={onLongPress} />
+          <VoicePlayback loadUri={fetchAccess} compact mine={mine} onLongPress={onLongPress} />
         </View>
       ) : isVideo ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Open video" onPress={() => void open()} style={[styles.videoCard, mine && styles.mediaCardMine]}>
