@@ -87,11 +87,12 @@ try{
  await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Exam countdown overflows');const text=document.body.innerText;for(const unit of ['Days','Hours','Minutes','Seconds'])if(!text.includes(unit))throw new Error('Countdown unit missing');if(!document.querySelector('[aria-label=\"Share exam countdown\"]'))throw new Error('Countdown share control missing');return 'Four countdown units and share control fit on a phone'})()");
  await browser('screenshot',resolve(evidence,'exam-countdown-mobile.png'),'--full');
  await browser('open','http://localhost:8100/map');await browser('wait','--text','Campus directions');
+ await browser('wait','--fn',"(()=>{const b=document.querySelector('[aria-label=\"Destination: Choose on campus\"]');if(!b)return false;const r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return hit===b||b.contains(hit)})()");
  await browser('find','role','button','click','--name','Destination: Choose on campus','--exact');
  await browser('find','label','Search campus destinations','fill','Petroleum Engineering');await browser('wait','--text','Department of Petroleum Engineering');
  await check("(()=>{if(!document.body.innerText.includes('Approximate location'))throw new Error('Screenshot locations lack an accuracy label');if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Campus search overflows');return 'New reviewed landmarks are searchable with their approximation label'})()");
  await browser('screenshot',resolve(evidence,'map2-search-mobile.png'),'--full');
- await browser('find','role','button','click','--name','Department of Petroleum Engineering academic · Approximate location');
+ await browser('find','role','button','click','--name','Department of Petroleum Engineering, approximate location','--exact');
  await browser('find','role','button','click','--name','Expand directions','--exact');await browser('wait','--text','Approximate location. Follow local signs for the entrance.');
  await browser('screenshot',resolve(evidence,'map2-selected-mobile.png'),'--full');
  await browser('open','http://localhost:8100/__verify-map.html');await browser('wait','--fn','window.mapReady===true');
