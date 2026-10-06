@@ -21,6 +21,7 @@ const fixtures={
  '/v1/applications/draft':{draft},
  '/v1/applications/requirements':{privateIdentityReady:true},
  '/v1/trusted-vendors/invite':{invite:{university_name:'University of Benin',application_id:null}},
+ '/v1/trusted-vendors/availability':{enabled:true},
  '/v1/admin/access':{permissions:[],universities:[university],allUniversities:false},
 };
 const api=createServer((req,res)=>{
@@ -58,8 +59,8 @@ try{
  await browser('screenshot',resolve(evidence,'agent-campus-mobile.png'),'--full');
  await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Campus step overflows');if(!document.querySelector('select'))throw new Error('Campus choices missing');return 'Continue advances the saved draft to campus choices'})()");
  await browser('set','viewport','1440','1000');await browser('screenshot',resolve(evidence,'agent-desktop.png'),'--full');
- await browser('set','viewport','390','844');await browser('open','http://localhost:3100/exclusive?invite=local-fixture');await browser('wait','--text','Submit vendor profile');await browser('wait','--fn',"Array.from(document.querySelectorAll('.agent-illustration')).every(i=>i.complete&&i.naturalWidth>0)");await browser('screenshot',resolve(evidence,'trusted-vendor-mobile.png'),'--full');
- await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Trusted vendor form overflows');if(document.querySelector('input[name=nin]'))throw new Error('Unwaived document field present');return 'Trusted invitation form fits on mobile'})()");
+ await browser('set','viewport','390','844');await browser('open',`http://localhost:3100/exclusive?invite=${'f'.repeat(64)}`);await browser('wait','--fn',"Boolean(document.querySelector('[aria-label=\"Exclusive application progress\"]'))");await browser('wait','--fn',"Array.from(document.querySelectorAll('.agent-illustration')).every(i=>i.complete&&i.naturalWidth>0)");await browser('screenshot',resolve(evidence,'trusted-vendor-mobile.png'),'--full');
+ await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Trusted vendor form overflows');if(document.querySelector('input[name=nin]'))throw new Error('Unwaived document field present');if(document.querySelector('[aria-label=\"Exclusive application progress\"]').getAttribute('aria-valuenow')!=='1')throw new Error('Invitation did not open its first application step');return 'A valid local invitation opens the mobile vendor wizard'})()");
  await browser('open','http://localhost:8100/__verify-email.html');await browser('screenshot',resolve(evidence,'receipt-email-mobile.png'),'--full');await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Receipt email overflows');return 'Receipt email fits on mobile'})()");
  await browser('open','http://localhost:8100/__verify-campaign.html');await browser('screenshot',resolve(evidence,'approval-email-mobile.png'),'--full');
  await browser('open','http://localhost:8100/__verify-map.html');await browser('wait','--fn','window.mapReady===true');
