@@ -199,7 +199,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
   const [busyKey, setBusyKey] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [productImageUrl, setProductImageUrl] = useState("");
+  const [productImageDraft, setProductImageDraft] = useState<{ productId: string | null; url: string }>({ productId: null, url: "" });
   const [pickupCode, setPickupCode] = useState<{ orderId: string; code: string } | null>(null);
 
   const storefront = storefrontResource.data?.storefront ?? null;
@@ -209,10 +209,10 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
   const selectedProduct = products.find((product) => product.id === selectedProductId) ?? null;
   const storeLocked = storefront?.status === "SUSPENDED";
   const storefrontApproved = storefront?.status === "APPROVED";
-
-  useEffect(() => {
-    setProductImageUrl(selectedProduct?.image_url ?? "");
-  }, [selectedProduct?.id, selectedProduct?.updated_at]);
+  const productImageUrl =
+    productImageDraft.productId === selectedProductId
+      ? productImageDraft.url
+      : selectedProduct?.image_url ?? "";
 
   function refresh(message?: string) {
     if (message) setNotice(message);
@@ -301,7 +301,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
       );
       if (!editing) {
         setSelectedProductId(result.id);
-        setProductImageUrl("");
+        setProductImageDraft({ productId: null, url: "" });
         formElement.reset();
       }
       refresh(
@@ -343,7 +343,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
       );
       if (!uploaded?.url || uploaded.kind !== "product")
         throw new Error("The product photo upload returned an incomplete response.");
-      setProductImageUrl(uploaded.url);
+      setProductImageDraft({ productId: selectedProductId, url: uploaded.url });
       setNotice("Product photo uploaded. Save the product to keep this image.");
     } catch (caught) {
       setError(errorMessage(caught, caught instanceof Error ? caught.message : "The product photo could not be uploaded."));
@@ -683,7 +683,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
             {productImageUrl ? (
               <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
                 <Image src={productImageUrl} alt="Product preview" width={112} height={112} unoptimized style={{ borderRadius: 16, objectFit: "cover" }} />
-                <button className="text-button text-button--danger" type="button" disabled={Boolean(busyKey) || storeLocked} onClick={() => setProductImageUrl("")}>Remove photo</button>
+                <button className="text-button text-button--danger" type="button" disabled={Boolean(busyKey) || storeLocked} onClick={() => setProductImageDraft({ productId: selectedProductId, url: "" })}>Remove photo</button>
               </div>
             ) : (
               <p className="field-help">Add a clear product photo before publishing so students can recognize the item.</p>
