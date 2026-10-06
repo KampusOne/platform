@@ -1,8 +1,9 @@
-import { appLink } from "@/src/lib/app-links";
+import {sharedLink} from '@/src/lib/shared-links';
+import {shareContent} from '@/src/lib/share-content';
 import * as Clipboard from "expo-clipboard";
 import { KiraVoiceInput } from "@/src/components/kira-voice-input";
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
-import { Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
@@ -372,7 +373,7 @@ export default function StudentAI() {
     finally{if(valid()&&version===generation.current)setConfirming(undefined);}
   }
   async function copy(answer:string){try{await Clipboard.setStringAsync(answer);toast('Copied','success');}catch{toast('Could not copy. Select the answer text and copy it.','error');}}
-  async function share(answer:string){try{await Share.share({message:`This is a response I got from Kira in KampusOne.\n\n${answer}\n\nStudy, plan and connect on campus: ${appLink()}`});}catch{toast('Could not share this answer.','error');}}
+  async function share(answer:string){try{await shareContent({title:'Kira answer',message:`This is a response I got from Kira in KampusOne.\n\n${answer.slice(0,4000)}${answer.length>4000?'\n… (excerpt)':''}`,url:sharedLink('ai','kira')});}catch{toast('Could not share this answer.','error');}}
   async function rate(turn:Turn,rating:'like'|'dislike'){
     const version=generation.current;const next=turn.feedback?.rating===rating?null:rating;
     try{const result=await api<{feedback:Turn['feedback']}>('/v1/ai/feedback',{method:'POST',body:JSON.stringify({requestId:turn.requestId,rating:next})});if(valid()&&version===generation.current)setTurns(rows=>rows.map(row=>row.requestId===turn.requestId?{...row,feedback:result.feedback??null}:row));}

@@ -2,7 +2,7 @@
   "expo": {
     "name": "KampusOne",
     "slug": "kampusone",
-    "version": "0.3.19",
+    "version": "0.3.20",
     "orientation": "portrait",
     "icon": "./assets/kampusone-app-icon.jpg",
     "scheme": "kampusone",
@@ -16,8 +16,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.kampusone.mobile",
-      "associatedDomains": ["applinks:links.kampusone.app"],
-      "buildNumber": "49"
+      "associatedDomains": [
+        "applinks:links.kampusone.app"
+      ],
+      "buildNumber": "50"
     },
     "android": {
       "adaptiveIcon": {
@@ -25,7 +27,23 @@
         "backgroundColor": "#F1DFC7"
       },
       "package": "app.kampusone.mobile",
-      "intentFilters": [{ "action": "VIEW", "autoVerify": true, "data": [{ "scheme": "https", "host": "links.kampusone.app", "pathPrefix": "/s/" }], "category": ["BROWSABLE", "DEFAULT"] }],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "links.kampusone.app",
+              "pathPrefix": "/s/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
@@ -34,7 +52,7 @@
         "android.permission.ACCESS_FINE_LOCATION"
       ],
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 49
+      "versionCode": 50
     },
     "web": {
       "bundler": "metro",
@@ -91,7 +109,7 @@
       ]
     ],
     "extra": {
-      "apiUrl": "https://kampusone-mobile-preview.vercel.app/api",
+      "apiUrl": "https://mobile.kampusone.app/api",
       "apiFallbackUrl": "https://platformp.divine-haze-54eb.workers.dev"
     },
     "experiments": {

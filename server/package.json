@@ -15,11 +15,13 @@
   "dependencies": {
     "@kampusone/contracts": "file:../packages/contracts",
     "@neondatabase/serverless": "^1.1.0",
+    "aws4fetch": "^1.0.20",
     "drizzle-orm": "^0.45.2",
     "hash-wasm": "^4.12.0",
     "hono": "4.13.7",
     "jose": "^6.2.12",
-    "unpdf": "1.8.1"
+    "unpdf": "1.8.1",
+    "yup": "^1.7.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260908.1",

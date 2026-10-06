@@ -44,6 +44,11 @@ calendarRoutes.get("/exam-periods", async (c) => {
   const result=await database(c.env).execute<CalendarRow>(sql`select title,starts_on::text,ends_on::text,semester from public.student_calendar_events where user_id=${currentUser(c).id}::uuid order by starts_on`);
   return c.json({examPeriods:extractExamPeriods(result.rows),progressionRequiresConfirmation:true});
 });
+calendarRoutes.post('/import-alarms',async c=>{
+ const d=await input(c,z.object({entryIds:z.array(z.string().uuid()).min(1).max(100),time:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('08:00')}).strict());
+ const result=firstRow(await database(c.env).execute<{imported:number}>(sql`select app_private.import_calendar_alarms(${currentUser(c).id}::uuid,${sql.param(d.entryIds)}::uuid[],${d.time}::time) imported`));
+ return c.json(result);
+});
 calendarRoutes.post("/", async (c) => {
   const user = currentUser(c);
   if (!user.universityId)

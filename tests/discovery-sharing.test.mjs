@@ -206,3 +206,19 @@ test("web associations require actual release signing identifiers", () => {
     "https://kampusone.app/app.apk",
   );
 });
+
+test('all shared feature links are branded and resolve to a safe app screen',()=>{
+ const l=links(),a=load('portal/lib/app-link-association.ts');
+ for(const kind of ['community','study-group','class-community','message']){
+  const url=l.sharedLink(kind,uuid);assert.ok(url.startsWith('https://links.kampusone.app/s/'));assert.ok(l.approvedSharedUrl(url));assert.ok(a.validSharedPath(kind,uuid));
+ }
+ for(const [kind,id] of [['ai','kira'],['streak','today'],['exam-period','2026-10-26_2026-11-20']]){
+  assert.ok(l.approvedSharedUrl(l.sharedLink(kind,id)));assert.ok(a.validSharedPath(kind,id));
+ }
+ for(const id of ['2026-02-30_2026-03-02','2026-11-20_2026-10-26','2026-10-26_2028-10-26','2026-10-26_2026-11-20_evil']){
+  assert.equal(l.sharedDestination('exam-period',id),null);assert.equal(a.validSharedPath('exam-period',id),false);
+ }
+ const countdown=load('mobile/src/lib/exam-period.ts');
+ assert.deepEqual({...countdown.countdownParts(Date.parse('2026-10-26T00:00:00+01:00'),Date.parse('2026-10-24T22:58:58Z'))},{days:1,hours:0,minutes:1,seconds:2});
+ assert.equal(countdown.examPeriodStart({startsOn:'2026-10-26'}),Date.parse('2026-10-25T23:00:00Z'));
+});

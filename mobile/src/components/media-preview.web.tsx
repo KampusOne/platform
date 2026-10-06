@@ -1,3 +1,4 @@
+import {useSignedMedia} from '@/src/lib/signed-media';
 import { createElement, useEffect, useRef, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { useAppearance } from "@/src/lib/appearance";
@@ -15,6 +16,7 @@ function retryMediaUrl(value: string, attempt: number) {
   if (!attempt) return value;
   try {
     const url = new URL(value, "https://media.invalid");
+    if(url.searchParams.has("X-Amz-Signature"))return value;
     url.searchParams.set("retry", String(attempt));
     return url.origin === "https://media.invalid"
       ? `${url.pathname}${url.search}${url.hash}`
@@ -46,6 +48,7 @@ export function MediaPreview({
   onOpen?: ((state: { position: number; muted: boolean }) => void) | undefined;
 }) {
   const { theme } = useAppearance();
+  const signedSource=useSignedMedia(url,video);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -188,7 +191,7 @@ export function MediaPreview({
         createElement("video", {
           key: `${url}:${attempt}`,
           ref: videoRef,
-          src: retryMediaUrl(url, attempt),
+          src: signedSource||undefined,
           controls: true,
           muted: playbackMode === "feed-autoplay" ? isFeedMuted() : false,
           onVolumeChange: (event) => { if (playbackMode === "feed-autoplay") setFeedMuted((event.currentTarget as HTMLVideoElement).muted); },

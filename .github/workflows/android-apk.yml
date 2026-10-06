@@ -1,6 +1,15 @@
 name: Build Android test APK
 on:
   workflow_dispatch:
+    inputs:
+      publish_download:
+        description: 'Publish this verified build to the website and APK release'
+        type: boolean
+        default: false
+      paystack_fee_setting_checked:
+        description: 'Account owner confirmed Pass fees to customers is OFF'
+        type: boolean
+        default: false
   workflow_run:
     workflows: ["Deploy verified Vercel surfaces"]
     types: [completed]
@@ -74,6 +83,7 @@ jobs:
           node server/scripts/verify-schema-proof.mjs experience
           node server/scripts/verify-schema-proof.mjs october4
           node server/scripts/verify-schema-proof.mjs october6
+          node server/scripts/verify-schema-proof.mjs followup
           curl --fail --silent --show-error --retry 2 --max-time 20 "$API_URL/health/ready"
       - name: Configure Android push credentials
         env:
@@ -103,7 +113,7 @@ jobs:
           # Phones reach the verified same-origin Vercel proxy first. This avoids
           # Android/carrier-specific failures against the raw workers.dev hostname while
           # retaining the Worker as a secondary read fallback.
-          EXPO_PUBLIC_KAMPUSONE_API_URL: https://kampusone-mobile-preview.vercel.app/api
+          EXPO_PUBLIC_KAMPUSONE_API_URL: https://mobile.kampusone.app/api
           EXPO_PUBLIC_KAMPUSONE_API_FALLBACK_URL: https://platformp.divine-haze-54eb.workers.dev
           EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID || secrets.EXPO_EAS_PROJECT_ID }}
       - name: Prepare public APK
@@ -133,7 +143,13 @@ jobs:
           if (!/^[a-f0-9]{40}$/.test(process.env.BUILD_SHA || '')) throw new Error('A verified source revision is required for the APK receipt.');
           const digest = createHash('sha256');
           for await (const chunk of createReadStream('KampusOne-Android.apk')) digest.update(chunk);
-          const receipt = { sourceSha: process.env.BUILD_SHA, packageName: values.name, versionName: values.versionName,
+          const apksigner = readdirSync(buildTools).sort((a,b)=>b.localeCompare(a,undefined,{numeric:true})).map(v=>join(buildTools,v,'apksigner')).find(existsSync);
+          if(!apksigner)throw new Error('apksigner is required to verify the packaged signing certificate.');
+          const signed=spawnSync(apksigner,['verify','--print-certs','KampusOne-Android.apk'],{encoding:'utf8'});
+          const cert=/Signer #1 certificate SHA-256 digest: ([a-f0-9]{64})/i.exec(signed.stdout)?.[1];
+          if(signed.status!==0||!cert)throw new Error('The APK signing identity could not be verified.');
+          const certificateSha256=cert.toUpperCase().match(/.{2}/g).join(':');
+          const receipt = { certificateSha256, sourceSha: process.env.BUILD_SHA, packageName: values.name, versionName: values.versionName,
             versionCode: Number(values.versionCode), apkSha256: digest.digest('hex'), apkSizeBytes: statSync('KampusOne-Android.apk').size,
             verifiedAt: new Date().toISOString() };
           writeFileSync('KampusOne-Android-build.json', JSON.stringify(receipt, null, 2) + '\n');
@@ -153,8 +169,18 @@ jobs:
           path: KampusOne-Android.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Reverify the published web release before an explicitly requested APK publication
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_download && inputs.paystack_fee_setting_checked
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.source.outputs.sha }}
+          RELEASE_RUN_ID: ${{ github.run_id }}
+        run: |
+          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-worker.yml/runs" -f branch=main -f head_sha="$RELEASE_SHA" > /tmp/kampusone-worker-runs.json
+          gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/status" > /tmp/kampusone-vercel-statuses.json
+          node server/scripts/verify-published-web-release.mjs /tmp/kampusone-worker-runs.json /tmp/kampusone-vercel-statuses.json /tmp/kampusone-apk-publication-proof.json
       - name: Publish the verified APK to website downloads
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_download && inputs.paystack_fee_setting_checked
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -163,7 +189,7 @@ jobs:
           test "$BUILD_SHA" = "$(git ls-remote --heads origin main | cut -f1)"
           node server/scripts/publish-android-download.mjs
       - name: Publish shareable APK release
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_download && inputs.paystack_fee_setting_checked
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_SHA: ${{ steps.source.outputs.sha }}
@@ -175,5 +201,6 @@ jobs:
 # Expo's generated test signing is for sideload testing only. A separately
 # provisioned release/upload keystore is required before Play Store publication.
 
-# Manual runs save a test artifact; only a successful verified portal release
-# can publish apk-latest. Historical APK snapshots are left unchanged.
+# Automatic runs save review artifacts. Publishing requires explicit manual
+# inputs and renewed matching Worker/Vercel verification. Historical snapshots
+# are left unchanged.

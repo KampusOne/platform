@@ -1,7 +1,7 @@
 import {CommunitySubscriptionSheet,CommunityRequestInbox} from './community-requests';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Ionicons} from '@expo/vector-icons';
-import {Image,Modal,Pressable,ScrollView,Share,Switch,Text,View} from 'react-native';
+import {Image,Modal,Pressable,ScrollView,Switch,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {router,useFocusEffect} from 'expo-router';
 import {randomUUID} from 'expo-crypto';
@@ -13,6 +13,7 @@ import {api} from '@/src/lib/api';
 import {pickAndUpload} from '@/src/lib/uploads';
 import {pushSetupAvailability,registerPushDevice} from '@/src/lib/push-registration';
 import {normalizeGroupDetail,normalizeGroupPosts,normalizeGroupComments,normalizeGroupMembers,type GroupDetail,type GroupPost,type GroupComment,type GroupMember} from '@/src/lib/student-group-state';
+import {shareItem} from '@/src/lib/share-content';
 import {feedTime} from '@/src/lib/feed-time';
 
 function GroupAvatar({name,uri,size=44}:{name:string;uri:string|null;size?:number}){
@@ -51,7 +52,7 @@ export function StudentGroup({id}:{id:string}){
  const text={fontFamily:theme.font.body,color:theme.text,fontSize:14,lineHeight:23},muted={...text,color:theme.textMuted,fontSize:12},admin=data?.group.member_role==='ADMIN';
  const profile=(name:string,handle:string,avatar:string|null,role?:string)=><View style={{flexDirection:'row',alignItems:'center',gap:10}}><Pressable accessibilityRole="button" accessibilityLabel={`Open ${name}'s profile`} disabled={!handle} onPress={()=>router.push({pathname:'/profile',params:{username:handle}})} style={{flex:1,flexDirection:'row',gap:10,alignItems:'center'}}><GroupAvatar name={name} uri={avatar}/><View style={{flex:1}}><Text style={[text,{fontFamily:theme.font.semibold}]}>{name}</Text>{handle?<Text style={muted}>@{handle}</Text>:null}</View></Pressable>{role==='ADMIN'?<View style={{flexDirection:'row',alignItems:'center',gap:4,backgroundColor:theme.surfaceTint,paddingHorizontal:8,paddingVertical:5,borderRadius:7}}><Ionicons name="shield-checkmark-outline" size={13} color={theme.deepBrand}/><Text style={[muted,{color:theme.deepBrand,fontFamily:theme.font.semibold}]}>Admin</Text></View>:null}</View>;
  const errorMessage=error?<View style={{padding:14,borderRadius:12,backgroundColor:theme.surfaceMuted,marginBottom:14}}><Text accessibilityRole="alert" style={[text,{color:theme.error}]}>{error}</Text>{!editing?<ToolButton secondary label="Try again" onPress={()=>void load()}/>:null}</View>:null;
- return <ToolPage title={data?.group.kind==='STUDY_GROUP'?'Study group':'Community'} action={<View style={{flexDirection:'row',gap:4}}>{admin?<Pressable accessibilityRole="button" accessibilityLabel="Edit community profile and posting settings" onPress={edit} style={{minHeight:44,minWidth:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="settings-outline" size={22} color={theme.deepBrand}/></Pressable>:null}<Pressable accessibilityRole="button" accessibilityLabel="Share community" onPress={()=>void Share.share({message:`${data?.group.name??'Community'}\nhttps://kampusone-mobile-preview.vercel.app/community?id=${encodeURIComponent(id)}&kind=${data?.group.kind??'COMMUNITY'}`}).catch(()=>setError('Could not share this community.'))} style={{minHeight:44,minWidth:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="share-outline" size={22} color={theme.deepBrand}/></Pressable></View>} onRefresh={()=>void load()}>
+ return <ToolPage title={data?.group.kind==='STUDY_GROUP'?'Study group':'Community'} action={<View style={{flexDirection:'row',gap:4}}>{admin?<Pressable accessibilityRole="button" accessibilityLabel="Edit community profile and posting settings" onPress={edit} style={{minHeight:44,minWidth:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="settings-outline" size={22} color={theme.deepBrand}/></Pressable>:null}<Pressable accessibilityRole="button" accessibilityLabel="Share community" onPress={()=>void shareItem(data?.group.kind==='STUDY_GROUP'?'study-group':'community',id,data?.group.name??'Community').catch(()=>setError('Could not share this community.'))} style={{minHeight:44,minWidth:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="share-outline" size={22} color={theme.deepBrand}/></Pressable></View>} onRefresh={()=>void load()}>
  {errorMessage}
  {!data?<ScreenSkeleton/>:<>
   <View style={{padding:20,gap:14,backgroundColor:theme.surfaceTint,borderRadius:24,borderWidth:1,borderColor:theme.border,marginBottom:18}}>

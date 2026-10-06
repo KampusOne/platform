@@ -1,7 +1,7 @@
 name: Verify October correction batch
 on:
   push:
-    branches: [fix/october-124-issues, release/october-6]
+    branches: [fix/october-124-issues, release/october-6, release/october-6-followup]
     paths:
       - 'mobile/**'
       - 'portal/**'

@@ -41,6 +41,14 @@ export type Bindings = {
   ADMIN_BOOTSTRAP_TOKEN?: string;
   INITIAL_ADMIN_EMAIL?: string;
   UNIFIED_SCHEMA_READY?: string;
+  R2_DIRECT_UPLOADS_ENABLED?: string;
+  R2_ACCOUNT_ID?: string;
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  R2_PRIVATE_BUCKET_NAME?: string;
+  R2_MEDIA_BUCKET_NAME?: string;
+  R2_UPLOAD_URL_TTL_SECONDS?: string;
+  R2_PLAYBACK_URL_TTL_SECONDS?: string;
   MEDIA_BUCKET?: R2Bucket;
   PRIVATE_BUCKET?: R2Bucket;
   PUBLIC_API_ORIGIN?: string;

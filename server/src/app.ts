@@ -1,3 +1,4 @@
+import {validateStorageEnv} from './lib/storage-env';
 import {tutorialStorageRoutes} from './routes/tutorial-storage';
 import {featuredBrandRoutes} from './routes/featured-brands';
 import {websiteRoutes} from './routes/website';
@@ -51,6 +52,7 @@ import type { Bindings, Variables } from "./types";
 export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use("*", requestId());
+app.use("*",async(c,next)=>{validateStorageEnv(c.env);await next();});
 app.use("*", mediaAwareSecureHeaders);
 app.use("/v1/*", async (c, next) => {
   const isMediaUpload =

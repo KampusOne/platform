@@ -1,6 +1,7 @@
+import {shareItem} from '@/src/lib/share-content';
 import {StudentGroup} from "@/src/components/student-group";
 import { useCallback, useState } from "react";
-import { Linking, Pressable, Share, Text, View } from "react-native";
+import { Linking, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as Crypto from "expo-crypto";
 import { useAuth } from "@/src/auth/auth-context";
@@ -164,9 +165,7 @@ function ClassCommunity() {
           accessibilityRole="button"
           accessibilityLabel="Share community"
           onPress={() =>
-            void Share.share({
-              message: `${data?.community.name ?? "Class community"}\nhttps://kampusone-mobile-preview.vercel.app/community?id=${encodeURIComponent(id ?? "")}`,
-            }).catch(() => toast("Could not share"))
+            void shareItem("class-community",id,data?.community.name??"Class community").catch(() => toast("Could not share"))
           }
         >
           <Text style={{ ...text, color: theme.brand }}>Share</Text>

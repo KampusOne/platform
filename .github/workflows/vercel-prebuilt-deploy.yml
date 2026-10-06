@@ -72,7 +72,7 @@ jobs:
           node-version: 24
       - name: Verify current production migration evidence
         if: steps.credentials.outputs.available == 'true'
-        run: node ../server/scripts/verify-schema-proof.mjs platform && node ../server/scripts/verify-schema-proof.mjs october && node ../server/scripts/verify-schema-proof.mjs experience && node ../server/scripts/verify-schema-proof.mjs october4 && node ../server/scripts/verify-schema-proof.mjs october6
+        run: node ../server/scripts/verify-schema-proof.mjs platform && node ../server/scripts/verify-schema-proof.mjs october && node ../server/scripts/verify-schema-proof.mjs experience && node ../server/scripts/verify-schema-proof.mjs october4 && node ../server/scripts/verify-schema-proof.mjs october6 && node ../server/scripts/verify-schema-proof.mjs followup
       - name: Install and check portal
         if: steps.credentials.outputs.available == 'true'
         run: npm ci && npm run check && npm run lint
@@ -199,6 +199,7 @@ jobs:
           node server/scripts/verify-schema-proof.mjs experience
           node server/scripts/verify-schema-proof.mjs october4
           node server/scripts/verify-schema-proof.mjs october6
+          node server/scripts/verify-schema-proof.mjs followup
           # A preview success can arrive while production aliases are still
           # being promoted. Retry the full source and authentication checks;
           # only a successful check may write the APK's source receipt.

@@ -24,6 +24,8 @@ export type Alarm = {
   venue?: string | null;
   lecturer?: string | null;
   reminder_minutes?: number | null;
+  calendar_event_id?: string | null;
+  assessment_kind?: "TEST" | "EXAM" | null;
   exam_id?: string | null;
   exam_lead_minutes?: number | null;
   pause_from?: string | null;
@@ -50,6 +52,8 @@ export function normalizeAlarm(value: unknown): Alarm | null {
   const snooze = Number(raw.snooze_minutes);
   return {
     id: raw.id,
+    calendar_event_id:typeof raw.calendar_event_id==="string"?raw.calendar_event_id:null,
+    assessment_kind:raw.assessment_kind==="TEST"?"TEST":raw.assessment_kind==="EXAM"?"EXAM":null,
     exam_id:typeof raw.exam_id==="string"?raw.exam_id:null,
     exam_lead_minutes:Number.isFinite(Number(raw.exam_lead_minutes))?Number(raw.exam_lead_minutes):null,
     pause_from:typeof raw.pause_from==="string"?raw.pause_from:null,

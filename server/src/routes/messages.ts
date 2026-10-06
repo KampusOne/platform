@@ -90,6 +90,13 @@ async function threadFor(env: Bindings, userId: string, threadId: string) {
   return thread;
 }
 
+messageRoutes.get('/shared/:id',async c=>{
+ const user=currentUser(c),messageId=id(c.req.param('id'));
+ const row=firstRow(await database(c.env).execute<{thread_id:string}>(sql`select m.thread_id from public.direct_messages m join public.direct_threads t on t.id=m.thread_id where m.id=${messageId}::uuid and m.unsent_at is null and ${user.id}::uuid in(t.initiator_id,t.recipient_id)`));
+ if(!row)throw new AppError(404,'NOT_FOUND','This message is unavailable for your account.');
+ await threadFor(c.env,user.id,row.thread_id);
+ return c.json({threadId:row.thread_id});
+});
 messageRoutes.get("/inbox", async (c) => {
   const user = currentUser(c);
   const filter = z

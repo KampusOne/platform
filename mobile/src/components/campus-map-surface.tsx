@@ -21,7 +21,7 @@ export type MapPayload={
   reducedMotion?:boolean;
   focus?:{coordinate:MapCoordinate;nonce:number;zoom?:number}|null|undefined;
 };
-const productionViewer='https://kampusone-mobile-preview.vercel.app/maps/view';
+const productionViewer='https://mobile.kampusone.app/maps/view';
 export function CampusMapSurface({payload,onPick,onError,onPoint,safeInsets}:{
   payload:MapPayload;
   onPick:(id:string)=>void;
@@ -69,7 +69,7 @@ export function CampusMapSurface({payload,onPick,onError,onPoint,safeInsets}:{
   },[ready]);
   return <View style={[StyleSheet.absoluteFill,{top:safeInsets?.top??0,bottom:safeInsets?.bottom??0}]}>
     {Platform.OS==='web'?createElement('iframe',{ref:frameRef,src,title:'Interactive campus map',allow:'geolocation',style:{border:0,width:'100%',height:'100%',background:'#edeae3'}}):
-      <WebView ref={webRef} source={{uri:src}} originWhitelist={['https://kampusone-mobile-preview.vercel.app']} onShouldStartLoadWithRequest={r=>{
+      <WebView ref={webRef} source={{uri:src}} originWhitelist={['https://mobile.kampusone.app']} onShouldStartLoadWithRequest={r=>{
         if(r.url==='about:blank')return true;
         try{const next=new URL(r.url),trusted=new URL(src);return next.origin===trusted.origin&&next.pathname.startsWith('/maps/');}catch{return false;}
       }} javaScriptEnabled domStorageEnabled cacheEnabled androidLayerType="hardware" setSupportMultipleWindows={false} scrollEnabled={false} bounces={false} onLoadEnd={()=>send()} onMessage={event=>receive(event.nativeEvent.data)} onError={()=>onError('The campus map could not load. Check your connection and try again.')} style={{flex:1,backgroundColor:'#edeae3'}}/>}

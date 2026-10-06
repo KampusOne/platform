@@ -52,6 +52,7 @@ export const unifiedMigrations = [
   "20261006100000_community_subscription_requests.sql",
   "20261006120000_exam_schedules_and_awareness.sql",
   "20261006130000_acquisition_and_featured_brands.sql",
+  "20261006190000_alarm_categories_and_assessments.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */
