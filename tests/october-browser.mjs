@@ -16,7 +16,7 @@ const futureDay=(offset)=>new Date(Date.now()+offset*86400000).toISOString().sli
 const alarmFixture=(suffix,fields={})=>({id:'00000000-0000-4000-8000-'+String(suffix).padStart(12,'0'),label:'Personal reading reminder',time:'08:00',days:[1,2,3,4,5],enabled:true,sound:'default',vibration:true,snooze_minutes:5,...fields});
 const draft={step:0,updated_at:new Date().toISOString(),values:{legalName:'Osas Egharevba',displayName:'Osas Kitchen',birthDate:'2000-01-15',phoneE164:'+2348012345678',address:'12 Uselu Road, Benin City',universityId:user.universityId,campus:'Ugbowo',serviceLocation:'June 12 shopping complex',department:'Computer Science',matricNumber:'SCI2200123',clientRequestId:'00000000-0000-4000-8000-000000000003'}};
 const fixtures={
- '/v1/auth/refresh':{accessToken:'local-browser-fixture',refreshToken:'local-browser-fixture',expiresIn:3600,user},
+ '/v1/auth/refresh':{accessToken:'local-browser-fixture',refreshToken:'local-browser-fixture',expiresIn:3600,refreshExpiresIn:86400,user},
  '/v1/student/catalog':{universities:[university],faculties:[],departments:[]},
  '/v1/student/me':{profile:{id:user.id,first_name:'Osas',last_name:'Egharevba',display_name:'Osas Kitchen',university_id:user.universityId,department_name:'Computer Science',matriculation_number:'SCI2200123',settings:{}}},
  '/v1/learning/alarms':{alarms:[alarmFixture(10),alarmFixture(11,{label:'Chemistry class',timetable_entry_id:'00000000-0000-4000-8000-000000000020',course_code:'CHE 201',course_title:'Chemistry',class_starts_at:'09:00',time:'08:45'}),alarmFixture(12,{label:'Chemistry class test',exam_id:'00000000-0000-4000-8000-000000000021',assessment_kind:'TEST',days:[],fires_at:futureDay(20)+'T07:00:00Z'}),alarmFixture(13,{label:'Registration closes',calendar_event_id:'00000000-0000-4000-8000-000000000022',days:[],fires_at:futureDay(21)+'T07:00:00Z'})]},
@@ -30,7 +30,8 @@ const fixtures={
  '/v1/admin/access':{permissions:[],universities:[university],allUniversities:false},
 };
 const api=createServer((req,res)=>{
- res.setHeader('Access-Control-Allow-Origin','http://localhost:3100');res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Access-Control-Allow-Headers','authorization,content-type,x-device-label');res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,OPTIONS');
+ if(['http://localhost:3100','http://localhost:8100'].includes(req.headers.origin))res.setHeader('Access-Control-Allow-Origin',req.headers.origin);
+ res.setHeader('Vary','Origin');res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Access-Control-Allow-Headers','authorization,content-type,x-device-label');res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,OPTIONS');
  if(req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
  const path=new URL(req.url,'http://localhost:8787').pathname;
  if(req.method==='PUT'&&path==='/v1/applications/draft'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({draft:{...draft,updated_at:new Date().toISOString()}}));return;}

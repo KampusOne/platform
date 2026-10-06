@@ -784,7 +784,7 @@ export default function Alarms() {
             </Text>
           ) : null}
 
-          <Pressable accessibilityRole="button" disabled={busy} onPress={()=>setImportOpen(true)} style={styles.importButton}><Ionicons name="calendar-outline" size={20} color={theme.deepBrand}/><Text style={styles.importText}>Import alarms</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Import alarms" disabled={busy} onPress={()=>setImportOpen(true)} style={styles.importButton}><Ionicons name="calendar-outline" size={20} color={theme.deepBrand}/><Text style={styles.importText}>Import alarms</Text></Pressable>
           {Platform.OS==='android'?<Pressable accessibilityRole="button" onPress={()=>{void syncAlarms(items,true).then(enabled=>toast(enabled?'Alarms are enabled':'Allow alarms and notifications in device settings')).catch(error=>toast(error.message,'error'));}} style={styles.importButton}><Ionicons name="notifications-outline" size={20} color={theme.deepBrand}/><Text style={styles.importText}>Check alarm permissions</Text></Pressable>:null}
           {!ready ? <ScreenSkeleton variant="list" compact /> : null}
 
