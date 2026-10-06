@@ -18,14 +18,23 @@ async function playback(id:string,userId:string){
 }
 /** Keep file bytes out of the API when signed bucket playback is enabled. */
 export function useSignedMedia(value:string,enabled=true){
- const {user}=useAuth(),id=enabled?internalMediaId(value):null,[source,setSource]=useState<{original:string;url:string}>({original:value,url:id?'':value});
+ const {user}=useAuth(),id=enabled?internalMediaId(value):null,[source,setSource]=useState<{original:string;url:string}>({original:value,url:id?'':value}),[refresh,setRefresh]=useState(0);
  useEffect(()=>{
-  let live=true;
+  let live=true,timer:ReturnType<typeof setTimeout>|undefined;
   if(viewer!==user?.id){cache.clear();pending.clear();viewer=user?.id??'';}
   if(!id||!user?.id){setSource({original:value,url:value});return;}
+  const key=user.id+':'+id;
   // Retain the source during an ordinary re-render; a changed object resets it.
-  void playback(id,user.id).then(url=>{if(live)setSource({original:value,url});}).catch(()=>{if(live)setSource({original:value,url:value});});
-  return()=>{live=false;};
- },[value,id,user?.id]);
+  void playback(id,user.id).then(url=>{
+   if(!live)return;
+   setSource({original:value,url});
+   const saved=cache.get(key);
+   // Re-authorize before the signed bearer URL ages out. Timers paused while
+   // Android is backgrounded fire on resume and immediately refresh the source.
+   const delay=Math.max(1000,(saved?.until??Date.now()+30000)-Date.now()+50);
+   timer=setTimeout(()=>{if(!live)return;cache.delete(key);setRefresh(value=>value+1);},delay);
+  }).catch(()=>{if(live)setSource({original:value,url:value});});
+  return()=>{live=false;if(timer)clearTimeout(timer);};
+ },[value,id,user?.id,refresh]);
  return source.original===value?source.url:(id?'':value);
 }
