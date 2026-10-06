@@ -184,9 +184,9 @@ async function writeKiraCache(userId: string, result: StatusResponse) {
     subscription: cacheableSubscription(result.subscription),
     benefits: result.benefits,
     proBenefits: result.proBenefits,
-    standardBenefits: result.standardBenefits,
-    capabilities: result.capabilities,
-    imports: result.imports,
+    ...(result.standardBenefits ? { standardBenefits: result.standardBenefits } : {}),
+    ...(result.capabilities ? { capabilities: result.capabilities } : {}),
+    ...(result.imports ? { imports: result.imports } : {}),
   };
   try {
     await AsyncStorage.setItem(KIRA_CACHE_PREFIX + userId, JSON.stringify(cached));
