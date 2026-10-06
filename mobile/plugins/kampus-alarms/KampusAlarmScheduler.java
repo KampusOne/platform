@@ -16,7 +16,8 @@ class KampusAlarmScheduler {
     JSONArray days=alarm.optJSONArray("days");
     if(days==null || days.length()==0) { String at=alarm.optString("fires_at");try { java.text.SimpleDateFormat parser=new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX",Locale.US);return parser.parse(at.replaceAll("\\.[0-9]+", "")).getTime(); } catch(Exception e) {return -1;} }
     String[] clock=alarm.getString("time").split(":"); Calendar date=Calendar.getInstance(TimeZone.getTimeZone("Africa/Lagos"));date.setTimeInMillis(now);date.set(Calendar.HOUR_OF_DAY,Integer.parseInt(clock[0]));date.set(Calendar.MINUTE,Integer.parseInt(clock[1]));date.set(Calendar.SECOND,0);date.set(Calendar.MILLISECOND,0);
-    for(int offset=0;offset<=7;offset++){int day=date.get(Calendar.DAY_OF_WEEK)-1;for(int i=0;i<days.length();i++)if(days.getInt(i)==day&&date.getTimeInMillis()>now)return date.getTimeInMillis();date.add(Calendar.DATE,1);}return -1;
+    java.text.SimpleDateFormat dayFormat=new java.text.SimpleDateFormat("yyyy-MM-dd",Locale.US);dayFormat.setTimeZone(TimeZone.getTimeZone("Africa/Lagos"));
+    for(int offset=0;offset<=730;offset++){String campusDay=dayFormat.format(date.getTime());boolean paused=!alarm.optString("pause_from").isEmpty()&&!alarm.optString("pause_until").isEmpty()&&campusDay.compareTo(alarm.optString("pause_from"))>=0&&campusDay.compareTo(alarm.optString("pause_until"))<=0;int day=date.get(Calendar.DAY_OF_WEEK)-1;for(int i=0;i<days.length();i++)if(!paused&&days.getInt(i)==day&&date.getTimeInMillis()>now)return date.getTimeInMillis();date.add(Calendar.DATE,1);}return -1;
   }
   static boolean schedule(Context c,String id,long when) {
     if(when<=System.currentTimeMillis())return false;
@@ -52,7 +53,7 @@ class KampusAlarmScheduler {
     }
   }
   static synchronized boolean sync(Context c,JSONArray alarms) throws Exception {
-    if(alarms.length()>150)throw new IllegalArgumentException("Too many alarms");
+    if(alarms.length()>500)throw new IllegalArgumentException("Too many alarms");
     JSONObject previous=new JSONObject(prefs(c).getString("alarms","{}")),next=new JSONObject();
     for(int i=0;i<alarms.length();i++){JSONObject item=alarms.getJSONObject(i);if(item.optBoolean("enabled"))next.put(item.getString("id"),item);}
     AlarmManager manager=(AlarmManager)c.getSystemService(Context.ALARM_SERVICE);

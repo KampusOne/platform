@@ -70,8 +70,8 @@ learningRoutes.get("/alarms", async (c) => {
   const user = currentUser(c);
   await database(c.env).execute(sql`update public.student_alarms set enabled=false,updated_at=now() where user_id=${user.id}::uuid and enabled and cardinality(days)=0 and fires_at<=now()`);
   const [result, sounds] = await Promise.all([
-    database(c.env).execute<{ id:string;label:string;time:string;days:number[];enabled:boolean;sound:string;vibration:boolean;snooze_minutes:number;timetable_entry_id:string|null;fires_at:string|null;course_code:string|null;course_title:string|null;class_starts_at:string|null;class_ends_at:string|null;venue:string|null;lecturer:string|null;reminder_minutes:number|null }>(
-      sql`select alarm.id,alarm.label,to_char(alarm.time,'HH24:MI') time,alarm.days,(alarm.enabled and (cardinality(alarm.days)>0 or alarm.fires_at>now())) enabled,alarm.sound,alarm.vibration,alarm.snooze_minutes,alarm.timetable_entry_id,alarm.fires_at,timetable.course_code,timetable.title course_title,to_char(timetable.starts_at,'HH24:MI') class_starts_at,to_char(timetable.ends_at,'HH24:MI') class_ends_at,timetable.venue,timetable.lecturer,timetable.reminder_minutes from public.student_alarms alarm left join public.timetable_entries timetable on timetable.id=alarm.timetable_entry_id and timetable.user_id=alarm.user_id and timetable.status::text<>'ARCHIVED' where alarm.user_id=${user.id}::uuid order by alarm.time,alarm.id limit 150`,
+    database(c.env).execute<{ id:string;label:string;time:string;days:number[];enabled:boolean;sound:string;vibration:boolean;snooze_minutes:number;timetable_entry_id:string|null;fires_at:string|null;course_code:string|null;course_title:string|null;class_starts_at:string|null;class_ends_at:string|null;venue:string|null;lecturer:string|null;reminder_minutes:number|null;exam_id:string|null;exam_lead_minutes:number|null;pause_from:string|null;pause_until:string|null }>(
+      sql`select alarm.id,alarm.label,to_char(alarm.time,'HH24:MI') time,alarm.days,(alarm.enabled and (cardinality(alarm.days)>0 or alarm.fires_at>now())) enabled,alarm.sound,alarm.vibration,alarm.snooze_minutes,alarm.timetable_entry_id,alarm.fires_at,timetable.course_code,timetable.title course_title,to_char(timetable.starts_at,'HH24:MI') class_starts_at,to_char(timetable.ends_at,'HH24:MI') class_ends_at,timetable.venue,timetable.lecturer,timetable.reminder_minutes,l.exam_id,l.lead_minutes exam_lead_minutes,case when alarm.timetable_entry_id is not null then period.starts_on end pause_from,case when alarm.timetable_entry_id is not null then period.ends_on end pause_until from public.student_alarms alarm left join public.timetable_entries timetable on timetable.id=alarm.timetable_entry_id and timetable.user_id=alarm.user_id and timetable.status::text<>'ARCHIVED' left join app_private.exam_alarm_links l on l.alarm_id=alarm.id left join lateral(select min(exam_date)::text starts_on,max(exam_date)::text ends_on from public.student_exams where user_id=alarm.user_id and institution_id=alarm.institution_id) period on true where alarm.user_id=${user.id}::uuid order by alarm.fires_at nulls last,alarm.time,alarm.id limit 500`,
     ),
     database(c.env).execute<AlarmSoundMedia>(
       sql`select id,original_name from public.media_objects where owner_user_id=${user.id}::uuid and kind='notification-sound' and deleted_at is null limit 30`,
@@ -107,7 +107,7 @@ learningRoutes.put("/alarms/:id", async (c) => {
   const d = await input(c, alarmSchema);
   await assertOwnedAlarmSound(c.env, user.id, d.sound);
   const result = await database(c.env).execute(
-    sql`update public.student_alarms set label=${d.label},time=${d.time}::time,days=${sql.param(d.days)}::smallint[],fires_at=${d.days.length ? null : d.firesAt!}::timestamptz,enabled=${d.enabled},sound=${d.sound},vibration=${d.vibration},snooze_minutes=${d.snoozeMinutes},updated_at=now() where id=${id(c.req.param("id"))}::uuid and user_id=${user.id}::uuid returning id`,
+    sql`update public.student_alarms set label=${d.label},time=${d.time}::time,days=${sql.param(d.days)}::smallint[],fires_at=${d.days.length ? null : d.firesAt!}::timestamptz,enabled=${d.enabled},sound=${d.sound},vibration=${d.vibration},snooze_minutes=${d.snoozeMinutes},updated_at=now() where id=${id(c.req.param("id"))}::uuid and user_id=${user.id}::uuid and not exists(select 1 from app_private.exam_alarm_links l where l.alarm_id=student_alarms.id) returning id`,
   );
   if (!firstRow(result))
     throw new AppError(404, "NOT_FOUND", "Alarm not found.");
@@ -119,13 +119,13 @@ learningRoutes.post("/alarms/bulk-delete", async (c) => {
   const client = sqlClient(c.env);
   const rows = await client.transaction([
     client`update public.timetable_entries set reminder_enabled=false,updated_at=now() where user_id=${user.id}::uuid and id in (select timetable_entry_id from public.student_alarms where user_id=${user.id}::uuid and id=any(${d.ids}::uuid[]))`,
-    client`delete from public.student_alarms where user_id=${user.id}::uuid and id=any(${d.ids}::uuid[]) returning id`,
+    client`delete from public.student_alarms where user_id=${user.id}::uuid and id=any(${d.ids}::uuid[]) and not exists(select 1 from app_private.exam_alarm_links l where l.alarm_id=student_alarms.id) returning id`,
   ]);
   return c.json({ deleted: rows[1]?.length ?? 0 });
 });
 learningRoutes.delete("/alarms/:id", async (c) => {
   await database(c.env).execute(
-    sql`delete from public.student_alarms where id=${id(c.req.param("id"))}::uuid and user_id=${currentUser(c).id}::uuid`,
+    sql`delete from public.student_alarms where id=${id(c.req.param("id"))}::uuid and user_id=${currentUser(c).id}::uuid and not exists(select 1 from app_private.exam_alarm_links l where l.alarm_id=student_alarms.id)`,
   );
   return c.json({ status: "deleted" });
 });

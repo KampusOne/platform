@@ -72,10 +72,11 @@ export default function LearningPreview() {
     if (!resource || busy) return;
     setBusy(true);
     try {
-      if (resource.access_model === "PAID") {
+      if (resource.access_model === "PAID"&&!resource.can_access) {
         router.push("/learning-library");
         return;
       }
+      if(resource.resource_type==='VIDEO'&&resource.media_object_id){router.push({pathname:'/tutorial-watch',params:{id:resource.media_object_id,title:resource.title}});return;}
       let url = resource.file_url;
       if (resource.media_object_id) {
         const r = await api<{ url: string }>(
@@ -99,7 +100,7 @@ export default function LearningPreview() {
     <ToolPage
       title="Learning resource"
       action={
-        resource ? (
+        resource && resource.resource_type!=='VIDEO' ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Share learning resource"

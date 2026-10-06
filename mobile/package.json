@@ -39,6 +39,7 @@
     "expo-network": "~57.0.1",
     "expo-notifications": "~57.0.17",
     "expo-router": "~57.0.20",
+    "expo-screen-capture": "~57.0.2",
     "expo-secure-store": "~57.0.3",
     "expo-sharing": "~57.0.18",
     "expo-splash-screen": "~57.0.8",
@@ -53,10 +54,12 @@
     "react-native-screens": "~4.26.0",
     "react-native-video-trim": "^8.2.2",
     "react-native-web": "~0.21.0",
-    "react-native-webview": "13.16.1"
+    "react-native-webview": "13.16.1",
+    "unpdf": "^1.8.1"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "esbuild": "^0.28.2",
     "maplibre-gl": "^6.11.2",
     "typescript": "~6.0.3"
   }

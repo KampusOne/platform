@@ -52,9 +52,12 @@ describe('student communities and private study groups',()=>{
  });
  it('allows members to post by default, lets admins restrict posting and respects notification opt-in',async()=>{
   const created=await req('/groups','POST',{requestId:crypto.randomUUID(),kind:'COMMUNITY',name:'Faculty notices'});const group=(await created.json()).group;
-  await req('/groups/'+group.id+'/join','POST',{},member);
+  const requested=await req('/groups/'+group.id+'/join','POST',{fullName:'Group member',matriculationNumber:'SCI22001',department:'Computer Science',level:'200',nickname:'Member',guidelinesVersion:1,guidelinesAccepted:true},member);expect(requested.status).toBe(202);
+  expect((await req('/groups/'+group.id+'/posts','POST',{requestId:crypto.randomUUID(),title:'Before approval',body:'Cannot publish yet'},member)).status).toBe(403);
+  expect((await req('/groups/'+group.id+'/requests','GET',undefined,member)).status).toBe(403);
+  const reviewed=await req('/groups/'+group.id+'/requests/review','POST',{all:true,decision:'APPROVED'});expect(reviewed.status,await reviewed.clone().text()).toBe(200);
   expect((await req('/groups/'+group.id+'/posts','POST',{requestId:crypto.randomUUID(),title:'Hello',body:'A member post'},member)).status).toBe(201);
-  const before=await(await req('/groups/'+group.id,'GET',undefined,member)).json();expect(before.group.notifications_enabled).toBe(false);expect(before.canPost).toBe(true);
+  const before=await(await req('/groups/'+group.id,'GET',undefined,member)).json();expect(before.group.notifications_enabled).toBe(true);expect(before.canPost).toBe(true);
   expect((await req('/groups/'+group.id,'PATCH',{name:'Faculty notices',description:'Member feed',membersCanPost:false},member)).status).toBe(403);
   expect((await req('/groups/'+group.id,'PATCH',{name:'Faculty notices',description:'Admin feed',membersCanPost:false})).status).toBe(200);
   expect((await req('/groups/'+group.id+'/posts','POST',{requestId:crypto.randomUUID(),title:'Hello',body:'Member after restriction'},member)).status).toBe(403);

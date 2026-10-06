@@ -22,6 +22,7 @@ export type CommerceFees = {
   checkoutSavings: boolean;
   allowProcessorSubsidy: boolean;
   feeBearer?: FeeBearer;
+  providerFeeMode?: "LEGACY_INCLUSIVE" | "CUSTOMER_PASSTHROUGH";
   customerFeeDisplay?: "INCLUDED" | "SEPARATE";
   feeSplit?: { platformBasisPoints: number; buyerBasisPoints: number; sellerBasisPoints: number };
   providerProfileId?: string;
@@ -146,6 +147,7 @@ function commissionKobo(base:number,policy:CommerceFees){
   return value;
 }
 function commercialGrossKobo(net:number,policy:CommerceFees){
+  if(policy.providerFeeMode==="CUSTOMER_PASSTHROUGH")return inclusiveGrossKobo(net,policy.collection);
   const mode=policy.feeBearer??"INCLUDED_IN_PRICE";
   if(mode==="INCLUDED_IN_PRICE"||mode==="BUYER_VISIBLE")return inclusiveGrossKobo(net,policy.collection);
   if(mode!=="SPLIT"){collectionFeeAllocation(net,policy);return net;}
@@ -271,7 +273,7 @@ export function checkoutPrice(
   money(totalKobo);
   const allocation=collectionFeeAllocation(payableKobo,policy);
   const sellerCommissionKobo = commissionKobo(baseKobo,policy),
-    sellerNetKobo = baseKobo - sellerCommissionKobo-allocation.sellerKobo;
+    sellerNetKobo = baseKobo - sellerCommissionKobo-(policy.providerFeeMode==="CUSTOMER_PASSTHROUGH"?0:allocation.sellerKobo);
   if(sellerNetKobo<0)throw new RangeError("This fee policy exceeds the seller's earnings.");
   const estimatedProcessingKobo = collectionFeeKobo(
     payableKobo,
@@ -280,11 +282,12 @@ export function checkoutPrice(
   const riderDigitalNetKobo =
     delivery?.paymentMethod === "IN_APP" ? delivery.riderNetKobo : 0;
   const projectedPlatformNetKobo =
-    payableKobo - estimatedProcessingKobo - sellerNetKobo - riderDigitalNetKobo;
+    (policy.providerFeeMode==="CUSTOMER_PASSTHROUGH"?baseKobo+buyerComponentKobo+digitalDeliveryKobo:payableKobo-estimatedProcessingKobo) - sellerNetKobo - riderDigitalNetKobo;
   if (projectedPlatformNetKobo < 0 && !policy.allowProcessorSubsidy)
     throw new RangeError("The approved policy does not cover this checkout.");
   return {
     baseKobo,
+    ...(policy.providerFeeMode==="CUSTOMER_PASSTHROUGH"?{providerFeeMode:policy.providerFeeMode,providerSubtotalKobo:baseKobo+buyerComponentKobo+digitalDeliveryKobo}:{}),
     buyerComponentKobo,
     listedItemsKobo,
     discountKobo,

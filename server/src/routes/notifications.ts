@@ -82,6 +82,11 @@ notificationRoutes.post('/read-all',async c=>{
  await database(c.env).execute(sql`update public.in_app_notifications set read_at=coalesce(read_at,now()) where user_id=${currentUser(c).id}::uuid and read_at is null`);
  return c.json({saved:true});
 });
+notificationRoutes.post('/read-social',async c=>{
+ const u=currentUser(c);
+ await database(c.env).execute(sql`update public.in_app_notifications set read_at=now() where user_id=${u.id}::uuid and (institution_id is null or institution_id=${u.universityId}::uuid) and read_at is null and (dedupe_key like 'post-%' or dedupe_key like 'community-post:%' or dedupe_key like 'follow:%' or dedupe_key like 'feed-%')`);
+ return c.json({saved:true});
+});
 
 notificationRoutes.get('/devices',async c=>{
  const result=await database(c.env).execute(sql`select id,platform,label,build_version,active,created_at,updated_at from app_private.push_devices where user_id=${currentUser(c).id}::uuid order by updated_at desc limit 30`);

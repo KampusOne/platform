@@ -7,6 +7,7 @@ import { api } from "@/src/lib/api";
 import { useAppearance } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
 type Purchase = {
+  resource_type:string;
   id: string;
   title: string;
   status: string;
@@ -34,6 +35,7 @@ function normalizePurchases(value: unknown): Purchase[] {
     const number=(input:unknown)=>Number.isFinite(Number(input))?Number(input):0;
     return [{
       id:raw.id,
+      resource_type:text(raw.resource_type),
       title:text(raw.title,"Learning material"),
       status:text(raw.status,"UNKNOWN"),
       access_status:text(raw.access_status,"LOCKED"),
@@ -160,6 +162,7 @@ function AccountLibrary() {
         await load();
       }
       if (kind === "open") {
+        if(p.resource_type==='VIDEO'){router.push({pathname:'/tutorial-watch',params:{id:p.media_object_id,title:p.title}});return;}
         const result = await api<{ url: string }>(
           `/v1/media/${p.media_object_id}/access`,
           { method: "POST" },

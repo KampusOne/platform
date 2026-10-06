@@ -1,0 +1,832 @@
+{
+  "observed": {
+    "verified_at": "2026-10-06T13:51:20.504Z",
+    "published_campuses": "61",
+    "published_universities": "53",
+    "overture_buildings": "665",
+    "overture_candidates": "100",
+    "uniben": [
+      {
+        "paths": 794,
+        "campus": "ugbowo",
+        "places": 97,
+        "features": 4202
+      },
+      {
+        "paths": 23,
+        "campus": "ekehuan",
+        "places": 5,
+        "features": 177
+      }
+    ],
+    "opolo_names_without_invented_pin": "1"
+  },
+  "sourceManifest": {
+    "sourceDate": "2026-10-06",
+    "overtureRelease": "2026-09-23.1",
+    "batches": [
+      {
+        "file": "ekehuan-000.sql",
+        "campus": "ekehuan",
+        "features": 150,
+        "payloadSha256": "f866fb1b83f340c8f0a4b1d0cecd2cb9df76fd3f68756161487ead35ad0e2253",
+        "sourceSha256": "2df7e9fa9ca61532fd8096cd8872fa7468de7ce4986c75a7bc84be58133f23a9"
+      },
+      {
+        "file": "ekehuan-001.sql",
+        "campus": "ekehuan",
+        "features": 150,
+        "payloadSha256": "e2483b7c11a8401905d1b6fd548a67bc738c857303a77f4d2140e41b8fab420f",
+        "sourceSha256": "2df7e9fa9ca61532fd8096cd8872fa7468de7ce4986c75a7bc84be58133f23a9"
+      },
+      {
+        "file": "ekehuan-002.sql",
+        "campus": "ekehuan",
+        "features": 146,
+        "payloadSha256": "ee46bdd4866fd48099ae037d28ef60b38d852a8697be3335d89726c34ef5235e",
+        "sourceSha256": "2df7e9fa9ca61532fd8096cd8872fa7468de7ce4986c75a7bc84be58133f23a9"
+      },
+      {
+        "file": "ugbowo-000.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "4b300d6dc299bc7c188b55b54124bea972cb39e9adc8733c524b3c86e5694966",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-001.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "ebb77f6ed6bdd90c8c14abf6c34baaca93505a8a47d682e4fc0e23c78c819837",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-002.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "e5023081980f1b309fcd61af77ab8ba39121ff17e2bf9239b74fd6e605934825",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-003.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "6685f7c73539f07ef1df727380ebf04c8437250d4655dfe1796d4bfd9e060f46",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-004.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "2026f6a9b9981bc430d912e9f54e99af5cbc5d36185bdc5af767dc8c92f01b41",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-005.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "6c27aa8263d6f4fc1057212ce9370f7842716756b7a292efe16f6c4b4681a598",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-006.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "1e76926184ec4f3d00b2b581940f49d84fbdd176c38a7579b8e48b2b17222291",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-007.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "570b7e93ff3ba995ad5bb84ce4f32362cc60d3c773b22b003b1ce4a639bd672f",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-008.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "9a90ab58198a8a8dca6e193b252a804f3ed39eeb5c665c79bd33985f5beff0c0",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-009.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "633c8e2cbf72919e0bb433bc571b6f0b4e81e6d97a3a96313e46c3c1fce2293c",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-010.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "8e78bd73eebb096812f8c34af384f472004df2885705e30aee401ab99e8c19fa",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-011.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "37d8724a70f835228b5873268eecf57c489d3b1ec6fe0412e89271eb14553baf",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-012.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "f80ad9d373b9c8df92c624d7b31f5279862cecd0101d2bab282736a482ab38e4",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-013.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "2313a404464ad399db766ad8d78478f3a49571d52863e1fa08b39cdd2fff3425",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-014.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "4a79b6ed056e795ab7f42d76185677523295f0596476da75142b464136e8a4c0",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-015.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "70865a45534093334b311d292d321f64c483448bcd3c7619d97a16e82cd3c795",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-016.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "d2d99f52ab1cafbf1338138f68ef22370285bee54e2c00dee6cfd3f87724bf45",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-017.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "725a36be69e704045e75d21db0c0b1f49dd8930a381fa554f6c0c5f45d501a21",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-018.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "e7259a5ddc4519516861bfa79a68661261d6f7544ece490a829efa020253bac6",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-019.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "77345610ec171f4c3c1e9e8f49c05863cc54757ac95a49723674893943950c63",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-020.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "1d6e22bb72091545195382ea7e7b161e66965e3bc6b8aeca20ca73a512402ada",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-021.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "6bd98474f2fd7c7995a90e808058d89dedda9c4db3c5a842b878e08f156a3915",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-022.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "a4e47220944191c3720c53ce8289db199a644cb00f1c122439eaf933b38ad8bc",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-023.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "4d8e9ec2b1f330f7cbdf17ae6b1a5d0638e8b6630e5c1fdb811830b302d8c0c3",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-024.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "6578a15696b8fb51c7d500e7ea51d7a252367c6742224b23cdff03668bfbaffd",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-025.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "5fb9c114dc6d5ca22fa70a2c50ef4ad6e3331af67d1dbe21fc84a12746547a46",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-026.sql",
+        "campus": "ugbowo",
+        "features": 150,
+        "payloadSha256": "f0413390af96e5f3a51508648d752ac8dec26b42ac6b423ad1628987294f7c0a",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "ugbowo-027.sql",
+        "campus": "ugbowo",
+        "features": 4,
+        "payloadSha256": "e0c9a708a37fb2c5f834e9bfba361b2529557ea39e8154932194d34dc2e3be85",
+        "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9"
+      },
+      {
+        "file": "national-000.sql",
+        "campus": "national",
+        "campuses": 10,
+        "payloadSha256": "a5fb9107bfc77a7ee1dd3f2cfc7072f513c93ae55f29f9b269e3dbe5f7b36a42"
+      },
+      {
+        "file": "national-001.sql",
+        "campus": "national",
+        "campuses": 10,
+        "payloadSha256": "6a43069f68e606089ac8e4c1d6da5660f2d2aa75332a0861e46aa7eb483fa169"
+      },
+      {
+        "file": "national-002.sql",
+        "campus": "national",
+        "campuses": 10,
+        "payloadSha256": "ef07fd2d8e47076e3c7614245f15f45e42e37490bd8611fddfcf25ef08021160"
+      },
+      {
+        "file": "national-003.sql",
+        "campus": "national",
+        "campuses": 10,
+        "payloadSha256": "03beaed5e0a4a3c3dbfc7486806b09becd0d88bff76ecbc10c5261171793e688"
+      },
+      {
+        "file": "national-004.sql",
+        "campus": "national",
+        "campuses": 10,
+        "payloadSha256": "39f787fe1104751173e2e863be3819d141aaba047c2f3407b3afea05d4c60751"
+      },
+      {
+        "file": "national-005.sql",
+        "campus": "national",
+        "campuses": 9,
+        "payloadSha256": "e62a7070689825b898b2c20340bd9a8c558992d6499ec352c394be9d7b6abe21"
+      }
+    ],
+    "nationalCampuses": 59,
+    "nationalUniversities": 52,
+    "nationalBoundaries": 24
+  },
+  "results": [
+    {
+      "file": "ekehuan-000.sql",
+      "campus": "ekehuan",
+      "features": 150,
+      "payloadSha256": "f866fb1b83f340c8f0a4b1d0cecd2cb9df76fd3f68756161487ead35ad0e2253",
+      "sourceSha256": "2df7e9fa9ca61532fd8096cd8872fa7468de7ce4986c75a7bc84be58133f23a9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 32,
+            "newPlaceCandidates": 4,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ekehuan-001.sql",
+      "campus": "ekehuan",
+      "features": 150,
+      "payloadSha256": "e2483b7c11a8401905d1b6fd548a67bc738c857303a77f4d2140e41b8fab420f",
+      "sourceSha256": "2df7e9fa9ca61532fd8096cd8872fa7468de7ce4986c75a7bc84be58133f23a9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 5,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ekehuan-002.sql",
+      "campus": "ekehuan",
+      "features": 146,
+      "payloadSha256": "ee46bdd4866fd48099ae037d28ef60b38d852a8697be3335d89726c34ef5235e",
+      "sourceSha256": "2df7e9fa9ca61532fd8096cd8872fa7468de7ce4986c75a7bc84be58133f23a9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 21,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-000.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "4b300d6dc299bc7c188b55b54124bea972cb39e9adc8733c524b3c86e5694966",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 9,
+            "newPlaceCandidates": 96,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-001.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "ebb77f6ed6bdd90c8c14abf6c34baaca93505a8a47d682e4fc0e23c78c819837",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 27,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-002.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "e5023081980f1b309fcd61af77ab8ba39121ff17e2bf9239b74fd6e605934825",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 25,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-003.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "6685f7c73539f07ef1df727380ebf04c8437250d4655dfe1796d4bfd9e060f46",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 64,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-004.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "2026f6a9b9981bc430d912e9f54e99af5cbc5d36185bdc5af767dc8c92f01b41",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 19,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-005.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "6c27aa8263d6f4fc1057212ce9370f7842716756b7a292efe16f6c4b4681a598",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 23,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-006.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "1e76926184ec4f3d00b2b581940f49d84fbdd176c38a7579b8e48b2b17222291",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 37,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-007.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "570b7e93ff3ba995ad5bb84ce4f32362cc60d3c773b22b003b1ce4a639bd672f",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 31,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-008.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "9a90ab58198a8a8dca6e193b252a804f3ed39eeb5c665c79bd33985f5beff0c0",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 37,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-009.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "633c8e2cbf72919e0bb433bc571b6f0b4e81e6d97a3a96313e46c3c1fce2293c",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 34,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-010.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "8e78bd73eebb096812f8c34af384f472004df2885705e30aee401ab99e8c19fa",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 19,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-011.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "37d8724a70f835228b5873268eecf57c489d3b1ec6fe0412e89271eb14553baf",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 19,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-012.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "f80ad9d373b9c8df92c624d7b31f5279862cecd0101d2bab282736a482ab38e4",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 20,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-013.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "2313a404464ad399db766ad8d78478f3a49571d52863e1fa08b39cdd2fff3425",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 12,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-014.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "4a79b6ed056e795ab7f42d76185677523295f0596476da75142b464136e8a4c0",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 42,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-015.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "70865a45534093334b311d292d321f64c483448bcd3c7619d97a16e82cd3c795",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 8,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-016.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "d2d99f52ab1cafbf1338138f68ef22370285bee54e2c00dee6cfd3f87724bf45",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 0,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-017.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "725a36be69e704045e75d21db0c0b1f49dd8930a381fa554f6c0c5f45d501a21",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 39,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-018.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "e7259a5ddc4519516861bfa79a68661261d6f7544ece490a829efa020253bac6",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 19,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-019.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "77345610ec171f4c3c1e9e8f49c05863cc54757ac95a49723674893943950c63",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 24,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-020.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "1d6e22bb72091545195382ea7e7b161e66965e3bc6b8aeca20ca73a512402ada",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 23,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-021.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "6bd98474f2fd7c7995a90e808058d89dedda9c4db3c5a842b878e08f156a3915",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 30,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-022.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "a4e47220944191c3720c53ce8289db199a644cb00f1c122439eaf933b38ad8bc",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 17,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-023.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "4d8e9ec2b1f330f7cbdf17ae6b1a5d0638e8b6630e5c1fdb811830b302d8c0c3",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 17,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-024.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "6578a15696b8fb51c7d500e7ea51d7a252367c6742224b23cdff03668bfbaffd",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 11,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-025.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "5fb9c114dc6d5ca22fa70a2c50ef4ad6e3331af67d1dbe21fc84a12746547a46",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 1,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-026.sql",
+      "campus": "ugbowo",
+      "features": 150,
+      "payloadSha256": "f0413390af96e5f3a51508648d752ac8dec26b42ac6b423ad1628987294f7c0a",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 0,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "ugbowo-027.sql",
+      "campus": "ugbowo",
+      "features": 4,
+      "payloadSha256": "e0c9a708a37fb2c5f834e9bfba361b2529557ea39e8154932194d34dc2e3be85",
+      "sourceSha256": "1e1f791098fa94b9f18ac3ee2cb2369d3e725261f2176ed46a02cacd983a3ae9",
+      "result": [
+        {
+          "result": {
+            "newBuildings": 0,
+            "newPlaceCandidates": 0,
+            "reviewedDirectoryPreserved": true
+          }
+        }
+      ]
+    },
+    {
+      "file": "national-000.sql",
+      "campus": "national",
+      "campuses": 10,
+      "payloadSha256": "a5fb9107bfc77a7ee1dd3f2cfc7072f513c93ae55f29f9b269e3dbe5f7b36a42",
+      "result": []
+    },
+    {
+      "file": "national-001.sql",
+      "campus": "national",
+      "campuses": 10,
+      "payloadSha256": "6a43069f68e606089ac8e4c1d6da5660f2d2aa75332a0861e46aa7eb483fa169",
+      "result": []
+    },
+    {
+      "file": "national-002.sql",
+      "campus": "national",
+      "campuses": 10,
+      "payloadSha256": "ef07fd2d8e47076e3c7614245f15f45e42e37490bd8611fddfcf25ef08021160",
+      "result": []
+    },
+    {
+      "file": "national-003.sql",
+      "campus": "national",
+      "campuses": 10,
+      "payloadSha256": "03beaed5e0a4a3c3dbfc7486806b09becd0d88bff76ecbc10c5261171793e688",
+      "result": []
+    },
+    {
+      "file": "national-004.sql",
+      "campus": "national",
+      "campuses": 10,
+      "payloadSha256": "39f787fe1104751173e2e863be3819d141aaba047c2f3407b3afea05d4c60751",
+      "result": []
+    },
+    {
+      "file": "national-005.sql",
+      "campus": "national",
+      "campuses": 9,
+      "payloadSha256": "e62a7070689825b898b2c20340bd9a8c558992d6499ec352c394be9d7b6abe21",
+      "result": []
+    }
+  ],
+  "limitations": [
+    "59 national campus centres and 24 source polygons added for 52 universities; detailed paths/entrances are not implied by a centre or boundary.",
+    "Ugbowo source additions use a conservative 1.2 km radius because a sourced campus boundary is not available.",
+    "Overture place candidates await review and do not replace existing reviewed directory records.",
+    "Opolo Innovation Hub name and organizer source added; no main-campus coordinate was substituted for its unmapped entrance."
+  ]
+}

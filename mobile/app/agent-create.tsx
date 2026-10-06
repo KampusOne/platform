@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { randomUUID } from 'expo-crypto';
+import { Ionicons } from '@expo/vector-icons';
+import { nairaToKobo } from '@/src/lib/money-input';
 import { router, useLocalSearchParams } from "expo-router";
 import { Image, Pressable, Text, View } from "react-native";
 import { ToolPage, ToolButton, ToolField } from "@/src/components/toolkit";
@@ -19,10 +22,20 @@ export default function CreateListing() {
   const [code, setCode] = useState("");
   const [location, setLocation] = useState("");
   const [image, setImage] = useState("");
+  const [images,setImages]=useState<string[]>([]);
+  const requestId=useRef(randomUUID());
+  const [pricePreview,setPricePreview]=useState<{ready:boolean;baseKobo:number;platformKobo:number;processingEstimateKobo:number;customerEstimateKobo:number;sellerCommissionKobo:number}|null>(null);
+  useEffect(()=>{
+    if(tutor||!price.trim()){setPricePreview(null);return;}
+    let valid=true,amount:number;try{amount=nairaToKobo(price);}catch{setPricePreview(null);return;}
+    const timer=setTimeout(()=>void api<typeof pricePreview>('/v1/agents/products/price-preview?priceKobo='+amount).then(r=>{if(valid)setPricePreview(r);}).catch(()=>{if(valid)setPricePreview(null);}),300);
+    return()=>{valid=false;clearTimeout(timer);};
+  },[price,tutor]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>(
     [],
   );
   const [category, setCategory] = useState("");
+  useEffect(()=>{requestId.current=randomUUID();},[name,description,price,stock,category,images]);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!tutor)
@@ -36,7 +49,7 @@ export default function CreateListing() {
     setBusy(true);
     try {
       const file = await pickAndUpload("product");
-      if (file) setImage(file.url);
+      if (file) {setImage(current=>current||file.url);setImages(current=>[...current,file.url].slice(0,6));}
     } catch (e) {
       toast(e instanceof Error ? e.message : "Upload failed", "error");
     } finally {
@@ -54,7 +67,7 @@ export default function CreateListing() {
             title: name,
             description,
             format: "IN_PERSON",
-            priceKobo: Math.round(Number(price) * 100),
+            priceKobo: nairaToKobo(price),
             capacity: Number(stock),
             locationText: location,
           }
@@ -63,19 +76,21 @@ export default function CreateListing() {
             description,
             category: categories.find((c) => c.id === category)?.name,
             categoryId: category,
-            priceKobo: Math.round(Number(price) * 100),
+            priceKobo: nairaToKobo(price),
             stockQuantity: Number(stock),
             imageUrl: image || null,
+            imageUrls:images,
+            requestId:requestId.current,
           };
       const created = await api<{ id: string }>(path, {
         method: "POST",
         body: JSON.stringify(body),
       });
-      await api(path + "/" + created.id + "/status", {
+      if(tutor)await api(path + "/" + created.id + "/status", {
         method: "PATCH",
         body: JSON.stringify({ status: "SUBMITTED" }),
       });
-      toast("Submitted for review", "success");
+      toast(tutor?"Submitted for review":"Product uploaded", "success");
       router.back();
     } catch (e) {
       toast(e instanceof Error ? e.message : "Could not save listing", "error");
@@ -87,18 +102,11 @@ export default function CreateListing() {
     <ToolPage title={tutor ? "Create tutorial" : "Add product"}>
       {!tutor ? (
         <>
-          {image ? (
-            <Image
-              source={{ uri: image }}
-              style={{ height: 200, borderRadius: 16, marginBottom: 18 }}
-            />
-          ) : null}
-          <ToolButton
-            secondary
-            label="Choose product photo"
-            disabled={busy}
-            onPress={() => void upload()}
-          />
+          <View style={{padding:18,borderRadius:22,backgroundColor:theme.surfaceTint,gap:8,marginBottom:20}}><Text style={{fontFamily:theme.font.displayStrong,fontSize:24,color:theme.text}}>Ready for your next sale</Text><Text style={{fontFamily:theme.font.body,lineHeight:22,color:theme.textMuted}}>Add clear photos and a price. Your product goes live when you upload it.</Text></View>
+          <View style={{flexDirection:'row',flexWrap:'wrap',gap:12,marginBottom:18}}>
+            {images.map((url,index)=><View key={url} style={{width:'47%',aspectRatio:1,borderRadius:18,overflow:'hidden'}}><Image source={{uri:url}} style={{width:'100%',height:'100%'}}/><Pressable accessibilityRole="button" accessibilityLabel={`Remove photo ${index+1}`} onPress={()=>{const next=images.filter((_,i)=>i!==index);setImages(next);setImage(next[0]??'');}} style={{position:'absolute',right:8,top:8,padding:8,borderRadius:30,backgroundColor:theme.canvas}}><Ionicons name="close" size={18} color={theme.text}/></Pressable></View>)}
+            {images.length<6?<Pressable accessibilityRole="button" accessibilityLabel="Add product photo" disabled={busy} onPress={()=>void upload()} style={{width:'47%',aspectRatio:1,borderRadius:18,borderWidth:1,borderStyle:'dashed',borderColor:theme.deepBrand,alignItems:'center',justifyContent:'center',gap:8,backgroundColor:theme.surface}}><Ionicons name="camera-outline" size={28} color={theme.deepBrand}/><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>{busy?'Uploading…':'Add photo'}</Text></Pressable>:null}
+          </View>
         </>
       ) : null}
       <ToolField
@@ -163,12 +171,13 @@ export default function CreateListing() {
           ))}
         </View>
       )}
+      {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['Campus One fee',pricePreview.platformKobo],['Estimated Paystack fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Paystack confirms its actual fee at checkout.</Text></View>:null}
       <ToolButton
-        label={busy ? "Saving…" : "Submit for review"}
+        label={busy ? "Uploading…" : tutor?"Submit for review":"Upload product"}
         disabled={
           busy ||
           !name.trim() ||
-          description.trim().length < 20 ||
+          description.trim().length < 10 ||
           price === "" ||
           (!tutor && (!image || !category))
         }

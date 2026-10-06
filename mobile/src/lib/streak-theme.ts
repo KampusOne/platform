@@ -12,6 +12,12 @@ export const streakMilestones: readonly StreakMilestone[] = [
   { days: 60, label: "Hot streak", color: "#E14B8F" },
   { days: 100, label: "Campus flame", color: "#D59A00" },
   { days: 365, label: "Legend flame", color: "#00A7B5" },
+  { days: 450, label: "Evergreen flame", color: "#16836B" },
+  { days: 550, label: "Sapphire flame", color: "#335BC4" },
+  { days: 650, label: "Amber flame", color: "#C06B18" },
+  { days: 750, label: "Orchid flame", color: "#A343A7" },
+  { days: 850, label: "Ruby flame", color: "#B52D48" },
+  { days: 1000, label: "Thousand day flame", color: "#786000" },
 ];
 
 export function streakMilestone(days: number | null | undefined) {

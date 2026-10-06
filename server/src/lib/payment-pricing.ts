@@ -82,18 +82,11 @@ export async function resolveProviderCollection(env:Bindings,universityId:string
   const p=await eligibleProviderProfile(env,universityId,profileId,product,transactionClass);
   return {...p.collection,providerProfileId:p.id,providerProfileVersion:p.version,transactionClass:p.transactionClass};
 }
-export function assertAccountReview(review:{pass_fees_disabled:boolean;provider_mode:string;expires_at:string|null}|null,mode:"live"|"test",at=Date.now()){
-  if(!review || !review.pass_fees_disabled || review.provider_mode!==mode || (review.expires_at!==null&&Date.parse(review.expires_at)<=at))
-    throw new AppError(503,"FEATURE_DISABLED","Payments are paused until finance confirms that Paystack's Pass fees to customers setting is disabled for this account.");
-}
 export function providerMode(env:Bindings):"live"|"test"{return env.ENVIRONMENT==="production"||env.PAYSTACK_SECRET_KEY?.startsWith("sk_live_")?"live":"test";}
 function isolatedLocalTest(env:Bindings){return env.ENVIRONMENT==="local"&&!env.DATABASE_URL;}
 export async function prepareCollectionInitialization(env:Bindings,reference:string,amountKobo:number,metadata:Record<string,unknown>){
   if(isolatedLocalTest(env))return;
   await requireReady(env);
-  const mode=providerMode(env);
-  const review=firstRow(await database(env).execute<{pass_fees_disabled:boolean;provider_mode:string;expires_at:string|null}>(sql`select pass_fees_disabled,provider_mode,expires_at from app_private.paystack_account_reviews where provider_mode=${mode} order by reviewed_at desc,id desc limit 1`));
-  assertAccountReview(review??null,mode);
   const native=firstRow(await database(env).execute<{university_id:string;profile_id:string|null}>(sql`
     select university_id,fee_profile_id as profile_id from app_private.collection_payment_pricing where provider_reference=${reference}
     union all select a.university_id,(cp.collection->>'providerProfileId')::uuid as profile_id from public.payment_attempts a
@@ -107,15 +100,15 @@ export async function prepareCollectionInitialization(env:Bindings,reference:str
     union all select university_id,null::uuid from app_private.rider_commission_checkouts where provider_reference=${reference} limit 1`));
   if(!native)throw new AppError(409,"CONFLICT","The saved payment pricing intent could not be found. Review a new quote before paying.");
   await eligibleProviderProfile(env,native.university_id,native.profile_id??undefined,"ONLINE_COLLECTION","LOCAL_COLLECTION",true);
-  return firstRow(await database(env).execute<{fee_profile_id:string;fee_profile_version:string;provider_reference:string}>(sql`select fee_profile_id,fee_profile_version,provider_reference from app_private.snapshot_collection_payment(${reference},${amountKobo}::bigint,${JSON.stringify(metadata)}::jsonb)`));
+  return firstRow(await database(env).execute<{fee_profile_id:string;fee_profile_version:string;provider_reference:string;provider_initialized_amount_kobo:number;provider_fee_mode:string}>(sql`select fee_profile_id,fee_profile_version,provider_reference,provider_initialized_amount_kobo,provider_fee_mode from app_private.snapshot_collection_payment(${reference},${amountKobo}::bigint,${JSON.stringify(metadata)}::jsonb)`));
 }
-export type CollectionReceiptContext={reference:string;amountKobo:number;feeKobo:number;providerTransactionId:string|null;channel:string|null;paymentCountry:string|null;cardNetwork:string|null;currency:string;providerMode:string;paidAt:string|null};
+export type CollectionReceiptContext={reference:string;amountKobo:number;feeKobo:number;requestedAmountKobo?:number|null;providerTransactionId:string|null;channel:string|null;paymentCountry:string|null;cardNetwork:string|null;currency:string;providerMode:string;paidAt:string|null};
 export async function recordCollectionReceiptContext(env:Bindings,receipt:CollectionReceiptContext){
   if(isolatedLocalTest(env))return;
   // Old verified receipts remain reconcilable without a new account attestation.
   if(!await paymentPricingReady(env))return;
-  const observed=firstRow(await database(env).execute<{state:string}>(sql`select app_private.record_collection_pricing_observation(${receipt.reference},${receipt.amountKobo}::bigint,${receipt.feeKobo}::bigint,${receipt.providerTransactionId},${receipt.channel},${receipt.paymentCountry},${receipt.cardNetwork},${receipt.currency},${receipt.providerMode}) as state`));
-  if(observed?.state==="REQUIRES_REVIEW")throw new AppError(503,"PROVIDER_UNAVAILABLE","The provider receipt conflicts with an existing transaction. Finance review is required before fulfillment.");
+  const observed=firstRow(await database(env).execute<{state:string}>(sql`select app_private.record_collection_pricing_observation_v2(${receipt.reference},${receipt.amountKobo}::bigint,${receipt.feeKobo}::bigint,${receipt.providerTransactionId},${receipt.channel},${receipt.paymentCountry},${receipt.cardNetwork},${receipt.currency},${receipt.providerMode},${receipt.requestedAmountKobo??null}::bigint) as state`));
+  if(observed?.state==="REQUIRES_REVIEW")throw new AppError(503,"PROVIDER_UNAVAILABLE","This receipt does not match the saved payment. It has been held for reconciliation; your purchase remains unpaid.");
 }
 export async function recordPaymentPricingAlert(env:Bindings,reference:string,kind:string,metadata:Record<string,unknown>){
   if(isolatedLocalTest(env)||!await paymentPricingReady(env))return;

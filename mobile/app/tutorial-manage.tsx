@@ -13,6 +13,8 @@ import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
 import { pickLearningResource } from "@/src/lib/learning-resource-upload";
 import { type UploadedFile } from "@/src/lib/uploads";
+import {useAuth} from '@/src/auth/auth-context';
+import {nairaToKobo} from '@/src/lib/money-input';
 type Listing = {
   id: string;
   title: string;
@@ -44,6 +46,8 @@ type Resource = {
   status: string;
 };
 export default function TutorialManagement() {
+  const {user}=useAuth();
+  const [uploadProgress,setUploadProgress]=useState<number|null>(null);
   const { id } = useLocalSearchParams<{ id: string }>(),
     toast = useToast(),
     { theme } = useAppearance();
@@ -101,16 +105,20 @@ export default function TutorialManagement() {
   async function upload() {
     setBusy(true);
     try {
-      const next = await pickLearningResource(resourceType);
+      if(!user)throw new Error('Sign in before uploading a tutorial.');
+      setUploadProgress(0);
+      const next = await pickLearningResource(resourceType,user.id,setUploadProgress);
       if (next) setFile(next);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Upload failed", "error");
     } finally {
       setBusy(false);
+      setUploadProgress(null);
     }
   }
   return (
     <ToolPage title={listing?.title ?? "Manage tutorial"}>
+      {uploadProgress!==null?<View style={{backgroundColor:theme.surfaceMuted,padding:16,borderRadius:14,gap:10}}><Text style={{color:theme.text}}>Uploading · {Math.round(uploadProgress*100)}%</Text><View style={{height:5,backgroundColor:theme.border,borderRadius:3}}><View style={{height:5,width:`${Math.round(uploadProgress*100)}%`,backgroundColor:theme.brand,borderRadius:3}}/></View></View>:null}
       <ToolButton secondary label="Learners & product sales" onPress={()=>router.push("/tutor-learners")}/>
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
         {(["Schedule", "Bookings", "Materials"] as const).map((t) => (
@@ -339,7 +347,7 @@ export default function TutorialManagement() {
                       description,
                       resourceType,
                       accessModel,
-                      priceKobo: accessModel === "PAID" ? Math.round(Number(resourcePrice)*100) : 0,
+                      priceKobo: accessModel === "PAID" ? nairaToKobo(resourcePrice) : 0,
                       ...(["AUDIOBOOK","VIDEO"].includes(resourceType) ? {durationSeconds:Math.round(Number(durationMinutes)*60)} : {}),
                     }),
                   },

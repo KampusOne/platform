@@ -3,8 +3,8 @@ import { Image, StyleSheet, Text, View } from "react-native";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 
 /** Use the saved public profile image; never substitute a post attachment. */
-export function ProfileAvatar({ name, imageUrl, size = 36 }: {
-  name: string; imageUrl?: string | null | undefined; size?: number;
+export function ProfileAvatar({ name, imageUrl, size = 36, square = false }: {
+  name: string; imageUrl?: string | null | undefined; size?: number; square?: boolean;
 }) {
   const { styles } = useThemeStyles(createStyles);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -12,7 +12,7 @@ export function ProfileAvatar({ name, imageUrl, size = 36 }: {
   const uri = typeof imageUrl === "string" && (/^(https?:\/\/|\/api\/v1\/media\/)/i.test(imageUrl)) ? imageUrl : null;
   const initials = safeName.trim().split(/\s+/).filter(Boolean).slice(0, 2)
     .map((part) => Array.from(part)[0] ?? "").join("").toLocaleUpperCase("en-NG") || "?";
-  const dimensions = { width: size, height: size, borderRadius: size / 2 };
+  const dimensions = { width: size, height: size, borderRadius: square ? size * 0.2 : size / 2 };
   return <View accessible accessibilityRole="image" accessibilityLabel={`${safeName}'s profile picture`} style={[styles.avatar, dimensions]}>
     {uri && failedUrl !== uri
       ? <Image accessible={false} accessibilityIgnoresInvertColors source={{ uri }} resizeMode="cover" onError={() => setFailedUrl(uri)} style={dimensions} />

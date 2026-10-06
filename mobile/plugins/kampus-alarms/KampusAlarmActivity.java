@@ -1,6 +1,8 @@
 package app.kampusone.alarms;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -253,7 +255,12 @@ public class KampusAlarmActivity extends Activity {
     TextView dismiss=text("Dismiss",19,Color.WHITE,interSemibold);
     dismiss.setBackground(bordered(0x18000000,PEACH,77));
     dismiss.setContentDescription("Dismiss alarm");
-    dismiss.setOnClickListener(v->{if(alarmId!=null)KampusAlarmService.command(this,"dismiss",alarmId);finish();});
+    dismiss.setOnClickListener(v->{
+      boolean exam=false;try{JSONObject active=new JSONObject(KampusAlarmScheduler.prefs(this).getString("active","{}"));exam=!active.optString("exam_id").isEmpty();}catch(Exception ignored){}
+      if(alarmId!=null)KampusAlarmService.command(this,"dismiss",alarmId);
+      if(exam&&alarmId!=null){Intent open=new Intent(Intent.ACTION_VIEW,Uri.parse("kampusone://exam-awareness?alarmId="+Uri.encode(alarmId))).setPackage(getPackageName()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);startActivity(open);}
+      finish();
+    });
     FrameLayout.LayoutParams dismissParams=new FrameLayout.LayoutParams(dp(154),dp(154),Gravity.CENTER);
     dismissWrap.addView(dismiss,dismissParams);
     root.addView(dismissWrap,dismissWrapParams);

@@ -16,29 +16,32 @@ export async function uploadMessageFile(
   userId: string,
   file: { localId?: string; uri: string; name: string; mimeType: string },
   onProgress: (value: number) => void,
+  kind: 'message' | 'resource' | 'tutorial' = 'message',
+  suppliedUploadId?:string,
 ) {
   const source = Platform.OS === 'web'
     ? await (await fetch(file.uri)).blob()
     : new File(file.uri);
   const size = source.size;
-  if (!size || size > 500 * 1024 * 1024) throw new Error('Choose a file up to 500 MB.');
+  const limit=(kind==='resource'?100:500)*1024*1024;
+  if (!size || size > limit) throw new Error(`Choose a file up to ${limit/1024/1024} MB. Compress larger files before attaching them.`);
   const fingerprint = await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
-    `${userId}:${file.localId ?? file.uri}:${file.name}:${size}`,
+    `${kind}:${userId}:${file.localId ?? file.uri}:${file.name}:${size}`,
   );
   const key = `k1.message-upload.${userId}.${fingerprint}`;
-  let uploadId = await AsyncStorage.getItem(key);
+  let uploadId = suppliedUploadId??await AsyncStorage.getItem(key);
   if (!uploadId) {
     uploadId = Crypto.randomUUID();
     await AsyncStorage.setItem(key, uploadId);
   }
   const session = await api<UploadSession>('/v1/media/message-uploads', {
     method: 'POST',
-    body: JSON.stringify({ uploadId, name: file.name.slice(0, 180), type: file.mimeType, size }),
+    body: JSON.stringify({ uploadId, name: file.name.slice(0, 180), type: file.mimeType, size,kind }),
   });
   if (session.status === 'COMPLETE' && session.mediaId) {
     onProgress(1);
-    await AsyncStorage.removeItem(key);
+    if(kind==='message')await AsyncStorage.removeItem(key);
     return session.mediaId;
   }
   if (!Number.isInteger(session.chunkBytes) || session.chunkBytes < 1 || session.chunkBytes > 5 * 1024 * 1024) {
@@ -85,7 +88,7 @@ export async function uploadMessageFile(
     }
     const result = await api<{ id: string }>(`/v1/media/message-uploads/${session.id}/complete`, { method: 'POST', timeoutMs: 60_000 });
     onProgress(1);
-    await AsyncStorage.removeItem(key);
+    if(kind==='message')await AsyncStorage.removeItem(key);
     return result.id;
   } finally {
     try { handle?.close(); } catch { /* The OS may already have closed the file. */ }

@@ -53,7 +53,7 @@ type PricingQuote = {
   discountCode: string | null;
   expiresAt: string;
   paystackAmountKobo: number;
-  feeBearer: "INCLUDED_IN_PRICE";
+  feeBearer: "LEGACY_INCLUSIVE" | "CUSTOMER_PASSTHROUGH";
 };
 
 type Plan = {
@@ -605,7 +605,7 @@ function AccountSubscription() {
                   {money(amount)}
                 </Text>
               </View>
-              <Text style={muted}>This is the amount you’ll pay in Paystack. Processing is included.</Text>
+              <Text style={muted}>Estimated total including processing. Paystack confirms its actual fee at checkout.</Text>
               {quote && !checkout ? <Text style={muted}>Total valid until {new Date(quote.expiresAt).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}.</Text> : null}
             </View>
           </View>
@@ -658,7 +658,7 @@ function AccountSubscription() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Ionicons name="shield-checkmark-outline" size={18} color={theme.textMuted} />
             <Text style={{ ...muted, flex: 1 }}>
-              Payment opens in Paystack. KampusOne does not store your card details.
+              Paystack confirms the processing fee at checkout. KampusOne does not store your card details.
             </Text>
           </View>
         </View>
@@ -707,7 +707,7 @@ function AccountSubscription() {
         })}
         {error ? <Text accessibilityRole="alert" style={{ ...text, color: theme.error }}>{error}</Text> : null}
         {error ? <ToolButton secondary label="Try again" disabled={busy || loading} onPress={() => void load()} /> : null}
-        <Text style={{ ...muted, textAlign: "center", paddingHorizontal: 16 }}>Processing is included. No automatic renewal. Access starts when payment is confirmed.</Text>
+        <Text style={{ ...muted, textAlign: "center", paddingHorizontal: 16 }}>Paystack confirms processing at checkout. No automatic renewal. Access starts when payment is confirmed.</Text>
       </View>
     </ToolPage>
   );

@@ -105,9 +105,7 @@ export default function StoreScreen() {
   const compactPhone = windowWidth < 400;
   const contentWidth = Math.min(windowWidth, 540);
   const horizontalPadding = compactPhone ? 14 : 20;
-  const productWidth = compactPhone
-    ? contentWidth - horizontalPadding * 2
-    : (contentWidth - 52) / 2;
+  const productWidth = (contentWidth-horizontalPadding*2-12)/2;
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -495,7 +493,7 @@ export default function StoreScreen() {
       >
         <FlatList
           accessibilityLabel="Campus store products"
-          columnWrapperStyle={compactPhone ? undefined : styles.productRow}
+          columnWrapperStyle={styles.productRow}
           contentContainerStyle={[
             styles.listContent,
             compactPhone && styles.listContentCompact,
@@ -719,7 +717,7 @@ export default function StoreScreen() {
           }
           key={compactPhone ? "store-compact" : "store-regular"}
           maxToRenderPerBatch={10}
-          numColumns={compactPhone ? 1 : 2}
+          numColumns={2}
           ItemSeparatorComponent={
             compactPhone
               ? () => <View style={styles.compactProductGap} />

@@ -1,13 +1,15 @@
-import { api as transport, apiUrl, peekTransportCache, type ApiRequestInit } from "./api-transport";
+import { api as transport, currentApiUrl, peekTransportCache, type ApiRequestInit } from "./api-transport";
 import { normalizeMediaLinks } from "./media-links";
 
 export * from "./api-transport";
-const normalized = new WeakMap<object, unknown>();
+const normalized = new WeakMap<object, { origin: string; value: unknown }>();
 function normalize<T>(value: T): T {
   if (!value || typeof value !== "object") return value;
-  if (normalized.has(value)) return normalized.get(value) as T;
-  const result = normalizeMediaLinks(value, apiUrl);
-  normalized.set(value, result);
+  const origin = currentApiUrl();
+  const saved = normalized.get(value);
+  if (saved?.origin === origin) return saved.value as T;
+  const result = normalizeMediaLinks(value, origin);
+  normalized.set(value, { origin, value: result });
   return result;
 }
 export async function api<T>(path: string, init: ApiRequestInit = {}, canRefresh = true): Promise<T> {

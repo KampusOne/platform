@@ -24,6 +24,10 @@ export type Alarm = {
   venue?: string | null;
   lecturer?: string | null;
   reminder_minutes?: number | null;
+  exam_id?: string | null;
+  exam_lead_minutes?: number | null;
+  pause_from?: string | null;
+  pause_until?: string | null;
 };
 export function normalizeAlarm(value: unknown): Alarm | null {
   if (!value || typeof value !== "object") return null;
@@ -46,6 +50,10 @@ export function normalizeAlarm(value: unknown): Alarm | null {
   const snooze = Number(raw.snooze_minutes);
   return {
     id: raw.id,
+    exam_id:typeof raw.exam_id==="string"?raw.exam_id:null,
+    exam_lead_minutes:Number.isFinite(Number(raw.exam_lead_minutes))?Number(raw.exam_lead_minutes):null,
+    pause_from:typeof raw.pause_from==="string"?raw.pause_from:null,
+    pause_until:typeof raw.pause_until==="string"?raw.pause_until:null,
     label:
       typeof raw.label === "string" && raw.label.trim() ? raw.label : "Alarm",
     time,
@@ -142,15 +150,29 @@ export async function syncAlarms(
         },
       ]);
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-      const expected = new Map<string, { alarm: Alarm; day: number }>();
-      for (const alarm of alarms.filter((a) => a.enabled))
+      const expected = new Map<string, { alarm: Alarm; day: number; date?:Date }>();
+      for (const alarm of alarms.filter((a) => a.enabled)) {
+        if(alarm.days.length&&alarm.timetable_entry_id&&alarm.pause_from&&alarm.pause_until){
+          const campusNow=new Date(Date.now()+3600000),[hour,minute]=alarm.time.split(':').map(Number);
+          for(let offset=0;offset<56;offset++){
+            const date=new Date(Date.UTC(campusNow.getUTCFullYear(),campusNow.getUTCMonth(),campusNow.getUTCDate()+offset,hour!-1,minute!));
+            const localDay=new Date(date.getTime()+3600000),key=localDay.toISOString().slice(0,10);
+            if(date.getTime()<=Date.now()||!alarm.days.includes(localDay.getUTCDay())||(key>=alarm.pause_from&&key<=alarm.pause_until))continue;
+            expected.set(`k1-alarm-${alarm.id}-${key}`,{alarm,day:-1,date});
+          }
+          continue;
+        }
         for (const day of alarm.days.length
           ? alarm.days
           : alarm.fires_at && Date.parse(alarm.fires_at) > Date.now()
             ? [-1]
             : [])
           expected.set(`k1-alarm-${alarm.id}-${day}`, { alarm, day });
-      if (Platform.OS === "ios" && expected.size > 60) throw new Error("Use at most 60 weekly reminder slots on this iPhone. Disable some reminders, then sync again.");
+      }
+      if (Platform.OS === "ios" && expected.size > 60) {
+        const entries=[...expected.entries()].sort((a,b)=>(a[1].date?.getTime()??(a[1].alarm.fires_at?Date.parse(a[1].alarm.fires_at):0))-(b[1].date?.getTime()??(b[1].alarm.fires_at?Date.parse(b[1].alarm.fires_at):0)));
+        expected.clear();for(const [key,value]of entries.slice(0,60))expected.set(key,value);
+      }
       const signatures = new Map(scheduled.map(entry=>[entry.identifier,entry.content.data?.alarmSignature]));
       // Preserve unchanged reminders so a refresh cannot cancel an imminent alarm.
       for (const entry of scheduled)
@@ -158,8 +180,8 @@ export async function syncAlarms(
           await Notifications.cancelScheduledNotificationAsync(
             entry.identifier,
           );
-      for (const [identifier, { alarm, day }] of expected) {
-        const signature=JSON.stringify([alarm.time,alarm.days,alarm.fires_at,alarm.label,alarm.sound,alarm.vibration,alarm.snooze_minutes,new Date().getTimezoneOffset()]);
+      for (const [identifier, { alarm, day,date:occurrence }] of expected) {
+        const signature=JSON.stringify([alarm.time,alarm.days,alarm.fires_at,alarm.pause_from,alarm.pause_until,occurrence?.toISOString(),alarm.label,alarm.sound,alarm.vibration,alarm.snooze_minutes,new Date().getTimezoneOffset()]);
         if(signatures.get(identifier)===signature)continue;
         const notificationSound = alarm.sound === "silent" ? "silent" : "default";
         const [hour, minute] = alarm.time.split(":").map(Number);
@@ -170,7 +192,7 @@ export async function syncAlarms(
           identifier,
           content: {
             title: alarm.timetable_entry_id ? alarm.course_code || alarm.label : alarm.label,
-            body: alarm.timetable_entry_id
+            body: alarm.exam_id ? `First exam in ${alarm.exam_lead_minutes??15} minutes${alarm.venue?' · '+alarm.venue:''}` : alarm.timetable_entry_id
               ? [
                   `Class in ${alarm.reminder_minutes ?? 15} minutes`,
                   alarm.class_starts_at ? `starts ${alarm.class_starts_at}` : null,
@@ -183,6 +205,7 @@ export async function syncAlarms(
             categoryIdentifier: "k1-alarm",
             data: {
               alarmId: alarm.id,
+              examId:alarm.exam_id??undefined,
               alarmTime: alarm.time,
               snoozeMinutes: alarm.snooze_minutes,
               alarmSignature: signature,
@@ -203,7 +226,7 @@ export async function syncAlarms(
             day === -1
               ? {
                   type: Notifications.SchedulableTriggerInputTypes.DATE,
-                  date: new Date(alarm.fires_at!),
+                  date: occurrence??new Date(alarm.fires_at!),
                   channelId: `k1-${notificationSound}-${alarm.vibration}`,
                 }
               : {
@@ -250,9 +273,10 @@ export function listenForSnooze() {
     if(original.categoryIdentifier==='k1-alarm'){
       await Notifications.dismissNotificationAsync(r.notification.request.identifier);
       if(r.actionIdentifier==='snooze'){await snoozeNotification(original);return;}
-      if(r.actionIdentifier==='dismiss')return;
+      if(r.actionIdentifier==='dismiss'){if(original.data?.examId)router.push({pathname:'/exam-awareness',params:{alarmId:String(original.data.alarmId)}});return;}
       router.push({pathname:'/alarm-ring',params:{
         alarmId:String(original.data?.alarmId??''),
+        examId:typeof original.data?.examId==='string'?original.data.examId:undefined,
         alarmTime:typeof original.data?.alarmTime==='string'?original.data.alarmTime:undefined,
         label:String(original.data?.label??original.title??'Alarm'),
         snooze:String(original.data?.snoozeMinutes??5),

@@ -231,8 +231,8 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   }
 
   const result = await database(c.env).execute(sql`
-    select ${projection(user, withViews, withPublishing)}, greatest(posts.published_at, latest.created_at) as activity_at,
-      to_char(greatest(posts.published_at, latest.created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
+    select ${projection(user, withViews, withPublishing)}, posts.published_at as activity_at,
+      to_char(posts.published_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       case when latest.user_id is null then null else jsonb_build_object('user_id', latest.user_id, 'name', latest.display_name) end as repost_by
     from public.feed_posts posts ${joins(user, quotedAuthorVisible)}
     left join lateral (
@@ -247,7 +247,7 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
       and (${category}::text is null or posts.category = ${category})
       and ${searchFilter}
       and (${cursor?.at ?? null}::timestamptz is null or
-        (greatest(posts.published_at, latest.created_at), posts.id) < (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
+        (posts.published_at, posts.id) < (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
     order by activity_at desc, posts.id desc limit ${pageLimit + 1}
   `);
   const posts = result.rows.slice(0, pageLimit);

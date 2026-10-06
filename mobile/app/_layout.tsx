@@ -38,6 +38,7 @@ import { PurchaseReviewPrompt } from "@/src/components/purchase-review-prompt";
 import { ShareSheetHost } from "@/src/components/share-sheet";
 import { initializeEntryPreferences } from "@/src/lib/entry-preferences";
 import { OfflineRecovery } from "@/src/components/offline-recovery";
+import { DocumentReaderHost } from '@/src/components/document-reader-host';
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -103,6 +104,7 @@ export default function RootLayout() {
         </AppErrorBoundary>
         <AppFeatureBoundary feature="photo_editor"><PhotoEditorHost /></AppFeatureBoundary>
         <AppFeatureBoundary feature="video_editor"><VideoEditorHost /></AppFeatureBoundary>
+        <AppFeatureBoundary feature="document_reader"><DocumentReaderHost /></AppFeatureBoundary>
         <AndroidBackNavigation />
         <AppFeatureBoundary feature="download_tray"><DownloadTray /></AppFeatureBoundary>
         <AppFeatureBoundary feature="purchase_review"><PurchaseReviewPrompt /></AppFeatureBoundary>

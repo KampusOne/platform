@@ -10,7 +10,7 @@ import {currentUser,requireAuth} from '../middleware/auth';
 import type {Bindings,Variables} from '../types';
 export const studentGroupRoutes=new Hono<{Bindings:Bindings;Variables:Variables}>();
 studentGroupRoutes.use('/*',requireAuth);
-type Group={id:string;institution_id:string;owner_user_id:string;kind:string;name:string;description:string;keywords:string[];avatar_media_id:string|null;members_can_post:boolean;joined_at:string|null;member_role:string|null;notifications_enabled:boolean|null};
+type Group={id:string;institution_id:string;owner_user_id:string;kind:string;name:string;description:string;guidelines:string;guidelines_version:number;keywords:string[];avatar_media_id:string|null;members_can_post:boolean;joined_at:string|null;member_role:string|null;notifications_enabled:boolean|null};
 const canPublish=(group:Group)=>!!group.joined_at&&(group.members_can_post||group.member_role==='ADMIN');
 const mediaUrl=(c:any,mediaId:string|null)=>mediaId?`${(c.env?.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'')}/v1/media/${mediaId}`:null;
 async function access(c:any,membership=false){
@@ -36,14 +36,16 @@ studentGroupRoutes.post('/',async c=>{
 studentGroupRoutes.get('/:id',async c=>{
  const {u,group}=await access(c);
  const counts=firstRow(await database(c.env).execute(sql`select count(*)::int members from public.student_group_members where group_id=${group.id}::uuid`));
- return c.json({group:{...group,...counts,avatar_url:mediaUrl(c,group.avatar_media_id)},canPost:canPublish(group)});
+ const request=firstRow(await database(c.env).execute(sql`select status from app_private.community_join_requests where group_id=${group.id}::uuid and user_id=${u.id}::uuid`));
+ const pending=group.member_role==='ADMIN'?firstRow(await database(c.env).execute(sql`select count(*)::int pending_requests from app_private.community_join_requests where group_id=${group.id}::uuid and institution_id=${u.universityId}::uuid and status='PENDING'`)):null;
+ return c.json({group:{...group,...counts,...pending,request_status:request?.status??null,avatar_url:mediaUrl(c,group.avatar_media_id)},canPost:canPublish(group)});
 });
 studentGroupRoutes.patch('/:id',async c=>{
  const {u,group}=await access(c,true);if(group.member_role!=='ADMIN')throw new AppError(403,'FORBIDDEN','Only community admins can edit the community.');
- const d=await input(c,z.object({name:z.string().trim().min(3).max(100),description:z.string().trim().max(1000),membersCanPost:z.boolean(),avatarMediaId:z.string().uuid().nullable().optional()}).strict());
+ const d=await input(c,z.object({name:z.string().trim().min(3).max(100),description:z.string().trim().max(1000),guidelines:z.string().trim().max(5000).optional(),membersCanPost:z.boolean(),avatarMediaId:z.string().uuid().nullable().optional()}).strict());
  if(d.avatarMediaId){const media=firstRow(await database(c.env).execute(sql`select id from public.media_objects where id=${d.avatarMediaId}::uuid and owner_user_id=${u.id}::uuid and institution_id=${u.universityId}::uuid and kind='post' and content_type like 'image/%' and deleted_at is null`));if(!media)throw new AppError(400,'BAD_REQUEST','Choose a community photo uploaded by your account.');}
  const avatar=d.avatarMediaId===undefined?group.avatar_media_id:d.avatarMediaId;
- await database(c.env).execute(sql`update public.student_groups g set name=${d.name},description=${d.description},members_can_post=${d.membersCanPost},avatar_media_id=${avatar}::uuid where g.id=${group.id}::uuid and g.institution_id=${u.universityId}::uuid and exists(select 1 from public.student_group_members m where m.group_id=g.id and m.user_id=${u.id}::uuid and m.role='ADMIN')`);
+ await database(c.env).execute(sql`update public.student_groups g set name=${d.name},description=${d.description},guidelines=${d.guidelines??group.guidelines},guidelines_version=guidelines_version+case when guidelines is distinct from ${d.guidelines??group.guidelines} then 1 else 0 end,members_can_post=${d.membersCanPost},avatar_media_id=${avatar}::uuid where g.id=${group.id}::uuid and g.institution_id=${u.universityId}::uuid and exists(select 1 from public.student_group_members m where m.group_id=g.id and m.user_id=${u.id}::uuid and m.role='ADMIN')`);
  await recordAudit(c.env,{actorUserId:u.id,universityId:u.universityId,action:'community.profile.updated',targetType:'student_group',targetId:group.id,requestId:c.get('requestId'),metadata:{membersCanPost:d.membersCanPost,avatarMediaId:avatar}});
  return c.json({status:'saved'});
 });
@@ -59,8 +61,31 @@ studentGroupRoutes.patch('/:id/notifications',async c=>{
 });
 studentGroupRoutes.post('/:id/join',async c=>{
  const {u,group}=await access(c);
+ if(group.joined_at)return c.json({status:'joined'});
+ if(group.kind==='COMMUNITY'){
+  const d=await input(c,z.object({fullName:z.string().trim().min(2).max(120),matriculationNumber:z.string().trim().min(2).max(60),department:z.string().trim().min(2).max(180),level:z.string().trim().min(1).max(30),nickname:z.string().trim().min(1).max(60),guidelinesVersion:z.number().int().min(1),guidelinesAccepted:z.literal(true)}).strict());
+  const request=firstRow(await database(c.env).execute(sql`insert into app_private.community_join_requests(group_id,institution_id,user_id,full_name,matriculation_number,department,level,nickname,guidelines_version,guidelines_snapshot)
+   select g.id,g.institution_id,${u.id}::uuid,${d.fullName},${d.matriculationNumber},${d.department},${d.level},${d.nickname},g.guidelines_version,g.guidelines from public.student_groups g
+   where g.id=${group.id}::uuid and g.institution_id=${u.universityId}::uuid and g.guidelines_version=${d.guidelinesVersion}
+   on conflict(group_id,user_id) do update set full_name=excluded.full_name,matriculation_number=excluded.matriculation_number,department=excluded.department,level=excluded.level,nickname=excluded.nickname,guidelines_version=excluded.guidelines_version,guidelines_snapshot=excluded.guidelines_snapshot,guidelines_accepted_at=now(),status='PENDING',reviewed_at=null,reviewed_by=null where community_join_requests.status<>'APPROVED' returning id,status`));
+  if(!request)throw new AppError(409,'CONFLICT','The community guidelines changed. Reopen the form and review them before subscribing.');
+  return c.json({status:'pending',request},202);
+ }
  await database(c.env).execute(sql`insert into public.student_group_members(group_id,institution_id,user_id) values(${group.id}::uuid,${u.universityId}::uuid,${u.id}::uuid) on conflict do nothing`);
  return c.json({status:'joined'});
+});
+studentGroupRoutes.get('/:id/requests',async c=>{
+ const {u,group}=await access(c,true);if(group.member_role!=='ADMIN')throw new AppError(403,'FORBIDDEN','Only community admins can review subscription requests.');
+ const rows=await database(c.env).execute(sql`select r.id,r.user_id,r.full_name,r.matriculation_number,r.department,r.level,r.nickname,r.guidelines_version,r.guidelines_accepted_at,r.created_at,p.username,p.profile_image_url avatar_url from app_private.community_join_requests r join public.profiles p on p.user_id=r.user_id and p.university_id=r.institution_id and p.deleted_at is null where r.group_id=${group.id}::uuid and r.institution_id=${u.universityId}::uuid and r.status='PENDING' order by r.created_at,r.id limit 200`);
+ return c.json({requests:rows.rows});
+});
+studentGroupRoutes.post('/:id/requests/review',async c=>{
+ const {u,group}=await access(c,true);if(group.member_role!=='ADMIN')throw new AppError(403,'FORBIDDEN','Only community admins can approve subscription requests.');
+ const d=await input(c,z.object({ids:z.array(z.string().uuid()).max(200).default([]),all:z.boolean().default(false),decision:z.enum(['APPROVED','DECLINED'])}).strict());
+ if(!d.all&&!d.ids.length)throw new AppError(400,'BAD_REQUEST','Select at least one request.');
+ const reviewed=firstRow(await database(c.env).execute(sql`select app_private.review_community_join_requests(${group.id}::uuid,${u.id}::uuid,${u.universityId}::uuid,${"{"+d.ids.join(",")+"}"}::uuid[],${d.all},${d.decision}) as count`));
+ await recordAudit(c.env,{actorUserId:u.id,universityId:u.universityId,action:'community.requests.reviewed',targetType:'student_group',targetId:group.id,requestId:c.get('requestId'),metadata:{decision:d.decision,count:reviewed?.count??0}});
+ return c.json({reviewed:reviewed?.count??0});
 });
 studentGroupRoutes.delete('/:id/join',async c=>{
  const {u,group}=await access(c,true);if(group.owner_user_id===u.id)throw new AppError(409,'CONFLICT','The creator must remain in the group.');
@@ -77,7 +102,7 @@ studentGroupRoutes.post('/:id/members',async c=>{
 });
 studentGroupRoutes.get('/:id/posts',async c=>{
  const {u,group}=await access(c,true);
- const rows=await database(c.env).execute(sql`select p.*,pr.display_name,pr.username,pr.profile_image_url avatar_url,(select count(*)::int from public.student_group_comments where post_id=p.id) comment_count,(select option_index from public.student_group_votes where post_id=p.id and user_id=${u.id}::uuid) my_vote,coalesce((select jsonb_agg(jsonb_build_object('index',v.option_index,'count',v.n)) from(select option_index,count(*)::int n from public.student_group_votes where post_id=p.id group by option_index)v),'[]'::jsonb) votes from public.student_group_posts p join public.profiles pr on pr.user_id=p.author_user_id where p.group_id=${group.id}::uuid and p.institution_id=${u.universityId}::uuid order by p.created_at desc,p.id desc limit 100`);
+ const rows=await database(c.env).execute(sql`select p.*,coalesce(nullif(author_member.nickname,''),pr.display_name) display_name,pr.username,pr.profile_image_url avatar_url,(select count(*)::int from public.student_group_comments where post_id=p.id) comment_count,(select option_index from public.student_group_votes where post_id=p.id and user_id=${u.id}::uuid) my_vote,coalesce((select jsonb_agg(jsonb_build_object('index',v.option_index,'count',v.n)) from(select option_index,count(*)::int n from public.student_group_votes where post_id=p.id group by option_index)v),'[]'::jsonb) votes from public.student_group_posts p join public.profiles pr on pr.user_id=p.author_user_id left join public.student_group_members author_member on author_member.group_id=p.group_id and author_member.user_id=p.author_user_id where p.group_id=${group.id}::uuid and p.institution_id=${u.universityId}::uuid order by p.created_at desc,p.id desc limit 100`);
  return c.json({posts:rows.rows});
 });
 studentGroupRoutes.post('/:id/posts',async c=>{

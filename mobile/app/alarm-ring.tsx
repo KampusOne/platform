@@ -9,6 +9,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {snoozeNotification} from '@/src/lib/alarms';
 import {getRingingAlarm,nativeAlarms,type RingingAlarm} from '@/src/lib/native-alarms';
 import {snoozeWebAlarm,stopWebRinging} from '@/src/lib/web-alarms';
+import {api} from '@/src/lib/api';
 import {useToast} from '@/src/components/toast';
 
 const INK='#29231F',MIDNIGHT='#1E1917',DEEP='#A8462E',BRAND='#C35D38',SAND='#F1DFC8',CREAM='#FBF7F2',PEACH='#E9B18E';
@@ -39,12 +40,14 @@ export default function AlarmRing(){
  const params=useLocalSearchParams<{
   alarmId?:string;alarmTime?:string;label?:string;snooze?:string;notificationId?:string;
   courseCode?:string;classTitle?:string;classStartsAt?:string;classEndsAt?:string;
-  venue?:string;lecturer?:string;leadMinutes?:string;
+  venue?:string;lecturer?:string;leadMinutes?:string;examId?:string;
  }>();
  const toast=useToast();
  const {height,width}=useWindowDimensions();
  const compact=height<720;
  const [alarm,setAlarm]=useState<RingingAlarm|null>(null);
+ const [examAlarm,setExamAlarm]=useState(Boolean(params.examId));
+ useEffect(()=>{let live=true;if(params.alarmId)void api('/v1/exams/alarms/'+params.alarmId).then(()=>{if(live)setExamAlarm(true);}).catch(()=>undefined);return()=>{live=false;};},[params.alarmId]);
  const [now,setNow]=useState(Date.now());
  const [busy,setBusy]=useState(false);
  const [loaded,setLoaded]=useState(!nativeAlarms);
@@ -108,10 +111,11 @@ export default function AlarmRing(){
      title:isClass?courseDisplay:label,
      body:isClass?'Class in '+leadMinutes+' minutes':'Your reminder',
      sound:'default',
-     data:{alarmId:params.alarmId,alarmTime:alarm?.time??params.alarmTime,snoozeMinutes},
+     data:{alarmId:params.alarmId,alarmTime:alarm?.time??params.alarmTime,snoozeMinutes,examId:params.examId??alarm?.exam_id},
     });
    }
    if(params.notificationId&&Platform.OS!=='web')await Notifications.dismissNotificationAsync(params.notificationId);
+   if(!snooze&&(examAlarm||alarm?.exam_id)){router.replace({pathname:'/exam-awareness',params:{alarmId:params.alarmId??alarm!.id}});return;}
    router.canGoBack()?router.back():router.replace('/alarms');
   }catch(error){
    toast(error instanceof Error?error.message:'Could not update alarm','error');
@@ -162,7 +166,7 @@ export default function AlarmRing(){
      <View style={styles.brandDot}/>
      <Text style={styles.brand}>KampusOne</Text>
     </View>
-    <Text style={styles.topMeta}>{isClass?'CLASS ALARM':'ALARM'}</Text>
+    <Text style={styles.topMeta}>{examAlarm||alarm?.exam_id?'EXAM ALARM':isClass?'CLASS ALARM':'ALARM'}</Text>
    </View>
 
    <View style={[styles.hero,compact&&styles.heroCompact]}>

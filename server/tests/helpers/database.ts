@@ -49,6 +49,9 @@ export const unifiedMigrations = [
   "20261003091000_student_groups_and_academic_management.sql",
   "20261003092000_student_group_notification_queue.sql",
   "20261004101000_community_profiles_and_posting.sql",
+  "20261006100000_community_subscription_requests.sql",
+  "20261006120000_exam_schedules_and_awareness.sql",
+  "20261006130000_acquisition_and_featured_brands.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */
@@ -81,7 +84,7 @@ export async function createTestDatabase({excludeMigrations=[]}:{excludeMigratio
   }
   for (const statement of [...snapshot.functions, ...snapshot.triggers])
     await db.exec(statement);
-  for (const migration of unifiedMigrations.filter(name=>!excludeMigrations.includes(name)))
+  for (const migration of unifiedMigrations.filter(name=>!excludeMigrations.includes(name)&&!(name==="20261006100000_community_subscription_requests.sql"&&excludeMigrations.includes("20261004101000_community_profiles_and_posting.sql"))))
     await db.exec(
       readFileSync(
         new URL(

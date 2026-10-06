@@ -2,7 +2,7 @@ import { createElement, useEffect, useRef, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { useAppearance } from "@/src/lib/appearance";
 import { readVideoPlaybackSession, writeVideoPlaybackSession } from "@/src/lib/video-playback-session";
-import { isFeedRoutePlaybackActive, subscribeFeedRoutePlayback } from "@/src/lib/feed-video-playback";
+import { isFeedRoutePlaybackActive, subscribeFeedRoutePlayback, isFeedMuted, setFeedMuted, subscribeFeedMute } from "@/src/lib/feed-video-playback";
 
 export type MediaPlaybackMode = "unmanaged" | "feed-autoplay" | "manual-managed";
 
@@ -56,6 +56,11 @@ export function MediaPreview({
 
   useEffect(() => {
     if (playbackMode !== "feed-autoplay") return;
+    return subscribeFeedMute(value => { if (videoRef.current) videoRef.current.muted = value; });
+  }, [playbackMode]);
+
+  useEffect(() => {
+    if (playbackMode !== "feed-autoplay") return;
     return subscribeFeedRoutePlayback((active) => {
       feedRouteActiveRef.current = active;
       const element = videoRef.current;
@@ -69,10 +74,10 @@ export function MediaPreview({
       const remembered = readVideoPlaybackSession(playbackKey);
       if (remembered) {
         if (Math.abs(element.currentTime - remembered.position) > 0.35) element.currentTime = remembered.position;
-        element.muted = remembered.muted;
+        element.muted = isFeedMuted();
         didApplyInitialFeedMute.current = true;
       } else if (!didApplyInitialFeedMute.current) {
-        element.muted = true;
+        element.muted = isFeedMuted();
         didApplyInitialFeedMute.current = true;
       }
       void element.play().catch(() => undefined);
@@ -104,10 +109,10 @@ export function MediaPreview({
           const remembered = readVideoPlaybackSession(playbackKey);
           if (remembered) {
             if (Math.abs(element.currentTime - remembered.position) > 0.35) element.currentTime = remembered.position;
-            element.muted = remembered.muted;
+            element.muted = isFeedMuted();
             didApplyInitialFeedMute.current = true;
           } else if (!didApplyInitialFeedMute.current) {
-            element.muted = true;
+            element.muted = isFeedMuted();
             didApplyInitialFeedMute.current = true;
           }
           void element.play().catch(() => undefined);
@@ -185,7 +190,8 @@ export function MediaPreview({
           ref: videoRef,
           src: retryMediaUrl(url, attempt),
           controls: true,
-          muted: playbackMode === "feed-autoplay",
+          muted: playbackMode === "feed-autoplay" ? isFeedMuted() : false,
+          onVolumeChange: (event) => { if (playbackMode === "feed-autoplay") setFeedMuted((event.currentTarget as HTMLVideoElement).muted); },
           preload: "metadata",
           playsInline: true,
           "aria-label": label,

@@ -27,7 +27,6 @@ export function freezeEmailContent(env:EmailBindings,campaign:Campaign,postalAdd
  let origin:URL;
  try{origin=new URL(env.PUBLIC_API_ORIGIN??'');}catch{throw new AppError(503,'PROVIDER_UNAVAILABLE','The public API origin is required for email preferences.');}
  if(origin.username||origin.password||origin.pathname!=='/'||origin.search||origin.hash||(origin.protocol!=='https:'&&env.ENVIRONMENT!=='local'))throw new AppError(503,'PROVIDER_UNAVAILABLE','The public API origin must be an HTTPS origin.');
- if(campaign.kind==='MARKETING'&&!postalAddress?.trim())throw new AppError(409,'CONFLICT','Add the real organisation mailing address in delivery settings before preparing promotional email.');
  return {from:`${campaign.display_name} <${address}>`,...(env.RESEND_REPLY_TO?{reply_to:env.RESEND_REPLY_TO}:{}),subject:campaign.subject,body:campaign.body,senderName:campaign.display_name,kind:campaign.kind,postalAddress:postalAddress??'',apiOrigin:origin.origin};
 }
 export function composeBroadcastPayload(content:EmailContent,email:string,token:string,isTest=false):EmailPayload {
@@ -62,7 +61,7 @@ export async function audienceForCampaign(env:Bindings,c:Campaign):Promise<Audie
  if(s.role==='BUYER')role=sql`exists(select 1 from public.orders o where o.buyer_user_id=u.id ${scope?sql`and o.university_id=${scope}::uuid`:sql``})`;
  if(s.role==='STAFF')role=sql`(exists(select 1 from app_private.staff_access st where st.user_id=u.id and st.status='ACTIVE' and ${scope?sql`(st.all_universities or ${scope}::uuid=any(st.university_ids))`:sql`true`}) or(not exists(select 1 from app_private.staff_access st where st.user_id=u.id) and exists(select 1 from public.operator_roles o where o.user_id=u.id and(o.expires_at is null or o.expires_at>now()) and ${scope?sql`(o.university_id=${scope}::uuid or o.role='PLATFORM_ADMIN')`:sql`true`})))`;
  const rows=await database(env).execute<AudienceMember>(sql`select u.id as user_id,lower(u.email) as email,coalesce(p.display_name,'KampusOne member') as display_name,${scope}::uuid as institution_id,
- (x.email is null and(${c.kind}='OPERATIONAL' or coalesce(ep.marketing_opt_in,false))) as eligible,x.email is not null as suppressed,coalesce(ep.marketing_opt_in,false) as consented
+ (x.email is null and(${c.kind}='OPERATIONAL' or coalesce(ep.marketing_opt_in,true))) as eligible,x.email is not null as suppressed,coalesce(ep.marketing_opt_in,true) as consented
  from public.users u left join public.profiles p on p.user_id=u.id and p.deleted_at is null
  left join app_private.email_preferences ep on ep.user_id=u.id left join app_private.email_suppressions x on x.email=lower(u.email)
  where u.deleted_at is null and u.status::text='ACTIVE' and u.email_verified_at is not null
@@ -114,7 +113,7 @@ export async function deliverQueuedBroadcasts(env:EmailBindings) {
   const eligible=firstRow(await db.execute<{allowed:boolean;enabled:boolean}>(sql`select controls.enabled,(u.deleted_at is null and u.status::text='ACTIVE' and u.email_verified_at is not null and lower(u.email)=${row.email}
    and ${emailUniversityMembership(row.institution_id)}
    and not exists(select 1 from app_private.email_suppressions s where s.email=${row.email})
-   and(${row.kind}='OPERATIONAL' or exists(select 1 from app_private.email_preferences p where p.user_id=u.id and p.marketing_opt_in))
+   and(${row.kind}='OPERATIONAL' or not exists(select 1 from app_private.email_preferences p where p.user_id=u.id and not p.marketing_opt_in))
    and c.status<>'CANCELLED') as allowed
    from public.users u cross join app_private.email_campaigns c cross join app_private.email_delivery_controls controls where u.id=${row.user_id}::uuid and c.id=${row.campaign_id}::uuid`));
   if(eligible&&!eligible.enabled){await db.execute(sql`update app_private.email_recipients set status='PENDING',lease_until=null,next_attempt_at=now()+interval '1 minute' where id=${row.id}::uuid and status='PROCESSING'`);continue;}

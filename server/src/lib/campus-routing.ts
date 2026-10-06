@@ -6,14 +6,15 @@ export function metres(a: Coordinate, b: Coordinate) {
   return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
 }
 /** Routes use shared OSM path node IDs. Nearby landmarks never create graph edges. */
-export function walkingRoute(paths: WalkPath[], origin: Coordinate, destination: Coordinate, accessible = false, respectOneWay = false) {
+const edgeKey=(a:string,b:string)=>a<b?a+':'+b:b+':'+a;
+function routeWithNodes(paths: WalkPath[], origin: Coordinate, destination: Coordinate, accessible = false, respectOneWay = false, blocked=new Set<string>()) {
   const points = new Map<string, Coordinate>(), edges = new Map<string, {id:string;weight:number;name:string}[]>();
   const segments:{a:string;b:string;name:string;forward:boolean;reverse:boolean}[]=[];
   for(const path of paths) {
     if(path.closed || ['no','private'].includes(path.access??'') || (accessible&&(path.steps||path.wheelchair==='no'))) continue;
     path.geometry.coordinates.forEach((point,index)=> { const key=path.node_ids[index]; if(key){points.set(key,point);if(!edges.has(key))edges.set(key,[]);} });
     for(let i=1;i<path.geometry.coordinates.length;i++) {
-      const a=path.node_ids[i-1],b=path.node_ids[i];if(!a||!b)continue;
+      const a=path.node_ids[i-1],b=path.node_ids[i];if(!a||!b||blocked.has(edgeKey(a,b)))continue;
       const weight=metres(points.get(a)!,points.get(b)!); if(!Number.isFinite(weight)||weight<=0)continue;
       const name=path.name??'Campus path',forward=!respectOneWay||path.oneway!==-1,reverse=!respectOneWay||path.oneway!==1;
       if(forward)edges.get(a)!.push({id:b,weight,name});if(reverse)edges.get(b)!.push({id:a,weight,name});segments.push({a,b,name,forward,reverse});
@@ -41,5 +42,19 @@ export function walkingRoute(paths: WalkPath[], origin: Coordinate, destination:
   const networkDistance=distances.get(end.id);if(networkDistance===undefined)return null;
   const ids=[end.id],names:string[]=[];let cursor=end.id;while(cursor!==start.id){const p=previous.get(cursor);if(!p)return null;ids.unshift(p.id);names.unshift(p.name);cursor=p.id;}
   const distanceMetres=Math.round(networkDistance+start.distance+end.distance);
-  return {distanceMetres,networkDistanceMetres:Math.round(networkDistance),durationSeconds:Math.ceil(distanceMetres/1.25),geometry:{type:'LineString' as const,coordinates:(ids.length===1?[points.get(ids[0]!)!,points.get(ids[0]!)!]:ids.map(key=>points.get(key)!))},originSnapMetres:Math.round(start.distance),destinationSnapMetres:Math.round(end.distance),originPathCoordinate:start.point,destinationPathCoordinate:end.point,instructions:names.filter((name,index)=>index===0||name!==names[index-1]),source:'MAPPED_PATH_NETWORK' as const};
+  return {nodeIds:ids,distanceMetres,networkDistanceMetres:Math.round(networkDistance),durationSeconds:Math.ceil(distanceMetres/1.25),geometry:{type:'LineString' as const,coordinates:(ids.length===1?[points.get(ids[0]!)!,points.get(ids[0]!)!]:ids.map(key=>points.get(key)!))},originSnapMetres:Math.round(start.distance),destinationSnapMetres:Math.round(end.distance),originPathCoordinate:start.point,destinationPathCoordinate:end.point,instructions:names.filter((name,index)=>index===0||name!==names[index-1]),source:'MAPPED_PATH_NETWORK' as const};
+}
+function publicRoute(value:NonNullable<ReturnType<typeof routeWithNodes>>){const {nodeIds:_,...route}=value;return route;}
+export function walkingRoute(paths:WalkPath[],origin:Coordinate,destination:Coordinate,accessible=false,respectOneWay=false){const route=routeWithNodes(paths,origin,destination,accessible,respectOneWay);return route?publicRoute(route):null;}
+/** The shortest route plus at most two bounded detours using the same mapped graph. */
+export function walkingAlternatives(paths:WalkPath[],origin:Coordinate,destination:Coordinate,accessible=false){
+ const first=routeWithNodes(paths,origin,destination,accessible);if(!first)return [];
+ const routes=[first],seen=new Set([JSON.stringify(first.geometry.coordinates)]),candidates:string[]=[];
+ for(let i=2;i<first.nodeIds.length-2;i++){const a=first.nodeIds[i-1]!,b=first.nodeIds[i]!;if(!a.startsWith('@')&&!b.startsWith('@'))candidates.push(edgeKey(a,b));}
+ for(const fraction of [.5,.25,.75,.1,.9]){
+  if(!candidates.length)break;const key=candidates[Math.min(candidates.length-1,Math.floor(candidates.length*fraction))]!;
+  const route=routeWithNodes(paths,origin,destination,accessible,false,new Set([key]));if(!route||route.originSnapMetres!==first.originSnapMetres||route.destinationSnapMetres!==first.destinationSnapMetres||route.distanceMetres>first.distanceMetres*1.8)continue;
+  const signature=JSON.stringify(route.geometry.coordinates);if(!seen.has(signature)){seen.add(signature);routes.push(route);}
+ }
+ return routes.sort((a,b)=>a.distanceMetres-b.distanceMetres).slice(0,3).map(publicRoute);
 }

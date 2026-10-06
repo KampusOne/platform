@@ -28,6 +28,7 @@ type Tool = {
 };
 
 const tools = {
+  exams: {id: "exams", title: "Exam timetable", description: "Your papers and first-paper alarms.", icon: "school-outline", href: "/exam-timetable", tone: "sage"},
   calendar: {
     id: "calendar",
     title: "Academic calendar",
@@ -104,6 +105,7 @@ const tools = {
 
 const essentialIds = [
   "calendar",
+  "exams",
   "timetable",
   "gpa",
   "upload",

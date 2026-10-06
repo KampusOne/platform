@@ -8,6 +8,8 @@ import { requestVideoEdit } from "./video-edit-session";
 import { getPostVideoDurationMs } from "./post-video-processing";
 import type { PhotoDimensions } from "./photo-crop";
 import { videoDimensions } from "./media-downloads";
+import { uploadMessageFile } from './message-upload';
+import { readUploadedDocument } from './document-read-session';
 export type UploadedFile = { id: string; url: string; kind: string; private: boolean };
 export type PhotoSource = "library" | "camera";
 export type PhotoKind = "avatar" | "cover" | "product" | "post";
@@ -123,22 +125,28 @@ export async function pickAndUpload(kind: UploadKind, source: PhotoSource = "lib
   return saved;
 }
 
-export type StagedAttachment = { uri?: string | undefined; name: string; type: string; size?: number | undefined; mediaId?: string | undefined };
+export type StagedAttachment = { uri?: string | undefined; name: string; type: string; size?: number | undefined; mediaId?: string | undefined; sourceText?: string | undefined };
 /** Selection is local. Nothing is uploaded until Send/Upload is explicitly tapped. */
 export async function pickAttachment(): Promise<StagedAttachment | null> {
   const result=await DocumentPicker.getDocumentAsync({type:["image/jpeg","image/png","image/webp","application/pdf","text/plain"],copyToCacheDirectory:true,multiple:false});
   if(result.canceled) return null;
   const file=result.assets[0]; if(!file) return null;
-  if((file.size ?? 0)>8*1024*1024) throw new Error("Choose a file smaller than 8 MB.");
+  if((file.size ?? 0)>100*1024*1024) throw new Error("Kira accepts documents up to 100 MB. Compress this file before attaching it.");
   const inferred=({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain', pdf: 'application/pdf' }[file.name.toLowerCase().split('.').pop() ?? '']);
   const type=file.mimeType && !['application/octet-stream','binary/octet-stream'].includes(file.mimeType) ? file.mimeType : inferred ?? 'application/octet-stream';
   return {uri:file.uri,name:file.name,type,size:file.size};
 }
-export async function uploadAttachment(file: StagedAttachment): Promise<StagedAttachment> {
-  if(file.mediaId) return file;
-  if(!file.uri) throw new Error("Please reattach this file. Your message is still here.");
-  const saved=await upload("resource",{uri:file.uri,name:file.name,type:file.type});
-  return {...file,mediaId:saved.id};
+export async function uploadAttachment(file: StagedAttachment, userId: string, query = '', tier = 'standard'): Promise<StagedAttachment> {
+  let mediaId=file.mediaId;
+  if(!mediaId){
+    if(!file.uri) throw new Error("Please reattach this file. Your message is still here.");
+    mediaId=await uploadMessageFile(userId,{uri:file.uri,name:file.name,mimeType:file.type},()=>undefined,'resource');
+  }
+  if(['application/pdf','text/plain'].includes(file.type)){
+    const sourceText=file.sourceText??await readUploadedDocument(mediaId,file.name,file.type,query,tier);
+    return {...file,mediaId,sourceText};
+  }
+  return {...file,mediaId};
 }
 
 export type PostMedia = {

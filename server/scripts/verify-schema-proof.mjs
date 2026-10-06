@@ -10,6 +10,17 @@ const compatiblePrerequisites = new Set([
 const manifest = JSON.parse(readFileSync(new URL("../../database/verification/2026-09-30-migration-manifest.json", import.meta.url), "utf8"));
 
 export const groups = {
+  october6: [
+    '20261006100000_community_subscription_requests',
+    '20261006101000_verified_vendor_publication',
+    '20261006102000_large_private_documents',
+    '20261006110000_customer_paid_provider_fees',
+    '20261006120000_exam_schedules_and_awareness',
+    '20261006130000_acquisition_and_featured_brands',
+    '20261006140000_tutorial_video_storage',
+    '20261006150000_public_website',
+    '20261006160000_multi_source_campus_maps',
+  ],
   october4: JSON.parse(readFileSync(new URL('../../database/verification/2026-10-04-correction-manifest.json',import.meta.url),'utf8')).migrations.map(m=>m.version),
   experience: JSON.parse(readFileSync(new URL('../../database/verification/2026-10-03-experience-manifest.json',import.meta.url),'utf8')).migrations.map(m=>m.version),
   october: JSON.parse(readFileSync(new URL('../../database/verification/2026-10-01-october-manifest.json',import.meta.url),'utf8')).migrations.map(m=>m.version),
@@ -74,7 +85,7 @@ export function verifySchemaProof(proof, group, loadMigration) {
     proof?.checks?.mediaAndBookingsPreserved !== true ||
     proof?.checks?.privatePrivileges !== "passed"
   )) throw new Error("Current production branch rehearsal and data-preservation evidence are required");
-  if (group === "october4" && (
+  if ((group === "october4" || group === "october6") && (
     proof?.rehearsal?.parentBranchId !== "br-quiet-butterfly-ayrj264q" ||
     !/^br-[a-z0-9-]+$/.test(proof?.rehearsal?.branchId ?? "") ||
     proof.rehearsal.branchId === proof.branchId ||
@@ -112,7 +123,7 @@ export function verifySchemaProof(proof, group, loadMigration) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const root = new URL("../../", import.meta.url);
   try {
-    const proofFile = process.argv[2] === "october4" ? "production-20261004-corrections.json" : process.argv[2] === "experience" ? "production-20261003-experience.json" : process.argv[2] === "october" ? "production-20261001-october.json" : process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
+    const proofFile = process.argv[2] === "october6" ? "production-20261006-release.json" : process.argv[2] === "october4" ? "production-20261004-corrections.json" : process.argv[2] === "experience" ? "production-20261003-experience.json" : process.argv[2] === "october" ? "production-20261001-october.json" : process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
     const proof = JSON.parse(readFileSync(new URL(`database/verification/${proofFile}`, root), "utf8"));
     const count = verifySchemaProof(proof, process.argv[2], (version) =>
       readFileSync(new URL(`database/neon/migrations/${version}.sql`, root)));

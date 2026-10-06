@@ -12,6 +12,7 @@ export type MapPayload={
   originId?:string|null;
   location:MapCoordinate|null;
   route:unknown;
+  routeKey?:string;
   origin?:MapCoordinate|null;
   destination?:MapCoordinate|null;
   layer:string;

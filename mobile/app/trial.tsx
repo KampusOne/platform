@@ -1,3 +1,4 @@
+import {Ionicons} from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { ToolPage, ToolButton } from "@/src/components/toolkit";
@@ -57,15 +58,15 @@ export default function FreeTrial() {
         <ScreenSkeleton variant="list" compact />
       ) : (
         <>
-          <View style={{ paddingVertical: 24 }}>
+          <View style={{padding:24,borderRadius:24,backgroundColor:theme.surfaceTint,borderWidth:1,borderColor:theme.border,marginVertical:20}}><View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:18}}><View style={{height:52,width:52,borderRadius:17,backgroundColor:theme.surface,alignItems:"center",justifyContent:"center"}}><Ionicons name="gift-outline" size={28} color={theme.deepBrand}/></View><Text style={{color:theme.deepBrand,fontFamily:theme.font.semibold}}>SELLER ACCESS</Text></View>
             <Text
               style={{
                 fontFamily: theme.font.displayStrong,
-                fontSize: 38,
+                fontSize: 30,
                 color: theme.text,
               }}
             >
-              {trial ? "Your trial" : "12 months"}
+              {trial ? "Your seller trial" : "12 months. On us."}
             </Text>
             <Text
               style={{
@@ -80,6 +81,7 @@ export default function FreeTrial() {
                 : "For eligible, approved sellers. No subscription charge during your trial. Transaction commissions still apply."}
             </Text>
           </View>
+          <View style={{borderRadius:20,padding:20,borderWidth:1,borderColor:theme.border,backgroundColor:theme.surface,gap:16,marginBottom:20}}><View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center"}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Subscription total</Text><Text style={{fontFamily:theme.font.displayStrong,fontSize:30,color:theme.deepBrand}}>₦0</Text></View>{["Your own campus storefront","Publish products after vendor verification","Manage customer orders and sales"].map(label=><View key={label} style={{flexDirection:"row",gap:10,alignItems:"center"}}><Ionicons name="checkmark-circle" size={20} color={theme.deepBrand}/><Text style={{flex:1,color:theme.text,fontFamily:theme.font.body,lineHeight:22}}>{label}</Text></View>)}<Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12,lineHeight:18}}>Transaction commissions still apply. Claiming a trial does not grant vendor verification.</Text></View>
           {error ? (
             <>
               <Text

@@ -308,6 +308,7 @@ function ResourcePreview({
           "An active session or package is needed to open this resource.",
         );
       }
+      if(access.resource_type==='VIDEO'&&access.media_object_id){onClose();router.push({pathname:'/tutorial-watch',params:{id:access.media_object_id,title:access.title}});return;}
       const url = access.media_object_id
         ? (
             await api<{ url: string }>(

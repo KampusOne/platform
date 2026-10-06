@@ -61,6 +61,7 @@ export async function approvedCommercePolicy(
         collection: row.collection,
         checkoutSavings: row.checkout_savings,
         allowProcessorSubsidy: row.allow_processor_subsidy,
+        providerFeeMode: "CUSTOMER_PASSTHROUGH",
         ...Object.fromEntries(Object.entries(row.policy_config??{}).filter(([key])=>["feeBearer","customerFeeDisplay","feeSplit","providerProfileId","roundingMode","maxPricingAdjustmentKobo","minimumCommissionKobo","maximumCommissionKobo"].includes(key))),
       }
     : null;
@@ -104,7 +105,7 @@ export function publicQuotePricing(p: unknown) {
     totalKobo: v.totalKobo,
     visibleProcessingKobo: v.visibleProcessingKobo??0,
     pricingAdjustmentKobo: v.pricingAdjustmentKobo??0,
-    pricingNotice: 'Paystack checkout uses this exact reviewed online total. Any processing or price rounding shown here is already included.',
+    pricingNotice: 'The displayed total estimates processing. Paystack receives the product subtotal and platform fee, then confirms its actual fee at checkout.',
   };
 }
 function responseQuote(q: {
