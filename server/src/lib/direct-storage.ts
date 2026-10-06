@@ -35,8 +35,11 @@ export async function listUploadParts(env:Bindings,key:string,uploadId:string){
 }
 export async function signedPlayback(env:Bindings,media:{object_key:string;content_type:string;private:boolean}){
  const {config,aws}=client(env),url=objectUrl(config.R2_ACCOUNT_ID,media.private?config.R2_PRIVATE_BUCKET_NAME:config.R2_MEDIA_BUCKET_NAME,media.object_key);
- url.searchParams.set('X-Amz-Expires',String(config.R2_PLAYBACK_URL_TTL_SECONDS));
+ // Private bearer URLs must stay short-lived because account, block, purchase,
+ // review and staff permissions can be revoked after a URL is issued.
+ const expiresIn=media.private?Math.min(config.R2_PLAYBACK_URL_TTL_SECONDS,90):config.R2_PLAYBACK_URL_TTL_SECONDS;
+ url.searchParams.set('X-Amz-Expires',String(expiresIn));
  url.searchParams.set('response-content-type',media.content_type);url.searchParams.set('response-content-disposition','inline');
  const signed=await aws.sign(url,{method:'GET',aws:{signQuery:true}});
- return {url:signed.url,expiresIn:config.R2_PLAYBACK_URL_TTL_SECONDS};
+ return {url:signed.url,expiresIn};
 }
