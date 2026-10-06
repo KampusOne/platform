@@ -342,6 +342,7 @@ function AccountSubscription() {
   const opening = useRef(false);
   const request = useRef(0);
   const lock = useRef(false);
+  const planSourceRef = useRef<"seed" | "cache" | "server">("seed");
 
   useEffect(() => {
     alive.current = true;
@@ -364,6 +365,7 @@ function AccountSubscription() {
   const applySubscription = useCallback((subscription: Plan, tier?: Tier, source: "cache" | "server" = "server") => {
     if (!alive.current) return;
     setPlan(subscription);
+    planSourceRef.current = source;
     setPlanSource(source);
     setNow(Date.now());
     setCurrentTier(subscription.currentTier ?? (tier === "pro" ? "pro" : "standard"));
@@ -383,7 +385,7 @@ function AccountSubscription() {
 
     if (user?.id) {
       void readKiraCache(user.id).then((cached) => {
-        if (!cached || !alive.current || turn !== request.current || planSource === "server") return;
+        if (!cached || !alive.current || turn !== request.current || planSourceRef.current === "server") return;
         applySubscription(cached.subscription, cached.tier, "cache");
         setImportLimit(cached.tier === "pro" ? cached.imports?.limit ?? 30 : 30);
         setBenefits(cached.subscription.complimentary ? cached.benefits : cached.proBenefits);
@@ -400,28 +402,33 @@ function AccountSubscription() {
       })
       .catch(() => false);
 
-    const fullStatus = api<StatusResponse>("/v1/ai/status")
-      .then((result) => {
-        if (!alive.current || turn !== request.current) return true;
-        applySubscription(result.subscription, result.tier, "server");
-        setImportLimit(result.tier === "pro" ? result.imports?.limit ?? 30 : 30);
-        setBenefits(result.subscription.complimentary ? result.benefits : result.proBenefits);
-        setStandardBenefits(result.standardBenefits ?? (result.tier === "standard" ? result.benefits : null));
-        setCapabilities(result.capabilities);
-        if (user?.id) void writeKiraCache(user.id, result);
-        return true;
-      })
-      .catch(() => false);
+    const fullStatus = (async () => {
+      let result: StatusResponse;
+      try {
+        result = await api<StatusResponse>("/v1/ai/status");
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        result = await api<StatusResponse>("/v1/ai/status", { cache: "reload" });
+      }
+      if (!alive.current || turn !== request.current) return true;
+      applySubscription(result.subscription, result.tier, "server");
+      setImportLimit(result.tier === "pro" ? result.imports?.limit ?? 30 : 30);
+      setBenefits(result.subscription.complimentary ? result.benefits : result.proBenefits);
+      setStandardBenefits(result.standardBenefits ?? (result.tier === "standard" ? result.benefits : null));
+      setCapabilities(result.capabilities);
+      if (user?.id) void writeKiraCache(user.id, result);
+      return true;
+    })().catch(() => false);
 
     const [fastOk, statusOk] = await Promise.all([fastPlan, fullStatus]);
     if (alive.current && turn === request.current) {
-      if (!fastOk && !statusOk && planSource === "seed") {
+      if (!fastOk && !statusOk && planSourceRef.current === "seed") {
         setError("We couldn't refresh Kira pricing. The displayed price is the built-in fallback; retry before checkout.");
       }
       setLoading(false);
       setRefreshing(false);
     }
-  }, [applySubscription, planSource, user?.id]);
+  }, [applySubscription, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
