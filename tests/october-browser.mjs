@@ -12,11 +12,16 @@ const root=resolve(import.meta.dirname,'..');
 const evidence=resolve(root,'browser-evidence');mkdirSync(evidence,{recursive:true});
 const user={id:'00000000-0000-4000-8000-000000000001',email:'browser-fixture@example.test',roles:['STUDENT'],universityId:'00000000-0000-4000-8000-000000000002',operatorRoles:[]};
 const university={id:user.universityId,name:'University of Benin'};
+const futureDay=(offset)=>new Date(Date.now()+offset*86400000).toISOString().slice(0,10);
+const alarmFixture=(suffix,fields={})=>({id:'00000000-0000-4000-8000-'+String(suffix).padStart(12,'0'),label:'Personal reading reminder',time:'08:00',days:[1,2,3,4,5],enabled:true,sound:'default',vibration:true,snooze_minutes:5,...fields});
 const draft={step:0,updated_at:new Date().toISOString(),values:{legalName:'Osas Egharevba',displayName:'Osas Kitchen',birthDate:'2000-01-15',phoneE164:'+2348012345678',address:'12 Uselu Road, Benin City',universityId:user.universityId,campus:'Ugbowo',serviceLocation:'June 12 shopping complex',department:'Computer Science',matricNumber:'SCI2200123',clientRequestId:'00000000-0000-4000-8000-000000000003'}};
 const fixtures={
  '/v1/auth/refresh':{accessToken:'local-browser-fixture',refreshToken:'local-browser-fixture',expiresIn:3600,user},
  '/v1/student/catalog':{universities:[university],faculties:[],departments:[]},
- '/v1/student/me':{profile:{first_name:'Osas',last_name:'Egharevba',display_name:'Osas Kitchen',university_id:user.universityId,department_name:'Computer Science',matriculation_number:'SCI2200123'}},
+ '/v1/student/me':{profile:{id:user.id,first_name:'Osas',last_name:'Egharevba',display_name:'Osas Kitchen',university_id:user.universityId,department_name:'Computer Science',matriculation_number:'SCI2200123',settings:{}}},
+ '/v1/learning/alarms':{alarms:[alarmFixture(10),alarmFixture(11,{label:'Chemistry class',timetable_entry_id:'00000000-0000-4000-8000-000000000020',course_code:'CHE 201',course_title:'Chemistry',class_starts_at:'09:00',time:'08:45'}),alarmFixture(12,{label:'Chemistry class test',exam_id:'00000000-0000-4000-8000-000000000021',assessment_kind:'TEST',days:[],fires_at:futureDay(20)+'T07:00:00Z'}),alarmFixture(13,{label:'Registration closes',calendar_event_id:'00000000-0000-4000-8000-000000000022',days:[],fires_at:futureDay(21)+'T07:00:00Z'})]},
+ '/v1/learning/alarm-sounds':{sounds:[]},
+ '/v1/calendar/exam-periods':{examPeriods:[{startsOn:futureDay(20),endsOn:futureDay(35),semester:'First semester',status:'upcoming'}]},
  '/v1/applications':{applications:[]},
  '/v1/applications/draft':{draft},
  '/v1/applications/requirements':{privateIdentityReady:true},
@@ -40,7 +45,8 @@ const web=createServer((req,res)=>{
  if(path==='/__verify-email.html'){res.setHeader('Content-Type','text/html');res.end(renderTransactionalEmail({subject:'Your purchase is confirmed',label:'Payment receipt',heading:'You’re all set',intro:'Your Kira Pro payment of ₦6,000 is confirmed. Open KampusOne to use your plan.',firstName:'Osas',note:'Example receipt for browser verification only. No purchase was made.'}).html);return;}
  if(path==='/__verify-campaign.html'){res.setHeader('Content-Type','text/html');res.end(renderBroadcastEmail({subject:'A little more from your campus',body:'A new update is ready. Your invited vendor profile has been approved.\n\nOpen your dashboard: https://agents.kampusone.app/agents/dashboard',senderName:'KampusOne',kind:'OPERATIONAL',isTest:true}).html);return;}
  if(path==='/__verify-map.html'){res.setHeader('Content-Type','text/html');res.end(harness);return;}
- const file=resolve(root,'mobile/dist',path==='/'?'index.html':`.${path}`);
+ let file=resolve(root,'mobile/dist',path==='/'?'index.html':`.${path}`);
+ if(!existsSync(file)&&!extname(file)&&existsSync(file+'.html'))file+='.html';
  if(!file.startsWith(resolve(root,'mobile/dist')+'/')||!existsSync(file)){res.writeHead(404);res.end();return;}
  const types={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.png':'image/png','.json':'application/json','.ttf':'font/ttf'};
  res.setHeader('Content-Type',types[extname(file)]??'application/octet-stream');res.end(readFileSync(file));
@@ -63,6 +69,15 @@ try{
  await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Trusted vendor form overflows');if(document.querySelector('input[name=nin]'))throw new Error('Unwaived document field present');if(document.querySelector('[aria-label=\"Exclusive application progress\"]').getAttribute('aria-valuenow')!=='1')throw new Error('Invitation did not open its first application step');return 'A valid local invitation opens the mobile vendor wizard'})()");
  await browser('open','http://localhost:8100/__verify-email.html');await browser('screenshot',resolve(evidence,'receipt-email-mobile.png'),'--full');await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Receipt email overflows');return 'Receipt email fits on mobile'})()");
  await browser('open','http://localhost:8100/__verify-campaign.html');await browser('screenshot',resolve(evidence,'approval-email-mobile.png'),'--full');
+ await browser('open','http://localhost:8100/alarms');await browser('wait','--fn',"Boolean(document.querySelector('[aria-label=\"Academic calendar, 1 alarms\"]')) && !document.querySelector('[aria-label=\"Opening KampusOne\"]')");
+ await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Grouped alarms overflow');for(const name of ['Personal alarms','Class timetable','Exams & tests','Academic calendar'])if(!document.querySelector('[aria-label=\"'+name+', 1 alarms\"]'))throw new Error('Alarm category missing: '+name);return 'All four alarm categories fit on a 390px phone'})()");
+ await browser('screenshot',resolve(evidence,'alarms-grouped-mobile.png'),'--full');
+ await browser('find','role','button','click','--name','Import alarms','--exact');await browser('wait','--text','Where are your alarms coming from?');
+ await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Import dialog overflows');return 'Import popup offers timetable, exams and calendar sources'})()");
+ await browser('screenshot',resolve(evidence,'alarm-import-sources-mobile.png'));await browser('find','role','button','click','--name','Cancel','--exact');
+ await browser('open','http://localhost:8100/exam-countdown');await browser('wait','--text','A little more time to get ready.');await browser('wait','--fn',"!document.querySelector('[aria-label=\"Opening KampusOne\"]')");
+ await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Exam countdown overflows');const text=document.body.innerText;for(const unit of ['Days','Hours','Minutes','Seconds'])if(!text.includes(unit))throw new Error('Countdown unit missing');if(!document.querySelector('[aria-label=\"Share exam countdown\"]'))throw new Error('Countdown share control missing');return 'Four countdown units and share control fit on a phone'})()");
+ await browser('screenshot',resolve(evidence,'exam-countdown-mobile.png'),'--full');
  await browser('open','http://localhost:8100/__verify-map.html');await browser('wait','--fn','window.mapReady===true');
  await check("(()=>{const d=document.querySelector('iframe').contentDocument;const c=d.querySelector('canvas');if(!c||c.width<300||c.height<600)throw new Error('Map canvas failed');if(!d.querySelector('.maplibregl-ctrl-attrib').textContent.includes('OpenStreetMap'))throw new Error('Map credit missing');return 'Real MapLibre canvas and OSM attribution are visible'})()");
  await browser('wait','1000');await browser('screenshot',resolve(evidence,'ugbowo-map-mobile.png'));writeFileSync(resolve(evidence,'map-snapshot.txt'),await browser('snapshot','-i'));
@@ -70,6 +85,6 @@ try{
  await check("window.showCampus('ekehuan');'Switched renderer to sourced Ekehuan features'");await browser('wait','1000');await browser('screenshot',resolve(evidence,'ekehuan-map-mobile.png'));
  await check("(()=>{if(window.mapErrors.length)throw new Error(window.mapErrors.join('; '));return 'Both campus payloads render without tile error notices'})()");
  const errors=await browser('errors','--json');writeFileSync(resolve(evidence,'browser-errors.json'),errors);const parsed=JSON.parse(errors);assert.equal(parsed.success,true);assert.equal(parsed.data?.errors?.length??0,0,'Browser reported runtime errors');
- writeFileSync(resolve(evidence,'result.json'),JSON.stringify({sourceSha:process.env.GITHUB_SHA,verifiedAt:new Date().toISOString(),result:'passed',scope:'Compiled agent form with local draft fixture; real two-campus MapLibre renderer; desktop/mobile layout; map wheel and pan. Native APK gestures, live payments, camera, native push and gallery require separate verification.'},null,2));
+ writeFileSync(resolve(evidence,'result.json'),JSON.stringify({sourceSha:process.env.GITHUB_SHA,verifiedAt:new Date().toISOString(),result:'passed',scope:'Compiled agent form and categorized alarms/countdown with local API fixtures; import source popup; real two-campus MapLibre renderer; desktop/mobile layout; map wheel and pan. Native APK gestures, live payments, camera, native push and gallery require separate verification.'},null,2));
 }catch(error){try{writeFileSync(resolve(evidence,'failure-snapshot.txt'),await browser('snapshot','-i'));await browser('screenshot',resolve(evidence,'failure.png'),'--full');writeFileSync(resolve(evidence,'failure-errors.json'),await browser('errors','--json'));}catch{}throw error;
 }finally{try{await browser('close');}catch{}try{process.kill(-portal.pid,'SIGTERM');}catch{}portal.stdout.destroy();portal.stderr.destroy();api.closeAllConnections();web.closeAllConnections();api.close();web.close();writeFileSync(resolve(evidence,'portal.log'),portalLog);}
