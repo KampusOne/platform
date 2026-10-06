@@ -460,7 +460,11 @@ mediaRoutes.post("/:id/access", requireAuth, async (c) => {
   );
   if (!media) throw new AppError(404, "NOT_FOUND", "File not found.");
   await canReadMedia(c.env, user, media);
-  if(storageEnabled(c.env)&&!media.object_key.startsWith('bunny:')){c.header('Cache-Control','private, no-store');return c.json(await signedPlayback(c.env,{...media,private:privateKinds.has(media.kind)||media.object_key.startsWith('post-direct/')}));}
+  if(storageEnabled(c.env)&&!media.object_key.startsWith('bunny:')){
+    if(privateKinds.has(media.kind))await recordAudit(c.env,{actorUserId:user.id,action:'private.file.read',targetType:'media',targetId:media.id,requestId:c.get('requestId')});
+    c.header('Cache-Control','private, no-store');
+    return c.json(await signedPlayback(c.env,{...media,private:privateKinds.has(media.kind)||media.object_key.startsWith('post-direct/')}));
+  }
   const token = await new SignJWT({ viewer: user.id })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(media.id)
@@ -486,7 +490,10 @@ mediaRoutes.post('/:id/playback',requireAuth,async c=>{
  if(privateKinds.has(media.kind))await canReadMedia(c.env,currentUser(c),media);
  if(media.object_key.startsWith('bunny:'))throw new AppError(409,'CONFLICT','Open this video through its tutorial player.');
  c.header('Cache-Control','private, no-store');
- if(storageEnabled(c.env))return c.json(await signedPlayback(c.env,{...media,private:privateKinds.has(media.kind)||media.object_key.startsWith('post-direct/')}));
+ if(storageEnabled(c.env)){
+  if(privateKinds.has(media.kind)){const user=currentUser(c);await recordAudit(c.env,{actorUserId:user.id,action:'private.file.read',targetType:'media',targetId:media.id,requestId:c.get('requestId')});}
+  return c.json(await signedPlayback(c.env,{...media,private:privateKinds.has(media.kind)||media.object_key.startsWith('post-direct/')}));
+ }
  const origin=(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'');
  if(privateKinds.has(media.kind)){
   const token=await new SignJWT({viewer:currentUser(c).id}).setProtectedHeader({alg:'HS256'}).setSubject(media.id).setIssuer('kampusone-api').setAudience('kampusone-private-file').setIssuedAt().setExpirationTime('30m').sign(mediaKey(c.env));
