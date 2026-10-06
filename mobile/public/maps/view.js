@@ -6,7 +6,7 @@ const empty={type:'FeatureCollection',features:[]};
 const collection=features=>({type:'FeatureCollection',features});
 const point=(coordinate,properties)=>({type:'Feature',geometry:{type:'Point',coordinates:coordinate},properties});
 const validPoint=coordinate=>Array.isArray(coordinate)&&coordinate.length===2&&coordinate.every(Number.isFinite)&&Math.abs(coordinate[0])<=180&&Math.abs(coordinate[1])<=90;
-let catalog=createDefaultMapSources(),campusId='',focusNonce=0,lastLayer='osm',failures=0,loaded=false,lastRoute='',latest=null,lastTiles=JSON.stringify(catalog.sources[0].tiles),renderedFeatures=null,lastPlaces=null,lastSelection='',lastPadding='';
+let catalog=createDefaultMapSources(),campusId='',focusNonce=0,lastLayer='osm',failures=0,loaded=false,lastRoute='',latest=null,lastTiles=JSON.stringify(catalog.sources[0].tiles),renderedFeatures=null,lastPlaces=null,lastSelection='',lastPadding='',lastThreeD=false;
 const map=new maplibregl.Map({container:'map',style:{version:8,glyphs:'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',sources:{base:{type:'raster',tiles:catalog.sources[0].tiles,tileSize:256,attribution:catalog.sources[0].attribution}},layers:[{id:'base',type:'raster',source:'base',paint:{'raster-saturation':-.35,'raster-contrast':-.1}}]},center:[5.618838,6.398255],zoom:15,minZoom:2,maxZoom:20,dragRotate:true,touchZoomRotate:true,attributionControl:false});
 map.addControl(new maplibregl.AttributionControl({compact:true}),'top-left');
 map.addControl(new maplibregl.NavigationControl({showCompass:true}),'top-right');
@@ -106,10 +106,7 @@ function apply(incoming){
   if(validPoint(payload.destination)&&!payload.selectedId)pins.push(point(payload.destination,{role:'destination'}));
   map.getSource('pins').setData(collection(pins));
   const routeKey=payload.routeKey??JSON.stringify(route??null);
-  if(coords.length>=2&&(routeKey!==lastRoute||paddingChanged)){
-    const bounds=coords.reduce((bounds,coordinate)=>bounds.extend(coordinate),new maplibregl.LngLatBounds(coords[0],coords[0]));
-    map.fitBounds(bounds,{padding,maxZoom:17,duration:duration()});
-  }
+  const frameRoute=coords.length>=2&&(routeKey!==lastRoute||paddingChanged);
   lastRoute=routeKey;
   const layer=payload.layer==='satellite'&&catalog.sources.some(source=>source.id==='satellite')?'satellite':'osm';
   const provider=catalog.sources.find(source=>source.id===layer),tiles=JSON.stringify(provider.tiles);
@@ -117,14 +114,17 @@ function apply(incoming){
     map.getSource('base').setTiles(provider.tiles);map.getSource('base').attribution=provider.attribution;
     map.fire('sourcedata',{sourceId:'base',sourceDataType:'metadata',isSourceLoaded:true});lastLayer=layer;lastTiles=tiles;failures=0;
   }
-  const threeD=payload.layer==='3d';
+  const threeD=payload.layer==='3d',pitchChanged=threeD!==lastThreeD;lastThreeD=threeD;
   map.setLayoutProperty('building-height','visibility',threeD?'visible':'none');
-  if(threeD&&map.getPitch()<20)map.easeTo({pitch:55,duration:duration()});
-  else if(!threeD&&map.getPitch()>0)map.easeTo({pitch:0,duration:duration()});
   map.getCanvas().style.cursor=payload.pickMode?'crosshair':'';
+  // One camera intent per bridge patch: an explicit selection, route framing,
+  // then a layer change. Pitch updates must not interrupt a pending place pan.
   if(payload.focus&&(payload.focus.nonce!==focusNonce||(paddingChanged&&coords.length<2))&&validPoint(payload.focus.coordinate)){
-    focusNonce=payload.focus.nonce;map.easeTo({center:payload.focus.coordinate,zoom:payload.focus.zoom??17,padding,duration:duration()});
-  }
+    focusNonce=payload.focus.nonce;map.easeTo({center:payload.focus.coordinate,zoom:payload.focus.zoom??17,padding,pitch:threeD?55:0,duration:duration()});
+  }else if(frameRoute){
+    const bounds=coords.reduce((bounds,coordinate)=>bounds.extend(coordinate),new maplibregl.LngLatBounds(coords[0],coords[0]));
+    map.fitBounds(bounds,{padding,maxZoom:17,pitch:threeD?55:0,duration:duration()});
+  }else if(pitchChanged)map.easeTo({pitch:threeD?55:0,duration:duration()});
 }
 const receive=event=>{
   if(event.origin&&event.origin!==location.origin)return;

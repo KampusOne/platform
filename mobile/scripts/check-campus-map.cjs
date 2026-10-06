@@ -76,6 +76,12 @@ const framedRoutes=mapInstance.fits.length;
 vm.runInContext('apply({padding:{top:120,bottom:300,left:24,right:58}})',context);
 assert.equal(mapInstance.fits.length,framedRoutes+1,'The route must fit the resized visible viewport');
 assert.ok(mapInstance.cameraTarget.bounds,'Drawer resizing must not replace route framing with a stale endpoint focus');
+const eased=mapInstance.eases.length;
+context.payload={layer:'3d',route:null,routeKey:'none',focus:{...focus,nonce:102}};vm.runInContext('apply(payload)',context);
+assert.equal(mapInstance.eases.length,eased+1,'Selecting in 3D must use one combined pan and pitch transition');
+assert.deepEqual(mapInstance.cameraTarget.center,focus.coordinate);assert.equal(mapInstance.cameraTarget.pitch,55);
+vm.runInContext('apply({location:[5.621,6.4]})',context);
+assert.equal(mapInstance.eases.length,eased+1,'A 3D location update must not interrupt the pending landmark pan');
 async function verifyGeometryCache(){
   const storage=new Map();
   const asyncStorage={
