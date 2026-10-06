@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, Pressable, Text, View } from "react-native";
+import { AppState, Linking, Platform, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
 import { router, useFocusEffect } from "expo-router";
@@ -8,6 +8,7 @@ import { ToolButton, ToolField, ToolPage } from "@/src/components/toolkit";
 import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 import { api, ApiError } from "@/src/lib/api";
+import { isPlayDistribution } from "@/src/lib/digital-billing-policy";
 
 type Tier = "standard" | "pro";
 type Checkout = {
@@ -186,7 +187,32 @@ function CatalogOffer({ plan, now }: { plan: CatalogPlan | null | undefined; now
 
 export default function KiraSubscription() {
   const { user } = useAuth();
-  return <AccountSubscription key={user?.id} />;
+  return isPlayDistribution(Platform.OS,process.env.EXPO_PUBLIC_ANDROID_DISTRIBUTION)
+    ? <PlayPlanAccess key={user?.id} /> : <AccountSubscription key={user?.id} />;
+}
+
+function PlayPlanAccess() {
+  const { theme } = useAppearance();
+  const [status,setStatus]=useState<StatusResponse|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState('');
+  const alive=useRef(true),request=useRef(0);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;request.current++;};},[]);
+  const load=useCallback(async()=>{
+    const turn=++request.current;setLoading(true);setError('');
+    try{const result=await api<StatusResponse>('/v1/ai/status');if(alive.current&&turn===request.current)setStatus(result);}
+    catch(caught){if(alive.current&&turn===request.current)setError(caught instanceof Error?caught.message:'Your plan could not load. Try again.');}
+    finally{if(alive.current&&turn===request.current)setLoading(false);}
+  },[]);
+  useFocusEffect(useCallback(()=>{void load();},[load]));
+  return <ToolPage title="Kira access" refreshing={loading} onRefresh={()=>void load()}>
+    <View style={{padding:20,gap:12}}>
+      <Text style={{fontFamily:theme.font.semibold,fontSize:22,color:theme.text}}>{status?.tier==='pro'?'Kira Pro is active':'Kira Standard'}</Text>
+      <Text style={{fontFamily:theme.font.body,fontSize:14,lineHeight:22,color:theme.textMuted}}>{status?.tier==='pro'?'Your account’s existing Pro access is available here.':'Use Kira Standard with your Campus One account.'} Plan purchases are unavailable in this version.</Text>
+      {status?.subscription.currentPeriodEnd?<Text style={{color:theme.textMuted}}>Current access ends {new Date(status.subscription.currentPeriodEnd).toLocaleDateString("en-NG")}.</Text>:null}
+      {error?<Text accessibilityRole="alert" style={{color:theme.error}}>{error}</Text>:null}
+      <ToolButton label="Open Kira" onPress={()=>router.push('/ai')} />
+      {error?<ToolButton secondary label="Try again" disabled={loading} onPress={()=>void load()} />:null}
+    </View>
+  </ToolPage>;
 }
 
 function AccountSubscription() {

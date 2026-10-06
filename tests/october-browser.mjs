@@ -10,15 +10,21 @@ import {renderTransactionalEmail,renderBroadcastEmail} from '../server/src/lib/e
 // checkout, migration or deployment is performed by this verification job.
 const root=resolve(import.meta.dirname,'..');
 const evidence=resolve(root,'browser-evidence');mkdirSync(evidence,{recursive:true});
-const user={id:'00000000-0000-4000-8000-000000000001',email:'browser-fixture@example.test',roles:['STUDENT'],universityId:'00000000-0000-4000-8000-000000000002',operatorRoles:[]};
+const user={id:'00000000-0000-4000-8000-000000000001',email:'browser-fixture@example.test',roles:['STUDENT'],universityId:'6a79211e-6e85-4d95-be24-976edb26ba58',operatorRoles:[]};
 const university={id:user.universityId,name:'University of Benin'};
 const futureDay=(offset)=>new Date(Date.now()+offset*86400000).toISOString().slice(0,10);
 const alarmFixture=(suffix,fields={})=>({id:'00000000-0000-4000-8000-'+String(suffix).padStart(12,'0'),label:'Personal reading reminder',time:'08:00',days:[1,2,3,4,5],enabled:true,sound:'default',vibration:true,snooze_minutes:5,...fields});
 const draft={step:0,updated_at:new Date().toISOString(),values:{legalName:'Osas Egharevba',displayName:'Osas Kitchen',birthDate:'2000-01-15',phoneE164:'+2348012345678',address:'12 Uselu Road, Benin City',universityId:user.universityId,campus:'Ugbowo',serviceLocation:'June 12 shopping complex',department:'Computer Science',matricNumber:'SCI2200123',clientRequestId:'00000000-0000-4000-8000-000000000003'}};
+const reviewedMap=JSON.parse(readFileSync(resolve(root,'database/imports/uniben-map2-2026-10-06.json'),'utf8'));
+const mapCampus={id:reviewedMap.campusId,name:'Ugbowo',slug:'ugbowo',latitude:'6.398255',longitude:'5.618838'};
 const fixtures={
+ '/v1/maps/campuses':{campuses:[mapCampus]},
+ [`/v1/maps/campuses/${mapCampus.id}/places`]:{places:reviewedMap.directory},
+ [`/v1/maps/campuses/${mapCampus.id}`]:{boundary:null,capabilities:{satellite:false,threeD:true},satellite:null},
+ [`/v1/maps/campuses/${mapCampus.id}/features`]:{type:'FeatureCollection',features:[]},
  '/v1/auth/refresh':{accessToken:'local-browser-fixture',refreshToken:'local-browser-fixture',expiresIn:3600,refreshExpiresIn:86400,user},
  '/v1/student/catalog':{universities:[university],faculties:[],departments:[]},
- '/v1/student/me':{profile:{id:user.id,first_name:'Osas',last_name:'Egharevba',display_name:'Osas Kitchen',university_id:user.universityId,department_name:'Computer Science',matriculation_number:'SCI2200123',settings:{}}},
+ '/v1/student/me':{profile:{id:user.id,first_name:'Osas',last_name:'Egharevba',display_name:'Osas Kitchen',university_id:user.universityId,university_name:'University of Benin',department_name:'Computer Science',matriculation_number:'SCI2200123',settings:{}}},
  '/v1/learning/alarms':{alarms:[alarmFixture(10),alarmFixture(11,{label:'Chemistry class',timetable_entry_id:'00000000-0000-4000-8000-000000000020',course_code:'CHE 201',course_title:'Chemistry',class_starts_at:'09:00',time:'08:45'}),alarmFixture(12,{label:'Chemistry class test',exam_id:'00000000-0000-4000-8000-000000000021',assessment_kind:'TEST',days:[],fires_at:futureDay(20)+'T07:00:00Z'}),alarmFixture(13,{label:'Registration closes',calendar_event_id:'00000000-0000-4000-8000-000000000022',days:[],fires_at:futureDay(21)+'T07:00:00Z'})]},
  '/v1/learning/alarm-sounds':{sounds:[]},
  '/v1/calendar/exam-periods':{examPeriods:[{startsOn:futureDay(20),endsOn:futureDay(35),semester:'First semester',status:'upcoming'}]},
@@ -35,6 +41,7 @@ const api=createServer((req,res)=>{
  if(req.method==='OPTIONS'){res.writeHead(204);res.end();return;}
  const path=new URL(req.url,'http://localhost:8787').pathname;
  if(req.method==='PUT'&&path==='/v1/applications/draft'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({draft:{...draft,updated_at:new Date().toISOString()}}));return;}
+ if(path.startsWith('/v1/maps/places/')){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({media:[]}));return;}
  res.setHeader('Content-Type','application/json');res.writeHead(fixtures[path]?200:404);res.end(JSON.stringify(fixtures[path]??{error:{code:'FIXTURE_NOT_FOUND',message:path}}));
 });
 const data=JSON.parse(readFileSync(resolve(root,'database/imports/uniben-osm-2026-10-01.json'),'utf8'));
@@ -79,6 +86,14 @@ try{
  await browser('open','http://localhost:8100/exam-countdown');await browser('wait','--text','A little more time to get ready.');await browser('wait','--fn',"!document.querySelector('[aria-label=\"Opening KampusOne\"]')");
  await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Exam countdown overflows');const text=document.body.innerText;for(const unit of ['Days','Hours','Minutes','Seconds'])if(!text.includes(unit))throw new Error('Countdown unit missing');if(!document.querySelector('[aria-label=\"Share exam countdown\"]'))throw new Error('Countdown share control missing');return 'Four countdown units and share control fit on a phone'})()");
  await browser('screenshot',resolve(evidence,'exam-countdown-mobile.png'),'--full');
+ await browser('open','http://localhost:8100/map');await browser('wait','--text','Campus directions');
+ await browser('find','role','button','click','--name','Destination: Choose on campus','--exact');
+ await browser('find','label','Search campus destinations','fill','Petroleum Engineering');await browser('wait','--text','Department of Petroleum Engineering');
+ await check("(()=>{if(!document.body.innerText.includes('Approximate location'))throw new Error('Screenshot locations lack an accuracy label');if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Campus search overflows');return 'New reviewed landmarks are searchable with their approximation label'})()");
+ await browser('screenshot',resolve(evidence,'map2-search-mobile.png'),'--full');
+ await browser('find','role','button','click','--name','Department of Petroleum Engineering academic · Approximate location');
+ await browser('find','role','button','click','--name','Expand directions','--exact');await browser('wait','--text','Approximate location. Follow local signs for the entrance.');
+ await browser('screenshot',resolve(evidence,'map2-selected-mobile.png'),'--full');
  await browser('open','http://localhost:8100/__verify-map.html');await browser('wait','--fn','window.mapReady===true');
  await check("(()=>{const d=document.querySelector('iframe').contentDocument;const c=d.querySelector('canvas');if(!c||c.width<300||c.height<600)throw new Error('Map canvas failed');if(!d.querySelector('.maplibregl-ctrl-attrib').textContent.includes('OpenStreetMap'))throw new Error('Map credit missing');return 'Real MapLibre canvas and OSM attribution are visible'})()");
  await browser('wait','1000');await browser('screenshot',resolve(evidence,'ugbowo-map-mobile.png'));writeFileSync(resolve(evidence,'map-snapshot.txt'),await browser('snapshot','-i'));
@@ -86,6 +101,6 @@ try{
  await check("window.showCampus('ekehuan');'Switched renderer to sourced Ekehuan features'");await browser('wait','1000');await browser('screenshot',resolve(evidence,'ekehuan-map-mobile.png'));
  await check("(()=>{if(window.mapErrors.length)throw new Error(window.mapErrors.join('; '));return 'Both campus payloads render without tile error notices'})()");
  const errors=await browser('errors','--json');writeFileSync(resolve(evidence,'browser-errors.json'),errors);const parsed=JSON.parse(errors);assert.equal(parsed.success,true);assert.equal(parsed.data?.errors?.length??0,0,'Browser reported runtime errors');
- writeFileSync(resolve(evidence,'result.json'),JSON.stringify({sourceSha:process.env.GITHUB_SHA,verifiedAt:new Date().toISOString(),result:'passed',scope:'Compiled agent form and categorized alarms/countdown with local API fixtures; import source popup; real two-campus MapLibre renderer; desktop/mobile layout; map wheel and pan. Native APK gestures, live payments, camera, native push and gallery require separate verification.'},null,2));
+ writeFileSync(resolve(evidence,'result.json'),JSON.stringify({sourceSha:process.env.GITHUB_SHA,verifiedAt:new Date().toISOString(),result:'passed',scope:'Compiled map search/selection with 177 reviewed places, agent form and categorized alarms/countdown with local API fixtures; import source popup; real two-campus MapLibre renderer; desktop/mobile layout; map wheel and pan. Native APK gestures, live payments, camera, native push and gallery require separate verification.'},null,2));
 }catch(error){try{writeFileSync(resolve(evidence,'failure-snapshot.txt'),await browser('snapshot','-i'));await browser('screenshot',resolve(evidence,'failure.png'),'--full');writeFileSync(resolve(evidence,'failure-errors.json'),await browser('errors','--json'));}catch{}throw error;
 }finally{try{await browser('close');}catch{}try{process.kill(-portal.pid,'SIGTERM');}catch{}portal.stdout.destroy();portal.stderr.destroy();api.closeAllConnections();web.closeAllConnections();api.close();web.close();writeFileSync(resolve(evidence,'portal.log'),portalLog);}

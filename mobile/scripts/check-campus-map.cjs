@@ -10,6 +10,7 @@ let capturedStyle,mapInstance;
 class FakeMap{
   constructor(options){capturedStyle=structuredClone(options.style);mapInstance=this;this.options=options;this.pitch=0;this.fits=[];this.eases=[];}
   addControl(){}
+  addImage(id,image){assert.ok(image.width>0&&image.height>0);assert.equal(image.data.length,image.width*image.height*4);this.images??=new Map();this.images.set(id,image);}
   on(event,layer,handler){events.push({event,layer:typeof layer==='string'?layer:null,handler:handler??layer});}
   addSource(id,source){capturedStyle.sources[id]=structuredClone(source);sources.set(id,{...source,setData(data){this.data=data;},setTiles(tiles){this.tiles=tiles;},async getClusterExpansionZoom(){return 16;}});}
   addLayer(layer){capturedStyle.layers.push(structuredClone(layer));}

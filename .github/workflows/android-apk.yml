@@ -138,6 +138,8 @@ jobs:
           if (inspected.status !== 0) throw new Error('The built APK could not be inspected.');
           const packageLine = inspected.stdout.split('\n').find(line => line.startsWith('package: ')) || '';
           const values = Object.fromEntries([...packageLine.matchAll(/([A-Za-z][A-Za-z0-9]*)='([^']*)'/g)].map(match => [match[1], match[2]]));
+          const targetSdkVersion=Number(/^targetSdkVersion:'(\d+)'$/m.exec(inspected.stdout)?.[1]);
+          if(!Number.isInteger(targetSdkVersion)||targetSdkVersion<36)throw new Error('Android release must target API 36 or higher.');
           if (values.name !== expected.android.package || values.versionName !== expected.version || Number(values.versionCode) !== expected.android.versionCode)
             throw new Error('The packaged APK identity does not match the reviewed application configuration.');
           if (!/^[a-f0-9]{40}$/.test(process.env.BUILD_SHA || '')) throw new Error('A verified source revision is required for the APK receipt.');
@@ -150,7 +152,7 @@ jobs:
           if(signed.status!==0||!cert)throw new Error('The APK signing identity could not be verified.');
           const certificateSha256=cert.toUpperCase().match(/.{2}/g).join(':');
           const receipt = { certificateSha256, sourceSha: process.env.BUILD_SHA, packageName: values.name, versionName: values.versionName,
-            versionCode: Number(values.versionCode), apkSha256: digest.digest('hex'), apkSizeBytes: statSync('KampusOne-Android.apk').size,
+            versionCode: Number(values.versionCode), targetSdkVersion, apkSha256: digest.digest('hex'), apkSizeBytes: statSync('KampusOne-Android.apk').size,
             verifiedAt: new Date().toISOString() };
           writeFileSync('KampusOne-Android-build.json', JSON.stringify(receipt, null, 2) + '\n');
           console.log(JSON.stringify(receipt));

@@ -1,0 +1,121 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "verifiedAt": "2026-10-06T18:56:40.290Z",
+  "sourceArchive": "Map 2.zip",
+  "sourceSha256": "0ce7a7438f7f8032ef10c592d21fcb2a8a833085285057bd97c5785a33d8dd5b",
+  "counts": {
+    "newPlaces": 80,
+    "imagesReviewed": 44,
+    "aliasOnlyPlaces": 7,
+    "correctedPlaces": 32,
+    "directoryPlaces": 177
+  },
+  "rehearsal": {
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "liveDirectoryStagedInTransaction": true,
+    "fixturesRolledBack": true,
+    "result": {
+      "paths": 817,
+      "history": 48,
+      "imports": 1,
+      "revision": 19,
+      "ugbowoPlaces": 177,
+      "directoryHash": "6bff2b2d7a3f2f5f3fb265d466227103",
+      "newUnverified": 112
+    },
+    "replay": {
+      "paths": 817,
+      "history": 48,
+      "imports": 1,
+      "revision": 19,
+      "ugbowoPlaces": 177,
+      "directoryHash": "6bff2b2d7a3f2f5f3fb265d466227103",
+      "newUnverified": 112
+    }
+  },
+  "before": {
+    "paths": 817,
+    "places": 102,
+    "osmHash": "5f8d09e3d74df5af8c6b638587f6d573",
+    "features": 4379,
+    "revision": 44,
+    "entrances": 1,
+    "pathsHash": "ffb4072ec74d779482d15768dde9ff8b",
+    "boundaryHash": "87f500286cd808852e01cc8a7ea4c0c3",
+    "featuresHash": "41daef9ebd75efb470e412aa3d8cc20b",
+    "ugbowoPlaces": 97,
+    "entrancesHash": "de1dd3e314acb310175abc9754a8d31b",
+    "otherPlacesHash": "01e6cfafb9b7f0d2ca7fd8a0865aa4cd"
+  },
+  "after": {
+    "paths": 817,
+    "history": 49,
+    "imports": 1,
+    "revision": 45,
+    "ugbowoPlaces": 177,
+    "directoryHash": "31a6f116fe9c93f637357cbf18338c02",
+    "newUnverified": 112
+  },
+  "preservation": {
+    "import": {
+      "counts": {
+        "newPlaces": 80,
+        "imagesReviewed": 44,
+        "aliasOnlyPlaces": 7,
+        "correctedPlaces": 32,
+        "directoryPlaces": 177
+      },
+      "accuracy": "Approximate screenshot-derived points; no entrance survey.",
+      "preservation": {
+        "osm": "51397721a74d46013e030d43680ecc32",
+        "paths": "ffb4072ec74d779482d15768dde9ff8b",
+        "others": "01e6cfafb9b7f0d2ca7fd8a0865aa4cd",
+        "campuses": "87f500286cd808852e01cc8a7ea4c0c3",
+        "features": "41daef9ebd75efb470e412aa3d8cc20b",
+        "entrances": "de1dd3e314acb310175abc9754a8d31b"
+      },
+      "sourceSha256": "0ce7a7438f7f8032ef10c592d21fcb2a8a833085285057bd97c5785a33d8dd5b"
+    },
+    "pathsHash": "ffb4072ec74d779482d15768dde9ff8b",
+    "boundaryHash": "87f500286cd808852e01cc8a7ea4c0c3",
+    "featuresHash": "41daef9ebd75efb470e412aa3d8cc20b",
+    "entrancesHash": "de1dd3e314acb310175abc9754a8d31b",
+    "otherPlacesHash": "01e6cfafb9b7f0d2ca7fd8a0865aa4cd"
+  },
+  "checks": {
+    "all44ImagesReviewed": true,
+    "idempotentReplay": true,
+    "existingSourceGeometryPreserved": true,
+    "pathsAndEntrancesPreserved": true,
+    "otherCampusesPreserved": true,
+    "noApproximatePlaceMarkedGpsVerified": true,
+    "retainedExistingPlaceIds": 97,
+    "retainedOsmGeometry": 16
+  },
+  "nearestMappedPathSample": [
+    {
+      "name": "Department of Petroleum Engineering",
+      "metres": 44
+    },
+    {
+      "name": "Medical Hostel",
+      "metres": 90
+    },
+    {
+      "name": "New Faculty of Agriculture",
+      "metres": 49
+    },
+    {
+      "name": "School of Dentistry UBTH Site",
+      "metres": 21
+    },
+    {
+      "name": "UNIBEN Central Mosque",
+      "metres": 35
+    }
+  ],
+  "sqlSha256": "bab4d561671c624e9bc10e60e29d200c2fbb61b7f33c7dcc4b5520dbf6bf39f6"
+}
