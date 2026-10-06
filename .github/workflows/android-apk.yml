@@ -32,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_ANDROID_DISTRIBUTION: direct
     steps:
       - name: Download source receipt from the successful portal release
         if: github.event_name == 'workflow_run'

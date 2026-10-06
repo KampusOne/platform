@@ -756,8 +756,10 @@ export default function ConversationScreen() {
     }
     setError("");
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) throw new Error("Allow photo access to send pictures and videos.");
+      if(Platform.OS==="ios"){
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) throw new Error("Allow photo access to send pictures and videos.");
+      }
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images", "videos"],
         allowsMultipleSelection: true,

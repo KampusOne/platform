@@ -24,7 +24,7 @@ const fixtures={
  [`/v1/maps/campuses/${mapCampus.id}/features`]:{type:'FeatureCollection',features:[]},
  '/v1/auth/refresh':{accessToken:'local-browser-fixture',refreshToken:'local-browser-fixture',expiresIn:3600,refreshExpiresIn:86400,user},
  '/v1/student/catalog':{universities:[university],faculties:[],departments:[]},
- '/v1/student/me':{profile:{id:user.id,first_name:'Osas',last_name:'Egharevba',display_name:'Osas Kitchen',university_id:user.universityId,university_name:'University of Benin',department_name:'Computer Science',matriculation_number:'SCI2200123',settings:{}}},
+ '/v1/student/me':{profile:{id:user.id,first_name:'Osas',last_name:'Egharevba',display_name:'Osas Kitchen',university_id:user.universityId,university_name:'University of Benin',onboarding_completed_at:'2026-10-01T00:00:00Z',department_name:'Computer Science',matriculation_number:'SCI2200123',settings:{}}},
  '/v1/learning/alarms':{alarms:[alarmFixture(10),alarmFixture(11,{label:'Chemistry class',timetable_entry_id:'00000000-0000-4000-8000-000000000020',course_code:'CHE 201',course_title:'Chemistry',class_starts_at:'09:00',time:'08:45'}),alarmFixture(12,{label:'Chemistry class test',exam_id:'00000000-0000-4000-8000-000000000021',assessment_kind:'TEST',days:[],fires_at:futureDay(20)+'T07:00:00Z'}),alarmFixture(13,{label:'Registration closes',calendar_event_id:'00000000-0000-4000-8000-000000000022',days:[],fires_at:futureDay(21)+'T07:00:00Z'})]},
  '/v1/learning/alarm-sounds':{sounds:[]},
  '/v1/calendar/exam-periods':{examPeriods:[{startsOn:futureDay(20),endsOn:futureDay(35),semester:'First semester',status:'upcoming'}]},
