@@ -97,15 +97,29 @@ describe('broadcast permissions and immutable review',()=>{
  });
 });
 describe('consent, suppression and provider reliability',()=>{
- it('requires opt-in and honors unsubscribe after review; GET leaves consent unchanged',async()=>{
-  expect((await response(await request('/email/preferences',alice))).marketing_opt_in).toBe(false);const c=await draft([alice,bob],'MARKETING');expect((await preview(c.id)).eligibleCount).toBe(0);
-  await response(await request('/email/preferences',alice,'PUT',{marketingOptIn:true,consentVersion:'marketing-email-v1'}));const p=await preview(c.id);expect(p.eligibleCount).toBe(1);expect(p.notOptedInCount).toBe(1);
-  const row=(await db.query<any>('select unsubscribe_token,payload from app_private.email_recipients where snapshot_id=$1',[p.snapshotId])).rows[0]!;expect(row.payload.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');expect(row.payload.html).toContain('1 Campus Road');
-  expect((await app.request('https://api.example.invalid/v1/email/unsubscribe/'+row.unsubscribe_token,{},env)).status).toBe(200);expect((await response(await request('/email/preferences',alice))).marketing_opt_in).toBe(true);
-  await response(await request('/admin/broadcasts/'+c.id+'/send',admin,'POST',sendBody(p)));expect((await app.request('https://api.example.invalid/v1/email/unsubscribe/'+row.unsubscribe_token,{method:'POST',body:'List-Unsubscribe=One-Click'},env)).status).toBe(200);expect(await deliverQueuedBroadcasts(env)).toEqual({accepted:0,skipped:1});expect(fetchMock).not.toHaveBeenCalled();
+ it('includes accounts by default and honors explicit unsubscribe before delivery',async()=>{
+  expect((await response(await request('/email/preferences',alice))).marketing_opt_in).toBe(true);
+  await response(await request('/email/preferences',bob,'PUT',{marketingOptIn:false,consentVersion:'marketing-email-v1'}));
+  const c=await draft([alice,bob],'MARKETING'),p=await preview(c.id);expect(p.eligibleCount).toBe(1);expect(p.notOptedInCount).toBe(1);
+  const row=(await db.query<any>('select unsubscribe_token,payload from app_private.email_recipients where snapshot_id=$1',[p.snapshotId])).rows[0]!;
+  expect(row.payload.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');expect(row.payload.html).toContain('1 Campus Road');
+  expect((await app.request('https://api.example.invalid/v1/email/unsubscribe/'+row.unsubscribe_token,{},env)).status).toBe(200);
+  expect((await response(await request('/email/preferences',alice))).marketing_opt_in).toBe(true);
+  await response(await request('/admin/broadcasts/'+c.id+'/send',admin,'POST',sendBody(p)));
+  expect((await app.request('https://api.example.invalid/v1/email/unsubscribe/'+row.unsubscribe_token,{method:'POST',body:'List-Unsubscribe=One-Click'},env)).status).toBe(200);
+  expect(await deliverQueuedBroadcasts(env)).toEqual({accepted:0,skipped:1});expect(fetchMock).not.toHaveBeenCalled();
  });
- it('requires a real mailing address and discloses managed personas with escaped content',async()=>{
-  await db.exec('update app_private.email_delivery_controls set postal_address=null');const c=await draft([alice],'MARKETING');await response(await request('/admin/broadcasts/'+c.id+'/preview',admin,'POST',{revision:1}),409);
+ it('queues the current message in one action and a repeated click cannot duplicate recipients',async()=>{
+  const c=await draft([alice,bob,outside],'MARKETING');
+  const path='/admin/broadcasts/'+c.id+'/send-now?universityId='+school,body={revision:1,confirm:'SEND_CAMPAIGN'};
+  const sent=await response(await request(path,admin,'POST',body));expect(sent.recipientCount).toBe(2);
+  expect((await response(await request(path,admin,'POST',body))).alreadyQueued).toBe(true);
+  expect((await db.query("select * from app_private.email_recipients where status='PENDING'")).rows).toHaveLength(2);
+  await deliverQueuedBroadcasts(env);await deliverQueuedBroadcasts(env);expect(fetchMock).toHaveBeenCalledTimes(2);
+  await response(await request(path,finance,'POST',body),403);
+ });
+ it('keeps optional address configuration out of sending and escapes managed persona content',async()=>{
+  await db.exec('update app_private.email_delivery_controls set postal_address=null');const c=await draft([alice],'MARKETING');await response(await request('/admin/broadcasts/'+c.id+'/preview',admin,'POST',{revision:1}));
   await response(await request('/admin/broadcasts/personas',staff,'POST',{displayName:'Jeffrey'}),403);const p=await response(await request('/admin/broadcasts/personas',admin,'POST',{displayName:'Jeffrey'}),201);expect(p.display_name).toBe('Jeffrey');
   const message=composeBroadcastPayload({from:'Jeffrey <team@example.invalid>',senderName:'Jeffrey',subject:'Update',body:'<script>alert(1)</script> & goodbye',kind:'OPERATIONAL',postalAddress:'',apiOrigin:'https://api.example.invalid'},email(alice),crypto.randomUUID());expect(message.html).not.toContain('<script>');expect(message.html).toContain('&lt;script&gt;');expect(message.text).toContain('This sender identity is managed by KampusOne.');
  });

@@ -48,12 +48,12 @@ export async function initializePaystack(
       },
       body: JSON.stringify({
         email: input.email,
-        amount: input.amountKobo,
+        amount: Number(pricingSnapshot?.provider_initialized_amount_kobo ?? input.amountKobo),
         reference: input.reference,
         currency: "NGN",
         // This assigns settlement fees to the main account for a split. It is
         // NOT an override of the dashboard's Pass fees to customers setting.
-        // The separately reviewed account setting must be disabled first.
+        // New quotes pin a subtotal; Paystack's account preference adds its fee.
         bearer: "account",
         metadata: {...input.metadata,paymentReference:input.reference,...(pricingSnapshot?{pricingSnapshotReference:pricingSnapshot.provider_reference,providerFeeProfileId:pricingSnapshot.fee_profile_id,providerFeeProfileVersion:pricingSnapshot.fee_profile_version}:{})},
         ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
@@ -130,11 +130,12 @@ export async function verifyPaystack(env: Bindings, reference: string) {
       reference?: string;
       currency?: string;
       amount?: number;
+      requested_amount?: number;
       fees?: number;
       paid_at?: string;
       domain?: string;
       channel?:string;
-      authorization?:{country?:string;brand?:string;card_type?:string};
+      authorization?:{country?:string;country_code?:string;brand?:string;card_type?:string};
     };
   } | null;
   const data = payload?.data;
@@ -159,6 +160,8 @@ export async function verifyPaystack(env: Bindings, reference: string) {
     data.status === "success" &&
     (!Number.isSafeInteger(data.fees) ||
       Number(data.fees) < 0 ||
+      Number(data.fees) >= Number(data.amount) ||
+      (data.requested_amount !== undefined && (!Number.isSafeInteger(data.requested_amount) || data.requested_amount <= 0)) ||
       typeof data.paid_at !== "string" ||
       !Number.isFinite(Date.parse(data.paid_at)))
   )
@@ -171,9 +174,9 @@ export async function verifyPaystack(env: Bindings, reference: string) {
     typeof data.id==="number"&&Number.isSafeInteger(data.id)&&data.id>0?String(data.id):null;
   if(data.id!==undefined&&providerTransactionId===null)throw new AppError(503,"PROVIDER_UNAVAILABLE","The provider returned an invalid transaction identifier.");
   const channel=typeof data.channel==="string"?data.channel:null,
-    paymentCountry=typeof data.authorization?.country==="string"?data.authorization.country.toUpperCase():null,
+    paymentCountry=typeof data.authorization?.country_code==="string"?data.authorization.country_code.toUpperCase():typeof data.authorization?.country==="string"?data.authorization.country.toUpperCase():null,
     cardNetwork=typeof data.authorization?.brand==="string"?data.authorization.brand.toUpperCase():typeof data.authorization?.card_type==="string"?data.authorization.card_type.toUpperCase():null;
-  if(data.status==="success")await recordCollectionReceiptContext(env,{reference,amountKobo:Number(data.amount),feeKobo:Number(data.fees),providerTransactionId,channel,paymentCountry,cardNetwork,currency:data.currency!,providerMode:data.domain==="live"?"live":"test",paidAt:data.paid_at??null});
+  if(data.status==="success")await recordCollectionReceiptContext(env,{reference,amountKobo:Number(data.amount),feeKobo:Number(data.fees),requestedAmountKobo:data.requested_amount??null,providerTransactionId,channel,paymentCountry,cardNetwork,currency:data.currency!,providerMode:data.domain==="live"?"live":"test",paidAt:data.paid_at??null});
   return {
     status: data.status ?? "pending",
     reference,

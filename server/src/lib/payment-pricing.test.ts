@@ -1,5 +1,5 @@
 import { describe,expect,it,vi,afterEach } from "vitest";
-import { assertProfileContext,assertAccountReview,classifyPaystackContext,feeVariance,publishedProviderProfiles,pricingPreview,prepareCollectionInitialization,resolveProviderCollection } from "./payment-pricing";
+import { assertProfileContext,classifyPaystackContext,feeVariance,publishedProviderProfiles,pricingPreview,prepareCollectionInitialization,resolveProviderCollection } from "./payment-pricing";
 import { collectionFeeKobo,checkoutPrice,listingPrice,publishedNigeriaLocalFees,roundDisplayKobo,type CommerceFees } from "./pricing";
 import type { Bindings } from "../types";
 const dbStub=vi.hoisted(()=>({execute:vi.fn()}));
@@ -20,12 +20,6 @@ describe("provider context and payment psychology",()=>{
     expect(classifyPaystackContext("bank_transfer","US",null)).toBe("LOCAL_COLLECTION");
     expect(classifyPaystackContext("card","US","AMERICAN EXPRESS")).toBe("INTERNATIONAL_AMEX");
     expect(classifyPaystackContext("card","GB","VISA")).toBe("INTERNATIONAL_CARD");
-  });
-  it("requires reviewed merchant-mode-specific pass-fees-disabled evidence",()=>{
-    expect(()=>assertAccountReview(null,"live")).toThrow("paused");
-    expect(()=>assertAccountReview({pass_fees_disabled:false,provider_mode:"live",expires_at:null},"live")).toThrow("paused");
-    expect(()=>assertAccountReview({pass_fees_disabled:true,provider_mode:"test",expires_at:null},"live")).toThrow("paused");
-    expect(()=>assertAccountReview({pass_fees_disabled:true,provider_mode:"live",expires_at:null},"live")).not.toThrow();
   });
   it("tracks real rounding adjustments and refuses unfunded downward rounding or excessive markups",()=>{
     expect(roundDisplayKobo(600123,{...publishedNigeriaLocalFees,roundingMode:"NONE"})).toBe(600123);
@@ -74,10 +68,10 @@ describe("current provider eligibility",()=>{
     await expect(resolveProviderCollection(env,"11111111-1111-4111-8111-111111111111",oldProfile.id)).rejects.toThrow("disabled");
   });
   it("allows an accepted historical price only while the current context remains approved",async()=>{
-    const native={university_id:"11111111-1111-4111-8111-111111111111",profile_id:oldProfile.id},review={pass_fees_disabled:true,provider_mode:"test",expires_at:null};
-    dbStub.execute.mockResolvedValueOnce({rows:[{ready:true}]}).mockResolvedValueOnce({rows:[review]}).mockResolvedValueOnce({rows:[native]}).mockResolvedValueOnce({rows:[{ready:true}]}).mockResolvedValueOnce({rows:[{...oldProfile,effectiveTo:"2026-10-02T00:00:00Z"}]}).mockResolvedValueOnce({rows:[latestProfile]}).mockResolvedValueOnce({rows:[{provider_reference:"K1-O-history",fee_profile_id:oldProfile.id,fee_profile_version:"v1"}]});
+    const native={university_id:"11111111-1111-4111-8111-111111111111",profile_id:oldProfile.id};
+    dbStub.execute.mockResolvedValueOnce({rows:[{ready:true}]}).mockResolvedValueOnce({rows:[native]}).mockResolvedValueOnce({rows:[{ready:true}]}).mockResolvedValueOnce({rows:[{...oldProfile,effectiveTo:"2026-10-02T00:00:00Z"}]}).mockResolvedValueOnce({rows:[latestProfile]}).mockResolvedValueOnce({rows:[{provider_reference:"K1-O-history",fee_profile_id:oldProfile.id,fee_profile_version:"v1"}]});
     expect(await prepareCollectionInitialization(env,"K1-O-history",600000,{})).toMatchObject({fee_profile_version:"v1"});
-    dbStub.execute.mockResolvedValueOnce({rows:[{ready:true}]}).mockResolvedValueOnce({rows:[review]}).mockResolvedValueOnce({rows:[native]}).mockResolvedValueOnce({rows:[{ready:true}]}).mockResolvedValueOnce({rows:[oldProfile]}).mockResolvedValueOnce({rows:[{...latestProfile,status:"DISABLED"}]});
+    dbStub.execute.mockResolvedValueOnce({rows:[{ready:true}]}).mockResolvedValueOnce({rows:[native]}).mockResolvedValueOnce({rows:[{ready:true}]}).mockResolvedValueOnce({rows:[oldProfile]}).mockResolvedValueOnce({rows:[{...latestProfile,status:"DISABLED"}]});
     await expect(prepareCollectionInitialization(env,"K1-O-history",600000,{})).rejects.toThrow("disabled");
   });
 });

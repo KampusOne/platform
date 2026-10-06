@@ -1,0 +1,1970 @@
+[
+  {
+    "id": "e01acaa1-d4ff-4f47-8b2b-61e0c9787a5a",
+    "name": "AbdulKadir Kure University, Minna, Niger State",
+    "slug": "abdulkadir-kure-university-minna-niger-state",
+    "website_url": null
+  },
+  {
+    "id": "aeba9314-137f-4902-95d0-0e00e4c1b019",
+    "name": "Abdulfattah Durojaiye University, Abeokuta, Ogun State",
+    "slug": "abdulfattah-durojaiye-university-abeokuta-ogun-state",
+    "website_url": null
+  },
+  {
+    "id": "1c00cf48-9f12-41ea-acb2-b811928fb259",
+    "name": "Abdulrasaq Abubakar Toyin University, Oke-Ogba, Ganmo, Ilorin, Kwara State",
+    "slug": "abdulrasaq-abubakar-toyin-university-oke-ogba-ganmo-ilorin-kwara-state",
+    "website_url": null
+  },
+  {
+    "id": "6aad3eb9-128f-45f3-825b-76d4049dbb95",
+    "name": "Abdulsalam Abubakar University of Agriculture and Climate Action, Mokwa, Niger State",
+    "slug": "abdulsalam-abubakar-university-of-agriculture-and-climate-action-mokwa-niger-state",
+    "website_url": null
+  },
+  {
+    "id": "07df1f5b-09d1-44ef-9575-a567f3517bd7",
+    "name": "Abia State University, Uturu",
+    "slug": "abia-state-university-uturu",
+    "website_url": "https://abiastateuniversity.edu.ng"
+  },
+  {
+    "id": "c8358ed2-bb4e-44f0-b9ad-0181979e7fa5",
+    "name": "Abubakar Tafawa Balewa University, Bauchi",
+    "slug": "abubakar-tafawa-balewa-university-bauchi",
+    "website_url": "https://atbu.edu.ng"
+  },
+  {
+    "id": "8bab23b2-a8d9-406d-999f-8370a992cfc6",
+    "name": "Achievers University, Owo",
+    "slug": "achievers-university-owo",
+    "website_url": "https://achievers.edu.ng"
+  },
+  {
+    "id": "b8a32418-8fa9-4474-bec6-5344d0b32c54",
+    "name": "Adamawa State University, Mubi",
+    "slug": "adamawa-state-university-mubi",
+    "website_url": "https://adsu.edu.ng"
+  },
+  {
+    "id": "75ad106f-65bf-47ff-b631-12802ae462bc",
+    "name": "Adeche Momoh University, Igarra, Edo State",
+    "slug": "adeche-momoh-university-igarra-edo-state",
+    "website_url": null
+  },
+  {
+    "id": "891ff53f-7800-43a9-9409-60a608b6586b",
+    "name": "Adekunle Ajasin University, Akungba",
+    "slug": "adekunle-ajasin-university-akungba",
+    "website_url": "https://aaua.edu.ng"
+  },
+  {
+    "id": "d28e2d61-a01d-4ccc-9763-19ab69dd91df",
+    "name": "Adeleke University, Ede",
+    "slug": "adeleke-university-ede",
+    "website_url": "https://adelekeuniversity.edu.ng"
+  },
+  {
+    "id": "ecb994cc-a968-423e-84c2-4864bf0c445d",
+    "name": "Adeyemi Federal University of Education, Ondo",
+    "slug": "adeyemi-federal-university-of-education-ondo",
+    "website_url": null
+  },
+  {
+    "id": "f02997fb-b6e4-452d-b9bc-f764a804d70a",
+    "name": "Admiralty University, Ibusa, Delta State",
+    "slug": "admiralty-university-ibusa-delta-state",
+    "website_url": "https://adun.edu.ng"
+  },
+  {
+    "id": "3b58b21d-bff3-4f5e-ae0a-c0072bbea898",
+    "name": "Afe Babalola University, Ado-Ekiti, Ekiti State",
+    "slug": "afe-babalola-university-ado-ekiti-ekiti-state",
+    "website_url": "https://abuad.edu.ng"
+  },
+  {
+    "id": "6a7de821-b8a1-42b9-b689-f1b6593406d2",
+    "name": "African Aviation and Aerospace University",
+    "slug": "african-aviation-and-aerospace-university",
+    "website_url": "https://aaau.edu.ng"
+  },
+  {
+    "id": "c76a309b-201e-47c8-af46-1050d91989f5",
+    "name": "African University of Economics, FCT Abuja",
+    "slug": "african-university-of-economics-fct-abuja",
+    "website_url": null
+  },
+  {
+    "id": "856fae22-72df-49c2-ae7b-7a2c65db637a",
+    "name": "African University of Science and Technology, Abuja",
+    "slug": "african-university-of-science-and-technology-abuja",
+    "website_url": "https://aust.edu.ng"
+  },
+  {
+    "id": "0709d7fb-feae-4fe7-adcc-6913aaaa88c7",
+    "name": "Ahmadu Bello University, Zaria",
+    "slug": "ahmadu-bello-university-zaria",
+    "website_url": "https://abu.edu.ng"
+  },
+  {
+    "id": "ab9ff129-efe6-419f-b9d0-55b06c7d56b9",
+    "name": "Ahman Pategi University, Kwara State",
+    "slug": "ahman-pategi-university-kwara-state",
+    "website_url": null
+  },
+  {
+    "id": "512bd66c-a69d-42e5-aa28-4a53492a276c",
+    "name": "Air Force Institute of Technology, Kaduna",
+    "slug": "air-force-institute-of-technology-kaduna",
+    "website_url": "https://afit.edu.ng"
+  },
+  {
+    "id": "ed72c7eb-03f8-4361-97dd-83915266b82d",
+    "name": "Ajayi Crowther University, Ibadan",
+    "slug": "ajayi-crowther-university-ibadan",
+    "website_url": "https://acu.edu.ng"
+  },
+  {
+    "id": "96d5d3ef-f719-4b43-8c2a-57a7bfa97adf",
+    "name": "Akwa Ibom State University, Ikot Akpaden",
+    "slug": "akwa-ibom-state-university-ikot-akpaden",
+    "website_url": "https://aksu.edu.ng"
+  },
+  {
+    "id": "ea9bf1f6-b226-4545-86e0-6fec4b346189",
+    "name": "Al-Ansar University, Maiduguri, Borno",
+    "slug": "al-ansar-university-maiduguri-borno",
+    "website_url": null
+  },
+  {
+    "id": "d18aa4e2-4170-45d5-ac2e-3676077bae2f",
+    "name": "Al-Bayan University, Ankpa, Kogi State",
+    "slug": "al-bayan-university-ankpa-kogi-state",
+    "website_url": null
+  },
+  {
+    "id": "0e35d37a-c121-4107-bd1f-fcd77a9118ca",
+    "name": "Al-Hikmah University, Ilorin",
+    "slug": "al-hikmah-university-ilorin",
+    "website_url": "https://alhikmah.edu.ng"
+  },
+  {
+    "id": "0c4b2854-a687-45e8-ac77-95a712e5d0f7",
+    "name": "Al-Istiqama University, Sumaila, Kano State",
+    "slug": "al-istiqama-university-sumaila-kano-state",
+    "website_url": null
+  },
+  {
+    "id": "e8503bec-d7ce-490a-b031-483b86301629",
+    "name": "Al-Muhibbah Open University, Abuja",
+    "slug": "al-muhibbah-open-university-abuja",
+    "website_url": null
+  },
+  {
+    "id": "7bb349cd-054a-4e7d-8e5e-bc02afcf0d75",
+    "name": "Al-Qalam University, Katsina",
+    "slug": "al-qalam-university-katsina",
+    "website_url": "https://auk.edu.ng"
+  },
+  {
+    "id": "afd3d7bd-88ed-45f0-9df1-bed518f5a616",
+    "name": "Aletheia University, Ago-Iwoye, Ogun State",
+    "slug": "aletheia-university-ago-iwoye-ogun-state",
+    "website_url": null
+  },
+  {
+    "id": "337c1280-b67e-4350-adf4-e38de063f79e",
+    "name": "Alex Ekwueme University, Ndufu-Alike, Ebonyi State",
+    "slug": "alex-ekwueme-university-ndufu-alike-ebonyi-state",
+    "website_url": "https://funai.edu.ng"
+  },
+  {
+    "id": "df789d29-3c1a-45f1-b0d6-744f1de90b96",
+    "name": "Aliko Dangote University of Science and Technology, Wudil",
+    "slug": "aliko-dangote-university-of-science-and-technology-wudil",
+    "website_url": "https://kust.edu.ng"
+  },
+  {
+    "id": "30898732-f934-46e0-9f28-7bb64c74304d",
+    "name": "Alvan Ikoku Federal University of Education, Owerri, Imo State",
+    "slug": "alvan-ikoku-federal-university-of-education-owerri-imo-state",
+    "website_url": null
+  },
+  {
+    "id": "fecf0f20-6cba-45d0-bb12-315002554d36",
+    "name": "Amadeus University, Amizi, Abia State",
+    "slug": "amadeus-university-amizi-abia-state",
+    "website_url": null
+  },
+  {
+    "id": "d997f171-8810-4f2b-a194-9a4db4a2ab83",
+    "name": "Amaj University, Kwali, Abuja",
+    "slug": "amaj-university-kwali-abuja",
+    "website_url": null
+  },
+  {
+    "id": "32e4b608-3646-4fdd-8010-236bff8006d0",
+    "name": "Ambrose Alli University, Ekpoma",
+    "slug": "ambrose-alli-university-ekpoma",
+    "website_url": "https://aauekpoma.edu.ng"
+  },
+  {
+    "id": "17a9f604-a999-4d0b-a86f-bc75a7e070e6",
+    "name": "American Open University, Abeokuta, Ogun State",
+    "slug": "american-open-university-abeokuta-ogun-state",
+    "website_url": null
+  },
+  {
+    "id": "1285f97e-8e08-482b-a4a2-01fb0e839edb",
+    "name": "American University of Nigeria, Yola",
+    "slug": "american-university-of-nigeria-yola",
+    "website_url": "https://aun.edu.ng"
+  },
+  {
+    "id": "f32584f7-0885-4ae5-8d48-4a592e140889",
+    "name": "Anan University, Kwall, Plateau State",
+    "slug": "anan-university-kwall-plateau-state",
+    "website_url": null
+  },
+  {
+    "id": "aafb5f43-ee63-4dfd-b6bf-c1bea4691d0c",
+    "name": "Anchor University, Ayobo, Lagos State",
+    "slug": "anchor-university-ayobo-lagos-state",
+    "website_url": "https://aul.edu.ng"
+  },
+  {
+    "id": "44a304dc-0797-4da0-80b4-046620b4a35b",
+    "name": "Arthur Javis University, Akpoyubo, Cross River State",
+    "slug": "arthur-javis-university-akpoyubo-cross-river-state",
+    "website_url": "https://arthurjarvisuniversity.edu.ng"
+  },
+  {
+    "id": "7d6cb14c-659c-4734-b92b-5c25c6215fa0",
+    "name": "Atiba University, Oyo",
+    "slug": "atiba-university-oyo",
+    "website_url": null
+  },
+  {
+    "id": "e33d76a3-e1ec-4bed-82c4-17c6932bbf5b",
+    "name": "Augustine University",
+    "slug": "augustine-university",
+    "website_url": "https://augustineuniversity.edu.ng"
+  },
+  {
+    "id": "b26e7da7-7411-406b-9870-9852f5104fb9",
+    "name": "Ave Maria University, Piyanko, Nasarawa State",
+    "slug": "ave-maria-university-piyanko-nasarawa-state",
+    "website_url": null
+  },
+  {
+    "id": "af39a143-4f2d-4b4f-88a0-5f2ffd1c1a71",
+    "name": "Azione Verde University, Amaigbo, Imo State",
+    "slug": "azione-verde-university-amaigbo-imo-state",
+    "website_url": null
+  },
+  {
+    "id": "a610d990-3973-40a4-8132-a19038478ee2",
+    "name": "Azman University, Kano State",
+    "slug": "azman-university-kano-state",
+    "website_url": null
+  },
+  {
+    "id": "581cf17a-4cd6-42e4-8dcd-5f80b1f8cc00",
+    "name": "Baba Ahmed University, Kano State",
+    "slug": "baba-ahmed-university-kano-state",
+    "website_url": null
+  },
+  {
+    "id": "2f154e4b-b557-4a94-9675-37d2dc5128c6",
+    "name": "Babcock University, Ilishan-Remo",
+    "slug": "babcock-university-ilishan-remo",
+    "website_url": "https://babcock.edu.ng"
+  },
+  {
+    "id": "90b86f89-9998-45f7-bedf-2210662af305",
+    "name": "Bamidele Olumilua University of Science and Technology, Ikere, Ekiti State",
+    "slug": "bamidele-olumilua-university-of-science-and-technology-ikere-ekiti-state",
+    "website_url": "https://bouesti.edu.ng"
+  },
+  {
+    "id": "1caa5bbd-83fd-4b43-9c7c-5352845976c2",
+    "name": "Bauchi State University, Gadau",
+    "slug": "bauchi-state-university-gadau",
+    "website_url": "https://basug.edu.ng"
+  },
+  {
+    "id": "9092d685-426b-4a49-aa54-d2dfb04e48d2",
+    "name": "Bayelsa Medical University",
+    "slug": "bayelsa-medical-university",
+    "website_url": "https://bmu.edu.ng"
+  },
+  {
+    "id": "b3f5ae23-c644-4fc0-923f-9c59e412cb1c",
+    "name": "Bayero University, Kano",
+    "slug": "bayero-university-kano",
+    "website_url": "https://buk.edu.ng"
+  },
+  {
+    "id": "fe8e1f89-5971-4dbf-8641-45b850d7a085",
+    "name": "Baze University",
+    "slug": "baze-university",
+    "website_url": "https://bazeuniversity.edu.ng"
+  },
+  {
+    "id": "dca98f51-0a92-4d5b-8d21-5bf1bda9a820",
+    "name": "Bells University of Technology, Otta",
+    "slug": "bells-university-of-technology-otta",
+    "website_url": "https://bellsuniversity.edu.ng"
+  },
+  {
+    "id": "bd43ca59-42cb-4e86-b4fe-9c7d51abe0b0",
+    "name": "Benson Idahosa University, Benin City",
+    "slug": "benson-idahosa-university-benin-city",
+    "website_url": "https://biu.edu.ng"
+  },
+  {
+    "id": "cf6757fb-bcc8-42cb-8b12-da319eeec788",
+    "name": "Benue State University of Agriculture, Science and Technology, Ihugh",
+    "slug": "benue-state-university-of-agriculture-science-and-technology-ihugh",
+    "website_url": null
+  },
+  {
+    "id": "7a31599e-9f4f-4919-9000-e38ca183a66e",
+    "name": "Bingham University, New Karu",
+    "slug": "bingham-university-new-karu",
+    "website_url": "https://binghamuni.edu.ng"
+  },
+  {
+    "id": "4840d77c-4e74-4dbc-b2ce-fdc99c540812",
+    "name": "Bowen University, Iwo",
+    "slug": "bowen-university-iwo",
+    "website_url": "https://bowen.edu.ng"
+  },
+  {
+    "id": "e06c62e1-8d64-447e-9e1f-fc36c2891ac9",
+    "name": "Bridget University, Mbaise, Okirika-Nweke, Imo State",
+    "slug": "bridget-university-mbaise-okirika-nweke-imo-state",
+    "website_url": null
+  },
+  {
+    "id": "f95d5e81-45de-4040-827a-f4b806fd0981",
+    "name": "British Canadian University, Obufu, Cross River State",
+    "slug": "british-canadian-university-obufu-cross-river-state",
+    "website_url": null
+  },
+  {
+    "id": "a24f2a8e-f1b2-4bb6-9b9b-0aa110eaeb76",
+    "name": "Caleb University, Lagos",
+    "slug": "caleb-university-lagos",
+    "website_url": "https://calebuniversity.edu.ng"
+  },
+  {
+    "id": "30c8e872-cc21-45c2-b501-0ae936f29140",
+    "name": "Canadian University of Nigeria, Abuja",
+    "slug": "canadian-university-of-nigeria-abuja",
+    "website_url": null
+  },
+  {
+    "id": "c324d91b-6f11-4ff3-8522-7ad9abab6942",
+    "name": "Capital City University, Kano State",
+    "slug": "capital-city-university-kano-state",
+    "website_url": "https://ccuk.edu.ng"
+  },
+  {
+    "id": "bf6d69dd-00b9-4a81-930c-e86f53082de7",
+    "name": "Caritas University, Enugu",
+    "slug": "caritas-university-enugu",
+    "website_url": "https://caritasuni.edu.ng"
+  },
+  {
+    "id": "3dba3fe3-40ef-4102-8208-6f3ab4edb60b",
+    "name": "Chrisland University",
+    "slug": "chrisland-university",
+    "website_url": "https://chrislanduniversity.edu.ng"
+  },
+  {
+    "id": "e78d130a-c2e3-4c64-a6dc-686d04ffcbf1",
+    "name": "Christopher University, Mowe",
+    "slug": "christopher-university-mowe",
+    "website_url": "https://christopheruniversity.edu.ng"
+  },
+  {
+    "id": "b1ff1e97-dcd2-4be0-b4fe-1ac7f8b2789f",
+    "name": "Chukwuemeka Odumegwu Ojukwu University, Uli",
+    "slug": "chukwuemeka-odumegwu-ojukwu-university-uli",
+    "website_url": "https://coou.edu.ng"
+  },
+  {
+    "id": "ab663609-9f8c-40b7-9af6-26d317609b5d",
+    "name": "City University, Abuja",
+    "slug": "city-university-abuja",
+    "website_url": "https://cityuniversity.edu.ng"
+  },
+  {
+    "id": "851f9a08-c3b9-4184-9bb9-313d3221cb95",
+    "name": "Claretian University of Nigeria, Nekede, Imo State",
+    "slug": "claretian-university-of-nigeria-nekede-imo-state",
+    "website_url": null
+  },
+  {
+    "id": "1d6b52ef-a8a5-48ce-8f2e-b210b9bdff14",
+    "name": "Clifford University, Owerrinta, Abia State",
+    "slug": "clifford-university-owerrinta-abia-state",
+    "website_url": "https://clifforduni.edu.ng"
+  },
+  {
+    "id": "010b908e-7d10-4cd0-9093-cafe1a86765d",
+    "name": "Coal City University, Enugu State",
+    "slug": "coal-city-university-enugu-state",
+    "website_url": "https://ccu.edu.ng"
+  },
+  {
+    "id": "dbf4a892-c8a0-4a86-b04a-890b3d2e7f29",
+    "name": "College of Petroleum and Energy Studies, Kaduna State",
+    "slug": "college-of-petroleum-and-energy-studies-kaduna-state",
+    "website_url": null
+  },
+  {
+    "id": "3d54a91e-e3bd-4869-a19a-f03609b6e356",
+    "name": "Confluence University of Science and Technology, Osara, Kogi",
+    "slug": "confluence-university-of-science-and-technology-osara-kogi",
+    "website_url": "https://custech.edu.ng"
+  },
+  {
+    "id": "5f8946a1-b6fe-49fc-a457-9c0c09d32fdf",
+    "name": "Cosmopolitan University, Abuja",
+    "slug": "cosmopolitan-university-abuja",
+    "website_url": null
+  },
+  {
+    "id": "17cb298c-eef0-40d0-8147-293ef9d4dd56",
+    "name": "Covenant University, Ota",
+    "slug": "covenant-university-ota",
+    "website_url": "https://covenantuniversity.edu.ng"
+  },
+  {
+    "id": "bdf57edf-7e89-4155-ac42-91f4df80a4ed",
+    "name": "Crawford University, Igbesa",
+    "slug": "crawford-university-igbesa",
+    "website_url": "https://crawforduniversity.edu.ng"
+  },
+  {
+    "id": "85c31302-bc2c-4219-8422-49407460f089",
+    "name": "Crescent University",
+    "slug": "crescent-university",
+    "website_url": "https://crescent-university.edu.ng"
+  },
+  {
+    "id": "4e3b851d-5712-4f41-a734-13b7f574ffae",
+    "name": "Cross River University of Education and Entrepeneurship, Akampa, Cross River State",
+    "slug": "cross-river-university-of-education-and-entrepeneurship-akampa-cross-river-state",
+    "website_url": null
+  },
+  {
+    "id": "f4acdff6-a023-4703-8116-3bbd7f11a607",
+    "name": "David Nweze Umahi Federal University of Medical Sciences, Uburu",
+    "slug": "david-nweze-umahi-federal-university-of-medical-sciences-uburu",
+    "website_url": "https://kdums.edu.ng"
+  },
+  {
+    "id": "0149331a-365d-495b-aff1-d60b0babb1d5",
+    "name": "Delta State University, Abraka",
+    "slug": "delta-state-university-abraka",
+    "website_url": "https://delsu.edu.ng"
+  },
+  {
+    "id": "8c738833-3612-4d34-8ac1-6fbe2b560072",
+    "name": "Delta University of Science and Technology, Ozoro",
+    "slug": "delta-university-of-science-and-technology-ozoro",
+    "website_url": "https://dsust.edu.ng"
+  },
+  {
+    "id": "4ad5b10e-b623-4531-a52a-388534f3a519",
+    "name": "Dennis Osadebe University, Asaba",
+    "slug": "dennis-osadebe-university-asaba",
+    "website_url": "https://dou.edu.ng"
+  },
+  {
+    "id": "2cd040a9-bac6-48f7-bb66-26e385708b25",
+    "name": "Dominican University, Ibadan, Oyo State",
+    "slug": "dominican-university-ibadan-oyo-state",
+    "website_url": "https://dui.edu.ng"
+  },
+  {
+    "id": "4e414284-1104-401e-a921-dfc105847504",
+    "name": "Dominion University, Ibadan, Oyo State",
+    "slug": "dominion-university-ibadan-oyo-state",
+    "website_url": "https://dominionuniversity.edu.ng"
+  },
+  {
+    "id": "1e6dc76d-f850-424d-93c5-b00f524f064d",
+    "name": "Ebonyi State University of ICT, Science and Technology, Oferekpe, Ebonyi State",
+    "slug": "ebonyi-state-university-of-ict-science-and-technology-oferekpe-ebonyi-state",
+    "website_url": null
+  },
+  {
+    "id": "1a48ace8-d2e8-4172-bcae-2f325d6dfe91",
+    "name": "Ebonyi State University, Abakaliki",
+    "slug": "ebonyi-state-university-abakaliki",
+    "website_url": "https://ebsu.edu.ng"
+  },
+  {
+    "id": "efa4ab82-4d62-44ec-a568-ec86318418fa",
+    "name": "Edo State University, Iyamho",
+    "slug": "edo-state-university-iyamho",
+    "website_url": "https://edouniversity.edu.ng"
+  },
+  {
+    "id": "b57ec206-3995-46b5-9eed-a50ea301f567",
+    "name": "Edusoko University, Bida, Niger State",
+    "slug": "edusoko-university-bida-niger-state",
+    "website_url": null
+  },
+  {
+    "id": "e800fb9f-212e-4f17-9d38-de61b6352996",
+    "name": "Edwin Clark University, Kaigbodo",
+    "slug": "edwin-clark-university-kaigbodo",
+    "website_url": "https://edwinclarkuniversity.edu.ng"
+  },
+  {
+    "id": "0b1c7f29-1c81-407d-8148-0112339bcf9d",
+    "name": "Ekiti State University",
+    "slug": "ekiti-state-university",
+    "website_url": "https://eksu.edu.ng"
+  },
+  {
+    "id": "3ec8341e-cae6-4b44-9595-be2a13564585",
+    "name": "Eko University of Medical and Health Sciences, Ijanikin, Lagos",
+    "slug": "eko-university-of-medical-and-health-sciences-ijanikin-lagos",
+    "website_url": "https://ekounivmed.edu.ng"
+  },
+  {
+    "id": "af3cf89f-ab15-4f92-b6b6-75ed9d2ea502",
+    "name": "El-Amin University, Minna, Niger State",
+    "slug": "el-amin-university-minna-niger-state",
+    "website_url": null
+  },
+  {
+    "id": "9c1dfc1d-3472-4b3c-aa69-d5f11abd7257",
+    "name": "Elizade University, Ilara-Mokin",
+    "slug": "elizade-university-ilara-mokin",
+    "website_url": "https://elizadeuniversity.edu.ng"
+  },
+  {
+    "id": "1afef522-633c-423f-bac1-e4715baa790a",
+    "name": "Elrazi Medical University Yargaya University, Kano State",
+    "slug": "elrazi-medical-university-yargaya-university-kano-state",
+    "website_url": null
+  },
+  {
+    "id": "af99becf-30b0-4206-8ab6-df01008414df",
+    "name": "Emanuel Alayande University of Education, Oyo",
+    "slug": "emanuel-alayande-university-of-education-oyo",
+    "website_url": null
+  },
+  {
+    "id": "924c468a-ede0-4c3b-8b77-1938c7066c83",
+    "name": "Enugu State University of Science and Technology, Enugu",
+    "slug": "enugu-state-university-of-science-and-technology-enugu",
+    "website_url": "https://esut.edu.ng"
+  },
+  {
+    "id": "420b9b3f-d730-44b8-835a-579f44f2a318",
+    "name": "Eranova University, Abuja",
+    "slug": "eranova-university-abuja",
+    "website_url": "https://eranova.edu.ng"
+  },
+  {
+    "id": "16f62558-044a-4064-a66f-9ce6365cff4d",
+    "name": "European University of Nigeria, Duboyi, FCT",
+    "slug": "european-university-of-nigeria-duboyi-fct",
+    "website_url": null
+  },
+  {
+    "id": "ba371008-0ef8-4556-88a0-c7f5ae3c9853",
+    "name": "Euston University, Abakaliki, Ebonyi State",
+    "slug": "euston-university-abakaliki-ebonyi-state",
+    "website_url": null
+  },
+  {
+    "id": "42ab4d87-a9ef-42b5-aec7-bb2ec177bfdf",
+    "name": "Evangel University, Akaeze",
+    "slug": "evangel-university-akaeze",
+    "website_url": "https://evangeluniversity.edu.ng"
+  },
+  {
+    "id": "0b5b6463-335a-4fd0-9b24-bdbed4c44336",
+    "name": "Federal University Gashua, Yobe",
+    "slug": "federal-university-gashua-yobe",
+    "website_url": "https://fugashua.edu.ng"
+  },
+  {
+    "id": "b2a0a648-952b-47f1-b4fd-a377e87b2af4",
+    "name": "Federal University of Agriculture and Developmental Studies, Iragbuji, Osun State",
+    "slug": "federal-university-of-agriculture-and-developmental-studies-iragbuji-osun-state",
+    "website_url": null
+  },
+  {
+    "id": "2a43ee51-6527-41e7-8670-907e133fa474",
+    "name": "Federal University of Agriculture and Technology, Obio-Akpa, Akwa Ibom State",
+    "slug": "federal-university-of-agriculture-and-technology-obio-akpa-akwa-ibom-state",
+    "website_url": null
+  },
+  {
+    "id": "6780bb2e-c7e4-4866-bb95-1f092c3608cd",
+    "name": "Federal University of Agriculture and Technology, Okeho, Oyo State",
+    "slug": "federal-university-of-agriculture-and-technology-okeho-oyo-state",
+    "website_url": null
+  },
+  {
+    "id": "37949dc7-7f62-477b-b016-6f8b7c0e9e26",
+    "name": "Federal University of Agriculture, Abeokuta",
+    "slug": "federal-university-of-agriculture-abeokuta",
+    "website_url": "https://unaab.edu.ng"
+  },
+  {
+    "id": "9c2a1d73-d886-476c-8992-e012bbff24a8",
+    "name": "Federal University of Agriculture, Bassam-Biri, Bayelsa",
+    "slug": "federal-university-of-agriculture-bassam-biri-bayelsa",
+    "website_url": null
+  },
+  {
+    "id": "603ac8e6-85e3-461c-ac99-dc9e469bbc7b",
+    "name": "Federal University of Agriculture, Mubi",
+    "slug": "federal-university-of-agriculture-mubi",
+    "website_url": null
+  },
+  {
+    "id": "d2e2d32f-6579-4350-ae38-f7cab2a413e6",
+    "name": "Federal University of Agriculture, Zuru, Kebbi State",
+    "slug": "federal-university-of-agriculture-zuru-kebbi-state",
+    "website_url": null
+  },
+  {
+    "id": "6d31961a-9413-446e-bfd8-f9640d221bed",
+    "name": "Federal University of Allied Health Sciences, Enugu",
+    "slug": "federal-university-of-allied-health-sciences-enugu",
+    "website_url": "https://fuahse.edu.ng"
+  },
+  {
+    "id": "1971ead2-d710-461a-abbc-67f5e8a3fae4",
+    "name": "Federal University of Applied Sciences, Kachia, Kaduna State",
+    "slug": "federal-university-of-applied-sciences-kachia-kaduna-state",
+    "website_url": null
+  },
+  {
+    "id": "c0154c60-4fb6-4bab-8d70-313dbe20083a",
+    "name": "Federal University of Education, Kontagora, Niger State",
+    "slug": "federal-university-of-education-kontagora-niger-state",
+    "website_url": null
+  },
+  {
+    "id": "1b6b9a35-f620-4565-911e-26fe166d3a55",
+    "name": "Federal University of Education, Pankshin, Plateau State",
+    "slug": "federal-university-of-education-pankshin-plateau-state",
+    "website_url": null
+  },
+  {
+    "id": "0f06e207-533f-457f-8218-6fd6cfa97a1d",
+    "name": "Federal University of Education, Zaria, Kaduna State",
+    "slug": "federal-university-of-education-zaria-kaduna-state",
+    "website_url": null
+  },
+  {
+    "id": "b57189ff-e9eb-4d1a-bdfc-d272ea4c2fb5",
+    "name": "Federal University of Environment and Technology, Tai Town, Ogoniland, Rivers State",
+    "slug": "federal-university-of-environment-and-technology-tai-town-ogoniland-rivers-state",
+    "website_url": null
+  },
+  {
+    "id": "29aa0169-78c6-4142-9122-b8f3485688d0",
+    "name": "Federal University of Health Science and Technology, Tsafe",
+    "slug": "federal-university-of-health-science-and-technology-tsafe",
+    "website_url": null
+  },
+  {
+    "id": "d571012a-c8b1-4005-b5e7-0c58a6ae086b",
+    "name": "Federal University of Health Sciences, Azare, Bauchi State",
+    "slug": "federal-university-of-health-sciences-azare-bauchi-state",
+    "website_url": null
+  },
+  {
+    "id": "b15bd023-b5f9-4c14-97f2-683f03abe226",
+    "name": "Federal University of Health Sciences, Ila Orangun, Osun State",
+    "slug": "federal-university-of-health-sciences-ila-orangun-osun-state",
+    "website_url": null
+  },
+  {
+    "id": "83937ebf-4930-4893-ac6d-6ae3ffa37424",
+    "name": "Federal University of Health Sciences, Katsina",
+    "slug": "federal-university-of-health-sciences-katsina",
+    "website_url": null
+  },
+  {
+    "id": "69413a29-7009-4cf5-a2f4-3e5fbd0c19e7",
+    "name": "Federal University of Health Sciences, Kwale, Delta State",
+    "slug": "federal-university-of-health-sciences-kwale-delta-state",
+    "website_url": null
+  },
+  {
+    "id": "59ee2132-7768-4890-922a-77a3a429b3fb",
+    "name": "Federal University of Health Sciences, Otukpo, Benue State",
+    "slug": "federal-university-of-health-sciences-otukpo-benue-state",
+    "website_url": null
+  },
+  {
+    "id": "db35b9d7-4282-41a4-b8e5-e71d97085cda",
+    "name": "Federal University of Medicine and Medical Sciences, Abeokuta",
+    "slug": "federal-university-of-medicine-and-medical-sciences-abeokuta",
+    "website_url": "https://fummsa.net"
+  },
+  {
+    "id": "349b98a7-7f52-4256-b3e5-91dcb8b5c126",
+    "name": "Federal University of Petroleum Resources, Effurun",
+    "slug": "federal-university-of-petroleum-resources-effurun",
+    "website_url": "https://fupre.edu.ng"
+  },
+  {
+    "id": "818fe1e8-b2ca-4b7e-b9cb-91facdba0672",
+    "name": "Federal University of Science and Technology, Epe",
+    "slug": "federal-university-of-science-and-technology-epe",
+    "website_url": null
+  },
+  {
+    "id": "72128ff0-f954-4bbe-850a-75ca62e3333b",
+    "name": "Federal University of Science and Technology, Kabo, Kano",
+    "slug": "federal-university-of-science-and-technology-kabo-kano",
+    "website_url": "https://fustkabo.edu.ng"
+  },
+  {
+    "id": "549bf540-3861-4959-8328-85d20c8f5b4f",
+    "name": "Federal University of Technology and Environmental Studies, Iyin-Ekiti, Ekiti State",
+    "slug": "federal-university-of-technology-and-environmental-studies-iyin-ekiti-ekiti-state",
+    "website_url": null
+  },
+  {
+    "id": "e6ff5817-df50-4253-b5d3-f5b3271c9b25",
+    "name": "Federal University of Technology, Akure",
+    "slug": "federal-university-of-technology-akure",
+    "website_url": "https://futa.edu.ng"
+  },
+  {
+    "id": "c3608cb3-d0c3-4b78-9baf-ee2b8d2a8107",
+    "name": "Federal University of Technology, Babura, Jigawa State",
+    "slug": "federal-university-of-technology-babura-jigawa-state",
+    "website_url": null
+  },
+  {
+    "id": "7340abaf-9ad8-4f67-928a-11902e8c91f0",
+    "name": "Federal University of Technology, Ikot Abasi, Akwa Ibom State",
+    "slug": "federal-university-of-technology-ikot-abasi-akwa-ibom-state",
+    "website_url": null
+  },
+  {
+    "id": "ff52d99d-91fe-469b-a527-319737646140",
+    "name": "Federal University of Technology, Minna",
+    "slug": "federal-university-of-technology-minna",
+    "website_url": "https://futminna.edu.ng"
+  },
+  {
+    "id": "01806086-d8fb-4001-b7d9-5d1344858277",
+    "name": "Federal University of Technology, Owerri",
+    "slug": "federal-university-of-technology-owerri",
+    "website_url": "https://futo.edu.ng"
+  },
+  {
+    "id": "3f05efc9-fc0b-4b94-ae1e-e81bf2434277",
+    "name": "Federal University of Transportation, Daura, Katsina",
+    "slug": "federal-university-of-transportation-daura-katsina",
+    "website_url": "https://futd.edu.ng"
+  },
+  {
+    "id": "6e211b78-942d-48e5-8797-96536f5dbea0",
+    "name": "Federal University, Birnin Kebbi",
+    "slug": "federal-university-birnin-kebbi",
+    "website_url": "https://fubk.edu.ng"
+  },
+  {
+    "id": "cf2859b4-3af9-43ed-9aa3-95f741f95e37",
+    "name": "Federal University, Dutse, Jigawa State",
+    "slug": "federal-university-dutse-jigawa-state",
+    "website_url": "https://fud.edu.ng"
+  },
+  {
+    "id": "7844b379-9b0f-4e7a-a43f-afb4568a1fe7",
+    "name": "Federal University, Dutsin-Ma, Katsina",
+    "slug": "federal-university-dutsin-ma-katsina",
+    "website_url": "https://fudutsinma.edu.ng"
+  },
+  {
+    "id": "8930bfea-be1a-48d0-8cfd-993af3b2a912",
+    "name": "Federal University, Gusau, Zamfara",
+    "slug": "federal-university-gusau-zamfara",
+    "website_url": "https://fugusau.edu.ng"
+  },
+  {
+    "id": "072f380a-b174-407b-8673-6956bc404d86",
+    "name": "Federal University, Kashere, Gombe State",
+    "slug": "federal-university-kashere-gombe-state",
+    "website_url": "https://fukashere.edu.ng"
+  },
+  {
+    "id": "29002915-ec08-4301-b098-65554d6b59c3",
+    "name": "Federal University, Lafia, Nasarawa State",
+    "slug": "federal-university-lafia-nasarawa-state",
+    "website_url": "https://fulafia.edu.ng"
+  },
+  {
+    "id": "9315c725-8fd2-4280-a9fa-4394e7a32791",
+    "name": "Federal University, Lokoja, Kogi State",
+    "slug": "federal-university-lokoja-kogi-state",
+    "website_url": "https://fulokoja.edu.ng"
+  },
+  {
+    "id": "89b20ade-8ebe-4403-b349-52253de83c2f",
+    "name": "Federal University, Otuoke, Bayelsa",
+    "slug": "federal-university-otuoke-bayelsa",
+    "website_url": "https://fuotuoke.edu.ng"
+  },
+  {
+    "id": "3e1bbbfc-8b79-4481-abc1-8cb37aaa454e",
+    "name": "Federal University, Oye-Ekiti, Ekiti State",
+    "slug": "federal-university-oye-ekiti-ekiti-state",
+    "website_url": "https://fuoye.edu.ng"
+  },
+  {
+    "id": "b9758217-f38e-415a-bf83-01a969cee144",
+    "name": "Federal University, Wukari, Taraba State",
+    "slug": "federal-university-wukari-taraba-state",
+    "website_url": "https://fuwukari.edu.ng"
+  },
+  {
+    "id": "7a37327b-fe48-46b0-8758-1d23819d7de8",
+    "name": "First Technical University, Ibadan",
+    "slug": "first-technical-university-ibadan",
+    "website_url": "https://tech-u.edu.ng"
+  },
+  {
+    "id": "779a6887-3205-4d78-93fa-5d014d975f70",
+    "name": "Fountain University, Oshogbo",
+    "slug": "fountain-university-oshogbo",
+    "website_url": "https://fuo.edu.ng"
+  },
+  {
+    "id": "61fb43cc-c981-4504-92ea-7146d62383b4",
+    "name": "Franco British International University, Kaduna State",
+    "slug": "franco-british-international-university-kaduna-state",
+    "website_url": "https://fbiu.edu.ng"
+  },
+  {
+    "id": "b5498276-545b-4b86-a177-7fbdf565d8d2",
+    "name": "Gerar University of Medical Science, Imope Ijebu, Ogun State",
+    "slug": "gerar-university-of-medical-science-imope-ijebu-ogun-state",
+    "website_url": null
+  },
+  {
+    "id": "aa53c4ac-326e-4466-80f1-b85e45cc26e0",
+    "name": "Glorious Vision University, Ogwa, Edo State",
+    "slug": "glorious-vision-university-ogwa-edo-state",
+    "website_url": "https://sau.edu.ng"
+  },
+  {
+    "id": "5b81b9a6-5cc0-4a11-b6b7-506b3698e70c",
+    "name": "Godday Erewa University, Sapele, Delta State",
+    "slug": "godday-erewa-university-sapele-delta-state",
+    "website_url": null
+  },
+  {
+    "id": "17e7488a-42b3-408d-99ce-9d58a5ae5e8e",
+    "name": "Godfrey Okoye University, Ugwuomu-Nike, Enugu State",
+    "slug": "godfrey-okoye-university-ugwuomu-nike-enugu-state",
+    "website_url": "https://gouni.edu.ng"
+  },
+  {
+    "id": "e9df6a51-0c8a-46c2-b675-b1f414bbe502",
+    "name": "Gombe State University, Gombe",
+    "slug": "gombe-state-university-gombe",
+    "website_url": "https://gsu.edu.ng"
+  },
+  {
+    "id": "6af5e56f-4703-4f2d-85ee-4430450ef832",
+    "name": "Greenfield University, Kaduna",
+    "slug": "greenfield-university-kaduna",
+    "website_url": "https://gfu.edu.ng"
+  },
+  {
+    "id": "e04a01ab-b62a-43d6-b0fc-d0515be4566f",
+    "name": "Greenland University, Jalingo, Taraba State",
+    "slug": "greenland-university-jalingo-taraba-state",
+    "website_url": null
+  },
+  {
+    "id": "317a73a1-3fde-4772-9315-3c6d7170ad22",
+    "name": "Gregory University, Uturu",
+    "slug": "gregory-university-uturu",
+    "website_url": "https://gregoryuniversity.com"
+  },
+  {
+    "id": "5971ec60-9bb5-4cfd-8537-0d1a7858e93d",
+    "name": "Hallmark University, Ijebi Itele, Ogun",
+    "slug": "hallmark-university-ijebi-itele-ogun",
+    "website_url": "https://hallmark.edu.ng"
+  },
+  {
+    "id": "433fce84-67ac-4b8d-bbcd-5bceb48a8654",
+    "name": "Havilla University, Nde-Ikom, Cross River State",
+    "slug": "havilla-university-nde-ikom-cross-river-state",
+    "website_url": "https://havillauniversity.edu.ng"
+  },
+  {
+    "id": "60aee9a9-5e45-4597-8bb8-fc6d0b3ed758",
+    "name": "Hensard University, Toru-Orua, Sagbama, Bayelsa State",
+    "slug": "hensard-university-toru-orua-sagbama-bayelsa-state",
+    "website_url": null
+  },
+  {
+    "id": "6b2f7ab5-c592-4870-8a80-1c42b3843802",
+    "name": "Hezekiah University, Umudi",
+    "slug": "hezekiah-university-umudi",
+    "website_url": "https://hezekiah.edu.ng"
+  },
+  {
+    "id": "b480714a-4781-4be1-b01c-886eedba43ba",
+    "name": "High Flyers University, Ikere-Ekiti, Ekiti State",
+    "slug": "high-flyers-university-ikere-ekiti-ekiti-state",
+    "website_url": null
+  },
+  {
+    "id": "487f8b61-ec2f-4c92-9a9c-22627c37e5b9",
+    "name": "Hillside University of Science and Technology, Okemisi, Ekiti State",
+    "slug": "hillside-university-of-science-and-technology-okemisi-ekiti-state",
+    "website_url": "https://hust.edu.ng"
+  },
+  {
+    "id": "73017669-efba-430d-836c-f4addaceabe3",
+    "name": "Huda University, Gusau, Zamfara State",
+    "slug": "huda-university-gusau-zamfara-state",
+    "website_url": null
+  },
+  {
+    "id": "b46be754-d7e8-47f4-9ffe-e2db42aa9294",
+    "name": "Ibrahim Badamasi Babangida University, Lapai",
+    "slug": "ibrahim-badamasi-babangida-university-lapai",
+    "website_url": "https://ibbu.edu.ng"
+  },
+  {
+    "id": "d0a83005-6b90-4920-a2ee-4a7ba4df5051",
+    "name": "Iconic Open University, Sokoto State",
+    "slug": "iconic-open-university-sokoto-state",
+    "website_url": null
+  },
+  {
+    "id": "f140f54e-607b-40ea-b6b0-21f5f2a19a08",
+    "name": "Igbinedion University, Okada",
+    "slug": "igbinedion-university-okada",
+    "website_url": "https://iuokada.edu.ng"
+  },
+  {
+    "id": "3865278e-c9b4-45b6-9f37-3a9b274823cf",
+    "name": "Ignatius Ajuru University of Education, Rumuolumeni",
+    "slug": "ignatius-ajuru-university-of-education-rumuolumeni",
+    "website_url": "https://iaue.edu.ng"
+  },
+  {
+    "id": "386f3d71-4bd0-4154-97d8-fa0c8fbab1c1",
+    "name": "Imo State University, Owerri",
+    "slug": "imo-state-university-owerri",
+    "website_url": "https://imsu.edu.ng"
+  },
+  {
+    "id": "48ff375e-658c-412b-9fd6-818e144b40af",
+    "name": "Isaac Balami University of Aeronautics and Management, Lagos State",
+    "slug": "isaac-balami-university-of-aeronautics-and-management-lagos-state",
+    "website_url": null
+  },
+  {
+    "id": "fe63b60e-6700-4ab5-af51-a5fe8a695583",
+    "name": "JEFAP University, Suleja, Niger State",
+    "slug": "jefap-university-suleja-niger-state",
+    "website_url": null
+  },
+  {
+    "id": "cd454d9b-bb5d-4b65-8498-9b8a7ba6c4d6",
+    "name": "James Hope University, Lagos, Lagos State",
+    "slug": "james-hope-university-lagos-lagos-state",
+    "website_url": "https://jhu.edu.ng"
+  },
+  {
+    "id": "646b4f2d-6beb-4527-96a4-12eeeedfc6a6",
+    "name": "Jewel University, Gombe State",
+    "slug": "jewel-university-gombe-state",
+    "website_url": null
+  },
+  {
+    "id": "44a4f360-f8b0-4c91-8dfc-41b253f9113a",
+    "name": "Jigawa State University of Medical and Allied Health Sciences, Majia",
+    "slug": "jigawa-state-university-of-medical-and-allied-health-sciences-majia",
+    "website_url": null
+  },
+  {
+    "id": "4129acf1-ead9-4f67-be98-8432f5e0ca49",
+    "name": "Jimoh Babalola University, Ilorin, Kwara State",
+    "slug": "jimoh-babalola-university-ilorin-kwara-state",
+    "website_url": null
+  },
+  {
+    "id": "65f175b4-fec6-43c3-99bf-290ef8de6deb",
+    "name": "Joseph Ayo Babalola University, Ikeji-Arakeji",
+    "slug": "joseph-ayo-babalola-university-ikeji-arakeji",
+    "website_url": "https://jabu.edu.ng"
+  },
+  {
+    "id": "d46e5524-bb8e-419b-93ac-31949c9ea4fc",
+    "name": "Joseph Sarwuan Tarka University, Makurdi",
+    "slug": "joseph-sarwuan-tarka-university-makurdi",
+    "website_url": "https://uam.edu.ng"
+  },
+  {
+    "id": "bf49daf4-bafd-4dd2-ad2d-a5935c7055ed",
+    "name": "Kaduna State University, Kaduna",
+    "slug": "kaduna-state-university-kaduna",
+    "website_url": "https://kasu.edu.ng"
+  },
+  {
+    "id": "aa7c2ada-dbd7-45f3-8c6f-7e5c9844e44d",
+    "name": "Karl-Kumm University, Vom, Plateau State",
+    "slug": "karl-kumm-university-vom-plateau-state",
+    "website_url": null
+  },
+  {
+    "id": "2ec6d624-0300-4ac2-b374-bf77d1c81508",
+    "name": "Kashim Ibrahim (formerly Bornu State) University, Maiduguri",
+    "slug": "kashim-ibrahim-formerly-bornu-state-university-maiduguri",
+    "website_url": null
+  },
+  {
+    "id": "de93573e-ceca-4802-a0ef-87449d2b7d2f",
+    "name": "Kebbi State University of Science and Technology, Aliero",
+    "slug": "kebbi-state-university-of-science-and-technology-aliero",
+    "website_url": "https://ksusta.edu.ng"
+  },
+  {
+    "id": "53becf73-c484-4c75-9fcc-439c8b70d991",
+    "name": "Kevin Eze University, Mgbowo, Enugu State",
+    "slug": "kevin-eze-university-mgbowo-enugu-state",
+    "website_url": null
+  },
+  {
+    "id": "895d7892-9318-41b0-bd6b-249e7bb95d14",
+    "name": "Khalifa Isiyaku Rabiu University, Kano",
+    "slug": "khalifa-isiyaku-rabiu-university-kano",
+    "website_url": null
+  },
+  {
+    "id": "c8c6ed5f-c9e6-4d3c-b764-b2d2f89522eb",
+    "name": "Kings University, Ode Omu",
+    "slug": "kings-university-ode-omu",
+    "website_url": "https://kingsuniversity.edu.ng"
+  },
+  {
+    "id": "78be2991-e973-4a09-a5a1-af6e9fbc6f86",
+    "name": "Kingsley Ozumba Mbadiwe University, Ogboko, Imo State",
+    "slug": "kingsley-ozumba-mbadiwe-university-ogboko-imo-state",
+    "website_url": "https://komu.edu.ng"
+  },
+  {
+    "id": "cffd3882-6a98-45a0-9fde-073442cc565c",
+    "name": "Kogi State University, Kabba",
+    "slug": "kogi-state-university-kabba",
+    "website_url": null
+  },
+  {
+    "id": "20ce64f4-16cf-47fb-ac34-fb7e5711eee0",
+    "name": "Kola Daisi University, Ibadan, Oyo State",
+    "slug": "kola-daisi-university-ibadan-oyo-state",
+    "website_url": "https://koladaisiuniversity.edu.ng"
+  },
+  {
+    "id": "4f646c2a-6295-4f04-8207-a56276f43a19",
+    "name": "Kwara State University of Education, Ilorin, Kwara State",
+    "slug": "kwara-state-university-of-education-ilorin-kwara-state",
+    "website_url": null
+  },
+  {
+    "id": "28eb13f4-6d38-4248-8649-e37b04b1a77b",
+    "name": "Kwara State University, Ilorin",
+    "slug": "kwara-state-university-ilorin",
+    "website_url": "https://kwasu.edu.ng"
+  },
+  {
+    "id": "9946564f-ba62-4e2c-8cf6-9ac091039d1b",
+    "name": "Kwararafa University, Wukari",
+    "slug": "kwararafa-university-wukari",
+    "website_url": "https://kwararafauniversity.edu.ng"
+  },
+  {
+    "id": "e2fa626e-88a9-4821-a696-544a3a87ac48",
+    "name": "Ladoke Akintola University of Technology, Ogbomoso",
+    "slug": "ladoke-akintola-university-of-technology-ogbomoso",
+    "website_url": "https://lautech.edu.ng"
+  },
+  {
+    "id": "b6e2cc67-38b4-40e6-834f-08346200511c",
+    "name": "Lagos State University of Education, Ijanikin",
+    "slug": "lagos-state-university-of-education-ijanikin",
+    "website_url": null
+  },
+  {
+    "id": "05d88410-caa3-4072-93c0-cdb5318ff706",
+    "name": "Lagos State University of Science and Technology, Ikorodu",
+    "slug": "lagos-state-university-of-science-and-technology-ikorodu",
+    "website_url": null
+  },
+  {
+    "id": "3eca5e17-c849-4a1b-aac4-ba03abb9289e",
+    "name": "Lagos State University, Ojo",
+    "slug": "lagos-state-university-ojo",
+    "website_url": "https://lasu.edu.ng"
+  },
+  {
+    "id": "88247b32-7924-4b41-bb96-1e1995825b9a",
+    "name": "Landmark University, Omu-Aran",
+    "slug": "landmark-university-omu-aran",
+    "website_url": "https://lmu.edu.ng"
+  },
+  {
+    "id": "490f9ed5-c407-4cdd-a443-5fc40e9a580e",
+    "name": "Lead City University, Ibadan",
+    "slug": "lead-city-university-ibadan",
+    "website_url": "https://lcu.edu.ng"
+  },
+  {
+    "id": "48c3bbf7-a958-40dc-b23f-5904e12cf11e",
+    "name": "Leadership University, Abuja FCT",
+    "slug": "leadership-university-abuja-fct",
+    "website_url": null
+  },
+  {
+    "id": "b98cd599-a796-4db7-8b8a-09f22f89bfa5",
+    "name": "Legacy University, Okija, Anambra State",
+    "slug": "legacy-university-okija-anambra-state",
+    "website_url": "https://legacyuniversity.edu.ng"
+  },
+  {
+    "id": "8a6e556e-e3c6-4be7-b979-2ab9e9c5fee7",
+    "name": "Lens University, Ilemona, Kwara State",
+    "slug": "lens-university-ilemona-kwara-state",
+    "website_url": null
+  },
+  {
+    "id": "322353b3-a07a-48df-9d91-67dbccb9ef13",
+    "name": "Lighthouse University, Evbobanosa, Edo State",
+    "slug": "lighthouse-university-evbobanosa-edo-state",
+    "website_url": null
+  },
+  {
+    "id": "645d4de4-c168-49fd-8205-bceecd7cdac2",
+    "name": "Lux Mundi University, Umuahia, Abia State",
+    "slug": "lux-mundi-university-umuahia-abia-state",
+    "website_url": null
+  },
+  {
+    "id": "f7b49fff-c21a-470b-9792-1d7e9dbf7ccb",
+    "name": "Madonna University, Okija",
+    "slug": "madonna-university-okija",
+    "website_url": "https://madonnauniversity.edu.ng"
+  },
+  {
+    "id": "b733f4f5-4edc-49df-a427-bb0dda315b2f",
+    "name": "Maduka University, Ekwegbe, Enugu State",
+    "slug": "maduka-university-ekwegbe-enugu-state",
+    "website_url": null
+  },
+  {
+    "id": "3d7e98af-a187-4ca8-b6b5-47804ee1e712",
+    "name": "Maranatha University, Lagos",
+    "slug": "maranatha-university-lagos",
+    "website_url": null
+  },
+  {
+    "id": "cdf52d4d-54f4-4819-94f3-8b0a377ba18a",
+    "name": "Margaret Lawrence University, Umunede, Delta State",
+    "slug": "margaret-lawrence-university-umunede-delta-state",
+    "website_url": null
+  },
+  {
+    "id": "ed746a8d-f9d2-4737-a637-a38979bb59b3",
+    "name": "Maria Assumpta University, Owerri, Imo State",
+    "slug": "maria-assumpta-university-owerri-imo-state",
+    "website_url": null
+  },
+  {
+    "id": "f5042783-301b-41f7-8049-62cf37cd0b7c",
+    "name": "Maryam Abacha American University of Nigeria, Kano State",
+    "slug": "maryam-abacha-american-university-of-nigeria-kano-state",
+    "website_url": "https://maaun.edu.ng"
+  },
+  {
+    "id": "a5740da0-a051-4c6f-a17a-bc89aed0f7d1",
+    "name": "Mcpherson University, Seriki Sotayo, Ajebo",
+    "slug": "mcpherson-university-seriki-sotayo-ajebo",
+    "website_url": "https://mcu.edu.ng"
+  },
+  {
+    "id": "8a1d9429-1178-4866-aee7-161094e4aa1a",
+    "name": "Mercy Medical University, Iwo, Ogun State",
+    "slug": "mercy-medical-university-iwo-ogun-state",
+    "website_url": null
+  },
+  {
+    "id": "b80b5397-e9e0-4450-9c95-71f97ead9080",
+    "name": "Mewar International University, Masaka, Nasarawa State",
+    "slug": "mewar-international-university-masaka-nasarawa-state",
+    "website_url": "https://miu.edu.ng"
+  },
+  {
+    "id": "d1a7eefc-885f-4c5c-9eba-0898911fc3cb",
+    "name": "Michael Okpara University of Agriculture, Umudike",
+    "slug": "michael-okpara-university-of-agriculture-umudike",
+    "website_url": "https://mouau.edu.ng"
+  },
+  {
+    "id": "f3619678-5065-4f7a-8423-db1c05a5ca35",
+    "name": "Micheal and Cecilia Ibru University",
+    "slug": "micheal-and-cecilia-ibru-university",
+    "website_url": "https://mciu.edu.ng"
+  },
+  {
+    "id": "32abf2aa-cb47-46d2-8032-6bd36f111dd3",
+    "name": "Millenium Crest University, Ikare Akoko, Ondo State",
+    "slug": "millenium-crest-university-ikare-akoko-ondo-state",
+    "website_url": null
+  },
+  {
+    "id": "9bcf430f-f1c9-4791-b3e0-dbffe9d92a92",
+    "name": "Minaret University, Ikirun, Osun State",
+    "slug": "minaret-university-ikirun-osun-state",
+    "website_url": null
+  },
+  {
+    "id": "1643f8b5-76c7-41e4-824b-d56ed3787b3e",
+    "name": "Miva Open University, Abuja FCT",
+    "slug": "miva-open-university-abuja-fct",
+    "website_url": "https://miva.university"
+  },
+  {
+    "id": "35755cb4-b92e-43c6-aec4-e356d4cef6b3",
+    "name": "Modibbo Adama University of Technology, Yola",
+    "slug": "modibbo-adama-university-of-technology-yola",
+    "website_url": "https://mautech.edu.ng"
+  },
+  {
+    "id": "365a0615-4d42-42ad-9a0e-0420c7b5d450",
+    "name": "Monarch University, Iyesi-Ota, Ogun State",
+    "slug": "monarch-university-iyesi-ota-ogun-state",
+    "website_url": null
+  },
+  {
+    "id": "d77b0edf-3323-4a48-8f5c-aedcd27fd7e5",
+    "name": "Moshood Abiola University of Science and Technology, Abeokuta",
+    "slug": "moshood-abiola-university-of-science-and-technology-abeokuta",
+    "website_url": null
+  },
+  {
+    "id": "2e2f3ac4-e80e-4f71-a1bf-7494bf58a5ce",
+    "name": "Mountain Top University",
+    "slug": "mountain-top-university",
+    "website_url": "https://mtu.edu.ng"
+  },
+  {
+    "id": "08b62850-76f1-43f3-960c-b7fee5dc7e15",
+    "name": "Mudiame University, Irrua, Edo State",
+    "slug": "mudiame-university-irrua-edo-state",
+    "website_url": null
+  },
+  {
+    "id": "a745c6f6-8f05-429b-9623-2adbaef7cc1f",
+    "name": "Muhammad Kamalud University, Kwara",
+    "slug": "muhammad-kamalud-university-kwara",
+    "website_url": null
+  },
+  {
+    "id": "4c2a338b-7d50-43dc-ba4f-406e15f3dacb",
+    "name": "Nasarawa State University, Keffi",
+    "slug": "nasarawa-state-university-keffi",
+    "website_url": "https://nsuk.edu.ng"
+  },
+  {
+    "id": "8f88f2c6-47d8-4fd8-99f6-59dfc65d0c4c",
+    "name": "National Open University of Nigeria, Abuja",
+    "slug": "national-open-university-of-nigeria-abuja",
+    "website_url": "https://nou.edu.ng"
+  },
+  {
+    "id": "a4285e20-ef82-478c-b4d1-155543aae674",
+    "name": "National University of Science and Technology, Abuja",
+    "slug": "national-university-of-science-and-technology-abuja",
+    "website_url": null
+  },
+  {
+    "id": "42994557-b3c8-4a17-8105-512d32a5fc92",
+    "name": "New City University, Ayetoro, Ogun State",
+    "slug": "new-city-university-ayetoro-ogun-state",
+    "website_url": null
+  },
+  {
+    "id": "02a2f784-1ee1-4ad4-82c3-82efa6add277",
+    "name": "Newgate University, Minna, Niger State",
+    "slug": "newgate-university-minna-niger-state",
+    "website_url": null
+  },
+  {
+    "id": "28101fd0-9543-44d0-9afe-4987dde96c0e",
+    "name": "Niger Delta University, Yenagoa",
+    "slug": "niger-delta-university-yenagoa",
+    "website_url": "https://ndu.edu.ng"
+  },
+  {
+    "id": "d82515b5-3ecf-4377-8550-720e63601df1",
+    "name": "Nigeria Police Academy, Wudil",
+    "slug": "nigeria-police-academy-wudil",
+    "website_url": "https://polac.edu.ng"
+  },
+  {
+    "id": "0b1a53a8-6d5d-4476-8559-e592e602ebef",
+    "name": "Nigerian Army University, Biu",
+    "slug": "nigerian-army-university-biu",
+    "website_url": "https://naub.edu.ng"
+  },
+  {
+    "id": "51a42e1c-2cfc-4e24-9861-2aedab612fa7",
+    "name": "Nigerian British University, Asa, Abia State",
+    "slug": "nigerian-british-university-asa-abia-state",
+    "website_url": "https://nbu.edu.ng"
+  },
+  {
+    "id": "09e7382b-63a2-4d36-9483-73fe377e762e",
+    "name": "Nigerian Defence Academy, Kaduna",
+    "slug": "nigerian-defence-academy-kaduna",
+    "website_url": "https://nda.edu.ng"
+  },
+  {
+    "id": "b5d8db2f-2afc-499f-86dc-c722815c979d",
+    "name": "Nigerian Maritime University, Okerenkoko, Delta State",
+    "slug": "nigerian-maritime-university-okerenkoko-delta-state",
+    "website_url": "https://nmu.edu.ng"
+  },
+  {
+    "id": "9365ebf4-12c3-4e30-a005-c28b96c0656c",
+    "name": "Nigerian University of Technology and Management, Apapa, Lagos State",
+    "slug": "nigerian-university-of-technology-and-management-apapa-lagos-state",
+    "website_url": null
+  },
+  {
+    "id": "ecb11db0-3816-4dcf-b166-933d77c8aae8",
+    "name": "Nile University of Nigeria, Abuja",
+    "slug": "nile-university-of-nigeria-abuja",
+    "website_url": "https://nileuniversity.edu.ng"
+  },
+  {
+    "id": "fcdbd94b-7513-4544-bb1d-27f657bb5c74",
+    "name": "Nnamdi Azikiwe University, Awka",
+    "slug": "nnamdi-azikiwe-university-awka",
+    "website_url": "https://unizik.edu.ng"
+  },
+  {
+    "id": "40e9c295-d14e-4980-b301-bbf3b1a2d6f9",
+    "name": "North Eastern University, Gombe",
+    "slug": "north-eastern-university-gombe",
+    "website_url": "https://pru.edu.ng"
+  },
+  {
+    "id": "34eaea21-a8c3-487a-84b2-868eda363e66",
+    "name": "NorthWest University, Sokoto State",
+    "slug": "northwest-university-sokoto-state",
+    "website_url": "https://nwus.edu.ng"
+  },
+  {
+    "id": "73f2f4b0-97ce-445e-8954-eee46318f779",
+    "name": "Northwest University, Kano",
+    "slug": "northwest-university-kano",
+    "website_url": "https://nwu.edu.ng"
+  },
+  {
+    "id": "53a80890-6ea0-4f1d-8bbd-73796e214e32",
+    "name": "Novena University, Ogume",
+    "slug": "novena-university-ogume",
+    "website_url": "https://novenauniversity.edu.ng"
+  },
+  {
+    "id": "de8f07c9-5f53-40c9-b283-02fbf87e3486",
+    "name": "Obafemi Awolowo University, Ile-Ife",
+    "slug": "obafemi-awolowo-university-ile-ife",
+    "website_url": "https://oauife.edu.ng"
+  },
+  {
+    "id": "f322ee6f-52e2-4f36-b836-7de2802f9848",
+    "name": "Obong University, Obong Ntak",
+    "slug": "obong-university-obong-ntak",
+    "website_url": "https://obonguniversity.net"
+  },
+  {
+    "id": "2e3d89fd-df1e-4b77-a4d5-7ef2d94e5f65",
+    "name": "Oduduwa University, Ipetumodu, Osun State",
+    "slug": "oduduwa-university-ipetumodu-osun-state",
+    "website_url": "https://oduduwauniversity.edu.ng"
+  },
+  {
+    "id": "b0b15f45-3896-4eff-84c4-f66acbe64703",
+    "name": "Ojaja University, Eiyenkorin, Kwara State",
+    "slug": "ojaja-university-eiyenkorin-kwara-state",
+    "website_url": "https://crownhilluniversity.edu.ng"
+  },
+  {
+    "id": "f18019ad-5a8e-4f3f-91c1-7ed0375a7e35",
+    "name": "Olabisi Onabanjo University, Ago Iwoye",
+    "slug": "olabisi-onabanjo-university-ago-iwoye",
+    "website_url": "https://oouagoiwoye.edu.ng"
+  },
+  {
+    "id": "61d57629-af5b-4256-b201-2d71a11567c7",
+    "name": "Olusegun Agagu University of Science and Technology, Okitipupa, Ondo",
+    "slug": "olusegun-agagu-university-of-science-and-technology-okitipupa-ondo",
+    "website_url": "https://osustech.edu.ng"
+  },
+  {
+    "id": "69696dd2-f34d-4d3c-b696-d5e16a9bdb11",
+    "name": "Omega University, Kaduna",
+    "slug": "omega-university-kaduna",
+    "website_url": null
+  },
+  {
+    "id": "418da455-c0d2-4c83-9f08-ad7c6d0ae1d1",
+    "name": "Osun State University, Osogbo",
+    "slug": "osun-state-university-osogbo",
+    "website_url": "https://uniosun.edu.ng"
+  },
+  {
+    "id": "dca0c30d-3b71-4e82-bdcb-59337371c8fd",
+    "name": "Owolabi University, Oke Ila Orangun",
+    "slug": "owolabi-university-oke-ila-orangun",
+    "website_url": null
+  },
+  {
+    "id": "e237c33c-61ef-4efd-abb9-700b32543791",
+    "name": "PAMO University of Medical Sciences, Port Harcourt",
+    "slug": "pamo-university-of-medical-sciences-port-harcourt",
+    "website_url": "https://pums.edu.ng"
+  },
+  {
+    "id": "1b300a3c-7dba-4a0a-b964-bb4fac8e2b20",
+    "name": "Pan-Atlantic University, Lagos",
+    "slug": "pan-atlantic-university-lagos",
+    "website_url": "https://pau.edu.ng"
+  },
+  {
+    "id": "bc665a0e-b0e4-4de1-ad68-ad38899d5c6c",
+    "name": "Paul University, Awka, Anambra State",
+    "slug": "paul-university-awka-anambra-state",
+    "website_url": "https://pauluniversity.edu.ng"
+  },
+  {
+    "id": "bb0c64b2-e54e-4470-9ce0-714ed3c215aa",
+    "name": "PeaceLand University, Enugu State",
+    "slug": "peaceland-university-enugu-state",
+    "website_url": null
+  },
+  {
+    "id": "53a86987-c3e1-4eb4-8142-3875975bde8e",
+    "name": "Pearl University, Calabar, Cross River",
+    "slug": "pearl-university-calabar-cross-river",
+    "website_url": null
+  },
+  {
+    "id": "bf8e6a9e-6001-4f18-8fcc-3ad9b2bc1175",
+    "name": "Peter University, Achina-Onneh, Anambra State",
+    "slug": "peter-university-achina-onneh-anambra-state",
+    "website_url": null
+  },
+  {
+    "id": "76d0348d-12d0-4e05-ad0a-5db5f57294d9",
+    "name": "Philomath University, Kuje, Abuja",
+    "slug": "philomath-university-kuje-abuja",
+    "website_url": null
+  },
+  {
+    "id": "03f8906e-f9e4-43aa-a762-2e8f1b505a68",
+    "name": "Phoenix University, Agwada, Nasarawa State",
+    "slug": "phoenix-university-agwada-nasarawa-state",
+    "website_url": null
+  },
+  {
+    "id": "76c806f9-4021-4010-9a88-284cca521d89",
+    "name": "Plateau State University, Bokkos",
+    "slug": "plateau-state-university-bokkos",
+    "website_url": "https://plasu.edu.ng"
+  },
+  {
+    "id": "f1539442-2964-468e-9b7d-2a96cbcf38e8",
+    "name": "Precious Cornerstone University, Oyo",
+    "slug": "precious-cornerstone-university-oyo",
+    "website_url": "https://pcu.edu.ng"
+  },
+  {
+    "id": "b0dcf2e4-6089-45e1-8f0e-33eba6b9bb2a",
+    "name": "Prime University, Kuje, FCT Abuja",
+    "slug": "prime-university-kuje-fct-abuja",
+    "website_url": null
+  },
+  {
+    "id": "700592e7-78dc-49ad-80cc-8c87d16cb592",
+    "name": "Prince Abubakar Audu University, Anyigba",
+    "slug": "prince-abubakar-audu-university-anyigba",
+    "website_url": "https://ksu.edu.ng"
+  },
+  {
+    "id": "464ef273-5422-43be-8adf-266164abec97",
+    "name": "Rayhaan University, Kebbi",
+    "slug": "rayhaan-university-kebbi",
+    "website_url": null
+  },
+  {
+    "id": "0a31e239-5b42-4b7a-981c-b465e471de51",
+    "name": "Redeemer's University, Ede",
+    "slug": "redeemer-s-university-ede",
+    "website_url": "https://run.edu.ng"
+  },
+  {
+    "id": "64e50c60-a6d8-4758-a5a6-e1863202154f",
+    "name": "Regnum Medical University, Anthony, Lagos State",
+    "slug": "regnum-medical-university-anthony-lagos-state",
+    "website_url": null
+  },
+  {
+    "id": "fa25d783-9858-4a85-86d1-c495192a1af7",
+    "name": "Renaissance University, Enugu",
+    "slug": "renaissance-university-enugu",
+    "website_url": "https://rnu.edu.ng"
+  },
+  {
+    "id": "34cc167c-c026-4c97-8bc2-3708e339a254",
+    "name": "Rev. Fr. Moses Orshio Adasu (formerly Benue State University), Makurdi",
+    "slug": "rev-fr-moses-orshio-adasu-formerly-benue-state-university-makurdi",
+    "website_url": "https://bsum.edu.ng"
+  },
+  {
+    "id": "0b3e22e2-d21f-48d7-9bab-9487428e159f",
+    "name": "Rhema University, Obeama-Asa, Rivers State",
+    "slug": "rhema-university-obeama-asa-rivers-state",
+    "website_url": "https://rhemauniversity.edu.ng"
+  },
+  {
+    "id": "03cfe8af-b766-4dba-883f-e468b7ca1db0",
+    "name": "Ritman University, Ikot Ekpene, Akwa Ibom",
+    "slug": "ritman-university-ikot-ekpene-akwa-ibom",
+    "website_url": "https://ritmanuniversity.edu.ng"
+  },
+  {
+    "id": "40221f7b-5516-4ca0-9602-eca34ee13119",
+    "name": "Rivers State University",
+    "slug": "rivers-state-university",
+    "website_url": "https://rsu.edu.ng"
+  },
+  {
+    "id": "ec195292-4537-43e0-89bc-7a0c1e65d24c",
+    "name": "Saisa University of Medical Sciences and Technology, Sokoto State",
+    "slug": "saisa-university-of-medical-sciences-and-technology-sokoto-state",
+    "website_url": null
+  },
+  {
+    "id": "7e9a62df-7aaa-4f54-bd04-3d2ecf553fa8",
+    "name": "Salem University, Lokoja",
+    "slug": "salem-university-lokoja",
+    "website_url": "https://salemuniversity.edu.ng"
+  },
+  {
+    "id": "7fd87ec6-1264-438c-a1a6-7b389cc158d0",
+    "name": "Sam Maris University, Ondo",
+    "slug": "sam-maris-university-ondo",
+    "website_url": null
+  },
+  {
+    "id": "02e55a9a-711b-421d-88c9-472c3f07995a",
+    "name": "Sani Bello University, Kontagora, Niger State",
+    "slug": "sani-bello-university-kontagora-niger-state",
+    "website_url": null
+  },
+  {
+    "id": "7e62cd00-4ca7-496f-84bf-677d1b169d99",
+    "name": "Shanahan University, Onitsha, Anambra State",
+    "slug": "shanahan-university-onitsha-anambra-state",
+    "website_url": null
+  },
+  {
+    "id": "de923e45-5c44-4d9d-b330-f7bb36d244ff",
+    "name": "Shehu Shagari University of Education, Sokoto",
+    "slug": "shehu-shagari-university-of-education-sokoto",
+    "website_url": null
+  },
+  {
+    "id": "6d4908c4-4897-47c5-8f26-ac74a7a6710e",
+    "name": "Skyline University, Kano",
+    "slug": "skyline-university-kano",
+    "website_url": "https://sun.edu.ng"
+  },
+  {
+    "id": "79bc05f4-212d-4f20-bd68-16cc3daa76f5",
+    "name": "Sokoto State University",
+    "slug": "sokoto-state-university",
+    "website_url": "https://ssu.edu.ng"
+  },
+  {
+    "id": "e6daf0d5-3270-4af9-9e1a-eb2051375bca",
+    "name": "Southern Atlantic University, Uyo, Akwa Ibom State",
+    "slug": "southern-atlantic-university-uyo-akwa-ibom-state",
+    "website_url": null
+  },
+  {
+    "id": "5e78856f-3c21-42c8-a471-f472e3667249",
+    "name": "Southwestern University, Oku Owa",
+    "slug": "southwestern-university-oku-owa",
+    "website_url": "https://southwesternuniversity.edu.ng"
+  },
+  {
+    "id": "f81c41ee-c3a3-4a3d-8b3c-214e9372fcc7",
+    "name": "Spiritan University, Nneochi, Abia State",
+    "slug": "spiritan-university-nneochi-abia-state",
+    "website_url": "https://spiritanuniversity.edu.ng"
+  },
+  {
+    "id": "94b40860-fa23-44dc-be91-e0ff5f34fd3f",
+    "name": "Sports University, Idumuje, Ugboko, Delta State",
+    "slug": "sports-university-idumuje-ugboko-delta-state",
+    "website_url": null
+  },
+  {
+    "id": "923b77c7-d339-4cf2-a67b-9265d583def6",
+    "name": "State University of Medical and Applied Sciences, Igbo-Eno, Enugu",
+    "slug": "state-university-of-medical-and-applied-sciences-igbo-eno-enugu",
+    "website_url": null
+  },
+  {
+    "id": "2ff54cf4-0199-45fe-a398-2940cb05d228",
+    "name": "Sule Lamido University, Kafin Hausa, Jigawa",
+    "slug": "sule-lamido-university-kafin-hausa-jigawa",
+    "website_url": "https://slu.edu.ng"
+  },
+  {
+    "id": "4f90439e-ed8f-40b0-b2c3-606f2ffad0c2",
+    "name": "Summit University, Offa",
+    "slug": "summit-university-offa",
+    "website_url": "https://summituniversity.edu.ng"
+  },
+  {
+    "id": "63011c89-e5f8-4a31-a525-37db2a1c2c7e",
+    "name": "Tai Solarin Federal University of Education, Ijagun, Ijebu Ode",
+    "slug": "tai-solarin-federal-university-of-education-ijagun-ijebu-ode",
+    "website_url": null
+  },
+  {
+    "id": "3cf2e47a-3b57-45d9-b3ea-74cc9fbfd50a",
+    "name": "Tansian University, Umunya",
+    "slug": "tansian-university-umunya",
+    "website_url": "https://tansianuniversity.edu.ng"
+  },
+  {
+    "id": "4d0d5820-59be-4d01-a7b1-64e9233c24b9",
+    "name": "Taraba State University of Tropical Agriculture, Science, Technology and Climate Action, Gembu",
+    "slug": "taraba-state-university-of-tropical-agriculture-science-technology-and-climate-action-gembu",
+    "website_url": null
+  },
+  {
+    "id": "b2e4243d-cd8d-4cb0-9a11-e8a59c72c63e",
+    "name": "Taraba State University, Jalingo",
+    "slug": "taraba-state-university-jalingo",
+    "website_url": "https://tsuniversity.edu.ng"
+  },
+  {
+    "id": "64f9279f-2e4d-4f65-804a-19e73a7c5897",
+    "name": "Tazkiyah University, Kaduna, Kaduna State",
+    "slug": "tazkiyah-university-kaduna-kaduna-state",
+    "website_url": null
+  },
+  {
+    "id": "9461cbc2-ee69-4ce4-bb96-c638a3c0e00b",
+    "name": "The Duke Medical University, Calabar, Cross River State",
+    "slug": "the-duke-medical-university-calabar-cross-river-state",
+    "website_url": null
+  },
+  {
+    "id": "384cf149-8b95-46a7-bb09-0f8ac8c18cb7",
+    "name": "Thomas Adewumi University, Oko-Irese, Kwara State",
+    "slug": "thomas-adewumi-university-oko-irese-kwara-state",
+    "website_url": "https://tau.edu.ng"
+  },
+  {
+    "id": "afd4b845-2005-45fc-8031-60be42e725a6",
+    "name": "Tonine Iredia University of Communication, Benin City, Edo State",
+    "slug": "tonine-iredia-university-of-communication-benin-city-edo-state",
+    "website_url": null
+  },
+  {
+    "id": "357633ac-aff5-4df8-8306-2cabe90b2492",
+    "name": "Topfaith University, Mkpatak, Akwa Ibom State",
+    "slug": "topfaith-university-mkpatak-akwa-ibom-state",
+    "website_url": null
+  },
+  {
+    "id": "43da8975-aad4-41b8-a6d6-46bdf602f3ae",
+    "name": "Transatlantic University of Medine and Health Sciences, Umuchukwu, Anambra State",
+    "slug": "transatlantic-university-of-medine-and-health-sciences-umuchukwu-anambra-state",
+    "website_url": null
+  },
+  {
+    "id": "668be4e4-5a9a-4829-b2ad-0b634c07c703",
+    "name": "Trinity University, Ogun State",
+    "slug": "trinity-university-ogun-state",
+    "website_url": "https://trinityuniversity.edu.ng"
+  },
+  {
+    "id": "e5a5d4bc-b1fb-4716-876a-09f53ab3d65e",
+    "name": "Umar Musa Yar' Adua University, Katsina",
+    "slug": "umar-musa-yar-adua-university-katsina",
+    "website_url": "https://umyu.edu.ng"
+  },
+  {
+    "id": "16c55a47-8cfb-4cfb-861f-fea925200ec0",
+    "name": "Ummah University of Nigeria, Abuja",
+    "slug": "ummah-university-of-nigeria-abuja",
+    "website_url": null
+  },
+  {
+    "id": "977b916c-8057-4018-bcee-d0de35138baf",
+    "name": "Unique Open University, Ojo, Lagos State",
+    "slug": "unique-open-university-ojo-lagos-state",
+    "website_url": null
+  },
+  {
+    "id": "0e08a51b-3393-48fd-8d01-a612930befa7",
+    "name": "University of Abuja, Gwagwalada",
+    "slug": "university-of-abuja-gwagwalada",
+    "website_url": "https://uniabuja.edu.ng"
+  },
+  {
+    "id": "345c648c-6ea5-425d-b0e0-754d9d907968",
+    "name": "University of Aeronautics and Aerospace Engineering, Ezza, Ebonyi State",
+    "slug": "university-of-aeronautics-and-aerospace-engineering-ezza-ebonyi-state",
+    "website_url": null
+  },
+  {
+    "id": "7658bb66-f9fd-4c0d-8298-3e262c0a3620",
+    "name": "University of Africa, Toru Orua, Bayelsa State",
+    "slug": "university-of-africa-toru-orua-bayelsa-state",
+    "website_url": "https://uat.edu.ng"
+  },
+  {
+    "id": "d9688f04-af74-4a2a-b382-37b77e53f502",
+    "name": "University of Agriculture and Environmental Sciences, Umuagwo, Imo State",
+    "slug": "university-of-agriculture-and-environmental-sciences-umuagwo-imo-state",
+    "website_url": "https://uaes.edu.ng"
+  },
+  {
+    "id": "6a79211e-6e85-4d95-be24-976edb26ba58",
+    "name": "University of Benin",
+    "slug": "university-of-benin",
+    "website_url": null
+  },
+  {
+    "id": "88ef8f56-896f-4180-bb7a-5a8328b496fd",
+    "name": "University of Calabar",
+    "slug": "university-of-calabar",
+    "website_url": "https://unical.edu.ng"
+  },
+  {
+    "id": "c440fcfc-3898-4139-9345-91b0d3de5d83",
+    "name": "University of Cross River State, Calabar",
+    "slug": "university-of-cross-river-state-calabar",
+    "website_url": "https://crutech.edu.ng"
+  },
+  {
+    "id": "83a07506-4baa-4e77-a74b-17bf3dd2ebec",
+    "name": "University of Delta, Agbor",
+    "slug": "university-of-delta-agbor",
+    "website_url": "https://unidel.edu.ng"
+  },
+  {
+    "id": "66872103-c563-498b-9910-bb33e4302df9",
+    "name": "University of Fortune, Igbotako, Ondo State",
+    "slug": "university-of-fortune-igbotako-ondo-state",
+    "website_url": null
+  },
+  {
+    "id": "132c9e9c-8740-4f02-91f5-edf71187f253",
+    "name": "University of Ibadan",
+    "slug": "university-of-ibadan",
+    "website_url": "https://ui.edu.ng"
+  },
+  {
+    "id": "eba5c3f2-7f98-4f5b-b3d4-48fe6128830f",
+    "name": "University of Ilesa, Osun State",
+    "slug": "university-of-ilesa-osun-state",
+    "website_url": null
+  },
+  {
+    "id": "be498f9b-bae0-49e9-b4ef-5fd54064a6bb",
+    "name": "University of Ilorin",
+    "slug": "university-of-ilorin",
+    "website_url": "https://unilorin.edu.ng"
+  },
+  {
+    "id": "70b50284-6a3b-4c39-bba0-a264d9f50e8d",
+    "name": "University of Innovation, Science and Technology, Omuma, Imo State",
+    "slug": "university-of-innovation-science-and-technology-omuma-imo-state",
+    "website_url": null
+  },
+  {
+    "id": "be5f2755-9715-4197-9389-ef8fd15e070c",
+    "name": "University of Jos",
+    "slug": "university-of-jos",
+    "website_url": "https://unijos.edu.ng"
+  },
+  {
+    "id": "70447014-6a9e-42b0-beed-e99b1d488d25",
+    "name": "University of Lagos",
+    "slug": "university-of-lagos",
+    "website_url": "https://unilag.edu.ng"
+  },
+  {
+    "id": "2d7d8fa9-ce23-4dd7-949e-a80ac95c4543",
+    "name": "University of Maiduguri",
+    "slug": "university-of-maiduguri",
+    "website_url": "https://unimaid.edu.ng"
+  },
+  {
+    "id": "dd35e887-3286-4a2c-bc55-5e99e06097ce",
+    "name": "University of Maritime Studies, Oron, Akwa Ibom State",
+    "slug": "university-of-maritime-studies-oron-akwa-ibom-state",
+    "website_url": null
+  },
+  {
+    "id": "08f43b9d-1d5b-42cb-927a-3d6ef4928b60",
+    "name": "University of Medical Sciences, Ondo City,",
+    "slug": "university-of-medical-sciences-ondo-city",
+    "website_url": "https://unimed.edu.ng"
+  },
+  {
+    "id": "05bdacd3-82fd-4f4d-882a-584bde948243",
+    "name": "University of Mkar, Mkar",
+    "slug": "university-of-mkar-mkar",
+    "website_url": "https://unimkar.edu.ng"
+  },
+  {
+    "id": "df00c4a5-17b1-4f5a-9f3b-446d6831510f",
+    "name": "University of Nigeria, Nsukka",
+    "slug": "university-of-nigeria-nsukka",
+    "website_url": "https://unn.edu.ng"
+  },
+  {
+    "id": "cec2f5eb-ad6c-476a-8012-9e179ced4a08",
+    "name": "University of Offa, Kwara State",
+    "slug": "university-of-offa-kwara-state",
+    "website_url": null
+  },
+  {
+    "id": "db44ad1d-2717-4353-ae4f-bf60ec1f0149",
+    "name": "University of Port Harcourt",
+    "slug": "university-of-port-harcourt",
+    "website_url": "https://uniport.edu.ng"
+  },
+  {
+    "id": "f17c728d-a20a-43bc-8557-106cc08aeb7e",
+    "name": "University of Uyo",
+    "slug": "university-of-uyo",
+    "website_url": "https://uniuyo.edu.ng"
+  },
+  {
+    "id": "371c50ca-4ee1-40ba-9363-fb8b3c614424",
+    "name": "University on the Niger, Umunya, Anambra State",
+    "slug": "university-on-the-niger-umunya-anambra-state",
+    "website_url": null
+  },
+  {
+    "id": "a404033b-7fb2-49fb-8e44-f3458f38849b",
+    "name": "Usumanu Danfodiyo University",
+    "slug": "usumanu-danfodiyo-university",
+    "website_url": "https://udusok.edu.ng"
+  },
+  {
+    "id": "b85c06cf-e9ce-4e0f-8676-bc4f4aaa4b9e",
+    "name": "Venite University, Iloro-Ekiti, Ekiti State",
+    "slug": "venite-university-iloro-ekiti-ekiti-state",
+    "website_url": null
+  },
+  {
+    "id": "cb2fec00-fbb8-42ff-9e52-1dfd76b36e62",
+    "name": "Veritas University, Abuja",
+    "slug": "veritas-university-abuja",
+    "website_url": "https://veritas.edu.ng"
+  },
+  {
+    "id": "8e748739-3669-4bbc-af35-72a69ca475a7",
+    "name": "Vision University, Ikogbo, Ogun State",
+    "slug": "vision-university-ikogbo-ogun-state",
+    "website_url": null
+  },
+  {
+    "id": "9587ad84-b4a7-46dc-8b2f-897c94d7f166",
+    "name": "Wellspring University, Evbuobanosa, Edo State",
+    "slug": "wellspring-university-evbuobanosa-edo-state",
+    "website_url": "https://wellspringuniversity.net"
+  },
+  {
+    "id": "f12c1252-c516-4726-801a-849d20c78f8e",
+    "name": "Wesley University, Ondo",
+    "slug": "wesley-university-ondo",
+    "website_url": "https://wesleyuni.edu.ng"
+  },
+  {
+    "id": "5a5314da-3f20-49df-9cf2-14e19fd59346",
+    "name": "West Midlands Open University, Ibadan, Oyo State",
+    "slug": "west-midlands-open-university-ibadan-oyo-state",
+    "website_url": null
+  },
+  {
+    "id": "9960125e-8635-4660-b835-af56a9907837",
+    "name": "Western Delta University, Oghara, Delta State",
+    "slug": "western-delta-university-oghara-delta-state",
+    "website_url": "https://wdu.edu.ng"
+  },
+  {
+    "id": "784a6f7c-6d05-435d-85a2-c7c6d91efad1",
+    "name": "Westland University, Iwo, Osun State",
+    "slug": "westland-university-iwo-osun-state",
+    "website_url": null
+  },
+  {
+    "id": "7bea4e36-c704-46e3-8fe0-f6dae3b3e381",
+    "name": "Wigwe University, Isiokpo, Rivers State",
+    "slug": "wigwe-university-isiokpo-rivers-state",
+    "website_url": null
+  },
+  {
+    "id": "2c5d4ef8-dfa6-4090-8a91-c4721509161d",
+    "name": "Yobe State University, Damaturu",
+    "slug": "yobe-state-university-damaturu",
+    "website_url": "https://ysu.edu.ng"
+  },
+  {
+    "id": "ae782d90-d6b2-4137-b388-9cd1079b63a8",
+    "name": "Yusuf Maitama Sule Federal University of Education, Kano",
+    "slug": "yusuf-maitama-sule-federal-university-of-education-kano",
+    "website_url": null
+  },
+  {
+    "id": "f35c7dbf-920a-4cfc-b1a2-52ba4f4e736d",
+    "name": "Zamfara State University",
+    "slug": "zamfara-state-university",
+    "website_url": null
+  }
+]

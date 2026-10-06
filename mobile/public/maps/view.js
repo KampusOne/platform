@@ -102,7 +102,7 @@ function apply(incoming){
   if(validPoint(payload.origin)&&!payload.originId)pins.push(point(payload.origin,{role:'origin'}));
   if(validPoint(payload.destination)&&!payload.selectedId)pins.push(point(payload.destination,{role:'destination'}));
   map.getSource('pins').setData(collection(pins));
-  const routeKey=JSON.stringify(route??null);
+  const routeKey=payload.routeKey??JSON.stringify(route??null);
   if(coords.length>=2&&routeKey!==lastRoute){
     const bounds=coords.reduce((bounds,coordinate)=>bounds.extend(coordinate),new maplibregl.LngLatBounds(coords[0],coords[0]));
     map.fitBounds(bounds,{padding,maxZoom:17,duration:duration()});

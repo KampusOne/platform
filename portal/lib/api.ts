@@ -279,7 +279,7 @@ export const webAuth = {
         body: JSON.stringify({
           ...input,
           acceptedTerms: true,
-          legalVersion: "2026-09-10",
+          legalVersion: "2026-10-06",
         }),
       },
       false,

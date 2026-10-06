@@ -30,21 +30,6 @@ type ProfileResponse = {
   profiles: ProviderFeeProfile[];
   publishedProfiles: Partial<ProviderFeeProfile>[];
 };
-type AccountReview = {
-  ready: boolean;
-  reviewed: boolean;
-  providerMode: string;
-  review: {
-    id: string;
-    providerMode: string;
-    passFeesDisabled: boolean;
-    reviewedAt: string;
-    reviewedBy: string;
-    reason: string;
-    evidence: string;
-    expiresAt: string | null;
-  } | null;
-};
 type PricingAlert = {
   id: string;
   universityId: string;
@@ -154,27 +139,6 @@ export function validProviderProfiles(
     )
   );
 }
-function validAccountReview(value: AccountReview) {
-  return (
-    value &&
-    typeof value.ready === "boolean" &&
-    typeof value.reviewed === "boolean" &&
-    ["live", "test"].includes(value.providerMode) &&
-    (value.review === null ||
-      (value.review &&
-        typeof value.review === "object" &&
-        typeof value.review.passFeesDisabled === "boolean" &&
-        [
-          value.review.id,
-          value.review.providerMode,
-          value.review.reviewedAt,
-          value.review.reviewedBy,
-          value.review.reason,
-          value.review.evidence,
-        ].every((field) => typeof field === "string")))
-  );
-}
-
 export function PaymentPricingControls({
   onProfilesChanged,
 }: {
@@ -191,19 +155,16 @@ function ScopedPaymentPricing({
 }: {
   onProfilesChanged?: () => void;
 }) {
-  const { access, scope, can, scopedPath } = useAdminContext();
+  const { access,scope, can, scopedPath } = useAdminContext();
   const allowed = can("finance.view"),
-    mayApprove = can("finance.review"),
-    mayReviewAccount = mayApprove && Boolean(access?.allUniversities);
+    mayApprove = can("finance.review");
   const [profiles, setProfiles] = useState<ProfileResponse | null>(null);
-  const [account, setAccount] = useState<AccountReview | null>(null);
   const [alerts, setAlerts] = useState<PricingAlert[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [formError, setFormError] = useState("");
-  const [accountError, setAccountError] = useState("");
   const [notice, setNotice] = useState("");
   const [version, setVersion] = useState(0);
-  const [busy, setBusy] = useState<"profile" | "account" | null>(null);
+  const [busy, setBusy] = useState<"profile" | null>(null);
   const [form, setForm] = useState({
     universityId: scope,
     version: "",
@@ -223,13 +184,6 @@ function ScopedPaymentPricing({
     evidence: "",
     confirmedEligibility: false,
   });
-  const [review, setReview] = useState({
-    providerMode: "live",
-    passFeesDisabled: false,
-    reason: "",
-    evidence: "",
-    expiresAt: "",
-  });
   useEffect(() => {
     if (!allowed) return;
     const controller = new AbortController();
@@ -237,18 +191,14 @@ function ScopedPaymentPricing({
       portalApi<ProfileResponse>(scopedPath(`${base}/profiles`), {
         signal: controller.signal,
       }),
-      portalApi<AccountReview>(scopedPath(`${base}/account-review`), {
-        signal: controller.signal,
-      }),
       portalApi<{ ready: boolean; alerts: PricingAlert[] }>(
         scopedPath(`${base}/alerts`),
         { signal: controller.signal },
       ),
     ])
-      .then(([p, a, v]) => {
+      .then(([p, v]) => {
         if (
           !validProviderProfiles(p) ||
-          !validAccountReview(a) ||
           !v ||
           !Array.isArray(v.alerts) ||
           v.alerts.some(
@@ -269,7 +219,6 @@ function ScopedPaymentPricing({
           );
         if (!controller.signal.aborted) {
           setProfiles(p);
-          setAccount(a);
           setAlerts(v.alerts);
           setLoadError("");
         }
@@ -450,78 +399,11 @@ function ScopedPaymentPricing({
       setBusy(null);
     }
   }
-  async function recordAccountReview(event: FormEvent) {
-    event.preventDefault();
-    if (busy || !mayReviewAccount || !account?.ready) return;
-    setAccountError("");
-    setNotice("");
-    if (!review.passFeesDisabled) {
-      setAccountError(
-        "Confirm only after checking that automatic pass-fees is disabled on the selected Paystack account.",
-      );
-      return;
-    }
-    if (
-      review.reason.trim().length < 10 ||
-      review.evidence.trim().length < 10
-    ) {
-      setAccountError(
-        "Record the reason and reviewed account evidence, each at least ten characters.",
-      );
-      return;
-    }
-    setBusy("account");
-    try {
-      const expiresAt = review.expiresAt ? Date.parse(review.expiresAt) : null;
-      if (expiresAt !== null && !Number.isFinite(expiresAt))
-        throw new Error("Enter a valid review expiry date.");
-      const response = await portalApi<{
-        id: string;
-        passFeesDisabled: boolean;
-      }>(`${base}/account-review`, {
-        method: "POST",
-        body: JSON.stringify({
-          ...review,
-          reason: review.reason.trim(),
-          evidence: review.evidence.trim(),
-          expiresAt:
-            expiresAt === null ? null : new Date(expiresAt).toISOString(),
-        }),
-      });
-      if (
-        !response ||
-        typeof response.id !== "string" ||
-        response.passFeesDisabled !== true
-      )
-        throw new Error(
-          "Account review was not confirmed. Refresh before recording another review.",
-        );
-      setReview((previous) => ({
-        ...previous,
-        passFeesDisabled: false,
-        reason: "",
-        evidence: "",
-        expiresAt: "",
-      }));
-      setNotice(
-        "Account review recorded. This attestation does not change Paystack settings.",
-      );
-      setVersion((previous) => previous + 1);
-    } catch (error) {
-      setAccountError(
-        error instanceof Error
-          ? error.message
-          : "The account review could not be recorded.",
-      );
-    } finally {
-      setBusy(null);
-    }
-  }
   if (!allowed) return null;
   return (
     <>
       <section className="panel" aria-labelledby="provider-pricing-heading">
-        <h2 id="provider-pricing-heading">Provider pricing & account review</h2>
+        <h2 id="provider-pricing-heading">Provider pricing</h2>
         <p>
           Use immutable rules for each payment product. Ordinary checkout uses
           local or international online collection; virtual accounts, terminals
@@ -555,171 +437,7 @@ function ScopedPaymentPricing({
             {notice}
           </p>
         ) : null}
-        <h3>Paystack automatic pass-fees</h3>
-        <p>
-          The accepted customer total must equal the initialized checkout
-          amount. Review the actual Paystack account setting before recording
-          that automatic pass-fees is disabled.
-        </p>
-        {account ? (
-          <dl className="detail-list">
-            <div>
-              <dt>Account mode</dt>
-              <dd>{account.providerMode === "live" ? "Live" : "Test"}</dd>
-            </div>
-            <div>
-              <dt>Current review</dt>
-              <dd>
-                {account.reviewed
-                  ? "Recorded for this account mode"
-                  : "Review required"}
-              </dd>
-            </div>
-            {account.review ? (
-              <>
-                <div>
-                  <dt>Last attestation</dt>
-                  <dd>
-                    {account.review.passFeesDisabled
-                      ? "Pass-fees disabled"
-                      : "Pass-fees not confirmed disabled"}{" "}
-                    · {account.review.providerMode}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Reviewed</dt>
-                  <dd>{time(account.review.reviewedAt)}</dd>
-                </div>
-                <div>
-                  <dt>Review reason</dt>
-                  <dd>{account.review.reason}</dd>
-                </div>
-                <div>
-                  <dt>Review expiry</dt>
-                  <dd>
-                    {account.review.expiresAt
-                      ? time(account.review.expiresAt)
-                      : "No recorded expiry"}
-                  </dd>
-                </div>
-              </>
-            ) : null}
-          </dl>
-        ) : null}
-        {mayReviewAccount ? (
-          <form className="form-stack" onSubmit={recordAccountReview}>
-            <fieldset
-              disabled={busy !== null || !account?.ready || Boolean(loadError)}
-            >
-              <legend>Record a new account review</legend>
-              <div className="form-grid">
-                <label>
-                  Review expires at (optional)
-                  <input
-                    type="datetime-local"
-                    value={review.expiresAt}
-                    onChange={(event) =>
-                      setReview((previous) => ({
-                        ...previous,
-                        expiresAt: event.target.value,
-                      }))
-                    }
-                  />
-                  <span className="field-help">
-                    An expired review pauses payment initialization until a new
-                    review is recorded.
-                  </span>
-                </label>
-                <label>
-                  Reviewed account mode
-                  <select
-                    aria-label="Reviewed account mode"
-                    value={review.providerMode}
-                    onChange={(event) => {
-                      setReview((previous) => ({
-                        ...previous,
-                        providerMode: event.target.value,
-                        passFeesDisabled: false,
-                      }));
-                      setAccountError("");
-                    }}
-                  >
-                    <option value="live">Live</option>
-                    <option value="test">Test</option>
-                  </select>
-                </label>
-                <label>
-                  Review reason
-                  <textarea
-                    required
-                    minLength={10}
-                    maxLength={2000}
-                    value={review.reason}
-                    onChange={(event) =>
-                      setReview((previous) => ({
-                        ...previous,
-                        reason: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Account setting evidence
-                  <textarea
-                    required
-                    minLength={10}
-                    maxLength={2000}
-                    value={review.evidence}
-                    onChange={(event) =>
-                      setReview((previous) => ({
-                        ...previous,
-                        evidence: event.target.value,
-                      }))
-                    }
-                  />
-                  <span className="field-help">
-                    Record the reviewed account and setting reference. Do not
-                    enter API keys, card details or credentials.
-                  </span>
-                </label>
-              </div>
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={review.passFeesDisabled}
-                  onChange={(event) => {
-                    setReview((previous) => ({
-                      ...previous,
-                      passFeesDisabled: event.target.checked,
-                    }));
-                    setAccountError("");
-                  }}
-                />
-                I checked this account and confirmed automatic pass-fees is
-                disabled.
-              </label>
-              {accountError ? (
-                <p className="field-error" role="alert">
-                  {accountError}
-                </p>
-              ) : null}
-              <button
-                className="button button--primary"
-                type="submit"
-                disabled={!review.passFeesDisabled}
-              >
-                {busy === "account"
-                  ? "Recording review…"
-                  : "Record reviewed setting"}
-              </button>
-            </fieldset>
-          </form>
-        ) : mayApprove ? (
-          <p className="field-help">
-            Account-wide review requires finance review access across all
-            universities.
-          </p>
-        ) : null}
+        <p className="notice">Paystack confirms the customer’s processing charge at checkout. Payments reconcile automatically against the saved price and actual provider fee.</p>
         <h3>Approved provider versions</h3>
         {profiles?.profiles.length ? (
           <div

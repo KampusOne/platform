@@ -81,6 +81,8 @@ jobs:
         run: node server/scripts/verify-schema-proof.mjs experience
       - name: Guard October 4 correction migrations
         run: node server/scripts/verify-schema-proof.mjs october4
+      - name: Guard October 6 release migrations
+        run: node server/scripts/verify-schema-proof.mjs october6
       - name: Guard October correction migrations
         run: node server/scripts/verify-schema-proof.mjs october
       - name: Verify required production secret names

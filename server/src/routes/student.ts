@@ -1,3 +1,4 @@
+import {acquisitionSchema} from '../lib/acquisition';
 import {isSingleCourseCode,courseCodeIdentity} from "../lib/course-code";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -315,6 +316,7 @@ studentRoutes.patch("/me/onboarding", async (context) => {
     facultyId:z.string().uuid().nullable().optional(),departmentId:z.string().uuid().nullable().optional(),
     admissionYear:z.number().int().min(1950).max(new Date().getFullYear()+1).optional(),
     missingAcademic:missingAcademicSchema.optional(),
+    acquisition:acquisitionSchema.optional(),
   }).refine(v=>{
     if(!v.missingAcademic) return Boolean(v.facultyId&&v.departmentId);
     if(v.missingAcademic.kind==="FACULTY") return true;
@@ -467,6 +469,8 @@ studentRoutes.patch("/me/onboarding", async (context) => {
       updated_at = now()
     where user_id = ${user.id}::uuid and deleted_at is null
   `);
+  if(parsed.data.acquisition)await database(context.env).execute(sql`insert into app_private.user_acquisition(user_id,institution_id,context,source,other_text)
+    values(${user.id}::uuid,${parsed.data.universityId}::uuid,'STUDENT',${parsed.data.acquisition.source},${parsed.data.acquisition.source==='OTHER'?parsed.data.acquisition.other:''}) on conflict(user_id,context) do nothing`);
   return context.json({ status: "complete" });
 });
 

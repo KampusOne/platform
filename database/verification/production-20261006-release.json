@@ -1,0 +1,275 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-06T13:45:48.312Z",
+    "scope": "Continuation of the user-authorized KampusOne release and production migration work. Exact additive migration sources rehearsed and reviewed; fixture money and synthetic accounts rolled back. Paystack account fee setting remains unverified."
+  },
+  "verifiedAt": "2026-10-06T13:45:50.191Z",
+  "rehearsal": {
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "createdAt": "2026-10-03T11:05:15Z",
+    "reusedWithoutReset": true,
+    "verifiedAt": "2026-10-06T13:45:50.191Z",
+    "limitation": "Existing October 3 rehearsal reused without reset; not a fresh production copy. Complete current schema was also tested locally. Production projections and rolled-back fixtures were checked in one repeatable-read transaction."
+  },
+  "checks": {
+    "october6": "passed",
+    "fixturesRolledBack": true,
+    "isolatedBranchRehearsal": "passed",
+    "existingAccountCountsPreserved": true,
+    "mediaAndBookingsPreserved": true,
+    "communityProjectionsPreserved": true,
+    "agentApprovalProjectionsPreserved": true,
+    "bankAndPayoutBoundaryUnchanged": true,
+    "privatePrivileges": "passed",
+    "atomicTransaction": "passed",
+    "exactSourceLedger": "passed",
+    "providerAccountSettingVerified": false
+  },
+  "production": {
+    "before": {
+      "public.users": {
+        "hash": "6caaa1c4f817428408b1112b6a3ad8e7",
+        "count": 16
+      },
+      "public.profiles": {
+        "hash": "5c84ad24563fc470e30a64c3a3493de0",
+        "count": 16
+      },
+      "public.media_objects": {
+        "hash": "cef819d4345e4813166e6a9bb883c4cb",
+        "count": 122
+      },
+      "public.agent_profiles": {
+        "hash": "243bf3d8048f7829d9839172a2d28aa5",
+        "count": 1
+      },
+      "public.student_groups": {
+        "hash": "8ca623be7897bc6da95e2b7a6188b573",
+        "count": 2
+      },
+      "public.payout_requests": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.tutorial_bookings": {
+        "hash": "e9a232ba51b7c35ad3d75d69d3ac500a",
+        "count": 6
+      },
+      "public.agent_applications": {
+        "hash": "5d6c6aa934c8c7994880442ceb79720e",
+        "count": 2
+      },
+      "app_private.kira_checkouts": {
+        "hash": "2701a35192b307f596f3fa2e4945e7af",
+        "count": 3
+      },
+      "public.ledger_transactions": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.student_group_posts": {
+        "hash": "a6fcea7cdae6af4a99f816785e2fe70d",
+        "count": 2
+      },
+      "app_private.verified_people": {
+        "hash": "ee79f482ab13e650a5784d1e8f5e1bbf",
+        "count": 1
+      },
+      "public.student_group_members": {
+        "hash": "206724413f0a9cee2b913195f9e8ab29",
+        "count": 6
+      },
+      "app_private.agent_payout_quotes": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.agent_application_details": {
+        "hash": "eb8cc59152441bdaee9388fe01e33dfa",
+        "count": 1
+      },
+      "app_private.payout_account_setups": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "app_private.agent_manual_approvals": {
+        "hash": "a88d20931224e6dee0fba92aaa4b7c8f",
+        "count": 1
+      },
+      "app_private.agent_payout_settlements": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      }
+    },
+    "after": {
+      "public.users": {
+        "hash": "6caaa1c4f817428408b1112b6a3ad8e7",
+        "count": 16
+      },
+      "public.profiles": {
+        "hash": "5c84ad24563fc470e30a64c3a3493de0",
+        "count": 16
+      },
+      "public.media_objects": {
+        "hash": "cef819d4345e4813166e6a9bb883c4cb",
+        "count": 122
+      },
+      "public.agent_profiles": {
+        "hash": "243bf3d8048f7829d9839172a2d28aa5",
+        "count": 1
+      },
+      "public.student_groups": {
+        "hash": "8ca623be7897bc6da95e2b7a6188b573",
+        "count": 2
+      },
+      "public.payout_requests": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.tutorial_bookings": {
+        "hash": "e9a232ba51b7c35ad3d75d69d3ac500a",
+        "count": 6
+      },
+      "public.agent_applications": {
+        "hash": "5d6c6aa934c8c7994880442ceb79720e",
+        "count": 2
+      },
+      "app_private.kira_checkouts": {
+        "hash": "2701a35192b307f596f3fa2e4945e7af",
+        "count": 3
+      },
+      "public.ledger_transactions": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.student_group_posts": {
+        "hash": "a6fcea7cdae6af4a99f816785e2fe70d",
+        "count": 2
+      },
+      "app_private.verified_people": {
+        "hash": "ee79f482ab13e650a5784d1e8f5e1bbf",
+        "count": 1
+      },
+      "public.student_group_members": {
+        "hash": "206724413f0a9cee2b913195f9e8ab29",
+        "count": 6
+      },
+      "app_private.agent_payout_quotes": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.agent_application_details": {
+        "hash": "eb8cc59152441bdaee9388fe01e33dfa",
+        "count": 1
+      },
+      "app_private.payout_account_setups": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "app_private.agent_manual_approvals": {
+        "hash": "a88d20931224e6dee0fba92aaa4b7c8f",
+        "count": 1
+      },
+      "app_private.agent_payout_settlements": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      }
+    },
+    "security": {
+      "private_relation_grants": "0",
+      "private_public_function_grants": "0",
+      "private_schema_grants": "0",
+      "private_tables_without_rls": "75"
+    },
+    "fixtureSources": [
+      "2026-10-06-functional-acceptance.sql"
+    ],
+    "preservation": {
+      "unchanged": true,
+      "excludedNewColumns": [
+        "student_groups.guidelines",
+        "student_groups.guidelines_version",
+        "student_group_members.nickname"
+      ]
+    }
+  },
+  "migrations": [
+    {
+      "version": "20261006100000_community_subscription_requests",
+      "appliedAt": "2026-10-06T13:45:49.982127+00:00",
+      "appliedBy": "codex-20261006-release",
+      "sourceBlobSha": "824dba83670c134ebba2ae0c0a35834600b60591",
+      "path": "database/neon/migrations/20261006100000_community_subscription_requests.sql",
+      "sha256": "bcc5f48053313d2b24fe697cfc7fdd4273209a4d458002f849ee073f92336045"
+    },
+    {
+      "version": "20261006101000_verified_vendor_publication",
+      "appliedAt": "2026-10-06T13:45:49.982127+00:00",
+      "appliedBy": "codex-20261006-release",
+      "sourceBlobSha": "4b2719e3748368df119332d0531cd82c61946958",
+      "path": "database/neon/migrations/20261006101000_verified_vendor_publication.sql",
+      "sha256": "d40963020af8bbf869c680c8c511f7c6d192e675ce9e7e20abd5f75bfbf82183"
+    },
+    {
+      "version": "20261006102000_large_private_documents",
+      "appliedAt": "2026-10-06T13:45:49.982127+00:00",
+      "appliedBy": "codex-20261006-release",
+      "sourceBlobSha": "9b07a2a2e86ca9150be246e70976b6f585647c3e",
+      "path": "database/neon/migrations/20261006102000_large_private_documents.sql",
+      "sha256": "c64eafd0618a65e92ba770b6ff5571c124cacce7dbb560d9d09e467e52994b53"
+    },
+    {
+      "version": "20261006110000_customer_paid_provider_fees",
+      "appliedAt": "2026-10-06T13:45:49.982127+00:00",
+      "appliedBy": "codex-20261006-release",
+      "sourceBlobSha": "3838a7fcab544561ba303c024c0772c7c729332a",
+      "path": "database/neon/migrations/20261006110000_customer_paid_provider_fees.sql",
+      "sha256": "49b3a7ce0c69d0006eb8440cc965e3d82d80f4615bc955a2a4ee42d93dbe8674"
+    },
+    {
+      "version": "20261006120000_exam_schedules_and_awareness",
+      "appliedAt": "2026-10-06T13:45:49.982127+00:00",
+      "appliedBy": "codex-20261006-release",
+      "sourceBlobSha": "d3eb67a196f559700d5d79b18f796436f9d17137",
+      "path": "database/neon/migrations/20261006120000_exam_schedules_and_awareness.sql",
+      "sha256": "c57c23156e63e4033bbc5d61057ac9473814f62f64af6a4a5d063b2261260b69"
+    },
+    {
+      "version": "20261006130000_acquisition_and_featured_brands",
+      "appliedAt": "2026-10-06T13:45:49.982127+00:00",
+      "appliedBy": "codex-20261006-release",
+      "sourceBlobSha": "e60ee767aa6ac066e1184b26610e65ef1ec71c4a",
+      "path": "database/neon/migrations/20261006130000_acquisition_and_featured_brands.sql",
+      "sha256": "333f1e6b4cf7039baceecbcfd08b283846946d75cdcadf07caa7c238de2f22ab"
+    },
+    {
+      "version": "20261006140000_tutorial_video_storage",
+      "appliedAt": "2026-10-06T13:45:49.982127+00:00",
+      "appliedBy": "codex-20261006-release",
+      "sourceBlobSha": "d1b08a324dca89de9c6dc8514986f6ebbc2a9db1",
+      "path": "database/neon/migrations/20261006140000_tutorial_video_storage.sql",
+      "sha256": "e219c7c4e714eef07ae5e0b568428980b8284cce6d7f70cd23e4e894f4f47299"
+    },
+    {
+      "version": "20261006150000_public_website",
+      "appliedAt": "2026-10-06T13:45:49.982127+00:00",
+      "appliedBy": "codex-20261006-release",
+      "sourceBlobSha": "bdc960afa24fb4d046610195f99b681ff099b58c",
+      "path": "database/neon/migrations/20261006150000_public_website.sql",
+      "sha256": "614ceda92a15715edecc405934fbe61a08c1f070c5654fd034c143a8b0d943d3"
+    },
+    {
+      "version": "20261006160000_multi_source_campus_maps",
+      "appliedAt": "2026-10-06T13:45:49.982127+00:00",
+      "appliedBy": "codex-20261006-release",
+      "sourceBlobSha": "ecf84ce95622ab7204ff9f14817efe87cdc71522",
+      "path": "database/neon/migrations/20261006160000_multi_source_campus_maps.sql",
+      "sha256": "b135ac65f24f6690acc14dc86548853215234c7171856f85302bb4d87cb72fa4"
+    }
+  ]
+}

@@ -16,7 +16,7 @@ import { SkeletonBlock } from "@/src/components/skeleton";
 import { downloadPostMedia } from "@/src/lib/media-downloads";
 import { useToast } from "@/src/components/toast";
 import { readVideoPlaybackSession, writeVideoPlaybackSession } from "@/src/lib/video-playback-session";
-import { isFeedRoutePlaybackActive, subscribeFeedRoutePlayback } from "@/src/lib/feed-video-playback";
+import { isFeedRoutePlaybackActive, subscribeFeedRoutePlayback, isFeedMuted, setFeedMuted, subscribeFeedMute } from "@/src/lib/feed-video-playback";
 import { cachedVideoSource, FAST_VIDEO_BUFFER_OPTIONS } from "@/src/lib/video-source";
 import { createNativeMediaLifetime } from "@/src/lib/native-media-lifetime";
 
@@ -125,7 +125,7 @@ function Video({
     instance.loop = false;
     instance.playbackRate = 1;
     instance.bufferOptions = FAST_VIDEO_BUFFER_OPTIONS;
-    if (playbackMode === "feed-autoplay") instance.muted = true;
+    if (playbackMode === "feed-autoplay") instance.muted = isFeedMuted();
   });
   const lifetime = useMemo(() => createNativeMediaLifetime(), [player]);
   // Expo's hook releases before subsequent passive-effect cleanups. Stop stale
@@ -163,10 +163,10 @@ function Video({
         if (Math.abs(Number(player.currentTime) - remembered.position) > 0.35) {
           player.currentTime = remembered.position;
         }
-        player.muted = remembered.muted;
+        player.muted = isFeedMuted();
         didApplyInitialFeedMute.current = true;
       } else if (!didApplyInitialFeedMute.current) {
-        player.muted = true;
+        player.muted = isFeedMuted();
         didApplyInitialFeedMute.current = true;
       }
       if (!manuallyPausedRef.current) player.play();
@@ -178,6 +178,11 @@ function Video({
       player.play();
     }
   }, [playbackKey, playbackMode, player, lifetime]);
+
+  useEffect(() => {
+    if (playbackMode !== "feed-autoplay") return;
+    return subscribeFeedMute(value => { if (lifetime.isActive()) player.muted = value; });
+  }, [playbackMode, player, lifetime]);
 
   useEffect(() => {
     if (playbackMode !== "feed-autoplay") return;
@@ -195,10 +200,10 @@ function Video({
         if (Math.abs(Number(player.currentTime) - remembered.position) > 0.35) {
           player.currentTime = remembered.position;
         }
-        player.muted = remembered.muted;
+        player.muted = isFeedMuted();
         didApplyInitialFeedMute.current = true;
       } else if (!didApplyInitialFeedMute.current) {
-        player.muted = true;
+        player.muted = isFeedMuted();
         didApplyInitialFeedMute.current = true;
       }
       player.play();
@@ -410,7 +415,8 @@ function Video({
               onPress={(event) => {
                 event.stopPropagation();
                 if (!lifetime.isActive()) return;
-                player.muted = !isMuted;
+                if (playbackMode === "feed-autoplay") setFeedMuted(!isMuted);
+                else player.muted = !isMuted;
               }}
               style={styles.iconButton}
             >

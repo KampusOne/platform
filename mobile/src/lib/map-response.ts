@@ -8,9 +8,10 @@ export type CampusRouteResponse = {
   geometry: {type: 'LineString'; coordinates: Coordinate[]};
   notice: string | null;
   instructions: string[];
+  alternatives?: CampusRouteResponse[];
 };
 /** Do not turn a partial response into a route or pass arbitrary objects to Text. */
-export function readCampusRoute(value: unknown): CampusRouteResponse {
+function readSingleRoute(value: unknown): CampusRouteResponse {
   const data = value as Partial<CampusRouteResponse> | null;
   if (!data || !Number.isFinite(data.distanceMetres) || data.distanceMetres! < 0 || data.distanceMetres! > 100000 ||
       !Number.isFinite(data.durationSeconds) || data.durationSeconds! < 0 ||
@@ -23,4 +24,9 @@ export function readCampusRoute(value: unknown): CampusRouteResponse {
     notice: typeof data.notice === 'string' ? data.notice.slice(0,1000) : null,
     instructions: Array.isArray(data.instructions) ? data.instructions.filter((line): line is string => typeof line === 'string').slice(0,100) : [],
   };
+}
+export function readCampusRoute(value:unknown):CampusRouteResponse{
+ const route=readSingleRoute(value),raw=(value as {alternatives?:unknown}).alternatives;
+ if(Array.isArray(raw))route.alternatives=raw.slice(0,2).flatMap(candidate=>{try{return [readSingleRoute(candidate)];}catch{return [];}});
+ return route;
 }

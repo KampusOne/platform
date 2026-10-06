@@ -15,6 +15,7 @@ type RefundRow = {
   id: string;university_id: string;buyer_user_id: string;status: string;
   provider_refund_id: string | null;original_reference: string;
   original_principal_kobo: number;original_collection_fee_kobo: number;customer_refund_kobo: number;
+  original_gross_kobo: number;
 };
 export const financeRefundRoutes = new Hono<Env>();
 financeRefundRoutes.use("*", requireAuth);
@@ -29,9 +30,12 @@ async function ready(c: Context<Env>) {
 async function scoped(c: Context<Env>, refundId: string, permission: string) {
   await ready(c);
   const r = firstRow(await database(c.env).execute<RefundRow>(sql`
-    select id,university_id,buyer_user_id,status,provider_refund_id,original_reference,
-      original_principal_kobo,original_collection_fee_kobo,customer_refund_kobo
-    from app_private.verified_refund_requests where id=${refundId}::uuid
+    select f.id,f.university_id,f.buyer_user_id,f.status,f.provider_refund_id,f.original_reference,
+      f.original_principal_kobo,f.original_collection_fee_kobo,f.customer_refund_kobo,
+      r.amount_kobo as original_gross_kobo
+    from app_private.verified_refund_requests f join app_private.verified_paystack_receipts r
+      on r.provider_reference=f.original_reference and r.university_id=f.university_id
+      and r.resource_id=f.resource_id and r.purpose=f.resource_type where f.id=${refundId}::uuid
   `));
   if (!r) throw new AppError(404, "NOT_FOUND", "That refund request could not be found.");
   await resolveAdminScope(c.env, currentUser(c), r.university_id, permission);
@@ -119,7 +123,7 @@ financeRefundRoutes.post("/refunds/:id/check", async (c) => {
   if (!allowed?.allowed) throw new AppError(429, "RATE_LIMITED", "Refund verification limit reached. Try again later.");
   const receipt = await verifyPaystackRefund(c.env, {
     providerRefundId: r.provider_refund_id,originalReference: r.original_reference,
-    originalAmountKobo: Number(r.original_principal_kobo),originalFeeKobo: Number(r.original_collection_fee_kobo),
+    originalAmountKobo: Number(r.original_gross_kobo),originalFeeKobo: Number(r.original_collection_fee_kobo),
     customerRefundKobo: Number(r.customer_refund_kobo),
   });
   let result;

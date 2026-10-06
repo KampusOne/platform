@@ -216,7 +216,6 @@ function FinancePolicyEditor() {
     [policyError, setPolicyError] = useState(""),
     [version, setVersion] = useState(0),
     [busy, setBusy] = useState(false);
-  const [paymentSetupVersion, setPaymentSetupVersion] = useState(0);
   const [form, setForm] = useState({
     universityId: scope,
     kind: "STORE",
@@ -606,16 +605,13 @@ function FinancePolicyEditor() {
               </p>
             </section>
           ) : null}
-          <KiraPricePlan
-            onPaymentSetupSaved={() => setPaymentSetupVersion((value) => value + 1)}
-          />
+          <KiraPricePlan />
           <details className="panel">
             <summary>Advanced provider and payment policies</summary>
             <p className="field-help">
               Review detailed provider rates, account attestations and pricing alerts when you need them.
             </p>
             <PaymentPricingControls
-              key={paymentSetupVersion}
               onProfilesChanged={() => {
                 setVersion((value) => value + 1);
                 setPreview(null);

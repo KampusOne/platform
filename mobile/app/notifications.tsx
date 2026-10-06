@@ -54,9 +54,10 @@ export default function Notifications() {
   const [nextCursor,setNextCursor]=useState<string|null>(null);
   const extended=useRef(false);
   const [moreBusy,setMoreBusy]=useState(false);
-  const load = useCallback(async () => {
+  const load = useCallback(async (markSocial=false) => {
     setError("");
     try {
+      if(markSocial)await api('/v1/notifications/read-social', { method: 'POST' });
       const result=await api<{notifications:Notice[];unreadCount:number;nextCursor:string|null}>("/v1/notifications/inbox");
       const incoming=normalizeNotices(result?.notifications);
       setItems(current=>extended.current?[...incoming,...current.filter(n=>!incoming.some(f=>f.id===n.id))]:incoming);
@@ -71,7 +72,7 @@ export default function Notifications() {
       setReady(true);
     }
   }, []);
-  useFocusEffect(useCallback(() => { void load();const timer=setInterval(()=>void load(),20000);return()=>clearInterval(timer); },[load]));
+  useFocusEffect(useCallback(() => { void load(true);const timer=setInterval(()=>void load(),20000);return()=>clearInterval(timer); },[load]));
   async function loadMore(){if(!nextCursor||moreBusy)return;setMoreBusy(true);extended.current=true;try{const result=await api<{notifications:Notice[];nextCursor:string|null}>("/v1/notifications/inbox?before="+encodeURIComponent(nextCursor));const incoming=normalizeNotices(result?.notifications);setItems(current=>[...current,...incoming.filter(n=>!current.some(old=>old.id===n.id))]);setNextCursor(typeof result?.nextCursor==="string"?result.nextCursor:null);}catch{toast("Could not load older notifications","error");}finally{setMoreBusy(false);}}
   async function open(n: Notice) {
     const wasUnread=!n.read_at;

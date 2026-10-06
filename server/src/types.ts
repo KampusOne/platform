@@ -23,6 +23,13 @@ export type Bindings = {
   DATABASE_URL?: string;
   JWT_SECRET?: string;
   OTP_PEPPER?: string;
+  BUNNY_STREAM_API_KEY?:string;
+  BUNNY_STREAM_LIBRARY_ID?:string;
+  BUNNY_STREAM_TOKEN_KEY?:string;
+  VDOCIPHER_API_SECRET?:string;
+  CLOUDINARY_CLOUD_NAME?:string;
+  CLOUDINARY_API_KEY?:string;
+  CLOUDINARY_API_SECRET?:string;
   RESEND_API_KEY?: string;
   RESEND_WEBHOOK_SECRET?: string;
   RESEND_FROM_EMAIL?: string;

@@ -145,7 +145,7 @@ tutorCommerceRoutes.get("/purchases", async (c) => {
     id: string;
     created_at: string;
   }>(sql`
-    select p.id,p.title,p.status,p.amount_kobo,p.listed_kobo as price_kobo,0::integer as buyer_fee_kobo,p.resource_id,
+    select p.id,p.title,p.status,p.amount_kobo,p.listed_kobo as price_kobo,0::integer as buyer_fee_kobo,p.resource_id,r.resource_type,
       null::uuid as listing_id,p.media_object_id,p.tutor_user_id,coalesce(a.display_name,'KampusOne tutor') as tutor_name,
       p.release_at,p.paid_at as access_starts_at,null::timestamptz as access_ends_at,p.created_at,
       p.payment_expires_at,

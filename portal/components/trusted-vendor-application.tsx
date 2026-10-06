@@ -27,6 +27,8 @@ type VendorDraft = {
   whatsapp: string;
   birth: string;
   request: string;
+  acquisition: string;
+  acquisitionOther: string;
   operations: AgentOperations;
 };
 const blank: VendorDraft = {
@@ -39,6 +41,8 @@ const blank: VendorDraft = {
   whatsapp: "",
   birth: "",
   request: "",
+  acquisition: "",
+  acquisitionOther: "",
   operations: emptyOperations,
 };
 const categories = [
@@ -269,6 +273,7 @@ function TrustedVendorForm() {
           phone: draft.phone,
           whatsapp: whatsappSame ? draft.phone : draft.whatsapp,
           operations,
+          ...(draft.acquisition ? {acquisition:{source:draft.acquisition,other:draft.acquisitionOther}} : {}),
           adultAuthorized: true,
           terms: true,
         }),
@@ -285,7 +290,7 @@ function TrustedVendorForm() {
     }
   }
   function text(
-    field: "legalName" | "businessName" | "address" | "campus",
+    field: "legalName" | "businessName" | "address" | "campus" | "acquisitionOther",
     label: string,
     placeholder: string,
     maxLength = 160,
@@ -453,6 +458,8 @@ function TrustedVendorForm() {
               {step === 1 && (
                 <>
                   {text("businessName", "Business name", "e.g. Osas Kitchen")}
+                  <label>Where did you hear about KampusOne? <span>optional</span><select value={draft.acquisition} onChange={event=>update("acquisition",event.target.value)}><option value="">Choose an option</option>{["FACEBOOK","TIKTOK","WHATSAPP","INSTAGRAM","FRIENDS","OTHER"].map(value=><option key={value} value={value}>{({FACEBOOK:"Facebook",TIKTOK:"TikTok",WHATSAPP:"WhatsApp",INSTAGRAM:"Instagram",FRIENDS:"Friends",OTHER:"Other"} as Record<string,string>)[value]}</option>)}</select></label>
+                  {draft.acquisition==="OTHER"&&text("acquisitionOther","Tell us where","How you found KampusOne")}
                   <label>
                     Business category
                     <select

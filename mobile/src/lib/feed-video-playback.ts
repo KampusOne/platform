@@ -56,3 +56,17 @@ export function subscribeFeedRoutePlayback(listener: FeedRoutePlaybackListener):
   listener(feedRoutePlaybackActive);
   return () => feedRoutePlaybackListeners.delete(listener);
 }
+
+// Sound is a feed preference. A user's unmute applies to every following video.
+let feedMuted = true;
+const muteListeners = new Set<(muted: boolean) => void>();
+export function isFeedMuted() { return feedMuted; }
+export function setFeedMuted(value: boolean) {
+  if (value === feedMuted) return;
+  feedMuted = value;
+  for (const listener of muteListeners) listener(value);
+}
+export function subscribeFeedMute(listener: (muted: boolean) => void) {
+  muteListeners.add(listener); listener(feedMuted);
+  return () => { muteListeners.delete(listener); };
+}

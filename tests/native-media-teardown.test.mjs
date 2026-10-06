@@ -73,7 +73,7 @@ function nativeHarness(file, exported = 'default') {
     '@/src/components/toast': { useToast: () => () => {} },
     '@/src/lib/media-downloads': { downloadPostMedia: async () => {} },
     '@/src/lib/video-playback-session': { readVideoPlaybackSession: () => null, writeVideoPlaybackSession() {} },
-    '@/src/lib/feed-video-playback': { isFeedRoutePlaybackActive: () => false,
+    '@/src/lib/feed-video-playback': { isFeedRoutePlaybackActive: () => false, isFeedMuted: () => true, setFeedMuted() {}, subscribeFeedMute: () => () => {},
       subscribeFeedRoutePlayback: (fn) => { routeListeners.push(fn); fn(false); return () => {}; } },
     '@/src/lib/video-source': { cachedVideoSource: (uri) => ({ uri, useCaching: true }), FAST_VIDEO_BUFFER_OPTIONS: {}, postVideoSource },
     '@/src/lib/native-media-lifetime': { createNativeMediaLifetime },

@@ -35,17 +35,17 @@ export default function ImportTimetable() {
   function changed(){key.current=randomUUID();saveKey.current=randomUUID();setError("");}
   async function attach(){if(locked.current)return;const version=generation.current;locked.current=true;setBusy(true);try{const f=await pickAttachment();if(f&&version===generation.current){setAttachment(f);changed();}}catch(e){if(version===generation.current)setError(e instanceof Error?e.message:"Choose your file again.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
   async function scan(){if(locked.current)return;const version=generation.current,owner=account.current;locked.current=true;setBusy(true);setError("");try{
-    const file=attachment?await uploadAttachment(attachment):undefined;if(version!==generation.current)return;setAttachment(file);
+    const file=attachment?await uploadAttachment(attachment,user!.id):undefined;if(version!==generation.current)return;setAttachment(file);
     await writeCache("timetable-draft."+owner,{...draft(),attachment:file}).catch(()=>undefined);
     type ScanResult={entries:Entry[];events?:Event[];documentType?:string;warnings?:string[]};
     let r:ScanResult;
     try {
-      r=await api<ScanResult>("/v1/ai",{method:"POST",timeoutMs:75000,body:JSON.stringify({mode:"timetable",prompt:text,notes,mediaId:file?.mediaId,idempotencyKey:key.current,consent:true})});
+      r=await api<ScanResult>("/v1/ai",{method:"POST",timeoutMs:75000,body:JSON.stringify({mode:"timetable",prompt:text,notes,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
     } catch (caught) {
       const legacyNotesRejected=Boolean(notes.trim())&&caught instanceof ApiError&&caught.status===400&&caught.code==="BAD_REQUEST"&&caught.message==="Check the highlighted information and try again.";
       if(!legacyNotesRejected)throw caught;
       const legacyPrompt=[text.trim(),`Student timetable preferences (filter the visible timetable only; do not invent classes):\n${notes.trim()}`].filter(Boolean).join("\n\n");
-      r=await api<ScanResult>("/v1/ai",{method:"POST",timeoutMs:75000,body:JSON.stringify({mode:"timetable",prompt:legacyPrompt,mediaId:file?.mediaId,idempotencyKey:key.current,consent:true})});
+      r=await api<ScanResult>("/v1/ai",{method:"POST",timeoutMs:75000,body:JSON.stringify({mode:"timetable",prompt:legacyPrompt,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
     }
     if(version!==generation.current)return;setEntries(r.entries.map(e=>({...e,courseCode:e.courseCode??"",venue:e.venue??"",lecturer:e.lecturer??""})));setEvents(r.events??[]);setDocumentType(r.documentType??"class_timetable");setWarnings(r.warnings??[]);setExpanded(null);saveKey.current=randomUUID();
   }catch(e){if(version!==generation.current)return;if(e instanceof ApiError&&e.details?.retryWithNewKey===true)key.current=randomUUID();setError(e instanceof Error?e.message:"Could not read the file. Your draft is kept.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
@@ -66,7 +66,7 @@ export default function ImportTimetable() {
     <View style={{padding:20,borderRadius:18,backgroundColor:theme.surfaceMuted,alignItems:"center",gap:10,marginBottom:16}}>
       <Ionicons name="calendar-outline" size={34} color={theme.brand}/>
       <Text style={{...body,fontFamily:theme.font.semibold,fontSize:18}}>{kind==="calendar"?"Your session, organised":"Your week, organised"}</Text>
-      <Text style={muted}>Photo, PDF or text · up to 8 MB</Text>
+      <Text style={muted}>PDF or text · up to 100 MB · photos up to 8 MB</Text>
       <ToolButton secondary label={attachment?"Replace file":kind==="calendar"?"Choose calendar":"Choose timetable"} disabled={!loaded||busy} onPress={()=>void attach()}/>
     </View>
     {attachment?<View style={{borderWidth:1,borderColor:theme.border,borderRadius:12,padding:12,marginBottom:12,gap:8}}>

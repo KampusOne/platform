@@ -38,21 +38,6 @@ beforeAll(async()=>{
 },60000);
 afterAll(async()=>{await pg?.close();});afterEach(()=>vi.unstubAllGlobals());
 describe('server-owned Kira catalog and accepted quote protections',()=>{
-  it('restores a production checkout from the original approved Kira plan when profiles were never configured',async()=>{
-    expect((await pg.query('select * from app_private.payment_fee_profiles')).rows).toHaveLength(0);
-    await pg.exec(readFileSync(new URL('../../database/neon/migrations/20261004013000_restore_approved_collection_profiles.sql',import.meta.url),'utf8'));
-    const imported=(await pg.query<any>("select * from app_private.payment_fee_profiles where version like 'LEGACY_%' order by approved_at desc")).rows;
-    expect(imported.length).toBeGreaterThan(0);expect(imported[0].approved_by).toBe(admin);
-    const u=await person();const production={...env,ENVIRONMENT:'production',DATABASE_URL:'postgres://synthetic.invalid/db'} as Bindings;
-    const call=(path:string,body:unknown)=>app.request(path,{method:'POST',headers:{'x-user':u,'x-campus':campus,'content-type':'application/json'},body:JSON.stringify(body)},production);
-    const quoted=await call('/ai/subscription-quote',{tier:'pro'});expect(quoted.status).toBe(200);const q=(await quoted.json() as any).quote;
-    // This is an explicit synthetic account attestation in an isolated database.
-    await pg.query("insert into app_private.paystack_account_reviews(provider_mode,pass_fees_disabled,reason,evidence,reviewed_by)values('live',true,'Synthetic checked account setting','Synthetic account fees disabled for this test',$1)",[admin]);
-    const provider=vi.fn(async(_url:string,init:RequestInit)=>{const input=JSON.parse(String(init.body));expect(input.amount).toBe(q.amountKobo);return Response.json({status:true,data:{authorization_url:'https://checkout.paystack.com/synthetic',access_code:'synthetic',reference:input.reference}});});vi.stubGlobal('fetch',provider);
-    const body={requestId:crypto.randomUUID(),consent:true,tier:'pro',quoteId:q.quoteId,expectedAmountKobo:q.amountKobo};
-    const initialized=await call('/ai/subscription-checkout',body);expect(initialized.status).toBe(200);expect((await call('/ai/subscription-checkout',body)).status).toBe(200);expect(provider).toHaveBeenCalledOnce();
-    expect((await pg.query('select * from app_private.collection_payment_pricing')).rows).toHaveLength(1);
-  });
   it('saves a monthly price and immediate percentage offer without manual version or evidence fields',async()=>{
     const response=await req('/finance/kira-plans',admin,{universityId:campus,tier:'pro',amountKobo:600000,discountPercent:25,offerActive:true,collection:fees});
     expect(response.status).toBe(201);const saved=await response.json() as {id:string;price:{amountKobo:number;discountPercent:number}};

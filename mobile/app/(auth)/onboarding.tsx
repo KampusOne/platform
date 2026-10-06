@@ -26,6 +26,7 @@ import {
   TextLink,
 } from "@/src/components/auth-ui";
 import { ApiError, api } from "@/src/lib/api";
+import { readCache, writeCache } from "@/src/lib/device-cache";
 import { theme } from "@/src/theme";
 
 const DEEP_TERRACOTTA = "#A8462E";
@@ -334,21 +335,25 @@ export default function OnboardingScreen() {
   const [birthDate, setBirthDate] = useState("");
   const [matriculationNumber, setMatriculationNumber] = useState("");
   const [currentLevel, setCurrentLevel] = useState("");
+  const [heardSource,setHeardSource]=useState(""),[heardOther,setHeardOther]=useState("");
   const [admissionYear, setAdmissionYear] = useState("");
   const [graduationYear, setGraduationYear] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [draftReady,setDraftReady]=useState(false);
-  useEffect(()=>{if(!user?.id)return;let active=true;void AsyncStorage.getItem(`k1.onboarding.${user.id}`).then(text=>{if(!active||!text)return;try{const saved=JSON.parse(text);setFirstName(saved.firstName??'');setLastName(saved.lastName??'');setUsername(saved.username??'');setBirthDate(saved.birthDate??'');setMatriculationNumber(saved.matriculationNumber??'');setCurrentLevel(saved.currentLevel??'');setAdmissionYear(saved.admissionYear??'');setGraduationYear(saved.graduationYear??'');setUniversityId(saved.universityId??'');setFacultyId(saved.facultyId??'');setDepartmentId(saved.departmentId??'');setCourseId(saved.courseId??'');setStep(Math.max(0,Math.min(2,Number(saved.step)||0)));}catch{}}).catch(()=>{}).finally(()=>{if(active)setDraftReady(true);});return()=>{active=false;};},[user?.id]);
-  useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>void AsyncStorage.setItem(`k1.onboarding.${user.id}`,JSON.stringify({firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step})).catch(()=>{}),300);return()=>clearTimeout(timer);},[draftReady,user?.id,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step]);
+  useEffect(()=>{if(!user?.id)return;let active=true;void AsyncStorage.getItem(`k1.onboarding.${user.id}`).then(text=>{if(!active||!text)return;try{const saved=JSON.parse(text);setHeardSource(saved.heardSource??'');setHeardOther(saved.heardOther??'');setFirstName(saved.firstName??'');setLastName(saved.lastName??'');setUsername(saved.username??'');setBirthDate(saved.birthDate??'');setMatriculationNumber(saved.matriculationNumber??'');setCurrentLevel(saved.currentLevel??'');setAdmissionYear(saved.admissionYear??'');setGraduationYear(saved.graduationYear??'');setUniversityId(saved.universityId??'');setFacultyId(saved.facultyId??'');setDepartmentId(saved.departmentId??'');setCourseId(saved.courseId??'');setStep(Math.max(0,Math.min(2,Number(saved.step)||0)));}catch{}}).catch(()=>{}).finally(()=>{if(active)setDraftReady(true);});return()=>{active=false;};},[user?.id]);
+  useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>void AsyncStorage.setItem(`k1.onboarding.${user.id}`,JSON.stringify({heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step})).catch(()=>{}),300);return()=>clearTimeout(timer);},[draftReady,user?.id,heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step]);
 
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
     setError("");
     try {
+      const cached = await readCache<Catalog>('academic-catalog.institutions');
+      if (cached?.universities?.length) { setCatalog(cached); setCatalogLoading(false); }
       const data = await api<Catalog>("/v1/student/catalog?institutionsOnly=true");
       setCatalog(data);
+      void writeCache('academic-catalog.institutions', data, 30 * 86400_000);
       setUniversityId((current) =>
         data.universities.some((item) => item.id === current) ? current : "",
       );
@@ -367,15 +372,26 @@ export default function OnboardingScreen() {
     void loadCatalog();
   }, [loadCatalog]);
   useEffect(() => {
-    setAcademicStructure(null);
     setStructureError("");
     if (!universityId) {
+      setAcademicStructure(null);
       setStructureLoading(false);
       return;
     }
     let live = true;
+    let hasCachedStructure = false;
     setStructureLoading(true);
-    void api<Catalog>(`/v1/student/catalog?universityId=${encodeURIComponent(universityId)}`)
+    void (async () => {
+      const cached = await readCache<Catalog>('academic-catalog.' + universityId);
+      if (live && cached?.universities?.some(item => item.id === universityId)) {
+        hasCachedStructure = true;
+        setAcademicStructure({ universityId, data: cached });
+        setStructureLoading(false);
+      }
+      const data = await api<Catalog>(`/v1/student/catalog?universityId=${encodeURIComponent(universityId)}`);
+      void writeCache('academic-catalog.' + universityId, data, 30 * 86400_000);
+      return data;
+    })()
       .then((data) => {
         if (!live) return;
         if (!data.universities.some((item) => item.id === universityId)) {
@@ -389,7 +405,7 @@ export default function OnboardingScreen() {
         }
       })
       .catch(() => {
-        if (live) setStructureError("Your school’s departments could not load. Try again, or enter your details for review.");
+        if (live && !hasCachedStructure) setStructureError("Your school’s departments could not load. Try again, or enter your details for review.");
       })
       .finally(() => { if (live) setStructureLoading(false); });
     return () => { live = false; };
@@ -422,16 +438,16 @@ export default function OnboardingScreen() {
   );
 
   useEffect(() => {
-    if (facultyId && !faculties.some((item) => item.id === facultyId))
+    if (!structureLoading && academicStructure?.universityId === universityId && facultyId && !faculties.some((item) => item.id === facultyId))
       setFacultyId("");
-  }, [faculties, facultyId]);
+  }, [faculties, facultyId, structureLoading, academicStructure, universityId]);
   useEffect(() => {
-    if (departmentId && !departments.some((item) => item.id === departmentId))
+    if (!structureLoading && academicStructure?.universityId === universityId && departmentId && !departments.some((item) => item.id === departmentId))
       setDepartmentId("");
-  }, [departments, departmentId]);
+  }, [departments, departmentId, structureLoading, academicStructure, universityId]);
   useEffect(() => {
-    if (!courses.some((item) => item.id === courseId)) setCourseId("");
-  }, [courseId, courses]);
+    if (!structureLoading && academicStructure?.universityId === universityId && courseId && !courses.some((item) => item.id === courseId)) setCourseId("");
+  }, [courseId, courses, structureLoading, academicStructure, universityId]);
   const courseOptions = useMemo<Item[]>(() => courses, [courses]);
 
   const university = catalog?.universities.find(
@@ -499,6 +515,7 @@ export default function OnboardingScreen() {
       await api("/v1/student/me/onboarding", {
         method: "PATCH",
         body: JSON.stringify({
+          ...(heardSource&& (heardSource!=="OTHER"||heardOther.trim())?{acquisition:{source:heardSource,other:heardOther.trim()}}:{}),
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           username: username.trim(),
@@ -902,6 +919,8 @@ export default function OnboardingScreen() {
           />
           {suggestedGraduation && yearOptions.some(item => item.id === suggestedGraduation) ? <Pressable accessibilityRole="button" onPress={() => setGraduationYear(suggestedGraduation)} style={{ paddingVertical: 12 }}><Text style={[styles.help, { color: theme.deepBrand }]}>Use {suggestedGraduation} · {duration}-year programme</Text></Pressable> : null}
 
+          <Selector label="Where did you hear about KampusOne?" selected={heardSource} onSelect={setHeardSource} items={[{id:'FACEBOOK',name:'Facebook'},{id:'TIKTOK',name:'TikTok'},{id:'WHATSAPP',name:'WhatsApp'},{id:'INSTAGRAM',name:'Instagram'},{id:'FRIENDS',name:'Friends'},{id:'OTHER',name:'Other'}]}/>
+          {heardSource==='OTHER'?<AuthField label="Tell us where" icon="chatbubble-outline" value={heardOther} onChangeText={setHeardOther} maxLength={240} placeholder="A society, event or somewhere else"/>:null}
           <View style={styles.summary}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>School</Text>

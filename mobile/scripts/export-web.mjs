@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, copyFileSync } from "node:fs";
+import './bundle-document-reader.mjs';
 mkdirSync('public/maps',{recursive:true});
 for(const name of ['maplibre-gl.mjs','maplibre-gl-shared.mjs','maplibre-gl-worker.mjs','maplibre-gl.css'])copyFileSync(`node_modules/maplibre-gl/dist/${name}`,`public/maps/${name}`);
 const git = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" });

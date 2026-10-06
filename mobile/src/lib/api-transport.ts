@@ -60,7 +60,7 @@ const fallbackApiUrl =
     : configuredFallbackUrl?.replace(/\/$/, "") ?? null;
 let activeApiUrl = apiUrl;
 
-function currentApiUrl() {
+export function currentApiUrl() {
   return Platform.OS === "web" ? apiUrl : activeApiUrl;
 }
 
@@ -337,25 +337,30 @@ async function refreshSession() {
     const restoreOrigin = currentApiUrl();
     const restoreController = new AbortController();
     refreshAbortController = restoreController;
-    refreshPromise = withSessionLock(() => withRequestDeadline(async (signal) => {
-        const refreshToken = await readRefreshToken();
-        // Native sessions live in SecureStore, not browser cookies. A fresh
-        // install or signed-out device has nothing to restore over the network.
-        if (Platform.OS !== "web" && !refreshToken) return null;
-        if (signal.aborted) throw new Error("Session restoration cancelled");
-        const response = await fetch(`${restoreOrigin}/v1/auth/refresh`, {
-          method: "POST",
-          credentials: "include",
-          signal,
-          headers: {
-            "Content-Type": "application/json",
-            "X-Device-Label": "KampusOne mobile",
-          },
+    refreshPromise = withSessionLock(async () => {
+      const refreshToken = await readRefreshToken();
+      if (Platform.OS !== "web" && !refreshToken) return null;
+      const attempt = (origin: string) => withRequestDeadline(async (signal) => {
+        const response = await fetch(`${origin}/v1/auth/refresh`, {
+          method: "POST", credentials: "include", signal,
+          headers: { "Content-Type": "application/json", "X-Device-Label": "KampusOne mobile" },
           body: JSON.stringify(refreshToken ? { refreshToken } : {}),
         });
-        markApiOriginHealthy(restoreOrigin);
-        return parse<Session>(response);
-      }, 12_000, restoreController.signal))
+        const session = await parse<Session>(response);
+        markApiOriginHealthy(origin);
+        return session;
+      }, 10_000, restoreController.signal);
+      try {
+        return await attempt(restoreOrigin);
+      } catch (caught) {
+        if (restoreController.signal.aborted || isExplicitSessionRejection(caught)) throw caught;
+        if (!isConnectionFailure(caught) && !(caught instanceof ApiError && caught.status >= 500)) throw caught;
+        // The server recovers the same rotated successor for 60 seconds, so a
+        // lost refresh response can be retried without creating another session.
+        const alternate = markApiOriginUnavailable(restoreOrigin) ?? restoreOrigin;
+        return attempt(alternate);
+      }
+    })
       .then((session) => session && credentialVersion === versionAtStart ? securelyAcceptSession(session) : session)
       .then((session) => {
         // Do not let an older refresh overwrite a session established while it
@@ -426,7 +431,9 @@ async function request<T>(
     }, remainingTimeoutMs(), parentSignal);
 
   let result: { response: Response; value?: T };
-  const primaryOrigin = currentApiUrl();
+  const binaryUpload = /^(?:PUT|POST)$/.test(method) && /^\/v1\/media(?:\/|\?|$)/.test(path) && init.body && typeof init.body !== "string";
+  const primaryOrigin = binaryUpload && configuredFallbackUrl
+    ? configuredFallbackUrl.replace(/\/$/, "") : currentApiUrl();
   try {
     result = await attempt(primaryOrigin);
   } catch (caught) {
@@ -562,7 +569,7 @@ export const authApi = {
       {
         method: "POST",
         timeoutMs: 35_000,
-        body: JSON.stringify({ ...input, legalVersion: "2026-09-10" }),
+        body: JSON.stringify({ ...input, legalVersion: "2026-10-06" }),
       },
       false,
     );

@@ -1,3 +1,4 @@
+import ExamTimetable from '../exam-timetable';
 import {AcademicImportUsage} from "@/src/components/academic-import-usage";
 import { BulkMenu, BulkToolbar, SelectionCheckbox, useBulkSelection } from "@/src/components/bulk-selection";
 import { InlineLoading } from "@/src/components/skeleton";
@@ -49,6 +50,8 @@ export default function TimetableScreen() {
   const { theme, styles } = useThemeStyles(createStyles);
 
   const currentDay = new Date().getDay();
+  const [examActive,setExamActive]=useState(false);
+  const [showClasses,setShowClasses]=useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [day, setDay] = useState(currentDay);
   const [editing, setEditing] = useState(false);
@@ -72,7 +75,8 @@ export default function TimetableScreen() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const response = await api<{ entries: Entry[] }>("/v1/student/timetable");
+      const [exam,response]=await Promise.all([api<{period:{active:boolean}}>("/v1/exams").catch(()=>null),api<{entries:Entry[]}>("/v1/student/timetable")]);
+      setExamActive(Boolean(exam?.period.active));
       setEntries(
         (Array.isArray(response?.entries) ? response.entries : []).filter(
           (entry) =>
@@ -200,6 +204,7 @@ export default function TimetableScreen() {
     void load();
   }
 
+  if(examActive&&!showClasses)return <View style={{flex:1}}><ExamTimetable onViewClasses={()=>setShowClasses(true)}/><Pressable accessibilityRole="button" onPress={()=>setShowClasses(true)} style={{padding:14,backgroundColor:theme.canvas,alignItems:"center"}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>Manage my class timetable</Text></Pressable></View>;
   return (
     <ProductScreen>
       <View style={styles.header}>

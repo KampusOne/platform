@@ -355,7 +355,7 @@ export default function StudentService() {
                   style={{
                     borderWidth: 4,
                     borderColor: theme.canvas,
-                    borderRadius: 52,
+                    borderRadius: 23,
                     backgroundColor: theme.canvas,
                   }}
                 >
@@ -363,6 +363,7 @@ export default function StudentService() {
                     name={b.display_name}
                     imageUrl={b.profile_image_url}
                     size={88}
+                    square
                   />
                 </View>
                 <Pressable
@@ -504,8 +505,11 @@ export default function StudentService() {
                 style={{
                   flexDirection: "row",
                   flexWrap: "wrap",
-                  gap: 24,
-                  paddingVertical: 17,
+                  gap: 16,
+                  padding: 16,
+                  marginVertical: 17,
+                  borderRadius: 16,
+                  backgroundColor: theme.surfaceMuted,
                 }}
               >
                 <Text style={muted}>
@@ -732,7 +736,12 @@ export default function StudentService() {
                           }
                           style={{
                             width: data.selectedProductId ? "100%" : "47.5%",
-                            marginBottom: 14,
+                            marginBottom: 4,
+                            backgroundColor: theme.surface,
+                            borderWidth: 1,
+                            borderColor: theme.border,
+                            borderRadius: 18,
+                            padding: 9,
                           }}
                         >
                           {item.image_url ? (
@@ -770,6 +779,7 @@ export default function StudentService() {
                               ...body,
                               fontFamily: theme.font.semibold,
                               marginTop: 9,
+                              marginBottom: 4,
                             }}
                           >
                             {item.name}

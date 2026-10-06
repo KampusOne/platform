@@ -2,6 +2,7 @@ import {notificationRuntime} from './notification-runtime';
 import { sql } from "drizzle-orm";
 import { database } from "../lib/database";
 import type { Bindings } from "../types";
+import { renderTransactionalEmail } from "../lib/email-template";
 export async function deliverQueuedNotifications(env: Bindings) {
   if (
     env.UNIFIED_SCHEMA_READY !== "true" ||
@@ -38,6 +39,13 @@ export async function deliverQueuedNotifications(env: Bindings) {
       if(!runtime.email_enabled){await db.execute(sql`update app_private.notification_outbox set state='PENDING',attempts=greatest(attempts-1,0),next_attempt_at=now()+interval '5 minutes' where id=${row.id}::uuid`);continue;}
       const email = recipient.rows[0]?.email;
       if (!email) throw new Error("RECIPIENT_UNAVAILABLE");
+      const rendered = renderTransactionalEmail({
+        subject: row.subject,
+        label: "Account update",
+        heading: row.subject,
+        intro: row.body,
+        note: "For help with your account, open Support in KampusOne settings.",
+      });
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -50,7 +58,7 @@ export async function deliverQueuedNotifications(env: Bindings) {
           from: env.RESEND_FROM_EMAIL,
           to: [email],
           subject: row.subject,
-          text: row.body,
+          ...rendered,
         }),
       });
       if (!response.ok) throw new Error("EMAIL_DELIVERY_FAILED");

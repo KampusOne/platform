@@ -73,6 +73,7 @@ jobs:
           node server/scripts/verify-schema-proof.mjs october
           node server/scripts/verify-schema-proof.mjs experience
           node server/scripts/verify-schema-proof.mjs october4
+          node server/scripts/verify-schema-proof.mjs october6
           curl --fail --silent --show-error --retry 2 --max-time 20 "$API_URL/health/ready"
       - name: Configure Android push credentials
         env:
@@ -152,6 +153,15 @@ jobs:
           path: KampusOne-Android.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Publish the verified APK to website downloads
+        if: github.event_name == 'workflow_run'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BUILD_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          test "$BUILD_SHA" = "$(git ls-remote --heads origin main | cut -f1)"
+          node server/scripts/publish-android-download.mjs
       - name: Publish shareable APK release
         if: github.event_name == 'workflow_run'
         env:

@@ -1,3 +1,4 @@
+import {acquisitionSchema} from '../lib/acquisition';
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { z, agentApplicationSchema } from "@kampusone/contracts";
@@ -30,6 +31,7 @@ applicationRoutes.use("/*", async (c, next) => {
   await next();
 });
 const schema = agentApplicationSchema.extend({
+  acquisition:acquisitionSchema.optional(),
   birthDate: z.string(),
   isStudent: z.boolean(),
   matricNumber: z.string().trim().max(80).optional(),
@@ -88,6 +90,9 @@ const schema = agentApplicationSchema.extend({
 const draftId = z.union([z.literal(""), z.string().uuid()]);
 const draftValuesSchema = z
   .object({
+    acquisition:acquisitionSchema.optional(),
+    heardSource:z.string().max(20).optional(),
+    heardOther:z.string().max(240).optional(),
     birthDate: z.string().max(10),
     isStudent: z.boolean(),
     matricNumber: z.string().max(80),
@@ -482,7 +487,9 @@ applicationRoutes.post("/", async (c) => {
  insert into public.agent_application_details(application_id,birth_date,is_student,matric_number,department,business_name,business_address,identity_document_id,portrait_document_id,student_document_id,guardian_name,guardian_phone,guardian_email,guardian_relationship,terms_version,role_details)
  select id,${d.birthDate}::date,${d.isStudent},${d.matricNumber ?? null},${d.department ?? null},${d.businessName ?? null},${d.businessAddress ?? null},${d.identityDocumentId}::uuid,${d.portraitDocumentId}::uuid,${d.studentDocumentId ?? null}::uuid,${d.guardianName ?? null},${d.guardianPhone ?? null},${d.guardianEmail ?? null},${d.guardianRelationship ?? null},${d.termsVersion},${roleDetails}::jsonb from application
  on conflict(application_id) do update set birth_date=excluded.birth_date,is_student=excluded.is_student,matric_number=excluded.matric_number,department=excluded.department,business_name=excluded.business_name,business_address=excluded.business_address,identity_document_id=excluded.identity_document_id,portrait_document_id=excluded.portrait_document_id,student_document_id=excluded.student_document_id,guardian_name=excluded.guardian_name,guardian_phone=excluded.guardian_phone,guardian_email=excluded.guardian_email,guardian_relationship=excluded.guardian_relationship,guardian_consent_at=null,guardian_reviewed_by=null,guardian_evidence=null,terms_version=excluded.terms_version,role_details=excluded.role_details returning application_id)${identitySaved}, receipt as (
- insert into app_private.notification_outbox(user_id,channel,subject,body,dedupe_key) select ${u.id}::uuid,'EMAIL','We received your KampusOne application','Your '||${d.agentType.toLowerCase()}::text||' application is under review. Open your agent workspace to check its status. We will email you when a reviewer makes a decision.', 'agent-submitted:'||application.id::text||':'||${d.clientRequestId ?? c.get("requestId")} from application join details on details.application_id=application.id${privateReady ? sql` join identity_saved on identity_saved.application_id=application.id` : sql``} on conflict(dedupe_key) do nothing returning id), draft_removed as (delete from public.agent_application_drafts where user_id=${u.id}::uuid and exists(select 1 from application)) select application.id,application.status from application join details on details.application_id=application.id`);
+ insert into app_private.notification_outbox(user_id,channel,subject,body,dedupe_key) select ${u.id}::uuid,'EMAIL','We received your KampusOne application','Your '||${d.agentType.toLowerCase()}::text||' application is under review. Open your agent workspace to check its status. We will email you when a reviewer makes a decision.', 'agent-submitted:'||application.id::text||':'||${d.clientRequestId ?? c.get("requestId")} from application join details on details.application_id=application.id${privateReady ? sql` join identity_saved on identity_saved.application_id=application.id` : sql``} on conflict(dedupe_key) do nothing returning id), acquisition as(insert into app_private.user_acquisition(user_id,institution_id,context,source,other_text)
+ select ${u.id}::uuid,${d.universityId}::uuid,${d.agentType},${d.acquisition?.source??null},${d.acquisition?.source==='OTHER'?d.acquisition.other:''} from application
+ where ${Boolean(d.acquisition)} on conflict(user_id,context) do nothing), draft_removed as (delete from public.agent_application_drafts where user_id=${u.id}::uuid and exists(select 1 from application)) select application.id,application.status from application join details on details.application_id=application.id`);
   const row = firstRow(result);
   if (!row) {
     if (privateReady) {

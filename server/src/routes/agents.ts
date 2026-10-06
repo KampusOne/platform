@@ -40,7 +40,8 @@ import { deriveHandoffCode, hashOtp } from "../lib/security";
 import { ledgerPayoutsReady,payoutFeeComponentsReady,requireLedgerPayouts,quotePayout,payoutQuoteSchema,payoutRate,payoutError,reconcilePayout } from "../lib/payouts";
 import { riderFinanceReady,riderFinanceSummary,reconcileRiderCommission } from '../lib/rider-finance';
 import { initializePaystack } from '../lib/paystack';
-import { inclusiveStoreReady } from '../lib/commerce-pricing';
+import { inclusiveStoreReady, approvedCommercePolicy } from '../lib/commerce-pricing';
+import { listingPrice, percentageKobo } from '../lib/pricing';
 import { pricedTutorialReady } from '../lib/tutorial-pricing';
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
@@ -1002,6 +1003,14 @@ agentRoutes.get("/products", async (context) => {
   return context.json({ products: result.rows });
 });
 
+agentRoutes.get('/products/price-preview',async c=>{
+ const profile=await operationalVendorProfile(c.env,currentUser(c).id),price=Number(c.req.query('priceKobo'));
+ if(!Number.isSafeInteger(price)||price<0||price>100_000_000)throw new AppError(400,'BAD_REQUEST','Enter a whole kobo price.');
+ const policy=await approvedCommercePolicy(c.env,profile.university_id,'STORE');
+ if(!policy)return c.json({ready:false});
+ const p=listingPrice(price,policy);
+ return c.json({ready:true,baseKobo:price,platformKobo:p.buyerComponentKobo,processingEstimateKobo:p.processingAllowanceKobo,customerEstimateKobo:p.customerPriceKobo,sellerCommissionKobo:percentageKobo(price,policy.sellerCommissionBasisPoints,'ceil')});
+});
 agentRoutes.post("/products", async (context) => {
   requireFeature(
     context.env,
@@ -1009,7 +1018,7 @@ agentRoutes.post("/products", async (context) => {
     "Store operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const parsed = vendorProductSchema.safeParse(await body(context));
+  const parsed = vendorProductSchema.and(z.object({imageUrls:z.array(z.string().url()).max(6).default([]),requestId:z.string().uuid().optional()})).safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
       400,
@@ -1038,19 +1047,20 @@ agentRoutes.post("/products", async (context) => {
       id, university_id, vendor_profile_id, name, description,
       category, category_id, price_kobo, stock_quantity, image_url,
       preparation_minutes, package_weight_grams, package_length_cm,
-      package_width_cm, package_height_cm, bicycle_delivery_eligible
+      package_width_cm, package_height_cm, bicycle_delivery_eligible,status,image_urls,client_request_id
     ) select
       ${id}::uuid, ${profile.university_id}::uuid, ${profile.id}::uuid,
       ${parsed.data.name}, ${parsed.data.description}, ${category.name}, ${category.id}::uuid,
       ${parsed.data.priceKobo}, ${parsed.data.stockQuantity}, ${parsed.data.imageUrl ?? null},
       ${parsed.data.preparationMinutes}, ${parsed.data.packageWeightGrams ?? null},
       ${parsed.data.packageLengthCm ?? null}, ${parsed.data.packageWidthCm ?? null},
-      ${parsed.data.packageHeightCm ?? null}, ${parsed.data.bicycleDeliveryEligible}
+      ${parsed.data.packageHeightCm ?? null}, ${parsed.data.bicycleDeliveryEligible},'PUBLISHED',${JSON.stringify(parsed.data.imageUrls)}::jsonb,${parsed.data.requestId??null}::uuid
     where not exists (
       select 1 from public.vendor_storefronts storefronts
       where storefronts.vendor_profile_id = ${profile.id}::uuid
         and storefronts.status = 'SUSPENDED'
     )
+    on conflict(vendor_profile_id,client_request_id) where client_request_id is not null do update set client_request_id=excluded.client_request_id where vendor_products.name=excluded.name and vendor_products.description=excluded.description and vendor_products.price_kobo=excluded.price_kobo and vendor_products.image_urls=excluded.image_urls and vendor_products.category_id=excluded.category_id and vendor_products.stock_quantity=excluded.stock_quantity and vendor_products.image_url is not distinct from excluded.image_url
     returning id
   `);
   if (!firstRow(result)) {
@@ -1060,16 +1070,18 @@ agentRoutes.post("/products", async (context) => {
       "This storefront was suspended before the product could be created.",
     );
   }
+  const created=firstRow(result)!;
+  await database(context.env).execute(sql`insert into public.vendor_storefronts(vendor_profile_id,university_id,display_name,status) select ${profile.id}::uuid,${profile.university_id}::uuid,left(display_name,120),'APPROVED' from public.agent_profiles where id=${profile.id}::uuid on conflict(vendor_profile_id) do update set status='APPROVED' where vendor_storefronts.status<>'SUSPENDED'`);
   await recordAudit(context.env, {
     actorUserId: user.id,
     universityId: profile.university_id,
     action: "product.created",
     targetType: "vendor_product",
-    targetId: id,
+    targetId: created.id,
     requestId: context.get("requestId"),
-    metadata: { status: "DRAFT" },
+    metadata: { status: "PUBLISHED" },
   });
-  return context.json({ id, status: "DRAFT" }, 201);
+  return context.json({ id:created.id, status: "PUBLISHED" }, 201);
 });
 
 agentRoutes.put("/products/:id", async (context) => {
@@ -1236,18 +1248,19 @@ agentRoutes.patch("/products/:id/status", async (context) => {
   const parsed = vendorProductStateSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(400, "BAD_REQUEST", "Choose a valid product status.");
+  const targetStatus=parsed.data.status==='SUBMITTED'?'PUBLISHED':parsed.data.status;
   await operationalVendorProfile(context.env, user.id);
   const result = await database(context.env).execute<{
     id: string;
     university_id: string;
   }>(sql`
     update public.vendor_products products set
-      status = ${parsed.data.status},
-      submitted_at = case when ${parsed.data.status} = 'SUBMITTED' then now() else products.submitted_at end,
-      moderation_note = case when ${parsed.data.status} = 'SUBMITTED' then null else products.moderation_note end,
-      reviewed_by_user_id = case when ${parsed.data.status} = 'SUBMITTED' then null else products.reviewed_by_user_id end,
-      reviewed_at = case when ${parsed.data.status} = 'SUBMITTED' then null else products.reviewed_at end,
-      moderated_revision = case when ${parsed.data.status} = 'SUBMITTED' then null else products.moderated_revision end,
+      status = ${targetStatus},
+      submitted_at = case when ${targetStatus} = 'SUBMITTED' then now() else products.submitted_at end,
+      moderation_note = case when ${targetStatus} = 'SUBMITTED' then null else products.moderation_note end,
+      reviewed_by_user_id = case when ${targetStatus} = 'SUBMITTED' then null else products.reviewed_by_user_id end,
+      reviewed_at = case when ${targetStatus} = 'SUBMITTED' then null else products.reviewed_at end,
+      moderated_revision = case when ${targetStatus} = 'SUBMITTED' then null else products.moderated_revision end,
       updated_at = now()
     from public.agent_profiles profiles, public.product_categories categories
     where products.id = ${context.req.param("id")}::uuid and products.vendor_profile_id = profiles.id
@@ -1259,24 +1272,7 @@ agentRoutes.patch("/products/:id/status", async (context) => {
         where blocked_storefront.vendor_profile_id = profiles.id
           and blocked_storefront.status = 'SUSPENDED'
       )
-      and (products.status = ${parsed.data.status}
-        or (products.status in ('DRAFT','NEEDS_CORRECTION') and ${parsed.data.status} = 'SUBMITTED'
-          and exists (
-            select 1 from public.vendor_storefronts approved_storefront
-            where approved_storefront.vendor_profile_id = profiles.id
-              and approved_storefront.university_id = products.university_id
-              and approved_storefront.status = 'APPROVED'
-          )
-          and products.package_weight_grams is not null
-          and products.package_length_cm is not null
-          and products.package_width_cm is not null
-          and products.package_height_cm is not null
-          and products.bicycle_delivery_eligible = true)
-        or (products.status in ('DRAFT','NEEDS_CORRECTION','SUBMITTED','REJECTED') and ${parsed.data.status} = 'ARCHIVED')
-        or (products.status = 'PUBLISHED' and ${parsed.data.status} in ('PAUSED','ARCHIVED'))
-        or (products.status = 'PAUSED' and ${parsed.data.status} in ('PUBLISHED','ARCHIVED')
-          and products.reviewed_at is not null
-          and products.moderated_revision = products.listing_revision))
+      and (products.status = ${targetStatus} or (products.status in ('DRAFT','NEEDS_CORRECTION','SUBMITTED','PAUSED') and ${targetStatus}='PUBLISHED') or (products.status='PUBLISHED' and ${targetStatus}='PAUSED') or ${targetStatus}='ARCHIVED')
     returning products.id, products.university_id
   `);
   const product = firstRow(result);
@@ -1285,7 +1281,7 @@ agentRoutes.patch("/products/:id/status", async (context) => {
       409,
       "CONFLICT",
       parsed.data.status === "SUBMITTED"
-        ? "Approve the storefront and add complete bicycle-package details before submitting this product for review."
+        ? "Your verified vendor account must be active before publishing."
         : "That product status change is not allowed.",
     );
   }
@@ -1297,7 +1293,7 @@ agentRoutes.patch("/products/:id/status", async (context) => {
     targetId: product.id,
     requestId: context.get("requestId"),
   });
-  return context.json({ status: parsed.data.status });
+  return context.json({ status: targetStatus });
 });
 
 agentRoutes.get("/orders", async (context) => {

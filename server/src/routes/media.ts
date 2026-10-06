@@ -1,3 +1,4 @@
+import {reserveTutorialVideo} from '../lib/tutorial-storage';
 import { Hono } from "hono";
 import { decodeAIText } from "../lib/ai-document";
 import { sql } from "drizzle-orm";
@@ -32,7 +33,7 @@ function mediaKey(env: Bindings) {
     );
   return new TextEncoder().encode(env.JWT_SECRET);
 }
-async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
+export async function canReadMedia(env: Bindings, user: AuthenticatedUser, media: Media) {
   if(media.kind==='operations-document'){
     await requireAdminWorkspace(env);
     const scope=await resolveAdminScope(env,user,media.institution_id??undefined,'documents.view');
@@ -42,7 +43,7 @@ async function canRead(env: Bindings, user: AuthenticatedUser, media: Media) {
   }
   if (user.id === media.owner_user_id) return;
   if(media.kind==='map-capture'){
-    if(user.universityId===media.institution_id&&firstRow(await database(env).execute(sql`select id from public.campus_place_media where media_id=${media.id}::uuid and institution_id=${user.universityId}::uuid and moderation_state='APPROVED'`)))return;
+    if(firstRow(await database(env).execute(sql`select p.id from public.campus_place_media p join public.institution_campuses c on c.id=p.campus_id where p.media_id=${media.id}::uuid and p.institution_id=${media.institution_id}::uuid and p.moderation_state='APPROVED' and c.status='PUBLISHED'`)))return;
     try{await resolveAdminScope(env,user,media.institution_id??undefined,'universities.manage');return;}catch{throw new AppError(403,'FORBIDDEN','This map capture is awaiting review or belongs to another campus.');}
   }
   if (media.kind === "message") {
@@ -183,16 +184,22 @@ export function verifiedMessageMime(bytes:Uint8Array,declaredMime:string,origina
  return null;
 }
 const messageChunkBytes=5*1024*1024;
-type UploadSession={id:string;object_key:string;multipart_id:string;original_name:string;declared_type:string;content_type:string|null;expected_bytes:number;parts:Record<string,{etag:string;size:number}>;status:string;media_id:string|null;institution_id:string|null};
+type UploadSession={id:string;upload_kind:'message'|'resource'|'tutorial';object_key:string;multipart_id:string;original_name:string;declared_type:string;content_type:string|null;expected_bytes:number;parts:Record<string,{etag:string;size:number}>;status:string;media_id:string|null;institution_id:string|null};
 async function uploadSession(env:Bindings,userId:string,sessionId:string){const session=firstRow(await database(env).execute<UploadSession>(sql`select * from app_private.media_upload_sessions where id=${sessionId}::uuid and owner_user_id=${userId}::uuid and (expires_at>now() or status='COMPLETE')`));if(!session)throw new AppError(404,'NOT_FOUND','This upload expired. Choose the file again.');if(!env.PRIVATE_BUCKET)throw new AppError(503,'PROVIDER_UNAVAILABLE','Private uploads are temporarily unavailable.');return session;}
 mediaRoutes.post('/message-uploads',requireAuth,async c=>{
- const user=currentUser(c),data=await input(c,z.object({uploadId:z.string().uuid(),name:z.string().trim().min(1).max(180),type:z.string().max(180),size:z.number().int().min(1).max(500*1024*1024)}).strict()),db=database(c.env);
- const existing=firstRow(await db.execute<UploadSession>(sql`select * from app_private.media_upload_sessions where id=${data.uploadId}::uuid and owner_user_id=${user.id}::uuid and expires_at>now()`));if(existing){if(Number(existing.expected_bytes)!==data.size||existing.original_name!==data.name||existing.declared_type!==data.type||existing.institution_id!==user.universityId)throw new AppError(409,'CONFLICT','This upload belongs to another file or campus.');return c.json({id:existing.id,parts:existing.parts,status:existing.status,mediaId:existing.media_id,chunkBytes:messageChunkBytes});}
+ const user=currentUser(c),data=await input(c,z.object({uploadId:z.string().uuid(),name:z.string().trim().min(1).max(180),type:z.string().max(180),size:z.number().int().min(1).max(500*1024*1024),kind:z.enum(['message','resource','tutorial']).default('message')}).strict()),db=database(c.env);
+ const existing=firstRow(await db.execute<UploadSession>(sql`select * from app_private.media_upload_sessions where id=${data.uploadId}::uuid and owner_user_id=${user.id}::uuid and expires_at>now()`));if(existing){if(Number(existing.expected_bytes)!==data.size||existing.original_name!==data.name||existing.declared_type!==data.type||existing.institution_id!==user.universityId||existing.upload_kind!==data.kind)throw new AppError(409,'CONFLICT','This upload belongs to another file or campus.');return c.json({id:existing.id,parts:existing.parts,status:existing.status,mediaId:existing.media_id,chunkBytes:messageChunkBytes});}
+ if(data.kind==='tutorial'){
+  if(!['video/mp4','video/webm'].includes(data.type))throw new AppError(400,'BAD_REQUEST','Choose an MP4 or WebM tutorial video.');
+  const asset=await reserveTutorialVideo(c.env,{id:data.uploadId,user:user.id,institution:user.universityId,name:data.name,mime:data.type,size:data.size});
+  if(asset.provider!=='R2')throw new AppError(409,'CONFLICT','Resume this video through its Bunny Stream upload.');
+ }
+ if(data.kind==='resource'&&(data.size>100*1024*1024||!['application/pdf','text/plain','image/jpeg','image/png','image/webp','audio/mpeg','audio/wav'].includes(data.type)||data.type.startsWith('image/')&&data.size>8*1024*1024))throw new AppError(413,'BAD_REQUEST','Choose a PDF or text document up to 100 MB, or an image up to 8 MB. Compress larger files first.');
  if(!c.env.PRIVATE_BUCKET)throw new AppError(503,'PROVIDER_UNAVAILABLE','Private uploads are temporarily unavailable.');
  const allowance=firstRow(await db.execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('MESSAGE_LARGE_UPLOAD',${user.id},12,3600,3600) allowed`));if(!allowance?.allowed)throw new AppError(429,'RATE_LIMITED','Your upload allowance is reached. Retry later; your message is saved.');
- const key=`message/${user.id}/${data.uploadId}`,multipart=await c.env.PRIVATE_BUCKET.createMultipartUpload(key,{customMetadata:{owner:user.id,uploadId:data.uploadId}});
+ const key=`${data.kind}/${user.id}/${data.uploadId}`,multipart=await c.env.PRIVATE_BUCKET.createMultipartUpload(key,{customMetadata:{owner:user.id,uploadId:data.uploadId}});
  let reserved:UploadSession|undefined;
- try{reserved=firstRow(await db.execute<UploadSession>(sql`select * from app_private.reserve_message_upload(${data.uploadId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${key},${multipart.uploadId},${data.name},${data.type},${data.size})`));if(!reserved)throw new Error('Upload reservation was not saved.');}catch(error){await multipart.abort();if(error instanceof Error&&error.message.includes('UPLOAD_ALLOWANCE_EXHAUSTED'))throw new AppError(429,'RATE_LIMITED','Your daily file allowance is reached. Retry later; your message is saved.');if(error instanceof Error&&error.message.includes('UPLOAD_SESSION_CONFLICT'))throw new AppError(409,'CONFLICT','This upload belongs to another file or campus. Choose the file again.');throw error;}
+ try{reserved=firstRow(await db.execute<UploadSession>(sql`select * from app_private.reserve_private_upload(${data.uploadId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${key},${multipart.uploadId},${data.name},${data.type},${data.size},${data.kind})`));if(!reserved)throw new Error('Upload reservation was not saved.');}catch(error){await multipart.abort();if(error instanceof Error&&error.message.includes('UPLOAD_ALLOWANCE_EXHAUSTED'))throw new AppError(429,'RATE_LIMITED','Your daily file allowance is reached. Retry later; your message is saved.');if(error instanceof Error&&error.message.includes('UPLOAD_SESSION_CONFLICT'))throw new AppError(409,'CONFLICT','This upload belongs to another file or campus. Choose the file again.');throw error;}
  if(reserved.multipart_id!==multipart.uploadId){await multipart.abort();return c.json({id:reserved.id,parts:reserved.parts,status:reserved.status,mediaId:reserved.media_id,chunkBytes:messageChunkBytes});}
  return c.json({id:data.uploadId,parts:{},status:'OPEN',mediaId:null,chunkBytes:messageChunkBytes},201);
 });
@@ -204,19 +211,25 @@ mediaRoutes.put('/message-uploads/:id/parts/:part',requireAuth,async c=>{
  const reader=c.req.raw.body?.getReader();if(!reader)throw new AppError(400,'BAD_REQUEST','Choose the file again.');const chunks:Uint8Array[]=[];let size=0;while(true){const next=await reader.read();if(next.done)break;size+=next.value.length;if(size>expected){await reader.cancel();throw new AppError(413,'BAD_REQUEST','Upload chunk is too large.');}chunks.push(next.value);}if(size!==expected)throw new AppError(400,'BAD_REQUEST','Upload chunk is incomplete. Retry this file.');
  const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
  const mime=part===1?verifiedMessageMime(bytes,session.declared_type,session.original_name):session.content_type;if(!mime)throw new AppError(400,'BAD_REQUEST','Use a supported picture, video, voice note or document.');
+ if(session.upload_kind==='resource'&&!['application/pdf','text/plain','image/jpeg','image/png','image/webp','audio/mpeg','audio/wav'].includes(mime))throw new AppError(400,'BAD_REQUEST','Choose a readable PDF, text document or image.');
+ if(session.upload_kind==='tutorial'&&!['video/mp4','video/webm'].includes(mime))throw new AppError(400,'BAD_REQUEST','Choose an MP4 or WebM tutorial video.');
  const multipart=c.env.PRIVATE_BUCKET!.resumeMultipartUpload(session.object_key,session.multipart_id),uploaded=await multipart.uploadPart(part,bytes);
- await database(c.env).execute(sql`update app_private.media_upload_sessions set parts=parts||jsonb_build_object(${String(part)},${JSON.stringify({etag:uploaded.etag,size})}::jsonb),content_type=coalesce(content_type,${mime}) where id=${session.id}::uuid and status='OPEN'`);return c.json({part,etag:uploaded.etag,size});
+ await database(c.env).execute(sql`update app_private.media_upload_sessions set parts=parts||jsonb_build_object(${String(part)}::text,${JSON.stringify({etag:uploaded.etag,size})}::jsonb),content_type=coalesce(content_type,${mime}) where id=${session.id}::uuid and status='OPEN'`);return c.json({part,etag:uploaded.etag,size});
 });
 mediaRoutes.post('/message-uploads/:id/complete',requireAuth,async c=>{
  const user=currentUser(c),session=await uploadSession(c.env,user.id,id(c.req.param('id'))),origin=(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'');
- if(session.status==='COMPLETE')return c.json({id:session.media_id,url:`${origin}/v1/media/${session.media_id}`,kind:'message',private:true});
+ if(session.status==='COMPLETE'){
+  if(session.upload_kind==='tutorial')await database(c.env).execute(sql`update app_private.tutorial_video_assets set media_id=${session.media_id}::uuid,state='READY',updated_at=now() where id=${session.id}::uuid and owner_user_id=${user.id}::uuid and media_id is null`);
+  return c.json({id:session.media_id,url:`${origin}/v1/media/${session.media_id}`,kind:session.upload_kind==='tutorial'?'resource':session.upload_kind,private:true});
+ }
  if(!['OPEN','COMPLETING'].includes(session.status))throw new AppError(409,'CONFLICT','This upload was cancelled.');
  const count=Math.ceil(Number(session.expected_bytes)/messageChunkBytes),parts=[];let total=0;for(let part=1;part<=count;part++){const saved=session.parts[String(part)];if(!saved)throw new AppError(409,'CONFLICT','Some chunks are missing. Retry the upload to resume.');parts.push({partNumber:part,etag:saved.etag});total+=saved.size;}if(total!==Number(session.expected_bytes)||!session.content_type)throw new AppError(409,'CONFLICT','The file is incomplete. Retry to resume.');
  await database(c.env).execute(sql`update app_private.media_upload_sessions set status='COMPLETING' where id=${session.id}::uuid and status='OPEN'`);
  try{await c.env.PRIVATE_BUCKET!.resumeMultipartUpload(session.object_key,session.multipart_id).complete(parts);}catch(error){const head=await c.env.PRIVATE_BUCKET!.head(session.object_key);if(!head||head.size!==total)throw error;}
  // Deterministic media ID plus a single SQL statement makes completion safe to retry.
- await database(c.env).execute(sql`with media as(insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values(${session.id}::uuid,${user.id}::uuid,${session.institution_id}::uuid,'message',${session.object_key},${session.content_type},${total},${session.original_name}) on conflict(id) do nothing) update app_private.media_upload_sessions set status='COMPLETE',media_id=${session.id}::uuid where id=${session.id}::uuid`);
- return c.json({id:session.id,url:`${origin}/v1/media/${session.id}`,kind:'message',private:true},201);
+ await database(c.env).execute(sql`with media as(insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values(${session.id}::uuid,${user.id}::uuid,${session.institution_id}::uuid,${session.upload_kind==='tutorial'?'resource':session.upload_kind},${session.object_key},${session.content_type},${total},${session.original_name}) on conflict(id) do nothing) update app_private.media_upload_sessions set status='COMPLETE',media_id=${session.id}::uuid where id=${session.id}::uuid`);
+ if(session.upload_kind==='tutorial')await database(c.env).execute(sql`update app_private.tutorial_video_assets set media_id=${session.id}::uuid,state='READY',updated_at=now() where id=${session.id}::uuid and owner_user_id=${user.id}::uuid`);
+ return c.json({id:session.id,url:`${origin}/v1/media/${session.id}`,kind:session.upload_kind==='tutorial'?'resource':session.upload_kind,private:true},201);
 });
 mediaRoutes.delete('/message-uploads/:id',requireAuth,async c=>{const session=await uploadSession(c.env,currentUser(c).id,id(c.req.param('id')));if(session.status==='COMPLETE')throw new AppError(409,'CONFLICT','This file has already been uploaded.');await c.env.PRIVATE_BUCKET!.resumeMultipartUpload(session.object_key,session.multipart_id).abort();await database(c.env).execute(sql`update app_private.media_upload_sessions set status='ABORTED' where id=${session.id}::uuid`);return c.json({cancelled:true});});
 export function detectedMime(bytes: Uint8Array) {
@@ -414,14 +427,14 @@ mediaRoutes.post("/:id/access", requireAuth, async (c) => {
     ),
   );
   if (!media) throw new AppError(404, "NOT_FOUND", "File not found.");
-  await canRead(c.env, user, media);
+  await canReadMedia(c.env, user, media);
   const token = await new SignJWT({ viewer: user.id })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(media.id)
     .setIssuer("kampusone-api")
     .setAudience("kampusone-private-file")
     .setIssuedAt()
-    .setExpirationTime("90s")
+    .setExpirationTime(media.kind==='resource'&&media.content_type.startsWith('video/')?'2h':'90s')
     .sign(mediaKey(c.env));
   const origin = (c.env.PUBLIC_API_ORIGIN ?? new URL(c.req.url).origin).replace(
     /\/$/,
@@ -431,7 +444,7 @@ mediaRoutes.post("/:id/access", requireAuth, async (c) => {
   return c.json({
     url:
       origin + "/v1/media/" + media.id + "?access=" + encodeURIComponent(token),
-    expiresIn: 90,
+    expiresIn:media.kind==='resource'&&media.content_type.startsWith('video/')?7200:90,
   });
 });
 mediaRoutes.get("/:id", async (c) => {
@@ -486,8 +499,8 @@ mediaRoutes.get("/:id", async (c) => {
       await requireAuth(c, async () => {});
       user = currentUser(c);
     }
-    await canRead(c.env, user, media);
-    await recordAudit(c.env, {
+    await canReadMedia(c.env, user, media);
+    if(!range)await recordAudit(c.env, {
       actorUserId: user.id,
       action: "private.file.read",
       targetType: "media",

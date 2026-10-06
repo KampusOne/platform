@@ -593,7 +593,7 @@ export default function Alarms() {
     }, [load]),
   );
 
-  const selection = useBulkSelection(items.map(alarm=>alarm.id), async ids=> {
+  const selection = useBulkSelection(items.filter(alarm=>!alarm.exam_id).map(alarm=>alarm.id), async ids=> {
     await api("/v1/learning/alarms/bulk-delete",{method:"POST",body:JSON.stringify({ids})});
     const next=await load();
     await syncAlarms(next);
@@ -810,15 +810,15 @@ export default function Alarms() {
                 <Pressable
                   key={alarm.id}
                   accessibilityRole="button"
-                  accessibilityLabel={`Edit ${alarm.label}`}
-                  onPress={() => selection.active ? selection.toggle(alarm.id) : edit(alarm)}
+                  accessibilityLabel={`${alarm.exam_id?"View exam reminder":"Edit"} ${alarm.label}`}
+                  onPress={() => alarm.exam_id ? router.push({pathname:"/exam-awareness",params:{alarmId:alarm.id}}) : selection.active ? selection.toggle(alarm.id) : edit(alarm)}
                   style={({ pressed }) => [
                     styles.alarmCard,
                     !alarm.enabled && styles.alarmCardDisabled,
                     pressed && styles.alarmCardPressed,
                   ]}
                 >
-                  <SelectionCheckbox selection={selection} id={alarm.id} />
+                  {!alarm.exam_id?<SelectionCheckbox selection={selection} id={alarm.id} />:null}
                   <View style={styles.alarmCopy}>
                     <View style={styles.alarmTimeRow}>
                       <Text style={styles.alarmTime}>{shown.clock}</Text>
@@ -831,7 +831,7 @@ export default function Alarms() {
                   </View>
                   <BrandSwitch
                     label={`Enable ${alarm.label}`}
-                    disabled={busy}
+                    disabled={busy||Boolean(alarm.exam_id)}
                     value={alarm.enabled}
                     onValueChange={(enabled) =>
                       void mutate(

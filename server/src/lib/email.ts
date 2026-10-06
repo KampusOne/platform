@@ -2,7 +2,7 @@ import type { Bindings } from "../types";
 import { AppError } from "./errors";
 import { renderTransactionalEmail } from "./email-template";
 
-type MailKind = "verification" | "password-reset" | "agent-login" | "welcome";
+type MailKind = "verification" | "password-reset" | "agent-login" | "welcome" | "exam-awareness";
 
 type MailInput = {
   to: string;
@@ -15,6 +15,11 @@ type MailInput = {
 const DEFAULT_FROM_EMAIL = "KampusOne <hello@kampusone.app>";
 
 const copy = {
+  'exam-awareness': {
+    subject: 'Confirm your exam awareness', label: 'Exam alarms', heading: 'Ready for your paper?',
+    intro: 'Enter this code in KampusOne to confirm you are awake and aware of your first paper today. This disables the remaining exam alarms for today only.',
+    note: 'The code expires in 10 minutes. Keep your alarms enabled if you might fall asleep again.',
+  },
   verification: {
     subject: "Verify your KampusOne email",
     label: "Email verification",

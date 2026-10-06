@@ -38,7 +38,7 @@ export default function NotificationPreferences(){
  }
  async function enablePush(){
   if(!user?.id||pushBusy)return;setPushBusy(true);
-  try{await registerPushDevice(user.id);await checkPush();toast('Phone notifications enabled','success');}
+  try{await registerPushDevice(user.id,true);await checkPush();toast('Phone notifications enabled','success');}
   catch(e){setPushState('error');setPushMessage(e instanceof Error?e.message:'Could not enable phone notifications.');toast(e instanceof Error?e.message:'Could not enable phone notifications','error');}
   finally{setPushBusy(false);}
  }

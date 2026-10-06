@@ -86,7 +86,7 @@ describe("AI router security and idempotency",()=>{
     const init=mocks.fetch.mock.calls[0]?.[1] as RequestInit;
     const providerBody=JSON.parse(String(init.body)) as {messages:{content:unknown}[]};
     const sent=String(providerBody.messages.at(-1)?.content ?? "");
-    expect(sent).toContain("Student timetable preferences");
+    expect(sent).toContain("Student schedule preferences");
     expect(sent).toContain("I do not offer CSE 201");
     expect(queries().some(q=>q.sql.includes("select app_private.reserve_academic_import"))).toBe(true);
   });

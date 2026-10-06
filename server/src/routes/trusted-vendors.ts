@@ -8,6 +8,7 @@ import { recordAudit } from '../lib/audit';
 import { id, input } from '../lib/input';
 import { AppError } from '../lib/errors';
 import { agentOperationsSchema } from '../lib/agent-intake';
+import { acquisitionSchema } from '../lib/acquisition';
 import { ageOn } from '../lib/platform-policy';
 import type { Bindings, Variables } from '../types';
 
@@ -53,15 +54,15 @@ const submission = z.object({
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => ageOn(value) >= 18 && ageOn(value) <= 110, 'Enter a valid date of birth. Exclusive applicants must be at least 18.'), description: z.string().trim().min(20).max(2000), address: z.string().trim().min(10).max(500),
   category: z.enum(['Restaurant', 'Supermarket', 'Groceries', 'Fashion', 'Beauty', 'Electronics', 'Printing', 'Other']), campus: z.string().trim().min(2).max(100),
   phone: z.string().regex(/^\+234[789]\d{9}$/), whatsapp: z.string().regex(/^\+234[789]\d{9}$/).optional(),
-  operations: agentOperationsSchema, adultAuthorized: z.literal(true), terms: z.literal(true),
+  acquisition: acquisitionSchema.optional(), operations: agentOperationsSchema, adultAuthorized: z.literal(true), terms: z.literal(true),
 }).strict();
 trustedVendorRoutes.post('/submit', async c => {
   const actor = currentUser(c), data = await input(c, submission), db = database(c.env);
   const allowed = firstRow(await db.execute<{ allowed: boolean }>(sql`select app_private.consume_request_rate_limit('TRUSTED_VENDOR_SUBMIT',${actor.id},10,3600,3600) allowed`));
   if (!allowed?.allowed) throw new AppError(429, 'RATE_LIMITED', 'Please wait before submitting again.');
   try {
-    const { token: code, requestId, ...values } = data, codeHash = await hash(code);
-    const row = firstRow(await db.execute<{ id: string }>(sql`select app_private.submit_trusted_vendor(${actor.id}::uuid,${codeHash},${requestId}::uuid,${JSON.stringify(values)}::jsonb) id`));
+    const { token: code, requestId, acquisition, ...values } = data, codeHash = await hash(code);
+    const row = firstRow(await db.execute<{ id: string }>(sql`select app_private.submit_trusted_vendor_with_acquisition(${actor.id}::uuid,${codeHash},${requestId}::uuid,${JSON.stringify(values)}::jsonb,${acquisition?JSON.stringify(acquisition):null}::jsonb) id`));
     if (!row?.id) throw new AppError(409, 'CONFLICT', 'The invitation or application changed. Refresh and try again.');
     return c.json({ id: row.id, status: 'SUBMITTED' }, 201);
   } catch (error) {

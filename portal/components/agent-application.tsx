@@ -30,6 +30,7 @@ type Application = {
 type School = { id: string; name: string };
 type Upload = { id: string; url?: string };
 const initial = {
+  heardSource:"",heardOther:"",
   universityId: "",
   agentType: "VENDOR",
   displayName: "",
@@ -430,6 +431,7 @@ export function AgentApplication() {
   function values() {
     return {
       ...data,
+      ...(data.heardSource&&(data.heardSource!=="OTHER"||data.heardOther.trim())?{acquisition:{source:data.heardSource,other:data.heardOther.trim()}}:{}),
       statement: `${data.operations.primaryOffer.trim()}. ${data.operations.joiningReason}. Available ${data.operations.serviceDays.join(", ")}, ${data.operations.openingTime}–${data.operations.closingTime}. Customer support: ${data.operations.supportChannel}, ${data.operations.responseTime.toLowerCase()}.`,
       displayName:
         data.agentType === "VENDOR"
@@ -1300,6 +1302,8 @@ export function AgentApplication() {
                           your application and return shortly.
                         </p>
                       )}
+                      <label>Where did you hear about KampusOne?<select value={data.heardSource} onChange={e=>update('heardSource',e.target.value)}><option value="">Choose an option</option>{['Facebook','TikTok','WhatsApp','Instagram','Friends','Other'].map(name=><option key={name} value={name.toUpperCase()}>{name}</option>)}</select></label>
+                      {data.heardSource==='OTHER'?<label>Tell us where<input value={data.heardOther} maxLength={240} onChange={e=>update('heardOther',e.target.value)}/></label>:null}
                       <label className="checkbox">
                         <input
                           required

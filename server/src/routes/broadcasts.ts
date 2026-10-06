@@ -47,7 +47,7 @@ broadcastRoutes.get('/templates',async c=>{
  await scope(c,'broadcasts.view');return c.json({templates:[
  {id:'operational-update',kind:'OPERATIONAL',name:'Operational update',subject:'An update about your KampusOne account',body:'Describe the account or service change here.\n\nExplain who is affected, the action required, and where to get help.'},
  {id:'campus-announcement',kind:'OPERATIONAL',name:'Campus notice',subject:'Campus service update',body:'Write the verified update for the selected campus.\n\nInclude the effective date and the official source where relevant.'},
- {id:'opt-in-news',kind:'MARKETING',name:'Opt-in community news',subject:'The latest from KampusOne',body:'Share a useful update for subscribers.\n\nAdd the relevant details and a clear next step.'},
+ {id:'campus-news',kind:'MARKETING',name:'Community news',subject:'The latest from KampusOne',body:'Share a useful update for KampusOne members.\n\nAdd the relevant details and a clear next step.'},
  ]});
 });
 broadcastRoutes.get('/segments',async c=>{
@@ -103,6 +103,42 @@ broadcastRoutes.post('/:id/test',async c=>{
  startImmediateDelivery(c);
  return c.json({queued:true,recipientCount:1,deliveryId:result.id,message:'Only the selected account is queued. Delivery has not yet been confirmed.'});
 });
+broadcastRoutes.post('/:id/send-now',async c=>{
+ const row=await campaign(c,'broadcasts.send');requireBroadcastProvider(c.env);
+ const d=await input(c,z.object({revision:z.number().int().positive(),confirm:z.literal('SEND_CAMPAIGN')}));
+ if(row.revision!==d.revision)throw new AppError(409,'CONFLICT','This message changed. Reload before sending.');
+ if(['QUEUED','SENDING','COMPLETED'].includes(row.status))return c.json({queued:true,alreadyQueued:true,campaignId:row.id});
+ requireEditable(row);
+ const setting=await controls(c);if(!setting.enabled)throw new AppError(409,'CONFLICT','Email delivery is paused. Resume it in delivery settings.');
+ const content=freezeEmailContent(c.env,row,setting.postal_address),audience=await audienceForCampaign(c.env,row),eligible=audience.filter(r=>r.eligible);
+ if(!eligible.length)throw new AppError(400,'BAD_REQUEST','No available accounts match this audience.');
+ const actor=currentUser(c),snapshotId=crypto.randomUUID(),templateToken=crypto.randomUUID();
+ const payloadTemplate=JSON.stringify(composeBroadcastPayload(content,'recipient@example.invalid',templateToken));
+ const recipients=eligible.map(r=>({user_id:r.user_id,email:r.email,id:crypto.randomUUID(),token:crypto.randomUUID()}));
+ // Freeze this revision and queue each account in one transaction. Retries of a
+ // queued revision return its existing campaign rather than inserting more mail.
+ const saved=firstRow(await database(c.env).execute<{id:string}>(sql`with locked as(
+  select id from app_private.email_campaigns where id=${row.id}::uuid and revision=${d.revision} and status in('DRAFT','REVIEWED') for update
+ ),snapshot as(
+  insert into app_private.email_audience_snapshots(id,campaign_id,revision,reviewed_by,content,eligible_count,excluded_count)
+  select ${snapshotId}::uuid,id,${d.revision},${actor.id}::uuid,${JSON.stringify(content)}::jsonb,${eligible.length},${audience.length-eligible.length} from locked returning id
+ ),recipients as(
+  insert into app_private.email_recipients(id,campaign_id,campaign_revision,snapshot_id,requested_by,user_id,institution_id,email,kind,unsubscribe_token,payload,status)
+  select r.id,${row.id}::uuid,${d.revision},s.id,${actor.id}::uuid,r.user_id,${row.institution_id}::uuid,r.email,${row.kind},r.token,
+   jsonb_set(replace(${payloadTemplate},${templateToken},r.token::text)::jsonb,'{to}',jsonb_build_array(r.email)),'PENDING'
+  from snapshot s cross join jsonb_to_recordset(${JSON.stringify(recipients)}::jsonb) as r(id uuid,user_id uuid,email text,token uuid)
+ ),queued as(
+  update app_private.email_campaigns set status='QUEUED',scheduled_at=null,reviewed_snapshot_id=${snapshotId}::uuid,updated_by=${actor.id}::uuid,updated_at=now()
+  where id in(select id from locked) and exists(select 1 from snapshot) returning id
+ ),audit as(
+  insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,outcome,metadata)
+  select ${actor.id}::uuid,${row.institution_id}::uuid,'email.campaign.queued','email_campaign',id::text,'succeeded',
+   ${JSON.stringify({snapshotId,recipientCount:eligible.length,immediate:true})}::jsonb from queued
+ )select id from queued`));
+ if(!saved)throw new AppError(409,'CONFLICT','This message was changed or queued by another administrator. Reload its delivery status.');
+ startImmediateDelivery(c);
+ return c.json({queued:true,campaignId:row.id,recipientCount:eligible.length,message:'Broadcast queued once. Sending starts now; delivery status follows provider receipts.'});
+});
 broadcastRoutes.post('/:id/send',async c=>{
  const row=await campaign(c,'broadcasts.send');requireBroadcastProvider(c.env);const d=await input(c,z.object({snapshotId:z.string().uuid(),revision:z.number().int().positive(),recipientCount:z.number().int().min(1).max(10000),confirm:z.literal('SEND_REVIEWED_CAMPAIGN'),scheduledAt:z.string().datetime().optional()}));
  if(d.scheduledAt&&Date.parse(d.scheduledAt)<Date.now()+30000)throw new AppError(400,'BAD_REQUEST','Choose a future schedule time, or send without a schedule.');
@@ -117,7 +153,7 @@ broadcastRoutes.post('/:id/cancel',async c=>{
 });
 
 emailPreferencesRoutes.get('/preferences',requireAuth,async c=>{
- const row=firstRow(await database(c.env).execute(sql`select marketing_opt_in,consent_version,updated_at from app_private.email_preferences where user_id=${currentUser(c).id}::uuid`));return c.json(row??{marketing_opt_in:false,consent_version:null});
+ const row=firstRow(await database(c.env).execute(sql`select marketing_opt_in,consent_version,updated_at from app_private.email_preferences where user_id=${currentUser(c).id}::uuid`));return c.json(row??{marketing_opt_in:true,consent_version:null});
 });
 emailPreferencesRoutes.put('/preferences',requireAuth,async c=>{
  const user=currentUser(c);const d=await input(c,z.object({marketingOptIn:z.boolean(),consentVersion:z.literal('marketing-email-v1')}));

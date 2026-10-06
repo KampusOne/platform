@@ -222,6 +222,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [retrySessionRestore]);
 
   useEffect(() => {
+    if (!sessionRestoreError) return;
+    const timer = setTimeout(() => void retrySessionRestore(), 10_000);
+    return () => clearTimeout(timer);
+  }, [sessionRestoreError, retrySessionRestore]);
+
+  useEffect(() => {
     let previous = AppState.currentState;
     const subscription = AppState.addEventListener("change", next => {
       if (next === "active" && previous !== "active" && sessionUserId.current) {

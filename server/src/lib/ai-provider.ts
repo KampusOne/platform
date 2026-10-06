@@ -20,6 +20,7 @@ export type AITool = { type: "function"; function: { name: string; description: 
 export type AIToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 export type AIMessage = { role: "system" | "user" | "assistant" | "tool"; content: unknown; tool_calls?: AIToolCall[]; tool_call_id?: string };
 export const MAX_AI_MEDIA_BYTES = 8 * 1024 * 1024;
+export const MAX_AI_DOCUMENT_BYTES = 100 * 1024 * 1024;
 export const MAX_AI_TRANSCRIPTION_BYTES = 8 * 1024 * 1024;
 export const AI_HISTORY_DAYS = 90;
 export const AI_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "text/plain"]);

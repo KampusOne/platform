@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { portalApi } from "@/lib/api";
 import { useAdminContext } from "./admin-context";
-import { PaystackCheckoutSetup } from "./paystack-checkout-setup";
 
 type Tier = "standard" | "pro";
 type Plan = {
@@ -37,13 +36,13 @@ type Preview = {
   offerEndsAt: string | null;
 };
 
-export function KiraPricePlan({ onPaymentSetupSaved }: { onPaymentSetupSaved?: (() => void) | undefined }) {
+export function KiraPricePlan() {
   const { scope, access } = useAdminContext();
   const campusId = scope || (access?.universities?.length === 1 ? access.universities[0]!.id : "");
-  return <ScopedKiraPlan key={campusId} initialCampusId={campusId} onPaymentSetupSaved={onPaymentSetupSaved} />;
+  return <ScopedKiraPlan key={campusId} initialCampusId={campusId} />;
 }
 
-function ScopedKiraPlan({ initialCampusId, onPaymentSetupSaved }: { initialCampusId: string; onPaymentSetupSaved?: (() => void) | undefined }) {
+function ScopedKiraPlan({ initialCampusId }: { initialCampusId: string }) {
   const { access, can, scopedPath } = useAdminContext();
   const [ready, setReady] = useState(false);
   const [plans, setPlans] = useState<Plan[] | null>(null);
@@ -179,10 +178,9 @@ function ScopedKiraPlan({ initialCampusId, onPaymentSetupSaved }: { initialCampu
 
   return (
     <>
-    <PaystackCheckoutSetup onSaved={onPaymentSetupSaved} />
     <section className="panel">
       <h2>Kira Standard and Pro pricing</h2>
-      <p>Set the monthly price and discount students see. Processing is included. Standard can stay free, and paid plans renew only when students choose to pay again.</p>
+      <p>Set the monthly price and discount students see. The displayed total estimates processing; Paystack confirms its actual charge at checkout. Standard can stay free, and paid plans renew only when students choose to pay again.</p>
       {error ? <p className="notice notice--error" role="alert">{error} <button type="button" className="text-link" onClick={() => setVersion((current) => current + 1)}>Try again</button></p> : null}
       {!plans && !error ? <p aria-busy="true">Loading Kira plans…</p> : null}
       {plans && !ready ? <p>Subscription billing is awaiting the queued database update.</p> : null}

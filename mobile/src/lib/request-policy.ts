@@ -31,7 +31,7 @@ export function invalidationTargets(path: string): string[] | null {
   if (path.startsWith("/v1/student/feed"))
     return ["/v1/student/feed", "/v1/student/home"];
   if (path.startsWith("/v1/media"))
-    return ["/v1/student/me", "/v1/student/feed", "/v1/student/home"];
+    return /^\/v1\/media\/message-uploads(?:\/|$)/.test(path) ? [] : ["/v1/student/me", "/v1/student/feed", "/v1/student/home"];
   if (path.startsWith("/v1/student/timetable"))
     return ["/v1/student/timetable", "/v1/student/home"];
   if (path.startsWith("/v1/student/gpa"))

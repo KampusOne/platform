@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import { api } from "./api";
 import { readCache, writeCache } from "./device-cache";
@@ -170,13 +171,22 @@ export async function configureNativeNotifications() {
   ]);
 }
 
-export async function requestNativeNotificationPermission(): Promise<boolean> {
+export async function requestNativeNotificationPermission(userInitiated = false): Promise<boolean> {
   if (Platform.OS === "web") return false;
   const Notifications = await import("expo-notifications");
   await configureNativeNotifications();
 
   let permission = await Notifications.getPermissionsAsync();
-  if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
+  if (!permission.granted && permission.canAskAgain) {
+    const key = "k1.notification-permission-prompted.v1";
+    const prompted = await AsyncStorage.getItem(key);
+    if (userInitiated || !prompted) {
+      // Record before opening the OS prompt, including if the app is closed
+      // while it is visible. Automatic startup never asks again after refusal.
+      await AsyncStorage.setItem(key, "1");
+      permission = await Notifications.requestPermissionsAsync();
+    }
+  }
   return permission.granted;
 }
 
@@ -185,12 +195,12 @@ export async function listPushDevices(): Promise<PushDevice[]> {
     .devices;
 }
 
-export async function registerPushDevice(userId: string) {
+export async function registerPushDevice(userId: string, userInitiated = false) {
   const availability = pushSetupAvailability();
   if (!availability.available || !availability.projectId)
     throw new Error(availability.message);
 
-  const granted = await requestNativeNotificationPermission();
+  const granted = await requestNativeNotificationPermission(userInitiated);
   if (!granted)
     throw new Error(
       "Notification permission was not granted. You can allow it in your device settings.",

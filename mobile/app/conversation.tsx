@@ -16,6 +16,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
   type GestureResponderEvent,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,9 +25,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Crypto from "expo-crypto";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { BlurTargetView } from "expo-blur";
 import { MessageVoice, VoicePlayback } from "@/src/components/message-voice";
 import {uploadMessageFile} from '@/src/lib/message-upload';
+import {MessageVideoPreview} from '@/src/components/message-video-preview';
 import {downloadPrivateFile} from '@/src/lib/private-media-download';
 import {
   MESSAGE_REACTIONS,
@@ -323,6 +326,7 @@ function ConversationSkeleton() {
 
 function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: boolean; onLongPress: (event: GestureResponderEvent) => void }) {
   const [url, setUrl] = useState("");
+  const [aspectRatio, setAspectRatio] = useState(4 / 3);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const { theme, styles } = useThemeStyles(createStyles);
@@ -330,6 +334,8 @@ function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: 
   const isAudio = Boolean(message.media_type?.startsWith("audio/"));
   const isVideo = Boolean(message.media_type?.startsWith("video/"));
   const label = mediaLabel(message.media_type, message.media_name);
+  const {width:screenWidth}=useWindowDimensions();
+  const imageWidth=Math.min(320,Math.max(180,screenWidth*.76-24));
 
   const fetchAccess = useCallback(async () => {
     if (!message.media_id) return "";
@@ -338,7 +344,7 @@ function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: 
   }, [message.media_id]);
 
   useEffect(() => {
-    if (!message.media_id || !isImage) return;
+    if (!message.media_id || (!isImage&&!isVideo)) return;
     let cancelled = false;
     void fetchAccess()
       .then((nextUrl) => {
@@ -348,7 +354,7 @@ function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: 
     return () => {
       cancelled = true;
     };
-  }, [fetchAccess, isImage, message.media_id]);
+  }, [fetchAccess, isImage,isVideo, message.media_id]);
 
   async function open() {
     if (!message.media_id || busy) return;
@@ -383,8 +389,12 @@ function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: 
           <Image
             accessibilityLabel={message.media_name || "Message picture"}
             source={{ uri: url }}
-            resizeMode="cover"
-            style={styles.messageImage}
+            resizeMode="contain"
+            style={[styles.messageImage, { width:imageWidth, height: undefined, aspectRatio }]}
+            onLoad={event => {
+              const { width, height } = event.nativeEvent.source;
+              if (width && height) setAspectRatio(Math.max(0.55, Math.min(2.2, width / height)));
+            }}
             onError={() => {
               setUrl("");
               setError("Picture preview expired. Tap to load it again.");
@@ -397,12 +407,10 @@ function MessageMedia({ message, mine, onLongPress }: { message: Message; mine: 
           <VoicePlayback loadUri={fetchAccess} compact mine={mine} onLongPress={onLongPress} />
         </View>
       ) : isVideo ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Open video" onPress={() => void open()} style={[styles.videoCard, mine && styles.mediaCardMine]}>
-          <View style={styles.videoIcon}><Ionicons name="play" size={22} color="#FFFFFF" /></View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} style={[styles.mediaTitle, mine && styles.mediaTitleMine]}>Video</Text>
-            <Text numberOfLines={1} style={[styles.mediaMeta, mine && styles.mediaMetaMine]}>{message.media_name || "Video"}</Text>
-          </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open video full screen" onPress={() => void open()} style={{width:imageWidth,borderRadius:14,overflow:'hidden',backgroundColor:theme.surfaceMuted}}>
+          {url?<MessageVideoPreview url={url} width={imageWidth}/>:<View style={{width:imageWidth,aspectRatio:16/9,backgroundColor:theme.surfaceTint}}/>}
+          <View style={{position:'absolute',top:'35%',left:'40%',width:48,height:48,borderRadius:24,backgroundColor:'rgba(41,35,31,.7)',alignItems:'center',justifyContent:'center'}}><Ionicons name="play" size={25} color="#fff"/></View>
+          <Text numberOfLines={1} style={[styles.mediaCaption,mine&&styles.mediaCaptionMine,{padding:10}]}>{message.media_name||'Video'} · Tap to play</Text>
         </Pressable>
       ) : (
         <Pressable
@@ -635,6 +643,7 @@ export default function ConversationScreen() {
   const inputRef = useRef<TextInput>(null);
   const blurTargetRef = useRef<View | null>(null);
   const initialScrollDone = useRef(false);
+  const atBottom = useRef(true);
   const scope = `${user?.id}:${id}`;
   const activeScope = useRef(scope); activeScope.current = scope;
   const draftChannel = useMemo(() => ({ ready: false, value: { text: "", media: [], reply: null, voice: null, batches: [], pendingText: null } as ConversationDraft }), [scope]);
@@ -703,6 +712,7 @@ export default function ConversationScreen() {
 
   useFocusEffect(useCallback(() => {
     initialScrollDone.current = false;
+    atBottom.current = true;
     void load();
     const timer = setInterval(() => {
       if (AppState.currentState === "active") void load();
@@ -754,22 +764,36 @@ export default function ConversationScreen() {
         quality: 1,
       });
       if (picked.canceled) return;
-      const files: DraftMedia[] = picked.assets.map((asset) => {
+      const files: DraftMedia[] = await Promise.all(picked.assets.map(async (asset) => {
         const kind = asset.type === "video" ? "video" : "image";
         const mimeType = asset.mimeType || (kind === "video" ? "video/mp4" : "image/jpeg");
         const size = asset.fileSize ?? null;
         if (size && size > 500 * 1024 * 1024) {
           throw new Error("Choose pictures or videos up to 500 MB.");
         }
+        let uri = asset.uri;
+        let fileName = asset.fileName;
+        let preparedType = mimeType;
+        if (kind === "image") {
+          const context = ImageManipulator.manipulate(uri);
+          if (Math.max(asset.width, asset.height) > 1600) context.resize(asset.width >= asset.height ? { width: 1600 } : { height: 1600 });
+          try {
+            const rendered = await context.renderAsync();
+            try { uri = (await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.85 })).uri; }
+            finally { rendered.release(); }
+          } finally { context.release(); }
+          preparedType = "image/jpeg";
+          fileName = `picture-${Crypto.randomUUID()}.jpg`;
+        }
         return {
           localId: Crypto.randomUUID(),
-          uri: asset.uri,
-          name: asset.fileName || `${kind}-${Date.now()}.${kind === "video" ? "mp4" : "jpg"}`,
-          mimeType,
+          uri,
+          name: fileName || `${kind}-${Date.now()}.${kind === "video" ? "mp4" : "jpg"}`,
+          mimeType: preparedType,
           size,
           kind,
         };
-      });
+      }));
       addSelectedMedia(files);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Pictures or videos could not be selected.");
@@ -1273,16 +1297,22 @@ export default function ConversationScreen() {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={[styles.messages, !data.messages.length && styles.messagesEmpty]}
+              onScrollBeginDrag={() => { initialScrollDone.current = true; }}
+              onScroll={({ nativeEvent }) => {
+                if (initialScrollDone.current) atBottom.current = nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height >= nativeEvent.contentSize.height - 80;
+              }}
+              scrollEventThrottle={100}
+              onLayout={() => { if (!initialScrollDone.current || atBottom.current) requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false })); }}
+              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
               onContentSizeChange={() => {
-                if (!initialScrollDone.current && data.messages.length) {
-                  initialScrollDone.current = true;
-                  listRef.current?.scrollToEnd({ animated: false });
+                if ((!initialScrollDone.current || atBottom.current) && data.messages.length) {
+                  requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
                 }
               }}
               ListHeaderComponent={(
                 <View style={styles.topNotices}>
                   {data.nextCursor ? (
-                    <Pressable accessibilityRole="button" disabled={locked} onPress={() => void load(data.nextCursor!)} style={({ pressed }) => [styles.earlierButton, pressed && styles.pressed]}>
+                    <Pressable accessibilityRole="button" disabled={locked} onPress={() => { initialScrollDone.current = true; atBottom.current = false; void load(data.nextCursor!); }} style={({ pressed }) => [styles.earlierButton, pressed && styles.pressed]}>
                       <Ionicons name="time-outline" size={16} color={theme.deepBrand} />
                       <Text style={styles.earlierText}>Load earlier messages</Text>
                     </Pressable>
