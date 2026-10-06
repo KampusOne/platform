@@ -2,7 +2,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { Image, Platform } from "react-native";
-import { api, ApiError, clearApiCache } from "./api";
+import { api, ApiError, clearApiCache, currentApiUrl } from "./api";
 import { requestPhotoEdit } from "./photo-edit-session";
 import { requestVideoEdit } from "./video-edit-session";
 import { getPostVideoDurationMs } from "./post-video-processing";
@@ -56,6 +56,11 @@ export function verifyPhoto(url: string): Promise<void> {
   });
 }
 async function upload(kind: UploadKind, file: { uri: string; name: string; type: string }): Promise<UploadedFile> {
+  if(kind==='post'&&file.type.startsWith('video/')){
+    const current=await api<{profile:{id:string}}>('/v1/student/me');
+    const id=await uploadMessageFile(current.profile.id,{uri:file.uri,name:file.name,mimeType:file.type},()=>undefined,'post');
+    clearApiCache();return {id,url:`${currentApiUrl()}/v1/media/${id}`,kind:'post',private:false};
+  }
   const limit = kind === "notification-sound" ? 2 * 1024 * 1024 : kind === "post" && file.type.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
   let body: Blob | ArrayBuffer;
   if (Platform.OS === "web") {

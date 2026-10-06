@@ -1,3 +1,4 @@
+import {shareItem} from '@/src/lib/share-content';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -755,8 +756,10 @@ export default function ConversationScreen() {
     }
     setError("");
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) throw new Error("Allow photo access to send pictures and videos.");
+      if(Platform.OS==="ios"){
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) throw new Error("Allow photo access to send pictures and videos.");
+      }
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images", "videos"],
         allowsMultipleSelection: true,
@@ -1163,14 +1166,7 @@ export default function ConversationScreen() {
     const message = data?.messages.find((item) => item.id === target.id);
     if (!message || message.unsent_at) return;
     try {
-      let mediaUrl = "";
-      if (message.media_id) {
-        const access = await api<{ url: string }>(`/v1/media/${message.media_id}/access`, { method: "POST" });
-        mediaUrl = access.url;
-      }
-      await Share.share({
-        message: [messagePreview(message), mediaUrl, "Shared from KampusOne"].filter(Boolean).join("\n"),
-      });
+      await shareItem('message',message.id,'KampusOne message',messagePreview(message));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Message could not be shared.");
     }

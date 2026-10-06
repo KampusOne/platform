@@ -84,4 +84,23 @@ describe("campus starter directory", () => {
       }).map((place) => place.name),
     ).toContain("Hall 1 Hostel");
   });
+
+  it("keeps the two mosques and Dentistry teaching sites distinct", () => {
+    const places = UNIBEN_UGBOWO_STARTER.places;
+    const hostel = places.find(p => p.name === "UNIBEN Mosque")!;
+    const central = places.find(p => p.name === "UNIBEN Central Mosque")!;
+    expect(hostel.id).not.toBe(central.id);
+    expect(Math.abs(Number(hostel.latitude)-Number(central.latitude))).toBeGreaterThan(0.003);
+    expect(filterCampusStarterPlaces(places,{query:"Hostel Mosque"}).map(p=>p.name)).toContain("UNIBEN Mosque");
+    expect(places.filter(p=>p.name.startsWith("School of Dentistry"))).toHaveLength(2);
+    expect(places.find(p=>p.name==="School of Dentistry")!.latitude).toBe("6.396372");
+    expect(places.find(p=>p.name==="School of Dentistry UBTH Site")!.verified_at).toBeNull();
+  });
+
+  it("searches new screenshot landmarks without marking them as GPS verified", () => {
+    for(const name of ["Department of Petroleum Engineering","UNIBEN Central Mosque","School of Dentistry UBTH Site"]){
+      expect(filterCampusStarterPlaces(UNIBEN_UGBOWO_STARTER.places,{query:name}).some(p=>p.name===name&&p.verified_at===null)).toBe(true);
+    }
+    expect(UNIBEN_UGBOWO_STARTER.places.some(p=>p.name==="MTN LB-Net Library")).toBe(false);
+  });
 });

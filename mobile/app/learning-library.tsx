@@ -1,11 +1,13 @@
+import {isPlayDistribution} from "@/src/lib/digital-billing-policy";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, Text, View } from "react-native";
+import { Linking, Platform, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { randomUUID } from "expo-crypto";
 import { ToolPage, ToolButton, ToolField } from "@/src/components/toolkit";
 import { api } from "@/src/lib/api";
 import { useAppearance } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
+const playBuild=isPlayDistribution(Platform.OS,process.env.EXPO_PUBLIC_ANDROID_DISTRIBUTION);
 type Purchase = {
   resource_type:string;
   id: string;
@@ -131,6 +133,7 @@ function AccountLibrary() {
     setNotice("");
     try {
       if (kind === "pay") {
+        if(playBuild)throw new Error("Resource purchases are unavailable in this version.");
         const requestId = keys.current.get(p.id) ?? randomUUID();
         keys.current.set(p.id, requestId);
         const result = await api<{
@@ -273,7 +276,7 @@ function AccountLibrary() {
               checkout.
             </Text>
           ) : null}
-          {p.status === "PENDING_PAYMENT" &&
+          {!playBuild && p.status === "PENDING_PAYMENT" &&
           p.access_status !== "EXPIRED" &&
           p.payment_status !== "REQUIRES_REVIEW" ? (
             <ToolButton
@@ -295,7 +298,7 @@ function AccountLibrary() {
               />
             </>
           ) : null}
-          {p.access_status === "EXPIRED" &&
+          {!playBuild && p.access_status === "EXPIRED" &&
           p.payment_status !== "REQUIRES_REVIEW" ? (
             <ToolButton
               secondary

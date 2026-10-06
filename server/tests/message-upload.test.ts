@@ -20,6 +20,7 @@ vi.mock('../../mobile/node_modules/expo-file-system/src/index.ts', () => ({
     open() { return { offset: 0, readBytes(length: number) { mock.reads.push({ offset: this.offset, length }); return new Uint8Array(length); }, close: mock.closes }; }
   },
 }));
+vi.mock('../../mobile/src/lib/request-deadline',()=>({withRequestDeadline:(operation:(signal:AbortSignal)=>Promise<unknown>)=>operation(new AbortController().signal)}));
 vi.mock('../../mobile/src/lib/api', () => ({ api: mock.api }));
 import { uploadMessageFile } from '../../mobile/src/lib/message-upload';
 const file = { localId: 'draft-1', uri: 'file:///cache/image', name: 'photo.jpg', mimeType: 'image/jpeg' };
@@ -50,4 +51,17 @@ describe('bounded native message uploads', () => {
     await expect(uploadMessageFile('student', { ...file, uri: 'file:///documents/draft' }, vi.fn())).rejects.toThrow();
     expect(mock.storage.size).toBe(1);
   });
+});
+
+it('sends direct chunks to R2 and confirms them with the API without proxying bytes',async()=>{
+ Object.assign(mock.session,{transport:'direct'});
+ const fetch=vi.fn(async()=>new Response('',{status:200}));vi.stubGlobal('fetch',fetch);
+ mock.api.mockImplementation(async(path:string)=>path.endsWith('/complete')?{id:'media-1'}:path==='/v1/media/message-uploads'?mock.session:path.endsWith('/url')?{url:'https://'+'a'.repeat(32)+'.r2.cloudflarestorage.com/kampusone-private/reserved?X-Amz-Signature=fixture',headers:{'Content-Type':'application/octet-stream'}}:{});
+ try{
+  expect(await uploadMessageFile('student',file,vi.fn())).toBe('media-1');
+  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(mock.api.mock.calls.filter(([,opts])=>opts?.method==='PUT')).toHaveLength(0);
+  expect(mock.api.mock.calls.filter(([path])=>String(path).endsWith('/confirm'))).toHaveLength(3);
+  expect(mock.reads.every(r=>r.length<=5)).toBe(true);
+ }finally{vi.unstubAllGlobals();}
 });

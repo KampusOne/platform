@@ -6,7 +6,7 @@ const projects = ["kampusone-platform-preview", "kampusone-mobile-preview"];
 export const productionHosts = {
   agents: "https://agents.kampusone.app",
   admin: "https://a7f3c9e1b6d2f8a4c5e9b1d7f3a6c2e8.kampusone.app",
-  mobile: "https://kampusone-mobile-preview.vercel.app",
+  mobile: "https://mobile.kampusone.app",
 };
 
 export function verifyDeploymentRecords({ sourceSha, mainSha, repository, workerRuns, statuses }) {

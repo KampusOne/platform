@@ -6,6 +6,13 @@ export const shareKinds = [
   "product",
   "tutorial",
   "material",
+  "community",
+  "study-group",
+  "class-community",
+  "message",
+  "ai",
+  "streak",
+  "exam-period",
 ] as const;
 export type ShareKind = (typeof shareKinds)[number];
 const configured =
@@ -32,7 +39,7 @@ export function validSharedId(value: unknown): value is string {
   );
 }
 export function sharedLink(kind: ShareKind, id: string) {
-  if (!shareKinds.includes(kind) || !validSharedId(id))
+  if (!shareKinds.includes(kind) || !sharedDestination(kind,id))
     throw new Error("This content link is not valid.");
   return `${SHARE_ORIGIN}/s/${kind}/${id}`;
 }
@@ -46,10 +53,24 @@ export function sharedDestination(
     | "/student-service"
     | "/(tabs)/store"
     | "/(tabs)/tutorials"
-    | "/learning-preview";
+    | "/learning-preview"
+    | "/community"
+    | "/shared-message"
+    | "/ai"
+    | "/streak"
+    | "/exam-countdown";
   params: Record<string, string>;
 } | null {
+  if (kind==='ai'&&id==='kira')return {pathname:'/ai',params:{}};
+  if (kind==='streak'&&id==='today')return {pathname:'/streak',params:{}};
+  if(kind==='exam-period'&&typeof id==='string'){
+    const dates=id.split('_');
+    if(dates.length===2&&validPeriodDates(dates[0]!,dates[1]!))return {pathname:'/exam-countdown',params:{startsOn:dates[0]!,endsOn:dates[1]!}};
+    return null;
+  }
   if (!validSharedId(id)) return null;
+  if(kind==='community'||kind==='study-group'||kind==='class-community')return {pathname:'/community',params:{id,...(kind==='class-community'?{}:{kind:kind==='study-group'?'STUDY_GROUP':'COMMUNITY'})}};
+  if(kind==='message')return {pathname:'/shared-message',params:{id}};
   if (kind === "post") return { pathname: "/post", params: { id } };
   if (kind === "profile")
     return { pathname: "/student-profile", params: { id } };
@@ -82,3 +103,9 @@ export function approvedSharedUrl(value: string) {
     return false;
   }
 }
+
+export function validPeriodDates(start:string,end:string){
+ const real=(v:string)=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T12:00:00Z'))&&new Date(v+'T12:00:00Z').toISOString().slice(0,10)===v;
+ return real(start)&&real(end)&&end>=start&&Date.parse(end)-Date.parse(start)<=366*86400000;
+}
+export function sharedExamPeriodLink(start:string,end:string){return sharedLink('exam-period',start+'_'+end);}

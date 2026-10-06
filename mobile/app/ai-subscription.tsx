@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, Pressable, Text, View } from "react-native";
+import { AppState, Linking, Platform, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
 import { router, useFocusEffect } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ToolButton, ToolField, ToolPage } from "@/src/components/toolkit";
 import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 import { api, ApiError } from "@/src/lib/api";
+import { isPlayDistribution } from "@/src/lib/digital-billing-policy";
 
 type Tier = "standard" | "pro";
 type Checkout = {
@@ -93,7 +95,107 @@ type StatusResponse = {
   };
 };
 
-const money = (value: number | undefined) => value === undefined ? "Loading price…" :
+type CachedKiraView = {
+  savedAt: number;
+  tier: Tier;
+  subscription: Plan;
+  benefits: Benefits;
+  proBenefits: Benefits;
+  standardBenefits?: Benefits;
+  capabilities?: StatusResponse["capabilities"];
+  imports?: StatusResponse["imports"];
+};
+
+const KIRA_CACHE_PREFIX = "kampusone.kira-plans.v1.";
+const planSeed = (): Plan => ({
+  amountKobo: 600000,
+  listedAmountKobo: 600000,
+  discountPercent: 0,
+  available: true,
+  checkoutEnabled: false,
+  complimentary: false,
+  currentTier: "standard",
+  selectedTier: "standard",
+  currentPeriodEnd: null,
+  checkout: null,
+  catalog: {
+    standard: {
+      tier: "standard",
+      planId: null,
+      version: null,
+      amountKobo: 0,
+      listedAmountKobo: 0,
+      discountPercent: 0,
+      discountAmountKobo: 0,
+      active: true,
+      available: true,
+      checkoutEnabled: false,
+      offer: { active: false, startsAt: null, endsAt: null, percent: 0 },
+    },
+    pro: {
+      tier: "pro",
+      planId: null,
+      version: null,
+      amountKobo: 600000,
+      listedAmountKobo: 600000,
+      discountPercent: 0,
+      discountAmountKobo: 0,
+      active: true,
+      available: true,
+      checkoutEnabled: false,
+      offer: { active: false, startsAt: null, endsAt: null, percent: 0 },
+    },
+  },
+});
+
+function cacheableSubscription(subscription: Plan): Plan {
+  return { ...subscription, checkout: null };
+}
+
+function validCachedPlan(value: unknown): value is CachedKiraView {
+  if (!value || typeof value !== "object") return false;
+  const cached = value as Partial<CachedKiraView>;
+  const standard = cached.subscription?.catalog?.standard;
+  const pro = cached.subscription?.catalog?.pro;
+  return (
+    Number.isFinite(cached.savedAt) &&
+    (cached.tier === "standard" || cached.tier === "pro") &&
+    Boolean(standard && Number.isSafeInteger(standard.amountKobo)) &&
+    Boolean(!pro || Number.isSafeInteger(pro.amountKobo)) &&
+    Boolean(cached.benefits && cached.proBenefits)
+  );
+}
+
+async function readKiraCache(userId: string) {
+  try {
+    const raw = await AsyncStorage.getItem(KIRA_CACHE_PREFIX + userId);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    return validCachedPlan(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeKiraCache(userId: string, result: StatusResponse) {
+  const cached: CachedKiraView = {
+    savedAt: Date.now(),
+    tier: result.tier,
+    subscription: cacheableSubscription(result.subscription),
+    benefits: result.benefits,
+    proBenefits: result.proBenefits,
+    ...(result.standardBenefits ? { standardBenefits: result.standardBenefits } : {}),
+    ...(result.capabilities ? { capabilities: result.capabilities } : {}),
+    ...(result.imports ? { imports: result.imports } : {}),
+  };
+  try {
+    await AsyncStorage.setItem(KIRA_CACHE_PREFIX + userId, JSON.stringify(cached));
+  } catch {
+    // Pricing remains available from the live response even if device cache is full.
+  }
+}
+
+const money = (value: number | undefined) => value === undefined ? "Pricing unavailable" :
   new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
@@ -186,13 +288,39 @@ function CatalogOffer({ plan, now }: { plan: CatalogPlan | null | undefined; now
 
 export default function KiraSubscription() {
   const { user } = useAuth();
-  return <AccountSubscription key={user?.id} />;
+  return isPlayDistribution(Platform.OS,process.env.EXPO_PUBLIC_ANDROID_DISTRIBUTION)
+    ? <PlayPlanAccess key={user?.id} /> : <AccountSubscription key={user?.id} />;
+}
+
+function PlayPlanAccess() {
+  const { theme } = useAppearance();
+  const [status,setStatus]=useState<StatusResponse|null>(null),[loading,setLoading]=useState(false),[error,setError]=useState('');
+  const alive=useRef(true),request=useRef(0);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;request.current++;};},[]);
+  const load=useCallback(async()=>{
+    const turn=++request.current;setLoading(true);setError('');
+    try{const result=await api<StatusResponse>('/v1/ai/status');if(alive.current&&turn===request.current)setStatus(result);}
+    catch(caught){if(alive.current&&turn===request.current)setError(caught instanceof Error?caught.message:'Your plan could not load. Try again.');}
+    finally{if(alive.current&&turn===request.current)setLoading(false);}
+  },[]);
+  useFocusEffect(useCallback(()=>{void load();},[load]));
+  return <ToolPage title="Kira access" refreshing={loading} onRefresh={()=>void load()}>
+    <View style={{padding:20,gap:12}}>
+      <Text style={{fontFamily:theme.font.semibold,fontSize:22,color:theme.text}}>{status?status.tier==='pro'?'Kira Pro is active':'Kira Standard':loading?'Loading your access…':'Your access could not load'}</Text>
+      <Text style={{fontFamily:theme.font.body,fontSize:14,lineHeight:22,color:theme.textMuted}}>{status?.tier==='pro'?'Your account’s existing Pro access is available here.':status?'Use Kira Standard with your Campus One account.':''} Plan purchases are unavailable in this version.</Text>
+      {status?.subscription.currentPeriodEnd?<Text style={{color:theme.textMuted}}>Current access ends {new Date(status.subscription.currentPeriodEnd).toLocaleDateString("en-NG")}.</Text>:null}
+      {error?<Text accessibilityRole="alert" style={{color:theme.error}}>{error}</Text>:null}
+      <ToolButton label="Open Kira" onPress={()=>router.push('/ai')} />
+      {error?<ToolButton secondary label="Try again" disabled={loading} onPress={()=>void load()} />:null}
+    </View>
+  </ToolPage>;
 }
 
 function AccountSubscription() {
   const { user, profile } = useAuth();
   const { theme } = useAppearance();
-  const [plan, setPlan] = useState<Plan | null>(null);
+  const [plan, setPlan] = useState<Plan>(() => planSeed());
+  const [planSource, setPlanSource] = useState<"seed" | "cache" | "server">("seed");
   const [benefits, setBenefits] = useState<Benefits | null>(null);
   const [standardBenefits, setStandardBenefits] = useState<Benefits | null>(null);
   const [capabilities, setCapabilities] = useState<StatusResponse["capabilities"]>();
@@ -203,6 +331,8 @@ function AccountSubscription() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [expandedBenefits, setExpandedBenefits] = useState<Partial<Record<Tier, boolean>>>({});
   const [checkoutScreen, setCheckoutScreen] = useState(false);
   const [coupon, setCoupon] = useState("");
   const [quote, setQuote] = useState<PricingQuote | null>(null);
@@ -212,6 +342,7 @@ function AccountSubscription() {
   const opening = useRef(false);
   const request = useRef(0);
   const lock = useRef(false);
+  const planSourceRef = useRef<"seed" | "cache" | "server">("seed");
 
   useEffect(() => {
     alive.current = true;
@@ -223,7 +354,7 @@ function AccountSubscription() {
 
   useEffect(() => {
     const current = Date.now();
-    const deadlines = Object.values(plan?.catalog ?? {}).flatMap((catalogPlan) => catalogPlan?.offer.endsAt ? [Date.parse(catalogPlan.offer.endsAt)] : []);
+    const deadlines = Object.values(plan.catalog ?? {}).flatMap((catalogPlan) => catalogPlan?.offer.endsAt ? [Date.parse(catalogPlan.offer.endsAt)] : []);
     if (checkoutScreen && quote) deadlines.push(Date.parse(quote.expiresAt));
     const future = deadlines.filter((deadline) => Number.isFinite(deadline) && deadline > current);
     if (!future.length) return;
@@ -231,41 +362,77 @@ function AccountSubscription() {
     return () => clearTimeout(timer);
   }, [plan, quote, checkoutScreen, now]);
 
-  const load = useCallback(async () => {
-    const turn = ++request.current;
-    setLoading(true);
-    try {
-      const result = await api<StatusResponse>("/v1/ai/status", { cache: "no-store" });
-      if (!alive.current || turn !== request.current) return;
-      setPlan(result.subscription);
-      setNow(Date.now());
-      setCurrentTier(result.subscription.currentTier ?? (result.tier === "pro" ? "pro" : "standard"));
-      setImportLimit(result.tier=== "pro" ? result.imports?.limit??30 : 30);
-      setBenefits(result.subscription.complimentary ? result.benefits : result.proBenefits);
-      setStandardBenefits(result.standardBenefits ?? (result.tier === 'standard' ? result.benefits : null));
-      setCapabilities(result.capabilities);
-      setError("");
-      if (result.subscription.checkout) {
-        key.current = result.subscription.checkout.request_id;
-        setCoupon(result.subscription.checkout.discount_code ?? "");
-        setSelectedTier(result.subscription.checkout.tier ?? "pro");
-        setCheckoutScreen(true);
-      }
-    } catch (caught) {
-      if (alive.current && turn === request.current)
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "Your Kira plan could not load. Try again.",
-        );
-    } finally {
-      if (alive.current && turn === request.current) setLoading(false);
+  const applySubscription = useCallback((subscription: Plan, tier?: Tier, source: "cache" | "server" = "server") => {
+    if (!alive.current) return;
+    setPlan(subscription);
+    planSourceRef.current = source;
+    setPlanSource(source);
+    setNow(Date.now());
+    setCurrentTier(subscription.currentTier ?? (tier === "pro" ? "pro" : "standard"));
+    if (subscription.checkout) {
+      key.current = subscription.checkout.request_id;
+      setCoupon(subscription.checkout.discount_code ?? "");
+      setSelectedTier(subscription.checkout.tier ?? "pro");
+      setCheckoutScreen(true);
     }
   }, []);
 
+  const load = useCallback(async (showRefresh = false) => {
+    const turn = ++request.current;
+    setLoading(true);
+    if (showRefresh) setRefreshing(true);
+    setError("");
+
+    if (user?.id) {
+      void readKiraCache(user.id).then((cached) => {
+        if (!cached || !alive.current || turn !== request.current || planSourceRef.current === "server") return;
+        applySubscription(cached.subscription, cached.tier, "cache");
+        setImportLimit(cached.tier === "pro" ? cached.imports?.limit ?? 30 : 30);
+        setBenefits(cached.subscription.complimentary ? cached.benefits : cached.proBenefits);
+        setStandardBenefits(cached.standardBenefits ?? (cached.tier === "standard" ? cached.benefits : null));
+        setCapabilities(cached.capabilities);
+      });
+    }
+
+    const fastPlan = api<{ subscription: Plan }>("/v1/ai/subscription", { cache: "reload" })
+      .then((result) => {
+        if (!alive.current || turn !== request.current) return true;
+        applySubscription(result.subscription, result.subscription.currentTier, "server");
+        return true;
+      })
+      .catch(() => false);
+
+    const fullStatus = (async () => {
+      let result: StatusResponse;
+      try {
+        result = await api<StatusResponse>("/v1/ai/status");
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        result = await api<StatusResponse>("/v1/ai/status", { cache: "reload" });
+      }
+      if (!alive.current || turn !== request.current) return true;
+      applySubscription(result.subscription, result.tier, "server");
+      setImportLimit(result.tier === "pro" ? result.imports?.limit ?? 30 : 30);
+      setBenefits(result.subscription.complimentary ? result.benefits : result.proBenefits);
+      setStandardBenefits(result.standardBenefits ?? (result.tier === "standard" ? result.benefits : null));
+      setCapabilities(result.capabilities);
+      if (user?.id) void writeKiraCache(user.id, result);
+      return true;
+    })().catch(() => false);
+
+    const [fastOk, statusOk] = await Promise.all([fastPlan, fullStatus]);
+    if (alive.current && turn === request.current) {
+      if (!fastOk && !statusOk && planSourceRef.current === "seed") {
+        setError("We couldn't refresh Kira pricing. The displayed price is the built-in fallback; retry before checkout.");
+      }
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [applySubscription, user?.id]);
+
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(false);
     }, [load]),
   );
 
@@ -273,15 +440,15 @@ function AccountSubscription() {
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active" && opening.current) {
         opening.current = false;
-        void load();
+        void load(false);
       }
     });
     return () => sub.remove();
   }, [load]);
 
-  const selected = plan?.catalog?.[selectedTier];
+  const selected = plan.catalog?.[selectedTier];
   const selectedName = selectedTier === "standard" ? "Standard" : "Pro";
-  const checkout = plan?.checkout;
+  const checkout = plan.checkout;
   const offerLive = Boolean(selected?.active && selected.available && selected.offer.active && selected.discountPercent > 0 && selected.discountAmountKobo > 0 &&
     (!selected.offer.startsAt || Date.parse(selected.offer.startsAt) <= now) &&
     (!selected.offer.endsAt || Date.parse(selected.offer.endsAt) > now));
@@ -342,7 +509,7 @@ function AccountSubscription() {
   }
 
   async function enterCheckout(tier: Tier = selectedTier) {
-    if (!plan?.catalog?.[tier]?.checkoutEnabled || busy) return;
+    if (!plan.catalog?.[tier]?.checkoutEnabled || busy) return;
     await run(async () => {
       if (!checkout) {
         key.current = randomUUID();
@@ -364,7 +531,7 @@ function AccountSubscription() {
   }
 
   async function check() {
-    if (!plan?.checkout) return;
+    if (!plan.checkout) return;
     await run(async () => {
       const result = await api<{ payment: { status: string } }>(
         "/v1/payments/status/" + encodeURIComponent(plan.checkout!.reference),
@@ -455,7 +622,7 @@ function AccountSubscription() {
         },
         {
           icon: "mic-outline" as const,
-          title: `Voice transcription up to ${Math.max(1, Math.round(allowance.voiceMaxSeconds / 60))} minutes`,
+          title: `Voice transcription up to ${allowance.voiceMaxSeconds < 60 ? `${allowance.voiceMaxSeconds} seconds` : `${allowance.voiceMaxSeconds / 60} ${allowance.voiceMaxSeconds === 60 ? "minute" : "minutes"}`}`,
           detail: "Speak a question or study prompt instead of typing it.",
         },
         {
@@ -484,7 +651,7 @@ function AccountSubscription() {
 
   if (checkoutScreen) {
     return (
-      <ToolPage title="Kira checkout" refreshing={loading} onRefresh={() => void load()}>
+      <ToolPage title="Kira checkout" refreshing={refreshing} onRefresh={() => void load(true)}>
         <View style={{ gap: 18, paddingVertical: 14 }}>
         {plan ? <View accessibilityRole="text" style={{flexDirection:"row",alignItems:"center",gap:8,padding:14,backgroundColor:theme.surfaceMuted,borderRadius:12}}><Ionicons name="checkmark-circle" size={18} color={theme.brand}/><Text style={{color:theme.text,fontFamily:theme.font.semibold}}>Current plan: {currentTier=== "pro" ? "Pro" : "Standard"}</Text></View> : null}
           <Pressable
@@ -549,11 +716,11 @@ function AccountSubscription() {
             <ToolButton
               secondary
               label="Edit account details"
-              disabled={busy || !!plan?.checkout}
+              disabled={busy || !!plan.checkout}
               onPress={() => router.push("/account")}
             />
 
-            {!plan?.checkout && offerPercent === 0 ? (
+            {!plan.checkout && offerPercent === 0 ? (
               <>
                 <ToolField
                   label="Discount code"
@@ -622,13 +789,13 @@ function AccountSubscription() {
               <ToolButton secondary label="Refresh total" disabled={busy || !checkoutEnabled} onPress={() => void refreshQuote()} />
             </View>
           ) : null}
-          {error ? <ToolButton secondary label="Reload plan and payment" disabled={busy || loading} onPress={() => void load()} /> : null}
+          {error ? <ToolButton secondary label="Reload plan and payment" disabled={busy || loading} onPress={() => void load(true)} /> : null}
 
           <ToolButton
             label={
               busy
                 ? "Please wait…"
-                : plan?.checkout
+                : plan.checkout
                   ? `Continue payment · ${money(amount)}`
                   : `Pay ${money(amount)}`
             }
@@ -636,12 +803,12 @@ function AccountSubscription() {
               busy ||
               !checkoutEnabled ||
               (!checkout && !quoteValid) ||
-              plan?.checkout?.status === "REQUIRES_REVIEW"
+              plan.checkout?.status === "REQUIRES_REVIEW"
             }
             onPress={() => void pay()}
           />
 
-          {plan?.checkout ? (
+          {plan.checkout ? (
             <View style={{ gap: 9 }}>
               <Text selectable style={muted}>
                 Reference: {plan.checkout.reference}
@@ -667,35 +834,36 @@ function AccountSubscription() {
   }
 
   return (
-    <ToolPage title="Kira plans" refreshing={loading} onRefresh={() => void load()}>
+    <ToolPage title="Kira plans" refreshing={refreshing} onRefresh={() => void load(true)}>
       <View style={{ gap: 18, paddingVertical: 14 }}>
-        {plan ? <View accessibilityRole="text" style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 14, backgroundColor: theme.surfaceMuted, borderRadius: 12 }}>
+        {planSource !== "seed" ? <View accessibilityRole="text" style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 14, backgroundColor: theme.surfaceMuted, borderRadius: 12 }}>
           <Ionicons name="checkmark-circle" size={18} color={theme.brand} />
           <Text style={{ color: theme.text, fontFamily: theme.font.semibold }}>Current plan: {currentTier === "pro" ? "Pro" : "Standard"}</Text>
         </View> : null}
         <Text style={muted}>Choose the study support that works for you. Each plan includes the features below.</Text>
+        {error ? <View style={{ padding: 14, gap: 8, backgroundColor: theme.surfaceMuted, borderRadius: 14 }}><Text accessibilityRole="alert" style={{ ...text, color: theme.error }}>{error}</Text><ToolButton secondary label="Try again" disabled={busy || loading} onPress={() => void load(true)} /></View> : null}
         {(["standard", "pro"] as const).map((tier) => {
-          const catalog = plan?.catalog?.[tier];
+          const catalog = plan.catalog?.[tier];
           const allowance = tier === "standard" ? standardBenefits : benefits;
           const name = tier === "standard" ? "Standard" : "Pro";
-          const complimentary = tier === "pro" && plan?.complimentary;
+          const complimentary = tier === "pro" && plan.complimentary;
           const free = catalog?.amountKobo === 0;
-          const isCurrent = currentTier === tier;
+          const isCurrent = planSource !== "seed" && currentTier === tier;
+          const rows = benefitRows(tier, allowance);
           return <View key={tier} style={{ borderRadius: 22, borderWidth: 1, borderColor: tier === "pro" ? theme.brand : theme.border, backgroundColor: tier === "pro" ? theme.surfaceSoft : theme.surface, padding: 18 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <Text style={{ ...heading, fontSize: 24 }}>Kira {name}</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <Text style={{ ...heading, fontSize: 24, flexShrink: 1 }}>Kira {name}</Text>
               {isCurrent ? <Text style={{ ...muted, color: theme.deepBrand }}>Current plan</Text> : null}
             </View>
             <Text style={{ ...heading, fontSize: 29, lineHeight: 36, marginTop: 10 }}>
-              {complimentary ? "Complimentary" : free ? "Free" : catalog ? `${money(catalog.amountKobo)} / month` : plan ? "Pricing unavailable" : "Loading price…"}
+              {complimentary ? "Complimentary" : free ? "Free" : catalog ? `${money(catalog.amountKobo)} / month` : "Pricing unavailable"}
             </Text>
             {!complimentary ? <CatalogOffer plan={catalog} now={now} /> : null}
             <Text style={{ ...muted, marginTop: 7, marginBottom: 8 }}>{tier === "standard" ? "Everyday study help, teaching answers and worked examples." : "More generations, longer lessons and more room to reason through your material."}</Text>
-            {benefitRows(tier, allowance).map((row) => <BenefitRow key={row.title} {...row} />)}
-            {isCurrent && plan?.currentPeriodEnd ? <Text style={{ ...muted, marginVertical: 10 }}>Active until {new Date(plan.currentPeriodEnd).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}</Text> : null}
+            {isCurrent && plan.currentPeriodEnd ? <Text style={{ ...muted, marginVertical: 10 }}>Active until {new Date(plan.currentPeriodEnd).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}</Text> : null}
             {complimentary ? <Text style={muted}>Your owner account has complimentary Pro access.</Text> : <ToolButton
-              label={free ? "Standard is included" : checkout && (checkout.tier ?? "pro") === tier ? "Continue your payment" : catalog?.checkoutEnabled ? `Continue with ${name}` : isCurrent ? `${name} is active` : `${name} is unavailable`}
-              disabled={busy || free || !catalog?.checkoutEnabled || Boolean(checkout && (checkout.tier ?? "pro") !== tier)}
+              label={free ? `${name} is included` : planSource === "seed" ? "Checking availability…" : !catalog ? "Plan could not load" : checkout && (checkout.tier ?? "pro") === tier ? "Continue your payment" : catalog.checkoutEnabled ? `Continue with ${name}` : isCurrent ? `${name} is active` : `${name} is unavailable`}
+              disabled={busy || free || planSource === "seed" || !catalog?.checkoutEnabled || Boolean(checkout && (checkout.tier ?? "pro") !== tier)}
               onPress={() => {
                 setSelectedTier(tier); setQuote(null); setCoupon(checkout?.discount_code ?? ""); setNotice("");
                 if (!checkout) key.current = randomUUID();
@@ -703,10 +871,10 @@ function AccountSubscription() {
                 void enterCheckout(tier);
               }}
             />}
+            {rows.slice(0, expandedBenefits[tier] ? rows.length : 3).map((row) => <BenefitRow key={row.title} {...row} />)}
+            {rows.length > 3 ? <Pressable accessibilityRole="button" accessibilityLabel={`${expandedBenefits[tier] ? "Hide" : "View"} all ${name} benefits`} accessibilityState={{ expanded: Boolean(expandedBenefits[tier]) }} onPress={() => setExpandedBenefits(previous => ({ ...previous, [tier]: !previous[tier] }))} style={{ paddingVertical: 14, flexDirection: "row", alignItems: "center", gap: 8 }}><Text style={{ ...text, color: theme.deepBrand, fontFamily: theme.font.semibold }}>{expandedBenefits[tier] ? "Show fewer benefits" : `View all ${rows.length} benefits`}</Text><Ionicons name={expandedBenefits[tier] ? "chevron-up" : "chevron-down"} size={18} color={theme.deepBrand} /></Pressable> : null}
           </View>;
         })}
-        {error ? <Text accessibilityRole="alert" style={{ ...text, color: theme.error }}>{error}</Text> : null}
-        {error ? <ToolButton secondary label="Try again" disabled={busy || loading} onPress={() => void load()} /> : null}
         <Text style={{ ...muted, textAlign: "center", paddingHorizontal: 16 }}>Paystack confirms processing at checkout. No automatic renewal. Access starts when payment is confirmed.</Text>
       </View>
     </ToolPage>

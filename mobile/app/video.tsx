@@ -1,3 +1,4 @@
+import {useSignedMedia} from '@/src/lib/signed-media';
 import { useEvent } from "expo";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -118,7 +119,8 @@ export default function VideoViewerScreen() {
   const initialSeek = useRef<{ version: number; position: number } | null>(null);
   const [replacementComplete, setReplacementComplete] = useState(false);
   const playbackKey = post?.id || id;
-  const mediaSource = post ? postVideoSource(post) : requestedVideoUrl;
+  const originalSource = post ? postVideoSource(post) : requestedVideoUrl;
+  const mediaSource=useSignedMedia(originalSource||'');
 
   // Expo's web replaceAsync calls play() itself and discards the browser promise.
   // Initialising a web player with its source avoids that implicit autoplay.

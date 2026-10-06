@@ -199,6 +199,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
   const [busyKey, setBusyKey] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [productImageDraft, setProductImageDraft] = useState<{ productId: string | null; url: string }>({ productId: null, url: "" });
   const [pickupCode, setPickupCode] = useState<{ orderId: string; code: string } | null>(null);
 
   const storefront = storefrontResource.data?.storefront ?? null;
@@ -208,6 +209,10 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
   const selectedProduct = products.find((product) => product.id === selectedProductId) ?? null;
   const storeLocked = storefront?.status === "SUSPENDED";
   const storefrontApproved = storefront?.status === "APPROVED";
+  const productImageUrl =
+    productImageDraft.productId === selectedProductId
+      ? productImageDraft.url
+      : selectedProduct?.image_url ?? "";
 
   function refresh(message?: string) {
     if (message) setNotice(message);
@@ -278,7 +283,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
         description: form.get("description"),
         categoryId: form.get("categoryId"),
         priceKobo: Math.round(Number(form.get("price")) * 100),
-        imageUrl: form.get("imageUrl") || null,
+        imageUrl: productImageUrl || null,
         preparationMinutes: Number(form.get("preparationMinutes")),
         packageWeightGrams: optionalNumber(form.get("packageWeightGrams")),
         packageLengthCm: optionalNumber(form.get("packageLengthCm")),
@@ -296,6 +301,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
       );
       if (!editing) {
         setSelectedProductId(result.id);
+        setProductImageDraft({ productId: null, url: "" });
         formElement.reset();
       }
       refresh(
@@ -307,6 +313,40 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
       );
     } catch (caught) {
       setError(errorMessage(caught, "The product could not be saved."));
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  async function uploadProductImage(file: File | null) {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Choose a JPG, PNG or WebP product photo.");
+      return;
+    }
+    if (file.size < 1 || file.size > 10 * 1024 * 1024) {
+      setError("Choose a product photo smaller than 10 MB.");
+      return;
+    }
+    setBusyKey("product-image");
+    setError("");
+    setNotice("");
+    try {
+      const uploaded = await portalApi<{ id: string; url: string; kind: string }>(
+        `/v1/media?kind=product&name=${encodeURIComponent(file.name || "product.jpg")}`,
+        {
+          method: "POST",
+          body: file,
+          headers: { "Content-Type": file.type },
+          signal: AbortSignal.timeout(60_000),
+        },
+      );
+      if (!uploaded?.url || uploaded.kind !== "product")
+        throw new Error("The product photo upload returned an incomplete response.");
+      setProductImageDraft({ productId: selectedProductId, url: uploaded.url });
+      setNotice("Product photo uploaded. Save the product to keep this image.");
+    } catch (caught) {
+      setError(errorMessage(caught, caught instanceof Error ? caught.message : "The product photo could not be uploaded."));
     } finally {
       setBusyKey("");
     }
@@ -627,10 +667,27 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
               <label>Height<input name="packageHeightCm" type="number" min="1" max="200" step="0.1" defaultValue={selectedProduct?.package_height_cm ?? ""} /></label>
             </fieldset>
             <label>
-              Image URL <span className="optional-label">Temporary</span>
-              <input name="imageUrl" type="url" placeholder="https://…" defaultValue={selectedProduct?.image_url ?? ""} disabled={storeLocked} />
-              <span className="field-help">Managed image upload remains unavailable until the R2 binding and validation pipeline are reviewed.</span>
+              Product photo
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={Boolean(busyKey) || storeLocked}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0] ?? null;
+                  void uploadProductImage(file);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <span className="field-help">{busyKey === "product-image" ? "Uploading photo…" : "JPG, PNG or WebP, up to 10 MB."}</span>
             </label>
+            {productImageUrl ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                <Image src={productImageUrl} alt="Product preview" width={112} height={112} unoptimized style={{ borderRadius: 16, objectFit: "cover" }} />
+                <button className="text-button text-button--danger" type="button" disabled={Boolean(busyKey) || storeLocked} onClick={() => setProductImageDraft({ productId: selectedProductId, url: "" })}>Remove photo</button>
+              </div>
+            ) : (
+              <p className="field-help">Add a clear product photo before publishing so students can recognize the item.</p>
+            )}
             <label className="checkbox">
               <input name="bicycleDeliveryEligible" type="checkbox" defaultChecked={selectedProduct?.bicycle_delivery_eligible ?? false} disabled={storeLocked} /> Package is safe for the bicycle-delivery pilot
             </label>

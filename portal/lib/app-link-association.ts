@@ -46,12 +46,20 @@ export const sharedKinds = [
   "product",
   "tutorial",
   "material",
+  "community",
+  "study-group",
+  "class-community",
+  "message",
 ] as const;
-export function validSharedPath(kind: string, id: string) {
-  return (
-    sharedKinds.some((k) => k === kind) &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-  );
+export function validSharedPath(kind:string,id:string){
+ if(kind==='ai')return id==='kira';
+ if(kind==='streak')return id==='today';
+ if(kind==='exam-period'){
+  const [start,end,...extra]=id.split('_');
+  const real=(v:string|undefined)=>!!v&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T12:00:00Z'))&&new Date(v+'T12:00:00Z').toISOString().slice(0,10)===v;
+  return !extra.length&&real(start)&&real(end)&&end!>=start!&&Date.parse(end!)-Date.parse(start!)<=366*86400000;
+ }
+ return sharedKinds.some(k=>k===kind)&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
 export function androidDownloadUrl(value: string | undefined) {
   try {

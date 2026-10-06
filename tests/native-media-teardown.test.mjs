@@ -72,6 +72,7 @@ function nativeHarness(file, exported = 'default') {
     '@/src/lib/appearance': { useAppearance: () => ({ theme }) },
     '@/src/components/toast': { useToast: () => () => {} },
     '@/src/lib/media-downloads': { downloadPostMedia: async () => {} },
+    '@/src/lib/signed-media': { useSignedMedia: (url) => url },
     '@/src/lib/video-playback-session': { readVideoPlaybackSession: () => null, writeVideoPlaybackSession() {} },
     '@/src/lib/feed-video-playback': { isFeedRoutePlaybackActive: () => false, isFeedMuted: () => true, setFeedMuted() {}, subscribeFeedMute: () => () => {},
       subscribeFeedRoutePlayback: (fn) => { routeListeners.push(fn); fn(false); return () => {}; } },

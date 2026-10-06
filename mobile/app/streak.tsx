@@ -1,6 +1,7 @@
-import { appLink } from "@/src/lib/app-links";
+import {sharedLink} from '@/src/lib/shared-links';
+import {shareContent} from '@/src/lib/share-content';
 import { useCallback, useEffect, useState } from "react";
-import { Share, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ToolPage, ToolButton, ToolRow } from "@/src/components/toolkit";
 import { ScreenSkeleton } from "@/src/components/skeleton";
@@ -347,8 +348,10 @@ export default function StreakScreen() {
             label="Share my streak"
             disabled={!current}
             onPress={() =>
-              void Share.share({
-                message: `${current} ${current === 1 ? "day" : "days"} showing up on KampusOne. Personal best: ${streak.longest_days} days. 🔥 Keep your classes, notes and campus life together. ${appLink()}`,
+              void shareContent({
+                title: 'My KampusOne streak',
+                url: sharedLink('streak','today'),
+                message: `${current} ${current === 1 ? "day" : "days"} showing up on KampusOne. Personal best: ${streak.longest_days} days. 🔥 Keep your classes, notes and campus life together.`,
               }).catch(() => toast("Could not open sharing", "error"))
             }
           />

@@ -56,11 +56,17 @@ function replayTranscription(row: RequestRow, hash: string) {
   throw new AppError(409, "CONFLICT", stale ? "That transcription did not finish in time. Your recording is kept; try again." : "This recording is still being transcribed.", { reason: stale ? "AI_VOICE_STALE" : "AI_VOICE_PROCESSING", retryWithNewKey: stale });
 }
 aiRoutes.get("/status", async c => {
-  const ready = await studentExperienceReady(c.env);
+  const user = currentUser(c);
+  // These authenticated reads are independent; do not stack their database
+  // latency before the plan screen can display its prices and access status.
+  const [ready, quota, usage, subscription] = await Promise.all([
+    studentExperienceReady(c.env),
+    studentAIPolicy(c.env, user),
+    c.env.UNIFIED_SCHEMA_READY === "true" ? studentAIUsage(c.env, user.id) : Promise.resolve(null),
+    kiraBillingStatus(c.env, user),
+  ]);
   const enabled = c.env.AI_ASSISTANT_ENABLED === "true" && ready;
-  const quota = await studentAIPolicy(c.env, currentUser(c));
-  const imports = ready ? await academicImportUsage(c.env,currentUser(c),quota.pro) : null;
-  const usage = c.env.UNIFIED_SCHEMA_READY === "true" ? await studentAIUsage(c.env, currentUser(c).id) : null;
+  const imports = ready ? await academicImportUsage(c.env,user,quota.pro) : null;
   // Provider credentials, model IDs and shared/global limits never leave the Worker.
   const askLimit = quota.pro ? 60 : quota.chat;
   const speech = transcriptionConfiguration(c.env);
@@ -83,7 +89,7 @@ aiRoutes.get("/status", async c => {
       resetsAt: usage?.chat_resets_at ?? null,
     },
     study: { limit: quota.pro?100:quota.study, remaining: quota.unlimited ? null : quota.pro ? Math.max(0,100-Number(usage?.month_used??0)) : Math.max(0,quota.study-Number(usage?.study_used ?? 0)) },
-    subscription: await kiraBillingStatus(c.env,currentUser(c)),
+    subscription,
   });
 });
 aiRoutes.get('/subscription',async c=>c.json({subscription:await kiraBillingStatus(c.env,currentUser(c))}));

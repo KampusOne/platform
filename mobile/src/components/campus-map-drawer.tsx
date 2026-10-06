@@ -7,12 +7,12 @@ import {useReducedMotionPreference} from '@/src/components/visual-system';
 import {useThemeStyles,type Theme} from '@/src/lib/appearance';
 
 type IconName=keyof typeof Ionicons.glyphMap;
-export type CampusMapDrawerPlace={id:string;name:string;category:string;description:string|null;search_aliases?:readonly string[]|null};
+export type CampusMapDrawerPlace={id:string;name:string;category:string;description:string|null;verified_at?:string|null;search_aliases?:readonly string[]|null};
 type RouteSummary={distanceMetres:number;durationSeconds:number;notice:string|null;instructions:string[]};
 type Props={
   campusId:string;bottomInset:number;topInset:number;error:string;loading:boolean;routeBusy:boolean;
   places:CampusMapDrawerPlace[];query:string;picker:'origin'|'destination'|null;
-  originName:string|null;destinationName:string|null;route:RouteSummary|null;
+  originName:string|null;destinationName:string|null;destinationApproximate?:boolean;route:RouteSummary|null;
   alternatives:RouteSummary[];selectedRoute:number;onSelectRoute:(index:number)=>void;
   locationError:string;locationLoading:boolean;photo:{url:string;attribution:string}|null;
   onQueryChange:(value:string)=>void;onPickPlace:(id:string)=>void;
@@ -23,7 +23,7 @@ type Props={
 const RECENTS_KEY='k1.campus-map.recent-destinations.v1';
 const categoryIcons:Record<string,IconName>={ACADEMIC:'school-outline',FOOD:'restaurant-outline',HEALTH:'medkit-outline',HOSTEL:'bed-outline',SERVICE:'help-buoy-outline',SPORT:'football-outline',TRANSPORT:'bus-outline'};
 export function formatMapDistance(metres:number){return metres<1000?`${Math.round(metres)} m`:`${(metres/1000).toFixed(1)} km`;}
-export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,routeBusy,places,query,picker,originName,destinationName,route,alternatives,selectedRoute,onSelectRoute,locationError,locationLoading,photo,onQueryChange,onPickPlace,onChoose,onPickOnMap,onUseCurrentLocation,onClearRoute,onSwap,onRetry,onHeightChange}:Props){
+export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,routeBusy,places,query,picker,originName,destinationName,destinationApproximate=false,route,alternatives,selectedRoute,onSelectRoute,locationError,locationLoading,photo,onQueryChange,onPickPlace,onChoose,onPickOnMap,onUseCurrentLocation,onClearRoute,onSwap,onRetry,onHeightChange}:Props){
   const {theme,styles}=useThemeStyles(makeStyles),{height}=useWindowDimensions(),reducedMotion=useReducedMotionPreference();
   const [expanded,setExpanded]=useState(false),[recentIds,setRecentIds]=useState<string[]>([]),[keyboard,setKeyboard]=useState(0);
   const collapsedHeight=route||routeBusy||error?202:166;
@@ -102,9 +102,10 @@ export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,rou
         {picker==='origin'?<Pressable accessibilityRole="button" disabled={locationLoading} onPress={()=>{Keyboard.dismiss();setExpanded(false);onUseCurrentLocation();}} style={styles.actionRow}><Ionicons name="locate-outline" size={20} color={theme.deepBrand}/><View style={{flex:1}}><Text style={styles.actionText}>{locationLoading?'Getting your location…':'Use my current location'}</Text><Text style={styles.helper}>{locationError||'Optional. You can plan from anywhere on campus.'}</Text></View></Pressable>:null}
         {loading?<Text style={styles.helper}>Loading campus places…</Text>:null}
         <Text style={styles.section}>{query.trim()?'Matching places':'Campus places'}</Text>
-        {results.map(place=><Pressable accessibilityRole="button" key={place.id} onPress={()=>pick(place)} style={styles.place}><View style={styles.placeIcon}><Ionicons name={categoryIcons[place.category]??'location-outline'} size={20} color={theme.deepBrand}/></View><View style={{flex:1,minWidth:0}}><Text numberOfLines={1} style={styles.placeName}>{place.name}</Text><Text numberOfLines={1} style={styles.helper}>{place.category.toLowerCase().replace(/_/g,' ')}</Text></View><Ionicons name="chevron-forward" size={16} color={theme.textMuted}/></Pressable>)}
+        {results.map(place=><Pressable accessibilityRole="button" accessibilityLabel={`${place.name}${place.verified_at===null?", approximate location":""}`} key={place.id} onPress={()=>pick(place)} style={styles.place}><View style={styles.placeIcon}><Ionicons name={categoryIcons[place.category]??'location-outline'} size={20} color={theme.deepBrand}/></View><View style={{flex:1,minWidth:0}}><Text numberOfLines={1} style={styles.placeName}>{place.name}</Text><Text numberOfLines={1} style={styles.helper}>{place.category.toLowerCase().replace(/_/g,' ')}{place.verified_at===null?' · Approximate location':''}</Text></View><Ionicons name="chevron-forward" size={16} color={theme.textMuted}/></Pressable>)}
         {!loading&&!results.length?<Text style={styles.helper}>{query?'No matching place. Try an alias or select a point on the map.':'This campus directory is awaiting mapped places.'}</Text>:null}
       </>:<>
+        {destinationApproximate?<View style={styles.routeNotice}><Ionicons name="information-circle-outline" size={18} color={theme.deepBrand}/><Text style={[styles.helper,{flex:1}]}>Approximate location. Follow local signs for the entrance.</Text></View>:null}
         {!originName?<Pressable accessibilityRole="button" onPress={()=>choose('origin')} style={styles.actionRow}><Ionicons name="navigate-outline" size={20} color={theme.deepBrand}/><Text style={styles.actionText}>Choose where your walk starts</Text><Ionicons name="chevron-forward" size={16} color={theme.textMuted}/></Pressable>:null}
         {photo?<View style={styles.photoRow}><Image source={{uri:photo.url}} style={styles.photo}/><Text style={[styles.helper,{flex:1}]}>{photo.attribution}</Text></View>:null}
         {alternatives.length>1?<><Text style={styles.section}>Choose a walking route</Text><View style={{flexDirection:'row',gap:8}}>{alternatives.map((option,index)=><Pressable key={index} accessibilityRole="button" accessibilityState={{selected:selectedRoute===index}} onPress={()=>onSelectRoute(index)} style={{flex:1,padding:12,borderRadius:14,borderWidth:1,borderColor:selectedRoute===index?theme.deepBrand:theme.border,backgroundColor:selectedRoute===index?theme.surfaceTint:theme.surface}}><Text style={{color:theme.text,fontFamily:theme.font.semibold,fontSize:12}}>{Math.max(1,Math.ceil(option.durationSeconds/60))} min</Text><Text style={styles.helper}>{index===0?'Shortest':`Route ${index+1}`} · {formatMapDistance(option.distanceMetres)}</Text></Pressable>)}</View></>:null}

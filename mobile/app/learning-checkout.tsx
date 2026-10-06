@@ -1,6 +1,7 @@
+import {isPlayDistribution} from "@/src/lib/digital-billing-policy";
 import {DiscountCodeField} from "@/src/components/discount-code-field";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, Text, View } from "react-native";
+import { Linking, Platform, Text, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { randomUUID } from "expo-crypto";
 import { ToolPage, ToolButton } from "@/src/components/toolkit";
@@ -23,6 +24,7 @@ export default function LearningCheckout() {
       priceKobo?: string;
     }>(),
     { user } = useAuth();
+  if(isPlayDistribution(Platform.OS,process.env.EXPO_PUBLIC_ANDROID_DISTRIBUTION))return <ToolPage title="Learning resources"><Text>Resource purchases are unavailable in this version. You can open resources already available to your account.</Text><ToolButton label="My learning library" onPress={()=>router.replace('/learning-library')}/></ToolPage>;
   return (
     <AccountCheckout
       key={`${user?.id}.${resourceId}`}

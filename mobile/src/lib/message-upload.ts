@@ -3,6 +3,7 @@ import * as Crypto from 'expo-crypto';
 import { Platform } from 'react-native';
 import { File, FileMode, type FileHandle } from 'expo-file-system';
 import { api } from './api';
+import {withRequestDeadline} from './request-deadline';
 
 type UploadSession = {
   id: string;
@@ -10,20 +11,21 @@ type UploadSession = {
   status: string;
   mediaId: string | null;
   chunkBytes: number;
+  transport?: "proxy"|"direct";
 };
 
 export async function uploadMessageFile(
   userId: string,
   file: { localId?: string; uri: string; name: string; mimeType: string },
   onProgress: (value: number) => void,
-  kind: 'message' | 'resource' | 'tutorial' = 'message',
+  kind: 'message' | 'resource' | 'tutorial' | 'post' = 'message',
   suppliedUploadId?:string,
 ) {
   const source = Platform.OS === 'web'
     ? await (await fetch(file.uri)).blob()
     : new File(file.uri);
   const size = source.size;
-  const limit=(kind==='resource'?100:500)*1024*1024;
+  const limit=(kind==='post'?50:kind==='resource'?100:500)*1024*1024;
   if (!size || size > limit) throw new Error(`Choose a file up to ${limit/1024/1024} MB. Compress larger files before attaching them.`);
   const fingerprint = await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
@@ -41,7 +43,7 @@ export async function uploadMessageFile(
   });
   if (session.status === 'COMPLETE' && session.mediaId) {
     onProgress(1);
-    if(kind==='message')await AsyncStorage.removeItem(key);
+    if(kind==='message'||kind==='post')await AsyncStorage.removeItem(key);
     return session.mediaId;
   }
   if (!Number.isInteger(session.chunkBytes) || session.chunkBytes < 1 || session.chunkBytes > 5 * 1024 * 1024) {
@@ -74,10 +76,16 @@ export async function uploadMessageFile(
       }
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          await api(`/v1/media/message-uploads/${session.id}/parts/${part}`, {
-            method: 'PUT', body: bytes,
-            headers: { 'Content-Type': 'application/octet-stream' }, timeoutMs: 120_000,
-          });
+          if(session.transport==='direct'){
+            const signed=await api<{url:string;headers:Record<string,string>}>(`/v1/media/message-uploads/${session.id}/parts/${part}/url`,{method:'POST'});
+            const url=new URL(signed.url);
+            if(url.protocol!=='https:'||!/^[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/i.test(url.hostname)||url.username||url.password||url.port)throw new Error('Storage returned an invalid upload address.');
+            const response=await withRequestDeadline(signal=>fetch(signed.url,{method:'PUT',body:bytes,headers:signed.headers,signal}),120_000);
+            if(!response.ok)throw new Error('Storage could not receive this chunk. Retry to resume.');
+            await api(`/v1/media/message-uploads/${session.id}/parts/${part}/confirm`,{method:'POST'});
+          }else{
+            await api(`/v1/media/message-uploads/${session.id}/parts/${part}`,{method:'PUT',body:bytes,headers:{'Content-Type':'application/octet-stream'},timeoutMs:120_000});
+          }
           break;
         } catch (error) {
           if (attempt === 2) throw error;
@@ -88,7 +96,7 @@ export async function uploadMessageFile(
     }
     const result = await api<{ id: string }>(`/v1/media/message-uploads/${session.id}/complete`, { method: 'POST', timeoutMs: 60_000 });
     onProgress(1);
-    if(kind==='message')await AsyncStorage.removeItem(key);
+    if(kind==='message'||kind==='post')await AsyncStorage.removeItem(key);
     return result.id;
   } finally {
     try { handle?.close(); } catch { /* The OS may already have closed the file. */ }

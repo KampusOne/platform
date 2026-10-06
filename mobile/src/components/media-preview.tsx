@@ -1,3 +1,4 @@
+import {useSignedMedia} from '@/src/lib/signed-media';
 import { useEvent } from "expo";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -121,7 +122,8 @@ function Video({
   const suspendedRef = useRef(suspended);
   const feedRouteActiveRef = useRef(playbackMode !== "feed-autoplay" || isFeedRoutePlaybackActive());
 
-  const player = useVideoPlayer(cachedVideoSource(url), (instance) => {
+  const signedSource=useSignedMedia(url);
+  const player = useVideoPlayer(signedSource?cachedVideoSource(signedSource):null, (instance) => {
     instance.loop = false;
     instance.playbackRate = 1;
     instance.bufferOptions = FAST_VIDEO_BUFFER_OPTIONS;

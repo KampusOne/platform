@@ -1,3 +1,7 @@
+import { alarmCategories, alarmCategory, type AlarmCategory } from "@/src/lib/alarm-groups";
+import { AlarmSourceDialog, ClearAlarmsDialog } from "@/src/components/alarm-source-dialogs";
+import { AcademicAlarmFields } from "@/src/components/academic-alarm-fields";
+import * as Crypto from "expo-crypto";
 import { BulkMenu, BulkToolbar, SelectionCheckbox, useBulkSelection } from "@/src/components/bulk-selection";
 import { BrandSwitch } from "@/src/components/brand-switch";
 import { ScreenSkeleton } from "@/src/components/skeleton";
@@ -543,6 +547,15 @@ export default function Alarms() {
   const { theme, isDark } = useAppearance();
   const styles = useMemo(() => createStyles(theme, isDark), [theme, isDark]);
   const toast = useToast();
+  const [expanded, setExpanded] = useState<AlarmCategory[]>(["REGULAR"]);
+  const [clearGroup,setClearGroup] = useState<AlarmCategory|"ALL"|null>(null);
+  const [clearError,setClearError] = useState("");
+  const [importOpen,setImportOpen] = useState(false);
+  const [assessment,setAssessment] = useState(false);
+  const [assessmentKind,setAssessmentKind] = useState<"TEST"|"EXAM">("TEST");
+  const [assessmentDate,setAssessmentDate] = useState("");
+  const [assessmentEnd,setAssessmentEnd] = useState("10:00");
+  const [assessmentRequest,setAssessmentRequest] = useState("");
   const [items, setItems] = useState<Alarm[]>([]);
   const [editing, setEditing] = useState<Alarm | null>(null);
   const [label, setLabel] = useState("");
@@ -593,7 +606,7 @@ export default function Alarms() {
     }, [load]),
   );
 
-  const selection = useBulkSelection(items.filter(alarm=>!alarm.exam_id).map(alarm=>alarm.id), async ids=> {
+  const selection = useBulkSelection(items.map(alarm=>alarm.id), async ids=> {
     await api("/v1/learning/alarms/bulk-delete",{method:"POST",body:JSON.stringify({ids})});
     const next=await load();
     await syncAlarms(next);
@@ -628,6 +641,10 @@ export default function Alarms() {
     const repeating = Boolean(alarm?.days.length);
     const initialDays = repeating ? alarm!.days : [];
     const oneOffDate = alarm?.fires_at ? new Date(alarm.fires_at) : null;
+    setAssessment(false);
+    setAssessmentRequest(Crypto.randomUUID());
+    setAssessmentDate(new Date(Date.now()+86400000+3600000).toISOString().slice(0,10));
+    setAssessmentEnd("10:00");
     setEditing(alarm);
     setLabel(alarm?.label ?? "");
     setTime(alarm?.time ?? "08:00");
@@ -703,7 +720,8 @@ export default function Alarms() {
   }
 
   function saveAlarm() {
-    const normalizedLabel = label.trim() || "Alarm";
+    const normalizedLabel = label.trim() || (assessment?assessmentKind==="TEST"?"My test":"My exam":"Alarm");
+    if(assessment){void mutate("/v1/exams/personal","POST",{requestId:assessmentRequest,kind:assessmentKind,entry:{title:normalizedLabel,courseCode:"",date:assessmentDate,startsAt:time,endsAt:assessmentEnd,venue:""}});return;}
     void mutate(
       "/v1/learning/alarms" + (editing ? "/" + editing.id : ""),
       editing ? "PUT" : "POST",
@@ -766,7 +784,7 @@ export default function Alarms() {
             </Text>
           ) : null}
 
-          <Pressable accessibilityRole="button" disabled={busy} onPress={()=>router.push('/alarm-import')} style={styles.importButton}><Ionicons name="calendar-outline" size={20} color={theme.deepBrand}/><Text style={styles.importText}>Import from timetable</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Import alarms" disabled={busy} onPress={()=>setImportOpen(true)} style={styles.importButton}><Ionicons name="calendar-outline" size={20} color={theme.deepBrand}/><Text style={styles.importText}>Import alarms</Text></Pressable>
           {Platform.OS==='android'?<Pressable accessibilityRole="button" onPress={()=>{void syncAlarms(items,true).then(enabled=>toast(enabled?'Alarms are enabled':'Allow alarms and notifications in device settings')).catch(error=>toast(error.message,'error'));}} style={styles.importButton}><Ionicons name="notifications-outline" size={20} color={theme.deepBrand}/><Text style={styles.importText}>Check alarm permissions</Text></Pressable>:null}
           {!ready ? <ScreenSkeleton variant="list" compact /> : null}
 
@@ -803,22 +821,25 @@ export default function Alarms() {
             </View>
           ) : null}
 
-          <View style={styles.list}>
-            {items.map((alarm) => {
+          {items.length?<Pressable accessibilityRole="button" disabled={busy} onPress={()=>{setClearError("");setClearGroup("ALL");}} style={{alignSelf:"flex-end",minHeight:44,justifyContent:"center",marginBottom:12}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand,fontSize:13}}>Clear all alarms</Text></Pressable>:null}
+          {alarmCategories.map(category=>{const group=items.filter(a=>alarmCategory(a)===category.id);if(!group.length)return null;const open=expanded.includes(category.id);return <View key={category.id} style={{marginBottom:18,borderWidth:1,borderColor:theme.border,borderRadius:20,backgroundColor:theme.surface,overflow:"hidden"}}>
+            <View style={{flexDirection:"row",alignItems:"center",paddingHorizontal:14,gap:8}}><Pressable accessibilityRole="button" accessibilityState={{expanded:open}} accessibilityLabel={category.title+", "+group.length+" alarms"} onPress={()=>setExpanded(v=>v.includes(category.id)?v.filter(c=>c!==category.id):[...v,category.id])} style={{flex:1,minHeight:82,flexDirection:"row",gap:12,alignItems:"center"}}><View style={{padding:10,borderRadius:12,backgroundColor:theme.surfaceMuted}}><Ionicons name={category.icon} size={22} color={theme.deepBrand}/></View><View style={{flex:1,minWidth:0,gap:4}}><Text style={{fontFamily:theme.font.semibold,color:theme.text,fontSize:15}}>{category.title} <Text style={{color:theme.textMuted,fontSize:12}}>({group.length})</Text></Text><Text numberOfLines={1} style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:11}}>{category.description}</Text></View><Ionicons name={open?"chevron-up":"chevron-down"} size={16} color={theme.textMuted}/></Pressable><Pressable accessibilityRole="button" accessibilityLabel={"Clear "+category.title} disabled={busy} onPress={()=>{setClearError("");setClearGroup(category.id);}} style={{minHeight:44,paddingHorizontal:8,justifyContent:"center"}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand,fontSize:12}}>Clear</Text></Pressable></View>
+          {open?<View style={[styles.list,{padding:10,paddingTop:0}]}>
+            {group.map((alarm) => {
               const shown = displayTime(alarm.time);
               return (
                 <Pressable
                   key={alarm.id}
                   accessibilityRole="button"
                   accessibilityLabel={`${alarm.exam_id?"View exam reminder":"Edit"} ${alarm.label}`}
-                  onPress={() => alarm.exam_id ? router.push({pathname:"/exam-awareness",params:{alarmId:alarm.id}}) : selection.active ? selection.toggle(alarm.id) : edit(alarm)}
+                  onPress={() => selection.active ? selection.toggle(alarm.id) : alarm.exam_id ? router.push({pathname:"/exam-awareness",params:{alarmId:alarm.id}}) : edit(alarm)}
                   style={({ pressed }) => [
                     styles.alarmCard,
                     !alarm.enabled && styles.alarmCardDisabled,
                     pressed && styles.alarmCardPressed,
                   ]}
                 >
-                  {!alarm.exam_id?<SelectionCheckbox selection={selection} id={alarm.id} />:null}
+                  <SelectionCheckbox selection={selection} id={alarm.id} />
                   <View style={styles.alarmCopy}>
                     <View style={styles.alarmTimeRow}>
                       <Text style={styles.alarmTime}>{shown.clock}</Text>
@@ -856,7 +877,7 @@ export default function Alarms() {
                 </Pressable>
               );
             })}
-          </View>
+          </View>:null}</View>;})}
         </ScrollView>
 
         <Pressable
@@ -869,6 +890,8 @@ export default function Alarms() {
         </Pressable>
       </View>
 
+      <AlarmSourceDialog visible={importOpen} onClose={()=>setImportOpen(false)} onChoose={source=>{setImportOpen(false);router.push({pathname:"/alarm-import",params:{source}});}}/>
+      <ClearAlarmsDialog category={clearGroup} busy={busy} error={clearError} onClose={()=>setClearGroup(null)} onAwareness={items.find(a=>a.exam_id&&a.enabled)?()=>{const alarm=items.find(a=>a.exam_id&&a.enabled)!;setClearGroup(null);router.push({pathname:"/exam-awareness",params:{alarmId:alarm.id}});}:undefined} onConfirm={()=>{const ids=items.filter(a=>clearGroup==="ALL"||alarmCategory(a)===clearGroup).map(a=>a.id);if(!ids.length){setClearGroup(null);return;}setBusy(true);setClearError("");void api("/v1/learning/alarms/bulk-delete",{method:"POST",body:JSON.stringify({ids})}).then(async()=>{await syncAlarms(await load());setClearGroup(null);toast("Alarms cleared","success");}).catch(e=>setClearError(e.message)).finally(()=>setBusy(false));}}/>
       <Modal
         visible={form}
         transparent
@@ -938,6 +961,7 @@ export default function Alarms() {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
+                {!editing?<AcademicAlarmFields enabled={assessment} onEnabled={setAssessment} kind={assessmentKind} onKind={setAssessmentKind} date={assessmentDate} onDate={setAssessmentDate} end={assessmentEnd} onEnd={setAssessmentEnd}/>:null}
                 <View style={styles.pickerWrap}>
                   <PeriodColumn
                     value={timeParts.period}
@@ -968,7 +992,7 @@ export default function Alarms() {
                 </View>
 
                 <View style={styles.settingsCard}>
-                  <View style={styles.scheduleHeader}>
+                  {!assessment?<><View style={styles.scheduleHeader}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.settingTitle}>Day</Text>
                       <Text style={styles.scheduleHint}>
@@ -1035,6 +1059,7 @@ export default function Alarms() {
                     })}
                   </View>
 
+                  </>:null}
                   <View style={styles.settingDivider} />
                   <Pressable
                     accessibilityRole="button"

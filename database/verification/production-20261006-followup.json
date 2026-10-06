@@ -1,0 +1,237 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-06T17:42:19.082Z",
+    "scope": "User-authorized October 6 continuation: categorized alarms, personal assessments and direct storage upload support. No customer records removed. Paystack fee setting and R2 credentials require manual account configuration."
+  },
+  "verifiedAt": "2026-10-06T17:42:49.712Z",
+  "rehearsal": {
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "createdAt": "2026-10-03T11:05:15Z",
+    "reusedWithoutReset": true,
+    "limitation": "Fresh Neon branch creation hit the branch limit. Existing isolated October 3 rehearsal used without reset, plus the complete current schema locally. Identical fixtures were rolled back on rehearsal and production."
+  },
+  "checks": {
+    "followup": "passed",
+    "fixturesRolledBack": true,
+    "isolatedBranchRehearsal": "passed",
+    "existingAccountCountsPreserved": true,
+    "mediaAndBookingsPreserved": true,
+    "communityProjectionsPreserved": true,
+    "agentApprovalProjectionsPreserved": true,
+    "bankAndPayoutBoundaryUnchanged": true,
+    "privatePrivileges": "passed",
+    "atomicTransaction": "passed",
+    "exactSourceLedger": "passed",
+    "providerAccountSettingVerified": false,
+    "directStorageCredentialsVerified": false
+  },
+  "production": {
+    "before": {
+      "public.users": {
+        "hash": "ada4320596cbad5661f1e98481c295b2",
+        "count": 16
+      },
+      "public.profiles": {
+        "hash": "4b2d9083aebbafb6bea5b3a70283128d",
+        "count": 16
+      },
+      "public.media_objects": {
+        "hash": "4fed3d52e736318a679b7e897a30d2e9",
+        "count": 122
+      },
+      "public.student_exams": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.agent_profiles": {
+        "hash": "243bf3d8048f7829d9839172a2d28aa5",
+        "count": 1
+      },
+      "public.student_alarms": {
+        "hash": "f59129a68577b833533512c7d564dc6f",
+        "count": 69
+      },
+      "public.student_groups": {
+        "hash": "78bd244c142ab17abcb94990bafa7f00",
+        "count": 2
+      },
+      "public.payout_requests": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.tutorial_bookings": {
+        "hash": "4623d80c86f4fbaf332e1b9bd9845426",
+        "count": 6
+      },
+      "public.agent_applications": {
+        "hash": "f0602f4a43670b4dfd854a1c667bebd9",
+        "count": 2
+      },
+      "app_private.kira_checkouts": {
+        "hash": "ca007a760ec047f094a4278a562de443",
+        "count": 3
+      },
+      "public.ledger_transactions": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.student_group_posts": {
+        "hash": "6cb49b8a4cdddbba8298dc9f0f442c21",
+        "count": 2
+      },
+      "app_private.verified_people": {
+        "hash": "ee79f482ab13e650a5784d1e8f5e1bbf",
+        "count": 1
+      },
+      "public.student_group_members": {
+        "hash": "71a91d26656f568d1eef207f678c63df",
+        "count": 6
+      },
+      "app_private.agent_payout_quotes": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.agent_application_details": {
+        "hash": "eb8cc59152441bdaee9388fe01e33dfa",
+        "count": 1
+      },
+      "app_private.media_upload_sessions": {
+        "hash": "5d1e0b92b0e63c39d8582fd7f5e9c82c",
+        "count": 1
+      },
+      "app_private.payout_account_setups": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "app_private.agent_manual_approvals": {
+        "hash": "a88d20931224e6dee0fba92aaa4b7c8f",
+        "count": 1
+      },
+      "app_private.agent_payout_settlements": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      }
+    },
+    "after": {
+      "public.users": {
+        "hash": "ada4320596cbad5661f1e98481c295b2",
+        "count": 16
+      },
+      "public.profiles": {
+        "hash": "4b2d9083aebbafb6bea5b3a70283128d",
+        "count": 16
+      },
+      "public.media_objects": {
+        "hash": "4fed3d52e736318a679b7e897a30d2e9",
+        "count": 122
+      },
+      "public.student_exams": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.agent_profiles": {
+        "hash": "243bf3d8048f7829d9839172a2d28aa5",
+        "count": 1
+      },
+      "public.student_alarms": {
+        "hash": "f59129a68577b833533512c7d564dc6f",
+        "count": 69
+      },
+      "public.student_groups": {
+        "hash": "78bd244c142ab17abcb94990bafa7f00",
+        "count": 2
+      },
+      "public.payout_requests": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.tutorial_bookings": {
+        "hash": "4623d80c86f4fbaf332e1b9bd9845426",
+        "count": 6
+      },
+      "public.agent_applications": {
+        "hash": "f0602f4a43670b4dfd854a1c667bebd9",
+        "count": 2
+      },
+      "app_private.kira_checkouts": {
+        "hash": "ca007a760ec047f094a4278a562de443",
+        "count": 3
+      },
+      "public.ledger_transactions": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.student_group_posts": {
+        "hash": "6cb49b8a4cdddbba8298dc9f0f442c21",
+        "count": 2
+      },
+      "app_private.verified_people": {
+        "hash": "ee79f482ab13e650a5784d1e8f5e1bbf",
+        "count": 1
+      },
+      "public.student_group_members": {
+        "hash": "71a91d26656f568d1eef207f678c63df",
+        "count": 6
+      },
+      "app_private.agent_payout_quotes": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "public.agent_application_details": {
+        "hash": "eb8cc59152441bdaee9388fe01e33dfa",
+        "count": 1
+      },
+      "app_private.media_upload_sessions": {
+        "hash": "5d1e0b92b0e63c39d8582fd7f5e9c82c",
+        "count": 1
+      },
+      "app_private.payout_account_setups": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      },
+      "app_private.agent_manual_approvals": {
+        "hash": "a88d20931224e6dee0fba92aaa4b7c8f",
+        "count": 1
+      },
+      "app_private.agent_payout_settlements": {
+        "hash": "d41d8cd98f00b204e9800998ecf8427e",
+        "count": 0
+      }
+    },
+    "preservation": {
+      "unchanged": true,
+      "excludedNewColumns": [
+        "student_alarms.calendar_event_id",
+        "student_exams.assessment_kind",
+        "student_exams.is_personal",
+        "student_exams.reminders_enabled",
+        "media_upload_sessions.transport"
+      ]
+    },
+    "fixtureSources": [
+      "2026-10-06-followup-acceptance.sql"
+    ]
+  },
+  "migrations": [
+    {
+      "version": "20261006190000_alarm_categories_and_assessments",
+      "appliedAt": "2026-10-06T17:42:49.712494+00:00",
+      "appliedBy": "Codex: user-authorized October 6 follow-up",
+      "sourceBlobSha": "d3a98fd4ce2244a112b3206b730aceece651fef2",
+      "path": "database/neon/migrations/20261006190000_alarm_categories_and_assessments.sql"
+    },
+    {
+      "version": "20261006191000_direct_storage_uploads",
+      "appliedAt": "2026-10-06T17:42:49.712494+00:00",
+      "appliedBy": "Codex: user-authorized October 6 follow-up",
+      "sourceBlobSha": "191e699c7c869099edff364685873d3456ca82d0",
+      "path": "database/neon/migrations/20261006191000_direct_storage_uploads.sql"
+    }
+  ]
+}

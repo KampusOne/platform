@@ -4,6 +4,8 @@ const path = require("path");
 module.exports = ({ config }) => {
   const shareOrigin = new URL(process.env.EXPO_PUBLIC_SHARE_ORIGIN || "https://links.kampusone.app");
   if (shareOrigin.protocol !== "https:" || !["links.kampusone.app", "kampusone.app"].includes(shareOrigin.hostname) || shareOrigin.username || shareOrigin.password || shareOrigin.port || shareOrigin.pathname !== "/" || shareOrigin.search || shareOrigin.hash) throw new Error("Configure a verified KampusOne share origin.");
+  const distribution=process.env.EXPO_PUBLIC_ANDROID_DISTRIBUTION;
+  if(distribution && !['play','direct'].includes(distribution))throw new Error('Unknown Android distribution.');
   const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim();
   const googleServicesFile =
     process.env.GOOGLE_SERVICES_JSON_PATH?.trim() || "./google-services.json";
@@ -15,7 +17,7 @@ module.exports = ({ config }) => {
 
   return {
     ...config,
-    plugins: [...(config.plugins || []), "expo-sharing", ["expo-media-library", { photosPermission: "Allow KampusOne to save photos you choose.", savePhotosPermission: "Allow KampusOne to save downloaded photos and videos." }]],
+    plugins: [...(config.plugins || []), "expo-sharing", ["expo-media-library", { photosPermission: "Allow KampusOne to save photos you choose.", savePhotosPermission: "Allow KampusOne to save downloaded photos and videos.", granularPermissions: [] }]],
     extra: {
       ...config.extra,
       ...(projectId

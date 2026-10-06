@@ -41,7 +41,7 @@ export function ToolPage({
   // Use the containing viewport, not a possibly stale window-width measurement.
   // Both scroll viewport and content need a definite width on React Native Web.
   return (
-    <SafeAreaView edges={["top"]} style={styles.safe}>
+    <SafeAreaView edges={["top", "bottom"]} style={styles.safe}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.safe}

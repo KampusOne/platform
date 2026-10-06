@@ -12,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
-import { api } from "@/src/lib/api";
+import { api, peekApiCache } from "@/src/lib/api";
 import { shareItem } from "@/src/lib/share-content";
 import { validPostId } from "@/src/lib/feed-posts";
 import { ProfileAvatar } from "@/src/components/profile-avatar";
@@ -114,6 +114,7 @@ export default function StudentService() {
         throw new Error("This campus business link is not valid.");
       const result = await api<Result>(
         `/v1/people/${product ? "products" : "services"}/${target}`,
+        { cache: "reload" },
       );
       if (n === generation.current && scope === current.current)
         setData(result);
@@ -129,7 +130,8 @@ export default function StudentService() {
   }, [scope, id, product]);
   useFocusEffect(
     useCallback(() => {
-      setData(undefined);
+      const target = product ?? id;
+      setData(validPostId(target) ? peekApiCache<Result>(`/v1/people/${product ? "products" : "services"}/${target}`) : undefined);
       void load();
       return () => {
         generation.current++;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { randomUUID } from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
 import { nairaToKobo } from '@/src/lib/money-input';
@@ -35,16 +35,38 @@ export default function CreateListing() {
     [],
   );
   const [category, setCategory] = useState("");
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState("");
+  const alive = useRef(true), categoryRequest = useRef(0);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; categoryRequest.current++; }; }, []);
   useEffect(()=>{requestId.current=randomUUID();},[name,description,price,stock,category,images]);
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (!tutor)
-      void api<{ categories: typeof categories }>(
-        "/v1/agents/product-categories",
-      )
-        .then((r) => setCategories(r.categories))
-        .catch((e) => toast(e.message, "error"));
-  }, [tutor, toast]);
+  const loadCategories = useCallback(async () => {
+    const turn = ++categoryRequest.current;
+    setCategoriesLoading(true); setCategoriesError("");
+    try {
+      const result = await api<{ categories: { id: string; name: string }[] }>("/v1/agents/product-categories", { cache: "reload" });
+      if (!alive.current || turn !== categoryRequest.current) return;
+      setCategories(result.categories);
+      setCategory(current => result.categories.some(c => c.id === current) ? current : "");
+      if (!result.categories.length) setCategoriesError("No approved categories are available for your campus yet. Contact support or try again later.");
+    } catch (e) {
+      if (alive.current && turn === categoryRequest.current) setCategoriesError(e instanceof Error ? e.message : "Product categories could not load.");
+    } finally {
+      if (alive.current && turn === categoryRequest.current) setCategoriesLoading(false);
+    }
+  }, []);
+  useEffect(() => { if (!tutor) void loadCategories(); }, [tutor, loadCategories]);
+  let formHint = "";
+  if (!tutor && !categories.length) formHint = categoriesLoading ? "Loading product categories…" : "Load product categories to finish your listing.";
+  else if (!tutor && !category) formHint = "Choose a product category below.";
+  else if (!tutor && !image) formHint = "Add at least one product photo.";
+  else if (name.trim().length < 2) formHint = "Enter a name with at least 2 characters.";
+  else if (description.trim().length < 10) formHint = "Add a description with at least 10 characters.";
+  else {
+    try { nairaToKobo(price); } catch (e) { formHint = e instanceof Error ? e.message : "Enter a valid price."; }
+    if (!formHint && (!/^\d+$/.test(stock.trim()) || Number(stock) > (tutor ? 500 : 1_000_000) || Number(stock) < (tutor ? 1 : 0))) formHint = tutor ? "Enter 1 to 500 available places." : "Enter a whole stock quantity from 0 to 1,000,000.";
+  }
   async function upload() {
     setBusy(true);
     try {
@@ -57,6 +79,7 @@ export default function CreateListing() {
     }
   }
   async function save() {
+    if (busy || formHint) return;
     setBusy(true);
     try {
       const path = tutor ? "/v1/agents/tutorials" : "/v1/agents/products";
@@ -146,6 +169,10 @@ export default function CreateListing() {
           />
         </>
       ) : (
+        <View style={{ gap: 10, marginBottom: 16 }}>
+        <Text style={{ fontFamily: theme.font.semibold, color: theme.text }}>Product category (required)</Text>
+        {categoriesLoading ? <Text style={{ color: theme.textMuted }}>Loading categories…</Text> : null}
+        {categoriesError ? <><Text accessibilityRole="alert" style={{ color: theme.error, lineHeight: 22 }}>{categoriesError}</Text><ToolButton secondary label="Retry product categories" disabled={categoriesLoading} onPress={() => void loadCategories()} /></> : null}
         <View
           style={{
             flexDirection: "row",
@@ -157,6 +184,7 @@ export default function CreateListing() {
           {categories.map((c) => (
             <Pressable
               accessibilityRole="radio"
+              accessibilityLabel={c.name}
               accessibilityState={{ selected: category === c.id }}
               key={c.id}
               onPress={() => setCategory(c.id)}
@@ -170,19 +198,15 @@ export default function CreateListing() {
             </Pressable>
           ))}
         </View>
+        </View>
       )}
       {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['Campus One fee',pricePreview.platformKobo],['Estimated Paystack fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Paystack confirms its actual fee at checkout.</Text></View>:null}
       <ToolButton
         label={busy ? "Uploading…" : tutor?"Submit for review":"Upload product"}
-        disabled={
-          busy ||
-          !name.trim() ||
-          description.trim().length < 10 ||
-          price === "" ||
-          (!tutor && (!image || !category))
-        }
+        disabled={busy || Boolean(formHint)}
         onPress={() => void save()}
       />
+      {!busy && formHint ? <Text style={{ color: theme.textMuted, lineHeight: 22, marginTop: 10 }}>{formHint}</Text> : null}
     </ToolPage>
   );
 }

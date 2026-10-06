@@ -1,7 +1,8 @@
+import {isPlayDistribution} from "@/src/lib/digital-billing-policy";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Linking, Platform, Pressable, Text, View } from "react-native";
 import { ToolButton, ToolPage } from "@/src/components/toolkit";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
@@ -10,6 +11,7 @@ import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 import { validSharedId } from "@/src/lib/shared-links";
 import { shareItem } from "@/src/lib/share-content";
+const playBuild=isPlayDistribution(Platform.OS,process.env.EXPO_PUBLIC_ANDROID_DISTRIBUTION);
 type Resource = {
   id: string;
   title: string;
@@ -196,7 +198,7 @@ export default function LearningPreview() {
               onPress={() => void open()}
             />
           ) : resource.access_model === "PAID" ? (
-            <>
+            playBuild ? <Text style={{color:theme.textMuted,lineHeight:22}}>Resource purchases are unavailable in this version. Resources already available to your account can still be opened.</Text> : (<>
               <Text
                 style={{
                   color: theme.text,
@@ -223,7 +225,7 @@ export default function LearningPreview() {
                   })
                 }
               />
-            </>
+            </>)
           ) : resource.listing_id ? (
             <ToolButton
               label="View the tutorial"

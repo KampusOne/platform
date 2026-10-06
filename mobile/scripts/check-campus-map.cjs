@@ -8,18 +8,20 @@ const root=nodePath.resolve(__dirname,'../..');
 const events=[],messages=[],sources=new Map(),canvas={style:{}};
 let capturedStyle,mapInstance;
 class FakeMap{
-  constructor(options){capturedStyle=structuredClone(options.style);mapInstance=this;this.options=options;this.pitch=0;this.fits=[];this.eases=[];}
+  constructor(options){capturedStyle=structuredClone(options.style);mapInstance=this;this.options=options;this.pitch=0;this.fits=[];this.eases=[];this.paddingUpdates=0;this.cameraTarget=null;}
   addControl(){}
+  addImage(id,image){assert.ok(image.width>0&&image.height>0);assert.equal(image.data.length,image.width*image.height*4);this.images??=new Map();this.images.set(id,image);}
   on(event,layer,handler){events.push({event,layer:typeof layer==='string'?layer:null,handler:handler??layer});}
   addSource(id,source){capturedStyle.sources[id]=structuredClone(source);sources.set(id,{...source,setData(data){this.data=data;},setTiles(tiles){this.tiles=tiles;},async getClusterExpansionZoom(){return 16;}});}
   addLayer(layer){capturedStyle.layers.push(structuredClone(layer));}
   getSource(id){return sources.get(id)??{setTiles(){}};}
   getCanvas(){return canvas;}
   getContainer(){return {clientWidth:390,clientHeight:844};}
-  setPadding(value){this.padding=value;}
+  // MapLibre implements setPadding through jumpTo, which stops active easing.
+  setPadding(value){this.padding=value;this.paddingUpdates++;this.cameraTarget=null;}
   jumpTo(value){this.jump=value;}
-  easeTo(value){this.eases.push(value);}
-  fitBounds(bounds,value){this.fits.push(value);}
+  easeTo(value){this.eases.push(value);this.cameraTarget=value;}
+  fitBounds(bounds,value){this.fits.push(value);this.cameraTarget={bounds};}
   setLayoutProperty(){}
   getPitch(){return this.pitch;}
   fire(){}
@@ -56,6 +58,30 @@ assert.equal(mapInstance.fits.at(-1).duration,0);
 const fits=mapInstance.fits.length;vm.runInContext('apply({location:[5.62,6.4]})',context);
 assert.equal(mapInstance.fits.length,fits,'A location-only patch must not reset route framing');
 assert.equal(sources.get('features').data.features.length,sourceFeatures.length,'A small bridge patch must preserve sourced map geometry');
+const petroleum=payload.places.find(place=>place.name==='Department of Petroleum Engineering');
+assert.ok(petroleum,'Use a newly reviewed landmark for camera verification');
+const focus={coordinate:[Number(petroleum.longitude),Number(petroleum.latitude)],nonce:101,zoom:17};
+context.payload={...payload,selectedId:petroleum.id,focus,route:null,routeKey:'none',reducedMotion:false};vm.runInContext('apply(payload)',context);
+assert.deepEqual(mapInstance.cameraTarget.center,focus.coordinate);
+assert.equal(mapInstance.cameraTarget.duration,420);
+const paddingUpdates=mapInstance.paddingUpdates;
+vm.runInContext('apply({location:[5.62,6.4]})',context);
+assert.equal(mapInstance.paddingUpdates,paddingUpdates,'A location patch must not cancel the pending landmark pan');
+assert.deepEqual(mapInstance.cameraTarget.center,focus.coordinate);
+vm.runInContext('apply({padding:{top:120,bottom:600,left:24,right:58}})',context);
+assert.deepEqual(mapInstance.cameraTarget.center,focus.coordinate,'Resizing the drawer must retain the selected landmark framing');
+context.payload={route:path.geometry,routeKey:'new-walk'};vm.runInContext('apply(payload)',context);
+assert.ok(mapInstance.cameraTarget.bounds,'A completed route must take precedence over the earlier landmark focus');
+const framedRoutes=mapInstance.fits.length;
+vm.runInContext('apply({padding:{top:120,bottom:300,left:24,right:58}})',context);
+assert.equal(mapInstance.fits.length,framedRoutes+1,'The route must fit the resized visible viewport');
+assert.ok(mapInstance.cameraTarget.bounds,'Drawer resizing must not replace route framing with a stale endpoint focus');
+const eased=mapInstance.eases.length;
+context.payload={layer:'3d',route:null,routeKey:'none',focus:{...focus,nonce:102}};vm.runInContext('apply(payload)',context);
+assert.equal(mapInstance.eases.length,eased+1,'Selecting in 3D must use one combined pan and pitch transition');
+assert.deepEqual(mapInstance.cameraTarget.center,focus.coordinate);assert.equal(mapInstance.cameraTarget.pitch,55);
+vm.runInContext('apply({location:[5.621,6.4]})',context);
+assert.equal(mapInstance.eases.length,eased+1,'A 3D location update must not interrupt the pending landmark pan');
 async function verifyGeometryCache(){
   const storage=new Map();
   const asyncStorage={
@@ -87,4 +113,4 @@ async function verifyGeometryCache(){
   assert.equal(partial.features,null,'Missing geometry must not become invented map data');
   assert.equal(partial.places.length,payload.places.length,'Places remain available when a geometry page is unavailable');
 }
-verifyGeometryCache().then(()=>console.log(JSON.stringify({status:'PASS',validatedLayers:capturedStyle.layers.length,sourcedFeatures:sourceFeatures.length,places:payload.places.length,checks:['official MapLibre style validation','clustered dense directory','unclustered selected start/end','manual point bridge','sourced path display','safe viewport padding','distinct route endpoints','reduced motion','stable camera on same route','bounded native geometry cache','ordered cache writes and corrupt/missing cache recovery']}))).catch(error=>{console.error(error);process.exitCode=1;});
+verifyGeometryCache().then(()=>console.log(JSON.stringify({status:'PASS',validatedLayers:capturedStyle.layers.length,sourcedFeatures:sourceFeatures.length,places:payload.places.length,checks:['official MapLibre style validation','clustered dense directory','unclustered selected start/end','manual point bridge','sourced path display','safe viewport padding','distinct route endpoints','reduced motion','stable camera on same route','landmark pan survives bridge updates and drawer resizing','route framing takes precedence over stale focus','bounded native geometry cache','ordered cache writes and corrupt/missing cache recovery']}))).catch(error=>{console.error(error);process.exitCode=1;});

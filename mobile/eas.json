@@ -18,7 +18,9 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": { "EXPO_PUBLIC_ANDROID_DISTRIBUTION": "play" },
+      "android": { "buildType": "app-bundle" }
     }
   },
   "submit": {

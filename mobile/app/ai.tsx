@@ -1,8 +1,10 @@
-import { appLink } from "@/src/lib/app-links";
+import { isPlayDistribution } from "@/src/lib/digital-billing-policy";
+import {sharedLink} from '@/src/lib/shared-links';
+import {shareContent} from '@/src/lib/share-content';
 import * as Clipboard from "expo-clipboard";
 import { KiraVoiceInput } from "@/src/components/kira-voice-input";
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
-import { Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
@@ -372,7 +374,7 @@ export default function StudentAI() {
     finally{if(valid()&&version===generation.current)setConfirming(undefined);}
   }
   async function copy(answer:string){try{await Clipboard.setStringAsync(answer);toast('Copied','success');}catch{toast('Could not copy. Select the answer text and copy it.','error');}}
-  async function share(answer:string){try{await Share.share({message:`This is a response I got from Kira in KampusOne.\n\n${answer}\n\nStudy, plan and connect on campus: ${appLink()}`});}catch{toast('Could not share this answer.','error');}}
+  async function share(answer:string){try{await shareContent({title:'Kira answer',message:`This is a response I got from Kira in KampusOne.\n\n${answer.slice(0,4000)}${answer.length>4000?'\n… (excerpt)':''}`,url:sharedLink('ai','kira')});}catch{toast('Could not share this answer.','error');}}
   async function rate(turn:Turn,rating:'like'|'dislike'){
     const version=generation.current;const next=turn.feedback?.rating===rating?null:rating;
     try{const result=await api<{feedback:Turn['feedback']}>('/v1/ai/feedback',{method:'POST',body:JSON.stringify({requestId:turn.requestId,rating:next})});if(valid()&&version===generation.current)setTurns(rows=>rows.map(row=>row.requestId===turn.requestId?{...row,feedback:result.feedback??null}:row));}
@@ -439,7 +441,7 @@ export default function StudentAI() {
           <ScrollView keyboardShouldPersistTaps="handled">
             {sheet==='plans'?<View>
               <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:tier==='standard'?theme.brand:theme.border,backgroundColor:tier==='standard'?theme.surfaceMuted:'transparent',marginBottom:12}}><View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Pressable accessibilityRole='radio' accessibilityState={{checked:tier==='standard'}} onPress={()=>{tierChosen.current=true;setTier('standard');key.current=randomUUID();setSheet(null);}}><Text style={{...text,fontFamily:theme.font.semibold}}>Kira Standard</Text></Pressable>{tier==='standard'?<Ionicons name='checkmark-circle' size={20} color={theme.brand}/>:null}</View>{smallButton('View Plans',()=>{setSheet(null);router.push('/ai-subscription');})}</View>
-              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:tier==='pro'?theme.brand:theme.border,backgroundColor:tier==='pro'?theme.surfaceMuted:'transparent',marginBottom:16}}><View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Text style={{...text,fontFamily:theme.font.semibold}}>Kira Pro</Text>{tier==='pro'?<Ionicons name='checkmark-circle' size={20} color={theme.brand}/>:null}</View>{status?.tier==='pro'?smallButton('Use Pro',()=>{tierChosen.current=true;setTier('pro');key.current=randomUUID();setSheet(null);}):null}{smallButton(status?.tier==='pro'?'Manage my plan':'Get Kira Pro',()=>{setSheet(null);router.push('/ai-subscription');})}</View>
+              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:tier==='pro'?theme.brand:theme.border,backgroundColor:tier==='pro'?theme.surfaceMuted:'transparent',marginBottom:16}}><View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Text style={{...text,fontFamily:theme.font.semibold}}>Kira Pro</Text>{tier==='pro'?<Ionicons name='checkmark-circle' size={20} color={theme.brand}/>:null}</View>{status?.tier==='pro'?smallButton('Use Pro',()=>{tierChosen.current=true;setTier('pro');key.current=randomUUID();setSheet(null);}):null}{smallButton(isPlayDistribution(Platform.OS,process.env.EXPO_PUBLIC_ANDROID_DISTRIBUTION)?'View my access':status?.tier==='pro'?'Manage my plan':'Get Kira Pro',()=>{setSheet(null);router.push('/ai-subscription');})}</View>
               {status?.askSession?<Text style={{...muted,marginBottom:8}}>{status.askSession.remaining===null?'Your Ask sessions have no personal message cap.':`${status.askSession.remaining} Ask message${status.askSession.remaining===1?'':'s'} left in this ${status.askSession.windowMinutes}-minute session.`}</Text>:null}
             </View>:null}
             {sheet==='info'?<View style={{gap:15}}><Text style={text}>Your chats are scoped to your account and saved for 90 days. When you rate an answer, authorised support staff can review that question and answer to improve Kira. You can remove saved answers from History.</Text><Text style={text}>Questions and attachments are processed by external AI services. Do not include passwords, payment details or other people's confidential information.</Text><Text style={text}>Kira can read your timetable and find published campus services. Timetable changes require you to review a schedule card and confirm it. You can edit the saved entry or undo a change within 24 hours if the entry has not changed again. It cannot manage accounts or perform admin actions.</Text><Text style={text}>Attach one PDF or text file up to 100 MB, or one image up to 8 MB. Larger documents are read on your device and relevant excerpts are selected for the answer. Kira identifies excerpted sources. For a scanned PDF, attach the relevant page as an image or export a searchable PDF. Compress files larger than 100 MB.</Text></View>:null}
