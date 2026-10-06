@@ -94,7 +94,7 @@ type StatusResponse = {
   };
 };
 
-const money = (value: number | undefined) => value === undefined ? "Loading price…" :
+const money = (value: number | undefined) => value === undefined ? "Pricing unavailable" :
   new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
@@ -205,8 +205,8 @@ function PlayPlanAccess() {
   useFocusEffect(useCallback(()=>{void load();},[load]));
   return <ToolPage title="Kira access" refreshing={loading} onRefresh={()=>void load()}>
     <View style={{padding:20,gap:12}}>
-      <Text style={{fontFamily:theme.font.semibold,fontSize:22,color:theme.text}}>{status?.tier==='pro'?'Kira Pro is active':'Kira Standard'}</Text>
-      <Text style={{fontFamily:theme.font.body,fontSize:14,lineHeight:22,color:theme.textMuted}}>{status?.tier==='pro'?'Your account’s existing Pro access is available here.':'Use Kira Standard with your Campus One account.'} Plan purchases are unavailable in this version.</Text>
+      <Text style={{fontFamily:theme.font.semibold,fontSize:22,color:theme.text}}>{status?status.tier==='pro'?'Kira Pro is active':'Kira Standard':loading?'Loading your access…':'Your access could not load'}</Text>
+      <Text style={{fontFamily:theme.font.body,fontSize:14,lineHeight:22,color:theme.textMuted}}>{status?.tier==='pro'?'Your account’s existing Pro access is available here.':status?'Use Kira Standard with your Campus One account.':''} Plan purchases are unavailable in this version.</Text>
       {status?.subscription.currentPeriodEnd?<Text style={{color:theme.textMuted}}>Current access ends {new Date(status.subscription.currentPeriodEnd).toLocaleDateString("en-NG")}.</Text>:null}
       {error?<Text accessibilityRole="alert" style={{color:theme.error}}>{error}</Text>:null}
       <ToolButton label="Open Kira" onPress={()=>router.push('/ai')} />
@@ -229,6 +229,7 @@ function AccountSubscription() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [expandedBenefits, setExpandedBenefits] = useState<Partial<Record<Tier, boolean>>>({});
   const [checkoutScreen, setCheckoutScreen] = useState(false);
   const [coupon, setCoupon] = useState("");
   const [quote, setQuote] = useState<PricingQuote | null>(null);
@@ -259,7 +260,7 @@ function AccountSubscription() {
 
   const load = useCallback(async () => {
     const turn = ++request.current;
-    setLoading(true);
+    setLoading(true); setError("");
     try {
       const result = await api<StatusResponse>("/v1/ai/status", { cache: "no-store" });
       if (!alive.current || turn !== request.current) return;
@@ -481,7 +482,7 @@ function AccountSubscription() {
         },
         {
           icon: "mic-outline" as const,
-          title: `Voice transcription up to ${Math.max(1, Math.round(allowance.voiceMaxSeconds / 60))} minutes`,
+          title: `Voice transcription up to ${allowance.voiceMaxSeconds < 60 ? `${allowance.voiceMaxSeconds} seconds` : `${allowance.voiceMaxSeconds / 60} ${allowance.voiceMaxSeconds === 60 ? "minute" : "minutes"}`}`,
           detail: "Speak a question or study prompt instead of typing it.",
         },
         {
@@ -700,28 +701,29 @@ function AccountSubscription() {
           <Text style={{ color: theme.text, fontFamily: theme.font.semibold }}>Current plan: {currentTier === "pro" ? "Pro" : "Standard"}</Text>
         </View> : null}
         <Text style={muted}>Choose the study support that works for you. Each plan includes the features below.</Text>
+        {error ? <View style={{ padding: 14, gap: 8, backgroundColor: theme.surfaceMuted, borderRadius: 14 }}><Text accessibilityRole="alert" style={{ ...text, color: theme.error }}>{error}</Text><ToolButton secondary label="Try again" disabled={busy || loading} onPress={() => void load()} /></View> : null}
         {(["standard", "pro"] as const).map((tier) => {
           const catalog = plan?.catalog?.[tier];
           const allowance = tier === "standard" ? standardBenefits : benefits;
           const name = tier === "standard" ? "Standard" : "Pro";
           const complimentary = tier === "pro" && plan?.complimentary;
           const free = catalog?.amountKobo === 0;
-          const isCurrent = currentTier === tier;
+          const isCurrent = Boolean(plan) && currentTier === tier;
+          const rows = benefitRows(tier, allowance);
           return <View key={tier} style={{ borderRadius: 22, borderWidth: 1, borderColor: tier === "pro" ? theme.brand : theme.border, backgroundColor: tier === "pro" ? theme.surfaceSoft : theme.surface, padding: 18 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <Text style={{ ...heading, fontSize: 24 }}>Kira {name}</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <Text style={{ ...heading, fontSize: 24, flexShrink: 1 }}>Kira {name}</Text>
               {isCurrent ? <Text style={{ ...muted, color: theme.deepBrand }}>Current plan</Text> : null}
             </View>
             <Text style={{ ...heading, fontSize: 29, lineHeight: 36, marginTop: 10 }}>
-              {complimentary ? "Complimentary" : free ? "Free" : catalog ? `${money(catalog.amountKobo)} / month` : plan ? "Pricing unavailable" : "Loading price…"}
+              {complimentary ? "Complimentary" : free ? "Free" : catalog ? `${money(catalog.amountKobo)} / month` : loading ? "Loading price…" : "Pricing unavailable"}
             </Text>
             {!complimentary ? <CatalogOffer plan={catalog} now={now} /> : null}
             <Text style={{ ...muted, marginTop: 7, marginBottom: 8 }}>{tier === "standard" ? "Everyday study help, teaching answers and worked examples." : "More generations, longer lessons and more room to reason through your material."}</Text>
-            {benefitRows(tier, allowance).map((row) => <BenefitRow key={row.title} {...row} />)}
             {isCurrent && plan?.currentPeriodEnd ? <Text style={{ ...muted, marginVertical: 10 }}>Active until {new Date(plan.currentPeriodEnd).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}</Text> : null}
             {complimentary ? <Text style={muted}>Your owner account has complimentary Pro access.</Text> : <ToolButton
-              label={free ? "Standard is included" : checkout && (checkout.tier ?? "pro") === tier ? "Continue your payment" : catalog?.checkoutEnabled ? `Continue with ${name}` : isCurrent ? `${name} is active` : `${name} is unavailable`}
-              disabled={busy || free || !catalog?.checkoutEnabled || Boolean(checkout && (checkout.tier ?? "pro") !== tier)}
+              label={free ? `${name} is included` : !catalog ? loading ? "Loading plan…" : "Plan could not load" : checkout && (checkout.tier ?? "pro") === tier ? "Continue your payment" : catalog.checkoutEnabled ? `Continue with ${name}` : isCurrent ? `${name} is active` : `${name} is unavailable`}
+              disabled={busy || loading || free || !catalog?.checkoutEnabled || Boolean(checkout && (checkout.tier ?? "pro") !== tier)}
               onPress={() => {
                 setSelectedTier(tier); setQuote(null); setCoupon(checkout?.discount_code ?? ""); setNotice("");
                 if (!checkout) key.current = randomUUID();
@@ -729,10 +731,10 @@ function AccountSubscription() {
                 void enterCheckout(tier);
               }}
             />}
+            {rows.slice(0, expandedBenefits[tier] ? rows.length : 3).map((row) => <BenefitRow key={row.title} {...row} />)}
+            {rows.length > 3 ? <Pressable accessibilityRole="button" accessibilityLabel={`${expandedBenefits[tier] ? "Hide" : "View"} all ${name} benefits`} accessibilityState={{ expanded: Boolean(expandedBenefits[tier]) }} onPress={() => setExpandedBenefits(previous => ({ ...previous, [tier]: !previous[tier] }))} style={{ paddingVertical: 14, flexDirection: "row", alignItems: "center", gap: 8 }}><Text style={{ ...text, color: theme.deepBrand, fontFamily: theme.font.semibold }}>{expandedBenefits[tier] ? "Show fewer benefits" : `View all ${rows.length} benefits`}</Text><Ionicons name={expandedBenefits[tier] ? "chevron-up" : "chevron-down"} size={18} color={theme.deepBrand} /></Pressable> : null}
           </View>;
         })}
-        {error ? <Text accessibilityRole="alert" style={{ ...text, color: theme.error }}>{error}</Text> : null}
-        {error ? <ToolButton secondary label="Try again" disabled={busy || loading} onPress={() => void load()} /> : null}
         <Text style={{ ...muted, textAlign: "center", paddingHorizontal: 16 }}>Paystack confirms processing at checkout. No automatic renewal. Access starts when payment is confirmed.</Text>
       </View>
     </ToolPage>

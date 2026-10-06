@@ -419,23 +419,29 @@ async function request<T>(
   const startedAt = Date.now();
   const remainingTimeoutMs = () =>
     Math.max(1, requestTimeoutMs - (Date.now() - startedAt));
-  const attempt = (baseUrl: string) =>
+  const attempt = (baseUrl: string, budgetMs = remainingTimeoutMs()) =>
     withRequestDeadline(async (signal) => {
       const response = await send(`${baseUrl}${path}`, {
         ...requestInit, signal, credentials: "include", headers,
       });
+      if (signal.aborted) throw signal.reason ?? new Error("Request cancelled");
       markApiOriginHealthy(baseUrl);
       if (response.status === 401 && canRefresh && path !== "/v1/auth/refresh")
         return { response };
       return { response, value: await parse<T>(response) };
-    }, remainingTimeoutMs(), parentSignal);
+    }, budgetMs, parentSignal);
 
   let result: { response: Response; value?: T };
   const binaryUpload = /^(?:PUT|POST)$/.test(method) && /^\/v1\/media(?:\/|\?|$)/.test(path) && init.body && typeof init.body !== "string";
   const primaryOrigin = binaryUpload && configuredFallbackUrl
     ? configuredFallbackUrl.replace(/\/$/, "") : currentApiUrl();
+  // A stalled native read must leave time for its backup within the same total
+  // deadline. Writes keep one full attempt: retrying them could duplicate work.
+  const primaryBudgetMs = mayRetryOnAnotherOrigin && requestTimeoutMs > 500 && alternateApiUrl(primaryOrigin)
+    ? Math.min(7_500, Math.max(1, Math.floor(requestTimeoutMs / 2)))
+    : remainingTimeoutMs();
   try {
-    result = await attempt(primaryOrigin);
+    result = await attempt(primaryOrigin, primaryBudgetMs);
   } catch (caught) {
     const connectionFailure = isConnectionFailure(caught);
     const alternate = connectionFailure
