@@ -63,6 +63,11 @@ const portal=spawn('npm',['run','start','--','--port','3100'],{cwd:resolve(root,
 const execute=promisify(execFile);
 async function browser(...args){console.log('Browser check:',args[0],args[1]??'');return (await execute('agent-browser',args,{encoding:'utf8',timeout:60000,env:process.env})).stdout;}
 async function check(js){const out=await browser('eval','-b',Buffer.from(js).toString('base64'));writeFileSync(resolve(evidence,'checks.log'),out,{flag:'a'});return out;}
+async function waitForMapControl(label){
+ // The drawer moves its controls during the spring. Wait for a stable, visible
+ // hit target before sending an actual tap, as well as for the splash to leave.
+ await browser('wait','--fn',`(()=>{const label=${JSON.stringify(label)},b=document.querySelector('[aria-label="'+label+'"]');if(!b)return false;const r=b.getBoundingClientRect(),now=performance.now(),last=window.__mapControlSettling;if(!last||last.label!==label||last.element!==b||['x','y','width','height'].some(k=>Math.abs(last.rect[k]-r[k])>.2)){window.__mapControlSettling={label,element:b,rect:{x:r.x,y:r.y,width:r.width,height:r.height},since:now};return false;}const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return now-last.since>=150&&(hit===b||b.contains(hit))})()`);
+}
 async function awaitServer(url){for(let i=0;i<45;i++){try{if((await fetch(url)).ok)return;}catch{}await new Promise(r=>setTimeout(r,1000));}throw new Error('Local build did not start: '+url);}
 try{
  await new Promise(r=>api.listen(8787,r));await new Promise(r=>web.listen(8100,r));await awaitServer('http://localhost:3100/agents');
@@ -87,12 +92,13 @@ try{
  await check("(()=>{if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Exam countdown overflows');const text=document.body.innerText;for(const unit of ['Days','Hours','Minutes','Seconds'])if(!text.includes(unit))throw new Error('Countdown unit missing');if(!document.querySelector('[aria-label=\"Share exam countdown\"]'))throw new Error('Countdown share control missing');return 'Four countdown units and share control fit on a phone'})()");
  await browser('screenshot',resolve(evidence,'exam-countdown-mobile.png'),'--full');
  await browser('open','http://localhost:8100/map');await browser('wait','--text','Campus directions');
- await browser('wait','--fn',"(()=>{const b=document.querySelector('[aria-label=\"Destination: Choose on campus\"]');if(!b)return false;const r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return hit===b||b.contains(hit)})()");
+ await waitForMapControl('Destination: Choose on campus');
  await browser('find','role','button','click','--name','Destination: Choose on campus','--exact');
  await browser('find','label','Search campus destinations','fill','Petroleum Engineering');await browser('wait','--text','Department of Petroleum Engineering');
  await check("(()=>{if(!document.body.innerText.includes('Approximate location'))throw new Error('Screenshot locations lack an accuracy label');if(document.documentElement.scrollWidth>innerWidth+2)throw new Error('Campus search overflows');return 'New reviewed landmarks are searchable with their approximation label'})()");
  await browser('screenshot',resolve(evidence,'map2-search-mobile.png'),'--full');
  await browser('find','role','button','click','--name','Department of Petroleum Engineering, approximate location','--exact');
+ await waitForMapControl('Expand directions');
  await browser('find','role','button','click','--name','Expand directions','--exact');await browser('wait','--text','Approximate location. Follow local signs for the entrance.');
  await browser('screenshot',resolve(evidence,'map2-selected-mobile.png'),'--full');
  await browser('open','http://localhost:8100/__verify-map.html');await browser('wait','--fn','window.mapReady===true');
