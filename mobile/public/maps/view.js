@@ -6,7 +6,7 @@ const empty={type:'FeatureCollection',features:[]};
 const collection=features=>({type:'FeatureCollection',features});
 const point=(coordinate,properties)=>({type:'Feature',geometry:{type:'Point',coordinates:coordinate},properties});
 const validPoint=coordinate=>Array.isArray(coordinate)&&coordinate.length===2&&coordinate.every(Number.isFinite)&&Math.abs(coordinate[0])<=180&&Math.abs(coordinate[1])<=90;
-let catalog=createDefaultMapSources(),campusId='',focusNonce=0,lastLayer='osm',failures=0,loaded=false,lastRoute='',latest=null,lastTiles=JSON.stringify(catalog.sources[0].tiles),renderedFeatures=null,lastPlaces=null,lastSelection='';
+let catalog=createDefaultMapSources(),campusId='',focusNonce=0,lastLayer='osm',failures=0,loaded=false,lastRoute='',latest=null,lastTiles=JSON.stringify(catalog.sources[0].tiles),renderedFeatures=null,lastPlaces=null,lastSelection='',lastPadding='';
 const map=new maplibregl.Map({container:'map',style:{version:8,glyphs:'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',sources:{base:{type:'raster',tiles:catalog.sources[0].tiles,tileSize:256,attribution:catalog.sources[0].attribution}},layers:[{id:'base',type:'raster',source:'base',paint:{'raster-saturation':-.35,'raster-contrast':-.1}}]},center:[5.618838,6.398255],zoom:15,minZoom:2,maxZoom:20,dragRotate:true,touchZoomRotate:true,attributionControl:false});
 map.addControl(new maplibregl.AttributionControl({compact:true}),'top-left');
 map.addControl(new maplibregl.NavigationControl({showCompass:true}),'top-right');
@@ -79,7 +79,10 @@ function apply(incoming){
   const padding=safePadding(payload.padding??(payload.preview?{top:16,bottom:16,left:16,right:16}:undefined));
   document.documentElement.style.setProperty('--map-controls-top',`${Math.max(padding.top+42,90)}px`);
   document.documentElement.style.setProperty('--map-attribution-top',`${padding.top}px`);
-  map.setPadding(padding);
+  // setPadding stops an in-flight camera animation. Unchanged bridge updates
+  // must leave it running; a drawer resize must restore the intended framing.
+  const paddingKey=JSON.stringify(padding),paddingChanged=paddingKey!==lastPadding;
+  if(paddingChanged){map.setPadding(padding);lastPadding=paddingKey;}
   if(campusId!==payload.campusId){campusId=payload.campusId;lastRoute='';map.jumpTo({center:payload.centre,zoom:15.5,pitch:0,bearing:0});}
   const selection=`${payload.selectedId??''}.${payload.originId??''}`;
   if(lastPlaces!==payload.places||lastSelection!==selection){
@@ -103,7 +106,7 @@ function apply(incoming){
   if(validPoint(payload.destination)&&!payload.selectedId)pins.push(point(payload.destination,{role:'destination'}));
   map.getSource('pins').setData(collection(pins));
   const routeKey=payload.routeKey??JSON.stringify(route??null);
-  if(coords.length>=2&&routeKey!==lastRoute){
+  if(coords.length>=2&&(routeKey!==lastRoute||paddingChanged)){
     const bounds=coords.reduce((bounds,coordinate)=>bounds.extend(coordinate),new maplibregl.LngLatBounds(coords[0],coords[0]));
     map.fitBounds(bounds,{padding,maxZoom:17,duration:duration()});
   }
@@ -119,7 +122,7 @@ function apply(incoming){
   if(threeD&&map.getPitch()<20)map.easeTo({pitch:55,duration:duration()});
   else if(!threeD&&map.getPitch()>0)map.easeTo({pitch:0,duration:duration()});
   map.getCanvas().style.cursor=payload.pickMode?'crosshair':'';
-  if(payload.focus&&payload.focus.nonce!==focusNonce&&validPoint(payload.focus.coordinate)){
+  if(payload.focus&&(payload.focus.nonce!==focusNonce||(paddingChanged&&coords.length<2))&&validPoint(payload.focus.coordinate)){
     focusNonce=payload.focus.nonce;map.easeTo({center:payload.focus.coordinate,zoom:payload.focus.zoom??17,padding,duration:duration()});
   }
 }

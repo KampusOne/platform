@@ -100,6 +100,7 @@ try{
  await browser('find','role','button','click','--name','Department of Petroleum Engineering, approximate location','--exact');
  await waitForMapControl('Expand directions');
  await browser('find','role','button','click','--name','Expand directions','--exact');await browser('wait','--text','Approximate location. Follow local signs for the entrance.');
+ await browser('wait','1000'); // Capture the final map camera after its drawer-aware pan.
  await browser('screenshot',resolve(evidence,'map2-selected-mobile.png'),'--full');
  await browser('open','http://localhost:8100/__verify-map.html');await browser('wait','--fn','window.mapReady===true');
  await check("(()=>{const d=document.querySelector('iframe').contentDocument;const c=d.querySelector('canvas');if(!c||c.width<300||c.height<600)throw new Error('Map canvas failed');if(!d.querySelector('.maplibregl-ctrl-attrib').textContent.includes('OpenStreetMap'))throw new Error('Map credit missing');return 'Real MapLibre canvas and OSM attribution are visible'})()");
