@@ -73,6 +73,7 @@ export type Bindings = {
   AI_CHAT_WINDOW_LIMIT?: string;
   AI_STUDY_TRIAL_LIMIT?: string;
   EXPO_ACCESS_TOKEN?: string;
+  FCM_SERVICE_ACCOUNT_JSON?: string;
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
   GEMINI_TRANSCRIPTION_MODEL?: string;
