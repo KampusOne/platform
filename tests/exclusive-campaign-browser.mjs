@@ -89,7 +89,7 @@ try {
   await closedButton().click();
   await visible(openButton());
   assert.equal(results.mutations.length, 2);
-  results.checks.push("Enable and disable reflect the confirmed response and updated invitation status");
+  results.checks.push("Enable and disable reflect the confirmed response and updated shared-link status");
   mode = "readonly";
   await page.reload();
   await visible(page.getByText(/You can view the campaign status/));
@@ -100,7 +100,7 @@ try {
   mode = "malformed";
   await page.reload();
   await visible(retry());
-  assert.match(await page.getByRole("region", { name: "Control the invitation page" }).getByRole("alert").innerText(), /could not be checked/);
+  assert.match(await page.getByRole("region", { name: "Control the shared Exclusive link" }).getByRole("alert").innerText(), /could not be checked/);
   assert.equal(await openButton().count(), 0);
   mode = "normal";
   await retry().click();
