@@ -23,7 +23,7 @@ const labels = {
 };
 export function ManagePanel({ section }: { section: ManageSection }) {
   const [rows, setRows] = useState<RecordRow[]>([]);
-  const { scope, scopeLabel, can } = useAdminContext();
+  const { scope, scopeLabel, can, scopedPath } = useAdminContext();
   const [loadError, setLoadError] = useState("");
   const [status, setStatus] = useState("ALL");
   const [notice, setNotice] = useState("");
@@ -35,13 +35,15 @@ export function ManagePanel({ section }: { section: ManageSection }) {
   const loading = settledQuery !== queryKey;
   useEffect(() => {
     let alive = true;
+    const params = new URLSearchParams({ status });
+    if (section === "vendors" || section === "riders")
+      params.set("type", section === "vendors" ? "VENDOR" : "RIDER");
     const path =
       section === "vendors" || section === "riders"
-        ? "/v1/manage/agents?type=" +
-          (section === "vendors" ? "VENDOR" : "RIDER")
-        : "/v1/manage/" + section + "?";
+        ? "/v1/manage/agents?" + params
+        : "/v1/manage/" + section + "?" + params;
     void portalApi<{ rows: RecordRow[] }>(
-      path + "&universityId=" + scope + "&status=" + status,
+      scopedPath(path),
     )
       .then((r) => {
         if (alive) { setRows(r.rows); setLoadError(""); }
@@ -53,7 +55,7 @@ export function ManagePanel({ section }: { section: ManageSection }) {
     return () => {
       alive = false;
     };
-  }, [section, scope, status, version, queryKey]);
+  }, [section, scope, status, version, queryKey, scopedPath]);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
