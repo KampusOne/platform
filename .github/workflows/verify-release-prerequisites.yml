@@ -1,7 +1,7 @@
 name: Verify October release prerequisites
 on:
   push:
-    branches: [fix/october-124-issues]
+    branches: [fix/october-124-issues, fix/community-push-admin-map-release-20261007]
     paths: [.github/workflows/verify-release-prerequisites.yml]
 permissions:
   contents: read
