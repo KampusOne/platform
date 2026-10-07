@@ -1331,8 +1331,8 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "Main Bowl",
     "SPORT",
     "Main sports bowl within the university sports complex.",
-    "6.399",
-    "5.61117",
+    "6.3992",
+    "5.61295",
     [
       "UNIBEN Main Bowl",
       "Main Stadium Bowl"
@@ -2159,8 +2159,8 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "UNIBEN Sports Complex",
     "SPORT",
     "University sports complex.",
-    "6.39883",
-    "5.61103",
+    "6.3992",
+    "5.61295",
     [
       "Sports Complex",
       "Stadium"
