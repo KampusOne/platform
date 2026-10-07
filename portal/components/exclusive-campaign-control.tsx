@@ -84,10 +84,11 @@ export function ExclusiveCampaignControl() {
       <div className={styles.header}>
         <div>
           <p className="section-kicker">Exclusive campaign</p>
-          <h2 id="exclusive-campaign-title">Control the invitation page</h2>
+          <h2 id="exclusive-campaign-title">Control the shared Exclusive link</h2>
           <p>
-            Exclusive applicants answer business questions. The normal agent
-            application retains document verification.
+            Share one reusable link with every Exclusive vendor. Signed-in applicants
+            answer business questions while the normal agent application retains
+            document verification.
           </p>
         </div>
         {allowed && campaign?.canManage && (
@@ -122,8 +123,8 @@ export function ExclusiveCampaignControl() {
         <>
           <p role="status" className={styles.coverage}>
             {campaign.enabled
-              ? "The Exclusive campaign is open. Valid invitations can access the page."
-              : "The Exclusive campaign is closed. The URL returns Page not found and new applications are blocked."}
+              ? "The Exclusive campaign is open. The shared link https://agents.kampusone.app/exclusive is live for signed-in applicants."
+              : "The Exclusive campaign is closed. The shared link returns Page not found and new applications are blocked."}
           </p>
           {!campaign.canManage && (
             <div className="state-panel">
