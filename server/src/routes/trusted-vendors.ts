@@ -52,7 +52,7 @@ trustedVendorRoutes.post('/invite', async c => {
 });
 trustedVendorRoutes.get('/context', async c => {
   const actor = currentUser(c);
-  if (!actor.universityId) throw new AppError(409, 'PROFILE_INCOMPLETE', 'Choose your university in KampusOne before using Exclusive onboarding.');
+  if (!actor.universityId) throw new AppError(409, 'BAD_REQUEST', 'Choose your university in KampusOne before using Exclusive onboarding.');
   const context = firstRow(await database(c.env).execute<{ university_name: string; application_id: string | null }>(sql`
     select school.name university_name,
       (select a.id::text
@@ -66,7 +66,7 @@ trustedVendorRoutes.get('/context', async c => {
     from public.universities school
     where school.id=${actor.universityId}::uuid
   `));
-  if (!context) throw new AppError(409, 'PROFILE_INCOMPLETE', 'Your KampusOne university could not be found. Update your profile and try again.');
+  if (!context) throw new AppError(409, 'BAD_REQUEST', 'Your KampusOne university could not be found. Update your profile and try again.');
   return c.json({ context });
 });
 const submission = z.object({
@@ -88,7 +88,7 @@ trustedVendorRoutes.post('/submit', async c => {
   } catch (error) {
     if (error instanceof AppError) throw error;
     if (error instanceof Error && /TRUSTED_CAMPAIGN_DISABLED/.test(error.message)) throw new AppError(404, 'NOT_FOUND', 'Page not found.');
-    if (error instanceof Error && /TRUSTED_UNIVERSITY_REQUIRED/.test(error.message)) throw new AppError(409, 'PROFILE_INCOMPLETE', 'Choose your university in KampusOne before using Exclusive onboarding.');
+    if (error instanceof Error && /TRUSTED_UNIVERSITY_REQUIRED/.test(error.message)) throw new AppError(409, 'BAD_REQUEST', 'Choose your university in KampusOne before using Exclusive onboarding.');
     if (error instanceof Error && /TRUSTED_ACCOUNT_UNAVAILABLE/.test(error.message)) throw new AppError(403, 'FORBIDDEN', 'Verify your KampusOne email before using Exclusive onboarding.');
     if (error instanceof Error && /TRUSTED_APPLICATION_EXISTS|agent_applications_university_id_user_id_agent_type_key/.test(error.message)) throw new AppError(409, 'CONFLICT', 'You already have a vendor application for this university. Check your application status instead of submitting another one.');
     if (error instanceof Error && /TRUSTED_/.test(error.message)) throw new AppError(409, 'CONFLICT', 'Your age, business details or application changed. Check your answers and try again.');
