@@ -66,7 +66,7 @@ export default function CampusMap(){
   useEffect(()=>{
     if(!campusId)return;
     let active=true,networkSettled=false;
-    const cacheKey=`k1.map.v2.${profile?.university_id}.${campusId}`;
+    const cacheKey=`k1.map.v3.${profile?.university_id}.${campusId}`;
     setLoading(true);setDataError('');setPlaces([]);setFeatures(emptyFeatures);setMapInfo(null);
     void readCampusMapCache<MapInfo>(cacheKey).then(saved=>{
       if(!active||networkSettled||!saved)return;
