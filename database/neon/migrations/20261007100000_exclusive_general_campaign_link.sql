@@ -62,7 +62,7 @@ begin
   where a.university_id=campus
     and a.user_id=p_user
     and a.agent_type='VENDOR'
-  order by a.created_at desc
+  order by a.submitted_at desc
   limit 1;
 
   if existing_application is not null then
