@@ -14,7 +14,7 @@ jobs:
     environment: production
     timeout-minutes: 35
     env:
-      SOURCE_SHA: 005a039f4b4ecef7aac4d31068007042e2eec3c4
+      SOURCE_SHA: ${{ github.sha }}
       EXPO_PUBLIC_ANDROID_DISTRIBUTION: direct
     steps:
       - uses: actions/checkout@v4
@@ -64,7 +64,7 @@ jobs:
       - name: Prepare and verify APK
         run: |
           set -euo pipefail
-          cp mobile/android/app/build/outputs/apk/release/*.apk KampusOne-Android-0.3.20-arm64.apk
+          cp mobile/android/app/build/outputs/apk/release/*.apk KampusOne-Android-0.3.21-arm64.apk
           sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           test -n "$sdk_root"
           build_tools="$(find "$sdk_root/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
@@ -72,14 +72,14 @@ jobs:
           aapt="$build_tools/aapt"
           test -x "$apksigner"
           test -x "$aapt"
-          if ! "$apksigner" verify --print-certs KampusOne-Android-0.3.20-arm64.apk >/tmp/apkverify.txt 2>&1; then
+          if ! "$apksigner" verify --print-certs KampusOne-Android-0.3.21-arm64.apk >/tmp/apkverify.txt 2>&1; then
             keytool -genkeypair -noprompt -keystore /tmp/kampusone-test.keystore -storepass android -keypass android -alias androiddebugkey -dname "CN=KampusOne Test,O=KampusOne,C=NG" -keyalg RSA -keysize 2048 -validity 10000
-            "$apksigner" sign --ks /tmp/kampusone-test.keystore --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey KampusOne-Android-0.3.20-arm64.apk
+            "$apksigner" sign --ks /tmp/kampusone-test.keystore --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey KampusOne-Android-0.3.21-arm64.apk
           fi
-          "$apksigner" verify --print-certs KampusOne-Android-0.3.20-arm64.apk >/tmp/apkverify.txt 2>&1
-          "$aapt" dump badging KampusOne-Android-0.3.20-arm64.apk >/tmp/apkbadging.txt
+          "$apksigner" verify --print-certs KampusOne-Android-0.3.21-arm64.apk >/tmp/apkverify.txt 2>&1
+          "$aapt" dump badging KampusOne-Android-0.3.21-arm64.apk >/tmp/apkbadging.txt
           grep -q "package: name='app.kampusone.mobile'" /tmp/apkbadging.txt
-          grep -q "versionName='0.3.20'" /tmp/apkbadging.txt
+          grep -q "versionName='0.3.21'" /tmp/apkbadging.txt
           target="$(sed -n "s/^targetSdkVersion:'\([0-9][0-9]*\)'/\1/p" /tmp/apkbadging.txt | head -1)"
           test "${target:-0}" -ge 36
           node --input-type=module <<'JS'
@@ -91,28 +91,28 @@ jobs:
           const cert=raw.replaceAll(':','').toUpperCase();
           if(!/^[A-F0-9]{64}$/.test(cert)) throw new Error('Invalid signing certificate digest.');
           const digest=createHash('sha256');
-          for await (const chunk of createReadStream('KampusOne-Android-0.3.20-arm64.apk')) digest.update(chunk);
+          for await (const chunk of createReadStream('KampusOne-Android-0.3.21-arm64.apk')) digest.update(chunk);
           const receipt={
             sourceSha:process.env.SOURCE_SHA,
             packageName:'app.kampusone.mobile',
-            versionName:'0.3.20',
-            versionCode:50,
+            versionName:'0.3.21',
+            versionCode:51,
             targetSdkVersion:36,
             abi:'arm64-v8a',
             certificateSha256:cert.match(/.{2}/g).join(':'),
             apkSha256:digest.digest('hex'),
-            apkSizeBytes:statSync('KampusOne-Android-0.3.20-arm64.apk').size,
+            apkSizeBytes:statSync('KampusOne-Android-0.3.21-arm64.apk').size,
             verifiedAt:new Date().toISOString()
           };
-          writeFileSync('KampusOne-Android-0.3.20-arm64-build.json',JSON.stringify(receipt,null,2)+'\n');
+          writeFileSync('KampusOne-Android-0.3.21-arm64-build.json',JSON.stringify(receipt,null,2)+'\n');
           console.log(JSON.stringify(receipt));
           JS
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: KampusOne-Android-0.3.20-arm64
+          name: KampusOne-Android-0.3.21-arm64
           path: |
-            KampusOne-Android-0.3.20-arm64.apk
-            KampusOne-Android-0.3.20-arm64-build.json
+            KampusOne-Android-0.3.21-arm64.apk
+            KampusOne-Android-0.3.21-arm64-build.json
           if-no-files-found: error
           retention-days: 14
