@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useSearchParams } from "next/navigation";
 import { usePortalAuth } from "./auth-provider";
 import { portalApi } from "@/lib/api";
 import { PhoneField, BirthDateField } from "./intake-fields";
@@ -61,7 +60,7 @@ const steps = [
   "How you work",
   "Review & submit",
 ];
-type Invitation = { university_name: string; application_id: string | null };
+type ExclusiveContext = { university_name: string; application_id: string | null };
 
 function ageOnDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 0;
@@ -84,18 +83,12 @@ function ageOnDate(value: string) {
 
 export function TrustedVendorApplication() {
   const { user } = usePortalAuth();
-  const params = useSearchParams();
-  return (
-    <TrustedVendorForm key={`${user?.id}:${params.get("invite") ?? ""}`} />
-  );
+  return <TrustedVendorForm key={user?.id ?? "anonymous"} />;
 }
 
 function TrustedVendorForm() {
-  const params = useSearchParams();
   const { user } = usePortalAuth();
-  const token = params.get("invite") ?? "";
-  const validToken = /^[a-f0-9]{64}$/.test(token);
-  const [invite, setInvite] = useState<Invitation | null>(null);
+  const [context, setContext] = useState<ExclusiveContext | null>(null);
   const [draft, setDraft] = useState<VendorDraft>(blank);
   const [draftKey, setDraftKey] = useState("");
   const [step, setStep] = useState(0);
@@ -123,17 +116,12 @@ function TrustedVendorForm() {
   }
   useEffect(() => {
     let active = true;
-    if (!validToken) return;
+    if (!user?.id) return;
     void (async () => {
-      const response = await portalApi<{ invite: Invitation }>(
-        "/v1/trusted-vendors/invite",
-        { method: "POST", body: JSON.stringify({ token }) },
+      const response = await portalApi<{ context: ExclusiveContext }>(
+        "/v1/trusted-vendors/context",
       );
-      const digest = await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(token),
-      );
-      const key = `k1.exclusive.v2.${user?.id}.${Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("")}`;
+      const key = `k1.exclusive.v3.${user.id}`;
       let restored: Partial<VendorDraft> = {},
         restoredStep = 0,
         restoredWhatsappSame = true;
@@ -153,8 +141,8 @@ function TrustedVendorForm() {
         /* Tab storage is optional. */
       }
       if (!active) return;
-      setInvite(response.invite);
-      setSubmitted(Boolean(response.invite.application_id));
+      setContext(response.context);
+      setSubmitted(Boolean(response.context.application_id));
       setDraft({
         ...blank,
         ...restored,
@@ -172,13 +160,13 @@ function TrustedVendorForm() {
         setError(
           caught instanceof Error
             ? caught.message
-            : "Your invitation could not be checked. Try again.",
+            : "Exclusive onboarding could not be opened. Try again.",
         );
     });
     return () => {
       active = false;
     };
-  }, [token, user?.id, validToken, version]);
+  }, [user?.id, version]);
   useEffect(() => {
     if (!draftKey) return;
     try {
@@ -240,7 +228,7 @@ function TrustedVendorForm() {
   }
   async function next(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || !invite) return;
+    if (busy || !context) return;
     setError("");
     if (!validate(step)) return;
     if (step < 3) {
@@ -261,7 +249,6 @@ function TrustedVendorForm() {
       await portalApi("/v1/trusted-vendors/submit", {
         method: "POST",
         body: JSON.stringify({
-          token,
           requestId: draft.request,
           businessName: draft.businessName.trim(),
           legalName: draft.legalName.trim(),
@@ -324,30 +311,28 @@ function TrustedVendorForm() {
   return (
     <AgentIntakeShell
       title="Your Exclusive business profile"
-      description="Tell us about your business and how you serve students. Your invitation takes you through a simple question based application."
+      description="Tell us about your business and how you serve students. The shared Exclusive campaign link takes you through a simple question based application."
     >
       <section className={`application-form ${styles.exclusiveCard}`}>
-        {!validToken || (error && !invite) ? (
+        {error && !context ? (
           <section className="state-panel" role="alert">
-            <h2>Invitation unavailable</h2>
-            <p>{error || "Open the invitation sent to your business email."}</p>
-            {validToken && (
-              <button
-                className="button button--secondary"
-                onClick={() => setVersion((current) => current + 1)}
-              >
-                Try again
-              </button>
-            )}
+            <h2>Exclusive onboarding unavailable</h2>
+            <p>{error}</p>
+            <button
+              className="button button--secondary"
+              onClick={() => setVersion((current) => current + 1)}
+            >
+              Try again
+            </button>
             <Link href="/agents" className="button button--secondary">
               Regular agent application
             </Link>
           </section>
-        ) : !invite ? (
+        ) : !context ? (
           <div
             className={styles.loading}
             aria-busy="true"
-            aria-label="Checking your invitation"
+            aria-label="Opening Exclusive onboarding"
           >
             <span />
             <span />
@@ -394,7 +379,7 @@ function TrustedVendorForm() {
               <span className="onboarding-stepcount">{step + 1} of 4</span>
             </div>
             <header>
-              <p className="onboarding-kicker">{invite.university_name}</p>
+              <p className="onboarding-kicker">{context.university_name}</p>
               <h2 ref={heading} tabIndex={-1}>
                 {steps[step]}
               </h2>
@@ -541,8 +526,8 @@ function TrustedVendorForm() {
                       campus rules, fulfil orders as agreed and respond to
                       customers. Approval is reviewed by our team. Store access
                       and payout eligibility are separate; withdrawals require
-                      verified bank details. Your invitation applies only to
-                      this business and account.
+                      verified bank details. This Exclusive campaign application
+                      applies only to this business and account.
                     </p>
                   </details>
                   <label className="checkbox">
