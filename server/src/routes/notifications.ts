@@ -115,9 +115,9 @@ notificationRoutes.get('/admin/delivery-status',async c=>{
  return c.json({queue:queue.rows,deliveries:deliveries.rows});
 });
 notificationRoutes.post('/devices',async c=>{
- const u=currentUser(c),data=await input(c,z.object({expoPushToken:z.string().regex(expoTokenPattern),platform:z.enum(['ios','android']),label:z.string().trim().min(1).max(100),buildVersion:z.string().trim().min(1).max(60)}).strict());
+ const u=currentUser(c),data=await input(c,z.object({expoPushToken:z.string().regex(expoTokenPattern),nativeToken:z.string().trim().min(10).max(4096).optional(),platform:z.enum(['ios','android']),label:z.string().trim().min(1).max(100),buildVersion:z.string().trim().min(1).max(60)}).strict());
  const db=database(c.env);
- const result=await db.execute(sql`insert into app_private.push_devices(user_id,token,session_family_id,platform,label,build_version) values(${u.id}::uuid,${data.expoPushToken},${u.sessionFamilyId}::uuid,${data.platform},${data.label},${data.buildVersion}) on conflict(token) do update set user_id=excluded.user_id,session_family_id=excluded.session_family_id,platform=excluded.platform,label=excluded.label,build_version=excluded.build_version,active=true,updated_at=now() returning id,platform,label,build_version,active,updated_at`);
+ const result=await db.execute(sql`insert into app_private.push_devices(user_id,token,native_token,session_family_id,platform,label,build_version) values(${u.id}::uuid,${data.expoPushToken},${data.platform==='android'?(data.nativeToken??null):null},${u.sessionFamilyId}::uuid,${data.platform},${data.label},${data.buildVersion}) on conflict(token) do update set user_id=excluded.user_id,native_token=excluded.native_token,session_family_id=excluded.session_family_id,platform=excluded.platform,label=excluded.label,build_version=excluded.build_version,active=true,updated_at=now() returning id,platform,label,build_version,active,updated_at`);
  return c.json({device:firstRow(result)});
 });
 notificationRoutes.delete('/devices/:id',async c=>{
@@ -130,11 +130,11 @@ notificationRoutes.get('/admin/devices',async c=>{
  const result=await database(c.env).execute(sql`select d.id,d.user_id,d.platform,d.label,d.build_version,d.active,d.updated_at,p.display_name,p.university_id from app_private.push_devices d join public.profiles p on p.user_id=d.user_id where d.active and exists(select 1 from public.refresh_tokens rt where rt.family_id=d.session_family_id and rt.user_id=d.user_id and rt.revoked_at is null and rt.expires_at>now()) and p.deleted_at is null and (${scope}::uuid is null or p.university_id=${scope}::uuid) and (${userId}::uuid is null or d.user_id=${userId}::uuid) order by d.updated_at desc limit 100`);
  return c.json({devices:result.rows,scope:{universityId:scope}});
 });
-type Device={id:string;user_id:string;token:string;university_id:string|null};
+type Device={id:string;user_id:string;token:string;native_token:string|null;platform:string;university_id:string|null};
 notificationRoutes.post('/admin/test',async c=>{
  const u=currentUser(c),data=await input(c,z.object({deviceId:z.string().uuid(),requestId:z.string().uuid()}).strict());
  const db=database(c.env);
- const device=firstRow(await db.execute<Device>(sql`select d.id,d.user_id,d.token,p.university_id from app_private.push_devices d join public.profiles p on p.user_id=d.user_id join public.users u on u.id=d.user_id where d.id=${data.deviceId}::uuid and d.active and exists(select 1 from public.refresh_tokens rt where rt.family_id=d.session_family_id and rt.user_id=d.user_id and rt.revoked_at is null and rt.expires_at>now()) and u.deleted_at is null and u.status::text='ACTIVE' and p.deleted_at is null`));
+ const device=firstRow(await db.execute<Device>(sql`select d.id,d.user_id,d.token,d.native_token,d.platform,p.university_id from app_private.push_devices d join public.profiles p on p.user_id=d.user_id join public.users u on u.id=d.user_id where d.id=${data.deviceId}::uuid and d.active and exists(select 1 from public.refresh_tokens rt where rt.family_id=d.session_family_id and rt.user_id=d.user_id and rt.revoked_at is null and rt.expires_at>now()) and u.deleted_at is null and u.status::text='ACTIVE' and p.deleted_at is null`));
  if(!device)throw new AppError(404,'NOT_FOUND','The selected device is no longer available.');
  const scope=await resolveAdminScope(c.env,u,device.university_id??undefined,'notifications.test');
  if(device.university_id===null&&scope!==null)throw new AppError(403,'FORBIDDEN','This device is outside your university scope.');
@@ -149,7 +149,7 @@ notificationRoutes.post('/admin/test',async c=>{
  if(!claimed)return c.json({attemptId:data.requestId,status:'SENDING',deviceDelivery:'not_observed'},202);
  // Record the permitted intent before provider invocation; no token or recipient contact goes into audit metadata.
  await recordAudit(c.env,{actorUserId:u.id,universityId:device.university_id,action:'notification.test_requested',targetType:'push_attempt',targetId:data.requestId,requestId:c.get('requestId')});
- const result=await sendTestPush(c.env,device.token,data.requestId);
+ const result=await sendTestPush(c.env,device.token,data.requestId,device.native_token,device.platform);
  await db.execute(sql`update app_private.push_attempts set status=${result.status},ticket_id=${result.ticketId??null},error_code=${result.errorCode??null} where id=${data.requestId}::uuid`);
  if(result.errorCode==='DeviceNotRegistered')await db.execute(sql`update app_private.push_devices set active=false where id=${device.id}::uuid`);
  return c.json({attemptId:data.requestId,status:result.status,errorCode:result.errorCode,deviceDelivery:'not_observed'},202);
