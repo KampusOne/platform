@@ -33,7 +33,7 @@ type Row = {
 };
 
 export function TrustedVendorAdmin() {
-  const { scope, access, can, scopedPath } = useAdminContext();
+  const { can, scopedPath } = useAdminContext();
   const [rows, setRows] = useState<Row[]>([]);
   const [version, setVersion] = useState(0);
   const [error, setError] = useState("");
@@ -197,7 +197,7 @@ export function TrustedVendorAdmin() {
               <label>
                 Decision
                 <select name="decision">
-                  <option value="APPROVED">Approve invited vendor</option>
+                  <option value="APPROVED">Approve Exclusive vendor</option>
                   <option value="REJECTED">Reject</option>
                 </select>
               </label>
