@@ -19,11 +19,12 @@ if(!names.has('KYC_ENCRYPTION_KEY')){
  secrets.KYC_ENCRYPTION_KEY=randomBytes(32).toString('hex');
 }
 const fcmEncoded=process.env.FCM_SERVICE_ACCOUNT_JSON_BASE64?.trim();
-if(!fcmEncoded)throw new Error('FCM_SERVICE_ACCOUNT_JSON_BASE64 is required for reliable Android push delivery.');
-let fcm;
-try{fcm=JSON.parse(Buffer.from(fcmEncoded,'base64').toString('utf8'));}catch{throw new Error('FCM service account JSON is invalid.');}
-if(typeof fcm?.project_id!=='string'||typeof fcm?.client_email!=='string'||typeof fcm?.private_key!=='string')throw new Error('FCM service account must include project_id, client_email and private_key.');
-secrets.FCM_SERVICE_ACCOUNT_JSON=JSON.stringify(fcm);
+if(fcmEncoded){
+ let fcm;
+ try{fcm=JSON.parse(Buffer.from(fcmEncoded,'base64').toString('utf8'));}catch{throw new Error('FCM service account JSON is invalid.');}
+ if(typeof fcm?.project_id!=='string'||typeof fcm?.client_email!=='string'||typeof fcm?.private_key!=='string')throw new Error('FCM service account must include project_id, client_email and private_key.');
+ secrets.FCM_SERVICE_ACCOUNT_JSON=JSON.stringify(fcm);
+}else console.warn('FCM service account is not configured; Android push will use the existing Expo provider path.');
 // Wrangler applies this file additively to the new Worker deployment. Existing
 // encryption keys and all unrelated provider credentials are never replaced.
 writeFileSync(target,JSON.stringify(secrets),{mode:0o600});chmodSync(target,0o600);
