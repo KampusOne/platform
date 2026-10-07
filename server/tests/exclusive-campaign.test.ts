@@ -88,6 +88,73 @@ describe("Exclusive campaign management capability", () => {
     expect(await result(await request("/availability"))).toEqual({ enabled: true });
   });
 
+  it("uses one shared Exclusive link and accepts tokenless vendor submissions", async () => {
+    const before = await result(await request("/context", student));
+    expect(before).toMatchObject({
+      context: {
+        university_name: "Campaign fixture campus",
+        application_id: null,
+      },
+    });
+
+    const payload = {
+      requestId: crypto.randomUUID(),
+      businessName: "Campaign Fixture Store",
+      legalName: "Campaign Fixture Owner",
+      birthDate: "2000-01-01",
+      description: "Affordable campus essentials with reliable daily service.",
+      address: "12 Campaign Fixture Road, Ugbowo Campus",
+      category: "Other",
+      campus: "Ugbowo campus",
+      phone: "+2348012345678",
+      whatsapp: "+2348012345678",
+      operations: {
+        primaryOffer: "Campus essentials",
+        joiningReason: "Reach more students",
+        serviceDays: ["Monday", "Tuesday"],
+        openingTime: "08:00",
+        closingTime: "18:00",
+        fulfilmentMethods: ["Store pickup", "Campus delivery"],
+        supportChannel: "WhatsApp",
+        responseTime: "Within 1 hour",
+      },
+      adultAuthorized: true,
+      terms: true,
+    };
+
+    const submitted = await result(
+      await request("/submit", student, "POST", payload),
+      201,
+    );
+    expect(submitted).toMatchObject({ status: "SUBMITTED" });
+    expect(typeof submitted.id).toBe("string");
+
+    const after = await result(await request("/context", student));
+    expect(after.context.application_id).toBe(submitted.id);
+
+    const auditRow = (
+      await db.query(
+        "select i.reason,i.email,i.claimed_user_id,a.university_id from app_private.trusted_vendor_intakes t join app_private.trusted_vendor_invites i on i.id=t.invite_id join public.agent_applications a on a.id=t.application_id where t.application_id=$1",
+        [submitted.id],
+      )
+    ).rows[0];
+    expect(auditRow).toMatchObject({
+      reason: "Shared Exclusive campaign link",
+      email: "campaign-fixture-2@example.invalid",
+      claimed_user_id: student,
+      university_id: campus,
+    });
+
+    expect(
+      (
+        await request("/submit", student, "POST", {
+          ...payload,
+          requestId: crypto.randomUUID(),
+        })
+      ).status,
+    ).toBe(409);
+  });
+
   it("rejects campus-wide reviewers without changing global state or recording a successful change", async () => {
     expect((await request("/admin/campaign", campusReviewer, "PATCH", { enabled: false })).status).toBe(403);
     expect(await result(await request())).toMatchObject({ enabled: true, canManage: true });
