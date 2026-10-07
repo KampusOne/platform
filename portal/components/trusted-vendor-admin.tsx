@@ -37,7 +37,6 @@ export function TrustedVendorAdmin() {
   const [rows, setRows] = useState<Row[]>([]);
   const [version, setVersion] = useState(0);
   const [error, setError] = useState("");
-  const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -61,35 +60,6 @@ export function TrustedVendorAdmin() {
       active = false;
     };
   }, [scopedPath, version, can]);
-
-  async function invite(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    const data = new FormData(event.currentTarget);
-    try {
-      const response = await portalApi<{ url: string }>(
-        "/v1/trusted-vendors/admin/invites",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            universityId: data.get("universityId"),
-            email: data.get("email"),
-            reason: data.get("reason"),
-          }),
-        },
-      );
-      setUrl(response.url);
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Invitation could not be prepared.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function openDocument(row: Row) {
     if (!row.document_media_id) return;
@@ -151,7 +121,7 @@ export function TrustedVendorAdmin() {
 
   return (
     <section className="panel">
-      <h2>Invited vendors</h2>
+      <h2>Exclusive vendor applications</h2>
       <p className="field-help">
         Review Exclusive business answers and contact details, then approve once.
       </p>
@@ -194,7 +164,7 @@ export function TrustedVendorAdmin() {
             </dl>
           )}
           <p className="field-help">
-            Invitation reason: {row.invitation_reason}
+            Access source: {row.invitation_reason}
           </p>
           <div className="form-actions">
             <span className="field-help">
@@ -256,53 +226,20 @@ export function TrustedVendorAdmin() {
         </article>
       ))}
       <details>
-        <summary>Exclusive invitations and campaign settings</summary>
+        <summary>Exclusive campaign settings</summary>
         <ExclusiveCampaignControl />
         <p className="field-help">
-          Create a seven day Exclusive invitation for one email address. Applicants
-          answer business questions without uploading documents.
+          Share this one link with every Exclusive vendor. No email-specific token is required.
+          Turn the campaign off when you are done and the same link will return Page not found.
         </p>
-        <form className="form-grid manage-form" onSubmit={invite}>
-          <label>
-            University
-            <select name="universityId" defaultValue={scope} required>
-              <option value="">Select university</option>
-              {access?.universities?.map((university) => (
-                <option key={university.id} value={university.id}>
-                  {university.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Invited email
-            <input
-              type="email"
-              name="email"
-              required
-              placeholder="owner@example.com"
-            />
-          </label>
-          <label>
-            Why this business is trusted
-            <textarea name="reason" required minLength={10} maxLength={2000} />
-          </label>
-          <button className="button button--primary" disabled={busy}>
-            Create invitation link
-          </button>
-        </form>
-
-        {url ? (
-          <label>
-            Share this link with the invited business
-            <input
-              readOnly
-              value={url}
-              onFocus={(event) => event.target.select()}
-            />
-          </label>
-        ) : null}
-
+        <label>
+          Reusable Exclusive link
+          <input
+            readOnly
+            value="https://agents.kampusone.app/exclusive"
+            onFocus={(event) => event.target.select()}
+          />
+        </label>
       </details>
     </section>
   );
