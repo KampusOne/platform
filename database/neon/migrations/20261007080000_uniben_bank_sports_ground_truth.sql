@@ -3,14 +3,14 @@ begin;
 do $fix$
 declare
   changed_count integer;
-  university_id constant uuid := '6a79211e-6e85-4d95-be24-976edb26ba58';
-  campus_id constant uuid := '1d60dcae-760d-4de7-8443-6a870d9bbe1a';
+  target_university_id constant uuid := '6a79211e-6e85-4d95-be24-976edb26ba58';
+  target_campus_id constant uuid := '1d60dcae-760d-4de7-8443-6a870d9bbe1a';
 begin
   if not exists (
     select 1
     from public.institution_campuses
-    where id = campus_id
-      and institution_id = university_id
+    where id = target_campus_id
+      and institution_id = target_university_id
       and slug = 'ugbowo'
   ) then
     raise exception 'UNIBEN_UGBOWO_SCOPE_MISSING';
@@ -36,8 +36,8 @@ begin
     updated_at = now()
   from corrections correction
   where place.id = correction.id
-    and place.university_id = university_id
-    and place.campus_id = campus_id
+    and place.university_id = target_university_id
+    and place.campus_id = target_campus_id
     and place.name = correction.name;
 
   get diagnostics changed_count = row_count;
@@ -48,8 +48,8 @@ begin
   update public.institution_campuses
   set map_revision = map_revision + 1,
       updated_at = now()
-  where id = campus_id
-    and institution_id = university_id;
+  where id = target_campus_id
+    and institution_id = target_university_id;
 end
 $fix$;
 
