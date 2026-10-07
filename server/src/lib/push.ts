@@ -61,7 +61,7 @@ async function sendFcmPush(env:Bindings,nativeToken:string,message:{title:string
    method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${access.token}`},signal:AbortSignal.timeout(8000),
    body:JSON.stringify({message:{token:nativeToken,notification:{title:message.title.slice(0,140),body:message.body.slice(0,1500)},android:{priority:'HIGH',ttl:`${ttl}s`,notification:{channel_id:presentation.channelId,sound:'default'}},data:{kind:'kampusone-notification',path:message.path,deliveryId:message.id,...(message.notificationId?{notificationId:message.notificationId}:{}),preferenceCategory:message.preferenceCategory,categoryId:presentation.categoryId}}})
   });
-  if(response.ok){const payload=await response.json() as{name?:string};return{status:'ACCEPTED',...(payload.name?{ticketId:'fcm:'+payload.name}:{})};}
+  if(response.ok){await response.json().catch(()=>null);return{status:'ACCEPTED'};}
   const payload=await response.json().catch(()=>null);const errorCode=fcmError(response.status,payload);
   return{status:response.status>=500?'UNKNOWN':'FAILED',errorCode};
  }catch{return{status:'UNKNOWN',errorCode:'PUSH_NETWORK_UNCERTAIN'};}
