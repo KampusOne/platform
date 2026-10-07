@@ -4,7 +4,7 @@
   "institutionId": "6a79211e-6e85-4d95-be24-976edb26ba58",
   "basis": {
     "bankZone": "User supplied KampusOne map screenshot marking the correct bank zone. Existing relative ordering is retained but translated and compressed into that marked block; individual entrances remain approximate.",
-    "sports": "User reported the existing Sports Complex pin as wrong. Sports Complex/Main Bowl were moved together to the independently corroborated sports cluster.",
+    "sports": "User reported the existing Sports Complex pin as wrong. The Sports Complex is moved onto the already-mapped Main Bowl sports cluster; Main Bowl itself is left untouched pending field verification.",
     "screenshotSha256": [
       "96bd18e7b31a2f7a11b887ce59cf3991341672651658679f10735e3cb24746e6",
       "1ebf48da756ec13278c0c52c93d3f39e2b59452c94fbf3ef641d16e575178d49"
@@ -15,20 +15,11 @@
     {
       "id": "65f3124d-3690-50a6-a01e-1a7afe90eec5",
       "name": "UNIBEN Sports Complex",
-      "latitude": 6.39883,
-      "longitude": 5.61103,
+      "latitude": 6.3992,
+      "longitude": 5.61295,
       "verified_at": null,
-      "confidence": 0.55,
-      "reason": "Remove stale pin from the auditorium/life-sciences block and reunite the complex with the Main Bowl sports cluster."
-    },
-    {
-      "id": "2436a456-902d-57fb-8310-cf9b8f7d5946",
-      "name": "Main Bowl",
-      "latitude": 6.399,
-      "longitude": 5.61117,
-      "verified_at": null,
-      "confidence": 0.55,
-      "reason": "Main Bowl is part of the Sports Complex cluster; old point was tied to the same displaced sports geometry."
+      "confidence": 0.45,
+      "reason": "Remove the stale auditorium-area pin and resolve Sports Complex to the existing Main Bowl sports cluster without moving Main Bowl."
     },
     {
       "id": "265d648c-28db-54b4-8eb8-68ddc10a4aef",
