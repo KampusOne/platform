@@ -1361,8 +1361,8 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
     "Main Bowl",
     "SPORT",
     "Main sports bowl within the university sports complex.",
-    "6.399",
-    "5.61117",
+    "6.3992",
+    "5.61295",
     [
       "UNIBEN Main Bowl",
       "Main Stadium Bowl"
@@ -2189,8 +2189,8 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
     "UNIBEN Sports Complex",
     "SPORT",
     "University sports complex.",
-    "6.39883",
-    "5.61103",
+    "6.3992",
+    "5.61295",
     [
       "Sports Complex",
       "Stadium"
