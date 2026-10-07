@@ -31,7 +31,7 @@ test('offline places retain reviewed live IDs and actual verification timestamps
 
 
 test('ground-truth correction removes the stale sports pin and moves banks into the reported bank block',()=>{
-  assert.equal(corrections.places.length,8);
+  assert.equal(corrections.places.length,7);
   for(const correction of corrections.places){
     const actual=UNIBEN_UGBOWO_FALLBACK.find(place=>place.id===correction.id);
     assert.ok(actual,correction.name);
@@ -40,9 +40,10 @@ test('ground-truth correction removes the stale sports pin and moves banks into 
     assert.equal(actual.verified_at,null);
   }
   const sports=corrections.places.find(place=>place.name==='UNIBEN Sports Complex');
-  const bowl=corrections.places.find(place=>place.name==='Main Bowl');
+  const bowl=UNIBEN_UGBOWO_FALLBACK.find(place=>place.name==='Main Bowl');
   assert.ok(sports&&bowl);
-  assert.ok(Math.abs(sports.latitude-bowl.latitude)<0.001&&Math.abs(sports.longitude-bowl.longitude)<0.001,'Sports Complex and Main Bowl should resolve to the same sports cluster');
+  assert.equal(sports.latitude,Number(bowl.latitude));
+  assert.equal(sports.longitude,Number(bowl.longitude));
   const banks=corrections.places.filter(place=>/Bank/.test(place.name));
   assert.equal(banks.length,6);
   for(const bank of banks){
