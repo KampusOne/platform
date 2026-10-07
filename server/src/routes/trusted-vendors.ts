@@ -70,7 +70,7 @@ trustedVendorRoutes.get('/context', async c => {
   return c.json({ context });
 });
 const submission = z.object({
-  requestId: z.string().uuid(), businessName: z.string().trim().min(2).max(160), legalName: z.string().trim().min(2).max(160),
+  token: token.optional(), requestId: z.string().uuid(), businessName: z.string().trim().min(2).max(160), legalName: z.string().trim().min(2).max(160),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => ageOn(value) >= 18 && ageOn(value) <= 110, 'Enter a valid date of birth. Exclusive applicants must be at least 18.'), description: z.string().trim().min(20).max(2000), address: z.string().trim().min(10).max(500),
   category: z.enum(['Restaurant', 'Supermarket', 'Groceries', 'Fashion', 'Beauty', 'Electronics', 'Printing', 'Other']), campus: z.string().trim().min(2).max(100),
   phone: z.string().regex(/^\+234[789]\d{9}$/), whatsapp: z.string().regex(/^\+234[789]\d{9}$/).optional(),
@@ -78,56 +78,79 @@ const submission = z.object({
 }).strict();
 trustedVendorRoutes.post('/submit', async c => {
   const actor = currentUser(c), data = await input(c, submission), db = database(c.env);
-  if (!actor.universityId) throw new AppError(409, 'BAD_REQUEST', 'Choose your university in KampusOne before using Exclusive onboarding.');
   const allowed = firstRow(await db.execute<{ allowed: boolean }>(sql`select app_private.consume_request_rate_limit('TRUSTED_VENDOR_SUBMIT',${actor.id},10,3600,3600) allowed`));
   if (!allowed?.allowed) throw new AppError(429, 'RATE_LIMITED', 'Please wait before submitting again.');
 
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  const value = Array.from(bytes).map(byte => byte.toString(16).padStart(2, '0')).join('');
-  const codeHash = await hash(value);
-  let internalInviteId: string | undefined;
-
   try {
-    const internalInvite = firstRow(await db.execute<{ id: string }>(sql`
-      insert into app_private.trusted_vendor_invites(
-        institution_id,email,token_hash,created_by,reason,expires_at
-      ) values(
-        ${actor.universityId}::uuid,
-        ${actor.email.toLowerCase()},
-        ${codeHash},
-        ${actor.id}::uuid,
-        'Shared Exclusive campaign link',
-        now()+interval '7 days'
-      )
-      returning id
-    `));
-    internalInviteId = internalInvite?.id;
-    if (!internalInviteId) throw new AppError(503, 'FEATURE_DISABLED', 'Exclusive onboarding could not be prepared. Try again.');
+    const { token: suppliedToken, requestId, acquisition, ...values } = data;
 
-    const { requestId, acquisition, ...values } = data;
-    const row = firstRow(await db.execute<{ id: string }>(sql`
-      select app_private.submit_trusted_vendor_with_acquisition(
-        ${actor.id}::uuid,
-        ${codeHash},
-        ${requestId}::uuid,
-        ${JSON.stringify(values)}::jsonb,
-        ${acquisition?JSON.stringify(acquisition):null}::jsonb
-      ) id
-    `));
-    if (!row?.id) throw new AppError(409, 'CONFLICT', 'The application changed. Refresh and try again.');
-    return c.json({ id: row.id, status: 'SUBMITTED' }, 201);
-  } catch (error) {
-    if (internalInviteId) {
-      await db.execute(sql`
-        delete from app_private.trusted_vendor_invites
-        where id=${internalInviteId}::uuid
-          and application_id is null
-          and created_by=${actor.id}::uuid
-      `).catch(() => undefined);
+    if (suppliedToken) {
+      const codeHash = await hash(suppliedToken);
+      const row = firstRow(await db.execute<{ id: string }>(sql`
+        select app_private.submit_trusted_vendor_with_acquisition(
+          ${actor.id}::uuid,
+          ${codeHash},
+          ${requestId}::uuid,
+          ${JSON.stringify(values)}::jsonb,
+          ${acquisition?JSON.stringify(acquisition):null}::jsonb
+        ) id
+      `));
+      if (!row?.id) throw new AppError(409, 'CONFLICT', 'The invitation or application changed. Refresh and try again.');
+      return c.json({ id: row.id, status: 'SUBMITTED' }, 201);
     }
+
+    if (!actor.universityId)
+      throw new AppError(409, 'BAD_REQUEST', 'Choose your university in KampusOne before using Exclusive onboarding.');
+
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const value = Array.from(bytes).map(byte => byte.toString(16).padStart(2, '0')).join('');
+    const codeHash = await hash(value);
+    let internalInviteId: string | undefined;
+
+    try {
+      const internalInvite = firstRow(await db.execute<{ id: string }>(sql`
+        insert into app_private.trusted_vendor_invites(
+          institution_id,email,token_hash,created_by,reason,expires_at
+        ) values(
+          ${actor.universityId}::uuid,
+          ${actor.email.toLowerCase()},
+          ${codeHash},
+          ${actor.id}::uuid,
+          'Shared Exclusive campaign link',
+          now()+interval '7 days'
+        )
+        returning id
+      `));
+      internalInviteId = internalInvite?.id;
+      if (!internalInviteId) throw new AppError(503, 'FEATURE_DISABLED', 'Exclusive onboarding could not be prepared. Try again.');
+
+      const row = firstRow(await db.execute<{ id: string }>(sql`
+        select app_private.submit_trusted_vendor_with_acquisition(
+          ${actor.id}::uuid,
+          ${codeHash},
+          ${requestId}::uuid,
+          ${JSON.stringify(values)}::jsonb,
+          ${acquisition?JSON.stringify(acquisition):null}::jsonb
+        ) id
+      `));
+      if (!row?.id) throw new AppError(409, 'CONFLICT', 'The application changed. Refresh and try again.');
+      return c.json({ id: row.id, status: 'SUBMITTED' }, 201);
+    } catch (error) {
+      if (internalInviteId) {
+        await db.execute(sql`
+          delete from app_private.trusted_vendor_invites
+          where id=${internalInviteId}::uuid
+            and application_id is null
+            and created_by=${actor.id}::uuid
+        `).catch(() => undefined);
+      }
+      throw error;
+    }
+  } catch (error) {
     if (error instanceof AppError) throw error;
     if (error instanceof Error && /TRUSTED_CAMPAIGN_DISABLED/.test(error.message)) throw new AppError(404, 'NOT_FOUND', 'Page not found.');
-    if (error instanceof Error && /TRUSTED_INVITE|agent_applications_university_id_user_id_agent_type_key/.test(error.message)) throw new AppError(409, 'CONFLICT', 'You already have a vendor application for this university or the campaign changed. Check your application status and try again.');
+    if (error instanceof Error && /TRUSTED_INVITE_EXPIRED|TRUSTED_INVITE_UNAVAILABLE|TRUSTED_INVITE_USED/.test(error.message)) throw new AppError(409, 'CONFLICT', 'The invitation is unavailable, expired, or already used.');
+    if (error instanceof Error && /agent_applications_university_id_user_id_agent_type_key/.test(error.message)) throw new AppError(409, 'CONFLICT', 'You already have a vendor application for this university. Check your application status instead of submitting another one.');
     if (error instanceof Error && /TRUSTED_/.test(error.message)) throw new AppError(409, 'CONFLICT', 'Your age, business details or application changed. Check your answers and try again.');
     throw error;
   }
