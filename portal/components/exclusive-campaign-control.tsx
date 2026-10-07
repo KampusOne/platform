@@ -28,6 +28,8 @@ export function ExclusiveCampaignControl() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const sharedLink = "https://agents.kampusone.app/exclusive";
 
   useEffect(() => {
     if (!allowed) return;
@@ -55,6 +57,16 @@ export function ExclusiveCampaignControl() {
     setError("");
     setCampaign(undefined);
     setVersion((value) => value + 1);
+  }
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(sharedLink);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
   }
 
   async function toggle() {
@@ -123,9 +135,28 @@ export function ExclusiveCampaignControl() {
         <>
           <p role="status" className={styles.coverage}>
             {campaign.enabled
-              ? "The Exclusive campaign is open. The shared link https://agents.kampusone.app/exclusive is live for signed-in applicants."
+              ? "The Exclusive campaign is open. The shared link is live for signed-in applicants."
               : "The Exclusive campaign is closed. The shared link returns Page not found and new applications are blocked."}
           </p>
+          <div className="form-stack">
+            <label>
+              Reusable Exclusive link
+              <input
+                readOnly
+                value={sharedLink}
+                onFocus={(event) => event.target.select()}
+              />
+            </label>
+            <div className="form-actions">
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() => void copyLink()}
+              >
+                {copied ? "Copied" : "Copy link"}
+              </button>
+            </div>
+          </div>
           {!campaign.canManage && (
             <div className="state-panel">
               <p>
