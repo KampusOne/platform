@@ -1,0 +1,79 @@
+{
+  "reviewDate": "2026-10-07",
+  "campusId": "1d60dcae-760d-4de7-8443-6a870d9bbe1a",
+  "institutionId": "6a79211e-6e85-4d95-be24-976edb26ba58",
+  "basis": {
+    "bankZone": "User supplied KampusOne map screenshot marking the correct bank zone. Existing relative ordering is retained but translated and compressed into that marked block; individual entrances remain approximate.",
+    "sports": "User reported the existing Sports Complex pin as wrong. The Sports Complex is moved onto the already-mapped Main Bowl sports cluster; Main Bowl itself is left untouched pending field verification.",
+    "screenshotSha256": [
+      "96bd18e7b31a2f7a11b887ce59cf3991341672651658679f10735e3cb24746e6",
+      "1ebf48da756ec13278c0c52c93d3f39e2b59452c94fbf3ef641d16e575178d49"
+    ]
+  },
+  "policy": "These are corrective map points, not surveyed entrances. All corrected rows remain unverified until field confirmation.",
+  "places": [
+    {
+      "id": "65f3124d-3690-50a6-a01e-1a7afe90eec5",
+      "name": "UNIBEN Sports Complex",
+      "latitude": 6.3992,
+      "longitude": 5.61295,
+      "verified_at": null,
+      "confidence": 0.45,
+      "reason": "Remove the stale auditorium-area pin and resolve Sports Complex to the existing Main Bowl sports cluster without moving Main Bowl."
+    },
+    {
+      "id": "265d648c-28db-54b4-8eb8-68ddc10a4aef",
+      "name": "Wema Bank - UNIBEN",
+      "latitude": 6.402505,
+      "longitude": 5.609694,
+      "verified_at": null,
+      "confidence": 0.45,
+      "reason": "Move into the user-marked bank block; approximate within the block."
+    },
+    {
+      "id": "2ecc6e0e-ce20-5720-baea-d46173dd6a35",
+      "name": "Zenith Bank - UNIBEN",
+      "latitude": 6.402417,
+      "longitude": 5.61028,
+      "verified_at": null,
+      "confidence": 0.45,
+      "reason": "Move into the user-marked bank block; approximate within the block."
+    },
+    {
+      "id": "c503e423-4b99-5e36-bf3c-dec9ca03406a",
+      "name": "Guaranty Trust Bank - UNIBEN",
+      "latitude": 6.402486,
+      "longitude": 5.61011,
+      "verified_at": null,
+      "confidence": 0.45,
+      "reason": "Move into the user-marked bank block; approximate within the block."
+    },
+    {
+      "id": "7fe547f4-1a71-53f0-b674-4c545b41d3c2",
+      "name": "Stanbic IBTC Bank - UNIBEN",
+      "latitude": 6.402311,
+      "longitude": 5.61039,
+      "verified_at": null,
+      "confidence": 0.45,
+      "reason": "Move into the user-marked bank block; approximate within the block."
+    },
+    {
+      "id": "84973da3-033f-5192-9bc6-f76ff76d428c",
+      "name": "First Bank - UNIBEN",
+      "latitude": 6.402121,
+      "longitude": 5.610323,
+      "verified_at": null,
+      "confidence": 0.45,
+      "reason": "Move into the user-marked bank block; approximate within the block."
+    },
+    {
+      "id": "ed6428c9-1102-5cd6-9631-db9ec91dbc2e",
+      "name": "Fidelity Bank - UNIBEN",
+      "latitude": 6.402208,
+      "longitude": 5.61056,
+      "verified_at": null,
+      "confidence": 0.45,
+      "reason": "Move into the user-marked bank block; approximate within the block."
+    }
+  ]
+}

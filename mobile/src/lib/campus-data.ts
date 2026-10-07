@@ -11,7 +11,7 @@ export type CampusPlace = {
   search_aliases?: readonly string[] | null;
 };
 
-// Generated from database/imports/uniben-map2-2026-10-06.json.
+// Generated from database/imports/uniben-map2-2026-10-06.json plus 2026-10-07 ground-truth corrections.
 export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
   [
     "71329ef0-fcc7-5931-96f9-bf100342a72e",
@@ -759,8 +759,8 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "Fidelity Bank - UNIBEN",
     "SERVICE",
     "Fidelity Bank branch on Ugbowo Campus.",
-    "6.40021",
-    "5.61178",
+    "6.402208",
+    "5.61056",
     [
       "Fidelity Bank",
       "Fidelity UNIBEN"
@@ -785,8 +785,8 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "First Bank - UNIBEN",
     "SERVICE",
     "First Bank branch on Ugbowo Campus.",
-    "6.39998",
-    "5.61136",
+    "6.402121",
+    "5.610323",
     [
       "First Bank",
       "FirstBank UNIBEN"
@@ -861,8 +861,8 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "Guaranty Trust Bank - UNIBEN",
     "SERVICE",
     "Guaranty Trust Bank campus branch.",
-    "6.400883",
-    "5.610934",
+    "6.402486",
+    "5.61011",
     [
       "GTBank",
       "GTB UNIBEN",
@@ -1843,8 +1843,8 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "Stanbic IBTC Bank - UNIBEN",
     "SERVICE",
     "Stanbic IBTC branch on Ugbowo Campus.",
-    "6.40046",
-    "5.61146",
+    "6.402311",
+    "5.61039",
     [
       "Stanbic IBTC",
       "Stanbic UNIBEN"
@@ -2159,13 +2159,13 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "UNIBEN Sports Complex",
     "SPORT",
     "University sports complex.",
-    "6.399763",
-    "5.613578",
+    "6.3992",
+    "5.61295",
     [
       "Sports Complex",
       "Stadium"
     ],
-    "2026-10-01T03:35:26.871484+00:00"
+    null
   ],
   [
     "e8cf4946-cc6f-5cb8-811d-cd0d6abe8025",
@@ -2264,8 +2264,8 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "Wema Bank - UNIBEN",
     "SERVICE",
     "Wema Bank branch on Ugbowo Campus.",
-    "6.400908",
-    "5.61018",
+    "6.402505",
+    "5.609694",
     [
       "Wema Bank",
       "Wema UNIBEN"
@@ -2303,8 +2303,8 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "Zenith Bank - UNIBEN",
     "SERVICE",
     "Zenith Bank branch on Ugbowo Campus.",
-    "6.40072",
-    "5.61125",
+    "6.402417",
+    "5.61028",
     [
       "Zenith Bank",
       "Zenith UNIBEN"
