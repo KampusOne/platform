@@ -41,7 +41,7 @@ jobs:
           let firebase=false;
           try{const value=JSON.parse(Buffer.from(process.env.GOOGLE_SERVICES_JSON_BASE64||'','base64').toString());firebase=value.client?.some(x=>x.client_info?.android_client_info?.package_name==='app.kampusone.mobile')===true;}catch{}
           const result={firebaseAndroid:firebase,expoProject:/^[a-f0-9-]{36}$/i.test(process.env.EXPO_EAS_PROJECT_ID||''),expoAccountToken:Boolean(process.env.EXPO_TOKEN),fcmServiceAccount:Boolean(process.env.FCM_SERVICE_ACCOUNT_JSON_BASE64),vercelToken:Boolean(process.env.VERCEL_TOKEN),kycEncryption:names.has('KYC_ENCRYPTION_KEY'),kycFingerprint:names.has('KYC_FINGERPRINT_SECRET'),paymentProvider:names.has('PAYSTACK_SECRET_KEY'),emailProvider:names.has('RESEND_API_KEY'),database:names.has('DATABASE_URL'),signedMedia:names.has('JWT_SECRET')};
-          console.log(JSON.stringify(result));writeFileSync('release-prerequisites.json',JSON.stringify(result,null,2));
+          console.log(JSON.stringify(result));console.log(JSON.stringify({workerSecretNames:[...names].sort()}));writeFileSync('release-prerequisites.json',JSON.stringify(result,null,2));
           JS
       - uses: actions/upload-artifact@v4
         with:
