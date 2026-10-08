@@ -13,8 +13,8 @@
       "name": "Promise Land Restaurant",
       "category": "FOOD",
       "description": "Restaurant landmark in the UNIBEN bank/farm axis.",
-      "latitude": 6.4031875,
-      "longitude": 5.610078125,
+      "latitude": 6.403188,
+      "longitude": 5.610078,
       "plusCode": "CJ36+72G",
       "sourceUrl": "https://biashara.cybo.com/NG-posta/300271_benin-city/mikahawa",
       "search_aliases": [
@@ -29,8 +29,8 @@
       "name": "UNIBEN Farm Project",
       "category": "ACADEMIC",
       "description": "University farm project landmark on Ugbowo Campus.",
-      "latitude": 6.4030625,
-      "longitude": 5.610921875,
+      "latitude": 6.403063,
+      "longitude": 5.610922,
       "plusCode": "CJ36+69F",
       "sourceUrl": "https://www.cybo.com/NG/benin-city/tractors-and-farm-equipment/",
       "search_aliases": [
@@ -45,8 +45,8 @@
       "name": "Shopping Complex UNIBEN",
       "category": "SERVICE",
       "description": "Campus shopping complex behind the Fidelity Bank area.",
-      "latitude": 6.4023875,
-      "longitude": 5.610421875,
+      "latitude": 6.402388,
+      "longitude": 5.610422,
       "plusCode": "CJ26+X53",
       "sourceUrl": "https://ng.worldorgs.com/catalog/benin-city/shopping-mall/shoppingcomplexuniben",
       "search_aliases": [
