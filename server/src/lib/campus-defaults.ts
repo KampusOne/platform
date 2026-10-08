@@ -2358,8 +2358,8 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
     "Promise Land Restaurant",
     "FOOD",
     "Restaurant landmark in the UNIBEN bank/farm axis.",
-    "6.4031875",
-    "5.610078125",
+    "6.403188",
+    "5.610078",
     [
       "Promise_land Restaurant",
       "Promise land Restaurant",
@@ -2372,8 +2372,8 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
     "UNIBEN Farm Project",
     "ACADEMIC",
     "University farm project landmark on Ugbowo Campus.",
-    "6.4030625",
-    "5.610921875",
+    "6.403063",
+    "5.610922",
     [
       "Uniben Farm Project",
       "UNIBEN Farm project",
@@ -2386,8 +2386,8 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
     "Shopping Complex UNIBEN",
     "SERVICE",
     "Campus shopping complex behind the Fidelity Bank area.",
-    "6.4023875",
-    "5.610421875",
+    "6.402388",
+    "5.610422",
     [
       "UNIBEN Shopping Complex",
       "Uniben shopping complex",
