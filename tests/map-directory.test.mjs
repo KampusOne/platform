@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {UNIBEN_UGBOWO_FALLBACK} from '../mobile/src/lib/campus-data.ts';
 const source=JSON.parse(readFileSync(new URL('../database/imports/uniben-map2-2026-10-06.json',import.meta.url),'utf8'));
 const corrections=JSON.parse(readFileSync(new URL('../database/imports/uniben-ground-truth-corrections-2026-10-07.json',import.meta.url),'utf8'));
+const referencePois=JSON.parse(readFileSync(new URL('../database/imports/uniben-reference-pois-2026-10-09.json',import.meta.url),'utf8'));
 const correctionById=new Map(corrections.places.map(place=>[place.id,place]));
 const correctedDirectory=source.directory.map(place=>{const correction=correctionById.get(place.id);return correction?{...place,latitude:correction.latitude,longitude:correction.longitude,verified_at:null}:place;});
 
@@ -16,8 +17,8 @@ test('all 44 source images have individual review provenance and unresolved labe
 });
 
 test('offline places retain reviewed live IDs and actual verification timestamps',()=>{
-  assert.equal(UNIBEN_UGBOWO_FALLBACK.length,177);
-  assert.equal(new Set(UNIBEN_UGBOWO_FALLBACK.map(p=>p.id)).size,177);
+  assert.equal(UNIBEN_UGBOWO_FALLBACK.length,180);
+  assert.equal(new Set(UNIBEN_UGBOWO_FALLBACK.map(p=>p.id)).size,180);
   for(const expected of correctedDirectory){
     const actual=UNIBEN_UGBOWO_FALLBACK.find(p=>p.id===expected.id);
     assert.ok(actual,expected.name);
@@ -29,6 +30,18 @@ test('offline places retain reviewed live IDs and actual verification timestamps
     assert.equal(UNIBEN_UGBOWO_FALLBACK.find(p=>p.id===patch.id).verified_at,null);
 });
 
+
+test('reference POIs preserve the user screenshot bank-axis landmarks without claiming surveyed entrances',()=>{
+  assert.equal(referencePois.places.length,3);
+  for(const expected of referencePois.places){
+    const actual=UNIBEN_UGBOWO_FALLBACK.find(place=>place.id===expected.id);
+    assert.ok(actual,expected.name);
+    assert.equal(Number(actual.latitude),expected.latitude);
+    assert.equal(Number(actual.longitude),expected.longitude);
+    assert.equal(actual.verified_at,null);
+  }
+  assert.deepEqual(referencePois.places.map(place=>place.plusCode).sort(),['CJ26+X53','CJ36+69F','CJ36+72G']);
+});
 
 test('ground-truth correction removes the stale sports pin and moves banks into the reported bank block',()=>{
   assert.equal(corrections.places.length,7);
