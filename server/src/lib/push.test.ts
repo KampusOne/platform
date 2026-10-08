@@ -1,5 +1,5 @@
 import{afterEach,describe,expect,it,vi}from'vitest';
-import{sendCampusPush}from'./push';
+import{sendCampusPush,sendDevicePush}from'./push';
 import{retryablePushError,pushRetryDelaySeconds}from'./push-retry';
 import{notificationChannels}from'../services/notification-preferences';
 import type{Bindings}from'../types';
@@ -22,6 +22,14 @@ describe('push provider acknowledgement boundary',()=>{
  it('fails invalid devices without contacting the provider',async()=>{
   const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
   expect(await sendCampusPush(env,'invalid',notice)).toEqual({status:'FAILED',errorCode:'INVALID_TOKEN'});expect(fetcher).not.toHaveBeenCalled();
+ });
+ it('keeps Android delivery compatible without a server FCM key and surfaces malformed FCM credentials',async()=>{
+  const expo=vi.fn().mockResolvedValue(Response.json({data:{status:'ok',id:'android-expo-ticket'}}));vi.stubGlobal('fetch',expo);
+  expect(await sendDevicePush(env,{expoToken:token,nativeToken:'native-fcm-token-123456',platform:'android'},notice)).toEqual({status:'ACCEPTED',ticketId:'android-expo-ticket'});
+  expect(String(expo.mock.calls[0]![0])).toContain('exp.host');
+  const brokenEnv={...env,FCM_SERVICE_ACCOUNT_JSON:'not-json'} as Bindings,never=vi.fn();vi.stubGlobal('fetch',never);
+  expect(await sendDevicePush(brokenEnv,{expoToken:token,nativeToken:'native-fcm-token-123456',platform:'android'},notice)).toEqual({status:'FAILED',errorCode:'InvalidCredentials'});
+  expect(never).not.toHaveBeenCalled();
  });
  it('treats mention delivery as a social notification with independent channel preferences',async()=>{
   expect(notificationChannels(undefined,{}).mentions).toEqual({in_app_enabled:true,push_enabled:true});
