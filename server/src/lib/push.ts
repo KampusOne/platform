@@ -51,7 +51,7 @@ function fcmError(status:number,payload:any){
  if(status===413)return'MessageTooBig';
  return `PUSH_HTTP_${status}`;
 }
-async function sendFcmPush(env:Bindings,nativeToken:string,message:{title:string;body:string;path:string;id:string;notificationId?:string;preferenceCategory:string}):Promise<PushResult>{
+async function sendFcmPush(env:Bindings,nativeToken:string,message:{title:string;body:string;path:string;id:string;notificationId?:string;preferenceCategory:string;attemptId?:string;kind?:string}):Promise<PushResult>{
  let account:FcmServiceAccount;try{account=JSON.parse(env.FCM_SERVICE_ACCOUNT_JSON||'') as FcmServiceAccount;}catch{return{status:'FAILED',errorCode:'InvalidCredentials'};}
  if(!account.project_id)return{status:'FAILED',errorCode:'InvalidCredentials'};
  const access=await fcmAccessToken(env);if(!access.token)return{status:access.uncertain?'UNKNOWN':'FAILED',errorCode:access.errorCode??'InvalidCredentials'};
@@ -59,7 +59,7 @@ async function sendFcmPush(env:Bindings,nativeToken:string,message:{title:string
  try{
   const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(account.project_id)}/messages:send`,{
    method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${access.token}`},signal:AbortSignal.timeout(8000),
-   body:JSON.stringify({message:{token:nativeToken,notification:{title:message.title.slice(0,140),body:message.body.slice(0,1500)},android:{priority:'HIGH',ttl:`${ttl}s`,notification:{channel_id:presentation.channelId,sound:'default'}},data:{kind:'kampusone-notification',path:message.path,deliveryId:message.id,...(message.notificationId?{notificationId:message.notificationId}:{}),preferenceCategory:message.preferenceCategory,categoryId:presentation.categoryId}}})
+   body:JSON.stringify({message:{token:nativeToken,notification:{title:message.title.slice(0,140),body:message.body.slice(0,1500)},android:{priority:'HIGH',ttl:`${ttl}s`,notification:{channel_id:presentation.channelId,sound:'default'}},data:{kind:message.kind??'kampusone-notification',path:message.path,...(message.attemptId?{attemptId:message.attemptId}:{deliveryId:message.id}),...(message.notificationId?{notificationId:message.notificationId}:{}),preferenceCategory:message.preferenceCategory,categoryId:presentation.categoryId}}})
   });
   if(response.ok){await response.json().catch(()=>null);return{status:'ACCEPTED'};}
   const payload=await response.json().catch(()=>null);const errorCode=fcmError(response.status,payload);
@@ -76,7 +76,7 @@ function presentationFor(preferenceCategory:string){
 }
 
 export async function sendTestPush(env: Bindings, token: string, attemptId: string, nativeToken?: string | null, platform?: string | null): Promise<PushResult> {
- if(platform==='android'&&nativeToken&&env.FCM_SERVICE_ACCOUNT_JSON)return sendFcmPush(env,nativeToken,{title:'KampusOne notification test',body:'This is the test requested for this device.',path:'/notifications',id:attemptId,preferenceCategory:'campusUpdates'});
+ if(platform==='android'&&nativeToken&&env.FCM_SERVICE_ACCOUNT_JSON)return sendFcmPush(env,nativeToken,{title:'KampusOne notification test',body:'This is the test requested for this device.',path:'/notifications',id:attemptId,attemptId,kind:'notification-test',preferenceCategory:'campusUpdates'});
  try {
   const response = await fetch('https://exp.host/--/api/v2/push/send', {
    method: 'POST', headers: headers(env), signal: AbortSignal.timeout(8000),
