@@ -113,8 +113,10 @@ jobs:
         working-directory: mobile
       - run: npm run check
         working-directory: mobile
-      - name: Test feed text and compact layout
-        run: node --experimental-strip-types --test tests/feed-post-text.test.mjs
+      - name: Test feed text and campus map directory
+        run: node --experimental-strip-types --test tests/feed-post-text.test.mjs tests/map-directory.test.mjs
+      - name: Verify campus map renderer and cache bridge
+        run: node mobile/scripts/check-campus-map.cjs
       - run: npm run export:web
         working-directory: mobile
 
