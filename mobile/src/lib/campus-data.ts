@@ -11,7 +11,7 @@ export type CampusPlace = {
   search_aliases?: readonly string[] | null;
 };
 
-// Generated from database/imports/uniben-map2-2026-10-06.json plus 2026-10-07 ground-truth corrections.
+// Generated from database/imports/uniben-map2-2026-10-06.json plus 2026-10-07 corrections and 2026-10-09 reference POIs.
 export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
   [
     "71329ef0-fcc7-5931-96f9-bf100342a72e",
@@ -2320,6 +2320,48 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "5.608965",
     [
       "Zteller Technologies"
+    ],
+    null
+  ],
+  [
+    "da274dde-3a1e-5fe4-ad0d-ff9b30c66439",
+    "Promise Land Restaurant",
+    "FOOD",
+    "Restaurant landmark in the UNIBEN bank/farm axis.",
+    "6.4031875",
+    "5.610078125",
+    [
+      "Promise_land Restaurant",
+      "Promise land Restaurant",
+      "Promise Land UNIBEN"
+    ],
+    null
+  ],
+  [
+    "cf0a2dea-8b98-5113-806a-8a188c816cdf",
+    "UNIBEN Farm Project",
+    "ACADEMIC",
+    "University farm project landmark on Ugbowo Campus.",
+    "6.4030625",
+    "5.610921875",
+    [
+      "Uniben Farm Project",
+      "UNIBEN Farm project",
+      "Farm Project"
+    ],
+    null
+  ],
+  [
+    "9dd57650-a5cc-5774-b7cc-a8d985bba7a6",
+    "Shopping Complex UNIBEN",
+    "SERVICE",
+    "Campus shopping complex behind the Fidelity Bank area.",
+    "6.4023875",
+    "5.610421875",
+    [
+      "UNIBEN Shopping Complex",
+      "Uniben shopping complex",
+      "Shopping Complex"
     ],
     null
   ]
