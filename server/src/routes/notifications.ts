@@ -117,8 +117,8 @@ notificationRoutes.get('/admin/delivery-status',async c=>{
 notificationRoutes.post('/devices',async c=>{
  const u=currentUser(c),data=await input(c,z.object({expoPushToken:z.string().regex(expoTokenPattern),nativeToken:z.string().trim().min(10).max(4096).optional(),platform:z.enum(['ios','android']),label:z.string().trim().min(1).max(100),buildVersion:z.string().trim().min(1).max(60)}).strict());
  const db=database(c.env);
- const result=await db.execute(sql`insert into app_private.push_devices(user_id,token,native_token,session_family_id,platform,label,build_version) values(${u.id}::uuid,${data.expoPushToken},${data.platform==='android'?(data.nativeToken??null):null},${u.sessionFamilyId}::uuid,${data.platform},${data.label},${data.buildVersion}) on conflict(token) do update set user_id=excluded.user_id,native_token=excluded.native_token,session_family_id=excluded.session_family_id,platform=excluded.platform,label=excluded.label,build_version=excluded.build_version,active=true,updated_at=now() returning id,platform,label,build_version,active,updated_at`);
- const device=firstRow<{id:string}>(result);
+ const result=await db.execute<{id:string;platform:string;label:string;build_version:string;active:boolean;updated_at:string}>(sql`insert into app_private.push_devices(user_id,token,native_token,session_family_id,platform,label,build_version) values(${u.id}::uuid,${data.expoPushToken},${data.platform==='android'?(data.nativeToken??null):null},${u.sessionFamilyId}::uuid,${data.platform},${data.label},${data.buildVersion}) on conflict(token) do update set user_id=excluded.user_id,native_token=excluded.native_token,session_family_id=excluded.session_family_id,platform=excluded.platform,label=excluded.label,build_version=excluded.build_version,active=true,updated_at=now() returning id,platform,label,build_version,active,updated_at`);
+ const device=firstRow(result);
  if(device&&data.platform==='android'&&data.nativeToken)await db.execute(sql`update app_private.push_devices set active=false,updated_at=now() where native_token=${data.nativeToken} and id<>${device.id}::uuid and active`);
  return c.json({device});
 });
