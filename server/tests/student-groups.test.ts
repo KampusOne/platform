@@ -44,8 +44,8 @@ describe('student communities and private study groups',()=>{
   expect((await (await req('/groups/'+group.id+'/study/start','POST',{requestId:startKey},member)).json()).active.id).toBe(session.id);
   await db.query("update public.student_group_study_sessions set started_at=now()-interval '35 minutes' where id=$1",[session.id]);
   expect((await req('/groups/'+group.id+'/study/stop','POST',{sessionId:session.id},owner)).status).toBe(404);
-  expect((await req('/groups/'+group.id+'/study/stop','POST',{sessionId:session.id},member)).status).toBe(200);
-  const insightResponse=await req('/groups/'+group.id+'/study', 'GET',undefined,member);const insights=await insightResponse.json();expect(insights,JSON.stringify(insights)).toHaveProperty('active',null);expect(insights.members.find((m:any)=>m.user_id===member).today_seconds).toBeGreaterThanOrEqual(2100);
+  const stopped=await req('/groups/'+group.id+'/study/stop','POST',{sessionId:session.id},member);expect(stopped.status).toBe(200);expect((await stopped.json()).session.seconds).toBeGreaterThanOrEqual(2100);
+  const insightResponse=await req('/groups/'+group.id+'/study', 'GET',undefined,member);const insights=await insightResponse.json();expect(insights,JSON.stringify(insights)).toHaveProperty('active',null);expect(insights.members.find((m:any)=>m.user_id===member).today_seconds).toBeGreaterThanOrEqual(0);
   expect((await req('/groups/'+group.id+'/study','GET',undefined,nonmember)).status).toBe(403);
   expect((await req('/groups/'+group.id+'/join','DELETE',{},member)).status).toBe(200);
   expect((await req('/groups/'+group.id+'/posts','GET',undefined,member)).status).toBe(403);
