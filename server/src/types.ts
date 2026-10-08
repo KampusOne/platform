@@ -38,6 +38,10 @@ export type Bindings = {
   APP_ORIGIN?: string;
   PAYSTACK_SECRET_KEY?: string;
   PAYSTACK_WEBHOOK_SECRET?: string;
+  /** Bachs hosted-checkout bearer key (Cloudflare encrypted secret). */
+  BACHS_API_KEY?: string;
+  /** Bachs webhook endpoint signing secret (not the API key). */
+  BACHS_WEBHOOK_SECRET?: string;
   ADMIN_BOOTSTRAP_TOKEN?: string;
   INITIAL_ADMIN_EMAIL?: string;
   UNIFIED_SCHEMA_READY?: string;
