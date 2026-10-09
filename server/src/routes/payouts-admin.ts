@@ -15,11 +15,8 @@ import {
   payoutError,
   reconcilePayout,
 } from "../lib/payouts";
-import {
-  initiatePaystackTransfer,
-  finalizePaystackTransfer,
-  transferMode,
-} from "../lib/paystack-transfers";
+import { transferMode } from "../lib/paystack-transfers";
+import { initiatePaystackTransferOnce, finalizePaystackTransferOnce } from "../lib/payment-idempotency";
 import type { Bindings, Variables } from "../types";
 export const payoutAdminRoutes = new Hono<{
   Bindings: Bindings;
@@ -178,7 +175,7 @@ payoutAdminRoutes.post("/:id/transfer", async (c) => {
     requestId: c.get("requestId"),
     metadata: { reference: s.provider_reference },
   });
-  const ack = await initiatePaystackTransfer(c.env, {
+  const ack = await initiatePaystackTransferOnce(c.env, {
     reference: transfer!.provider_reference,
     amountKobo: Number(transfer!.bank_net_kobo),
     recipientCode: transfer!.recipient_code,
@@ -237,7 +234,7 @@ payoutAdminRoutes.post("/:id/finalize", async (c) => {
   );
   await payoutRate(c.env, user.id, "PAYOUT_OTP", 10);
   // OTP is used once in memory, never stored in audit or provider projections.
-  const ack = await finalizePaystackTransfer(c.env, {
+  const ack = await finalizePaystackTransferOnce(c.env, {
     reference: s.provider_reference,
     amountKobo: Number(s.bank_net_kobo),
     transferCode: s.transfer_code,
