@@ -92,7 +92,7 @@ export function notificationChannels(
                     ? prefs.pushNewsletter
                     : category === "campusUpdates"
                       ? prefs.pushCampusUpdates
-                      : category === "classReminders"),
+                      : (category === "classReminders" || category === "profilePosts")),
         },
       ];
     }),

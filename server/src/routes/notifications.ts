@@ -89,13 +89,21 @@ notificationRoutes.post('/read-social',async c=>{
 });
 
 notificationRoutes.get('/devices',async c=>{
- const result=await database(c.env).execute(sql`select id,platform,label,build_version,active,created_at,updated_at from app_private.push_devices where user_id=${currentUser(c).id}::uuid order by updated_at desc limit 30`);
+ const u=currentUser(c);
+ // A token tied to an old/revoked login is not deliverable from the new session.
+ // Return the effective state so the native client immediately re-registers it.
+ const result=await database(c.env).execute(sql`select d.id,d.platform,d.label,d.build_version,
+   (d.active and d.session_family_id=${u.sessionFamilyId}::uuid and exists(
+     select 1 from public.refresh_tokens rt where rt.user_id=d.user_id
+       and rt.family_id=d.session_family_id and rt.revoked_at is null and rt.expires_at>now()
+   )) as active,d.created_at,d.updated_at
+   from app_private.push_devices d where d.user_id=${u.id}::uuid order by d.updated_at desc limit 30`);
  return c.json({devices:result.rows});
 });
 notificationRoutes.get('/delivery-status',async c=>{
  const user=currentUser(c),db=database(c.env);
  const [devices,outbox,delivery]=await Promise.all([
-  db.execute(sql`select count(*)::int as registered,count(*) filter(where d.active and exists(select 1 from public.refresh_tokens r where r.family_id=d.session_family_id and r.user_id=d.user_id and r.revoked_at is null and r.expires_at>now()))::int as active from app_private.push_devices d where d.user_id=${user.id}::uuid`),
+  db.execute(sql`select count(*)::int as registered,count(*) filter(where d.active and d.session_family_id=${user.sessionFamilyId}::uuid and exists(select 1 from public.refresh_tokens r where r.family_id=d.session_family_id and r.user_id=d.user_id and r.revoked_at is null and r.expires_at>now()))::int as active from app_private.push_devices d where d.user_id=${user.id}::uuid`),
   db.execute(sql`select state,last_error_code,count(*)::int as count from app_private.notification_outbox where user_id=${user.id}::uuid and channel='PUSH' and created_at>now()-interval '7 days' group by state,last_error_code`),
   db.execute(sql`select status,error_code,created_at,checked_at,observed_at from app_private.community_push_deliveries where user_id=${user.id}::uuid order by created_at desc limit 20`),
  ]);

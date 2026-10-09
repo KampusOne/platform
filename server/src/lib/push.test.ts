@@ -23,6 +23,10 @@ describe('push provider acknowledgement boundary',()=>{
   const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);
   expect(await sendCampusPush(env,'invalid',notice)).toEqual({status:'FAILED',errorCode:'INVALID_TOKEN'});expect(fetcher).not.toHaveBeenCalled();
  });
+ it('delivers posts from explicitly subscribed accounts by default but respects a phone mute',()=>{
+  expect(notificationChannels(undefined,{}).profilePosts).toEqual({in_app_enabled:true,push_enabled:true});
+  expect(notificationChannels({profilePosts:{in_app_enabled:true,push_enabled:false}}).profilePosts).toEqual({in_app_enabled:true,push_enabled:false});
+ });
  it('treats mention delivery as a social notification with independent channel preferences',async()=>{
   expect(notificationChannels(undefined,{}).mentions).toEqual({in_app_enabled:true,push_enabled:true});
   expect(notificationChannels(undefined,{mentions:false,pushMentions:false}).mentions).toEqual({in_app_enabled:false,push_enabled:false});
