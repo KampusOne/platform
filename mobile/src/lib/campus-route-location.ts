@@ -14,3 +14,19 @@ export function usableRouteGpsFix(fix:CampusLiveLocation|null,now=Date.now()):bo
     now-fix.timestamp<=MAX_ROUTE_GPS_AGE_MS
   );
 }
+
+/** Delayed cache/one-shot results and a poor sensor reading must not displace a good live fix. */
+export function preferredCampusLocation(previous:CampusLiveLocation|null,next:CampusLiveLocation,now=Date.now()):CampusLiveLocation|null{
+  if(!Number.isFinite(next.latitude)||!Number.isFinite(next.longitude)||Math.abs(next.latitude)>90||Math.abs(next.longitude)>180||!Number.isFinite(next.timestamp)||next.timestamp>now+5000)return previous;
+  if(usableRouteGpsFix(previous,now)&&!usableRouteGpsFix(next,now))return previous;
+  if(usableRouteGpsFix(next,now)&&!usableRouteGpsFix(previous,now))return next;
+  if(previous&&previous.timestamp>next.timestamp)return previous;
+  if(previous?.source==='live'&&next.source==='cached'&&now-previous.timestamp<=MAX_ROUTE_GPS_AGE_MS)return previous;
+  return next;
+}
+
+export function routeGpsProblem(fix:CampusLiveLocation|null,now=Date.now()):string{
+  if(fix?.accuracy!==null&&fix?.accuracy!==undefined&&Number.isFinite(fix.accuracy)&&fix.accuracy>MAX_ROUTE_GPS_ACCURACY_METRES)return `Your location is approximate (within ${Math.round(fix.accuracy)} m). Move to an open area, retry, or choose a starting point.`;
+  if(fix&&now-fix.timestamp>MAX_ROUTE_GPS_AGE_MS)return 'Your location needs refreshing. Retry, or choose a starting point.';
+  return 'Your current location is not available yet. Retry, or choose a starting point.';
+}

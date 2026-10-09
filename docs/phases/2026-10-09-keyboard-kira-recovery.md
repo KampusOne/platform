@@ -36,7 +36,7 @@ keyboard boundary and the inference connection behind that error.
 - Preserve the existing provider-boundary rule for history. A conversation saved
   with a different provider asks for a new conversation rather than silently
   forwarding it. Saved conversations remain readable.
-- Android release 0.3.22 / version code 52 builds the current commit and checks
+- Android release 0.3.23 / version code 53 builds the current commit and checks
   the existing signing certificate, package, SDK, ABI and artifact digest.
 
 ## Verification
@@ -57,4 +57,5 @@ keyboard boundary and the inference connection behind that error.
   comment/report/community editor sheets; close/reopen the keyboard. Keep the
   composer and send action visible without a second keyboard-sized blank gap.
 
+The release also includes the current GPS recovery changes merged from main.
 Production deploy and APK outcomes are recorded by their GitHub Actions runs.

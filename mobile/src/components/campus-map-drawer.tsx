@@ -4,6 +4,7 @@ import {Ionicons} from '@expo/vector-icons';
 import * as Haptics from '@/src/lib/haptics';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {Animated,Image,Keyboard,PanResponder,Platform,Pressable,StyleSheet,Text,TextInput,useWindowDimensions,View} from 'react-native';
+import {InlineLoading} from '@/src/components/skeleton';
 import {useReducedMotionPreference} from '@/src/components/visual-system';
 import {useThemeStyles,type Theme} from '@/src/lib/appearance';
 import {useKeyboardViewport} from '@/src/components/keyboard-viewport';
@@ -17,6 +18,7 @@ type Props={
   originName:string|null;destinationName:string|null;destinationApproximate?:boolean;route:RouteSummary|null;
   alternatives:RouteSummary[];selectedRoute:number;onSelectRoute:(index:number)=>void;
   locationError:string;locationLoading:boolean;photo:{url:string;attribution:string}|null;
+  busyMessage?:string;locationRecovery?:boolean;locationSettingsNeeded?:boolean;onLocationSettings?:()=>void;
   onQueryChange:(value:string)=>void;onPickPlace:(id:string)=>void;
   onChoose:(kind:'origin'|'destination')=>void;onPickOnMap:()=>void;
   onUseCurrentLocation:()=>void;onClearRoute:()=>void;onSwap:()=>void;
@@ -25,11 +27,11 @@ type Props={
 const RECENTS_KEY='k1.campus-map.recent-destinations.v1';
 const categoryIcons:Record<string,IconName>={ACADEMIC:'school-outline',FOOD:'restaurant-outline',HEALTH:'medkit-outline',HOSTEL:'bed-outline',SERVICE:'help-buoy-outline',SPORT:'football-outline',TRANSPORT:'bus-outline'};
 export function formatMapDistance(metres:number){return metres<1000?`${Math.round(metres)} m`:`${(metres/1000).toFixed(1)} km`;}
-export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,routeBusy,places,query,picker,originName,destinationName,destinationApproximate=false,route,alternatives,selectedRoute,onSelectRoute,locationError,locationLoading,photo,onQueryChange,onPickPlace,onChoose,onPickOnMap,onUseCurrentLocation,onClearRoute,onSwap,onRetry,onHeightChange}:Props){
+export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,routeBusy,places,query,picker,originName,destinationName,destinationApproximate=false,route,alternatives,selectedRoute,onSelectRoute,locationError,locationLoading,photo,busyMessage,locationRecovery=false,locationSettingsNeeded=false,onLocationSettings,onQueryChange,onPickPlace,onChoose,onPickOnMap,onUseCurrentLocation,onClearRoute,onSwap,onRetry,onHeightChange}:Props){
   const {theme,styles}=useThemeStyles(makeStyles),{height}=useWindowDimensions(),reducedMotion=useReducedMotionPreference();
   const viewport=useKeyboardViewport();
   const [expanded,setExpanded]=useState(false),[recentIds,setRecentIds]=useState<string[]>([]),[keyboard,setKeyboard]=useState(0);
-  const collapsedHeight=error?252:route||routeBusy?202:166;
+  const collapsedHeight=error?(locationRecovery?286:252):route||routeBusy?202:166;
   const sheetBottom=keyboard>0?(Platform.OS==='ios'?keyboard+8:bottomInset):bottomInset;
   const availableHeight=Platform.OS==='android' && viewport.height>0?viewport.height:height;
   const maximumHeight=Math.max(collapsedHeight,Math.min(520,availableHeight-sheetBottom-topInset-82));
@@ -95,9 +97,13 @@ export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,rou
       <Pressable accessibilityRole="button" accessibilityLabel="Swap starting point and destination" disabled={!originName||!destinationName} onPress={onSwap} style={[styles.swap,(!originName||!destinationName)&&{opacity:.35}]}><Ionicons name="swap-vertical" size={21} color={theme.deepBrand}/></Pressable>
     </View>
     {route||routeBusy||error?<View style={styles.summary}>
-      <Ionicons name={error?'alert-circle-outline':'walk-outline'} size={17} color={error?theme.error:theme.deepBrand}/>
-      <Text numberOfLines={error?undefined:1} style={styles.summaryText}>{error|| (routeBusy?'Finding a mapped walking route…':route?`${Math.max(1,Math.ceil(route.durationSeconds/60))} min walk · ${formatMapDistance(route.distanceMetres)}`:'')}</Text>
+      {routeBusy&&!error?<InlineLoading size="small" color={theme.deepBrand}/>:<Ionicons name={error?'alert-circle-outline':'walk-outline'} size={17} color={error?theme.error:theme.deepBrand}/>}
+      <Text accessibilityLiveRegion="polite" numberOfLines={error?undefined:1} style={styles.summaryText}>{error|| (routeBusy?busyMessage||'Finding a mapped walking route…':route?`${Math.max(1,Math.ceil(route.durationSeconds/60))} min walk · ${formatMapDistance(route.distanceMetres)}`:'')}</Text>
       {error?<Pressable accessibilityRole="button" accessibilityLabel="Retry map request" onPress={onRetry} style={styles.retry}><Text style={styles.retryText}>Retry</Text></Pressable>:null}
+    </View>:null}
+    {locationRecovery?<View style={styles.recovery}>
+      {locationSettingsNeeded&&onLocationSettings?<Pressable accessibilityRole="button" onPress={onLocationSettings} style={styles.recoveryButton}><Text style={styles.retryText}>Open settings</Text></Pressable>:null}
+      <Pressable accessibilityRole="button" onPress={()=>choose('origin')} style={styles.recoveryButton}><Text style={styles.retryText}>Choose starting point</Text></Pressable>
     </View>:null}
     {expanded?<ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
       {picker||!destinationName?<>
@@ -126,6 +132,7 @@ const makeStyles=(theme:Theme)=>StyleSheet.create({
   header:{height:34,paddingLeft:16,paddingRight:8,flexDirection:'row',alignItems:'center'},title:{flex:1,color:theme.text,fontFamily:theme.font.semibold,fontSize:14},smallButton:{width:36,height:34,alignItems:'center',justifyContent:'center'},
   endpoints:{flexDirection:'row',paddingHorizontal:12,gap:6},endpointFields:{flex:1,backgroundColor:theme.surfaceMuted,borderRadius:12,paddingHorizontal:10},endpoint:{height:44,flexDirection:'row',alignItems:'center',gap:7},fieldLabel:{width:31,color:theme.textMuted,fontFamily:theme.font.body,fontSize:11},endpointName:{flex:1,color:theme.text,fontFamily:theme.font.medium,fontSize:12.5},dot:{width:9,height:9,borderRadius:6,marginHorizontal:2},swap:{width:38,alignItems:'center',justifyContent:'center'},
   summary:{minHeight:40,flexDirection:'row',alignItems:'center',gap:7,paddingHorizontal:16,paddingVertical:8},summaryText:{flex:1,color:theme.text,fontFamily:theme.font.medium,fontSize:12},retry:{padding:8},retryText:{color:theme.deepBrand,fontFamily:theme.font.semibold,fontSize:11},
+  recovery:{flexDirection:'row',gap:8,paddingHorizontal:16,paddingBottom:8},recoveryButton:{minHeight:40,justifyContent:'center',paddingHorizontal:12,borderRadius:10,backgroundColor:theme.surfaceMuted},
   content:{paddingHorizontal:16,paddingTop:10,paddingBottom:22,gap:8},searchBox:{minHeight:48,backgroundColor:theme.surfaceMuted,borderRadius:12,paddingHorizontal:12,flexDirection:'row',alignItems:'center',gap:8},searchInput:{flex:1,color:theme.text,fontFamily:theme.font.body,fontSize:12,paddingVertical:10},
   actionRow:{minHeight:48,flexDirection:'row',alignItems:'center',gap:10},actionText:{flex:1,color:theme.text,fontFamily:theme.font.medium,fontSize:12.5},helper:{color:theme.textMuted,fontFamily:theme.font.body,fontSize:11.5,lineHeight:17},section:{color:theme.textMuted,fontFamily:theme.font.semibold,fontSize:11,marginTop:5},place:{minHeight:58,flexDirection:'row',alignItems:'center',gap:11},placeIcon:{width:38,height:38,borderRadius:12,backgroundColor:theme.surfaceMuted,alignItems:'center',justifyContent:'center'},placeName:{color:theme.text,fontFamily:theme.font.semibold,fontSize:12.5},
   routeNotice:{flexDirection:'row',alignItems:'flex-start',gap:8,padding:12,backgroundColor:theme.surfaceMuted,borderRadius:12},photoRow:{flexDirection:'row',gap:12,alignItems:'center'},photo:{width:62,height:62,borderRadius:10},instruction:{flexDirection:'row',alignItems:'center',gap:10,minHeight:40},step:{color:theme.deepBrand,fontFamily:theme.font.semibold,width:24,fontSize:12},
