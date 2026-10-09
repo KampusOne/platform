@@ -69,6 +69,38 @@ describe("durable Paystack idempotency database guards", () => {
     } finally { await db.close(); }
   });
 
+  it("reserves payout initiation and OTP finalization independently, never re-sending uncertain transfers", async () => {
+    const db = await fixture();
+    try {
+      const ref = "k1-po-synthetic-123456";
+      const claim = async (operation: string,target: string,amount=500000) =>
+        (await db.query<{claim_state:string;provider_status:string|null;transfer_code:string|null}>(
+          "select * from app_private.claim_paystack_transfer_operation($1,$2,$3,$4)",
+          [operation,ref,amount,target],
+        )).rows[0]!;
+      expect((await claim("INIT","RCP_synthetic")).claim_state).toBe("CLAIMED");
+      expect((await claim("INIT","RCP_synthetic")).claim_state).toBe("IN_PROGRESS");
+      await expect(claim("INIT","RCP_other")).rejects.toThrow("TRANSFER_REPLAY_DETAILS_CHANGED");
+      await db.query(
+        "select app_private.finish_paystack_transfer_operation('INIT',$1,'READY','pending','TRF_SYNTHETIC')",
+        [ref],
+      );
+      expect(await claim("INIT","RCP_synthetic")).toMatchObject({
+        claim_state:"READY",provider_status:"pending",transfer_code:"TRF_SYNTHETIC",
+      });
+      expect((await claim("FINALIZE","TRF_SYNTHETIC")).claim_state).toBe("CLAIMED");
+      await db.query(
+        "select app_private.finish_paystack_transfer_operation('FINALIZE',$1,'UNCERTAIN')",
+        [ref],
+      );
+      expect((await claim("FINALIZE","TRF_SYNTHETIC")).claim_state).toBe("UNCERTAIN");
+      await expect(db.query(
+        "select app_private.finish_paystack_transfer_operation('FINALIZE',$1,'READY','success','TRF_SYNTHETIC')",
+        [ref],
+      )).rejects.toThrow("TRANSFER_OPERATION_REQUIRES_REVIEW");
+    } finally { await db.close(); }
+  });
+
   it("deduplicates concurrent signed deliveries and preserves retry semantics", async () => {
     const db = await fixture();
     try {
