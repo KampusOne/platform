@@ -59,3 +59,9 @@ keyboard boundary and the inference connection behind that error.
 
 The release also includes the current GPS recovery changes merged from main.
 Production deploy and APK outcomes are recorded by their GitHub Actions runs.
+
+The first production deployment hit Cloudflare's 64-variable Free-plan limit:
+the three new text/model settings would have raised the total to 67. They are
+removed from Wrangler. The native AI binding selects text inference directly;
+the Standard/Pro model defaults live in the server adapter. Existing variables
+and secrets are retained. No plan upgrade or credential change is required.

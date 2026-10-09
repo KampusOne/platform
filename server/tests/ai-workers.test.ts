@@ -4,6 +4,11 @@ const input: AIInput = {mode: 'study', prompt: 'Explain Ohm’s law'};
 const native = (result: unknown = {response: 'Voltage equals current multiplied by resistance.'}) => vi.fn().mockResolvedValue(result);
 const env = (run = native()): AIEnvironment => ({AI_ASSISTANT_ENABLED: 'true', AI_TEXT_PROVIDER: 'workers-ai', AI: {run}});
 describe('Workers AI recovery', () => {
+  it('activates the native binding without consuming new environment variable slots',async()=>{
+    const run=native(),fetcher=vi.fn();
+    expect((await generateAI({AI_ASSISTANT_ENABLED:'true',AI:{run},HF_TOKEN:'synthetic',HF_CHAT_MODEL:'test/chat'},input,fetcher)).provider).toBe('workers-ai');
+    expect(fetcher).not.toHaveBeenCalled();expect(run).toHaveBeenCalledTimes(1);
+  });
   it('serves both tiers without a Hugging Face token and preserves their model difference', async () => {
     const run = native(), fetcher = vi.fn();
     expect((await generateAI(env(run), input, fetcher)).provider).toBe('workers-ai');
