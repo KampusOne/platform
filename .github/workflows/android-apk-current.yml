@@ -1,7 +1,7 @@
 name: Build current verified Android APK
 on:
   push:
-    branches: [main, fix/map-gps-recovery-20261009]
+    branches: [main]
     paths:
       - ".github/workflows/android-apk-current.yml"
 
@@ -35,7 +35,7 @@ jobs:
       - name: Check app types
         run: npm run check
         working-directory: mobile
-      - name: Verify the current production API and reviewed map routing
+      - name: Verify production API, GPS recovery and map loading
         run: |
           set -euo pipefail
           for phase in platform october experience october4 october6 followup; do
@@ -44,6 +44,7 @@ jobs:
           curl --fail --silent --show-error --retry 2 --max-time 20 https://platformp.divine-haze-54eb.workers.dev/health/ready
           node mobile/scripts/check-campus-location.cjs
           node mobile/scripts/check-campus-map.cjs
+          node --experimental-strip-types --test tests/performance-regression.test.mjs
       - name: Configure Android push credentials
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}

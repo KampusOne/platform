@@ -2,7 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Ionicons} from '@expo/vector-icons';
 import * as Haptics from '@/src/lib/haptics';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {ActivityIndicator,Animated,Image,Keyboard,PanResponder,Platform,Pressable,ScrollView,StyleSheet,Text,TextInput,useWindowDimensions,View} from 'react-native';
+import {Animated,Image,Keyboard,PanResponder,Platform,Pressable,ScrollView,StyleSheet,Text,TextInput,useWindowDimensions,View} from 'react-native';
+import {InlineLoading} from '@/src/components/skeleton';
 import {useReducedMotionPreference} from '@/src/components/visual-system';
 import {useThemeStyles,type Theme} from '@/src/lib/appearance';
 
@@ -92,7 +93,7 @@ export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,rou
       <Pressable accessibilityRole="button" accessibilityLabel="Swap starting point and destination" disabled={!originName||!destinationName} onPress={onSwap} style={[styles.swap,(!originName||!destinationName)&&{opacity:.35}]}><Ionicons name="swap-vertical" size={21} color={theme.deepBrand}/></Pressable>
     </View>
     {route||routeBusy||error?<View style={styles.summary}>
-      {routeBusy&&!error?<ActivityIndicator size="small" color={theme.deepBrand}/>:<Ionicons name={error?'alert-circle-outline':'walk-outline'} size={17} color={error?theme.error:theme.deepBrand}/>}
+      {routeBusy&&!error?<InlineLoading size="small" color={theme.deepBrand}/>:<Ionicons name={error?'alert-circle-outline':'walk-outline'} size={17} color={error?theme.error:theme.deepBrand}/>}
       <Text accessibilityLiveRegion="polite" numberOfLines={error?undefined:1} style={styles.summaryText}>{error|| (routeBusy?busyMessage||'Finding a mapped walking route…':route?`${Math.max(1,Math.ceil(route.durationSeconds/60))} min walk · ${formatMapDistance(route.distanceMetres)}`:'')}</Text>
       {error?<Pressable accessibilityRole="button" accessibilityLabel="Retry map request" onPress={onRetry} style={styles.retry}><Text style={styles.retryText}>Retry</Text></Pressable>:null}
     </View>:null}
