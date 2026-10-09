@@ -242,7 +242,26 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
       and resource_id = ${item.id}::uuid and idempotency_key = ${parsed.data.idempotencyKey}
     limit 1
   `);
-  const existing = firstRow(existingResult);
+  let existing = firstRow(existingResult);
+  if (!existing) {
+    // A lost mobile screen, new tab, or a second Idempotency-Key is NOT
+    // permission to open another Paystack session for one still-live order.
+    // Reuse the one active attempt only for the owner and the same resource.
+    existing = firstRow(await database(context.env).execute<{
+      id: string; amount_kobo: number; status: string;
+      authorization_url: string | null; access_code: string | null;
+      provider_reference: string;
+    }>(sql`
+      select id,amount_kobo,status,authorization_url,access_code,provider_reference
+      from public.payment_attempts
+      where user_id=${user.id}::uuid
+        and university_id=${user.universityId}::uuid
+        and resource_type=${parsed.data.resourceType}
+        and resource_id=${item.id}::uuid
+        and status in ('CREATED','INITIALIZED')
+      order by created_at desc limit 1
+    `));
+  }
   if (existing && Number(existing.amount_kobo) !== Number(item.amount_kobo))
     throw new AppError(409, "CONFLICT", "This payment attempt belongs to a previous price. Review the updated total before proceeding.");
   if (
