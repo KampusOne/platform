@@ -26,7 +26,7 @@ export function formatMapDistance(metres:number){return metres<1000?`${Math.roun
 export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,routeBusy,places,query,picker,originName,destinationName,destinationApproximate=false,route,alternatives,selectedRoute,onSelectRoute,locationError,locationLoading,photo,onQueryChange,onPickPlace,onChoose,onPickOnMap,onUseCurrentLocation,onClearRoute,onSwap,onRetry,onHeightChange}:Props){
   const {theme,styles}=useThemeStyles(makeStyles),{height}=useWindowDimensions(),reducedMotion=useReducedMotionPreference();
   const [expanded,setExpanded]=useState(false),[recentIds,setRecentIds]=useState<string[]>([]),[keyboard,setKeyboard]=useState(0);
-  const collapsedHeight=route||routeBusy||error?202:166;
+  const collapsedHeight=error?252:route||routeBusy?202:166;
   const sheetBottom=keyboard>0?(Platform.OS==='ios'?keyboard+8:bottomInset):bottomInset;
   const maximumHeight=Math.max(collapsedHeight,Math.min(520,height-sheetBottom-topInset-82));
   const targetHeight=expanded?maximumHeight:collapsedHeight;
@@ -92,7 +92,7 @@ export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,rou
     </View>
     {route||routeBusy||error?<View style={styles.summary}>
       <Ionicons name={error?'alert-circle-outline':'walk-outline'} size={17} color={error?theme.error:theme.deepBrand}/>
-      <Text numberOfLines={1} style={styles.summaryText}>{error|| (routeBusy?'Finding a mapped walking route…':route?`${Math.max(1,Math.ceil(route.durationSeconds/60))} min walk · ${formatMapDistance(route.distanceMetres)}`:'')}</Text>
+      <Text numberOfLines={error?undefined:1} style={styles.summaryText}>{error|| (routeBusy?'Finding a mapped walking route…':route?`${Math.max(1,Math.ceil(route.durationSeconds/60))} min walk · ${formatMapDistance(route.distanceMetres)}`:'')}</Text>
       {error?<Pressable accessibilityRole="button" accessibilityLabel="Retry map request" onPress={onRetry} style={styles.retry}><Text style={styles.retryText}>Retry</Text></Pressable>:null}
     </View>:null}
     {expanded?<ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
@@ -121,7 +121,7 @@ const makeStyles=(theme:Theme)=>StyleSheet.create({
   handleArea:{height:20,alignItems:'center',justifyContent:'center'},handle:{height:4,width:44,borderRadius:4,backgroundColor:theme.border},
   header:{height:34,paddingLeft:16,paddingRight:8,flexDirection:'row',alignItems:'center'},title:{flex:1,color:theme.text,fontFamily:theme.font.semibold,fontSize:14},smallButton:{width:36,height:34,alignItems:'center',justifyContent:'center'},
   endpoints:{flexDirection:'row',paddingHorizontal:12,gap:6},endpointFields:{flex:1,backgroundColor:theme.surfaceMuted,borderRadius:12,paddingHorizontal:10},endpoint:{height:44,flexDirection:'row',alignItems:'center',gap:7},fieldLabel:{width:31,color:theme.textMuted,fontFamily:theme.font.body,fontSize:11},endpointName:{flex:1,color:theme.text,fontFamily:theme.font.medium,fontSize:12.5},dot:{width:9,height:9,borderRadius:6,marginHorizontal:2},swap:{width:38,alignItems:'center',justifyContent:'center'},
-  summary:{height:40,flexDirection:'row',alignItems:'center',gap:7,paddingHorizontal:16},summaryText:{flex:1,color:theme.text,fontFamily:theme.font.medium,fontSize:12},retry:{padding:8},retryText:{color:theme.deepBrand,fontFamily:theme.font.semibold,fontSize:11},
+  summary:{minHeight:40,flexDirection:'row',alignItems:'center',gap:7,paddingHorizontal:16,paddingVertical:8},summaryText:{flex:1,color:theme.text,fontFamily:theme.font.medium,fontSize:12},retry:{padding:8},retryText:{color:theme.deepBrand,fontFamily:theme.font.semibold,fontSize:11},
   content:{paddingHorizontal:16,paddingTop:10,paddingBottom:22,gap:8},searchBox:{minHeight:48,backgroundColor:theme.surfaceMuted,borderRadius:12,paddingHorizontal:12,flexDirection:'row',alignItems:'center',gap:8},searchInput:{flex:1,color:theme.text,fontFamily:theme.font.body,fontSize:12,paddingVertical:10},
   actionRow:{minHeight:48,flexDirection:'row',alignItems:'center',gap:10},actionText:{flex:1,color:theme.text,fontFamily:theme.font.medium,fontSize:12.5},helper:{color:theme.textMuted,fontFamily:theme.font.body,fontSize:11.5,lineHeight:17},section:{color:theme.textMuted,fontFamily:theme.font.semibold,fontSize:11,marginTop:5},place:{minHeight:58,flexDirection:'row',alignItems:'center',gap:11},placeIcon:{width:38,height:38,borderRadius:12,backgroundColor:theme.surfaceMuted,alignItems:'center',justifyContent:'center'},placeName:{color:theme.text,fontFamily:theme.font.semibold,fontSize:12.5},
   routeNotice:{flexDirection:'row',alignItems:'flex-start',gap:8,padding:12,backgroundColor:theme.surfaceMuted,borderRadius:12},photoRow:{flexDirection:'row',gap:12,alignItems:'center'},photo:{width:62,height:62,borderRadius:10},instruction:{flexDirection:'row',alignItems:'center',gap:10,minHeight:40},step:{color:theme.deepBrand,fontFamily:theme.font.semibold,width:24,fontSize:12},
