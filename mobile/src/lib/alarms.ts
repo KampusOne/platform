@@ -3,6 +3,8 @@ import { syncWebAlarms, stopWebAlarms } from "./web-alarms";
 import { Platform } from "react-native";
 import { router, type Href } from "expo-router";
 import { nativeAlarms } from "./native-alarms";
+import {alarmFollowupKind,campusDateKey} from "./alarm-followup";
+import {shouldOfferClassAlarmChoice} from "./class-alarm-prompt";
 import * as Notifications from "expo-notifications";
 export type Alarm = {
   id: string;
@@ -30,6 +32,7 @@ export type Alarm = {
   exam_lead_minutes?: number | null;
   pause_from?: string | null;
   pause_until?: string | null;
+  muted_on?: string | null;
 };
 export function normalizeAlarm(value: unknown): Alarm | null {
   if (!value || typeof value !== "object") return null;
@@ -58,6 +61,7 @@ export function normalizeAlarm(value: unknown): Alarm | null {
     exam_lead_minutes:Number.isFinite(Number(raw.exam_lead_minutes))?Number(raw.exam_lead_minutes):null,
     pause_from:typeof raw.pause_from==="string"?raw.pause_from:null,
     pause_until:typeof raw.pause_until==="string"?raw.pause_until:null,
+    muted_on:typeof raw.muted_on==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(raw.muted_on)?raw.muted_on:null,
     label:
       typeof raw.label === "string" && raw.label.trim() ? raw.label : "Alarm",
     time,
@@ -156,16 +160,18 @@ export async function syncAlarms(
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
       const expected = new Map<string, { alarm: Alarm; day: number; date?:Date }>();
       for (const alarm of alarms.filter((a) => a.enabled)) {
-        if(alarm.days.length&&alarm.timetable_entry_id&&alarm.pause_from&&alarm.pause_until){
+        if(alarm.days.length&&alarm.timetable_entry_id&&(alarm.muted_on||(alarm.pause_from&&alarm.pause_until))){
           const campusNow=new Date(Date.now()+3600000),[hour,minute]=alarm.time.split(':').map(Number);
           for(let offset=0;offset<56;offset++){
             const date=new Date(Date.UTC(campusNow.getUTCFullYear(),campusNow.getUTCMonth(),campusNow.getUTCDate()+offset,hour!-1,minute!));
             const localDay=new Date(date.getTime()+3600000),key=localDay.toISOString().slice(0,10);
-            if(date.getTime()<=Date.now()||!alarm.days.includes(localDay.getUTCDay())||(key>=alarm.pause_from&&key<=alarm.pause_until))continue;
+            const inExamPeriod=Boolean(alarm.pause_from&&alarm.pause_until&&key>=alarm.pause_from&&key<=alarm.pause_until);
+            if(date.getTime()<=Date.now()||!alarm.days.includes(localDay.getUTCDay())||inExamPeriod||key===alarm.muted_on)continue;
             expected.set(`k1-alarm-${alarm.id}-${key}`,{alarm,day:-1,date});
           }
           continue;
         }
+        if(!alarm.days.length&&alarm.muted_on&&alarm.fires_at&&campusDateKey(Date.parse(alarm.fires_at))===alarm.muted_on)continue;
         for (const day of alarm.days.length
           ? alarm.days
           : alarm.fires_at && Date.parse(alarm.fires_at) > Date.now()
@@ -179,13 +185,17 @@ export async function syncAlarms(
       }
       const signatures = new Map(scheduled.map(entry=>[entry.identifier,entry.content.data?.alarmSignature]));
       // Preserve unchanged reminders so a refresh cannot cancel an imminent alarm.
+      const mutedIds=new Set(alarms.filter(alarm=>alarm.muted_on===campusDateKey()).map(alarm=>alarm.id));
+      for (const entry of scheduled)
+        if(entry.identifier.startsWith("k1-snooze-") && mutedIds.has(String(entry.content.data?.alarmId??"")))
+          await Notifications.cancelScheduledNotificationAsync(entry.identifier);
       for (const entry of scheduled)
         if (entry.identifier.startsWith("k1-alarm-") && !expected.has(entry.identifier))
           await Notifications.cancelScheduledNotificationAsync(
             entry.identifier,
           );
       for (const [identifier, { alarm, day,date:occurrence }] of expected) {
-        const signature=JSON.stringify([alarm.time,alarm.days,alarm.fires_at,alarm.pause_from,alarm.pause_until,occurrence?.toISOString(),alarm.label,alarm.sound,alarm.vibration,alarm.snooze_minutes,new Date().getTimezoneOffset()]);
+        const signature=JSON.stringify([alarm.time,alarm.days,alarm.fires_at,alarm.pause_from,alarm.pause_until,alarm.muted_on,occurrence?.toISOString(),alarm.label,alarm.sound,alarm.vibration,alarm.snooze_minutes,new Date().getTimezoneOffset()]);
         if(signatures.get(identifier)===signature)continue;
         const notificationSound = alarm.sound === "silent" ? "silent" : "default";
         const [hour, minute] = alarm.time.split(":").map(Number);
@@ -210,6 +220,7 @@ export async function syncAlarms(
             data: {
               alarmId: alarm.id,
               examId:alarm.exam_id??undefined,
+              timetableEntryId:alarm.timetable_entry_id??undefined,
               alarmTime: alarm.time,
               snoozeMinutes: alarm.snooze_minutes,
               alarmSignature: signature,
@@ -277,10 +288,20 @@ export function listenForSnooze() {
     if(original.categoryIdentifier==='k1-alarm'){
       await Notifications.dismissNotificationAsync(r.notification.request.identifier);
       if(r.actionIdentifier==='snooze'){await snoozeNotification(original);return;}
-      if(r.actionIdentifier==='dismiss'){if(original.data?.examId)router.push({pathname:'/exam-awareness',params:{alarmId:String(original.data.alarmId)}});return;}
+      if(r.actionIdentifier==='dismiss'){
+        const kind=alarmFollowupKind({timetableEntryId:original.data?.timetableEntryId,
+          examId:original.data?.examId,classStartsAt:original.data?.classStartsAt,courseCode:original.data?.courseCode});
+        if(kind==='EXAM' && typeof original.data?.alarmId==='string')
+          router.push({pathname:'/exam-awareness',params:{alarmId:original.data.alarmId}});
+        else if(kind==='CLASS' && typeof original.data?.alarmId==='string' && await shouldOfferClassAlarmChoice())
+          router.push({pathname:'/class-alarm-day',params:{alarmId:original.data.alarmId}});
+        await Notifications.clearLastNotificationResponseAsync();
+        return;
+      }
       router.push({pathname:'/alarm-ring',params:{
         alarmId:String(original.data?.alarmId??''),
         examId:typeof original.data?.examId==='string'?original.data.examId:undefined,
+        timetableEntryId:typeof original.data?.timetableEntryId==='string'?original.data.timetableEntryId:undefined,
         alarmTime:typeof original.data?.alarmTime==='string'?original.data.alarmTime:undefined,
         label:String(original.data?.label??original.title??'Alarm'),
         snooze:String(original.data?.snoozeMinutes??5),
