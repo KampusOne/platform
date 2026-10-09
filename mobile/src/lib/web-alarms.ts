@@ -16,7 +16,7 @@ function tick(){
     const time=alarm.fires_at?Date.parse(alarm.fires_at):NaN;
     const due=alarm.days.length?alarm.days.includes(day)&&alarm.time===clock:Number.isFinite(time)&&now.getTime()>=time&&now.getTime()-time<60000;
     const key=`${alarm.id}:${date}:${clock}`;
-    if(!alarm.enabled||!due||fired.has(key)||(alarm.pause_from&&alarm.pause_until&&date>=alarm.pause_from&&date<=alarm.pause_until))continue;
+    if(!alarm.enabled||!due||fired.has(key)||alarm.muted_on===date||(alarm.pause_from&&alarm.pause_until&&date>=alarm.pause_from&&date<=alarm.pause_until))continue;
     fired.add(key);if(fired.size>500)fired.delete(fired.values().next().value!);
     stopWebRinging();ringing=alarm;window.dispatchEvent(new CustomEvent("k1-alarm",{detail:{label:alarm.label,alarmId:alarm.id}}));
     if("Notification" in window&&Notification.permission==="granted")try{new Notification(alarm.label,{body:"KampusOne reminder",tag:key,silent:alarm.sound==="silent"});}catch{/* In-app banner remains available. */}
