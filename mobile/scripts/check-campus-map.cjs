@@ -73,9 +73,10 @@ assert.equal(sources.get('features').data.features.length,sourceFeatures.length,
 // Route readiness is stricter than drawing the approximate blue location dot.
 const gpsContext={exports:{}};vm.createContext(gpsContext);
 vm.runInContext(typescript.transpileModule(fs.readFileSync(`${root}/mobile/src/lib/campus-route-location.ts`,'utf8'),{compilerOptions:{module:typescript.ModuleKind.CommonJS,target:typescript.ScriptTarget.ES2022}}).outputText,gpsContext);
-const now=Date.now(),fix={latitude:6.398255,longitude:5.618838,timestamp:now-1000,accuracy:10};
+const now=Date.now(),fix={latitude:6.398255,longitude:5.618838,timestamp:now-1000,accuracy:10,source:'live'};
 assert.equal(gpsContext.exports.usableRouteGpsFix(fix,now),true);
-assert.equal(gpsContext.exports.usableRouteGpsFix({...fix,accuracy:120},now),false,'Inaccurate cached GPS must not start navigation');
+assert.equal(gpsContext.exports.usableRouteGpsFix({...fix,source:'cached'},now),false,'Last-known location must not be mistaken for a fresh GPS measurement');
+assert.equal(gpsContext.exports.usableRouteGpsFix({...fix,accuracy:120},now),false,'Inaccurate GPS must not start navigation');
 assert.equal(gpsContext.exports.usableRouteGpsFix({...fix,timestamp:now-61000},now),false,'Old GPS must invalidate an already displayed route');
 assert.equal(gpsContext.exports.usableRouteGpsFix({...fix,latitude:NaN},now),false);
 const petroleum=payload.places.find(place=>place.name==='Department of Petroleum Engineering');
