@@ -1,6 +1,10 @@
 export type RuntimeEnvironment = "local" | "staging" | "production";
 
 export type Bindings = {
+  AI?: import('./lib/ai-workers').WorkersAIBinding;
+  AI_TEXT_PROVIDER?: string;
+  WORKERS_AI_CHAT_MODEL?: string;
+  WORKERS_AI_PRO_MODEL?: string;
   MAP_SATELLITE_TILE_URL?: string;
   MAP_SATELLITE_ATTRIBUTION?: string;
   ENVIRONMENT: RuntimeEnvironment;

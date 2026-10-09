@@ -374,7 +374,7 @@ aiRoutes.post("/", async c => {
     prompt += (prompt ? "\n\n" : "") + "Student schedule preferences (filter the source; add a course only if the student explicitly supplies its complete date and hours):\n" + d.notes;
   }
   try { assertAIConfiguration(c.env, d.mode, media?.mimeType, undefined,effectiveTier); } catch (e) { if (e instanceof AIProviderError) throw providerFailure(e); throw e; }
-  const selectedProvider = selectAIProvider(d.mode, media?.mimeType, d.provider);
+  const selectedProvider = selectAIProvider(d.mode, fileType, d.provider, c.env, effectiveTier);
   let threadId = d.idempotencyKey;
   const history: AITurn[] = [];
   if (d.replyTo && d.mode !== "timetable") {
@@ -450,7 +450,7 @@ aiRoutes.post("/", async c => {
       }
       const aiInput={mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
       const generated = isRestrictedKampusOneRequest(d.prompt)
-        ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: "huggingface" as const, cards: [] as AICard[], actions: [] as AIAction[] }
+        ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: selectedProvider, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'
           ? await generateAI(c.env,aiInput)
           : await runStudentAssistant(c.env,u,aiInput);

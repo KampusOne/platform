@@ -1,9 +1,9 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AppState,
   FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,

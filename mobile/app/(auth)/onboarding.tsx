@@ -1,3 +1,4 @@
+import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { InlineLoading } from "@/src/components/skeleton";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -9,7 +10,6 @@ import {
   FlatList,
   findNodeHandle,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,

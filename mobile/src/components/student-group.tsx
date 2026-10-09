@@ -1,7 +1,9 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
+import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import {CommunitySubscriptionSheet,CommunityRequestInbox} from './community-requests';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Ionicons} from '@expo/vector-icons';
-import {Image,Modal,Pressable,ScrollView,Switch,Text,View} from 'react-native';
+import {Image,Pressable,Switch,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {router,useFocusEffect} from 'expo-router';
 import {randomUUID} from 'expo-crypto';

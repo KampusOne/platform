@@ -1,3 +1,5 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
+import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
@@ -5,9 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   FlatList,
   Keyboard,
-  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,

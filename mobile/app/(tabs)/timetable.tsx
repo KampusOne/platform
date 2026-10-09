@@ -1,3 +1,4 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import ExamTimetable from '../exam-timetable';
 import {AcademicImportUsage} from "@/src/components/academic-import-usage";
 import { BulkMenu, BulkToolbar, SelectionCheckbox, useBulkSelection } from "@/src/components/bulk-selection";
@@ -8,7 +9,6 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,

@@ -1,3 +1,4 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,7 +10,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,

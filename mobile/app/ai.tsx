@@ -1,10 +1,12 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
+import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { isPlayDistribution } from "@/src/lib/digital-billing-policy";
 import {sharedLink} from '@/src/lib/shared-links';
 import {shareContent} from '@/src/lib/share-content';
 import * as Clipboard from "expo-clipboard";
 import { KiraVoiceInput } from "@/src/components/kira-voice-input";
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
-import { Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";

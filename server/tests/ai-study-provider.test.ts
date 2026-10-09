@@ -43,6 +43,7 @@ beforeAll(async () => {
   }
 }, 60000);
 beforeEach(async () => {
+  delete env.AI; delete env.AI_TEXT_PROVIDER;
   await db.exec("delete from app_private.ai_requests;delete from app_private.request_rate_limits");
   delete env.PRIVATE_BUCKET;
   env.AI_UNLIMITED_EMAIL_HASHES = await sha256(ownerEmail);
@@ -59,6 +60,18 @@ beforeEach(async () => {
 afterAll(async () => { vi.unstubAllGlobals(); await db?.close(); });
 
 describe("student AI persistence and quota boundaries",()=>{
+  it('uses Workers AI through the authenticated route and replays without another inference',async()=>{
+    const run=vi.fn().mockResolvedValue({response:'Voltage equals current multiplied by resistance.'});
+    env.AI={run};env.AI_TEXT_PROVIDER='workers-ai';
+    const body=draft();const first=await json(await request('/ai','POST',body));
+    expect(first.text).toBe('Voltage equals current multiplied by resistance.');
+    expect(first.provider).toBeUndefined();
+    expect(await json(await request('/ai','POST',body))).toEqual(first);
+    expect(run).toHaveBeenCalledTimes(1);expect(provider).not.toHaveBeenCalled();
+    const next=await json(await request('/ai','POST',{...draft(),prompt:'What does resistance mean?',replyTo:body.idempotencyKey}));
+    expect(next.threadId).toBe(first.threadId);expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls[1][1].messages.some((turn:{role:string;content:unknown})=>turn.role==='assistant'&&turn.content===first.text)).toBe(true);
+  });
   it.each(['text/plain','application/pdf'])("extracts an attached %s, saves its type and replays one inference",async mime=>{
     const mediaId=crypto.randomUUID(),bytes=mime==='application/pdf'?pdfFixture(['Physics 101: Ohm law states V = I times R.']):new TextEncoder().encode('Physics 101: Ohm law states V = I times R.');
     const filename=mime==='application/pdf'?'Physics.pdf':'Physics.txt';

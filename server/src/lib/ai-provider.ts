@@ -1,11 +1,12 @@
 import { AIProviderError } from "./ai-error.ts";
 export { AIProviderError } from "./ai-error.ts";
 import { scheduleInstruction, parseScheduleDocument } from "./schedule-document.ts";
+import { workersAICompletion, workersAIConfiguration, type WorkersAIEnvironment } from './ai-workers.ts';
 /** All inference stays server-side behind provider adapters. */
 export type AIMode = "study" | "summary" | "explanation" | "quiz" | "notes" | "timetable";
 export type AITier = "standard" | "pro";
-export type AIProvider = "huggingface";
-export type AIEnvironment = {
+export type AIProvider = "huggingface" | "workers-ai";
+export type AIEnvironment = WorkersAIEnvironment & {
   AI_ASSISTANT_ENABLED?: string; HF_TOKEN?: string; HF_CHAT_MODEL?: string;
   HF_REASONING_MODEL?: string; HF_VISION_MODEL?: string; HF_PRO_MODEL?: string; HF_TRANSCRIPTION_MODEL?: string;
   HF_TRANSCRIPTION_FALLBACK_MODEL?: string;
@@ -35,11 +36,15 @@ export function aiDay(now = Date.now()): { startsAt: string; resetsAt: string } 
   const start = new Date(`${day}T00:00:00+01:00`).getTime();
   return { startsAt: new Date(start).toISOString(), resetsAt: new Date(start + 86400000).toISOString() };
 }
-export function selectAIProvider(_mode: AIMode, _mimeType?: string, _requested?: AIProvider): AIProvider { return "huggingface"; }
+export function selectAIProvider(mode: AIMode, mimeType?: string, requested?: AIProvider, env?: AIEnvironment, tier: AITier = 'standard'): AIProvider { return env ? providerConfiguration(env, mode, mimeType, requested, tier).provider : "huggingface"; }
 export function providerConfiguration(env: AIEnvironment, mode: AIMode, mimeType?: string, _requested?: AIProvider, tier: AITier = "standard") {
   const image = mimeType?.startsWith("image/") ?? false;
   const token = env.HF_TOKEN?.trim();
   const chatModel = env.HF_CHAT_MODEL?.trim();
+  const workers = workersAIConfiguration(env, tier);
+  if (!image && (env.AI_TEXT_PROVIDER === 'workers-ai' || (!token && workers.configured))) {
+    return { provider: 'workers-ai' as const, token: undefined, model: workers.model, fallbackModel: undefined, missing: workers.configured ? [] : ['AI'], configured: workers.configured };
+  }
   // Pro is a KampusOne entitlement (higher quotas, context and voice), not a
   // requirement for a separate model credential. If a dedicated Pro model is
   // configured use it; otherwise use the strongest already-configured study
@@ -96,36 +101,51 @@ export function aiCompletionBudget(input: Pick<AIInput,"mode"|"tier"|"sourceDocu
   // short Ask turn. The deadline covers every model attempt, including fallback.
   return { maxTokens: input.tier === "pro" ? (detailed ? 8192 : 6144) : (detailed ? 6144 : 3072), timeoutMs: input.sourceDocument || detailed ? 90000 : input.tier === "pro" ? 75000 : 40000 };
 }
-export async function completeAI(env: AIEnvironment, input: AIInput, messages: AIMessage[], tools?: AITool[], fetcher: typeof fetch = fetch): Promise<{ text: string; calls: AIToolCall[] }> {
+export async function completeAI(env: AIEnvironment, input: AIInput, messages: AIMessage[], tools?: AITool[], fetcher: typeof fetch = fetch): Promise<{ text: string; calls: AIToolCall[]; provider: AIProvider }> {
   const config = assertAIConfiguration(env, input.mode, input.media?.mimeType, input.provider, input.tier);
   const budget = aiCompletionBudget(input);
   const deadline = Date.now() + budget.timeoutMs;
   try {
-    const requestModel = (model: string, fallback = false) => fetcher("https://router.huggingface.co/v1/chat/completions", {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.token!}` }, signal: AbortSignal.timeout(Math.max(1,Math.min(deadline-Date.now(),!fallback && config.fallbackModel ? 55000 : budget.timeoutMs))),
-      body: JSON.stringify({ model, messages, max_tokens: budget.maxTokens, temperature: 0.2, stream: false, ...(tools?.length ? { tools, tool_choice: "auto" } : {}) }),
-    });
-    let response: Response;
-    let usedFallback = false;
-    try { response = await requestModel(config.model!); }
-    catch (error) {
-      // Only one fallback is possible, within the same reservation and deadline.
-      // A slow/unreachable study model must not prevent the configured chat
-      // model from answering a document. Never retry an authentication error.
-      if (!config.fallbackModel || deadline-Date.now()<1000) throw error;
-      usedFallback = true;
-      response = await requestModel(config.fallbackModel,true);
+    let provider: AIProvider = config.provider;
+    let payload: { choices?: { message?: { content?: unknown; tool_calls?: unknown }; finish_reason?: string }[] };
+    if (config.provider === 'workers-ai') {
+      payload = await workersAICompletion(env, input, messages, tools, budget.maxTokens, deadline - Date.now()) as typeof payload;
+    } else {
+      const requestModel = (model: string, fallback = false) => fetcher("https://router.huggingface.co/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.token!}` }, signal: AbortSignal.timeout(Math.max(1,Math.min(deadline-Date.now(),!fallback && config.fallbackModel ? 55000 : budget.timeoutMs))),
+        body: JSON.stringify({ model, messages, max_tokens: budget.maxTokens, temperature: 0.2, stream: false, ...(tools?.length ? { tools, tool_choice: "auto" } : {}) }),
+      });
+      let response: Response;
+      let usedFallback = false;
+      try { response = await requestModel(config.model!); }
+      catch (error) {
+        // Only one fallback is possible, within the same reservation and deadline.
+        // A slow/unreachable study model must not prevent the configured chat
+        // model from answering a document. Never retry an authentication error.
+        if (!config.fallbackModel || deadline-Date.now()<1000) throw error;
+        usedFallback = true;
+        response = await requestModel(config.fallbackModel,true);
+      }
+      if (!response.ok && !usedFallback && config.fallbackModel && ![401,403].includes(response.status) && deadline-Date.now()>=1000) {
+        void response.body?.cancel().catch(() => undefined);
+        response = await requestModel(config.fallbackModel,true);
+      }
+      if (!response.ok) {
+        void response.body?.cancel().catch(() => undefined);
+        if ((response.status === 402 || response.status === 429 || response.status >= 500) && !input.media && workersAIConfiguration(env, input.tier).configured && deadline - Date.now() >= 1000) {
+          console.warn(JSON.stringify({event: 'ai.provider.fallback', from: 'huggingface', to: 'workers-ai', httpStatus: response.status}));
+          provider = 'workers-ai';
+          payload = await workersAICompletion(env, input, messages, tools, budget.maxTokens, deadline - Date.now()) as typeof payload;
+        } else {
+          console.warn(JSON.stringify({event: 'ai.provider.failed', provider: 'huggingface', httpStatus: response.status}));
+          if (response.status === 402) throw new AIProviderError(503, "AI_PROVIDER_LIMIT", "Kira's AI service is temporarily unavailable. Your draft is kept; please try again later.");
+          if (response.status === 429) throw new AIProviderError(503, "AI_PROVIDER_LIMIT", "Kira is busy right now. Your draft is kept; try again shortly.");
+          throw new AIProviderError(503, response.status === 401 || response.status === 403 ? "AI_PROVIDER_AUTH" : "AI_PROVIDER_UNAVAILABLE", "AI could not respond right now. Your draft is kept; please try again later.");
+        }
+      } else {
+        payload = await response.json() as typeof payload;
+      }
     }
-    if (!response.ok && !usedFallback && config.fallbackModel && ![401,403].includes(response.status) && deadline-Date.now()>=1000) {
-      void response.body?.cancel().catch(() => undefined);
-      response = await requestModel(config.fallbackModel,true);
-    }
-    if (!response.ok) {
-      void response.body?.cancel().catch(() => undefined);
-      if (response.status === 402 || response.status === 429) throw new AIProviderError(503, "AI_PROVIDER_LIMIT", "AI capacity is temporarily unavailable. Your draft is kept; try again later.");
-      throw new AIProviderError(503, response.status === 401 || response.status === 403 ? "AI_PROVIDER_AUTH" : "AI_PROVIDER_UNAVAILABLE", "AI could not respond right now. Your draft is kept; please try again later.");
-    }
-    const payload = await response.json() as { choices?: { message?: { content?: unknown; tool_calls?: unknown }; finish_reason?: string }[] };
     const choice = payload.choices?.[0], message = choice?.message;
     if (choice?.finish_reason === "length") throw new AIProviderError(502, "AI_INCOMPLETE", "This answer was cut short. Try a smaller document section or a more focused question.");
     const raw = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
@@ -137,7 +157,7 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
     const text = typeof message?.content === "string" ? studentSafeText(message.content.trim()) : "";
     if (!text && !calls.length) throw new AIProviderError(502, "AI_EMPTY_OUTPUT", "AI returned no answer. Your draft is kept.");
     if (text.length > 50000) throw new AIProviderError(502, "AI_INVALID_OUTPUT", "This response was too long. Try a smaller source.");
-    return { text, calls };
+    return { text, calls, provider };
   } catch (error) {
     if (error instanceof AIProviderError) throw error;
     if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) throw new AIProviderError(504, "AI_TIMEOUT", "AI took too long. Your draft is kept.");
@@ -146,7 +166,7 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
 }
 export async function generateAI(env: AIEnvironment, input: AIInput, fetcher: typeof fetch = fetch): Promise<{ text: string; provider: AIProvider }> {
   const result = await completeAI(env, input, aiMessages(input), undefined, fetcher);
-  return { text: result.text, provider: "huggingface" };
+  return { text: result.text, provider: result.provider };
 }
 
 export function transcriptionConfiguration(env: AIEnvironment) {

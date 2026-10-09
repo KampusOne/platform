@@ -19,6 +19,7 @@ import { useAuth } from "@/src/auth/auth-context";
 import { useReducedMotionPreference } from "@/src/components/visual-system";
 import { theme } from "@/src/theme";
 import { setFeedRoutePlaybackActive } from "@/src/lib/feed-video-playback";
+import { useKeyboardViewport } from '@/src/components/keyboard-viewport';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type TabBarRenderer = NonNullable<ComponentProps<typeof Tabs>["tabBar"]>;
@@ -163,10 +164,13 @@ function NavItem({
 
 function KampusTabBar({ state, navigation }: KampusTabBarProps) {
   const { theme, styles, isDark } = useThemeStyles(createStyles);
+  const { keyboardVisible } = useKeyboardViewport();
 
   const insets = useSafeAreaInsets();
   const routeName = state.routes[state.index]?.name ?? "index";
   const activeName = activeParent[routeName] ?? routeName;
+
+  if (keyboardVisible) return null;
 
   return (
     <View

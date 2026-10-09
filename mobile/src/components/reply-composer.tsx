@@ -1,9 +1,11 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
+import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { InlineLoading } from "@/src/components/skeleton";
 import { useWebKeyboardViewport } from "@/src/lib/web-keyboard-viewport";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
 import { useEffect, useRef, useState } from "react";
-import {  Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
+import {  Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { api } from "@/src/lib/api";
