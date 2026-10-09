@@ -6,7 +6,7 @@ export const MAX_ROUTE_GPS_ACCURACY_METRES=50;
 
 export function usableRouteGpsFix(fix:CampusLiveLocation|null,now=Date.now()):boolean{
   return Boolean(
-    fix&&Number.isFinite(fix.latitude)&&Number.isFinite(fix.longitude)&&
+    fix&&fix.source==='live'&&Number.isFinite(fix.latitude)&&Number.isFinite(fix.longitude)&&
     Math.abs(fix.latitude)<=90&&Math.abs(fix.longitude)<=180&&
     fix.accuracy!==null&&Number.isFinite(fix.accuracy)&&
     fix.accuracy>=0&&fix.accuracy<=MAX_ROUTE_GPS_ACCURACY_METRES&&
