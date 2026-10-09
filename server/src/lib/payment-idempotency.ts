@@ -4,6 +4,7 @@ import type { Bindings } from "../types";
 import { database, firstRow } from "./database";
 import { AppError } from "./errors";
 import { initializePaystack } from "./paystack";
+import { initiatePaystackTransfer, finalizePaystackTransfer } from "./paystack-transfers";
 
 type Initialization = Parameters<typeof initializePaystack>[1];
 type CheckoutClaim = {
@@ -129,4 +130,87 @@ export async function finishPaystackWebhook(
   );
   if (!updated?.saved)
     throw new AppError(503, "PROVIDER_UNAVAILABLE", "This signed payment event needs another verification attempt.");
+}
+
+type TransferOperation = "INIT" | "FINALIZE";
+type TransferClaim = {
+  claim_state: "CLAIMED" | "IN_PROGRESS" | "READY" | "UNCERTAIN";
+  provider_status: string | null;
+  transfer_code: string | null;
+};
+type TransferAck = { reference: string; transferCode: string; status: string };
+
+async function paystackTransferOnce(
+  env: Bindings,
+  operation: TransferOperation,
+  reference: string,
+  amountKobo: number,
+  sealedTarget: string,
+  perform: () => Promise<TransferAck>,
+): Promise<TransferAck> {
+  const claim = firstRow(
+    await database(env).execute<TransferClaim>(sql`
+      select * from app_private.claim_paystack_transfer_operation(
+        ${operation},${reference},${amountKobo}::bigint,${sealedTarget}
+      )
+    `),
+  );
+  if (!claim)
+    throw new AppError(503, "PROVIDER_UNAVAILABLE", "The withdrawal could not be safely reserved.");
+  if (claim.claim_state === "READY") {
+    if (!claim.provider_status || !claim.transfer_code)
+      throw new AppError(503, "PROVIDER_UNAVAILABLE", "The withdrawal acknowledgement needs review.");
+    return { reference, status: claim.provider_status, transferCode: claim.transfer_code };
+  }
+  if (claim.claim_state !== "CLAIMED") {
+    throw new AppError(
+      409, "CONFLICT",
+      claim.claim_state === "IN_PROGRESS"
+        ? "This bank transfer is already being processed. Check its saved reference."
+        : "The transfer provider's response is uncertain. Verify the saved reference before another action.",
+      { reference, reason: claim.claim_state === "IN_PROGRESS" ? "TRANSFER_IN_PROGRESS" : "TRANSFER_REQUIRES_REVIEW" },
+    );
+  }
+  try {
+    const ack = await perform();
+    const saved = firstRow(
+      await database(env).execute<{ saved: boolean }>(sql`
+        select app_private.finish_paystack_transfer_operation(
+          ${operation},${reference},'READY',${ack.status},${ack.transferCode}
+        ) as saved
+      `),
+    );
+    if (!saved?.saved)
+      throw new AppError(503, "PROVIDER_UNAVAILABLE", "The provider transfer result could not be safely saved.");
+    return ack;
+  } catch (error) {
+    try {
+      await database(env).execute(sql`
+        select app_private.finish_paystack_transfer_operation(
+          ${operation},${reference},'UNCERTAIN'
+        )
+      `);
+    } catch {
+      console.error(JSON.stringify({ level: "error", event: "payment.transfer_guard_write_failed" }));
+    }
+    throw error;
+  }
+}
+
+export async function initiatePaystackTransferOnce(
+  env: Bindings,
+  input: Parameters<typeof initiatePaystackTransfer>[1],
+) {
+  return paystackTransferOnce(env,"INIT",input.reference,input.amountKobo,input.recipientCode,
+    () => initiatePaystackTransfer(env,input));
+}
+
+export async function finalizePaystackTransferOnce(
+  env: Bindings,
+  input: Parameters<typeof finalizePaystackTransfer>[1],
+) {
+  // Never store or log the OTP. The provider reference and sealed transfer
+  // code identify the operation; retries must verify rather than re-submit.
+  return paystackTransferOnce(env,"FINALIZE",input.reference,input.amountKobo,input.transferCode,
+    () => finalizePaystackTransfer(env,input));
 }
