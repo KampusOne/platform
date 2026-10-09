@@ -48,12 +48,13 @@ export async function assertPermission(env:Bindings,user:AuthenticatedUser,permi
  return access;
 }
 export async function resolveAdminScope(env:Bindings,user:AdminUser,requested?:string,permission=user.adminPermission??'overview.view'){
- if(requested&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requested))throw new AppError(400,'BAD_REQUEST','Select a valid university.');
+ const requestedScope=requested?.trim()||undefined;
+ if(requestedScope&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedScope))throw new AppError(400,'BAD_REQUEST','Select a valid university.');
  const access=await assertPermission(env,user,permission);
  const grants=access.grants.filter(g=>g.permissions.includes(permission));
- if(grants.some(g=>g.university_id===null))return requested??null;
- if(requested&&grants.some(g=>g.university_id===requested))return requested;
- if(requested)throw new AppError(403,'FORBIDDEN',"You cannot access another university's records.");
+ if(grants.some(g=>g.university_id===null))return requestedScope??null;
+ if(requestedScope&&grants.some(g=>g.university_id===requestedScope))return requestedScope;
+ if(requestedScope)throw new AppError(403,'FORBIDDEN',"You cannot access another university's records.");
  // Legacy routes accept one scope; never interpret a missing filter as unrestricted access.
  const first=grants.find(g=>g.university_id)?.university_id;
  if(!first)throw new AppError(403,'FORBIDDEN','No university scope is assigned to this account.');

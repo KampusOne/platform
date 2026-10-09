@@ -159,20 +159,20 @@ export default function TodayScreen() {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const generation = useRef(0);
   const [data, setData] = useState<Home | null>(() => {
-    const prefetched = peekApiCache<Home>("/v1/student/home");
+    const prefetched = peekApiCache<Home>("/v1/student/home", { allowStale: true });
     return prefetched ? normalizeHome(prefetched) : null;
   });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(
-    () => peekApiCache<Home>("/v1/student/home") === undefined,
+    () => peekApiCache<Home>("/v1/student/home", { allowStale: true }) === undefined,
   );
 
   const load = useCallback(async () => {
     const current = ++generation.current;
     setError("");
     try {
-      const transportCached = peekApiCache<Home>("/v1/student/home");
+      const transportCached = peekApiCache<Home>("/v1/student/home", { allowStale: true });
       if (transportCached) {
         setData(normalizeHome(transportCached));
         setLoading(false);

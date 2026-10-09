@@ -134,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
           .catch(() => undefined);
       }
-      setAccessToken(session.accessToken);
+      setAccessToken(session.accessToken, session.user.id);
       setSessionRestoreError("");
       setUser(session.user);
       setState("authenticated");

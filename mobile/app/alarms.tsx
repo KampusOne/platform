@@ -10,6 +10,7 @@ import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
 import { api } from "@/src/lib/api";
 import { normalizeAlarms, syncAlarms, type Alarm } from "@/src/lib/alarms";
+import {campusDateKey} from "@/src/lib/alarm-followup";
 import { useAppearance, type Theme } from "@/src/lib/appearance";
 import { selectionAsync } from "@/src/lib/haptics";
 import { pickAndUpload } from "@/src/lib/uploads";
@@ -91,23 +92,27 @@ function getAlarmDate(alarm: Alarm, now = new Date()) {
   if (!alarm.enabled) return null;
   if (alarm.days.length) {
     const [hour, minute] = alarm.time.split(":").map(Number);
+    const campusNow = new Date(now.getTime() + 3_600_000);
     for (let offset = 0; offset <= 7; offset += 1) {
-      const candidate = new Date(now);
-      candidate.setDate(now.getDate() + offset);
-      candidate.setHours(hour!, minute!, 0, 0);
-      if (
-        alarm.days.includes(candidate.getDay()) &&
-        candidate.getTime() > now.getTime()
-      ) {
-        return candidate;
-      }
+      const timestamp=Date.UTC(campusNow.getUTCFullYear(),campusNow.getUTCMonth(),
+        campusNow.getUTCDate()+offset,hour!-1,minute!,0,0);
+      const dateKey=campusDateKey(timestamp);
+      const candidate = new Date(timestamp);
+      const weekday=new Date(timestamp+3_600_000).getUTCDay();
+      if (!alarm.days.includes(weekday) || timestamp<=now.getTime()
+          || alarm.muted_on===dateKey
+          || (alarm.pause_from&&alarm.pause_until&&dateKey>=alarm.pause_from&&dateKey<=alarm.pause_until)) continue;
+      return candidate;
     }
   }
   if (alarm.fires_at) {
     const date = new Date(alarm.fires_at);
-    if (!Number.isNaN(date.getTime()) && date.getTime() > now.getTime()) {
+    if (!Number.isNaN(date.getTime()) && date.getTime() > now.getTime()
+        && !(alarm.timetable_entry_id && alarm.muted_on===campusDateKey(date.getTime()))) {
       return date;
     }
+    // An expired or muted one-off alarm must not look like it repeats tomorrow.
+    return null;
   }
   const fallback = nextOccurrence(alarm.time);
   return fallback ? new Date(fallback) : null;
@@ -695,6 +700,20 @@ export default function Alarms() {
     }
   }
 
+  async function muteClassToday(muted:boolean){
+    if(busy)return;
+    setBusy(true);
+    try{
+      await api("/v1/learning/alarms/class-today",{method:"POST",body:JSON.stringify({muted})});
+      const next=await load();
+      const scheduled=await syncAlarms(next);
+      toast(scheduled?(muted?"Today's class reminders muted":"Today's class reminders restored"):
+        "Saved on your account, but the device could not update its alarm schedule. Check alarm permissions and retry.",
+        scheduled?"success":"error");
+    }catch(error){toast(error instanceof Error?error.message:"Could not update today's class reminders","error");}
+    finally{setBusy(false);}
+  }
+
   function selectedSoundLabel() {
     if (sound === "default") return "Device default alarm";
     if (sound === "silent") return "Silent";
@@ -822,8 +841,8 @@ export default function Alarms() {
           ) : null}
 
           {items.length?<Pressable accessibilityRole="button" disabled={busy} onPress={()=>{setClearError("");setClearGroup("ALL");}} style={{alignSelf:"flex-end",minHeight:44,justifyContent:"center",marginBottom:12}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand,fontSize:13}}>Clear all alarms</Text></Pressable>:null}
-          {alarmCategories.map(category=>{const group=items.filter(a=>alarmCategory(a)===category.id);if(!group.length)return null;const open=expanded.includes(category.id);return <View key={category.id} style={{marginBottom:18,borderWidth:1,borderColor:theme.border,borderRadius:20,backgroundColor:theme.surface,overflow:"hidden"}}>
-            <View style={{flexDirection:"row",alignItems:"center",paddingHorizontal:14,gap:8}}><Pressable accessibilityRole="button" accessibilityState={{expanded:open}} accessibilityLabel={category.title+", "+group.length+" alarms"} onPress={()=>setExpanded(v=>v.includes(category.id)?v.filter(c=>c!==category.id):[...v,category.id])} style={{flex:1,minHeight:82,flexDirection:"row",gap:12,alignItems:"center"}}><View style={{padding:10,borderRadius:12,backgroundColor:theme.surfaceMuted}}><Ionicons name={category.icon} size={22} color={theme.deepBrand}/></View><View style={{flex:1,minWidth:0,gap:4}}><Text style={{fontFamily:theme.font.semibold,color:theme.text,fontSize:15}}>{category.title} <Text style={{color:theme.textMuted,fontSize:12}}>({group.length})</Text></Text><Text numberOfLines={1} style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:11}}>{category.description}</Text></View><Ionicons name={open?"chevron-up":"chevron-down"} size={16} color={theme.textMuted}/></Pressable><Pressable accessibilityRole="button" accessibilityLabel={"Clear "+category.title} disabled={busy} onPress={()=>{setClearError("");setClearGroup(category.id);}} style={{minHeight:44,paddingHorizontal:8,justifyContent:"center"}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand,fontSize:12}}>Clear</Text></Pressable></View>
+          {alarmCategories.map(category=>{const group=items.filter(a=>alarmCategory(a)===category.id);if(!group.length)return null;const open=expanded.includes(category.id);const todayClass=group.filter(a=>a.enabled&&(a.days.includes(currentCampusDay(now))||Boolean(a.fires_at&&campusDateKey(Date.parse(a.fires_at))===campusDateKey(now.getTime()))));const classMuted=todayClass.length>0&&todayClass.every(a=>a.muted_on===campusDateKey(now.getTime()));return <View key={category.id} style={{marginBottom:18,borderWidth:1,borderColor:theme.border,borderRadius:20,backgroundColor:theme.surface,overflow:"hidden"}}>
+            <View style={{flexDirection:"row",alignItems:"center",paddingHorizontal:14,gap:8}}><Pressable accessibilityRole="button" accessibilityState={{expanded:open}} accessibilityLabel={category.title+", "+group.length+" alarms"} onPress={()=>setExpanded(v=>v.includes(category.id)?v.filter(c=>c!==category.id):[...v,category.id])} style={{flex:1,minHeight:82,flexDirection:"row",gap:12,alignItems:"center"}}><View style={{padding:10,borderRadius:12,backgroundColor:theme.surfaceMuted}}><Ionicons name={category.icon} size={22} color={theme.deepBrand}/></View><View style={{flex:1,minWidth:0,gap:4}}><Text style={{fontFamily:theme.font.semibold,color:theme.text,fontSize:15}}>{category.title} <Text style={{color:theme.textMuted,fontSize:12}}>({group.length})</Text></Text><Text numberOfLines={1} style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:11}}>{category.description}</Text></View><Ionicons name={open?"chevron-up":"chevron-down"} size={16} color={theme.textMuted}/></Pressable>{category.id==="TIMETABLE"&&todayClass.length?<Pressable accessibilityRole="button" accessibilityLabel={classMuted?"Resume today's class alarms":"Mute today's class alarms"} disabled={busy} onPress={()=>void muteClassToday(!classMuted)} style={{minHeight:44,paddingHorizontal:9,justifyContent:"center"}}><Text style={{fontFamily:theme.font.bold,color:theme.deepBrand,fontSize:12}}>{classMuted?"Resume today":"Mute today"}</Text></Pressable>:null}<Pressable accessibilityRole="button" accessibilityLabel={"Clear "+category.title} disabled={busy} onPress={()=>{setClearError("");setClearGroup(category.id);}} style={{minHeight:44,paddingHorizontal:8,justifyContent:"center"}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand,fontSize:12}}>Clear</Text></Pressable></View>
           {open?<View style={[styles.list,{padding:10,paddingTop:0}]}>
             {group.map((alarm) => {
               const shown = displayTime(alarm.time);
@@ -846,7 +865,7 @@ export default function Alarms() {
                       <Text style={styles.alarmPeriod}>{shown.period}</Text>
                     </View>
                     <Text style={styles.alarmMeta} numberOfLines={1}>
-                      {repeatLabel(alarm.days)}
+                      {repeatLabel(alarm.days)}{alarm.muted_on===campusDateKey(now.getTime())?" · Muted today":""}
                       {alarm.label ? `  |  ${alarm.label}` : ""}
                     </Text>
                   </View>

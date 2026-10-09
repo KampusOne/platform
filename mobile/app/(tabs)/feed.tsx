@@ -123,7 +123,7 @@ export default function FeedScreen() {
     const version = ++loadVersion.current;
     paging.current = false; setLoadingMore(false);
     const newScope = loadedScope.current !== scope;
-    const cached = !refresh ? peekApiCache<FeedPage>(path) : undefined;
+    const cached = !refresh ? peekApiCache<FeedPage>(path, { allowStale: true }) : undefined;
     if (newScope) {
       setPosts(safePosts(cached).filter((post) => !wasPostDeleted(post.id)));
       setCursor(cached?.nextCursor ?? null);

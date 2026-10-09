@@ -53,6 +53,8 @@ export const unifiedMigrations = [
   "20261006120000_exam_schedules_and_awareness.sql",
   "20261006130000_acquisition_and_featured_brands.sql",
   "20261006190000_alarm_categories_and_assessments.sql",
+  "20261007123000_community_feed_and_native_push.sql",
+  "20261009120000_class_alarm_daily_mute.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */
@@ -95,6 +97,8 @@ export async function createTestDatabase({excludeMigrations=[]}:{excludeMigratio
         "utf8",
       ),
     );
+  if (!excludeMigrations.includes('20261009100000_payment_idempotency_inbox.sql'))
+    await db.exec(readFileSync(new URL('../../../database/neon/migrations/20261009100000_payment_idempotency_inbox.sql',import.meta.url),'utf8'));
   return db;
 }
 

@@ -1,5 +1,6 @@
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
+import { refreshScreenRead } from '@/src/lib/screen-read';
 import {DiscountCodeField} from "@/src/components/discount-code-field";
 import { CampusPlaceChoice } from "@/src/components/campus-place-choice";
 import * as Crypto from "expo-crypto";
@@ -166,7 +167,7 @@ export default function StoreScreen() {
   const load = useCallback(async () => {
     setCatalogIssue(null);
     try {
-      const data = await api<CatalogResponse>("/v1/student/store");
+      await refreshScreenRead<CatalogResponse>("/v1/student/store", data => {
       const mode = data.catalogueMode ?? "LIVE";
       setProducts(
         (Array.isArray(data?.products) ? data.products : [])
@@ -192,6 +193,8 @@ export default function StoreScreen() {
       setRiderDeliveryEnabled(data.riderDeliveryEnabled === true);
       setCatalogueMode(mode);
       setCheckoutEnabled(data.checkoutEnabled ?? mode === "LIVE");
+      setLoading(false);
+      });
     } catch (caught) {
       setCatalogIssue(
         caught instanceof ApiError

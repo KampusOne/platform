@@ -140,6 +140,17 @@ afterAll(async () => {
   await db?.close();
 });
 describe("admin workspace controls", () => {
+  it("treats an empty all-universities scope as unrestricted instead of an invalid UUID", async () => {
+    for (const path of [
+      "/manage/trials?universityId=&status=ALL",
+      "/manage/support?universityId=&status=ALL",
+      "/manage/agents?type=RIDER&universityId=&status=ALL",
+    ]) {
+      const response = await request(path, admin);
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(await response.json()).toHaveProperty("rows");
+    }
+  });
   it("reports a pending database update without inventing empty activity or failing a schema query", async () => {
     const pendingEnv = { ...env };
     await db.exec(

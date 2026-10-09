@@ -17,6 +17,22 @@ const proof = () => ({
   }),
 });
 describe("correction deployment guard", () => {
+  it("rejects current-release proof without rehearsal, preservation, or private replay boundaries", () => {
+    const currentProof = {
+      ...proof(),
+      rehearsal: { parentBranchId: "br-quiet-butterfly-ayrj264q", branchId: "br-fixture-rehearsal" },
+      checks: { current: "passed", fixturesRolledBack: true, isolatedBranchRehearsal: "passed", existingAccountCountsPreserved: true, mediaAndBookingsPreserved: true, financialRecordsPreserved: true, durableReplayGuards: "passed", privatePrivileges: "passed" },
+      migrations: groups.current.map((version: string) => {
+        const bytes = load(version);
+        return { version, sourceBlobSha: createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex") };
+      }),
+    };
+    expect(verifySchemaProof(currentProof, "current", load)).toBe(6);
+    expect(() => verifySchemaProof({ ...currentProof, rehearsal: undefined }, "current", load)).toThrow(/rehearsal/);
+    expect(() => verifySchemaProof({ ...currentProof, checks: { ...currentProof.checks, financialRecordsPreserved: false } }, "current", load)).toThrow(/preservation/);
+    expect(() => verifySchemaProof({ ...currentProof, checks: { ...currentProof.checks, durableReplayGuards: "failed" } }, "current", load)).toThrow();
+    expect(() => verifySchemaProof({ ...currentProof, checks: { ...currentProof.checks, privatePrivileges: "failed" } }, "current", load)).toThrow();
+  });
   it("requires platform evidence and rejects an offline rehearsal report", () => {
     const evidence = proof();
     const platformProof = {

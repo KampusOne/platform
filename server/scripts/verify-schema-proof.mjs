@@ -10,6 +10,14 @@ const compatiblePrerequisites = new Set([
 const manifest = JSON.parse(readFileSync(new URL("../../database/verification/2026-09-30-migration-manifest.json", import.meta.url), "utf8"));
 
 export const groups = {
+  current: [
+    "20261007080000_uniben_bank_sports_ground_truth",
+    "20261007123000_community_feed_and_native_push",
+    "20261009001000_uniben_reference_pois",
+    "20261009100000_bachs_pricing_psychology",
+    "20261009100000_payment_idempotency_inbox",
+    "20261009120000_class_alarm_daily_mute",
+  ],
   followup: ["20261006190000_alarm_categories_and_assessments","20261006191000_direct_storage_uploads"],
   october6: [
     '20261006100000_community_subscription_requests',
@@ -77,6 +85,17 @@ export function verifySchemaProof(proof, group, loadMigration) {
     proof?.checks?.fixturesRolledBack !== true ||
     !Array.isArray(proof?.migrations)
   ) throw new Error("Approved and verified production migration proof is required");
+  if (group === "current" && (
+    proof?.rehearsal?.parentBranchId !== "br-quiet-butterfly-ayrj264q" ||
+    !/^br-[a-z0-9-]+$/.test(proof?.rehearsal?.branchId ?? "") ||
+    proof.rehearsal.branchId === proof.branchId ||
+    proof?.checks?.isolatedBranchRehearsal !== "passed" ||
+    proof?.checks?.existingAccountCountsPreserved !== true ||
+    proof?.checks?.mediaAndBookingsPreserved !== true ||
+    proof?.checks?.financialRecordsPreserved !== true ||
+    proof?.checks?.durableReplayGuards !== "passed" ||
+    proof?.checks?.privatePrivileges !== "passed"
+  )) throw new Error("Isolated current-release rehearsal and data-preservation evidence are required");
   if ((group === "platform" || group === "experience") && (
     proof?.rehearsal?.parentBranchId !== "br-quiet-butterfly-ayrj264q" ||
     !/^br-[a-z0-9-]+$/.test(proof?.rehearsal?.branchId ?? "") ||
@@ -124,7 +143,7 @@ export function verifySchemaProof(proof, group, loadMigration) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const root = new URL("../../", import.meta.url);
   try {
-    const proofFile = process.argv[2] === "followup" ? "production-20261006-followup.json" : process.argv[2] === "october6" ? "production-20261006-release.json" : process.argv[2] === "october4" ? "production-20261004-corrections.json" : process.argv[2] === "experience" ? "production-20261003-experience.json" : process.argv[2] === "october" ? "production-20261001-october.json" : process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
+    const proofFile = process.argv[2] === "current" ? "production-20261009-current.json" : process.argv[2] === "followup" ? "production-20261006-followup.json" : process.argv[2] === "october6" ? "production-20261006-release.json" : process.argv[2] === "october4" ? "production-20261004-corrections.json" : process.argv[2] === "experience" ? "production-20261003-experience.json" : process.argv[2] === "october" ? "production-20261001-october.json" : process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
     const proof = JSON.parse(readFileSync(new URL(`database/verification/${proofFile}`, root), "utf8"));
     const count = verifySchemaProof(proof, process.argv[2], (version) =>
       readFileSync(new URL(`database/neon/migrations/${version}.sql`, root)));

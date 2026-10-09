@@ -1,3 +1,4 @@
+import { refreshScreenRead } from '@/src/lib/screen-read';
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import {shareItem} from '@/src/lib/share-content';
@@ -687,9 +688,8 @@ export default function ConversationScreen() {
   const load = useCallback(async (before?: string) => {
     if (!id) return;
     try {
-      const result = normalizeConversationData(
-        await api<Data>(`/v1/messages/threads/${id}${before ? `?before=${before}` : ""}`),
-      );
+      await refreshScreenRead<Data>(`/v1/messages/threads/${id}${before ? `?before=${before}` : ""}`, value => {
+      const result = normalizeConversationData(value);
       if (activeScope.current !== scope) return;
       setData((previous) => {
         const all = new Map((previous?.messages ?? []).map((message) => [message.id, message]));
@@ -705,7 +705,10 @@ export default function ConversationScreen() {
         };
       });
       setError("");
-      await api(`/v1/messages/threads/${id}/read`, { method: "PUT" });
+      });
+      // Read receipts are background bookkeeping, independent of message display.
+      if (activeScope.current === scope)
+        void api(`/v1/messages/threads/${id}/read`, { method: "PUT" }).catch(() => undefined);
     } catch (caught) {
       if (activeScope.current === scope) setError(caught instanceof Error ? caught.message : "Conversation could not load.");
     }

@@ -42,6 +42,14 @@ export type Bindings = {
   APP_ORIGIN?: string;
   PAYSTACK_SECRET_KEY?: string;
   PAYSTACK_WEBHOOK_SECRET?: string;
+  /** Bachs hosted-checkout bearer key (Cloudflare encrypted secret). */
+  BACHS_API_KEY?: string;
+  /** Bachs webhook endpoint signing secret (not the API key). */
+  BACHS_WEBHOOK_SECRET?: string;
+  /** Remains OFF until provider-aware fulfillment and migration are complete. */
+  BACHS_PRICED_CHECKOUT_ENABLED?: string;
+  /** Merchant processing-cost setting confirmed for the configured BACHS account. */
+  BACHS_MERCHANT_BEARS_COST_CONFIRMED?: string;
   ADMIN_BOOTSTRAP_TOKEN?: string;
   INITIAL_ADMIN_EMAIL?: string;
   UNIFIED_SCHEMA_READY?: string;
@@ -77,6 +85,7 @@ export type Bindings = {
   AI_CHAT_WINDOW_LIMIT?: string;
   AI_STUDY_TRIAL_LIMIT?: string;
   EXPO_ACCESS_TOKEN?: string;
+  FCM_SERVICE_ACCOUNT_JSON?: string;
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
   GEMINI_TRANSCRIPTION_MODEL?: string;

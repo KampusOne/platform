@@ -36,6 +36,8 @@ export function invalidationTargets(path: string): string[] | null {
     return ["/v1/student/timetable", "/v1/student/home"];
   if (path.startsWith("/v1/student/gpa"))
     return ["/v1/student/gpa", "/v1/student/home"];
+  if (/^\/v1\/messages\/threads\/[^/]+\/read$/.test(path))
+    return ["/v1/messages/inbox"];
   if (path.startsWith("/v1/messages")) return ["/v1/messages"];
   if (path.startsWith("/v1/notifications")) return ["/v1/notifications"];
   if (path.startsWith("/v1/learning/alarms"))

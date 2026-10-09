@@ -17,6 +17,7 @@ import {
 
 import { ProductScreen } from "@/src/components/product-ui";
 import { ApiError, api } from "@/src/lib/api";
+import { refreshScreenRead } from "@/src/lib/screen-read";
 import { theme } from "@/src/theme";
 
 type Result = {
@@ -109,16 +110,15 @@ export default function GpaScreen() {
   const load = useCallback(async () => {
     try {
       setError("");
-      setData(normalizeGpaData(await api<GpaData>("/v1/student/gpa")));
-      try {
-        const grading = await api<{
+      // The grading picker loads independently of the student's results.
+      void api<{
           gradingScale: Record<string, number> | null;
           gradingScaleStatus?: string;
-        }>("/v1/learning/courses");
-        setGradingScale(grading.gradingScale ?? null);
-      } catch {
-        setGradingScale(null);
-      }
+        }>("/v1/learning/courses").then(grading => setGradingScale(grading.gradingScale ?? null)).catch(() => setGradingScale(null));
+      await refreshScreenRead<GpaData>("/v1/student/gpa", value => {
+        setData(normalizeGpaData(value));
+        setLoading(false);
+      });
     } catch (caught) {
       setError(
         caught instanceof ApiError

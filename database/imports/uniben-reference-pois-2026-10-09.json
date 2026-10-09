@@ -1,0 +1,60 @@
+{
+  "reviewDate": "2026-10-09",
+  "campusId": "1d60dcae-760d-4de7-8443-6a870d9bbe1a",
+  "institutionId": "6a79211e-6e85-4d95-be24-976edb26ba58",
+  "policy": "Public Plus Code centres corroborated against the user-supplied Google Maps screenshots. These are landmark centres, not surveyed entrances; verified_at remains null.",
+  "screenshotSha256": [
+    "6b40afe27217e337b1639331ee3f6c03c149872015e2ce14d9b78638231e6283",
+    "926ec3ce5844ac29e98a76b31374e818cc0b267d36c82a898158a0a3612ccbb7"
+  ],
+  "places": [
+    {
+      "id": "da274dde-3a1e-5fe4-ad0d-ff9b30c66439",
+      "name": "Promise Land Restaurant",
+      "category": "FOOD",
+      "description": "Restaurant landmark in the UNIBEN bank/farm axis.",
+      "latitude": 6.403188,
+      "longitude": 5.610078,
+      "plusCode": "CJ36+72G",
+      "sourceUrl": "https://biashara.cybo.com/NG-posta/300271_benin-city/mikahawa",
+      "search_aliases": [
+        "Promise_land Restaurant",
+        "Promise land Restaurant",
+        "Promise Land UNIBEN"
+      ],
+      "confidence": 0.7
+    },
+    {
+      "id": "cf0a2dea-8b98-5113-806a-8a188c816cdf",
+      "name": "UNIBEN Farm Project",
+      "category": "ACADEMIC",
+      "description": "University farm project landmark on Ugbowo Campus.",
+      "latitude": 6.403063,
+      "longitude": 5.610922,
+      "plusCode": "CJ36+69F",
+      "sourceUrl": "https://www.cybo.com/NG/benin-city/tractors-and-farm-equipment/",
+      "search_aliases": [
+        "Uniben Farm Project",
+        "UNIBEN Farm project",
+        "Farm Project"
+      ],
+      "confidence": 0.7
+    },
+    {
+      "id": "9dd57650-a5cc-5774-b7cc-a8d985bba7a6",
+      "name": "Shopping Complex UNIBEN",
+      "category": "SERVICE",
+      "description": "Campus shopping complex behind the Fidelity Bank area.",
+      "latitude": 6.402388,
+      "longitude": 5.610422,
+      "plusCode": "CJ26+X53",
+      "sourceUrl": "https://ng.worldorgs.com/catalog/benin-city/shopping-mall/shoppingcomplexuniben",
+      "search_aliases": [
+        "UNIBEN Shopping Complex",
+        "Uniben shopping complex",
+        "Shopping Complex"
+      ],
+      "confidence": 0.7
+    }
+  ]
+}

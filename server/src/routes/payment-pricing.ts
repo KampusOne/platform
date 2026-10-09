@@ -9,8 +9,24 @@ import { AppError } from "../lib/errors";
 import { providerTransactionClasses, profileProduct, publishedProviderProfiles, paymentPricingReady, providerMode, pricingPreview } from "../lib/payment-pricing";
 import { collectionFeeKobo, type CollectionFees } from "../lib/pricing";
 import type { Bindings, Variables } from "../types";
+import { bachsFeeContexts, publishedBachsProfiles, createBachsPricingQuote, bachsWithdrawalQuote, type BachsFeeProfile } from "../lib/bachs-pricing";
+import { bachsPricingReady } from "../lib/bachs-pricing-store";
 const minor=z.number().int().min(0).max(2_000_000_000);
 export const providerCollectionSchema=z.object({basisPoints:z.number().int().min(0).max(9999),flatKobo:minor,flatWaivedBelowKobo:minor,capKobo:minor.nullable()}).strict();
+const bachsSourceUrl=z.url().refine(value=>{const u=new URL(value);return u.protocol==="https:"&&["bachs.io","docs.bachs.io","app.bachs.io"].includes(u.hostname)&&!u.username&&!u.password&&!u.port;},"Use an official BACHS pricing or account source.").transform(value=>new URL(value).toString());
+export const bachsProfileSchema=z.object({
+  universityId:z.string().uuid(),version:z.string().trim().min(3).max(120),context:z.enum(bachsFeeContexts),collection:providerCollectionSchema,
+  effectiveFrom:z.string().datetime({offset:true}),effectiveTo:z.string().datetime({offset:true}).nullable().default(null),
+  status:z.enum(["APPROVED","DISABLED"]),varianceToleranceKobo:minor.max(100000000).default(100),sourceUrl:bachsSourceUrl,
+  approvalNote:z.string().trim().min(10).max(2000),eligibilityEvidence:z.string().trim().min(10).max(4000),
+}).strict().superRefine((v,ctx)=>{if(v.effectiveTo!==null&&Date.parse(v.effectiveTo)<=Date.parse(v.effectiveFrom))ctx.addIssue({code:"custom",path:["effectiveTo"],message:"The end must follow the effective date."});});
+export const bachsPreviewSchema=z.object({
+  universityId:z.string().uuid(),profileId:z.string().uuid().optional(),context:z.enum(bachsFeeContexts),amountKobo:minor.min(1),
+  priceMode:z.enum(["FIXED_TOTAL","RECOVER_FEES"]).default("FIXED_TOTAL"),deliveryKobo:minor.default(0),platformRevenueKobo:minor.default(0),
+  discountPercent:z.number().int().min(0).max(90).default(0),roundingMode:z.enum(["NONE","CEIL_50","CEIL_100","FRIENDLY_9"]).default("NONE"),
+  maxPricingAdjustmentKobo:minor.default(10000),
+  withdrawalMode:z.enum(["RECIPIENT_AMOUNT","TOTAL_DEBIT"]).default("RECIPIENT_AMOUNT"),
+}).strict();
 const sourceUrl=z.url().refine(value=>{const u=new URL(value);return u.protocol==="https:"&&["paystack.com","support.paystack.com","dashboard.paystack.com"].includes(u.hostname);},"Use an official Paystack pricing or account source.");
 export const providerProfileSchema=z.object({
   universityId:z.string().uuid(),version:z.string().trim().min(3).max(120).refine(v=>!v.startsWith("LEGACY_"),"LEGACY_ is reserved for historical rule imports."),transactionClass:z.enum(providerTransactionClasses),
@@ -27,6 +43,46 @@ export const providerProfileSchema=z.object({
 export const accountReviewSchema=z.object({providerMode:z.enum(["live","test"]),passFeesDisabled:z.boolean(),reason:z.string().trim().min(10).max(2000).default('Administrator confirmed the merchant checkout fee setting.'),evidence:z.string().trim().min(10).max(4000).default('Administrator explicitly confirmed Pass fees to customers is disabled in Paystack Settings > Preferences.'),expiresAt:z.string().datetime({offset:true}).nullable().default(null)}).strict();
 export const paymentPricingRoutes=new Hono<{Bindings:Bindings;Variables:Variables}>();
 paymentPricingRoutes.use("*",requireAuth);
+// Finance-only configuration and simulations. A preview cannot initialize a payment.
+paymentPricingRoutes.get("/bachs/profiles",async c=>{
+  const scope=await resolveAdminScope(c.env,currentUser(c),c.req.query("universityId"),"finance.view");
+  if(!await bachsPricingReady(c.env))return c.json({ready:false,profiles:[],publishedProfiles:publishedBachsProfiles});
+  const rows=await database(c.env).execute(sql`select id,university_id as "universityId",version,context,collection,status,effective_from as "effectiveFrom",effective_to as "effectiveTo",source_url as "sourceUrl",variance_tolerance_kobo::integer as "varianceToleranceKobo",approval_note as "approvalNote",eligibility_evidence as "eligibilityEvidence",approved_at as "approvedAt" from app_private.bachs_fee_profiles where (${scope}::uuid is null or university_id=${scope}::uuid) order by effective_from desc,approved_at desc,id desc limit 200`);
+  return c.json({ready:true,profiles:rows.rows,publishedProfiles:publishedBachsProfiles});
+});
+paymentPricingRoutes.get("/bachs/alerts",async c=>{
+  const scope=await resolveAdminScope(c.env,currentUser(c),c.req.query("universityId"),"finance.view");
+  if(!await bachsPricingReady(c.env))return c.json({ready:false,alerts:[]});
+  const result=await database(c.env).execute(sql`select r.quote_id as "quoteId",r.university_id as "universityId",q.provider_reference as reference,q.quote->>'context' as context,q.fee_profile_version as "profileVersion",r.amount_kobo::integer as "amountKobo",r.actual_fee_kobo::integer as "actualFeeKobo",r.variance_kobo::integer as "varianceKobo",r.recorded_at as "recordedAt" from app_private.bachs_pricing_receipts r join app_private.bachs_checkout_quotes q on q.id=r.quote_id where r.variance_alert and (${scope}::uuid is null or r.university_id=${scope}::uuid) order by r.recorded_at desc limit 200`);
+  return c.json({ready:true,alerts:result.rows});
+});
+paymentPricingRoutes.post("/bachs/profiles",async c=>{
+  const data=await input(c,bachsProfileSchema),user=currentUser(c);
+  await resolveAdminScope(c.env,user,data.universityId,"finance.review");
+  if(!await bachsPricingReady(c.env))throw new AppError(503,"FEATURE_DISABLED","BACHS pricing is awaiting its database update.");
+  collectionFeeKobo(600000,data.collection);const id=crypto.randomUUID();
+  try{
+    await database(c.env).execute(sql`with locked as(select pg_advisory_xact_lock(hashtextextended('bachs-profile:'||${data.universityId}||':'||${data.context},0))), previous as(select to_jsonb(p) as value from app_private.bachs_fee_profiles p where university_id=${data.universityId}::uuid and context=${data.context} and effective_from<=now() order by effective_from desc,approved_at desc,id desc limit 1), added as(insert into app_private.bachs_fee_profiles(id,university_id,version,context,collection,status,effective_from,effective_to,source_url,variance_tolerance_kobo,approval_note,eligibility_evidence,approved_by) select ${id}::uuid,${data.universityId}::uuid,${data.version},${data.context},${JSON.stringify(data.collection)}::jsonb,${data.status},${data.effectiveFrom}::timestamptz,${data.effectiveTo}::timestamptz,${data.sourceUrl},${data.varianceToleranceKobo},${data.approvalNote},${data.eligibilityEvidence},${user.id}::uuid from locked returning *) insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata) select ${user.id}::uuid,${data.universityId}::uuid,'finance.bachs_profile.approved','bachs_fee_profile',id::text,${c.get("requestId")??null},'succeeded',jsonb_build_object('oldValue',(select value from previous),'newValue',to_jsonb(added),'reason',${data.approvalNote}) from added`);
+  }catch(error){if(error instanceof Error&&/unique|duplicate/i.test(error.message))throw new AppError(409,"CONFLICT","Use a new BACHS version for this campus and payment context.");throw error;}
+  return c.json({id},201);
+});
+paymentPricingRoutes.post("/bachs/preview",async c=>{
+  const data=await input(c,bachsPreviewSchema);
+  await resolveAdminScope(c.env,currentUser(c),data.universityId,"finance.view");
+  let profile: BachsFeeProfile | undefined;
+  if(data.profileId){
+    if(!await bachsPricingReady(c.env))throw new AppError(503,"FEATURE_DISABLED","BACHS pricing is awaiting its database update.");
+    profile=firstRow(await database(c.env).execute<BachsFeeProfile>(sql`select id,university_id as "universityId",version,context,collection,status,effective_from as "effectiveFrom",effective_to as "effectiveTo",source_url as "sourceUrl",variance_tolerance_kobo::integer as "varianceToleranceKobo" from app_private.bachs_fee_profiles where id=${data.profileId}::uuid and university_id=${data.universityId}::uuid`));
+    if(!profile)throw new AppError(404,"NOT_FOUND","This BACHS profile was not found in this campus.");
+  }else profile=publishedBachsProfiles.find(p=>p.context===data.context);
+  if(!profile||profile.context!==data.context)throw new AppError(400,"BAD_REQUEST","Choose a matching BACHS payment product.");
+  try{
+    if(data.context==="BANK_WITHDRAWAL")return c.json({referenceOnly:!data.profileId,withdrawal:bachsWithdrawalQuote(data.amountKobo,profile,data.withdrawalMode,Date.now(),true)});
+    if(data.context==="VIRTUAL_ACCOUNT_DEPOSIT")return c.json({referenceOnly:!data.profileId,deposit:{amountKobo:data.amountKobo,estimatedProviderFeeKobo:collectionFeeKobo(data.amountKobo,profile.collection),profileVersion:profile.version}});
+    const quote=createBachsPricingQuote({subtotalKobo:data.amountKobo,priceMode:data.priceMode,deliveryKobo:data.deliveryKobo,platformRevenueKobo:data.platformRevenueKobo,discountPercent:data.discountPercent,roundingMode:data.roundingMode,maxPricingAdjustmentKobo:data.maxPricingAdjustmentKobo},profile,Date.now(),true);
+    return c.json({referenceOnly:!data.profileId,quote});
+  }catch(error){if(error instanceof RangeError)throw new AppError(400,"BAD_REQUEST",error.message);throw error;}
+});
 async function ready(env:Bindings){if(!await paymentPricingReady(env))throw new AppError(503,"FEATURE_DISABLED","Payment pricing controls are awaiting the reviewed database update.");}
 paymentPricingRoutes.get("/profiles",async c=>{
   const scope=await resolveAdminScope(c.env,currentUser(c),c.req.query("universityId"),"finance.view");

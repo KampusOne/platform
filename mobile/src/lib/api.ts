@@ -15,7 +15,7 @@ function normalize<T>(value: T): T {
 export async function api<T>(path: string, init: ApiRequestInit = {}, canRefresh = true): Promise<T> {
   return normalize(await transport<T>(path, init, canRefresh));
 }
-export function peekApiCache<T>(path: string): T | undefined {
-  const saved = peekTransportCache<T>(path);
+export function peekApiCache<T>(path: string, options: { allowStale?: boolean } = {}): T | undefined {
+  const saved = peekTransportCache<T>(path, options);
   return saved === undefined ? undefined : normalize(saved);
 }

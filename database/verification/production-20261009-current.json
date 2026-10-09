@@ -1,0 +1,109 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-09T11:40:50Z",
+    "source": "User explicitly requested deployment of all recent commits and consolidation into main."
+  },
+  "verifiedAt": "2026-10-09T12:07:15.996Z",
+  "rehearsal": {
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "name": "experience-release-rehearsal-20261003",
+    "method": "Reused existing isolated review branch without resetting or deleting it; tested the four missing migrations after confirming the two existing exact migration hashes.",
+    "beforeCounts": {
+      "users": 14,
+      "orders": 0,
+      "profiles": 14,
+      "ledger_lines": 0,
+      "media_objects": 92,
+      "tutorial_bookings": 6,
+      "ledger_transactions": 0
+    },
+    "afterCounts": {
+      "users": 14,
+      "orders": 0,
+      "profiles": 14,
+      "ledger_lines": 0,
+      "media_objects": 92,
+      "tutorial_bookings": 6,
+      "ledger_transactions": 0
+    }
+  },
+  "checks": {
+    "current": "passed",
+    "fixturesRolledBack": true,
+    "isolatedBranchRehearsal": "passed",
+    "existingAccountCountsPreserved": true,
+    "mediaAndBookingsPreserved": true,
+    "financialRecordsPreserved": true,
+    "durableReplayGuards": "passed",
+    "privatePrivileges": "passed",
+    "referencePlaces": 3,
+    "bachsActivationProfiles": 0
+  },
+  "production": {
+    "beforeCounts": {
+      "users": 19,
+      "orders": 0,
+      "profiles": 19,
+      "ledger_lines": 0,
+      "media_objects": 134,
+      "tutorial_bookings": 6,
+      "ledger_transactions": 0
+    },
+    "afterCounts": {
+      "users": 19,
+      "orders": 0,
+      "profiles": 19,
+      "ledger_lines": 0,
+      "media_objects": 134,
+      "tutorial_bookings": 6,
+      "ledger_transactions": 0
+    },
+    "privateBoundary": {
+      "private_tables_present": 7,
+      "private_functions_present": 8,
+      "public_function_grants": 0,
+      "public_table_grants": 0,
+      "mute_column": true,
+      "activated_bachs_profiles": 0
+    }
+  },
+  "migrations": [
+    {
+      "version": "20261007080000_uniben_bank_sports_ground_truth",
+      "sourceBlobSha": "2ea88c2a7729df905eda2c3cbe09e9994b43b4c7",
+      "appliedAt": "2026-10-09T12:05:53.824Z"
+    },
+    {
+      "version": "20261007123000_community_feed_and_native_push",
+      "sourceBlobSha": "82337639b5ed069567c4da8e9239b29941bb976d",
+      "appliedAt": "2026-10-09T12:05:53.824Z"
+    },
+    {
+      "version": "20261009001000_uniben_reference_pois",
+      "sourceBlobSha": "8e56b190002d84ebf3592088ff237351ae028c9e",
+      "appliedAt": "2026-10-09T12:05:53.824Z"
+    },
+    {
+      "version": "20261009100000_bachs_pricing_psychology",
+      "sourceBlobSha": "f7e58797f6a88306122438ce6770519c1f5cfd7d",
+      "appliedAt": "2026-10-09T12:05:53.824Z"
+    },
+    {
+      "version": "20261009100000_payment_idempotency_inbox",
+      "sourceBlobSha": "c07cfa1132984ecb929d71cebcddae92632e2e59",
+      "appliedAt": "2026-10-09T12:05:53.824Z"
+    },
+    {
+      "version": "20261009120000_class_alarm_daily_mute",
+      "sourceBlobSha": "64f5eefdd2ea9436902ec743138fcde9adc03f94",
+      "appliedAt": "2026-10-09T12:05:53.824Z"
+    }
+  ],
+  "fixtureEvidence": "Rehearsal payment initialization resumed its original READY result; completed webhook replay returned DUPLICATE; an unknown user could mute zero class alarms. The PL/pgSQL exception subtransaction rolled back all fixture claims, then checked they were absent. Production validation used catalogs, migration hashes, scoped POIs, and aggregate counts only."
+}

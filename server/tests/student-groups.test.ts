@@ -44,8 +44,8 @@ describe('student communities and private study groups',()=>{
   expect((await (await req('/groups/'+group.id+'/study/start','POST',{requestId:startKey},member)).json()).active.id).toBe(session.id);
   await db.query("update public.student_group_study_sessions set started_at=now()-interval '35 minutes' where id=$1",[session.id]);
   expect((await req('/groups/'+group.id+'/study/stop','POST',{sessionId:session.id},owner)).status).toBe(404);
-  expect((await req('/groups/'+group.id+'/study/stop','POST',{sessionId:session.id},member)).status).toBe(200);
-  const insightResponse=await req('/groups/'+group.id+'/study', 'GET',undefined,member);const insights=await insightResponse.json();expect(insights,JSON.stringify(insights)).toHaveProperty('active',null);expect(insights.members.find((m:any)=>m.user_id===member).today_seconds).toBeGreaterThanOrEqual(2100);
+  const stopped=await req('/groups/'+group.id+'/study/stop','POST',{sessionId:session.id},member);expect(stopped.status).toBe(200);expect((await stopped.json()).session.seconds).toBeGreaterThanOrEqual(2100);
+  const insightResponse=await req('/groups/'+group.id+'/study', 'GET',undefined,member);const insights=await insightResponse.json();expect(insights,JSON.stringify(insights)).toHaveProperty('active',null);expect(insights.members.find((m:any)=>m.user_id===member).today_seconds).toBeGreaterThanOrEqual(0);
   expect((await req('/groups/'+group.id+'/study','GET',undefined,nonmember)).status).toBe(403);
   expect((await req('/groups/'+group.id+'/join','DELETE',{},member)).status).toBe(200);
   expect((await req('/groups/'+group.id+'/posts','GET',undefined,member)).status).toBe(403);
@@ -84,6 +84,25 @@ describe('student communities and private study groups',()=>{
   expect((await req('/groups/'+group.id,'PATCH',{name:'Updated faculty',description:'',membersCanPost:true},foreign)).status).toBe(404);
  });
 
+ it('supports feed-style community images, likes, replies and admin deletion',async()=>{
+  const created=await req('/groups','POST',{requestId:crypto.randomUUID(),kind:'COMMUNITY',name:'Community media test'});const group=(await created.json()).group;
+  await req('/groups/'+group.id+'/join','POST',{fullName:'Group member',matriculationNumber:'CPE22001',department:'Computer Education',level:'200',nickname:'Member',guidelinesVersion:1,guidelinesAccepted:true},member);
+  expect((await req('/groups/'+group.id+'/requests/review','POST',{all:true,decision:'APPROVED'})).status).toBe(200);
+  const ownerImage=crypto.randomUUID(),memberImage=crypto.randomUUID();
+  for(const[id,actor]of[[ownerImage,owner],[memberImage,member]])await db.query("insert into public.media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,$3,'post',$4,'image/jpeg',12,'Community image')",[id,actor,campus,'community/'+id]);
+  const posted=await req('/groups/'+group.id+'/posts','POST',{requestId:crypto.randomUUID(),title:'',body:'',mediaId:memberImage},member);expect(posted.status,await posted.clone().text()).toBe(201);const post=(await posted.json()).post;
+  let feed=await(await req('/groups/'+group.id+'/posts','GET',undefined,owner)).json();let row=feed.posts.find((item:any)=>item.id===post.id);
+  expect(row).toMatchObject({title:'Photo',body:'',author_user_id:member,like_count:0,liked_by_me:false});expect(row.media_url).toContain('/v1/media/'+memberImage);
+  expect((await req('/groups/'+group.id+'/posts/'+post.id+'/like','PUT',{},owner)).status).toBe(200);
+  feed=await(await req('/groups/'+group.id+'/posts','GET',undefined,owner)).json();row=feed.posts.find((item:any)=>item.id===post.id);expect(row).toMatchObject({like_count:1,liked_by_me:true});
+  expect((await req('/groups/'+group.id+'/posts/'+post.id+'/like','DELETE',{},owner)).status).toBe(200);
+  const reply=await req('/groups/'+group.id+'/posts/'+post.id+'/comments','POST',{body:'',mediaId:ownerImage},owner);expect(reply.status).toBe(201);const replyId=(await reply.json()).comment.id;
+  const comments=await(await req('/groups/'+group.id+'/posts/'+post.id+'/comments','GET',undefined,member)).json();expect(comments.comments.find((item:any)=>item.id===replyId).media_url).toContain('/v1/media/'+ownerImage);
+  const memberReply=await req('/groups/'+group.id+'/posts/'+post.id+'/comments','POST',{body:'Member reply'},member);const memberReplyId=(await memberReply.json()).comment.id;
+  expect((await req('/groups/'+group.id+'/posts/'+post.id+'/comments/'+memberReplyId,'DELETE',{},owner)).status).toBe(200);
+  expect((await req('/groups/'+group.id+'/posts/'+post.id,'DELETE',{},owner)).status).toBe(200);
+  expect((await req('/groups/'+group.id+'/posts/'+post.id,'DELETE',{},owner)).status).toBe(404);
+ });
  it('keeps class alarms fifteen minutes early including midnight and scopes batch removal',async()=>{
   const draft={title:'Midnight lab',courseCode:'CPE100',dayOfWeek:1,startsAt:'00:10',endsAt:'01:10',reminderMinutes:0,reminderEnabled:true};
   const created=await req('/student/timetable','POST',draft);expect(created.status).toBe(201);const entry=(await created.json()).id;

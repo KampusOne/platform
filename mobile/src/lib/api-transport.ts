@@ -109,6 +109,7 @@ function networkUnavailableError(caught: unknown) {
   );
 }
 let accessToken: string | null = null;
+let accessAccountId: string | null = null;
 let sessionListener: ((session: Session | null) => void) | null = null;
 let restrictionListener: (() => void) | null = null;
 export function onAccountRestriction(listener: () => void) {
@@ -123,7 +124,8 @@ let credentialVersion = 0;
 let cacheVersion = 0;
 let sessionTransitionQueue: Promise<void> = Promise.resolve();
 let queuedSessionTransitions = 0;
-const reads = new Map<string, { expires: number; value: unknown }>();
+const reads = new Map<string, { expires: number; retainUntil: number; value: unknown }>();
+const readVersions = new Map<string, object>();
 const inFlight = new Map<string, Promise<unknown>>();
 const cacheable =
   /^\/v1\/(?!auth(?:\/|$)|media(?:\/|$)|config(?:\/|$))/;
@@ -173,6 +175,7 @@ function readCacheTtl(path: string) {
 export function clearApiCache() {
   cacheVersion += 1;
   reads.clear();
+  readVersions.clear();
   inFlight.clear();
 }
 
@@ -181,20 +184,27 @@ function invalidateMutation(path: string) {
   const targets = invalidationTargets(path);
   if (targets === null) { clearApiCache(); return; }
   if (!targets.length) return;
-  cacheVersion += 1;
+  // A message receipt must not prevent an unrelated screen's in-flight read
+  // from entering the cache. Only changed resources advance their generation.
+  for (const key of new Set([...reads.keys(), ...inFlight.keys()])) {
+    if (targets.some((prefix) => matchesRead(key, prefix)))
+      readVersions.delete(key);
+  }
   for (const key of reads.keys()) if (targets.some((prefix) => matchesRead(key, prefix))) reads.delete(key);
   for (const key of inFlight.keys()) if (targets.some((prefix) => matchesRead(key, prefix))) inFlight.delete(key);
 }
 
 /** Account-local, bounded in-memory data only. Never persisted or publicly cached. */
-export function peekTransportCache<T>(path: string): T | undefined {
+export function peekTransportCache<T>(path: string, options: { allowStale?: boolean } = {}): T | undefined {
   const saved = reads.get(path);
-  return saved && saved.expires > Date.now() ? saved.value as T : undefined;
+  return saved && (options.allowStale ? saved.retainUntil : saved.expires) > Date.now() ? saved.value as T : undefined;
 }
 
-export function setAccessToken(token: string | null) {
-  if (token !== accessToken || !token) clearApiCache();
+export function setAccessToken(token: string | null, accountId?: string) {
+  const sameAccount = Boolean(token && accountId && accountId === accessAccountId);
+  if (!token || (!sameAccount && (token !== accessToken || accountId !== accessAccountId))) clearApiCache();
   accessToken = token;
+  accessAccountId = token ? accountId ?? null : null;
   credentialVersion += 1;
 }
 
@@ -366,7 +376,7 @@ async function refreshSession() {
         // Do not let an older refresh overwrite a session established while it
         // was in flight (for example, a fresh interactive sign-in).
         if (session && credentialVersion === versionAtStart) {
-          setAccessToken(session.accessToken);
+          setAccessToken(session.accessToken, session.user.id);
           sessionListener?.(session);
         }
         return session;
@@ -523,23 +533,30 @@ export async function api<T>(
   if (init.cache !== "reload" && cached && cached.expires > Date.now()) return cached.value as T;
   const pending = inFlight.get(path);
   if (pending) return waitForRequest(pending as Promise<T>, init.signal);
-  const version = credentialVersion;
   const cacheAtStart = cacheVersion;
+  const readVersion = readVersions.get(path) ?? {};
+  readVersions.set(path, readVersion);
   // A single timed network request is shared by independently cancellable consumers.
   const { signal: _consumerSignal, ...sharedInit } = init;
   const operation = request<T>(path, sharedInit, canRefresh)
     .then((value) => {
-      if (version === credentialVersion && cacheAtStart === cacheVersion) {
-        if (reads.size >= 60) reads.delete(reads.keys().next().value!);
+      if (cacheAtStart === cacheVersion && readVersion === readVersions.get(path)) {
+        if (reads.size >= 60) {
+          const oldest = reads.keys().next().value!;
+          reads.delete(oldest);
+          if (!inFlight.has(oldest)) readVersions.delete(oldest);
+        }
         reads.set(path, {
           value,
           expires: Date.now() + readCacheTtl(path),
+          retainUntil: Date.now() + 300_000,
         });
       }
       return value;
     })
     .finally(() => {
       if (inFlight.get(path) === operation) inFlight.delete(path);
+      if (!inFlight.has(path) && !reads.has(path)) readVersions.delete(path);
     });
   inFlight.set(path, operation);
   return waitForRequest(operation, init.signal);

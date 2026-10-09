@@ -220,12 +220,24 @@ export async function registerPushDevice(userId: string, userInitiated = false) 
     );
   }
 
+  let nativeToken: string | undefined;
+  if (Platform.OS === "android") {
+    try {
+      const native = await Notifications.getDevicePushTokenAsync();
+      if (typeof native.data === "string" && native.data.trim())
+        nativeToken = native.data.trim();
+    } catch {
+      // Expo-token delivery remains as a compatibility fallback for older installs.
+    }
+  }
+
   const response = await api<{ device?: { id: string }; id?: string }>(
     "/v1/notifications/devices",
     {
       method: "POST",
       body: JSON.stringify({
         expoPushToken: token.data,
+        nativeToken,
         platform: Platform.OS,
         label: `KampusOne ${Platform.OS}`,
         buildVersion: Constants.expoConfig?.version ?? "unknown",

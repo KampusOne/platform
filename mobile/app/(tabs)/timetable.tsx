@@ -18,6 +18,7 @@ import {
 
 import { ProductScreen } from "@/src/components/product-ui";
 import { ApiError, api } from "@/src/lib/api";
+import { refreshScreenRead } from "@/src/lib/screen-read";
 import { ToolButton } from "@/src/components/toolkit";
 import { syncAlarms, type Alarm } from "@/src/lib/alarms";
 import { theme } from "@/src/theme";
@@ -75,8 +76,8 @@ export default function TimetableScreen() {
   const load = useCallback(async () => {
     try {
       setError("");
-      const [exam,response]=await Promise.all([api<{period:{active:boolean}}>("/v1/exams").catch(()=>null),api<{entries:Entry[]}>("/v1/student/timetable")]);
-      setExamActive(Boolean(exam?.period.active));
+      void api<{period:{active:boolean}}>("/v1/exams").then(exam => setExamActive(Boolean(exam?.period?.active))).catch(() => undefined);
+      await refreshScreenRead<{entries:Entry[]}>("/v1/student/timetable", response => {
       setEntries(
         (Array.isArray(response?.entries) ? response.entries : []).filter(
           (entry) =>
@@ -87,6 +88,8 @@ export default function TimetableScreen() {
             typeof entry.ends_at === "string",
         ),
       );
+      setLoading(false);
+      });
     } catch (caught) {
       setError(
         caught instanceof ApiError

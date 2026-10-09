@@ -118,10 +118,13 @@ jobs:
           node scripts/check-campus-location.cjs
           node scripts/check-campus-map.cjs
         working-directory: mobile
+      - name: Test feed text and campus map directory
+        run: node --experimental-strip-types --test tests/feed-post-text.test.mjs tests/map-directory.test.mjs
+      - name: Test alarm type routing and Nigeria day boundaries
+        run: node --experimental-strip-types --test tests/alarm-followup.test.mjs
+        working-directory: mobile
       - name: Verify Android keyboard overlap
         run: node --experimental-strip-types --test tests/keyboard-layout.test.mjs
-      - name: Test feed text and compact layout
-        run: node --experimental-strip-types --test tests/feed-post-text.test.mjs
       - run: npm run export:web
         working-directory: mobile
 

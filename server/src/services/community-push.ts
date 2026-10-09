@@ -1,7 +1,7 @@
 import {notificationRuntime} from './notification-runtime';
 import {sql} from 'drizzle-orm';
 import {database,firstRow} from '../lib/database';
-import {sendCampusPush,fetchPushReceipt} from '../lib/push';
+import {sendDevicePush,fetchPushReceipt} from '../lib/push';
 import {retryablePushError,pushRetryDelaySeconds} from '../lib/push-retry';
 import {notificationChannels,type NotificationCategory} from './notification-preferences';
 import type{Bindings}from'../types';
@@ -60,7 +60,7 @@ export async function deliverCommunityPush(env:Bindings){
   const category=preferenceCategoryFor(row.dedupe_key,notice);
   const runtime=await notificationRuntime(env,notice?.institution_id??null);
   if(!runtime.push_enabled||(category==='newsletter'&&!runtime.newsletter_enabled)||(category==='announcements'&&!runtime.announcements_enabled)||(category==='campusUpdates'&&!runtime.campus_updates_enabled)){await db.execute(sql`update app_private.notification_outbox set state='PENDING',attempts=greatest(attempts-1,0),last_error_code='RUNTIME_PAUSED',next_attempt_at=now()+interval '5 minutes' where id=${row.id}::uuid`);return;}
-  const devices=await db.execute<{id:string;token:string;university_id:string;channels:unknown;preferences:unknown}>(sql`select d.id,d.token,p.university_id,p.settings->'notificationChannels' as channels,p.settings->'notificationPreferences' as preferences from app_private.push_devices d join public.profiles p on p.user_id=d.user_id join public.users u on u.id=d.user_id where d.user_id=${row.user_id}::uuid and (${notice?.institution_id??null}::uuid is null or p.university_id=${notice?.institution_id??null}::uuid) and d.active and p.deleted_at is null and u.status::text='ACTIVE' and u.deleted_at is null and coalesce(p.settings->>'notifications','true')='true' and not exists(select 1 from public.account_restrictions r where r.user_id=u.id and r.revoked_at is null and r.starts_at<=now() and(r.ends_at is null or r.ends_at>now())) and exists(select 1 from public.refresh_tokens r where r.user_id=d.user_id and r.family_id=d.session_family_id and r.revoked_at is null and r.expires_at>now()) order by d.updated_at desc limit 5`);
+  const devices=await db.execute<{id:string;token:string;native_token:string|null;platform:string;university_id:string;channels:unknown;preferences:unknown}>(sql`select d.id,d.token,d.native_token,d.platform,p.university_id,p.settings->'notificationChannels' as channels,p.settings->'notificationPreferences' as preferences from app_private.push_devices d join public.profiles p on p.user_id=d.user_id join public.users u on u.id=d.user_id where d.user_id=${row.user_id}::uuid and (${notice?.institution_id??null}::uuid is null or p.university_id=${notice?.institution_id??null}::uuid) and d.active and p.deleted_at is null and u.status::text='ACTIVE' and u.deleted_at is null and coalesce(p.settings->>'notifications','true')='true' and not exists(select 1 from public.account_restrictions r where r.user_id=u.id and r.revoked_at is null and r.starts_at<=now() and(r.ends_at is null or r.ends_at>now())) and exists(select 1 from public.refresh_tokens r where r.user_id=d.user_id and r.family_id=d.session_family_id and r.revoked_at is null and r.expires_at>now()) order by d.updated_at desc limit 5`);
   const eligibleDevices=devices.rows.filter(device=>notificationChannels(device.channels,device.preferences)[category].push_enabled);
   if(!eligibleDevices.length){
    const expired=Date.now()-Date.parse(row.created_at)>24*60*60*1000;
@@ -70,7 +70,7 @@ export async function deliverCommunityPush(env:Bindings){
   await Promise.all(eligibleDevices.map(async device=>{
    const attempt=firstRow(await db.execute<{id:string;attempts:number}>(sql`insert into app_private.community_push_deliveries(outbox_id,device_id,user_id,institution_id,status) values(${row.id}::uuid,${device.id}::uuid,${row.user_id}::uuid,${device.university_id}::uuid,'SENDING') on conflict(outbox_id,device_id) do update set status='SENDING',attempts=community_push_deliveries.attempts+1,updated_at=now(),error_code=null where community_push_deliveries.status='FAILED' and community_push_deliveries.error_code in('MessageRateExceeded','PUSH_HTTP_429') and community_push_deliveries.attempts<6 and community_push_deliveries.next_attempt_at<=now() returning id,attempts`));
    if(!attempt)return; // Never blindly replay an external send with an uncertain acknowledgement.
-   const result=await sendCampusPush(env,device.token,{
+   const result=await sendDevicePush(env,{expoToken:device.token,nativeToken:device.native_token,platform:device.platform},{
     title:row.subject,
     body:row.body,
     path:notice?.path??'/notifications',

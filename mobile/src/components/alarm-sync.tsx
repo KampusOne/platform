@@ -6,11 +6,30 @@ import {useAuth} from '@/src/auth/auth-context';
 import {api} from '@/src/lib/api';
 import {normalizeAlarms,syncAlarms,type Alarm} from '@/src/lib/alarms';
 import {getAlarmEvents,getRingingAlarm,nativeAlarms} from '@/src/lib/native-alarms';
+import {alarmFollowupKind,campusDateKey} from '@/src/lib/alarm-followup';
+import {shouldOfferClassAlarmChoice} from '@/src/lib/class-alarm-prompt';
 export function AlarmSync(){
  const {user}=useAuth();
  useEffect(()=>{
   if(!user)return;let active=true,lastRing='',syncing=false;
-  async function transferEvents(){if(!nativeAlarms)return;const events=await getAlarmEvents();if(events.length){const result=await api<{acknowledged:string[]}>('/v1/notifications/alarm-events',{method:'POST',body:JSON.stringify({events})});const acknowledged=Array.isArray(result?.acknowledged)?result.acknowledged:[];await nativeAlarms.acknowledge(JSON.stringify(acknowledged));}}
+  async function transferEvents(alarms?:Alarm[]){
+   if(!nativeAlarms)return;
+   const events=await getAlarmEvents();
+   if(!events.length)return;
+   const result=await api<{acknowledged:string[]}>('/v1/notifications/alarm-events',{method:'POST',body:JSON.stringify({events})});
+   const acknowledged=Array.isArray(result?.acknowledged)?result.acknowledged:[];
+   await nativeAlarms.acknowledge(JSON.stringify(acknowledged));
+   // A class alarm can also be dismissed through Android's native notification.
+   // Offer the daily choice only when the user is back in the foreground.
+   if(!active||AppState.currentState!=='active'||!alarms)return;
+   const today=campusDateKey();
+   const dismissed=events.find(event=>event.kind==='dismiss'&&acknowledged.includes(event.id)
+    &&Number.isFinite(Date.parse(event.firedAt))&&campusDateKey(Date.parse(event.firedAt))===today
+    &&alarms.some(alarm=>alarm.id===event.alarmId
+     &&alarmFollowupKind({timetableEntryId:alarm.timetable_entry_id,examId:alarm.exam_id})==='CLASS'));
+   if(dismissed&&await shouldOfferClassAlarmChoice()&&active)
+    router.push({pathname:'/class-alarm-day',params:{alarmId:dismissed.alarmId}});
+  }
   async function restore(){
    if(syncing)return;syncing=true;
    try{const result=await api<{alarms:Alarm[]}>('/v1/learning/alarms');if(!active)return;
@@ -28,10 +47,10 @@ export function AlarmSync(){
         await nativeAlarms.cacheSound('');
       }
     }catch{/* Keep the built-in device alarm tone offline. */}
-    await transferEvents();
+    await transferEvents(alarms);
    }catch{/* Native schedules and pending events survive a network interruption. */}finally{syncing=false;}
   }
-  async function observe(){if(!active||AppState.currentState!=='active'||!nativeAlarms)return;try{const ringing=await getRingingAlarm();if(ringing&&ringing.endsAt>Date.now()){const key=ringing.id+':'+ringing.firedAt;if(key!==lastRing){lastRing=key;void transferEvents().catch(()=>undefined);router.push({pathname:'/alarm-ring',params:{alarmId:ringing.id}});}}}catch{/* Never crash navigation when the native service is unavailable. */}}
+  async function observe(){if(!active||AppState.currentState!=='active'||!nativeAlarms)return;try{const ringing=await getRingingAlarm();if(ringing&&ringing.endsAt>Date.now()){const key=ringing.id+':'+ringing.firedAt;if(key!==lastRing){lastRing=key;router.push({pathname:'/alarm-ring',params:{alarmId:ringing.id}});}}}catch{/* Never crash navigation when the native service is unavailable. */}}
   const initialRestore=setTimeout(()=>void restore(),1800);
   const timer=nativeAlarms?setInterval(()=>void observe(),1500):null;
   const sub=AppState.addEventListener('change',state=>{if(state==='active'){void restore();void observe();}});

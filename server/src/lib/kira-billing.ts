@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { database, firstRow } from "./database";
-import { initializePaystack, verifyPaystack } from "./paystack";
+import { verifyPaystack } from "./paystack";
+import { initializePaystackOnce } from "./payment-idempotency";
 import { resolveProviderCollection } from "./payment-pricing";
 import { AppError } from "./errors";
 import { recordAudit } from "./audit";
@@ -202,7 +203,7 @@ export async function initializeKira(
       "RATE_LIMITED",
       "Please wait before opening another checkout.",
     );
-  const initialized = await initializePaystack(env, {
+  const initialized = await initializePaystackOnce(env, {
     email: user.email,
     amountKobo: checkout.amount_kobo,
     reference: checkout.provider_reference,

@@ -14,7 +14,7 @@ import { router, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ProfileAvatar } from "@/src/components/profile-avatar";
 import { SkeletonBlock } from "@/src/components/skeleton";
-import { api } from "@/src/lib/api";
+import { api, peekApiCache } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
 import { onMessageDraftChange, readDraftSummaries, type DraftSummary } from "@/src/lib/message-drafts";
@@ -110,6 +110,7 @@ export default function MessagesScreen() {
   const epoch = useRef(0);
   const loadingRef = useRef(false);
   const paged = useRef(false);
+  const loadedScope = useRef("");
 
   const load = useCallback(async (before?: string) => {
     if (loadingRef.current) return;
@@ -145,9 +146,14 @@ export default function MessagesScreen() {
     epoch.current += 1;
     loadingRef.current = false;
     paged.current = false;
-    setThreads([]);
-    setCursor(null);
-    setLoading(true);
+    const scope = `${user?.id ?? ""}:${filter}`;
+    if (loadedScope.current !== scope) {
+      const saved = peekApiCache<Inbox>(`/v1/messages/inbox?filter=${filter}`, { allowStale: true });
+      setThreads(normalizeThreads(saved?.threads));
+      setCursor(typeof saved?.nextCursor === "string" ? saved.nextCursor : null);
+      setLoading(!saved);
+      loadedScope.current = scope;
+    }
     setError("");
     void load();
     const timer = setInterval(() => {
