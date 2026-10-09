@@ -107,9 +107,12 @@ function getAlarmDate(alarm: Alarm, now = new Date()) {
   }
   if (alarm.fires_at) {
     const date = new Date(alarm.fires_at);
-    if (!Number.isNaN(date.getTime()) && date.getTime() > now.getTime()) {
+    if (!Number.isNaN(date.getTime()) && date.getTime() > now.getTime()
+        && !(alarm.timetable_entry_id && alarm.muted_on===campusDateKey(date.getTime()))) {
       return date;
     }
+    // An expired or muted one-off alarm must not look like it repeats tomorrow.
+    return null;
   }
   const fallback = nextOccurrence(alarm.time);
   return fallback ? new Date(fallback) : null;
