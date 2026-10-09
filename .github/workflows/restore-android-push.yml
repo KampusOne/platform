@@ -1,0 +1,41 @@
+name: Restore KampusOne Android FCM v1 push
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/restore-android-push.yml"
+      - "server/scripts/sync-expo-fcm-credentials.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kampusone-fcm-v1-recovery
+  cancel-in-progress: false
+
+jobs:
+  restore-android-push:
+    name: Validate and restore Android push credentials
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate restoration script syntax
+        run: node --check server/scripts/sync-expo-fcm-credentials.mjs
+      - name: Restore FCM v1 key on the actual Expo Android app
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID || secrets.EXPO_EAS_PROJECT_ID }}
+          FCM_SERVICE_ACCOUNT_JSON_BASE64: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON_BASE64 }}
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: node server/scripts/sync-expo-fcm-credentials.mjs --apply --refresh
+      - name: Clarify what success proves
+        run: |
+          echo "Firebase key validation and Expo FCM v1 linkage completed."
+          echo "Live phone-delivery verification still requires sending an admin selected-device test and confirming its Expo receipt."
