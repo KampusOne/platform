@@ -6,6 +6,11 @@ on:
     paths:
       - ".github/workflows/restore-android-push.yml"
       - "server/scripts/sync-expo-fcm-credentials.mjs"
+  pull_request:
+    paths:
+      - ".github/workflows/restore-android-push.yml"
+      - "server/scripts/sync-expo-fcm-credentials.mjs"
+      - "server/scripts/sync-expo-fcm-credentials.test.mjs"
   workflow_dispatch:
 
 permissions:
@@ -16,7 +21,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  offline-credential-tests:
+    name: Offline FCM sync regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --check server/scripts/sync-expo-fcm-credentials.mjs
+      - run: node --test server/scripts/sync-expo-fcm-credentials.test.mjs
   restore-android-push:
+    if: github.event_name != 'pull_request'
+    needs: offline-credential-tests
     name: Validate and restore Android push credentials
     runs-on: ubuntu-latest
     environment: production
