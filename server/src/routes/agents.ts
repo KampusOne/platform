@@ -39,7 +39,7 @@ import {
 import { deriveHandoffCode, hashOtp } from "../lib/security";
 import { ledgerPayoutsReady,payoutFeeComponentsReady,requireLedgerPayouts,quotePayout,payoutQuoteSchema,payoutRate,payoutError,reconcilePayout } from "../lib/payouts";
 import { riderFinanceReady,riderFinanceSummary,reconcileRiderCommission } from '../lib/rider-finance';
-import { initializePaystack } from '../lib/paystack';
+import { initializePaystackOnce } from '../lib/payment-idempotency';
 import { inclusiveStoreReady, approvedCommercePolicy } from '../lib/commerce-pricing';
 import { listingPrice, percentageKobo } from '../lib/pricing';
 import { pricedTutorialReady } from '../lib/tutorial-pricing';
@@ -1876,7 +1876,7 @@ agentRoutes.post('/rider-commission-checkout',async context=>{
   if(intent.status==='FAILED')throw new AppError(409,'CONFLICT','That checkout expired. Refresh your balance and start again.');
   if(intent.authorization_url && intent.access_code)return context.json({authorizationUrl:intent.authorization_url,reference:intent.provider_reference,amountKobo:Number(intent.amount_kobo)});
   // Stable reference survives a timeout; a receipt can still reconcile a late payment.
-  const initialized=await initializePaystack(context.env,{email:user.email,amountKobo:Number(intent.amount_kobo),reference:intent.provider_reference,
+  const initialized=await initializePaystackOnce(context.env,{email:user.email,amountKobo:Number(intent.amount_kobo),reference:intent.provider_reference,
     ...(context.env.APP_ORIGIN?{callbackUrl:`${context.env.APP_ORIGIN.replace(/\/$/,'')}/payment/return`}:{}),metadata:{resourceType:'RIDER_COMMISSION',resourceId:intent.id}});
   if(!initialized.access_code)throw new AppError(503,'PROVIDER_UNAVAILABLE','The provider returned an incomplete checkout. Try again.');
   await database(context.env).execute(sql`update app_private.rider_commission_checkouts set status='INITIALIZED',authorization_url=${initialized.authorization_url!},access_code=${initialized.access_code}
