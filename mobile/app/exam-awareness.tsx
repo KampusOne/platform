@@ -1,8 +1,9 @@
 import {Ionicons} from "@expo/vector-icons";
 import {router,useLocalSearchParams} from "expo-router";
 import {useCallback,useEffect,useState} from "react";
-import {ActivityIndicator,Pressable,StyleSheet,Text,View} from "react-native";
+import {Pressable,StyleSheet,Text,View} from "react-native";
 import {ToolField,ToolPage} from "@/src/components/toolkit";
+import {ScreenSkeleton,InlineLoading} from "@/src/components/skeleton";
 import {api} from "@/src/lib/api";
 import {normalizeAlarms,syncAlarms,type Alarm} from "@/src/lib/alarms";
 import {useThemeStyles,type Theme} from "@/src/lib/appearance";
@@ -58,7 +59,7 @@ export default function ExamAwareness(){
  }
  const kind=exam?.assessment_kind==="TEST"?"CLASS TEST":"EXAM";
  return <ToolPage title="Exam reminders">
-  {loading?<View style={styles.loading}><ActivityIndicator color={theme.deepBrand}/><Text style={styles.description}>Checking this exam reminder…</Text></View>
+  {loading?<ScreenSkeleton variant="list" compact/>
   :!exam?<View style={styles.card}>
     <View style={styles.icon}><Ionicons name="alert-circle-outline" color={theme.deepBrand} size={27}/></View>
     <Text style={styles.heading}>Not an exam reminder</Text>
@@ -85,7 +86,7 @@ export default function ExamAwareness(){
      </View>:null}
     {error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:null}
     {!exam.disabled?<Pressable accessibilityRole="button" accessibilityState={{disabled:busy||(Boolean(challenge)&&code.length!==6)}} disabled={busy||(Boolean(challenge)&&code.length!==6)} onPress={()=>void disable()} style={({pressed})=>[styles.primary,(busy||(Boolean(challenge)&&code.length!==6))&&styles.primaryDisabled,pressed&&styles.pressed]}>
-      {busy?<ActivityIndicator color="#FFFFFF"/>:<Ionicons name={challenge?"checkmark-circle-outline":"notifications-off-outline"} color="#FFFFFF" size={20}/>}
+      {busy?<InlineLoading color="#FFFFFF" size={20}/>:<Ionicons name={challenge?"checkmark-circle-outline":"notifications-off-outline"} color="#FFFFFF" size={20}/>}
       <Text style={styles.primaryText}>{busy?"Updating exam reminders…":challenge?"Confirm and mute today's exams":"Mute today's remaining exam alarms"}</Text>
     </Pressable>:null}
     <Pressable accessibilityRole="button" disabled={busy} onPress={()=>router.replace("/exam-timetable")} style={({pressed})=>[styles.secondary,pressed&&styles.pressed]}><Text style={styles.secondaryText}>{exam.disabled?"Back to exam timetable":"Keep exam reminders on"}</Text></Pressable>
