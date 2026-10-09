@@ -150,8 +150,10 @@ export default function CampusMap(){
     if(!useCurrent||!live||!activePath.current||!current||!locationReady)return;
     const update=routeProgress(activePath.current,live,progress.current),accuracy=current.accuracy??999;
     // Ignore GPS jitter around the original path snap. Re-route only after real displacement and repeated off-path fixes.
-    if(update.offPathMetres>Math.max(45,accuracy*2.5)&&activeOrigin.current&&distance(activeOrigin.current,live)>Math.max(60,accuracy*2.5)){
-      if(++offPathTicks.current>=2){
+    const displacement=activeOrigin.current?distance(activeOrigin.current,live):0;
+    if(update.offPathMetres>Math.max(45,accuracy*2.5)&&displacement>Math.max(60,accuracy*2.5)){
+      // A single confirmed relocation hundreds of metres away must clear the old A/B route immediately.
+      if(displacement>180&&update.offPathMetres>150||++offPathTicks.current>=2){
         activePath.current=null;activeOrigin.current=null;offPathTicks.current=0;
         setRoute(null);setRouteChoices([]);setRouteChoice(0);
         if(Date.now()-lastReroute.current>10000){
