@@ -1,3 +1,4 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { randomUUID } from "expo-crypto";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,

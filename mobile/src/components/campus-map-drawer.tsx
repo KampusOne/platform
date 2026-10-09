@@ -1,10 +1,12 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Ionicons} from '@expo/vector-icons';
 import * as Haptics from '@/src/lib/haptics';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {Animated,Image,Keyboard,PanResponder,Platform,Pressable,ScrollView,StyleSheet,Text,TextInput,useWindowDimensions,View} from 'react-native';
+import {Animated,Image,Keyboard,PanResponder,Platform,Pressable,StyleSheet,Text,TextInput,useWindowDimensions,View} from 'react-native';
 import {useReducedMotionPreference} from '@/src/components/visual-system';
 import {useThemeStyles,type Theme} from '@/src/lib/appearance';
+import {useKeyboardViewport} from '@/src/components/keyboard-viewport';
 
 type IconName=keyof typeof Ionicons.glyphMap;
 export type CampusMapDrawerPlace={id:string;name:string;category:string;description:string|null;verified_at?:string|null;search_aliases?:readonly string[]|null};
@@ -25,10 +27,12 @@ const categoryIcons:Record<string,IconName>={ACADEMIC:'school-outline',FOOD:'res
 export function formatMapDistance(metres:number){return metres<1000?`${Math.round(metres)} m`:`${(metres/1000).toFixed(1)} km`;}
 export function CampusMapDrawer({campusId,bottomInset,topInset,error,loading,routeBusy,places,query,picker,originName,destinationName,destinationApproximate=false,route,alternatives,selectedRoute,onSelectRoute,locationError,locationLoading,photo,onQueryChange,onPickPlace,onChoose,onPickOnMap,onUseCurrentLocation,onClearRoute,onSwap,onRetry,onHeightChange}:Props){
   const {theme,styles}=useThemeStyles(makeStyles),{height}=useWindowDimensions(),reducedMotion=useReducedMotionPreference();
+  const viewport=useKeyboardViewport();
   const [expanded,setExpanded]=useState(false),[recentIds,setRecentIds]=useState<string[]>([]),[keyboard,setKeyboard]=useState(0);
   const collapsedHeight=error?252:route||routeBusy?202:166;
   const sheetBottom=keyboard>0?(Platform.OS==='ios'?keyboard+8:bottomInset):bottomInset;
-  const maximumHeight=Math.max(collapsedHeight,Math.min(520,height-sheetBottom-topInset-82));
+  const availableHeight=Platform.OS==='android' && viewport.height>0?viewport.height:height;
+  const maximumHeight=Math.max(collapsedHeight,Math.min(520,availableHeight-sheetBottom-topInset-82));
   const targetHeight=expanded?maximumHeight:collapsedHeight;
   const sheetHeight=useRef(new Animated.Value(targetHeight)).current,dragStart=useRef(targetHeight),previousPicker=useRef(picker);
   useEffect(()=>{

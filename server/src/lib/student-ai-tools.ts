@@ -297,7 +297,7 @@ export async function runStudentAssistant(env: Bindings, user: AuthenticatedUser
     source: video.channel,
   }] : [];
   const actions: AIAction[] = [];
-  if (!first.calls.length) return { text: verifiedLearningLinks(first.text,video), provider: "huggingface" as const, cards, actions };
+  if (!first.calls.length) return { text: verifiedLearningLinks(first.text,video), provider: first.provider, cards, actions };
 
   messages.push({ role: "assistant", content: first.text || null, tool_calls: first.calls });
   // Up to three independent read/prepare tools can be requested at once.
@@ -313,5 +313,5 @@ export async function runStudentAssistant(env: Bindings, user: AuthenticatedUser
     messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result.data) });
   }
   const final = await completeAI(env, input, messages);
-  return { text: verifiedLearningLinks(final.text,video), provider: "huggingface" as const, cards: [...new Map(cards.map(card => [card.id, card])).values()], actions };
+  return { text: verifiedLearningLinks(final.text,video), provider: final.provider, cards: [...new Map(cards.map(card => [card.id, card])).values()], actions };
 }

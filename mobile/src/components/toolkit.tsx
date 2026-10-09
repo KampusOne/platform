@@ -1,3 +1,4 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router, usePathname } from "expo-router";
@@ -7,7 +8,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,

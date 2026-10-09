@@ -1,3 +1,5 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
+import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import {DiscountCodeField} from "@/src/components/discount-code-field";
 import { CampusPlaceChoice } from "@/src/components/campus-place-choice";
 import * as Crypto from "expo-crypto";
@@ -14,10 +16,8 @@ import {
   Image,
   KeyboardAvoidingView,
   Linking,
-  Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,

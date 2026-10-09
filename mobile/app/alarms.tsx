@@ -1,3 +1,5 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
+import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { alarmCategories, alarmCategory, type AlarmCategory } from "@/src/lib/alarm-groups";
 import { AlarmSourceDialog, ClearAlarmsDialog } from "@/src/components/alarm-source-dialogs";
 import { AcademicAlarmFields } from "@/src/components/academic-alarm-fields";
@@ -15,10 +17,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,

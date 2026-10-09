@@ -1,3 +1,4 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
@@ -10,7 +11,6 @@ import {
   Image,
   type ImageSourcePropType,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,

@@ -39,6 +39,7 @@ import { ShareSheetHost } from "@/src/components/share-sheet";
 import { initializeEntryPreferences } from "@/src/lib/entry-preferences";
 import { OfflineRecovery } from "@/src/components/offline-recovery";
 import { DocumentReaderHost } from '@/src/components/document-reader-host';
+import { KeyboardViewport } from '@/src/components/keyboard-viewport';
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -95,12 +96,14 @@ export default function RootLayout() {
         <ScreenVisitTracker />
         <ForegroundUsageTracker/>
         <AppErrorBoundary>
+          <KeyboardViewport>
           {screensReady ? <Stack
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: theme.canvas },
             }}
           /> : <View accessibilityRole="progressbar" accessibilityLabel="Opening KampusOne" style={{flex:1,backgroundColor:theme.canvas}} />}
+          </KeyboardViewport>
         </AppErrorBoundary>
         <AppFeatureBoundary feature="photo_editor"><PhotoEditorHost /></AppFeatureBoundary>
         <AppFeatureBoundary feature="video_editor"><VideoEditorHost /></AppFeatureBoundary>

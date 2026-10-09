@@ -1,5 +1,7 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
+import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import {Modal,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from 'react-native';
+import {Pressable,StyleSheet,Text,TextInput,View} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Ionicons} from '@expo/vector-icons';
 import {useAuth} from '@/src/auth/auth-context';

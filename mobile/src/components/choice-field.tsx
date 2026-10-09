@@ -1,5 +1,6 @@
+import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { useState } from 'react';
-import { FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppearance } from '@/src/lib/appearance';

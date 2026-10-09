@@ -1,3 +1,5 @@
+import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
+import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { HashtagSuggestions } from "@/src/components/hashtag-suggestions";
 import {MentionSuggestions} from '@/src/components/mention-suggestions';
 import {ComposerPreview} from '@/src/components/composer-preview';
@@ -6,7 +8,7 @@ import { InlineLoading } from "@/src/components/skeleton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { randomUUID } from "expo-crypto";
-import { Image, Text, View, Pressable, TextInput, ScrollView, KeyboardAvoidingView, Platform, StyleSheet, Modal, useWindowDimensions } from "react-native";
+import { Image, Text, View, Pressable, TextInput, KeyboardAvoidingView, Platform, StyleSheet, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ProfileAvatar } from "@/src/components/profile-avatar";
