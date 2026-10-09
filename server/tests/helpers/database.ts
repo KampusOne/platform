@@ -95,6 +95,8 @@ export async function createTestDatabase({excludeMigrations=[]}:{excludeMigratio
         "utf8",
       ),
     );
+  if (!excludeMigrations.includes('20261009100000_payment_idempotency_inbox.sql'))
+    await db.exec(readFileSync(new URL('../../../database/neon/migrations/20261009100000_payment_idempotency_inbox.sql',import.meta.url),'utf8'));
   return db;
 }
 
