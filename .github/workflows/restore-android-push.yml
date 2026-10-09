@@ -28,6 +28,8 @@ jobs:
           node-version: 22
       - name: Validate restoration script syntax
         run: node --check server/scripts/sync-expo-fcm-credentials.mjs
+      - name: Verify Firebase/Expo synchronization with offline regression tests
+        run: node --test server/scripts/sync-expo-fcm-credentials.test.mjs
       - name: Restore FCM v1 key on the actual Expo Android app
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
