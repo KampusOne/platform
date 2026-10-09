@@ -50,7 +50,7 @@ export function AlarmSync(){
     await transferEvents(alarms);
    }catch{/* Native schedules and pending events survive a network interruption. */}finally{syncing=false;}
   }
-  async function observe(){if(!active||AppState.currentState!=='active'||!nativeAlarms)return;try{const ringing=await getRingingAlarm();if(ringing&&ringing.endsAt>Date.now()){const key=ringing.id+':'+ringing.firedAt;if(key!==lastRing){lastRing=key;void transferEvents().catch(()=>undefined);router.push({pathname:'/alarm-ring',params:{alarmId:ringing.id}});}}}catch{/* Never crash navigation when the native service is unavailable. */}}
+  async function observe(){if(!active||AppState.currentState!=='active'||!nativeAlarms)return;try{const ringing=await getRingingAlarm();if(ringing&&ringing.endsAt>Date.now()){const key=ringing.id+':'+ringing.firedAt;if(key!==lastRing){lastRing=key;router.push({pathname:'/alarm-ring',params:{alarmId:ringing.id}});}}}catch{/* Never crash navigation when the native service is unavailable. */}}
   const initialRestore=setTimeout(()=>void restore(),1800);
   const timer=nativeAlarms?setInterval(()=>void observe(),1500):null;
   const sub=AppState.addEventListener('change',state=>{if(state==='active'){void restore();void observe();}});
