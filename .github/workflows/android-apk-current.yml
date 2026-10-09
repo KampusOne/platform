@@ -140,8 +140,8 @@ jobs:
             test "$attempt" -lt 60 || { echo "The matching Worker did not finish in time."; exit 1; }
             sleep 10
           done
-          gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/status" > /tmp/kampusone-current-vercel-statuses.json
-          node server/scripts/verify-published-web-release.mjs /tmp/kampusone-current-worker-runs.json /tmp/kampusone-current-vercel-statuses.json /tmp/kampusone-current-web-release.json
+          node --test tests/native-release.test.mjs tests/published-web-release.test.mjs
+          node server/scripts/verify-native-release.mjs /tmp/kampusone-current-worker-runs.json KampusOne-Android-0.3.24-arm64-release.json
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -149,5 +149,6 @@ jobs:
           path: |
             KampusOne-Android-0.3.24-arm64.apk
             KampusOne-Android-0.3.24-arm64-build.json
+            KampusOne-Android-0.3.24-arm64-release.json
           if-no-files-found: error
           retention-days: 14

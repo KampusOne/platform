@@ -9,7 +9,7 @@ export const productionHosts = {
   mobile: "https://mobile.kampusone.app",
 };
 
-export function verifyDeploymentRecords({ sourceSha, mainSha, repository, workerRuns, statuses }) {
+export function verifyWorkerDeploymentRecords({ sourceSha, mainSha, repository, workerRuns }) {
   if (!/^[0-9a-f]{40}$/.test(sourceSha) || sourceSha !== mainSha) {
     throw new Error("The release must match the current main revision");
   }
@@ -19,6 +19,12 @@ export function verifyDeploymentRecords({ sourceSha, mainSha, repository, worker
     run.path === ".github/workflows/deploy-worker.yml" &&
     run.head_repository?.full_name === repository);
   if (!worker) throw new Error("No matching successful Worker deployment");
+  return { workerRunId: String(worker.id) };
+}
+
+export function verifyDeploymentRecords(input) {
+  const { sourceSha, statuses } = input;
+  const worker = verifyWorkerDeploymentRecords(input);
   if (statuses.sha !== sourceSha) throw new Error("Vercel status revision mismatch");
   const deploymentUrls = projects.map((project) => {
     const status = statuses.statuses?.find((entry) => entry.context === `Vercel – ${project}`);
@@ -30,7 +36,7 @@ export function verifyDeploymentRecords({ sourceSha, mainSha, repository, worker
     }
     return url.href;
   });
-  return { workerRunId: String(worker.id), portalUrl: deploymentUrls[0], mobileUrl: deploymentUrls[1] };
+  return { ...worker, portalUrl: deploymentUrls[0], mobileUrl: deploymentUrls[1] };
 }
 
 export async function verifyProductionAliases(sourceSha, fetcher = fetch) {
