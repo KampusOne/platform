@@ -447,18 +447,10 @@ paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
 
 paymentRoutes.post("/paystack/webhook", async (context) => {
   const raw = await context.req.text();
-  if (
-    !(await validPaystackSignature(
-      context.env,
-      raw,
-      context.req.header("X-Paystack-Signature"),
-    ))
-  ) {
-    throw new AppError(
-      401,
-      "UNAUTHENTICATED",
-      "The payment event signature is invalid.",
-    );
+  if (!(await validPaystackSignature(
+    context.env, raw, context.req.header("X-Paystack-Signature"),
+  ))) {
+    throw new AppError(401, "UNAUTHENTICATED", "The payment event signature is invalid.");
   }
   let event: {
     event?: string;
@@ -467,64 +459,114 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
   try {
     event = JSON.parse(raw);
   } catch {
-    throw new AppError(
-      400,
-      "BAD_REQUEST",
-      "The payment event is not valid JSON.",
-    );
+    throw new AppError(400, "BAD_REQUEST", "The payment event is not valid JSON.");
   }
-  if(event.event?.startsWith('transfer.') && event.data?.reference?.startsWith('k1-po-')){
-    if(!['transfer.success','transfer.failed','transfer.reversed'].includes(event.event))return context.json({status:'ignored'});
-    const reconciled=await reconcilePayout(context.env,event.data.reference);
-    return context.json({status:reconciled?'reconciled':'unknown_reference'});
-  }
-  if (
-    event.event !== "charge.success" ||
-    event.data?.status !== "success" ||
-    !event.data.reference
-  ) {
+
+  const eventType = event.event;
+  const reference = event.data?.reference;
+  const isTransfer = eventType === "transfer.success" ||
+    eventType === "transfer.failed" || eventType === "transfer.reversed";
+  const isCharge = eventType === "charge.success" && event.data?.status === "success";
+  if (!reference || !/^[A-Za-z0-9_.-]{1,100}$/.test(reference) ||
+      (!isCharge && !isTransfer) ||
+      (isTransfer && !reference.startsWith("k1-po-"))) {
     return context.json({ status: "ignored" });
   }
-  const reference = event.data.reference;
-  if (
-    reference.startsWith("K1-AI-") &&
-    (await reconcileKira(context.env, reference))
-  )
-    return context.json({ status: "reconciled" });
-  if (
-    reference.startsWith("K1-RC-") &&
-    (await reconcileRiderCommission(context.env, reference))
-  )
-    return context.json({ status: "reconciled" });
-  if (await reconcilePricedStore(context.env, reference))
-    return context.json({ status: "reconciled" });
-  if (await reconcilePricedTutorial(context.env, reference))
-    return context.json({ status: "reconciled" });
-  if (await reconcileMaterial(context.env, reference))
-    return context.json({ status: "reconciled" });
-  await database(context.env).execute(sql`
-    insert into public.payment_provider_events (
-      provider, provider_reference, event_type, amount_kobo
-    ) values ('PAYSTACK', ${reference}, 'charge.success', ${event.data.amount ?? null})
-    on conflict (provider, provider_reference) do update set
-      updated_at = now()
-  `);
 
-  // A signed event is a notification, not a verified financial receipt. Older
-  // checkouts lack the sealed pricing and actual-fee settlement contract used by
-  // the reconcilers above; quarantine them without fulfilling or crediting anyone.
-  await database(context.env).execute(sql`
-    with reviewed_attempt as (
-      update public.payment_attempts set status='REQUIRES_REVIEW',
-        failure_code='LEGACY_VERIFIED_SNAPSHOT_REQUIRED',updated_at=now()
-      where provider_reference=${reference} and status in('CREATED','INITIALIZED','REQUIRES_REVIEW')
-      returning resource_type,resource_id
-    )
-    update public.payment_provider_events set state='REQUIRES_REVIEW',
-      resource_type=(select resource_type from public.payment_attempts where provider_reference=${reference} limit 1),
-      resource_id=(select resource_id from public.payment_attempts where provider_reference=${reference} limit 1),
-      review_reason='LEGACY_VERIFIED_SNAPSHOT_REQUIRED',updated_at=now()
-    where provider='PAYSTACK' and provider_reference=${reference}
-  `);
-  return context.json({status:"requires_review"});
+  // Claims are durable and atomic. A concurrent duplicate must retry later,
+  // while a previously processed identical signed event gets a safe 200.
+  const claim = await claimPaystackWebhook(context.env, eventType!, reference, raw);
+  if (claim.state === "DUPLICATE")
+    return context.json({ status: "already_processed" });
+  if (claim.state === "REQUIRES_REVIEW")
+    return context.json({ status: "requires_review" });
+  if (claim.state === "BUSY")
+    throw new AppError(503, "PROVIDER_UNAVAILABLE", "Payment verification is still in progress.");
+
+  let outcome: "PROCESSED" | "REQUIRES_REVIEW" | "RETRYABLE" = "RETRYABLE";
+  try {
+    if (isTransfer) {
+      // Transfer initiation and settlement share the same unique provider
+      // reference. The verified ledger function handles replay atomically.
+      outcome = await reconcilePayout(context.env, reference)
+        ? "PROCESSED"
+        : "REQUIRES_REVIEW";
+    } else {
+      let recognized = false;
+      let status: string | undefined;
+      if (reference.startsWith("K1-AI-")) {
+        recognized = await reconcileKira(context.env, reference);
+        if (recognized)
+          status = firstRow(await database(context.env).execute<{ status: string }>(sql`
+            select status from app_private.kira_checkouts where provider_reference=${reference}
+          `))?.status;
+      } else if (reference.startsWith("K1-RC-")) {
+        recognized = await reconcileRiderCommission(context.env, reference);
+        if (recognized)
+          status = firstRow(await database(context.env).execute<{ status: string }>(sql`
+            select status from app_private.rider_commission_checkouts where provider_reference=${reference}
+          `))?.status;
+      } else {
+        recognized = await reconcilePricedStore(context.env, reference) ||
+          await reconcilePricedTutorial(context.env, reference) ||
+          await reconcileMaterial(context.env, reference);
+        if (recognized)
+          status = firstRow(await database(context.env).execute<{ status: string }>(sql`
+            select status from public.payment_attempts where provider_reference=${reference}
+          `))?.status;
+      }
+      if (recognized) {
+        outcome = status === "PAID" || status === "SUCCEEDED"
+          ? "PROCESSED"
+          : status === "REQUIRES_REVIEW"
+            ? "REQUIRES_REVIEW"
+            : "RETRYABLE";
+      } else {
+        // Signed delivery alone is not a verified payment. Legacy references
+        // without sealed receipts go to finance review, never to fulfilment.
+        await database(context.env).execute(sql`
+          insert into public.payment_provider_events (
+            provider,provider_reference,event_type,amount_kobo
+          ) values ('PAYSTACK',${reference},'charge.success',${event.data?.amount ?? null})
+          on conflict (provider,provider_reference) do update set updated_at=now()
+        `);
+        await database(context.env).execute(sql`
+          with reviewed_attempt as (
+            update public.payment_attempts set status='REQUIRES_REVIEW',
+              failure_code='LEGACY_VERIFIED_SNAPSHOT_REQUIRED',updated_at=now()
+            where provider_reference=${reference} and
+              status in('CREATED','INITIALIZED','REQUIRES_REVIEW')
+            returning resource_type,resource_id
+          )
+          update public.payment_provider_events set state='REQUIRES_REVIEW',
+            resource_type=(select resource_type from public.payment_attempts where provider_reference=${reference} limit 1),
+            resource_id=(select resource_id from public.payment_attempts where provider_reference=${reference} limit 1),
+            review_reason='LEGACY_VERIFIED_SNAPSHOT_REQUIRED',updated_at=now()
+          where provider='PAYSTACK' and provider_reference=${reference}
+        `);
+        outcome = "REQUIRES_REVIEW";
+      }
+    }
+
+    await finishPaystackWebhook(
+      context.env,eventType!,reference,claim,outcome,
+      outcome === "REQUIRES_REVIEW" ? "FINANCIAL_REVIEW_REQUIRED" : undefined,
+    );
+  } catch (error) {
+    // Returning a non-2xx status asks Paystack to redeliver. The finance
+    // journal and receipt constraints protect against an already-committed
+    // settlement when the acknowledgement itself was lost.
+    try {
+      await finishPaystackWebhook(
+        context.env,eventType!,reference,claim,"RETRYABLE","RECONCILIATION_FAILED",
+      );
+    } catch {
+      console.error(JSON.stringify({ level: "error", event: "payment.webhook_retry_guard_failed" }));
+    }
+    throw error;
+  }
+
+  if (outcome === "RETRYABLE")
+    throw new AppError(503, "PROVIDER_UNAVAILABLE", "The signed payment notification is awaiting verified settlement.");
+  return context.json({ status: outcome === "PROCESSED" ? "reconciled" : "requires_review" });
 });
