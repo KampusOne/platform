@@ -8,6 +8,7 @@ import { DiscountCodes } from "./discount-codes";
 import { KiraPricePlan } from "./kira-price-plan";
 import { TransferCostPolicies } from "./transfer-cost-policies";
 import { FinanceRefunds } from "./finance-refunds";
+import { BachsPricingControls } from "./bachs-pricing-controls";
 import {
   PaymentPricingControls,
   validProviderProfiles,
@@ -618,6 +619,7 @@ function FinancePolicyEditor() {
                 setAcceptedPreview(false);
               }}
             />
+            <BachsPricingControls />
             <TransferCostPolicies />
           </details>
           <FinanceRefunds />

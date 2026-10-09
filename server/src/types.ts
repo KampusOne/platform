@@ -42,6 +42,10 @@ export type Bindings = {
   BACHS_API_KEY?: string;
   /** Bachs webhook endpoint signing secret (not the API key). */
   BACHS_WEBHOOK_SECRET?: string;
+  /** Remains OFF until provider-aware fulfillment and migration are complete. */
+  BACHS_PRICED_CHECKOUT_ENABLED?: string;
+  /** Merchant processing-cost setting confirmed for the configured BACHS account. */
+  BACHS_MERCHANT_BEARS_COST_CONFIRMED?: string;
   ADMIN_BOOTSTRAP_TOKEN?: string;
   INITIAL_ADMIN_EMAIL?: string;
   UNIFIED_SCHEMA_READY?: string;

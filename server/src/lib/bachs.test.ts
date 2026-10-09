@@ -88,6 +88,22 @@ describe("Bachs isolated checkout foundation", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it("locks the quoted NGN method and expiry using documented checkout fields", async () => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({
+      checkout_id: "chk_123456789", checkout_url: "https://sandbox-checkout.bachs.io/c/abc123",
+      status: "open", reference: request.reference, expires_at: "2026-10-09T12:14:00Z",
+    }, { status: 201 }));
+    vi.stubGlobal("fetch", fetcher);
+    await createBachsCheckout(sandbox, { ...request, paymentMethodTypes: ["NGN_BANK_TRANSFER"], expiresInMinutes: 14 });
+    const body = JSON.parse(String(fetcher.mock.calls[0]![1].body));
+    expect(body.payment_method_types).toEqual(["NGN_BANK_TRANSFER"]);
+    expect(body.expires_in_minutes).toBe(14);
+    expect(body).not.toHaveProperty("merchant_bears_cost");
+    await expect(createBachsCheckout(sandbox, { ...request, paymentMethodTypes: ["NGN_BANK_TRANSFER", "NGN_CARD"] })).rejects.toMatchObject({ status: 400 });
+    await expect(createBachsCheckout(sandbox, { ...request, expiresInMinutes: 21 })).rejects.toMatchObject({ status: 400 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("fetches provider evidence without granting access or changing ledgers", async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(Response.json({

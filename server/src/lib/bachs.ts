@@ -25,6 +25,8 @@ export type BachsCheckoutInput = {
   successUrl?: string;
   cancelUrl?: string;
   metadata?: Record<string, unknown>;
+  paymentMethodTypes?: ("NGN_BANK_TRANSFER" | "NGN_CARD")[];
+  expiresInMinutes?: number;
 };
 
 export type BachsCheckout = {
@@ -144,6 +146,11 @@ export async function createBachsCheckout(
       (input.cancelUrl && !validHttpsUrl(input.cancelUrl)))
     throw new AppError(400, "BAD_REQUEST", "Bachs return URLs must use HTTPS.");
   const metadata = input.metadata ?? {};
+  if (input.paymentMethodTypes && (input.paymentMethodTypes.length !== 1 ||
+      !["NGN_BANK_TRANSFER", "NGN_CARD"].includes(input.paymentMethodTypes[0]!)))
+    throw new AppError(400, "BAD_REQUEST", "Choose one quoted NGN payment corridor.");
+  if (input.expiresInMinutes !== undefined && (!Number.isInteger(input.expiresInMinutes) || input.expiresInMinutes < 1 || input.expiresInMinutes > 20))
+    throw new AppError(400, "BAD_REQUEST", "Use a checkout expiry between one and twenty minutes.");
   if (Object.keys(metadata).length > 20 || new TextEncoder().encode(JSON.stringify(metadata)).length > 10_240)
     throw new AppError(400, "BAD_REQUEST", "Bachs checkout metadata exceeds its limits.");
 
@@ -155,6 +162,8 @@ export async function createBachsCheckout(
       customer: { email: input.email },
       reference: input.reference,
       metadata,
+      ...(input.paymentMethodTypes ? { payment_method_types: input.paymentMethodTypes } : {}),
+      ...(input.expiresInMinutes ? { expires_in_minutes: input.expiresInMinutes } : {}),
       ...(input.successUrl ? { success_url: input.successUrl } : {}),
       ...(input.cancelUrl ? { cancel_url: input.cancelUrl } : {}),
     },
