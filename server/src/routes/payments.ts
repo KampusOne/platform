@@ -12,7 +12,8 @@ import {
   phase3SchemaReady,
   requireFeature,
 } from "../lib/features";
-import { initializePaystack, validPaystackSignature } from "../lib/paystack";
+import { validPaystackSignature } from "../lib/paystack";
+import { claimPaystackWebhook, finishPaystackWebhook, initializePaystackOnce } from "../lib/payment-idempotency";
 import { reconcileRiderCommission } from "../lib/rider-finance";
 import { reconcileKira } from "../lib/kira-billing";
 import { reconcileMaterial } from "../lib/material-commerce";
@@ -228,18 +229,22 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
     );
 
   const existingResult = await database(context.env).execute<{
+    id: string;
+    amount_kobo: number;
     status: string;
     authorization_url: string | null;
     access_code: string | null;
     provider_reference: string;
   }>(sql`
-    select status, authorization_url, access_code, provider_reference
+    select id, amount_kobo, status, authorization_url, access_code, provider_reference
     from public.payment_attempts
     where user_id = ${user.id}::uuid and resource_type = ${parsed.data.resourceType}
       and resource_id = ${item.id}::uuid and idempotency_key = ${parsed.data.idempotencyKey}
     limit 1
   `);
   const existing = firstRow(existingResult);
+  if (existing && Number(existing.amount_kobo) !== Number(item.amount_kobo))
+    throw new AppError(409, "CONFLICT", "This payment attempt belongs to a previous price. Review the updated total before proceeding.");
   if (
     existing?.status === "INITIALIZED" &&
     existing.authorization_url &&
@@ -252,40 +257,60 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
       reused: true,
     });
   }
-  if (existing) {
+  if (existing && existing.status !== "CREATED")
     throw new AppError(
-      409,
-      "CONFLICT",
-      "That payment attempt cannot be reused. Start a new attempt.",
+      409, "CONFLICT",
+      "The saved payment has finished or needs review. Check its reference instead of retrying.",
+      { reference: existing.provider_reference, status: existing.status },
     );
-  }
 
-  const reference = `K1-${parsed.data.resourceType === "TUTORIAL_BOOKING" ? "T" : "O"}-${crypto.randomUUID()}`;
-  const attemptId = crypto.randomUUID();
-  const inserted = await database(context.env).execute<{ id: string }>(sql`
-    insert into public.payment_attempts (
-      id, user_id, university_id, resource_type, resource_id, provider_reference,
-      amount_kobo, idempotency_key, status
-    ) values (
-      ${attemptId}::uuid, ${user.id}::uuid, ${user.universityId ?? null}::uuid,
-      ${parsed.data.resourceType}, ${item.id}::uuid, ${reference},
-      ${Number(item.amount_kobo)}, ${parsed.data.idempotencyKey}, 'CREATED'
-    ) on conflict do nothing
-    returning id
-  `);
-  if (!firstRow(inserted)) {
-    throw new AppError(
-      409,
-      "CONFLICT",
-      "A checkout for this item is already active. Resume it from your purchases.",
-    );
+  let reference = existing?.provider_reference ??
+    `K1-${parsed.data.resourceType === "TUTORIAL_BOOKING" ? "T" : "O"}-${crypto.randomUUID()}`;
+  let attemptId = existing?.id ?? crypto.randomUUID();
+  if (!existing) {
+    const inserted = await database(context.env).execute<{ id: string }>(sql`
+      insert into public.payment_attempts (
+        id, user_id, university_id, resource_type, resource_id, provider_reference,
+        amount_kobo, idempotency_key, status
+      ) values (
+        ${attemptId}::uuid, ${user.id}::uuid, ${user.universityId ?? null}::uuid,
+        ${parsed.data.resourceType}, ${item.id}::uuid, ${reference},
+        ${Number(item.amount_kobo)}, ${parsed.data.idempotencyKey}, 'CREATED'
+      ) on conflict do nothing
+      returning id
+    `);
+    if (!firstRow(inserted)) {
+      // A simultaneous request may already have inserted this exact key.
+      // Adopt its durable reference; NEVER create a new provider reference.
+      const saved = firstRow(await database(context.env).execute<{
+        id: string; provider_reference: string; amount_kobo: number; status: string;
+        authorization_url: string | null; access_code: string | null;
+      }>(sql`
+        select id,provider_reference,amount_kobo,status,authorization_url,access_code
+        from public.payment_attempts
+        where user_id=${user.id}::uuid and resource_type=${parsed.data.resourceType}
+          and resource_id=${item.id}::uuid and idempotency_key=${parsed.data.idempotencyKey}
+        limit 1
+      `));
+      if (!saved || Number(saved.amount_kobo) !== Number(item.amount_kobo))
+        throw new AppError(409, "CONFLICT", "Another checkout is active for this purchase. Check its payment status.");
+      if (saved.status === "INITIALIZED" && saved.authorization_url && saved.access_code)
+        return context.json({
+          authorizationUrl: saved.authorization_url,accessCode: saved.access_code,
+          reference: saved.provider_reference,reused: true,
+        });
+      if (saved.status !== "CREATED")
+        throw new AppError(409, "CONFLICT", "This checkout already finished or needs review.", { reference: saved.provider_reference,status: saved.status });
+      reference = saved.provider_reference;
+      attemptId = saved.id;
+    }
   }
   const callbackUrl = context.env.APP_ORIGIN
     ? `${context.env.APP_ORIGIN.replace(/\/$/, "")}/payment/return`
     : undefined;
   let initialized: { authorization_url?: string; access_code?: string };
   try {
-    initialized = await initializePaystack(context.env, {
+    initialized = await initializePaystackOnce(context.env, {
       email: user.email,
       amountKobo: Number(item.amount_kobo),
       reference,
@@ -298,14 +323,14 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
     });
   } catch (caught) {
     await database(context.env).execute(sql`
-      update public.payment_attempts set status = 'FAILED', failure_code = 'INITIALIZATION_FAILED',
+      update public.payment_attempts set failure_code = 'INITIALIZATION_UNCERTAIN',
         updated_at = now() where id = ${attemptId}::uuid and status = 'CREATED'
     `);
     throw caught;
   }
   if (!initialized.authorization_url || !initialized.access_code) {
     await database(context.env).execute(sql`
-      update public.payment_attempts set status = 'FAILED', failure_code = 'INCOMPLETE_PROVIDER_SESSION',
+      update public.payment_attempts set failure_code = 'INCOMPLETE_PROVIDER_SESSION',
         updated_at = now() where id = ${attemptId}::uuid and status = 'CREATED'
     `);
     throw new AppError(
@@ -315,7 +340,7 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
     );
   }
   await database(context.env).execute(sql`
-    update public.payment_attempts set status = 'INITIALIZED',
+    update public.payment_attempts set status = 'INITIALIZED', failure_code = null,
       authorization_url = ${initialized.authorization_url}, access_code = ${initialized.access_code},
       initialized_at = now(), updated_at = now()
     where id = ${attemptId}::uuid and status = 'CREATED'
