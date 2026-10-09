@@ -14,6 +14,7 @@ export type MapPayload={
   route:unknown;
   routeKey?:string;
   origin?:MapCoordinate|null;
+  originIsLive?:boolean;
   destination?:MapCoordinate|null;
   layer:string;
   pickMode?:'origin'|'destination'|null;

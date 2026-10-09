@@ -113,6 +113,9 @@ jobs:
         working-directory: mobile
       - run: npm run check
         working-directory: mobile
+      - name: Verify live GPS map routing and map viewer
+        run: node scripts/check-campus-map.cjs
+        working-directory: mobile
       - name: Test feed text and compact layout
         run: node --experimental-strip-types --test tests/feed-post-text.test.mjs
       - run: npm run export:web

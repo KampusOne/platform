@@ -55,9 +55,30 @@ assert.equal(sources.get('chosen').data.features.length,2);
 assert.equal(sources.get('places').data.features.length,payload.places.length-2);
 assert.equal(sources.get('endpoints').data.features.length,2);
 assert.equal(mapInstance.fits.at(-1).duration,0);
+// A route computed on snapped campus paths must still start visually at the device's actual GPS dot.
+const liveStart=[path.geometry.coordinates[0][0]+0.0002,path.geometry.coordinates[0][1]];
+context.payload={...payload,selectedId:null,originId:null,origin:liveStart,originIsLive:true,location:liveStart,route:path.geometry,routeKey:'live-gps-route'};
+vm.runInContext('apply(payload)',context);
+assert.deepEqual(Array.from(sources.get('endpoints').data.features[0].geometry.coordinates),liveStart,'A marker must follow current GPS, not the snapped path');
+assert.equal(sources.get('approach').data.features.length,1,'Show the gap between GPS and a sourced campus walkway');
+assert.equal(sources.get('pins').data.features.length,0,'Do not duplicate the current-location A marker with a manual origin pin');
+context.payload={...context.payload,route:null,origin:null,routeKey:'gps-fix-expired'};
+vm.runInContext('apply(payload)',context);
+assert.equal(sources.get('route').data.features.length,0,'An invalidated route must not remain on the map');
+assert.equal(sources.get('endpoints').data.features.length,0,'Stale A/B markers must disappear when the GPS fix expires');
+assert.equal(sources.get('approach').data.features.length,0,'The dashed approach must disappear with an invalidated route');
 const fits=mapInstance.fits.length;vm.runInContext('apply({location:[5.62,6.4]})',context);
 assert.equal(mapInstance.fits.length,fits,'A location-only patch must not reset route framing');
 assert.equal(sources.get('features').data.features.length,sourceFeatures.length,'A small bridge patch must preserve sourced map geometry');
+// Route readiness is stricter than drawing the approximate blue location dot.
+const gpsContext={exports:{}};vm.createContext(gpsContext);
+vm.runInContext(typescript.transpileModule(fs.readFileSync(`${root}/mobile/src/lib/campus-route-location.ts`,'utf8'),{compilerOptions:{module:typescript.ModuleKind.CommonJS,target:typescript.ScriptTarget.ES2022}}).outputText,gpsContext);
+const now=Date.now(),fix={latitude:6.398255,longitude:5.618838,timestamp:now-1000,accuracy:10,source:'live'};
+assert.equal(gpsContext.exports.usableRouteGpsFix(fix,now),true);
+assert.equal(gpsContext.exports.usableRouteGpsFix({...fix,source:'cached'},now),false,'Last-known location must not be mistaken for a fresh GPS measurement');
+assert.equal(gpsContext.exports.usableRouteGpsFix({...fix,accuracy:120},now),false,'Inaccurate GPS must not start navigation');
+assert.equal(gpsContext.exports.usableRouteGpsFix({...fix,timestamp:now-61000},now),false,'Old GPS must invalidate an already displayed route');
+assert.equal(gpsContext.exports.usableRouteGpsFix({...fix,latitude:NaN},now),false);
 const petroleum=payload.places.find(place=>place.name==='Department of Petroleum Engineering');
 assert.ok(petroleum,'Use a newly reviewed landmark for camera verification');
 const focus={coordinate:[Number(petroleum.longitude),Number(petroleum.latitude)],nonce:101,zoom:17};
@@ -113,4 +134,4 @@ async function verifyGeometryCache(){
   assert.equal(partial.features,null,'Missing geometry must not become invented map data');
   assert.equal(partial.places.length,payload.places.length,'Places remain available when a geometry page is unavailable');
 }
-verifyGeometryCache().then(()=>console.log(JSON.stringify({status:'PASS',validatedLayers:capturedStyle.layers.length,sourcedFeatures:sourceFeatures.length,places:payload.places.length,checks:['official MapLibre style validation','clustered dense directory','unclustered selected start/end','manual point bridge','sourced path display','safe viewport padding','distinct route endpoints','reduced motion','stable camera on same route','landmark pan survives bridge updates and drawer resizing','route framing takes precedence over stale focus','bounded native geometry cache','ordered cache writes and corrupt/missing cache recovery']}))).catch(error=>{console.error(error);process.exitCode=1;});
+verifyGeometryCache().then(()=>console.log(JSON.stringify({status:'PASS',validatedLayers:capturedStyle.layers.length,sourcedFeatures:sourceFeatures.length,places:payload.places.length,checks:['official MapLibre style validation','clustered dense directory','unclustered selected start/end','manual point bridge','sourced path display','safe viewport padding','distinct route endpoints','live GPS A marker and path approach','stale route removal','GPS freshness and accuracy','reduced motion','stable camera on same route','landmark pan survives bridge updates and drawer resizing','route framing takes precedence over stale focus','bounded native geometry cache','ordered cache writes and corrupt/missing cache recovery']}))).catch(error=>{console.error(error);process.exitCode=1;});

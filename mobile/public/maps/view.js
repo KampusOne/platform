@@ -6,6 +6,7 @@ const empty={type:'FeatureCollection',features:[]};
 const collection=features=>({type:'FeatureCollection',features});
 const point=(coordinate,properties)=>({type:'Feature',geometry:{type:'Point',coordinates:coordinate},properties});
 const validPoint=coordinate=>Array.isArray(coordinate)&&coordinate.length===2&&coordinate.every(Number.isFinite)&&Math.abs(coordinate[0])<=180&&Math.abs(coordinate[1])<=90;
+const pointDistanceMetres=(a,b)=>{const rad=Math.PI/180,dy=(a[1]-b[1])*rad,dx=(a[0]-b[0])*rad*Math.cos((a[1]+b[1])*rad/2);return 6371000*Math.hypot(dx,dy);};
 let catalog=createDefaultMapSources(),campusId='',focusNonce=0,lastLayer='osm',failures=0,loaded=false,lastRoute='',latest=null,lastTiles=JSON.stringify(catalog.sources[0].tiles),renderedFeatures=null,lastPlaces=null,lastSelection='',lastPadding='',lastThreeD=false;
 const map=new maplibregl.Map({container:'map',style:{version:8,glyphs:'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',sources:{base:{type:'raster',tiles:catalog.sources[0].tiles,tileSize:256,attribution:catalog.sources[0].attribution}},layers:[{id:'base',type:'raster',source:'base',paint:{'raster-saturation':-.35,'raster-contrast':-.1}}]},center:[5.618838,6.398255],zoom:15,minZoom:2,maxZoom:20,dragRotate:true,touchZoomRotate:true,attributionControl:false});
 map.addControl(new maplibregl.AttributionControl({compact:true}),'top-left');
@@ -32,7 +33,7 @@ map.on('load',()=>{
   loaded=true;
   map.addImage('walking-direction',routeArrow(),{sdf:true});
   map.addSource('places',{type:'geojson',data:empty,cluster:true,clusterRadius:34,clusterMaxZoom:15});
-  for(const name of ['chosen','features','route','position','endpoints','pins'])map.addSource(name,{type:'geojson',data:empty});
+  for(const name of ['chosen','features','route','approach','position','endpoints','pins'])map.addSource(name,{type:'geojson',data:empty});
   map.addLayer({id:'campus-land',type:'fill',source:'features',filter:['all',['==',['geometry-type'],'Polygon'],['==',['get','kind'],'BOUNDARY']],paint:{'fill-color':'#e3dccd','fill-opacity':.1}});
   map.addLayer({id:'building-shadows',type:'fill',source:'features',filter:buildingFilter,minzoom:15,paint:{'fill-color':'#796959','fill-opacity':.16,'fill-translate':[2,3]}});
   map.addLayer({id:'buildings',type:'fill',source:'features',filter:buildingFilter,paint:{'fill-color':['match',['get','amenity'],'hospital','#c9d9d0','clinic','#c9d9d0','university','#d8cabb','school','#d8cabb','#d2c0ad'],'fill-opacity':.68,'fill-outline-color':'#a28d76'}});
@@ -43,6 +44,8 @@ map.on('load',()=>{
   map.addLayer({id:'route-casing',type:'line',source:'route',paint:{'line-color':'#fffaf4','line-width':['interpolate',['linear'],['zoom'],13,8,18,11],'line-opacity':.95},layout:{'line-cap':'round','line-join':'round'}});
   map.addLayer({id:'route-line',type:'line',source:'route',paint:{'line-color':'#825533','line-width':['interpolate',['linear'],['zoom'],13,4,18,6]},layout:{'line-cap':'round','line-join':'round'}});
   map.addLayer({id:'walking-direction',type:'symbol',source:'route',minzoom:14,layout:{'symbol-placement':'line','symbol-spacing':64,'icon-image':'walking-direction','icon-size':.6,'icon-rotation-alignment':'map','icon-keep-upright':false,'icon-allow-overlap':true},paint:{'icon-color':'#fffaf4','icon-opacity':.9}});
+  // Dashed approach is not a verified campus walkway: it links the actual GPS fix to the closest mapped path.
+  map.addLayer({id:'route-approach',type:'line',source:'approach',paint:{'line-color':'#428872','line-width':3,'line-dasharray':[1.5,1.5]},layout:{'line-cap':'round','line-join':'round'}});
   map.addLayer({id:'clusters',type:'circle',source:'places',filter:['has','point_count'],paint:{'circle-radius':['step',['get','point_count'],15,15,19,40,23],'circle-color':'#7b614b','circle-stroke-width':2,'circle-stroke-color':'#fffaf4','circle-opacity':.94}});
   map.addLayer({id:'cluster-count',type:'symbol',source:'places',filter:['has','point_count'],layout:{'text-field':['get','point_count_abbreviated'],'text-size':11},paint:{'text-color':'#ffffff'}});
   map.addLayer({id:'poi',type:'circle',source:'places',filter:['!', ['has','point_count']],paint:{'circle-radius':['interpolate',['linear'],['zoom'],13,3,17,5.5],'circle-color':colours,'circle-stroke-width':1.5,'circle-stroke-color':'#fff'}});
@@ -50,10 +53,10 @@ map.on('load',()=>{
   map.addLayer({id:'chosen-poi',type:'circle',source:'chosen',paint:{'circle-radius':8,'circle-color':colours,'circle-stroke-width':3,'circle-stroke-color':'#fffaf4'}});
   map.addLayer({id:'chosen-label',type:'symbol',source:'chosen',layout:{'text-field':['get','name'],'text-size':12,'text-anchor':'top','text-offset':[0,1.1],'text-max-width':10,'text-padding':8,'text-allow-overlap':false,'text-ignore-placement':false,'symbol-sort-key':['case',['get','selected'],0,1]},paint:{'text-color':'#332821','text-halo-color':'#fffaf4','text-halo-width':2.5}});
   map.addLayer({id:'manual-pins',type:'circle',source:'pins',paint:{'circle-radius':6,'circle-color':'#fffaf4','circle-stroke-color':['match',['get','role'],'origin','#428872','#825533'],'circle-stroke-width':2}});
-  map.addLayer({id:'route-endpoints',type:'circle',source:'endpoints',paint:{'circle-radius':11,'circle-color':['match',['get','role'],'origin','#428872','#825533'],'circle-stroke-width':3,'circle-stroke-color':'#fffaf4'}});
-  map.addLayer({id:'route-endpoint-labels',type:'symbol',source:'endpoints',layout:{'text-field':['get','label'],'text-size':10,'text-allow-overlap':true},paint:{'text-color':'#fff'}});
   map.addLayer({id:'my-position-halo',type:'circle',source:'position',paint:{'circle-radius':15,'circle-color':'#367cca','circle-opacity':.15}});
   map.addLayer({id:'my-position',type:'circle',source:'position',paint:{'circle-radius':6,'circle-color':'#367cca','circle-stroke-width':2.5,'circle-stroke-color':'#fff'}});
+  map.addLayer({id:'route-endpoints',type:'circle',source:'endpoints',paint:{'circle-radius':11,'circle-color':['match',['get','role'],'origin','#428872','#825533'],'circle-stroke-width':3,'circle-stroke-color':'#fffaf4'}});
+  map.addLayer({id:'route-endpoint-labels',type:'symbol',source:'endpoints',layout:{'text-field':['get','label'],'text-size':10,'text-allow-overlap':true},paint:{'text-color':'#fff'}});
   const placeLayers=['poi','poi-label','chosen-poi','chosen-label'];
   for(const layer of placeLayers){
     map.on('click',layer,event=>{const id=event.features?.[0]?.properties?.id;if(id)post({type:'pick',id:String(id)});});
@@ -99,10 +102,13 @@ function apply(incoming){
   const coords=route?route.coordinates.filter(validPoint):[];
   map.getSource('route').setData(coords.length>=2?collection([{type:'Feature',geometry:{type:'LineString',coordinates:coords},properties:{}}]):empty);
   map.getSource('position').setData(validPoint(payload.location)?collection([point(payload.location,{})]):empty);
-  const endpointFeatures=coords.length>=2?[point(coords[0],{role:'origin',label:'A'}),point(coords.at(-1),{role:'destination',label:'B'})]:[];
+  const liveOrigin=coords.length>=2&&payload.originIsLive&&validPoint(payload.origin);
+  const endpointFeatures=coords.length>=2?[point(liveOrigin?payload.origin:coords[0],{role:'origin',label:'A'}),point(coords.at(-1),{role:'destination',label:'B'})]:[];
   map.getSource('endpoints').setData(collection(endpointFeatures));
+  const approach=liveOrigin&&pointDistanceMetres(payload.origin,coords[0])>8?collection([{type:'Feature',geometry:{type:'LineString',coordinates:[payload.origin,coords[0]]},properties:{}}]):empty;
+  map.getSource('approach').setData(approach);
   const pins=[];
-  if(validPoint(payload.origin)&&!payload.originId)pins.push(point(payload.origin,{role:'origin'}));
+  if(validPoint(payload.origin)&&!payload.originId&&!payload.originIsLive)pins.push(point(payload.origin,{role:'origin'}));
   if(validPoint(payload.destination)&&!payload.selectedId)pins.push(point(payload.destination,{role:'destination'}));
   map.getSource('pins').setData(collection(pins));
   const routeKey=payload.routeKey??JSON.stringify(route??null);
