@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 export type CampusLiveLocation = {
   accuracy: number | null;
+  source: 'cached' | 'live';
   latitude: number;
   longitude: number;
   timestamp: number;
@@ -18,9 +19,10 @@ export type CampusLocationState = {
   servicesEnabled: boolean;
 };
 
-function normalizeLocation(location: Location.LocationObject): CampusLiveLocation {
+function normalizeLocation(location: Location.LocationObject, source: 'cached' | 'live' = 'live'): CampusLiveLocation {
   return {
     accuracy: location.coords.accuracy,
+    source,
     latitude: location.coords.latitude,
     longitude: location.coords.longitude,
     timestamp: location.timestamp,
@@ -88,7 +90,7 @@ export function useCampusLocation() {
         requiredAccuracy: 150,
       });
       if (lastKnown && focusedRef.current) {
-        firstPosition = normalizeLocation(lastKnown);
+        firstPosition = normalizeLocation(lastKnown, 'cached');
         setState((current) => ({
           ...current,
           position: firstPosition,
