@@ -42,7 +42,9 @@ export function providerConfiguration(env: AIEnvironment, mode: AIMode, mimeType
   const token = env.HF_TOKEN?.trim();
   const chatModel = env.HF_CHAT_MODEL?.trim();
   const workers = workersAIConfiguration(env, tier);
-  if (!image && (env.AI_TEXT_PROVIDER === 'workers-ai' || (!token && workers.configured))) {
+  // The native binding activates text inference without adding billable/free-
+  // plan variable slots. An explicit HF preference still permits recovery.
+  if (!image && (env.AI_TEXT_PROVIDER === 'workers-ai' || (workers.configured && env.AI_TEXT_PROVIDER !== 'huggingface'))) {
     return { provider: 'workers-ai' as const, token: undefined, model: workers.model, fallbackModel: undefined, missing: workers.configured ? [] : ['AI'], configured: workers.configured };
   }
   // Pro is a KampusOne entitlement (higher quotas, context and voice), not a
