@@ -9,7 +9,8 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import {snoozeNotification} from '@/src/lib/alarms';
 import {getRingingAlarm,nativeAlarms,type RingingAlarm} from '@/src/lib/native-alarms';
 import {snoozeWebAlarm,stopWebRinging} from '@/src/lib/web-alarms';
-import {api} from '@/src/lib/api';
+import {alarmFollowupKind} from '@/src/lib/alarm-followup';
+import {shouldOfferClassAlarmChoice} from '@/src/lib/class-alarm-prompt';
 import {useToast} from '@/src/components/toast';
 
 const INK='#29231F',MIDNIGHT='#1E1917',DEEP='#A8462E',BRAND='#C35D38',SAND='#F1DFC8',CREAM='#FBF7F2',PEACH='#E9B18E';
@@ -40,14 +41,12 @@ export default function AlarmRing(){
  const params=useLocalSearchParams<{
   alarmId?:string;alarmTime?:string;label?:string;snooze?:string;notificationId?:string;
   courseCode?:string;classTitle?:string;classStartsAt?:string;classEndsAt?:string;
-  venue?:string;lecturer?:string;leadMinutes?:string;examId?:string;
+  venue?:string;lecturer?:string;leadMinutes?:string;examId?:string;timetableEntryId?:string;
  }>();
  const toast=useToast();
  const {height,width}=useWindowDimensions();
  const compact=height<720;
  const [alarm,setAlarm]=useState<RingingAlarm|null>(null);
- const [examAlarm,setExamAlarm]=useState(Boolean(params.examId));
- useEffect(()=>{let live=true;if(params.alarmId)void api('/v1/exams/alarms/'+params.alarmId).then(()=>{if(live)setExamAlarm(true);}).catch(()=>undefined);return()=>{live=false;};},[params.alarmId]);
  const [now,setNow]=useState(Date.now());
  const [busy,setBusy]=useState(false);
  const [loaded,setLoaded]=useState(!nativeAlarms);
@@ -76,7 +75,10 @@ export default function AlarmRing(){
  },[alarm?.snooze_minutes,snoozeTouched]);
 
  const ringing=nativeAlarms?Boolean(alarm&&alarm.endsAt>now):true;
- const isClass=Boolean(alarm?.timetable_entry_id||params.courseCode||params.classStartsAt);
+ const followup=alarmFollowupKind({timetableEntryId:alarm?.timetable_entry_id??params.timetableEntryId,
+   examId:alarm?.exam_id??params.examId,
+   classStartsAt:alarm?.class_starts_at??params.classStartsAt,courseCode:alarm?.course_code??params.courseCode});
+ const isClass=followup==='CLASS';
  const label=alarm?.label??params.label??'Alarm';
  const courseCode=alarm?.course_code??params.courseCode??'';
  const classTitle=alarm?.course_title??params.classTitle??'';
@@ -88,7 +90,7 @@ export default function AlarmRing(){
  const showTitle=Boolean(classTitle&&classTitle.toLowerCase()!==courseDisplay.toLowerCase()&&classTitle.toLowerCase()!==label.toLowerCase());
  const alarmClock=displayClock(alarm?.time??params.alarmTime??(isClass?classStartsAt:''));
  const shownClock=alarmClock.clock?alarmClock:campusClock(now);
- const quote=isClass?'Get ready for class':'It’s time. Do your thing.';
+ const quote=isClass?'Get ready for class':followup==='EXAM'?'Your paper is coming up':'It’s time. Do your thing.';
  const secondsLeft=alarm?Math.max(0,Math.ceil((alarm.endsAt-now)/1000)):null;
  const ringingText=secondsLeft===null?'Ringing':Math.floor(secondsLeft/60)+':'+String(secondsLeft%60).padStart(2,'0')+' remaining';
  const railWidth=Math.min(Math.max(260,width-48),360);
@@ -115,7 +117,15 @@ export default function AlarmRing(){
     });
    }
    if(params.notificationId&&Platform.OS!=='web')await Notifications.dismissNotificationAsync(params.notificationId);
-   if(!snooze&&(examAlarm||alarm?.exam_id)){router.replace({pathname:'/exam-awareness',params:{alarmId:params.alarmId??alarm!.id}});return;}
+   const id=params.alarmId??alarm?.id;
+   if(!snooze&&id&&followup==='EXAM'){
+    router.replace({pathname:'/exam-awareness',params:{alarmId:id}});
+    return;
+   }
+   if(!snooze&&id&&followup==='CLASS'&&await shouldOfferClassAlarmChoice()){
+    router.replace({pathname:'/class-alarm-day',params:{alarmId:id}});
+    return;
+   }
    router.canGoBack()?router.back():router.replace('/alarms');
   }catch(error){
    toast(error instanceof Error?error.message:'Could not update alarm','error');
@@ -166,7 +176,7 @@ export default function AlarmRing(){
      <View style={styles.brandDot}/>
      <Text style={styles.brand}>KampusOne</Text>
     </View>
-    <Text style={styles.topMeta}>{examAlarm||alarm?.exam_id?'EXAM ALARM':isClass?'CLASS ALARM':'ALARM'}</Text>
+    <Text style={styles.topMeta}>{followup==='EXAM'?'EXAM ALARM':isClass?'CLASS ALARM':'ALARM'}</Text>
    </View>
 
    <View style={[styles.hero,compact&&styles.heroCompact]}>
@@ -215,7 +225,7 @@ export default function AlarmRing(){
      </View>
     </>:null}
 
-    <Pressable accessibilityLabel={ringing?'Dismiss alarm':'Back to alarms'} accessibilityRole="button" disabled={busy} onPress={()=>void finish(false)} style={({pressed})=>[styles.dismissOuter,compact&&styles.dismissOuterCompact,busy&&styles.disabled,pressed&&styles.dismissPressed]}>
+    <Pressable accessibilityLabel={ringing?'Dismiss alarm':'Back to alarms'} accessibilityRole="button" disabled={busy||!loaded} onPress={()=>void finish(false)} style={({pressed})=>[styles.dismissOuter,compact&&styles.dismissOuterCompact,busy&&styles.disabled,pressed&&styles.dismissPressed]}>
      <View style={[styles.dismissInner,compact&&styles.dismissInnerCompact]}>
       <Ionicons name={ringing?'close':'arrow-back'} size={compact?30:34} color={CREAM}/>
      </View>
