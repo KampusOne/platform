@@ -4,7 +4,8 @@ import { z } from "@kampusone/contracts";
 import { database, firstRow } from "./database";
 import { approvedCommercePolicy } from "./commerce-pricing";
 import { checkoutPrice, listingPrice } from "./pricing";
-import { initializePaystack, verifyPaystack } from "./paystack";
+import { verifyPaystack } from "./paystack";
+import { initializePaystackOnce } from "./payment-idempotency";
 import { requireUnblocked } from "./profile-safety";
 import { AppError } from "./errors";
 import type { AuthenticatedUser, Bindings } from "../types";
@@ -222,7 +223,7 @@ export async function initializeMaterialPayment(
       "RATE_LIMITED",
       "Please wait before opening another checkout.",
     );
-  const result = await initializePaystack(env, {
+  const result = await initializePaystackOnce(env, {
     email: user.email,
     amountKobo: Number(purchase.amount_kobo),
     reference: attempt.provider_reference,
