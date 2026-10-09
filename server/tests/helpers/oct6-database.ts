@@ -34,6 +34,7 @@ export async function october6Database() {
       try{await db.exec(await readFile(new URL('../../../database/neon/migrations/'+name+'.sql',import.meta.url),'utf8'));}
       catch(error){throw new Error('Migration '+name+': '+(error as Error).message);}
     }
+    await db.exec(await readFile(new URL('../../../database/neon/migrations/20261009100000_payment_idempotency_inbox.sql',import.meta.url),'utf8'));
     return db;
   }catch(error){await db.close();throw error;}
 }
