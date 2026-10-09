@@ -8,6 +8,7 @@ import {useThemeStyles,type Theme} from '@/src/lib/appearance';
 import {UNIBEN_UGBOWO_FALLBACK,type CampusPlace} from '@/src/lib/campus-data';
 import {insideCampusBoundary,type CampusBoundary} from '@/src/lib/map-boundary';
 import {useCampusLocation} from '@/src/lib/campus-location';
+import {usableRouteGpsFix} from '@/src/lib/campus-route-location';
 import {readCampusMapCache,writeCampusMapCache} from '@/src/lib/campus-map-cache';
 import {CampusMapSurface,type MapCoordinate,type MapPayload} from '@/src/components/campus-map-surface';
 import {CampusMapDrawer} from '@/src/components/campus-map-drawer';
@@ -38,15 +39,21 @@ export default function CampusMap(){
   const [start,setStart]=useState<Endpoint|null>(null),[destination,setDestination]=useState<Endpoint|null>(null),[useCurrent,setUseCurrent]=useState(false),[picker,setPicker]=useState<'origin'|'destination'|null>(null),[query,setQuery]=useState('');
   const [loading,setLoading]=useState(true),[dataError,setDataError]=useState(''),[routeError,setRouteError]=useState(''),[route,setRoute]=useState<Route|null>(null),[routeBusy,setRouteBusy]=useState(false),[detail,setDetail]=useState<Detail|null>(null);
   const [layer,setLayer]=useState('osm'),[focus,setFocus]=useState<MapPayload['focus']>(null),[offCampusDismissed,setOffCampusDismissed]=useState(false),[attempt,setAttempt]=useState(0),[reload,setReload]=useState(0),[sheetHeight,setSheetHeight]=useState(166),[topHeight,setTopHeight]=useState(48);
-  const activePath=useRef<Route|null>(null),progress=useRef(0),offPathTicks=useRef(0),lastReroute=useRef(0);
+  const activePath=useRef<Route|null>(null),activeOrigin=useRef<MapCoordinate|null>(null),progress=useRef(0),offPathTicks=useRef(0),lastReroute=useRef(0);
+  const latestGps=useRef<{position:MapCoordinate|null;ready:boolean}>({position:null,ready:false});
   const [routeRevision,setRouteRevision]=useState(0);
   const [routeChoices,setRouteChoices]=useState<Route[]>([]),[routeChoice,setRouteChoice]=useState(0);
   const campus=campuses.find(item=>item.id===campusId);
   const centre=useMemo<MapCoordinate>(()=>campus?[Number(campus.longitude),Number(campus.latitude)]:[5.618838,6.398255],[campus]);
   const current=location.position;
   const live=useMemo<MapCoordinate|null>(()=>current?[current.longitude,current.latitude]:null,[current]);
+  // A previously good fix can expire while the phone is stationary; invalidate its route even without new GPS events.
+  const [locationClock,setLocationClock]=useState(Date.now());
+  useEffect(()=>{if(!useCurrent)return;const interval=setInterval(()=>setLocationClock(Date.now()),10000);return()=>clearInterval(interval);},[useCurrent]);
+  const locationReady=usableRouteGpsFix(current,Math.max(locationClock,Date.now()));
+  latestGps.current={position:live,ready:locationReady};
   const origin=useMemo<Endpoint|null>(()=>useCurrent?(live?{coordinate:live,name:'My current location'}:null):start,[useCurrent,live,start]);
-  const outside=Boolean(live&&(mapInfo?.boundary?!insideCampusBoundary(live,mapInfo.boundary):distance(live,centre)>1800));
+  const outside=Boolean(locationReady&&live&&(mapInfo?.boundary?!insideCampusBoundary(live,mapInfo.boundary):distance(live,centre)>1800));
   const bottomInset=Math.max(insets.bottom,8)+80;
   const onHeightChange=useCallback((height:number)=>setSheetHeight(height),[]);
   useEffect(()=>{
@@ -107,23 +114,50 @@ export default function CampusMap(){
   // Ignore tiny GPS changes. Selecting a campus start never depends on GPS permission.
   const originBucket=useCurrent?'current':origin?`${origin.coordinate[0].toFixed(4)},${origin.coordinate[1].toFixed(4)}`:'';
   const destinationBucket=destination?`${destination.coordinate[0]},${destination.coordinate[1]},${destination.placeId??''}`:'';
-  const locationReady=Boolean(current&&Date.now()-current.timestamp<=60000&&(current.accuracy??999)<=100);
   useEffect(()=>{
-    let active=true;setRouteBusy(false);setRouteError('');
-    if(!origin||!destination){activePath.current=null;setRouteChoices([]);setRoute(null);return;}
-    if(useCurrent&&outside){setRouteError('Choose a campus starting point. Your current location is outside campus.');return;}
-    if(useCurrent&&!locationReady){setRouteError('Refresh your current location, or choose a campus starting point.');return;}
+    let active=true;
+    // Never leave a route or A/B markers visible after a start, campus, GPS-validity or destination change.
+    activePath.current=null;activeOrigin.current=null;progress.current=0;offPathTicks.current=0;
+    setRoute(null);setRouteChoices([]);setRouteChoice(0);setRouteBusy(false);setRouteError('');
+    if(!destination||(!origin&&!useCurrent))return()=>{active=false;};
+    if(useCurrent&&!locationReady){
+      setRouteError('Waiting for an accurate GPS fix. Tap Retry to refresh, or choose a campus starting point.');
+      return()=>{active=false;};
+    }
+    if(!origin)return()=>{active=false;};
+    if(useCurrent&&outside){
+      setRouteError('Your current location is outside this campus. Choose a campus starting point.');
+      return()=>{active=false;};
+    }
+    const requestedOrigin=origin.coordinate;
     setRouteBusy(true);
-    void api<unknown>('/v1/maps/route',{method:'POST',body:JSON.stringify({campusId,origin:origin.coordinate,...(start?.placeId&&!useCurrent?{originPlaceId:start.placeId}:{}),...(destination.placeId?{destinationId:destination.placeId}:{destination:destination.coordinate})})}).then(readCampusRoute).then(result=>{
-      if(active){setRouteChoices([result,...(result.alternatives??[])]);setRouteChoice(0);activePath.current=result;progress.current=0;offPathTicks.current=0;setRoute(result);setRouteRevision(v=>v+1);setRouteError('');}
+    void api<unknown>('/v1/maps/route',{method:'POST',body:JSON.stringify({campusId,origin:requestedOrigin,...(start?.placeId&&!useCurrent?{originPlaceId:start.placeId}:{}),...(destination.placeId?{destinationId:destination.placeId}:{destination:destination.coordinate})})}).then(readCampusRoute).then(result=>{
+      if(!active)return;
+      // A slow response must not revive directions calculated from an older device position.
+      const gps=latestGps.current;
+      if(useCurrent&&(!gps.ready||!gps.position||distance(requestedOrigin,gps.position)>70)){
+        setRouteError('Your GPS position changed while directions were loading. Recalculating…');
+        setAttempt(value=>value+1);
+        return;
+      }
+      setRouteChoices([result,...(result.alternatives??[])]);
+      setRouteChoice(0);activePath.current=result;activeOrigin.current=requestedOrigin;
+      progress.current=0;offPathTicks.current=0;setRoute(result);setRouteRevision(v=>v+1);setRouteError('');
     }).catch(error=>{if(active)setRouteError(error instanceof Error?error.message:'Directions could not load. Try another mapped point.');}).finally(()=>{if(active)setRouteBusy(false);});
     return()=>{active=false;};
   },[campusId,originBucket,start?.placeId,destinationBucket,useCurrent,locationReady,outside,attempt]);
   useEffect(()=>{
-    if(!useCurrent||!live||!activePath.current||!current||!locationReady||(current.accuracy??999)>50)return;
-    const update=routeProgress(activePath.current,live,progress.current);
-    if(update.offPathMetres>Math.max(45,(current.accuracy??0)*2.5)){
-      if(++offPathTicks.current>=3&&Date.now()-lastReroute.current>30000){lastReroute.current=Date.now();offPathTicks.current=0;setAttempt(v=>v+1);}
+    if(!useCurrent||!live||!activePath.current||!current||!locationReady)return;
+    const update=routeProgress(activePath.current,live,progress.current),accuracy=current.accuracy??999;
+    // Ignore GPS jitter around the original path snap. Re-route only after real displacement and repeated off-path fixes.
+    if(update.offPathMetres>Math.max(45,accuracy*2.5)&&activeOrigin.current&&distance(activeOrigin.current,live)>Math.max(60,accuracy*2.5)){
+      if(++offPathTicks.current>=2){
+        activePath.current=null;activeOrigin.current=null;offPathTicks.current=0;
+        setRoute(null);setRouteChoices([]);setRouteChoice(0);
+        if(Date.now()-lastReroute.current>10000){
+          lastReroute.current=Date.now();setRouteError('Recalculating directions from your new position…');setAttempt(v=>v+1);
+        }else setRouteError('Your location changed. Tap Retry to recalculate directions.');
+      }
       return;
     }
     offPathTicks.current=0;
@@ -146,16 +180,23 @@ export default function CampusMap(){
     setEndpoint({coordinate,name:picker==='origin'?'Map starting point':'Destination pin'});
   },[picker,mapInfo,centre,setEndpoint]);
   const locate=async()=>{
-    setPicker(null);setQuery('');
+    setPicker(null);setQuery('');setUseCurrent(true);setStart(null);
     const position=await location.requestLocation();
-    if(position){setUseCurrent(true);setStart(null);setAttempt(value=>value+1);setFocus({coordinate:[position.longitude,position.latitude],nonce:Date.now(),zoom:18});}
-    else setRouteError('Your location is unavailable. You can still choose a campus starting point.');
+    if(position&&usableRouteGpsFix(position,Date.now())){
+      setAttempt(value=>value+1);
+      setFocus({coordinate:[position.longitude,position.latitude],nonce:Date.now(),zoom:18});
+    }else if(!position)setRouteError('Your GPS location is unavailable. Try again, or choose a campus starting point.');
   };
-  const clear=()=>{setRoute(null);setDestination(null);setStart(null);setUseCurrent(false);setPicker(null);setQuery('');setRouteError('');};
+  const clear=()=>{activePath.current=null;activeOrigin.current=null;setRoute(null);setDestination(null);setStart(null);setUseCurrent(false);setPicker(null);setQuery('');setRouteError('');};
   const swap=()=>{if(!origin||!destination)return;setStart(destination);setDestination(origin);setUseCurrent(false);setPicker(null);setAttempt(value=>value+1);};
-  const retry=()=>{setAttempt(value=>value+1);setReload(value=>value+1);};
+  const retry=()=>{
+    if(useCurrent&&!locationReady){void locate();return;}
+    setAttempt(value=>value+1);
+    if(dataError)setReload(value=>value+1);
+  };
   const mapError=useCallback((message:string)=>setDataError(message),[]);
-  const payload=useMemo<MapPayload>(()=>({campusId,centre,places,features,selectedId:destination?.placeId??null,originId:start?.placeId??null,origin:origin?.coordinate??null,destination:destination?.coordinate??null,location:live,route:route?.geometry??null,routeKey:String(routeRevision),layer,focus,pickMode:picker,satellite:mapInfo?.satellite??null,reducedMotion,padding:{top:topHeight+24+(picker||(outside&&!offCampusDismissed)?48:0),bottom:bottomInset+sheetHeight+12-insets.bottom,left:24,right:58}}),[campusId,centre,places,features,destination,start,origin,live,route,routeRevision,layer,focus,picker,mapInfo,reducedMotion,insets.bottom,topHeight,bottomInset,sheetHeight,outside,offCampusDismissed]);
+  const visibleRoute=useCurrent&&(!locationReady||outside)?null:route;
+  const payload=useMemo<MapPayload>(()=>({campusId,centre,places,features,selectedId:destination?.placeId??null,originId:start?.placeId??null,origin:useCurrent?(visibleRoute?live:null):origin?.coordinate??null,originIsLive:useCurrent,destination:destination?.coordinate??null,location:live,route:visibleRoute?.geometry??null,routeKey:String(routeRevision),layer,focus,pickMode:picker,satellite:mapInfo?.satellite??null,reducedMotion,padding:{top:topHeight+24+(picker||(outside&&!offCampusDismissed)?48:0),bottom:bottomInset+sheetHeight+12-insets.bottom,left:24,right:58}}),[campusId,centre,places,features,destination,start,origin,live,useCurrent,visibleRoute,routeRevision,layer,focus,picker,mapInfo,reducedMotion,insets.bottom,topHeight,bottomInset,sheetHeight,outside,offCampusDismissed]);
   return <View style={styles.page}>
     <Modal visible={schoolPicker} animationType="slide" onRequestClose={()=>setSchoolPicker(false)}><View style={{flex:1,padding:22,paddingTop:insets.top+22,backgroundColor:theme.canvas}}><View style={{flexDirection:'row',alignItems:'center',marginBottom:20}}><Text style={{flex:1,fontFamily:theme.font.displayStrong,fontSize:25,color:theme.text}}>Choose your university</Text><Pressable accessibilityLabel="Close university picker" onPress={()=>setSchoolPicker(false)} style={styles.icon}><Ionicons name="close" size={24} color={theme.text}/></Pressable></View><TextInput value={schoolQuery} onChangeText={setSchoolQuery} placeholder="Find a university" placeholderTextColor={theme.textMuted} style={{padding:16,borderRadius:16,backgroundColor:theme.surfaceMuted,fontFamily:theme.font.body,color:theme.text}}/><ScrollView keyboardShouldPersistTaps="handled">{schools.filter(s=>s.name.toLowerCase().includes(schoolQuery.toLowerCase())).map(s=><Pressable key={s.id} accessibilityRole="button" onPress={()=>{setUniversityId(s.id);setSchoolPicker(false);setSchoolQuery('');}} style={{paddingVertical:19,borderBottomWidth:1,borderColor:theme.border}}><Text style={{fontFamily:theme.font.medium,color:theme.text}}>{s.name}</Text></Pressable>)}</ScrollView></View></Modal>
 
@@ -171,7 +212,7 @@ export default function CampusMap(){
       <Pressable accessibilityRole="button" accessibilityLabel="Return to campus overview" style={styles.icon} onPress={()=>setFocus({coordinate:centre,nonce:Date.now(),zoom:15.5})}><Ionicons name="school-outline" size={21} color={theme.deepBrand}/></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Use my current location as a starting point" disabled={location.loading} style={[styles.icon,location.loading&&{opacity:.5}]} onPress={()=>void locate()}><Ionicons name="locate-outline" size={21} color={theme.deepBrand}/></Pressable>
     </View>
-    <CampusMapDrawer campusId={campusId} bottomInset={bottomInset} topInset={insets.top} picker={picker} originName={origin?.name??null} destinationName={destination?.name??null} destinationApproximate={Boolean(destination?.placeId&&places.find(place=>place.id===destination.placeId)?.verified_at===null)} error={routeError||dataError} loading={loading} routeBusy={routeBusy} places={places} query={query} route={route} alternatives={routeChoices} selectedRoute={routeChoice} onSelectRoute={index=>{const chosen=routeChoices[index];if(chosen){activePath.current=chosen;progress.current=0;offPathTicks.current=0;setRouteChoice(index);setRoute(chosen);setRouteRevision(v=>v+1);}}} photo={detail?.media[0]??null} locationError={location.error} locationLoading={location.loading} onClearRoute={clear} onPickPlace={pick} onChoose={choose} onPickOnMap={()=>{if(!picker)setPicker('destination');setQuery('');}} onQueryChange={setQuery} onUseCurrentLocation={()=>void locate()} onSwap={swap} onRetry={retry} onHeightChange={onHeightChange}/>
+    <CampusMapDrawer campusId={campusId} bottomInset={bottomInset} topInset={insets.top} picker={picker} originName={origin?.name??null} destinationName={destination?.name??null} destinationApproximate={Boolean(destination?.placeId&&places.find(place=>place.id===destination.placeId)?.verified_at===null)} error={routeError||dataError} loading={loading} routeBusy={routeBusy} places={places} query={query} route={visibleRoute} alternatives={visibleRoute?routeChoices:[]} selectedRoute={routeChoice} onSelectRoute={index=>{const chosen=routeChoices[index];if(chosen){activePath.current=chosen;progress.current=0;offPathTicks.current=0;setRouteChoice(index);setRoute(chosen);setRouteRevision(v=>v+1);}}} photo={detail?.media[0]??null} locationError={location.error} locationLoading={location.loading} onClearRoute={clear} onPickPlace={pick} onChoose={choose} onPickOnMap={()=>{if(!picker)setPicker('destination');setQuery('');}} onQueryChange={setQuery} onUseCurrentLocation={()=>void locate()} onSwap={swap} onRetry={retry} onHeightChange={onHeightChange}/>
   </View>;
 }
 const makeStyles=(theme:Theme)=>StyleSheet.create({
