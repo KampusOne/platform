@@ -12,12 +12,19 @@ class KampusAlarmScheduler {
   static boolean canSchedule(Context c) { return Build.VERSION.SDK_INT<31 || ((AlarmManager)c.getSystemService(Context.ALARM_SERVICE)).canScheduleExactAlarms(); }
   static PendingIntent pending(Context c,String id) { Intent intent=new Intent(c,KampusAlarmReceiver.class).setAction("kampusone.ALARM").setData(Uri.parse("kampusone://scheduled-alarm/"+id)).putExtra("alarmId",id);return PendingIntent.getBroadcast(c,0,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE); }
   static PendingIntent open(Context c,String id) { Intent intent=new Intent(Intent.ACTION_VIEW,Uri.parse("kampusone://alarm-ring?alarmId="+Uri.encode(id))).setPackage(c.getPackageName()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP); return PendingIntent.getActivity(c,id.hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE); }
+  static boolean mutedForDay(JSONObject alarm,long instant) {
+    String muted=alarm.optString("muted_on","");
+    if(muted.isEmpty() || "null".equals(muted))return false;
+    java.text.SimpleDateFormat day=new java.text.SimpleDateFormat("yyyy-MM-dd",Locale.US);
+    day.setTimeZone(TimeZone.getTimeZone("Africa/Lagos"));
+    return muted.equals(day.format(new Date(instant)));
+  }
   static long next(JSONObject alarm,long now) throws Exception {
     JSONArray days=alarm.optJSONArray("days");
-    if(days==null || days.length()==0) { String at=alarm.optString("fires_at");try { java.text.SimpleDateFormat parser=new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX",Locale.US);return parser.parse(at.replaceAll("\\.[0-9]+", "")).getTime(); } catch(Exception e) {return -1;} }
+    if(days==null || days.length()==0) { String at=alarm.optString("fires_at");try { java.text.SimpleDateFormat parser=new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX",Locale.US);long when=parser.parse(at.replaceAll("\\.[0-9]+", "")).getTime();return mutedForDay(alarm,when)?-1:when; } catch(Exception e) {return -1;} }
     String[] clock=alarm.getString("time").split(":"); Calendar date=Calendar.getInstance(TimeZone.getTimeZone("Africa/Lagos"));date.setTimeInMillis(now);date.set(Calendar.HOUR_OF_DAY,Integer.parseInt(clock[0]));date.set(Calendar.MINUTE,Integer.parseInt(clock[1]));date.set(Calendar.SECOND,0);date.set(Calendar.MILLISECOND,0);
     java.text.SimpleDateFormat dayFormat=new java.text.SimpleDateFormat("yyyy-MM-dd",Locale.US);dayFormat.setTimeZone(TimeZone.getTimeZone("Africa/Lagos"));
-    for(int offset=0;offset<=730;offset++){String campusDay=dayFormat.format(date.getTime());boolean paused=!alarm.optString("pause_from").isEmpty()&&!alarm.optString("pause_until").isEmpty()&&campusDay.compareTo(alarm.optString("pause_from"))>=0&&campusDay.compareTo(alarm.optString("pause_until"))<=0;int day=date.get(Calendar.DAY_OF_WEEK)-1;for(int i=0;i<days.length();i++)if(!paused&&days.getInt(i)==day&&date.getTimeInMillis()>now)return date.getTimeInMillis();date.add(Calendar.DATE,1);}return -1;
+    for(int offset=0;offset<=730;offset++){String campusDay=dayFormat.format(date.getTime());boolean paused=mutedForDay(alarm,date.getTimeInMillis())||!alarm.optString("pause_from").isEmpty()&&!alarm.optString("pause_until").isEmpty()&&campusDay.compareTo(alarm.optString("pause_from"))>=0&&campusDay.compareTo(alarm.optString("pause_until"))<=0;int day=date.get(Calendar.DAY_OF_WEEK)-1;for(int i=0;i<days.length();i++)if(!paused&&days.getInt(i)==day&&date.getTimeInMillis()>now)return date.getTimeInMillis();date.add(Calendar.DATE,1);}return -1;
   }
   static boolean schedule(Context c,String id,long when) {
     if(when<=System.currentTimeMillis())return false;
@@ -70,8 +77,15 @@ class KampusAlarmScheduler {
     // permission changes or the app is updated. setAlarmClock replaces by ID.
     boolean scheduled=true;
     Iterator<String> keys=next.keys();while(keys.hasNext()){
-      String id=keys.next();JSONObject item=next.getJSONObject(id);long when=next(item,System.currentTimeMillis());
-      if(when<=System.currentTimeMillis()||!schedule(c,id,when))scheduled=false;
+      String id=keys.next();JSONObject item=next.getJSONObject(id);
+      // Clear old intents before rescheduling: a muted occurrence must not survive.
+      manager.cancel(pending(c,id));
+      if(mutedForDay(item,System.currentTimeMillis())){
+        manager.cancel(pending(c,id+"~snooze"));
+        if(id.equals(prefs(c).getString("snoozeId",null)))prefs(c).edit().remove("snoozeAt").remove("snoozeId").apply();
+      }
+      long when=next(item,System.currentTimeMillis());
+      if(when>System.currentTimeMillis()&&!schedule(c,id,when))scheduled=false;
     }
     return scheduled;
   }
