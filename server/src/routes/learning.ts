@@ -89,29 +89,12 @@ learningRoutes.get("/alarms", async (c) => {
     }),
   });
 });
-// Only today's timetable reminders are muted. Exam/test, calendar and personal
-// alarms remain untouched; tomorrow's recurring classes resume automatically.
+// Keep this class-only pause separate from the OTP-protected exam flow.
 learningRoutes.post("/alarms/class-today", async (c) => {
-  const user = currentUser(c);
-  const data = await input(c, z.object({ muted: z.boolean() }).strict());
-  const result = await database(c.env).execute<{id:string}>(
-    sql`update public.student_alarms alarm
-      set muted_on = case when ${data.muted} then (now() at time zone 'Africa/Lagos')::date else null end,
-          updated_at = now()
-      where alarm.user_id = ${user.id}::uuid
-        and alarm.enabled = true
-        and alarm.timetable_entry_id is not null
-        and not exists (select 1 from app_private.exam_alarm_links link where link.alarm_id = alarm.id)
-        and (
-          extract(dow from now() at time zone 'Africa/Lagos')::smallint = any(alarm.days)
-          or (cardinality(alarm.days) = 0 and alarm.fires_at is not null
-              and (alarm.fires_at at time zone 'Africa/Lagos')::date = (now() at time zone 'Africa/Lagos')::date)
-        )
-        and (${data.muted} or alarm.muted_on = (now() at time zone 'Africa/Lagos')::date)
-      returning alarm.id`
-  );
-  return c.json({ muted: data.muted, updated: result.rows.length,
-    date: new Date(Date.now() + 3_600_000).toISOString().slice(0, 10) });
+  const user=currentUser(c);
+  const data=await input(c,z.object({muted:z.boolean()}).strict());
+  const n=firstRow(await database(c.env).execute<{updated:number}>(sql`select app_private.set_class_alarms_muted_today(${user.id}::uuid,${data.muted}) updated`))?.updated??0;
+  return c.json({muted:data.muted,updated:n,date:new Date(Date.now()+3_600_000).toISOString().slice(0,10)});
 });
 
 learningRoutes.post("/alarms", async (c) => {
