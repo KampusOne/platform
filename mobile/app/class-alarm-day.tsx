@@ -1,8 +1,9 @@
 import {Ionicons} from "@expo/vector-icons";
 import {router,useLocalSearchParams} from "expo-router";
 import {useCallback,useEffect,useMemo,useState} from "react";
-import {ActivityIndicator,Pressable,StyleSheet,Text,View} from "react-native";
+import {Pressable,StyleSheet,Text,View} from "react-native";
 import {ToolPage} from "@/src/components/toolkit";
+import {ScreenSkeleton,InlineLoading} from "@/src/components/skeleton";
 import {api} from "@/src/lib/api";
 import {alarmFollowupKind,campusDateKey} from "@/src/lib/alarm-followup";
 import {normalizeAlarms,syncAlarms,type Alarm} from "@/src/lib/alarms";
@@ -52,7 +53,7 @@ export default function ClassAlarmDay(){
  const back=()=>router.replace("/alarms");
  const course=source?.course_code||source?.course_title||source?.label||"Your class";
  return <ToolPage title="Class reminders">
-  {loading?<View style={styles.loading}><ActivityIndicator color={theme.deepBrand}/><Text style={styles.description}>Checking your class reminders…</Text></View>
+  {loading?<ScreenSkeleton variant="list" compact/>
   :!isClass?<View style={styles.card}><View style={styles.icon}><Ionicons name="calendar-outline" size={26} color={theme.deepBrand}/></View><Text style={styles.heading}>This is not a class alarm</Text><Text style={styles.description}>{error||"Open your timetable alarms to manage today's reminders."}</Text><Pressable accessibilityRole="button" style={styles.primary} onPress={back}><Text style={styles.primaryText}>Back to alarms</Text></Pressable></View>
   :<View style={styles.card}>
    <View style={styles.topRow}><View style={styles.icon}><Ionicons name="notifications-off-outline" size={26} color={theme.deepBrand}/></View><View style={styles.todayPill}><View style={styles.todayDot}/><Text style={styles.todayText}>TODAY ONLY</Text></View></View>
@@ -65,7 +66,7 @@ export default function ClassAlarmDay(){
    {todayAlarms.length===0?<Text style={styles.hint}>No more class reminders are scheduled for today.</Text>:null}
    {error?<Text accessibilityRole="alert" style={styles.error}>{error}</Text>:null}
    <Pressable accessibilityRole="button" accessibilityState={{disabled:busy||allMuted||todayAlarms.length===0}} disabled={busy||allMuted||todayAlarms.length===0} onPress={()=>void muteToday()} style={({pressed})=>[styles.primary,(busy||allMuted||todayAlarms.length===0)&&styles.primaryDisabled,pressed&&styles.pressed]}>
-    {busy?<ActivityIndicator color="#FFFFFF"/>:<Ionicons name={allMuted?"checkmark-circle-outline":"notifications-off-outline"} size={20} color="#FFFFFF"/>}
+    {busy?<InlineLoading color="#FFFFFF" size={20}/>:<Ionicons name={allMuted?"checkmark-circle-outline":"notifications-off-outline"} size={20} color="#FFFFFF"/>}
     <Text style={styles.primaryText}>{busy?"Updating your alarms…":allMuted?"Class reminders muted":"Mute class alarms for today"}</Text>
    </Pressable>
    <Pressable accessibilityRole="button" disabled={busy} style={({pressed})=>[styles.secondary,pressed&&styles.pressed]} onPress={back}><Text style={styles.secondaryText}>{allMuted?"Back to alarms":"Keep my reminders"}</Text></Pressable>
