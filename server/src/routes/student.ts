@@ -120,8 +120,11 @@ function requireUniversity(user: ReturnType<typeof currentUser>) {
 }
 
 studentRoutes.get("/catalog", async (context) => {
+  const requested = context.req.query("universityId");
+  if (requested && !z.string().uuid().safeParse(requested).success)
+    throw new AppError(400, "BAD_REQUEST", "Choose a valid university and try again.");
   const scope = (context.req.query("institutionsOnly") === "true" ? "institutions" : "full") +
-    ":" + (context.req.query("universityId") ?? "all");
+    ":" + (requested ?? "all");
   const catalog = await cachedSharedRead(context, "academic-catalog", scope, 300, async () => {
   const db = database(context.env);
   const institutionsOnly = context.req.query("institutionsOnly") === "true";
