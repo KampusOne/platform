@@ -36,7 +36,7 @@ export async function cachedSharedRead<T>(
 
   try {
     const found = await cache.match(key);
-    if (found?.ok) return await found.json<T>();
+    if (found?.ok) return (await found.json()) as T;
   } catch {
     // Cache read failure is not a user-facing backend error.
   }
