@@ -1,4 +1,4 @@
-import { invalidationTargets, matchesRead, waitForRequest } from "./request-policy";
+import { invalidationTargets, matchesRead, readCachePolicy, waitForRequest } from "./request-policy";
 import { withRequestDeadline } from "./request-deadline";
 import { withSessionLock } from "./session-lock";
 import Constants from "expo-constants";
@@ -128,7 +128,7 @@ const reads = new Map<string, { expires: number; retainUntil: number; value: unk
 const readVersions = new Map<string, object>();
 const inFlight = new Map<string, Promise<unknown>>();
 const cacheable =
-  /^\/v1\/(?!auth(?:\/|$)|media(?:\/|$)|config(?:\/|$))/;
+  /^\/v1\/(?!auth(?:\/|$)|media(?:\/|$))/;
 
 const analyticsFeatureMatchers: Array<[RegExp, string]> = [
   [/^\/v1\/auth(?:\/|$)/, "authentication"],
@@ -165,11 +165,7 @@ function analyticsFeatureForRequest(path: string) {
 }
 
 function readCacheTtl(path: string) {
-  if (/\/catalog(?:\/|\?|$)|\/campus\/places(?:\/|\?|$)/.test(path))
-    return 300_000;
-  if (/^\/v1\/(messages|notifications)(\/|\?|$)/.test(path)) return 5_000;
-  if (/\/feed(?:\/|\?|$)|^\/v1\/people(\/|\?|$)/.test(path)) return 10_000;
-  return 20_000;
+  return readCachePolicy(path).freshMs;
 }
 
 export function clearApiCache() {
@@ -196,6 +192,7 @@ function invalidateMutation(path: string) {
 
 /** Account-local, bounded in-memory data only. Never persisted or publicly cached. */
 export function peekTransportCache<T>(path: string, options: { allowStale?: boolean } = {}): T | undefined {
+  if (readCacheTtl(path) === 0) return undefined;
   const saved = reads.get(path);
   return saved && (options.allowStale ? saved.retainUntil : saved.expires) > Date.now() ? saved.value as T : undefined;
 }
@@ -529,8 +526,9 @@ export async function api<T>(
   if (!cacheable.test(path) || init.headers || init.cache === "no-store")
     return request<T>(path, init, canRefresh);
   if (init.signal?.aborted) throw init.signal.reason ?? new Error("Request cancelled");
+  const ttlMs = readCacheTtl(path);
   const cached = reads.get(path);
-  if (init.cache !== "reload" && cached && cached.expires > Date.now()) return cached.value as T;
+  if (ttlMs > 0 && init.cache !== "reload" && cached && cached.expires > Date.now()) return cached.value as T;
   const pending = inFlight.get(path);
   if (pending) return waitForRequest(pending as Promise<T>, init.signal);
   const cacheAtStart = cacheVersion;
@@ -540,16 +538,17 @@ export async function api<T>(
   const { signal: _consumerSignal, ...sharedInit } = init;
   const operation = request<T>(path, sharedInit, canRefresh)
     .then((value) => {
-      if (cacheAtStart === cacheVersion && readVersion === readVersions.get(path)) {
+      if (ttlMs > 0 && cacheAtStart === cacheVersion && readVersion === readVersions.get(path)) {
         if (reads.size >= 60) {
           const oldest = reads.keys().next().value!;
           reads.delete(oldest);
           if (!inFlight.has(oldest)) readVersions.delete(oldest);
         }
+        const now = Date.now();
         reads.set(path, {
           value,
-          expires: Date.now() + readCacheTtl(path),
-          retainUntil: Date.now() + 300_000,
+          expires: now + ttlMs,
+          retainUntil: now + readCachePolicy(path).retainMs,
         });
       }
       return value;
