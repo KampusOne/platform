@@ -87,6 +87,11 @@ jobs:
         run: node server/scripts/verify-schema-proof.mjs october
       - name: Guard current release migrations
         run: node server/scripts/verify-schema-proof.mjs current
+      - name: Guard versioned cache activation
+        run: |
+          if grep -q '"VERSIONED_READ_CACHE_ENABLED": "true"' server/wrangler.jsonc; then
+            node server/scripts/verify-schema-proof.mjs cache
+          fi
       - name: Verify required production secret names
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

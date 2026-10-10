@@ -5,6 +5,9 @@ export type Bindings = {
   AI_TEXT_PROVIDER?: string;
   /** Set to false to bypass the non-personal Worker read cache immediately. */
   SHARED_READ_CACHE_ENABLED?: string;
+  /** Enable only after the reviewed cache revision migration is installed. */
+  VERSIONED_READ_CACHE_ENABLED?: string;
+  READ_CACHE_METRICS_ENABLED?: string;
   WORKERS_AI_CHAT_MODEL?: string;
   WORKERS_AI_PRO_MODEL?: string;
   MAP_SATELLITE_TILE_URL?: string;

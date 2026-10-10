@@ -1,7 +1,7 @@
 "use client";
 
 import { withSessionLock } from "./session-lock";
-import { portalReadCacheTtl } from "./api-cache-policy";
+import { portalReadCacheTtl, portalCacheScope, portalCacheExpiry } from "./api-cache-policy";
 
 export type SessionUser = {
   id: string;
@@ -55,6 +55,8 @@ let credentialVersion = 0;
 let transitionQueue: Promise<void> = Promise.resolve();
 let queuedTransitions = 0;
 let currentAccountId: string | null = null;
+let currentScope: string | null = null;
+let sessionEpoch = 0;
 let cacheGeneration = 0;
 const portalReads = new Map<string, { value: unknown; until: number }>();
 const portalFlights = new Map<string, Promise<unknown>>();
@@ -63,6 +65,7 @@ function clearPortalCache() {
   portalReads.clear();
   portalFlights.clear();
 }
+if (typeof window !== "undefined") window.addEventListener("focus", clearPortalCache);
 function waitForPortalReader<T>(operation: Promise<T>, signal?: AbortSignal | null): Promise<T> {
   if (!signal) return operation;
   if (signal.aborted) return Promise.reject(signal.reason ?? new Error("Request cancelled"));
@@ -85,7 +88,9 @@ export function listenForSession(next: (session: Session | null) => void) {
 export function applySession(session: Session | null) {
   credentialVersion += 1;
   const nextAccountId = session?.user.id ?? null;
-  if (currentAccountId !== nextAccountId) clearPortalCache();
+  const scope = portalCacheScope(session?.user ?? null);
+  if (currentScope !== scope || !session) { sessionEpoch++; clearPortalCache(); }
+  currentScope = scope;
   currentAccountId = nextAccountId;
   accessToken = session?.accessToken ?? null;
   listener?.(session);
@@ -129,7 +134,8 @@ function validatedSession(value: Session): Session {
 }
 
 async function read<T>(response: Response) {
-  const payload = (await response.json().catch(() => null)) as
+  let unreadable = false;
+  const payload = (await response.json().catch(() => { unreadable = true; return null; })) as
     | T
     | {
         error?: {
@@ -154,6 +160,7 @@ async function read<T>(response: Response) {
       failure?.error?.details,
     );
   }
+  if (unreadable) throw new PortalApiError(response.status, "INVALID_RESPONSE", "KampusOne returned an unreadable response. Please try again.");
   return payload as T;
 }
 
@@ -206,7 +213,11 @@ async function portalRequest<T>(
   init: RequestInit = {},
   retry = true,
 ): Promise<T> {
+  const epochAtStart = sessionEpoch;
+  const guarded = !path.startsWith("/v1/auth/");
+  const assertSession = () => { if (guarded && sessionEpoch !== epochAtStart) throw new PortalApiError(409, "SESSION_CHANGED", "Your session changed. Please refresh."); };
   const headers = new Headers(init.headers);
+  if (init.cache === "reload" || init.cache === "no-store" || init.cache === "no-cache") headers.set("Cache-Control", "no-cache");
   if (
     init.body &&
     !(init.body instanceof FormData) &&
@@ -222,13 +233,20 @@ async function portalRequest<T>(
       credentials: "include",
       headers,
     });
-  } catch {
+  } catch (error) {
+    if (init.signal?.aborted) throw init.signal.reason ?? error;
+    if (error instanceof Error && error.name === "TimeoutError") throw new PortalApiError(0, "REQUEST_TIMEOUT", "KampusOne took too long to respond. Please try again.");
     throw connectionError();
   }
+  assertSession();
   if (response.status === 401 && retry && path !== "/v1/auth/refresh") {
-    if (await refresh()) return portalRequest<T>(path, init, false);
+    const session = await refresh();
+    assertSession();
+    if (session) return portalRequest<T>(path, init, false);
   }
-  return read<T>(response);
+  const value = await read<T>(response);
+  assertSession();
+  return value;
 }
 
 
@@ -250,25 +268,30 @@ export async function portalApi<T>(
       clearPortalCache();
     }
   }
-  if (!path.startsWith("/v1/") || init.headers || init.cache === "no-store")
+  if (typeof window === "undefined" || !path.startsWith("/v1/") || init.headers || init.cache === "no-store" || init.credentials || init.mode || init.redirect || init.integrity || !retry)
     return portalRequest<T>(path, init, retry);
   if (init.signal?.aborted) throw init.signal.reason ?? new Error("Request cancelled");
-  const ttl = portalReadCacheTtl(path);
+  const ttl = process.env.NEXT_PUBLIC_READ_CACHE_ENABLED === "false" ? 0 : portalReadCacheTtl(path);
   const cached = portalReads.get(path);
-  if (ttl > 0 && init.cache !== "reload" && cached && cached.until > Date.now())
-    return cached.value as T;
-  const existing = portalFlights.get(path) as Promise<T> | undefined;
+  if (ttl > 0 && init.cache !== "reload" && init.cache !== "no-cache" && cached && cached.until > Date.now()) {
+    portalReads.delete(path); portalReads.set(path, cached); return cached.value as T;
+  }
+  const forceRefresh = init.cache === "reload" || init.cache === "no-cache";
+  if (forceRefresh) clearPortalCache();
+  const existing = forceRefresh ? undefined : portalFlights.get(path) as Promise<T> | undefined;
   if (existing) return waitForPortalReader(existing, init.signal);
   const versionAtStart = cacheGeneration;
   const accountAtStart = currentAccountId;
+  const epochAtStart = sessionEpoch;
   const sharedOptions: RequestInit = { ...init, signal: null };
   const operation = portalRequest<T>(path, sharedOptions, retry)
     .then((value) => {
-      if (accountAtStart !== currentAccountId)
+      if (epochAtStart !== sessionEpoch || accountAtStart !== currentAccountId)
         throw new PortalApiError(409, "SESSION_CHANGED", "Your session changed. Please refresh.");
       if (versionAtStart === cacheGeneration && ttl > 0) {
         if (portalReads.size >= 60) portalReads.delete(portalReads.keys().next().value!);
-        portalReads.set(path, { value, until: Date.now() + ttl });
+        portalReads.delete(path);
+        portalReads.set(path, { value, until: portalCacheExpiry(path, Date.now(), ttl) });
       }
       return value;
     })

@@ -4,6 +4,7 @@ import { createMiddleware } from "hono/factory";
 
 import type { AuthenticatedUser, Bindings, Variables } from "../types";
 import { database, firstRow } from "../lib/database";
+import { measureAuthorization } from "../lib/read-cache-metrics";
 import { allowedOrigins } from "../lib/config";
 import { AppError } from "../lib/errors";
 import { verifyAccessToken } from "../lib/security";
@@ -21,116 +22,118 @@ function bearerToken(header: string | undefined) {
 export const requireAuth = createMiddleware<AppEnvironment>(
   async (context, next) => {
     if (authenticatedRequests.has(context)) return next();
-    const bearer = bearerToken(context.req.header("Authorization"));
-    const token = bearer ?? getCookie(context, "k1_access");
-    if (!token)
-      throw new AppError(401, "UNAUTHENTICATED", "Sign in to continue.");
-    if (!bearer && !["GET", "HEAD", "OPTIONS"].includes(context.req.method)) {
-      const origin = context.req.header("Origin");
-      if (!origin || !allowedOrigins(context.env).has(origin)) {
+    await measureAuthorization(context.env, async () => {
+      const bearer = bearerToken(context.req.header("Authorization"));
+      const token = bearer ?? getCookie(context, "k1_access");
+      if (!token)
+        throw new AppError(401, "UNAUTHENTICATED", "Sign in to continue.");
+      if (!bearer && !["GET", "HEAD", "OPTIONS"].includes(context.req.method)) {
+        const origin = context.req.header("Origin");
+        if (!origin || !allowedOrigins(context.env).has(origin)) {
+          throw new AppError(
+            403,
+            "FORBIDDEN",
+            "This browser origin is not allowed to change account data.",
+          );
+        }
+      }
+
+      const claims = await verifyAccessToken(context.env, token);
+      if (context.env.UNIFIED_SCHEMA_READY === "true" && !claims.sessionFamilyId)
+        throw new AppError(
+          401,
+          "UNAUTHENTICATED",
+          "Refresh your session to continue.",
+        );
+      const checkRestriction =
+        context.env.UNIFIED_SCHEMA_READY === "true" &&
+        !["/v1/account/restrictions", "/v1/account/support"].includes(
+          context.req.path,
+        ) &&
+        !context.req.path.startsWith("/v1/auth/");
+      const restrictionProjection = checkRestriction
+        ? sql`(
+            select json_build_object(
+              'kind', restriction.kind,
+              'reason', restriction.reason,
+              'ends_at', restriction.ends_at::text
+            )
+            from public.account_restrictions restriction
+            where restriction.user_id = users.id
+              and restriction.revoked_at is null
+              and restriction.starts_at <= now()
+              and (restriction.ends_at is null or restriction.ends_at > now())
+            order by restriction.starts_at desc
+            limit 1
+          )`
+        : sql`null::json`;
+      const result = await database(context.env).execute<{
+        id: string;
+        email: string;
+        roles: string[] | null;
+        university_id: string | null;
+        operator_roles: string[] | null;
+        restriction: {
+          kind: string;
+          reason: string;
+          ends_at: string | null;
+        } | null;
+      }>(sql`
+      select
+        users.id,
+        users.email,
+        users.roles::text[] as roles,
+        profiles.university_id,
+        ${restrictionProjection} as restriction,
+        coalesce(
+          array_agg(distinct operator_roles.role) filter (
+            where operator_roles.role is not null
+              and (operator_roles.role <> 'PLATFORM_ADMIN' or operator_roles.university_id is null)
+              and (operator_roles.expires_at is null or operator_roles.expires_at > now())
+          ),
+          '{}'::text[]
+        ) as operator_roles
+      from public.users users
+      left join public.profiles profiles on profiles.user_id = users.id and profiles.deleted_at is null
+      left join public.operator_roles operator_roles on operator_roles.user_id = users.id
+      where users.id = ${claims.id}::uuid
+        and users.deleted_at is null
+        and users.status::text = 'ACTIVE'
+        and (${claims.sessionFamilyId ?? null}::uuid is null or exists (
+          select 1 from public.refresh_tokens rt where rt.user_id=users.id
+            and rt.family_id=${claims.sessionFamilyId ?? null}::uuid and rt.revoked_at is null and rt.expires_at>now()
+        ))
+      group by users.id, users.email, users.roles, profiles.university_id
+      limit 1
+    `);
+      const row = firstRow(result);
+      if (!row)
+        throw new AppError(
+          401,
+          "UNAUTHENTICATED",
+          "This account is unavailable.",
+        );
+
+      const user: AuthenticatedUser = {
+        id: row.id,
+        email: row.email,
+        roles: row.roles ?? [],
+        universityId: row.university_id,
+        operatorRoles: row.operator_roles ?? [],
+        ...(claims.sessionFamilyId
+          ? { sessionFamilyId: claims.sessionFamilyId }
+          : {}),
+      };
+      context.set("user", user);
+      if (checkRestriction && row.restriction)
         throw new AppError(
           403,
-          "FORBIDDEN",
-          "This browser origin is not allowed to change account data.",
+          "ACCOUNT_RESTRICTED",
+          "Your account has been restricted.",
+          row.restriction,
         );
-      }
-    }
-
-    const claims = await verifyAccessToken(context.env, token);
-    if (context.env.UNIFIED_SCHEMA_READY === "true" && !claims.sessionFamilyId)
-      throw new AppError(
-        401,
-        "UNAUTHENTICATED",
-        "Refresh your session to continue.",
-      );
-    const checkRestriction =
-      context.env.UNIFIED_SCHEMA_READY === "true" &&
-      !["/v1/account/restrictions", "/v1/account/support"].includes(
-        context.req.path,
-      ) &&
-      !context.req.path.startsWith("/v1/auth/");
-    const restrictionProjection = checkRestriction
-      ? sql`(
-          select json_build_object(
-            'kind', restriction.kind,
-            'reason', restriction.reason,
-            'ends_at', restriction.ends_at::text
-          )
-          from public.account_restrictions restriction
-          where restriction.user_id = users.id
-            and restriction.revoked_at is null
-            and restriction.starts_at <= now()
-            and (restriction.ends_at is null or restriction.ends_at > now())
-          order by restriction.starts_at desc
-          limit 1
-        )`
-      : sql`null::json`;
-    const result = await database(context.env).execute<{
-      id: string;
-      email: string;
-      roles: string[] | null;
-      university_id: string | null;
-      operator_roles: string[] | null;
-      restriction: {
-        kind: string;
-        reason: string;
-        ends_at: string | null;
-      } | null;
-    }>(sql`
-    select
-      users.id,
-      users.email,
-      users.roles::text[] as roles,
-      profiles.university_id,
-      ${restrictionProjection} as restriction,
-      coalesce(
-        array_agg(distinct operator_roles.role) filter (
-          where operator_roles.role is not null
-            and (operator_roles.role <> 'PLATFORM_ADMIN' or operator_roles.university_id is null)
-            and (operator_roles.expires_at is null or operator_roles.expires_at > now())
-        ),
-        '{}'::text[]
-      ) as operator_roles
-    from public.users users
-    left join public.profiles profiles on profiles.user_id = users.id and profiles.deleted_at is null
-    left join public.operator_roles operator_roles on operator_roles.user_id = users.id
-    where users.id = ${claims.id}::uuid
-      and users.deleted_at is null
-      and users.status::text = 'ACTIVE'
-      and (${claims.sessionFamilyId ?? null}::uuid is null or exists (
-        select 1 from public.refresh_tokens rt where rt.user_id=users.id
-          and rt.family_id=${claims.sessionFamilyId ?? null}::uuid and rt.revoked_at is null and rt.expires_at>now()
-      ))
-    group by users.id, users.email, users.roles, profiles.university_id
-    limit 1
-  `);
-    const row = firstRow(result);
-    if (!row)
-      throw new AppError(
-        401,
-        "UNAUTHENTICATED",
-        "This account is unavailable.",
-      );
-
-    const user: AuthenticatedUser = {
-      id: row.id,
-      email: row.email,
-      roles: row.roles ?? [],
-      universityId: row.university_id,
-      operatorRoles: row.operator_roles ?? [],
-      ...(claims.sessionFamilyId
-        ? { sessionFamilyId: claims.sessionFamilyId }
-        : {}),
-    };
-    context.set("user", user);
-    if (checkRestriction && row.restriction)
-      throw new AppError(
-        403,
-        "ACCOUNT_RESTRICTED",
-        "Your account has been restricted.",
-        row.restriction,
-      );
-    authenticatedRequests.add(context);
+      authenticatedRequests.add(context);
+    });
     await next();
   },
 );

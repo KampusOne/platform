@@ -15,6 +15,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
 import { mediaAwareSecureHeaders } from "./middleware/security-headers";
+import { readPerformance } from "./middleware/read-performance";
 import { bodyLimit } from "hono/body-limit";
 
 import { allowedOrigins, getPublicConfig, readiness } from "./lib/config";
@@ -52,6 +53,7 @@ import type { Bindings, Variables } from "./types";
 export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use("*", requestId());
+app.use("*", readPerformance);
 app.use("*",async(c,next)=>{validateStorageEnv(c.env);await next();});
 app.use("*", mediaAwareSecureHeaders);
 app.use("/v1/*", async (c, next) => {
@@ -91,7 +93,7 @@ app.use("/v1/*", async (context, next) => {
   return cors({
     origin: (origin) => (origins.has(origin) ? origin : undefined),
     allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"],
-    allowHeaders: ["Authorization", "Content-Type", "X-Request-Id", "X-Device-Label", "X-Admin-Bootstrap-Token"],
+    allowHeaders: ["Authorization", "Content-Type", "Cache-Control", "X-Request-Id", "X-Device-Label", "X-Admin-Bootstrap-Token"],
     exposeHeaders: ["X-Request-Id"], credentials: true, maxAge: 86400,
   })(context, next);
 });

@@ -1,3 +1,4 @@
+import {cacheScopeForUser} from "../lib/request-policy";
 import { checkBuildVersion } from "@/src/lib/build-version";
 import {
   createContext,
@@ -16,6 +17,7 @@ import {
   authApi,
   onSessionChange,
   setAccessToken,
+  clearApiCache,
   type Session,
   type SessionUser,
 } from "@/src/lib/api";
@@ -134,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
           .catch(() => undefined);
       }
-      setAccessToken(session.accessToken, session.user.id);
+      setAccessToken(session.accessToken, session.user.id, cacheScopeForUser(session.user));
       setSessionRestoreError("");
       setUser(session.user);
       setState("authenticated");
@@ -231,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let previous = AppState.currentState;
     const subscription = AppState.addEventListener("change", next => {
       if (next === "active" && previous !== "active" && sessionUserId.current) {
+        clearApiCache();
         void retrySessionRestore();
       }
       previous = next;

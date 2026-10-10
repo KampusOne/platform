@@ -3,7 +3,7 @@ import {sql} from 'drizzle-orm';
 import {z} from '@kampusone/contracts';
 import {currentUser,requireAuth} from '../middleware/auth';
 import {database,firstRow} from '../lib/database';
-import {cachedSharedRead} from '../lib/shared-read-cache';
+import {cachedVersionedRead} from '../lib/cache-revision';
 import {AppError} from '../lib/errors';
 import {id,input} from '../lib/input';
 import {resolveAdminScope} from '../lib/admin-access';
@@ -23,14 +23,14 @@ async function campus(env:Bindings,campusId:string,universityId:string|null,admi
 mapRoutes.get('/campuses',async c=>{const user=currentUser(c),selected=c.req.query('universityId')?id(c.req.query('universityId')!):user.universityId;const rows=await database(c.env).execute(sql`select id,name,slug,latitude,longitude,status,map_revision from public.institution_campuses where institution_id=${selected}::uuid and status='PUBLISHED' order by case when slug='ugbowo' then 0 else 1 end,name`);return c.json({campuses:rows.rows});});
 mapRoutes.get('/campuses/:id',async c=>{
  const row=await campus(c.env,id(c.req.param('id')),currentUser(c).universityId);
- const counts=firstRow(await database(c.env).execute<{paths:number;photos:number;heights:number;three_d_enabled:boolean;satellite_enabled:boolean}>(sql`select (select count(*)::int from public.campus_paths where campus_id=${row.id}::uuid and not closed) paths,(select count(*)::int from public.campus_place_media where campus_id=${row.id}::uuid and moderation_state='APPROVED') photos,(select count(*)::int from public.campus_map_features where campus_id=${row.id}::uuid and (kind='BUILDING' or tags ? 'building')) heights,coalesce(mc.three_d_enabled,true) three_d_enabled,coalesce(mc.satellite_enabled,false) satellite_enabled from public.institution_campuses c left join app_private.campus_map_controls mc on mc.campus_id=c.id where c.id=${row.id}::uuid`));
+ const counts=await cachedVersionedRead(c,'campus-capabilities','campus.maps',`${row.institution_id}:${row.id}:${row.map_revision}`,120,async()=>firstRow(await database(c.env).execute<{paths:number;photos:number;heights:number;three_d_enabled:boolean;satellite_enabled:boolean}>(sql`select (select count(*)::int from public.campus_paths where campus_id=${row.id}::uuid and not closed) paths,(select count(*)::int from public.campus_place_media where campus_id=${row.id}::uuid and moderation_state='APPROVED') photos,(select count(*)::int from public.campus_map_features where campus_id=${row.id}::uuid and (kind='BUILDING' or tags ? 'building')) heights,coalesce(mc.three_d_enabled,true) three_d_enabled,coalesce(mc.satellite_enabled,false) satellite_enabled from public.institution_campuses c left join app_private.campus_map_controls mc on mc.campus_id=c.id where c.id=${row.id}::uuid`))??null);
  const satellite=counts?.satellite_enabled&&c.env.MAP_SATELLITE_TILE_URL?.startsWith('https://')&&c.env.MAP_SATELLITE_ATTRIBUTION?{url:c.env.MAP_SATELLITE_TILE_URL,attribution:c.env.MAP_SATELLITE_ATTRIBUTION}:null;
  return c.json({...row,capabilities:{walkingRoutes:Boolean(counts?.paths),placePhotos:Boolean(counts?.photos),satellite:Boolean(satellite),threeD:Boolean(counts?.three_d_enabled&&counts?.heights)},satellite,attribution:'© OpenStreetMap contributors · Overture Maps Foundation'});
 });
 mapRoutes.get('/campuses/:id/places',async c=>{
  const row=await campus(c.env,id(c.req.param('id')),currentUser(c).universityId);
  const query=(c.req.query('q')??'').trim().toLowerCase().slice(0,120);
- const places=await cachedSharedRead(c,'campus-places',`${row.institution_id}:${row.id}:${row.map_revision}:${query}`,120,async()=>{
+ const places=await cachedVersionedRead(c,'campus-places','campus.maps',`${row.institution_id}:${row.id}:${row.map_revision}:${query}`,120,async()=>{
   const result=await database(c.env).execute(sql`select id,name,category,description,latitude,longitude,accessibility_notes,image_url,verified_at,search_aliases,parent_place_id,floor_label,room_label,source_provider,source_url,confidence,ST_AsGeoJSON(geom)::jsonb geometry from public.campus_places where campus_id=${row.id}::uuid and university_id=${row.institution_id}::uuid and status='PUBLISHED' and (${query}='' or concat_ws(' ',name,description,array_to_string(search_aliases,' ')) ilike ${'%'+query+'%'}) order by name limit 1000`);
   return result.rows;
  });
@@ -38,13 +38,13 @@ mapRoutes.get('/campuses/:id/places',async c=>{
 });
 mapRoutes.get('/campuses/:id/features',async c=>{
  const row=await campus(c.env,id(c.req.param('id')),currentUser(c).universityId);
- const features=await cachedSharedRead(c,'campus-features',`${row.institution_id}:${row.id}:${row.map_revision}`,600,async()=>{
+ const features=await cachedVersionedRead(c,'campus-features','campus.maps',`${row.institution_id}:${row.id}:${row.map_revision}`,600,async()=>{
   const result=await database(c.env).execute(sql`select id,kind,tags,ST_AsGeoJSON(geom)::jsonb geometry from public.campus_map_features where campus_id=${row.id}::uuid and institution_id=${row.institution_id}::uuid order by case when kind='PATH'then 0 else 1 end,geom <-> ST_SetSRID(ST_MakePoint(${Number(row.longitude)},${Number(row.latitude)}),4326) limit 5000`);
   return result.rows.map(r=>({type:'Feature',id:r.id,geometry:r.geometry,properties:{kind:r.kind,...r.tags as Record<string,unknown>,heightMetres:buildingHeight(r.tags as Record<string,unknown>),heightEstimated:!((r.tags as Record<string,unknown>).height||(r.tags as Record<string,unknown>)['building:levels'])}}));
  });
  return c.json({type:'FeatureCollection',features});
 });
-mapRoutes.get('/places/:id',async c=>{const user=currentUser(c),placeId=id(c.req.param('id'));const place=firstRow(await database(c.env).execute(sql`select p.*,ST_AsGeoJSON(p.geom)::jsonb geometry from public.campus_places p join public.institution_campuses c on c.id=p.campus_id where p.id=${placeId}::uuid and p.status='PUBLISHED' and c.status='PUBLISHED'`));if(!place)throw new AppError(404,'NOT_FOUND','Place not found.');const [entrances,media]=await Promise.all([database(c.env).execute(sql`select id,label,wheelchair,preferred,verified_at,ST_AsGeoJSON(geom)::jsonb geometry from public.campus_entrances where place_id=${placeId}::uuid and institution_id=${place.university_id}::uuid order by preferred desc`),database(c.env).execute(sql`select id,url,media_id,source_provider,source_url,attribution,captured_at,verified_at from public.campus_place_media where place_id=${placeId}::uuid and institution_id=${place.university_id}::uuid and moderation_state='APPROVED' order by captured_at desc nulls last`)]);return c.json({place,entrances:entrances.rows,media:media.rows.map(r=>({...r,url:r.media_id?`${c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin}/v1/media/${r.media_id}`:r.url}))});});
+mapRoutes.get('/places/:id',async c=>{const user=currentUser(c),placeId=id(c.req.param('id'));const place=firstRow(await database(c.env).execute(sql`select p.*,ST_AsGeoJSON(p.geom)::jsonb geometry from public.campus_places p join public.institution_campuses c on c.id=p.campus_id where p.id=${placeId}::uuid and p.status='PUBLISHED' and c.status='PUBLISHED' and p.university_id=${user.universityId}::uuid and c.institution_id=p.university_id`));if(!place)throw new AppError(404,'NOT_FOUND','Place not found.');const [entrances,media]=await Promise.all([database(c.env).execute(sql`select id,label,wheelchair,preferred,verified_at,ST_AsGeoJSON(geom)::jsonb geometry from public.campus_entrances where place_id=${placeId}::uuid and institution_id=${place.university_id}::uuid order by preferred desc`),database(c.env).execute(sql`select id,url,media_id,source_provider,source_url,attribution,captured_at,verified_at from public.campus_place_media where place_id=${placeId}::uuid and institution_id=${place.university_id}::uuid and moderation_state='APPROVED' order by captured_at desc nulls last`)]);return c.json({place,entrances:entrances.rows,media:media.rows.map(r=>({...r,url:r.media_id?`${c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin}/v1/media/${r.media_id}`:r.url}))});});
 type RouteEndpoint={longitude:number;latitude:number;name:string;endpoint_name:string;depth:number;verified:boolean};
 async function placeRouteEndpoint(env:Bindings,row:Campus,placeId:string){
  return firstRow(await database(env).execute<RouteEndpoint>(sql`
@@ -65,7 +65,7 @@ mapRoutes.post('/route',async c=>{
  if(data.destinationId&&!endPlace)throw new AppError(422,'BAD_REQUEST','This place needs its entrance mapped before directions can be shown.');
  const origin:[number,number]=startPlace?[startPlace.longitude,startPlace.latitude]:data.origin;
  const destination:[number,number]=endPlace?[endPlace.longitude,endPlace.latitude]:data.destination!;
- const paths=(await database(c.env).execute<WalkPath>(sql`select node_ids,ST_AsGeoJSON(geom)::jsonb geometry,name,access,steps,wheelchair,closed from public.campus_paths where campus_id=${row.id}::uuid and institution_id=${row.institution_id}::uuid limit 5000`)).rows;
+ const paths=await cachedVersionedRead(c,'campus-paths','campus.maps',`${row.institution_id}:${row.id}:${row.map_revision}`,120,async()=>(await database(c.env).execute<WalkPath>(sql`select node_ids,ST_AsGeoJSON(geom)::jsonb geometry,name,access,steps,wheelchair,closed from public.campus_paths where campus_id=${row.id}::uuid and institution_id=${row.institution_id}::uuid limit 5000`)).rows);
  const [route,...alternatives]=walkingAlternatives(paths,origin,destination,data.accessible);
  if(!route)throw new AppError(422,'BAD_REQUEST','No mapped walking route connects these points yet. Choose a nearby mapped path or entrance.');
  const notices:string[]=[];

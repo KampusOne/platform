@@ -1,3 +1,4 @@
+import {cachedVersionedRead} from "../lib/cache-revision";
 import {Hono,type Context} from 'hono';
 import {sql} from 'drizzle-orm';
 import {z} from '@kampusone/contracts';
@@ -14,7 +15,7 @@ type Settings={waitlist_enabled:boolean;ios_url:string;play_store_url:string};
 async function settings(env:Bindings){return firstRow(await database(env).execute<Settings>(sql`select waitlist_enabled,ios_url,play_store_url from app_private.website_settings where singleton`))!;}
 type AndroidRelease={sourceSha:string;versionName:string;versionCode:number;apkSha256:string;apkSizeBytes:number;objectKey:string;verifiedAt:string};
 async function release(env:Bindings){const object=await env.MEDIA_BUCKET?.get('releases/android/latest.json');if(!object)return null;try{const data=await object.json<AndroidRelease>();if(!/^releases\/android\/[a-f0-9]{40}\.apk$/.test(data.objectKey)||!/^[a-f0-9]{64}$/.test(data.apkSha256)||!/^[a-f0-9]{40}$/.test(data.sourceSha)||data.objectKey!==`releases/android/${data.sourceSha}.apk`||!Number.isSafeInteger(data.apkSizeBytes))return null;return data;}catch{return null;}}
-websiteRoutes.get('/config',async c=>{const [s,r]=await Promise.all([settings(c.env),release(c.env)]);c.header('Cache-Control','public,max-age=15');return c.json({waitlistEnabled:s.waitlist_enabled,iosUrl:s.ios_url,playStoreUrl:s.play_store_url,android:r?{version:r.versionName,sizeBytes:r.apkSizeBytes,sha256:r.apkSha256,url:(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin)+'/v1/website/download/android'}:null});});
+websiteRoutes.get('/config',async c=>{const [s,r]=await Promise.all([cachedVersionedRead(c,'website-settings','website.settings','public',60,()=>settings(c.env)),release(c.env)]);c.header('Cache-Control','public,max-age=15');return c.json({waitlistEnabled:s.waitlist_enabled,iosUrl:s.ios_url,playStoreUrl:s.play_store_url,android:r?{version:r.versionName,sizeBytes:r.apkSizeBytes,sha256:r.apkSha256,url:(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin)+'/v1/website/download/android'}:null});});
 websiteRoutes.get('/waitlist',async c=>{if(!(await settings(c.env)).waitlist_enabled)throw new AppError(404,'NOT_FOUND','Not found.');c.header('Cache-Control','no-store');return c.json({enabled:true});});
 websiteRoutes.post('/waitlist',async c=>{
  if(!(await settings(c.env)).waitlist_enabled)throw new AppError(404,'NOT_FOUND','Not found.');
@@ -31,8 +32,20 @@ websiteRoutes.get('/download/android',async c=>{
  if(object.range&&'offset'in object.range){const offset=object.range.offset??0,length=object.range.length??object.size-offset;h.set('Content-Range',`bytes ${offset}-${offset+length-1}/${object.size}`);h.set('Content-Length',String(length));status=206;}else h.set('Content-Length',String(object.size));
  return new Response(object.body,{status,headers:h});
 });
-websiteRoutes.get('/articles',async c=>{c.header('Cache-Control','public,max-age=15');const result=await database(c.env).execute(sql`select id,slug,title,excerpt,cover_url,author_name,published_at,(select count(*)::int from app_private.website_article_likes where article_id=a.id)likes from public.website_articles a where status='PUBLISHED'order by published_at desc,id limit 60`);return c.json({articles:result.rows});});
-websiteRoutes.get('/articles/:slug',async c=>{const slug=z.string().regex(/^[a-z0-9][a-z0-9-]{1,119}$/).safeParse(c.req.param('slug'));if(!slug.success)throw new AppError(404,'NOT_FOUND','Article not found.');const article=firstRow(await database(c.env).execute(sql`select id,slug,title,excerpt,body,cover_url,author_name,published_at,updated_at,(select count(*)::int from app_private.website_article_likes where article_id=a.id)likes from public.website_articles a where slug=${slug.data} and status='PUBLISHED'`));if(!article)throw new AppError(404,'NOT_FOUND','Article not found.');c.header('Cache-Control','public,max-age=15');return c.json({article});});
+websiteRoutes.get('/articles',async c=>{
+ const articles=await cachedVersionedRead(c,'website-articles','website.articles','published',30,async()=>
+  (await database(c.env).execute(sql`select id,slug,title,excerpt,cover_url,author_name,published_at,(select count(*)::int from app_private.website_article_likes where article_id=a.id)likes from public.website_articles a where status='PUBLISHED' order by published_at desc,id limit 60`)).rows);
+ // Publication revisions are checked on each request; browser/CDN snapshots
+ // would otherwise keep an archived article visible after invalidation.
+ c.header('Cache-Control','no-store');return c.json({articles});
+});
+websiteRoutes.get('/articles/:slug',async c=>{
+ const slug=z.string().regex(/^[a-z0-9][a-z0-9-]{1,119}$/).safeParse(c.req.param('slug'));if(!slug.success)throw new AppError(404,'NOT_FOUND','Article not found.');
+ const article=await cachedVersionedRead(c,'website-article','website.articles',slug.data,30,async()=>{
+  const row=firstRow(await database(c.env).execute(sql`select id,slug,title,excerpt,body,cover_url,author_name,published_at,updated_at,(select count(*)::int from app_private.website_article_likes where article_id=a.id)likes from public.website_articles a where slug=${slug.data} and status='PUBLISHED'`));
+  if(!row)throw new AppError(404,'NOT_FOUND','Article not found.');return row;
+ });c.header('Cache-Control','no-store');return c.json({article});
+});
 websiteRoutes.put('/articles/:slug/like',requireAuth,async c=>{const user=currentUser(c),d=await input(c,z.object({liked:z.boolean()}).strict());const article=firstRow(await database(c.env).execute<{id:string}>(sql`select id from public.website_articles where slug=${c.req.param('slug')} and status='PUBLISHED'`));if(!article)throw new AppError(404,'NOT_FOUND','Article not found.');if(d.liked)await database(c.env).execute(sql`insert into app_private.website_article_likes(article_id,user_id)values(${article.id}::uuid,${user.id}::uuid)on conflict do nothing`);else await database(c.env).execute(sql`delete from app_private.website_article_likes where article_id=${article.id}::uuid and user_id=${user.id}::uuid`);const count=firstRow(await database(c.env).execute(sql`select count(*)::int likes from app_private.website_article_likes where article_id=${article.id}::uuid`));c.header('Cache-Control','private,no-store');return c.json({liked:d.liked,...count});});
 websiteRoutes.get('/articles/:slug/like',requireAuth,async c=>{const u=currentUser(c),row=firstRow(await database(c.env).execute(sql`select exists(select 1 from app_private.website_article_likes l join public.website_articles a on a.id=l.article_id where a.slug=${c.req.param('slug')} and a.status='PUBLISHED'and l.user_id=${u.id}::uuid)liked`));c.header('Cache-Control','private,no-store');return c.json(row);});
 async function globalAccess(c:Context<{Bindings:Bindings;Variables:Variables}>,permission:string){const scope=await resolveAdminScope(c.env,currentUser(c),undefined,permission);if(scope!==null)throw new AppError(403,'FORBIDDEN','The public website requires global content access.');}

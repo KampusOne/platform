@@ -1,4 +1,4 @@
-import { invalidationTargets, matchesRead, readCachePolicy, waitForRequest } from "./request-policy";
+import { invalidationTargets, matchesRead, readCachePolicy, waitForRequest, cacheScopeForUser, cacheExpiry } from "./request-policy";
 import { withRequestDeadline } from "./request-deadline";
 import { withSessionLock } from "./session-lock";
 import Constants from "expo-constants";
@@ -110,6 +110,8 @@ function networkUnavailableError(caught: unknown) {
 }
 let accessToken: string | null = null;
 let accessAccountId: string | null = null;
+let accessScope: string | null = null;
+let sessionEpoch = 0;
 let sessionListener: ((session: Session | null) => void) | null = null;
 let restrictionListener: (() => void) | null = null;
 export function onAccountRestriction(listener: () => void) {
@@ -165,7 +167,7 @@ function analyticsFeatureForRequest(path: string) {
 }
 
 function readCacheTtl(path: string) {
-  return readCachePolicy(path).freshMs;
+  return process.env.EXPO_PUBLIC_READ_CACHE_ENABLED === "false" ? 0 : readCachePolicy(path).freshMs;
 }
 
 export function clearApiCache() {
@@ -194,15 +196,25 @@ function invalidateMutation(path: string) {
 export function peekTransportCache<T>(path: string, options: { allowStale?: boolean } = {}): T | undefined {
   if (readCacheTtl(path) === 0) return undefined;
   const saved = reads.get(path);
-  return saved && (options.allowStale ? saved.retainUntil : saved.expires) > Date.now() ? saved.value as T : undefined;
+  if (!saved || (options.allowStale ? saved.retainUntil : saved.expires) <= Date.now()) return undefined;
+  reads.delete(path); reads.set(path, saved);
+  return saved.value as T;
 }
 
-export function setAccessToken(token: string | null, accountId?: string) {
+export function setAccessToken(token: string | null, accountId?: string, scope?: string) {
   const sameAccount = Boolean(token && accountId && accountId === accessAccountId);
-  if (!token || (!sameAccount && (token !== accessToken || accountId !== accessAccountId))) clearApiCache();
+  const nextScope = token ? scope ?? (sameAccount ? accessScope : accountId ?? null) : null;
+  if (!token || nextScope !== accessScope || (!sameAccount && token !== accessToken)) {
+    sessionEpoch++;
+    clearApiCache();
+  }
   accessToken = token;
   accessAccountId = token ? accountId ?? null : null;
+  accessScope = nextScope;
   credentialVersion += 1;
+}
+function assertReadSession(epoch: number) {
+  if (epoch !== sessionEpoch) throw new ApiError(409, "SESSION_CHANGED", "Your session changed. Please refresh this screen.");
 }
 
 export function onSessionChange(listener: (session: Session | null) => void) {
@@ -238,7 +250,9 @@ async function parse<T>(response: Response): Promise<T> {
         details?: Record<string, unknown>;
       };
     } | null;
-    if (failure?.error?.code === "ACCOUNT_RESTRICTED") restrictionListener?.();
+    if (failure?.error?.code === "ACCOUNT_RESTRICTED") {
+      sessionEpoch++; clearApiCache(); restrictionListener?.();
+    }
     const code = failure?.error?.code ?? "REQUEST_FAILED";
     const message =
       code === "INTERNAL_ERROR" &&
@@ -373,7 +387,7 @@ async function refreshSession() {
         // Do not let an older refresh overwrite a session established while it
         // was in flight (for example, a fresh interactive sign-in).
         if (session && credentialVersion === versionAtStart) {
-          setAccessToken(session.accessToken, session.user.id);
+          setAccessToken(session.accessToken, session.user.id, cacheScopeForUser(session.user));
           sessionListener?.(session);
         }
         return session;
@@ -408,7 +422,10 @@ async function request<T>(
   canRefresh = true,
 ): Promise<T> {
   const { timeoutMs, signal: parentSignal, ...requestInit } = init;
+  const epochAtStart = sessionEpoch;
+  const guarded = !path.startsWith("/v1/auth/");
   const headers = new Headers(init.headers);
+  if (init.cache === "reload" || init.cache === "no-store" || init.cache === "no-cache") headers.set("Cache-Control", "no-cache");
   if (
     init.body &&
     !(init.body instanceof FormData) &&
@@ -432,6 +449,7 @@ async function request<T>(
         ...requestInit, signal, credentials: "include", headers,
       });
       if (signal.aborted) throw signal.reason ?? new Error("Request cancelled");
+      if (guarded) assertReadSession(epochAtStart);
       markApiOriginHealthy(baseUrl);
       if (response.status === 401 && canRefresh && path !== "/v1/auth/refresh")
         return { response };
@@ -474,9 +492,11 @@ async function request<T>(
   }
   if (result.response.status === 401 && canRefresh && path !== "/v1/auth/refresh") {
     const renewed = await refreshSession();
+    if (guarded) assertReadSession(epochAtStart);
     if (renewed) return request<T>(path, init, false);
     return withRequestDeadline(() => parse<T>(result.response), timeoutMs, parentSignal);
   }
+  if (guarded) assertReadSession(epochAtStart);
   return result.value as T;
 }
 
@@ -523,21 +543,26 @@ export async function api<T>(
     }
   }
   // Explicit caller headers may alter representation; never share those requests.
-  if (!cacheable.test(path) || init.headers || init.cache === "no-store")
+  if (!cacheable.test(path) || init.headers || init.cache === "no-store" || init.credentials || init.mode || init.redirect || init.integrity || init.timeoutMs !== undefined || !canRefresh)
     return request<T>(path, init, canRefresh);
   if (init.signal?.aborted) throw init.signal.reason ?? new Error("Request cancelled");
   const ttlMs = readCacheTtl(path);
   const cached = reads.get(path);
-  if (ttlMs > 0 && init.cache !== "reload" && cached && cached.expires > Date.now()) return cached.value as T;
-  const pending = inFlight.get(path);
+  if (ttlMs > 0 && init.cache !== "reload" && init.cache !== "no-cache" && cached && cached.expires > Date.now()) {
+    reads.delete(path); reads.set(path, cached); return cached.value as T;
+  }
+  const forceRefresh = init.cache === "reload" || init.cache === "no-cache";
+  const pending = forceRefresh ? undefined : inFlight.get(path);
   if (pending) return waitForRequest(pending as Promise<T>, init.signal);
   const cacheAtStart = cacheVersion;
-  const readVersion = readVersions.get(path) ?? {};
+  const epochAtStart = sessionEpoch;
+  const readVersion = forceRefresh ? {} : readVersions.get(path) ?? {};
   readVersions.set(path, readVersion);
   // A single timed network request is shared by independently cancellable consumers.
   const { signal: _consumerSignal, ...sharedInit } = init;
   const operation = request<T>(path, sharedInit, canRefresh)
     .then((value) => {
+      assertReadSession(epochAtStart);
       if (ttlMs > 0 && cacheAtStart === cacheVersion && readVersion === readVersions.get(path)) {
         if (reads.size >= 60) {
           const oldest = reads.keys().next().value!;
@@ -545,10 +570,11 @@ export async function api<T>(
           if (!inFlight.has(oldest)) readVersions.delete(oldest);
         }
         const now = Date.now();
+        reads.delete(path);
         reads.set(path, {
           value,
-          expires: now + ttlMs,
-          retainUntil: now + readCachePolicy(path).retainMs,
+          expires: cacheExpiry(path, now, ttlMs),
+          retainUntil: cacheExpiry(path, now, readCachePolicy(path).retainMs),
         });
       }
       return value;

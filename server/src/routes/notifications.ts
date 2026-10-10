@@ -1,3 +1,4 @@
+import {cachedVersionedRead} from "../lib/cache-revision";
 import {notificationRuntime,defaultNotificationRuntime,type NotificationRuntime} from '../services/notification-runtime';
 import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
@@ -202,7 +203,8 @@ notificationRoutes.post('/alarms/import-timetable',async c=>{
 });
 
 notificationRoutes.get('/sounds/default',async c=>{
- const sound=firstRow(await database(c.env).execute(sql`select s.id,s.name,s.media_id from public.notification_sounds s join public.media_objects m on m.id=s.media_id and m.deleted_at is null where s.active and s.is_default and (s.institution_id=${currentUser(c).universityId}::uuid or s.institution_id is null) order by s.institution_id nulls last limit 1`));
+ const institution=currentUser(c).universityId;
+ const sound=await cachedVersionedRead(c,'notification-sound','notification.sounds',institution??'global',60,async()=>firstRow(await database(c.env).execute(sql`select s.id,s.name,s.media_id from public.notification_sounds s join public.media_objects m on m.id=s.media_id and m.deleted_at is null where s.active and s.is_default and (s.institution_id=${institution}::uuid or s.institution_id is null) order by s.institution_id nulls last limit 1`))??null);
  return c.json({sound:sound?{...sound,url:`${(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'')}/v1/media/${sound.media_id}`,availability:'web',nativeSound:'default'}:null});
 });
 notificationRoutes.get('/admin/sounds',async c=>{

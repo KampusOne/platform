@@ -1,0 +1,28 @@
+{
+  "environment": "rehearsal",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-mute-sunset-ayzh9xrc",
+  "database": "neondb",
+  "verifiedAt": "2026-10-10T11:21:18.528119+00:00",
+  "migration": {
+    "version": "20261010120000_versioned_read_cache",
+    "sourceBlobSha": "2e316b2d99e7925789175bf8ea3054ec85d27265"
+  },
+  "method": "All additive migration statements and verification statements executed in a single Neon transaction ending with ROLLBACK. No branch reset or deletion.",
+  "checks": {
+    "prerequisiteTables": 18,
+    "transactionalInvalidation": "passed",
+    "privatePrivileges": "passed",
+    "verificationResult": "cache-rehearsal-passed",
+    "revisionTableAbsentBefore": true,
+    "revisionTableAbsentAfter": true,
+    "changesRolledBack": true
+  },
+  "branchProvisioning": "A new branch could not be created because the project branch limit was reached. Existing isolated rehearsal branch reused for a rollback-only test.",
+  "productionMigrationApplied": false,
+  "productionApprovalRecorded": false,
+  "limitations": [
+    "This is rehearsal evidence, not production migration proof.",
+    "No staging Worker deployment or live load test performed."
+  ]
+}

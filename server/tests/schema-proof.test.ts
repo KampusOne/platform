@@ -17,6 +17,21 @@ const proof = () => ({
   }),
 });
 describe("correction deployment guard", () => {
+  it("requires reviewed cache migration evidence before enabling shared revisions", () => {
+    const cacheProof = {
+      ...proof(),
+      rehearsal: { parentBranchId: "br-quiet-butterfly-ayrj264q", branchId: "br-fixture-rehearsal" },
+      checks: { cache: "passed", fixturesRolledBack: true, isolatedBranchRehearsal: "passed", transactionalInvalidation: "passed", privatePrivileges: "passed" },
+      migrations: groups.cache.map((version: string) => {
+        const bytes = load(version);
+        return { version, sourceBlobSha: createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex") };
+      }),
+    };
+    expect(verifySchemaProof(cacheProof, "cache", load)).toBe(1);
+    expect(() => verifySchemaProof({ ...cacheProof, rehearsal: undefined }, "cache", load)).toThrow();
+    expect(() => verifySchemaProof({ ...cacheProof, checks: { ...cacheProof.checks, transactionalInvalidation: "failed" } }, "cache", load)).toThrow();
+    expect(() => verifySchemaProof(cacheProof, "cache", () => "changed migration")).toThrow(/changed/);
+  });
   it("rejects current-release proof without rehearsal, preservation, or private replay boundaries", () => {
     const currentProof = {
       ...proof(),

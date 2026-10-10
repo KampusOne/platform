@@ -1,73 +1,64 @@
 import type { Context } from "hono";
+import { cacheOutcome } from "./read-cache-metrics";
+import { sha256 } from "./security";
 import type { Bindings, Variables } from "../types";
 
-/**
- * Cache ONLY institution-wide, non-personal datasets after the route has
- * authorized the requester. A key must include the institution/campus and
- * content revision. Sensitive endpoints must never call this helper.
- *
- * The public Cache API is used internally as a shared JSON object store;
- * the actual API response stays private,no-store and is rebuilt per request,
- * so authorization, CORS and request headers are not stored in the cache.
- */
-type JsonCache = {
-  match(key: Request): Promise<Response | undefined>;
-  put(key: Request, value: Response): Promise<void>;
-};
+/** Non-personal VALUE cache. The caller authorizes on every request; user-facing
+ * responses, credentials, permissions and signed URLs never enter this store. */
+export type SharedResource = "academic-catalog" | "campus-places" | "campus-features" | "campus-paths" | "campus-capabilities" | "product-categories" | "notification-sound" | "website-articles" | "website-article" | "website-settings";
+export type JsonCache = { match(key: Request): Promise<Response | undefined>; put(key: Request, value: Response): Promise<void> };
+type Envelope<T> = { version: 2; createdAt: number; expiresAt: number; value: T };
 const flights = new Map<string, Promise<unknown>>();
+const maxFlights = 128;
+const maxBytes = 8 * 1024 * 1024;
 
 export async function cachedSharedRead<T>(
   context: Context<{ Bindings: Bindings; Variables: Variables }>,
-  resource: string,
-  scope: string,
-  ttlSeconds: number,
-  load: () => Promise<T>,
-  injectedCache?: JsonCache,
+  resource: SharedResource, scope: string, ttlSeconds: number, load: () => Promise<T>, injectedCache?: JsonCache,
 ): Promise<T> {
   const cache = injectedCache ?? (typeof caches === "undefined" ? undefined : (caches as CacheStorage & { default?: JsonCache }).default);
-  if (!cache || context.env.ENVIRONMENT === "local" || context.env.SHARED_READ_CACHE_ENABLED === "false") return load();
-
-  // Internal key: excludes cookies, bearer tokens, IPs, user IDs and all
-  // transient response headers. Cross-tenant reuse is prevented by scope.
-  const keyUrl = new URL(context.req.url);
-  keyUrl.pathname = "/__kampusone_internal_cache/v1/" + encodeURIComponent(resource);
-  keyUrl.search = "?scope=" + encodeURIComponent(scope);
-  const key = new Request(keyUrl.toString());
-
-  try {
-    const found = await cache.match(key);
-    if (found?.ok) return (await found.json()) as T;
-  } catch {
-    // Cache read failure is not a user-facing backend error.
+  const bypass = /(?:no-cache|no-store)/i.test(context.req.header?.("Cache-Control") ?? "");
+  if (!cache || context.env.ENVIRONMENT === "local" || context.env.SHARED_READ_CACHE_ENABLED !== "true" || bypass || !Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
+    cacheOutcome(context.env, "bypass"); return load();
   }
-  const keyString = keyUrl.toString();
-  const alreadyLoading = flights.get(keyString) as Promise<T> | undefined;
-  if (alreadyLoading) return alreadyLoading;
+  const digest = await sha256(JSON.stringify([context.env.ENVIRONMENT, resource, scope]));
+  const keyUrl = new URL(context.req.url);
+  keyUrl.pathname = "/__kampusone_internal_cache/v2/" + resource;
+  keyUrl.search = "?scope=" + digest;
+  const key = new Request(keyUrl.toString());
+  const keyString = key.url;
+  const pending = flights.get(keyString) as Promise<T> | undefined;
+  if (pending) { cacheOutcome(context.env, "coalesced"); return pending; }
 
+  let write: Promise<void> = Promise.resolve();
   const job = (async () => {
-    const result = await load();
-    const safeSeconds = Math.min(900, Math.max(1, Math.floor(ttlSeconds)));
     try {
-      const response = Response.json(result, {
-        headers: { "Cache-Control": "public, max-age=" + safeSeconds },
-      });
-      const write = cache.put(key, response).catch(() => {
-        // Failure to populate the optimization must never fail the real request.
-      });
-      try {
-        context.executionCtx.waitUntil(write);
-      } catch {
-        void write; // Node tests and local runtimes may not provide waitUntil.
+      const found = await cache.match(key);
+      if (found?.status === 200) {
+        const saved = await found.json() as Envelope<T>;
+        const now = Date.now();
+        if (saved?.version === 2 && Number.isFinite(saved.createdAt) && saved.createdAt <= now && Number.isFinite(saved.expiresAt) && saved.expiresAt > now && saved.expiresAt - saved.createdAt <= 900_000 && Object.hasOwn(saved, "value")) {
+          cacheOutcome(context.env, "hit"); return saved.value;
+        }
+        cacheOutcome(context.env, "corrupt");
       }
-    } catch {
-      // JSON/cache API failures must not turn an otherwise valid read into a 500.
-    }
+    } catch { cacheOutcome(context.env, "read_failed"); }
+    cacheOutcome(context.env, "miss");
+    const result = await load();
+    // Downward jitter makes the requested TTL an upper bound.
+    const seconds = Math.max(1, Math.floor(Math.min(900, ttlSeconds) * (0.9 + parseInt(digest.slice(0,2),16) / 2550)));
+    try {
+      const now = Date.now();
+      const body = JSON.stringify({ version: 2, createdAt: now, expiresAt: now + seconds * 1000, value: result } satisfies Envelope<T>);
+      if (new TextEncoder().encode(body).byteLength > maxBytes) { cacheOutcome(context.env, "oversize"); return result; }
+      write = cache.put(key, new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=" + seconds } })).catch(() => { cacheOutcome(context.env, "store_failed"); });
+      try { context.executionCtx.waitUntil(write); } catch { /* Tests may have no execution context. */ }
+    } catch { cacheOutcome(context.env, "store_failed"); }
     return result;
   })();
-  flights.set(keyString, job);
-  try {
-    return await job;
-  } finally {
-    if (flights.get(keyString) === job) flights.delete(keyString);
-  }
+  if (flights.size < maxFlights) flights.set(keyString, job);
+  // Hold singleflight through cache.put without delaying the live result.
+  const remove = () => { if (flights.get(keyString) === job) flights.delete(keyString); };
+  void job.then(() => write.then(remove), remove);
+  return job;
 }

@@ -18,7 +18,7 @@ import {
 } from "@kampusone/contracts";
 
 import { database, firstRow, sqlClient } from "../lib/database";
-import { cachedSharedRead } from "../lib/shared-read-cache";
+import { cachedVersionedRead } from "../lib/cache-revision";
 import { campusDirectoryDefaultForUniversity } from "../lib/campus-defaults";
 import { id, input as validatedInput } from "../lib/input";
 import { z } from "@kampusone/contracts";
@@ -125,7 +125,7 @@ studentRoutes.get("/catalog", async (context) => {
     throw new AppError(400, "BAD_REQUEST", "Choose a valid university and try again.");
   const scope = (context.req.query("institutionsOnly") === "true" ? "institutions" : "full") +
     ":" + (requested ?? "all");
-  const catalog = await cachedSharedRead(context, "academic-catalog", scope, 300, async () => {
+  const catalog = await cachedVersionedRead(context, "academic-catalog", "academic.catalog", scope, 300, async () => {
   const db = database(context.env);
   const institutionsOnly = context.req.query("institutionsOnly") === "true";
   const requestedUniversityId = context.req.query("universityId");
@@ -693,7 +693,7 @@ studentRoutes.get("/campus/places", async (context) => {
     search_aliases: string[] | null;
   };
 
-  const [result, university] = await Promise.all([
+  const [result, university] = await cachedVersionedRead(context, "campus-places", "campus.maps", JSON.stringify(["directory", universityId]), 120, () => Promise.all([
     db.execute<CampusPlaceRow>(sql`
       select id, name, category, description, latitude, longitude,
         accessibility_notes, image_url, verified_at, search_aliases
@@ -707,7 +707,7 @@ studentRoutes.get("/campus/places", async (context) => {
       where id = ${universityId}::uuid and deleted_at is null
       limit 1
     `),
-  ]);
+  ]));
 
   const starter = campusDirectoryDefaultForUniversity(firstRow(university)?.name);
   const databasePlaces = result.rows;

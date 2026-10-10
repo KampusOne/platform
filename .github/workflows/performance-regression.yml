@@ -18,4 +18,6 @@ jobs:
         working-directory: packages/contracts
       - run: npm ci
         working-directory: server
+      - name: Check mounted route cache inventory
+        run: node server/scripts/cache-route-manifest.mjs --check
       - run: node --experimental-strip-types --test tests/*.test.mjs tests/post-like-store.test.ts

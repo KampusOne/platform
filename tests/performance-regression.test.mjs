@@ -9,8 +9,8 @@ test("background bookkeeping does not invalidate content, mutations stay scoped"
   assert.deepEqual(invalidationTargets("/v1/student/events"), []);
   assert.deepEqual(invalidationTargets("/v1/notifications/alarm-events"), []);
   assert.deepEqual(invalidationTargets("/v1/notifications/devices"), []);
-  assert.deepEqual(invalidationTargets("/v1/account/streak"), ["/v1/student/home"]);
-  assert.deepEqual(invalidationTargets("/v1/messages/abc/read"), ["/v1/messages"]);
+  assert.deepEqual(invalidationTargets("/v1/account/streak"), ["/v1/account/streak", "/v1/student/home"]);
+  assert.deepEqual(invalidationTargets("/v1/messages/abc/read"), ["/v1/messages", "/v1/notifications"]);
   assert.ok(invalidationTargets("/v1/student/feed/id/like").includes("/v1/student/feed"));
   assert.equal(invalidationTargets("/v1/auth/logout"), null);
   assert.equal(matchesRead("/v1/student/feed?q=test", "/v1/student/feed"), true);
@@ -110,7 +110,7 @@ test("all feature reads get appropriate cache behaviour without stale financial 
   assert.ok(policy("/v1/messages/inbox").freshMs > 0);
   assert.ok(policy("/v1/messages/inbox").freshMs < policy("/v1/student/feed").freshMs);
   assert.ok(policy("/v1/notifications").freshMs < policy("/v1/student/timetable").freshMs);
-  assert.ok(policy("/v1/maps/campuses/example/features").freshMs >= 60_000);
+  assert.equal(policy("/v1/maps/campuses/example/features").freshMs, 15_000);
   assert.ok(policy("/v1/student/catalog?universityId=u").freshMs >= 60_000);
   assert.ok(policy("/v1/communities").retainMs >= policy("/v1/communities").freshMs);
   assert.ok(policy("/v1/calendar").freshMs > 0);

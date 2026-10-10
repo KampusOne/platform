@@ -1,3 +1,4 @@
+import {cachedVersionedRead} from "../lib/cache-revision";
 import {mappedDeliveryPoint,currentAgentPosition,campusDeliveryRoute} from '../lib/delivery-routing';
 import { z } from "@kampusone/contracts";
 import { input, id } from "../lib/input";
@@ -969,14 +970,15 @@ agentRoutes.get("/product-categories", async (context) => {
     select distinct university_id from public.agent_profiles where user_id = ${user.id}::uuid
     union select university_id from public.agent_applications where user_id = ${user.id}::uuid
   `);
-  const ids = universityIds.rows.map((item) => item.university_id);
-  const result = ids.length
-    ? await database(context.env).execute(sql`
-    select id, university_id, name, listing_rules from public.product_categories
-    where university_id = any(${sql.param(ids)}::uuid[]) and status = 'APPROVED' order by name
-  `)
-    : { rows: [] };
-  return context.json({ categories: result.rows });
+  const ids = universityIds.rows.map((item) => item.university_id).sort();
+  const categories = ids.length
+    ? await cachedVersionedRead(context, "product-categories", "commerce.categories", JSON.stringify(ids), 300, async () =>
+      (await database(context.env).execute(sql`
+        select id, university_id, name, listing_rules from public.product_categories
+        where university_id = any(${sql.param(ids)}::uuid[]) and status = 'APPROVED' order by name
+      `)).rows)
+    : [];
+  return context.json({ categories });
 });
 
 agentRoutes.get("/products", async (context) => {
