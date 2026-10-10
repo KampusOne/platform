@@ -73,8 +73,8 @@ export function readCachePolicy(path: string): ReadCachePolicy {
   if (!/^\/v1\//.test(resource)) return freshOnly;
   // Authorization, prices, transactions and live operations must be fresh.
   if (
-    /^\/v1\/(?:auth|media|payments|payout-setup|usage|ai|admin|manage)(?:\/|$)/.test(resource) ||
-    /\/(?:wallet|balance|ledger|payment|payments|payout|payouts|checkout|quote|quotes|earnings|commission|commissions|orders|purchases|webhook|webhooks|live-location|rider-location|delivery-status|status-check)(?:\/|$)/.test(resource)
+    /^\/v1\/(?:auth|media|payments|payout-setup|usage|ai|admin|campus-admin|manage|applications|agents|discounts)(?:\/|$)/.test(resource) ||
+    /\/(?:admin|wallet|balance|ledger|payment|payments|payout|payouts|checkout|quote|quotes|pricing|earnings|commission|commissions|orders|purchases|webhook|webhooks|live-location|rider-location|gps|location|tracking|delivery-status|status-check|verification|permissions|roles)(?:\/|$)/.test(resource)
   ) return freshOnly;
   if (resource === "/v1/config/public") return { freshMs: 15_000, retainMs: 30_000 };
   if (/^\/v1\/config(?:\/|$)/.test(resource)) return freshOnly;
