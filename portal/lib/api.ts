@@ -261,7 +261,7 @@ export async function portalApi<T>(
   if (existing) return waitForPortalReader(existing, init.signal);
   const versionAtStart = cacheGeneration;
   const accountAtStart = currentAccountId;
-  const { signal: _consumer, ...sharedOptions } = init;
+  const sharedOptions: RequestInit = { ...init, signal: null };
   const operation = portalRequest<T>(path, sharedOptions, retry)
     .then((value) => {
       if (accountAtStart !== currentAccountId)
