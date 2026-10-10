@@ -47,16 +47,20 @@ export async function cachedSharedRead<T>(
   const job = (async () => {
     const result = await load();
     const safeSeconds = Math.min(900, Math.max(1, Math.floor(ttlSeconds)));
-    const response = Response.json(result, {
-      headers: { "Cache-Control": "public, max-age=" + safeSeconds },
-    });
-    const write = cache.put(key, response).catch(() => {
-      // Failure to populate the optimization must never fail the real request.
-    });
     try {
-      context.executionCtx.waitUntil(write);
+      const response = Response.json(result, {
+        headers: { "Cache-Control": "public, max-age=" + safeSeconds },
+      });
+      const write = cache.put(key, response).catch(() => {
+        // Failure to populate the optimization must never fail the real request.
+      });
+      try {
+        context.executionCtx.waitUntil(write);
+      } catch {
+        void write; // Node tests and local runtimes may not provide waitUntil.
+      }
     } catch {
-      void write; // Node tests and local runtimes may not provide waitUntil.
+      // JSON/cache API failures must not turn an otherwise valid read into a 500.
     }
     return result;
   })();
