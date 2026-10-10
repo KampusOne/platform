@@ -5,7 +5,7 @@
   "compatibility_date": "2026-09-09",
   "workers_dev": true,
   "preview_urls": false,
-  "keep_vars": true,
+  "keep_vars": false, // remove obsolete dashboard text vars; Wrangler retains existing secrets
   "ai": { "binding": "AI" },
   "observability": {
     "enabled": true,
@@ -29,7 +29,6 @@
     "UNIFIED_SCHEMA_READY": "true",
     "TUTORIALS_ENABLED": "true",
     "STORE_ENABLED": "true",
-    "STORE_DEMO_ENABLED": "false",
     "LOGISTICS_ENABLED": "true",
     "PAYMENTS_ENABLED": "true",
     "PAYOUTS_ENABLED": "true",
@@ -40,8 +39,6 @@
     "RESEND_FROM_EMAIL": "KampusOne <hello@kampusone.app>",
     "RESEND_REPLY_TO": "support@kampusone.app",
     "GA4_ANALYTICS_ENABLED": "true",
-    "GA4_REPORTING_ENABLED": "false",
-    "GA4_CUSTOM_DIMENSIONS_READY": "false",
     "GA4_MEASUREMENT_ID": "G-GWFL9R95B8",
     "AI_UNLIMITED_EMAIL_HASHES": "af83a966d0eb435808a4657fce605b89077ab7369a7d32caea01ccba0276d3fb",
 
