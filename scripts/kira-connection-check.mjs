@@ -25,8 +25,9 @@ export async function probe(request, env) {
       return{outcome:'provider_rejected',http:r.status,hint:/credit|pre.?paid|payment|balance/i.test(message)?'credits_or_payment':r.status===429?'rate_limit':'unclassified'};
     }catch{return{outcome:'transport_failure'};}
   };
+  const bachs={configured:Boolean(env.BACHS_API_KEY&&env.BACHS_WEBHOOK_SECRET),liveKey:env.BACHS_API_KEY?.startsWith('sk_live_')===true};
   const [standard,pro,huggingface]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck()]);
-  return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface},{headers:{'Cache-Control':'no-store'}});
+  return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs},{headers:{'Cache-Control':'no-store'}});
 }
 
 if(process.argv.includes('--self-test')) {
@@ -51,7 +52,9 @@ if(process.argv.includes('--self-test')) {
     if(!token||!/^[a-f0-9]{32}$/i.test(account??''))throw new Error('Deployment credentials unavailable');
     stage='binding metadata';
     const settings=await cf('/workers/scripts/platformp/settings');
-    const inherited=['HF_TOKEN','HF_CHAT_MODEL'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
+    const inherited=['HF_TOKEN','HF_CHAT_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
+    report(`Production BACHS API secret present: ${settings.bindings?.some(b=>b.name==='BACHS_API_KEY')===true}`);
+    report(`Production BACHS webhook secret present: ${settings.bindings?.some(b=>b.name==='BACHS_WEBHOOK_SECRET')===true}`);
     report(`Production Workers AI binding present: ${settings.bindings?.some(b=>b.name==='AI'&&b.type==='ai')===true}`);
     stage='isolated preview session';
     const session=await cf('/workers/scripts/platformp/subdomain/edge-preview');
@@ -79,6 +82,7 @@ if(process.argv.includes('--self-test')) {
       const value=result[name];if(!outcomes.has(value?.outcome))throw new Error('Unexpected outcome');
       report(`${name}: ${value.outcome}${Number.isInteger(value.http)?` HTTP ${value.http}`:''}${/^\d{4}$/.test(value.code??'')?` code ${value.code}`:''}${['credits_or_payment','rate_limit','unclassified'].includes(value.hint)?` ${value.hint}`:''}`);
     }
+    report(`BACHS configuration complete: ${result.bachs?.configured===true}; live key: ${result.bachs?.liveKey===true}`);
     if(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded')process.exitCode=1;
     report('No production route, credential export, account data or live application write. Preview expires after three minutes.');
   }catch(error){report(`CHECK FAILED at ${stage}: ${/^HTTP [1-5][0-9]{2}$/.test(error?.message??'')?error.message:'raw error withheld'}`);process.exitCode=1;}

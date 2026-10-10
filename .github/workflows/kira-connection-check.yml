@@ -1,7 +1,7 @@
 name: Verify live Kira providers
 on:
   push:
-    branches: [main, fix/keyboard-ai-recovery-20261009]
+    branches: [main, fix/keyboard-ai-recovery-20261009, perf/secure-universal-cache-20261010]
     paths: ['scripts/kira-connection-check.mjs', '.github/workflows/kira-connection-check.yml']
   workflow_dispatch:
 permissions:
