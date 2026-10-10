@@ -18,6 +18,7 @@ import {
 } from "@kampusone/contracts";
 
 import { database, firstRow, sqlClient } from "../lib/database";
+import { cachedSharedRead } from "../lib/shared-read-cache";
 import { campusDirectoryDefaultForUniversity } from "../lib/campus-defaults";
 import { id, input as validatedInput } from "../lib/input";
 import { z } from "@kampusone/contracts";
@@ -119,6 +120,9 @@ function requireUniversity(user: ReturnType<typeof currentUser>) {
 }
 
 studentRoutes.get("/catalog", async (context) => {
+  const scope = (context.req.query("institutionsOnly") === "true" ? "institutions" : "full") +
+    ":" + (context.req.query("universityId") ?? "all");
+  const catalog = await cachedSharedRead(context, "academic-catalog", scope, 300, async () => {
   const db = database(context.env);
   const institutionsOnly = context.req.query("institutionsOnly") === "true";
   const requestedUniversityId = context.req.query("universityId");
@@ -143,12 +147,12 @@ studentRoutes.get("/catalog", async (context) => {
       where deleted_at is null
       order by name
     `);
-    return context.json({
+    return {
       universities: universities.rows,
       faculties: [],
       departments: [],
       courses: [],
-    });
+    };
   }
 
   if (universityId) {
@@ -191,12 +195,12 @@ studentRoutes.get("/catalog", async (context) => {
         order by courses.code nulls last, courses.name
       `),
     ]);
-    return context.json({
+    return {
       universities: universities.rows,
       faculties: faculties.rows,
       departments: departments.rows,
       courses: courses.rows,
-    });
+    };
   }
 
   const [universities, faculties, departments, courses] = await Promise.all([
@@ -221,12 +225,14 @@ studentRoutes.get("/catalog", async (context) => {
       order by code nulls last, name
     `),
   ]);
-  return context.json({
+  return {
     universities: universities.rows,
     faculties: faculties.rows,
     departments: departments.rows,
     courses: courses.rows,
+  };
   });
+  return context.json(catalog);
 });
 
 studentRoutes.use("/*", requireAuth);
