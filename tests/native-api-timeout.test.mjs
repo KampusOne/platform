@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {runInNewContext} from 'node:vm';
-import {waitForRequest,invalidationTargets,matchesRead} from '../mobile/src/lib/request-policy.ts';
+import {waitForRequest,invalidationTargets,matchesRead,readCachePolicy} from '../mobile/src/lib/request-policy.ts';
 
 const require=createRequire(new URL('../server/package.json',import.meta.url));
 const ts=require('typescript');
 function nativeTransport(fetcher, clock = Date) {
-  const policy={waitForRequest,invalidationTargets,matchesRead};
+  const policy={waitForRequest,invalidationTargets,matchesRead,readCachePolicy};
   const load=(file,mocks)=>{
     const exports={};
     const compiled=ts.transpileModule(readFileSync(new URL('../mobile/src/lib/'+file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -79,7 +79,7 @@ test('rendering can read recent cached data while live reads still honor freshne
   let now=Date.now(); const clock=class extends Date {static now(){return now;}};
   let reads=0;const api=nativeTransport(async(_url,init)=>Response.json(init.method==='POST'?{ok:true}:{revision:++reads}),clock);
   api.setAccessToken('token','account-a');
-  await api.api('/v1/student/gpa');now+=21_000;
+  await api.api('/v1/student/gpa');now+=readCachePolicy('/v1/student/gpa').freshMs+1_000;
   assert.equal(api.peekTransportCache('/v1/student/gpa'),undefined);
   assert.equal(api.peekTransportCache('/v1/student/gpa',{allowStale:true}).revision,1);
   assert.equal((await api.api('/v1/student/gpa')).revision,2);
