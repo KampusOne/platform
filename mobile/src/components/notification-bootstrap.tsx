@@ -1,3 +1,4 @@
+import {clearApiCache} from "@/src/lib/api";
 import Constants from "expo-constants";
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
@@ -165,7 +166,7 @@ export function NotificationBootstrap() {
           if(active) void registerPushDevice(user.id).catch(()=>undefined);
         });
         receivedSubscription = Notifications.addNotificationReceivedListener(notification => {
-          if (active) void observePush(notification.request.content.data ?? {});
+          if (active) { clearApiCache(); void observePush(notification.request.content.data ?? {}); }
         });
         responseSubscription =
           Notifications.addNotificationResponseReceivedListener(

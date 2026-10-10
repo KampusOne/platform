@@ -18,6 +18,7 @@ import {
 } from "@kampusone/contracts";
 
 import { database, firstRow, sqlClient } from "../lib/database";
+import { cachedVersionedRead } from "../lib/cache-revision";
 import { campusDirectoryDefaultForUniversity } from "../lib/campus-defaults";
 import { id, input as validatedInput } from "../lib/input";
 import { z } from "@kampusone/contracts";
@@ -119,6 +120,12 @@ function requireUniversity(user: ReturnType<typeof currentUser>) {
 }
 
 studentRoutes.get("/catalog", async (context) => {
+  const requested = context.req.query("universityId");
+  if (requested && !z.string().uuid().safeParse(requested).success)
+    throw new AppError(400, "BAD_REQUEST", "Choose a valid university and try again.");
+  const scope = (context.req.query("institutionsOnly") === "true" ? "institutions" : "full") +
+    ":" + (requested ?? "all");
+  const catalog = await cachedVersionedRead(context, "academic-catalog", "academic.catalog", scope, 300, async () => {
   const db = database(context.env);
   const institutionsOnly = context.req.query("institutionsOnly") === "true";
   const requestedUniversityId = context.req.query("universityId");
@@ -143,12 +150,12 @@ studentRoutes.get("/catalog", async (context) => {
       where deleted_at is null
       order by name
     `);
-    return context.json({
+    return {
       universities: universities.rows,
       faculties: [],
       departments: [],
       courses: [],
-    });
+    };
   }
 
   if (universityId) {
@@ -191,12 +198,12 @@ studentRoutes.get("/catalog", async (context) => {
         order by courses.code nulls last, courses.name
       `),
     ]);
-    return context.json({
+    return {
       universities: universities.rows,
       faculties: faculties.rows,
       departments: departments.rows,
       courses: courses.rows,
-    });
+    };
   }
 
   const [universities, faculties, departments, courses] = await Promise.all([
@@ -221,12 +228,14 @@ studentRoutes.get("/catalog", async (context) => {
       order by code nulls last, name
     `),
   ]);
-  return context.json({
+  return {
     universities: universities.rows,
     faculties: faculties.rows,
     departments: departments.rows,
     courses: courses.rows,
+  };
   });
+  return context.json(catalog);
 });
 
 studentRoutes.use("/*", requireAuth);
@@ -684,7 +693,7 @@ studentRoutes.get("/campus/places", async (context) => {
     search_aliases: string[] | null;
   };
 
-  const [result, university] = await Promise.all([
+  const [result, university] = await cachedVersionedRead(context, "campus-places", "campus.maps", JSON.stringify(["directory", universityId]), 120, () => Promise.all([
     db.execute<CampusPlaceRow>(sql`
       select id, name, category, description, latitude, longitude,
         accessibility_notes, image_url, verified_at, search_aliases
@@ -698,7 +707,7 @@ studentRoutes.get("/campus/places", async (context) => {
       where id = ${universityId}::uuid and deleted_at is null
       limit 1
     `),
-  ]);
+  ]));
 
   const starter = campusDirectoryDefaultForUniversity(firstRow(university)?.name);
   const databasePlaces = result.rows;

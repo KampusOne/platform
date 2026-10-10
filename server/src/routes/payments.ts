@@ -12,8 +12,10 @@ import {
   phase3SchemaReady,
   requireFeature,
 } from "../lib/features";
+import { collectionReference, isBachsReference } from "../lib/collection-provider";
+import { validBachsDelivery } from "../lib/bachs";
 import { validPaystackSignature } from "../lib/paystack";
-import { claimPaystackWebhook, finishPaystackWebhook, initializePaystackOnce } from "../lib/payment-idempotency";
+import { claimBachsWebhook, finishBachsWebhook, claimPaystackWebhook, finishPaystackWebhook, initializePaystackOnce } from "../lib/payment-idempotency";
 import { reconcileRiderCommission } from "../lib/rider-finance";
 import { reconcileKira } from "../lib/kira-billing";
 import { reconcileMaterial } from "../lib/material-commerce";
@@ -284,7 +286,7 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
     );
 
   let reference = existing?.provider_reference ??
-    `K1-${parsed.data.resourceType === "TUTORIAL_BOOKING" ? "T" : "O"}-${crypto.randomUUID()}`;
+    collectionReference(context.env, parsed.data.resourceType === "TUTORIAL_BOOKING" ? "T" : "O");
   let attemptId = existing?.id ?? crypto.randomUUID();
   if (!existing) {
     const inserted = await database(context.env).execute<{ id: string }>(sql`
@@ -399,7 +401,7 @@ paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
   const user = currentUser(context);
   const reference = context.req.param("reference");
   if (
-    reference.startsWith("K1-AI-") &&
+    /^K1-(?:B-)?AI-/.test(reference) &&
     (await reconcileKira(context.env, reference, user.id))
   ) {
     const payment = firstRow(
@@ -410,7 +412,7 @@ paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
     return context.json({ payment });
   }
   if (
-    reference.startsWith("K1-RC-") &&
+    /^K1-(?:B-)?RC-/.test(reference) &&
     (await reconcileRiderCommission(context.env, reference, user.id))
   ) {
     const payment = firstRow(
@@ -513,13 +515,13 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
     } else {
       let recognized = false;
       let status: string | undefined;
-      if (reference.startsWith("K1-AI-")) {
+      if (/^K1-(?:B-)?AI-/.test(reference)) {
         recognized = await reconcileKira(context.env, reference);
         if (recognized)
           status = firstRow(await database(context.env).execute<{ status: string }>(sql`
             select status from app_private.kira_checkouts where provider_reference=${reference}
           `))?.status;
-      } else if (reference.startsWith("K1-RC-")) {
+      } else if (/^K1-(?:B-)?RC-/.test(reference)) {
         recognized = await reconcileRiderCommission(context.env, reference);
         if (recognized)
           status = firstRow(await database(context.env).execute<{ status: string }>(sql`
@@ -588,4 +590,45 @@ paymentRoutes.post("/paystack/webhook", async (context) => {
   if (outcome === "RETRYABLE")
     throw new AppError(503, "PROVIDER_UNAVAILABLE", "The signed payment notification is awaiting verified settlement.");
   return context.json({ status: outcome === "PROCESSED" ? "reconciled" : "requires_review" });
+});
+
+
+paymentRoutes.post('/bachs/webhook', async context => {
+  const raw = await context.req.text();
+  if (new TextEncoder().encode(raw).byteLength > 65536) throw new AppError(413, 'BAD_REQUEST', 'The payment event is too large.');
+  if (!await validBachsDelivery(context.env, raw, context.req.header('X-Bachs-Timestamp'), context.req.header('X-Bachs-Signature'), context.req.header('X-Bachs-Signature-V2')))
+    throw new AppError(401, 'UNAUTHENTICATED', 'The payment event signature is invalid.');
+  let event: { id?: string; type?: string; data?: { checkout_id?: string; reference?: string } };
+  try { event = JSON.parse(raw); } catch { throw new AppError(400, 'BAD_REQUEST', 'The payment event is not valid JSON.'); }
+  if (!event || !['checkout.completed', 'collection.succeeded'].includes(event.type ?? '')) return context.json({ status: 'ignored' });
+  if (typeof event.id !== 'string' || !/^evt_[A-Za-z0-9_-]{6,90}$/.test(event.id)) throw new AppError(400, 'BAD_REQUEST', 'The payment event ID is invalid.');
+  // A signed notification provides an identifier, never authoritative paid amounts.
+  const saved = firstRow(await database(context.env).execute<{ reference: string; resourceType: string }>(sql`
+    select q.provider_reference as reference,q.resource_type as "resourceType" from app_private.bachs_checkout_quotes q
+    join app_private.bachs_priced_sessions s on s.quote_id=q.id
+    where (${event.data?.checkout_id ?? null}::text is not null and s.checkout_id=${event.data?.checkout_id ?? null})
+       or (${event.data?.checkout_id ?? null}::text is null and q.provider_reference=${event.data?.reference ?? null})
+  `));
+  if (!saved || !isBachsReference(saved.reference)) return context.json({ status: 'ignored' });
+  const claim = await claimBachsWebhook(context.env, event.type!, event.id, raw);
+  if (claim.state === 'DUPLICATE') return context.json({ status: 'already_processed' });
+  if (claim.state === 'REQUIRES_REVIEW') return context.json({ status: 'requires_review' });
+  if (claim.state === 'BUSY') throw new AppError(503, 'PROVIDER_UNAVAILABLE', 'Payment verification is still in progress.');
+  try {
+    if (saved.resourceType === 'KIRA_SUBSCRIPTION') await reconcileKira(context.env, saved.reference);
+    else if (saved.resourceType === 'STORE_ORDER') await reconcilePricedStore(context.env, saved.reference);
+    else if (saved.resourceType === 'TUTORIAL_BOOKING') await reconcilePricedTutorial(context.env, saved.reference);
+    else if (saved.resourceType === 'TUTORIAL_PURCHASE') await reconcileMaterial(context.env, saved.reference);
+    const status = firstRow(await database(context.env).execute<{ status: string }>(sql`
+      select status from app_private.kira_checkouts where provider_reference=${saved.reference}
+      union all select status from public.payment_attempts where provider_reference=${saved.reference}
+    `))?.status;
+    const outcome = status === 'PAID' || status === 'SUCCEEDED' ? 'PROCESSED' : status === 'REQUIRES_REVIEW' ? 'REQUIRES_REVIEW' : 'RETRYABLE';
+    await finishBachsWebhook(context.env, event.type!, event.id, claim, outcome);
+    if (outcome === 'RETRYABLE') throw new AppError(503, 'PROVIDER_UNAVAILABLE', 'This payment is awaiting verified settlement.');
+    return context.json({ status: outcome === 'PROCESSED' ? 'reconciled' : 'requires_review' });
+  } catch (error) {
+    try { await finishBachsWebhook(context.env, event.type!, event.id, claim, 'RETRYABLE', 'RECONCILIATION_FAILED'); } catch { /* The expired claim is recoverable on redelivery. */ }
+    throw error;
+  }
 });

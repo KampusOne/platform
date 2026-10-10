@@ -27,8 +27,8 @@ describe('Workers AI recovery', () => {
     const run = native();await expect(generateAI({...env(run),AI_ASSISTANT_ENABLED:'false'},input)).rejects.toMatchObject({reason:'AI_DISABLED'});expect(run).not.toHaveBeenCalled();
     expect(()=>assertAIConfiguration({...env(),AI:undefined},'study')).toThrow();
   });
-  it('leaves image understanding on the configured vision adapter', () => {
-    expect(providerConfiguration({...env(), HF_TOKEN:'synthetic', HF_VISION_MODEL:'test/vision'},'study','image/png').provider).toBe('huggingface');
+  it('routes images to the working native vision adapter without HF credits', () => {
+    expect(providerConfiguration({...env(), HF_TOKEN:'synthetic', HF_VISION_MODEL:'test/vision'},'study','image/png').provider).toBe('workers-ai');
   });
   it('normalizes native tool calls and transports tool results without executing them', async () => {
     const run = native({tool_calls:[{name:'get_my_timetable',arguments:{}}]});
@@ -49,4 +49,21 @@ describe('Workers AI recovery', () => {
     await expect(generateAI(env(native({response:''})),input)).rejects.toMatchObject({reason:'AI_EMPTY_OUTPUT'});
     await expect(generateAI(env(native({response:'Partial',usage:{completion_tokens:3072}})),input)).rejects.toMatchObject({reason:'AI_INCOMPLETE'});
   });
+  it('reads private timetable pixels as text before reasoning, retaining the Pro model', async () => {
+    const run=native(), toMarkdown=vi.fn().mockResolvedValue([{format:'markdown',data:'Monday, MAT 101, 08:00–09:00, LT 1'}]);
+    const result=await generateAI({...env(run),AI:{run,toMarkdown}}, {...input,tier:'pro',media:{mimeType:'image/png',data:btoa('PRIVATE_PIXELS')}});
+    expect(result.provider).toBe('workers-ai');
+    const files=toMarkdown.mock.calls[0][0]; expect(files[0].blob).toBeInstanceOf(Blob);
+    expect(await files[0].blob.text()).toBe('PRIVATE_PIXELS');
+    expect(run.mock.calls[0][0]).toBe('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    expect(run.mock.calls[0][1].messages.at(-1).content).toContain('MAT 101');
+    expect(run.mock.calls[0][1].image).toBeUndefined();
+  });
+  it('recovers visually when conversion cannot read a photo', async () => {
+    const run=native(),toMarkdown=vi.fn().mockResolvedValue([{format:'error',data:'Unreadable'}]);
+    await generateAI({...env(run),AI:{run,toMarkdown}},{...input,media:{mimeType:'image/png',data:btoa('PIXELS')}});
+    expect(run.mock.calls[0][0]).toBe('@cf/meta/llama-3.2-11b-vision-instruct');
+    expect(run.mock.calls[0][1].image).toBe('data:image/png;base64,'+btoa('PIXELS'));
+  });
+
 });

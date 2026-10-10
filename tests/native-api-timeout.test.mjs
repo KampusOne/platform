@@ -1,23 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {createRequire} from 'node:module';
-import {runInNewContext} from 'node:vm';
-import {waitForRequest,invalidationTargets,matchesRead} from '../mobile/src/lib/request-policy.ts';
-
-const require=createRequire(new URL('../server/package.json',import.meta.url));
-const ts=require('typescript');
-function nativeTransport(fetcher, clock = Date) {
-  const policy={waitForRequest,invalidationTargets,matchesRead};
-  const load=(file,mocks)=>{
-    const exports={};
-    const compiled=ts.transpileModule(readFileSync(new URL('../mobile/src/lib/'+file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-    runInNewContext(compiled,{exports,module:{exports},require:name=>{if(name in mocks)return mocks[name];throw Error('Missing mock '+name);},process:{env:{EXPO_PUBLIC_KAMPUSONE_API_URL:'https://primary.invalid',EXPO_PUBLIC_KAMPUSONE_API_FALLBACK_URL:'https://backup.invalid'}},fetch:fetcher,Headers,FormData,Response,AbortController,Error,TypeError,Date:clock,setTimeout,clearTimeout});
-    return exports;
-  };
-  const deadline=load('request-deadline.ts',{'./request-policy':policy});
-  return load('api-transport.ts',{'./request-policy':policy,'./request-deadline':deadline,'./session-lock':{withSessionLock:fn=>fn()},'expo-constants':{default:{expoConfig:{extra:{}}}},'react-native':{Platform:{OS:'android'}},'./analytics-bridge':{emitFeatureLifecycle(){}},'./session-storage':{readRefreshToken:async()=>null,removeRefreshToken:async()=>{},saveRefreshToken:async()=>{}}});
-}
+import {readCachePolicy} from '../mobile/src/lib/request-policy.ts';
+import {nativeTransport} from './helpers/native-transport.mjs';
 test('a timed-out native read reaches its backup within the original deadline and keeps authentication',async()=>{
   const calls=[];
   const api=nativeTransport((url,init)=>{
@@ -79,7 +63,7 @@ test('rendering can read recent cached data while live reads still honor freshne
   let now=Date.now(); const clock=class extends Date {static now(){return now;}};
   let reads=0;const api=nativeTransport(async(_url,init)=>Response.json(init.method==='POST'?{ok:true}:{revision:++reads}),clock);
   api.setAccessToken('token','account-a');
-  await api.api('/v1/student/gpa');now+=21_000;
+  await api.api('/v1/student/gpa');now+=readCachePolicy('/v1/student/gpa').freshMs+1_000;
   assert.equal(api.peekTransportCache('/v1/student/gpa'),undefined);
   assert.equal(api.peekTransportCache('/v1/student/gpa',{allowStale:true}).revision,1);
   assert.equal((await api.api('/v1/student/gpa')).revision,2);

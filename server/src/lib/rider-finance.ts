@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { database, firstRow } from "./database";
 import { AppError } from "./errors";
 import { phase3SchemaReady } from "./features";
-import { verifyPaystack } from "./paystack";
+import { verifyCollection as verifyPaystack } from "./collection-provider";
 import type { Bindings } from "../types";
 
 export async function riderFinanceReady(env: Bindings) {

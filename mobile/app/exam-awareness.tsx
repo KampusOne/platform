@@ -57,7 +57,7 @@ export default function ExamAwareness(){
    setError(message);
   }finally{setBusy(false);}
  }
- const kind=exam?.assessment_kind==="TEST"?"CLASS TEST":"EXAM";
+ const kind=exam?.assessment_kind==="TEST"?"Class test":"Exam";
  return <ToolPage title="Exam reminders">
   {loading?<ScreenSkeleton variant="list" compact/>
   :!exam?<View style={styles.card}>

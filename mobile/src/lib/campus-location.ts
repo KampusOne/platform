@@ -94,7 +94,7 @@ export function useCampusLocation() {
           loading: preciseAllowed && !ready && !settled,
           servicesEnabled: true,
         }));
-        if (source === 'live' && ready) finish(position);
+        if (ready) finish(position);
       };
       const watchFailed = () => {
         if (!active() || !settled || usableRouteGpsFix(positionRef.current)) return;

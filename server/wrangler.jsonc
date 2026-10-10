@@ -18,6 +18,9 @@
   ],
   "vars": {
     "ENVIRONMENT": "production",
+    "SHARED_READ_CACHE_ENABLED": "true",
+    "VERSIONED_READ_CACHE_ENABLED": "true",
+    "READ_CACHE_METRICS_ENABLED": "true",
     "ALLOWED_ORIGINS": "https://kampusone.app,https://www.kampusone.app,https://mobile.kampusone.app,https://kampusone-mobile-preview.vercel.app,https://kampusone-platform-preview.vercel.app,https://a7f3c9e1b6d2f8a4c5e9b1d7f3a6c2e8.kampusone.app,https://agents.kampusone.app,https://agentinvite.kampusone.app,https://vendors.kampusone.app,https://engineering.kampusone.app",
     "MINIMUM_APP_VERSION": "0.2.0",
     "MAINTENANCE_MODE": "false",
@@ -34,6 +37,7 @@
     "PAYOUTS_ENABLED": "true",
     "AI_ASSISTANT_ENABLED": "true",
     "KIRA_SUBSCRIPTIONS_ENABLED": "true",
+    "BACHS_PRICED_CHECKOUT_ENABLED": "true",
     "PUBLIC_API_ORIGIN": "https://platformp.divine-haze-54eb.workers.dev",
     "APP_ORIGIN": "https://mobile.kampusone.app",
     "RESEND_FROM_EMAIL": "KampusOne <hello@kampusone.app>",
@@ -60,6 +64,9 @@
       "name": "kampusone-api-staging",
       "vars": {
         "ENVIRONMENT": "staging",
+        "SHARED_READ_CACHE_ENABLED": "true",
+        "VERSIONED_READ_CACHE_ENABLED": "false",
+        "READ_CACHE_METRICS_ENABLED": "true",
         "ALLOWED_ORIGINS": "https://kampusone-platform.vercel.app",
         "MINIMUM_APP_VERSION": "0.2.0",
         "MAINTENANCE_MODE": "false",

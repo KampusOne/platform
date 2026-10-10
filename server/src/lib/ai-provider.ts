@@ -41,10 +41,10 @@ export function providerConfiguration(env: AIEnvironment, mode: AIMode, mimeType
   const image = mimeType?.startsWith("image/") ?? false;
   const token = env.HF_TOKEN?.trim();
   const chatModel = env.HF_CHAT_MODEL?.trim();
-  const workers = workersAIConfiguration(env, tier);
+  const workers = workersAIConfiguration(env, tier, image);
   // The native binding activates text inference without adding billable/free-
   // plan variable slots. An explicit HF preference still permits recovery.
-  if (!image && (env.AI_TEXT_PROVIDER === 'workers-ai' || (workers.configured && env.AI_TEXT_PROVIDER !== 'huggingface'))) {
+  if ((env.AI_TEXT_PROVIDER === 'workers-ai' || (workers.configured && env.AI_TEXT_PROVIDER !== 'huggingface'))) {
     return { provider: 'workers-ai' as const, token: undefined, model: workers.model, fallbackModel: undefined, missing: workers.configured ? [] : ['AI'], configured: workers.configured };
   }
   // Pro is a KampusOne entitlement (higher quotas, context and voice), not a
@@ -111,7 +111,22 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
     let provider: AIProvider = config.provider;
     let payload: { choices?: { message?: { content?: unknown; tool_calls?: unknown }; finish_reason?: string }[] };
     if (config.provider === 'workers-ai') {
-      payload = await workersAICompletion(env, input, messages, tools, budget.maxTokens, deadline - Date.now()) as typeof payload;
+      try {
+        payload = await workersAICompletion(env, input, messages, tools, budget.maxTokens, Math.min(deadline - Date.now(), 45000)) as typeof payload;
+      } catch (error) {
+        // A native model outage must not strand the configured alternative.
+        // Keep the same quota reservation and total deadline for every attempt.
+        const hf = providerConfiguration({ ...env, AI_TEXT_PROVIDER: 'huggingface' }, input.mode, input.media?.mimeType, undefined, input.tier);
+        if (!(error instanceof AIProviderError) || error.status < 500 || !hf.configured || deadline - Date.now() < 1000) throw error;
+        console.warn(JSON.stringify({ event: 'ai.provider.fallback', from: 'workers-ai', to: 'huggingface', reason: error.reason }));
+        const response = await fetcher('https://router.huggingface.co/v1/chat/completions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hf.token}` }, signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+          body: JSON.stringify({ model: hf.model, messages, max_tokens: budget.maxTokens, temperature: 0.2, stream: false, ...(tools?.length && !input.media ? { tools, tool_choice: 'auto' } : {}) }),
+        });
+        if (!response.ok) { void response.body?.cancel().catch(() => undefined); throw error; }
+        payload = await response.json() as typeof payload;
+        provider = 'huggingface';
+      }
     } else {
       const requestModel = (model: string, fallback = false) => fetcher("https://router.huggingface.co/v1/chat/completions", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.token!}` }, signal: AbortSignal.timeout(Math.max(1,Math.min(deadline-Date.now(),!fallback && config.fallbackModel ? 55000 : budget.timeoutMs))),
@@ -124,9 +139,17 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
         // Only one fallback is possible, within the same reservation and deadline.
         // A slow/unreachable study model must not prevent the configured chat
         // model from answering a document. Never retry an authentication error.
-        if (!config.fallbackModel || deadline-Date.now()<1000) throw error;
+        if (!config.fallbackModel || deadline-Date.now()<1000) {
+          if (workersAIConfiguration(env, input.tier, Boolean(input.media)).configured && deadline - Date.now() >= 1000) {
+            console.warn(JSON.stringify({ event: 'ai.provider.fallback', from: 'huggingface', to: 'workers-ai', reason: 'transport' }));
+            const recovered = await workersAICompletion(env, input, messages, tools, budget.maxTokens, deadline - Date.now());
+            response = Response.json(recovered);
+            provider = 'workers-ai';
+          } else throw error;
+        } else {
         usedFallback = true;
         response = await requestModel(config.fallbackModel,true);
+        }
       }
       if (!response.ok && !usedFallback && config.fallbackModel && ![401,403].includes(response.status) && deadline-Date.now()>=1000) {
         void response.body?.cancel().catch(() => undefined);
@@ -134,7 +157,7 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
       }
       if (!response.ok) {
         void response.body?.cancel().catch(() => undefined);
-        if ((response.status === 402 || response.status === 429 || response.status >= 500) && !input.media && workersAIConfiguration(env, input.tier).configured && deadline - Date.now() >= 1000) {
+        if ((response.status === 402 || response.status === 429 || response.status >= 500) && workersAIConfiguration(env, input.tier, Boolean(input.media)).configured && deadline - Date.now() >= 1000) {
           console.warn(JSON.stringify({event: 'ai.provider.fallback', from: 'huggingface', to: 'workers-ai', httpStatus: response.status}));
           provider = 'workers-ai';
           payload = await workersAICompletion(env, input, messages, tools, budget.maxTokens, deadline - Date.now()) as typeof payload;

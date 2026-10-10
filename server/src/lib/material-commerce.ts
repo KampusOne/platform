@@ -4,7 +4,7 @@ import { z } from "@kampusone/contracts";
 import { database, firstRow } from "./database";
 import { approvedCommercePolicy } from "./commerce-pricing";
 import { checkoutPrice, listingPrice } from "./pricing";
-import { verifyPaystack } from "./paystack";
+import { verifyCollection as verifyPaystack } from "./collection-provider";
 import { initializePaystackOnce } from "./payment-idempotency";
 import { requireUnblocked } from "./profile-safety";
 import { AppError } from "./errors";
@@ -191,7 +191,7 @@ export async function initializeMaterialPayment(
   };
   const attempt = firstRow(
     await database(env).execute<Attempt>(
-      sql`select * from app_private.prepare_material_payment(${crypto.randomUUID()}::uuid,${id}::uuid,${user.id}::uuid,${user.universityId}::uuid,${requestId},${"K1-L-" + crypto.randomUUID()})`,
+      sql`select * from app_private.prepare_material_payment(${crypto.randomUUID()}::uuid,${id}::uuid,${user.id}::uuid,${user.universityId}::uuid,${requestId},${'K1-L-'+crypto.randomUUID()})`,
     ),
   );
   if (!attempt)

@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
 import { router, useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { readCache, writeCache } from "@/src/lib/device-cache";
 
 import { ToolButton, ToolField, ToolPage } from "@/src/components/toolkit";
 import { useAuth } from "@/src/auth/auth-context";
@@ -149,7 +150,7 @@ const planSeed = (): Plan => ({
 });
 
 function cacheableSubscription(subscription: Plan): Plan {
-  return { ...subscription, checkout: null };
+  return { ...subscription, checkout: null, checkoutEnabled: false, catalog: Object.fromEntries(Object.entries(subscription.catalog ?? {}).map(([tier, plan]) => [tier, plan ? { ...plan, checkoutEnabled: false } : plan])) };
 }
 
 function validCachedPlan(value: unknown): value is CachedKiraView {
@@ -168,9 +169,9 @@ function validCachedPlan(value: unknown): value is CachedKiraView {
 
 async function readKiraCache(userId: string) {
   try {
-    const raw = await AsyncStorage.getItem(KIRA_CACHE_PREFIX + userId);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
+    // Scrub the old unencrypted subscription snapshot; private views stay in RAM.
+    void AsyncStorage.removeItem(KIRA_CACHE_PREFIX + userId).catch(() => undefined);
+    const parsed = await readCache<CachedKiraView>('kira-plans.' + userId);
     return validCachedPlan(parsed) ? parsed : null;
   } catch {
     return null;
@@ -189,7 +190,7 @@ async function writeKiraCache(userId: string, result: StatusResponse) {
     ...(result.imports ? { imports: result.imports } : {}),
   };
   try {
-    await AsyncStorage.setItem(KIRA_CACHE_PREFIX + userId, JSON.stringify(cached));
+    await writeCache('kira-plans.' + userId, cached, 60_000);
   } catch {
     // Pricing remains available from the live response even if device cache is full.
   }
@@ -332,7 +333,6 @@ function AccountSubscription() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [expandedBenefits, setExpandedBenefits] = useState<Partial<Record<Tier, boolean>>>({});
   const [checkoutScreen, setCheckoutScreen] = useState(false);
   const [coupon, setCoupon] = useState("");
   const [quote, setQuote] = useState<PricingQuote | null>(null);
@@ -647,7 +647,12 @@ function AccountSubscription() {
           detail: "Kira uses your programme and level when they help answer an academic question.",
         },
       ]
-    : [];
+    : tier === "pro" ? [
+        { icon: "bulb-outline" as const, title: "Detailed lessons and worked examples", detail: "Explore concepts, calculations and reasoning at your study level." },
+        { icon: "document-text-outline" as const, title: "Summaries, revision notes and quizzes", detail: "Explain and revise the material you upload." },
+        { icon: "image-outline" as const, title: "Timetables, calendars and study uploads", detail: "Read supported documents and images, then review the result before saving." },
+        { icon: "chatbubbles-outline" as const, title: "Longer study conversations", detail: "Follow up on your questions with more conversation context." },
+      ] : [];
 
   if (checkoutScreen) {
     return (
@@ -772,7 +777,7 @@ function AccountSubscription() {
                   {money(amount)}
                 </Text>
               </View>
-              <Text style={muted}>Estimated total including processing. Paystack confirms its actual fee at checkout.</Text>
+              <Text style={muted}>Your total includes processing.</Text>
               {quote && !checkout ? <Text style={muted}>Total valid until {new Date(quote.expiresAt).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}.</Text> : null}
             </View>
           </View>
@@ -825,7 +830,7 @@ function AccountSubscription() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Ionicons name="shield-checkmark-outline" size={18} color={theme.textMuted} />
             <Text style={{ ...muted, flex: 1 }}>
-              Paystack confirms the processing fee at checkout. KampusOne does not store your card details.
+              KampusOne does not store your card details.
             </Text>
           </View>
         </View>
@@ -862,20 +867,19 @@ function AccountSubscription() {
             <Text style={{ ...muted, marginTop: 7, marginBottom: 8 }}>{tier === "standard" ? "Everyday study help, teaching answers and worked examples." : "More generations, longer lessons and more room to reason through your material."}</Text>
             {isCurrent && plan.currentPeriodEnd ? <Text style={{ ...muted, marginVertical: 10 }}>Active until {new Date(plan.currentPeriodEnd).toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })}</Text> : null}
             {complimentary ? <Text style={muted}>Your owner account has complimentary Pro access.</Text> : <ToolButton
-              label={free ? `${name} is included` : planSource === "seed" ? "Checking availability…" : !catalog ? "Plan could not load" : checkout && (checkout.tier ?? "pro") === tier ? "Continue your payment" : catalog.checkoutEnabled ? `Continue with ${name}` : isCurrent ? `${name} is active` : `${name} is unavailable`}
-              disabled={busy || free || planSource === "seed" || !catalog?.checkoutEnabled || Boolean(checkout && (checkout.tier ?? "pro") !== tier)}
+              label={free ? `${name} is included` : planSource === "seed" ? loading ? "Checking availability…" : "Retry plan check" : !catalog ? "Plan could not load" : checkout && (checkout.tier ?? "pro") === tier ? "Continue your payment" : catalog.checkoutEnabled ? `Continue with ${name}` : isCurrent ? `${name} is active` : `${name} is unavailable`}
+              disabled={busy || free || (planSource === "seed" ? loading : !catalog?.checkoutEnabled) || Boolean(checkout && (checkout.tier ?? "pro") !== tier)}
               onPress={() => {
+                if (planSource === "seed") { void load(true); return; }
                 setSelectedTier(tier); setQuote(null); setCoupon(checkout?.discount_code ?? ""); setNotice("");
                 if (!checkout) key.current = randomUUID();
                 // Quote the selected card explicitly; state updates are async.
                 void enterCheckout(tier);
               }}
             />}
-            {rows.slice(0, expandedBenefits[tier] ? rows.length : 3).map((row) => <BenefitRow key={row.title} {...row} />)}
-            {rows.length > 3 ? <Pressable accessibilityRole="button" accessibilityLabel={`${expandedBenefits[tier] ? "Hide" : "View"} all ${name} benefits`} accessibilityState={{ expanded: Boolean(expandedBenefits[tier]) }} onPress={() => setExpandedBenefits(previous => ({ ...previous, [tier]: !previous[tier] }))} style={{ paddingVertical: 14, flexDirection: "row", alignItems: "center", gap: 8 }}><Text style={{ ...text, color: theme.deepBrand, fontFamily: theme.font.semibold }}>{expandedBenefits[tier] ? "Show fewer benefits" : `View all ${rows.length} benefits`}</Text><Ionicons name={expandedBenefits[tier] ? "chevron-up" : "chevron-down"} size={18} color={theme.deepBrand} /></Pressable> : null}
+            {tier === "pro" ? rows.map((row) => <BenefitRow key={row.title} {...row} />) : null}
           </View>;
         })}
-        <Text style={{ ...muted, textAlign: "center", paddingHorizontal: 16 }}>Paystack confirms processing at checkout. No automatic renewal. Access starts when payment is confirmed.</Text>
       </View>
     </ToolPage>
   );

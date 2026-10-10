@@ -4,7 +4,7 @@ import { z, tutorialBookingSchema } from "@kampusone/contracts";
 import { database, firstRow } from "./database";
 import { approvedCommercePolicy } from "./commerce-pricing";
 import { checkoutPrice, listingPrice } from "./pricing";
-import { verifyPaystack } from "./paystack";
+import { verifyCollection as verifyPaystack } from "./collection-provider";
 import { requireUnblocked } from "./profile-safety";
 import { AppError } from "./errors";
 import type { AuthenticatedUser, Bindings } from "../types";

@@ -34,6 +34,7 @@ afterEach(() => {
 beforeEach(() => {
   vi.stubGlobal("window", {
     location: { hostname: "preview.example.invalid" },
+    addEventListener: vi.fn(),
   });
 });
 

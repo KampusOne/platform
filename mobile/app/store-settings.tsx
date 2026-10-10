@@ -7,7 +7,14 @@ import { Text, View } from "react-native";
 import { BrandSwitch } from "@/src/components/brand-switch";
 import { useAppearance } from "@/src/lib/appearance";
 import { shareAgentLocation } from "@/src/lib/agent-location";
+import { HeaderMenu } from "@/src/components/header-menu";
+import { useAuth } from "@/src/auth/auth-context";
+import { ScreenSkeleton } from "@/src/components/skeleton";
 export default function StoreSettings() {
+  const { user } = useAuth();
+  return <StoreForm key={user?.id} />;
+}
+function StoreForm() {
   const toast = useToast();
   const { theme } = useAppearance();
   const [fulfilmentReady, setFulfilmentReady] = useState(false),
@@ -24,7 +31,11 @@ export default function StoreSettings() {
   const [instructions, setInstructions] = useState("");
   const [hours, setHours] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reload, setReload] = useState(0);
   useEffect(() => {
+    let active = true; setLoading(true); setLoadError("");
     void api<{
       fulfilmentReady: boolean;
       storefront: {
@@ -39,8 +50,9 @@ export default function StoreSettings() {
         pickup_enabled: boolean;
         self_delivery_enabled: boolean;
       } | null;
-    }>("/v1/agents/storefront")
+    }>("/v1/agents/storefront", { cache: "reload" })
       .then(({ storefront: s, fulfilmentReady: ready }) => {
+        if (!active) return;
         setFulfilmentReady(ready);
         if (s) {
           setVendorProfileId(s.vendor_profile_id);
@@ -58,8 +70,10 @@ export default function StoreSettings() {
           }
         }
       })
-      .catch((e) => toast(e.message, "error"));
-  }, [toast]);
+      .catch((e) => active && setLoadError(e instanceof Error ? e.message : "Your store could not load."))
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reload]);
   async function sharePickupPosition() {
     if (busy || !vendorProfileId || !savedPickupPlace) return;
     setBusy(true);
@@ -89,6 +103,7 @@ export default function StoreSettings() {
       });
       setVendorProfileId(saved.vendor_profile_id);
       setSavedPickupPlace(pickupPlace);
+      if (fulfilmentReady) await api("/v1/agents/storefront/fulfilment", { method: "PUT", body: JSON.stringify({ pickupEnabled, selfDeliveryEnabled: selfDelivery }) });
       if (submit)
         await api("/v1/agents/storefront/status", {
           method: "PATCH",
@@ -101,29 +116,13 @@ export default function StoreSettings() {
       setBusy(false);
     }
   }
-  async function saveDelivery() {
-    if (busy || !fulfilmentReady) return;
-    setBusy(true);
-    try {
-      await api("/v1/agents/storefront/fulfilment", {
-        method: "PUT",
-        body: JSON.stringify({
-          pickupEnabled,
-          selfDeliveryEnabled: selfDelivery,
-        }),
-      });
-      toast("Delivery options saved", "success");
-    } catch (e) {
-      toast(
-        e instanceof Error ? e.message : "Delivery options could not save.",
-        "error",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
-    <ToolPage title="Store profile">
+    <ToolPage title="Store profile" action={<HeaderMenu label="Store options" items={[
+      { label: "Refresh store", icon: "refresh-outline", onPress: () => setReload(value => value + 1), disabled: busy || loading },
+      { label: "Submit for review", icon: "checkmark-circle-outline", onPress: () => void save(true), disabled: busy || loading || Boolean(loadError) },
+      { label: "Share current pickup position", icon: "locate-outline", onPress: () => void sharePickupPosition(), disabled: busy || !vendorProfileId || !savedPickupPlace },
+    ]} />}>
+      {loading ? <ScreenSkeleton variant="list" compact /> : loadError ? <Text accessibilityRole="alert" style={{ color: theme.error }}>{loadError}</Text> : <>
       <ToolField label="Store name" value={name} onChangeText={setName} />
       <ToolField
         label="Description"
@@ -162,24 +161,12 @@ export default function StoreSettings() {
         <Text style={{color:theme.textMuted,fontFamily:theme.font.body,lineHeight:21}}>Share your location while you are at the pickup point. Riders use this accurate position for 2 minutes, then routes use the approved store map point.</Text>
         {locationStatus ? <Text accessibilityRole="alert" style={{color:theme.textMuted,fontFamily:theme.font.body,lineHeight:21}}>{locationStatus}</Text> : null}
         {!savedPickupPlace ? <Text style={{color:theme.textMuted,fontFamily:theme.font.body,lineHeight:21}}>Save a sourced pickup map point first.</Text> : null}
-        <ToolButton secondary label="Share current pickup position" disabled={busy || !savedPickupPlace} onPress={()=>void sharePickupPosition()}/>
       </View> : null}
       <ToolField
         label="Opening hours"
         value={hours}
         onChangeText={setHours}
         placeholder="Mon–Fri 8am–6pm, Sat 10am–4pm"
-      />
-      <ToolButton
-        label="Save store"
-        disabled={busy}
-        onPress={() => void save(false)}
-      />
-      <ToolButton
-        secondary
-        label="Submit for review"
-        disabled={busy}
-        onPress={() => void save(true)}
       />
       <View
         style={{
@@ -249,12 +236,10 @@ export default function StoreSettings() {
           Pickup and vendor delivery currently have no delivery fee. For rider
           orders, post a request after marking the order ready.
         </Text>
-        <ToolButton
-          label="Save delivery options"
-          disabled={busy || !fulfilmentReady}
-          onPress={() => void saveDelivery()}
-        />
+        {!fulfilmentReady ? <Text accessibilityRole="alert" style={{ color: theme.error }}>Delivery options could not load. Reopen your store profile to try again.</Text> : null}
+        <ToolButton label={busy ? "Saving store…" : "Save store"} disabled={busy} onPress={() => void save(false)} />
       </View>
+      </>}
     </ToolPage>
   );
 }

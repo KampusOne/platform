@@ -87,6 +87,8 @@ jobs:
           node server/scripts/verify-schema-proof.mjs october6
           node server/scripts/verify-schema-proof.mjs followup
           node server/scripts/verify-schema-proof.mjs current
+          node server/scripts/verify-schema-proof.mjs cache
+          node server/scripts/verify-schema-proof.mjs screenFixes
           curl --fail --silent --show-error --retry 2 --max-time 20 "$API_URL/health/ready"
       - name: Configure Android push credentials
         env:
