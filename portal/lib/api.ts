@@ -1,6 +1,7 @@
 "use client";
 
 import { withSessionLock } from "./session-lock";
+import { portalReadCacheTtl } from "./api-cache-policy";
 
 export type SessionUser = {
   id: string;
@@ -53,6 +54,27 @@ let listener: ((session: Session | null) => void) | null = null;
 let credentialVersion = 0;
 let transitionQueue: Promise<void> = Promise.resolve();
 let queuedTransitions = 0;
+let currentAccountId: string | null = null;
+let cacheGeneration = 0;
+const portalReads = new Map<string, { value: unknown; until: number }>();
+const portalFlights = new Map<string, Promise<unknown>>();
+function clearPortalCache() {
+  cacheGeneration += 1;
+  portalReads.clear();
+  portalFlights.clear();
+}
+function waitForPortalReader<T>(operation: Promise<T>, signal?: AbortSignal | null): Promise<T> {
+  if (!signal) return operation;
+  if (signal.aborted) return Promise.reject(signal.reason ?? new Error("Request cancelled"));
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => { signal.removeEventListener("abort", abort); reject(signal.reason ?? new Error("Request cancelled")); };
+    signal.addEventListener("abort", abort, { once: true });
+    operation.then(
+      (value) => { signal.removeEventListener("abort", abort); resolve(value); },
+      (error) => { signal.removeEventListener("abort", abort); reject(error); },
+    );
+  });
+}
 
 export function listenForSession(next: (session: Session | null) => void) {
   listener = next;
@@ -62,6 +84,9 @@ export function listenForSession(next: (session: Session | null) => void) {
 }
 export function applySession(session: Session | null) {
   credentialVersion += 1;
+  const nextAccountId = session?.user.id ?? null;
+  if (currentAccountId !== nextAccountId) clearPortalCache();
+  currentAccountId = nextAccountId;
   accessToken = session?.accessToken ?? null;
   listener?.(session);
 }
@@ -176,7 +201,7 @@ async function refresh() {
   return refreshPromise;
 }
 
-export async function portalApi<T>(
+async function portalRequest<T>(
   path: string,
   init: RequestInit = {},
   retry = true,
@@ -201,9 +226,55 @@ export async function portalApi<T>(
     throw connectionError();
   }
   if (response.status === 401 && retry && path !== "/v1/auth/refresh") {
-    if (await refresh()) return portalApi<T>(path, init, false);
+    if (await refresh()) return portalRequest<T>(path, init, false);
   }
   return read<T>(response);
+}
+
+
+/**
+ * Every portal GET participates in request coalescing. Only safe views reuse
+ * completed reads in account-local RAM. All writes invalidate the read state.
+ */
+export async function portalApi<T>(
+  path: string,
+  init: RequestInit = {},
+  retry = true,
+): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method !== "GET") {
+    clearPortalCache();
+    try {
+      return await portalRequest<T>(path, init, retry);
+    } finally {
+      clearPortalCache();
+    }
+  }
+  if (!path.startsWith("/v1/") || init.headers || init.cache === "no-store")
+    return portalRequest<T>(path, init, retry);
+  if (init.signal?.aborted) throw init.signal.reason ?? new Error("Request cancelled");
+  const ttl = portalReadCacheTtl(path);
+  const cached = portalReads.get(path);
+  if (ttl > 0 && init.cache !== "reload" && cached && cached.until > Date.now())
+    return cached.value as T;
+  const existing = portalFlights.get(path) as Promise<T> | undefined;
+  if (existing) return waitForPortalReader(existing, init.signal);
+  const versionAtStart = cacheGeneration;
+  const accountAtStart = currentAccountId;
+  const { signal: _consumer, ...sharedOptions } = init;
+  const operation = portalRequest<T>(path, sharedOptions, retry)
+    .then((value) => {
+      if (accountAtStart !== currentAccountId)
+        throw new PortalApiError(409, "SESSION_CHANGED", "Your session changed. Please refresh.");
+      if (versionAtStart === cacheGeneration && ttl > 0) {
+        if (portalReads.size >= 60) portalReads.delete(portalReads.keys().next().value!);
+        portalReads.set(path, { value, until: Date.now() + ttl });
+      }
+      return value;
+    })
+    .finally(() => { if (portalFlights.get(path) === operation) portalFlights.delete(path); });
+  portalFlights.set(path, operation);
+  return waitForPortalReader(operation, init.signal);
 }
 
 async function requestPasswordReset(email: string) {
