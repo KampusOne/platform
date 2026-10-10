@@ -18,7 +18,7 @@ export async function probe(request, env) {
   const hfCheck=async()=>{
     if(!env.HF_TOKEN||!env.HF_CHAT_MODEL)return{outcome:'configuration_missing'};
     try {
-      const r=await fetch('https://router.huggingface.co/v1/chat/completions',{method:'POST',redirect:'error',signal:AbortSignal.timeout(35000),headers:{Authorization:`Bearer ${env.HF_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({model:env.HF_CHAT_MODEL,messages,max_tokens:128,temperature:0.1,stream:false})});
+      const r=await fetch('https://router.huggingface.co/v1/chat/completions',{method:'POST',redirect:'manual',signal:AbortSignal.timeout(35000),headers:{Authorization:`Bearer ${env.HF_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({model:env.HF_CHAT_MODEL,messages,max_tokens:128,temperature:0.1,stream:false})});
       if(r.ok){await r.body?.cancel();return{outcome:'generation_succeeded',http:r.status};}
       const data=await r.json().catch(()=>({}));
       const message=typeof data?.error==='string'?data.error:typeof data?.error?.message==='string'?data.error.message:'';
@@ -29,11 +29,11 @@ export async function probe(request, env) {
   if(bachs.configured) {
     try {
       const origin=bachs.liveKey?'https://api.bachs.io':'https://sandbox-api.bachs.io';
-      const r=await fetch(origin+'/v1/accounts/checkout/settings',{headers:{Authorization:'Bearer '+env.BACHS_API_KEY},redirect:'error',signal:AbortSignal.timeout(10000)});
+      const r=await fetch(origin+'/v1/accounts/checkout/settings',{headers:{Authorization:'Bearer '+env.BACHS_API_KEY},redirect:'manual',signal:AbortSignal.timeout(10000)});
       const d=await r.json().catch(()=>null);
       bachs.http=r.status;bachs.bankTransferEnabled=d?.enabled_payment_methods?.NGN_BANK_TRANSFER?.enabled===true;
       bachs.feePreference=['org_pays','customer_pays'].includes(d?.fee_preference)?d.fee_preference:'unknown';
-    }catch{bachs.outcome='transport_failure';}
+    }catch(error){bachs.outcome='transport_failure';bachs.failure=error?.name==='TypeError'?'request_type':error?.name==='TimeoutError'?'timeout':'network';}
   }
   let conversion={outcome:'configuration_missing'};
   if(typeof env.AI?.toMarkdown==='function')try{
@@ -97,7 +97,7 @@ if(process.argv.includes('--self-test')) {
       report(`${name}: ${value.outcome}${Number.isInteger(value.http)?` HTTP ${value.http}`:''}${/^\d{4}$/.test(value.code??'')?` code ${value.code}`:''}${['credits_or_payment','rate_limit','unclassified'].includes(value.hint)?` ${value.hint}`:''}`);
     }
     report(`BACHS configuration complete: ${result.bachs?.configured===true}; live key: ${result.bachs?.liveKey===true}`);
-    report(`BACHS settings: HTTP ${Number.isInteger(result.bachs?.http)?result.bachs.http:'unavailable'}; bank transfer enabled: ${result.bachs?.bankTransferEnabled===true}; fee preference: ${['org_pays','customer_pays'].includes(result.bachs?.feePreference)?result.bachs.feePreference:'unknown'}`);
+    report(`BACHS settings: HTTP ${Number.isInteger(result.bachs?.http)?result.bachs.http:'unavailable'}; bank transfer enabled: ${result.bachs?.bankTransferEnabled===true}; fee preference: ${['org_pays','customer_pays'].includes(result.bachs?.feePreference)?result.bachs.feePreference:'unknown'}; failure: ${['request_type','timeout','network'].includes(result.bachs?.failure)?result.bachs.failure:'none'}`);
     report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
     if(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded')process.exitCode=1;
     report('No production route, credential export, account data or live application write. Preview expires after three minutes.');
