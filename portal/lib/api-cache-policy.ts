@@ -6,8 +6,8 @@ export function portalReadCacheTtl(path: string): number {
   const route = path.split("?")[0] ?? "";
   if (!/^\/v1\//.test(route)) return 0;
   if (
-    /^\/v1\/(?:auth|media|admin|manage|payments|payout-setup|usage|ai|agents|applications)(?:\/|$)/.test(route) ||
-    /\/(?:wallet|balance|ledger|payment|payout|checkout|quote|earnings|commission|orders|purchases|webhook|live-location|rider-location)(?:\/|$)/.test(route)
+    /^\/v1\/(?:auth|media|admin|campus-admin|manage|payments|payout-setup|usage|ai|agents|applications|discounts)(?:\/|$)/.test(route) ||
+    /\/(?:admin|wallet|balance|ledger|payment|payments|payout|payouts|checkout|quote|quotes|pricing|earnings|commission|commissions|orders|purchases|webhook|webhooks|live-location|rider-location|gps|location|tracking|delivery-status|status-check|verification|permissions|roles)(?:\/|$)/.test(route)
   ) return 0;
   if (/^\/v1\/(?:messages|notifications)(?:\/|$)/.test(route)) return 2_000;
   if (/^\/v1\/(?:student\/catalog|maps|student\/campus)(?:\/|$)/.test(route)) return 60_000;
