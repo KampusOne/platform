@@ -35,6 +35,15 @@ export async function probe(request, env) {
       bachs.feePreference=['org_pays','customer_pays'].includes(d?.fee_preference)?d.fee_preference:'unknown';
     }catch(error){bachs.outcome='transport_failure';bachs.failure=error?.name==='TypeError'?'request_type':error?.name==='TimeoutError'?'timeout':'network';}
   }
+  if(env.PROBE_METADATA_ONLY==='true'){
+    let webhooks={http:0,targets:[]};
+    try{
+      const r=await fetch('https://api.bachs.io/v1/webhooks/endpoints?limit=100',{headers:{Authorization:'Bearer '+env.BACHS_API_KEY},redirect:'manual',signal:AbortSignal.timeout(10000)});
+      const d=await r.json().catch(()=>null),items=Array.isArray(d)?d:Array.isArray(d?.items)?d.items:[];
+      webhooks={http:r.status,targets:items.slice(0,100).map(e=>{let target='other_host';try{const u=new URL(e.url);if(['platformp.divine-haze-54eb.workers.dev','mobile.kampusone.app','api.kampusone.app'].includes(u.hostname))target=u.origin+u.pathname;}catch{}return{target,enabled:e.enabled===true,successEvents:Array.isArray(e.event_types)&&e.event_types.some(t=>['checkout.completed','collection.succeeded'].includes(t))};})};
+    }catch{/* Classified metadata only. No endpoint secrets or event bodies. */}
+    return Response.json({kind:'kampusone-kira-probe-v1',bachs,webhooks},{headers:{'Cache-Control':'no-store'}});
+  }
   const convert=async(name,blob)=>{
     if(typeof env.AI?.toMarkdown!=='function')return{outcome:'configuration_missing'};
     let timer;try{
@@ -108,7 +117,7 @@ if(process.argv.includes('--self-test')) {
     if(typeof sessionToken!=='string')throw new Error('Missing preview session');
     const form=new FormData(),probeToken=randomBytes(32).toString('hex');
     const png=process.env.PROBE_VERIFY_UPLOADS==='true'?readFileSync(new URL('./fixtures/synthetic-timetable.png',import.meta.url)).toString('base64'):'';
-    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'}]}));
+    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'}]}));
     form.set('probe.mjs',new Blob([`export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)}})};`],{type:'application/javascript+module'}),'probe.mjs');
     form.set('wrangler-session-config',JSON.stringify({workers_dev:true}));
     stage='preview upload';
@@ -119,19 +128,20 @@ if(process.argv.includes('--self-test')) {
     if(!r.ok)throw new Error(`HTTP ${r.status}`);
     const result=await r.json();if(result.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');
     const outcomes=new Set(['generation_succeeded','generation_unusable','provider_rejected','configuration_missing','transport_failure']);
-    for(const name of ['standard','pro','huggingface']){
+    if(process.env.PROBE_METADATA_ONLY!=='true')for(const name of ['standard','pro','huggingface']){
       const value=result[name];if(!outcomes.has(value?.outcome))throw new Error('Unexpected outcome');
       report(`${name}: ${value.outcome}${Number.isInteger(value.http)?` HTTP ${value.http}`:''}${/^\d{4}$/.test(value.code??'')?` code ${value.code}`:''}${['credits_or_payment','rate_limit','unclassified'].includes(value.hint)?` ${value.hint}`:''}`);
     }
     report(`BACHS configuration complete: ${result.bachs?.configured===true}; live key: ${result.bachs?.liveKey===true}`);
     report(`BACHS settings: HTTP ${Number.isInteger(result.bachs?.http)?result.bachs.http:'unavailable'}; bank transfer enabled: ${result.bachs?.bankTransferEnabled===true}; fee preference: ${['org_pays','customer_pays'].includes(result.bachs?.feePreference)?result.bachs.feePreference:'unknown'}; failure: ${['request_type','timeout','network'].includes(result.bachs?.failure)?result.bachs.failure:'none'}`);
-    report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
+    if(process.env.PROBE_METADATA_ONLY==='true')report(`BACHS webhook targets: ${JSON.stringify(result.webhooks)}`);
+    else report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
     if(process.env.PROBE_VERIFY_UPLOADS==='true')for(const name of ['image','pdf','unpaidCheckout']){
       const outcome=result.uploads?.[name]?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable'];
       report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}`);
       if(outcome!==(name==='unpaidCheckout'?'unpaid_checkout_succeeded':'conversion_succeeded'))process.exitCode=1;
     }
-    if(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded')process.exitCode=1;
+    if(process.env.PROBE_METADATA_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
     report('No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');
   }catch(error){report(`CHECK FAILED at ${stage}: ${/^HTTP [1-5][0-9]{2}$/.test(error?.message??'')?error.message:'raw error withheld'}`);process.exitCode=1;}
   finally{if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');}
