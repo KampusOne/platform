@@ -25,7 +25,7 @@ export async function cachedSharedRead<T>(
   injectedCache?: JsonCache,
 ): Promise<T> {
   const cache = injectedCache ?? (typeof caches === "undefined" ? undefined : caches.default);
-  if (!cache || context.env.ENVIRONMENT === "local") return load();
+  if (!cache || context.env.ENVIRONMENT === "local" || context.env.SHARED_READ_CACHE_ENABLED === "false") return load();
 
   // Internal key: excludes cookies, bearer tokens, IPs, user IDs and all
   // transient response headers. Cross-tenant reuse is prevented by scope.
