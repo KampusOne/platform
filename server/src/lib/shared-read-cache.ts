@@ -24,7 +24,7 @@ export async function cachedSharedRead<T>(
   load: () => Promise<T>,
   injectedCache?: JsonCache,
 ): Promise<T> {
-  const cache = injectedCache ?? (typeof caches === "undefined" ? undefined : caches.default);
+  const cache = injectedCache ?? (typeof caches === "undefined" ? undefined : (caches as CacheStorage & { default?: JsonCache }).default);
   if (!cache || context.env.ENVIRONMENT === "local" || context.env.SHARED_READ_CACHE_ENABLED === "false") return load();
 
   // Internal key: excludes cookies, bearer tokens, IPs, user IDs and all
