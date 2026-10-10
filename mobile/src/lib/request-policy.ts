@@ -56,3 +56,42 @@ export function invalidationTargets(path: string): string[] | null {
 export function matchesRead(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(prefix + "?") || path.startsWith(prefix + "/");
 }
+
+/**
+ * Every feature participates in account-local read caching, but not every value
+ * may be *reused*. Money, access, live GPS and AI usage are deduplicated only
+ * while a read is in flight. These responses are never stored as snapshots.
+ *
+ * This is deliberately an in-memory policy, not AsyncStorage or a CDN policy:
+ * private responses must not survive account changes or become shared across
+ * university tenants. Individual screens may opt out with cache: "no-store".
+ */
+export type ReadCachePolicy = { freshMs: number; retainMs: number };
+export function readCachePolicy(path: string): ReadCachePolicy {
+  const resource = path.split("?")[0] ?? "";
+  const freshOnly: ReadCachePolicy = { freshMs: 0, retainMs: 0 };
+  if (!/^\/v1\//.test(resource)) return freshOnly;
+  // Authorization, prices, transactions and live operations must be fresh.
+  if (
+    /^\/v1\/(?:auth|media|payments|payout-setup|usage|ai|admin|manage)(?:\/|$)/.test(resource) ||
+    /\/(?:wallet|balance|ledger|payment|payments|payout|payouts|checkout|quote|quotes|earnings|commission|commissions|orders|purchases|webhook|webhooks|live-location|rider-location|delivery-status|status-check)(?:\/|$)/.test(resource)
+  ) return freshOnly;
+  if (resource === "/v1/config/public") return { freshMs: 15_000, retainMs: 30_000 };
+  if (/^\/v1\/config(?:\/|$)/.test(resource)) return freshOnly;
+  // User-private conversations are only kept in RAM for a few seconds.
+  if (/^\/v1\/messages(?:\/|$)/.test(resource)) return { freshMs: 1_500, retainMs: 12_000 };
+  if (/^\/v1\/notifications(?:\/|$)/.test(resource)) return { freshMs: 2_000, retainMs: 10_000 };
+  if (/^\/v1\/(?:maps|student\/campus|student\/catalog)(?:\/|$)/.test(resource))
+    return { freshMs: 300_000, retainMs: 900_000 };
+  if (/^\/v1\/(?:student\/timetable|student\/gpa|calendar|exams|learning\/alarms)(?:\/|$)/.test(resource))
+    return { freshMs: 30_000, retainMs: 300_000 };
+  if (/^\/v1\/(?:student\/feed|discovery|communities)(?:\/|$)/.test(resource))
+    return { freshMs: 5_000, retainMs: 60_000 };
+  if (/^\/v1\/(?:people|student\/me|account)(?:\/|$)/.test(resource))
+    return { freshMs: 10_000, retainMs: 60_000 };
+  if (/^\/v1\/(?:student\/store|student\/tutorials|agents|tutor-commerce)(?:\/|$)/.test(resource))
+    return { freshMs: 12_000, retainMs: 90_000 };
+  if (/^\/v1\/student\/home(?:\/|$)/.test(resource))
+    return { freshMs: 8_000, retainMs: 120_000 };
+  return { freshMs: 10_000, retainMs: 60_000 };
+}
