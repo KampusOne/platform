@@ -87,6 +87,8 @@ jobs:
         run: node server/scripts/verify-schema-proof.mjs october
       - name: Guard current release migrations
         run: node server/scripts/verify-schema-proof.mjs current
+      - name: Guard seller categories and verified BACHS entitlement migrations
+        run: node server/scripts/verify-schema-proof.mjs screenFixes
       - name: Guard versioned cache activation
         run: |
           if grep -q '"VERSIONED_READ_CACHE_ENABLED": "true"' server/wrangler.jsonc; then
@@ -113,6 +115,8 @@ jobs:
             'RESEND_API_KEY',
             'PAYSTACK_SECRET_KEY',
             'HF_TOKEN',
+            'BACHS_API_KEY',
+            'BACHS_WEBHOOK_SECRET',
           ];
           const missing = required.filter((name) => !names.has(name));
           if (missing.length) {

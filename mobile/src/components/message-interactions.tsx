@@ -34,7 +34,7 @@ export function SwipeReplyMessage({
   onReply,
   onLongPress,
 }: SwipeReplyMessageProps) {
-  const { theme, styles } = useThemeStyles(createStyles);
+  const { styles } = useThemeStyles(createStyles);
   const offset = useRef(new Animated.Value(0)).current;
   const crossed = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -108,15 +108,6 @@ export function SwipeReplyMessage({
 
   return (
     <View style={styles.swipeShell}>
-      <View
-        pointerEvents="none"
-        style={[
-          styles.replyCue,
-          mine ? styles.replyCueMine : styles.replyCueOther,
-        ]}
-      >
-        <Ionicons name="arrow-undo" size={18} color={theme.deepBrand} />
-      </View>
       <Animated.View
         {...responder.panHandlers}
         style={{ transform: [{ translateX: offset }] }}

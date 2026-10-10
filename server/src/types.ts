@@ -10,6 +10,7 @@ export type Bindings = {
   READ_CACHE_METRICS_ENABLED?: string;
   WORKERS_AI_CHAT_MODEL?: string;
   WORKERS_AI_PRO_MODEL?: string;
+  WORKERS_AI_VISION_MODEL?: string;
   MAP_SATELLITE_TILE_URL?: string;
   MAP_SATELLITE_ATTRIBUTION?: string;
   ENVIRONMENT: RuntimeEnvironment;

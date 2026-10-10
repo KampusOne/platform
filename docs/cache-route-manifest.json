@@ -3361,7 +3361,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 243
+          "line": 244
         }
       ],
       "classification": "mutation",
@@ -3379,7 +3379,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 320
+          "line": 321
         }
       ],
       "classification": "mutation",
@@ -3397,7 +3397,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 223
+          "line": 224
         }
       ],
       "classification": "mutation",
@@ -3415,7 +3415,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 335
+          "line": 336
         }
       ],
       "classification": "mutation",
@@ -3433,7 +3433,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 205
+          "line": 206
         }
       ],
       "classification": "volatile",
@@ -3451,7 +3451,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 197
+          "line": 198
         }
       ],
       "classification": "volatile",
@@ -3469,7 +3469,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 188
+          "line": 189
         }
       ],
       "classification": "volatile",
@@ -3487,7 +3487,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 58
+          "line": 59
         }
       ],
       "classification": "volatile",
@@ -3505,7 +3505,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 100
+          "line": 101
         }
       ],
       "classification": "mutation",
@@ -3523,7 +3523,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 96
+          "line": 97
         }
       ],
       "classification": "mutation",
@@ -3541,7 +3541,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 95
+          "line": 96
         }
       ],
       "classification": "financial",
@@ -3559,7 +3559,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 213
+          "line": 214
         }
       ],
       "classification": "volatile",
@@ -3577,7 +3577,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 104
+          "line": 105
         }
       ],
       "classification": "mutation",
@@ -3595,7 +3595,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 344
+          "line": 345
         }
       ],
       "classification": "mutation",
@@ -6872,11 +6872,29 @@
     },
     {
       "method": "POST",
+      "path": "/v1/payments/bachs/webhook",
+      "sources": [
+        {
+          "file": "server/src/routes/payments.ts",
+          "line": 596
+        }
+      ],
+      "classification": "mutation",
+      "backend": "fresh",
+      "authorization": "Source router auth/signature/idempotency; no response reuse",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "POST",
       "path": "/v1/payments/initialize",
       "sources": [
         {
           "file": "server/src/routes/payments.ts",
-          "line": 114
+          "line": 116
         }
       ],
       "classification": "mutation",
@@ -6894,7 +6912,7 @@
       "sources": [
         {
           "file": "server/src/routes/payments.ts",
-          "line": 467
+          "line": 469
         }
       ],
       "classification": "mutation",
@@ -6912,7 +6930,7 @@
       "sources": [
         {
           "file": "server/src/routes/payments.ts",
-          "line": 398
+          "line": 400
         }
       ],
       "classification": "financial",
@@ -6930,7 +6948,7 @@
       "sources": [
         {
           "file": "server/src/routes/payments.ts",
-          "line": 36
+          "line": 38
         }
       ],
       "classification": "financial",

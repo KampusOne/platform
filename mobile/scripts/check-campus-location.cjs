@@ -51,6 +51,16 @@ function harness(){
 async function verifyCampusLocation(){
   const checks=[];
   {
+    const h=harness(); await flush();
+    const request=h.render().requestLocation(); await flush();
+    h.native.cache.resolve(h.location(12)); await flush();
+    const fix=await request; assert.equal(fix.source,'cached');
+    assert.equal(h.state.loading,false);assert.equal(h.gps.usableRouteGpsFix(fix),true);
+    await h.advance(15001);assert.equal(h.gps.usableRouteGpsFix(fix),false,'Cached routing coordinates expire after fifteen seconds');
+    h.watches.at(-1).callback(h.location(8));await flush();
+    assert.equal(h.state.position.source,'live');h.blur();checks.push('fresh accurate cache starts routing while live sensor refreshes');
+  }
+  {
     const h=harness();await flush();
     assert.equal(h.watches.length,1,'Live watching must start while cache and one-shot requests are both hung');
     assert.equal(h.watches[0].options.distanceInterval,0,'Stationary Android phones must receive fresh fixes');

@@ -148,6 +148,9 @@ export async function uploadAttachment(file: StagedAttachment, userId: string, q
     mediaId=await uploadMessageFile(userId,{uri:file.uri,name:file.name,mimeType:file.type},()=>undefined,'resource');
   }
   if(['application/pdf','text/plain'].includes(file.type)){
+    // Small documents can be read by the Worker, including scanned PDFs.
+    // A web reader outage should not prevent an already uploaded file being sent.
+    if ((file.size ?? Number.MAX_SAFE_INTEGER) <= 16 * 1024 * 1024) return { ...file, mediaId };
     const sourceText=file.sourceText??await readUploadedDocument(mediaId,file.name,file.type,query,tier);
     return {...file,mediaId,sourceText};
   }

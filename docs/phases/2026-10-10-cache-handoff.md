@@ -15,7 +15,7 @@ Stack remains Hono/Workers, Neon HTTP/Drizzle, Expo/React Native, Next App Route
 
 ## 3. Route-by-route policy manifest: shared / private RAM / coalesced / fresh.
 
-[Manifest](../cache-route-manifest.json): all 496 mounted method/path pairs, source locations, authorization, backend namespace and client TTLs. AST generation follows nested mounts and merges overlapping registrations; a separate test compares real Hono routes. New/unknown routes default fresh. [Architecture](../caching-architecture.md) contains loader scopes/TTLs. Writes are fresh; financial/security/metered completed TTLs are zero.
+[Manifest](../cache-route-manifest.json): all 497 mounted method/path pairs, source locations, authorization, backend namespace and client TTLs. AST generation follows nested mounts and merges overlapping registrations; a separate test compares real Hono routes. New/unknown routes default fresh. [Architecture](../caching-architecture.md) contains loader scopes/TTLs. Writes are fresh; financial/security/metered completed TTLs are zero.
 
 ## 4. Existing PR #89 bugs found and actual fixes.
 
@@ -48,12 +48,12 @@ Private social display reuse has a stated 1.5–5 second window and no extended 
 
 ## 7. Tests executed, test results, CI run links; no cherry-picked results.
 
-Local results: 852 Worker tests across 102 files; 10 contracts tests; 194 root regression tests; 6 academic-importer tests. Server/contracts/mobile/portal type checks, portal lint/build, mobile GPS/map/alarm checks and production web export, route manifest check and Worker bundle dry-run passed. Local Wrangler runtime startup failed with uv_interface_addresses / network-interface error in this workspace. Matching GitHub Actions must establish the unmodified runtime crypto check. Final CI links appear in the PR description; old-head CI is not evidence for new code.
+Local results: 852 Worker tests across 102 files; 10 contracts tests; 184 root regression tests; 6 academic-importer tests. Server/contracts/mobile/portal type checks, portal lint/build, mobile GPS/map/alarm checks and production web export, route manifest check and Worker bundle dry-run passed. Local Wrangler runtime startup failed with uv_interface_addresses / network-interface error in this workspace. Matching GitHub Actions must establish the unmodified runtime crypto check. Final CI links appear in the PR description; old-head CI is not evidence for new code.
 
 Initial full Worker verification found five failures because the browser fixture lacked addEventListener after focus invalidation was added. The fixture was completed without weakening assertions; session tests passed and full verification was rerun.
 
 Real Neon rollback rehearsal: project rough-breeze-36415261, branch br-mute-sunset-ayzh9xrc, neondb. New branch creation hit the project limit; reused the existing isolated branch without reset/deletion. All 18 prerequisites present. Migration and verification ran in one transaction ending ROLLBACK; result cache-rehearsal-passed. A separate request confirmed the new revision table remained absent.
-[Exact source/method evidence](../../database/verification/rehearsal-20261010-cache.json). Production unmodified.
+[Exact source/method evidence](../../database/verification/rehearsal-20261010-cache.json). The later combined release applied this exact source to production; see the screen-fixes handoff and production proof.
 
 ## 8. Before/after p50/p95/p99 and Neon query counts, with environment/method.
 
@@ -63,13 +63,13 @@ Live p50/p95/p99, active-session totals, Worker CPU/memory, Android rendering, h
 
 ## 9. Deployment evidence: staging/production and rollback flags.
 
-No Worker/portal/mobile deployment or production migration was performed. Both Wrangler environments keep VERSIONED_READ_CACHE_ENABLED=false; shared loaders read origin fresh until activation. SHARED_READ_CACHE_ENABLED=true alone is insufficient. Metrics enabled in reviewed configuration.
+The exact cache migration was applied atomically to production with the seller/payment corrections after the rollback-only rehearsal. Production configuration enables VERSIONED_READ_CACHE_ENABLED; staging remains false. SHARED_READ_CACHE_ENABLED alone is insufficient. Metrics are enabled. Exact-source production proof is checked before deployment. See [combined release handoff](2026-10-10-screen-fixes-handoff.md).
 
-An authorized operator must review/apply migration, run transactional/privilege checks, record exact-source production-20261010-cache.json, test staging with two synthetic tenants and promote a verified SHA. Production deployment guard rejects activation without this proof. Either shared flag false bypasses shared caching. With keep_vars=false, reconcile dashboard changes before the next deploy. Client kill switches require new builds.
+The user authorized the combined deployment and merge to main. Transactional and privilege checks passed, and exact-source production-20261010-cache.json is recorded. Production deployment guard rejects activation without this proof. Controlled staging load/device checks remain unperformed. Either shared flag false bypasses shared caching. With keep_vars=false, reconcile dashboard changes before the next deploy. Client kill switches require new builds.
 
 ## 10. Current Android APK artifact linked to SAME source SHA, if produced.
 
-No APK produced. Web export is not an Android artifact. No unrelated existing APK is presented as this release.
+The combined release triggers the current Android workflow, which checks the production proof, matching Worker SHA and signing identity before uploading a new artifact. Its exact SHA and outcome are recorded by Actions and the PR; web export alone is not an Android artifact.
 
 ## 11. Remaining risks and deferred/blocked work, with reasons and owners.
 

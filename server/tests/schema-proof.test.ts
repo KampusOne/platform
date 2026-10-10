@@ -17,6 +17,21 @@ const proof = () => ({
   }),
 });
 describe("correction deployment guard", () => {
+  it("requires preservation and replay evidence for the category and BACHS release", () => {
+    const evidence = {
+      ...proof(),
+      rehearsal: { parentBranchId: "br-quiet-butterfly-ayrj264q", branchId: "br-fixture-rehearsal" },
+      checks: { screenFixes: "passed", fixturesRolledBack: true, isolatedBranchRehearsal: "passed", existingAccountCountsPreserved: true, mediaAndBookingsPreserved: true, financialRecordsPreserved: true, durableReplayGuards: "passed", privatePrivileges: "passed" },
+      migrations: groups.screenFixes.map((version: string) => {
+        const bytes = load(version);
+        return { version, sourceBlobSha: createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex") };
+      }),
+    };
+    expect(verifySchemaProof(evidence, "screenFixes", load)).toBe(2);
+    expect(() => verifySchemaProof({ ...evidence, checks: { ...evidence.checks, financialRecordsPreserved: false } }, "screenFixes", load)).toThrow();
+    expect(() => verifySchemaProof({ ...evidence, checks: { ...evidence.checks, durableReplayGuards: "failed" } }, "screenFixes", load)).toThrow();
+    expect(() => verifySchemaProof(evidence, "screenFixes", () => "changed SQL")).toThrow(/changed/);
+  });
   it("requires reviewed cache migration evidence before enabling shared revisions", () => {
     const cacheProof = {
       ...proof(),

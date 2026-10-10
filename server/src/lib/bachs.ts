@@ -1,9 +1,8 @@
 /**
  * Bachs hosted-checkout API boundary.
  *
- * Deliberately NOT wired into the existing Paystack receipts, price snapshots,
- * payout ledger or refund state machine. Those require a separate, reviewed
- * provider-aware migration. This file alone cannot activate any payments.
+ * New collections use immutable BACHS quotes and separately verified receipts.
+ * Historical Paystack transactions keep their original provider and ledger.
  *
  * Docs: https://docs.bachs.io/guides/checkout/checkout-sessions
  *       https://docs.bachs.io/developer-portal/webhooks
@@ -132,6 +131,22 @@ async function apiRequest(
   if (!response.ok || typeof body !== "object" || !body || Array.isArray(body))
     throw providerError("Bachs could not confirm the payment request. No purchase has been credited.");
   return body as Record<string, unknown>;
+}
+
+export async function getBachsCheckoutSettings(env: Bindings) {
+  const data = await apiRequest(env, '/v1/accounts/checkout/settings');
+  const methods = data.enabled_payment_methods as Record<string, { enabled?: boolean }> | undefined;
+  return { bankTransferEnabled: methods?.NGN_BANK_TRANSFER?.enabled === true, feePreference: data.fee_preference };
+}
+
+export async function validBachsDelivery(env: Bindings, raw: string, timestamp?: string, signature?: string, v2?: string) {
+  if (!v2) return validBachsSignature(env, raw, timestamp, signature);
+  const parts = v2.split(',').map(part => part.trim());
+  const times = parts.filter(part => part.startsWith('t='));
+  const signatures = parts.filter(part => part.startsWith('v1='));
+  if (times.length !== 1 || signatures.length < 1 || signatures.length > 5) return false;
+  for (const candidate of signatures) if (await validBachsSignature(env, raw, times[0]!.slice(2), candidate.slice(3))) return true;
+  return false;
 }
 
 /** Create an NGN one-time hosted session. Never infer paid status from this response. */

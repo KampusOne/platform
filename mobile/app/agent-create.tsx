@@ -35,6 +35,7 @@ export default function CreateListing() {
     [],
   );
   const [category, setCategory] = useState("");
+  const [categoryQuery, setCategoryQuery] = useState("");
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState("");
   const alive = useRef(true), categoryRequest = useRef(0);
@@ -122,7 +123,7 @@ export default function CreateListing() {
     }
   }
   return (
-    <ToolPage title={tutor ? "Create tutorial" : "Add product"}>
+    <ToolPage title={tutor ? "Create tutorial" : "Create product"}>
       {!tutor ? (
         <>
           <View style={{padding:18,borderRadius:22,backgroundColor:theme.surfaceTint,gap:8,marginBottom:20}}><Text style={{fontFamily:theme.font.displayStrong,fontSize:24,color:theme.text}}>Ready for your next sale</Text><Text style={{fontFamily:theme.font.body,lineHeight:22,color:theme.textMuted}}>Add clear photos and a price. Your product goes live when you upload it.</Text></View>
@@ -173,6 +174,7 @@ export default function CreateListing() {
         <Text style={{ fontFamily: theme.font.semibold, color: theme.text }}>Product category (required)</Text>
         {categoriesLoading ? <Text style={{ color: theme.textMuted }}>Loading categories…</Text> : null}
         {categoriesError ? <><Text accessibilityRole="alert" style={{ color: theme.error, lineHeight: 22 }}>{categoriesError}</Text><ToolButton secondary label="Retry product categories" disabled={categoriesLoading} onPress={() => void loadCategories()} /></> : null}
+        {categories.length > 8 ? <ToolField label="Find a category" value={categoryQuery} onChangeText={setCategoryQuery} placeholder="Books, materials, clothing…" /> : null}
         <View
           style={{
             flexDirection: "row",
@@ -181,7 +183,7 @@ export default function CreateListing() {
             marginBottom: 16,
           }}
         >
-          {categories.map((c) => (
+          {categories.filter(c => c.name.toLowerCase().includes(categoryQuery.trim().toLowerCase())).map((c) => (
             <Pressable
               accessibilityRole="radio"
               accessibilityLabel={c.name}
@@ -198,6 +200,7 @@ export default function CreateListing() {
             </Pressable>
           ))}
         </View>
+        {categories.length > 0 && !categories.some(c => c.name.toLowerCase().includes(categoryQuery.trim().toLowerCase())) ? <Text style={{ color: theme.textMuted }}>No matching category. Try another word.</Text> : null}
         </View>
       )}
       {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['Campus One fee',pricePreview.platformKobo],['Estimated Paystack fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Paystack confirms its actual fee at checkout.</Text></View>:null}

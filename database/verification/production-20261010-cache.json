@@ -1,0 +1,84 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-10T12:39:09.597Z",
+    "source": "User requested these fixes, deployment alongside caching, and merge to main."
+  },
+  "verifiedAt": "2026-10-10T12:39:19.876Z",
+  "rehearsal": {
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "method": "Combined exact-source migration, self-cleaning financial acceptance, and transactional cache verification in one rollback-only transaction. Existing isolated branch reused without reset or deletion."
+  },
+  "method": "Combined migrations and exact-source ledger entries committed atomically. Synthetic payment acceptance rolls its fixtures back in an exception subtransaction. No provider payment was made.",
+  "checks": {
+    "screenFixes": "passed",
+    "cache": "passed",
+    "isolatedBranchRehearsal": "passed",
+    "transactionalInvalidation": "passed",
+    "privatePrivileges": "passed",
+    "fixturesRolledBack": true,
+    "existingAccountCountsPreserved": true,
+    "mediaAndBookingsPreserved": true,
+    "financialRecordsPreserved": true,
+    "durableReplayGuards": "passed",
+    "providerNeutralReceiptFk": "passed",
+    "legacyReceiptBackfill": "passed",
+    "categoryCatalogue": "passed"
+  },
+  "preservation": {
+    "before": {
+      "media": 136,
+      "users": 19,
+      "orders": 0,
+      "bookings": 6,
+      "profiles": 19,
+      "ledgerLines": 0,
+      "billingPeriods": 0,
+      "legacyReceipts": 0,
+      "ledgerTransactions": 0
+    },
+    "after": {
+      "media": 136,
+      "users": 19,
+      "orders": 0,
+      "bookings": 6,
+      "profiles": 19,
+      "ledgerLines": 0,
+      "billingPeriods": 0,
+      "legacyReceipts": 0,
+      "ledgerTransactions": 0
+    }
+  },
+  "migrations": [
+    {
+      "version": "20261010120000_versioned_read_cache",
+      "sourceBlobSha": "2e316b2d99e7925789175bf8ea3054ec85d27265"
+    },
+    {
+      "version": "20261010130000_default_product_categories",
+      "sourceBlobSha": "06773b7f10f0ced1c09fdb1ffbec1e3cda1a2613"
+    },
+    {
+      "version": "20261010140000_bachs_collection_cutover",
+      "sourceBlobSha": "6af105351bd2a808efba9988c568af6009cb815b"
+    }
+  ],
+  "liveProviderVerification": {
+    "workflowRunId": 38052674417,
+    "sourceSha": "19642861f981c634f4ffd01b356e5b6be9291ea5",
+    "standard": "generation_succeeded",
+    "pro": "generation_succeeded",
+    "privateText": "conversion_succeeded",
+    "privateImage": "conversion_succeeded",
+    "privatePdf": "conversion_succeeded",
+    "bachsCheckout": "unpaid_checkout_succeeded",
+    "bachsBankTransferEnabled": true,
+    "bachsFeePreference": "org_pays",
+    "liveChargeMade": false
+  }
+}

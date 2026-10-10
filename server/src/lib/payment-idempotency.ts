@@ -3,10 +3,10 @@ import { sql } from "drizzle-orm";
 import type { Bindings } from "../types";
 import { database, firstRow } from "./database";
 import { AppError } from "./errors";
-import { initializePaystack } from "./paystack";
+import { initializeCollection } from "./collection-provider";
 import { initiatePaystackTransfer, finalizePaystackTransfer } from "./paystack-transfers";
 
-type Initialization = Parameters<typeof initializePaystack>[1];
+type Initialization = Parameters<typeof initializeCollection>[1];
 type CheckoutClaim = {
   claim_state: "CLAIMED" | "IN_PROGRESS" | "READY" | "UNCERTAIN";
   authorization_url: string | null;
@@ -55,7 +55,7 @@ export async function initializePaystackOnce(
   }
 
   try {
-    const initialized = await initializePaystack(env, input);
+    const initialized = await initializeCollection(env, input);
     if (!initialized.authorization_url || !initialized.access_code)
       throw new AppError(503, "PROVIDER_UNAVAILABLE", "The provider did not return a complete checkout session.");
 
@@ -70,7 +70,7 @@ export async function initializePaystackOnce(
       throw new AppError(503, "PROVIDER_UNAVAILABLE", "The checkout could not be safely saved.");
     return initialized;
   } catch (error) {
-    // Never re-POST after a timeout: Paystack may have created the session.
+    // Never re-POST after a timeout: the provider may have created the session.
     // Even if this write fails, the IN_PROGRESS claim will age into UNCERTAIN.
     try {
       await database(env).execute(sql`
@@ -124,6 +124,48 @@ export async function finishPaystackWebhook(
     await database(env).execute<{ saved: boolean }>(sql`
       select app_private.finish_provider_webhook(
         'PAYSTACK',${event},${reference},${claim.hash},${claim.token}::uuid,
+        ${state},${reason ?? null}
+      ) as saved
+    `),
+  );
+  if (!updated?.saved)
+    throw new AppError(503, "PROVIDER_UNAVAILABLE", "This signed payment event needs another verification attempt.");
+}
+
+export async function claimBachsWebhook(
+  env: Bindings,
+  event: string,
+  reference: string,
+  rawBody: string,
+): Promise<PaystackWebhookClaim> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawBody));
+  const hash = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  const token = crypto.randomUUID();
+  const row = firstRow(
+    await database(env).execute<{ state: WebhookClaimState }>(sql`
+      select app_private.claim_bachs_webhook(
+        'BACHS',${event},${reference},${hash},${token}::uuid
+      ) as state
+    `),
+  );
+  if (!row) throw new AppError(503, "PROVIDER_UNAVAILABLE", "The signed event could not be reserved.");
+  return { state: row.state, token, hash };
+}
+
+export async function finishBachsWebhook(
+  env: Bindings,
+  event: string,
+  reference: string,
+  claim: PaystackWebhookClaim,
+  state: "PROCESSED" | "RETRYABLE" | "REQUIRES_REVIEW",
+  reason?: string,
+) {
+  const updated = firstRow(
+    await database(env).execute<{ saved: boolean }>(sql`
+      select app_private.finish_bachs_webhook(
+        'BACHS',${event},${reference},${claim.hash},${claim.token}::uuid,
         ${state},${reason ?? null}
       ) as saved
     `),

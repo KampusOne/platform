@@ -15,6 +15,8 @@ import { useAppearance } from "@/src/lib/appearance";
 import { useCapabilities } from "@/src/components/agent-shortcuts";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/auth/auth-context";
+import { HeaderMenu } from "@/src/components/header-menu";
+import { ScreenSkeleton } from "@/src/components/skeleton";
 type Item = {
   id: string;
   title?: string;
@@ -49,6 +51,7 @@ function AccountAgentDashboard() {
   const profile =
     caps.profiles.find((p) => p.agent_type === requested) ?? caps.profiles[0];
   const role = profile?.agent_type;
+  const seller = role === "VENDOR" || requested === "VENDOR";
   const { theme } = useAppearance();
   const toast = useToast();
   const [items, setItems] = useState<Item[]>([]);
@@ -150,7 +153,7 @@ function AccountAgentDashboard() {
   return (
     <ToolPage
       title={
-        role === "VENDOR"
+        seller
           ? "Seller dashboard"
           : role === "TUTOR"
             ? "Tutor dashboard"
@@ -158,8 +161,20 @@ function AccountAgentDashboard() {
               ? "Available rides"
               : "Your workspaces"
       }
+      action={seller ? <HeaderMenu label="Seller dashboard options" items={[
+        { label: "Store profile", icon: "storefront-outline", onPress: () => router.push("/store-settings"), disabled: !profile },
+        { label: "Orders & delivery", icon: "receipt-outline", onPress: () => router.push("/vendor-orders"), disabled: !profile },
+        { label: "Earnings & payouts", icon: "wallet-outline", onPress: () => router.push("/earnings"), disabled: !profile },
+        { label: "Seller trial", icon: "gift-outline", onPress: () => router.push("/trial"), disabled: !profile },
+        { label: "View seller profile", icon: "person-circle-outline", onPress: () => profile && router.push({ pathname: "/student-service", params: { id: profile.id } }), disabled: !profile },
+        { label: "Refresh dashboard", icon: "refresh-outline", onPress: () => void load().catch(e => setLoadError(e.message)), disabled: !profile || busy },
+        { label: "Refresh delivery location", icon: "locate-outline", onPress: () => void refreshPosition(), disabled: !profile || busy },
+        { label: "Campus capture missions", icon: "map-outline", onPress: () => router.push("/map-capture"), disabled: !profile },
+      ]} /> : undefined}
     >
-      {caps.profiles.length>0?<ToolButton secondary label="Campus capture missions" onPress={()=>router.push("/map-capture")}/>:null}
+      {!caps.ready ? <ScreenSkeleton variant="list" compact /> : <>
+      {seller && profile ? <View style={{ gap: 5, paddingVertical: 14 }}><Text style={{ color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 23 }}>{profile.display_name}</Text><Text style={{ color: theme.textMuted, fontFamily: theme.font.body }}>Manage your products and sales.</Text></View> : null}
+      {!seller && caps.profiles.length>0?<ToolButton secondary label="Campus capture missions" onPress={()=>router.push("/map-capture")}/>:null}
       {caps.profiles.length > 1 && (
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
           {caps.profiles.map((p) => (
@@ -198,7 +213,7 @@ function AccountAgentDashboard() {
           body="Your workspaces appear here once your agent application is approved."
         />
       )}
-      {profile ? (
+      {!seller && profile ? (
         <ToolRow
           title={`View ${profile.agent_type === "VENDOR" ? "Vendor" : profile.agent_type === "TUTOR" ? "Tutor" : "Rider"} Profile`}
           detail={profile.display_name}
@@ -211,11 +226,11 @@ function AccountAgentDashboard() {
           }
         />
       ) : null}
-      <ToolRow
+      {!seller ? <ToolRow
         title="Earnings & payouts"
         icon="wallet-outline"
         onPress={() => router.push("/earnings")}
-      />
+      /> : null}
       {role === "RIDER" && ridesSuspended ? (
         <View style={{ paddingVertical: 16 }}>
           <Text style={{ color: theme.text, fontFamily: theme.font.semibold }}>
@@ -228,28 +243,14 @@ function AccountAgentDashboard() {
           />
         </View>
       ) : null}
-      <ToolRow
+      {!seller ? <ToolRow
         title="Free trial"
         icon="gift-outline"
         onPress={() => router.push("/trial")}
-      />
-      {role === "VENDOR" && (
-        <ToolRow
-          title="Orders & delivery"
-          icon="receipt-outline"
-          onPress={() => router.push("/vendor-orders")}
-        />
-      )}
-      {role === "VENDOR" ? (
-        <ToolRow
-          title="Store profile"
-          icon="storefront-outline"
-          onPress={() => router.push("/store-settings")}
-        />
-      ) : null}
+      /> : null}
       {role && role !== "RIDER" ? (
         <ToolButton
-          label={role === "VENDOR" ? "Add product" : "Create tutorial"}
+          label={role === "VENDOR" ? "Create product" : "Create tutorial"}
           onPress={() =>
             router.push({ pathname: "/agent-create", params: { role } })
           }
@@ -267,7 +268,7 @@ function AccountAgentDashboard() {
           }
         />
       ) : null}
-      {(role==='RIDER'||role==='VENDOR')?<View style={{gap:8,marginVertical:12}}><ToolButton secondary disabled={busy} label="Refresh delivery location" onPress={()=>void refreshPosition()}/><Text style={{color:theme.textMuted,fontFamily:theme.font.body,fontSize:12}}>{locationStatus}</Text></View>:null}
+      {role==='RIDER'?<View style={{gap:8,marginVertical:12}}><ToolButton secondary disabled={busy} label="Refresh delivery location" onPress={()=>void refreshPosition()}/><Text style={{color:theme.textMuted,fontFamily:theme.font.body,fontSize:12}}>{locationStatus}</Text></View>:null}
       {role === "RIDER" && (
         <View style={{ flexDirection: "row", gap: 12, marginVertical: 18 }}>
           {(["AVAILABLE", "ACTIVE", "HISTORY"] as const).map((tab) => (
@@ -497,6 +498,7 @@ function AccountAgentDashboard() {
           />
         </View>
       ) : null}
+      </>}
     </ToolPage>
   );
 }

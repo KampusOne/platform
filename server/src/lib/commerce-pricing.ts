@@ -11,7 +11,7 @@ import {
   campusFare,
   type CommerceFees,
 } from "./pricing";
-import { verifyPaystack } from "./paystack";
+import { verifyCollection as verifyPaystack } from "./collection-provider";
 import { resolveProviderCollection } from "./payment-pricing";
 import type { AuthenticatedUser, Bindings } from "../types";
 

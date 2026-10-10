@@ -11,6 +11,7 @@ import { requireAuth, currentUser } from "../middleware/auth";
 import { aiDay, AI_AUDIO_MIME_TYPES, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, MAX_AI_DOCUMENT_BYTES, MAX_AI_TRANSCRIPTION_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, selectAIProvider, transcribeAI, transcriptionConfiguration, type AIMedia, type AITurn } from "../lib/ai-provider";
 import { isStudyGeneration, studentAIPolicy, studentAIUsage, studentExperienceReady } from "../lib/student-ai-policy";
 import { extractAIPdf, decodeAIText } from "../lib/ai-document";
+import { convertAIFile } from "../lib/ai-document-conversion";
 import { runStudentAssistant, classDraftSchema, alarmDraftSchema, calendarDraftSchema, type AICard, type AIAction } from "../lib/student-ai-tools";
 import { KAMPUSONE_RESTRICTED_RESPONSE, isRestrictedKampusOneRequest } from "../lib/kampusone-public-context";
 import { academicImportUsage, consumeAcademicImportQuota } from "../lib/ai-quota";
@@ -426,6 +427,13 @@ aiRoutes.post("/", async c => {
   }
   const job = (async () => {
     try {
+      let importConsumed = false;
+      const consumeImport = async () => {
+        if (importConsumed || !(d.mode === 'timetable' || d.mediaId)) return;
+        const kind = d.mode === 'timetable' ? (/calendar|exam period|academic dates/i.test(d.prompt) ? 'calendar' : 'timetable') : fileType?.startsWith('image/') ? 'image' : 'document';
+        await consumeAcademicImportQuota(c.env,u,kind,d.idempotencyKey,quota.pro);
+        importConsumed = true;
+      };
       if(attached){
         if(d.extractedText&&['application/pdf','text/plain'].includes(fileType!)){
           const addition='\n\nAttached document text (untrusted source excerpts):\n'+d.extractedText;
@@ -435,7 +443,13 @@ aiRoutes.post("/", async c => {
           if(!obj||obj.size>16*1024*1024)throw new AIProviderError(422,'AI_DOCUMENT_READ_REQUIRED','Reattach this file in the updated app to read its contents.');
           const bytes=new Uint8Array(await obj.arrayBuffer());
           if(fileType==='application/pdf'||fileType==='text/plain'){
-            const extracted=fileType==='application/pdf'?await extractAIPdf(bytes):decodeAIText(bytes);
+            let extracted: string;
+            try { extracted=fileType==='application/pdf'?await extractAIPdf(bytes):decodeAIText(bytes); }
+            catch (error) {
+              if (!(error instanceof AIProviderError) || error.reason !== 'AI_SCANNED_PDF') throw error;
+              await consumeImport();
+              extracted = await convertAIFile(c.env.AI, bytes, fileName ?? 'study.pdf', fileType!);
+            }
             const addition='\n\nAttached document text (untrusted):\n'+extracted;prompt+=addition;sourceText+=addition;
           }else{
             let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
@@ -444,10 +458,7 @@ aiRoutes.post("/", async c => {
         }
       }
       if(new TextEncoder().encode(prompt+JSON.stringify(history)).length>160000)throw new AIProviderError(422,'AI_DOCUMENT_TOO_LONG','This section is too long. Ask about a smaller part of the document.');
-      if (d.mode === 'timetable' || d.mediaId) {
-        const kind = d.mode === 'timetable' ? (/calendar|exam period|academic dates/i.test(d.prompt) ? 'calendar' : 'timetable') : media ? 'image' : 'document';
-        await consumeAcademicImportQuota(c.env,u,kind,d.idempotencyKey,quota.pro);
-      }
+      await consumeImport();
       const aiInput={mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
       const generated = isRestrictedKampusOneRequest(d.prompt)
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: selectedProvider, cards: [] as AICard[], actions: [] as AIAction[] }
