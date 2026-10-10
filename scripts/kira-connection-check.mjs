@@ -26,8 +26,22 @@ export async function probe(request, env) {
     }catch{return{outcome:'transport_failure'};}
   };
   const bachs={configured:Boolean(env.BACHS_API_KEY&&env.BACHS_WEBHOOK_SECRET),liveKey:env.BACHS_API_KEY?.startsWith('sk_live_')===true};
+  if(bachs.configured) {
+    try {
+      const origin=bachs.liveKey?'https://api.bachs.io':'https://sandbox-api.bachs.io';
+      const r=await fetch(origin+'/v1/accounts/checkout/settings',{headers:{Authorization:'Bearer '+env.BACHS_API_KEY},redirect:'error',signal:AbortSignal.timeout(10000)});
+      const d=await r.json().catch(()=>null);
+      bachs.http=r.status;bachs.bankTransferEnabled=d?.enabled_payment_methods?.NGN_BANK_TRANSFER?.enabled===true;
+      bachs.feePreference=['org_pays','customer_pays'].includes(d?.fee_preference)?d.fee_preference:'unknown';
+    }catch{bachs.outcome='transport_failure';}
+  }
+  let conversion={outcome:'configuration_missing'};
+  if(typeof env.AI?.toMarkdown==='function')try{
+    const result=await env.AI.toMarkdown([{name:'probe.txt',blob:new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})}]);
+    conversion={outcome:typeof result?.[0]?.data==='string'&&result[0].data.includes('MAT 101')?'conversion_succeeded':'conversion_unusable'};
+  }catch{conversion={outcome:'provider_rejected'};}
   const [standard,pro,huggingface]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck()]);
-  return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs},{headers:{'Cache-Control':'no-store'}});
+  return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs,conversion},{headers:{'Cache-Control':'no-store'}});
 }
 
 if(process.argv.includes('--self-test')) {
@@ -83,6 +97,8 @@ if(process.argv.includes('--self-test')) {
       report(`${name}: ${value.outcome}${Number.isInteger(value.http)?` HTTP ${value.http}`:''}${/^\d{4}$/.test(value.code??'')?` code ${value.code}`:''}${['credits_or_payment','rate_limit','unclassified'].includes(value.hint)?` ${value.hint}`:''}`);
     }
     report(`BACHS configuration complete: ${result.bachs?.configured===true}; live key: ${result.bachs?.liveKey===true}`);
+    report(`BACHS settings: HTTP ${Number.isInteger(result.bachs?.http)?result.bachs.http:'unavailable'}; bank transfer enabled: ${result.bachs?.bankTransferEnabled===true}; fee preference: ${['org_pays','customer_pays'].includes(result.bachs?.feePreference)?result.bachs.feePreference:'unknown'}`);
+    report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
     if(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded')process.exitCode=1;
     report('No production route, credential export, account data or live application write. Preview expires after three minutes.');
   }catch(error){report(`CHECK FAILED at ${stage}: ${/^HTTP [1-5][0-9]{2}$/.test(error?.message??'')?error.message:'raw error withheld'}`);process.exitCode=1;}
