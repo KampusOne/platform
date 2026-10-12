@@ -243,12 +243,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(
     async function requestSignOut(): Promise<boolean> {
+      let serverRevoked = false;
       try {
-        if (sessionUserId.current)
-          await unregisterPushDevice(sessionUserId.current).catch(
-            () => undefined,
-          );
-        await authApi.logout();
+        // Concurrent, bounded cleanup avoids forcing the user to wait for
+        // slow push endpoints before their credentials can be removed.
+        const pushCleanup = sessionUserId.current
+          ? unregisterPushDevice(sessionUserId.current).catch(() => undefined)
+          : Promise.resolve();
+        const result = await authApi.logout();
+        serverRevoked = result.serverRevoked;
+        await pushCleanup;
       } catch (caught) {
         const detail =
           caught instanceof Error
@@ -282,6 +286,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await clearDeviceCache().catch(() => undefined);
       applyPreferences();
       await clearScheduledAlarms().catch(() => undefined);
+      if (!serverRevoked) {
+        Alert.alert(
+          "Signed out on this device",
+          "Your phone's sign-in credential was removed. The server could not confirm that the remote session was revoked. When you are back online, review your device sessions from Account & security.",
+        );
+      }
       return true;
     },
     [],

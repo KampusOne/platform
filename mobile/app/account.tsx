@@ -159,12 +159,16 @@ export default function Account() {
         </>
       )}
       <ToolButton
-        label={busy ? "Please wait…" : "Log out"}
+        label={busy ? "Signing out…" : "Log out"}
         secondary
         disabled={busy}
         onPress={() => {
           setBusy(true);
-          void signOut().finally(() => setBusy(false));
+          void signOut()
+            .then((signedOut) => {
+              if (signedOut) router.replace("/(auth)/welcome");
+            })
+            .finally(() => setBusy(false));
         }}
       />
     </ToolPage>

@@ -705,25 +705,29 @@ export const authApi = {
     );
   },
   async logout() {
-    const result = await runSessionTransition(async () => {
-      const refreshToken = await readRefreshToken();
-      return api<{ status: string }>(
-        "/v1/auth/logout",
-        {
+    // Local Android sign-out must not be held hostage by an unavailable Worker.
+    // Server revocation remains attempted, bounded and explicitly reported.
+    let serverRevoked = false;
+    try {
+      const result = await runSessionTransition(async () => {
+        const refreshToken = await readRefreshToken();
+        return api<{ status: string }>("/v1/auth/logout", {
           method: "POST",
           body: JSON.stringify(refreshToken ? { refreshToken } : {}),
-        },
-        false,
-      );
-    });
-    if (result.status !== "signed_out") {
-      throw new ApiError(
-        502,
-        "INVALID_RESPONSE",
-        "KampusOne could not confirm that this session was signed out.",
-      );
+          timeoutMs: 3_500,
+        }, false);
+      });
+      serverRevoked = result.status === "signed_out";
+    } catch {
+      // Do not treat a network failure as a successful server revocation.
     }
+    // Web sessions may be held in HttpOnly cookies that the browser cannot
+    // clear safely without the server. Never claim a local sign-out on web.
+    if (Platform.OS === "web" && !serverRevoked)
+      throw new ApiError(503, "SIGN_OUT_NOT_CONFIRMED", "The server could not confirm sign-out. Try again when connected.");
+    // A failure to remove the native credential MUST fail closed rather than
+    // presenting a misleading signed-out screen.
     await removeRefreshToken();
-    return result;
+    return { status: "signed_out" as const, serverRevoked };
   },
 };
