@@ -10,6 +10,8 @@ if(hash.digest('hex')!==receipt.apkSha256||statSync('KampusOne-Android.apk').siz
 const objectKey=`releases/android/${receipt.sourceSha}.apk`;
 writeFileSync('KampusOne-Android-download.json',JSON.stringify({...receipt,objectKey}));
 function upload(key,file,type){
+ const main=spawnSync('git',['ls-remote','--heads','origin','main'],{encoding:'utf8'});
+ if(main.status!==0||main.stdout.split(/\s+/)[0]!==receipt.sourceSha)throw new Error('This APK was superseded; the website download remains unchanged.');
  const r=spawnSync('npx',['--yes','wrangler@4.130.0','r2','object','put',`kampusone-media/${key}`,'--file',file,'--content-type',type,'--remote'],{stdio:'inherit'});
  if(r.status!==0)throw new Error('Website download publication failed; the existing download pointer remains intact.');
 }

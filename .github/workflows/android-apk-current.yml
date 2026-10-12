@@ -152,3 +152,50 @@ jobs:
             KampusOne-Android-0.3.26-arm64-release.json
           if-no-files-found: error
           retention-days: 14
+
+  publish-download:
+    needs: apk
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: KampusOne-Android-0.3.26-arm64
+      - name: Verify the same published Worker and web release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+            test "$latest" = "$RELEASE_SHA" || { echo "This release was superseded."; exit 1; }
+            gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-worker.yml/runs" -f branch=main -f head_sha="$RELEASE_SHA" > /tmp/kampusone-download-worker-runs.json
+            gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/status" > /tmp/kampusone-download-vercel-statuses.json
+            if jq -e '. as $s | ["Vercel – kampusone-platform-preview", "Vercel – kampusone-mobile-preview"] | all(. as $context | ([$s.statuses[] | select(.context == $context)][0].state == "success"))' /tmp/kampusone-download-vercel-statuses.json > /dev/null; then break; fi
+            test "$attempt" -lt 60 || { echo "The matching web deployment did not finish in time."; exit 1; }
+            sleep 10
+          done
+          node --test tests/native-release.test.mjs tests/published-web-release.test.mjs tests/android-download-publication.test.mjs
+          node server/scripts/verify-published-web-release.mjs /tmp/kampusone-download-worker-runs.json /tmp/kampusone-download-vercel-statuses.json KampusOne-Android-0.3.26-arm64-web-release.json
+      - name: Publish the verified testing APK to website downloads
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          node server/scripts/verify-android-download.mjs KampusOne-Android-0.3.26-arm64-build.json KampusOne-Android-0.3.26-arm64-release.json KampusOne-Android-0.3.26-arm64-web-release.json
+          cp KampusOne-Android-0.3.26-arm64.apk KampusOne-Android.apk
+          cp KampusOne-Android-0.3.26-arm64-build.json KampusOne-Android-build.json
+          node server/scripts/publish-android-download.mjs
