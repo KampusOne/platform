@@ -11,6 +11,7 @@ function load(file,mocks={}){const exports={};const source=ts.transpileModule(re
 const {SecureSnapshots}=load('secure-snapshots.ts');
 const {ReadCoordinator}=load('read-coordinator.ts',{'./request-policy':{matchesRead:(path,prefix)=>path===prefix||path.startsWith(prefix+'/')||path.startsWith(prefix+'?')}});
 const {LiveConnection}=load('live-connection.ts');
+const {calendarRetryId,calendarRecoveredRows}=load('calendar-recovery.ts');
 function fixture(){
  const data=new Map(),keys=new Map();let now=1_000_000;
  const io={get:async k=>data.get(k)??null,set:async(k,v)=>{data.set(k,v);},remove:async k=>{data.delete(k);},keys:async()=>[...data.keys()],hash:async text=>createHash('sha256').update(text).digest('hex'),
@@ -43,6 +44,29 @@ test('snapshot disk quotas and record limits are bounded',async()=>{
  const f=fixture();f.store.activate('scope',account);for(let i=0;i<75;i++)await f.store.write('message-draft.'+account+'.'+i,{text:'hello'},1000);
  assert.ok([...f.data.keys()].filter(k=>!k.endsWith('.index')&&!k.endsWith('.scopes')).length<=60);
  await f.store.write('cart.'+account,'x'.repeat(270000),1000);assert.equal(await f.store.read('cart.'+account),null);
+});
+test('display snapshots cannot silently evict pending drafts; expired draft space can be reused',async()=>{
+ const f=fixture();f.store.activate('scope',account);
+ for(let i=0;i<60;i++)await f.store.write('message-draft.'+account+'.'+i,{text:'Pending '+i},1000);
+ await f.store.write('snapshot./v1/student/gpa',{gpa:4.5},1000);
+ assert.equal((await f.store.read('message-draft.'+account+'.0')).data.text,'Pending 0');
+ assert.equal(await f.store.read('snapshot./v1/student/gpa'),null);
+ f.advance(1001);await f.store.write('cart.'+account,{items:1},1000);assert.equal((await f.store.read('cart.'+account)).data.items,1);
+});
+test('owned work survives role changes while server snapshots remain role scoped',async()=>{
+ const f=fixture(),draft='calendar-local.'+account,view='snapshot./v1/student/timetable';
+ f.store.activate(JSON.stringify([account,'A',['student'],[]]),account);await f.store.write(draft,{events:['Exam next term']},Number.MAX_SAFE_INTEGER-f.now());await f.store.write(view,{entries:['Restricted view']},60000);
+ f.store.activate(JSON.stringify([account,'A',['student','tutor'],[]]),account);
+ assert.equal((await f.store.read(draft)).data.events[0],'Exam next term');assert.equal(await f.store.read(view),null);
+ f.advance(90*86400000);assert.equal((await f.store.read(draft)).data.events[0],'Exam next term');
+ f.store.activate(JSON.stringify([account,'B',['student','tutor'],[]]),account);assert.equal(await f.store.read(draft),null);
+ await f.store.clear();assert.equal(f.keys.size,0);
+});
+test('scope pressure never evicts protected work to create another scope',async()=>{
+ const f=fixture();for(let i=0;i<4;i++){f.store.activate('scope'+i,account);await f.store.write('timetable-draft.'+account,{text:'Pending '+i},60000);}
+ f.store.activate('scope4',account);await f.store.write('snapshot./v1/student/timetable',{entries:[]},60000);assert.equal(await f.store.read('snapshot./v1/student/timetable'),null);
+ f.store.activate('scope0',account);assert.equal((await f.store.read('timetable-draft.'+account)).data.text,'Pending 0');
+ f.advance(60001);f.store.activate('scope4',account);await f.store.write('snapshot./v1/student/timetable',{entries:[]},60000);assert.ok(await f.store.read('snapshot./v1/student/timetable'));
 });
 test('AI processing, review, failure and saving never reuse an upload percentage',()=>{
  assert.equal(importProgress('uploading','exam timetable',0.421).percent,42);
@@ -95,4 +119,45 @@ test('custom read deadlines still retain eligible fresh data without caching quo
  let calls=0;const transport=nativeTransport(async()=>Response.json({revision:++calls}));transport.setAccessToken('test',account);
  await transport.api('/v1/student/gpa',{timeoutMs:8000});await transport.api('/v1/student/gpa',{timeoutMs:12000});assert.equal(calls,1);
  await transport.api('/v1/ai/status',{timeoutMs:8000});await transport.api('/v1/ai/status',{timeoutMs:8000});assert.equal(calls,3);
+});
+test('Cloudflare 1010 is a gateway block, preserves the session and never tries another origin',async()=>{
+ let calls=0,removed=0;
+ const transport=nativeTransport(async()=>{calls++;return new Response('error code: 1010',{status:403,headers:{Server:'cloudflare','CF-Ray':'synthetic-ray'}});},Date,{removeRefreshToken:async()=>{removed++;}});
+ transport.setAccessToken('synthetic',account);
+ await assert.rejects(transport.api('/v1/student/gpa'),error=>error.code==='API_GATEWAY_BLOCKED'&&error.details.gatewayCode===1010&&error.details.requestId==='synthetic-ray');
+ assert.equal(calls,1);assert.equal(removed,0);
+ const structured=nativeTransport(async()=>Response.json({error:{code:'FORBIDDEN',message:'No course access'}},{status:403}));structured.setAccessToken('synthetic',account);
+ await assert.rejects(structured.api('/v1/student/gpa'),error=>error.code==='FORBIDDEN');
+});
+test('a gateway block retains a cached view; an actual permission denial removes it',async()=>{
+ class ApiError extends Error{constructor(status,code){super(code);this.status=status;this.code=code;}}
+ let code='API_GATEWAY_BLOCKED',removed=0,denied=0;
+ const read=load('screen-read.ts',{'./device-cache':{getDeviceCacheRevision:()=>0},'./api':{ApiError,api:async()=>{throw new ApiError(403,code);},peekApiCache:()=>undefined},'./secure-snapshots.native-adapter':{secureSnapshots:{read:async()=>({data:{entries:['Last saved']},savedAt:1}),remove:async()=>{removed++;}}},react:{}}).refreshScreenRead;
+ const views=[];await assert.rejects(read('/v1/student/timetable',value=>views.push(value),()=>denied++));assert.equal(removed,0);assert.equal(denied,0);assert.equal(views.length,1);
+ code='FORBIDDEN';await assert.rejects(read('/v1/student/timetable',()=>{},()=>denied++));assert.equal(removed,1);assert.equal(denied,1);
+});
+test('late disk or network hydration cannot publish after an A to B to A session change',async()=>{
+ class ApiError extends Error{constructor(status,code){super(code);this.status=status;this.code=code;}}
+ let revision=0,finishDisk,finishNetwork,published=0,writes=0;
+ const read=load('screen-read.ts',{'./device-cache':{getDeviceCacheRevision:()=>revision},'./api':{ApiError,api:()=>new Promise(resolve=>{finishNetwork=resolve;}),peekApiCache:()=>undefined},'./secure-snapshots.native-adapter':{secureSnapshots:{read:()=>new Promise(resolve=>{finishDisk=resolve;}),write:async()=>{writes++;}}},react:{}}).refreshScreenRead;
+ const pending=read('/v1/student/timetable',()=>published++);const rejected=assert.rejects(pending,error=>error.code==='SESSION_CHANGED');revision+=2;finishDisk({data:{private:'Original account'},savedAt:1});finishNetwork({private:'Original account'});await rejected;
+ assert.equal(published,0);assert.equal(writes,0);
+});
+test('native personal calendar writes require encrypted read-back and do not cache an unsaved event',async()=>{
+ const f=fixture(),scope=JSON.stringify([account,'A',[],[]]);
+ const cache=load('device-cache.ts',{'react-native':{Platform:{OS:'android'}},'./secure-snapshots':load('secure-snapshots.ts'),'./secure-snapshots.native-adapter':{secureSnapshots:f.store},'@react-native-async-storage/async-storage':{__esModule:true,default:{getAllKeys:async()=>[],getItem:async()=>null,removeItem:async()=>{},multiRemove:async()=>{}}}});
+ cache.setDeviceCacheScope(scope,account);await cache.writeCache('calendar-local.'+account,{events:['Future exam']});
+ f.advance(90*86400000);cache.setDeviceCacheScope(JSON.stringify([account,'A',['tutor'],[]]),account);assert.equal((await cache.readCache('calendar-local.'+account)).events[0],'Future exam');
+ const next='calendar-local.'+account+'.second';f.io.set=async()=>{};await assert.rejects(cache.writeCache(next,{events:['Unsaved']}),/could not be saved securely/);assert.equal(await cache.readCache(next),null);
+});
+test('calendar retry reuses only a submitted request ID and replaces the recovered row without duplicates',()=>{
+ const draft={id:'local:'+account,requestId:account,title:'Exam',starts_on:'2027-01-01',ends_on:'2027-01-01',semester:'First'};
+ assert.equal(calendarRetryId(draft),account);assert.equal(calendarRetryId({...draft,requestId:undefined}),null);assert.equal(calendarRetryId({...draft,requestId:'../bad'}),null);
+ const saved={...draft,id:other};const rows=calendarRecoveredRows([draft,{...saved,title:'Existing confirmation'}],saved,draft.id);assert.equal(rows.length,1);assert.equal(rows[0].id,other);
+});
+test('logout removes old account draft files while preserving files of a concurrent new login',async()=>{
+ let finish,deletions=[];class Directory{constructor(_root,name){this.name=name;}exists=true;list(){return [new Directory('', 'kampusone.message-draft.v1.'+account+'.thread'),new Directory('', 'kampusone.message-draft.v1.'+other+'.thread')];}delete(){deletions.push(this.name);}}
+ const cache=load('device-cache.ts',{'react-native':{Platform:{OS:'android'}},'./secure-snapshots':load('secure-snapshots.ts'),'./secure-snapshots.native-adapter':{secureSnapshots:{activate(){},clear:()=>new Promise(resolve=>{finish=resolve;})}},'expo-file-system':{Directory,Paths:{document:''}},'@react-native-async-storage/async-storage':{__esModule:true,default:{getAllKeys:async()=>[],getItem:async()=>null,removeItem:async()=>{},multiRemove:async()=>{}}}});
+ cache.setDeviceCacheScope('verified-A',account);const clearing=cache.clearDeviceCache();assert.equal(cache.isDeviceCacheOwner(account),false);cache.setDeviceCacheScope('verified-B',other);finish();await clearing;
+ assert.equal(deletions.includes('kampusone.message-draft.v1.'+account+'.thread'),true);assert.equal(deletions.includes('kampusone.message-draft.v1.'+other+'.thread'),false);
 });

@@ -2,10 +2,12 @@ import { readMigratedPrivateCache } from "@/src/lib/private-cache-migration";
 import {AcademicImportUsage} from "@/src/components/academic-import-usage";
 import { BulkMenu, BulkToolbar, SelectionCheckbox, useBulkSelection } from "@/src/components/bulk-selection";
 import { useCallback, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {calendarRetryId,calendarRecoveredRows} from '@/src/lib/calendar-recovery';
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
-import { readCache, writeCache } from "@/src/lib/device-cache";
+import { getDeviceCacheRevision, writeCache } from "@/src/lib/device-cache";
+import {cacheScopeForUser} from '@/src/lib/request-policy';
 import { refreshScreenRead } from "@/src/lib/screen-read";
 import { router, useFocusEffect } from "expo-router";
 
@@ -21,6 +23,7 @@ type Event = {
   starts_on: string;
   ends_on: string;
   semester: string;
+  requestId?:string;
 };
 
 type EventDraft = {
@@ -88,6 +91,7 @@ const normalizeEvents = (value: unknown): Event[] => {
       ends_on:
         typeof raw.ends_on === "string" ? raw.ends_on : raw.starts_on,
       semester: typeof raw.semester === "string" ? raw.semester : "",
+      ...(typeof raw.requestId==='string'?{requestId:raw.requestId}:{}),
     } satisfies Event];
   });
 };
@@ -536,10 +540,14 @@ export default function Calendar() {
   const createRequestId = useRef(randomUUID());
   const localEvents = useRef<Event[]>([]);
   const storageKey = localCalendarKey(user?.id);
+  const scope=user?cacheScopeForUser(user):null;
+  const previousScope=useRef<string|null>(null);
 
   useFocusEffect(
     useCallback(() => {
       const current = ++generation.current;
+      if(previousScope.current!==scope){previousScope.current=scope;localEvents.current=[];setEvents([]);}
+      const revision=getDeviceCacheRevision();
       setLoading(true);
       setError("");
       setRemoving(null);
@@ -559,7 +567,7 @@ export default function Calendar() {
         readLocalEvents(storageKey),
       ])
         .then(([server, local]) => {
-          if (current !== generation.current) return;
+          if (current !== generation.current||revision!==getDeviceCacheRevision()) return;
           localEvents.current = local;
           const merged = mergeCalendarEvents(server.rows, local);
           setEvents(merged);
@@ -572,7 +580,7 @@ export default function Calendar() {
       return () => {
         generation.current++;
       };
-    }, [user?.id, retry]),
+    }, [scope, retry]),
   );
 
   function closeEditor() {
@@ -603,7 +611,7 @@ export default function Calendar() {
     setFormError("");
     setRemoving(null);
     setActionError("");
-    createRequestId.current=randomUUID();
+    createRequestId.current=calendarRetryId(event)??randomUUID();
     setEditing(event.id);
   }
 
@@ -670,11 +678,12 @@ export default function Calendar() {
       } catch (caught) {
         if (!(caught instanceof ApiError) || !["NETWORK_UNAVAILABLE","REQUEST_TIMEOUT"].includes(caught.code)) throw caught;
         saved = {
-          id: editing === "new" ? `local:${randomUUID()}` : editing,
+          id: editing === "new" ? `local:${createRequestId.current}` : editing,
           title,
           starts_on: startsOn,
           ends_on: endsOn,
           semester,
+          ...(editing==='new'||editing.startsWith('local:')?{requestId:createRequestId.current}:{}),
         };
       }
 
@@ -684,23 +693,18 @@ export default function Calendar() {
         const nextLocal = localEvents.current.filter(
           (row) => row.id !== saved.id && row.id !== editing,
         );
-        localEvents.current = nextLocal;
         await writeCache(storageKey, JSON.stringify(nextLocal));
+        localEvents.current = nextLocal;
       } else {
-        const nextLocal = [
-          ...localEvents.current.filter((row) => row.id !== saved.id),
-          saved,
-        ];
-        localEvents.current = nextLocal;
+        const nextLocal = calendarRecoveredRows(localEvents.current,saved,editing);
         await writeCache(storageKey, JSON.stringify(nextLocal));
+        localEvents.current = nextLocal;
       }
 
       if (current !== generation.current) return;
       setEvents((rows) =>
         sortEvents(
-          editing === "new"
-            ? [...rows.filter((row) => row.id !== saved.id), saved]
-            : rows.map((row) => (row.id === editing ? saved : row)),
+          calendarRecoveredRows(rows,saved,editing),
         ),
       );
       setEditing(null);
@@ -732,8 +736,8 @@ export default function Calendar() {
         });
       }
       const nextLocal = localEvents.current.filter((row) => row.id !== id);
-      localEvents.current = nextLocal;
       await writeCache(storageKey, JSON.stringify(nextLocal));
+      localEvents.current = nextLocal;
       if (current === generation.current) {
         setEvents((rows) => rows.filter((row) => row.id !== id));
         setRemoving(null);
@@ -987,7 +991,7 @@ export default function Calendar() {
                 >
                   {event.title}
                 </Text>
-                {localEvents.current.some(row=>row.id===event.id)?<Text style={styles.eventDate}>Saved on this device · edit and save after reconnecting to sync</Text>:null}
+                {localEvents.current.some(row=>row.id===event.id)?<Text style={styles.eventDate}>{Platform.OS==='web'?'Kept for this browser session · reconnect and save before closing':'Saved on this device · server confirmation pending. Edit and save after reconnecting.'}</Text>:null}
                 <Text style={styles.eventDate}>
                   {dateLabel(event.starts_on)}
                   {event.ends_on !== event.starts_on

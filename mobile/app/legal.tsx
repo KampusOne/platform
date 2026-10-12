@@ -33,11 +33,11 @@ export default function Legal() {
       {sections.map((section, index) => (
         <View key={section.title} style={{ borderBottomWidth: 1, borderBottomColor: theme.border,
           paddingBottom: 22, marginBottom: 22 }}>
-          <Text accessibilityRole="header" style={{ fontFamily: theme.font.semibold,
+          <Text accessible={false} importantForAccessibility="no" style={{ fontFamily: theme.font.semibold,
             fontSize: 12, color: theme.deepBrand, marginBottom: 8 }}>
             {String(index + 1).padStart(2, "0")} / {String(sections.length).padStart(2, "0")}
           </Text>
-          <Text style={{ fontFamily: theme.font.display, fontSize: 20, lineHeight: 27,
+          <Text accessibilityRole="header" style={{ fontFamily: theme.font.display, fontSize: 20, lineHeight: 27,
             color: theme.text, marginBottom: 12 }}>{section.title}</Text>
           {section.paragraphs.map((paragraph, position) => (
             <Text key={position} style={{ fontFamily: theme.font.body,

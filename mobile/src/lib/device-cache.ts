@@ -1,13 +1,15 @@
 import { Platform } from "react-native";
 import { secureSnapshots } from "./secure-snapshots.native-adapter";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ownedRecordKey } from './secure-snapshots';
 
 const PREFIX = "k1.cache.v2.";
 const memory = new Map<string, { data: unknown; expires: number }>();
-const maxMemoryEntries = 40;
+const maxMemoryEntries = 100;
 let generation = 0;
 let activeScope: string | null = null;
 let activeOwner = "";
+export const getDeviceCacheRevision=()=>generation;
 export const isDeviceCacheOwner = (owner: string) => Boolean(activeScope && owner && activeOwner === owner);
 export function setDeviceCacheScope(scope: string | null, owner = "") {
   if (scope === activeScope) return;
@@ -36,10 +38,12 @@ function remember(key: string, record: { data: unknown; expires: number }) {
   memory.delete(key);
   memory.set(key, record);
   while (memory.size > maxMemoryEntries) {
-    const oldest = memory.keys().next().value as string | undefined;
+    const oldest = [...memory.keys()].find(candidate=>!ownedRecordKey(candidate)||memory.get(candidate)!.expires<=Date.now());
     if (!oldest) break;
     memory.delete(oldest);
   }
+  // Web has no encrypted disk fallback. Never evict an existing owned draft to cache another view.
+  if(memory.size>maxMemoryEntries)memory.delete(key);
 }
 
 export async function readCache<T>(key: string): Promise<T | null> {
@@ -82,17 +86,24 @@ export async function readCache<T>(key: string): Promise<T | null> {
 export async function writeCache(
   key: string,
   data: unknown,
-  ttl = 7 * 86400_000,
+  ttl = ownedRecordKey(key)?Number.MAX_SAFE_INTEGER-Date.now():7 * 86400_000,
 ) {
   if(!permittedOwner(key)||!Number.isFinite(ttl)||ttl<=0)return;
+  const versionAtStart=generation;
   const record = { data, expires: Date.now() + ttl };
-  remember(key, record);
+  if(!key.startsWith('calendar-local.')||Platform.OS==='web')remember(key, record);
   if (!diskSafe(key)) {
+    if(key.startsWith('calendar-local.')&&Platform.OS!=='web'){
+      await secureSnapshots.write(key,data,ttl);
+      const proof=await secureSnapshots.read(key);
+      if(generation!==versionAtStart||!proof||JSON.stringify(proof.data)!==JSON.stringify(data))throw new Error('Your calendar could not be saved securely on this device. Keep your event open and try again.');
+      remember(key,record);
+      await storageOperation(()=>AsyncStorage.removeItem(PREFIX+key)).catch(()=>undefined);return;
+    }
     await secureSnapshots.write(key, data, ttl).catch(() => undefined);
     await storageOperation(() => AsyncStorage.removeItem(PREFIX + key)).catch(() => undefined);
     return;
   }
-  const versionAtStart = generation;
   try {
     await storageOperation(async () => {
       if (generation === versionAtStart) await AsyncStorage.setItem(PREFIX + key, JSON.stringify(record));
@@ -106,6 +117,7 @@ export async function clearDeviceCache() {
   generation++;
   memory.clear();
   activeScope = null;
+  activeOwner = "";
   await secureSnapshots.clear();
   await storageOperation(async () => {
     const keys = (await AsyncStorage.getAllKeys()).filter(key => key.startsWith(PREFIX) || /^(?:k1\.message-upload\.|k1\.onboarding\.|k1\.search\.recents\.v1\.|kampusone\.message-draft\.v1\.|@kampusone\/calendar\/personal\/)/.test(key));

@@ -15,6 +15,7 @@ import { Alert, AppState } from "react-native";
 
 import {
   api,
+  ApiError,
   authApi,
   onSessionChange,
   setAccessToken,
@@ -185,12 +186,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!session) {
         setState((current) => (current === "loading" ? "anonymous" : current));
       }
-    } catch {
+    } catch (caught) {
       // An unavailable API does not prove the device's refresh session is
       // invalid. Keep any known credentials untouched and let the entry screen
       // offer an explicit retry or a privacy-safe path to interactive sign-in.
       setSessionRestoreError(
-        "We couldn’t check this device’s session. Check your connection and try again.",
+        caught instanceof ApiError?caught.message:"We couldn’t check this device’s session. Please try again.",
       );
     }
   }, []);

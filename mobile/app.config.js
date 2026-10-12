@@ -20,7 +20,7 @@ module.exports = ({ config }) => {
     plugins: [...(config.plugins || []), "expo-sharing", ["expo-media-library", { photosPermission: "Allow KampusOne to save photos you choose.", savePhotosPermission: "Allow KampusOne to save downloaded photos and videos.", granularPermissions: [] }]],
     extra: {
       ...config.extra,
-      buildId: process.env.EXPO_PUBLIC_BUILD_ID || process.env.GITHUB_SHA || config.extra?.buildId || null,
+      buildId: process.env.EXPO_PUBLIC_BUILD_ID || process.env.GITHUB_SHA || process.env.VERCEL_GIT_COMMIT_SHA || config.extra?.buildId || null,
       ...(projectId
         ? {
             eas: {

@@ -233,9 +233,15 @@ export function onSessionChange(listener: (session: Session | null) => void) {
 
 async function parse<T>(response: Response): Promise<T> {
   let payload: unknown;
+  const denied=response.status===403?response.clone():null;
   try {
     payload = await response.json();
   } catch {
+    if(denied){
+      const text=await denied.text().catch(()=>"");
+      if(/\berror\s*code\s*:\s*1010\b|\berror\s+1010\b/i.test(text)&&(response.headers.get('Server')?.toLowerCase()==='cloudflare'||response.headers.has('CF-Ray')||/^\s*error\s*code\s*:\s*1010\s*$/i.test(text)))
+        throw new ApiError(403,'API_GATEWAY_BLOCKED','The service is blocking this app request. Your work is kept. Please try again later.',{gatewayCode:1010,requestId:response.headers.get('CF-Ray')??response.headers.get('X-Request-Id')??undefined});
+    }
     if (!response.ok) {
       throw new ApiError(
         response.status,

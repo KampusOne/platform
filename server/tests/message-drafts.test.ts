@@ -67,7 +67,7 @@ vi.mock("../../mobile/node_modules/expo-file-system/src/index.ts", () => {
   }
   return { File, Directory, Paths: { document: "file:///documents" } };
 });
-vi.mock("../../mobile/src/lib/device-cache",()=>({isDeviceCacheOwner:(id:string)=>id===memory.activeOwner,readCache:async()=>null,writeCache:async()=>{}}));
+vi.mock("../../mobile/src/lib/device-cache",()=>({getDeviceCacheRevision:()=>0,isDeviceCacheOwner:(id:string)=>id===memory.activeOwner,readCache:async()=>null,writeCache:async()=>{}}));
 vi.mock("../../mobile/src/lib/secure-snapshots.native-adapter",async()=>{
  const {SecureSnapshots}=await import("../../mobile/src/lib/secure-snapshots");
  const {createCipheriv,createDecipheriv,randomBytes,createHash}=await import('node:crypto');
@@ -84,6 +84,10 @@ import {
   readConversationDraft,
   readDraftSummaries,
   saveConversationDraft,
+  queuedTextMessages,
+  acknowledgePendingText,
+  updatePendingTextRetry,
+  restoreBlockedText,
   type ConversationDraft,
 } from "../../mobile/src/lib/message-drafts";
 const account = crypto.randomUUID(),
@@ -110,6 +114,48 @@ beforeEach(async () => {
   memory.directories.clear();
 });
 describe("durable account-scoped message drafts", () => {
+  it('rejects a 41st active draft without dropping any pending text, then reuses an empty thread',async()=>{
+    const threads=Array.from({length:40},()=>crypto.randomUUID());
+    for(const destination of threads)await saveConversationDraft(account,destination,draft({pendingText:{id:crypto.randomUUID(),body:'Retain '+destination,retry:{attempts:0,nextAttemptAt:0,blocked:false}}}));
+    const next=crypto.randomUUID();await expect(saveConversationDraft(account,next,draft({text:'New composer'}))).rejects.toThrow('40 saved conversation drafts');
+    expect(await queuedTextMessages(account)).toHaveLength(40);expect(await readConversationDraft(account,next)).toBeNull();
+    const pending=(await readConversationDraft(account,threads[0]!))!.pendingText!;await acknowledgePendingText(account,threads[0]!,pending.id);
+    await saveConversationDraft(account,next,draft({text:'New composer'}));expect((await readConversationDraft(account,next))?.text).toBe('New composer');expect(await queuedTextMessages(account)).toHaveLength(39);
+  });
+  it('retains queued text across reopening and keeps retry state when newer composer text is saved',async()=>{
+    const message={id:crypto.randomUUID(),body:'Please send this once',retry:{attempts:0,nextAttemptAt:123,blocked:false}};
+    await saveConversationDraft(account,thread,draft({pendingText:message}));
+    await updatePendingTextRetry(account,thread,message.id,{attempts:2,nextAttemptAt:1000,blocked:false});
+    await saveConversationDraft(account,thread,draft({text:'My newer unsent draft',pendingText:message}));
+    const queued=await queuedTextMessages(account);expect(queued).toHaveLength(1);expect(queued[0]?.message.retry?.attempts).toBe(2);
+    expect((await readConversationDraft(account,thread))?.text).toBe('My newer unsent draft');
+    expect(await queuedTextMessages(secondAccount)).toEqual([]);
+  });
+  it('acknowledges only the matching intent, preserves a newer composer, and rejects stale resurrection',async()=>{
+    const message={id:crypto.randomUUID(),body:'An already submitted text',retry:{attempts:0,nextAttemptAt:0,blocked:false}};
+    const next=draft({text:'Do not overwrite this new draft',pendingText:message});
+    await saveConversationDraft(account,thread,next);
+    await acknowledgePendingText(account,thread,crypto.randomUUID());expect(await queuedTextMessages(account)).toHaveLength(1);
+    await acknowledgePendingText(account,thread,message.id);
+    await saveConversationDraft(account,thread,next);
+    expect((await readConversationDraft(account,thread))?.pendingText).toBeNull();
+    expect((await readConversationDraft(account,thread))?.text).toBe(next.text);expect(await queuedTextMessages(account)).toEqual([]);
+  });
+  it('does not replace a queued text with a second intent or restore a blocked text over a changed composer',async()=>{
+    const message={id:crypto.randomUUID(),body:'Keep this pending text',retry:{attempts:5,nextAttemptAt:0,blocked:true}};
+    await saveConversationDraft(account,thread,draft({text:'My current draft',pendingText:message}));
+    await expect(saveConversationDraft(account,thread,draft({pendingText:{...message,id:crypto.randomUUID()}}))).rejects.toThrow('Finish the pending');
+    await expect(restoreBlockedText(account,thread,message.id,'Older composer')).rejects.toThrow('Your draft changed');
+    expect((await readConversationDraft(account,thread))?.text).toBe('My current draft');
+    expect(await restoreBlockedText(account,thread,message.id,'My current draft')).toBe(message.body);
+    expect((await readConversationDraft(account,thread))?.pendingText).toBeNull();expect((await readConversationDraft(account,thread))?.text).toBe(message.body);
+  });
+  it('never converts plaintext legacy retry metadata into an automatic send authority',async()=>{
+    const message={id:crypto.randomUUID(),body:'Legacy pending text',retry:{attempts:0,nextAttemptAt:0,blocked:false}};
+    memory.storage.set('kampusone.message-draft.v1.'+account+'.'+thread,JSON.stringify({...draft({pendingText:message}),version:1,updatedAt:new Date().toISOString()}));
+    const recovered=await readConversationDraft(account,thread);expect(recovered?.pendingText?.body).toBe(message.body);expect(recovered?.pendingText?.retry).toBeUndefined();
+    expect(await queuedTextMessages(account)).toEqual([]);
+  });
   it("restores text, reply and the original retry identifier after reopening", async () => {
     const id = crypto.randomUUID(),
       replyId = crypto.randomUUID();

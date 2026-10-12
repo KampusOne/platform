@@ -1,6 +1,8 @@
 import { privateDraftStorage } from "./private-draft-storage";
 import { Directory, File, Paths } from "expo-file-system";
 import { Platform } from "react-native";
+import type { PendingText, QueuedText } from './text-retry-coordinator';
+import {getDeviceCacheRevision,isDeviceCacheOwner} from './device-cache';
 
 export type DraftAttachment = {
   localId: string;
@@ -45,14 +47,18 @@ export type ConversationDraft = {
   reply: DraftReply | null;
   voice: VoiceDraft | null;
   batches: DraftBatch[];
-  pendingText: { id: string; body: string; replyToMessageId?: string } | null;
+  pendingText: PendingText | null;
   recoveryMessage?: string;
 };
 export type DraftSummary = { preview: string; updatedAt: string };
-type Saved = ConversationDraft & { version: 1; updatedAt: string };
+type Saved = ConversationDraft & { version: 1; updatedAt: string; closedTextIds?:string[] };
 const prefix = "kampusone.message-draft.v1.";
 const queues = new Map<string, Promise<void>>();
 const listeners = new Set<(account: string) => void>();
+const pendingListeners=new Set<(account:string)=>void>();
+const deliveredListeners=new Set<(account:string,thread:string,id:string)=>void>();
+export function onPendingTextChange(listener:(account:string)=>void){pendingListeners.add(listener);return()=>{pendingListeners.delete(listener);};}
+export function onTextDelivered(listener:(account:string,thread:string,id:string)=>void){deliveredListeners.add(listener);return()=>{deliveredListeners.delete(listener);};}
 const blobUrls = new Map<string, string>();
 const validId = (value: string) =>
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
@@ -166,6 +172,7 @@ function parse(raw: string | null): Saved | null {
     !Array.isArray(saved.batches)
   )
     throw new Error("This saved draft could not be read.");
+  saved.closedTextIds=Array.isArray(saved.closedTextIds)?saved.closedTextIds.filter(validId).slice(-40):[];
   return saved;
 }
 export async function readConversationDraft(
@@ -175,7 +182,7 @@ export async function readConversationDraft(
   const storageKey = key(account, thread);
   await queues.get(storageKey)?.catch(() => undefined);
   const saved = parse(await privateDraftStorage.getItem(storageKey));
-  if (!saved) return null;
+  if (!saved || !hasConversationDraft(saved)) return null;
   for (const file of [
     ...saved.media,
     ...saved.batches.flatMap((batch) => batch.items),
@@ -200,14 +207,24 @@ export function saveConversationDraft(
   account: string,
   thread: string,
   draft: ConversationDraft,
+  expectedRevision=getDeviceCacheRevision(),
 ): Promise<void> {
   const storageKey = key(account, thread);
+  const revision=expectedRevision;
   const snapshot = JSON.parse(JSON.stringify(draft)) as ConversationDraft;
   const task = (queues.get(storageKey) ?? Promise.resolve())
     .catch(() => undefined)
     .then(async () => {
+      if(revision!==getDeviceCacheRevision()||!isDeviceCacheOwner(account))throw new Error('This draft belongs to a different session.');
       const previous = parse(await privateDraftStorage.getItem(storageKey));
-      if (hasConversationDraft(snapshot)) {
+      if(revision!==getDeviceCacheRevision()||!isDeviceCacheOwner(account))throw new Error('This draft belongs to a different session.');
+      const closedTextIds=(previous?.closedTextIds??[]).filter(validId).slice(-40);
+      if(snapshot.pendingText&&closedTextIds.includes(snapshot.pendingText.id))snapshot.pendingText=null;
+      if(previous?.pendingText?.retry){
+        if(snapshot.pendingText&&snapshot.pendingText.id!==previous.pendingText.id)throw new Error('Finish the pending text message before sending another.');
+        snapshot.pendingText=previous.pendingText;
+      }
+      if (hasConversationDraft(snapshot) || closedTextIds.length) {
         for (const file of [
           ...snapshot.media,
           ...snapshot.batches.flatMap((batch) => batch.items),
@@ -219,12 +236,14 @@ export function saveConversationDraft(
             snapshot.voice.localId,
             snapshot.voice.uri,
           );
+        if(revision!==getDeviceCacheRevision()||!isDeviceCacheOwner(account))throw new Error('This draft belongs to a different session.');
         await privateDraftStorage.setItem(
           storageKey,
           JSON.stringify({
             ...snapshot,
             version: 1,
             updatedAt: new Date().toISOString(),
+            closedTextIds,
           }),
         );
       } else {
@@ -265,6 +284,7 @@ export function saveConversationDraft(
         }
       }
       for (const listener of listeners) listener(account);
+      if(previous?.pendingText?.id!==snapshot.pendingText?.id)for(const listener of pendingListeners)listener(account);
     });
   queues.set(storageKey, task);
   void task
@@ -273,6 +293,52 @@ export function saveConversationDraft(
     })
     .catch(() => undefined);
   return task;
+}
+/** Atomic metadata changes share the existing draft queue and preserve newer composer/media edits. */
+function changePendingText(account:string,thread:string,messageId:string,retry:PendingText['retry']|null):Promise<void>{
+  const storageKey=key(account,thread);
+  const revision=getDeviceCacheRevision();
+  const task=(queues.get(storageKey)??Promise.resolve()).catch(()=>undefined).then(async()=>{
+    const saved=parse(await privateDraftStorage.getItem(storageKey));
+    if(revision!==getDeviceCacheRevision()||!isDeviceCacheOwner(account))return;
+    if(!saved||saved.pendingText?.id!==messageId)return;
+    if(retry)saved.pendingText={...saved.pendingText,retry};
+    else{saved.pendingText=null;saved.closedTextIds=[...new Set([...(saved.closedTextIds??[]),messageId])].slice(-40);}
+    await privateDraftStorage.setItem(storageKey,JSON.stringify({...saved,updatedAt:new Date().toISOString()}));
+    for(const listener of listeners)listener(account);
+    for(const listener of pendingListeners)listener(account);
+    if(!retry)for(const listener of deliveredListeners)listener(account,thread,messageId);
+  });
+  queues.set(storageKey,task);void task.finally(()=>{if(queues.get(storageKey)===task)queues.delete(storageKey);}).catch(()=>undefined);return task;
+}
+export const acknowledgePendingText=(account:string,thread:string,messageId:string)=>changePendingText(account,thread,messageId,null);
+export const updatePendingTextRetry=(account:string,thread:string,messageId:string,retry:NonNullable<PendingText['retry']>)=>changePendingText(account,thread,messageId,retry);
+export async function readPendingText(account:string,thread:string):Promise<PendingText|null>{const storageKey=key(account,thread);await queues.get(storageKey)?.catch(()=>undefined);return parse(await privateDraftStorage.getItem(storageKey))?.pendingText??null;}
+export function restoreBlockedText(account:string,thread:string,messageId:string,expectedComposer:string):Promise<string>{
+  const storageKey=key(account,thread),revision=getDeviceCacheRevision();
+  const task=(queues.get(storageKey)??Promise.resolve()).catch(()=>undefined).then(async()=>{
+    const saved=parse(await privateDraftStorage.getItem(storageKey));
+    if(revision!==getDeviceCacheRevision()||!isDeviceCacheOwner(account))throw new Error('Your session changed. Reopen this draft.');
+    if(!saved?.pendingText||saved.pendingText.id!==messageId||!saved.pendingText.retry?.blocked)throw new Error('This text is still being retried or has already been confirmed.');
+    if(saved.text!==expectedComposer)throw new Error('Your draft changed. Review it before replacing it.');
+    const body=saved.pendingText.body;saved.pendingText=null;saved.text=body;saved.reply=null;
+    saved.closedTextIds=[...new Set([...(saved.closedTextIds??[]),messageId])].slice(-40);
+    await privateDraftStorage.setItem(storageKey,JSON.stringify({...saved,updatedAt:new Date().toISOString()}));
+    for(const listener of listeners)listener(account);for(const listener of pendingListeners)listener(account);return body;
+  });
+  const queued=task.then(()=>undefined,()=>undefined);queues.set(storageKey,queued);void task.finally(()=>{if(queues.get(storageKey)===queued)queues.delete(storageKey);}).catch(()=>undefined);return task;
+}
+export async function queuedTextMessages(account:string):Promise<QueuedText[]>{
+  const accountPrefix=prefix+account+'.';
+  const result:QueuedText[]=[];
+  for(const storageKey of (await privateDraftStorage.keys(account)).slice(0,40)){
+    try{
+      const threadId=storageKey.slice(accountPrefix.length),saved=parse(await privateDraftStorage.getItem(storageKey)),message=saved?.pendingText,retry=message?.retry;
+      if(!validId(threadId)||!message||!validId(message.id)||typeof message.body!=='string'||!message.body.trim()||message.body.length>5000||message.replyToMessageId&&!validId(message.replyToMessageId)||!retry||!Number.isSafeInteger(retry.attempts)||retry.attempts<0||!Number.isFinite(retry.nextAttemptAt)||typeof retry.blocked!=='boolean')continue;
+      result.push({threadId,message});
+    }catch{/* One unreadable record cannot authorize a send or block other drafts. */}
+  }
+  return result;
 }
 export async function readDraftSummaries(
   account: string,
@@ -292,6 +358,7 @@ export async function readDraftSummaries(
     results[storageKey.slice(accountPrefix.length)] = {
       preview:
         saved.text.trim() ||
+        (saved.pendingText?'Pending · '+saved.pendingText.body:'') ||
         saved.batches[0]?.caption ||
         (saved.voice
           ? "Voice note"
