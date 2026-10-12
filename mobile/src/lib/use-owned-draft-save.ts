@@ -7,6 +7,7 @@ export function useOwnedDraftSave(key: string, value: unknown, enabled: boolean,
   const mounted = useRef(false), attempt = useRef(0), completed = useRef('');
   const pending = useRef<{ key: string; value: unknown; revision: number } | null>(null);
   const [notice, setNotice] = useState<{ key: string; revision: number; message: string } | null>(null);
+  const [cycle, setCycle] = useState(0);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const persist = useCallback(async (next: unknown) => {
     const turn = ++attempt.current;
@@ -28,7 +29,7 @@ export function useOwnedDraftSave(key: string, value: unknown, enabled: boolean,
       if (completed.current !== key) void persist(next).catch(() => undefined);
     }, delay);
     return () => clearTimeout(timer);
-  }, [key, revision, serialized, enabled, delay, persist]);
+  }, [key, revision, serialized, enabled, delay, persist, cycle]);
   useEffect(() => () => {
     const draft = pending.current;
     if (draft?.key === key && completed.current !== key)
@@ -37,5 +38,6 @@ export function useOwnedDraftSave(key: string, value: unknown, enabled: boolean,
   const discard = useCallback(() => {
     completed.current = key; pending.current = null; attempt.current++;
   }, [key]);
-  return { warning: notice?.key === key && notice.revision === revision ? notice.message : '', persist, discard };
+  const begin = useCallback(() => { completed.current = ''; pending.current = null; attempt.current++; setCycle(value => value + 1); }, []);
+  return { warning: notice?.key === key && notice.revision === revision ? notice.message : '', persist, discard, begin };
 }

@@ -1,33 +1,36 @@
 import { useAuth } from "@/src/auth/auth-context";
-import { readCache, writeCache } from "@/src/lib/device-cache";
+import { writeCache } from "@/src/lib/device-cache";
 import { useOwnedDraftSave } from '@/src/lib/use-owned-draft-save';
+import { useOwnedDraftRestore } from '@/src/lib/use-owned-draft-restore';
+import { restoreListingDraft } from '@/src/lib/form-drafts';
+import { moveListingPhoto } from '@/src/lib/listing-photos';
+import { DraftRecovery } from '@/src/components/draft-recovery';
+import { MediaImage } from '@/src/components/media-image';
+import { ImageViewer } from '@/src/components/image-viewer';
 import { cacheScopeForUser } from '@/src/lib/request-policy';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { randomUUID } from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
 import { nairaToKobo } from '@/src/lib/money-input';
 import { router, useLocalSearchParams } from "expo-router";
-import { Image, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { ToolPage, ToolButton, ToolField } from "@/src/components/toolkit";
 import { useToast } from "@/src/components/toast";
 import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
 import { pickAndUpload } from "@/src/lib/uploads";
 export default function CreateListing() {
-  const {user}=useAuth();
-  return <CreateListingForm key={user?cacheScopeForUser(user):'signed-out'}/>;
+  const {user}=useAuth(),{role}=useLocalSearchParams<{role:string}>();
+  return <CreateListingForm key={(user?cacheScopeForUser(user):'signed-out')+':'+(role==='TUTOR'?'tutor':'vendor')}/>;
 }
 function CreateListingForm() {
   const { role } = useLocalSearchParams<{ role: string }>();
   const tutor = role === "TUTOR";
   const {user}=useAuth();
   const draftKey=`listing-draft.${user?.id}.${tutor?"tutor":"vendor"}`;
-  const [loadedDraftKey,setLoadedDraftKey]=useState("");
-  const draftReady=loadedDraftKey===draftKey;
   const currentDraftKey=useRef(draftKey);
   currentDraftKey.current=draftKey;
   const requestPayload=useRef("");
-  const savedDraft=useRef<{key:string;value:Record<string,unknown>}|null>(null);
   const formLock=useRef(false);
   const draftCompleted=useRef(false);
   const { theme } = useAppearance();
@@ -38,25 +41,23 @@ function CreateListingForm() {
   const [stock, setStock] = useState("1");
   const [code, setCode] = useState("");
   const [location, setLocation] = useState("");
-  const [image, setImage] = useState("");
   const [images,setImages]=useState<string[]>([]);
+  const image=images[0]??'';
+  const [photoPreview,setPhotoPreview]=useState<string|null>(null);
   const requestId=useRef(randomUUID());
   const createdId=useRef<string|null>(null);
   useEffect(()=>{
-    let active=true;
-    setLoadedDraftKey("");
-    savedDraft.current=null;createdId.current=null;requestId.current=randomUUID();requestPayload.current="";
+    createdId.current=null;requestId.current=randomUUID();requestPayload.current="";
     formLock.current=false;draftCompleted.current=false;setBusy(false);
-    setName("");setDescription("");setPrice("");setStock("1");setCode("");setLocation("");setImage("");setImages([]);setCategory("");setCategoryQuery("");setShowAllCategories(false);
-    void readCache<Record<string,unknown>>(draftKey).then(d=>{
-      if(!active||currentDraftKey.current!==draftKey||!d)return;
-      const value=(key:string)=>typeof d[key]==="string"?d[key] as string:"";
-      setName(value("name"));setDescription(value("description"));setPrice(value("price"));setStock(value("stock")||"1");setCode(value("code"));setLocation(value("location"));setImage(value("image"));
-      setImages(Array.isArray(d.images)?d.images.filter((v):v is string=>typeof v==="string").slice(0,6):[]);setCategory(value("category"));
-      createdId.current=value("createdId")||null;requestId.current=value("requestId")||randomUUID();requestPayload.current=value("requestPayload");
-    }).finally(()=>{if(active&&currentDraftKey.current===draftKey)setLoadedDraftKey(draftKey);});
-    return()=>{active=false;};
+    setName("");setDescription("");setPrice("");setStock("1");setCode("");setLocation("");setImages([]);setPhotoPreview(null);setCategory("");setCategoryQuery("");setShowAllCategories(false);
   },[draftKey]);
+  const restored=useOwnedDraftRestore<unknown>(draftKey,value=>{
+    if(value===null)return;
+    const d=restoreListingDraft(value);
+    setName(d.name??'');setDescription(d.description??'');setPrice(d.price??'');setStock(d.stock||'1');setCode(d.code??'');setLocation(d.location??'');setImages(d.images);setCategory(d.category??'');
+    createdId.current=d.createdId??null;requestId.current=d.requestId??randomUUID();requestPayload.current=d.requestPayload??'';
+  },Boolean(user?.id));
+  const draftReady=restored.ready;
   const [pricePreview,setPricePreview]=useState<{ready:boolean;baseKobo:number;platformKobo:number;processingEstimateKobo:number;customerEstimateKobo:number;sellerCommissionKobo:number}|null>(null);
   useEffect(()=>{
     if(tutor||!price.trim()){setPricePreview(null);return;}
@@ -74,9 +75,9 @@ function CreateListingForm() {
   const [categoriesError, setCategoriesError] = useState("");
   const alive = useRef(true), categoryRequest = useRef(0);
   useEffect(() => { alive.current = true; return () => { alive.current = false; categoryRequest.current++; }; }, []);
-  if(draftReady&&!draftCompleted.current)savedDraft.current={key:draftKey,value:{name,description,price,stock,code,location,image,images,category,createdId:createdId.current,requestId:requestId.current,requestPayload:requestPayload.current}};
-  const draftSave=useOwnedDraftSave(draftKey,savedDraft.current?.value??{},draftReady&&Boolean(user?.id)&&!draftCompleted.current);
   const [busy, setBusy] = useState(false);
+  const listingDraft={name,description,price,stock,code,location,image,images,category,createdId:createdId.current,requestId:requestId.current,requestPayload:requestPayload.current};
+  const draftSave=useOwnedDraftSave(draftKey,listingDraft,draftReady&&Boolean(user?.id)&&!busy&&!draftCompleted.current);
   const loadCategories = useCallback(async () => {
     const turn = ++categoryRequest.current;
     setCategoriesLoading(true); setCategoriesError("");
@@ -107,12 +108,12 @@ function CreateListingForm() {
   if(createdId.current)formHint="";
   const fieldsLocked=busy||!draftReady||Boolean(createdId.current);
   async function upload() {
-    if(formLock.current||fieldsLocked)return;
+    if(formLock.current||fieldsLocked||images.length>=6)return;
     const operationKey=draftKey;
     formLock.current=true;setBusy(true);
     try {
       const file = await pickAndUpload("product");
-      if(alive.current&&currentDraftKey.current===operationKey&&file){setImage(current=>current||file.url);setImages(current=>[...current,file.url].slice(0,6));}
+      if(alive.current&&currentDraftKey.current===operationKey&&file)setImages(current=>current.includes(file.url)?current:[...current,file.url].slice(0,6));
     } catch (e) {
       if(alive.current&&currentDraftKey.current===operationKey)toast(e instanceof Error ? e.message : "Upload failed", "error");
     } finally {
@@ -152,7 +153,7 @@ function CreateListingForm() {
       const signature=JSON.stringify(details);
       if(!createdId.current&&requestPayload.current!==signature){requestId.current=randomUUID();requestPayload.current=signature;}
       body.requestId=requestId.current;
-      await draftSave.persist({...savedDraft.current?.value,requestId:requestId.current,requestPayload:signature});
+      await draftSave.persist({...listingDraft,requestId:requestId.current,requestPayload:signature});
       if(!stillCurrent())return;
       const created = createdId.current?{id:createdId.current}:await api<{ id: string }>(path, {
         method: "POST",
@@ -160,14 +161,14 @@ function CreateListingForm() {
       });
       if(!stillCurrent())return;
       createdId.current=created.id;
-      await draftSave.persist({...savedDraft.current?.value,createdId:created.id,requestId:requestId.current,requestPayload:signature});
+      await draftSave.persist({...listingDraft,createdId:created.id,requestId:requestId.current,requestPayload:signature});
       if(!stillCurrent())return;
       if(tutor)await api(path + "/" + created.id + "/status", {
         method: "PATCH",
         body: JSON.stringify({ status: "SUBMITTED" }),
       });
       if(!stillCurrent())return;
-      draftCompleted.current=true;savedDraft.current=null;draftSave.discard();
+      draftCompleted.current=true;draftSave.discard();
       await writeCache(draftKey,null);
       toast(tutor?"Submitted for review":"Product uploaded", "success");
       router.back();
@@ -181,6 +182,7 @@ function CreateListingForm() {
   const visibleCategories = categoryQuery.trim() || showAllCategories ? matchingCategories : matchingCategories.slice(0,8);
   return (
     <ToolPage title={tutor ? "Create tutorial" : "Create product"}>
+      <DraftRecovery error={restored.error} loading={restored.loading} onRetry={restored.retry}/>
       {draftSave.warning?<Text accessibilityRole="alert" style={{fontFamily:theme.font.body,color:theme.error,lineHeight:21,marginBottom:12}}>{draftSave.warning}</Text>:null}
       <View style={{ padding:16, borderRadius:16, borderWidth:1, borderColor:theme.border,
         backgroundColor:theme.surface, marginBottom:20, gap:6 }}>
@@ -199,9 +201,16 @@ function CreateListingForm() {
         <>
           <View style={{padding:18,borderRadius:22,backgroundColor:theme.surfaceTint,gap:8,marginBottom:20}}><Text style={{fontFamily:theme.font.displayStrong,fontSize:24,color:theme.text}}>Ready for your next sale</Text><Text style={{fontFamily:theme.font.body,lineHeight:22,color:theme.textMuted}}>Add clear photos and a price. Your product goes live when you upload it.</Text></View>
           <View style={{flexDirection:'row',flexWrap:'wrap',gap:12,marginBottom:18}}>
-            {images.map((url,index)=><View key={url} style={{width:'47%',aspectRatio:1,borderRadius:18,overflow:'hidden'}}><Image source={{uri:url}} style={{width:'100%',height:'100%'}}/><Pressable accessibilityRole="button" accessibilityLabel={`Remove photo ${index+1}`} disabled={fieldsLocked} onPress={()=>{const next=images.filter((_,i)=>i!==index);setImages(next);setImage(next[0]??'');}} style={{position:'absolute',right:8,top:8,padding:8,borderRadius:30,backgroundColor:theme.canvas}}><Ionicons name="close" size={18} color={theme.text}/></Pressable></View>)}
+            {images.map((url,index)=><View key={url} style={{width:'47%',gap:6}}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Preview product photo ${index+1}`} onPress={()=>setPhotoPreview(url)} style={{aspectRatio:1,borderRadius:16,overflow:'hidden'}}><MediaImage uri={url} accessibilityLabel={`Product photo ${index+1}`} style={{width:'100%',aspectRatio:1}}/></Pressable>
+              <Text style={{fontFamily:theme.font.semibold,color:index===0?theme.deepBrand:theme.textMuted,fontSize:12}}>{index===0?'Cover photo':`Photo ${index+1}`}</Text>
+              <View style={{flexDirection:'row',gap:4}}>{([-1,1] as const).map(direction=><Pressable key={direction} accessibilityRole="button" accessibilityLabel={`Move photo ${index+1} ${direction<0?'earlier':'later'}`} accessibilityState={{disabled:fieldsLocked||index+direction<0||index+direction>=images.length}} disabled={fieldsLocked||index+direction<0||index+direction>=images.length} onPress={()=>setImages(current=>moveListingPhoto(current,index,index+direction))} style={{flex:1,minHeight:44,alignItems:'center',justifyContent:'center',borderRadius:8,backgroundColor:theme.surfaceMuted,opacity:fieldsLocked||index+direction<0||index+direction>=images.length?0.4:1}}><Ionicons name={direction<0?'arrow-back':'arrow-forward'} size={18} color={theme.text}/></Pressable>)}</View>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Remove photo ${index+1}`} disabled={fieldsLocked} onPress={()=>setImages(current=>current.filter((_,i)=>i!==index))} style={{minHeight:44,alignItems:'center',justifyContent:'center',borderRadius:8,borderWidth:1,borderColor:theme.border,flexDirection:'row',gap:6}}><Ionicons name="close" size={16} color={theme.text}/><Text style={{fontFamily:theme.font.body,color:theme.text,fontSize:12}}>Remove</Text></Pressable>
+            </View>)}
             {images.length<6?<Pressable accessibilityRole="button" accessibilityLabel="Add product photo" disabled={fieldsLocked} onPress={()=>void upload()} style={{width:'47%',aspectRatio:1,borderRadius:18,borderWidth:1,borderStyle:'dashed',borderColor:theme.deepBrand,alignItems:'center',justifyContent:'center',gap:8,backgroundColor:theme.surface}}><Ionicons name="camera-outline" size={28} color={theme.deepBrand}/><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>{busy?'Uploading…':'Add photo'}</Text></Pressable>:null}
           </View>
+          <Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12,lineHeight:18,marginBottom:16}}>Tap a photo to preview it. Move a photo to the first position to use it as the cover.</Text>
+          <ImageViewer uri={photoPreview} label="Product photo preview" onClose={()=>setPhotoPreview(null)}/>
         </>
       ) : null}
       <Text style={{ fontFamily:theme.font.semibold, color:theme.deepBrand, fontSize:12, marginBottom:10 }}>01 · DETAILS</Text>

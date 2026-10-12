@@ -11,14 +11,19 @@ import type { PhotoDimensions } from "./photo-crop";
 import { videoDimensions } from "./media-downloads";
 import { uploadMessageFile } from './message-upload';
 import { readUploadedDocument } from './document-read-session';
+import { getDeviceCacheRevision } from './device-cache';
 export type UploadedFile = { id: string; url: string; kind: string; private: boolean };
 export type PhotoSource = "library" | "camera";
 export type PhotoKind = "avatar" | "cover" | "product" | "post";
 export type UploadKind = PhotoKind | "map-capture" | "resource" | "kyc" | "support" | "notification-sound";
-export type PreparedPhoto = PhotoDimensions & { name: string; type: "image/jpeg" };
+export type PreparedPhoto = PhotoDimensions & { name: string; type: "image/jpeg"; ownerRevision?: number };
+function requireUploadSession(revision: number) {
+  if (revision !== getDeviceCacheRevision()) throw new Error('Your sign-in changed. Choose this file again before uploading.');
+}
 
 /** Pick and prepare locally. Cancelling a profile crop never sends an upload. */
 export async function pickPhoto(kind: PhotoKind, source: PhotoSource = "library"): Promise<PreparedPhoto | null> {
+  const revision=getDeviceCacheRevision();
   if (source === "camera" && Platform.OS !== "web") {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) throw new Error("Camera permission is off. Allow camera access in your device settings, or choose a photo from your gallery.");
@@ -27,6 +32,7 @@ export async function pickPhoto(kind: PhotoKind, source: PhotoSource = "library"
   // and does not force iOS covers into the native picker's square crop.
   const options: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], allowsEditing: false, quality: 1 };
   const result = source === "camera" ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+  requireUploadSession(revision);
   if (result.canceled) return null;
   const image = result.assets[0];
   if (!image || !image.width || !image.height) throw new Error("This photo could not be read. Choose another image.");
@@ -40,12 +46,14 @@ export async function pickPhoto(kind: PhotoKind, source: PhotoSource = "library"
     try { prepared = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: kind === "avatar" || kind === "cover" ? 0.95 : 0.82 }); }
     finally { rendered.release(); }
   } finally { context.release(); }
-  if (kind === "avatar" || kind === "cover" || kind === "post") {
+  requireUploadSession(revision);
+  if (kind === "avatar" || kind === "cover" || kind === "post" || kind === "product") {
     const edited = await requestPhotoEdit(kind, prepared);
     if (!edited) return null;
     prepared = edited;
   }
-  return { ...prepared, name: `${kind}.jpg`, type: "image/jpeg" };
+  requireUploadSession(revision);
+  return { ...prepared, name: `${kind}.jpg`, type: "image/jpeg", ownerRevision:revision };
 }
 
 /** Check the actual served image, not just the upload's JSON success response. */
@@ -56,10 +64,13 @@ export function verifyPhoto(url: string): Promise<void> {
     Image.getSize(url, (width, height) => { clearTimeout(timer); if (width > 0 && height > 0) resolve(); else failure(); }, () => { clearTimeout(timer); failure(); });
   });
 }
-async function upload(kind: UploadKind, file: { uri: string; name: string; type: string }): Promise<UploadedFile> {
+async function upload(kind: UploadKind, file: { uri: string; name: string; type: string }, revision=getDeviceCacheRevision()): Promise<UploadedFile> {
+  requireUploadSession(revision);
   if(kind==='post'&&file.type.startsWith('video/')){
     const current=await api<{profile:{id:string}}>('/v1/student/me');
+    requireUploadSession(revision);
     const id=await uploadMessageFile(current.profile.id,{uri:file.uri,name:file.name,mimeType:file.type},()=>undefined,'post');
+    requireUploadSession(revision);
     invalidateApiReads(["/v1/student/feed", "/v1/student/home"]);return {id,url:`${currentApiUrl()}/v1/media/${id}`,kind:'post',private:false};
   }
   const limit = kind === "notification-sound" ? 2 * 1024 * 1024 : kind === "post" && file.type.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
@@ -76,6 +87,7 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
     body = await nativeFile.arrayBuffer();
   }
   const byteCount=body instanceof ArrayBuffer?body.byteLength:body.size;
+  requireUploadSession(revision);
   if (!byteCount || byteCount > limit) throw new Error(`Choose a file smaller than ${limit / 1024 / 1024} MB.`);
   // Raw bytes avoid incompatible native/browser FormData implementations and
   // the extra multipart copy for videos. The server verifies the actual bytes.
@@ -90,6 +102,7 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
     // migrations are awaiting approval. The previous Worker only understands
     // multipart uploads and throws this generic 500 before reading any bytes.
     if (!(caught instanceof ApiError && caught.status === 500 && caught.code === "INTERNAL_ERROR" && caught.message === "The service could not complete this request.")) throw caught;
+    requireUploadSession(revision);
     const form = new FormData();
     form.append("kind", kind);
     if(Platform.OS==="web")form.append("file",body as Blob,file.name);
@@ -97,35 +110,41 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
     result = await api<UploadedFile>("/v1/media", { method: "POST", body: form, timeoutMs });
   }
   if (!result?.id || !result.url || result.kind !== kind) throw new Error("The upload returned an incomplete response. Refresh before trying again.");
+  requireUploadSession(revision);
   // A profile read may have started while the upload was running. Invalidate
   // again after the write, so an old cached profile cannot undo the new photo.
   invalidateApiReads(kind === "avatar" || kind === "cover" ? ["/v1/student/me", "/v1/people"] : kind === "product" ? ["/v1/agents", "/v1/student/store"] : kind === "post" ? ["/v1/student/feed", "/v1/student/home"] : []);
   return result;
 }
 export async function uploadPreparedPhoto(kind: PhotoKind, photo: PreparedPhoto): Promise<UploadedFile> {
-  return upload(kind, photo);
+  requireUploadSession(photo.ownerRevision??getDeviceCacheRevision());
+  return upload(kind, photo, photo.ownerRevision);
 }
 export async function pickAndUpload(kind: UploadKind, source: PhotoSource = "library"): Promise<UploadedFile | null> {
+  const revision=getDeviceCacheRevision();
   if(kind==="map-capture")throw new Error("Open Campus capture to submit camera and GPS evidence.");
   if (kind === "notification-sound") {
     const result = await DocumentPicker.getDocumentAsync({ type: ["audio/mpeg", "audio/wav"], copyToCacheDirectory: true, multiple: false });
     if (result.canceled) return null;
+    requireUploadSession(revision);
     const file = result.assets[0];
     if (!file) return null;
     if ((file.size ?? 0) > 2 * 1024 * 1024) throw new Error("Choose an MP3 or WAV sound smaller than 2 MB.");
     const type = file.mimeType === "audio/wav" || file.name.toLowerCase().endsWith(".wav") ? "audio/wav" : "audio/mpeg";
-    return upload(kind, { uri: file.uri, name: file.name, type });
+    return upload(kind, { uri: file.uri, name: file.name, type },revision);
   }
   if (kind === "resource" || kind === "kyc" || kind === "support") {
     const result = await DocumentPicker.getDocumentAsync({ type: ["image/jpeg", "image/png", "image/webp", "application/pdf"], copyToCacheDirectory: true });
     if (result.canceled) return null;
+    requireUploadSession(revision);
     const file = result.assets[0];
     if (!file) return null;
     if ((file.size ?? 0) > 10 * 1024 * 1024) throw new Error("Choose a file smaller than 10 MB.");
-    return upload(kind, { uri: file.uri, name: file.name, type: file.mimeType ?? "application/pdf" });
+    return upload(kind, { uri: file.uri, name: file.name, type: file.mimeType ?? "application/pdf" },revision);
   }
   const photo = await pickPhoto(kind, source);
   if (!photo) return null;
+  requireUploadSession(revision);
   const saved = await uploadPreparedPhoto(kind, photo);
   await verifyPhoto(saved.url);
   return saved;

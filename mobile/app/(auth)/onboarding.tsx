@@ -28,6 +28,9 @@ import {
 import { ApiError, api } from "@/src/lib/api";
 import { readCache, writeCache } from "@/src/lib/device-cache";
 import { useOwnedDraftSave } from '@/src/lib/use-owned-draft-save';
+import { useOwnedDraftRestore } from '@/src/lib/use-owned-draft-restore';
+import { restoreOnboardingDraft } from '@/src/lib/form-drafts';
+import { DraftRecovery } from '@/src/components/draft-recovery';
 import { cacheScopeForUser } from '@/src/lib/request-policy';
 import { theme } from "@/src/theme";
 
@@ -346,8 +349,12 @@ function OnboardingForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [draftReady,setDraftReady]=useState(false);
-  useEffect(()=>{if(!user?.id)return;let active=true;void readMigratedPrivateCache(`k1.onboarding.${user.id}`,`onboarding.${user.id}`,user.id).then(text=>{if(!active||!text)return;try{const saved=JSON.parse(text);setHeardSource(saved.heardSource??'');setHeardOther(saved.heardOther??'');setFirstName(saved.firstName??'');setLastName(saved.lastName??'');setUsername(saved.username??'');setBirthDate(saved.birthDate??'');setMatriculationNumber(saved.matriculationNumber??'');setCurrentLevel(saved.currentLevel??'');setAdmissionYear(saved.admissionYear??'');setGraduationYear(saved.graduationYear??'');setUniversityId(saved.universityId??'');setFacultyId(saved.facultyId??'');setDepartmentId(saved.departmentId??'');setCourseId(saved.courseId??'');setStep(Math.max(0,Math.min(2,Number(saved.step)||0)));}catch{}}).catch(()=>{}).finally(()=>{if(active)setDraftReady(true);});return()=>{active=false;};},[user?.id]);
+  const restored=useOwnedDraftRestore<string>(`onboarding.${user?.id}`,value=>{
+    if(value===null)return;
+    const saved=restoreOnboardingDraft(value);
+    setHeardSource(saved.heardSource);setHeardOther(saved.heardOther);setFirstName(saved.firstName);setLastName(saved.lastName);setUsername(saved.username);setBirthDate(saved.birthDate);setMatriculationNumber(saved.matriculationNumber);setCurrentLevel(saved.currentLevel);setAdmissionYear(saved.admissionYear);setGraduationYear(saved.graduationYear);setUniversityId(saved.universityId);setFacultyId(saved.facultyId);setDepartmentId(saved.departmentId);setCourseId(saved.courseId);setStep(saved.step);
+  },Boolean(user?.id),()=>readMigratedPrivateCache(`k1.onboarding.${user?.id}`,`onboarding.${user?.id}`,user?.id??''));
+  const draftReady=restored.ready;
   const draftSave=useOwnedDraftSave(`onboarding.${user?.id}`,JSON.stringify({heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step}),draftReady&&Boolean(user?.id));
 
   const loadCatalog = useCallback(async () => {
@@ -507,13 +514,13 @@ function OnboardingForm() {
         : timelineStepComplete;
 
   function nextStep() {
-    if (!canContinue) return;
+    if (!draftReady || !canContinue) return;
     setError("");
     setStep((current) => Math.min(current + 1, stepCopy.length - 1));
   }
 
   async function submit() {
-    if (!canContinue) return;
+    if (!draftReady || !canContinue) return;
     setLoading(true);
     setError("");
     try {
@@ -554,7 +561,6 @@ function OnboardingForm() {
           admissionYear: Number(admissionYear),
         }),
       });
-      setDraftReady(false);
       draftSave.discard();if(user?.id) await writeCache(`onboarding.${user.id}`,null);
       await reloadProfile();
       router.replace("/");
@@ -591,6 +597,12 @@ function OnboardingForm() {
   }
 
   const copy = stepCopy[step] ?? stepCopy[0];
+
+  if(!draftReady)return <AuthShell title="Your saved details" subtitle="Restore your previous work before continuing your setup.">
+    <DraftRecovery error={restored.error} loading={restored.loading} onRetry={restored.retry}/>
+    <FormError message={error}/>
+    <PrimaryButton disabled={signingOut} loading={signingOut} onPress={()=>void switchAccount()}>Switch account</PrimaryButton>
+  </AuthShell>;
 
   return (
     <AuthShell

@@ -11,6 +11,12 @@ export interface SnapshotIO {
 }
 const prefix = 'k1.encrypted.v1.';
 const maxRecord = 256 * 1024, maxBytes = 2 * 1024 * 1024, maxRecords = 60;
+export class SnapshotReadError extends Error {
+    constructor() {
+        super('Your saved draft could not be restored. Its saved copy has been kept. Try again before editing.');
+        this.name = 'SnapshotReadError';
+    }
+}
 export const ownedRecordKey = (key: string) => /^(?:timetable-draft|exam-draft|kira-draft|ai-draft|ai-workspace-v3|publishing-draft|publisher-draft|listing-draft|campus-activity-draft|answer-draft|message-draft|cart|onboarding|calendar-local)\./.test(key);
 type RecordValue<T> = {
     version: 1;
@@ -72,7 +78,7 @@ export class SecureSnapshots {
         }
         return scope.value;
     }
-    async read<T>(key: string): Promise<RecordValue<T> | null> {
+    async read<T>(key: string, options: { requireIntegrity?: boolean } = {}): Promise<RecordValue<T> | null> {
         const scope = this.scope;
         if (!scope || !this.allowed(key, scope.owner))
             return null;
@@ -82,24 +88,35 @@ export class SecureSnapshots {
             return null;
         const location = prefix + scopeId + '.' + id;
         const raw = await this.io.get(location);
-        if (!raw || raw.length > maxRecord * 2 || this.scope !== scope)
+        if (this.scope !== scope || raw === null)
             return null;
         try {
+            if (!raw || raw.length > maxRecord * 2)
+                throw new SnapshotReadError();
             const envelope = JSON.parse(raw) as {
                 v: number;
                 sealed: string;
             };
             if (envelope.v !== 1 || typeof envelope.sealed !== 'string')
-                return null;
+                throw new SnapshotReadError();
             const text = await this.io.open(scopeId, envelope.sealed, location);
-            if (!text || this.scope !== scope)
+            if (this.scope !== scope)
                 return null;
+            if (!text)
+                throw new SnapshotReadError();
             const record = JSON.parse(text) as RecordValue<T>;
-            if (record.version !== 1 || !Number.isFinite(record.savedAt) || !Number.isFinite(record.expires) || record.expires <= this.now())
+            if (record.version !== 1 || !Number.isFinite(record.savedAt) || !Number.isFinite(record.expires) || !Object.prototype.hasOwnProperty.call(record, 'data'))
+                throw new SnapshotReadError();
+            if (record.expires <= this.now()) {
+                if (options.requireIntegrity && ownedRecordKey(key) && record.data !== null)
+                    throw new SnapshotReadError();
                 return null;
+            }
             return record;
         }
         catch {
+            if (options.requireIntegrity)
+                throw new SnapshotReadError();
             return null;
         } // Integrity failures never become partially decoded data.
     }

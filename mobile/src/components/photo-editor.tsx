@@ -3,12 +3,16 @@ import { Image, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, Vi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useAppearance } from '@/src/lib/appearance';
+import { useAuth } from '@/src/auth/auth-context';
+import { cacheScopeForUser } from '@/src/lib/request-policy';
 import { initialCrop, moveCrop, resizeCrop, sourceCrop, type Corner } from '@/src/lib/crop-selection';
 import { finishPhotoEdit, getPhotoEdit, getServerPhotoEdit, subscribePhotoEdit, type PhotoEditRequest } from '@/src/lib/photo-edit-session';
 
 const aspects = [['Original', 0], ['1:1', 1], ['4:5', 4/5], ['3:4', 3/4], ['4:3', 4/3], ['3:2', 3/2], ['16:9', 16/9]] as const;
 export function PhotoEditorHost() {
+  const {user}=useAuth(),scope=user?cacheScopeForUser(user):null;
   const request = useSyncExternalStore(subscribePhotoEdit, getPhotoEdit, getServerPhotoEdit);
+  useEffect(()=>{const active=getPhotoEdit();if(active)finishPhotoEdit(active.id,null);},[scope]);
   useEffect(() => () => { const active = getPhotoEdit(); if(active) finishPhotoEdit(active.id,null); }, []);
   return request ? <PhotoEditor key={request.id} request={request}/> : null;
 }

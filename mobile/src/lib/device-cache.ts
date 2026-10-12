@@ -1,12 +1,24 @@
 import { Platform } from "react-native";
 import { secureSnapshots } from "./secure-snapshots.native-adapter";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ownedRecordKey } from './secure-snapshots';
+import { ownedRecordKey, SnapshotReadError } from './secure-snapshots';
 
 const PREFIX = "k1.cache.v2.";
 const memory = new Map<string, { data: unknown; expires: number }>();
 const maxMemoryEntries = 100;
 let generation = 0;
+let localWriteEpoch = 0;
+let prunedWriteEpoch = 0;
+const draftWrites = new Map<string, number>();
+function noteDraftWrite(key: string) {
+  if (!ownedRecordKey(key)) return;
+  draftWrites.delete(key); draftWrites.set(key, ++localWriteEpoch);
+  while (draftWrites.size > 256) {
+    const oldest = draftWrites.keys().next().value!;
+    prunedWriteEpoch = Math.max(prunedWriteEpoch, draftWrites.get(oldest)!);
+    draftWrites.delete(oldest);
+  }
+}
 let activeScope: string | null = null;
 let activeOwner = "";
 export const getDeviceCacheRevision=()=>generation;
@@ -14,6 +26,7 @@ export const isDeviceCacheOwner = (owner: string) => Boolean(activeScope && owne
 export function setDeviceCacheScope(scope: string | null, owner = "") {
   if (scope === activeScope) return;
   generation++; memory.clear(); activeScope = scope; activeOwner = scope ? owner : "";
+  draftWrites.clear(); prunedWriteEpoch = localWriteEpoch;
   secureSnapshots.activate(Platform.OS === "web" ? null : scope, owner);
 }
 let storageQueue: Promise<void> = Promise.resolve();
@@ -89,6 +102,7 @@ export async function writeCache(
   ttl = ownedRecordKey(key)?Number.MAX_SAFE_INTEGER-Date.now():7 * 86400_000,
 ) {
   if(!permittedOwner(key)||!Number.isFinite(ttl)||ttl<=0)return;
+  noteDraftWrite(key);
   const versionAtStart=generation;
   const record = { data, expires: Date.now() + ttl };
   if(!key.startsWith('calendar-local.')||Platform.OS==='web')remember(key, record);
@@ -114,9 +128,32 @@ export async function writeCache(
 }
 
 /** Primary user work must prove its encrypted write; display caches remain best effort. */
+export async function readOwnedDraft<T>(key: string, revision = generation): Promise<T | null> {
+  if (!ownedRecordKey(key) || !permittedOwner(key) || !activeScope || revision !== generation)
+    throw new Error('This draft belongs to a different session.');
+  const hot = memory.get(key);
+  if (hot && hot.expires > Date.now()) return hot.data as T;
+  if (Platform.OS === 'web') return null;
+  const writesAtStart = localWriteEpoch;
+  const keyWriteAtStart = draftWrites.get(key) ?? 0;
+  let record;
+  try { record = await secureSnapshots.read<T>(key, { requireIntegrity: true }); }
+  catch { throw new SnapshotReadError(); }
+  if (revision !== generation) throw new Error('This draft belongs to a different session.');
+  if (keyWriteAtStart !== (draftWrites.get(key) ?? 0) || prunedWriteEpoch > writesAtStart) {
+    const latest = memory.get(key);
+    if (latest && latest.expires > Date.now()) return latest.data as T;
+    throw new SnapshotReadError();
+  }
+  if (!record) return null;
+  remember(key, record);
+  return record.data;
+}
+
 export async function saveOwnedDraft(key: string, data: unknown, revision = generation): Promise<'device' | 'session'> {
   if (!ownedRecordKey(key) || !permittedOwner(key) || !activeScope || revision !== generation)
     throw new Error('This draft belongs to a different session.');
+  noteDraftWrite(key);
   const record = { data, expires: Number.MAX_SAFE_INTEGER };
   remember(key, record); // Keep the current work visible even if durable storage is full.
   if (Platform.OS === 'web') {
@@ -124,8 +161,13 @@ export async function saveOwnedDraft(key: string, data: unknown, revision = gene
       throw new Error('Your draft could not be kept in this browser session.');
     return 'session';
   }
-  await secureSnapshots.write(key, data, Number.MAX_SAFE_INTEGER - Date.now());
-  const proof = await secureSnapshots.read(key);
+  let proof;
+  try {
+    await secureSnapshots.write(key, data, Number.MAX_SAFE_INTEGER - Date.now());
+    proof = await secureSnapshots.read(key, { requireIntegrity: true });
+  } catch {
+    throw new Error('Your draft could not be saved securely on this device. Keep this screen open and try again.');
+  }
   if (revision !== generation || !proof || JSON.stringify(proof.data) !== JSON.stringify(data))
     throw new Error('Your draft could not be saved securely on this device. Keep this screen open and try again.');
   await storageOperation(() => AsyncStorage.removeItem(PREFIX + key)).catch(() => undefined);
@@ -135,6 +177,7 @@ export async function saveOwnedDraft(key: string, data: unknown, revision = gene
 export async function clearDeviceCache() {
   generation++;
   memory.clear();
+  draftWrites.clear(); prunedWriteEpoch = localWriteEpoch;
   activeScope = null;
   activeOwner = "";
   await secureSnapshots.clear();
