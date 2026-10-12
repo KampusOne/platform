@@ -12,10 +12,13 @@ import {useAppearance} from '@/src/lib/appearance';
 import {api} from '@/src/lib/api';
 import {pickAndUpload,type UploadedFile} from '@/src/lib/uploads';
 import {readCache,writeCache} from '@/src/lib/device-cache';
+import {getDeviceCacheRevision,isDeviceCacheOwner} from '@/src/lib/device-cache';
+import {useOwnedDraftSave} from '@/src/lib/use-owned-draft-save';
+import {cacheScopeForUser} from '@/src/lib/request-policy';
 type Kind='EVENT'|'SPORTS'|'OPPORTUNITY';
 type Draft={kind:Kind;title:string;description:string;venue:string;date:string;time:string;link:string;images:UploadedFile[];requestId:string};
 export default function CampusUpdateCreate(){
- const {user}=useAuth();return <UpdateForm key={user?.id} owner={user?.id??''}/>;
+ const {user}=useAuth();return <UpdateForm key={user?cacheScopeForUser(user):'signed-out'} owner={user?.id??''}/>;
 }
 function UpdateForm({owner}:{owner:string}){
  const {kind:requested}=useLocalSearchParams<{kind?:string}>(),{theme}=useAppearance();
@@ -23,20 +26,23 @@ function UpdateForm({owner}:{owner:string}){
  const [ready,setReady]=useState(false),[busy,setBusy]=useState(false),[uploading,setUploading]=useState(false),[error,setError]=useState('');
  const lock=useRef(false),key='campus-activity-draft.'+owner;
  useEffect(()=>{let live=true;void readCache<Draft>(key).then(saved=>{if(live){setDraft(current=>{const restored=saved??current;return ['EVENT','SPORTS','OPPORTUNITY'].includes(requested??'')&&restored.kind!==requested?{...restored,kind:requested as Kind,requestId:randomUUID()}:restored;});setReady(true);}}).catch(()=>{if(live)setReady(true);});return()=>{live=false;};},[key,requested]);
- useEffect(()=>{if(ready)void writeCache(key,draft).catch(()=>undefined);},[key,draft,ready]);
+ const draftSave=useOwnedDraftSave(key,draft,ready&&Boolean(owner));
  function update(next:Partial<Draft>){setDraft(current=>({...current,...next,requestId:randomUUID()}));setError('');}
  async function photo(){if(uploading||draft.images.length>=5)return;setUploading(true);setError('');try{const image=await pickAndUpload('post');if(image)update({images:[...draft.images,image]});}catch(e){setError(e instanceof Error?e.message:'This photo could not upload. Try again.');}finally{setUploading(false);}}
  async function publish(){
-  if(lock.current||!owner||!ready)return;lock.current=true;setBusy(true);setError('');
+  if(lock.current||!owner||!ready)return;const revision=getDeviceCacheRevision();lock.current=true;setBusy(true);setError('');
   try{
    const when=selectedActivityDate(draft.date,draft.kind==='OPPORTUNITY'?'23:59':draft.time);
    if(!when)throw new Error(draft.date?'Choose the start time before publishing.':'Choose a date before publishing.');
-
+   await draftSave.persist(draft);
+   if(revision!==getDeviceCacheRevision()||!isDeviceCacheOwner(owner))return;
    const result=await api<{id:string}>('/v1/student/feed/activity',{method:'POST',body:JSON.stringify({requestId:draft.requestId,category:draft.kind,title:draft.title,description:draft.description,mediaIds:draft.images.map(image=>image.id),...(draft.kind==='OPPORTUNITY'?{deadline:when.toISOString()}:{venue:draft.venue,startsAt:when.toISOString()}),...(draft.link.trim()?{registrationUrl:draft.link.trim()}:{} )})});
-   await writeCache(key,null);router.replace({pathname:'/post',params:{id:result.id}});
+   if(revision!==getDeviceCacheRevision()||!isDeviceCacheOwner(owner))return;
+   draftSave.discard();await writeCache(key,null);router.replace({pathname:'/post',params:{id:result.id}});
   }catch(e){setError(e instanceof Error?e.message:'Your update could not publish. Your draft is kept.');}finally{lock.current=false;setBusy(false);}
  }
  return <ToolPage title="Share a campus update"><View style={{gap:16}}>
+  {draftSave.warning?<Text accessibilityRole="alert" style={{fontFamily:theme.font.body,color:theme.error,lineHeight:21}}>{draftSave.warning}</Text>:null}
   <Text style={{fontFamily:theme.font.body,color:theme.textMuted,lineHeight:21}}>Let other students know what’s happening. Your update appears in All and its category.</Text>
   <ChoiceField label="Update type" value={draft.kind} disabled={busy} options={[{value:'EVENT',label:'Event'},{value:'SPORTS',label:'Sports'},{value:'OPPORTUNITY',label:'Opportunity'}]} onChange={kind=>update({kind:kind as Kind})}/>
   <ToolField label="Title" value={draft.title} maxLength={180} editable={!busy} onChangeText={title=>update({title})} placeholder="What should students know?"/>

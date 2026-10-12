@@ -1,5 +1,7 @@
 import { useAuth } from "@/src/auth/auth-context";
 import { readCache, writeCache } from "@/src/lib/device-cache";
+import { useOwnedDraftSave } from '@/src/lib/use-owned-draft-save';
+import { cacheScopeForUser } from '@/src/lib/request-policy';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { randomUUID } from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +14,10 @@ import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
 import { pickAndUpload } from "@/src/lib/uploads";
 export default function CreateListing() {
+  const {user}=useAuth();
+  return <CreateListingForm key={user?cacheScopeForUser(user):'signed-out'}/>;
+}
+function CreateListingForm() {
   const { role } = useLocalSearchParams<{ role: string }>();
   const tutor = role === "TUTOR";
   const {user}=useAuth();
@@ -49,7 +55,7 @@ export default function CreateListing() {
       setImages(Array.isArray(d.images)?d.images.filter((v):v is string=>typeof v==="string").slice(0,6):[]);setCategory(value("category"));
       createdId.current=value("createdId")||null;requestId.current=value("requestId")||randomUUID();requestPayload.current=value("requestPayload");
     }).finally(()=>{if(active&&currentDraftKey.current===draftKey)setLoadedDraftKey(draftKey);});
-    return()=>{active=false;const pending=savedDraft.current;if(pending?.key===draftKey&&user?.id)void writeCache(draftKey,pending.value).catch(()=>undefined);};
+    return()=>{active=false;};
   },[draftKey]);
   const [pricePreview,setPricePreview]=useState<{ready:boolean;baseKobo:number;platformKobo:number;processingEstimateKobo:number;customerEstimateKobo:number;sellerCommissionKobo:number}|null>(null);
   useEffect(()=>{
@@ -69,7 +75,7 @@ export default function CreateListing() {
   const alive = useRef(true), categoryRequest = useRef(0);
   useEffect(() => { alive.current = true; return () => { alive.current = false; categoryRequest.current++; }; }, []);
   if(draftReady&&!draftCompleted.current)savedDraft.current={key:draftKey,value:{name,description,price,stock,code,location,image,images,category,createdId:createdId.current,requestId:requestId.current,requestPayload:requestPayload.current}};
-  useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>{const pending=savedDraft.current;if(pending?.key===draftKey)void writeCache(draftKey,pending.value).catch(()=>undefined);},300);return()=>clearTimeout(timer);},[name,description,price,stock,code,location,image,images,category,draftKey,draftReady,user?.id]);
+  const draftSave=useOwnedDraftSave(draftKey,savedDraft.current?.value??{},draftReady&&Boolean(user?.id)&&!draftCompleted.current);
   const [busy, setBusy] = useState(false);
   const loadCategories = useCallback(async () => {
     const turn = ++categoryRequest.current;
@@ -146,7 +152,7 @@ export default function CreateListing() {
       const signature=JSON.stringify(details);
       if(!createdId.current&&requestPayload.current!==signature){requestId.current=randomUUID();requestPayload.current=signature;}
       body.requestId=requestId.current;
-      await writeCache(draftKey,{...savedDraft.current?.value,requestId:requestId.current,requestPayload:signature});
+      await draftSave.persist({...savedDraft.current?.value,requestId:requestId.current,requestPayload:signature});
       if(!stillCurrent())return;
       const created = createdId.current?{id:createdId.current}:await api<{ id: string }>(path, {
         method: "POST",
@@ -154,14 +160,14 @@ export default function CreateListing() {
       });
       if(!stillCurrent())return;
       createdId.current=created.id;
-      await writeCache(draftKey,{...savedDraft.current?.value,createdId:created.id,requestId:requestId.current,requestPayload:signature});
+      await draftSave.persist({...savedDraft.current?.value,createdId:created.id,requestId:requestId.current,requestPayload:signature});
       if(!stillCurrent())return;
       if(tutor)await api(path + "/" + created.id + "/status", {
         method: "PATCH",
         body: JSON.stringify({ status: "SUBMITTED" }),
       });
       if(!stillCurrent())return;
-      draftCompleted.current=true;savedDraft.current=null;
+      draftCompleted.current=true;savedDraft.current=null;draftSave.discard();
       await writeCache(draftKey,null);
       toast(tutor?"Submitted for review":"Product uploaded", "success");
       router.back();
@@ -175,6 +181,7 @@ export default function CreateListing() {
   const visibleCategories = categoryQuery.trim() || showAllCategories ? matchingCategories : matchingCategories.slice(0,8);
   return (
     <ToolPage title={tutor ? "Create tutorial" : "Create product"}>
+      {draftSave.warning?<Text accessibilityRole="alert" style={{fontFamily:theme.font.body,color:theme.error,lineHeight:21,marginBottom:12}}>{draftSave.warning}</Text>:null}
       <View style={{ padding:16, borderRadius:16, borderWidth:1, borderColor:theme.border,
         backgroundColor:theme.surface, marginBottom:20, gap:6 }}>
         <Text style={{ fontFamily:theme.font.semibold, color:theme.deepBrand, fontSize:12 }}>

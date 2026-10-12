@@ -1,4 +1,5 @@
 import {cachedVersionedRead} from "../lib/cache-revision";
+import {livePublishingEnabled,publishRiderQueueReads} from '../services/live-read-publishers';
 import {mappedDeliveryPoint,currentAgentPosition,campusDeliveryRoute} from '../lib/delivery-routing';
 import { z } from "@kampusone/contracts";
 import { input, id } from "../lib/input";
@@ -52,6 +53,12 @@ export const agentRoutes = new Hono<{
   Variables: Variables;
 }>();
 agentRoutes.use("/*", requireAuth);
+agentRoutes.use('/*',async(c,next)=>{
+  await next();
+  if(!c.res.ok||!livePublishingEnabled(c.env)||!['POST','PUT','PATCH'].includes(c.req.method)||!/^\/v1\/agents\/(?:orders\/[a-f0-9-]{36}\/(?:rider-request|dispatch|handoff|status)|deliveries\/[a-f0-9-]{36}\/(?:reserve|pickup|complete)|rider-presence)$/.test(c.req.path))return;
+  const user=currentUser(c);
+  try{c.executionCtx.waitUntil(publishRiderQueueReads(c.env,user.universityId,c.get('requestId'),user.id).catch(()=>console.warn(JSON.stringify({level:'warn',event:'live.dispatch_publish_failed',requestId:c.get('requestId')}))));}catch{/* Event failure cannot change a confirmed delivery/ledger transition. */}
+});
 
 async function body(context: { req: { json(): Promise<unknown> } }) {
   return context.req.json().catch(() => null);

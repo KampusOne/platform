@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useForegroundPoll } from '@/lib/use-foreground-poll';
 
 import { PortalApiError, portalApi } from "@/lib/api";
 
@@ -16,58 +17,42 @@ type PaymentStatus = {
 };
 
 export function PaymentReturn({ reference }: { reference: string }) {
+  return <ReferencePaymentReturn key={reference} reference={reference}/>;
+}
+function ReferencePaymentReturn({ reference }: { reference: string }) {
   const [payment, setPayment] = useState<PaymentStatus["payment"] | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(Boolean(reference));
+  const [loading, setLoading] = useState(false);
 
-  const check = useCallback(async () => {
+  const check = useCallback(async (signal:AbortSignal) => {
     if (!reference) {
       setError("This return link does not include a payment reference.");
       setLoading(false);
-      return null;
+      return 'done' as const;
     }
     setError("");
     setLoading(true);
     try {
       const result = await portalApi<PaymentStatus>(
         `/v1/payments/status/${encodeURIComponent(reference)}`,
+        {signal,cache:'no-store'},
       );
+      if(signal.aborted)return 'done' as const;
       setPayment(result.payment);
-      return result.payment;
+      return ['CREATED','INITIALIZED'].includes(result.payment.status)?'unchanged' as const:'done' as const;
     } catch (caught) {
-      setError(
+      if(!signal.aborted)setError(
         caught instanceof PortalApiError
           ? caught.message
           : "KampusOne could not verify this payment yet.",
       );
-      return null;
+      throw caught;
     } finally {
       setLoading(false);
     }
   }, [reference]);
 
-  useEffect(() => {
-    let active = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let attempts = 0;
-    const poll = async () => {
-      const result = await check();
-      if (
-        !active ||
-        !result ||
-        !["CREATED", "INITIALIZED"].includes(result.status) ||
-        attempts >= 5
-      )
-        return;
-      attempts += 1;
-      timer = setTimeout(() => void poll(), 2500);
-    };
-    void poll();
-    return () => {
-      active = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [check]);
+  const poll=useForegroundPoll(reference,true,check,{intervalMs:2500,maxAttempts:6,immediate:true});
 
   const state = payment?.status;
   const heading =
@@ -133,7 +118,7 @@ export function PaymentReturn({ reference }: { reference: string }) {
           <button
             className="button button--secondary"
             disabled={loading}
-            onClick={() => void check()}
+            onClick={poll.restart}
           >
             {loading ? "Checking…" : "Check again"}
           </button>
@@ -141,6 +126,8 @@ export function PaymentReturn({ reference }: { reference: string }) {
             Return to portal
           </Link>
         </div>
+        {poll.exhausted&&!['SUCCEEDED','FAILED','REQUIRES_REVIEW'].includes(state??'')?<p role="status">Confirmation is still pending. Check again when you are ready.</p>:null}
+        {!poll.available&&!state?<p role="status">Updates pause while offline or this tab is hidden. Reconnect to check your payment.</p>:null}
       </section>
     </main>
   );

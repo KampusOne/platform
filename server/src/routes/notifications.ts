@@ -1,4 +1,6 @@
 import {cachedVersionedRead} from "../lib/cache-revision";
+import {livePublishingEnabled} from '../services/live-read-publishers';
+import {publishUserReads} from '../lib/live-updates';
 import {notificationRuntime,defaultNotificationRuntime,type NotificationRuntime} from '../services/notification-runtime';
 import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
@@ -22,6 +24,12 @@ import {
 
 export const notificationRoutes=new Hono<{Bindings:Bindings;Variables:Variables}>();
 notificationRoutes.use('/*',requireAuth);
+notificationRoutes.use('/*',async(c,next)=>{
+ await next();
+ if(!c.res.ok||!livePublishingEnabled(c.env)||!/^\/v1\/notifications\/(?:inbox\/[a-f0-9-]{36}\/read|read-all|read-social)$/.test(c.req.path)||!['POST','PATCH'].includes(c.req.method))return;
+ const user=currentUser(c);
+ try{c.executionCtx.waitUntil(publishUserReads(c.env,user.id,user.universityId,{id:c.get('requestId'),prefixes:['/v1/notifications/inbox']}).catch(()=>console.warn(JSON.stringify({level:'warn',event:'live.notification_read_publish_failed',requestId:c.get('requestId')}))));}catch{/* Focused HTTP fallback remains authoritative outside Worker contexts. */}
+});
 notificationRoutes.use('/*',async(c,next)=>{
  if(c.env.UNIFIED_SCHEMA_READY!=='true')throw new AppError(503,'PROVIDER_UNAVAILABLE','Notifications are unavailable until the account service is ready.');
  await next();

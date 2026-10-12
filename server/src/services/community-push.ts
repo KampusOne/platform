@@ -1,4 +1,5 @@
 import {notificationRuntime} from './notification-runtime';
+import {publishNotificationRead} from './live-read-publishers';
 import {sql} from 'drizzle-orm';
 import {database,firstRow} from '../lib/database';
 import {sendDevicePush,fetchPushReceipt} from '../lib/push';
@@ -57,6 +58,7 @@ export async function deliverCommunityPush(env:Bindings){
   }
   const inboxDedupe=row.dedupe_key.replace('announcement-push:','announcement:');
   const notice=firstRow(await db.execute<Notice>(sql`select n.id,n.path,n.institution_id,coalesce(actor.display_name,actor.username) as actor_name,actor.username as actor_username from public.in_app_notifications n left join public.profiles actor on actor.user_id=n.actor_user_id and actor.deleted_at is null where n.user_id=${row.user_id}::uuid and n.dedupe_key=${inboxDedupe} limit 1`));
+  if(notice)await publishNotificationRead(env,row.user_id,'notice:'+notice.id,notice.institution_id).catch(()=>console.warn(JSON.stringify({level:'warn',event:'live.notification_enqueue_publish_failed'})));
   const category=preferenceCategoryFor(row.dedupe_key,notice);
   const runtime=await notificationRuntime(env,notice?.institution_id??null);
   if(!runtime.push_enabled||(category==='newsletter'&&!runtime.newsletter_enabled)||(category==='announcements'&&!runtime.announcements_enabled)||(category==='campusUpdates'&&!runtime.campus_updates_enabled)){await db.execute(sql`update app_private.notification_outbox set state='PENDING',attempts=greatest(attempts-1,0),last_error_code='RUNTIME_PAUSED',next_attempt_at=now()+interval '5 minutes' where id=${row.id}::uuid`);return;}

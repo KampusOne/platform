@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 const require=createRequire(new URL('../server/package.json',import.meta.url)),ts=require('typescript');
-function load(file,mocks={}){const exports={};const source=ts.transpileModule(readFileSync(new URL('../mobile/src/lib/'+file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;runInNewContext(source,{exports,module:{exports},require:name=>mocks[name],setTimeout,clearTimeout,Date,Math,AbortController,URL,TextEncoder});return exports;}
+function load(file,mocks={},globals={}){const exports={};const source=ts.transpileModule(readFileSync(new URL('../mobile/src/lib/'+file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;runInNewContext(source,{exports,module:{exports},require:name=>mocks[name],setTimeout,clearTimeout,Date,Math,AbortController,URL,TextEncoder,...globals});return exports;}
 const {SecureSnapshots}=load('secure-snapshots.ts');
 const {ReadCoordinator}=load('read-coordinator.ts',{'./request-policy':{matchesRead:(path,prefix)=>path===prefix||path.startsWith(prefix+'/')||path.startsWith(prefix+'?')}});
 const {LiveConnection}=load('live-connection.ts');
@@ -67,6 +67,10 @@ test('scope pressure never evicts protected work to create another scope',async(
  f.store.activate('scope4',account);await f.store.write('snapshot./v1/student/timetable',{entries:[]},60000);assert.equal(await f.store.read('snapshot./v1/student/timetable'),null);
  f.store.activate('scope0',account);assert.equal((await f.store.read('timetable-draft.'+account)).data.text,'Pending 0');
  f.advance(60001);f.store.activate('scope4',account);await f.store.write('snapshot./v1/student/timetable',{entries:[]},60000);assert.ok(await f.store.read('snapshot./v1/student/timetable'));
+});
+test('telemetry is encrypted, disposable, short lived and isolated by current institution and roles',async()=>{
+ const f=fixture(),key='telemetry.'+account;f.store.activate(JSON.stringify([account,'A',['STUDENT'],[]]),account);await f.store.write(key,[{screen:'private-measurement'}],48*3600000);assert.equal([...f.data.values()].join('').includes('private-measurement'),false);assert.equal((await f.store.read(key)).data[0].screen,'private-measurement');
+ f.store.activate(JSON.stringify([account,'A',['STUDENT','TUTOR'],[]]),account);assert.equal(await f.store.read(key),null);f.store.activate(JSON.stringify([account,'A',['STUDENT'],[]]),account);f.advance(48*3600000+1);assert.equal(await f.store.read(key),null);
 });
 test('AI processing, review, failure and saving never reuse an upload percentage',()=>{
  assert.equal(importProgress('uploading','exam timetable',0.421).percent,42);
@@ -149,6 +153,53 @@ test('native personal calendar writes require encrypted read-back and do not cac
  cache.setDeviceCacheScope(scope,account);await cache.writeCache('calendar-local.'+account,{events:['Future exam']});
  f.advance(90*86400000);cache.setDeviceCacheScope(JSON.stringify([account,'A',['tutor'],[]]),account);assert.equal((await cache.readCache('calendar-local.'+account)).events[0],'Future exam');
  const next='calendar-local.'+account+'.second';f.io.set=async()=>{};await assert.rejects(cache.writeCache(next,{events:['Unsaved']}),/could not be saved securely/);assert.equal(await cache.readCache(next),null);
+});
+function deviceCacheFixture(platform='android'){
+ const f=fixture(),cache=load('device-cache.ts',{'react-native':{Platform:{OS:platform}},'./secure-snapshots':load('secure-snapshots.ts'),'./secure-snapshots.native-adapter':{secureSnapshots:f.store},'@react-native-async-storage/async-storage':{__esModule:true,default:{getAllKeys:async()=>[],getItem:async()=>null,removeItem:async()=>{},multiRemove:async()=>{}}}});
+ cache.setDeviceCacheScope(JSON.stringify([account,'A',[],[]]),account);return{...f,cache};
+}
+test('campus activity drafts prove an encrypted write and survive restart within their owner and institution',async()=>{
+ const f=deviceCacheFixture(),key='campus-activity-draft.'+account,value={title:'Private student draft',requestId:other};
+ assert.equal(await f.cache.saveOwnedDraft(key,value),'device');assert.equal([...f.data.values()].join('').includes(value.title),false);
+ const restart=new SecureSnapshots(f.io,f.now);restart.activate(JSON.stringify([account,'A',['TUTOR'],[]]),account);assert.equal((await restart.read(key)).data.title,value.title);
+ restart.activate(JSON.stringify([account,'B',[],[]]),account);assert.equal(await restart.read(key),null);
+ await assert.rejects(f.cache.saveOwnedDraft('campus-activity-draft.'+other,value),/different session/);
+});
+test('primary draft saves report silent disk refusal, keep the current work visible and reject stale ownership',async()=>{
+ const f=deviceCacheFixture(),key='listing-draft.'+account+'.tutor';await f.cache.saveOwnedDraft(key,{title:'First version'});
+ f.io.set=async()=>{};await assert.rejects(f.cache.saveOwnedDraft(key,{title:'Edited version'}),/could not be saved securely/);
+ assert.equal((await f.cache.readCache(key)).title,'Edited version');assert.equal((await f.store.read(key)).data.title,'First version');
+ const revision=f.cache.getDeviceCacheRevision();f.cache.setDeviceCacheScope(JSON.stringify([account,'B',[],[]]),account);f.cache.setDeviceCacheScope(JSON.stringify([account,'A',[],[]]),account);
+ await assert.rejects(f.cache.saveOwnedDraft(key,{title:'Old session'},revision),/different session/);
+ await assert.rejects(f.cache.saveOwnedDraft('onboarding.'+account,'x'.repeat(270000)),/could not be saved securely/);
+});
+test('a primary save interrupted by an account change fails instead of reporting a durable draft',async()=>{
+ const f=deviceCacheFixture(),seal=f.io.seal;let finish;f.io.seal=(...args)=>new Promise(resolve=>{finish=()=>seal(...args).then(resolve);});
+ const pending=f.cache.saveOwnedDraft('timetable-draft.'+account,{text:'Interrupted draft'});while(!finish)await Promise.resolve();
+ f.cache.setDeviceCacheScope(JSON.stringify([other,'A',[],[]]),other);finish();await assert.rejects(pending,/could not be saved securely/);
+ assert.equal(await f.cache.readCache('timetable-draft.'+account),null);assert.equal(f.data.size,0);
+});
+test('browser draft saves explicitly report session retention and never persist plaintext private work',async()=>{
+ const f=deviceCacheFixture('web'),key='onboarding.'+account;
+ assert.equal(await f.cache.saveOwnedDraft(key,{name:'Private name'}),'session');assert.equal(f.data.size,0);
+ assert.equal((await f.cache.readCache(key)).name,'Private name');await assert.rejects(f.cache.saveOwnedDraft('unknown.'+account,{name:'Private name'}),/different session/);
+});
+test('draft autosave debounces, exposes storage failure, flushes on unmount and never resurrects completed work',async()=>{
+ const time=clock(),hooks=[],effects=[],writes=[];let cursor=0,revision=0,fail=false;
+ const changed=(a,b)=>!a||a.length!==b.length||a.some((value,index)=>value!==b[index]);
+ const react={
+  useRef(value){const i=cursor++;return hooks[i]??=( {current:value} );},
+  useState(value){const i=cursor++;if(!hooks[i])hooks[i]={value};return[hooks[i].value,next=>{hooks[i].value=typeof next==='function'?next(hooks[i].value):next;}];},
+  useCallback(fn,deps){const i=cursor++;if(!hooks[i]||changed(hooks[i].deps,deps))hooks[i]={deps,fn};return hooks[i].fn;},
+  useEffect(fn,deps){const i=cursor++;if(!hooks[i]||changed(hooks[i].deps,deps))effects.push({i,fn,deps,cleanup:hooks[i]?.cleanup});},
+ };
+ const {useOwnedDraftSave}=load('use-owned-draft-save.ts',{'react':react,'./device-cache':{getDeviceCacheRevision:()=>revision,saveOwnedDraft:async(key,value,ownerRevision)=>{if(ownerRevision!==revision)throw Error('different session');writes.push({key,value});if(fail)throw Error('Storage is full');return'device';}}},{setTimeout:time.schedule,clearTimeout:time.cancel,Error});
+ const key='listing-draft.'+account;function render(value,enabled=true){cursor=0;const result=useOwnedDraftSave(key,value,enabled,300);const pending=effects.splice(0);for(const effect of pending)effect.cleanup?.();for(const effect of pending)hooks[effect.i]={deps:effect.deps,cleanup:effect.fn()};return result;}
+ function unmount(){for(const hook of hooks)hook?.cleanup?.();}
+ render({title:'First'});render({title:'Latest'});await time.advance(299);assert.equal(writes.length,0);await time.advance(1);assert.equal(writes.length,1);assert.equal(writes[0].value.title,'Latest');
+ fail=true;render({title:'Unsaved'});await time.advance(300);let current=render({title:'Unsaved'});assert.equal(current.warning,'Storage is full');
+ fail=false;await current.persist({title:'Confirmed'});current=render({title:'Confirmed'});assert.equal(current.warning,'');current.discard();unmount();await time.advance(300);assert.equal(writes.at(-1).value.title,'Confirmed');assert.equal(time.timers.size,0);
+ const before=writes.length;hooks.length=0;render({title:'Left before debounce'});unmount();await Promise.resolve();assert.equal(writes.length,before+1);assert.equal(writes.at(-1).value.title,'Left before debounce');
 });
 test('calendar retry reuses only a submitted request ID and replaces the recovered row without duplicates',()=>{
  const draft={id:'local:'+account,requestId:account,title:'Exam',starts_on:'2027-01-01',ends_on:'2027-01-01',semester:'First'};

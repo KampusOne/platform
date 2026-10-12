@@ -8,6 +8,7 @@ describe('private invalidation transport',()=>{
   expect(liveScope(uuid,'A')).not.toBe(liveScope(uuid,'B'));
   expect(validLiveChange({id:'event',prefixes:['/v1/messages/inbox','/v1/messages/threads/'+uuid]})).toBe(true);
   for(const prefix of ['/v1/payments','/v1/messages/threads/another-user','/v1/agents/location?latitude=5'])expect(validLiveChange({id:'event',prefixes:[prefix]})).toBe(false);
+  for(const value of [{id:'',prefixes:['/v1/agents']},{id:'event',prefixes:[]},{id:'event',prefixes:['/v1/agents'],body:'private text'}])expect(validLiveChange(value)).toBe(false);
  });
  it('broadcasts one ordered event per id and expires authorization leases',async()=>{
   const state=new Map<string,unknown>(),sent:string[]=[];
@@ -22,9 +23,15 @@ describe('private invalidation transport',()=>{
   await hub.alarm();expect(ctx.storage.setAlarm).toHaveBeenCalled();
  });
  it('stays disabled without the reviewed binding and never publishes invalid resources',async()=>{
-  const fetch=vi.fn(),env={LIVE_UPDATES_ENABLED:'true',LIVE_USERS:{idFromName:vi.fn((v:string)=>v),get:()=>({fetch})}};
+  const fetch=vi.fn().mockResolvedValue(new Response(null,{status:204})),env={LIVE_UPDATES_ENABLED:'true',LIVE_USERS:{idFromName:vi.fn((v:string)=>v),get:()=>({fetch})}};
   await publishUserReads(env as never,uuid,'A',{id:'event',prefixes:['/v1/payments/balance']});expect(fetch).not.toHaveBeenCalled();
   await publishUserReads(env as never,uuid,'A',{id:'event',prefixes:['/v1/messages/inbox']});expect(fetch).toHaveBeenCalledTimes(1);
+ });
+ it('reports hub rejection and bounds an unacknowledged invalidation',async()=>{
+  const fetch=vi.fn().mockResolvedValue(new Response(null,{status:503})),env={LIVE_UPDATES_ENABLED:'true',LIVE_USERS:{idFromName:(value:string)=>value,get:()=>({fetch})}};
+  await expect(publishUserReads(env as never,uuid,'A',{id:'event',prefixes:['/v1/agents']})).rejects.toThrow('could not be accepted');
+  fetch.mockImplementation((_url:string,init:RequestInit)=>new Promise((_resolve,reject)=>init.signal!.addEventListener('abort',()=>reject(init.signal!.reason),{once:true})));
+  await expect(publishUserReads(env as never,uuid,'A',{id:'next',prefixes:['/v1/agents']})).rejects.toMatchObject({name:'TimeoutError'});
  });
 });
 describe('independent academic extraction',()=>{

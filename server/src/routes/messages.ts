@@ -22,7 +22,7 @@ export const messageRoutes = new Hono<{
 messageRoutes.use("/*", requireAuth);
 messageRoutes.use('/*',async(c,next)=>{
   await next();
-  if(c.req.method==='GET'||!c.res.ok||c.env.LIVE_UPDATES_ENABLED!=='true')return;
+  if(c.req.method==='GET'||!c.res.ok||c.env.LIVE_UPDATES_ENABLED!=='true'||!c.env.LIVE_USERS)return;
   const match=c.req.path.match(/\/threads\/([0-9a-f-]{36})/i);if(!match)return;
   const user=currentUser(c),threadId=match[1]!;
   const notify=async()=>{

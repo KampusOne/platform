@@ -4,13 +4,14 @@ export type LiveChange = { id: string; prefixes: string[] };
 export function validLiveChange(value:unknown):value is LiveChange {
   if(!value||typeof value!=='object')return false;
   const change=value as LiveChange;
-  return typeof change.id==='string'&&change.id.length<=120&&Array.isArray(change.prefixes)&&change.prefixes.length<=8&&change.prefixes.every(path=>typeof path==='string'&&/^\/v1\/(messages\/(?:inbox|threads\/[a-f0-9-]{36})|notifications\/inbox|agents)$/.test(path));
+  return Object.keys(change).every(key=>key==='id'||key==='prefixes')&&typeof change.id==='string'&&change.id.length>0&&change.id.length<=120&&Array.isArray(change.prefixes)&&change.prefixes.length>0&&change.prefixes.length<=8&&change.prefixes.every(path=>typeof path==='string'&&/^\/v1\/(messages\/(?:inbox|threads\/[a-f0-9-]{36})|notifications\/inbox|agents)$/.test(path));
 }
 export function liveScope(userId:string,institutionId:string|null) { return JSON.stringify([userId,institutionId]); }
 export async function publishUserReads(env:Bindings,userId:string,institutionId:string|null,change:LiveChange) {
   if(env.LIVE_UPDATES_ENABLED!=='true'||!env.LIVE_USERS||!validLiveChange(change))return;
   const stub=env.LIVE_USERS.get(env.LIVE_USERS.idFromName(liveScope(userId,institutionId)));
-  await stub.fetch('https://live.internal/change',{method:'POST',body:JSON.stringify(change)});
+  const response=await stub.fetch('https://live.internal/change',{method:'POST',signal:AbortSignal.timeout(1500),body:JSON.stringify({id:change.id,prefixes:change.prefixes})});
+  if(response&&!response.ok)throw new Error('Live invalidation could not be accepted.');
 }
 /** One authenticated user/tenant hub with hibernating sockets and short authorization leases. */
 export class LiveUser {

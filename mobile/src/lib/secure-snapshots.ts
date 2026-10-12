@@ -11,7 +11,7 @@ export interface SnapshotIO {
 }
 const prefix = 'k1.encrypted.v1.';
 const maxRecord = 256 * 1024, maxBytes = 2 * 1024 * 1024, maxRecords = 60;
-export const ownedRecordKey = (key: string) => /^(?:timetable-draft|exam-draft|kira-draft|ai-draft|ai-workspace-v3|publishing-draft|publisher-draft|listing-draft|answer-draft|message-draft|cart|onboarding|calendar-local)\./.test(key);
+export const ownedRecordKey = (key: string) => /^(?:timetable-draft|exam-draft|kira-draft|ai-draft|ai-workspace-v3|publishing-draft|publisher-draft|listing-draft|campus-activity-draft|answer-draft|message-draft|cart|onboarding|calendar-local)\./.test(key);
 type RecordValue<T> = {
     version: 1;
     data: T;
@@ -56,7 +56,7 @@ export class SecureSnapshots {
         // Finances, roles, quotas, raw credentials and unknown payloads remain memory-only.
         if (key.startsWith('snapshot.'))
             return /^snapshot\.\/v1\/(student\/(timetable|gpa|store(?:\/[^/?]+)?|tutorials)|learning\/courses|calendar(?:\/exam-periods)?|exams|messages\/(inbox|threads\/[a-f0-9-]+))(?:\?|$)/i.test(key);
-        return key.includes(owner) && /^(profile\.|settings\.|home\.|timetable-draft\.|exam-draft\.|kira-draft\.|ai-draft\.|ai-workspace-v3\.|publishing-draft\.|publisher-draft\.|listing-draft\.|answer-draft\.|message-draft\.|cart\.|search-recents\.|onboarding\.|calendar-local\.)/.test(key);
+        return key.includes(owner) && /^(profile\.|settings\.|home\.|timetable-draft\.|exam-draft\.|kira-draft\.|ai-draft\.|ai-workspace-v3\.|publishing-draft\.|publisher-draft\.|listing-draft\.|campus-activity-draft\.|answer-draft\.|message-draft\.|cart\.|search-recents\.|onboarding\.|calendar-local\.|telemetry\.)/.test(key);
     }
     private scopeValue(scope: {
         value: string;

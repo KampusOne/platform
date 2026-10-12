@@ -27,6 +27,8 @@ import {
 } from "@/src/components/auth-ui";
 import { ApiError, api } from "@/src/lib/api";
 import { readCache, writeCache } from "@/src/lib/device-cache";
+import { useOwnedDraftSave } from '@/src/lib/use-owned-draft-save';
+import { cacheScopeForUser } from '@/src/lib/request-policy';
 import { theme } from "@/src/theme";
 
 const DEEP_TERRACOTTA = "#A8462E";
@@ -305,6 +307,9 @@ function Selector({
 }
 
 export default function OnboardingScreen() {
+  const {user}=useAuth();return <OnboardingForm key={user?cacheScopeForUser(user):'signed-out'}/>;
+}
+function OnboardingForm() {
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { profile, user, reloadProfile, signOut } = useAuth();
@@ -343,7 +348,7 @@ export default function OnboardingScreen() {
   const [signingOut, setSigningOut] = useState(false);
   const [draftReady,setDraftReady]=useState(false);
   useEffect(()=>{if(!user?.id)return;let active=true;void readMigratedPrivateCache(`k1.onboarding.${user.id}`,`onboarding.${user.id}`,user.id).then(text=>{if(!active||!text)return;try{const saved=JSON.parse(text);setHeardSource(saved.heardSource??'');setHeardOther(saved.heardOther??'');setFirstName(saved.firstName??'');setLastName(saved.lastName??'');setUsername(saved.username??'');setBirthDate(saved.birthDate??'');setMatriculationNumber(saved.matriculationNumber??'');setCurrentLevel(saved.currentLevel??'');setAdmissionYear(saved.admissionYear??'');setGraduationYear(saved.graduationYear??'');setUniversityId(saved.universityId??'');setFacultyId(saved.facultyId??'');setDepartmentId(saved.departmentId??'');setCourseId(saved.courseId??'');setStep(Math.max(0,Math.min(2,Number(saved.step)||0)));}catch{}}).catch(()=>{}).finally(()=>{if(active)setDraftReady(true);});return()=>{active=false;};},[user?.id]);
-  useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>void writeCache(`onboarding.${user.id}`,JSON.stringify({heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step})).catch(()=>{}),300);return()=>clearTimeout(timer);},[draftReady,user?.id,heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step]);
+  const draftSave=useOwnedDraftSave(`onboarding.${user?.id}`,JSON.stringify({heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step}),draftReady&&Boolean(user?.id));
 
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
@@ -550,7 +555,7 @@ export default function OnboardingScreen() {
         }),
       });
       setDraftReady(false);
-      if(user?.id) await writeCache(`onboarding.${user.id}`,null);
+      draftSave.discard();if(user?.id) await writeCache(`onboarding.${user.id}`,null);
       await reloadProfile();
       router.replace("/");
     } catch (caught) {
@@ -851,7 +856,7 @@ export default function OnboardingScreen() {
             textContentType="username"
             value={username}
           />
-          {usernameState!=='idle'?<Text accessibilityLiveRegion="polite" style={[styles.help,{color:usernameState==='available'?'#24764e':usernameState==='taken'?theme.error:theme.textMuted}]}>{usernameState==='available'?'✓ Username available':usernameState==='taken'?'This username is taken. Choose another.':usernameState==='checking'?'Checking username…':'Availability could not be checked. Your details are saved.'}</Text>:null}
+          {usernameState!=='idle'?<Text accessibilityLiveRegion="polite" style={[styles.help,{color:usernameState==='available'?'#24764e':usernameState==='taken'?theme.error:theme.textMuted}]}>{usernameState==='available'?'✓ Username available':usernameState==='taken'?'This username is taken. Choose another.':usernameState==='checking'?'Checking username…':'Availability could not be checked. Your details are still here.'}</Text>:null}
           <Text style={styles.help}>
             Use letters, numbers and underscores. This can be different from
             your full name.
@@ -942,6 +947,7 @@ export default function OnboardingScreen() {
       ) : null}
 
       <FormError message={error} />
+      {draftSave.warning?<Text accessibilityRole="alert" style={[styles.help,{color:theme.error}]}>{draftSave.warning}</Text>:null}
       <PrimaryButton
         disabled={!canContinue || catalogLoading || signingOut}
         loading={loading}

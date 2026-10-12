@@ -20,7 +20,7 @@ let storageQueue: Promise<void> = Promise.resolve();
 // Persist only non-content bookkeeping. Profiles, last-session and unknown
 // future payloads stay in RAM instead of unencrypted shared device storage.
 const diskSafe = (key: string) => /^(?:streak\.open\.|push-device\.)[0-9a-f-]{36}$/i.test(key);
-const ownerKey = /^(?:profile|settings|home|timetable-draft|exam-draft|kira-draft|kira-plans|ai-draft|ai-workspace-v3|publishing-draft|publisher-draft|listing-draft|answer-draft|message-draft|cart|search-recents|onboarding|calendar-local)\./;
+const ownerKey = /^(?:profile|settings|home|timetable-draft|exam-draft|kira-draft|kira-plans|ai-draft|ai-workspace-v3|publishing-draft|publisher-draft|listing-draft|campus-activity-draft|answer-draft|message-draft|cart|search-recents|onboarding|calendar-local|telemetry)\./;
 const permittedOwner = (key:string) => !ownerKey.test(key) || Boolean(activeScope && activeOwner && key.includes(activeOwner));
 function storageOperation(operation: () => Promise<void>): Promise<void> {
   const next = storageQueue.then(operation, operation);
@@ -113,6 +113,25 @@ export async function writeCache(
   }
 }
 
+/** Primary user work must prove its encrypted write; display caches remain best effort. */
+export async function saveOwnedDraft(key: string, data: unknown, revision = generation): Promise<'device' | 'session'> {
+  if (!ownedRecordKey(key) || !permittedOwner(key) || !activeScope || revision !== generation)
+    throw new Error('This draft belongs to a different session.');
+  const record = { data, expires: Number.MAX_SAFE_INTEGER };
+  remember(key, record); // Keep the current work visible even if durable storage is full.
+  if (Platform.OS === 'web') {
+    if (revision !== generation || JSON.stringify(memory.get(key)?.data) !== JSON.stringify(data))
+      throw new Error('Your draft could not be kept in this browser session.');
+    return 'session';
+  }
+  await secureSnapshots.write(key, data, Number.MAX_SAFE_INTEGER - Date.now());
+  const proof = await secureSnapshots.read(key);
+  if (revision !== generation || !proof || JSON.stringify(proof.data) !== JSON.stringify(data))
+    throw new Error('Your draft could not be saved securely on this device. Keep this screen open and try again.');
+  await storageOperation(() => AsyncStorage.removeItem(PREFIX + key)).catch(() => undefined);
+  return 'device';
+}
+
 export async function clearDeviceCache() {
   generation++;
   memory.clear();
@@ -120,7 +139,7 @@ export async function clearDeviceCache() {
   activeOwner = "";
   await secureSnapshots.clear();
   await storageOperation(async () => {
-    const keys = (await AsyncStorage.getAllKeys()).filter(key => key.startsWith(PREFIX) || /^(?:k1\.message-upload\.|k1\.onboarding\.|k1\.search\.recents\.v1\.|kampusone\.message-draft\.v1\.|@kampusone\/calendar\/personal\/)/.test(key));
+    const keys = (await AsyncStorage.getAllKeys()).filter(key => key.startsWith(PREFIX) || /^(?:k1-foreground-usage:|k1\.message-upload\.|k1\.onboarding\.|k1\.search\.recents\.v1\.|kampusone\.message-draft\.v1\.|@kampusone\/calendar\/personal\/)/.test(key));
     if (keys.length) await AsyncStorage.multiRemove(keys);
   });
   if(Platform.OS!=='web') {

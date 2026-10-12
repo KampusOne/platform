@@ -147,6 +147,30 @@ describe('community announcement delivery',()=>{
 
 
 describe('notification inbox read state',()=>{
+ it('publishes a scoped read acknowledgement only after a successful owned mutation',async()=>{
+  const notificationId=crypto.randomUUID(),targets:string[]=[],pending:Promise<unknown>[]=[];
+  await db.query("insert into public.in_app_notifications(id,user_id,institution_id,title,body,dedupe_key)values($1,$2,$3,'Synthetic notice','Synthetic body',$1::uuid::text)",[notificationId,student,school]);
+  const publish=vi.fn().mockResolvedValue(new Response(null,{status:204}));
+  const liveEnv={...env,LIVE_UPDATES_ENABLED:'true',LIVE_USERS:{idFromName:(scope:string)=>{targets.push(scope);return scope;},get:()=>({fetch:publish})}} as unknown as Bindings;
+  const context={waitUntil:(task:Promise<unknown>)=>pending.push(task),passThroughOnException:()=>{},props:{}} as ExecutionContext;
+  const read=(actor:string,method='PATCH',path='/inbox/'+notificationId+'/read')=>app.request('https://api.example.invalid/v1/notifications'+path,{method,headers:{Authorization:'Bearer '+tokens.get(actor)}},liveEnv,context);
+  await data(await read(outsider),404); await data(await read(student,'GET','/inbox'));
+  expect(publish).not.toHaveBeenCalled();
+  await data(await read(student));await Promise.all(pending);
+  expect(targets).toEqual([JSON.stringify([student,school])]);
+  expect(publish).toHaveBeenCalledTimes(1);
+  const event=JSON.parse(publish.mock.calls[0]![1].body);
+  expect(Object.keys(event).sort()).toEqual(['id','prefixes']);expect(event.prefixes).toEqual(['/v1/notifications/inbox']);
+ });
+ it('keeps the confirmed read receipt when the optional live hub rejects an event',async()=>{
+  const notificationId=crypto.randomUUID(),pending:Promise<unknown>[]=[];
+  await db.query("insert into public.in_app_notifications(id,user_id,institution_id,title,body,dedupe_key)values($1,$2,$3,'Synthetic notice','Synthetic body',$1::uuid::text)",[notificationId,student,school]);
+  const liveEnv={...env,LIVE_UPDATES_ENABLED:'true',LIVE_USERS:{idFromName:(scope:string)=>scope,get:()=>({fetch:async()=>new Response(null,{status:503})})}} as unknown as Bindings;
+  const context={waitUntil:(task:Promise<unknown>)=>pending.push(task),passThroughOnException:()=>{},props:{}} as ExecutionContext;
+  const response=await app.request('https://api.example.invalid/v1/notifications/inbox/'+notificationId+'/read',{method:'PATCH',headers:{Authorization:'Bearer '+tokens.get(student)}},liveEnv,context);
+  expect((await data(response)).notification.read_at).toBeTruthy();await Promise.all(pending);
+  expect((await db.query('select read_at from public.in_app_notifications where id=$1',[notificationId])).rows[0]?.read_at).toBeTruthy();
+ });
  it('saves independent mention preferences and hides muted mention notices from the inbox',async()=>{
   const notificationId=crypto.randomUUID();
   await db.query("insert into public.in_app_notifications(id,user_id,institution_id,actor_user_id,title,body,path,dedupe_key)values($1,$2,$3,$4,'Test 0 tagged you in a post','Post title','/post?id=test',$5)",[notificationId,student,school,staff,'post-mention:'+crypto.randomUUID()+':'+student]);
