@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
 import { randomUUID } from "expo-crypto";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   FlatList,
@@ -639,6 +639,12 @@ export default function TutorialsScreen() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
   const [query, setQuery] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchTerm(query.trim().toLowerCase()), 220);
+    return () => clearTimeout(timer);
+  }, [query]);
+  const searchPending = query.trim().toLowerCase() !== searchTerm;
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedFormat, setSelectedFormat] = useState("All");
   const [loading, setLoading] = useState(true);
@@ -746,7 +752,7 @@ export default function TutorialsScreen() {
   const filtered = useMemo(
     () =>
       listings.filter((item) => {
-        const needle = query.trim().toLowerCase();
+        const needle = searchTerm;
         const matchesQuery =
           !needle ||
           `${item.course_code} ${item.title} ${item.description} ${item.tutor_name}`
@@ -758,13 +764,13 @@ export default function TutorialsScreen() {
           ? item.id === focusedListing
           : matchesQuery && matchesFormat;
       }),
-    [activeFormat, listings, query, focusedListing],
+    [activeFormat, listings, searchTerm, focusedListing],
   );
 
   const filteredResources = useMemo(
     () =>
       resources.filter((item) => {
-        const needle = query.trim().toLowerCase();
+        const needle = searchTerm;
         const matchesQuery =
           !needle ||
           `${item.course_code} ${item.title} ${item.description} ${item.publisher_name}`
@@ -775,7 +781,7 @@ export default function TutorialsScreen() {
           resourceCategory[item.resource_type] === selectedCategory;
         return matchesQuery && matchesCategory;
       }),
-    [query, resources, selectedCategory],
+    [searchTerm, resources, selectedCategory],
   );
 
   const showListings =
@@ -926,6 +932,12 @@ export default function TutorialsScreen() {
               placeholder="Search a course, topic or tutor"
               value={query}
             />
+            {query.trim()?<View accessibilityLiveRegion="polite" style={{flexDirection:"row",alignItems:"center",gap:9,paddingVertical:10}}>
+              <Ionicons name="search-outline" size={17} color={theme.brand}/>
+              <Text style={{fontFamily:theme.font.medium,color:theme.textMuted,fontSize:12,flex:1}}>
+                {searchPending?"Searching tutors and courses…":`${filtered.length+filteredResources.length} matching tutorials and resources`}
+              </Text>
+            </View>:null}
             <View style={styles.categories}>
               <FilterRow
                 items={learningCategories}

@@ -51,6 +51,8 @@ export default function ImportTimetable() {
     }
     if(version!==generation.current)return;
     if(!r||!Array.isArray(r.entries))throw new Error("The AI returned an incomplete timetable. Your file is saved here; please retry.");
+    if(kind==="calendar"&&r.documentType!=="academic_calendar")
+      throw new Error("This file was not recognised as an academic calendar. Check the document and try again. Nothing has been saved.");
     setEntries(r.entries.map(e=>({...e,courseCode:e.courseCode??"",venue:e.venue??"",lecturer:e.lecturer??""})));setEvents(Array.isArray(r.events)?r.events:[]);setDocumentType(r.documentType??"class_timetable");setWarnings(r.warnings??[]);setExpanded(null);saveKey.current=randomUUID();
   }catch(e){if(version!==generation.current)return;if(e instanceof ApiError&&e.details?.retryWithNewKey===true)key.current=randomUUID();setError(e instanceof Error?e.message:"Could not read the file. Your draft is kept.");}finally{if(version===generation.current){locked.current=false;setBusy(false);setStage(null);}}}
   const calendar=documentType==="academic_calendar";
