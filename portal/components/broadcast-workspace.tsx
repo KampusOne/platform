@@ -1,7 +1,8 @@
 "use client";
 import { WorkspaceInsights } from "./workspace-insights";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import {useForegroundPoll} from '@/lib/use-foreground-poll';
 import { portalApi } from "@/lib/api";
 import { useAdminContext } from "./admin-context";
 import { PortalShell } from "./portal-shell";
@@ -74,22 +75,22 @@ function CampaignPanel({ id, configuration, templates, onSaved }: { id: string; 
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [version, setVersion] = useState(0);
+  const load=useCallback(async(signal:AbortSignal)=>{
+    try{const result=await portalApi<Detail>(scopedPath(`${base}/${id}`),{signal});if(!signal.aborted){setDetail(result);setError('');}return result;}
+    catch(caught){if(!signal.aborted)setError(failure(caught));throw caught;}
+  },[id,scopedPath]);
   useEffect(() => {
     if (id === "new") return;
-    let active = true;
-    void portalApi<Detail>(scopedPath(`${base}/${id}`)).then(result => { if (active) { setDetail(result); setError(""); } }).catch(caught => { if (active) setError(failure(caught)); });
-    return () => { active = false; };
+    const controller=new AbortController();void portalApi<Detail>(scopedPath(`${base}/${id}`),{signal:controller.signal}).then(result=>{if(!controller.signal.aborted){setDetail(result);setError('');}}).catch(caught=>{if(!controller.signal.aborted)setError(failure(caught));});
+    return () => controller.abort();
   }, [id, scopedPath, version]);
   const pollingStatus=detail?.campaign.status;
-  useEffect(() => {
-    if (!pollingStatus || !["QUEUED", "SENDING"].includes(pollingStatus)) return;
-    const timer = setInterval(() => setVersion(v => v + 1), 10000);
-    return () => clearInterval(timer);
-  }, [pollingStatus]);
+  const tracking=Boolean(pollingStatus&&['QUEUED','SENDING'].includes(pollingStatus));
+  const poll=useForegroundPoll(scopedPath(`${base}/${id}`)+':'+detail?.campaign.revision,tracking,async signal=>{const before=JSON.stringify([detail?.campaign.status,detail?.delivery]);const result=await load(signal);return !['QUEUED','SENDING'].includes(result.campaign.status)?'done':JSON.stringify([result.campaign.status,result.delivery])===before?'unchanged':'changed';},{intervalMs:10000,maxAttempts:60,idleBackoff:true});
   function reload(nextId?: string) { onSaved(nextId); setVersion(v => v + 1); }
-  if (error) return <section className="state-panel state-panel--error" role="alert"><p>{error}</p><button className="button button--secondary" onClick={() => setVersion(v => v + 1)}>Retry campaign</button></section>;
+  if (error&&!detail) return <section className="state-panel state-panel--error" role="alert"><p>{error}</p><button className="button button--secondary" onClick={() => {poll.restart();setVersion(v => v + 1);}}>Retry campaign</button></section>;
   if (id !== "new" && !detail) return <div className={`table-skeleton ${styles.detailLoading}`} aria-busy="true" aria-label="Loading campaign"><div /><div /><div /></div>;
-  return <CampaignForm key={detail ? `${detail.campaign.id}:${detail.campaign.revision}:${detail.campaign.status}:${version}` : "new"} initial={detail} configuration={configuration} templates={templates} onSaved={reload} />;
+  return <>{error?<p className="form-error" role="alert">{error}</p>:null}{tracking&&(poll.exhausted||error)?<p className="field-help" role="status">{poll.exhausted?'Automatic updates paused.':'Previous delivery details are kept.'} <button className="text-button" onClick={()=>{poll.restart();setVersion(v=>v+1);}}>Check delivery again</button></p>:null}<CampaignForm key={detail ? `${detail.campaign.id}:${detail.campaign.revision}:${detail.campaign.status}` : "new"} initial={detail} configuration={configuration} templates={templates} onSaved={reload} /></>;
 }
 
 function RecipientSearch({ selected, onChange, single = false, disabled = false }: { selected: Recipient[]; onChange(values: Recipient[]): void; single?: boolean; disabled?: boolean }) {

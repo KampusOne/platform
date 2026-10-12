@@ -53,10 +53,9 @@ export default function FirstInstallIntro() {
         "Your phone could not save this choice. The introduction may appear again.",
         "error",
       );
-    router.replace("/(auth)/welcome");
+    router.replace(state==='anonymous'?"/(auth)/welcome":"/");
   }
-  if (state === "authenticated") return <Redirect href="/" />;
-  if (status === "done" && !busy) return <Redirect href="/(auth)/welcome" />;
+  if (status === "done" && !busy) return <Redirect href={state==='anonymous'?"/(auth)/welcome":"/"} />;
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.safe}>
       <View style={styles.page}>

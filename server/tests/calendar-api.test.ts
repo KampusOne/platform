@@ -23,7 +23,7 @@ vi.mock("../src/middleware/auth", () => ({
   requireAuth: async (_c: Context, next: Next) => next(),
   currentUser: (c: Context) => ({
     id: c.req.header("x-user"),
-    universityId: campus,
+    universityId: c.req.header("x-campus")??campus,
     roles: ["STUDENT"],
   }),
 }));
@@ -31,7 +31,7 @@ vi.mock("../src/middleware/auth", () => ({
 const app = new Hono().route("/calendar", calendarRoutes);
 app.onError((error, c) =>
   c.json(
-    { error: error.message },
+    { error: error.message,...(error instanceof AppError?{code:error.code,details:error.details}:{}) },
     error instanceof AppError ? error.status : 500,
   ),
 );
@@ -40,10 +40,11 @@ const request = (
   method = "GET",
   body?: unknown,
   user = owner,
+  university = campus,
 ) =>
   app.request("/calendar" + path, {
     method,
-    headers: { "x-user": user, "content-type": "application/json" },
+    headers: { "x-user": user,"x-campus":university, "content-type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
 
@@ -205,4 +206,52 @@ describe("private calendar imports", () => {
       ).status,
     ).toBe(400);
   });
+});
+
+const personal={title:'Recovery regression',startsOn:'2026-11-05',endsOn:'2026-11-05',semester:'Personal'};
+describe('calendar receipts, campus boundaries and conditional edits',()=>{
+ it('resolves only the current owner receipt and never resurrects a deleted personal date',async()=>{
+  const requestId=crypto.randomUUID();expect(await(await request('/requests/'+requestId)).json()).toMatchObject({state:'missing',event:null});
+  const created=await(await request('','POST',{requestId,event:personal})).json();
+  expect(await(await request('/requests/'+requestId)).json()).toMatchObject({state:'saved',event:{id:created.event.id}});
+  expect(await(await request('/requests/'+requestId,'GET',undefined,other)).json()).toEqual({state:'missing',event:null});
+  await request('/'+created.event.id,'DELETE');
+  for(const response of await Promise.all([request('','POST',{requestId,event:personal}),request('','POST',{requestId,event:personal})]))expect(response.status).toBe(409);
+  expect(await(await request('/requests/'+requestId)).json()).toEqual({state:'unavailable',event:null});
+  expect((await db.query('select id from student_calendar_events where import_id=$1',[requestId])).rows).toHaveLength(0);
+  expect((await request('/requests/not-a-uuid')).status).toBe(400);
+ });
+ it('reports retained batch rows and does not replace deleted import rows on retry',async()=>{
+  const data={requestId:crypto.randomUUID(),events:[personal,{...personal,title:'Second recovery date'}]};
+  expect((await request('/import','POST',data)).status).toBe(201);
+  const original=(await db.query<{id:string}>('select id from student_calendar_events where import_id=$1 order by row_number',[data.requestId])).rows;
+  await request('/'+original[0].id,'DELETE');
+  expect(await(await request('/import','POST',data)).json()).toMatchObject({saved:true,count:1,replayed:true});
+  await request('/'+original[1].id,'DELETE');
+  expect((await request('/import','POST',data)).status).toBe(409);
+  expect((await db.query('select id from student_calendar_events where import_id=$1',[data.requestId])).rows).toHaveLength(0);
+ });
+ it('rejects current-user dates from a previous campus on every private calendar path',async()=>{
+  const nextCampus=crypto.randomUUID(),requestId=crypto.randomUUID();await db.query("insert into universities(id,name,slug,updated_at)values($1,'Next campus',$1::uuid::text,now())",[nextCampus]);
+  const {event}=await(await request('','POST',{requestId,event:{...personal,title:'First semester exams'}})).json();
+  const transferred=(path:string,method='GET',body?:unknown)=>request(path,method,body,owner,nextCampus);
+  expect((await(await transferred('')).json()).events).toEqual([]);
+  expect((await(await transferred('/exam-periods')).json()).examPeriods).toEqual([]);
+  expect((await transferred('/dates/'+event.id)).status).toBe(404);
+  expect((await transferred('/'+event.id,'PATCH',{event:personal,expectedEvent:personal})).status).toBe(404);
+  expect((await(await transferred('/requests/'+requestId)).json()).state).toBe('unavailable');
+  expect((await transferred('','POST',{requestId,event:{...personal,title:'First semester exams'}})).status).toBe(409);
+  expect((await transferred('/import-alarms','POST',{entryIds:[event.id],time:'08:00'})).status).toBe(404);
+  await transferred('/'+event.id,'DELETE');await transferred('/bulk-delete','POST',{ids:[event.id]});
+  expect((await db.query('select id from student_calendar_events where id=$1',[event.id])).rows).toHaveLength(1);
+ });
+ it('allows one conditional edit per original version and returns the newer owner date',async()=>{
+  const {event}=await(await request('','POST',{requestId:crypto.randomUUID(),event:personal})).json();
+  const responses=await Promise.all(['First edit','Second edit'].map(title=>request('/'+event.id,'PATCH',{event:{...personal,title},expectedEvent:personal})));
+  expect(responses.map(row=>row.status).sort()).toEqual([200,409]);
+  const failure=await responses.find(row=>row.status===409)!.json();
+  expect(failure.details).toMatchObject({kind:'calendar-date-changed',event:{id:event.id}});
+  const fresh=await(await request('/dates/'+event.id)).json();expect(failure.details.event.title).toBe(fresh.event.title);
+  expect((await request('/'+event.id,'PATCH',{event:personal,expectedEvent:personal},other)).status).toBe(404);
+ });
 });

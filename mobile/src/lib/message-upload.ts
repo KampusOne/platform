@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import { Platform } from 'react-native';
 import { File, FileMode, type FileHandle } from 'expo-file-system';
-import { api } from './api';
+import { api, ApiError } from './api';
 import {withRequestDeadline} from './request-deadline';
 
 type UploadSession = {
@@ -20,9 +20,11 @@ export async function uploadMessageFile(
   onProgress: (value: number) => void,
   kind: 'message' | 'resource' | 'tutorial' | 'post' = 'message',
   suppliedUploadId?:string,
+  signal?:AbortSignal,
 ) {
+  if(signal?.aborted)throw signal.reason??new Error('Upload cancelled');
   const source = Platform.OS === 'web'
-    ? await (await fetch(file.uri)).blob()
+    ? await (await fetch(file.uri,{signal:signal??null})).blob()
     : new File(file.uri);
   const size = source.size;
   const limit=(kind==='post'?50:kind==='resource'?100:500)*1024*1024;
@@ -38,7 +40,7 @@ export async function uploadMessageFile(
     await AsyncStorage.setItem(key, uploadId);
   }
   const session = await api<UploadSession>('/v1/media/message-uploads', {
-    method: 'POST',
+    method: 'POST',signal:signal??null,
     body: JSON.stringify({ uploadId, name: file.name.slice(0, 180), type: file.mimeType, size,kind }),
   });
   if (session.status === 'COMPLETE' && session.mediaId) {
@@ -56,6 +58,7 @@ export async function uploadMessageFile(
     let sent = 0;
     const count = Math.ceil(size / session.chunkBytes);
     for (let part = 1; part <= count; part += 1) {
+      if(signal?.aborted)throw signal.reason??new Error('Upload cancelled');
       const start = (part - 1) * session.chunkBytes;
       const partSize = Math.min(size, start + session.chunkBytes) - start;
       if (session.parts?.[String(part)]?.size === partSize) {
@@ -77,24 +80,25 @@ export async function uploadMessageFile(
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           if(session.transport==='direct'){
-            const signed=await api<{url:string;headers:Record<string,string>}>(`/v1/media/message-uploads/${session.id}/parts/${part}/url`,{method:'POST'});
+            const signed=await api<{url:string;headers:Record<string,string>}>(`/v1/media/message-uploads/${session.id}/parts/${part}/url`,{method:'POST',signal:signal??null});
             const url=new URL(signed.url);
             if(url.protocol!=='https:'||!/^[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/i.test(url.hostname)||url.username||url.password||url.port)throw new Error('Storage returned an invalid upload address.');
-            const response=await withRequestDeadline(signal=>fetch(signed.url,{method:'PUT',body:bytes,headers:signed.headers,signal}),120_000);
-            if(!response.ok)throw new Error('Storage could not receive this chunk. Retry to resume.');
-            await api(`/v1/media/message-uploads/${session.id}/parts/${part}/confirm`,{method:'POST'});
+            const response=await withRequestDeadline(transferSignal=>fetch(signed.url,{method:'PUT',body:bytes,headers:signed.headers,signal:transferSignal}),120_000,signal);
+            if(!response.ok)throw new ApiError(response.status,'UPLOAD_FAILED','Storage could not receive this chunk. Retry to resume.');
+            await api(`/v1/media/message-uploads/${session.id}/parts/${part}/confirm`,{method:'POST',signal:signal??null});
           }else{
-            await api(`/v1/media/message-uploads/${session.id}/parts/${part}`,{method:'PUT',body:bytes,headers:{'Content-Type':'application/octet-stream'},timeoutMs:120_000});
+            await api(`/v1/media/message-uploads/${session.id}/parts/${part}`,{method:'PUT',signal:signal??null,body:bytes,headers:{'Content-Type':'application/octet-stream'},timeoutMs:120_000});
           }
           break;
         } catch (error) {
-          if (attempt === 2) throw error;
+          if (signal?.aborted || attempt === 2 || error instanceof ApiError && error.status>=400 && error.status<500 && error.status!==429) throw error;
+          await new Promise<void>((resolve,reject)=>{const abort=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);reject(signal?.reason??new Error('Upload cancelled'));};const timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve();},500*2**attempt);signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();});
         }
       }
       sent += partSize;
       onProgress(sent / size);
     }
-    const result = await api<{ id: string }>(`/v1/media/message-uploads/${session.id}/complete`, { method: 'POST', timeoutMs: 60_000 });
+    const result = await api<{ id: string }>(`/v1/media/message-uploads/${session.id}/complete`, { method: 'POST',signal:signal??null, timeoutMs: 60_000 });
     onProgress(1);
     if(kind==='message'||kind==='post')await AsyncStorage.removeItem(key);
     return result.id;

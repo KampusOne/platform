@@ -1,3 +1,5 @@
+import { useLiveRefresh } from "@/src/lib/live-updates";
+import {markConversationRead} from '@/src/lib/message-read';
 import { refreshScreenRead } from '@/src/lib/screen-read';
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
@@ -48,6 +50,11 @@ import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
 import { messageDestination, messageTextParts } from "@/src/lib/message-links";
 import { readConversationDraft, saveConversationDraft, type ConversationDraft, type DraftReply, type VoiceDraft } from "@/src/lib/message-drafts";
+import {acknowledgePendingText,updatePendingTextRetry,onPendingTextChange,onTextDelivered,readPendingText,restoreBlockedText} from '@/src/lib/message-drafts';
+import {retryableTextError,type PendingText} from '@/src/lib/text-retry-coordinator';
+import {cacheScopeForUser} from '@/src/lib/request-policy';
+import {transferTextOnce} from '@/src/lib/text-transfer';
+import {getDeviceCacheRevision} from '@/src/lib/device-cache';
 
 type ReactionSummary = { reaction: MessageReaction; count: number };
 
@@ -640,41 +647,51 @@ export default function ConversationScreen() {
   const [forwardBusyId, setForwardBusyId] = useState<string | null>(null);
   const [reportTarget, setReportTarget] = useState<Message | null>(null);
   const [reportBusy, setReportBusy] = useState(false);
-  const pending = useRef<{ id: string; body: string; replyToMessageId?: string } | null>(null);
+  const pending = useRef<PendingText | null>(null);
+  const [pendingTextState,setPendingTextState]=useState<PendingText|null>(null);
   const listRef = useRef<FlatList<Message>>(null);
   const inputRef = useRef<TextInput>(null);
   const blurTargetRef = useRef<View | null>(null);
   const initialScrollDone = useRef(false);
   const atBottom = useRef(true);
-  const scope = `${user?.id}:${id}`;
+  const scope = `${user?cacheScopeForUser(user):'anonymous'}:${getDeviceCacheRevision()}:${id}`;
   const activeScope = useRef(scope); activeScope.current = scope;
-  const draftChannel = useMemo(() => ({ ready: false, value: { text: "", media: [], reply: null, voice: null, batches: [], pendingText: null } as ConversationDraft }), [scope]);
+  const draftChannel = useMemo(() => ({ ready: false, revision:getDeviceCacheRevision(), value: { text: "", media: [], reply: null, voice: null, batches: [], pendingText: null } as ConversationDraft }), [scope]);
+  const activeDraftChannel=useRef(draftChannel);activeDraftChannel.current=draftChannel;
+  const saveScopedConversationDraft=(account:string,thread:string,value:ConversationDraft)=>saveConversationDraft(account,thread,value,draftChannel.revision);
   if (draftChannel.ready) draftChannel.value = { text: draft, media: selectedMedia, reply: replyingTo, voice: voiceDraft, batches: pendingMedia, pendingText: pending.current };
   useEffect(() => {
     let active = true;
     draftChannel.ready = false;
-    setDraftReady(false); setDraftWarning(""); setData(null); setDraft(""); setSelectedMedia([]); setReplyingTo(null); setVoiceDraft(null); setVoiceSending(false); setVoiceActive(false); setSending(false); setPendingMedia([]); pending.current = null;
+    setDraftReady(false); setDraftWarning(""); setData(null); setDraft(""); setSelectedMedia([]); setReplyingTo(null); setVoiceDraft(null); setVoiceSending(false); setVoiceActive(false); setSending(false); setPendingMedia([]); pending.current = null;setPendingTextState(null);
     if (!user?.id || !id) return;
     void readConversationDraft(user.id, id).then(saved => {
       if (!active) return;
-      if (saved) { setDraft(saved.pendingText?.body ?? saved.text); setSelectedMedia(saved.media); setReplyingTo(saved.reply); setVoiceDraft(saved.voice); setPendingMedia(saved.batches); pending.current = saved.pendingText; if (saved.recoveryMessage) setDraftWarning(saved.recoveryMessage); }
+      if (saved) { setDraft(saved.pendingText?.retry?saved.text:saved.pendingText?.body ?? saved.text); setSelectedMedia(saved.media); setReplyingTo(saved.reply); setVoiceDraft(saved.voice); setPendingMedia(saved.batches); pending.current = saved.pendingText;setPendingTextState(saved.pendingText); if (saved.recoveryMessage) setDraftWarning(saved.recoveryMessage); }
       draftChannel.ready = true; setDraftReady(true);
     }).catch(() => { if (active) setDraftWarning("Your saved draft could not be restored. Reopen this conversation to try again."); });
     return () => {
       active = false;
-      if (draftChannel.ready) void saveConversationDraft(user.id, id, draftChannel.value).catch(() => undefined);
+      if (draftChannel.ready) void saveScopedConversationDraft(user.id, id, draftChannel.value).catch(() => undefined);
     };
   }, [scope, user?.id, id, draftChannel, draftRetry]);
   useEffect(() => {
     if (!draftReady || !draftChannel.ready || !user?.id || !id) return;
-    void saveConversationDraft(user.id, id, draftChannel.value).then(() => { if (activeScope.current === scope) setDraftWarning(""); }).catch(() => { if (activeScope.current === scope) setDraftWarning("This draft could not be saved on your device. Keep this screen open and try again."); });
+    const timer=setTimeout(()=>{void saveScopedConversationDraft(user.id, id, draftChannel.value).then(() => { if (activeScope.current === scope) setDraftWarning(""); }).catch(() => { if (activeScope.current === scope) setDraftWarning("This draft could not be saved on your device. Keep this screen open and try again."); });},300);
+    return()=>clearTimeout(timer);
   }, [draftReady, draft, selectedMedia, replyingTo, voiceDraft, pendingMedia, sending, scope, user?.id, id, draftChannel]);
+  useEffect(()=>{
+    if(!user?.id||!id)return;let active=true;
+    const changed=onPendingTextChange(account=>{if(account!==user.id||activeScope.current!==scope)return;void readPendingText(user.id,id).then(value=>{if(active&&activeScope.current===scope){pending.current=value;setPendingTextState(value);}}).catch(()=>undefined);});
+    const delivered=onTextDelivered((account,thread,messageId)=>{if(!active||account!==user.id||thread!==id||activeScope.current!==scope)return;if(pending.current?.id===messageId)pending.current=null;setPendingTextState(current=>current?.id===messageId?null:current);});
+    return()=>{active=false;changed();delivered();};
+  },[scope,user?.id,id]);
   const handleVoiceDraft = useCallback((voice: VoiceDraft | null) => {
     // The recorder may finish during navigation. Persist to its original thread.
     const next = { ...draftChannel.value, voice };
     draftChannel.value = next;
     if (activeScope.current === scope) setVoiceDraft(voice);
-    if (draftChannel.ready && user?.id && id) void saveConversationDraft(user.id, id, next).catch(() => { if (activeScope.current === scope) setDraftWarning("Your voice draft could not be saved. Keep this conversation open."); });
+    if (draftChannel.ready && user?.id && id) void saveScopedConversationDraft(user.id, id, next).catch(() => { if (activeScope.current === scope) setDraftWarning("Your voice draft could not be saved. Keep this conversation open."); });
   }, [draftChannel, scope, user?.id, id]);
   async function persistBatch(batch: PendingMediaBatch) {
     if (!user?.id) throw new Error("Sign in again before sending this draft.");
@@ -682,13 +699,13 @@ export default function ConversationScreen() {
       ? draftChannel.value.batches.map(value => value.id === batch.id ? batch : value)
       : [...draftChannel.value.batches, batch];
     draftChannel.value = { ...draftChannel.value, batches };
-    await saveConversationDraft(user.id, id, draftChannel.value);
+    await saveScopedConversationDraft(user.id, id, draftChannel.value);
   }
 
   const load = useCallback(async (before?: string) => {
     if (!id) return;
     try {
-      await refreshScreenRead<Data>(`/v1/messages/threads/${id}${before ? `?before=${before}` : ""}`, value => {
+      const received=await refreshScreenRead<Data>(`/v1/messages/threads/${id}${before ? `?before=${before}` : ""}`, value => {
       const result = normalizeConversationData(value);
       if (activeScope.current !== scope) return;
       setData((previous) => {
@@ -705,24 +722,51 @@ export default function ConversationScreen() {
         };
       });
       setError("");
-      });
+      },()=>{if(activeScope.current===scope)setData(null);});
+      const awaiting=pending.current;
+      if(activeScope.current===scope&&user?.id&&awaiting&&received.messages?.some(message=>message.id===awaiting.id&&message.sender_id===user.id&&message.body===awaiting.body))void acknowledgePendingText(user.id,id,awaiting.id).catch(()=>undefined);
       // Read receipts are background bookkeeping, independent of message display.
-      if (activeScope.current === scope)
-        void api(`/v1/messages/threads/${id}/read`, { method: "PUT" }).catch(() => undefined);
+      if (activeScope.current === scope&&!before){
+        const incoming=(received.messages??[]).filter(message=>message.sender_id!==user?.id);
+        const lastSeen=incoming.at(-1);
+        if(lastSeen)void markConversationRead(id,lastSeen.id).catch(()=>undefined);
+      }
     } catch (caught) {
       if (activeScope.current === scope) setError(caught instanceof Error ? caught.message : "Conversation could not load.");
     }
-  }, [id, scope]);
+  }, [id, scope,user?.id]);
 
   useFocusEffect(useCallback(() => {
     initialScrollDone.current = false;
     atBottom.current = true;
     void load();
-    const timer = setInterval(() => {
-      if (AppState.currentState === "active") void load();
-    }, 10_000);
-    return () => clearInterval(timer);
+    return () => undefined;
   }, [load]));
+
+  useLiveRefresh(`/v1/messages/threads/${id}`, () => load(), 60_000);
+  async function retryPendingText(){
+    const message=pending.current;if(!message||!user?.id||actionBusy)return;
+    setActionBusy(true);
+    try{
+      if(!message.retry&&draft===message.body){setDraft('');draftChannel.value={...draftChannel.value,text:''};await saveScopedConversationDraft(user.id,id,draftChannel.value);}
+      await updatePendingTextRetry(user.id,id,message.id,{attempts:0,nextAttemptAt:Date.now(),blocked:false});
+    }catch(error){if(activeDraftChannel.current===draftChannel)setError(error instanceof Error?error.message:'Could not retry. Your text is kept.');}
+    finally{if(activeDraftChannel.current===draftChannel)setActionBusy(false);}
+  }
+  function editPendingText(){
+    const message=pending.current;if(!message?.retry?.blocked||!user?.id||actionBusy)return;
+    Alert.alert('Edit as a new message?',`This stops retries. The original may already have arrived.${draft.trim()?' Your current composer draft will be replaced.':''}`, [{text:'Keep pending message',style:'cancel'},{text:'Use pending text',onPress:()=>{
+      const expected=draft;setActionBusy(true);
+      void(async()=>{try{
+        await saveScopedConversationDraft(user.id,id,{...draftChannel.value,text:expected});
+        const text=await restoreBlockedText(user.id,id,message.id,expected);
+        if(activeDraftChannel.current!==draftChannel)return;
+        pending.current=null;setPendingTextState(null);setDraft(text);setReplyingTo(null);setData(current=>current?{...current,messages:current.messages.filter(value=>value.id!==message.id)}:current);
+        draftChannel.value={...draftChannel.value,text,pendingText:null,reply:null};setError('');if(message.replyToMessageId)setDraftWarning('Choose your reply again before sending the edited message.');
+      }catch(error){if(activeDraftChannel.current===draftChannel)setError(error instanceof Error?error.message:'Could not restore this text. Your drafts are kept.');}
+      finally{if(activeDraftChannel.current===draftChannel)setActionBusy(false);}})();
+    }}]);
+  }
 
   async function accept(value: boolean) {
     if (actionBusy) return;
@@ -932,7 +976,7 @@ export default function ConversationScreen() {
       try {
         if (!user?.id) throw new Error("Sign in again before sending this draft.");
         draftChannel.value = { ...draftChannel.value, text: "", media: [], reply: null, batches: [...draftChannel.value.batches, batch] };
-        await saveConversationDraft(user.id, id, draftChannel.value);
+        await saveScopedConversationDraft(user.id, id, draftChannel.value);
       } catch {
         setDraft(originalDraft.text); setSelectedMedia(originalDraft.media); setReplyingTo(originalDraft.reply);
         setPendingMedia(current => current.filter(value => value.id !== batch.id));
@@ -946,10 +990,11 @@ export default function ConversationScreen() {
       return;
     }
 
+    if(pending.current&&(pending.current.body!==caption||pending.current.replyToMessageId!==replyingTo?.id)){setError('A text message is waiting for confirmation. Finish its retry before sending the next text. Your new draft is kept.');return;}
     setSending(true);
     setError("");
     const replyToMessageId = replyingTo?.id;
-    const message =
+    const candidate =
       pending.current?.body === caption &&
       pending.current?.replyToMessageId === replyToMessageId
         ? pending.current
@@ -958,7 +1003,8 @@ export default function ConversationScreen() {
             body: caption,
             ...(replyToMessageId ? { replyToMessageId } : {}),
           };
-    pending.current = message;
+    const message:PendingText={...candidate,retry:{attempts:0,nextAttemptAt:Date.now()+16_000,blocked:false}};
+    pending.current = message;setPendingTextState(message);
     const replySnapshot = replyingTo;
     const optimistic: Message = {
       id: message.id,
@@ -991,6 +1037,7 @@ export default function ConversationScreen() {
       return { ...current, messages: [...current.messages, optimistic] };
     });
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+    let durable=false;
     try {
       if (!user?.id) throw new Error("Sign in again before sending this draft.");
       draftChannel.value = {
@@ -999,16 +1046,32 @@ export default function ConversationScreen() {
         reply: null,
         pendingText: message,
       };
-      await saveConversationDraft(user.id, id, draftChannel.value);
-      await api(`/v1/messages/threads/${id}/messages`, {
-        method: "POST",
-        body: JSON.stringify(message),
+      await transferTextOnce(user.id,id,message,async checkScope=>{
+        await saveScopedConversationDraft(user.id, id, draftChannel.value);
+        durable=true;checkScope();
+        const payload={id:message.id,body:message.body,...(message.replyToMessageId?{replyToMessageId:message.replyToMessageId}:{})};
+        const receipt=await api<{message:{id:string}}>(`/v1/messages/threads/${id}/messages`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        checkScope();
+        if(receipt?.message?.id!==message.id)throw new Error('Message confirmation was incomplete. Your pending text is kept.');
+        await acknowledgePendingText(user.id,id,message.id);
       });
-      pending.current = null;
+      if(activeDraftChannel.current!==draftChannel||activeScope.current!==scope)return;
+      pending.current = null;setPendingTextState(null);
       draftChannel.value = { ...draftChannel.value, pendingText: null };
-      await saveConversationDraft(user.id, id, draftChannel.value).catch(() => undefined);
+      await saveScopedConversationDraft(user.id, id, draftChannel.value).catch(() => undefined);
       await load();
     } catch (caught) {
+      if(activeDraftChannel.current!==draftChannel||activeScope.current!==scope)return;
+      if(durable&&user?.id){
+        const retry={attempts:0,nextAttemptAt:Date.now()+2000,blocked:!retryableTextError(caught),error:caught instanceof Error?caught.message:'Message confirmation failed.'};
+        await updatePendingTextRetry(user.id,id,message.id,retry).catch(()=>undefined);
+        if(activeScope.current===scope){pending.current={...message,retry};setPendingTextState({...message,retry});setError(retry.blocked?retry.error:'Message saved. It will retry when connected.');}
+        return;
+      }
+      pending.current=null;setPendingTextState(null);
       setData((current) =>
         current
           ? { ...current, messages: current.messages.filter((item) => item.id !== message.id) }
@@ -1022,7 +1085,7 @@ export default function ConversationScreen() {
           : "Message not sent. Your draft is kept.",
       );
     } finally {
-      setSending(false);
+      if(activeDraftChannel.current===draftChannel&&activeScope.current===scope)setSending(false);
     }
   }
 
@@ -1043,7 +1106,7 @@ export default function ConversationScreen() {
       const nextVoice = { ...retainedVoice, mediaId, messageId: message.id, ...(replyToMessageId ? { replyToMessageId } : {}) };
       draftChannel.value = { ...draftChannel.value, voice: nextVoice };
       if (activeScope.current === scope) setVoiceDraft(nextVoice);
-      await saveConversationDraft(user.id, id, draftChannel.value);
+      await saveScopedConversationDraft(user.id, id, draftChannel.value);
       const result = await api<{ message: Record<string, unknown> }>(`/v1/messages/threads/${id}/messages`, { method: "POST", body: JSON.stringify(message) });
       // Both the first response and an idempotent retry confirm this message.
       // Render it immediately; thread refresh and read receipts never delay sending.
@@ -1333,15 +1396,21 @@ export default function ConversationScreen() {
                   ) : null}
                 </View>
               )}
-              ListEmptyComponent={pendingMedia.length ? null : (
+              ListEmptyComponent={pendingMedia.length || pendingTextState ? null : (
                 <View style={styles.emptyState}>
                   <View style={styles.emptyIcon}><Ionicons name="chatbubble-ellipses-outline" size={29} color={theme.deepBrand} /></View>
                   <Text style={styles.emptyTitle}>Start the conversation</Text>
                   <Text style={styles.emptyBody}>Send a message to {peerName}. Keep it clear and respectful.</Text>
                 </View>
               )}
-              ListFooterComponent={pendingMedia.length || voiceSending ? (
+              ListFooterComponent={pendingMedia.length || voiceSending || pendingTextState ? (
                 <View style={styles.pendingList}>
+                  {pendingTextState?<View style={{alignSelf:'flex-end',maxWidth:300,padding:14,borderRadius:16,backgroundColor:theme.surfaceMuted,gap:8}}>
+                    {!data?.messages.some(message=>message.id===pendingTextState.id)?<Text style={{fontFamily:theme.font.body,color:theme.text}}>{pendingTextState.body}</Text>:null}
+                    <Text accessibilityLiveRegion="polite" style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12}}>{pendingTextState.retry&&!pendingTextState.retry.blocked?'Waiting for confirmation. Retry continues when connected.':'Confirmation needs a retry.'}</Text>
+                    {pendingTextState.retry?.blocked&&pendingTextState.retry.error?<Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12}}>{pendingTextState.retry.error}</Text>:null}
+                    <View style={{flexDirection:'row',gap:12}}><Pressable accessibilityRole="button" disabled={actionBusy||sending} onPress={()=>void retryPendingText()} style={{minHeight:44,justifyContent:'center'}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>Retry safely</Text></Pressable>{pendingTextState.retry?.blocked?<Pressable accessibilityRole="button" disabled={actionBusy||sending} onPress={editPendingText} style={{minHeight:44,justifyContent:'center'}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>Edit as new draft</Text></Pressable>:null}</View>
+                  </View>:null}
                   {voiceSending&&voiceDraft&&!data?.messages.some(message=>message.id===voiceDraft.messageId)?<View style={{alignSelf:'flex-end',width:240,borderRadius:18,padding:12,backgroundColor:theme.deepBrand}}><VoicePlayback uri={voiceDraft.uri} compact mine/><Text accessibilityLiveRegion="polite" style={{color:'#FFFFFF',fontFamily:theme.font.body,fontSize:11,marginTop:4}}>Sending voice note…</Text></View>:null}
                   {pendingMedia.map((batch) => (
                     <PendingMediaBubble key={batch.id} batch={batch} onRetry={() => void processMediaBatch(batch)} />
@@ -1435,7 +1504,7 @@ export default function ConversationScreen() {
                       <View style={[styles.messageMeta, mine && styles.messageMetaMine]}>
                         {item.pinned ? <Ionicons name="pin" size={11} color={theme.textFaint} /> : null}
                         <Text style={styles.messageTime}>{formatMessageTime(metaMessage.created_at)}</Text>
-                        {mine ? <Ionicons name={metaMessage.read_at ? "checkmark-done" : "checkmark"} size={14} color={metaMessage.read_at ? theme.deepBrand : theme.textFaint} /> : null}
+                        {mine ? <Ionicons name={pendingTextState?.id===metaMessage.id?'time-outline':metaMessage.read_at ? "checkmark-done" : "checkmark"} size={14} color={metaMessage.read_at ? theme.deepBrand : theme.textFaint} /> : null}
                       </View>
                     </View>
                   </SwipeReplyMessage>
@@ -1522,7 +1591,7 @@ export default function ConversationScreen() {
                     placeholder={canAttach ? "Type a message…" : "Send your message request…"}
                     placeholderTextColor={theme.textMuted}
                     value={draft}
-                    editable={draftReady}
+                    editable={draftReady&&!actionBusy}
                     onChangeText={setDraft}
                     multiline
                     maxLength={5000}

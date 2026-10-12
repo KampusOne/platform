@@ -1,0 +1,67 @@
+name: Verify Android native source
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'packages/design-tokens/**'
+      - '.github/workflows/android-source-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-source-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_KAMPUSONE_API_URL: https://api.example.invalid
+      EXPO_PUBLIC_KAMPUSONE_API_FALLBACK_URL: https://api.example.invalid
+      EXPO_PUBLIC_EAS_PROJECT_ID: 00000000-0000-4000-8000-000000000000
+      GOOGLE_SERVICES_JSON_PATH: ./google-services.compile-only.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install locked mobile dependencies
+        run: npm ci
+        working-directory: mobile
+      - name: Write nonfunctional compile-only Firebase configuration
+        run: node scripts/native-compile-fixture.cjs
+        working-directory: mobile
+      - name: Generate native Android project from this source
+        run: npx expo prebuild --platform android --no-install --skip-dependency-update react-native,react
+        working-directory: mobile
+      - name: Check generated plugin sources and assets
+        run: node scripts/verify-native-source.cjs
+        working-directory: mobile
+      - name: Compile debug Kotlin and Java without assembling an APK
+        run: ./gradlew :app:compileDebugKotlin :app:compileDebugJavaWithJavac -PreactNativeArchitectures=arm64-v8a --max-workers=2 --no-daemon
+        working-directory: mobile/android
+      - name: Record compilation receipt
+        run: node scripts/verify-native-source.cjs --compiled
+        working-directory: mobile
+      - name: Upload source compilation receipt only
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-native-source-receipt
+          path: mobile/android-source-compilation.json
+          retention-days: 7
+          if-no-files-found: error

@@ -5,7 +5,7 @@ import {router} from 'expo-router';
 import {useAuth} from '@/src/auth/auth-context';
 import {api} from '@/src/lib/api';
 import {normalizeAlarms,syncAlarms,type Alarm} from '@/src/lib/alarms';
-import {getAlarmEvents,getRingingAlarm,nativeAlarms} from '@/src/lib/native-alarms';
+import {getAlarmEvents,getRingingAlarm,nativeAlarms,subscribeAlarmChanges} from '@/src/lib/native-alarms';
 import {alarmFollowupKind,campusDateKey} from '@/src/lib/alarm-followup';
 import {shouldOfferClassAlarmChoice} from '@/src/lib/class-alarm-prompt';
 export function AlarmSync(){
@@ -52,11 +52,13 @@ export function AlarmSync(){
   }
   async function observe(){if(!active||AppState.currentState!=='active'||!nativeAlarms)return;try{const ringing=await getRingingAlarm();if(ringing&&ringing.endsAt>Date.now()){const key=ringing.id+':'+ringing.firedAt;if(key!==lastRing){lastRing=key;router.push({pathname:'/alarm-ring',params:{alarmId:ringing.id}});}}}catch{/* Never crash navigation when the native service is unavailable. */}}
   const initialRestore=setTimeout(()=>void restore(),1800);
-  const timer=nativeAlarms?setInterval(()=>void observe(),1500):null;
+  const alarmListener=subscribeAlarmChanges(()=>{void observe();});
+  const timer=nativeAlarms&&!alarmListener?setInterval(()=>void observe(),10000):null;
+  void observe();
   const sub=AppState.addEventListener('change',state=>{if(state==='active'){void restore();void observe();}});
   const ring=(event:Event)=>{const detail=(event as CustomEvent<{label:string;alarmId:string}>).detail;router.push({pathname:'/alarm-ring',params:{alarmId:detail.alarmId,label:detail.label}});};
   if(Platform.OS==='web')window.addEventListener('k1-alarm',ring);
-  return()=>{active=false;clearTimeout(initialRestore);sub.remove();if(timer)clearInterval(timer);if(Platform.OS==='web')window.removeEventListener('k1-alarm',ring);};
+  return()=>{active=false;clearTimeout(initialRestore);sub.remove();if(timer)clearInterval(timer);alarmListener?.();if(Platform.OS==='web')window.removeEventListener('k1-alarm',ring);};
  },[user?.id]);
  return null;
 }

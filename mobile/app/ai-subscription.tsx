@@ -11,6 +11,7 @@ import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 import { api, ApiError } from "@/src/lib/api";
 import { isPlayDistribution } from "@/src/lib/digital-billing-policy";
+import {cacheScopeForUser} from '@/src/lib/request-policy';
 
 type Tier = "standard" | "pro";
 type Checkout = {
@@ -290,7 +291,7 @@ function CatalogOffer({ plan, now }: { plan: CatalogPlan | null | undefined; now
 export default function KiraSubscription() {
   const { user } = useAuth();
   return isPlayDistribution(Platform.OS,process.env.EXPO_PUBLIC_ANDROID_DISTRIBUTION)
-    ? <PlayPlanAccess key={user?.id} /> : <AccountSubscription key={user?.id} />;
+    ? <PlayPlanAccess key={user?cacheScopeForUser(user):'anonymous'} /> : <AccountSubscription key={user?cacheScopeForUser(user):'anonymous'} />;
 }
 
 function PlayPlanAccess() {
@@ -394,23 +395,20 @@ function AccountSubscription() {
       });
     }
 
-    const fastPlan = api<{ subscription: Plan }>("/v1/ai/subscription", { cache: "reload" })
+    let fullPlanApplied=false;
+    const fastPlan = api<{ subscription: Plan }>("/v1/ai/subscription", { cache: "reload",timeoutMs:8000 })
       .then((result) => {
         if (!alive.current || turn !== request.current) return true;
-        applySubscription(result.subscription, result.subscription.currentTier, "server");
+        if(!fullPlanApplied)applySubscription(result.subscription, result.subscription.currentTier, "server");
+        setLoading(false);setRefreshing(false);
         return true;
       })
       .catch(() => false);
 
     const fullStatus = (async () => {
-      let result: StatusResponse;
-      try {
-        result = await api<StatusResponse>("/v1/ai/status");
-      } catch {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        result = await api<StatusResponse>("/v1/ai/status", { cache: "reload" });
-      }
+      const result = await api<StatusResponse>("/v1/ai/status",{cache:"reload",timeoutMs:8000});
       if (!alive.current || turn !== request.current) return true;
+      fullPlanApplied=true;
       applySubscription(result.subscription, result.tier, "server");
       setImportLimit(result.tier === "pro" ? result.imports?.limit ?? 30 : 30);
       setBenefits(result.subscription.complimentary ? result.benefits : result.proBenefits);
@@ -423,7 +421,7 @@ function AccountSubscription() {
     const [fastOk, statusOk] = await Promise.all([fastPlan, fullStatus]);
     if (alive.current && turn === request.current) {
       if (!fastOk && !statusOk && planSourceRef.current === "seed") {
-        setError("We couldn't refresh Kira pricing. The displayed price is the built-in fallback; retry before checkout.");
+        setError("We couldn't refresh Kira pricing. Check your connection and retry before checkout.");
       }
       setLoading(false);
       setRefreshing(false);

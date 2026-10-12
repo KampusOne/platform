@@ -50,7 +50,8 @@ describe('Followup HTTP boundaries',()=>{
   const rid=crypto.randomUUID(),ids=[crypto.randomUUID(),crypto.randomUUID()];
   await db.query("insert into calendar_imports(user_id,request_id,request_hash)values($1,$2,'fixture')",[user,rid]);
   for(const [index,id] of ids.entries())await db.query("insert into student_calendar_events(id,user_id,institution_id,title,starts_on,ends_on,semester,import_id,row_number)values($1,$2,$3,'Calendar fixture',$4,$4,'First',$5,$6)",[id,user,campus,date,rid,index]);
-  expect(await json(await request('/calendar/import-alarms','POST',{entryIds:ids,time:'08:00'},other))).toEqual({imported:0});
+  await json(await request('/calendar/import-alarms','POST',{entryIds:ids,time:'08:00'},other),404);
+  expect((await db.query('select id from student_alarms where user_id=$1',[other])).rows).toHaveLength(0);
   for(let i=0;i<2;i++)expect(await json(await request('/calendar/import-alarms','POST',{entryIds:ids,time:'08:00'}))).toEqual({imported:2});
   expect((await json(await request('/learning/alarms'))).alarms).toHaveLength(2);
  });

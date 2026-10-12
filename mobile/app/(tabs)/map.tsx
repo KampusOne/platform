@@ -1,3 +1,4 @@
+import { useActiveScreen } from "@/src/lib/use-active-screen";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
@@ -32,6 +33,7 @@ function coordinates(place:CampusPlace):MapCoordinate|null{
   return point.every(Number.isFinite)&&Math.abs(point[0])<=180&&Math.abs(point[1])<=90?point:null;
 }
 export default function CampusMap(){
+  const activeScreen=useActiveScreen();
   const {profile}=useAuth(),{theme,styles}=useThemeStyles(makeStyles),insets=useSafeAreaInsets(),location=useCampusLocation(),reducedMotion=useReducedMotionPreference();
   const [universityId,setUniversityId]=useState(profile?.university_id??''),[schools,setSchools]=useState<{id:string;name:string}[]>([]),[schoolPicker,setSchoolPicker]=useState(false),[schoolQuery,setSchoolQuery]=useState('');
   const isUniben=universityId===profile?.university_id&&profile?.university_name?.toLowerCase()==='university of benin';
@@ -52,7 +54,7 @@ export default function CampusMap(){
   const live=useMemo<MapCoordinate|null>(()=>current?[current.longitude,current.latitude]:null,[current]);
   // A previously good fix can expire while the phone is stationary; invalidate its route even without new GPS events.
   const [locationClock,setLocationClock]=useState(Date.now());
-  useEffect(()=>{if(!useCurrent)return;const interval=setInterval(()=>setLocationClock(Date.now()),10000);return()=>clearInterval(interval);},[useCurrent]);
+  useEffect(()=>{if(!useCurrent||!activeScreen)return;setLocationClock(Date.now());const interval=setInterval(()=>setLocationClock(Date.now()),10000);return()=>clearInterval(interval);},[useCurrent,activeScreen]);
   const locationReady=location.permission==='granted'&&location.servicesEnabled&&location.preciseAllowed&&usableRouteGpsFix(current,Math.max(locationClock,Date.now()));
   latestGps.current={position:live,ready:locationReady};
   const origin=useMemo<Endpoint|null>(()=>useCurrent?(live?{coordinate:live,name:'My current location'}:null):start,[useCurrent,live,start]);

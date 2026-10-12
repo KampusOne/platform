@@ -1,97 +1,66 @@
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { Text, View } from "react-native";
-import { ToolPage } from "@/src/components/toolkit";
+import { ToolPage, ToolButton } from "@/src/components/toolkit";
 import { useAppearance } from "@/src/lib/appearance";
-// Product policy draft. The operator must supply its legal identity, contact,
-// retention periods and approved minor-agent terms before production launch.
-const privacy = [
-  [
-    "Product activity",
-    "KampusOne records screen names and tool completion or failure events to understand which features work. These events do not contain your private study prompts, documents or bank details.",
-  ],
-  [
-    "Your information",
-    "KampusOne uses account and university details to provide your campus services. Information you publish, such as your name, profile photo and posts, can be visible to other users.",
-  ],
-  [
-    "Private information",
-    "Identity documents, guardian details and bank details are not part of your public profile. Access is restricted to authorised verification, safety and payment workflows. Do not put these details in a public post.",
-  ],
-  [
-    "Device permissions",
-    "Photos and files are selected from your device when you choose to upload them. Notifications and location require device permission. You can change permissions in your device settings.",
-  ],
-  [
-    "Payments and service providers",
-    "Payment providers process payments and payouts. Infrastructure providers process the data needed to host, secure and deliver KampusOne. Do not submit card details through support messages.",
-  ],
-  [
-    "Your choices",
-    "You can edit your profile and preferences, sign out, revoke device sessions, and request a copy or deletion of your account information through Help & support. Some transaction and safety records may need to be retained.",
-  ],
-  [
-    "Young agents",
-    "Agent applications start at age 16. Applicants under 18 need a guardian approval process in addition to their own acceptance. Claiming a trial does not bypass identity or eligibility checks.",
-  ],
-];
-const terms = [
-  [
-    "Your account",
-    "Keep your login private and give accurate information. You are responsible for content and activities submitted through your account. Do not impersonate another person or use someone else’s identity documents.",
-  ],
-  [
-    "Campus community",
-    "Do not post scams, threats, harassment or unlawful content. Respect other people’s privacy and intellectual property. Report unsafe content through Help & support.",
-  ],
-  [
-    "Buying and selling",
-    "Check the item or service description, price and delivery information before paying. Sellers, tutors and riders must complete the required verification before offering services. Disputed transactions may be held while reviewed.",
-  ],
-  [
-    "Trials and commissions",
-    "Eligible approved sellers can claim a twelve-month trial without a subscription charge. Existing trials retain their saved start and end dates. The trial does not waive transaction commissions. Your earnings statement and withdrawal confirmation show applicable deductions. A trial does not automatically become a paid subscription without an agreed plan.",
-  ],
-  [
-    "Refunds and restrictions",
-    "Use the order support flow to request a refund or report a problem. Accounts may be restricted for safety or policy violations. You can submit an appeal through Help & support.",
-  ],
-  [
-    "Academic information",
-    "Check important academic information against your university’s official sources. Review imported timetables before saving. AI outputs, where available, may need correction.",
-  ],
-];
+import { privacySections, termsSections } from "@/src/lib/legal-copy";
+
 export default function Legal() {
   const { document } = useLocalSearchParams<{ document?: string }>();
   const { theme } = useAppearance();
-  const sections = document === "terms" ? terms : privacy;
+  const isTerms = document === "terms";
+  const sections = isTerms ? termsSections : privacySections;
   return (
-    <ToolPage
-      title={document === "terms" ? "Terms of service" : "Privacy policy"}
-    >
-      {sections.map(([title, body]) => (
-        <View key={title} style={{ marginBottom: 24 }}>
-          <Text
-            style={{
-              fontFamily: theme.font.display,
-              fontSize: 19,
-              color: theme.text,
-              marginBottom: 8,
-            }}
-          >
-            {title}
+    <ToolPage title={isTerms ? "Terms and conditions" : "Privacy policy"}>
+      <View style={{ backgroundColor: theme.surfaceTint, padding: 20, borderRadius: 18,
+        marginBottom: 22, gap: 9 }}>
+        <Ionicons name={isTerms ? "document-text-outline" : "shield-checkmark-outline"}
+          size={28} color={theme.deepBrand} />
+        <Text style={{ fontFamily: theme.font.displayStrong, fontSize: 24,
+          lineHeight: 30, color: theme.text }}>
+          {isTerms ? "Clear rules for campus life" : "Your information matters"}
+        </Text>
+        <Text style={{ fontFamily: theme.font.body, fontSize: 14, lineHeight: 22,
+          color: theme.textMuted }}>
+          {isTerms
+            ? "How accounts, academic tools, communities, campus services and payments are expected to work."
+            : "What information KampusOne uses, why it is needed, who may receive it and the choices available to you."}
+        </Text>
+        <Text style={{ color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 12 }}>
+          Draft prepared 12 October 2026 · Pending legal and operator verification
+        </Text>
+      </View>
+      {sections.map((section, index) => (
+        <View key={section.title} style={{ borderBottomWidth: 1, borderBottomColor: theme.border,
+          paddingBottom: 22, marginBottom: 22 }}>
+          <Text accessible={false} importantForAccessibility="no" style={{ fontFamily: theme.font.semibold,
+            fontSize: 12, color: theme.deepBrand, marginBottom: 8 }}>
+            {String(index + 1).padStart(2, "0")} / {String(sections.length).padStart(2, "0")}
           </Text>
-          <Text
-            style={{
-              fontFamily: theme.font.body,
-              fontSize: 14,
-              lineHeight: 23,
-              color: theme.textMuted,
-            }}
-          >
-            {body}
-          </Text>
+          <Text accessibilityRole="header" style={{ fontFamily: theme.font.display, fontSize: 20, lineHeight: 27,
+            color: theme.text, marginBottom: 12 }}>{section.title}</Text>
+          {section.paragraphs.map((paragraph, position) => (
+            <Text key={position} style={{ fontFamily: theme.font.body,
+              fontSize: 14, lineHeight: 23, color: theme.textMuted,
+              marginBottom: position === section.paragraphs.length - 1 ? 0 : 11 }}>
+              {paragraph}
+            </Text>
+          ))}
         </View>
       ))}
+      <View style={{ padding: 18, borderRadius: 16, backgroundColor: theme.surface, gap: 10,
+        borderColor: theme.border, borderWidth: 1, marginBottom: 24 }}>
+        <Text style={{ color: theme.text, fontFamily: theme.font.display, fontSize: 19 }}>
+          Need clarification or support?
+        </Text>
+        <Text style={{ color: theme.textMuted, fontFamily: theme.font.body, fontSize: 13, lineHeight: 21 }}>
+          Contact KampusOne through Help & support. Do not include passwords, PINs or one-time codes.
+        </Text>
+        <ToolButton label="Open Help & support" onPress={() => router.push("/support")} />
+        <ToolButton secondary
+          label={isTerms ? "Read privacy policy" : "Read terms and conditions"}
+          onPress={() => router.replace({ pathname: "/legal", params: { document: isTerms ? "privacy" : "terms" } })} />
+      </View>
     </ToolPage>
   );
 }

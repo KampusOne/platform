@@ -1,4 +1,5 @@
 import { invalidationTargets, matchesRead, readCachePolicy, waitForRequest, cacheScopeForUser, cacheExpiry } from "./request-policy";
+import { setDeviceCacheScope } from "./device-cache";
 import { withRequestDeadline } from "./request-deadline";
 import { withSessionLock } from "./session-lock";
 import Constants from "expo-constants";
@@ -82,14 +83,13 @@ function markApiOriginUnavailable(origin: string) {
 
 function isConnectionFailure(caught: unknown) {
   if (caught instanceof Error && caught.name === "TimeoutError") return true;
-  if (caught instanceof TypeError) return true;
   const message =
     caught instanceof Error
       ? caught.message
       : typeof caught === "string"
         ? caught
         : "";
-  return /(java\.net\.|connectexception|failed to connect|network request failed|network[_ ]?error|connection (?:reset|refused|closed)|unable to resolve host|dns|socket|econn(?:reset|refused|aborted)|enotfound|etimedout)/i.test(
+  return /(^(?:offline|network unavailable)$|failed to fetch|fetch failed|load failed|java\.net\.|connectexception|failed to connect|network request failed|network[_ ]?error|connection (?:reset|refused|closed)|unable to resolve host|dns|socket|econn(?:reset|refused|aborted)|enotfound|etimedout)/i.test(
     message,
   );
 }
@@ -99,7 +99,7 @@ function networkUnavailableError(caught: unknown) {
     return new ApiError(
       0,
       "REQUEST_TIMEOUT",
-      "KampusOne took too long to respond. Check your connection and try again.",
+      "This request took too long. Your current information is kept; try again.",
     );
   }
   return new ApiError(
@@ -178,18 +178,24 @@ export function clearApiCache() {
 }
 
 
-function invalidateMutation(path: string) {
-  const targets = invalidationTargets(path);
-  if (targets === null) { clearApiCache(); return; }
-  if (!targets.length) return;
+/** Invalidate only resources affected by a trusted event, retaining academic and
+ * marketplace reads when a message or notification arrives. */
+export function invalidateApiReads(prefixes: readonly string[]) {
+  if (!prefixes.length) return;
   // A message receipt must not prevent an unrelated screen's in-flight read
   // from entering the cache. Only changed resources advance their generation.
   for (const key of new Set([...reads.keys(), ...inFlight.keys()])) {
-    if (targets.some((prefix) => matchesRead(key, prefix)))
+    if (prefixes.some((prefix) => matchesRead(key, prefix)))
       readVersions.delete(key);
   }
-  for (const key of reads.keys()) if (targets.some((prefix) => matchesRead(key, prefix))) reads.delete(key);
-  for (const key of inFlight.keys()) if (targets.some((prefix) => matchesRead(key, prefix))) inFlight.delete(key);
+  for (const key of reads.keys()) if (prefixes.some((prefix) => matchesRead(key, prefix))) reads.delete(key);
+  for (const key of inFlight.keys()) if (prefixes.some((prefix) => matchesRead(key, prefix))) inFlight.delete(key);
+}
+
+function invalidateMutation(path: string) {
+  const targets = invalidationTargets(path);
+  if (targets === null) { clearApiCache(); return; }
+  invalidateApiReads(targets);
 }
 
 /** Account-local, bounded in-memory data only. Never persisted or publicly cached. */
@@ -208,6 +214,7 @@ export function setAccessToken(token: string | null, accountId?: string, scope?:
     sessionEpoch++;
     clearApiCache();
   }
+  setDeviceCacheScope(nextScope, accountId ?? "");
   accessToken = token;
   accessAccountId = token ? accountId ?? null : null;
   accessScope = nextScope;
@@ -226,9 +233,15 @@ export function onSessionChange(listener: (session: Session | null) => void) {
 
 async function parse<T>(response: Response): Promise<T> {
   let payload: unknown;
+  const denied=response.status===403?response.clone():null;
   try {
     payload = await response.json();
   } catch {
+    if(denied){
+      const text=await denied.text().catch(()=>"");
+      if(/\berror\s*code\s*:\s*1010\b|\berror\s+1010\b/i.test(text)&&(response.headers.get('Server')?.toLowerCase()==='cloudflare'||response.headers.has('CF-Ray')||/^\s*error\s*code\s*:\s*1010\s*$/i.test(text)))
+        throw new ApiError(403,'API_GATEWAY_BLOCKED','The service is blocking this app request. Your work is kept. Please try again later.',{gatewayCode:1010,requestId:response.headers.get('CF-Ray')??response.headers.get('X-Request-Id')??undefined});
+    }
     if (!response.ok) {
       throw new ApiError(
         response.status,
@@ -264,7 +277,7 @@ async function parse<T>(response: Response): Promise<T> {
       response.status,
       code,
       message,
-      failure?.error?.details,
+      { ...failure?.error?.details, requestId: response.headers.get("X-Request-Id") ?? undefined },
     );
   }
   return payload as T;
@@ -358,10 +371,12 @@ async function refreshSession() {
     const restoreOrigin = currentApiUrl();
     const restoreController = new AbortController();
     refreshAbortController = restoreController;
+    const deadlineAt = Date.now() + 10_000;
     refreshPromise = withSessionLock(async () => {
       const refreshToken = await readRefreshToken();
       if (Platform.OS !== "web" && !refreshToken) return null;
-      const attempt = (origin: string) => withRequestDeadline(async (signal) => {
+      const remaining = () => Math.max(1, deadlineAt - Date.now());
+      const attempt = (origin: string, budget = remaining()) => withRequestDeadline(async (signal) => {
         const response = await fetch(`${origin}/v1/auth/refresh`, {
           method: "POST", credentials: "include", signal,
           headers: { "Content-Type": "application/json", "X-Device-Label": "KampusOne mobile" },
@@ -370,14 +385,15 @@ async function refreshSession() {
         const session = await parse<Session>(response);
         markApiOriginHealthy(origin);
         return session;
-      }, 10_000, restoreController.signal);
+      }, budget, restoreController.signal);
       try {
-        return await attempt(restoreOrigin);
+        return await attempt(restoreOrigin, alternateApiUrl(restoreOrigin) ? Math.min(5_000, remaining()) : remaining());
       } catch (caught) {
         if (restoreController.signal.aborted || isExplicitSessionRejection(caught)) throw caught;
         if (!isConnectionFailure(caught) && !(caught instanceof ApiError && caught.status >= 500)) throw caught;
         // The server recovers the same rotated successor for 60 seconds, so a
         // lost refresh response can be retried without creating another session.
+        if (remaining() <= 250) throw caught;
         const alternate = markApiOriginUnavailable(restoreOrigin) ?? restoreOrigin;
         return attempt(alternate);
       }
@@ -420,6 +436,7 @@ async function request<T>(
   path: string,
   init: ApiRequestInit = {},
   canRefresh = true,
+  deadlineAt?: number,
 ): Promise<T> {
   const { timeoutMs, signal: parentSignal, ...requestInit } = init;
   const epochAtStart = sessionEpoch;
@@ -440,9 +457,9 @@ async function request<T>(
   const method = (requestInit.method ?? "GET").toUpperCase();
   const mayRetryOnAnotherOrigin = method === "GET" || method === "HEAD";
   const requestTimeoutMs = timeoutMs ?? 15_000;
-  const startedAt = Date.now();
-  const remainingTimeoutMs = () =>
-    Math.max(1, requestTimeoutMs - (Date.now() - startedAt));
+  const expiresAt = deadlineAt ?? Date.now() + requestTimeoutMs;
+  const remainingTimeoutMs = () => Math.max(1, expiresAt - Date.now());
+  if (expiresAt <= Date.now()) { const error = new Error("Request deadline reached"); error.name = "TimeoutError"; throw networkUnavailableError(error); }
   const attempt = (baseUrl: string, budgetMs = remainingTimeoutMs()) =>
     withRequestDeadline(async (signal) => {
       const response = await send(`${baseUrl}${path}`, {
@@ -491,10 +508,10 @@ async function request<T>(
     }
   }
   if (result.response.status === 401 && canRefresh && path !== "/v1/auth/refresh") {
-    const renewed = await refreshSession();
+    const renewed = await withRequestDeadline(() => refreshSession(), remainingTimeoutMs(), parentSignal).catch(caught => { if (isConnectionFailure(caught)) throw networkUnavailableError(caught); throw caught; });
     if (guarded) assertReadSession(epochAtStart);
-    if (renewed) return request<T>(path, init, false);
-    return withRequestDeadline(() => parse<T>(result.response), timeoutMs, parentSignal);
+    if (renewed) return request<T>(path, init, false, expiresAt);
+    return withRequestDeadline(() => parse<T>(result.response), remainingTimeoutMs(), parentSignal);
   }
   if (guarded) assertReadSession(epochAtStart);
   return result.value as T;
@@ -508,6 +525,7 @@ export async function api<T>(
   const method = (init.method ?? "GET").toUpperCase();
   const isRead = method === "GET";
   if (!isRead) {
+    const mutationEpoch=sessionEpoch;
     invalidateMutation(path);
     const feature = analyticsFeatureForRequest(path);
     const startedAt = Date.now();
@@ -539,11 +557,11 @@ export async function api<T>(
       }
       throw caught;
     } finally {
-      invalidateMutation(path);
+      if(mutationEpoch===sessionEpoch)invalidateMutation(path);
     }
   }
   // Explicit caller headers may alter representation; never share those requests.
-  if (!cacheable.test(path) || init.headers || init.cache === "no-store" || init.credentials || init.mode || init.redirect || init.integrity || init.timeoutMs !== undefined || !canRefresh)
+  if (!cacheable.test(path) || init.headers || init.cache === "no-store" || init.credentials || init.mode || init.redirect || init.integrity || !canRefresh)
     return request<T>(path, init, canRefresh);
   if (init.signal?.aborted) throw init.signal.reason ?? new Error("Request cancelled");
   const ttlMs = readCacheTtl(path);
@@ -552,15 +570,17 @@ export async function api<T>(
     reads.delete(path); reads.set(path, cached); return cached.value as T;
   }
   const forceRefresh = init.cache === "reload" || init.cache === "no-cache";
-  const pending = forceRefresh ? undefined : inFlight.get(path);
+  // Different request deadlines own separate transfers, but share fresh representations.
+  const timedUnique=init.timeoutMs!==undefined&&init.timeoutMs!==15_000;
+  const pending = forceRefresh || timedUnique ? undefined : inFlight.get(path);
   if (pending) return waitForRequest(pending as Promise<T>, init.signal);
   const cacheAtStart = cacheVersion;
   const epochAtStart = sessionEpoch;
-  const readVersion = forceRefresh ? {} : readVersions.get(path) ?? {};
+  const readVersion = forceRefresh || timedUnique ? {} : readVersions.get(path) ?? {};
   readVersions.set(path, readVersion);
   // A single timed network request is shared by independently cancellable consumers.
   const { signal: _consumerSignal, ...sharedInit } = init;
-  const operation = request<T>(path, sharedInit, canRefresh)
+  const operation = request<T>(path, timedUnique ? init : sharedInit, canRefresh)
     .then((value) => {
       assertReadSession(epochAtStart);
       if (ttlMs > 0 && cacheAtStart === cacheVersion && readVersion === readVersions.get(path)) {
@@ -583,7 +603,7 @@ export async function api<T>(
       if (inFlight.get(path) === operation) inFlight.delete(path);
       if (!inFlight.has(path) && !reads.has(path)) readVersions.delete(path);
     });
-  inFlight.set(path, operation);
+  if(!timedUnique)inFlight.set(path, operation);
   return waitForRequest(operation, init.signal);
 }
 
@@ -668,6 +688,7 @@ export const authApi = {
     );
   },
   refresh: refreshSession,
+  pauseRestore() { credentialVersion++; refreshAbortController?.abort(); },
   forgotPassword(email: string) {
     return api<{ status: string }>(
       "/v1/auth/forgot-password",
@@ -699,25 +720,26 @@ export const authApi = {
     );
   },
   async logout() {
-    const result = await runSessionTransition(async () => {
+    return runSessionTransition(async () => {
       const refreshToken = await readRefreshToken();
-      return api<{ status: string }>(
-        "/v1/auth/logout",
-        {
-          method: "POST",
-          body: JSON.stringify(refreshToken ? { refreshToken } : {}),
-        },
-        false,
-      );
+      if (Platform.OS !== "web") {
+        // Remove local credentials before attempting any network-dependent cleanup.
+        await removeRefreshToken();
+        setAccessToken(null);
+        sessionListener?.(null);
+      }
+      let serverRevoked = false;
+      try {
+        const result = await api<{ status: string }>("/v1/auth/logout", {
+          method: "POST", body: JSON.stringify(refreshToken ? { refreshToken } : {}), timeoutMs: 3_500,
+        }, false);
+        serverRevoked = result.status === "signed_out";
+      } catch { /* Report unconfirmed remote revocation; never resurrect a removed native credential. */ }
+      if (Platform.OS === "web" && !serverRevoked)
+        throw new ApiError(503, "SIGN_OUT_NOT_CONFIRMED", "The server could not confirm sign-out. Try again when connected.");
+      if (Platform.OS === "web") await removeRefreshToken();
+      return { status: "signed_out" as const, serverRevoked };
     });
-    if (result.status !== "signed_out") {
-      throw new ApiError(
-        502,
-        "INVALID_RESPONSE",
-        "KampusOne could not confirm that this session was signed out.",
-      );
-    }
-    await removeRefreshToken();
-    return result;
+
   },
 };

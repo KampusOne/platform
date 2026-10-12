@@ -1,3 +1,4 @@
+import { SyncStatus } from "./sync-status";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,12 +26,16 @@ export function ToolPage({
   action,
   refreshing = false,
   onRefresh,
+  syncPath,
+  status,
 }: {
   title: string;
   children: ReactNode;
   action?: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
+  syncPath?: string;
+  status?: ReactNode;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
   const pathname = usePathname();
@@ -46,6 +51,7 @@ export function ToolPage({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.safe}
       >
+      {status?<View style={{width:"100%",maxWidth:540,alignSelf:"center",paddingHorizontal:compactPhone?14:24}}>{status}</View>:null}
       <ScrollView
         onScroll={scrollAnalytics}
         scrollEventThrottle={250}
@@ -94,6 +100,7 @@ export function ToolPage({
           </Text>
           {action}
         </View>
+        {syncPath ? <SyncStatus path={syncPath}/> : null}
         {children}
       </ScrollView>
       </KeyboardAvoidingView>

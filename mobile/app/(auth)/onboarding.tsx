@@ -1,6 +1,6 @@
+import { readMigratedPrivateCache } from "@/src/lib/private-cache-migration";
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { InlineLoading } from "@/src/components/skeleton";
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -27,6 +27,11 @@ import {
 } from "@/src/components/auth-ui";
 import { ApiError, api } from "@/src/lib/api";
 import { readCache, writeCache } from "@/src/lib/device-cache";
+import { useOwnedDraftSave } from '@/src/lib/use-owned-draft-save';
+import { useOwnedDraftRestore } from '@/src/lib/use-owned-draft-restore';
+import { restoreOnboardingDraft } from '@/src/lib/form-drafts';
+import { DraftRecovery } from '@/src/components/draft-recovery';
+import { cacheScopeForUser } from '@/src/lib/request-policy';
 import { theme } from "@/src/theme";
 
 const DEEP_TERRACOTTA = "#A8462E";
@@ -305,6 +310,9 @@ function Selector({
 }
 
 export default function OnboardingScreen() {
+  const {user}=useAuth();return <OnboardingForm key={user?cacheScopeForUser(user):'signed-out'}/>;
+}
+function OnboardingForm() {
   const { theme, styles } = useThemeStyles(createStyles);
 
   const { profile, user, reloadProfile, signOut } = useAuth();
@@ -341,9 +349,13 @@ export default function OnboardingScreen() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [draftReady,setDraftReady]=useState(false);
-  useEffect(()=>{if(!user?.id)return;let active=true;void AsyncStorage.getItem(`k1.onboarding.${user.id}`).then(text=>{if(!active||!text)return;try{const saved=JSON.parse(text);setHeardSource(saved.heardSource??'');setHeardOther(saved.heardOther??'');setFirstName(saved.firstName??'');setLastName(saved.lastName??'');setUsername(saved.username??'');setBirthDate(saved.birthDate??'');setMatriculationNumber(saved.matriculationNumber??'');setCurrentLevel(saved.currentLevel??'');setAdmissionYear(saved.admissionYear??'');setGraduationYear(saved.graduationYear??'');setUniversityId(saved.universityId??'');setFacultyId(saved.facultyId??'');setDepartmentId(saved.departmentId??'');setCourseId(saved.courseId??'');setStep(Math.max(0,Math.min(2,Number(saved.step)||0)));}catch{}}).catch(()=>{}).finally(()=>{if(active)setDraftReady(true);});return()=>{active=false;};},[user?.id]);
-  useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>void AsyncStorage.setItem(`k1.onboarding.${user.id}`,JSON.stringify({heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step})).catch(()=>{}),300);return()=>clearTimeout(timer);},[draftReady,user?.id,heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step]);
+  const restored=useOwnedDraftRestore<string>(`onboarding.${user?.id}`,value=>{
+    if(value===null)return;
+    const saved=restoreOnboardingDraft(value);
+    setHeardSource(saved.heardSource);setHeardOther(saved.heardOther);setFirstName(saved.firstName);setLastName(saved.lastName);setUsername(saved.username);setBirthDate(saved.birthDate);setMatriculationNumber(saved.matriculationNumber);setCurrentLevel(saved.currentLevel);setAdmissionYear(saved.admissionYear);setGraduationYear(saved.graduationYear);setUniversityId(saved.universityId);setFacultyId(saved.facultyId);setDepartmentId(saved.departmentId);setCourseId(saved.courseId);setStep(saved.step);
+  },Boolean(user?.id),()=>readMigratedPrivateCache(`k1.onboarding.${user?.id}`,`onboarding.${user?.id}`,user?.id??''));
+  const draftReady=restored.ready;
+  const draftSave=useOwnedDraftSave(`onboarding.${user?.id}`,JSON.stringify({heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step}),draftReady&&Boolean(user?.id));
 
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
@@ -502,13 +514,13 @@ export default function OnboardingScreen() {
         : timelineStepComplete;
 
   function nextStep() {
-    if (!canContinue) return;
+    if (!draftReady || !canContinue) return;
     setError("");
     setStep((current) => Math.min(current + 1, stepCopy.length - 1));
   }
 
   async function submit() {
-    if (!canContinue) return;
+    if (!draftReady || !canContinue) return;
     setLoading(true);
     setError("");
     try {
@@ -549,8 +561,7 @@ export default function OnboardingScreen() {
           admissionYear: Number(admissionYear),
         }),
       });
-      setDraftReady(false);
-      if(user?.id) await AsyncStorage.removeItem(`k1.onboarding.${user.id}`);
+      draftSave.discard();if(user?.id) await writeCache(`onboarding.${user.id}`,null);
       await reloadProfile();
       router.replace("/");
     } catch (caught) {
@@ -586,6 +597,12 @@ export default function OnboardingScreen() {
   }
 
   const copy = stepCopy[step] ?? stepCopy[0];
+
+  if(!draftReady)return <AuthShell title="Your saved details" subtitle="Restore your previous work before continuing your setup.">
+    <DraftRecovery error={restored.error} loading={restored.loading} onRetry={restored.retry}/>
+    <FormError message={error}/>
+    <PrimaryButton disabled={signingOut} loading={signingOut} onPress={()=>void switchAccount()}>Switch account</PrimaryButton>
+  </AuthShell>;
 
   return (
     <AuthShell
@@ -851,7 +868,7 @@ export default function OnboardingScreen() {
             textContentType="username"
             value={username}
           />
-          {usernameState!=='idle'?<Text accessibilityLiveRegion="polite" style={[styles.help,{color:usernameState==='available'?'#24764e':usernameState==='taken'?theme.error:theme.textMuted}]}>{usernameState==='available'?'✓ Username available':usernameState==='taken'?'This username is taken. Choose another.':usernameState==='checking'?'Checking username…':'Availability could not be checked. Your details are saved.'}</Text>:null}
+          {usernameState!=='idle'?<Text accessibilityLiveRegion="polite" style={[styles.help,{color:usernameState==='available'?'#24764e':usernameState==='taken'?theme.error:theme.textMuted}]}>{usernameState==='available'?'✓ Username available':usernameState==='taken'?'This username is taken. Choose another.':usernameState==='checking'?'Checking username…':'Availability could not be checked. Your details are still here.'}</Text>:null}
           <Text style={styles.help}>
             Use letters, numbers and underscores. This can be different from
             your full name.
@@ -942,6 +959,7 @@ export default function OnboardingScreen() {
       ) : null}
 
       <FormError message={error} />
+      {draftSave.warning?<Text accessibilityRole="alert" style={[styles.help,{color:theme.error}]}>{draftSave.warning}</Text>:null}
       <PrimaryButton
         disabled={!canContinue || catalogLoading || signingOut}
         loading={loading}

@@ -280,6 +280,18 @@ export default function PaymentReview() {
               </View>
             ) : null}
 
+            {purchase.status === "PENDING_PAYMENT" && !checkoutEnabled ? (
+              <View accessibilityRole="alert" style={styles.errorCard}>
+                <Ionicons name="information-circle-outline" size={19} color={theme.error}/>
+                <View style={{flex:1,gap:8}}>
+                  <Text style={styles.errorText}>Secure checkout is unavailable for this order right now. Your order is saved. No payment has been charged by this screen.</Text>
+                  <Pressable accessibilityRole="button" onPress={() => void load()}
+                    style={{minHeight:40,justifyContent:"center"}}>
+                    <Text style={{color:theme.deepBrand,fontFamily:theme.font.semibold}}>Check payment availability again</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
             {purchase.status === "PENDING_PAYMENT" ? (
               <Pressable
                 accessibilityRole="button"

@@ -19,8 +19,10 @@ export function waitForRequest<T>(operation: Promise<T>, signal?: AbortSignal | 
 export function invalidationTargets(path: string): string[] | null {
   const resource = path.split("?")[0] ?? "";
   if (/^\/v1\/student\/feed\/[^/]+\/view$/.test(resource) ||
-      ["/v1/student/events", "/v1/analytics/events", "/v1/notifications/alarm-events"].includes(resource)) return [];
+      ["/v1/student/events", "/v1/analytics/events", "/v1/notifications/alarm-events", "/v1/usage", "/v1/live/ticket"].includes(resource)) return [];
   if (/^\/v1\/notifications\/(?:devices|deliveries|attempts)(?:\/|$)/.test(resource)) return [];
+  if (/^\/v1\/media\/[^/]+\/access$/.test(resource) || resource === "/v1/agents/location") return [];
+  if (resource === "/v1/notifications/read-social") return ["/v1/notifications/inbox"];
   if (resource.startsWith("/v1/account/streak")) return ["/v1/account/streak", "/v1/student/home"];
   if (resource.startsWith("/v1/student/feed") || resource.startsWith("/v1/student/publishing"))
     return ["/v1/student/feed", "/v1/student/publishing", "/v1/student/home", "/v1/people", "/v1/discovery", "/v1/communities", "/v1/notifications"];
@@ -28,7 +30,7 @@ export function invalidationTargets(path: string): string[] | null {
   if (resource.startsWith("/v1/student/timetable") || resource.startsWith("/v1/learning/timetable"))
     return ["/v1/student/timetable", "/v1/student/home", "/v1/learning/alarms", "/v1/calendar", "/v1/exams"];
   if (resource.startsWith("/v1/student/gpa")) return ["/v1/student/gpa", "/v1/student/home"];
-  if (/^\/v1\/messages\/threads\/[^/]+\/read$/.test(resource)) return ["/v1/messages/inbox"];
+  if (/^\/v1\/messages\/threads\/[^/]+\/read$/.test(resource)) return ["/v1/messages/inbox","/v1/notifications/inbox"];
   if (resource.startsWith("/v1/messages")) return ["/v1/messages", "/v1/notifications"];
   if (resource.startsWith("/v1/notifications")) return ["/v1/notifications", "/v1/learning/alarms"];
   if (resource.startsWith("/v1/learning/alarms")) return ["/v1/learning/alarms", "/v1/student/timetable", "/v1/student/home"];

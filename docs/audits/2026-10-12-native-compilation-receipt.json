@@ -1,0 +1,21 @@
+{
+  "sourceSha": "d679994c507356554c86917d8e60e4e741374f2f",
+  "package": "app.kampusone.mobile",
+  "version": "0.3.25",
+  "versionCode": 55,
+  "javaSources": {
+    "KampusAlarmActivity.java": "75b0b4833e231833271496f37ac0f799cf43d7b8569592fbad3e898b4514f792",
+    "KampusAlarmBootReceiver.java": "981f7ecc0f5517a3e2553a790b040d8a2e335c782ffeda7632e109e08d177546",
+    "KampusAlarmModule.java": "ea67cdb3950fe2fd899746b53c52ba5031b439cdafc6f4ed7ac541cb790c1fdf",
+    "KampusAlarmPackage.java": "317a3d1af596d63182ef6ee45b8db49b5473da27def4f15aa982cdba1191d164",
+    "KampusAlarmReceiver.java": "06b0555615220aeadb68bcf2dc3231f6943ac786676296527475b5b7be9b9b46",
+    "KampusAlarmScheduler.java": "c40298366a38fd1bce8e0255ab3c36353f4bd100b315d5a7cb93034570ac7691",
+    "KampusAlarmService.java": "41526fda79df55d2c025a79457abf7b46b15a3c8839730660c2646d8f0619150",
+    "KampusMediaModule.java": "bd1cd0ef3c426a4785ebedb033749b4a263671ef4f6d970c8e75d8a4fb07c536"
+  },
+  "assets": "present",
+  "compilation": "PASS",
+  "configuration": "synthetic compile-only; no functional Firebase/Expo credentials",
+  "apkProduced": false,
+  "deviceTested": false
+}

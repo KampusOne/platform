@@ -33,11 +33,11 @@ export function parseScheduleDocument(text: string, sourceText = "") {
     if (heading) warnings.push("A heading or calendar activity was skipped. Only classes with printed days and times can be imported.");
     return !heading;
   }) : [];
-  const events: CalendarEvent[] = [];
+  const events: CalendarEvent[] = [];const seen=new Set<string>();
   if (documentType === "academic_calendar") {
     for (const [index, event] of (Array.isArray(value.events) ? value.events : []).entries()) {
       const parsed = calendarEventSchema.safeParse(event);
-      if (parsed.success) events.push(parsed.data);
+      if (parsed.success) { const identity=JSON.stringify(parsed.data);if(!seen.has(identity)){seen.add(identity);events.push(parsed.data);}else warnings.push(`Calendar row ${index+1} repeats an earlier row and was skipped.`); }
       else warnings.push(`Calendar row ${index + 1} needs clearer dates or a title. It was not imported.`);
     }
     if (!events.length) warnings.push("This is an academic calendar. No hourly classes were created. Try a clearer copy to extract its dates.");

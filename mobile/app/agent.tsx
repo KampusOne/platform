@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/src/lib/live-updates";
 import {shareAgentLocation} from '@/src/lib/agent-location';
 import { BrandSwitch } from "@/src/components/brand-switch";
 import { useCallback, useState } from "react";
@@ -96,10 +97,7 @@ function AccountAgentDashboard() {
           setReady(true);
         });
       refresh();
-      const timer = role === "RIDER" ? setInterval(refresh, 30_000) : undefined;
-      return () => {
-        if (timer) clearInterval(timer);
-      };
+      return () => undefined;
     }, [load, role]),
   );
   useFocusEffect(useCallback(()=>{
@@ -108,6 +106,7 @@ function AccountAgentDashboard() {
     const refresh=async()=>{if(!active||pending||AppState.currentState!=='active')return;pending=true;try{await shareAgentLocation(profile.id,false);if(active)setLocationStatus('Current location shared while this screen is open.');}catch(e){if(active)setLocationStatus(e instanceof Error?e.message:'Refresh your location for rider routes.');}finally{pending=false;}};
     void refresh();const timer=setInterval(()=>void refresh(),30000);return()=>{active=false;clearInterval(timer);};
   },[role,online,profile?.id]));
+  useLiveRefresh("/v1/agents", () => load().catch(e => { setLoadError(e.message); setReady(true); }), 90_000, role === "RIDER");
   async function refreshPosition(){if(!profile)return;setBusy(true);try{await shareAgentLocation(profile.id);setLocationStatus('Current location shared for delivery routes.');}catch(e){toast(e instanceof Error?e.message:'Location could not refresh.','error');}finally{setBusy(false);}}
   async function reviewPickup(item:Item){setBusy(true);try{if(!profile)return;await shareAgentLocation(profile.id);router.push({pathname:'/delivery-route',params:{jobId:item.id}});}catch(e){toast(e instanceof Error?e.message:'Pickup route could not be reviewed.','error');}finally{setBusy(false);}}
 
@@ -173,7 +172,34 @@ function AccountAgentDashboard() {
       ]} /> : undefined}
     >
       {!caps.ready ? <ScreenSkeleton variant="list" compact /> : <>
-      {seller && profile ? <View style={{ gap: 5, paddingVertical: 14 }}><Text style={{ color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 23 }}>{profile.display_name}</Text><Text style={{ color: theme.textMuted, fontFamily: theme.font.body }}>Manage your products and sales.</Text></View> : null}
+      {profile ? <View style={{ gap: 5, paddingVertical: 14 }}>
+        <Text style={{ color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 23 }}>{profile.display_name}</Text>
+        <Text style={{ color: theme.textMuted, fontFamily: theme.font.body, lineHeight: 20 }}>
+          {role==="VENDOR"?"Manage listings, orders and earnings.":
+            role==="TUTOR"?"Manage your teaching, learners and bookings.":
+            "Manage your availability, pickup routes and deliveries."}
+        </Text>
+      </View> : null}
+      {ready&&profile&&!loadError ? <View style={{ flexDirection:"row", gap:10, marginBottom:16 }}>
+        <View style={{ flex:1, backgroundColor:theme.surfaceTint, padding:16, borderRadius:15 }}>
+          <Text style={{ fontFamily:theme.font.displayStrong, color:theme.deepBrand, fontSize:27 }}>
+            {role==="RIDER" ? items.filter(i=>i.status==="AVAILABLE").length : items.length}
+          </Text>
+          <Text style={{ color:theme.textMuted, fontFamily:theme.font.body, fontSize:12 }}>
+            {role==="RIDER"?"Available requests":role==="TUTOR"?"Tutorial listings":"Product listings"}
+          </Text>
+        </View>
+        <View style={{ flex:1, backgroundColor:theme.surface, borderColor:theme.border, borderWidth:1,
+          padding:16, borderRadius:15 }}>
+          <Text style={{ fontFamily:theme.font.displayStrong, color:theme.text, fontSize:27 }}>
+            {role==="RIDER" ? items.filter(i=>["RESERVED","PICKED_UP"].includes(i.status)).length :
+              items.filter(i=>["ACTIVE","PUBLISHED","APPROVED"].includes(i.status)).length}
+          </Text>
+          <Text style={{ color:theme.textMuted, fontFamily:theme.font.body, fontSize:12 }}>
+            {role==="RIDER"?"In progress":"Active listings"}
+          </Text>
+        </View>
+      </View> : null}
       {!seller && caps.profiles.length>0?<ToolButton secondary label="Campus capture missions" onPress={()=>router.push("/map-capture")}/>:null}
       {caps.profiles.length > 1 && (
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>

@@ -1,3 +1,6 @@
+import { useLiveRefresh } from "@/src/lib/live-updates";
+import {unreadRead,updateUnreadCount} from '@/src/lib/unread-counts';
+import {getDeviceCacheRevision} from '@/src/lib/device-cache';
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -28,7 +31,7 @@ type Thread = {
   updated_at: string;
   status: string;
 };
-type Inbox = { threads: Thread[]; nextCursor: string | null };
+type Inbox = { threads: Thread[]; nextCursor: string | null;unreadCount?:number };
 function normalizeThreads(value: unknown): Thread[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
@@ -115,11 +118,14 @@ export default function MessagesScreen() {
   const load = useCallback(async (before?: string) => {
     if (loadingRef.current) return;
     const version = epoch.current;
+    const revision=getDeviceCacheRevision();
+    const badgeRead=unreadRead('messages');
     loadingRef.current = true;
     if (before) setMoreBusy(true);
     try {
       const r = await api<Inbox>(`/v1/messages/inbox?filter=${filter}${before ? `&before=${encodeURIComponent(before)}` : ""}`);
-      if (version !== epoch.current) return;
+      if (version !== epoch.current||revision!==getDeviceCacheRevision()) return;
+      if(typeof r.unreadCount==='number')updateUnreadCount('messages',r.unreadCount,revision,badgeRead.version);
       const incoming = normalizeThreads(r?.threads);
       setThreads((current) =>
         before
@@ -156,15 +162,15 @@ export default function MessagesScreen() {
     }
     setError("");
     void load();
-    const timer = setInterval(() => {
-      if (AppState.currentState === "active" && !paged.current) void load();
-    }, 15_000);
+
     return () => {
       epoch.current += 1;
       loadingRef.current = false;
-      clearInterval(timer);
+
     };
   }, [load]));
+
+  useLiveRefresh("/v1/messages/inbox", () => !paged.current ? load() : undefined, 90_000);
 
   const visibleThreads = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("en-NG");

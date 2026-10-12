@@ -75,9 +75,14 @@ test('portal reports corrupt successful JSON as an API error instead of caching 
 test('device cache never writes profiles/session or hydrates legacy private disk data',async()=>{
   const storage=new Map([['k1.cache.v2.profile.a',JSON.stringify({data:{private:'legacy'},expires:Date.now()+100000})]]);
   const asyncStorage={getItem:async key=>storage.get(key)??null,setItem:async(key,value)=>{storage.set(key,value);},removeItem:async key=>{storage.delete(key);},getAllKeys:async()=>[...storage.keys()],multiRemove:async keys=>{for(const key of keys)storage.delete(key);}};
-  const cache=module('mobile/src/lib/device-cache.ts',{'@react-native-async-storage/async-storage':{__esModule:true,default:asyncStorage}});
+  const snapshots=module('mobile/src/lib/secure-snapshots.ts',{}, {TextEncoder});
+  const cache=module('mobile/src/lib/device-cache.ts',{'./secure-snapshots':snapshots,'@react-native-async-storage/async-storage':{__esModule:true,default:asyncStorage},'react-native':{Platform:{OS:'android'}},'expo-file-system':{Directory:class{exists=false;},Paths:{document:''}},'./secure-snapshots.native-adapter':{secureSnapshots:{activate(){},read:async()=>null,write:async()=>{},clear:async()=>{}}}});
+  cache.setDeviceCacheScope('trusted-a','a');
   assert.equal(await cache.readCache('profile.a'),null);await cache.writeCache('profile.a',{private:'new'});await cache.writeCache('last-session',{user:a});
   assert.equal((await cache.readCache('profile.a')).private,'new');
   assert.equal(storage.has('k1.cache.v2.last-session'),false);assert.equal(storage.has('k1.cache.v2.profile.a'),false);
+  cache.setDeviceCacheScope('trusted-b','b');await cache.writeCache('profile.a',{private:'late old cleanup'});
+  assert.equal(await cache.readCache('profile.a'),null);
+  cache.setDeviceCacheScope('trusted-a','a');assert.equal(await cache.readCache('profile.a'),null);
   await cache.clearDeviceCache();assert.equal(await cache.readCache('profile.a'),null);
 });

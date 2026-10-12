@@ -1,3 +1,4 @@
+import { clearScreenSync } from "../lib/screen-read";
 import {cacheScopeForUser} from "../lib/request-policy";
 import { checkBuildVersion } from "@/src/lib/build-version";
 import {
@@ -14,10 +15,10 @@ import { Alert, AppState } from "react-native";
 
 import {
   api,
+  ApiError,
   authApi,
   onSessionChange,
   setAccessToken,
-  clearApiCache,
   type Session,
   type SessionUser,
 } from "@/src/lib/api";
@@ -109,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applySession = useCallback(
     (session: Session) => {
+      setAccessToken(session.accessToken, session.user.id, cacheScopeForUser(session.user));
       if (sessionUserId.current !== session.user.id) {
         sessionVersion.current++;
         const generation = sessionVersion.current;
@@ -168,6 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfileState("idle");
           setProfileError("");
           setState("anonymous");
+          clearScreenSync();
           void clearDeviceCache().catch(() => undefined);
           applyPreferences();
           void clearScheduledAlarms().catch(() => undefined);
@@ -183,12 +186,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!session) {
         setState((current) => (current === "loading" ? "anonymous" : current));
       }
-    } catch {
+    } catch (caught) {
       // An unavailable API does not prove the device's refresh session is
       // invalid. Keep any known credentials untouched and let the entry screen
       // offer an explicit retry or a privacy-safe path to interactive sign-in.
       setSessionRestoreError(
-        "We couldn’t check this device’s session. Check your connection and try again.",
+        caught instanceof ApiError?caught.message:"We couldn’t check this device’s session. Please try again.",
       );
     }
   }, []);
@@ -223,17 +226,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [retrySessionRestore]);
 
-  useEffect(() => {
-    if (!sessionRestoreError) return;
-    const timer = setTimeout(() => void retrySessionRestore(), 10_000);
-    return () => clearTimeout(timer);
-  }, [sessionRestoreError, retrySessionRestore]);
 
   useEffect(() => {
     let previous = AppState.currentState;
     const subscription = AppState.addEventListener("change", next => {
       if (next === "active" && previous !== "active" && sessionUserId.current) {
-        clearApiCache();
+        // Returning to the foreground must not evict all academic and store reads.
+        // Session refresh validates credentials while account isolation remains enforced.
         void retrySessionRestore();
       }
       previous = next;
@@ -243,12 +242,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(
     async function requestSignOut(): Promise<boolean> {
+      let serverRevoked = false;
       try {
-        if (sessionUserId.current)
-          await unregisterPushDevice(sessionUserId.current).catch(
-            () => undefined,
-          );
-        await authApi.logout();
+        // Concurrent, bounded cleanup avoids forcing the user to wait for
+        // slow push endpoints before their credentials can be removed.
+        const pushCleanup = sessionUserId.current
+          ? unregisterPushDevice(sessionUserId.current).catch(() => undefined)
+          : Promise.resolve();
+        const result = await authApi.logout();
+        serverRevoked = result.serverRevoked;
+        await pushCleanup;
       } catch (caught) {
         const detail =
           caught instanceof Error
@@ -273,6 +276,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionVersion.current++;
       sessionUserId.current = null;
       setAccessToken(null);
+      clearScreenSync();
       setSessionRestoreError("");
       setUser(null);
       setProfile(null);
@@ -282,6 +286,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await clearDeviceCache().catch(() => undefined);
       applyPreferences();
       await clearScheduledAlarms().catch(() => undefined);
+      if (!serverRevoked) {
+        Alert.alert(
+          "Signed out on this device",
+          "Your phone's sign-in credential was removed. The server could not confirm that the remote session was revoked. When you are back online, review your device sessions from Account & security.",
+        );
+      }
       return true;
     },
     [],

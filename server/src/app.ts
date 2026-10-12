@@ -1,3 +1,4 @@
+import { liveRoutes } from "./routes/live";
 import {validateStorageEnv} from './lib/storage-env';
 import {tutorialStorageRoutes} from './routes/tutorial-storage';
 import {featuredBrandRoutes} from './routes/featured-brands';
@@ -154,6 +155,7 @@ app.route("/v1/payments", paymentRoutes);
 app.route("/v1/account", accountRoutes);
 app.route("/v1/people", peopleRoutes);
 app.route("/v1/messages", messageRoutes);
+app.route("/v1/live", liveRoutes);
 app.route("/v1/discovery", discoveryRoutes);
 app.route("/v1/media", mediaRoutes);
 app.route("/v1/learning", learningRoutes);

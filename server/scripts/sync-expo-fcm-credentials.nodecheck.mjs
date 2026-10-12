@@ -136,3 +136,17 @@ test('a retry reuses a key uploaded earlier instead of creating another private-
   assert.deepEqual(await syncExpoFcm({expoToken:'synthetic',projectId,serviceAccount:{private_key_id:key.privateKeyIdentifier},firebaseProjectId:key.projectIdentifier,apply:true,fetchFn}),{status:'FCM_V1_CREDENTIAL_LINKED'});
   assert.equal(uploads,0);
 });
+test('an EAS project built with Gradle can safely create its missing Android push association',async()=>{
+  let created=false,assigned=false;const key={id:'key',projectIdentifier:'fixture-project',privateKeyIdentifier:'fixture-key'};
+  const android={id:'android',isLegacy:false,applicationIdentifier:'app.kampusone.mobile',googleServiceAccountKeyForFcmV1:key};
+  const fetchFn=async(_url,options)=>{
+    const {query,variables}=JSON.parse(options.body);
+    if(query.includes('query KampusOneFcm('))return Response.json({data:{app:{byId:{id:projectId,ownerAccount:{id:'account',name:'owner'},androidAppCredentials:created?[android]:[]}}}});
+    if(query.includes('mutation CreateKampusOneAndroidPush')){assert.equal(variables.appId,projectId);assert.equal(variables.packageName,'app.kampusone.mobile');created=true;return Response.json({data:{androidAppCredentials:{createAndroidAppCredentials:android}}});}
+    if(query.includes('mutation AssignFcmV1')){assigned=true;return Response.json({data:{androidAppCredentials:{setGoogleServiceAccountKeyForFcmV1:android}}});}
+    throw Error('Unnecessary credential upload');
+  };
+  const input={expoToken:'synthetic',projectId,serviceAccount:{private_key_id:key.privateKeyIdentifier},firebaseProjectId:key.projectIdentifier,fetchFn};
+  assert.deepEqual(await syncExpoFcm(input),{status:'NEEDS_ANDROID_CREDENTIALS'});assert.equal(created,false);
+  assert.deepEqual(await syncExpoFcm({...input,apply:true,refresh:true}),{status:'FCM_V1_CREDENTIAL_LINKED'});assert.equal(assigned,true);
+});

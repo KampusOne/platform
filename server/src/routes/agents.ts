@@ -1,4 +1,5 @@
 import {cachedVersionedRead} from "../lib/cache-revision";
+import {livePublishingEnabled,publishRiderQueueReads} from '../services/live-read-publishers';
 import {mappedDeliveryPoint,currentAgentPosition,campusDeliveryRoute} from '../lib/delivery-routing';
 import { z } from "@kampusone/contracts";
 import { input, id } from "../lib/input";
@@ -52,6 +53,12 @@ export const agentRoutes = new Hono<{
   Variables: Variables;
 }>();
 agentRoutes.use("/*", requireAuth);
+agentRoutes.use('/*',async(c,next)=>{
+  await next();
+  if(!c.res.ok||!livePublishingEnabled(c.env)||!['POST','PUT','PATCH'].includes(c.req.method)||!/^\/v1\/agents\/(?:orders\/[a-f0-9-]{36}\/(?:rider-request|dispatch|handoff|status)|deliveries\/[a-f0-9-]{36}\/(?:reserve|pickup|complete)|rider-presence)$/.test(c.req.path))return;
+  const user=currentUser(c);
+  try{c.executionCtx.waitUntil(publishRiderQueueReads(c.env,user.universityId,c.get('requestId'),user.id).catch(()=>console.warn(JSON.stringify({level:'warn',event:'live.dispatch_publish_failed',requestId:c.get('requestId')}))));}catch{/* Event failure cannot change a confirmed delivery/ledger transition. */}
+});
 
 async function body(context: { req: { json(): Promise<unknown> } }) {
   return context.req.json().catch(() => null);
@@ -131,8 +138,8 @@ const publicBusinessSchema = z.object({
 
 async function ownBusiness(context: Context<{ Bindings: Bindings; Variables: Variables }>) {
   const user = currentUser(context);
-  const row = firstRow(await database(context.env).execute<{ id: string; university_id: string; public_details: Record<string, unknown> }>(sql`
-    select a.id,a.university_id,coalesce(to_jsonb(a)->'public_details','{}'::jsonb) as public_details
+  const row = firstRow(await database(context.env).execute<{ id: string; university_id: string; public_details: Record<string, unknown>; revision:string }>(sql`
+    select a.id,a.university_id,a.updated_at::text as revision,coalesce(to_jsonb(a)->'public_details','{}'::jsonb) as public_details
     from public.agent_profiles a where a.id=${id(context.req.param("id") ?? "")}::uuid
       and a.user_id=${user.id}::uuid and a.university_id=${user.universityId}::uuid and a.status='ACTIVE'
   `));
@@ -159,6 +166,7 @@ agentRoutes.get("/public-profile/:id", async context => {
       profileImageUrl:s.profile_image_url,coverImageUrl:s.cover_image_url,
       avatarMediaId:owned.public_details.avatarMediaId ?? null,
       coverMediaId:owned.public_details.coverMediaId ?? null,
+      revision:owned.revision,
     },
     editable:await businessProfilesWritable(context.env),
   });
@@ -168,7 +176,7 @@ agentRoutes.put("/public-profile/:id", async context => {
   const owned = await ownBusiness(context);
   if (!await businessProfilesWritable(context.env))
     throw new AppError(503,"PROVIDER_UNAVAILABLE","Business profile editing is awaiting the scheduled database update.");
-  const data = await input(context,publicBusinessSchema);
+  const {expectedRevision,...data} = await input(context,publicBusinessSchema.extend({expectedRevision:z.string().min(1).max(64).optional()}));
   const details: Record<string,unknown> = { ...owned.public_details,...data,categories:[...new Set(data.categories)] };
   for (const [field,urlField] of [["avatarMediaId","profileImageUrl"],["coverMediaId","coverImageUrl"]] as const) {
     const mediaId = data[field];
@@ -183,15 +191,21 @@ agentRoutes.put("/public-profile/:id", async context => {
     const origin = (context.env.PUBLIC_API_ORIGIN ?? new URL(context.req.url).origin).replace(/\/$/,"");
     details[urlField]=origin+"/v1/media/"+mediaId;
   }
+  const revisionMatch=expectedRevision===undefined?sql``:sql`and updated_at::text=${expectedRevision}`;
   const saved = firstRow(await database(context.env).execute(sql`
+    with saved as (
     update public.agent_profiles set display_name=${data.displayName},biography=${data.biography},
-      public_details=${JSON.stringify(details)}::jsonb,updated_at=now()
+      public_details=${JSON.stringify(details)}::jsonb,updated_at=greatest(clock_timestamp(),updated_at+interval '1 microsecond')
     where id=${owned.id}::uuid and user_id=${currentUser(context).id}::uuid
-      and university_id=${owned.university_id}::uuid and status='ACTIVE' returning id
+      and university_id=${owned.university_id}::uuid and status='ACTIVE' ${revisionMatch} returning id
+    ), audit as (
+      insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata)
+      select ${currentUser(context).id}::uuid,${owned.university_id}::uuid,'business.profile.updated','agent_profile',id::text,${context.get("requestId")??null},'succeeded','{}'::jsonb from saved
+      returning id
+    )
+    select saved.id from saved cross join (select count(*) from audit) as receipt
   `));
-  if (!saved) throw new AppError(409,"CONFLICT","This business is no longer available for editing.");
-  await recordAudit(context.env,{actorUserId:currentUser(context).id,universityId:owned.university_id,
-    action:"business.profile.updated",targetType:"agent_profile",targetId:owned.id,requestId:context.get("requestId")});
+  if (!saved) throw new AppError(409,"CONFLICT","This business profile changed online or is no longer available. Your edits are kept.",{kind:"business-profile-changed"});
   return context.json({ saved:true,id:owned.id });
 });
 
@@ -428,7 +442,7 @@ agentRoutes.post("/tutorials", async (context) => {
     "Tutorial operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const parsed = tutorialListingSchema.safeParse(await body(context));
+  const parsed = tutorialListingSchema.and(z.object({requestId:z.string().uuid().optional()})).safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
       400,
@@ -445,9 +459,9 @@ agentRoutes.post("/tutorials", async (context) => {
       "Payments are not connected yet. Free tutorials are available.",
     );
   }
-  const profile = await approvedProfile(context.env, user.id, "TUTOR");
-  const id = crypto.randomUUID();
-  await database(context.env).execute(sql`
+  const profile = await approvedProfile(context.env, user.id, "TUTOR", user.universityId);
+  const id = parsed.data.requestId ?? crypto.randomUUID();
+  const created=firstRow(await database(context.env).execute<{id:string;status:string}>(sql`
     insert into public.tutorial_listings (
       id, university_id, tutor_profile_id, course_id, course_code,
       title, description, format, price_kobo, capacity, publisher_name,
@@ -459,8 +473,23 @@ agentRoutes.post("/tutorials", async (context) => {
       (select display_name from public.agent_profiles where id = ${profile.id}::uuid),
       ${parsed.data.locationText ?? null}, ${parsed.data.cancellationCutoffHours}
     )
-  `);
-  return context.json({ id, status: "DRAFT" }, 201);
+    on conflict(id) do update set id=excluded.id
+    where tutorial_listings.tutor_profile_id=excluded.tutor_profile_id
+      and tutorial_listings.university_id=excluded.university_id
+      and tutorial_listings.deleted_at is null
+      and tutorial_listings.course_id is not distinct from excluded.course_id
+      and tutorial_listings.course_code=excluded.course_code
+      and tutorial_listings.title=excluded.title
+      and tutorial_listings.description=excluded.description
+      and tutorial_listings.format=excluded.format
+      and tutorial_listings.price_kobo=excluded.price_kobo
+      and tutorial_listings.capacity=excluded.capacity
+      and tutorial_listings.location_text is not distinct from excluded.location_text
+      and tutorial_listings.cancellation_cutoff_hours=excluded.cancellation_cutoff_hours
+    returning id,status
+  `));
+  if(!created)throw new AppError(409,'CONFLICT','This tutorial request was already used for different details.');
+  return context.json({ id, status: created.status }, 201);
 });
 
 agentRoutes.patch("/tutorials/:id/status", async (context) => {
@@ -1009,9 +1038,9 @@ agentRoutes.get('/products/price-preview',async c=>{
  const profile=await operationalVendorProfile(c.env,currentUser(c).id),price=Number(c.req.query('priceKobo'));
  if(!Number.isSafeInteger(price)||price<0||price>100_000_000)throw new AppError(400,'BAD_REQUEST','Enter a whole kobo price.');
  const policy=await approvedCommercePolicy(c.env,profile.university_id,'STORE');
- if(!policy)return c.json({ready:false});
+ if(!policy)return c.json({ready:false,message:"Marketplace rates are not configured for this campus yet."});
  const p=listingPrice(price,policy);
- return c.json({ready:true,baseKobo:price,platformKobo:p.buyerComponentKobo,processingEstimateKobo:p.processingAllowanceKobo,customerEstimateKobo:p.customerPriceKobo,sellerCommissionKobo:percentageKobo(price,policy.sellerCommissionBasisPoints,'ceil')});
+ return c.json({ready:true,ruleId:policy.id,baseKobo:price,platformKobo:p.buyerComponentKobo,processingEstimateKobo:p.processingAllowanceKobo,customerEstimateKobo:p.customerPriceKobo,sellerCommissionKobo:percentageKobo(price,policy.sellerCommissionBasisPoints,'ceil')});
 });
 agentRoutes.post("/products", async (context) => {
   requireFeature(
@@ -1020,7 +1049,7 @@ agentRoutes.post("/products", async (context) => {
     "Store operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const parsed = vendorProductSchema.and(z.object({imageUrls:z.array(z.string().url()).max(6).default([]),requestId:z.string().uuid().optional()})).safeParse(await body(context));
+  const parsed = vendorProductSchema.and(z.object({imageUrls:z.array(z.string().url()).max(6).default([]),requestId:z.string().uuid().optional(),pricingPolicyId:z.string().uuid().optional()})).safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
       400,
@@ -1028,6 +1057,7 @@ agentRoutes.post("/products", async (context) => {
       "Check the product details and try again.",
     );
   const profile = await operationalVendorProfile(context.env, user.id);
+  if(parsed.data.pricingPolicyId){const policy=await approvedCommercePolicy(context.env,profile.university_id,'STORE');if(!policy||policy.id!==parsed.data.pricingPolicyId)throw new AppError(409,'CONFLICT','Marketplace rates changed. Recalculate the rates before uploading your product.');}
   const categoryResult = await database(context.env).execute<{
     id: string;
     name: string;

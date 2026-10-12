@@ -1,4 +1,5 @@
 import {AcademicImportUsage} from "@/src/components/academic-import-usage";
+import { ImportProgress, useImportProgress } from "@/src/components/import-progress";
 import { useEffect, useRef, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import { router, useLocalSearchParams } from "expo-router";
@@ -10,59 +11,84 @@ import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 import { api, ApiError } from "@/src/lib/api";
 import { pickAttachment, uploadAttachment, type StagedAttachment } from "@/src/lib/uploads";
-import { readCache, writeCache } from "@/src/lib/device-cache";
+import { writeCache } from "@/src/lib/device-cache";
+import { useOwnedDraftSave } from '@/src/lib/use-owned-draft-save';
+import { useOwnedDraftRestore } from '@/src/lib/use-owned-draft-restore';
+import { restoreTimetableDraft } from '@/src/lib/form-drafts';
+import { DraftRecovery } from '@/src/components/draft-recovery';
+import { cacheScopeForUser } from '@/src/lib/request-policy';
 import { syncAlarms, type Alarm } from "@/src/lib/alarms";
 type Entry = { title: string; courseCode: string; venue: string; lecturer: string; dayOfWeek: number; startsAt: string; endsAt: string; reminderMinutes: number; reminderEnabled: boolean };
 type Event = {title:string;startsOn:string;endsOn:string;semester:string};
-type Draft = { notes?:string; entries: Entry[]; events?:Event[]; documentType?:string; text: string; attachment?:StagedAttachment; warnings?: string[]; key?: string; saveKey?:string };
+type Draft = { notes?:string; entries: Entry[]; events?:Event[]; documentType?:string; text: string; attachment?:StagedAttachment|undefined; warnings?: string[]; key?: string; saveKey?:string };
 const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 export default function ImportTimetable() {
+  const {user}=useAuth();return <ImportTimetableForm key={user?cacheScopeForUser(user):'signed-out'}/>;
+}
+function ImportTimetableForm() {
   const {kind}=useLocalSearchParams<{kind?:string}>();
   const [notes,setNotes]=useState("");
   const {user}=useAuth(), {theme}=useAppearance(), toast=useToast();
   const [entries,setEntries]=useState<Entry[]>([]),[events,setEvents]=useState<Event[]>([]),[documentType,setDocumentType]=useState("");
   const [text,setText]=useState(""),[attachment,setAttachment]=useState<StagedAttachment>(),[paste,setPaste]=useState(true);
-  const [warnings,setWarnings]=useState<string[]>([]),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false),[error,setError]=useState(""),[expanded,setExpanded]=useState<number|null>(null);
+  const [warnings,setWarnings]=useState<string[]>([]),[busy,setBusy]=useState(false),[completed,setCompleted]=useState(false),[error,setError]=useState(""),[expanded,setExpanded]=useState<number|null>(null);
+  const {stage,setStage,failureStage}=useImportProgress();const [uploadFraction,setUploadFraction]=useState<number>(0);
+  const requestController=useRef<AbortController|null>(null);
   const key=useRef(randomUUID()), saveKey=useRef(randomUUID()), locked=useRef(false), generation=useRef(0), account=useRef(user?.id);account.current=user?.id;
   const body={fontFamily:theme.font.body,color:theme.text,fontSize:14,lineHeight:21};
   const muted={...body,color:theme.textMuted,fontSize:12,lineHeight:18};
-  useEffect(()=>{let active=true;generation.current++;locked.current=false;setBusy(false);setLoaded(false);setEntries([]);setEvents([]);setAttachment(undefined);setText("");setNotes("");setDocumentType("");setWarnings([]);setError("");key.current=randomUUID();saveKey.current=randomUUID();
-    if(user?.id) void readCache<Draft>("timetable-draft."+user.id).then(d=>{if(!active||!d)return;setEntries(d.entries??[]);setEvents(d.events??[]);setDocumentType(d.documentType??"");setText(d.text??"");setNotes(d.notes??"");setPaste(true);setAttachment(d.attachment);setWarnings(d.warnings??[]);key.current=d.key??randomUUID();saveKey.current=d.saveKey??randomUUID();}).catch(()=>undefined).finally(()=>{if(active)setLoaded(true);});
-    return()=>{active=false;generation.current++;};
+  useEffect(()=>{generation.current++;locked.current=false;setBusy(false);setStage(null);setCompleted(false);setEntries([]);setEvents([]);setAttachment(undefined);setText("");setNotes("");setDocumentType("");setWarnings([]);setError("");key.current=randomUUID();saveKey.current=randomUUID();
+    return()=>{generation.current++;requestController.current?.abort();};
   },[user?.id]);
+  const restored=useOwnedDraftRestore<unknown>('timetable-draft.'+user?.id,value=>{
+    if(value===null)return;
+    const d=restoreTimetableDraft(value);
+    setEntries(d.entries);setEvents(d.events);setDocumentType(d.documentType);setText(d.text);setNotes(d.notes);setPaste(true);setAttachment(d.attachment);setWarnings(d.warnings);key.current=d.key??randomUUID();saveKey.current=d.saveKey??randomUUID();
+  },Boolean(user?.id));
+  const loaded=restored.ready&&!completed;
   const draft=()=>({notes,entries,events,documentType,text,attachment,warnings,key:key.current,saveKey:saveKey.current});
-  useEffect(()=>{if(!loaded||!user?.id)return;const timer=setTimeout(()=>{void writeCache("timetable-draft."+user.id,draft()).catch(()=>undefined);},250);return()=>clearTimeout(timer);},[entries,events,documentType,text,notes,attachment,warnings,loaded,user?.id]);
+  const draftSave=useOwnedDraftSave('timetable-draft.'+user?.id,draft(),loaded,250);
   function changed(){key.current=randomUUID();saveKey.current=randomUUID();setError("");}
-  async function attach(){if(locked.current)return;const version=generation.current;locked.current=true;setBusy(true);try{const f=await pickAttachment();if(f&&version===generation.current){setAttachment(f);changed();}}catch(e){if(version===generation.current)setError(e instanceof Error?e.message:"Choose your file again.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
-  async function scan(){if(locked.current)return;const version=generation.current,owner=account.current;locked.current=true;setBusy(true);setError("");try{
-    const file=attachment?await uploadAttachment(attachment,user!.id):undefined;if(version!==generation.current)return;setAttachment(file);
-    await writeCache("timetable-draft."+owner,{...draft(),attachment:file}).catch(()=>undefined);
+  async function attach(){if(locked.current||!loaded)return;const version=generation.current;locked.current=true;setBusy(true);setStage("selecting");try{const f=await pickAttachment();if(f&&version===generation.current){setAttachment(f);setStage("selected");changed();}}catch(e){if(version===generation.current){setStage("failed");setError(e instanceof Error?e.message:"Choose your file again.");}}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
+  async function scan(){if(locked.current||!loaded||!user?.id)return;const controller=new AbortController();requestController.current=controller;const version=generation.current,owner=account.current;locked.current=true;setBusy(true);setError("");setStage(attachment&&!attachment.mediaId?"uploading":"reading");setUploadFraction(0);try{
+    await draftSave.persist(draft());if(version!==generation.current)return;
+    const file=attachment?await uploadAttachment(attachment,user!.id,text,"standard",fraction=>{if(version===generation.current)setUploadFraction(fraction);},{signal:controller.signal,onStage:next=>{if(version===generation.current)setStage(next);},onUploaded:uploaded=>{if(version===generation.current)setAttachment(uploaded);}}):undefined;if(version!==generation.current)return;setAttachment(file);setStage("analysing");
+    await draftSave.persist({...draft(),attachment:file});
     type ScanResult={entries:Entry[];events?:Event[];documentType?:string;warnings?:string[]};
     let r:ScanResult;
     try {
-      r=await api<ScanResult>("/v1/ai",{method:"POST",timeoutMs:75000,body:JSON.stringify({mode:"timetable",prompt:text,notes,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
+      r=await api<ScanResult>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:75000,body:JSON.stringify({mode:"timetable",documentKind:kind==="calendar"?"calendar":"class",prompt:text,notes,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
     } catch (caught) {
-      const legacyNotesRejected=Boolean(notes.trim())&&caught instanceof ApiError&&caught.status===400&&caught.code==="BAD_REQUEST"&&caught.message==="Check the highlighted information and try again.";
+      const legacyNotesRejected=caught instanceof ApiError&&caught.status===400&&caught.code==="BAD_REQUEST"&&caught.message==="Check the highlighted information and try again.";
       if(!legacyNotesRejected)throw caught;
       const legacyPrompt=[text.trim(),`Student timetable preferences (filter the visible timetable only; do not invent classes):\n${notes.trim()}`].filter(Boolean).join("\n\n");
-      r=await api<ScanResult>("/v1/ai",{method:"POST",timeoutMs:75000,body:JSON.stringify({mode:"timetable",prompt:legacyPrompt,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
+      r=await api<ScanResult>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:75000,body:JSON.stringify({mode:"timetable",prompt:legacyPrompt,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
     }
-    if(version!==generation.current)return;setEntries(r.entries.map(e=>({...e,courseCode:e.courseCode??"",venue:e.venue??"",lecturer:e.lecturer??""})));setEvents(r.events??[]);setDocumentType(r.documentType??"class_timetable");setWarnings(r.warnings??[]);setExpanded(null);saveKey.current=randomUUID();
-  }catch(e){if(version!==generation.current)return;if(e instanceof ApiError&&e.details?.retryWithNewKey===true)key.current=randomUUID();setError(e instanceof Error?e.message:"Could not read the file. Your draft is kept.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
+    if(version!==generation.current)return;
+    if(!r||!Array.isArray(r.entries))throw new Error("The AI returned an incomplete timetable. Your file is still here; please retry.");
+    if(kind==="calendar"&&r.documentType!=="academic_calendar")
+      throw new Error("This file was not recognised as an academic calendar. Check the document and try again. Nothing has been saved.");
+    const parsedEntries=r.entries.map(e=>({...e,courseCode:e.courseCode??"",venue:e.venue??"",lecturer:e.lecturer??""})),parsedEvents=Array.isArray(r.events)?r.events:[];
+    setEntries(parsedEntries);setEvents(parsedEvents);setDocumentType(r.documentType??"class_timetable");setWarnings(r.warnings??[]);setExpanded(null);saveKey.current=randomUUID();
+    await draftSave.persist({...draft(),attachment:file,entries:parsedEntries,events:parsedEvents,documentType:r.documentType??"class_timetable",warnings:r.warnings??[],saveKey:saveKey.current});
+    if(version===generation.current)setStage("review");
+  }catch(e){if(version!==generation.current)return;if(e instanceof ApiError&&e.details?.retryWithNewKey===true)key.current=randomUUID();setStage("failed");setError(e instanceof Error?e.message:"Could not read the file. Your draft is kept.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
   const calendar=documentType==="academic_calendar";
-  async function save(){if(locked.current)return;const version=generation.current,owner=account.current;
+  async function save(){if(locked.current||!loaded)return;const version=generation.current,owner=account.current;
     const clock=/^([01]\d|2[0-3]):[0-5]\d$/;
     if(!calendar&&entries.some(e=>!e.title.trim()||!clock.test(e.startsAt)||!clock.test(e.endsAt)||e.endsAt<=e.startsAt)){setError("Check each class title, day and time.");return;}
-    locked.current=true;setBusy(true);setError("");try{
-      await api(calendar?"/v1/calendar/import":"/v1/learning/timetable/import",{method:"POST",body:JSON.stringify({requestId:saveKey.current,...(calendar?{events}:{entries})})});
-      if(version!==generation.current)return;setLoaded(false);setEntries([]);setEvents([]);setText("");setAttachment(undefined);setWarnings([]);
+    locked.current=true;setBusy(true);setStage("saving");setError("");try{
+      const receipt=await api<{imported?:number;count?:number}>(calendar?"/v1/calendar/import":"/v1/learning/timetable/import",{method:"POST",body:JSON.stringify({requestId:saveKey.current,...(calendar?{events}:{entries})})});
+      if(version!==generation.current)return;draftSave.discard();setStage("completed");setCompleted(true);setEntries([]);setEvents([]);setText("");setAttachment(undefined);setWarnings([]);
       await writeCache("timetable-draft."+owner,{entries:[],text:"",key:randomUUID(),saveKey:randomUUID()}).catch(()=>undefined);
       if(!calendar){try{const r=await api<{alarms:Alarm[]}>("/v1/learning/alarms");const enabled=await syncAlarms(r.alarms,true);if(!enabled)toast("Classes saved. Enable device reminders in Alarms.");}catch{toast("Classes saved. Check device reminders in Alarms.");}}
-      if(version===generation.current){toast(calendar?"Calendar saved":"Timetable saved","success");router.replace(calendar?"/academic-calendar":"/timetable");}
-    }catch(e){if(version===generation.current)setError(e instanceof Error?e.message:"Could not save. Your reviewed draft is kept.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
+      if(version===generation.current){toast(Number.isSafeInteger(calendar?receipt.count:receipt.imported)?`${calendar?receipt.count:receipt.imported} ${calendar?"calendar events":"classes"} saved`:calendar?"Calendar saved":"Timetable saved","success");router.replace(calendar?"/academic-calendar":"/timetable");}
+    }catch(e){if(version===generation.current){setStage("failed");setError(e instanceof Error?e.message:"Could not save. Your reviewed draft is kept.");}}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
   function edit(i:number,field:keyof Entry,value:string|number){setEntries(rows=>rows.map((e,n)=>n===i?{...e,[field]:value}:e));saveKey.current=randomUUID();}
-  return <ToolPage title={kind==="calendar"?"Upload academic calendar":"Upload timetable"} action={<Ionicons name="sparkles-outline" size={22} color={theme.brand}/> }>
+  return <ToolPage status={stage?<ImportProgress failureStage={failureStage} stage={stage} uploadFraction={uploadFraction} fileReceived={Boolean(attachment?.mediaId)} filename={attachment?.name} fileType={attachment?.type} error={stage==="failed"?error:undefined} subject={kind==="calendar"?"academic calendar":"timetable"}/>:null} title={kind==="calendar"?"Upload academic calendar":"Upload timetable"} action={<Ionicons name="sparkles-outline" size={22} color={theme.brand}/> }>
     <AcademicImportUsage calendar={kind==="calendar"||calendar} revision={busy} />
+    <DraftRecovery error={restored.error} loading={restored.loading} onRetry={restored.retry}/>
+    {draftSave.warning?<Text accessibilityRole="alert" style={{...body,color:theme.error,marginVertical:12}}>{draftSave.warning}</Text>:null}
     <View style={{padding:20,borderRadius:18,backgroundColor:theme.surfaceMuted,alignItems:"center",gap:10,marginBottom:16}}>
       <Ionicons name="calendar-outline" size={34} color={theme.brand}/>
       <Text style={{...body,fontFamily:theme.font.semibold,fontSize:18}}>{kind==="calendar"?"Your session, organised":"Your week, organised"}</Text>
@@ -71,21 +97,22 @@ export default function ImportTimetable() {
     </View>
     {attachment?<View style={{borderWidth:1,borderColor:theme.border,borderRadius:12,padding:12,marginBottom:12,gap:8}}>
       {attachment.uri&&attachment.type.startsWith("image/")?<Image accessibilityLabel="Selected timetable preview" source={{uri:attachment.uri}} resizeMode="contain" style={{height:150,width:"100%"}}/>:null}
-      <View style={{flexDirection:"row",alignItems:"center",gap:12}}><Ionicons name="document-outline" size={22} color={theme.brand}/><Text numberOfLines={2} style={{...body,flex:1}}>{attachment.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attachment" disabled={busy} onPress={()=>{setAttachment(undefined);changed();}} style={{padding:10}}><Ionicons name="close" size={22} color={theme.text}/></Pressable></View>
+      <View style={{flexDirection:"row",alignItems:"center",gap:12}}><Ionicons name="document-outline" size={22} color={theme.brand}/><Text numberOfLines={2} style={{...body,flex:1}}>{attachment.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attachment" disabled={!loaded||busy} onPress={()=>{setAttachment(undefined);changed();}} style={{padding:10}}><Ionicons name="close" size={22} color={theme.text}/></Pressable></View>
     </View>:null}
-    <Pressable accessibilityRole="button" disabled={busy} onPress={()=>setPaste(v=>!v)} style={{paddingVertical:12}}><Text style={{...body,color:theme.deepBrand}}>{paste?"Hide text":"Paste timetable text"}</Text></Pressable>
-    {paste?<ToolField label="Timetable text" multiline value={text} maxLength={20000} editable={!busy} onChangeText={v=>{setText(v);changed();}} placeholder={kind==="calendar"?"Paste academic calendar activities and dates…":"Monday · MTH 201 · 8:00 AM–10:00 AM · LT 1"}/>:null}
-    <ToolField label="Notes (optional)" multiline value={notes} maxLength={2000} editable={!busy} onChangeText={value=>{setNotes(value);changed();}} placeholder="I do not offer CSE 201. Include my other courses."/>
+    <Pressable accessibilityRole="button" disabled={!loaded||busy} onPress={()=>setPaste(v=>!v)} style={{paddingVertical:12}}><Text style={{...body,color:theme.deepBrand}}>{paste?"Hide text":"Paste timetable text"}</Text></Pressable>
+    {paste?<ToolField label="Timetable text" multiline value={text} maxLength={20000} editable={loaded&&!busy} onChangeText={v=>{setText(v);changed();}} placeholder={kind==="calendar"?"Paste academic calendar activities and dates…":"Monday · MTH 201 · 8:00 AM–10:00 AM · LT 1"}/>:null}
+    <ToolField label="Notes (optional)" multiline value={notes} maxLength={2000} editable={loaded&&!busy} onChangeText={value=>{setNotes(value);changed();}} placeholder="I do not offer CSE 201. Include my other courses."/>
     <Text style={{...muted,marginBottom:12}}>Processed privately by AI. Review before saving.</Text>
     <ToolButton label={busy?"Reading your document…":kind==="calendar"?"Read calendar":"Read timetable"} disabled={!loaded||busy||(!attachment&&!text.trim())} onPress={()=>void scan()}/>
+    {busy&&stage!=="selecting"&&stage!=="saving"?<ToolButton secondary label="Stop reading" onPress={()=>{requestController.current?.abort();setError("Stopped waiting. Your file and draft are kept; retry reuses this request.");setStage("failed");}}/>:null}
     {error?<Text accessibilityRole="alert" style={{...body,color:theme.error,marginVertical:12}}>{error}</Text>:null}
     {calendar?<View style={{paddingVertical:14,gap:5}}><Text style={{...body,fontFamily:theme.font.semibold}}>Academic calendar · {events.length} events</Text><Text style={muted}>This file lists dates, not class times. Review and save these events to your calendar.</Text></View>:null}
     {warnings.length?<Text style={{...muted,marginVertical:12}}>{warnings.join("\n")}</Text>:null}
-    {calendar?events.map((e,i)=><View key={i} style={{paddingVertical:12,borderBottomWidth:1,borderColor:theme.border}}><Pressable accessibilityRole="button" accessibilityState={{expanded:expanded===i}} onPress={()=>setExpanded(expanded===i?null:i)}><Text style={{...body,fontFamily:theme.font.semibold}}>{e.title}</Text><Text style={muted}>{e.startsOn}{e.endsOn!==e.startsOn?` → ${e.endsOn}`:""} · {e.semester}</Text></Pressable>{expanded===i?<View style={{paddingTop:12}}>{([['title','Activity'],['startsOn','From (YYYY-MM-DD)'],['endsOn','To (YYYY-MM-DD)'],['semester','Semester']] as const).map(([field,label])=><ToolField key={field} label={label} value={e[field]} editable={!busy} onChangeText={value=>{setEvents(rows=>rows.map((r,n)=>n===i?{...r,[field]:value}:r));saveKey.current=randomUUID();}}/>)}<ToolButton secondary label="Remove event" disabled={busy} onPress={()=>{setEvents(rows=>rows.filter((_,n)=>n!==i));saveKey.current=randomUUID();}}/></View>:null}</View>):entries.map((e,i)=><View key={i} style={{paddingVertical:14,borderBottomWidth:1,borderColor:theme.border}}>
+    {calendar?events.map((e,i)=><View key={i} style={{paddingVertical:12,borderBottomWidth:1,borderColor:theme.border}}><Pressable accessibilityRole="button" accessibilityState={{expanded:expanded===i}} onPress={()=>setExpanded(expanded===i?null:i)}><Text style={{...body,fontFamily:theme.font.semibold}}>{e.title}</Text><Text style={muted}>{e.startsOn}{e.endsOn!==e.startsOn?` → ${e.endsOn}`:""} · {e.semester}</Text></Pressable>{expanded===i?<View style={{paddingTop:12}}>{([['title','Activity'],['startsOn','From (YYYY-MM-DD)'],['endsOn','To (YYYY-MM-DD)'],['semester','Semester']] as const).map(([field,label])=><ToolField key={field} label={label} value={e[field]} editable={loaded&&!busy} onChangeText={value=>{setEvents(rows=>rows.map((r,n)=>n===i?{...r,[field]:value}:r));saveKey.current=randomUUID();}}/>)}<ToolButton secondary label="Remove event" disabled={!loaded||busy} onPress={()=>{setEvents(rows=>rows.filter((_,n)=>n!==i));saveKey.current=randomUUID();}}/></View>:null}</View>):entries.map((e,i)=><View key={i} style={{paddingVertical:14,borderBottomWidth:1,borderColor:theme.border}}>
       <Pressable accessibilityRole="button" accessibilityState={{expanded:expanded===i}} onPress={()=>setExpanded(expanded===i?null:i)}><Text style={{...body,fontFamily:theme.font.semibold}}>{e.title||`Class ${i+1}`}</Text><Text style={muted}>{days[e.dayOfWeek]} · {e.startsAt||"Start"}–{e.endsAt||"End"}{e.venue?` · ${e.venue}`:""}</Text></Pressable>
-      {expanded===i?<View style={{paddingTop:12}}><ToolField label="Course title" value={e.title} editable={!busy} onChangeText={v=>edit(i,"title",v)}/><View style={{flexDirection:"row",flexWrap:"wrap",gap:4,marginBottom:14}}>{days.map((day,n)=><Pressable key={day} accessibilityRole="radio" accessibilityState={{checked:e.dayOfWeek===n}} disabled={busy} onPress={()=>edit(i,"dayOfWeek",n)} style={{minHeight:42,minWidth:40,padding:9,borderRadius:8,backgroundColor:e.dayOfWeek===n?theme.deepBrand:theme.surfaceMuted}}><Text style={{...muted,color:e.dayOfWeek===n?"#fff":theme.text}}>{day}</Text></Pressable>)}</View><View style={{flexDirection:"row",gap:12}}>{([['startsAt','Start · 24h'],['endsAt','End · 24h']] as const).map(([field,label])=><View key={field} style={{flex:1}}><ToolField label={label} placeholder="09:00" value={e[field]} editable={!busy} onChangeText={v=>edit(i,field,v)}/></View>)}</View>{([['courseCode','Course code'],['venue','Venue'],['lecturer','Lecturer']] as const).map(([field,label])=><ToolField key={field} label={label} value={e[field]} editable={!busy} onChangeText={v=>edit(i,field,v)}/>)}<ToolButton secondary label="Remove class" disabled={busy} onPress={()=>{setEntries(rows=>rows.filter((_,n)=>n!==i));saveKey.current=randomUUID();}}/></View>:null}
+      {expanded===i?<View style={{paddingTop:12}}><ToolField label="Course title" value={e.title} editable={loaded&&!busy} onChangeText={v=>edit(i,"title",v)}/><View style={{flexDirection:"row",flexWrap:"wrap",gap:4,marginBottom:14}}>{days.map((day,n)=><Pressable key={day} accessibilityRole="radio" accessibilityState={{checked:e.dayOfWeek===n}} disabled={!loaded||busy} onPress={()=>edit(i,"dayOfWeek",n)} style={{minHeight:42,minWidth:40,padding:9,borderRadius:8,backgroundColor:e.dayOfWeek===n?theme.deepBrand:theme.surfaceMuted}}><Text style={{...muted,color:e.dayOfWeek===n?"#fff":theme.text}}>{day}</Text></Pressable>)}</View><View style={{flexDirection:"row",gap:12}}>{([['startsAt','Start · 24h'],['endsAt','End · 24h']] as const).map(([field,label])=><View key={field} style={{flex:1}}><ToolField label={label} placeholder="09:00" value={e[field]} editable={loaded&&!busy} onChangeText={v=>edit(i,field,v)}/></View>)}</View>{([['courseCode','Course code'],['venue','Venue'],['lecturer','Lecturer']] as const).map(([field,label])=><ToolField key={field} label={label} value={e[field]} editable={loaded&&!busy} onChangeText={v=>edit(i,field,v)}/>)}<ToolButton secondary label="Remove class" disabled={!loaded||busy} onPress={()=>{setEntries(rows=>rows.filter((_,n)=>n!==i));saveKey.current=randomUUID();}}/></View>:null}
     </View>)}
     {!calendar?<ToolButton secondary label="Add class manually" disabled={!loaded||busy||entries.length>=40} onPress={()=>{setEntries(rows=>[...rows,{title:"",courseCode:"",venue:"",lecturer:"",dayOfWeek:1,startsAt:"",endsAt:"",reminderMinutes:15,reminderEnabled:true}]);setExpanded(entries.length);saveKey.current=randomUUID();}}/>:null}
-    {(calendar?events.length:entries.length)>0?<ToolButton label={calendar?"Save calendar":"Save reviewed classes"} disabled={busy} onPress={()=>void save()}/>:null}
+    {(calendar?events.length:entries.length)>0?<ToolButton label={calendar?"Save calendar":"Save reviewed classes"} disabled={!loaded||busy} onPress={()=>void save()}/>:null}
   </ToolPage>;
 }

@@ -15,16 +15,19 @@ export function finishDocumentRead(id: number, text?: string, error?: string) {
   if (typeof text === 'string' && text.trim() && text.length <= 50000) resolve?.(text);
   else reject?.(new Error(error || 'This document could not be read. Attach a clear page as an image or a text export.'));
 }
-export async function readUploadedDocument(mediaId: string, name: string, type: string, query = '', tier = 'standard') {
+export async function readUploadedDocument(mediaId: string, name: string, type: string, query = '', tier = 'standard', signal?:AbortSignal) {
   if (current) throw new Error('Finish reading the current document first.');
   if (!listeners.size) throw new Error('The document reader is opening. Please retry in a moment.');
-  const { url } = await api<{ url: string }>(`/v1/media/${mediaId}/access`, { method: 'POST' });
+  const { url } = await api<{ url: string }>(`/v1/media/${mediaId}/access`, { method: 'POST',signal:signal??null });
   return new Promise<string>((resolve, reject) => {
     const id = ++sequence;
     const timer = setTimeout(() => finishDocumentRead(id, undefined, 'Reading took too long. Your uploaded file is saved; retry or attach a smaller section.'), 150000);
-    resolveCurrent = value => { clearTimeout(timer); resolve(value); };
-    rejectCurrent = error => { clearTimeout(timer); reject(error); };
+    const abort=()=>finishDocumentRead(id,undefined,'Reading stopped. Your uploaded file is kept for retry.');
+    if(signal?.aborted){clearTimeout(timer);reject(new Error('Reading stopped. Your uploaded file is kept.'));return;}
+    resolveCurrent = value => { clearTimeout(timer);signal?.removeEventListener('abort',abort); resolve(value); };
+    rejectCurrent = error => { clearTimeout(timer);signal?.removeEventListener('abort',abort); reject(error); };
     current = { id, name, url, type, query, maxPages: tier === 'pro' ? 300 : 150 };
+    signal?.addEventListener('abort',abort,{once:true});
     listeners.forEach(listener => listener());
   });
 }

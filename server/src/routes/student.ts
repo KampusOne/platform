@@ -1418,7 +1418,7 @@ studentRoutes.get("/store", async (context) => {
   const [products, zones] = await Promise.all([
     database(context.env).execute(sql`
       select products.id, products.vendor_profile_id, products.name, products.description,
-        products.category, products.price_kobo, products.stock_quantity, products.image_url,
+        products.category, products.price_kobo, products.stock_quantity, products.image_url, coalesce(to_jsonb(products)->'image_urls','[]'::jsonb) as image_urls,
         products.preparation_minutes, storefronts.display_name as vendor_name,
         storefronts.pickup_location,
         coalesce((to_jsonb(storefronts)->>'pickup_enabled')::boolean,false) as pickup_enabled,

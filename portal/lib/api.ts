@@ -65,7 +65,6 @@ function clearPortalCache() {
   portalReads.clear();
   portalFlights.clear();
 }
-if (typeof window !== "undefined") window.addEventListener("focus", clearPortalCache);
 function waitForPortalReader<T>(operation: Promise<T>, signal?: AbortSignal | null): Promise<T> {
   if (!signal) return operation;
   if (signal.aborted) return Promise.reject(signal.reason ?? new Error("Request cancelled"));
@@ -212,7 +211,10 @@ async function portalRequest<T>(
   path: string,
   init: RequestInit = {},
   retry = true,
+  deadline?: AbortSignal,
 ): Promise<T> {
+  const signal = deadline ?? (init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000));
+  if(signal.aborted){if(init.signal?.aborted)throw init.signal.reason??new Error('Request cancelled');throw new PortalApiError(0,'REQUEST_TIMEOUT','KampusOne took too long to respond. Please try again.');}
   const epochAtStart = sessionEpoch;
   const guarded = !path.startsWith("/v1/auth/");
   const assertSession = () => { if (guarded && sessionEpoch !== epochAtStart) throw new PortalApiError(409, "SESSION_CHANGED", "Your session changed. Please refresh."); };
@@ -229,22 +231,27 @@ async function portalRequest<T>(
   try {
     response = await fetch(`${baseUrl}${path}`, {
       ...init,
-      signal: init.signal ?? AbortSignal.timeout(20_000),
+      signal,
       credentials: "include",
       headers,
     });
   } catch (error) {
     if (init.signal?.aborted) throw init.signal.reason ?? error;
-    if (error instanceof Error && error.name === "TimeoutError") throw new PortalApiError(0, "REQUEST_TIMEOUT", "KampusOne took too long to respond. Please try again.");
-    throw connectionError();
+    if (signal.aborted || error instanceof Error && error.name === "TimeoutError") throw new PortalApiError(0, "REQUEST_TIMEOUT", "KampusOne took too long to respond. Please try again.");
+    if(error instanceof TypeError && /failed to fetch|fetch failed|network request failed|load failed|networkerror/i.test(error.message))throw connectionError();
+    throw error;
   }
   assertSession();
   if (response.status === 401 && retry && path !== "/v1/auth/refresh") {
-    const session = await refresh();
+    let session: Session | null;
+    try { session = await waitForPortalReader(refresh(), signal); }
+    catch (error) { if(init.signal?.aborted)throw init.signal.reason ?? error;if(signal.aborted)throw new PortalApiError(0,'REQUEST_TIMEOUT','KampusOne took too long to respond. Please try again.');throw error; }
     assertSession();
-    if (session) return portalRequest<T>(path, init, false);
+    if (session) return portalRequest<T>(path, init, false, signal);
   }
-  const value = await read<T>(response);
+  let value:T;
+  try { value=await waitForPortalReader(read<T>(response),signal); }
+  catch(error){if(init.signal?.aborted)throw init.signal.reason??error;if(signal.aborted)throw new PortalApiError(0,'REQUEST_TIMEOUT','KampusOne took too long to respond. Please try again.');throw error;}
   assertSession();
   return value;
 }
@@ -277,7 +284,7 @@ export async function portalApi<T>(
     portalReads.delete(path); portalReads.set(path, cached); return cached.value as T;
   }
   const forceRefresh = init.cache === "reload" || init.cache === "no-cache";
-  if (forceRefresh) clearPortalCache();
+  if (forceRefresh) { portalReads.delete(path); portalFlights.delete(path); }
   const existing = forceRefresh ? undefined : portalFlights.get(path) as Promise<T> | undefined;
   if (existing) return waitForPortalReader(existing, init.signal);
   const versionAtStart = cacheGeneration;
@@ -288,7 +295,7 @@ export async function portalApi<T>(
     .then((value) => {
       if (epochAtStart !== sessionEpoch || accountAtStart !== currentAccountId)
         throw new PortalApiError(409, "SESSION_CHANGED", "Your session changed. Please refresh.");
-      if (versionAtStart === cacheGeneration && ttl > 0) {
+      if (versionAtStart === cacheGeneration && portalFlights.get(path) === operation && ttl > 0) {
         if (portalReads.size >= 60) portalReads.delete(portalReads.keys().next().value!);
         portalReads.delete(path);
         portalReads.set(path, { value, until: portalCacheExpiry(path, Date.now(), ttl) });

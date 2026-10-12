@@ -2,7 +2,8 @@ import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import { api } from "./api";
-import { readCache, writeCache } from "./device-cache";
+import { readCache, writeCache,getDeviceCacheRevision,isDeviceCacheOwner } from "./device-cache";
+import {withRequestDeadline} from './request-deadline';
 
 export type PushDevice = {
   id: string;
@@ -56,7 +57,7 @@ export function pushSetupAvailability() {
     Constants.expoConfig?.extra?.eas?.projectId ??
     process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
 
-  if (typeof projectId !== "string" || !projectId)
+  if (Platform.OS !== 'android' && (typeof projectId !== "string" || !projectId))
     return {
       available: false,
       message:
@@ -196,54 +197,44 @@ export async function listPushDevices(): Promise<PushDevice[]> {
 }
 
 export async function registerPushDevice(userId: string, userInitiated = false) {
+  const revision=getDeviceCacheRevision();
+  const owned=()=>{if(revision!==getDeviceCacheRevision()||!isDeviceCacheOwner(userId))throw new Error('Your account changed. Retry notification setup for the current account.');};
+  owned();
   const availability = pushSetupAvailability();
-  if (!availability.available || !availability.projectId)
+  if (!availability.available)
     throw new Error(availability.message);
 
   const granted = await requestNativeNotificationPermission(userInitiated);
+  owned();
   if (!granted)
     throw new Error(
       "Notification permission was not granted. You can allow it in your device settings.",
     );
 
   const Notifications = await import("expo-notifications");
-  let token: Awaited<ReturnType<typeof Notifications.getExpoPushTokenAsync>>;
-  try {
-    token = await Notifications.getExpoPushTokenAsync({
-      projectId: availability.projectId,
-    });
-  } catch {
-    throw new Error(
-      Platform.OS === "android"
-        ? "This KampusOne Android build is missing or cannot use its Firebase push credentials. Install a push-enabled build or retry after reconnecting."
-        : "This KampusOne build could not register for push notifications. Retry when you are online.",
-    );
-  }
-
-  let nativeToken: string | undefined;
-  if (Platform.OS === "android") {
-    try {
-      const native = await Notifications.getDevicePushTokenAsync();
-      if (typeof native.data === "string" && native.data.trim())
-        nativeToken = native.data.trim();
-    } catch {
-      // Expo-token delivery remains as a compatibility fallback for older installs.
-    }
-  }
+  const [native,expo]=await Promise.all([
+    Platform.OS==='android'?withRequestDeadline(()=>Notifications.getDevicePushTokenAsync(),8000).catch(()=>null):Promise.resolve(null),
+    availability.projectId?withRequestDeadline(()=>Notifications.getExpoPushTokenAsync({projectId:availability.projectId}),8000).catch(()=>null):Promise.resolve(null),
+  ]);
+  owned();
+  const nativeToken=typeof native?.data==='string'?native.data.trim():undefined;
+  const expoPushToken=expo?.data;
+  if(!expoPushToken&&!nativeToken)throw new Error('This build could not register for notifications. Check your connection and retry notification setup.');
 
   const response = await api<{ device?: { id: string }; id?: string }>(
     "/v1/notifications/devices",
     {
       method: "POST",
       body: JSON.stringify({
-        expoPushToken: token.data,
+        expoPushToken,
         nativeToken,
         platform: Platform.OS,
         label: `KampusOne ${Platform.OS}`,
         buildVersion: Constants.expoConfig?.version ?? "unknown",
-      }),
+      }),timeoutMs:8000,
     },
   );
+  owned();
 
   const id = response.device?.id ?? response.id;
   if (!id)
@@ -265,11 +256,11 @@ export async function getRegisteredPushDevice(userId: string) {
   return device ? { ...device, registeredAt: saved.registeredAt } : null;
 }
 
-export async function unregisterPushDevice(userId: string) {
+export async function unregisterPushDevice(userId: string, timeoutMs = 1_500) {
   const saved = await readCache<{ id: string }>(registrationKey(userId));
   if (!saved?.id) return;
   await api("/v1/notifications/devices/" + encodeURIComponent(saved.id), {
-    method: "DELETE",
+    method: "DELETE", timeoutMs,
   });
   await writeCache(registrationKey(userId), null);
 }

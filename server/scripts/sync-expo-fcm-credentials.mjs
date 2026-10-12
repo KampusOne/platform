@@ -138,6 +138,9 @@ const UPLOAD_MUTATION = `mutation UploadFcmV1($accountId:ID!,$input:GoogleServic
 const ASSIGN_MUTATION = `mutation AssignFcmV1($androidCredentialsId:ID!,$keyId:ID!){
   androidAppCredentials{setGoogleServiceAccountKeyForFcmV1(id:$androidCredentialsId,googleServiceAccountKeyId:$keyId){id googleServiceAccountKeyForFcmV1{id projectIdentifier privateKeyIdentifier}}}
 }`;
+const CREATE_ANDROID_MUTATION = `mutation CreateKampusOneAndroidPush($appId:ID!,$packageName:String!){
+  androidAppCredentials{createAndroidAppCredentials(appId:$appId,applicationIdentifier:$packageName,androidAppCredentialsInput:{}){id applicationIdentifier isLegacy googleServiceAccountKeyForFcmV1{id projectIdentifier privateKeyIdentifier}}}
+}`;
 
 export async function syncExpoFcm({
   expoToken, projectId, serviceAccount, firebaseProjectId,
@@ -155,12 +158,21 @@ export async function syncExpoFcm({
     const matches = app.androidAppCredentials?.filter(
       (item) => item.applicationIdentifier === ANDROID_PACKAGE && !item.isLegacy
     ) ?? [];
-    if (matches.length !== 1) {
-      throw new Error('Expo must have exactly one non-legacy Android credential for app.kampusone.mobile. Inspect Project Settings > Credentials.');
+    if (matches.length > 1) {
+      throw new Error('Expo has multiple non-legacy Android credentials for app.kampusone.mobile. Select the correct app credential in Project Settings > Credentials.');
     }
-    return { accountId: app.ownerAccount.id, accountName:app.ownerAccount.name, android: matches[0] };
+    return { accountId: app.ownerAccount.id, accountName:app.ownerAccount.name, android: matches[0] ?? null };
   };
   const current = await read();
+  if(!current.android){
+    if(!apply)return{status:'NEEDS_ANDROID_CREDENTIALS'};
+    // Manual Gradle builds can have an EAS project with no Android credential
+    // record. Create the package association, without creating a keystore/build.
+    const created=await expoGraphql(expoToken,CREATE_ANDROID_MUTATION,{appId:projectId,packageName:ANDROID_PACKAGE},fetchFn);
+    const android=created.androidAppCredentials?.createAndroidAppCredentials;
+    if(!android?.id||android.applicationIdentifier!==ANDROID_PACKAGE||android.isLegacy!==false)throw new Error('Expo did not confirm the intended Android package credential.');
+    current.android=android;
+  }
   const alreadyMatches =
     current.android.googleServiceAccountKeyForFcmV1?.projectIdentifier === firebaseProjectId &&
     current.android.googleServiceAccountKeyForFcmV1?.privateKeyIdentifier === serviceAccount.private_key_id;

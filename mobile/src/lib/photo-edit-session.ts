@@ -1,6 +1,6 @@
 import type { PhotoDimensions } from "./photo-crop";
 
-export type PhotoEditKind = "avatar" | "cover" | "post";
+export type PhotoEditKind = "avatar" | "cover" | "post" | "product";
 export type PhotoEditRequest = {
   id: number;
   kind: PhotoEditKind;

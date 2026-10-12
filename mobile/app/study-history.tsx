@@ -1,3 +1,4 @@
+import { useActiveScreen } from "@/src/lib/use-active-screen";
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Pressable,Text,View} from 'react-native';
 import {router,useFocusEffect,useLocalSearchParams} from 'expo-router';
@@ -11,11 +12,12 @@ type Insights={active:{id:string;started_at:string}|null;members:{user_id:string
 const clock=(seconds:number)=>{const whole=Math.max(0,Math.floor(seconds));return `${String(Math.floor(whole/3600)).padStart(2,'0')}:${String(Math.floor(whole%3600/60)).padStart(2,'0')}:${String(whole%60).padStart(2,'0')}`;};
 const duration=(seconds:number)=>`${Math.floor(seconds/3600)}h ${Math.floor(seconds%3600/60)}m`;
 export default function StudyHistory(){
+  const activeScreen=useActiveScreen();
  const {id,name}=useLocalSearchParams<{id?:string;name?:string}>(),{theme}=useAppearance(),{user}=useAuth();const [data,setData]=useState<Insights|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[now,setNow]=useState(Date.now()),[goal,setGoal]=useState(25),[selected,setSelected]=useState<string|null>(null);const requestId=useRef(randomUUID());
  const base='/v1/communities/groups/'+id+'/study';
  const load=useCallback(async()=>{if(!id)return;setError('');try{setData(await api<Insights>(base));}catch(e){setError(e instanceof Error?e.message:'Could not load study time.');}},[base,id]);
  useFocusEffect(useCallback(()=>{void load();},[load]));
- useEffect(()=>{if(!data?.active)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[data?.active]);
+ useEffect(()=>{if(!data?.active||!activeScreen)return;setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[data?.active,activeScreen]);
  const elapsed=data?.active?Math.min(12*3600,Math.max(0,(now-Date.parse(data.active.started_at))/1000)):0;
  async function start(){setBusy(true);setError('');try{await api(base+'/start',{method:'POST',body:JSON.stringify({requestId:requestId.current})});setNow(Date.now());await load();}catch(e){setError(e instanceof Error?e.message:'Could not start your study session.');}finally{setBusy(false);}}
  async function stop(){if(!data?.active)return;setBusy(true);setError('');try{await api(base+'/stop',{method:'POST',body:JSON.stringify({sessionId:data.active.id})});requestId.current=randomUUID();await load();}catch(e){setError(e instanceof Error?e.message:'Could not save your session. Keep this screen open and retry.');}finally{setBusy(false);}}

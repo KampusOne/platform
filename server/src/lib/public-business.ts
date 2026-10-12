@@ -81,7 +81,7 @@ export async function readPublicBusiness(
       );
       const results = await Promise.all([
         db.execute(sql`
-          select p.id,p.name,p.description,p.price_kobo,p.stock_quantity,p.image_url,cat.name as category,
+          select p.id,p.name,p.description,p.price_kobo,p.stock_quantity,p.image_url,coalesce(to_jsonb(p)->'image_urls','[]'::jsonb) as image_urls,cat.name as category,
             count(*) over()::int as total_count
           from public.vendor_products p
           join public.product_categories cat on cat.id=p.category_id and cat.university_id=p.university_id and cat.status='APPROVED'

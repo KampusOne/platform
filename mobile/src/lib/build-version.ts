@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { withRequestDeadline } from "./request-deadline";
 const currentBuild = process.env.EXPO_PUBLIC_BUILD_ID;
@@ -22,4 +23,10 @@ export function checkBuildVersion(): Promise<void> {
     } catch { /* Offline, blocked storage or version-check failure must never prevent sign-in. */ }
   })().finally(() => { pending = undefined; });
   return pending;
+}
+
+export function installedBuildInfo(){
+ const candidate=process.env.EXPO_PUBLIC_BUILD_ID??Constants.expoConfig?.extra?.buildId;
+ const commit=typeof candidate==='string'&&/^[a-f0-9]{7,40}$/i.test(candidate)?candidate:null;
+ return {version:Constants.expoConfig?.version??'Unknown',versionCode:Constants.expoConfig?.android?.versionCode??null,commit};
 }

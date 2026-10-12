@@ -75,10 +75,11 @@ describe('October 6 release against the current complete database schema',()=>{
     expect(snapshot.provider_fee_mode).toBe('CUSTOMER_PASSTHROUGH');expect(Number(snapshot.provider_initialized_amount_kobo)).toBe(principal);
   });
   it('makes waitlist shutdown a real 404 and keeps repeated article likes and joins idempotent',async()=>{
-    const join={email:'waitlist-fixture@example.test',fullName:'Fixture Person',universityName:'Fixture University',platform:'ANDROID',contactConsent:true};
+    const join={email:'waitlist-fixture@example.test',fullName:'Fixture Person',universityName:'Fixture University',faculty:'Engineering',department:'Computer Engineering',currentLevel:'HND 2',platform:'ANDROID',contactConsent:true};
     expect((await request('/website/waitlist','POST',join)).status).toBe(202);
     expect((await request('/website/waitlist','POST',join)).status).toBe(202);
     expect((await db.query("select id from app_private.website_waitlist where email='waitlist-fixture@example.test'")).rows).toHaveLength(1);
+    expect((await db.query("select faculty,department,current_level from app_private.website_waitlist where email='waitlist-fixture@example.test'")).rows).toEqual([{faculty:'Engineering',department:'Computer Engineering',current_level:'HND 2'}]);
     await db.exec('update app_private.website_settings set waitlist_enabled=false');
     expect((await request('/website/waitlist')).status).toBe(404);expect((await request('/website/waitlist','POST',join)).status).toBe(404);
     const like='/website/articles/campus-life-should-feel-connected/like';

@@ -1,3 +1,4 @@
+import { publishUserReads } from "../lib/live-updates";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { z, directMessageInputSchema, directMessageReactionSchema, directMessageReportReasonSchema } from "@kampusone/contracts";
@@ -19,6 +20,18 @@ export const messageRoutes = new Hono<{
 }>();
 
 messageRoutes.use("/*", requireAuth);
+messageRoutes.use('/*',async(c,next)=>{
+  await next();
+  if(c.req.method==='GET'||!c.res.ok||c.env.LIVE_UPDATES_ENABLED!=='true'||!c.env.LIVE_USERS)return;
+  const match=c.req.path.match(/\/threads\/([0-9a-f-]{36})/i);if(!match)return;
+  const user=currentUser(c),threadId=match[1]!;
+  const notify=async()=>{
+    const targets=await database(c.env).execute<{user_id:string;university_id:string|null}>(sql`select p.user_id,p.university_id from public.direct_threads t join public.profiles p on p.user_id in(t.initiator_id,t.recipient_id) where t.id=${threadId}::uuid and ${user.id}::uuid in(t.initiator_id,t.recipient_id) and p.deleted_at is null`);
+    await Promise.all(targets.rows.map(target=>publishUserReads(c.env,target.user_id,target.university_id,{id:c.get('requestId')+':'+target.user_id,prefixes:['/v1/messages/inbox','/v1/messages/threads/'+threadId,'/v1/notifications/inbox']})));
+  };
+  try{c.executionCtx.waitUntil(notify().catch(()=>undefined));}catch{/* A unavailable event stream never changes a confirmed write. */}
+});
+
 messageRoutes.use("/*", async (c, next) => {
   c.header("Cache-Control", "private, no-store");
   await requireProfileSafety(c.env);
@@ -88,6 +101,21 @@ async function threadFor(env: Bindings, userId: string, threadId: string) {
     thread.initiator_id === userId ? thread.recipient_id : thread.initiator_id,
   );
   return thread;
+}
+
+async function unreadMessages(env: Bindings, userId: string) {
+  const result = await database(env).execute<{ unread_count: number }>(sql`
+    select count(*)::int as unread_count
+    from public.direct_messages m
+    join public.direct_threads t on t.id=m.thread_id
+    join public.profiles p on p.user_id=case
+      when t.initiator_id=${userId}::uuid then t.recipient_id else t.initiator_id end
+    where ${userId}::uuid in(t.initiator_id,t.recipient_id)
+      and t.status<>'DECLINED' and p.deleted_at is null
+      and ${unblockedAuthor(userId, sql`p.user_id`)}
+      and m.sender_id<>${userId}::uuid and m.read_at is null and m.unsent_at is null
+  `);
+  return firstRow(result)?.unread_count ?? 0;
 }
 
 messageRoutes.get('/shared/:id',async c=>{
@@ -410,14 +438,23 @@ messageRoutes.put("/threads/:id/accept", async (c) => {
 messageRoutes.put("/threads/:id/read", async (c) => {
   const user = currentUser(c);
   const thread = await threadFor(c.env, user.id, id(c.req.param("id")));
+  const body = await c.req.text();
+  const parsed = z.object({lastReadMessageId:z.string().uuid().optional()}).strict().safeParse(body ? (()=>{try{return JSON.parse(body);}catch{return null;}})() : {});
+  if(!parsed.success)throw new AppError(400,'BAD_REQUEST','Choose a message you have viewed.');
+  const lastSeen = parsed.data.lastReadMessageId;
+  if(lastSeen)await messageFor(c.env,thread.id,lastSeen);
   await database(c.env).execute(sql`
     update public.direct_messages
     set read_at=coalesce(read_at,now())
     where thread_id=${thread.id}::uuid
       and sender_id<>${user.id}::uuid
       and read_at is null
+      and unsent_at is null
+      and (${lastSeen??null}::uuid is null or (created_at,id)<=(
+        select created_at,id from public.direct_messages where id=${lastSeen??null}::uuid and thread_id=${thread.id}::uuid
+      ))
   `);
-  return c.json({ read: true });
+  return c.json({ read: true, unreadCount:await unreadMessages(c.env,user.id) });
 });
 
 messageRoutes.post("/threads/:id/messages", async (c) => {

@@ -31,6 +31,7 @@ export async function october6Database() {
       '20261006190000_alarm_categories_and_assessments',
       '20261006191000_direct_storage_uploads',
       '20261009120000_class_alarm_daily_mute',
+      '20261012210000_website_waitlist_academic_context',
     ]){
       try{await db.exec(await readFile(new URL('../../../database/neon/migrations/'+name+'.sql',import.meta.url),'utf8'));}
       catch(error){throw new Error('Migration '+name+': '+(error as Error).message);}

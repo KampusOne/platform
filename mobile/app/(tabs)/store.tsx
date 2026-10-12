@@ -1,3 +1,10 @@
+import {cacheScopeForUser} from '@/src/lib/request-policy';
+import {ProductPreview} from '@/src/components/product-preview';
+import {MediaImage} from '@/src/components/media-image';
+import { useAuth } from "@/src/auth/auth-context";
+import { readCache, writeCache,getDeviceCacheRevision } from "@/src/lib/device-cache";
+import { SearchLoading } from "@/src/components/search-loading";
+import { SyncStatus } from "@/src/components/sync-status";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { refreshScreenRead } from '@/src/lib/screen-read';
@@ -32,7 +39,6 @@ import { CreateAction } from "@/src/components/create-action";
 import { useReducedMotionPreference } from "@/src/components/visual-system";
 import { ApiError, api } from "@/src/lib/api";
 import { useToast } from "@/src/components/toast";
-import { shareItem } from "@/src/lib/share-content";
 import { theme } from "@/src/theme";
 
 type Product = {
@@ -45,6 +51,9 @@ type Product = {
   pricing_ready?: boolean;
   stock_quantity: number;
   image_url: string | null;
+  image_urls?: string[];
+  rating?: number;
+  review_count?: number;
   vendor_name: string;
   pickup_enabled?: boolean;
   self_delivery_enabled?: boolean;
@@ -88,7 +97,9 @@ const naira = (kobo: number) =>
     maximumFractionDigits: 2,
   }).format(Number(kobo) / 100);
 
-export default function StoreScreen() {
+export default function StoreScreen(){const{user}=useAuth();return <OwnedStoreScreen key={user?cacheScopeForUser(user):'anonymous'}/>;}
+function OwnedStoreScreen() {
+  const { user } = useAuth();
   const { product: focusedProduct } = useLocalSearchParams<{
     product?: string;
   }>();
@@ -102,11 +113,11 @@ export default function StoreScreen() {
   );
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth,fontScale } = useWindowDimensions();
   const compactPhone = windowWidth < 400;
   const contentWidth = Math.min(windowWidth, 540);
   const horizontalPadding = compactPhone ? 14 : 20;
-  const productWidth = (contentWidth-horizontalPadding*2-12)/2;
+  const [preview,setPreview]=useState<Product|null>(null);
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -121,7 +132,19 @@ export default function StoreScreen() {
   const [pickupHandoff, setPickupHandoff] = useState<"STORE" | "AGREED">("STORE");
   const [meetingPoint, setMeetingPoint] = useState("");
   const [cart, setCart] = useState<Cart>({});
+  const [cartOwner,setCartOwner]=useState<string|null>(null);
+  const cartReady=Boolean(user?.id&&cartOwner===user.id);
+  const pendingCart=useRef<{owner:string;value:Cart}|null>(null);
+  if(cartReady&&user?.id)pendingCart.current={owner:user.id,value:cart};
+  useEffect(()=>{let live=true;const revision=getDeviceCacheRevision();setCartOwner(null);pendingCart.current=null;setCart({});if(!user?.id)return;void readCache<Cart>("cart."+user.id).then(saved=>{if(!live||revision!==getDeviceCacheRevision())return;setCart(Object.fromEntries(Object.entries(saved??{}).filter(([id,n])=>/^[0-9a-f-]{36}$/i.test(id)&&Number.isSafeInteger(n)&&n>0&&n<=99).slice(0,50)));setCartOwner(user.id);});return()=>{live=false;const pending=pendingCart.current;if(revision===getDeviceCacheRevision()&&pending?.owner===user.id)void writeCache("cart."+user.id,pending.value);};},[user?.id]);
+  useEffect(()=>{if(!cartReady||!user?.id)return;const revision=getDeviceCacheRevision();const timer=setTimeout(()=>{if(revision===getDeviceCacheRevision())void writeCache("cart."+user.id,cart);},250);return()=>clearTimeout(timer);},[cart,user?.id,cartReady]);
   const [query, setQuery] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const searchPending = query.trim().toLocaleLowerCase("en-NG") !== searchTerm;
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchTerm(query.trim().toLocaleLowerCase("en-NG")), 220);
+    return () => clearTimeout(timer);
+  }, [query]);
   const [selectedShop, setSelectedShop] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedZoneId, setSelectedZoneId] = useState("");
@@ -131,6 +154,7 @@ export default function StoreScreen() {
   const [noteFocused, setNoteFocused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const checkoutLock=useRef(false);
   const [catalogueMode, setCatalogueMode] = useState<CatalogueMode>("LIVE");
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [catalogIssue, setCatalogIssue] = useState<CatalogIssue | null>(null);
@@ -215,6 +239,10 @@ export default function StoreScreen() {
     }, [load]),
   );
 
+  const columns=windowWidth<360||fontScale>1.3||products.length===1?1:2;
+  const productWidth=(contentWidth-horizontalPadding*2-(columns-1)*12)/columns;
+  useEffect(()=>{if(focusedProduct){const found=products.find(product=>product.id===focusedProduct);if(found)setPreview(found);}},[focusedProduct,products]);
+
   const categories = useMemo(
     () => [
       "All",
@@ -226,7 +254,7 @@ export default function StoreScreen() {
   );
 
   const filtered = useMemo(() => {
-    const term = query.trim().toLowerCase();
+    const term = searchTerm;
     return products.filter((item) => {
       const matchesCategory =
         Boolean(focusedProduct) ||
@@ -244,7 +272,7 @@ export default function StoreScreen() {
         matchesQuery
       );
     });
-  }, [products, query, selectedCategory, focusedProduct, selectedShop]);
+  }, [products, searchTerm, selectedCategory, focusedProduct, selectedShop]);
 
   const cartItems = useMemo(
     () =>
@@ -331,10 +359,6 @@ export default function StoreScreen() {
   }
 
   function add(product: Product) {
-    if (product.pricing_ready === false) {
-      setNotice("This product is awaiting an approved checkout price.");
-      return;
-    }
     const activeVendor = cartItems[0]?.product.vendor_profile_id;
     if (activeVendor && activeVendor !== product.vendor_profile_id) {
       const activeSeller =
@@ -372,7 +396,8 @@ export default function StoreScreen() {
   }
 
   async function checkout() {
-    if (!checkoutEnabled || !cartItems.length || !checkoutReady) return;
+    if (checkoutLock.current || !checkoutEnabled || !cartItems.length || !checkoutReady) return;
+    checkoutLock.current=true;
     setBusy(true);
     setCheckoutError("");
     setNotice("");
@@ -387,6 +412,7 @@ export default function StoreScreen() {
           "/v1/student/order-quotes",
           {
             method: "POST",
+            timeoutMs:8000,
             body: JSON.stringify({
               ...JSON.parse(orderPayload),
               requestId: quoteRequest.current.id,
@@ -400,6 +426,7 @@ export default function StoreScreen() {
         "/v1/student/orders",
         {
           method: "POST",
+          timeoutMs:8000,
           body: JSON.stringify({
             ...JSON.parse(orderPayload),
             quoteId: validQuote.id,
@@ -432,6 +459,7 @@ export default function StoreScreen() {
           : "The order could not be created.",
       );
     } finally {
+      checkoutLock.current=false;
       setBusy(false);
     }
   }
@@ -463,7 +491,7 @@ export default function StoreScreen() {
       onAction={retryLoad}
       title="No products yet"
     />
-  ) : products.length > 0 && !filtered.length ? (
+  ) : !searchPending && products.length > 0 && !filtered.length ? (
     <StateMessage
       actionLabel="Clear filters"
       body="Try a different product name, seller, or category."
@@ -496,7 +524,7 @@ export default function StoreScreen() {
       >
         <FlatList
           accessibilityLabel="Campus store products"
-          columnWrapperStyle={styles.productRow}
+          columnWrapperStyle={columns===2?styles.productRow:undefined}
           contentContainerStyle={[
             styles.listContent,
             compactPhone && styles.listContentCompact,
@@ -510,6 +538,8 @@ export default function StoreScreen() {
           ListEmptyComponent={catalogueEmpty}
           ListHeaderComponent={
             <>
+              <SyncStatus path="/v1/student/store"/>
+              {searchPending?<SearchLoading label="Searching products and sellers…" shape="products" hasResults={filtered.length>0}/>:null}
               <View style={styles.storeToolbar}>
                 {!featureDisabled ? (
                   <View
@@ -585,6 +615,19 @@ export default function StoreScreen() {
                   ) : null}
                 </Pressable>
               </View>
+
+              {!featureDisabled && query.trim() ? (
+                <View accessibilityLiveRegion="polite"
+                  style={{ flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 8 }}>
+                  <Ionicons name={searchPending ? "search-outline" : "checkmark-circle-outline"} size={17}
+                    color={theme.brandPressed} />
+                  <Text style={{ color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 12, flex: 1 }}>
+                    {searchPending
+                      ? "Searching products and sellers…"
+                      : `${filtered.length} ${filtered.length === 1 ? "result" : "results"} for “${query.trim()}”`}
+                  </Text>
+                </View>
+              ) : null}
 
               {!featureDisabled && catalogueMode === "LIVE" && (
                 <PopularShops
@@ -718,9 +761,9 @@ export default function StoreScreen() {
               ) : null}
             </>
           }
-          key={compactPhone ? "store-compact" : "store-regular"}
+          key={`store-${columns}-${compactPhone?'compact':'regular'}`}
           maxToRenderPerBatch={10}
-          numColumns={2}
+          numColumns={columns}
           ItemSeparatorComponent={
             compactPhone
               ? () => <View style={styles.compactProductGap} />
@@ -729,6 +772,7 @@ export default function StoreScreen() {
           removeClippedSubviews={Platform.OS === "android"}
           renderItem={({ item: product }) => (
             <ProductCard
+              onPreview={()=>setPreview(product)}
               onAdd={() => add(product)}
               onChangeQuantity={(delta) => changeQuantity(product, delta)}
               product={product}
@@ -741,6 +785,8 @@ export default function StoreScreen() {
           windowSize={7}
         />
       </Animated.View>
+
+      <Modal visible={Boolean(preview)} animationType={reducedMotion?"none":"slide"} onRequestClose={()=>setPreview(null)}>{preview?<ProductPreview key={preview.id} product={preview} quantity={cart[preview.id]??0} onClose={()=>setPreview(null)} onAdd={()=>add(preview)}/>:null}</Modal>
 
       <Modal
         animationType={reducedMotion ? "none" : "slide"}
@@ -1233,12 +1279,14 @@ export default function StoreScreen() {
 }
 
 function ProductCard({
+  onPreview,
   onAdd,
   onChangeQuantity,
   product,
   quantity,
   width,
 }: {
+  onPreview:()=>void;
   onAdd: () => void;
   onChangeQuantity: (delta: number) => void;
   product: Product;
@@ -1248,56 +1296,55 @@ function ProductCard({
   const { theme, styles } = useThemeStyles(createStyles);
 
   const outOfStock = Number(product.stock_quantity) <= 0;
-  const toast = useToast();
 
   return (
     <View style={[styles.card, { width }]}>
-      {product.image_url ? (
-        <Image
-          accessible={false}
-          resizeMode="cover"
-          source={{ uri: product.image_url }}
-          style={styles.productImage}
-        />
-      ) : (
-        <View style={styles.productFallback}>
-          <View style={styles.fallbackDisc}>
-            <Ionicons
-              name={productIcon(product)}
-              size={30}
-              color={theme.brandPressed}
-            />
+      <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.name} details and photos`} onPress={onPreview} style={({pressed})=>pressed&&{opacity:0.85}}>
+        {product.image_url ? (
+          <MediaImage accessible={false} resizeMode="cover" uri={product.image_url} style={styles.productImage} />
+        ) : (
+          <View style={styles.productFallback}>
+            <View style={styles.fallbackDisc}>
+              <Ionicons name={productIcon(product)} size={30} color={theme.brandPressed} />
+            </View>
           </View>
+        )}
+        <View style={{ position: "absolute", left: 9, top: 9, paddingHorizontal: 9, paddingVertical: 5,
+          borderRadius: 7, backgroundColor: outOfStock ? theme.surface : theme.deepBrand }}>
+          <Text style={{ fontFamily: theme.font.semibold, fontSize: 10, color: outOfStock ? theme.error : "#FFFFFF" }}>
+            {outOfStock ? "Sold out" : "Available"}
+          </Text>
         </View>
-      )}
+      </Pressable>
       <View style={styles.cardBody}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.name} details`} onPress={onPreview}>
         <View style={styles.categoryRow}>
-          <Text numberOfLines={1} style={styles.category}>
+          <Text numberOfLines={2} style={styles.category}>
             {product.category}
           </Text>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Share ${product.name}`} onPress={()=>void shareItem("product",product.id,product.name).catch(()=>toast("Sharing could not open.","error"))} style={{minWidth:44,minHeight:44,justifyContent:"center",alignItems:"center",marginLeft:"auto"}}><Ionicons name="share-outline" color={theme.brand} size={19}/></Pressable>
         </View>
         <Text
           android_hyphenationFrequency="none"
-          numberOfLines={2}
           style={styles.name}
           textBreakStrategy="simple"
         >
           {product.name}
         </Text>
-        <View style={styles.vendor}>
-          <Ionicons
-            name="checkmark-circle"
-            size={15}
-            color={theme.verification}
-          />
-          <Text numberOfLines={1} style={styles.vendorText}>
-            {product.vendor_name}
-          </Text>
-        </View>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`View ${product.vendor_name}'s seller profile`}
+          onPress={() => router.push({ pathname: "/student-service", params: { id: product.vendor_profile_id } })}
+          style={styles.vendor}>
+          <Ionicons name="storefront-outline" size={14} color={theme.brandPressed} />
+          <Text numberOfLines={1} style={styles.vendorText}>{product.vendor_name}</Text>
+          <Ionicons name="chevron-forward" size={13} color={theme.textMuted} />
+        </Pressable>
         <View style={styles.priceRow}>
           <Text
             android_hyphenationFrequency="none"
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
             numberOfLines={1}
             style={styles.price}
             textBreakStrategy="simple"
@@ -1714,13 +1761,13 @@ const createStyles = (theme: Theme) =>
       overflow: "hidden",
     },
     productImage: {
-      aspectRatio: 1.04,
+      aspectRatio: 1,
       backgroundColor: theme.surfaceMuted,
       width: "100%",
     },
     productFallback: {
       alignItems: "center",
-      aspectRatio: 1.04,
+      aspectRatio: 1,
       backgroundColor: theme.surfaceMuted,
       justifyContent: "center",
       overflow: "hidden",
@@ -1736,12 +1783,12 @@ const createStyles = (theme: Theme) =>
       width: 66,
     },
     cardBody: { padding: 12 },
-    categoryRow: { alignItems: "center", flexDirection: "row", gap: 6 },
+    categoryRow: { alignItems: "center", flexDirection: "row", gap: 6, minHeight: 24 },
     category: {
       color: theme.brandPressed,
       flex: 1,
       fontFamily: theme.font.semibold,
-      fontSize: 11.5,
+      fontSize: 11,
       lineHeight: 15,
     },
     demoLabel: {
@@ -1776,6 +1823,7 @@ const createStyles = (theme: Theme) =>
       flexDirection: "row",
       gap: 5,
       marginTop: 9,
+      minHeight: 44,
     },
     vendorText: {
       color: theme.textMuted,

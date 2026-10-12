@@ -1,3 +1,8 @@
+import {getDeviceCacheRevision} from '@/src/lib/device-cache';
+import {unreadRead,updateUnreadCount} from '@/src/lib/unread-counts';
+import {useAuth} from '@/src/auth/auth-context';
+import {cacheScopeForUser} from '@/src/lib/request-policy';
+import { useLiveRefresh } from "@/src/lib/live-updates";
 import { useCallback, useState, useRef } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -46,6 +51,10 @@ function normalizeNotices(value: unknown): Notice[] {
   });
 }
 export default function Notifications() {
+  const {user}=useAuth();
+  const scope=user?cacheScopeForUser(user):null;
+  const pendingReads=useRef(new Set<string>());
+  const loadedScope=useRef<string|null>(null);
   const toast = useToast();
   const { theme } = useAppearance();
   const [items, setItems] = useState<Notice[]>([]);
@@ -54,35 +63,42 @@ export default function Notifications() {
   const [nextCursor,setNextCursor]=useState<string|null>(null);
   const extended=useRef(false);
   const [moreBusy,setMoreBusy]=useState(false);
-  const load = useCallback(async (markSocial=false) => {
+  const load = useCallback(async () => {
+    const lease=unreadRead('notifications');
     setError("");
     try {
-      if(markSocial)await api('/v1/notifications/read-social', { method: 'POST' });
-      const result=await api<{notifications:Notice[];unreadCount:number;nextCursor:string|null}>("/v1/notifications/inbox");
+      const result=await api<{notifications:Notice[];unreadCount:number;nextCursor:string|null}>("/v1/notifications/inbox",{cache:"no-store",timeoutMs:8000});
+      if(lease.revision!==getDeviceCacheRevision())return;
       const incoming=normalizeNotices(result?.notifications);
       setItems(current=>extended.current?[...incoming,...current.filter(n=>!incoming.some(f=>f.id===n.id))]:incoming);
       const unread=Number(result?.unreadCount);
-      updateNotificationCount(Number.isFinite(unread)?Math.max(0,Math.trunc(unread)):incoming.filter(n=>!n.read_at).length);
+      updateUnreadCount('notifications',Number.isFinite(unread)?Math.max(0,Math.trunc(unread)):incoming.filter(n=>!n.read_at).length,lease.revision,lease.version);
       if(!extended.current)setNextCursor(typeof result?.nextCursor==="string"?result.nextCursor:null);
     } catch (e) {
+      if(lease.revision!==getDeviceCacheRevision())return;
       setError(
         e instanceof Error ? e.message : "Notifications could not load.",
       );
     } finally {
-      setReady(true);
+      if(lease.revision===getDeviceCacheRevision())setReady(true);
     }
-  }, []);
-  useFocusEffect(useCallback(() => { void load(true);const timer=setInterval(()=>void load(),20000);return()=>clearInterval(timer); },[load]));
+  }, [scope]);
+  useFocusEffect(useCallback(() => { if(loadedScope.current!==scope){setItems([]);setReady(false);extended.current=false;pendingReads.current.clear();loadedScope.current=scope;}void load(); },[load,scope]));
+  useLiveRefresh("/v1/notifications/inbox", () => load(), 90_000);
   async function loadMore(){if(!nextCursor||moreBusy)return;setMoreBusy(true);extended.current=true;try{const result=await api<{notifications:Notice[];nextCursor:string|null}>("/v1/notifications/inbox?before="+encodeURIComponent(nextCursor));const incoming=normalizeNotices(result?.notifications);setItems(current=>[...current,...incoming.filter(n=>!current.some(old=>old.id===n.id))]);setNextCursor(typeof result?.nextCursor==="string"?result.nextCursor:null);}catch{toast("Could not load older notifications","error");}finally{setMoreBusy(false);}}
   async function open(n: Notice) {
+    const revision=getDeviceCacheRevision();
+    if(pendingReads.current.has(n.id))return;
     const wasUnread=!n.read_at;
+    if(wasUnread)pendingReads.current.add(n.id);
     const openedAt=new Date().toISOString();
     if(wasUnread){
       setItems(current=>current.map(i=>i.id===n.id?{...i,read_at:openedAt}:i));
-      changeNotificationCount(-1);
+      changeNotificationCount(-1,revision);
     }
+    const optimistic=unreadRead('notifications');
     const readRequest=wasUnread
-      ? api("/v1/notifications/inbox/" + n.id + "/read", { method: "PATCH" })
+      ? api<{unreadCount:number}>("/v1/notifications/inbox/" + n.id + "/read", { method: "PATCH",timeoutMs:8000 })
       : null;
     if (n.path?.startsWith("/") && !n.path.startsWith("//")) {
       try {
@@ -93,19 +109,22 @@ export default function Notifications() {
     }
     if(!readRequest)return;
     try {
-      await readRequest;
+      const result=await readRequest;
+      updateUnreadCount('notifications',result.unreadCount,revision,optimistic.version);
     } catch (e) {
+      if(revision!==getDeviceCacheRevision())return;
       setItems(current=>current.map(i=>i.id===n.id?{...i,read_at:null}:i));
-      changeNotificationCount(1);
+      if(unreadRead('notifications').version===optimistic.version)changeNotificationCount(1,revision);
+      else void load();
       toast(
         e instanceof Error ? e.message : "Could not mark notification as read",
         "error",
       );
-    }
+    }finally{pendingReads.current.delete(n.id);}
   }
   return (
     <ToolPage title="Notifications" action={<Pressable accessibilityRole="button" accessibilityLabel="Notification settings" onPress={()=>router.push('/notification-preferences')} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="settings-outline" size={24} color={theme.text}/></Pressable>}>
-      <ToolButton secondary label="Mark all as read" disabled={!items.some(item=>!item.read_at)} onPress={()=>{void api('/v1/notifications/read-all',{method:'POST'}).then(()=>{setItems(current=>current.map(item=>({...item,read_at:new Date().toISOString()})));updateNotificationCount(0);}).catch(()=>toast('Could not mark notifications as read','error'));}}/>
+      <ToolButton secondary label="Mark all as read" disabled={!items.some(item=>!item.read_at)} onPress={()=>{const revision=getDeviceCacheRevision();void api<{unreadCount:number}>('/v1/notifications/read-all',{method:'POST',timeoutMs:8000}).then(result=>{if(revision!==getDeviceCacheRevision())return;setItems(current=>current.map(item=>({...item,read_at:new Date().toISOString()})));updateNotificationCount(result.unreadCount,revision);}).catch(()=>{if(revision===getDeviceCacheRevision())toast('Could not mark notifications as read','error');});}}/>
       {!ready ? (
         <ScreenSkeleton variant="list" compact />
       ) : error ? (

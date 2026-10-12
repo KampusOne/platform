@@ -1,4 +1,6 @@
 import {cachedVersionedRead} from "../lib/cache-revision";
+import {livePublishingEnabled} from '../services/live-read-publishers';
+import {publishUserReads} from '../lib/live-updates';
 import {notificationRuntime,defaultNotificationRuntime,type NotificationRuntime} from '../services/notification-runtime';
 import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
@@ -7,6 +9,7 @@ import { currentUser, requireAuth } from '../middleware/auth';
 import { database, firstRow, sqlClient } from '../lib/database';
 import { input, id } from '../lib/input';
 import { AppError } from '../lib/errors';
+import {sha256} from '../lib/security';
 import { resolveAdminScope } from '../lib/admin-access';
 import { recordAudit } from '../lib/audit';
 import { expoTokenPattern, sendTestPush, fetchPushReceipt } from '../lib/push';
@@ -22,6 +25,12 @@ import {
 
 export const notificationRoutes=new Hono<{Bindings:Bindings;Variables:Variables}>();
 notificationRoutes.use('/*',requireAuth);
+notificationRoutes.use('/*',async(c,next)=>{
+ await next();
+ if(!c.res.ok||!livePublishingEnabled(c.env)||!/^\/v1\/notifications\/(?:inbox\/[a-f0-9-]{36}\/read|read-all|read-social)$/.test(c.req.path)||!['POST','PATCH'].includes(c.req.method))return;
+ const user=currentUser(c);
+ try{c.executionCtx.waitUntil(publishUserReads(c.env,user.id,user.universityId,{id:c.get('requestId'),prefixes:['/v1/notifications/inbox']}).catch(()=>console.warn(JSON.stringify({level:'warn',event:'live.notification_read_publish_failed',requestId:c.get('requestId')}))));}catch{/* Focused HTTP fallback remains authoritative outside Worker contexts. */}
+});
 notificationRoutes.use('/*',async(c,next)=>{
  if(c.env.UNIFIED_SCHEMA_READY!=='true')throw new AppError(503,'PROVIDER_UNAVAILABLE','Notifications are unavailable until the account service is ready.');
  await next();
@@ -53,6 +62,10 @@ notificationRoutes.put('/preferences',async c=>{
  await database(c.env).execute(sql`update public.profiles set settings=coalesce(settings,'{}'::jsonb)||jsonb_build_object('notificationPreferences',${JSON.stringify(preferences)}::jsonb,'notificationChannels',${JSON.stringify(channels)}::jsonb),updated_at=now() where user_id=${currentUser(c).id}::uuid and deleted_at is null`);
  return c.json({preferences,channels});
 });
+
+function noticeVisible(user:ReturnType<typeof currentUser>){return sql`n.user_id=${user.id}::uuid and (n.institution_id is null or n.institution_id=${user.universityId}::uuid) and ${unblockedAuthor(user.id,sql`n.actor_user_id`)} and coalesce(n.dedupe_key,'') not like 'message:%' and coalesce(n.path,'') not like '/conversation%' and(coalesce(n.dedupe_key,'') not like 'post-mention:%' or exists(select 1 from public.profiles prefs where prefs.user_id=${user.id}::uuid and coalesce(prefs.settings->'notificationChannels'->'mentions'->>'in_app_enabled',prefs.settings->'notificationPreferences'->>'mentions','true')='true'))`;
+}
+async function unreadNotices(env:Bindings,user:ReturnType<typeof currentUser>){return firstRow(await database(env).execute<{unread_count:number}>(sql`select count(*)::int as unread_count from public.in_app_notifications n where ${noticeVisible(user)} and n.read_at is null`))?.unread_count??0;}
 notificationRoutes.get('/inbox',async c=>{
  const user=currentUser(c),db=database(c.env),limit=30;
  await queueDuePurchaseReviews(c.env,user.id);
@@ -64,8 +77,7 @@ notificationRoutes.get('/inbox',async c=>{
   if(!parsed.success)throw new AppError(400,'BAD_REQUEST','This notification page is invalid.');
   before=parsed.data;
  }
- const actorVisible=unblockedAuthor(user.id,sql`n.actor_user_id`);
- const visible=sql`n.user_id=${user.id}::uuid and (n.institution_id is null or n.institution_id=${user.universityId}::uuid) and ${actorVisible} and coalesce(n.dedupe_key,'') not like 'message:%' and coalesce(n.path,'') not like '/conversation%' and(coalesce(n.dedupe_key,'') not like 'post-mention:%' or exists(select 1 from public.profiles prefs where prefs.user_id=${user.id}::uuid and coalesce(prefs.settings->'notificationChannels'->'mentions'->>'in_app_enabled',prefs.settings->'notificationPreferences'->>'mentions','true')='true'))`;
+ const visible=noticeVisible(user);
  const [result,count]=await Promise.all([
   db.execute<{id:string;title:string;body:string;path:string|null;read_at:string|null;created_at:string;actor_user_id:string|null;actor_name:string|null;actor_profile_image_url:string|null}>(sql`select n.id,n.title,n.body,n.path,n.read_at,n.created_at::text,n.actor_user_id,coalesce(actor.display_name,actor.username) as actor_name,actor.profile_image_url as actor_profile_image_url from public.in_app_notifications n left join public.profiles actor on actor.user_id=n.actor_user_id and actor.deleted_at is null where ${visible} and (${before?.time??null}::timestamptz is null or (n.created_at,n.id)<(${before?.time??null}::timestamptz,${before?.id??null}::uuid)) order by n.created_at desc,n.id desc limit ${limit+1}`),
   db.execute<{unread_count:number}>(sql`select count(*)::int as unread_count from public.in_app_notifications n where ${visible} and n.read_at is null`),
@@ -74,14 +86,14 @@ notificationRoutes.get('/inbox',async c=>{
  return c.json({notifications,unreadCount:firstRow(count)?.unread_count??0,nextCursor:result.rows.length>limit&&last?new Date(last.created_at).toISOString()+'|'+last.id:null});
 });
 notificationRoutes.patch('/inbox/:id/read',async c=>{
- const result=await database(c.env).execute<{id:string;read_at:string}>(sql`update public.in_app_notifications set read_at=coalesce(read_at,now()) where id=${id(c.req.param('id'))}::uuid and user_id=${currentUser(c).id}::uuid returning id,read_at::text`);
+ const result=await database(c.env).execute<{id:string;read_at:string}>(sql`update public.in_app_notifications n set read_at=coalesce(n.read_at,now()) where n.id=${id(c.req.param('id'))}::uuid and ${noticeVisible(currentUser(c))} returning n.id,n.read_at::text`);
  const notification=firstRow(result);
  if(!notification)throw new AppError(404,'NOT_FOUND','Notification not found.');
- return c.json({notification});
+ return c.json({notification,unreadCount:await unreadNotices(c.env,currentUser(c))});
 });
 notificationRoutes.post('/read-all',async c=>{
- await database(c.env).execute(sql`update public.in_app_notifications set read_at=coalesce(read_at,now()) where user_id=${currentUser(c).id}::uuid and read_at is null`);
- return c.json({saved:true});
+ await database(c.env).execute(sql`update public.in_app_notifications n set read_at=coalesce(n.read_at,now()) where ${noticeVisible(currentUser(c))} and n.read_at is null`);
+ return c.json({saved:true,unreadCount:await unreadNotices(c.env,currentUser(c))});
 });
 notificationRoutes.post('/read-social',async c=>{
  const u=currentUser(c);
@@ -124,9 +136,10 @@ notificationRoutes.get('/admin/delivery-status',async c=>{
  return c.json({queue:queue.rows,deliveries:deliveries.rows});
 });
 notificationRoutes.post('/devices',async c=>{
- const u=currentUser(c),data=await input(c,z.object({expoPushToken:z.string().regex(expoTokenPattern),nativeToken:z.string().trim().min(10).max(4096).optional(),platform:z.enum(['ios','android']),label:z.string().trim().min(1).max(100),buildVersion:z.string().trim().min(1).max(60)}).strict());
+ const u=currentUser(c),data=await input(c,z.object({expoPushToken:z.string().regex(expoTokenPattern).optional(),nativeToken:z.string().trim().min(10).max(4096).optional(),platform:z.enum(['ios','android']),label:z.string().trim().min(1).max(100),buildVersion:z.string().trim().min(1).max(60)}).strict().refine(d=>Boolean(d.expoPushToken)||(d.platform==='android'&&Boolean(d.nativeToken)),'Register a supported notification token.'));
+ const registrationToken=data.expoPushToken??('fcm:'+await sha256(data.nativeToken!));
  const db=database(c.env);
- const result=await db.execute<{id:string;platform:string;label:string;build_version:string;active:boolean;updated_at:string}>(sql`insert into app_private.push_devices(user_id,token,native_token,session_family_id,platform,label,build_version) values(${u.id}::uuid,${data.expoPushToken},${data.platform==='android'?(data.nativeToken??null):null},${u.sessionFamilyId}::uuid,${data.platform},${data.label},${data.buildVersion}) on conflict(token) do update set user_id=excluded.user_id,native_token=excluded.native_token,session_family_id=excluded.session_family_id,platform=excluded.platform,label=excluded.label,build_version=excluded.build_version,active=true,updated_at=now() returning id,platform,label,build_version,active,updated_at`);
+ const result=await db.execute<{id:string;platform:string;label:string;build_version:string;active:boolean;updated_at:string}>(sql`insert into app_private.push_devices(user_id,token,native_token,session_family_id,platform,label,build_version) values(${u.id}::uuid,${registrationToken},${data.platform==='android'?(data.nativeToken??null):null},${u.sessionFamilyId}::uuid,${data.platform},${data.label},${data.buildVersion}) on conflict(token) do update set user_id=excluded.user_id,native_token=excluded.native_token,session_family_id=excluded.session_family_id,platform=excluded.platform,label=excluded.label,build_version=excluded.build_version,active=true,updated_at=now() returning id,platform,label,build_version,active,updated_at`);
  const device=firstRow(result);
  if(device&&data.platform==='android'&&data.nativeToken)await db.execute(sql`update app_private.push_devices set active=false,updated_at=now() where native_token=${data.nativeToken} and id<>${device.id}::uuid and active`);
  return c.json({device});

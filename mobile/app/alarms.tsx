@@ -1,3 +1,4 @@
+import { useActiveScreen } from "@/src/lib/use-active-screen";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { alarmCategories, alarmCategory, type AlarmCategory } from "@/src/lib/alarm-groups";
@@ -549,6 +550,7 @@ const createPickerStyles = (theme: Theme, isDark: boolean) =>
   });
 
 export default function Alarms() {
+  const activeScreen=useActiveScreen();
   const { theme, isDark } = useAppearance();
   const styles = useMemo(() => createStyles(theme, isDark), [theme, isDark]);
   const toast = useToast();
@@ -581,9 +583,11 @@ export default function Alarms() {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
+    if(!activeScreen)return;
+    setNow(new Date());
     const timer = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [activeScreen]);
 
   const load = useCallback(async () => {
     setLoadError("");
