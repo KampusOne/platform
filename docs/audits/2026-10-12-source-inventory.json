@@ -486,7 +486,7 @@
         "loading": true,
         "errors": true,
         "accessibility": true,
-        "safeReads": false,
+        "safeReads": true,
         "keyboard": true
       },
       "visualAcceptance": "Pending device review",
@@ -1471,7 +1471,16 @@
     },
     {
       "file": "mobile/app/academic-calendar.tsx",
-      "line": 536,
+      "line": 104,
+      "kind": "setTimeout",
+      "endpoints": [],
+      "excerpt": "try{await Promise.race([writeCache(key,JSON.stringify(rows)),new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('Saving your device dates took too long. Keep this screen open and try again.')),5000);})]);} finally{if(timer!==undefined)clearTimeout(timer);} } const mergeCalendarEvents = (serverRows: Event[], localRows: Event[]) => { const localById = new Map(localRows.map((row) => [row.id, row])); const serverId",
+      "classification": "Deadline, debounce or retry: inspect context",
+      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
+    },
+    {
+      "file": "mobile/app/academic-calendar.tsx",
+      "line": 545,
       "kind": "useFocusEffect",
       "endpoints": [
         "/v1/calendar"
@@ -3312,7 +3321,16 @@
     },
     {
       "file": "mobile/src/lib/use-owned-draft-save.ts",
-      "line": 28,
+      "line": 19,
+      "kind": "setTimeout",
+      "endpoints": [],
+      "excerpt": "new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('Saving your draft took too long. Keep this screen open and try again before submitting.')),5000);}), ]); if (mounted.current && turn === attempt.current) setNotice({ key, revision, message: level === 'session' ? 'This draft is kept while this browser tab stays open. Finish or copy it before closing the tab.' : '' }); } catch (error) { if (mounted.current && tu",
+      "classification": "Deadline, debounce or retry: inspect context",
+      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
+    },
+    {
+      "file": "mobile/src/lib/use-owned-draft-save.ts",
+      "line": 33,
       "kind": "setTimeout",
       "endpoints": [],
       "excerpt": "const timer = setTimeout(() => { if (completed.current !== key) void persist(next).catch(() => undefined); }, delay); return () => clearTimeout(timer); }, [key, revision, serialized, enabled, delay, persist, cycle]); useEffect(() => () => { const draft = pending.current; if (draft?.key === key && completed.current !== key) void saveOwnedDraft(draft.key, draft.value, draft.revision).catch(() => undefined); }, [key, revision]); const disc",
