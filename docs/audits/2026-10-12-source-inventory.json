@@ -1205,7 +1205,7 @@
     },
     {
       "file": "mobile/app/(auth)/onboarding.tsx",
-      "line": 153,
+      "line": 155,
       "kind": "requestAnimationFrame",
       "endpoints": [],
       "excerpt": "const frame = requestAnimationFrame(() => { const node = findNodeHandle(modalHeadingRef.current); if (node !== null) AccessibilityInfo.setAccessibilityFocus(node); }); return () => cancelAnimationFrame(frame); }, [open]); return ( <> <View style={styles.selectorGroup}> <Text style={styles.fieldLabel}> {label} {optional ? <Text style={styles.optional}> · Optional</Text> : null} </Text> <Pressable accessibilityLabel={`${label}: ${activeIt",
@@ -1214,23 +1214,12 @@
     },
     {
       "file": "mobile/app/(auth)/onboarding.tsx",
-      "line": 334,
+      "line": 339,
       "kind": "setTimeout",
       "endpoints": [
         "/v1/student/username-availability?username=${encodeURIComponent(username)}"
       ],
       "excerpt": "useEffect(()=>{if(username.length<3){setUsernameState('idle');return;}let active=true;setUsernameState('checking');const timer=setTimeout(()=>{void api<{available:boolean}>(`/v1/student/username-availability?username=${encodeURIComponent(username)}`).then(r=>{if(active)setUsernameState(r.available?'available':'taken');}).catch(()=>{if(active)setUsernameState('error');});},450);return()=>{active=false;clearTimeout(timer);};},[username]);",
-      "classification": "Deadline, debounce or retry: inspect context",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
-      "file": "mobile/app/(auth)/onboarding.tsx",
-      "line": 346,
-      "kind": "setTimeout",
-      "endpoints": [
-        "/v1/student/catalog?institutionsOnly=true"
-      ],
-      "excerpt": "useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>void writeCache(`onboarding.${user.id}`,JSON.stringify({heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step})).catch(()=>{}),300);return()=>clearTimeout(timer);},[draftReady,user?.id,heardSource,heardOther,firstName,lastName,username,birthDate,",
       "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
@@ -1493,24 +1482,12 @@
     },
     {
       "file": "mobile/app/agent-create.tsx",
-      "line": 58,
+      "line": 64,
       "kind": "setTimeout",
       "endpoints": [
         "/v1/agents/products/price-preview?priceKobo="
       ],
       "excerpt": "const timer=setTimeout(()=>void api<typeof pricePreview>('/v1/agents/products/price-preview?priceKobo='+amount).then(r=>{if(valid)setPricePreview(r);}).catch(()=>{if(valid)setPricePreview(null);}),300); return()=>{valid=false;clearTimeout(timer);}; },[price,tutor]); const [categories, setCategories] = useState<{ id: string; name: string }[]>( [], ); const [category, setCategory] = useState(\"\"); const [categoryQuery, setCategoryQuery] = ",
-      "classification": "Deadline, debounce or retry: inspect context",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
-      "file": "mobile/app/agent-create.tsx",
-      "line": 72,
-      "kind": "setTimeout",
-      "endpoints": [
-        "/v1/agents/products/price-preview?priceKobo=",
-        "/v1/agents/product-categories"
-      ],
-      "excerpt": "useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>{const pending=savedDraft.current;if(pending?.key===draftKey)void writeCache(draftKey,pending.value).catch(()=>undefined);},300);return()=>clearTimeout(timer);},[name,description,price,stock,code,location,image,images,category,draftKey,draftReady,user?.id]); const [busy, setBusy] = useState(false); const loadCategories = useCallback(async () => { const turn = ++c",
       "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
@@ -2266,15 +2243,6 @@
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
-      "file": "mobile/app/timetable-import.tsx",
-      "line": 40,
-      "kind": "setTimeout",
-      "endpoints": [],
-      "excerpt": "useEffect(()=>{if(!loaded||!user?.id)return;const timer=setTimeout(()=>{void writeCache(\"timetable-draft.\"+user.id,draft()).catch(()=>undefined);},250);return()=>clearTimeout(timer);},[entries,events,documentType,text,notes,attachment,warnings,loaded,user?.id]); function changed(){key.current=randomUUID();saveKey.current=randomUUID();setError(\"\");} async function attach(){if(locked.current)return;const version=generation.current;locked.",
-      "classification": "Deadline, debounce or retry: inspect context",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
       "file": "mobile/app/tutor-learners.tsx",
       "line": 12,
       "kind": "useFocusEffect",
@@ -2643,24 +2611,33 @@
     },
     {
       "file": "mobile/src/components/foreground-usage-tracker.tsx",
-      "line": 16,
-      "kind": "setInterval",
-      "endpoints": [
-        "/v1/usage"
-      ],
-      "excerpt": "const interval=setInterval(flush,30000),state=AppState.addEventListener('change',next=>{flush();foreground=next==='active'&&(Platform.OS!=='web'||document.visibilityState==='visible');started=Date.now();}); const visibility=()=>{flush();foreground=document.visibilityState==='visible'&&AppState.currentState==='active';started=Date.now();};if(Platform.OS==='web')document.addEventListener('visibilitychange',visibility); enqueue(); return()",
-      "classification": "Local or network recurrence: inspect context",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
-      "file": "mobile/src/components/foreground-usage-tracker.tsx",
-      "line": 16,
+      "line": 49,
       "kind": "AppState.addEventListener",
       "endpoints": [
         "/v1/usage"
       ],
-      "excerpt": "const interval=setInterval(flush,30000),state=AppState.addEventListener('change',next=>{flush();foreground=next==='active'&&(Platform.OS!=='web'||document.visibilityState==='visible');started=Date.now();}); const visibility=()=>{flush();foreground=document.visibilityState==='visible'&&AppState.currentState==='active';started=Date.now();};if(Platform.OS==='web')document.addEventListener('visibilitychange',visibility); enqueue(); return()",
+      "excerpt": "const state=AppState.addEventListener('change',visibility); const network=Network.addNetworkStateListener(value=>{if(!active)return;const next=value.isConnected!==false&&value.isInternetReachable!==false;if(next===online)return;online=next;if(!online)controller?.abort();else if(foreground())enqueue();}); void Network.getNetworkStateAsync().then(value=>{if(active)online=value.isConnected!==false&&value.isInternetReachable!==false;}).catc",
       "classification": "Lifecycle event",
+      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
+    },
+    {
+      "file": "mobile/src/components/foreground-usage-tracker.tsx",
+      "line": 50,
+      "kind": "Network.addNetworkStateListener",
+      "endpoints": [
+        "/v1/usage"
+      ],
+      "excerpt": "const network=Network.addNetworkStateListener(value=>{if(!active)return;const next=value.isConnected!==false&&value.isInternetReachable!==false;if(next===online)return;online=next;if(!online)controller?.abort();else if(foreground())enqueue();}); void Network.getNetworkStateAsync().then(value=>{if(active)online=value.isConnected!==false&&value.isInternetReachable!==false;}).catch(()=>{}); if(Platform.OS==='web'&&typeof document!=='undefi",
+      "classification": "Lifecycle event",
+      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
+    },
+    {
+      "file": "mobile/src/components/foreground-usage-tracker.tsx",
+      "line": 56,
+      "kind": "setTimeout",
+      "endpoints": [],
+      "excerpt": "const initial=setTimeout(()=>{if(active&&foreground())enqueue();},2500); return()=>{active=false;controller?.abort();sampler.stop();clearTimeout(initial);state.remove();network.remove();if(Platform.OS==='web'&&typeof document!=='undefined')document.removeEventListener('visibilitychange',visibility);}; },[scope,path]);return null; }",
+      "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
@@ -3164,6 +3141,15 @@
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
+      "file": "mobile/src/lib/foreground-usage.ts",
+      "line": 17,
+      "kind": "this.schedule",
+      "endpoints": [],
+      "excerpt": "private plan(){if(this.timer!==undefined)this.cancel(this.timer);this.timer=undefined;if(!this.foreground||this.stopped)return;this.timer=this.schedule(()=>{this.timer=undefined;this.capture();this.plan();},30000);} }",
+      "classification": "Deadline, debounce or retry: inspect context",
+      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
+    },
+    {
       "file": "mobile/src/lib/kira-request.ts",
       "line": 8,
       "kind": "setTimeout",
@@ -3347,6 +3333,15 @@
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
+      "file": "mobile/src/lib/use-owned-draft-save.ts",
+      "line": 27,
+      "kind": "setTimeout",
+      "endpoints": [],
+      "excerpt": "const timer = setTimeout(() => { if (completed.current !== key) void persist(next).catch(() => undefined); }, delay); return () => clearTimeout(timer); }, [key, revision, serialized, enabled, delay, persist]); useEffect(() => () => { const draft = pending.current; if (draft?.key === key && completed.current !== key) void saveOwnedDraft(draft.key, draft.value, draft.revision).catch(() => undefined); }, [key, revision]); const discard = u",
+      "classification": "Deadline, debounce or retry: inspect context",
+      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
+    },
+    {
       "file": "mobile/src/lib/voice-playback.ts",
       "line": 80,
       "kind": "setTimeout",
@@ -3441,15 +3436,6 @@
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
-      "file": "portal/components/broadcast-workspace.tsx",
-      "line": 86,
-      "kind": "setInterval",
-      "endpoints": [],
-      "excerpt": "const timer = setInterval(() => setVersion(v => v + 1), 10000); return () => clearInterval(timer); }, [pollingStatus]); function reload(nextId?: string) { onSaved(nextId); setVersion(v => v + 1); } if (error) return <section className=\"state-panel state-panel--error\" role=\"alert\"><p>{error}</p><button className=\"button button--secondary\" onClick={() => setVersion(v => v + 1)}>Retry campaign</button></section>; if (id !== \"new\" && !detai",
-      "classification": "Local or network recurrence: inspect context",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
       "file": "portal/components/community-management.tsx",
       "line": 66,
       "kind": "schedule",
@@ -3479,30 +3465,6 @@
         "/v1/admin/finance/kira-plans/preview"
       ],
       "excerpt": "const timeout = window.setTimeout(() => { void portalApi<{ price: Preview }>(\"/v1/admin/finance/kira-plans/preview\", { method: \"POST\", body: input, signal: controller.signal, }).then((result) => { if (!result?.price || !Number.isSafeInteger(result.price.amountKobo) || !Number.isSafeInteger(result.price.estimatedProcessingKobo) || !Number.isSafeInteger(result.price.expectedNetKobo)) throw new Error(\"The server preview could not be read. ",
-      "classification": "Deadline, debounce or retry: inspect context",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
-      "file": "portal/components/map-studio.tsx",
-      "line": 12,
-      "kind": "setInterval",
-      "endpoints": [
-        "/v1/maps/admin/campuses/${campusId}/review",
-        "/v1/maps/admin/imports",
-        "/v1/maps/admin/candidates/${selected.id}/decision"
-      ],
-      "excerpt": "useEffect(()=>{if(!review?.imports.some(job=>job.status==='RUNNING'))return;const timer=setInterval(()=>void load(),3000);return()=>clearInterval(timer);},[review,load]); async function start(){setBusy(true);setError('');try{await portalApi('/v1/maps/admin/imports',{method:'POST',body:JSON.stringify({campusId,requestKey:crypto.randomUUID()})});await load();}catch(e){setError(e instanceof Error?e.message:'Discovery failed.');}finally{set",
-      "classification": "Local or network recurrence: inspect context",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
-      "file": "portal/components/payment-return.tsx",
-      "line": 63,
-      "kind": "setTimeout",
-      "endpoints": [
-        "/v1/payments/status/${encodeURIComponent(reference)}"
-      ],
-      "excerpt": "timer = setTimeout(() => void poll(), 2500); }; void poll(); return () => { active = false; if (timer) clearTimeout(timer); }; }, [check]); const state = payment?.status; const heading = state === \"SUCCEEDED\" ? \"Payment confirmed\" : state === \"REQUIRES_REVIEW\" ? \"Payment needs review\" : state === \"FAILED\" ? \"Payment was not completed\" : error ? \"We could not confirm this payment\" : \"Confirming your payment\"; const body = state === \"SUCC",
       "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
@@ -3563,6 +3525,15 @@
       "kind": "setTimeout",
       "endpoints": [],
       "excerpt": "setTimeout(() => URL.revokeObjectURL(url), 1000); }",
+      "classification": "Deadline, debounce or retry: inspect context",
+      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
+    },
+    {
+      "file": "portal/lib/foreground-poller.ts",
+      "line": 48,
+      "kind": "this.schedule",
+      "endpoints": [],
+      "excerpt": "this.timer = this.schedule(() => { this.timer = undefined; void this.tick(); }, Math.max(0, delay)); } private async tick() { if (!this.available || this.stopped || this.terminal || this.running) return; this.running = true; this.dirty = false; this.attempts++; const epoch = this.epoch, controller = new AbortController(); this.controller = controller; let delay = this.options.intervalMs; try { const result = await this.read(controller.s",
       "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
