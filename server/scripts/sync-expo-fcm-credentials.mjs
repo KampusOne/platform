@@ -115,29 +115,28 @@ query KampusOneFcm($projectId: String!, $packageName: String!) {
   app {
     byId(appId: $projectId) {
       id
-      account { id }
+      ownerAccount { id name }
       androidAppCredentials(filter: { applicationIdentifier: $packageName }) {
         id
         applicationIdentifier
         isLegacy
-        googleServiceAccountKeyForFcmV1 { projectIdentifier privateKeyIdentifier }
+        googleServiceAccountKeyForFcmV1 { id projectIdentifier privateKeyIdentifier }
       }
     }
   }
 }`;
 
-const UPLOAD_MUTATION = `
-mutation UploadFcmV1($accountId: ID!, $androidCredentialsId: String!, $credential: String!) {
-  androidAppCredentials {
-    createFcmV1Credential(
-      accountId: $accountId,
-      androidAppCredentialsId: $androidCredentialsId,
-      credential: $credential
-    ) {
-      id
-      googleServiceAccountKeyForFcmV1 { projectIdentifier privateKeyIdentifier }
-    }
-  }
+// Match Expo's current EAS CLI credential operations; never log their variables.
+const FIND_KEYS_QUERY = `query KampusOneFcmKeys($accountName:String!,$after:String){
+  account{byName(accountName:$accountName){id googleServiceAccountKeysPaginated(first:50,after:$after){
+    edges{node{id projectIdentifier privateKeyIdentifier}} pageInfo{hasNextPage endCursor}
+  }}}
+}`;
+const UPLOAD_MUTATION = `mutation UploadFcmV1($accountId:ID!,$input:GoogleServiceAccountKeyInput!){
+  googleServiceAccountKey{createGoogleServiceAccountKey(accountId:$accountId,googleServiceAccountKeyInput:$input){id projectIdentifier privateKeyIdentifier}}
+}`;
+const ASSIGN_MUTATION = `mutation AssignFcmV1($androidCredentialsId:ID!,$keyId:ID!){
+  androidAppCredentials{setGoogleServiceAccountKeyForFcmV1(id:$androidCredentialsId,googleServiceAccountKeyId:$keyId){id googleServiceAccountKeyForFcmV1{id projectIdentifier privateKeyIdentifier}}}
 }`;
 
 export async function syncExpoFcm({
@@ -150,7 +149,7 @@ export async function syncExpoFcm({
       { projectId, packageName: ANDROID_PACKAGE }, fetchFn
     );
     const app = data.app?.byId;
-    if (app?.id !== projectId || !app.account?.id) {
+    if (app?.id !== projectId || !app.ownerAccount?.id || !app.ownerAccount?.name) {
       throw new Error('The configured EAS project ID does not resolve to the expected Expo project.');
     }
     const matches = app.androidAppCredentials?.filter(
@@ -159,7 +158,7 @@ export async function syncExpoFcm({
     if (matches.length !== 1) {
       throw new Error('Expo must have exactly one non-legacy Android credential for app.kampusone.mobile. Inspect Project Settings > Credentials.');
     }
-    return { accountId: app.account.id, android: matches[0] };
+    return { accountId: app.ownerAccount.id, accountName:app.ownerAccount.name, android: matches[0] };
   };
   const current = await read();
   const alreadyMatches =
@@ -168,18 +167,34 @@ export async function syncExpoFcm({
   if (!apply) return { status: alreadyMatches ? 'MATCHED' : 'NEEDS_SYNC' };
   if (alreadyMatches && !refresh) return { status: 'ALREADY_LINKED' };
 
-  const result = await expoGraphql(expoToken, UPLOAD_MUTATION, {
-    accountId: current.accountId,
-    androidCredentialsId: current.android.id,
-    credential: JSON.stringify(serviceAccount),
-  }, fetchFn);
-  const linked = result.androidAppCredentials?.createFcmV1Credential?.googleServiceAccountKeyForFcmV1;
-  if (linked?.projectIdentifier !== firebaseProjectId ||
-      linked?.privateKeyIdentifier !== serviceAccount.private_key_id) {
-    throw new Error('Expo did not confirm the correct FCM V1 service-account association.');
+  let key = alreadyMatches ? current.android.googleServiceAccountKeyForFcmV1 : null;
+  if(!key){
+    let after=null;
+    for(let page=0;page<10;page++){
+      const result=await expoGraphql(expoToken,FIND_KEYS_QUERY,{accountName:current.accountName,after},fetchFn);
+      const account=result.account?.byName;
+      if(account?.id!==current.accountId)throw new Error('Expo account changed during credential recovery. Retry after checking project ownership.');
+      const keys=account.googleServiceAccountKeysPaginated;
+      if(!Array.isArray(keys?.edges))throw new Error('Expo could not list credential metadata.');
+      key=keys.edges.map(edge=>edge.node).find(item=>item.projectIdentifier===firebaseProjectId&&item.privateKeyIdentifier===serviceAccount.private_key_id);
+      if(key||!keys.pageInfo?.hasNextPage)break;
+      if(page===9||typeof keys.pageInfo.endCursor!=='string')throw new Error('Expo credential lookup reached its safety limit. Inspect this account before uploading another key.');
+      after=keys.pageInfo.endCursor;
+    }
   }
+  if(!key){
+    const uploaded=await expoGraphql(expoToken,UPLOAD_MUTATION,{accountId:current.accountId,input:{jsonKey:serviceAccount}},fetchFn);
+    key=uploaded.googleServiceAccountKey?.createGoogleServiceAccountKey;
+  }
+  if(!key?.id||key.projectIdentifier!==firebaseProjectId||key.privateKeyIdentifier!==serviceAccount.private_key_id)
+    throw new Error('Expo did not confirm the intended Google service-account key.');
+  const result=await expoGraphql(expoToken,ASSIGN_MUTATION,{androidCredentialsId:current.android.id,keyId:key.id},fetchFn);
+  const assigned=result.androidAppCredentials?.setGoogleServiceAccountKeyForFcmV1;
+  const linked=assigned?.googleServiceAccountKeyForFcmV1;
+  if(assigned?.id!==current.android.id||linked?.id!==key.id||linked?.projectIdentifier!==firebaseProjectId||linked?.privateKeyIdentifier!==serviceAccount.private_key_id)
+    throw new Error('Expo did not confirm the correct FCM V1 service-account association.');
   const after = await read();
-  if (after.android.googleServiceAccountKeyForFcmV1?.privateKeyIdentifier !== serviceAccount.private_key_id) {
+  if (after.android.googleServiceAccountKeyForFcmV1?.id !== key.id || after.android.googleServiceAccountKeyForFcmV1?.projectIdentifier !== firebaseProjectId || after.android.googleServiceAccountKeyForFcmV1?.privateKeyIdentifier !== serviceAccount.private_key_id) {
     throw new Error('Expo did not retain the restored FCM V1 credential.');
   }
   return { status: 'FCM_V1_CREDENTIAL_LINKED' };
