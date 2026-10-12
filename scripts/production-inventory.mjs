@@ -7,7 +7,7 @@ const protectedRoutes=new Set(['mobile/app/(tabs)/index.tsx','mobile/app/(tabs)/
 const routes=files('mobile/app').filter(file=>file.endsWith('.tsx')).sort().map(file=>{
   const source=readFileSync(resolve(root,file),'utf8');
   return {file,boundary:protectedRoutes.has(file)?'Protected main: functional repairs only':/\/(?:_layout|\+html)\.tsx$/.test(file)?'Infrastructure':'Eligible secondary view',
-    sourcePatterns:{sharedPage:/\bToolPage\b/.test(source),loading:/Skeleton|loading|Loading/.test(source),errors:/Error|error|catch\s*\(/.test(source),accessibility:/accessibility|accessible/.test(source),safeReads:/refreshScreenRead|readCache/.test(source),keyboard:/Keyboard|ToolPage|TextInput/.test(source)},
+    sourcePatterns:{sharedPage:/\bToolPage\b/.test(source),loading:/Skeleton|loading|Loading/.test(source),errors:/Error|error|catch\s*\(/.test(source),accessibility:/accessibility|accessible/.test(source),safeReads:/refreshScreenRead|readCache|readOwnedDraft|useOwnedDraftRestore|readMigratedPrivateCache/.test(source),keyboard:/Keyboard|ToolPage|TextInput/.test(source)},
     visualAcceptance:'Pending device review',performanceAcceptance:'No physical measurement'};
 });
 const roots=['mobile/app','mobile/src','mobile/plugins/kampus-alarms','server/src','portal/app','portal/components','portal/lib'];

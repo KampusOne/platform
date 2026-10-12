@@ -1205,7 +1205,7 @@
     },
     {
       "file": "mobile/app/(auth)/onboarding.tsx",
-      "line": 155,
+      "line": 158,
       "kind": "requestAnimationFrame",
       "endpoints": [],
       "excerpt": "const frame = requestAnimationFrame(() => { const node = findNodeHandle(modalHeadingRef.current); if (node !== null) AccessibilityInfo.setAccessibilityFocus(node); }); return () => cancelAnimationFrame(frame); }, [open]); return ( <> <View style={styles.selectorGroup}> <Text style={styles.fieldLabel}> {label} {optional ? <Text style={styles.optional}> · Optional</Text> : null} </Text> <Pressable accessibilityLabel={`${label}: ${activeIt",
@@ -1214,7 +1214,7 @@
     },
     {
       "file": "mobile/app/(auth)/onboarding.tsx",
-      "line": 339,
+      "line": 342,
       "kind": "setTimeout",
       "endpoints": [
         "/v1/student/username-availability?username=${encodeURIComponent(username)}"
@@ -1471,21 +1471,22 @@
     },
     {
       "file": "mobile/app/academic-calendar.tsx",
-      "line": 546,
+      "line": 536,
       "kind": "useFocusEffect",
       "endpoints": [
         "/v1/calendar"
       ],
-      "excerpt": "useFocusEffect( useCallback(() => { const current = ++generation.current; if(previousScope.current!==scope){previousScope.current=scope;localEvents.current=[];setEvents([]);} const revision=getDeviceCacheRevision(); setLoading(true); setError(\"\"); setRemoving(null); setBusy(false); setActionError(\"\"); void Promise.all([ refreshScreenRead<{events:Event[]}>(\"/v1/calendar\",snapshot=>{if(current===generation.current){setEvents(mergeCalendar",
+      "excerpt": "useFocusEffect( useCallback(() => { const current = ++generation.current; if(previousScope.current!==scope){previousScope.current=scope;localEvents.current=[];setEvents([]);} const revision=getDeviceCacheRevision(); setLoading(true); setError(\"\"); setRemoving(null); setBusy(false); working.current=false; setActionError(\"\"); void refreshScreenRead<{events:Event[]}>(\"/v1/calendar\",snapshot=>{if(current===generation.current&&revision===get",
       "classification": "Lifecycle event",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
       "file": "mobile/app/agent-create.tsx",
-      "line": 64,
+      "line": 65,
       "kind": "setTimeout",
       "endpoints": [
-        "/v1/agents/products/price-preview?priceKobo="
+        "/v1/agents/products/price-preview?priceKobo=",
+        "/v1/agents/product-categories"
       ],
       "excerpt": "const timer=setTimeout(()=>void api<typeof pricePreview>('/v1/agents/products/price-preview?priceKobo='+amount).then(r=>{if(valid)setPricePreview(r);}).catch(()=>{if(valid)setPricePreview(null);}),300); return()=>{valid=false;clearTimeout(timer);}; },[price,tutor]); const [categories, setCategories] = useState<{ id: string; name: string }[]>( [], ); const [category, setCategory] = useState(\"\"); const [categoryQuery, setCategoryQuery] = ",
       "classification": "Deadline, debounce or retry: inspect context",
@@ -1597,7 +1598,7 @@
     },
     {
       "file": "mobile/app/ai.tsx",
-      "line": 278,
+      "line": 289,
       "kind": "useFocusEffect",
       "endpoints": [
         "/v1/ai/status",
@@ -1609,7 +1610,7 @@
     },
     {
       "file": "mobile/app/ai.tsx",
-      "line": 279,
+      "line": 290,
       "kind": "setInterval",
       "endpoints": [
         "/v1/ai/status",
@@ -1621,20 +1622,9 @@
     },
     {
       "file": "mobile/app/ai.tsx",
-      "line": 318,
-      "kind": "setTimeout",
-      "endpoints": [],
-      "excerpt": "const timer=setTimeout(()=>{ // Private signed links and image bytes are never persisted. An uploaded file // is re-opened through the permission-checked media endpoint when required. const savedAttachment=attachment?{name:attachment.name,type:attachment.type,...(attachment.size!==undefined?{size:attachment.size}:{}),...(attachment.mediaId?{mediaId:attachment.mediaId}:{})}:undefined; void writeCache(storageKey,{prompt,mode,tier,attachme",
-      "classification": "Deadline, debounce or retry: inspect context",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
-      "file": "mobile/app/ai.tsx",
-      "line": 325,
+      "line": 332,
       "kind": "setInterval",
-      "endpoints": [
-        "/v1/media/${file.mediaId}/access"
-      ],
+      "endpoints": [],
       "excerpt": "useEffect(()=>{if(!activeScreen||!limit?.resetsAt)return;const end=Date.parse(limit.resetsAt);setNow(Date.now());if(!Number.isFinite(end)||Date.now()>=end)return;const timer=setInterval(()=>{const current=Date.now();setNow(current);if(current>=end)clearInterval(timer);},1000);return()=>clearInterval(timer);},[limit?.resetsAt,activeScreen]); useEffect(()=>{if(limit?.resetsAt && now>=Date.parse(limit.resetsAt)){setLimit(undefined);setErro",
       "classification": "Local or network recurrence: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
@@ -1986,25 +1976,13 @@
     },
     {
       "file": "mobile/app/exam-timetable.tsx",
-      "line": 33,
+      "line": 41,
       "kind": "useFocusEffect",
       "endpoints": [
         "/v1/exams"
       ],
-      "excerpt": "useFocusEffect(useCallback(()=>{let live=true;generation.current++;void loadSchedule(); if(!loaded.current&&user?.id)void readCache<Draft>('exam-draft.'+user.id).then(d=>{if(!live)return;loaded.current=true;if(!d)return;setPapers(d.papers??[]);setText(d.text??'');setNotes(d.notes??'');setFile(d.file);request.current=d.requestId||randomUUID();saveId.current=d.saveId||randomUUID();setEditing(Boolean(d.papers?.length||d.file||d.text));}); ",
+      "excerpt": "useFocusEffect(useCallback(()=>{generation.current++;lock.current=false;setBusy(false);void loadSchedule(); return()=>{generation.current++;scheduleRequest.current++;controller.current?.abort();};},[user?.id,loadSchedule])); const draftKey='exam-draft.'+user?.id; const restored=useOwnedDraftRestore<unknown>(draftKey,value=>{ if(value===null)return; const d=restoreExamDraft(value);setPapers(d.papers);setText(d.text);setNotes(d.notes);set",
       "classification": "Lifecycle event",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
-      "file": "mobile/app/exam-timetable.tsx",
-      "line": 37,
-      "kind": "setTimeout",
-      "endpoints": [
-        "/v1/exams",
-        "/v1/ai"
-      ],
-      "excerpt": "useEffect(()=>{if(!loaded.current||!user?.id)return;const timer=setTimeout(()=>{void persist();},500);return()=>clearTimeout(timer);},[papers,text,notes,file,user?.id]); function changed(){request.current=randomUUID();saveId.current=randomUUID();setError('');} async function attach(){if(lock.current)return;lock.current=true;setBusy(true);setStage('selecting');try{const attachment=await pickAttachment();if(attachment){setFile(attachment)",
-      "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
@@ -2161,15 +2139,6 @@
         "/v1/student/feed/${id}"
       ],
       "excerpt": "useEffect(() => { if (!feedback) return; const timer = setTimeout(() => setFeedback(\"\"), 4500); return () => clearTimeout(timer); }, [feedback]); useEffect(() => { if (comments === \"1\" && post?.social_enabled && legacyComposerKey.current !== key) { legacyComposerKey.current = key; setComposer({ key }); } }, [comments, key, post?.social_enabled]); useEffect(() => { if (!post?.id || !user?.id || loading) return; let live = true; void reco",
-      "classification": "Deadline, debounce or retry: inspect context",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
-      "file": "mobile/app/publishing-create.tsx",
-      "line": 114,
-      "kind": "setTimeout",
-      "endpoints": [],
-      "excerpt": "const timer = setTimeout( () => void writeCache(draftKey, { format, anonymousPoll, body, options, hours, requestId: request.current, closesAt: closing.current, ...(media ? { mediaId: media.id, mediaUrl: media.url } : {}), }), 250, ); return () => clearTimeout(timer); }, [ format, anonymousPoll, body, options, hours, media, ready, busy, draftKey, ]); function changed() { request.current = randomUUID(); closing.current = undefined; setErr",
       "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
@@ -3303,14 +3272,14 @@
     },
     {
       "file": "mobile/src/lib/uploads.ts",
-      "line": 55,
+      "line": 63,
       "kind": "setTimeout",
       "endpoints": [
         "/v1/student/me",
         "/v1/student/feed",
         "/v1/student/home"
       ],
-      "excerpt": "const timer = setTimeout(failure, 20_000); Image.getSize(url, (width, height) => { clearTimeout(timer); if (width > 0 && height > 0) resolve(); else failure(); }, () => { clearTimeout(timer); failure(); }); }); } async function upload(kind: UploadKind, file: { uri: string; name: string; type: string }): Promise<UploadedFile> { if(kind==='post'&&file.type.startsWith('video/')){ const current=await api<{profile:{id:string}}>('/v1/student/",
+      "excerpt": "const timer = setTimeout(failure, 20_000); Image.getSize(url, (width, height) => { clearTimeout(timer); if (width > 0 && height > 0) resolve(); else failure(); }, () => { clearTimeout(timer); failure(); }); }); } async function upload(kind: UploadKind, file: { uri: string; name: string; type: string }, revision=getDeviceCacheRevision()): Promise<UploadedFile> { requireUploadSession(revision); if(kind==='post'&&file.type.startsWith('vide",
       "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
@@ -3333,11 +3302,20 @@
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
-      "file": "mobile/src/lib/use-owned-draft-save.ts",
-      "line": 27,
+      "file": "mobile/src/lib/use-owned-draft-restore.ts",
+      "line": 16,
       "kind": "setTimeout",
       "endpoints": [],
-      "excerpt": "const timer = setTimeout(() => { if (completed.current !== key) void persist(next).catch(() => undefined); }, delay); return () => clearTimeout(timer); }, [key, revision, serialized, enabled, delay, persist]); useEffect(() => () => { const draft = pending.current; if (draft?.key === key && completed.current !== key) void saveOwnedDraft(draft.key, draft.value, draft.revision).catch(() => undefined); }, [key, revision]); const discard = u",
+      "excerpt": "const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 5000); void waitForRequest(read(key, revision), controller.signal).then(value => { if (!active || controller.signal.aborted || revision !== getDeviceCacheRevision()) return; apply(value); setResult({ key, revision, version: retryVersion, error: '' }); }).catch(error => { if (active && revision === getDeviceCacheRevision()) setResult({ key, revision, version: retryV",
+      "classification": "Deadline, debounce or retry: inspect context",
+      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
+    },
+    {
+      "file": "mobile/src/lib/use-owned-draft-save.ts",
+      "line": 28,
+      "kind": "setTimeout",
+      "endpoints": [],
+      "excerpt": "const timer = setTimeout(() => { if (completed.current !== key) void persist(next).catch(() => undefined); }, delay); return () => clearTimeout(timer); }, [key, revision, serialized, enabled, delay, persist, cycle]); useEffect(() => () => { const draft = pending.current; if (draft?.key === key && completed.current !== key) void saveOwnedDraft(draft.key, draft.value, draft.revision).catch(() => undefined); }, [key, revision]); const disc",
       "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },

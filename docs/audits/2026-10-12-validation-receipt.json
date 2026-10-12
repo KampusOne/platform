@@ -1,7 +1,7 @@
 {
   "date": "2026-10-12",
-  "sourceSha": "bbe6b9539005f07f3635256543df281a81f6a855",
-  "sourceTree": "f56e9d29fbfe8371d5c42df183a3f0d022d4d232",
+  "sourceSha": "01f1a7d5a27c6d2538da08ed3d4c355d3fcdcb6c",
+  "sourceTree": "060e866d3416b6d3ea21d786ea54d7dc514b5338",
   "mainSha": "7cbedcdbe2e8dc992f52ee049d392cce1fa54b88",
   "branch": "fix/performance-and-critical-ux-20261012",
   "pr": "https://github.com/KampusOne/platform/pull/90",
@@ -9,36 +9,40 @@
   "merged": false,
   "local": {
     "root": {
-      "pass": 246,
+      "pass": 289,
       "fail": 0,
-      "command": "node --test tests/*.test.mjs tests/post-like-store.test.ts"
+      "command": "node --test tests/*.test.mjs tests/post-like-store.test.ts",
+      "durationMilliseconds": 9485.111038
     },
     "server": {
       "files": 109,
       "pass": 889,
       "fail": 0,
       "command": "npm test -- --maxWorkers=2",
-      "durationSeconds": 279.78
+      "durationSeconds": 203.26
     },
     "mobileTypes": "PASS",
     "serverTypes": "PASS",
     "mobileWebExport": "PASS: 85 route entries",
-    "workerdSmoke": "PASS: local only",
+    "workerdSmoke": "PASS in exact-source CI; prior local workerd execution at bbe6b95",
     "contracts": "10 PASS, plus exact-source CI",
-    "portal": "PASS: local lint/typecheck/build; exact-source CI PASS",
+    "portal": "PASS: prior local lint/typecheck/build at bbe6b95; exact-source CI lint/type/build PASS",
     "map": "3595 features/180 places/23 layers source checks; 11 GPS recovery cases",
     "priorFailure": "879 passed; two 5000ms payment test timeouts while fixture setup was inside tests. Isolated run reproduced first cold fixture timeout; beforeEach/afterEach split then all five payment and all 881 server tests passed. Assertion test timeout was not raised.",
     "androidNativeCompilation": {
       "result": "PASS",
-      "sourceSha": "bbe6b9539005f07f3635256543df281a81f6a855",
-      "runId": 38273682936,
-      "jobId": 114893872645,
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273682936/job/114893872645",
-      "artifactId": 11758087272,
-      "artifactZipSha256": "5abedfcb9b1a99dad32af7d14c86cbc8e9b2d813562259c43efb94431134fa94",
+      "executor": "GitHub Actions",
+      "sourceSha": "01f1a7d5a27c6d2538da08ed3d4c355d3fcdcb6c",
+      "artifactId": 11763136403,
+      "artifactZipSha256": "dd3b1b15c33583d54217ab96f4eda6895cf1fb03a7db843308b09f48953e1ccf",
+      "runId": 38284224226,
+      "jobId": 114928599750,
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284224226/job/114928599750",
+      "artifactZipDigestVerified": true,
       "receipt": "docs/audits/2026-10-12-native-compilation-receipt.json",
       "configuration": "Nonfunctional test Firebase fixture; example.invalid API origins; no production credentials",
       "compiledNativeModules": 8,
+      "localFingerprintsMatch": true,
       "assets": "present",
       "apkProduced": false,
       "deviceTested": false
@@ -49,110 +53,111 @@
       "name": "Workers Builds: platform",
       "status": "completed",
       "conclusion": "failure",
-      "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platform/production/builds/47316248-13dd-4718-a777-c24fe0835660"
+      "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platform/production/builds/d4c62104-186d-4699-bf46-cc6f2b6478d7"
     },
     {
       "name": "Workers Builds: platformp",
       "status": "completed",
       "conclusion": "success",
-      "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platformp/production/builds/ee24d14b-3edc-4dff-b91c-c86649b5b78d"
-    },
-    {
-      "name": "adapters",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683638/job/114893874405"
-    },
-    {
-      "name": "worker",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683158/job/114893873663"
-    },
-    {
-      "name": "contracts",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683158/job/114893873589"
-    },
-    {
-      "name": "portal",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683158/job/114893873569"
-    },
-    {
-      "name": "mobile",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683158/job/114893873564"
-    },
-    {
-      "name": "media-client",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683432/job/114893873397"
-    },
-    {
-      "name": "database-review",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683158/job/114893873222"
-    },
-    {
-      "name": "loading-and-cache",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683246/job/114893873112"
-    },
-    {
-      "name": "interaction-contracts",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683077/job/114893873101"
-    },
-    {
-      "name": "comment-interactions",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683300/job/114893873089"
-    },
-    {
-      "name": "like-state",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683204/job/114893872877"
-    },
-    {
-      "name": "browser-review-build",
-      "status": "completed",
-      "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683077/job/114893872867"
+      "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platformp/production/builds/3d76d16e-dfb9-4458-8867-c9e33bc3a129"
     },
     {
       "name": "native-source",
       "status": "completed",
       "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273682936/job/114893872645"
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284224226/job/114928599750"
+    },
+    {
+      "name": "interaction-contracts",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223911/job/114928598553"
+    },
+    {
+      "name": "browser-review-build",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223911/job/114928598486"
+    },
+    {
+      "name": "database-review",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223677/job/114928598365"
+    },
+    {
+      "name": "mobile",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223677/job/114928598340"
+    },
+    {
+      "name": "contracts",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223677/job/114928598335"
+    },
+    {
+      "name": "portal",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223677/job/114928598278"
+    },
+    {
+      "name": "worker",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223677/job/114928598214"
+    },
+    {
+      "name": "adapters",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223893/job/114928597891"
+    },
+    {
+      "name": "loading-and-cache",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223791/job/114928597793"
+    },
+    {
+      "name": "comment-interactions",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223768/job/114928597582"
     },
     {
       "name": "feed-contracts",
       "status": "completed",
       "conclusion": "success",
-      "url": "https://github.com/KampusOne/platform/actions/runs/38273683091/job/114893872607"
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223369/job/114928597516"
+    },
+    {
+      "name": "like-state",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223692/job/114928597170"
+    },
+    {
+      "name": "media-client",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38284223534/job/114928596956"
     }
   ],
   "workers": {
     "platformp": {
       "result": "success",
-      "buildId": "ee24d14b-3edc-4dff-b91c-c86649b5b78d",
-      "versionId": "cd58464b-dcaf-4234-b368-273ecd36cef6",
-      "sourceSha": "bbe6b9539005f07f3635256543df281a81f6a855",
+      "buildId": "3d76d16e-dfb9-4458-8867-c9e33bc3a129",
+      "versionId": "d4a25de2-73d8-4c29-b35b-bd99f354fe89",
+      "sourceSha": "01f1a7d5a27c6d2538da08ed3d4c355d3fcdcb6c",
       "servingRevision": "UNVERIFIED"
     },
     "platform": {
       "result": "failure",
-      "buildId": "47316248-13dd-4718-a777-c24fe0835660",
+      "buildId": "d4c62104-186d-4699-bf46-cc6f2b6478d7",
+      "sourceSha": "01f1a7d5a27c6d2538da08ed3d4c355d3fcdcb6c",
       "cause": "The exposed check supplies a dashboard build URL and no error text or annotations; operator build log required"
     }
   },
@@ -163,8 +168,9 @@
     "manualPreviewOnly": true,
     "status": "READY",
     "url": "https://kampusone-mobile-preview-amb5u0k37-warriorpikins-projects.vercel.app/",
-    "publicUiAcceptance": "Current 8fd51d8 preview inspected: exact 'This sign-in origin is not allowed' recovery message; Go to sign in opens labelled sign-in controls; Terms has 27 section-title headings; Privacy has 24; cross-link and draft notice present. No sign-in credentials submitted.",
-    "authenticatedUiAcceptance": "BLOCKED: preview origin is not in the service sign-in allowlist. No production origin/security relaxation made."
+    "publicUiAcceptance": "Earlier 8fd51d8 preview inspected: exact 'This sign-in origin is not allowed' recovery message; Go to sign in opens labelled sign-in controls; Terms has 27 section-title headings; Privacy has 24; cross-link and draft notice present. No sign-in credentials submitted.",
+    "authenticatedUiAcceptance": "BLOCKED: preview origin is not in the service sign-in allowlist. No production origin/security relaxation made.",
+    "isCurrentImplementationPreview": false
   },
   "flags": {
     "liveUpdatesEnabled": false,
@@ -197,8 +203,14 @@
     "Qualified operator/Nigerian legal approval missing"
   ],
   "previousValidation": {
-    "sourceSha": "8fd51d8b3f979a890359dd3153c1a065a72ce4c9",
-    "sourceTree": "f1f4cf63a6790ce86ceb8640ac31590c2eb1abd9",
+    "date": "2026-10-12",
+    "sourceSha": "bbe6b9539005f07f3635256543df281a81f6a855",
+    "sourceTree": "f56e9d29fbfe8371d5c42df183a3f0d022d4d232",
+    "mainSha": "7cbedcdbe2e8dc992f52ee049d392cce1fa54b88",
+    "branch": "fix/performance-and-critical-ux-20261012",
+    "pr": "https://github.com/KampusOne/platform/pull/90",
+    "draft": true,
+    "merged": false,
     "local": {
       "root": {
         "pass": 246,
@@ -241,91 +253,97 @@
         "name": "Workers Builds: platform",
         "status": "completed",
         "conclusion": "failure",
-        "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platform/production/builds/eea26be3-3314-4379-a2ce-8bc9eaea8746"
+        "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platform/production/builds/47316248-13dd-4718-a777-c24fe0835660"
       },
       {
         "name": "Workers Builds: platformp",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platformp/production/builds/666c0c97-5177-432b-a91d-aeb9c6146df9"
-      },
-      {
-        "name": "mobile",
-        "status": "completed",
-        "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472433"
-      },
-      {
-        "name": "worker",
-        "status": "completed",
-        "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472255"
-      },
-      {
-        "name": "portal",
-        "status": "completed",
-        "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472237"
-      },
-      {
-        "name": "interaction-contracts",
-        "status": "completed",
-        "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566355/job/114839472139"
-      },
-      {
-        "name": "contracts",
-        "status": "completed",
-        "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472102"
-      },
-      {
-        "name": "database-review",
-        "status": "completed",
-        "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839471976"
-      },
-      {
-        "name": "browser-review-build",
-        "status": "completed",
-        "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566355/job/114839471840"
+        "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platformp/production/builds/ee24d14b-3edc-4dff-b91c-c86649b5b78d"
       },
       {
         "name": "adapters",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566450/job/114839471794"
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683638/job/114893874405"
       },
       {
-        "name": "like-state",
+        "name": "worker",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566293/job/114839471467"
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683158/job/114893873663"
       },
       {
-        "name": "loading-and-cache",
+        "name": "contracts",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566351/job/114839471299"
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683158/job/114893873589"
       },
       {
-        "name": "comment-interactions",
+        "name": "portal",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566335/job/114839471257"
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683158/job/114893873569"
+      },
+      {
+        "name": "mobile",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683158/job/114893873564"
       },
       {
         "name": "media-client",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566313/job/114839471235"
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683432/job/114893873397"
+      },
+      {
+        "name": "database-review",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683158/job/114893873222"
+      },
+      {
+        "name": "loading-and-cache",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683246/job/114893873112"
+      },
+      {
+        "name": "interaction-contracts",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683077/job/114893873101"
+      },
+      {
+        "name": "comment-interactions",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683300/job/114893873089"
+      },
+      {
+        "name": "like-state",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683204/job/114893872877"
+      },
+      {
+        "name": "browser-review-build",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683077/job/114893872867"
+      },
+      {
+        "name": "native-source",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273682936/job/114893872645"
       },
       {
         "name": "feed-contracts",
         "status": "completed",
         "conclusion": "success",
-        "url": "https://github.com/KampusOne/platform/actions/runs/38257566303/job/114839470754"
+        "url": "https://github.com/KampusOne/platform/actions/runs/38273683091/job/114893872607"
       }
     ],
     "workers": {
@@ -341,13 +359,237 @@
         "buildId": "47316248-13dd-4718-a777-c24fe0835660",
         "cause": "The exposed check supplies a dashboard build URL and no error text or annotations; operator build log required"
       }
+    },
+    "preview": {
+      "id": "dpl_7mWbUBJLoA5YVzurkT79raFMWmup",
+      "sourceSha": "8fd51d8b3f979a890359dd3153c1a065a72ce4c9",
+      "environment": "preview",
+      "manualPreviewOnly": true,
+      "status": "READY",
+      "url": "https://kampusone-mobile-preview-amb5u0k37-warriorpikins-projects.vercel.app/",
+      "publicUiAcceptance": "Current 8fd51d8 preview inspected: exact 'This sign-in origin is not allowed' recovery message; Go to sign in opens labelled sign-in controls; Terms has 27 section-title headings; Privacy has 24; cross-link and draft notice present. No sign-in credentials submitted.",
+      "authenticatedUiAcceptance": "BLOCKED: preview origin is not in the service sign-in allowlist. No production origin/security relaxation made."
+    },
+    "flags": {
+      "liveUpdatesEnabled": false,
+      "liveUsersBinding": false,
+      "productionOrStagingFlagChanges": false
+    },
+    "artifacts": {
+      "version": "0.3.25",
+      "androidVersionCode": 55,
+      "iosBuildNumber": 55,
+      "installedApkSha": "UNVERIFIED",
+      "finalMergedMainSha": null,
+      "apk": null,
+      "checksum": null,
+      "signature": null,
+      "abi": null
+    },
+    "productionMutations": false,
+    "productionManualDeployment": false,
+    "realPaymentsOrPayouts": false,
+    "databaseMigrations": false,
+    "releaseGate": "RED",
+    "limitations": [
+      "Current preview auth origin is intentionally not allowed by the service",
+      "Cloudflare403/1010 from this runtime to configured API origins",
+      "Separate platform Cloudflare build failure",
+      "No authenticated staging/provider approved sandbox matrix",
+      "No affected physical device/emulator or iOS compilation; Android synthetic compilation PASS",
+      "No before/after device metrics",
+      "Qualified operator/Nigerian legal approval missing"
+    ],
+    "previousValidation": {
+      "sourceSha": "8fd51d8b3f979a890359dd3153c1a065a72ce4c9",
+      "sourceTree": "f1f4cf63a6790ce86ceb8640ac31590c2eb1abd9",
+      "local": {
+        "root": {
+          "pass": 246,
+          "fail": 0,
+          "command": "node --test tests/*.test.mjs tests/post-like-store.test.ts"
+        },
+        "server": {
+          "files": 109,
+          "pass": 889,
+          "fail": 0,
+          "command": "npm test -- --maxWorkers=2",
+          "durationSeconds": 279.78
+        },
+        "mobileTypes": "PASS",
+        "serverTypes": "PASS",
+        "mobileWebExport": "PASS: 85 route entries",
+        "workerdSmoke": "PASS: local only",
+        "contracts": "10 PASS, plus exact-source CI",
+        "portal": "PASS: local lint/typecheck/build; exact-source CI PASS",
+        "map": "3595 features/180 places/23 layers source checks; 11 GPS recovery cases",
+        "priorFailure": "879 passed; two 5000ms payment test timeouts while fixture setup was inside tests. Isolated run reproduced first cold fixture timeout; beforeEach/afterEach split then all five payment and all 881 server tests passed. Assertion test timeout was not raised.",
+        "androidNativeCompilation": {
+          "result": "PASS",
+          "sourceSha": "bbe6b9539005f07f3635256543df281a81f6a855",
+          "runId": 38273682936,
+          "jobId": 114893872645,
+          "url": "https://github.com/KampusOne/platform/actions/runs/38273682936/job/114893872645",
+          "artifactId": 11758087272,
+          "artifactZipSha256": "5abedfcb9b1a99dad32af7d14c86cbc8e9b2d813562259c43efb94431134fa94",
+          "receipt": "docs/audits/2026-10-12-native-compilation-receipt.json",
+          "configuration": "Nonfunctional test Firebase fixture; example.invalid API origins; no production credentials",
+          "compiledNativeModules": 8,
+          "assets": "present",
+          "apkProduced": false,
+          "deviceTested": false
+        }
+      },
+      "ci": [
+        {
+          "name": "Workers Builds: platform",
+          "status": "completed",
+          "conclusion": "failure",
+          "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platform/production/builds/eea26be3-3314-4379-a2ce-8bc9eaea8746"
+        },
+        {
+          "name": "Workers Builds: platformp",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platformp/production/builds/666c0c97-5177-432b-a91d-aeb9c6146df9"
+        },
+        {
+          "name": "mobile",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472433"
+        },
+        {
+          "name": "worker",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472255"
+        },
+        {
+          "name": "portal",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472237"
+        },
+        {
+          "name": "interaction-contracts",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566355/job/114839472139"
+        },
+        {
+          "name": "contracts",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472102"
+        },
+        {
+          "name": "database-review",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839471976"
+        },
+        {
+          "name": "browser-review-build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566355/job/114839471840"
+        },
+        {
+          "name": "adapters",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566450/job/114839471794"
+        },
+        {
+          "name": "like-state",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566293/job/114839471467"
+        },
+        {
+          "name": "loading-and-cache",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566351/job/114839471299"
+        },
+        {
+          "name": "comment-interactions",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566335/job/114839471257"
+        },
+        {
+          "name": "media-client",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566313/job/114839471235"
+        },
+        {
+          "name": "feed-contracts",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/KampusOne/platform/actions/runs/38257566303/job/114839470754"
+        }
+      ],
+      "workers": {
+        "platformp": {
+          "result": "success",
+          "buildId": "ee24d14b-3edc-4dff-b91c-c86649b5b78d",
+          "versionId": "cd58464b-dcaf-4234-b368-273ecd36cef6",
+          "sourceSha": "bbe6b9539005f07f3635256543df281a81f6a855",
+          "servingRevision": "UNVERIFIED"
+        },
+        "platform": {
+          "result": "failure",
+          "buildId": "47316248-13dd-4718-a777-c24fe0835660",
+          "cause": "The exposed check supplies a dashboard build URL and no error text or annotations; operator build log required"
+        }
+      }
+    },
+    "ciSummary": {
+      "githubActionsPassed": 14,
+      "githubActionsFailed": 0,
+      "externalPlatformBuildFailed": true,
+      "scope": "Exact implementation source bbe6b95. Documentation may follow without changing tested code."
+    },
+    "lifecycle": {
+      "portalPaymentReadsPerRetry": 6,
+      "portalMapAutomaticAttemptsPerKey": 60,
+      "portalCampaignAutomaticAttemptsPerRevision": 60,
+      "pauseHiddenOffline": true,
+      "usageSamplesPerFlush": 3,
+      "usageQueueMaximum": 300,
+      "usageRetentionHours": 48,
+      "usageStorage": "Native encrypted full-role scope; browser session memory",
+      "legacyPlaintextUsage": "Discarded as optional unscoped telemetry",
+      "dispatchHintRecipientsMaximum": 16,
+      "livePublishDeadlineMilliseconds": 1500,
+      "remainingProducers": [
+        "In-app-only notice insertion",
+        "Provider-created/new-order delivery jobs",
+        "Customer/vendor/assigned offline rider audiences"
+      ],
+      "draftVerifiedForms": [
+        "Listings",
+        "Onboarding",
+        "Timetable imports",
+        "Campus activities"
+      ],
+      "remainingFormAutosaves": "Per-form proof/UX review remains"
+    },
+    "inventory": {
+      "routeEntries": 85,
+      "protectedPrimaryInterfaces": 6,
+      "timerAndLifecycleSites": 229,
+      "deviceAcceptance": "pending"
     }
   },
   "ciSummary": {
     "githubActionsPassed": 14,
     "githubActionsFailed": 0,
     "externalPlatformBuildFailed": true,
-    "scope": "Exact implementation source bbe6b95. Documentation may follow without changing tested code."
+    "scope": "Exact implementation source 01f1a7d5a27c6d2538da08ed3d4c355d3fcdcb6c. Documentation may follow without changing tested code."
   },
   "lifecycle": {
     "portalPaymentReadsPerRetry": 6,
@@ -369,15 +611,55 @@
     "draftVerifiedForms": [
       "Listings",
       "Onboarding",
-      "Timetable imports",
-      "Campus activities"
+      "Class/calendar timetable imports",
+      "Campus activities",
+      "Exam imports",
+      "Kira composer",
+      "Publisher polls and Q&A",
+      "Private answers",
+      "Personal calendar device copies"
     ],
-    "remainingFormAutosaves": "Per-form proof/UX review remains"
+    "remainingFormAutosaves": "Unsaved transient editor/business-profile fields and per-form/native acceptance remain"
   },
   "inventory": {
     "routeEntries": 85,
     "protectedPrimaryInterfaces": 6,
-    "timerAndLifecycleSites": 229,
+    "timerAndLifecycleSites": 227,
     "deviceAcceptance": "pending"
+  },
+  "recovery": {
+    "strictPrimaryReads": true,
+    "restoreWaitMilliseconds": 5000,
+    "restoreFailureAllowsAutosave": false,
+    "wholePayloadValidationBeforeApplying": true,
+    "unreadableCiphertextRetained": true,
+    "writeVersionEntriesMaximum": 256,
+    "unrelatedWritesInterruptRestore": false,
+    "manualKiraRetryRetainsThreadContext": true,
+    "cachedKiraPlanGrantsAccess": false,
+    "signedLinksLocalUrisAndExtractedBytesPersistedInKiraDraft": false,
+    "stalePreparedPhotoOrAttachmentAllowed": false,
+    "confirmedServerSaveAndDeviceCopyFailureAreSeparate": true,
+    "galleryMaximum": 6,
+    "galleryCover": "First photo; reorder/removal/payload share the same order",
+    "transientCalendarEditorAndLegacyPendingDateConflicts": "Per-form acceptance remains"
+  },
+  "itemStatusCounts": {
+    "DONE": 5,
+    "PARTIALLY DONE": 75,
+    "BLOCKED": 8,
+    "total": 88
+  },
+  "continuationCheckpoint": {
+    "sourceSha": "3781abc5f687004081c29484780c52fa5d90bd21",
+    "tree": "1af56b302b4afd38155f08fb4a1a73fb4c29fc8b",
+    "rootPassed": 267,
+    "serverPassed": 889,
+    "serverDurationSeconds": 237.94,
+    "githubActionsPassed": 14,
+    "nativeJob": "https://github.com/KampusOne/platform/actions/runs/38281688015/job/114920211986",
+    "nativeArtifactId": 11762420068,
+    "nativeArtifactSha256ReportedByGitHub": "89f5af7ae3020b12c30299955982ea78ecd1aba0031409a3d94c0a8e68f8b6a0",
+    "apkProduced": false
   }
 }
