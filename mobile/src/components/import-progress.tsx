@@ -1,4 +1,4 @@
-import { ActivityIndicator, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useAppearance } from "@/src/lib/appearance";
 
 /** Report actual uploaded bytes. AI parsing has no measurable percentage and
@@ -26,7 +26,8 @@ export function ImportProgress({ stage, uploadFraction, subject = "document" }: 
       style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 16,
         backgroundColor: theme.surface, padding: 16, gap: 9, marginVertical: 12 }}>
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-        {!determinate ? <ActivityIndicator size="small" color={theme.brand} /> : null}
+        {!determinate ? <View accessible={false} style={{ width: 24, height: 4,
+          borderRadius: 2, backgroundColor: theme.brand }} /> : null}
         <Text style={{ flex: 1, color: theme.text, fontFamily: theme.font.semibold, fontSize: 15 }}>
           {title}{determinate ? ` · ${percent}%` : ""}
         </Text>
