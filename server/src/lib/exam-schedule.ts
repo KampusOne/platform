@@ -12,10 +12,10 @@ export function parseExamDocument(text:string){
  try{value=JSON.parse(text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}catch{throw new AIProviderError(502,'AI_INVALID_OUTPUT','The exam timetable could not be read. Your draft is kept.');}
  if(!Array.isArray(value?.entries)||value.entries.length>80)throw new AIProviderError(422,'AI_INVALID_OUTPUT','Import up to 80 papers at a time.');
  const warnings=Array.isArray(value.warnings)?value.warnings.filter((v):v is string=>typeof v==='string').slice(0,80).map(v=>v.slice(0,300)):[];
- const entries:z.infer<typeof examEntrySchema>[]=[];
+ const entries:z.infer<typeof examEntrySchema>[]=[];const seen=new Set<string>();
  for(const [index,row] of value.entries.entries()){
   const parsed=examEntrySchema.safeParse(row);
-  if(parsed.success)entries.push(parsed.data);else warnings.push(`Paper ${index+1} needs a clear date, start and end time. Add it manually.`);
+  if(parsed.success){const identity=JSON.stringify([parsed.data.courseCode||parsed.data.title,parsed.data.date,parsed.data.startsAt,parsed.data.endsAt,parsed.data.venue]);if(seen.has(identity)){warnings.push(`Paper ${index+1} repeats an earlier row and was skipped.`);continue;}seen.add(identity);entries.push(parsed.data);}else warnings.push(`Paper ${index+1} needs a clear date, start and end time. Add it manually.`);
  }
  return{documentType:'exam_timetable',entries,warnings,events:[]};
 }

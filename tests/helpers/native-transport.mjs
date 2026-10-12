@@ -4,7 +4,7 @@ import {runInNewContext} from 'node:vm';
 import {waitForRequest,invalidationTargets,matchesRead,readCachePolicy,cacheScopeForUser,cacheExpiry} from '../../mobile/src/lib/request-policy.ts';
 const require=createRequire(new URL('../../server/package.json',import.meta.url));
 const ts=require('typescript');
-export function nativeTransport(fetcher, clock = Date) {
+export function nativeTransport(fetcher, clock = Date, storage = {}) {
   const policy={waitForRequest,invalidationTargets,matchesRead,readCachePolicy,cacheScopeForUser,cacheExpiry};
   const load=(file,mocks)=>{
     const exports={};
@@ -13,5 +13,5 @@ export function nativeTransport(fetcher, clock = Date) {
     return exports;
   };
   const deadline=load('request-deadline.ts',{'./request-policy':policy});
-  return load('api-transport.ts',{'./request-policy':policy,'./request-deadline':deadline,'./session-lock':{withSessionLock:fn=>fn()},'expo-constants':{default:{expoConfig:{extra:{}}}},'react-native':{Platform:{OS:'android'}},'./analytics-bridge':{emitFeatureLifecycle(){}},'./session-storage':{readRefreshToken:async()=>null,removeRefreshToken:async()=>{},saveRefreshToken:async()=>{}}});
+  return load('api-transport.ts',{'./device-cache':{setDeviceCacheScope(){}},'./request-policy':policy,'./request-deadline':deadline,'./session-lock':{withSessionLock:fn=>fn()},'expo-constants':{default:{expoConfig:{extra:{}}}},'react-native':{Platform:{OS:'android'}},'./analytics-bridge':{emitFeatureLifecycle(){}},'./session-storage':{readRefreshToken:async()=>null,removeRefreshToken:async()=>{},saveRefreshToken:async()=>{},...storage}});
 }

@@ -21,7 +21,7 @@ vi.mock('../../mobile/node_modules/expo-file-system/src/index.ts', () => ({
   },
 }));
 vi.mock('../../mobile/src/lib/request-deadline',()=>({withRequestDeadline:(operation:(signal:AbortSignal)=>Promise<unknown>)=>operation(new AbortController().signal)}));
-vi.mock('../../mobile/src/lib/api', () => ({ api: mock.api }));
+vi.mock('../../mobile/src/lib/api', () => ({ api: mock.api,ApiError:class extends Error{constructor(readonly status:number,readonly code:string,message:string){super(message);}} }));
 import { uploadMessageFile } from '../../mobile/src/lib/message-upload';
 const file = { localId: 'draft-1', uri: 'file:///cache/image', name: 'photo.jpg', mimeType: 'image/jpeg' };
 beforeEach(() => {
@@ -64,4 +64,12 @@ it('sends direct chunks to R2 and confirms them with the API without proxying by
   expect(mock.api.mock.calls.filter(([path])=>String(path).endsWith('/confirm'))).toHaveLength(3);
   expect(mock.reads.every(r=>r.length<=5)).toBe(true);
  }finally{vi.unstubAllGlobals();}
+});
+
+it('closes the file and preserves upload identity when the user cancels between chunks',async()=>{
+ const controller=new AbortController();
+ mock.api.mockImplementation(async(path:string)=>{if(path.includes('/parts/'))controller.abort();return mock.session;});
+ await expect(uploadMessageFile('student',file,vi.fn(),'resource',undefined,controller.signal)).rejects.toBeDefined();
+ expect(mock.closes).toHaveBeenCalledOnce();expect(mock.reads).toHaveLength(1);expect(mock.storage.size).toBe(1);
+ expect(mock.api.mock.calls.some(([path])=>String(path).endsWith('/complete'))).toBe(false);
 });

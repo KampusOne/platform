@@ -428,7 +428,7 @@ agentRoutes.post("/tutorials", async (context) => {
     "Tutorial operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const parsed = tutorialListingSchema.safeParse(await body(context));
+  const parsed = tutorialListingSchema.and(z.object({requestId:z.string().uuid().optional()})).safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
       400,
@@ -445,9 +445,9 @@ agentRoutes.post("/tutorials", async (context) => {
       "Payments are not connected yet. Free tutorials are available.",
     );
   }
-  const profile = await approvedProfile(context.env, user.id, "TUTOR");
-  const id = crypto.randomUUID();
-  await database(context.env).execute(sql`
+  const profile = await approvedProfile(context.env, user.id, "TUTOR", user.universityId);
+  const id = parsed.data.requestId ?? crypto.randomUUID();
+  const created=firstRow(await database(context.env).execute<{id:string;status:string}>(sql`
     insert into public.tutorial_listings (
       id, university_id, tutor_profile_id, course_id, course_code,
       title, description, format, price_kobo, capacity, publisher_name,
@@ -459,8 +459,23 @@ agentRoutes.post("/tutorials", async (context) => {
       (select display_name from public.agent_profiles where id = ${profile.id}::uuid),
       ${parsed.data.locationText ?? null}, ${parsed.data.cancellationCutoffHours}
     )
-  `);
-  return context.json({ id, status: "DRAFT" }, 201);
+    on conflict(id) do update set id=excluded.id
+    where tutorial_listings.tutor_profile_id=excluded.tutor_profile_id
+      and tutorial_listings.university_id=excluded.university_id
+      and tutorial_listings.deleted_at is null
+      and tutorial_listings.course_id is not distinct from excluded.course_id
+      and tutorial_listings.course_code=excluded.course_code
+      and tutorial_listings.title=excluded.title
+      and tutorial_listings.description=excluded.description
+      and tutorial_listings.format=excluded.format
+      and tutorial_listings.price_kobo=excluded.price_kobo
+      and tutorial_listings.capacity=excluded.capacity
+      and tutorial_listings.location_text is not distinct from excluded.location_text
+      and tutorial_listings.cancellation_cutoff_hours=excluded.cancellation_cutoff_hours
+    returning id,status
+  `));
+  if(!created)throw new AppError(409,'CONFLICT','This tutorial request was already used for different details.');
+  return context.json({ id, status: created.status }, 201);
 });
 
 agentRoutes.patch("/tutorials/:id/status", async (context) => {

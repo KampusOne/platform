@@ -1,3 +1,4 @@
+export { LiveUser } from "./lib/live-updates";
 import {deliverCommunityPush,checkCommunityPushReceipts} from "./services/community-push";
 import { sql } from "drizzle-orm";
 

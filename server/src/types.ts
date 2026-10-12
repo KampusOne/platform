@@ -1,6 +1,9 @@
 export type RuntimeEnvironment = "local" | "staging" | "production";
 
 export type Bindings = {
+  LIVE_USERS?: DurableObjectNamespace;
+  /** Remains disabled until the scoped hub passes staging and deployment verification. */
+  LIVE_UPDATES_ENABLED?: string;
   AI?: import('./lib/ai-workers').WorkersAIBinding;
   AI_TEXT_PROVIDER?: string;
   /** Set to false to bypass the non-personal Worker read cache immediately. */

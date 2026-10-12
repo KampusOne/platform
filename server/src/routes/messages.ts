@@ -1,3 +1,4 @@
+import { publishUserReads } from "../lib/live-updates";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { z, directMessageInputSchema, directMessageReactionSchema, directMessageReportReasonSchema } from "@kampusone/contracts";
@@ -19,6 +20,18 @@ export const messageRoutes = new Hono<{
 }>();
 
 messageRoutes.use("/*", requireAuth);
+messageRoutes.use('/*',async(c,next)=>{
+  await next();
+  if(c.req.method==='GET'||!c.res.ok||c.env.LIVE_UPDATES_ENABLED!=='true')return;
+  const match=c.req.path.match(/\/threads\/([0-9a-f-]{36})/i);if(!match)return;
+  const user=currentUser(c),threadId=match[1]!;
+  const notify=async()=>{
+    const targets=await database(c.env).execute<{user_id:string;university_id:string|null}>(sql`select p.user_id,p.university_id from public.direct_threads t join public.profiles p on p.user_id in(t.initiator_id,t.recipient_id) where t.id=${threadId}::uuid and ${user.id}::uuid in(t.initiator_id,t.recipient_id) and p.deleted_at is null`);
+    await Promise.all(targets.rows.map(target=>publishUserReads(c.env,target.user_id,target.university_id,{id:c.get('requestId')+':'+target.user_id,prefixes:['/v1/messages/inbox','/v1/messages/threads/'+threadId,'/v1/notifications/inbox']})));
+  };
+  try{c.executionCtx.waitUntil(notify().catch(()=>undefined));}catch{/* A unavailable event stream never changes a confirmed write. */}
+});
+
 messageRoutes.use("/*", async (c, next) => {
   c.header("Cache-Control", "private, no-store");
   await requireProfileSafety(c.env);

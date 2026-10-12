@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { privateDraftStorage } from "./private-draft-storage";
 import { Directory, File, Paths } from "expo-file-system";
 import { Platform } from "react-native";
 
@@ -174,7 +174,7 @@ export async function readConversationDraft(
 ): Promise<ConversationDraft | null> {
   const storageKey = key(account, thread);
   await queues.get(storageKey)?.catch(() => undefined);
-  const saved = parse(await AsyncStorage.getItem(storageKey));
+  const saved = parse(await privateDraftStorage.getItem(storageKey));
   if (!saved) return null;
   for (const file of [
     ...saved.media,
@@ -206,7 +206,7 @@ export function saveConversationDraft(
   const task = (queues.get(storageKey) ?? Promise.resolve())
     .catch(() => undefined)
     .then(async () => {
-      const previous = parse(await AsyncStorage.getItem(storageKey));
+      const previous = parse(await privateDraftStorage.getItem(storageKey));
       if (hasConversationDraft(snapshot)) {
         for (const file of [
           ...snapshot.media,
@@ -219,7 +219,7 @@ export function saveConversationDraft(
             snapshot.voice.localId,
             snapshot.voice.uri,
           );
-        await AsyncStorage.setItem(
+        await privateDraftStorage.setItem(
           storageKey,
           JSON.stringify({
             ...snapshot,
@@ -228,7 +228,7 @@ export function saveConversationDraft(
           }),
         );
       } else {
-        await AsyncStorage.removeItem(storageKey);
+        await privateDraftStorage.removeItem(storageKey);
       }
       const retained = new Set(
         [
@@ -279,11 +279,9 @@ export async function readDraftSummaries(
 ): Promise<Record<string, DraftSummary>> {
   if (!validId(account)) return {};
   const accountPrefix = prefix + account + ".";
-  const keys = (await AsyncStorage.getAllKeys()).filter((value) =>
-    value.startsWith(accountPrefix),
-  );
+  const keys = await privateDraftStorage.keys(account);
   const results: Record<string, DraftSummary> = {};
-  for (const [storageKey, raw] of await AsyncStorage.multiGet(keys)) {
+  for (const [storageKey, raw] of await Promise.all(keys.map(async key => [key, await privateDraftStorage.getItem(key)] as const))) {
     let saved: Saved | null;
     try {
       saved = parse(raw);

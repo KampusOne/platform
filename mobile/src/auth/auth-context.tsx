@@ -1,3 +1,4 @@
+import { clearScreenSync } from "../lib/screen-read";
 import {cacheScopeForUser} from "../lib/request-policy";
 import { checkBuildVersion } from "@/src/lib/build-version";
 import {
@@ -108,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applySession = useCallback(
     (session: Session) => {
+      setAccessToken(session.accessToken, session.user.id, cacheScopeForUser(session.user));
       if (sessionUserId.current !== session.user.id) {
         sessionVersion.current++;
         const generation = sessionVersion.current;
@@ -167,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfileState("idle");
           setProfileError("");
           setState("anonymous");
+          clearScreenSync();
           void clearDeviceCache().catch(() => undefined);
           applyPreferences();
           void clearScheduledAlarms().catch(() => undefined);
@@ -222,11 +225,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [retrySessionRestore]);
 
-  useEffect(() => {
-    if (!sessionRestoreError) return;
-    const timer = setTimeout(() => void retrySessionRestore(), 10_000);
-    return () => clearTimeout(timer);
-  }, [sessionRestoreError, retrySessionRestore]);
 
   useEffect(() => {
     let previous = AppState.currentState;
@@ -277,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionVersion.current++;
       sessionUserId.current = null;
       setAccessToken(null);
+      clearScreenSync();
       setSessionRestoreError("");
       setUser(null);
       setProfile(null);

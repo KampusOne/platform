@@ -2,7 +2,8 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { Image, Platform } from "react-native";
-import { api, ApiError, clearApiCache, currentApiUrl } from "./api";
+import { api, ApiError, invalidateApiReads, currentApiUrl } from "./api";
+import type { ImportStage } from "./import-progress";
 import { requestPhotoEdit } from "./photo-edit-session";
 import { requestVideoEdit } from "./video-edit-session";
 import { getPostVideoDurationMs } from "./post-video-processing";
@@ -59,7 +60,7 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
   if(kind==='post'&&file.type.startsWith('video/')){
     const current=await api<{profile:{id:string}}>('/v1/student/me');
     const id=await uploadMessageFile(current.profile.id,{uri:file.uri,name:file.name,mimeType:file.type},()=>undefined,'post');
-    clearApiCache();return {id,url:`${currentApiUrl()}/v1/media/${id}`,kind:'post',private:false};
+    invalidateApiReads(["/v1/student/feed", "/v1/student/home"]);return {id,url:`${currentApiUrl()}/v1/media/${id}`,kind:'post',private:false};
   }
   const limit = kind === "notification-sound" ? 2 * 1024 * 1024 : kind === "post" && file.type.startsWith("video/") ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
   let body: Blob | ArrayBuffer;
@@ -98,7 +99,7 @@ async function upload(kind: UploadKind, file: { uri: string; name: string; type:
   if (!result?.id || !result.url || result.kind !== kind) throw new Error("The upload returned an incomplete response. Refresh before trying again.");
   // A profile read may have started while the upload was running. Invalidate
   // again after the write, so an old cached profile cannot undo the new photo.
-  clearApiCache();
+  invalidateApiReads(kind === "avatar" || kind === "cover" ? ["/v1/student/me", "/v1/people"] : kind === "product" ? ["/v1/agents", "/v1/student/store"] : kind === "post" ? ["/v1/student/feed", "/v1/student/home"] : []);
   return result;
 }
 export async function uploadPreparedPhoto(kind: PhotoKind, photo: PreparedPhoto): Promise<UploadedFile> {
@@ -139,19 +140,25 @@ export async function pickAttachment(): Promise<StagedAttachment | null> {
   if((file.size ?? 0)>100*1024*1024) throw new Error("Kira accepts documents up to 100 MB. Compress this file before attaching it.");
   const inferred=({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain', pdf: 'application/pdf' }[file.name.toLowerCase().split('.').pop() ?? '']);
   const type=file.mimeType && !['application/octet-stream','binary/octet-stream'].includes(file.mimeType) ? file.mimeType : inferred ?? 'application/octet-stream';
+  if (!["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"].includes(type)) throw new Error("Choose a JPEG, PNG, WebP, PDF or text file.");
+  if (type.startsWith("image/") && (file.size ?? 0) > 8 * 1024 * 1024) throw new Error("Choose an image smaller than 8 MB.");
   return {uri:file.uri,name:file.name,type,size:file.size};
 }
-export async function uploadAttachment(file: StagedAttachment, userId: string, query = '', tier = 'standard', onProgress: (fraction: number) => void = () => undefined): Promise<StagedAttachment> {
+export async function uploadAttachment(file: StagedAttachment, userId: string, query = '', tier = 'standard', onProgress: (fraction: number) => void = () => undefined, options: { onStage?: (stage: ImportStage) => void; onUploaded?: (file: StagedAttachment) => void; signal?: AbortSignal } = {}): Promise<StagedAttachment> {
   let mediaId=file.mediaId;
   if(!mediaId){
     if(!file.uri) throw new Error("Please reattach this file. Your message is still here.");
-    mediaId=await uploadMessageFile(userId,{uri:file.uri,name:file.name,mimeType:file.type},onProgress,'resource');
+    options.onStage?.("uploading");
+    mediaId=await uploadMessageFile(userId,{uri:file.uri,name:file.name,mimeType:file.type},onProgress,'resource',undefined,options.signal);
+    options.onUploaded?.({ ...file, mediaId });
+    options.onStage?.("uploaded");
   }
   if(['application/pdf','text/plain'].includes(file.type)){
     // Small documents can be read by the Worker, including scanned PDFs.
     // A web reader outage should not prevent an already uploaded file being sent.
     if ((file.size ?? Number.MAX_SAFE_INTEGER) <= 16 * 1024 * 1024) return { ...file, mediaId };
-    const sourceText=file.sourceText??await readUploadedDocument(mediaId,file.name,file.type,query,tier);
+    options.onStage?.("reading");
+    const sourceText=file.sourceText??await readUploadedDocument(mediaId,file.name,file.type,query,tier,options.signal);
     return {...file,mediaId,sourceText};
   }
   return {...file,mediaId};

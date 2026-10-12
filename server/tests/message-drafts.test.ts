@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const memory = vi.hoisted(() => ({
+  activeOwner:"",
   storage: new Map<string, string>(),
   files: new Map<string, string>(),
   directories: new Set<string>(),
@@ -66,6 +67,19 @@ vi.mock("../../mobile/node_modules/expo-file-system/src/index.ts", () => {
   }
   return { File, Directory, Paths: { document: "file:///documents" } };
 });
+vi.mock("../../mobile/src/lib/device-cache",()=>({isDeviceCacheOwner:(id:string)=>id===memory.activeOwner,readCache:async()=>null,writeCache:async()=>{}}));
+vi.mock("../../mobile/src/lib/secure-snapshots.native-adapter",async()=>{
+ const {SecureSnapshots}=await import("../../mobile/src/lib/secure-snapshots");
+ const {createCipheriv,createDecipheriv,randomBytes,createHash}=await import('node:crypto');
+ const keys=new Map<string,Buffer>();
+ const store=new SecureSnapshots({
+  get:async key=>memory.storage.get(key)??null,set:async(key,value)=>{memory.storage.set(key,value);},remove:async key=>{memory.storage.delete(key);},keys:async()=>[...memory.storage.keys()],hash:async text=>createHash('sha256').update(text).digest('hex'),
+  seal:async(id,text,aad)=>{const key=keys.get(id)??randomBytes(32);keys.set(id,key);const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);cipher.setAAD(Buffer.from(aad));return Buffer.concat([iv,cipher.update(text),cipher.final(),cipher.getAuthTag()]).toString('base64');},
+  open:async(id,sealed,aad)=>{const key=keys.get(id);if(!key)return null;const bytes=Buffer.from(sealed,'base64'),cipher=createDecipheriv('aes-256-gcm',key,bytes.subarray(0,12));cipher.setAAD(Buffer.from(aad));cipher.setAuthTag(bytes.subarray(-16));return Buffer.concat([cipher.update(bytes.subarray(12,-16)),cipher.final()]).toString();},
+  destroyKey:async id=>{keys.delete(id);},
+ });return {secureSnapshots:store};
+});
+import {secureSnapshots} from "../../mobile/src/lib/secure-snapshots.native-adapter";
 import {
   readConversationDraft,
   readDraftSummaries,
@@ -87,7 +101,10 @@ function draft(overrides: Partial<ConversationDraft> = {}): ConversationDraft {
     ...overrides,
   };
 }
-beforeEach(() => {
+beforeEach(async () => {
+  await secureSnapshots.clear();
+  memory.activeOwner=account;
+  secureSnapshots.activate("verified-account:"+account,account);
   memory.storage.clear();
   memory.files.clear();
   memory.directories.clear();

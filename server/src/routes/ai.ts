@@ -22,7 +22,7 @@ export const aiRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "explanation", "quiz", "notes", "timetable"]);
-const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), documentKind:z.enum(["exam"]).optional(), mediaId: z.string().uuid().optional(), extractedText: z.string().trim().max(50000).optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
+const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), documentKind:z.enum(["exam","class","calendar"]).optional(), mediaId: z.string().uuid().optional(), extractedText: z.string().trim().max(50000).optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
 type Saved = { failureStatus?: number; failureDetails?: Record<string,unknown>; documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; fileType?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
@@ -430,7 +430,7 @@ aiRoutes.post("/", async c => {
       let importConsumed = false;
       const consumeImport = async () => {
         if (importConsumed || !(d.mode === 'timetable' || d.mediaId)) return;
-        const kind = d.mode === 'timetable' ? (/calendar|exam period|academic dates/i.test(d.prompt) ? 'calendar' : 'timetable') : fileType?.startsWith('image/') ? 'image' : 'document';
+        const kind = d.mode === 'timetable' ? (d.documentKind === 'calendar' || /calendar|exam period|academic dates/i.test(d.prompt) ? 'calendar' : 'timetable') : fileType?.startsWith('image/') ? 'image' : 'document';
         await consumeAcademicImportQuota(c.env,u,kind,d.idempotencyKey,quota.pro);
         importConsumed = true;
       };
@@ -459,7 +459,7 @@ aiRoutes.post("/", async c => {
       }
       if(new TextEncoder().encode(prompt+JSON.stringify(history)).length>160000)throw new AIProviderError(422,'AI_DOCUMENT_TOO_LONG','This section is too long. Ask about a smaller part of the document.');
       await consumeImport();
-      const aiInput={mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
+      const aiInput={mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:d.documentKind==='calendar'?'This import is an academic calendar. Extract dated activities and semester dates only; do not create weekly classes.':d.documentKind==='class'?'This import is a weekly class timetable. Preserve the source classification and never convert dates into class hours.':''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
       const generated = isRestrictedKampusOneRequest(d.prompt)
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: selectedProvider, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'
@@ -468,7 +468,10 @@ aiRoutes.post("/", async c => {
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
         const extracted = d.documentKind==='exam'?parseExamDocument(generated.text):parseScheduleDocument(generated.text, sourceText);
+        if (d.documentKind === 'calendar' && extracted.documentType !== 'academic_calendar')
+          throw new AIProviderError(422, 'AI_INVALID_OUTPUT', 'This document was not recognised as an academic calendar. Nothing has been saved.');
         const entries: unknown[] = [], warnings = [...extracted.warnings];
+        const seen = new Set<string>();
         if(d.documentKind==='exam')entries.push(...extracted.entries);
         for (const [i, raw] of (d.documentKind==='exam'?[]:extracted.entries).entries()) {
           if (!raw || typeof raw !== "object") { warnings.push(`Class ${i+1} was unreadable and needs manual entry.`); continue; }
@@ -478,7 +481,9 @@ aiRoutes.post("/", async c => {
           if (!valid.success || typeof r.startsAt !== "string" || typeof r.endsAt !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(r.startsAt) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(r.endsAt) || r.endsAt <= r.startsAt) {
             warnings.push(`Class ${i+1} has missing or invalid details; add or correct it manually.`); continue;
           }
-          entries.push(valid.data);
+          const identity = JSON.stringify([valid.data.courseCode || valid.data.title,valid.data.dayOfWeek,valid.data.startsAt,valid.data.endsAt,valid.data.venue]);
+          if(seen.has(identity)){warnings.push(`Class ${i+1} repeats an earlier row and was skipped.`);continue;}
+          seen.add(identity);entries.push(valid.data);
         }
         result = { ...result, entries, warnings, events: extracted.events, documentType: extracted.documentType };
       } else {

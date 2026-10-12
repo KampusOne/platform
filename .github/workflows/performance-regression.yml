@@ -21,3 +21,6 @@ jobs:
       - name: Check mounted route cache inventory
         run: node server/scripts/cache-route-manifest.mjs --check
       - run: node --experimental-strip-types --test tests/*.test.mjs tests/post-like-store.test.ts
+      - name: Verify local Worker realtime transport
+        run: node scripts/live-runtime-smoke.mjs
+        working-directory: server
