@@ -1,0 +1,178 @@
+{
+  "date": "2026-10-12",
+  "sourceSha": "8fd51d8b3f979a890359dd3153c1a065a72ce4c9",
+  "sourceTree": "f1f4cf63a6790ce86ceb8640ac31590c2eb1abd9",
+  "mainSha": "7cbedcdbe2e8dc992f52ee049d392cce1fa54b88",
+  "branch": "fix/performance-and-critical-ux-20261012",
+  "pr": "https://github.com/KampusOne/platform/pull/90",
+  "draft": true,
+  "merged": false,
+  "local": {
+    "root": {
+      "pass": 228,
+      "fail": 0,
+      "command": "node --test tests/*.test.mjs tests/post-like-store.test.ts"
+    },
+    "server": {
+      "files": 108,
+      "pass": 881,
+      "fail": 0,
+      "command": "npm test -- --maxWorkers=2",
+      "durationSeconds": 280.42
+    },
+    "mobileTypes": "PASS",
+    "serverTypes": "PASS",
+    "mobileWebExport": "PASS: 85 route entries",
+    "workerdSmoke": "PASS: local only",
+    "contracts": "10 PASS, plus exact-source CI",
+    "portal": "Exact-source CI PASS: lint/typecheck/build",
+    "map": "3595 features/180 places/23 layers source checks; 11 GPS recovery cases",
+    "priorFailure": "879 passed; two 5000ms payment test timeouts while fixture setup was inside tests. Isolated run reproduced first cold fixture timeout; beforeEach/afterEach split then all five payment and all 881 server tests passed. Assertion test timeout was not raised."
+  },
+  "ci": [
+    {
+      "name": "Workers Builds: platform",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platform/production/builds/eea26be3-3314-4379-a2ce-8bc9eaea8746"
+    },
+    {
+      "name": "Workers Builds: platformp",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://dash.cloudflare.com/fb1987f2d2321bcbbe263bd49ddbcf4a/workers/services/view/platformp/production/builds/666c0c97-5177-432b-a91d-aeb9c6146df9"
+    },
+    {
+      "name": "mobile",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472433"
+    },
+    {
+      "name": "worker",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472255"
+    },
+    {
+      "name": "portal",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472237"
+    },
+    {
+      "name": "interaction-contracts",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566355/job/114839472139"
+    },
+    {
+      "name": "contracts",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839472102"
+    },
+    {
+      "name": "database-review",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566295/job/114839471976"
+    },
+    {
+      "name": "browser-review-build",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566355/job/114839471840"
+    },
+    {
+      "name": "adapters",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566450/job/114839471794"
+    },
+    {
+      "name": "like-state",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566293/job/114839471467"
+    },
+    {
+      "name": "loading-and-cache",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566351/job/114839471299"
+    },
+    {
+      "name": "comment-interactions",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566335/job/114839471257"
+    },
+    {
+      "name": "media-client",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566313/job/114839471235"
+    },
+    {
+      "name": "feed-contracts",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/KampusOne/platform/actions/runs/38257566303/job/114839470754"
+    }
+  ],
+  "workers": {
+    "platformp": {
+      "result": "success",
+      "buildId": "666c0c97-5177-432b-a91d-aeb9c6146df9",
+      "versionId": "32759afc-3e69-4df1-a8ff-d5ad9a349cd3",
+      "sourceSha": "8fd51d8b3f979a890359dd3153c1a065a72ce4c9",
+      "servingRevision": "UNVERIFIED"
+    },
+    "platform": {
+      "result": "failure",
+      "buildId": "eea26be3-3314-4379-a2ce-8bc9eaea8746",
+      "cause": "Unavailable in exposed check output; operator build log required"
+    }
+  },
+  "preview": {
+    "id": "dpl_7mWbUBJLoA5YVzurkT79raFMWmup",
+    "sourceSha": "8fd51d8b3f979a890359dd3153c1a065a72ce4c9",
+    "environment": "preview",
+    "manualPreviewOnly": true,
+    "status": "READY",
+    "url": "https://kampusone-mobile-preview-amb5u0k37-warriorpikins-projects.vercel.app/",
+    "publicUiAcceptance": "Current 8fd51d8 preview inspected: exact 'This sign-in origin is not allowed' recovery message; Go to sign in opens labelled sign-in controls; Terms has 27 section-title headings; Privacy has 24; cross-link and draft notice present. No sign-in credentials submitted.",
+    "authenticatedUiAcceptance": "BLOCKED: preview origin is not in the service sign-in allowlist. No production origin/security relaxation made."
+  },
+  "flags": {
+    "liveUpdatesEnabled": false,
+    "liveUsersBinding": false,
+    "productionOrStagingFlagChanges": false
+  },
+  "artifacts": {
+    "version": "0.3.25",
+    "androidVersionCode": 55,
+    "iosBuildNumber": 55,
+    "installedApkSha": "UNVERIFIED",
+    "finalMergedMainSha": null,
+    "apk": null,
+    "checksum": null,
+    "signature": null,
+    "abi": null
+  },
+  "productionMutations": false,
+  "productionManualDeployment": false,
+  "realPaymentsOrPayouts": false,
+  "databaseMigrations": false,
+  "releaseGate": "RED",
+  "limitations": [
+    "Current preview auth origin is intentionally not allowed by the service",
+    "Cloudflare403/1010 from this runtime to configured API origins",
+    "Separate platform Cloudflare build failure",
+    "No authenticated staging/provider approved sandbox matrix",
+    "No native compile/emulator/affected device",
+    "No before/after device metrics",
+    "Qualified operator/Nigerian legal approval missing"
+  ]
+}
