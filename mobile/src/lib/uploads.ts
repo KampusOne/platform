@@ -141,11 +141,11 @@ export async function pickAttachment(): Promise<StagedAttachment | null> {
   const type=file.mimeType && !['application/octet-stream','binary/octet-stream'].includes(file.mimeType) ? file.mimeType : inferred ?? 'application/octet-stream';
   return {uri:file.uri,name:file.name,type,size:file.size};
 }
-export async function uploadAttachment(file: StagedAttachment, userId: string, query = '', tier = 'standard'): Promise<StagedAttachment> {
+export async function uploadAttachment(file: StagedAttachment, userId: string, query = '', tier = 'standard', onProgress: (fraction: number) => void = () => undefined): Promise<StagedAttachment> {
   let mediaId=file.mediaId;
   if(!mediaId){
     if(!file.uri) throw new Error("Please reattach this file. Your message is still here.");
-    mediaId=await uploadMessageFile(userId,{uri:file.uri,name:file.name,mimeType:file.type},()=>undefined,'resource');
+    mediaId=await uploadMessageFile(userId,{uri:file.uri,name:file.name,mimeType:file.type},onProgress,'resource');
   }
   if(['application/pdf','text/plain'].includes(file.type)){
     // Small documents can be read by the Worker, including scanned PDFs.
