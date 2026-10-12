@@ -1,4 +1,3 @@
-import { liveReads } from "@/src/lib/live-updates";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
@@ -23,7 +22,7 @@ import { AgentShortcuts } from "@/src/components/agent-shortcuts";
 import { DashboardCarousel } from "@/src/components/dashboard-carousel";
 import { useStartup } from "@/src/lib/startup";
 import { readCache, writeCache } from "@/src/lib/device-cache";
-import { useNotificationCount } from "@/src/lib/notification-state";
+import { useNotificationCount,useMessageCount } from "@/src/lib/notification-state";
 import { ApiError, api, peekApiCache } from "@/src/lib/api";
 import { recordRecentTool } from "@/src/lib/recent-tools";
 import { streakColor } from "@/src/lib/streak-theme";
@@ -157,7 +156,7 @@ export default function TodayScreen() {
   const { profile, user } = useAuth();
   const { markHomeReady } = useStartup();
   const unreadNotifications = useNotificationCount();
-  const [unreadMessages, setUnreadMessages] = useState(0);
+  const unreadMessages=useMessageCount();
   const generation = useRef(0);
   const [data, setData] = useState<Home | null>(() => {
     const prefetched = peekApiCache<Home>("/v1/student/home", { allowStale: true });
@@ -214,13 +213,6 @@ export default function TodayScreen() {
     return () => { generation.current++; };
   }, [load]));
 
-  useFocusEffect(useCallback(() => {
-    let active = true;
-    const refresh = () => { void api<{ unreadCount: number }>("/v1/messages/inbox").then(result => { if (active) setUnreadMessages(result.unreadCount); }).catch(() => undefined); };
-    refresh();
-    const stop = liveReads.subscribe("/v1/messages/inbox", refresh, 90_000);
-    return () => { active = false; stop(); };
-  }, [user?.id]));
 
   const firstName = data?.profile?.first_name ?? profile?.first_name ?? "there";
   const now = new Date();

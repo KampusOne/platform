@@ -103,6 +103,21 @@ async function threadFor(env: Bindings, userId: string, threadId: string) {
   return thread;
 }
 
+async function unreadMessages(env: Bindings, userId: string) {
+  const result = await database(env).execute<{ unread_count: number }>(sql`
+    select count(*)::int as unread_count
+    from public.direct_messages m
+    join public.direct_threads t on t.id=m.thread_id
+    join public.profiles p on p.user_id=case
+      when t.initiator_id=${userId}::uuid then t.recipient_id else t.initiator_id end
+    where ${userId}::uuid in(t.initiator_id,t.recipient_id)
+      and t.status<>'DECLINED' and p.deleted_at is null
+      and ${unblockedAuthor(userId, sql`p.user_id`)}
+      and m.sender_id<>${userId}::uuid and m.read_at is null and m.unsent_at is null
+  `);
+  return firstRow(result)?.unread_count ?? 0;
+}
+
 messageRoutes.get('/shared/:id',async c=>{
  const user=currentUser(c),messageId=id(c.req.param('id'));
  const row=firstRow(await database(c.env).execute<{thread_id:string}>(sql`select m.thread_id from public.direct_messages m join public.direct_threads t on t.id=m.thread_id where m.id=${messageId}::uuid and m.unsent_at is null and ${user.id}::uuid in(t.initiator_id,t.recipient_id)`));
@@ -423,14 +438,23 @@ messageRoutes.put("/threads/:id/accept", async (c) => {
 messageRoutes.put("/threads/:id/read", async (c) => {
   const user = currentUser(c);
   const thread = await threadFor(c.env, user.id, id(c.req.param("id")));
+  const body = await c.req.text();
+  const parsed = z.object({lastReadMessageId:z.string().uuid().optional()}).strict().safeParse(body ? (()=>{try{return JSON.parse(body);}catch{return null;}})() : {});
+  if(!parsed.success)throw new AppError(400,'BAD_REQUEST','Choose a message you have viewed.');
+  const lastSeen = parsed.data.lastReadMessageId;
+  if(lastSeen)await messageFor(c.env,thread.id,lastSeen);
   await database(c.env).execute(sql`
     update public.direct_messages
     set read_at=coalesce(read_at,now())
     where thread_id=${thread.id}::uuid
       and sender_id<>${user.id}::uuid
       and read_at is null
+      and unsent_at is null
+      and (${lastSeen??null}::uuid is null or (created_at,id)<=(
+        select created_at,id from public.direct_messages where id=${lastSeen??null}::uuid and thread_id=${thread.id}::uuid
+      ))
   `);
-  return c.json({ read: true });
+  return c.json({ read: true, unreadCount:await unreadMessages(c.env,user.id) });
 });
 
 messageRoutes.post("/threads/:id/messages", async (c) => {

@@ -1038,9 +1038,9 @@ agentRoutes.get('/products/price-preview',async c=>{
  const profile=await operationalVendorProfile(c.env,currentUser(c).id),price=Number(c.req.query('priceKobo'));
  if(!Number.isSafeInteger(price)||price<0||price>100_000_000)throw new AppError(400,'BAD_REQUEST','Enter a whole kobo price.');
  const policy=await approvedCommercePolicy(c.env,profile.university_id,'STORE');
- if(!policy)return c.json({ready:false});
+ if(!policy)return c.json({ready:false,message:"Marketplace rates are not configured for this campus yet."});
  const p=listingPrice(price,policy);
- return c.json({ready:true,baseKobo:price,platformKobo:p.buyerComponentKobo,processingEstimateKobo:p.processingAllowanceKobo,customerEstimateKobo:p.customerPriceKobo,sellerCommissionKobo:percentageKobo(price,policy.sellerCommissionBasisPoints,'ceil')});
+ return c.json({ready:true,ruleId:policy.id,baseKobo:price,platformKobo:p.buyerComponentKobo,processingEstimateKobo:p.processingAllowanceKobo,customerEstimateKobo:p.customerPriceKobo,sellerCommissionKobo:percentageKobo(price,policy.sellerCommissionBasisPoints,'ceil')});
 });
 agentRoutes.post("/products", async (context) => {
   requireFeature(
@@ -1049,7 +1049,7 @@ agentRoutes.post("/products", async (context) => {
     "Store operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const parsed = vendorProductSchema.and(z.object({imageUrls:z.array(z.string().url()).max(6).default([]),requestId:z.string().uuid().optional()})).safeParse(await body(context));
+  const parsed = vendorProductSchema.and(z.object({imageUrls:z.array(z.string().url()).max(6).default([]),requestId:z.string().uuid().optional(),pricingPolicyId:z.string().uuid().optional()})).safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
       400,
@@ -1057,6 +1057,7 @@ agentRoutes.post("/products", async (context) => {
       "Check the product details and try again.",
     );
   const profile = await operationalVendorProfile(context.env, user.id);
+  if(parsed.data.pricingPolicyId){const policy=await approvedCommercePolicy(context.env,profile.university_id,'STORE');if(!policy||policy.id!==parsed.data.pricingPolicyId)throw new AppError(409,'CONFLICT','Marketplace rates changed. Recalculate the rates before uploading your product.');}
   const categoryResult = await database(context.env).execute<{
     id: string;
     name: string;

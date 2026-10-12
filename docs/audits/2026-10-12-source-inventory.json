@@ -1288,25 +1288,12 @@
     },
     {
       "file": "mobile/app/(tabs)/index.tsx",
-      "line": 212,
+      "line": 211,
       "kind": "useFocusEffect",
       "endpoints": [
-        "/v1/student/home",
-        "/v1/messages/inbox"
+        "/v1/student/home"
       ],
-      "excerpt": "useFocusEffect(useCallback(() => { void load(); return () => { generation.current++; }; }, [load])); useFocusEffect(useCallback(() => { let active = true; const refresh = () => { void api<{ unreadCount: number }>(\"/v1/messages/inbox\").then(result => { if (active) setUnreadMessages(result.unreadCount); }).catch(() => undefined); }; refresh(); const stop = liveReads.subscribe(\"/v1/messages/inbox\", refresh, 90_000); return () => { active =",
-      "classification": "Lifecycle event",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
-      "file": "mobile/app/(tabs)/index.tsx",
-      "line": 217,
-      "kind": "useFocusEffect",
-      "endpoints": [
-        "/v1/student/home",
-        "/v1/messages/inbox"
-      ],
-      "excerpt": "useFocusEffect(useCallback(() => { let active = true; const refresh = () => { void api<{ unreadCount: number }>(\"/v1/messages/inbox\").then(result => { if (active) setUnreadMessages(result.unreadCount); }).catch(() => undefined); }; refresh(); const stop = liveReads.subscribe(\"/v1/messages/inbox\", refresh, 90_000); return () => { active = false; stop(); }; }, [user?.id])); const firstName = data?.profile?.first_name ?? profile?.first_nam",
+      "excerpt": "useFocusEffect(useCallback(() => { void load(); return () => { generation.current++; }; }, [load])); const firstName = data?.profile?.first_name ?? profile?.first_name ?? \"there\"; const now = new Date(); const campusTime = typeof data?.campusClock?.time === \"string\" && data.campusClock.time ? data.campusClock.time : `${String(now.getHours()).padStart(2, \"0\")}:${String( now.getMinutes(), ).padStart(2, \"0\")}`; const nowInMinutes = campusT",
       "classification": "Lifecycle event",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
@@ -1378,25 +1365,25 @@
     },
     {
       "file": "mobile/app/(tabs)/store.tsx",
-      "line": 99,
+      "line": 106,
       "kind": "useFocusEffect",
       "endpoints": [],
-      "excerpt": "useFocusEffect( useCallback( () => () => { if (focusedProduct) router.setParams({ product: undefined }); }, [focusedProduct], ), ); const { theme, styles } = useThemeStyles(createStyles); const { width: windowWidth } = useWindowDimensions(); const compactPhone = windowWidth < 400; const contentWidth = Math.min(windowWidth, 540); const horizontalPadding = compactPhone ? 14 : 20; const productWidth = (contentWidth-horizontalPadding*2-12)/",
+      "excerpt": "useFocusEffect( useCallback( () => () => { if (focusedProduct) router.setParams({ product: undefined }); }, [focusedProduct], ), ); const { theme, styles } = useThemeStyles(createStyles); const { width: windowWidth,fontScale } = useWindowDimensions(); const compactPhone = windowWidth < 400; const contentWidth = Math.min(windowWidth, 540); const horizontalPadding = compactPhone ? 14 : 20; const [preview,setPreview]=useState<Product|null>",
       "classification": "Lifecycle event",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
       "file": "mobile/app/(tabs)/store.tsx",
-      "line": 133,
+      "line": 140,
       "kind": "setTimeout",
       "endpoints": [],
-      "excerpt": "useEffect(()=>{if(!cartReady||!user?.id)return;const timer=setTimeout(()=>void writeCache(\"cart.\"+user.id,cart),250);return()=>clearTimeout(timer);},[cart,user?.id,cartReady]); const [query, setQuery] = useState(\"\"); const [searchTerm, setSearchTerm] = useState(\"\"); const searchPending = query.trim().toLocaleLowerCase(\"en-NG\") !== searchTerm; useEffect(() => { const timer = setTimeout(() => setSearchTerm(query.trim().toLocaleLowerCase(\"",
+      "excerpt": "useEffect(()=>{if(!cartReady||!user?.id)return;const revision=getDeviceCacheRevision();const timer=setTimeout(()=>{if(revision===getDeviceCacheRevision())void writeCache(\"cart.\"+user.id,cart);},250);return()=>clearTimeout(timer);},[cart,user?.id,cartReady]); const [query, setQuery] = useState(\"\"); const [searchTerm, setSearchTerm] = useState(\"\"); const searchPending = query.trim().toLocaleLowerCase(\"en-NG\") !== searchTerm; useEffect(() ",
       "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
       "file": "mobile/app/(tabs)/store.tsx",
-      "line": 138,
+      "line": 145,
       "kind": "setTimeout",
       "endpoints": [],
       "excerpt": "const timer = setTimeout(() => setSearchTerm(query.trim().toLocaleLowerCase(\"en-NG\")), 220); return () => clearTimeout(timer); }, [query]); const [selectedShop, setSelectedShop] = useState<string | null>(null); const [selectedCategory, setSelectedCategory] = useState(\"All\"); const [selectedZoneId, setSelectedZoneId] = useState(\"\"); const [deliveryNote, setDeliveryNote] = useState(\"\"); const [cartOpen, setCartOpen] = useState(false); con",
@@ -1405,10 +1392,10 @@
     },
     {
       "file": "mobile/app/(tabs)/store.tsx",
-      "line": 228,
+      "line": 236,
       "kind": "useFocusEffect",
       "endpoints": [],
-      "excerpt": "useFocusEffect( useCallback(() => { void load(); }, [load]), ); const categories = useMemo( () => [ \"All\", ...Array.from( new Set(products.map((product) => product.category).filter(Boolean)), ), ], [products], ); const filtered = useMemo(() => { const term = searchTerm; return products.filter((item) => { const matchesCategory = Boolean(focusedProduct) || selectedCategory === \"All\" || item.category === selectedCategory; const matchesQuer",
+      "excerpt": "useFocusEffect( useCallback(() => { void load(); }, [load]), ); const columns=windowWidth<360||fontScale>1.3||products.length===1?1:2; const productWidth=(contentWidth-horizontalPadding*2-(columns-1)*12)/columns; useEffect(()=>{if(focusedProduct){const found=products.find(product=>product.id===focusedProduct);if(found)setPreview(found);}},[focusedProduct,products]); const categories = useMemo( () => [ \"All\", ...Array.from( new Set(produ",
       "classification": "Lifecycle event",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
@@ -1491,13 +1478,12 @@
     },
     {
       "file": "mobile/app/agent-create.tsx",
-      "line": 65,
+      "line": 69,
       "kind": "setTimeout",
       "endpoints": [
-        "/v1/agents/products/price-preview?priceKobo=",
-        "/v1/agents/product-categories"
+        "/v1/agents/products/price-preview?priceKobo="
       ],
-      "excerpt": "const timer=setTimeout(()=>void api<typeof pricePreview>('/v1/agents/products/price-preview?priceKobo='+amount).then(r=>{if(valid)setPricePreview(r);}).catch(()=>{if(valid)setPricePreview(null);}),300); return()=>{valid=false;clearTimeout(timer);}; },[price,tutor]); const [categories, setCategories] = useState<{ id: string; name: string }[]>( [], ); const [category, setCategory] = useState(\"\"); const [categoryQuery, setCategoryQuery] = ",
+      "excerpt": "const timer=setTimeout(()=>void api<typeof pricePreview>('/v1/agents/products/price-preview?priceKobo='+amount,{timeoutMs:8000,signal:controller.signal,cache:'no-store'}).then(r=>{if(valid){setPricePreview(r);if(!r?.ready)setRateError(r?.message||'Marketplace rates are not configured for this campus yet.');}}).catch(error=>{if(valid)setRateError(error instanceof Error?error.message:'Rates could not load. Please retry.');}).finally(()=>{",
       "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
@@ -1553,7 +1539,7 @@
     },
     {
       "file": "mobile/app/ai-subscription.tsx",
-      "line": 307,
+      "line": 308,
       "kind": "useFocusEffect",
       "endpoints": [
         "/v1/ai/status"
@@ -1564,7 +1550,7 @@
     },
     {
       "file": "mobile/app/ai-subscription.tsx",
-      "line": 361,
+      "line": 362,
       "kind": "setTimeout",
       "endpoints": [],
       "excerpt": "const timer = setTimeout(() => setNow(Date.now()), Math.min(Math.min(...future) - current + 25, 2_147_483_647)); return () => clearTimeout(timer); }, [plan, quote, checkoutScreen, now]); const applySubscription = useCallback((subscription: Plan, tier?: Tier, source: \"cache\" | \"server\" = \"server\") => { if (!alive.current) return; setPlan(subscription); planSourceRef.current = source; setPlanSource(source); setNow(Date.now()); setCurrentT",
@@ -1573,19 +1559,7 @@
     },
     {
       "file": "mobile/app/ai-subscription.tsx",
-      "line": 410,
-      "kind": "setTimeout",
-      "endpoints": [
-        "/v1/ai/subscription",
-        "/v1/ai/status"
-      ],
-      "excerpt": "await new Promise((resolve) => setTimeout(resolve, 250)); result = await api<StatusResponse>(\"/v1/ai/status\", { cache: \"reload\" }); } if (!alive.current || turn !== request.current) return true; applySubscription(result.subscription, result.tier, \"server\"); setImportLimit(result.tier === \"pro\" ? result.imports?.limit ?? 30 : 30); setBenefits(result.subscription.complimentary ? result.benefits : result.proBenefits); setStandardBenefits(r",
-      "classification": "Deadline, debounce or retry: inspect context",
-      "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
-    },
-    {
-      "file": "mobile/app/ai-subscription.tsx",
-      "line": 433,
+      "line": 431,
       "kind": "useFocusEffect",
       "endpoints": [
         "/v1/ai/status"
@@ -1596,7 +1570,7 @@
     },
     {
       "file": "mobile/app/ai-subscription.tsx",
-      "line": 440,
+      "line": 438,
       "kind": "AppState.addEventListener",
       "endpoints": [
         "/v1/ai/status"
@@ -1778,7 +1752,7 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 679,
+      "line": 680,
       "kind": "setTimeout",
       "endpoints": [],
       "excerpt": "const timer=setTimeout(()=>{void saveScopedConversationDraft(user.id, id, draftChannel.value).then(() => { if (activeScope.current === scope) setDraftWarning(\"\"); }).catch(() => { if (activeScope.current === scope) setDraftWarning(\"This draft could not be saved on your device. Keep this screen open and try again.\"); });},300); return()=>clearTimeout(timer); }, [draftReady, draft, selectedMedia, replyingTo, voiceDraft, pendingMedia, send",
@@ -1787,10 +1761,9 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 735,
+      "line": 739,
       "kind": "useFocusEffect",
       "endpoints": [
-        "/v1/messages/threads/${id}/read",
         "/v1/messages/threads/${id}"
       ],
       "excerpt": "useFocusEffect(useCallback(() => { initialScrollDone.current = false; atBottom.current = true; void load(); return () => undefined; }, [load])); useLiveRefresh(`/v1/messages/threads/${id}`, () => load(), 60_000); async function retryPendingText(){ const message=pending.current;if(!message||!user?.id||actionBusy)return; setActionBusy(true); try{ if(!message.retry&&draft===message.body){setDraft('');draftChannel.value={...draftChannel.val",
@@ -1799,10 +1772,9 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 742,
+      "line": 746,
       "kind": "useLiveRefresh",
       "endpoints": [
-        "/v1/messages/threads/${id}/read",
         "/v1/messages/threads/${id}"
       ],
       "excerpt": "useLiveRefresh(`/v1/messages/threads/${id}`, () => load(), 60_000); async function retryPendingText(){ const message=pending.current;if(!message||!user?.id||actionBusy)return; setActionBusy(true); try{ if(!message.retry&&draft===message.body){setDraft('');draftChannel.value={...draftChannel.value,text:''};await saveScopedConversationDraft(user.id,id,draftChannel.value);} await updatePendingTextRetry(user.id,id,message.id,{attempts:0,nex",
@@ -1811,7 +1783,7 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 944,
+      "line": 948,
       "kind": "requestAnimationFrame",
       "endpoints": [
         "/v1/messages/threads/${id}/messages"
@@ -1822,7 +1794,7 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 984,
+      "line": 988,
       "kind": "requestAnimationFrame",
       "endpoints": [],
       "excerpt": "requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true })); void processMediaBatch(batch); return; } if(pending.current&&(pending.current.body!==caption||pending.current.replyToMessageId!==replyingTo?.id)){setError('A text message is waiting for confirmation. Finish its retry before sending the next text. Your new draft is kept.');return;} setSending(true); setError(\"\"); const replyToMessageId = replyingTo?.id; const ",
@@ -1831,7 +1803,7 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 1035,
+      "line": 1039,
       "kind": "requestAnimationFrame",
       "endpoints": [
         "/v1/messages/threads/${id}/messages"
@@ -1842,7 +1814,7 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 1131,
+      "line": 1135,
       "kind": "requestAnimationFrame",
       "endpoints": [
         "/v1/messages/threads/${id}/messages/${target.id}/reaction"
@@ -1853,7 +1825,7 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 1147,
+      "line": 1151,
       "kind": "requestAnimationFrame",
       "endpoints": [
         "/v1/messages/threads/${id}/messages/${target.id}/reaction",
@@ -1865,7 +1837,7 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 1312,
+      "line": 1316,
       "kind": "requestAnimationFrame",
       "endpoints": [],
       "excerpt": "if (active) requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true })); }, [scope]); return ( <SafeAreaView edges={[\"top\", \"bottom\"]} style={styles.screen}> <BlurTargetView ref={blurTargetRef} style={styles.screen}> <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === \"ios\" ? \"padding\" : undefined} keyboardVerticalOffset={0}> <View style={styles.shell}> <View style={styles.header}> <Pressable accessib",
@@ -1874,7 +1846,7 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 1363,
+      "line": 1367,
       "kind": "requestAnimationFrame",
       "endpoints": [],
       "excerpt": "onLayout={() => { if (!initialScrollDone.current || atBottom.current) requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false })); }} maintainVisibleContentPosition={{ minIndexForVisible: 0 }} onContentSizeChange={() => { if ((!initialScrollDone.current || atBottom.current) && data.messages.length) { requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false })); } }} ListHeaderComponent={( <View style",
@@ -1883,7 +1855,7 @@
     },
     {
       "file": "mobile/app/conversation.tsx",
-      "line": 1367,
+      "line": 1371,
       "kind": "requestAnimationFrame",
       "endpoints": [],
       "excerpt": "requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false })); } }} ListHeaderComponent={( <View style={styles.topNotices}> {data.nextCursor ? ( <Pressable accessibilityRole=\"button\" disabled={locked} onPress={() => { initialScrollDone.current = true; atBottom.current = false; void load(data.nextCursor!); }} style={({ pressed }) => [styles.earlierButton, pressed && styles.pressed]}> <Ionicons name=\"time-outline\" size={1",
@@ -2043,7 +2015,7 @@
     },
     {
       "file": "mobile/app/messages.tsx",
-      "line": 97,
+      "line": 99,
       "kind": "useFocusEffect",
       "endpoints": [
         "/v1/messages/inbox?filter=${filter}${before"
@@ -2054,7 +2026,7 @@
     },
     {
       "file": "mobile/app/messages.tsx",
-      "line": 146,
+      "line": 151,
       "kind": "useFocusEffect",
       "endpoints": [
         "/v1/messages/inbox?filter=${filter}${before",
@@ -2067,7 +2039,7 @@
     },
     {
       "file": "mobile/app/messages.tsx",
-      "line": 168,
+      "line": 173,
       "kind": "useLiveRefresh",
       "endpoints": [
         "/v1/messages/inbox?filter=${filter}",
@@ -2079,24 +2051,22 @@
     },
     {
       "file": "mobile/app/notifications.tsx",
-      "line": 76,
+      "line": 86,
       "kind": "useFocusEffect",
       "endpoints": [
-        "/v1/notifications/read-social",
         "/v1/notifications/inbox",
         "/v1/notifications/inbox?before=",
         "/v1/notifications/inbox/"
       ],
-      "excerpt": "useFocusEffect(useCallback(() => { void load(true); },[load])); useLiveRefresh(\"/v1/notifications/inbox\", () => load(), 90_000); async function loadMore(){if(!nextCursor||moreBusy)return;setMoreBusy(true);extended.current=true;try{const result=await api<{notifications:Notice[];nextCursor:string|null}>(\"/v1/notifications/inbox?before=\"+encodeURIComponent(nextCursor));const incoming=normalizeNotices(result?.notifications);setItems(current",
+      "excerpt": "useFocusEffect(useCallback(() => { if(loadedScope.current!==scope){setItems([]);setReady(false);extended.current=false;pendingReads.current.clear();loadedScope.current=scope;}void load(); },[load,scope])); useLiveRefresh(\"/v1/notifications/inbox\", () => load(), 90_000); async function loadMore(){if(!nextCursor||moreBusy)return;setMoreBusy(true);extended.current=true;try{const result=await api<{notifications:Notice[];nextCursor:string|nu",
       "classification": "Lifecycle event",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
       "file": "mobile/app/notifications.tsx",
-      "line": 77,
+      "line": 87,
       "kind": "useLiveRefresh",
       "endpoints": [
-        "/v1/notifications/read-social",
         "/v1/notifications/inbox",
         "/v1/notifications/inbox?before=",
         "/v1/notifications/inbox/"
@@ -2810,7 +2780,7 @@
     },
     {
       "file": "mobile/src/components/notification-bootstrap.tsx",
-      "line": 167,
+      "line": 173,
       "kind": "Notifications.addPushTokenListener",
       "endpoints": [
         "/v1/messages/threads/${encodeURIComponent(threadId)}/messages",
@@ -2818,13 +2788,13 @@
         "/v1/messages/inbox",
         "/v1/messages/threads/"
       ],
-      "excerpt": "tokenSubscription = Notifications.addPushTokenListener(() => { if(active) void registerPushDevice(user.id).catch(()=>undefined); }); receivedSubscription = Notifications.addNotificationReceivedListener(notification => { if (active) { const data = notification.request.content.data ?? {}; const thread = threadIdFromPath(data.path); liveReads.event([\"/v1/notifications/inbox\", \"/v1/messages/inbox\", ...(thread ? [\"/v1/messages/threads/\" + th",
+      "excerpt": "tokenSubscription = Notifications.addPushTokenListener(() => { if(active) void ensureRegistered(true); }); receivedSubscription = Notifications.addNotificationReceivedListener(notification => { if (active) { const data = notification.request.content.data ?? {}; const thread = threadIdFromPath(data.path); liveReads.event([\"/v1/notifications/inbox\", \"/v1/messages/inbox\", ...(thread ? [\"/v1/messages/threads/\" + thread] : [])]); void observ",
       "classification": "Lifecycle event",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
       "file": "mobile/src/components/notification-bootstrap.tsx",
-      "line": 170,
+      "line": 176,
       "kind": "Notifications.addNotificationReceivedListener",
       "endpoints": [
         "/v1/messages/threads/${encodeURIComponent(threadId)}/messages",
@@ -2838,20 +2808,20 @@
     },
     {
       "file": "mobile/src/components/notification-bootstrap.tsx",
-      "line": 179,
+      "line": 185,
       "kind": "Notifications.addNotificationResponseReceivedListener",
       "endpoints": [
         "/v1/notifications/inbox",
         "/v1/messages/inbox",
         "/v1/messages/threads/"
       ],
-      "excerpt": "Notifications.addNotificationResponseReceivedListener( openNotification, ); const initialResponse = await Notifications.getLastNotificationResponseAsync(); if (initialResponse) { await openNotification(initialResponse); await Notifications.clearLastNotificationResponseAsync(); } }) .catch((error) => { console.warn( \"kampusone.notifications.listener\", error instanceof Error ? error.message : \"unknown\", ); }); const ensureRegistered = asy",
+      "excerpt": "Notifications.addNotificationResponseReceivedListener( openNotification, ); await configureNativeNotifications(); const initialResponse = await Notifications.getLastNotificationResponseAsync(); if (initialResponse) { await openNotification(initialResponse); await Notifications.clearLastNotificationResponseAsync(); } }) .catch((error) => { console.warn( \"kampusone.notifications.listener\", error instanceof Error ? error.message : \"unknown",
       "classification": "Lifecycle event",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
       "file": "mobile/src/components/notification-bootstrap.tsx",
-      "line": 214,
+      "line": 222,
       "kind": "setTimeout",
       "endpoints": [],
       "excerpt": "if (active && failures <= 3) retry = setTimeout(() => void ensureRegistered(), Math.min(300_000, 15_000 * 2 ** failures)); console.warn( \"kampusone.notifications.bootstrap\", error instanceof Error ? error.message : \"unknown\", ); } finally { running = false; } }; const initial = setTimeout(() => void ensureRegistered(), 2_500); const resume = AppState.addEventListener(\"change\", state => { if (state === \"active\" && Date.now() - checkedAt ",
@@ -2860,19 +2830,19 @@
     },
     {
       "file": "mobile/src/components/notification-bootstrap.tsx",
-      "line": 224,
+      "line": 232,
       "kind": "setTimeout",
       "endpoints": [],
-      "excerpt": "const initial = setTimeout(() => void ensureRegistered(), 2_500); const resume = AppState.addEventListener(\"change\", state => { if (state === \"active\" && Date.now() - checkedAt >= 86_400_000) void ensureRegistered(); else if (state !== \"active\" && retry) clearTimeout(retry); }); return () => { active = false; clearTimeout(initial); if (retry) clearTimeout(retry); resume.remove(); responseSubscription?.remove(); tokenSubscription?.remove",
+      "excerpt": "const initial = setTimeout(() => void ensureRegistered(), 2_500); const resume = AppState.addEventListener(\"change\", state => { if (state === \"active\" && Date.now() - checkedAt >= 60_000) void ensureRegistered(); else if (state !== \"active\" && retry) clearTimeout(retry); }); return () => { active = false; clearTimeout(initial); if (retry) clearTimeout(retry); resume.remove(); responseSubscription?.remove(); tokenSubscription?.remove(); ",
       "classification": "Deadline, debounce or retry: inspect context",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
       "file": "mobile/src/components/notification-bootstrap.tsx",
-      "line": 225,
+      "line": 233,
       "kind": "AppState.addEventListener",
       "endpoints": [],
-      "excerpt": "const resume = AppState.addEventListener(\"change\", state => { if (state === \"active\" && Date.now() - checkedAt >= 86_400_000) void ensureRegistered(); else if (state !== \"active\" && retry) clearTimeout(retry); }); return () => { active = false; clearTimeout(initial); if (retry) clearTimeout(retry); resume.remove(); responseSubscription?.remove(); tokenSubscription?.remove(); receivedSubscription?.remove(); }; }, [state, user?.id]); retu",
+      "excerpt": "const resume = AppState.addEventListener(\"change\", state => { if (state === \"active\" && Date.now() - checkedAt >= 60_000) void ensureRegistered(); else if (state !== \"active\" && retry) clearTimeout(retry); }); return () => { active = false; clearTimeout(initial); if (retry) clearTimeout(retry); resume.remove(); responseSubscription?.remove(); tokenSubscription?.remove(); receivedSubscription?.remove(); }; }, [state, user?cacheScopeForUs",
       "classification": "Lifecycle event",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
@@ -3187,23 +3157,25 @@
     },
     {
       "file": "mobile/src/lib/notification-state.ts",
-      "line": 16,
+      "line": 22,
       "kind": "useFocusEffect",
       "endpoints": [
-        "/v1/notifications/inbox"
+        "/v1/notifications/inbox",
+        "/v1/messages/inbox"
       ],
-      "excerpt": "useFocusEffect(useCallback(()=>{if(user?.id)void refresh();},[refresh,user?.id])); useLiveRefresh('/v1/notifications/inbox',refresh,90_000); return unread; }",
+      "excerpt": "useFocusEffect(useCallback(()=>{void refresh();},[refresh])); useLiveRefresh(path,refresh,90_000,Boolean(user?.id)); return user&&value.revision===getDeviceCacheRevision()?value.count:0; } export const useNotificationCount=()=>useUnreadCount('notifications','/v1/notifications/inbox'); export const useMessageCount=()=>useUnreadCount('messages','/v1/messages/inbox');",
       "classification": "Lifecycle event",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },
     {
       "file": "mobile/src/lib/notification-state.ts",
-      "line": 17,
+      "line": 23,
       "kind": "useLiveRefresh",
       "endpoints": [
-        "/v1/notifications/inbox"
+        "/v1/notifications/inbox",
+        "/v1/messages/inbox"
       ],
-      "excerpt": "useLiveRefresh('/v1/notifications/inbox',refresh,90_000); return unread; }",
+      "excerpt": "useLiveRefresh(path,refresh,90_000,Boolean(user?.id)); return user&&value.revision===getDeviceCacheRevision()?value.count:0; } export const useNotificationCount=()=>useUnreadCount('notifications','/v1/notifications/inbox'); export const useMessageCount=()=>useUnreadCount('messages','/v1/messages/inbox');",
       "classification": "Network coordination",
       "acceptance": "Source inventory only; measured rate, cleanup and failure review in release matrix"
     },

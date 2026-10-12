@@ -1,4 +1,5 @@
 import { useLiveRefresh } from "@/src/lib/live-updates";
+import {markConversationRead} from '@/src/lib/message-read';
 import { refreshScreenRead } from '@/src/lib/screen-read';
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
@@ -725,8 +726,11 @@ export default function ConversationScreen() {
       const awaiting=pending.current;
       if(activeScope.current===scope&&user?.id&&awaiting&&received.messages?.some(message=>message.id===awaiting.id&&message.sender_id===user.id&&message.body===awaiting.body))void acknowledgePendingText(user.id,id,awaiting.id).catch(()=>undefined);
       // Read receipts are background bookkeeping, independent of message display.
-      if (activeScope.current === scope)
-        void api(`/v1/messages/threads/${id}/read`, { method: "PUT" }).catch(() => undefined);
+      if (activeScope.current === scope&&!before){
+        const incoming=(received.messages??[]).filter(message=>message.sender_id!==user?.id);
+        const lastSeen=incoming.at(-1);
+        if(lastSeen)void markConversationRead(id,lastSeen.id).catch(()=>undefined);
+      }
     } catch (caught) {
       if (activeScope.current === scope) setError(caught instanceof Error ? caught.message : "Conversation could not load.");
     }

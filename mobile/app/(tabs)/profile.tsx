@@ -960,7 +960,7 @@ export default function ProfileScreen() {
 
           <Pressable
             accessibilityRole="link"
-            onPress={() => void Linking.openURL("https://agents.kampusone.app")}
+            onPress={() => void Linking.openURL("https://kampusone.app/agents")}
             style={({ pressed }) => [
               styles.agentLink,
               pressed && styles.pressed,

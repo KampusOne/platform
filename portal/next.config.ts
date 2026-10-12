@@ -4,6 +4,7 @@ import path from "node:path";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  async redirects(){return[{source:"/agents/:path*",has:[{type:"host" as const,value:"agents.kampusone.app"}],destination:"https://kampusone.app/agents/:path*",permanent:true}];},
   async rewrites() {
     return [
       {

@@ -26,6 +26,17 @@ beforeAll(async()=>{
 afterAll(async()=>{await db?.close()});
 afterEach(()=>vi.unstubAllGlobals());
 const register=(token:string,actor=student)=>request('/devices','POST',{expoPushToken:token,platform:'android',label:'Test phone',buildVersion:'0.2.0-test'},actor).then(r=>data(r));
+describe('independent Android FCM registration',()=>{
+ it('accepts a native token without an Expo relay token and never returns token values',async()=>{
+  const nativeToken='isolated_native_android_fixture_1234567890';
+  const result=await data(await request('/devices','POST',{nativeToken,platform:'android',label:'Native fixture',buildVersion:'fixture'},outsider));
+  expect(result.device.id).toBeTruthy();expect(JSON.stringify(result)).not.toContain(nativeToken);
+  const saved=(await db.query<{token:string;native_token:string}>('select token,native_token from app_private.push_devices where id=$1',[result.device.id])).rows[0]!;
+  expect(saved.token).toMatch(/^fcm:[a-f0-9]{64}$/);expect(saved.native_token).toBe(nativeToken);
+  await data(await request('/devices','POST',{nativeToken,platform:'ios',label:'Wrong provider',buildVersion:'fixture'},outsider),400);
+  await db.query('delete from app_private.push_devices where id=$1',[result.device.id]);
+ });
+});
 describe('selected-device notification delivery',()=>{
  let deviceId:string,otherDeviceId:string;
  it('registers an authenticated native device without returning its token',async()=>{

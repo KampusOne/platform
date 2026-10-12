@@ -1,5 +1,8 @@
+import {cacheScopeForUser} from '@/src/lib/request-policy';
+import {ProductPreview} from '@/src/components/product-preview';
+import {MediaImage} from '@/src/components/media-image';
 import { useAuth } from "@/src/auth/auth-context";
-import { readCache, writeCache } from "@/src/lib/device-cache";
+import { readCache, writeCache,getDeviceCacheRevision } from "@/src/lib/device-cache";
 import { SearchLoading } from "@/src/components/search-loading";
 import { SyncStatus } from "@/src/components/sync-status";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
@@ -48,6 +51,9 @@ type Product = {
   pricing_ready?: boolean;
   stock_quantity: number;
   image_url: string | null;
+  image_urls?: string[];
+  rating?: number;
+  review_count?: number;
   vendor_name: string;
   pickup_enabled?: boolean;
   self_delivery_enabled?: boolean;
@@ -91,7 +97,8 @@ const naira = (kobo: number) =>
     maximumFractionDigits: 2,
   }).format(Number(kobo) / 100);
 
-export default function StoreScreen() {
+export default function StoreScreen(){const{user}=useAuth();return <OwnedStoreScreen key={user?cacheScopeForUser(user):'anonymous'}/>;}
+function OwnedStoreScreen() {
   const { user } = useAuth();
   const { product: focusedProduct } = useLocalSearchParams<{
     product?: string;
@@ -106,11 +113,11 @@ export default function StoreScreen() {
   );
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth,fontScale } = useWindowDimensions();
   const compactPhone = windowWidth < 400;
   const contentWidth = Math.min(windowWidth, 540);
   const horizontalPadding = compactPhone ? 14 : 20;
-  const productWidth = (contentWidth-horizontalPadding*2-12)/2;
+  const [preview,setPreview]=useState<Product|null>(null);
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -129,8 +136,8 @@ export default function StoreScreen() {
   const cartReady=Boolean(user?.id&&cartOwner===user.id);
   const pendingCart=useRef<{owner:string;value:Cart}|null>(null);
   if(cartReady&&user?.id)pendingCart.current={owner:user.id,value:cart};
-  useEffect(()=>{let live=true;setCartOwner(null);pendingCart.current=null;setCart({});if(!user?.id)return;void readCache<Cart>("cart."+user.id).then(saved=>{if(!live)return;setCart(Object.fromEntries(Object.entries(saved??{}).filter(([id,n])=>/^[0-9a-f-]{36}$/i.test(id)&&Number.isSafeInteger(n)&&n>0&&n<=99).slice(0,50)));setCartOwner(user.id);});return()=>{live=false;const pending=pendingCart.current;if(pending?.owner===user.id)void writeCache("cart."+user.id,pending.value);};},[user?.id]);
-  useEffect(()=>{if(!cartReady||!user?.id)return;const timer=setTimeout(()=>void writeCache("cart."+user.id,cart),250);return()=>clearTimeout(timer);},[cart,user?.id,cartReady]);
+  useEffect(()=>{let live=true;const revision=getDeviceCacheRevision();setCartOwner(null);pendingCart.current=null;setCart({});if(!user?.id)return;void readCache<Cart>("cart."+user.id).then(saved=>{if(!live||revision!==getDeviceCacheRevision())return;setCart(Object.fromEntries(Object.entries(saved??{}).filter(([id,n])=>/^[0-9a-f-]{36}$/i.test(id)&&Number.isSafeInteger(n)&&n>0&&n<=99).slice(0,50)));setCartOwner(user.id);});return()=>{live=false;const pending=pendingCart.current;if(revision===getDeviceCacheRevision()&&pending?.owner===user.id)void writeCache("cart."+user.id,pending.value);};},[user?.id]);
+  useEffect(()=>{if(!cartReady||!user?.id)return;const revision=getDeviceCacheRevision();const timer=setTimeout(()=>{if(revision===getDeviceCacheRevision())void writeCache("cart."+user.id,cart);},250);return()=>clearTimeout(timer);},[cart,user?.id,cartReady]);
   const [query, setQuery] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const searchPending = query.trim().toLocaleLowerCase("en-NG") !== searchTerm;
@@ -147,6 +154,7 @@ export default function StoreScreen() {
   const [noteFocused, setNoteFocused] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const checkoutLock=useRef(false);
   const [catalogueMode, setCatalogueMode] = useState<CatalogueMode>("LIVE");
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [catalogIssue, setCatalogIssue] = useState<CatalogIssue | null>(null);
@@ -230,6 +238,10 @@ export default function StoreScreen() {
       void load();
     }, [load]),
   );
+
+  const columns=windowWidth<360||fontScale>1.3||products.length===1?1:2;
+  const productWidth=(contentWidth-horizontalPadding*2-(columns-1)*12)/columns;
+  useEffect(()=>{if(focusedProduct){const found=products.find(product=>product.id===focusedProduct);if(found)setPreview(found);}},[focusedProduct,products]);
 
   const categories = useMemo(
     () => [
@@ -347,10 +359,6 @@ export default function StoreScreen() {
   }
 
   function add(product: Product) {
-    if (product.pricing_ready === false) {
-      setNotice("This product is awaiting an approved checkout price.");
-      return;
-    }
     const activeVendor = cartItems[0]?.product.vendor_profile_id;
     if (activeVendor && activeVendor !== product.vendor_profile_id) {
       const activeSeller =
@@ -388,7 +396,8 @@ export default function StoreScreen() {
   }
 
   async function checkout() {
-    if (!checkoutEnabled || !cartItems.length || !checkoutReady) return;
+    if (checkoutLock.current || !checkoutEnabled || !cartItems.length || !checkoutReady) return;
+    checkoutLock.current=true;
     setBusy(true);
     setCheckoutError("");
     setNotice("");
@@ -403,6 +412,7 @@ export default function StoreScreen() {
           "/v1/student/order-quotes",
           {
             method: "POST",
+            timeoutMs:8000,
             body: JSON.stringify({
               ...JSON.parse(orderPayload),
               requestId: quoteRequest.current.id,
@@ -416,6 +426,7 @@ export default function StoreScreen() {
         "/v1/student/orders",
         {
           method: "POST",
+          timeoutMs:8000,
           body: JSON.stringify({
             ...JSON.parse(orderPayload),
             quoteId: validQuote.id,
@@ -448,6 +459,7 @@ export default function StoreScreen() {
           : "The order could not be created.",
       );
     } finally {
+      checkoutLock.current=false;
       setBusy(false);
     }
   }
@@ -512,7 +524,7 @@ export default function StoreScreen() {
       >
         <FlatList
           accessibilityLabel="Campus store products"
-          columnWrapperStyle={styles.productRow}
+          columnWrapperStyle={columns===2?styles.productRow:undefined}
           contentContainerStyle={[
             styles.listContent,
             compactPhone && styles.listContentCompact,
@@ -749,9 +761,9 @@ export default function StoreScreen() {
               ) : null}
             </>
           }
-          key={compactPhone ? "store-compact" : "store-regular"}
+          key={`store-${columns}-${compactPhone?'compact':'regular'}`}
           maxToRenderPerBatch={10}
-          numColumns={2}
+          numColumns={columns}
           ItemSeparatorComponent={
             compactPhone
               ? () => <View style={styles.compactProductGap} />
@@ -760,6 +772,7 @@ export default function StoreScreen() {
           removeClippedSubviews={Platform.OS === "android"}
           renderItem={({ item: product }) => (
             <ProductCard
+              onPreview={()=>setPreview(product)}
               onAdd={() => add(product)}
               onChangeQuantity={(delta) => changeQuantity(product, delta)}
               product={product}
@@ -772,6 +785,8 @@ export default function StoreScreen() {
           windowSize={7}
         />
       </Animated.View>
+
+      <Modal visible={Boolean(preview)} animationType={reducedMotion?"none":"slide"} onRequestClose={()=>setPreview(null)}>{preview?<ProductPreview key={preview.id} product={preview} quantity={cart[preview.id]??0} onClose={()=>setPreview(null)} onAdd={()=>add(preview)}/>:null}</Modal>
 
       <Modal
         animationType={reducedMotion ? "none" : "slide"}
@@ -1264,12 +1279,14 @@ export default function StoreScreen() {
 }
 
 function ProductCard({
+  onPreview,
   onAdd,
   onChangeQuantity,
   product,
   quantity,
   width,
 }: {
+  onPreview:()=>void;
   onAdd: () => void;
   onChangeQuantity: (delta: number) => void;
   product: Product;
@@ -1282,10 +1299,9 @@ function ProductCard({
 
   return (
     <View style={[styles.card, { width }]}>
-      <View>
+      <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.name} details and photos`} onPress={onPreview} style={({pressed})=>pressed&&{opacity:0.85}}>
         {product.image_url ? (
-          <Image accessible={false} resizeMode="cover"
-            source={{ uri: product.image_url }} style={styles.productImage} />
+          <MediaImage accessible={false} resizeMode="cover" uri={product.image_url} style={styles.productImage} />
         ) : (
           <View style={styles.productFallback}>
             <View style={styles.fallbackDisc}>
@@ -1299,21 +1315,22 @@ function ProductCard({
             {outOfStock ? "Sold out" : "Available"}
           </Text>
         </View>
-      </View>
+      </Pressable>
       <View style={styles.cardBody}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.name} details`} onPress={onPreview}>
         <View style={styles.categoryRow}>
-          <Text numberOfLines={1} style={styles.category}>
+          <Text numberOfLines={2} style={styles.category}>
             {product.category}
           </Text>
         </View>
         <Text
           android_hyphenationFrequency="none"
-          numberOfLines={2}
           style={styles.name}
           textBreakStrategy="simple"
         >
           {product.name}
         </Text>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`View ${product.vendor_name}'s seller profile`}
@@ -1326,6 +1343,8 @@ function ProductCard({
         <View style={styles.priceRow}>
           <Text
             android_hyphenationFrequency="none"
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
             numberOfLines={1}
             style={styles.price}
             textBreakStrategy="simple"
@@ -1804,7 +1823,7 @@ const createStyles = (theme: Theme) =>
       flexDirection: "row",
       gap: 5,
       marginTop: 9,
-      minHeight: 32,
+      minHeight: 44,
     },
     vendorText: {
       color: theme.textMuted,

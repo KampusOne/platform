@@ -138,6 +138,7 @@ function entry(storage) {
       },
     },
     "./shared-links": links(),
+    "./request-deadline": {withRequestDeadline:operation=>operation()},
   });
 }
 test("first-install completion and a whitelisted share target survive a fresh app process", async () => {
@@ -163,7 +164,7 @@ test("first-install completion and a whitelisted share target survive a fresh ap
   assert.equal(another.pendingSharedDestination(), null);
   assert.equal(another.useFirstInstallIntro(), "done");
 });
-test("existing profiles skip the intro and expired or malicious stored links are ignored", async () => {
+test("appearance and profile caches cannot skip the intro; unsafe stored links are ignored", async () => {
   for (const target of [
     { kind: "admin", id: uuid, expires: Date.now() + 10000 },
     {
@@ -180,7 +181,7 @@ test("existing profiles skip the intro and expired or malicious stored links are
       ]),
     );
     await e.initializeEntryPreferences();
-    assert.equal(e.useFirstInstallIntro(), "done");
+    assert.equal(e.useFirstInstallIntro(), "new");
     assert.equal(e.pendingSharedDestination(), null);
   }
 });

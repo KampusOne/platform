@@ -1,4 +1,8 @@
 import { liveReads } from "@/src/lib/live-updates";
+import {markConversationRead} from '@/src/lib/message-read';
+import {getDeviceCacheRevision} from '@/src/lib/device-cache';
+import {cacheScopeForUser} from '@/src/lib/request-policy';
+import {updateNotificationCount} from '@/src/lib/notification-state';
 import Constants from "expo-constants";
 import { useEffect, useRef } from "react";
 import { AppState, Platform } from "react-native";
@@ -48,18 +52,21 @@ function threadIdFromPath(path: unknown) {
 }
 
 async function markPushRead(data: Record<string, unknown>) {
-  const notificationId = data.notificationId;
-  if (typeof notificationId === "string") {
-    await api(
-      `/v1/notifications/inbox/${encodeURIComponent(notificationId)}/read`,
-      { method: "PATCH" },
-    ).catch(() => undefined);
-  }
+  const revision=getDeviceCacheRevision();
   const threadId = threadIdFromPath(data.path);
   if (threadId) {
-    await api(`/v1/messages/threads/${encodeURIComponent(threadId)}/read`, {
-      method: "PUT",
-    }).catch(() => undefined);
+    await markConversationRead(threadId,typeof data.messageId==='string'?data.messageId:undefined);
+    return;
+  }
+  const notificationId = data.notificationId;
+  if (typeof notificationId === "string") {
+    const result=await api<{unreadCount:number}>(
+      `/v1/notifications/inbox/${encodeURIComponent(notificationId)}/read`,
+      { method: "PATCH",timeoutMs:8000 },
+    );
+    if(revision!==getDeviceCacheRevision())return;
+    updateNotificationCount(result.unreadCount,revision);
+    liveReads.event(['/v1/notifications/inbox']);
   }
 }
 
@@ -97,7 +104,7 @@ export function NotificationBootstrap() {
     if (Platform.OS === "web" || state !== "authenticated" || !user?.id) return;
     let active = true;
     let running = false;
-    let checkedAt = 0, failures = 0;
+    let checkedAt = 0, failures = 0,registeredCheckedAt=0;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let responseSubscription: { remove(): void } | undefined;
     let tokenSubscription: { remove(): void } | undefined;
@@ -155,7 +162,6 @@ export function NotificationBootstrap() {
     void import("expo-notifications")
       .then(async (Notifications) => {
         if (!active) return;
-        await configureNativeNotifications();
         Notifications.setNotificationHandler({
           handleNotification: async () => ({
             shouldShowBanner: true,
@@ -165,7 +171,7 @@ export function NotificationBootstrap() {
           }),
         });
         tokenSubscription = Notifications.addPushTokenListener(() => {
-          if(active) void registerPushDevice(user.id).catch(()=>undefined);
+          if(active) void ensureRegistered(true);
         });
         receivedSubscription = Notifications.addNotificationReceivedListener(notification => {
           if (active) {
@@ -179,6 +185,7 @@ export function NotificationBootstrap() {
           Notifications.addNotificationResponseReceivedListener(
             openNotification,
           );
+        await configureNativeNotifications();
         const initialResponse =
           await Notifications.getLastNotificationResponseAsync();
         if (initialResponse) {
@@ -193,8 +200,8 @@ export function NotificationBootstrap() {
         );
       });
 
-    const ensureRegistered = async () => {
-      if (!active || running || AppState.currentState !== "active" || Date.now() - checkedAt < 60_000) return;
+    const ensureRegistered = async (force=false) => {
+      if (!active || running || AppState.currentState !== "active" || (!force && Date.now() - checkedAt < 60_000)) return;
       if (retry) clearTimeout(retry);
       running = true;
       try {
@@ -203,12 +210,13 @@ export function NotificationBootstrap() {
 
         const availability = pushSetupAvailability();
         if (!availability.available) { checkedAt = Date.now(); return; }
+        if(!force&&registeredCheckedAt&&Date.now()-registeredCheckedAt<86400_000){checkedAt=Date.now();return;}
 
         const registered = await getRegisteredPushDevice(user.id).catch(() => null);
         if (!active) return;
         // Re-register daily so rotated provider tokens and app updates cannot leave a stale device.
-        if (!registered || !registered.registeredAt || Date.now()-registered.registeredAt>86400_000 || registered.build_version !== String(Constants.expoConfig?.version ?? "unknown")) await registerPushDevice(user.id);
-        checkedAt = Date.now(); failures = 0;
+        if (force || !registered || !registered.registeredAt || Date.now()-registered.registeredAt>86400_000 || registered.build_version !== String(Constants.expoConfig?.version ?? "unknown")) await registerPushDevice(user.id);
+        checkedAt = Date.now();registeredCheckedAt=checkedAt; failures = 0;
       } catch (error) {
         failures++;
         if (active && failures <= 3) retry = setTimeout(() => void ensureRegistered(), Math.min(300_000, 15_000 * 2 ** failures));
@@ -223,7 +231,7 @@ export function NotificationBootstrap() {
 
     const initial = setTimeout(() => void ensureRegistered(), 2_500);
     const resume = AppState.addEventListener("change", state => {
-      if (state === "active" && Date.now() - checkedAt >= 86_400_000) void ensureRegistered();
+      if (state === "active" && Date.now() - checkedAt >= 60_000) void ensureRegistered();
       else if (state !== "active" && retry) clearTimeout(retry);
     });
 
@@ -236,7 +244,7 @@ export function NotificationBootstrap() {
       tokenSubscription?.remove();
       receivedSubscription?.remove();
     };
-  }, [state, user?.id]);
+  }, [state, user?cacheScopeForUser(user):null]);
 
   return null;
 }

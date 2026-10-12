@@ -4,13 +4,14 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {runInNewContext} from 'node:vm';
 import {randomUUID} from 'node:crypto';
+import {hookRenderer,virtualClock} from './helpers/hook-renderer.mjs';
 import {nairaToKobo} from '../mobile/src/lib/money-input.ts';
 const ts=createRequire(new URL('../server/package.json',import.meta.url))('typescript');
-function formHarness(api,{role='VENDOR',persist=async()=>{},photo=async()=>({url:'https://fixture.invalid/photo.jpg'}),restore={ready:true,error:'',loading:false,retry(){}}}={}) {
-  const states=[],refs=[],effects=[];let state=0,ref=0,mounted=false,tree;
-  const react={useState:value=>{const i=state++;if(!(i in states))states[i]=value;return[states[i],v=>states[i]=typeof v==='function'?v(states[i]):v];},useRef:value=>refs[ref++]??(refs[ref-1]={current:value}),useCallback:fn=>fn,useEffect:fn=>{if(!mounted)effects.push(fn);}};
+function formHarness(api,{rates=async amount=>({ready:true,ruleId:'33333333-3333-4333-8333-333333333333',baseKobo:amount,platformKobo:0,processingEstimateKobo:0,customerEstimateKobo:amount,sellerCommissionKobo:0}),role='VENDOR',persist=async()=>{},photo=async()=>({url:'https://fixture.invalid/photo.jpg'}),restore={ready:true,error:'',loading:false,retry(){}}}={}) {
+  const host=hookRenderer(),clock=virtualClock(),react=host.react;let tree;
+  const callApi=(path,options)=>path.startsWith('/v1/agents/products/price-preview')?rates(Number(path.split('priceKobo=')[1]),options):api(path,options);
   const theme={font:{body:'Inter',displayStrong:'Lato',semibold:'Inter'},surfaceTint:'#F1DFC8',surface:'#fff',text:'#29231F',textMuted:'#9A8D84',deepBrand:'#A8462E',error:'#A8462E'};
-  const modules={'@/src/auth/auth-context':{useAuth:()=>({user:{id:'test-owner'}})},'@/src/lib/device-cache':{readCache:async()=>null,writeCache:async()=>{}},'react':react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'Fragment'},'expo-crypto':{randomUUID},'@expo/vector-icons':{Ionicons:'Ionicons'},'expo-router':{router:{back(){}},useLocalSearchParams:()=>({role})},'react-native':{Image:'Image',Pressable:'Pressable',Text:'Text',View:'View'},'@/src/lib/money-input':{nairaToKobo},'@/src/components/toolkit':{ToolPage:'ToolPage',ToolButton:'ToolButton',ToolField:'ToolField'},'@/src/components/toast':{useToast:()=>()=>{}},'@/src/lib/appearance':{useAppearance:()=>({theme})},'@/src/lib/api':{api},'@/src/lib/uploads':{pickAndUpload:async()=>({url:'https://fixture.invalid/photo.jpg'})}};
+  const modules={'@/src/auth/auth-context':{useAuth:()=>({user:{id:'test-owner'}})},'@/src/lib/device-cache':{readCache:async()=>null,writeCache:async()=>{}},'react':react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'Fragment'},'expo-crypto':{randomUUID},'@expo/vector-icons':{Ionicons:'Ionicons'},'expo-router':{router:{back(){}},useLocalSearchParams:()=>({role})},'react-native':{Image:'Image',Pressable:'Pressable',Text:'Text',View:'View'},'@/src/lib/money-input':{nairaToKobo},'@/src/components/toolkit':{ToolPage:'ToolPage',ToolButton:'ToolButton',ToolField:'ToolField'},'@/src/components/toast':{useToast:()=>()=>{}},'@/src/lib/appearance':{useAppearance:()=>({theme})},'@/src/lib/api':{api:callApi},'@/src/lib/uploads':{pickAndUpload:async()=>({url:'https://fixture.invalid/photo.jpg'})}};
   modules['@/src/lib/use-owned-draft-save']={useOwnedDraftSave:()=>({warning:'',persist,discard(){}})};
   modules['@/src/lib/use-owned-draft-restore']={useOwnedDraftRestore:()=>restore};
   modules['@/src/lib/form-drafts']={restoreListingDraft:value=>value};
@@ -22,12 +23,12 @@ function formHarness(api,{role='VENDOR',persist=async()=>{},photo=async()=>({url
   modules['@/src/lib/request-policy']={cacheScopeForUser:()=> 'synthetic-owner-scope'};
   const exports={};
   const code=ts.transpileModule(readFileSync(new URL('../mobile/app/agent-create.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-  runInNewContext(code,{exports,module:{exports},require:key=>{if(key in modules)return modules[key];throw Error(key);},setTimeout,clearTimeout,Error});
-  function render(){state=0;ref=0;tree=exports.default();while(typeof tree.type==='function')tree=tree.type(tree.props);if(!mounted){mounted=true;effects.forEach(fn=>fn());}return tree;}
+  runInNewContext(code,{exports,module:{exports},require:key=>{if(key in modules)return modules[key];throw Error(key);},setTimeout:clock.schedule,clearTimeout:clock.cancel,AbortController,Error});
+  function render(){return host.render(()=>{tree=exports.default();while(typeof tree.type==='function')tree=tree.type(tree.props);return tree;});}
   function nodes(value){if(Array.isArray(value))return value.flatMap(nodes);if(!value||typeof value!=='object')return[];return[value,...nodes(value.props?.children)];}
   const by=(type,label)=>nodes(tree).find(n=>n.type===type&&(n.props.label===label||n.props.accessibilityLabel===label));
-  const flush=async()=>{await new Promise(setImmediate);render();};
-  render();return{render,flush,by,states};
+  const flush=async()=>{render();await clock.advance(300);await new Promise(setImmediate);render();};
+  render();return{render,flush,by,clock};
 }
 test('a failed category read is visible and retry restores a completed product form without discarding its input or photos',async()=>{
   let reads=0,created;
@@ -101,4 +102,13 @@ test('failed draft restoration locks listing edits and create actions while expo
  let creates=0;const h=formHarness(async(path)=>{if(path==='/v1/agents/products')creates++;return{categories:[]};},{restore:{ready:false,error:'Saved copy could not be restored',loading:false,retry(){}}});await h.flush();
  assert.equal(h.by('DraftRecovery').props.error,'Saved copy could not be restored');assert.equal(h.by('ToolField','Product name').props.editable,false);assert.equal(h.by('Pressable','Add product photo').props.disabled,true);
  await h.by('ToolButton','Upload product').props.onPress();assert.equal(creates,0);
+});
+test('a product calculates rates before upload and keeps the form available after a failed calculation',async()=>{
+  const category={id:randomUUID(),name:'Stationery'};let rateReads=0,created;
+  const h=formHarness(async(path,init)=>path==='/v1/agents/product-categories'?{categories:[category]}:path==='/v1/agents/products'?(created=JSON.parse(init.body),{id:randomUUID()}):null,{rates:async amount=>{if(++rateReads===1)throw Error('Rates could not load');return{ready:true,ruleId:'33333333-3333-4333-8333-333333333333',baseKobo:amount,platformKobo:10000,processingEstimateKobo:2000,customerEstimateKobo:amount+12000,sellerCommissionKobo:0};}});
+  await h.flush();for(const [label,value]of [['Product name','Stationery pack'],['Description','A stationery pack with an honest description.'],['Price (₦)','1000'],['Stock quantity','2']])h.by('ToolField',label).props.onChangeText(value);
+  h.by('Pressable','Stationery').props.onPress();h.render();await h.by('Pressable','Add product photo').props.onPress();await h.flush();
+  assert.equal(h.by('ToolButton','Upload product').props.disabled,true);assert.ok(h.by('ToolButton','Retry rate calculation'));
+  h.by('ToolButton','Retry rate calculation').props.onPress();await h.flush();assert.equal(h.by('ToolButton','Upload product').props.disabled,false);
+  await h.by('ToolButton','Upload product').props.onPress();await h.flush();assert.equal(created.pricingPolicyId,'33333333-3333-4333-8333-333333333333');assert.equal(created.priceKobo,100000);
 });

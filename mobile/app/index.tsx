@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "@/src/auth/auth-context";
 import { pendingPostLink } from "@/src/lib/feed-posts";
 import { useEffect, useMemo } from "react";
-import { clearPendingSharedTarget, finishFirstInstallIntro, pendingSharedDestination, useFirstInstallIntro } from "@/src/lib/entry-preferences";
+import { clearPendingSharedTarget, pendingSharedDestination, useFirstInstallIntro } from "@/src/lib/entry-preferences";
 
 export default function EntryScreen() {
   const { styles } = useThemeStyles(createStyles);
@@ -14,8 +14,8 @@ export default function EntryScreen() {
   const introduction = useFirstInstallIntro();
   const entryReady = introduction !== "loading";
   const sharedDestination = useMemo(() => entryReady ? pendingSharedDestination() : null, [entryReady]);
-  useEffect(() => { if (state === "authenticated" && introduction === "new") void finishFirstInstallIntro(); }, [state, introduction]);
-  useEffect(() => { if (state === "authenticated" && profile?.onboarding_completed_at && sharedDestination) clearPendingSharedTarget(); }, [state, profile?.onboarding_completed_at, sharedDestination]);
+  useEffect(() => { if (introduction === "done" && state === "authenticated" && profile?.onboarding_completed_at && sharedDestination) clearPendingSharedTarget(); }, [introduction, state, profile?.onboarding_completed_at, sharedDestination]);
+  if(introduction==='new')return <Redirect href="/(auth)/intro" />;
   if (state === "loading" && sessionRestoreError) {
     return (
       <View accessibilityLiveRegion="polite" style={styles.errorState}>

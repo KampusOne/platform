@@ -30,7 +30,7 @@ export function invalidationTargets(path: string): string[] | null {
   if (resource.startsWith("/v1/student/timetable") || resource.startsWith("/v1/learning/timetable"))
     return ["/v1/student/timetable", "/v1/student/home", "/v1/learning/alarms", "/v1/calendar", "/v1/exams"];
   if (resource.startsWith("/v1/student/gpa")) return ["/v1/student/gpa", "/v1/student/home"];
-  if (/^\/v1\/messages\/threads\/[^/]+\/read$/.test(resource)) return ["/v1/messages/inbox"];
+  if (/^\/v1\/messages\/threads\/[^/]+\/read$/.test(resource)) return ["/v1/messages/inbox","/v1/notifications/inbox"];
   if (resource.startsWith("/v1/messages")) return ["/v1/messages", "/v1/notifications"];
   if (resource.startsWith("/v1/notifications")) return ["/v1/notifications", "/v1/learning/alarms"];
   if (resource.startsWith("/v1/learning/alarms")) return ["/v1/learning/alarms", "/v1/student/timetable", "/v1/student/home"];

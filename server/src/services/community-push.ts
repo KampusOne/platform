@@ -78,6 +78,7 @@ export async function deliverCommunityPush(env:Bindings){
     path:notice?.path??'/notifications',
     id:attempt.id,
     ...(notice?.id?{notificationId:notice.id}:{}),
+    ...(row.dedupe_key.startsWith('message:')?{messageId:row.dedupe_key.split(':')[1]}:{}),
     preferenceCategory:category,
    });
    await db.execute(sql`update app_private.community_push_deliveries set status=${result.status},ticket_id=${result.ticketId??null},error_code=${result.errorCode??null},updated_at=now(),next_attempt_at=now()+make_interval(secs=>${pushRetryDelaySeconds(attempt.attempts)}) where id=${attempt.id}::uuid`);

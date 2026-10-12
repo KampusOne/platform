@@ -1,7 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSyncExternalStore } from "react";
 import { sharedDestination, type ShareKind } from "./shared-links";
-const introKey = "k1.install-intro.v1",
+import {withRequestDeadline} from './request-deadline';
+// v1 was inferred from theme/profile keys even when no introduction was shown.
+const introKey = "k1.install-intro.v2",
   pendingKey = "k1.pending-share.v1";
 type Target = { kind: ShareKind; id: string; expires: number };
 let complete = false,
@@ -12,20 +14,11 @@ const listeners = new Set<() => void>();
 export function initializeEntryPreferences() {
   return (initialized ??= (async () => {
     try {
-      const [saved, pending, keys] = await Promise.all([
+      const [saved, pending] = await withRequestDeadline(() => Promise.all([
         AsyncStorage.getItem(introKey),
         AsyncStorage.getItem(pendingKey),
-        AsyncStorage.getAllKeys(),
-      ]);
-      complete =
-        complete ||
-        saved === "done" ||
-        keys.some(
-          (key) =>
-            key === "k1.appearance" || key.startsWith("k1.cache.v2.profile."),
-        );
-      if (complete && saved !== "done")
-        await AsyncStorage.setItem(introKey, "done");
+      ]), 2000);
+      complete = complete || saved === "done";
       if (pending && !target) {
         try {
           const value = JSON.parse(pending) as Target;
@@ -63,7 +56,7 @@ export async function finishFirstInstallIntro() {
   complete = true;
   listeners.forEach((fn) => fn());
   try {
-    await AsyncStorage.setItem(introKey, "done");
+    await withRequestDeadline(()=>AsyncStorage.setItem(introKey, "done"),2000);
     return true;
   } catch {
     return false;

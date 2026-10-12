@@ -58,13 +58,17 @@ function CreateListingForm() {
     createdId.current=d.createdId??null;requestId.current=d.requestId??randomUUID();requestPayload.current=d.requestPayload??'';
   },Boolean(user?.id));
   const draftReady=restored.ready;
-  const [pricePreview,setPricePreview]=useState<{ready:boolean;baseKobo:number;platformKobo:number;processingEstimateKobo:number;customerEstimateKobo:number;sellerCommissionKobo:number}|null>(null);
+  const [pricePreview,setPricePreview]=useState<{ready:boolean;ruleId?:string;message?:string;baseKobo:number;platformKobo:number;processingEstimateKobo:number;customerEstimateKobo:number;sellerCommissionKobo:number}|null>(null);
+  const [calculatingRates,setCalculatingRates]=useState(false),[rateError,setRateError]=useState(''),[rateRetry,setRateRetry]=useState(0);
   useEffect(()=>{
-    if(tutor||!price.trim()){setPricePreview(null);return;}
-    let valid=true,amount:number;try{amount=nairaToKobo(price);}catch{setPricePreview(null);return;}
-    const timer=setTimeout(()=>void api<typeof pricePreview>('/v1/agents/products/price-preview?priceKobo='+amount).then(r=>{if(valid)setPricePreview(r);}).catch(()=>{if(valid)setPricePreview(null);}),300);
-    return()=>{valid=false;clearTimeout(timer);};
-  },[price,tutor]);
+    setRateError('');setPricePreview(null);
+    if(tutor||!price.trim()){setCalculatingRates(false);return;}
+    let valid=true,amount:number;try{amount=nairaToKobo(price);}catch{setCalculatingRates(false);return;}
+    setCalculatingRates(true);
+    const controller=new AbortController();
+    const timer=setTimeout(()=>void api<typeof pricePreview>('/v1/agents/products/price-preview?priceKobo='+amount,{timeoutMs:8000,signal:controller.signal,cache:'no-store'}).then(r=>{if(valid){setPricePreview(r);if(!r?.ready)setRateError(r?.message||'Marketplace rates are not configured for this campus yet.');}}).catch(error=>{if(valid)setRateError(error instanceof Error?error.message:'Rates could not load. Please retry.');}).finally(()=>{if(valid)setCalculatingRates(false);}),300);
+    return()=>{valid=false;clearTimeout(timer);controller.abort();};
+  },[price,tutor,rateRetry]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>(
     [],
   );
@@ -105,6 +109,7 @@ function CreateListingForm() {
     try { nairaToKobo(price); } catch (e) { formHint = e instanceof Error ? e.message : "Enter a valid price."; }
     if (!formHint && (!/^\d+$/.test(stock.trim()) || Number(stock) > (tutor ? 500 : 1_000_000) || Number(stock) < (tutor ? 1 : 0))) formHint = tutor ? "Enter 1 to 500 available places." : "Enter a whole stock quantity from 0 to 1,000,000.";
   }
+  if(!formHint&&!tutor&&!createdId.current){if(calculatingRates||(pricePreview?.ready&&pricePreview.baseKobo!==nairaToKobo(price)))formHint='Calculating rates…';else if(!pricePreview?.ready)formHint=rateError||'Calculate your product rates before uploading.';}
   if(createdId.current)formHint="";
   const fieldsLocked=busy||!draftReady||Boolean(createdId.current);
   async function upload() {
@@ -148,9 +153,10 @@ function CreateListingForm() {
             imageUrl: image || null,
             imageUrls:images,
             requestId:requestId.current,
+            pricingPolicyId:pricePreview?.ruleId,
           };
       const {requestId: _previous,...details}=body;
-      const signature=JSON.stringify(details);
+      const signature=JSON.stringify(Object.fromEntries(Object.entries(details).filter(([field])=>field!=='pricingPolicyId')));
       if(!createdId.current&&requestPayload.current!==signature){requestId.current=randomUUID();requestPayload.current=signature;}
       body.requestId=requestId.current;
       await draftSave.persist({...listingDraft,requestId:requestId.current,requestPayload:signature});
@@ -173,7 +179,10 @@ function CreateListingForm() {
       toast(tutor?"Submitted for review":"Product uploaded", "success");
       router.back();
     } catch (e) {
-      if(stillCurrent())toast(e instanceof Error ? e.message : "Could not save listing", "error");
+      if(stillCurrent()){
+        if(!tutor&&!createdId.current&&e&&typeof e==='object'&&'code' in e&&e.code==='CONFLICT')setRateRetry(n=>n+1);
+        toast(e instanceof Error ? e.message : "Could not save listing", "error");
+      }
     } finally {
       if(stillCurrent()){formLock.current=false;setBusy(false);}
     }
@@ -286,7 +295,9 @@ function CreateListingForm() {
         {categories.length > 0 && !matchingCategories.length ? <Text style={{ color: theme.textMuted }}>No matching category. Try another word.</Text> : null}
         </View>
       )}
-      {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['KampusOne service fee',pricePreview.platformKobo],['Estimated processing fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Checkout confirms the total and any processing fee.</Text></View>:null}
+      {!tutor&&calculatingRates?<Text accessibilityLiveRegion="polite" style={{color:theme.textMuted,marginBottom:12}}>Calculating rates…</Text>:null}
+      {!tutor&&rateError&&!calculatingRates?<View style={{gap:8,marginBottom:16}}><Text accessibilityRole="alert" style={{color:theme.error}}>{rateError}</Text><ToolButton secondary label="Retry rate calculation" onPress={()=>setRateRetry(n=>n+1)}/></View>:null}
+      {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['KampusOne service fee',pricePreview.platformKobo],['Estimated processing fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Your price plus the service fee goes to checkout. The processor adds its charge; checkout confirms the final total.</Text></View>:null}
       {createdId.current ? <Text accessibilityRole="alert" style={{color:theme.textMuted,lineHeight:22,marginBottom:12}}>Your listing was created. Retry to finish submitting it for review.</Text> : null}
       <ToolButton
         label={busy ? "Saving…" : createdId.current?"Retry submission":tutor?"Submit for review":"Upload product"}
