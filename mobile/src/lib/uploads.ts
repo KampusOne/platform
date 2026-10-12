@@ -150,10 +150,12 @@ export async function pickAndUpload(kind: UploadKind, source: PhotoSource = "lib
   return saved;
 }
 
-export type StagedAttachment = { uri?: string | undefined; name: string; type: string; size?: number | undefined; mediaId?: string | undefined; sourceText?: string | undefined };
+export type StagedAttachment = { uri?: string | undefined; name: string; type: string; size?: number | undefined; mediaId?: string | undefined; sourceText?: string | undefined; ownerRevision?: number };
 /** Selection is local. Nothing is uploaded until Send/Upload is explicitly tapped. */
 export async function pickAttachment(): Promise<StagedAttachment | null> {
+  const revision=getDeviceCacheRevision();
   const result=await DocumentPicker.getDocumentAsync({type:["image/jpeg","image/png","image/webp","application/pdf","text/plain"],copyToCacheDirectory:true,multiple:false});
+  requireUploadSession(revision);
   if(result.canceled) return null;
   const file=result.assets[0]; if(!file) return null;
   if((file.size ?? 0)>100*1024*1024) throw new Error("Kira accepts documents up to 100 MB. Compress this file before attaching it.");
@@ -161,23 +163,29 @@ export async function pickAttachment(): Promise<StagedAttachment | null> {
   const type=file.mimeType && !['application/octet-stream','binary/octet-stream'].includes(file.mimeType) ? file.mimeType : inferred ?? 'application/octet-stream';
   if (!["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"].includes(type)) throw new Error("Choose a JPEG, PNG, WebP, PDF or text file.");
   if (type.startsWith("image/") && (file.size ?? 0) > 8 * 1024 * 1024) throw new Error("Choose an image smaller than 8 MB.");
-  return {uri:file.uri,name:file.name,type,size:file.size};
+  return {uri:file.uri,name:file.name,type,size:file.size,ownerRevision:revision};
 }
 export async function uploadAttachment(file: StagedAttachment, userId: string, query = '', tier = 'standard', onProgress: (fraction: number) => void = () => undefined, options: { onStage?: (stage: ImportStage) => void; onUploaded?: (file: StagedAttachment) => void; signal?: AbortSignal } = {}): Promise<StagedAttachment> {
+  const revision=getDeviceCacheRevision();requireUploadSession(file.ownerRevision??revision);
+  if(options.signal?.aborted)throw options.signal.reason??new Error('Upload cancelled');
   let mediaId=file.mediaId;
   if(!mediaId){
     if(!file.uri) throw new Error("Please reattach this file. Your message is still here.");
     options.onStage?.("uploading");
     mediaId=await uploadMessageFile(userId,{uri:file.uri,name:file.name,mimeType:file.type},onProgress,'resource',undefined,options.signal);
+    requireUploadSession(revision);
     options.onUploaded?.({ ...file, mediaId });
     options.onStage?.("uploaded");
   }
+  requireUploadSession(revision);
+  if(options.signal?.aborted)throw options.signal.reason??new Error('Upload cancelled');
   if(['application/pdf','text/plain'].includes(file.type)){
     // Small documents can be read by the Worker, including scanned PDFs.
     // A web reader outage should not prevent an already uploaded file being sent.
     if ((file.size ?? Number.MAX_SAFE_INTEGER) <= 16 * 1024 * 1024) return { ...file, mediaId };
     options.onStage?.("reading");
     const sourceText=file.sourceText??await readUploadedDocument(mediaId,file.name,file.type,query,tier,options.signal);
+    requireUploadSession(revision);
     return {...file,mediaId,sourceText};
   }
   return {...file,mediaId};

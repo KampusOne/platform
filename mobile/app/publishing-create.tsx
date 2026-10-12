@@ -2,7 +2,7 @@ import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-view
 import { randomUUID } from "expo-crypto";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   KeyboardAvoidingView,
@@ -18,7 +18,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/src/auth/auth-context";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
-import { readCache, writeCache } from "@/src/lib/device-cache";
+import { writeCache } from "@/src/lib/device-cache";
+import { cacheScopeForUser } from "@/src/lib/request-policy";
+import { useOwnedDraftRestore } from '@/src/lib/use-owned-draft-restore';
+import { useOwnedDraftSave } from '@/src/lib/use-owned-draft-save';
+import { restorePublisherDraft } from '@/src/lib/form-drafts';
+import { DraftRecovery } from '@/src/components/draft-recovery';
+import { ToolButton } from '@/src/components/toolkit';
 import { pickAndUpload } from "@/src/lib/uploads";
 
 type Format = "POLL" | "QA" | "ANONYMOUS_QA";
@@ -43,7 +49,7 @@ const durations = [
 
 export default function PublishingCreate() {
   const { user } = useAuth();
-  return <AccountPublisher key={user?.id} />;
+  return <AccountPublisher key={(user?cacheScopeForUser(user):'signed-out')} />;
 }
 
 function AccountPublisher() {
@@ -56,7 +62,9 @@ function AccountPublisher() {
   const [options, setOptions] = useState(["", ""]);
   const [hours, setHours] = useState("24");
   const [media, setMedia] = useState<{ id: string; url: string } | null>(null);
-  const [ready, setReady] = useState(false);
+  const [accessReady, setAccessReady] = useState(false);
+  const [accessBusy, setAccessBusy] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
   const [busy, setBusy] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
   const [error, setError] = useState("");
@@ -66,77 +74,30 @@ function AccountPublisher() {
   const alive = useRef(true);
   const draftKey = `publisher-draft.v2.${user?.id}`;
 
+  useEffect(() => { alive.current=true; return () => { alive.current=false; }; }, []);
+  const loadAccess=useCallback(async () => {
+    setAccessBusy(true); setError("");
+    try {
+      const access=await api<{formats:string[]}>("/v1/student/publishing/capabilities");
+      if (alive.current) { setFormats(access.formats); setAccessReady(true); }
+    } catch (caught) {
+      if (alive.current) setError(caught instanceof Error ? caught.message : "Publishing access could not load.");
+    } finally { if (alive.current) setAccessBusy(false); }
+  }, []);
+  useEffect(() => { void loadAccess(); }, [loadAccess]);
+  const restored=useOwnedDraftRestore<unknown>(draftKey,value=>{
+    if (value===null) { setHasDraft(false); return; }
+    const draft=restorePublisherDraft(value);
+    setFormat(draft.format); setAnonymousPoll(draft.anonymousPoll); setBody(draft.body);
+    setOptions(draft.options); setHours(draft.hours); request.current=draft.requestId??randomUUID(); closing.current=draft.closesAt;
+    setMedia(draft.mediaId&&draft.mediaUrl?{id:draft.mediaId,url:draft.mediaUrl}:null); setHasDraft(true);
+  },Boolean(user?.id));
+  const ready=restored.ready&&accessReady;
   useEffect(() => {
-    alive.current = true;
-    void Promise.all([
-      api<{ formats: string[] }>("/v1/student/publishing/capabilities"),
-      readCache<Draft>(draftKey),
-    ])
-      .then(([access, draft]) => {
-        if (!alive.current) return;
-        setFormats(access.formats);
-        if (draft) {
-          setFormat(draft.format);
-          setAnonymousPoll(draft.anonymousPoll);
-          setBody(draft.body);
-          setOptions(draft.options);
-          setHours(draft.hours);
-          request.current = draft.requestId;
-          closing.current = draft.closesAt;
-          if (draft.mediaId && draft.mediaUrl)
-            setMedia({ id: draft.mediaId, url: draft.mediaUrl });
-        } else if (!access.formats.includes("POLL")) {
-          setFormat(
-            access.formats.includes("QA")
-              ? "QA"
-              : access.formats.includes("ANONYMOUS_QA")
-                ? "ANONYMOUS_QA"
-                : "POLL",
-          );
-        }
-        setReady(true);
-      })
-      .catch((caught) => {
-        if (alive.current)
-          setError(
-            caught instanceof Error
-              ? caught.message
-              : "Publishing access could not load.",
-          );
-      });
-    return () => {
-      alive.current = false;
-    };
-  }, [draftKey]);
-
-  useEffect(() => {
-    if (!ready || busy) return;
-    const timer = setTimeout(
-      () =>
-        void writeCache(draftKey, {
-          format,
-          anonymousPoll,
-          body,
-          options,
-          hours,
-          requestId: request.current,
-          closesAt: closing.current,
-          ...(media ? { mediaId: media.id, mediaUrl: media.url } : {}),
-        }),
-      250,
-    );
-    return () => clearTimeout(timer);
-  }, [
-    format,
-    anonymousPoll,
-    body,
-    options,
-    hours,
-    media,
-    ready,
-    busy,
-    draftKey,
-  ]);
+    if (ready&&!hasDraft) setFormat(formats.includes("POLL")?"POLL":formats.includes("QA")?"QA":formats.includes("ANONYMOUS_QA")?"ANONYMOUS_QA":"POLL");
+  },[ready,hasDraft,formats]);
+  const currentDraft=():Draft=>({format,anonymousPoll,body,options,hours,requestId:request.current,...(closing.current?{closesAt:closing.current}:{}),...(media?{mediaId:media.id,mediaUrl:media.url}:{})});
+  const draftSave=useOwnedDraftSave(draftKey,currentDraft(),restored.ready&&Boolean(user?.id)&&!busy);
 
   function changed() {
     request.current = randomUUID();
@@ -182,7 +143,7 @@ function AccountPublisher() {
   );
 
   async function chooseImage(source: "library" | "camera") {
-    if (imageBusy || busy) return;
+    if (imageBusy || busy || !ready || !alive.current) return;
     setImageBusy(true);
     setError("");
     try {
@@ -203,7 +164,7 @@ function AccountPublisher() {
   }
 
   async function publish() {
-    if (locked.current || !canPublish) return;
+    if (locked.current || imageBusy || !canPublish || !ready || !alive.current) return;
     locked.current = true;
     setBusy(true);
     setError("");
@@ -211,6 +172,8 @@ function AccountPublisher() {
       closing.current ??= new Date(
         Date.now() + Number(hours) * 3600000,
       ).toISOString();
+      await draftSave.persist(currentDraft());
+      if (!alive.current) return;
       const result = await api<{ id: string }>(
         "/v1/student/publishing/posts",
         {
@@ -228,6 +191,8 @@ function AccountPublisher() {
           }),
         },
       );
+      if (!alive.current) return;
+      draftSave.discard();
       await writeCache(draftKey, null);
       if (alive.current)
         router.replace({
@@ -239,7 +204,7 @@ function AccountPublisher() {
         setError(
           caught instanceof Error
             ? caught.message
-            : "Your draft is saved. Try again.",
+              : "Your post could not be published. Your work is still here.",
         );
     } finally {
       locked.current = false;
@@ -271,11 +236,11 @@ function AccountPublisher() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Publish"
-            disabled={busy || !canPublish}
+            disabled={busy || !ready || !canPublish || imageBusy}
             onPress={() => void publish()}
             style={[
               styles.publishButton,
-              (busy || !canPublish) && styles.disabled,
+              (busy || !ready || !canPublish || imageBusy) && styles.disabled,
             ]}
           >
             <Text style={styles.publishText}>
@@ -289,11 +254,14 @@ function AccountPublisher() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
-          {!ready ? (
+          <DraftRecovery loading={restored.loading} error={restored.error} onRetry={restored.retry} />
+          {draftSave.warning?<Text accessibilityRole="alert" style={styles.stateText}>{draftSave.warning}</Text>:null}
+          {!accessReady ? (
             <View style={styles.stateCard}>
-              <Text style={styles.stateText}>Loading publishing access…</Text>
+              <Text style={styles.stateText}>{accessBusy?"Loading publishing access…":"Publishing access could not load."}</Text>
+              {!accessBusy?<ToolButton label="Retry publishing access" onPress={()=>void loadAccess()} />:null}
             </View>
-          ) : !formats.length ? (
+          ) : !restored.ready ? null : !formats.length ? (
             <View style={styles.stateCard}>
               <Ionicons
                 name="lock-closed-outline"

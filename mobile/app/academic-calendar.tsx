@@ -11,11 +11,14 @@ import {cacheScopeForUser} from '@/src/lib/request-policy';
 import { refreshScreenRead } from "@/src/lib/screen-read";
 import { router, useFocusEffect } from "expo-router";
 
-import { ToolField, ToolPage } from "@/src/components/toolkit";
+import { ToolButton, ToolField, ToolPage } from "@/src/components/toolkit";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useAppearance, type Theme } from "@/src/lib/appearance";
 import { api, ApiError } from "@/src/lib/api";
 import { useAuth } from "@/src/auth/auth-context";
+import { useOwnedDraftRestore } from '@/src/lib/use-owned-draft-restore';
+import { restorePersonalCalendar } from '@/src/lib/form-drafts';
+import { DraftRecovery } from '@/src/components/draft-recovery';
 
 type Event = {
   id: string;
@@ -105,28 +108,6 @@ const sortEvents = (rows: Event[]) =>
 
 const localCalendarKey = (userId?: string | null) =>
   `calendar-local.${userId || "anonymous"}`;
-
-const readLocalEvents = async (key: string): Promise<Event[]> => {
-  try {
-    const raw = await readMigratedPrivateCache(`@kampusone/calendar/personal/${key.slice("calendar-local.".length)}`,key,key.slice("calendar-local.".length));
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((row): row is Event => {
-      if (!row || typeof row !== "object") return false;
-      const value = row as Partial<Event>;
-      return (
-        typeof value.id === "string" &&
-        typeof value.title === "string" &&
-        typeof value.starts_on === "string" &&
-        typeof value.ends_on === "string" &&
-        typeof value.semester === "string"
-      );
-    });
-  } catch {
-    return [];
-  }
-};
 
 const mergeCalendarEvents = (serverRows: Event[], localRows: Event[]) => {
   const localById = new Map(localRows.map((row) => [row.id, row]));
@@ -522,6 +503,9 @@ const createStyles = (theme: Theme) =>
   });
 
 export default function Calendar() {
+  const{user}=useAuth();return <AccountCalendar key={user?cacheScopeForUser(user):'signed-out'} />;
+}
+function AccountCalendar() {
   const { theme } = useAppearance();
   const { user } = useAuth();
   const styles = createStyles(theme);
@@ -536,12 +520,18 @@ export default function Calendar() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [formError, setFormError] = useState("");
+  const [storageWarning,setStorageWarning]=useState("");
+  const working=useRef(false);
   const generation = useRef(0);
   const createRequestId = useRef(randomUUID());
   const localEvents = useRef<Event[]>([]);
   const storageKey = localCalendarKey(user?.id);
   const scope=user?cacheScopeForUser(user):null;
   const previousScope=useRef<string|null>(null);
+  const restored=useOwnedDraftRestore<string>(storageKey,raw=>{
+    const local=raw===null?[]:restorePersonalCalendar(raw);
+    localEvents.current=local;setEvents(rows=>mergeCalendarEvents(rows,local));
+  },Boolean(user?.id),(key)=>readMigratedPrivateCache(`@kampusone/calendar/personal/${key.slice("calendar-local.".length)}`,key,user!.id));
 
   useFocusEffect(
     useCallback(() => {
@@ -552,10 +542,10 @@ export default function Calendar() {
       setError("");
       setRemoving(null);
       setBusy(false);
+      working.current=false;
       setActionError("");
 
-      void Promise.all([
-        refreshScreenRead<{events:Event[]}>("/v1/calendar",snapshot=>{if(current===generation.current){setEvents(mergeCalendarEvents(normalizeEvents(snapshot.events),localEvents.current));setLoading(false);}})
+      void refreshScreenRead<{events:Event[]}>("/v1/calendar",snapshot=>{if(current===generation.current&&revision===getDeviceCacheRevision()){setEvents(mergeCalendarEvents(normalizeEvents(snapshot.events),localEvents.current));setLoading(false);}})
           .then((result) => ({ rows: normalizeEvents(result?.events), error: "" }))
           .catch((caught) => ({
             rows: [] as Event[],
@@ -563,14 +553,11 @@ export default function Calendar() {
               caught instanceof Error
                 ? caught.message
                 : "Your calendar could not be loaded.",
-          })),
-        readLocalEvents(storageKey),
-      ])
-        .then(([server, local]) => {
+          }))
+        .then((server) => {
           if (current !== generation.current||revision!==getDeviceCacheRevision()) return;
-          localEvents.current = local;
-          const merged = mergeCalendarEvents(server.rows, local);
-          setEvents(merged);
+          const merged = mergeCalendarEvents(server.rows, localEvents.current);
+          setEvents(rows=>server.error?mergeCalendarEvents(rows,localEvents.current):merged);
           if (server.error && merged.length === 0) setError(server.error);
         })
         .finally(() => {
@@ -591,7 +578,7 @@ export default function Calendar() {
   }
 
   function openNew() {
-    if (busy) return;
+    if (busy || !restored.ready) return;
     createRequestId.current = randomUUID();
     setDraft(emptyDraft());
     setFormError("");
@@ -601,7 +588,7 @@ export default function Calendar() {
   }
 
   function openEdit(event: Event) {
-    if (busy) return;
+    if (busy || !restored.ready) return;
     setDraft({
       title: event.title,
       startsOn: event.starts_on,
@@ -625,7 +612,7 @@ export default function Calendar() {
   }
 
   async function saveDate() {
-    if (!editing || busy) return;
+    if (!editing || busy || working.current || !restored.ready) return;
 
     const title = draft.title.trim();
     const startsOn = draft.startsOn.trim();
@@ -651,8 +638,10 @@ export default function Calendar() {
 
     const current = generation.current;
     const event = { title, startsOn, endsOn, semester };
+    working.current=true;
     setBusy(true);
     setFormError("");
+    setStorageWarning("");
 
     try {
       let saved: Event;
@@ -693,7 +682,9 @@ export default function Calendar() {
         const nextLocal = localEvents.current.filter(
           (row) => row.id !== saved.id && row.id !== editing,
         );
-        await writeCache(storageKey, JSON.stringify(nextLocal));
+        try { await writeCache(storageKey, JSON.stringify(nextLocal)); }
+        catch { if(current===generation.current)setStorageWarning("Your date is saved online, but its device copy could not be updated. Keep this screen open and retry before relying on offline recovery."); }
+        if(current!==generation.current)return;
         localEvents.current = nextLocal;
       } else {
         const nextLocal = calendarRecoveredRows(localEvents.current,saved,editing);
@@ -718,13 +709,14 @@ export default function Calendar() {
           : "This date could not be saved. Try again.",
       );
     } finally {
-      if (current === generation.current) setBusy(false);
+      if (current === generation.current) {working.current=false;setBusy(false);}
     }
   }
 
   async function remove(id: string) {
-    if (busy) return;
+    if (busy || working.current || !restored.ready) return;
     const current = generation.current;
+    working.current=true;
     setBusy(true);
     setActionError("");
 
@@ -735,8 +727,14 @@ export default function Calendar() {
           timeoutMs: 12_000,
         });
       }
+      if(current!==generation.current)return;
       const nextLocal = localEvents.current.filter((row) => row.id !== id);
-      await writeCache(storageKey, JSON.stringify(nextLocal));
+      try { await writeCache(storageKey, JSON.stringify(nextLocal)); }
+      catch(error) {
+        if(id.startsWith("local:"))throw error;
+        if(current===generation.current)setStorageWarning("Your date was removed online, but its device copy could not be updated. Retry saving the device copy before relying on offline recovery.");
+      }
+      if(current!==generation.current)return;
       localEvents.current = nextLocal;
       if (current === generation.current) {
         setEvents((rows) => rows.filter((row) => row.id !== id));
@@ -751,21 +749,45 @@ export default function Calendar() {
         );
       }
     } finally {
-      if (current === generation.current) setBusy(false);
+      if (current === generation.current) {working.current=false;setBusy(false);}
     }
   }
 
   const selection = useBulkSelection(events.map(event => event.id), async ids => {
+    if(!restored.ready||working.current)throw new Error("Restore your saved personal dates before changing the calendar.");
+    const current=generation.current;
     const remoteIds=ids.filter(id=>!id.startsWith("local:"));
-    if(remoteIds.length) await api("/v1/calendar/bulk-delete",{method:"POST",body:JSON.stringify({ids:remoteIds})});
-    const next=localEvents.current.filter(row=>!ids.includes(row.id));
-    await writeCache(storageKey,JSON.stringify(next));
-    localEvents.current=next;
-    setEvents(rows=>rows.filter(row=>!ids.includes(row.id)));
+    working.current=true;setBusy(true);
+    try {
+      if(remoteIds.length) await api("/v1/calendar/bulk-delete",{method:"POST",body:JSON.stringify({ids:remoteIds})});
+      if(current!==generation.current)return;
+      const next=localEvents.current.filter(row=>!ids.includes(row.id));
+      try {await writeCache(storageKey,JSON.stringify(next));}
+      catch(error){
+        if(current!==generation.current)return;
+        if(remoteIds.length) {
+          localEvents.current=localEvents.current.filter(row=>!remoteIds.includes(row.id));
+          setEvents(rows=>rows.filter(row=>!remoteIds.includes(row.id)));
+          setStorageWarning("Online dates were removed. Device dates are kept until their removal is saved. Retry saving the device copy, then remove those device dates again.");
+        }
+        throw error;
+      }
+      if(current!==generation.current)return;
+      localEvents.current=next;setEvents(rows=>rows.filter(row=>!ids.includes(row.id)));
+    } finally {if(current===generation.current){working.current=false;setBusy(false);}}
   }, "calendar dates");
+  async function retryDeviceCopy(){
+    if(working.current||!restored.ready)return;
+    const current=generation.current;working.current=true;setBusy(true);
+    try{await writeCache(storageKey,JSON.stringify(localEvents.current));if(current===generation.current)setStorageWarning("");}
+    catch{if(current===generation.current)setStorageWarning("The device copy still could not be saved. Keep this screen open and try again.");}
+    finally{if(current===generation.current){working.current=false;setBusy(false);}}
+  }
   return (
-    <ToolPage syncPath="/v1/calendar" title="Academic calendar" action={<BulkMenu selection={selection} />}>
-      <BulkToolbar selection={selection} count={events.length} />
+    <ToolPage syncPath="/v1/calendar" title="Academic calendar" action={restored.ready?<BulkMenu selection={selection} />:null}>
+      {restored.ready?<BulkToolbar selection={selection} count={events.length} />:null}
+      <DraftRecovery loading={restored.loading} error={restored.error} onRetry={restored.retry} />
+      {storageWarning?<View><Text accessibilityRole="alert" style={styles.actionError}>{storageWarning}</Text><ToolButton label="Retry saving device copy" disabled={busy} onPress={()=>void retryDeviceCopy()} /></View>:null}
       <AcademicImportUsage calendar />
       <View style={styles.hero}>
         <View style={styles.heroTop}>
@@ -813,7 +835,7 @@ export default function Calendar() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add a date"
-            disabled={busy}
+            disabled={busy||!restored.ready}
             onPress={openNew}
             style={({ pressed }) => [
               styles.addButton,
@@ -841,7 +863,7 @@ export default function Calendar() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close calendar editor"
-              disabled={busy}
+              disabled={busy||!restored.ready}
               onPress={closeEditor}
               style={({ pressed }) => [
                 styles.closeForm,
@@ -858,7 +880,7 @@ export default function Calendar() {
             value={draft.title}
             maxLength={160}
             onChangeText={(value) => changeDraft("title", value)}
-            editable={!busy}
+            editable={!busy&&restored.ready}
             returnKeyType="next"
           />
           <ToolField
@@ -870,7 +892,7 @@ export default function Calendar() {
             autoCorrect={false}
             keyboardType="numbers-and-punctuation"
             onChangeText={(value) => changeDraft("startsOn", value)}
-            editable={!busy}
+            editable={!busy&&restored.ready}
           />
           <ToolField
             label="End date"
@@ -881,7 +903,7 @@ export default function Calendar() {
             autoCorrect={false}
             keyboardType="numbers-and-punctuation"
             onChangeText={(value) => changeDraft("endsOn", value)}
-            editable={!busy}
+            editable={!busy&&restored.ready}
           />
           <Text style={styles.formHint}>
             Use YYYY-MM-DD, for example 2026-10-12.
@@ -892,7 +914,7 @@ export default function Calendar() {
             value={draft.semester}
             maxLength={80}
             onChangeText={(value) => changeDraft("semester", value)}
-            editable={!busy}
+            editable={!busy&&restored.ready}
           />
 
           {formError ? (
@@ -904,7 +926,7 @@ export default function Calendar() {
           <View style={styles.formActions}>
             <Pressable
               accessibilityRole="button"
-              disabled={busy}
+              disabled={busy||!restored.ready}
               onPress={() => void saveDate()}
               style={({ pressed }) => [
                 styles.saveButton,
@@ -921,7 +943,7 @@ export default function Calendar() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              disabled={busy}
+              disabled={busy||!restored.ready}
               onPress={closeEditor}
               style={({ pressed }) => [
                 styles.cancelButton,
@@ -977,7 +999,7 @@ export default function Calendar() {
           const badge = dateBadge(event.starts_on);
           return (
             <View key={event.id} style={styles.eventCard}>
-              <SelectionCheckbox selection={selection} id={event.id} />
+              {restored.ready?<SelectionCheckbox selection={selection} id={event.id} />:null}
               <View style={styles.dateBox}>
                 <Text style={styles.dateMonth}>{badge.month}</Text>
                 <Text style={styles.dateDay}>{badge.day}</Text>
@@ -1016,7 +1038,7 @@ export default function Calendar() {
                     <View style={styles.confirmActions}>
                       <Pressable
                         accessibilityRole="button"
-                        disabled={busy}
+                        disabled={busy||!restored.ready}
                         onPress={() => setRemoving(null)}
                         style={({ pressed }) => [
                           styles.smallButton,
@@ -1027,7 +1049,7 @@ export default function Calendar() {
                       </Pressable>
                       <Pressable
                         accessibilityRole="button"
-                        disabled={busy}
+                        disabled={busy||!restored.ready}
                         onPress={() => void remove(event.id)}
                         style={({ pressed }) => [
                           styles.smallButton,
@@ -1051,7 +1073,7 @@ export default function Calendar() {
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Edit ${event.title}`}
-                      disabled={busy}
+                      disabled={busy||!restored.ready}
                       onPress={() => openEdit(event)}
                       style={({ pressed }) => [
                         styles.eventAction,
@@ -1068,7 +1090,7 @@ export default function Calendar() {
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Remove ${event.title}`}
-                      disabled={busy}
+                      disabled={busy||!restored.ready}
                       onPress={() => {
                         setRemoving(event.id);
                         setActionError("");

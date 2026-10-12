@@ -15,7 +15,12 @@ import { router, useLocalSearchParams,useFocusEffect } from "expo-router";
 import { useAuth } from "@/src/auth/auth-context";
 import { useAppearance } from "@/src/lib/appearance";
 import { api, ApiError, clearApiCache } from "@/src/lib/api";
-import { readCache, writeCache } from "@/src/lib/device-cache";
+import { writeCache } from "@/src/lib/device-cache";
+import { cacheScopeForUser } from "@/src/lib/request-policy";
+import { useOwnedDraftRestore } from '@/src/lib/use-owned-draft-restore';
+import { useOwnedDraftSave } from '@/src/lib/use-owned-draft-save';
+import { restoreKiraDraft, retainedKiraAttachment } from '@/src/lib/form-drafts';
+import { DraftRecovery } from '@/src/components/draft-recovery';
 import { pickAttachment, uploadAttachment, type StagedAttachment } from "@/src/lib/uploads";
 import { ImportProgress, useImportProgress } from "@/src/components/import-progress";
 import { AttachmentPreview } from "@/src/components/attachment-preview";
@@ -35,7 +40,7 @@ type Action=
   | (ActionState&{type:"alarm";alarm:{label:string;time:string;days:number[];firesAt?:string|null;sound:"default"|"silent";vibration:boolean;snoozeMinutes:number}})
   | (ActionState&{type:"calendar";event:{title:string;startsOn:string;endsOn:string;semester?:string}});
 type Turn={feedback?:{rating:"like"|"dislike"}|null;requestId:string;text:string;prompt?:string;fileName?:string;fileType?:string;mediaId?:string;file?:StagedAttachment;mode?:Mode;cards?:Card[];actions?:Action[]};
-type Draft={prompt:string;mode:Mode;tier:Tier;attachment?:StagedAttachment;replyTo?:string;key:string};
+type Draft={prompt:string;mode:Mode;tier:Tier;attachment?:StagedAttachment;replyTo?:string;pending?:boolean;key:string};
 type Status={voiceEnabled?:boolean;enabled:boolean;capabilities:{text:boolean;images:boolean;documents:boolean};tier:Tier;voice?:{maxSeconds:number;standardMaxSeconds?:number;proMaxSeconds?:number;longFormReady?:boolean};askSession?:{windowMinutes:number;limit:number|null;remaining:number|null;resetsAt?:string|null};study:{limit:number;remaining:number|null};subscription:{checkoutEnabled:boolean}};
 type SavedWork={id:string;title:string;mode:Mode;created_at:string};
 const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -237,6 +242,10 @@ function normalizeSavedWork(value: unknown): SavedWork[] {
 }
 
 export default function StudentAI() {
+  const {user}=useAuth();
+  return <AccountAI key={(user?cacheScopeForUser(user):'signed-out')} />;
+}
+function AccountAI() {
   const activeScreen=useActiveScreen();
   const {mode:initial,history:openHistoryParam,question:initialQuestion}=useLocalSearchParams<{mode?:string;history?:string;question?:string}>();
   const {user,profile}=useAuth();const {theme}=useAppearance();const toast=useToast();
@@ -253,7 +262,7 @@ export default function StudentAI() {
   const [uploadFraction,setUploadFraction]=useState(0);
   const [documentName,setDocumentName]=useState<string>();
   const [requestStage,setRequestStage]=useState<"uploading"|"waiting"|"recovering">("waiting");
-  const [busy,setBusy]=useState(false);const [uploading,setUploading]=useState(false);const [loaded,setLoaded]=useState(false);const [voiceActive,setVoiceActive]=useState(false);const [voiceRecording,setVoiceRecording]=useState(false);
+  const [busy,setBusy]=useState(false);const [uploading,setUploading]=useState(false);const [threadReady,setThreadReady]=useState(true);const [voiceActive,setVoiceActive]=useState(false);const [voiceRecording,setVoiceRecording]=useState(false);
   const [error,setError]=useState("");const [status,setStatus]=useState<Status>();
   const [limit,setLimit]=useState<{resetsAt?:string;upgrade?:boolean}>();const [now,setNow]=useState(Date.now());
   const [sheet,setSheet]=useState<"history"|"plans"|"info"|null>(null);const [history,setHistory]=useState<SavedWork[]>([]);
@@ -265,6 +274,8 @@ export default function StudentAI() {
   const key=useRef(randomUUID()),lock=useRef(false),scroll=useRef<ScrollView>(null);
   const owner=useRef(user?.id);owner.current=user?.id;
   const generation=useRef(0),alive=useRef(true),draftOwner=useRef<string | undefined>(undefined),explicitThread=useRef<{id:string;mode:Mode}|undefined>(undefined);
+  const requestedHistory=useRef(false),transfer=useRef<AbortController|null>(null);
+  const pendingIntent=useRef<{key:string;replyTo?:string}|null>(null);
   const text={color:theme.text,fontFamily:theme.font.body,fontSize:15,lineHeight:24};
   const muted={color:theme.textMuted,fontFamily:theme.font.body,fontSize:12,lineHeight:18};
   // Keep the AI composer border clean on Expo web; focus remains available to assistive technology.
@@ -273,7 +284,7 @@ export default function StudentAI() {
   const webInputStyle=Platform.OS==='web'?({outlineStyle:'none',outlineWidth:0,outlineColor:'transparent',boxShadow:'none',WebkitTapHighlightColor:'transparent'} as any):undefined;
   const storageKey=`ai-workspace-v3.${user?.id}.${workspace}`;
   const valid=()=>alive.current;
-  useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;};},[]);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;transfer.current?.abort();};},[]);
   const loadStatus=useCallback(async()=>{const account=owner.current;try{const result=normalizeStatus(await api<Status>("/v1/ai/status"));if(valid() && owner.current===account){setStatus(result);if(result && (!tierChosen.current||result.tier!=="pro"))setTier(result.tier);}}catch{if(valid() && owner.current===account)setStatus(undefined);}},[]);
   useFocusEffect(useCallback(()=>{setScreenFocused(true);void loadStatus();return()=>setScreenFocused(false);},[loadStatus]));
   useEffect(()=>{if(!busy){setWaitingSeconds(0);return;}if(!activeScreen)return;setWaitingSeconds(Math.floor((Date.now()-waitingStarted)/1000));const timer=setInterval(()=>setWaitingSeconds(Math.floor((Date.now()-waitingStarted)/1000)),1000);return()=>clearInterval(timer);},[busy,waitingStarted,activeScreen]);
@@ -287,65 +298,64 @@ export default function StudentAI() {
   },[]);
   useEffect(()=>{
     const version=++generation.current;const account=user?.id;draftOwner.current=account;
-    setHistory([]);setSheet(null);setPreview(undefined);setDeleteId(undefined);setHistoryError("");setSearch("");setNextOffset(null);setLoaded(false);setTurns([]);setPrompt("");setAttachment(undefined);setReplyTo(undefined);setPending(undefined);setError("");setLimit(undefined);setBusy(false);setVoiceActive(false);setVoiceRecording(false);lock.current=false;key.current=randomUUID();tierChosen.current=false;setTier("standard");setStatus(undefined);
+    transfer.current?.abort();
+    pendingIntent.current=null;
+    setHistory([]);setSheet(null);setPreview(undefined);setDeleteId(undefined);setHistoryError("");setSearch("");setNextOffset(null);setTurns([]);setPrompt("");setAttachment(undefined);setReplyTo(undefined);setPending(undefined);setError("");setLimit(undefined);setBusy(false);setVoiceActive(false);setVoiceRecording(false);lock.current=false;key.current=randomUUID();tierChosen.current=false;setTier("standard");setStatus(undefined);
     setMode(workspace==='ask'?'study':initial==='explanation'?'explanation':initial==='notes'?'notes':'summary');
+    const requestedThread=explicitThread.current;explicitThread.current=undefined;requestedHistory.current=Boolean(requestedThread);setThreadReady(!requestedThread);
     if(!account)return;
     void (async()=>{
-      const requestedThread=explicitThread.current;
-      explicitThread.current=undefined;
       if(requestedThread){
         setMode(requestedThread.mode==='study'?'study':requestedThread.mode==='explanation'?'explanation':requestedThread.mode==='notes'?'notes':'summary');
         setReplyTo(requestedThread.id);key.current=randomUUID();
         try{await restoreThread(requestedThread.id,version);}
         catch{if(valid()&&version===generation.current){setReplyTo(undefined);setError("That saved conversation could not be restored. Open History to try again.");key.current=randomUUID();}}
-      }else{
-        const draft=await readCache<Draft>(storageKey);
-        if(!valid() || version!==generation.current)return;
-        if(draft){
-          setPrompt(typeof initialQuestion==="string"?initialQuestion.slice(0,20000):draft.prompt??"");
-          setMode(workspace==='ask'?'study':draft.mode==='explanation'?'explanation':draft.mode==='notes'?'notes':'summary');
-          setAttachment(draft.attachment && typeof draft.attachment.name==="string" && typeof draft.attachment.type==="string" ? draft.attachment : undefined);
-          // A fresh Kira entry always starts a fresh thread. Saved conversations reopen only from History.
-          setReplyTo(undefined);key.current=draft.key||randomUUID();
-        }
       }
-      if(valid()&&version===generation.current){if(typeof initialQuestion==="string")setPrompt(initialQuestion.slice(0,20000));setLoaded(true);}
+      if(valid()&&version===generation.current)setThreadReady(true);
     })();
     void loadStatus();
   },[user?.id,workspace,storageKey,loadStatus,restoreThread]);
-  useEffect(()=>{
-    if(!loaded||busy||!user?.id||draftOwner.current!==user.id)return;
-    const timer=setTimeout(()=>{
-      // Private signed links and image bytes are never persisted. An uploaded file
-      // is re-opened through the permission-checked media endpoint when required.
-      const savedAttachment=attachment?{name:attachment.name,type:attachment.type,...(attachment.size!==undefined?{size:attachment.size}:{}),...(attachment.mediaId?{mediaId:attachment.mediaId}:{})}:undefined;
-      void writeCache(storageKey,{prompt,mode,tier,attachment:savedAttachment,key:key.current});
-    },250);return()=>clearTimeout(timer);
-  },[prompt,attachment,mode,tier,replyTo,loaded,busy,user?.id,storageKey]);
+  const restored=useOwnedDraftRestore<unknown>(storageKey,value=>{
+    const draft=value===null?null:restoreKiraDraft(value);
+    setPrompt(draft?.prompt??(typeof initialQuestion==="string"?initialQuestion.slice(0,20000):""));
+    setAttachment(draft?.attachment);
+    if(!requestedHistory.current){
+      if(draft)setMode(draft.pending?draft.mode:workspace==='ask'?'study':draft.mode==='explanation'?'explanation':draft.mode==='notes'?'notes':'summary');
+      // Only a prepared manual retry retains its original thread context; cached plans grant no access.
+      setReplyTo(draft?.pending?draft.replyTo:undefined);key.current=draft?.key??randomUUID();
+      pendingIntent.current=draft?.pending?{key:key.current,...(draft.replyTo?{replyTo:draft.replyTo}:{})}:null;
+    }
+  },Boolean(user?.id));
+  const loaded=restored.ready&&threadReady&&draftOwner.current===user?.id;
+  const currentDraft=(value=prompt,file=attachment,requestId=key.current):Draft=>({prompt:value,mode,tier,...(file?{attachment:retainedKiraAttachment(file)!}:{}),key:requestId,...(pendingIntent.current?.key===requestId?{pending:true,...(pendingIntent.current.replyTo?{replyTo:pendingIntent.current.replyTo}:{})}:{})});
+  const draftSave=useOwnedDraftSave(storageKey,currentDraft(),loaded&&!busy);
   useEffect(()=>{if(!activeScreen||!limit?.resetsAt)return;const end=Date.parse(limit.resetsAt);setNow(Date.now());if(!Number.isFinite(end)||Date.now()>=end)return;const timer=setInterval(()=>{const current=Date.now();setNow(current);if(current>=end)clearInterval(timer);},1000);return()=>clearInterval(timer);},[limit?.resetsAt,activeScreen]);
   useEffect(()=>{if(limit?.resetsAt && now>=Date.parse(limit.resetsAt)){setLimit(undefined);setError("");void loadStatus();}},[limit,now,loadStatus]);
-  function changePrompt(value:string){setPrompt(value);key.current=randomUUID();setError("");}
-  function newConversation(){if(lock.current)return;setTurns([]);setReplyTo(undefined);setPrompt("");setAttachment(undefined);setError("");key.current=randomUUID();}
-  async function attach(){if(lock.current)return;const version=generation.current;try{const file=await pickAttachment();if(file && valid()&&version===generation.current){setAttachment(file);setError("");key.current=randomUUID();}}catch(e){if(valid()&&version===generation.current)setError(e instanceof Error?e.message:"This file could not be attached.");}}
+  function changePrompt(value:string){if(!loaded||lock.current)return;draftSave.begin();setPrompt(value);key.current=randomUUID();setError("");}
+  function newConversation(){if(lock.current||!loaded)return;draftSave.begin();setTurns([]);setReplyTo(undefined);setPrompt("");setAttachment(undefined);setError("");key.current=randomUUID();}
+  async function attach(){if(lock.current||!loaded)return;const version=generation.current;try{const file=await pickAttachment();if(file && valid()&&version===generation.current){draftSave.begin();setAttachment(file);setError("");key.current=randomUUID();}}catch(e){if(valid()&&version===generation.current)setError(e instanceof Error?e.message:"This file could not be attached.");}}
+  async function switchWorkspace(target:"ask"|"study"){if(lock.current||!loaded||target===workspace)return;lock.current=true;setBusy(true);const version=generation.current;try{await draftSave.persist(currentDraft());if(valid()&&version===generation.current)setWorkspace(target);}catch(e){if(valid()&&version===generation.current)setError(e instanceof Error?e.message:"Your draft could not be saved. Keep this workspace open.");}finally{if(valid()&&version===generation.current){lock.current=false;setBusy(false);}}}
   async function openFile(file:StagedAttachment){const version=generation.current;try{let uri=file.uri;if(!uri&&file.mediaId)uri=(await api<{url:string}>(`/v1/media/${file.mediaId}/access`,{method:"POST"})).url;if(!uri)throw new Error("Reattach this file to preview it.");if(!valid()||version!==generation.current)return;if((typeof file.type==="string"?file.type:"").startsWith('image/'))setPreview({uri,name:typeof file.name==="string"?file.name:"Attachment"});else await Linking.openURL(uri);}catch(e){if(valid()&&version===generation.current)toast(e instanceof Error?e.message:"Could not open this file.","error");}}
   async function send(promptOverride?:string){
     const outgoing=(promptOverride??prompt).trim();
     if(lock.current||!loaded||(!outgoing&&!attachment))return;
-    const version=generation.current;const question=outgoing;let file=attachment;
+    const version=generation.current;const question=outgoing;let file=attachment;if(promptOverride!==undefined&&outgoing!==prompt.trim())key.current=randomUUID();const requestId=key.current;
+    pendingIntent.current={key:requestId,...(replyTo?{replyTo}:{})};
+    const controller=new AbortController();transfer.current?.abort();transfer.current=controller;
     if(!file){setDocumentStage(null);setDocumentName(undefined);}
     lock.current=true;setWaitingStarted(Date.now());setWaitingSeconds(0);setRequestStage(attachment&&!attachment.mediaId?"uploading":"waiting");setBusy(true);setError("");setLimit(undefined);
-    setPending({prompt:question,...(file?{file}:{})});setPrompt("");setAttachment(undefined);
     try{
-      if(file){setDocumentName(file.name);setUploadFraction(0);setDocumentStage(file.mediaId?"analysing":"validating");setUploading(true);file=await uploadAttachment(file,user!.id,question,tier,fraction=>{if(valid()&&version===generation.current)setUploadFraction(fraction);},{onStage:stage=>{if(valid()&&version===generation.current)setDocumentStage(stage);},onUploaded:uploaded=>{file=uploaded;if(valid()&&version===generation.current){setPending({prompt:question,file:uploaded});void writeCache(storageKey,{prompt:question,mode,tier,attachment:uploaded,key:key.current});}}});if(!valid()||version!==generation.current)return;setPending({prompt:question,file});setUploading(false);setDocumentStage("analysing");setRequestStage("waiting");}
-      const savedFile=file?{name:file.name,type:file.type,...(file.mediaId?{mediaId:file.mediaId}:{})}:undefined;
+      await draftSave.persist(currentDraft(question,file,requestId));
       if(!valid()||version!==generation.current)return;
       setPending({prompt:question,...(file?{file}:{})});setPrompt("");setAttachment(undefined);
-      // Persist the draft without holding up the network request.
-      void writeCache(storageKey,{prompt:question,mode,tier,attachment:savedFile,key:key.current});
-      const requestId=key.current;
+      if(file){setDocumentName(file.name);setUploadFraction(0);setDocumentStage(file.mediaId?"analysing":"validating");setUploading(true);file=await uploadAttachment(file,user!.id,question,tier,fraction=>{if(valid()&&version===generation.current)setUploadFraction(fraction);},{signal:controller.signal,onStage:stage=>{if(valid()&&version===generation.current)setDocumentStage(stage);},onUploaded:uploaded=>{file=uploaded;if(valid()&&version===generation.current){setPending({prompt:question,file:uploaded});void draftSave.persist(currentDraft(question,uploaded,requestId)).catch(()=>undefined);}}});if(!valid()||version!==generation.current)return;setPending({prompt:question,file});setUploading(false);setDocumentStage("analysing");setRequestStage("waiting");}
+      if(!valid()||version!==generation.current)return;
+      setPending({prompt:question,...(file?{file}:{})});setPrompt("");setAttachment(undefined);
+      await draftSave.persist(currentDraft(question,file,requestId));
+      if(!valid()||version!==generation.current)return;
       const result=normalizeTurn(await requestKiraResult<Turn>({
-        submit:()=>api<Turn>("/v1/ai",{method:"POST",timeoutMs:240000,body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,extractedText:file?.sourceText,replyTo,tier,idempotencyKey:requestId,consent:true})}),
-        check:()=>api<Turn&{status?:string}>(`/v1/ai/requests/${requestId}`,{cache:"no-store",timeoutMs:12000}),
+        submit:()=>api<Turn>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:240000,body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,extractedText:file?.sourceText,replyTo,tier,idempotencyKey:requestId,consent:true})}),
+        check:()=>api<Turn&{status?:string}>(`/v1/ai/requests/${requestId}`,{cache:"no-store",signal:controller.signal,timeoutMs:12000}),
         isCurrent:()=>valid()&&version===generation.current,
         onRecovering:()=>{if(valid()&&version===generation.current)setRequestStage("recovering");},
       }),requestId);
@@ -353,18 +363,20 @@ export default function StudentAI() {
       if(!valid()||version!==generation.current)return;
       if(file)setDocumentStage("completed");
       setTurns(current=>[...current.filter(t=>t.requestId!==result.requestId),{...result,prompt:question,...(file?{file}:{})}]);setReplyTo(result.requestId);key.current=randomUUID();
+      pendingIntent.current=null;draftSave.discard();await writeCache(storageKey,null);
+      if(!valid()||version!==generation.current)return;
       void loadStatus();
     }catch(e){
       if(!valid()||version!==generation.current)return;
       if(file)setDocumentStage("failed");setPrompt(question);setAttachment(file);setError(e instanceof Error?e.message:"The answer could not load. Your draft is kept.");
       if(e instanceof ApiError){if(e.details?.retryWithNewKey===true)key.current=randomUUID();if(e.status===429||e.details?.upgrade){setLimit({...(typeof e.details?.resetsAt==='string'?{resetsAt:e.details.resetsAt}:{}),upgrade:e.details?.upgrade===true});}}
       void loadStatus();
-    }finally{if(valid()&&version===generation.current){lock.current=false;setBusy(false);setUploading(false);setPending(undefined);}}
+    }finally{if(transfer.current===controller)transfer.current=null;if(valid()&&version===generation.current){lock.current=false;setBusy(false);setUploading(false);setPending(undefined);}}
   }
   async function loadHistory(query=search,offset=0){const version=generation.current;setHistoryBusy(true);setHistoryError("");try{const data=await api<{sessions:SavedWork[];nextOffset:number|null}>(`/v1/ai/history?q=${encodeURIComponent(query)}&offset=${offset}`);if(!valid()||version!==generation.current)return;const sessions=normalizeSavedWork(data?.sessions);setHistory(current=>offset?[...current,...sessions.filter(s=>!current.some(c=>c.id===s.id))]:sessions);setNextOffset(Number.isFinite(Number(data?.nextOffset))?Number(data.nextOffset):null);setHistoryQuery(query);}catch(e){if(valid()&&version===generation.current)setHistoryError(e instanceof Error?e.message:"History could not load.");}finally{if(valid()&&version===generation.current)setHistoryBusy(false);}}
-  async function openHistory(item:SavedWork){if(lock.current)return;lock.current=true;const version=generation.current;setHistoryBusy(true);try{const data=await restoreThread(item.id,version);if(!valid()||version!==generation.current)return;const last=data.turns.at(-1);if(!last)throw new Error("This conversation is no longer available.");
+  async function openHistory(item:SavedWork){if(lock.current||!loaded)return;lock.current=true;const version=generation.current;setHistoryBusy(true);try{await draftSave.persist(currentDraft());if(!valid()||version!==generation.current)return;const data=await restoreThread(item.id,version);if(!valid()||version!==generation.current)return;const last=data.turns.at(-1);if(!last)throw new Error("This conversation is no longer available.");
     const target=item.mode==='study'?'ask':'study';
-    if(target!==workspace){explicitThread.current={id:last.requestId,mode:item.mode};setWorkspace(target);}else{setReplyTo(last.requestId);setPrompt("");setAttachment(undefined);setMode(item.mode);key.current=randomUUID();}
+    if(target!==workspace){explicitThread.current={id:last.requestId,mode:item.mode};setWorkspace(target);}else{draftSave.begin();setReplyTo(last.requestId);setMode(item.mode);key.current=randomUUID();}
     setSheet(null);setError("");
   }catch(e){if(valid()&&version===generation.current)setHistoryError(e instanceof Error?e.message:"Could not open this conversation.");}finally{lock.current=false;if(valid()&&version===generation.current)setHistoryBusy(false);}}
   useEffect(()=>{if(openHistoryParam === "1" && loaded){setSheet("history");void loadHistory("",0);}},[openHistoryParam,loaded]);
@@ -409,12 +421,12 @@ export default function StudentAI() {
         <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={{color:theme.text,fontFamily:theme.font.display,fontSize:workspace==='ask'?21:18,flex:1}}>{workspace==='ask'?'Kira':'Study with Kira'}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel={`AI plan: ${tier==='pro'?'Pro':'Standard'}`} onPress={()=>setSheet('plans')} disabled={busy} style={{flexDirection:'row',alignItems:'center',padding:12,gap:5}}><Text style={{...muted,color:theme.text}}>{tier==='pro'?'Pro':'Standard'}</Text><Ionicons name="chevron-down" size={14} color={theme.textMuted}/></Pressable>
         {iconButton('time-outline','Conversation history',()=>{setSheet('history');void loadHistory('',0);},busy)}
-        {iconButton('create-outline','New conversation',newConversation,busy)}
+        {iconButton('create-outline','New conversation',newConversation,busy||!loaded)}
       </View>
-      <View style={{flexDirection:'row',paddingHorizontal:24,gap:26}}>{(['ask','study'] as const).map(value=><Pressable key={value} accessibilityRole="tab" accessibilityState={{selected:workspace===value,disabled:busy}} disabled={busy} onPress={()=>setWorkspace(value)} style={{paddingVertical:14,borderBottomWidth:2,borderBottomColor:workspace===value?theme.brand:'transparent'}}><Text style={{...text,fontFamily:workspace===value?theme.font.semibold:theme.font.body,color:workspace===value?theme.text:theme.textMuted}}>{value==='ask'?'Ask':'Study material'}</Text></Pressable>)}</View>
-      {workspace==='study'?<View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingTop:8}}>{(['summary','explanation','notes'] as const).map(value=><Pressable key={value} accessibilityRole="radio" accessibilityState={{checked:mode===value}} disabled={busy} onPress={()=>{setMode(value);key.current=randomUUID();}} style={{paddingVertical:9,paddingHorizontal:13,backgroundColor:mode===value?theme.surfaceMuted:'transparent',borderRadius:8}}><Text style={{...muted,color:theme.text}}>{value==='summary'?'Summary':value==='explanation'?'Explain':'Notes'}</Text></Pressable>)}<View style={{flex:1}}/>{status?.study?.remaining!==null&&status?.study?.remaining!==undefined?<Text style={{...muted,fontSize:11}}>{status.study.remaining} left</Text>:null}</View>:null}
+      <View style={{flexDirection:'row',paddingHorizontal:24,gap:26}}>{(['ask','study'] as const).map(value=><Pressable key={value} accessibilityRole="tab" accessibilityState={{selected:workspace===value,disabled:busy||!loaded}} disabled={busy||!loaded} onPress={()=>void switchWorkspace(value)} style={{paddingVertical:14,borderBottomWidth:2,borderBottomColor:workspace===value?theme.brand:'transparent'}}><Text style={{...text,fontFamily:workspace===value?theme.font.semibold:theme.font.body,color:workspace===value?theme.text:theme.textMuted}}>{value==='ask'?'Ask':'Study material'}</Text></Pressable>)}</View>
+      {workspace==='study'?<View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingTop:8}}>{(['summary','explanation','notes'] as const).map(value=><Pressable key={value} accessibilityRole="radio" accessibilityState={{checked:mode===value}} disabled={busy||!loaded} onPress={()=>{draftSave.begin();setMode(value);key.current=randomUUID();}} style={{paddingVertical:9,paddingHorizontal:13,backgroundColor:mode===value?theme.surfaceMuted:'transparent',borderRadius:8}}><Text style={{...muted,color:theme.text}}>{value==='summary'?'Summary':value==='explanation'?'Explain':'Notes'}</Text></Pressable>)}<View style={{flex:1}}/>{status?.study?.remaining!==null&&status?.study?.remaining!==undefined?<Text style={{...muted,fontSize:11}}>{status.study.remaining} left</Text>:null}</View>:null}
       <ScrollView ref={scroll} style={{flex:1}} contentContainerStyle={{flexGrow:1,paddingHorizontal:24,paddingBottom:16}} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" onContentSizeChange={()=>{if(pending)scroll.current?.scrollToEnd({animated:false});}}>
-        {!loaded||draftOwner.current!==user?.id?<View style={{gap:16,paddingTop:40}}><SkeletonBlock width="55%" height={30}/><SkeletonBlock width="80%"/><ListSkeleton count={2}/></View>:null}
+        {(!loaded||draftOwner.current!==user?.id)&&!restored.error?<View style={{gap:16,paddingTop:40}}><SkeletonBlock width="55%" height={30}/><SkeletonBlock width="80%"/><ListSkeleton count={2}/></View>:null}
         {loaded&&draftOwner.current===user?.id&&!turns.length&&!pending?<View style={{flex:1,justifyContent:'center',paddingVertical:35}}>
           <Text style={{...muted,fontSize:15,marginBottom:10}}>Hi, {profile?.first_name || 'there'}.</Text>
           <Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:34,lineHeight:41,maxWidth:430}}>{workspace==='ask'?'What are we\nworking on?':'Make it easier\nto understand.'}</Text>
@@ -433,10 +445,12 @@ export default function StudentAI() {
       </ScrollView>
       {documentStage&&documentName?<View style={{paddingHorizontal:16}}><ImportProgress failureStage={documentFailureStage} stage={documentStage} fileReceived={Boolean(pending?.file?.mediaId||attachment?.mediaId)} filename={documentName} subject="document" uploadFraction={uploadFraction} error={documentStage==="failed"?error:undefined}/></View>:null}
       <View style={{paddingHorizontal:16,paddingTop:8,paddingBottom:6}}>
+        <DraftRecovery loading={restored.loading} error={restored.error} onRetry={restored.retry} />
+        {draftSave.warning?<Text accessibilityRole="alert" style={{...muted,color:theme.error,marginBottom:8}}>{draftSave.warning}</Text>:null}
         {error?<View accessibilityRole="alert" style={{padding:12,marginBottom:10,backgroundColor:theme.surfaceMuted,borderRadius:10}}><Text style={{...muted,color:theme.text}}>{error}{limit?.resetsAt?` Try again at ${new Date(limit.resetsAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}.`:''}</Text>{limit?.upgrade?smallButton('Get Kira Pro',()=>setSheet('plans')):null}</View>:null}
         {status&&!status.enabled?<Text style={{...muted,marginBottom:8}}>AI is temporarily unavailable. Your draft and saved conversations are kept.</Text>:null}
         {!status&&loaded?smallButton('Check AI availability',()=>void loadStatus(),busy):null}
-        {attachment?<AttachmentPreview file={attachment} uploading={uploading} onRemove={()=>{setAttachment(undefined);key.current=randomUUID();}} onOpen={()=>void openFile(attachment)}/>:null}
+        {attachment?<AttachmentPreview file={attachment} uploading={uploading} onRemove={()=>{if(lock.current||!loaded)return;draftSave.begin();setAttachment(undefined);key.current=randomUUID();}} onOpen={()=>void openFile(attachment)}/>:null}
         <View style={{borderWidth:1,borderColor:theme.border,borderRadius:22,backgroundColor:theme.surface,paddingHorizontal:9,paddingTop:voiceActive?5:12,paddingBottom:5}}>
           {!voiceActive?<TextInput accessibilityLabel="Message Kira" value={prompt} onChangeText={changePrompt} editable={loaded&&!busy} placeholder={workspace==='ask'?'Ask Kira…':'Add instructions or paste your material…'} placeholderTextColor={theme.textMuted} multiline maxLength={20000} textAlignVertical="top" style={[{color:theme.text,fontFamily:theme.font.body,fontSize:16,lineHeight:23,minHeight:43,maxHeight:150,paddingHorizontal:7,paddingBottom:8},webInputStyle]}/>:null}
           <KiraVoiceInput key={`${user?.id}.${workspace}`} disabled={busy||!loaded} enabled={status?.voiceEnabled===true} maxRecordingMs={(status?.voice?.maxSeconds??(status?.tier==='pro'?300:60))*1000} sendBusy={busy} sendDisabled={busy||!loaded||Boolean(limit)||(!prompt.trim()&&!attachment)} onAttach={()=>void attach()} onInfo={()=>setSheet('info')} onSend={()=>void send()} onActiveChange={setVoiceActive} onRecordingChange={setVoiceRecording} onTranscript={value=>changePrompt((prompt?prompt+"\n":"")+value)} onSendTranscript={async value=>{const voicePrompt=(prompt.trim()?prompt.trim()+"\n":"")+value;await send(voicePrompt);}}/>
@@ -451,8 +465,8 @@ export default function StudentAI() {
           <View style={{flexDirection:'row',alignItems:'center',marginBottom:12}}><Text style={{color:theme.text,fontFamily:theme.font.display,fontSize:25,flex:1}}>{sheet==='history'?'History':sheet==='plans'?'Choose your plan':'About Kira'}</Text>{iconButton('close','Close panel',()=>setSheet(null))}</View>
           <ScrollView keyboardShouldPersistTaps="handled">
             {sheet==='plans'?<View>
-              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:tier==='standard'?theme.brand:theme.border,backgroundColor:tier==='standard'?theme.surfaceMuted:'transparent',marginBottom:12}}><View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Pressable accessibilityRole='radio' accessibilityState={{checked:tier==='standard'}} onPress={()=>{tierChosen.current=true;setTier('standard');key.current=randomUUID();setSheet(null);}}><Text style={{...text,fontFamily:theme.font.semibold}}>Kira Standard</Text></Pressable>{tier==='standard'?<Ionicons name='checkmark-circle' size={20} color={theme.brand}/>:null}</View>{smallButton('View Plans',()=>{setSheet(null);router.push('/ai-subscription');})}</View>
-              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:tier==='pro'?theme.brand:theme.border,backgroundColor:tier==='pro'?theme.surfaceMuted:'transparent',marginBottom:16}}><View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Text style={{...text,fontFamily:theme.font.semibold}}>Kira Pro</Text>{tier==='pro'?<Ionicons name='checkmark-circle' size={20} color={theme.brand}/>:null}</View>{status?.tier==='pro'?smallButton('Use Pro',()=>{tierChosen.current=true;setTier('pro');key.current=randomUUID();setSheet(null);}):null}{smallButton(isPlayDistribution(Platform.OS,process.env.EXPO_PUBLIC_ANDROID_DISTRIBUTION)?'View my access':status?.tier==='pro'?'Manage my plan':'Get Kira Pro',()=>{setSheet(null);router.push('/ai-subscription');})}</View>
+              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:tier==='standard'?theme.brand:theme.border,backgroundColor:tier==='standard'?theme.surfaceMuted:'transparent',marginBottom:12}}><View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Pressable accessibilityRole='radio' accessibilityState={{checked:tier==='standard'}} disabled={busy||!loaded} onPress={()=>{draftSave.begin();tierChosen.current=true;setTier('standard');key.current=randomUUID();setSheet(null);}}><Text style={{...text,fontFamily:theme.font.semibold}}>Kira Standard</Text></Pressable>{tier==='standard'?<Ionicons name='checkmark-circle' size={20} color={theme.brand}/>:null}</View>{smallButton('View Plans',()=>{setSheet(null);router.push('/ai-subscription');})}</View>
+              <View style={{padding:18,borderRadius:14,borderWidth:1,borderColor:tier==='pro'?theme.brand:theme.border,backgroundColor:tier==='pro'?theme.surfaceMuted:'transparent',marginBottom:16}}><View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Text style={{...text,fontFamily:theme.font.semibold}}>Kira Pro</Text>{tier==='pro'?<Ionicons name='checkmark-circle' size={20} color={theme.brand}/>:null}</View>{status?.tier==='pro'?smallButton('Use Pro',()=>{if(!loaded||lock.current)return;draftSave.begin();tierChosen.current=true;setTier('pro');key.current=randomUUID();setSheet(null);}):null}{smallButton(isPlayDistribution(Platform.OS,process.env.EXPO_PUBLIC_ANDROID_DISTRIBUTION)?'View my access':status?.tier==='pro'?'Manage my plan':'Get Kira Pro',()=>{setSheet(null);router.push('/ai-subscription');})}</View>
               {status?.askSession?<Text style={{...muted,marginBottom:8}}>{status.askSession.remaining===null?'Your Ask sessions have no personal message cap.':`${status.askSession.remaining} Ask message${status.askSession.remaining===1?'':'s'} left in this ${status.askSession.windowMinutes}-minute session.`}</Text>:null}
             </View>:null}
             {sheet==='info'?<View style={{gap:15}}><Text style={text}>Your chats are scoped to your account and saved for 90 days. When you rate an answer, authorised support staff can review that question and answer to improve Kira. You can remove saved answers from History.</Text><Text style={text}>Questions and attachments are processed by external AI services. Do not include passwords, payment details or other people's confidential information.</Text><Text style={text}>Kira can read your timetable and find published campus services. Timetable changes require you to review a schedule card and confirm it. You can edit the saved entry or undo a change within 24 hours if the entry has not changed again. It cannot manage accounts or perform admin actions.</Text><Text style={text}>Attach one PDF or text file up to 100 MB, or one image up to 8 MB. Larger documents are read on your device and relevant excerpts are selected for the answer. Kira identifies excerpted sources. For a scanned PDF, attach the relevant page as an image or export a searchable PDF. Compress files larger than 100 MB.</Text></View>:null}

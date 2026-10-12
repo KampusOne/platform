@@ -9,7 +9,12 @@ import { EmptyResult } from "@/src/components/product-ui";
 import { useAppearance } from "@/src/lib/appearance";
 import { useAuth } from "@/src/auth/auth-context";
 import { api } from "@/src/lib/api";
-import { readCache, writeCache } from "@/src/lib/device-cache";
+import { writeCache } from "@/src/lib/device-cache";
+import { cacheScopeForUser } from "@/src/lib/request-policy";
+import { useOwnedDraftRestore } from '@/src/lib/use-owned-draft-restore';
+import { useOwnedDraftSave } from '@/src/lib/use-owned-draft-save';
+import { restoreAnswerDraft } from '@/src/lib/form-drafts';
+import { DraftRecovery } from '@/src/components/draft-recovery';
 type Answer = {
   id: string;
   body: string;
@@ -34,6 +39,11 @@ type Details = {
   disclosure?: string;
 };
 export default function PublishingPost() {
+  const {id}=useLocalSearchParams<{id:string}>();
+  const {user}=useAuth();
+  return <AccountPublishingPost key={(user?cacheScopeForUser(user):'signed-out')+'.'+id} />;
+}
+function AccountPublishingPost() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { theme } = useAppearance();
@@ -41,7 +51,7 @@ export default function PublishingPost() {
   const [inbox, setInbox] = useState<Answer[]>([]);
   const [showInbox, setShowInbox] = useState(false);
   const [voters,setVoters]=useState<{user_id:string;option_id:number;display_name:string;username:string}[]>([]),[showVoters,setShowVoters]=useState(false),[nextVoter,setNextVoter]=useState<string|null>(null);
-  async function loadVoters(after?:string){setBusy(true);setError("");try{const result=await api<{voters:typeof voters;next:string|null}>(path+"/voters"+(after?"?after="+after:""));setVoters(current=>after?[...current,...result.voters]:result.voters);setNextVoter(result.next);setShowVoters(true);}catch(e){setError(e instanceof Error?e.message:"Voters could not load.");}finally{setBusy(false);}}
+  async function loadVoters(after?:string){if(!alive.current)return;setBusy(true);setError("");try{const result=await api<{voters:typeof voters;next:string|null}>(path+"/voters"+(after?"?after="+after:""));if(!alive.current)return;setVoters(current=>after?[...current,...result.voters]:result.voters);setNextVoter(result.next);setShowVoters(true);}catch(e){if(alive.current)setError(e instanceof Error?e.message:"Voters could not load.");}finally{if(alive.current)setBusy(false);}}
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -50,7 +60,8 @@ export default function PublishingPost() {
   const [consent, setConsent] = useState(false);
   const [replyTo, setReplyTo] = useState<Answer | null>(null);
   const [reply, setReply] = useState("");
-  const [ready, setReady] = useState(false);
+  const alive=useRef(true);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
   const requestId = useRef(randomUUID());
   const working = useRef(false);
   const path = "/v1/student/publishing/posts/" + encodeURIComponent(id ?? "");
@@ -59,15 +70,18 @@ export default function PublishingPost() {
     setError("");
     try {
       const response = await api<Details>(path);
+      if (!alive.current) return;
       setData(response);
-      if (response.post.is_owner && response.post.format !== "POLL")
-        setInbox((await api<{ answers: Answer[] }>(path + "/inbox")).answers);
+      if (response.post.is_owner && response.post.format !== "POLL") {
+        const result=await api<{answers:Answer[]}>(path+"/inbox");
+        if(alive.current)setInbox(result.answers);
+      }
     } catch (e) {
-      setError(
+      if(alive.current)setError(
         e instanceof Error ? e.message : "The post could not load. Try again.",
       );
     } finally {
-      setLoading(false);
+      if(alive.current)setLoading(false);
     }
   }, [path]);
   useEffect(() => {
@@ -77,47 +91,32 @@ export default function PublishingPost() {
       setLoading(false);
     }
   }, [id, load]);
-  useEffect(() => {
-    let live = true;
-    if (user && id)
-      void readCache<{ body: string; requestId: string }>(draftKey).then(
-        (draft) => {
-          if (live) {
-            if (draft) {
-              setBody(draft.body);
-              requestId.current = draft.requestId;
-            }
-            setReady(true);
-          }
-        },
-      );
-    return () => {
-      live = false;
-    };
-  }, [draftKey, user?.id, id]);
-  useEffect(() => {
-    if (ready)
-      void writeCache(draftKey, { body, requestId: requestId.current });
-  }, [body, ready, draftKey]);
+  const restored=useOwnedDraftRestore<unknown>(draftKey,value=>{
+    if(value===null)return;
+    const draft=restoreAnswerDraft(value);setBody(draft.body);requestId.current=draft.requestId??randomUUID();
+  },Boolean(user?.id&&id));
+  const ready=restored.ready;
+  const draftSave=useOwnedDraftSave(draftKey,{body,requestId:requestId.current},ready&&!busy);
   async function action(operation: () => Promise<unknown>, success: string) {
-    if (working.current) return;
+    if (working.current || !alive.current) return;
     working.current = true;
     setBusy(true);
     setError("");
     setFeedback("");
     try {
       const outcome = await operation();
+      if(!alive.current)return;
       setFeedback(typeof outcome === "string" ? outcome : success);
       await load();
     } catch (e) {
-      setError(
+      if(alive.current)setError(
         e instanceof Error
           ? e.message
           : "This action could not finish. Your work is still here.",
       );
     } finally {
       working.current = false;
-      setBusy(false);
+      if(alive.current)setBusy(false);
     }
   }
   const anonymous = data?.post.format === "ANONYMOUS_QA";
@@ -415,6 +414,8 @@ export default function PublishingPost() {
                     {data.disclosure ||
                       `Your answer starts private. The publisher may share it with a public reply.${anonymous ? " Your name is hidden from the publisher and other students. Restricted account linkage is kept for moderation." : " Your name may appear with a published answer."}`}
                   </Text>
+                  <DraftRecovery loading={restored.loading} error={restored.error} onRetry={restored.retry} />
+                  {draftSave.warning?<Text accessibilityRole="alert" style={{color:theme.error,fontFamily:theme.font.body,marginBottom:12}}>{draftSave.warning}</Text>:null}
                   <ToolField
                     label={anonymous ? "Your anonymous answer" : "Your answer"}
                     value={body}
@@ -422,14 +423,15 @@ export default function PublishingPost() {
                     multiline
                     maxLength={3000}
                     onChangeText={(value) => {
+                      draftSave.begin();
                       setBody(value);
                       requestId.current = randomUUID();
                     }}
                   />
                   <Pressable
                     accessibilityRole="checkbox"
-                    accessibilityState={{ checked: consent, disabled: busy }}
-                    disabled={busy}
+                    accessibilityState={{ checked: consent, disabled: busy || !ready }}
+                    disabled={busy || !ready}
                     onPress={() => setConsent(!consent)}
                     style={{
                       flexDirection: "row",
@@ -462,6 +464,10 @@ export default function PublishingPost() {
                     disabled={busy || !ready || !consent || !body.trim()}
                     onPress={() =>
                       void action(async () => {
+                        if(!ready||!consent||!body.trim())throw new Error("Review your answer and publication consent before sending.");
+                        if(!alive.current)return;
+                        await draftSave.persist({body,requestId:requestId.current});
+                        if(!alive.current)return;
                         const result = await api<{ status: string }>(
                           path + "/answers",
                           {
@@ -473,6 +479,8 @@ export default function PublishingPost() {
                             }),
                           },
                         );
+                        if(!alive.current)return;
+                        draftSave.discard();
                         setBody("");
                         setConsent(false);
                         requestId.current = randomUUID();
