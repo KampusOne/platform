@@ -77,6 +77,28 @@ describe("public profiles and scoped campus tools",()=>{
   expect((await result('/people/services/'+vendor)).service).toMatchObject({biography:'',contact_phone_e164:null,whatsapp_e164:null});
   await result('/people/'+owner+'/follow','PUT',{follow:false});
  });
+ it('uses an opaque revision to prevent two business editors from overwriting each other',async()=>{
+  const initial=(await result('/agents/public-profile/'+vendor,'GET',undefined,owner)).profile;
+  expect(initial.revision).toEqual(expect.any(String));
+  const body={displayName:'Revision kitchen',biography:'Changed public bio',categories:['Food'],phone:null,whatsapp:null,pickupLocation:null,expectedRevision:initial.revision};
+  const responses=await Promise.all([request('/agents/public-profile/'+vendor,'PUT',body,owner),request('/agents/public-profile/'+vendor,'PUT',{...body,displayName:'Competing kitchen'},owner)]);
+  expect(responses.map(r=>r.status).sort()).toEqual([200,409]);
+  const current=(await result('/agents/public-profile/'+vendor,'GET',undefined,owner)).profile;
+  expect(current.revision).not.toBe(initial.revision);
+  expect((await pg.query<{public_details:Record<string,unknown>}>('select public_details from agent_profiles where id=$1',[vendor])).rows[0].public_details).not.toHaveProperty('expectedRevision');
+  expect((await pg.query('select id from app_private.audit_events where target_id=$1 and action=$2',[vendor,'business.profile.updated'])).rows.length).toBeGreaterThan(0);
+  expect((await request('/agents/public-profile/'+vendor,'PUT',{...body,expectedRevision:current.revision},owner,otherCampus)).status).toBe(404);
+ });
+ it('rolls back a business profile update when its audit cannot be written',async()=>{
+  const current=(await result('/agents/public-profile/'+vendor,'GET',undefined,owner)).profile;
+  await pg.exec("create function app_private.test_block_business_audit() returns trigger language plpgsql as $$begin if new.action='business.profile.updated' then raise exception 'Synthetic audit failure'; end if; return new; end$$; create trigger test_block_business_audit before insert on app_private.audit_events for each row execute function app_private.test_block_business_audit()");
+  try{
+   const response=await request('/agents/public-profile/'+vendor,'PUT',{displayName:'Must not be saved',biography:'',categories:[],phone:null,whatsapp:null,pickupLocation:null,expectedRevision:current.revision},owner);
+   expect(response.status).toBe(500);
+   const after=(await result('/agents/public-profile/'+vendor,'GET',undefined,owner)).profile;
+   expect(after.displayName).toBe(current.displayName);expect(after.revision).toBe(current.revision);
+  }finally{await pg.exec('drop trigger test_block_business_audit on app_private.audit_events; drop function app_private.test_block_business_audit()');}
+ });
  it("shows only completed purchased-item reviews and their real rating aggregate",async()=>{
   await pg.exec('create unique index test_order_campus_unique on public.orders(id,university_id); create unique index test_product_campus_unique on public.vendor_products(id,university_id)');
   const commerce=readFileSync(new URL('../../database/neon/migrations/20260912200000_phase_3_commerce_foundation.sql',import.meta.url),'utf8');

@@ -1,5 +1,6 @@
 import { draftAttachment, draftFormatError, draftIdentifier, draftRecord, draftRows, draftString } from './draft-fields';
 import { listingPhotos } from './listing-photos';
+import {calendarDraftFields} from './calendar-editor';
 const strings = <const Keys extends readonly string[]>(row: Record<string, unknown>, keys: Keys): Record<Keys[number], string> => Object.fromEntries(keys.map(key => [key, draftString(row, key)])) as Record<Keys[number], string>;
 export function restoreListingDraft(value: unknown) {
   const row = draftRecord(value), fields = strings(row, ['name', 'description', 'price', 'stock', 'code', 'location', 'category']);
@@ -63,7 +64,8 @@ export function restorePersonalCalendar(value: string) {
     const realDate=(date:string)=>/^\d{4}-\d{2}-\d{2}$/.test(date)&&Number.isFinite(Date.parse(date+'T12:00:00Z'))&&new Date(date+'T12:00:00Z').toISOString().slice(0,10)===date;
     if(!/^(?:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|local:[a-z0-9_-]{1,128})$/i.test(id)||!title||ids.has(id)||!realDate(starts_on)||!realDate(ends_on)||ends_on<starts_on)throw draftFormatError();
     ids.add(id);const requestId=draftIdentifier(row,'requestId');
-    return{id,title,starts_on,ends_on,semester,...(requestId?{requestId}:{})};
+    const submittedEvent=row.submittedEvent===undefined?undefined:calendarDraftFields(row.submittedEvent),pendingBase=row.pendingBase===undefined?undefined:calendarDraftFields(row.pendingBase);
+    return{id,title,starts_on,ends_on,semester,...(requestId?{requestId}:{}),...(submittedEvent?{submittedEvent}:{}),...(pendingBase?{pendingBase}:{})};
   });
 }
 /** Retain recoverable metadata, never private signed links, local URIs or extracted file bytes. */

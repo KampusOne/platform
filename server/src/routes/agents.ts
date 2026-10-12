@@ -138,8 +138,8 @@ const publicBusinessSchema = z.object({
 
 async function ownBusiness(context: Context<{ Bindings: Bindings; Variables: Variables }>) {
   const user = currentUser(context);
-  const row = firstRow(await database(context.env).execute<{ id: string; university_id: string; public_details: Record<string, unknown> }>(sql`
-    select a.id,a.university_id,coalesce(to_jsonb(a)->'public_details','{}'::jsonb) as public_details
+  const row = firstRow(await database(context.env).execute<{ id: string; university_id: string; public_details: Record<string, unknown>; revision:string }>(sql`
+    select a.id,a.university_id,a.updated_at::text as revision,coalesce(to_jsonb(a)->'public_details','{}'::jsonb) as public_details
     from public.agent_profiles a where a.id=${id(context.req.param("id") ?? "")}::uuid
       and a.user_id=${user.id}::uuid and a.university_id=${user.universityId}::uuid and a.status='ACTIVE'
   `));
@@ -166,6 +166,7 @@ agentRoutes.get("/public-profile/:id", async context => {
       profileImageUrl:s.profile_image_url,coverImageUrl:s.cover_image_url,
       avatarMediaId:owned.public_details.avatarMediaId ?? null,
       coverMediaId:owned.public_details.coverMediaId ?? null,
+      revision:owned.revision,
     },
     editable:await businessProfilesWritable(context.env),
   });
@@ -175,7 +176,7 @@ agentRoutes.put("/public-profile/:id", async context => {
   const owned = await ownBusiness(context);
   if (!await businessProfilesWritable(context.env))
     throw new AppError(503,"PROVIDER_UNAVAILABLE","Business profile editing is awaiting the scheduled database update.");
-  const data = await input(context,publicBusinessSchema);
+  const {expectedRevision,...data} = await input(context,publicBusinessSchema.extend({expectedRevision:z.string().min(1).max(64).optional()}));
   const details: Record<string,unknown> = { ...owned.public_details,...data,categories:[...new Set(data.categories)] };
   for (const [field,urlField] of [["avatarMediaId","profileImageUrl"],["coverMediaId","coverImageUrl"]] as const) {
     const mediaId = data[field];
@@ -190,15 +191,21 @@ agentRoutes.put("/public-profile/:id", async context => {
     const origin = (context.env.PUBLIC_API_ORIGIN ?? new URL(context.req.url).origin).replace(/\/$/,"");
     details[urlField]=origin+"/v1/media/"+mediaId;
   }
+  const revisionMatch=expectedRevision===undefined?sql``:sql`and updated_at::text=${expectedRevision}`;
   const saved = firstRow(await database(context.env).execute(sql`
+    with saved as (
     update public.agent_profiles set display_name=${data.displayName},biography=${data.biography},
-      public_details=${JSON.stringify(details)}::jsonb,updated_at=now()
+      public_details=${JSON.stringify(details)}::jsonb,updated_at=greatest(clock_timestamp(),updated_at+interval '1 microsecond')
     where id=${owned.id}::uuid and user_id=${currentUser(context).id}::uuid
-      and university_id=${owned.university_id}::uuid and status='ACTIVE' returning id
+      and university_id=${owned.university_id}::uuid and status='ACTIVE' ${revisionMatch} returning id
+    ), audit as (
+      insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata)
+      select ${currentUser(context).id}::uuid,${owned.university_id}::uuid,'business.profile.updated','agent_profile',id::text,${context.get("requestId")??null},'succeeded','{}'::jsonb from saved
+      returning id
+    )
+    select saved.id from saved cross join (select count(*) from audit) as receipt
   `));
-  if (!saved) throw new AppError(409,"CONFLICT","This business is no longer available for editing.");
-  await recordAudit(context.env,{actorUserId:currentUser(context).id,universityId:owned.university_id,
-    action:"business.profile.updated",targetType:"agent_profile",targetId:owned.id,requestId:context.get("requestId")});
+  if (!saved) throw new AppError(409,"CONFLICT","This business profile changed online or is no longer available. Your edits are kept.",{kind:"business-profile-changed"});
   return context.json({ saved:true,id:owned.id });
 });
 

@@ -12,7 +12,8 @@ function load(file,mocks={},globals={}) {
   runInNewContext(code,{exports,module:{exports},require:key=>{if(key in mocks)return mocks[key];throw Error('Missing dependency '+key);},setTimeout,clearTimeout,Date,Error,TextEncoder,AbortController,...globals});return exports;
 }
 const snapshots=load('secure-snapshots.ts'),fields=load('draft-fields.ts'),photos=load('listing-photos.ts',{'./draft-fields':fields});
-const forms=load('form-drafts.ts',{'./draft-fields':fields,'./listing-photos':photos});
+const editor=load('calendar-editor.ts',{'./draft-fields':fields});
+const forms=load('form-drafts.ts',{'./draft-fields':fields,'./listing-photos':photos,'./calendar-editor':editor});
 const account='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
 function fixture() {
   const data=new Map(),keys=new Map();let now=1000;
@@ -96,4 +97,15 @@ test('an explicitly opened new exam draft can autosave after the previous draft 
   const render=value=>host.render(()=>save.useOwnedDraftSave('exam-draft.'+account,value,true));
   let view=render({text:'Completed paper'});await time.advance(300);view.discard();render({text:''});await time.advance(300);assert.equal(written.length,1);
   view=render({text:'New paper'});view.begin();render({text:'New paper'});await time.advance(300);assert.equal(written.length,2);assert.equal(written[1].text,'New paper');host.unmount();assert.equal(time.timers.size,0);
+});
+test('draft saves have a deadline and a late storage completion cannot erase the timeout warning',async()=>{
+  const host=hookRenderer(),time=virtualClock();let finish;
+  const save=load('use-owned-draft-save.ts',{'react':host.react,'./device-cache':{getDeviceCacheRevision:()=>0,saveOwnedDraft:()=>new Promise(resolve=>{finish=resolve;})}},{setTimeout:time.schedule,clearTimeout:time.cancel});
+  const render=()=>host.render(()=>save.useOwnedDraftSave('exam-draft.'+account,{text:'My work'},false));
+  const view=render(),pending=view.persist({text:'My work'});const rejected=assert.rejects(pending,/took too long/);await time.advance(5000);await rejected;assert.match(render().warning,/took too long/);finish('device');await time.advance(0);assert.match(render().warning,/took too long/);view.discard();host.unmount();assert.equal(time.timers.size,0);
+});
+test('a receipt persisted during submission wins the unmount flush over an older autosave snapshot',async()=>{
+  const host=hookRenderer(),time=virtualClock(),written=[];
+  const save=load('use-owned-draft-save.ts',{'react':host.react,'./device-cache':{getDeviceCacheRevision:()=>0,saveOwnedDraft:async(_key,value)=>{written.push(value);return'device';}}},{setTimeout:time.schedule,clearTimeout:time.cancel});
+  const view=host.render(()=>save.useOwnedDraftSave('listing-draft.'+account,{image:null},true));await view.persist({image:other});host.unmount();await time.advance(0);assert.equal(written.at(-1).image,other);assert.equal(time.timers.size,0);
 });
