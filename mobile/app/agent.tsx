@@ -173,7 +173,34 @@ function AccountAgentDashboard() {
       ]} /> : undefined}
     >
       {!caps.ready ? <ScreenSkeleton variant="list" compact /> : <>
-      {seller && profile ? <View style={{ gap: 5, paddingVertical: 14 }}><Text style={{ color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 23 }}>{profile.display_name}</Text><Text style={{ color: theme.textMuted, fontFamily: theme.font.body }}>Manage your products and sales.</Text></View> : null}
+      {profile ? <View style={{ gap: 5, paddingVertical: 14 }}>
+        <Text style={{ color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 23 }}>{profile.display_name}</Text>
+        <Text style={{ color: theme.textMuted, fontFamily: theme.font.body, lineHeight: 20 }}>
+          {role==="VENDOR"?"Manage listings, orders and earnings.":
+            role==="TUTOR"?"Manage your teaching, learners and bookings.":
+            "Manage your availability, pickup routes and deliveries."}
+        </Text>
+      </View> : null}
+      {ready&&profile&&!loadError ? <View style={{ flexDirection:"row", gap:10, marginBottom:16 }}>
+        <View style={{ flex:1, backgroundColor:theme.surfaceTint, padding:16, borderRadius:15 }}>
+          <Text style={{ fontFamily:theme.font.displayStrong, color:theme.deepBrand, fontSize:27 }}>
+            {role==="RIDER" ? items.filter(i=>i.status==="AVAILABLE").length : items.length}
+          </Text>
+          <Text style={{ color:theme.textMuted, fontFamily:theme.font.body, fontSize:12 }}>
+            {role==="RIDER"?"Available requests":role==="TUTOR"?"Tutorial listings":"Product listings"}
+          </Text>
+        </View>
+        <View style={{ flex:1, backgroundColor:theme.surface, borderColor:theme.border, borderWidth:1,
+          padding:16, borderRadius:15 }}>
+          <Text style={{ fontFamily:theme.font.displayStrong, color:theme.text, fontSize:27 }}>
+            {role==="RIDER" ? items.filter(i=>["RESERVED","PICKED_UP"].includes(i.status)).length :
+              items.filter(i=>["ACTIVE","PUBLISHED","APPROVED"].includes(i.status)).length}
+          </Text>
+          <Text style={{ color:theme.textMuted, fontFamily:theme.font.body, fontSize:12 }}>
+            {role==="RIDER"?"In progress":"Active listings"}
+          </Text>
+        </View>
+      </View> : null}
       {!seller && caps.profiles.length>0?<ToolButton secondary label="Campus capture missions" onPress={()=>router.push("/map-capture")}/>:null}
       {caps.profiles.length > 1 && (
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>

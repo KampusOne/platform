@@ -36,6 +36,7 @@ export default function CreateListing() {
   );
   const [category, setCategory] = useState("");
   const [categoryQuery, setCategoryQuery] = useState("");
+  const [showAllCategories, setShowAllCategories] = useState(false);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState("");
   const alive = useRef(true), categoryRequest = useRef(0);
@@ -122,8 +123,23 @@ export default function CreateListing() {
       setBusy(false);
     }
   }
+  const matchingCategories = categories.filter(c=>c.name.toLocaleLowerCase("en-NG").includes(categoryQuery.trim().toLocaleLowerCase("en-NG")));
+  const visibleCategories = categoryQuery.trim() || showAllCategories ? matchingCategories : matchingCategories.slice(0,8);
   return (
     <ToolPage title={tutor ? "Create tutorial" : "Create product"}>
+      <View style={{ padding:16, borderRadius:16, borderWidth:1, borderColor:theme.border,
+        backgroundColor:theme.surface, marginBottom:20, gap:6 }}>
+        <Text style={{ fontFamily:theme.font.semibold, color:theme.deepBrand, fontSize:12 }}>
+          {tutor?"TUTOR WORKSPACE":"SELLER WORKSPACE"} · NEW LISTING
+        </Text>
+        <Text style={{ fontFamily:theme.font.displayStrong, color:theme.text, fontSize:21 }}>
+          {tutor?"Share your knowledge":"Make your product easy to discover"}
+        </Text>
+        <Text style={{ fontFamily:theme.font.body, color:theme.textMuted, lineHeight:20, fontSize:13 }}>
+          {tutor?"Describe the tutorial, set your price and submit for approval.":
+            "Good photos, an honest description and accurate stock help students decide."}
+        </Text>
+      </View>
       {!tutor ? (
         <>
           <View style={{padding:18,borderRadius:22,backgroundColor:theme.surfaceTint,gap:8,marginBottom:20}}><Text style={{fontFamily:theme.font.displayStrong,fontSize:24,color:theme.text}}>Ready for your next sale</Text><Text style={{fontFamily:theme.font.body,lineHeight:22,color:theme.textMuted}}>Add clear photos and a price. Your product goes live when you upload it.</Text></View>
@@ -133,6 +149,7 @@ export default function CreateListing() {
           </View>
         </>
       ) : null}
+      <Text style={{ fontFamily:theme.font.semibold, color:theme.deepBrand, fontSize:12, marginBottom:10 }}>01 · DETAILS</Text>
       <ToolField
         label={tutor ? "Tutorial title" : "Product name"}
         value={name}
@@ -146,6 +163,7 @@ export default function CreateListing() {
         multiline
         maxLength={2000}
       />
+      <Text style={{ fontFamily:theme.font.semibold, color:theme.deepBrand, fontSize:12, marginBottom:10 }}>02 · PRICE & AVAILABILITY</Text>
       <ToolField
         label="Price (₦)"
         value={price}
@@ -183,7 +201,7 @@ export default function CreateListing() {
             marginBottom: 16,
           }}
         >
-          {categories.filter(c => c.name.toLowerCase().includes(categoryQuery.trim().toLowerCase())).map((c) => (
+          {visibleCategories.map((c) => (
             <Pressable
               accessibilityRole="radio"
               accessibilityLabel={c.name}
@@ -200,10 +218,12 @@ export default function CreateListing() {
             </Pressable>
           ))}
         </View>
-        {categories.length > 0 && !categories.some(c => c.name.toLowerCase().includes(categoryQuery.trim().toLowerCase())) ? <Text style={{ color: theme.textMuted }}>No matching category. Try another word.</Text> : null}
+        {!categoryQuery.trim()&&!showAllCategories&&matchingCategories.length>visibleCategories.length ?
+          <ToolButton secondary label={`Show all ${matchingCategories.length} categories`} onPress={()=>setShowAllCategories(true)}/> : null}
+        {categories.length > 0 && !matchingCategories.length ? <Text style={{ color: theme.textMuted }}>No matching category. Try another word.</Text> : null}
         </View>
       )}
-      {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['Campus One fee',pricePreview.platformKobo],['Estimated Paystack fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Paystack confirms its actual fee at checkout.</Text></View>:null}
+      {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['KampusOne service fee',pricePreview.platformKobo],['Estimated Paystack fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Paystack confirms its actual fee at checkout.</Text></View>:null}
       <ToolButton
         label={busy ? "Uploading…" : tutor?"Submit for review":"Upload product"}
         disabled={busy || Boolean(formHint)}

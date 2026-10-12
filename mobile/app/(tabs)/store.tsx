@@ -32,7 +32,6 @@ import { CreateAction } from "@/src/components/create-action";
 import { useReducedMotionPreference } from "@/src/components/visual-system";
 import { ApiError, api } from "@/src/lib/api";
 import { useToast } from "@/src/components/toast";
-import { shareItem } from "@/src/lib/share-content";
 import { theme } from "@/src/theme";
 
 type Product = {
@@ -122,6 +121,12 @@ export default function StoreScreen() {
   const [meetingPoint, setMeetingPoint] = useState("");
   const [cart, setCart] = useState<Cart>({});
   const [query, setQuery] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const searchPending = query.trim().toLocaleLowerCase("en-NG") !== searchTerm;
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchTerm(query.trim().toLocaleLowerCase("en-NG")), 220);
+    return () => clearTimeout(timer);
+  }, [query]);
   const [selectedShop, setSelectedShop] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedZoneId, setSelectedZoneId] = useState("");
@@ -226,7 +231,7 @@ export default function StoreScreen() {
   );
 
   const filtered = useMemo(() => {
-    const term = query.trim().toLowerCase();
+    const term = searchTerm;
     return products.filter((item) => {
       const matchesCategory =
         Boolean(focusedProduct) ||
@@ -244,7 +249,7 @@ export default function StoreScreen() {
         matchesQuery
       );
     });
-  }, [products, query, selectedCategory, focusedProduct, selectedShop]);
+  }, [products, searchTerm, selectedCategory, focusedProduct, selectedShop]);
 
   const cartItems = useMemo(
     () =>
@@ -463,7 +468,7 @@ export default function StoreScreen() {
       onAction={retryLoad}
       title="No products yet"
     />
-  ) : products.length > 0 && !filtered.length ? (
+  ) : !searchPending && products.length > 0 && !filtered.length ? (
     <StateMessage
       actionLabel="Clear filters"
       body="Try a different product name, seller, or category."
@@ -585,6 +590,19 @@ export default function StoreScreen() {
                   ) : null}
                 </Pressable>
               </View>
+
+              {!featureDisabled && query.trim() ? (
+                <View accessibilityLiveRegion="polite"
+                  style={{ flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 8 }}>
+                  <Ionicons name={searchPending ? "search-outline" : "checkmark-circle-outline"} size={17}
+                    color={theme.brandPressed} />
+                  <Text style={{ color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 12, flex: 1 }}>
+                    {searchPending
+                      ? "Searching products and sellers…"
+                      : `${filtered.length} ${filtered.length === 1 ? "result" : "results"} for “${query.trim()}”`}
+                  </Text>
+                </View>
+              ) : null}
 
               {!featureDisabled && catalogueMode === "LIVE" && (
                 <PopularShops
@@ -1248,34 +1266,32 @@ function ProductCard({
   const { theme, styles } = useThemeStyles(createStyles);
 
   const outOfStock = Number(product.stock_quantity) <= 0;
-  const toast = useToast();
 
   return (
     <View style={[styles.card, { width }]}>
-      {product.image_url ? (
-        <Image
-          accessible={false}
-          resizeMode="cover"
-          source={{ uri: product.image_url }}
-          style={styles.productImage}
-        />
-      ) : (
-        <View style={styles.productFallback}>
-          <View style={styles.fallbackDisc}>
-            <Ionicons
-              name={productIcon(product)}
-              size={30}
-              color={theme.brandPressed}
-            />
+      <View>
+        {product.image_url ? (
+          <Image accessible={false} resizeMode="cover"
+            source={{ uri: product.image_url }} style={styles.productImage} />
+        ) : (
+          <View style={styles.productFallback}>
+            <View style={styles.fallbackDisc}>
+              <Ionicons name={productIcon(product)} size={30} color={theme.brandPressed} />
+            </View>
           </View>
+        )}
+        <View style={{ position: "absolute", left: 9, top: 9, paddingHorizontal: 9, paddingVertical: 5,
+          borderRadius: 7, backgroundColor: outOfStock ? theme.surface : theme.deepBrand }}>
+          <Text style={{ fontFamily: theme.font.semibold, fontSize: 10, color: outOfStock ? theme.error : "#FFFFFF" }}>
+            {outOfStock ? "Sold out" : "Available"}
+          </Text>
         </View>
-      )}
+      </View>
       <View style={styles.cardBody}>
         <View style={styles.categoryRow}>
           <Text numberOfLines={1} style={styles.category}>
             {product.category}
           </Text>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Share ${product.name}`} onPress={()=>void shareItem("product",product.id,product.name).catch(()=>toast("Sharing could not open.","error"))} style={{minWidth:44,minHeight:44,justifyContent:"center",alignItems:"center",marginLeft:"auto"}}><Ionicons name="share-outline" color={theme.brand} size={19}/></Pressable>
         </View>
         <Text
           android_hyphenationFrequency="none"
@@ -1285,16 +1301,15 @@ function ProductCard({
         >
           {product.name}
         </Text>
-        <View style={styles.vendor}>
-          <Ionicons
-            name="checkmark-circle"
-            size={15}
-            color={theme.verification}
-          />
-          <Text numberOfLines={1} style={styles.vendorText}>
-            {product.vendor_name}
-          </Text>
-        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`View ${product.vendor_name}'s seller profile`}
+          onPress={() => router.push({ pathname: "/student-service", params: { id: product.vendor_profile_id } })}
+          style={styles.vendor}>
+          <Ionicons name="storefront-outline" size={14} color={theme.brandPressed} />
+          <Text numberOfLines={1} style={styles.vendorText}>{product.vendor_name}</Text>
+          <Ionicons name="chevron-forward" size={13} color={theme.textMuted} />
+        </Pressable>
         <View style={styles.priceRow}>
           <Text
             android_hyphenationFrequency="none"
@@ -1714,13 +1729,13 @@ const createStyles = (theme: Theme) =>
       overflow: "hidden",
     },
     productImage: {
-      aspectRatio: 1.04,
+      aspectRatio: 1,
       backgroundColor: theme.surfaceMuted,
       width: "100%",
     },
     productFallback: {
       alignItems: "center",
-      aspectRatio: 1.04,
+      aspectRatio: 1,
       backgroundColor: theme.surfaceMuted,
       justifyContent: "center",
       overflow: "hidden",
@@ -1736,12 +1751,12 @@ const createStyles = (theme: Theme) =>
       width: 66,
     },
     cardBody: { padding: 12 },
-    categoryRow: { alignItems: "center", flexDirection: "row", gap: 6 },
+    categoryRow: { alignItems: "center", flexDirection: "row", gap: 6, minHeight: 24 },
     category: {
       color: theme.brandPressed,
       flex: 1,
       fontFamily: theme.font.semibold,
-      fontSize: 11.5,
+      fontSize: 11,
       lineHeight: 15,
     },
     demoLabel: {
@@ -1776,6 +1791,7 @@ const createStyles = (theme: Theme) =>
       flexDirection: "row",
       gap: 5,
       marginTop: 9,
+      minHeight: 32,
     },
     vendorText: {
       color: theme.textMuted,
