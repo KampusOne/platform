@@ -1,7 +1,7 @@
-import { invalidateApiReads } from "@/src/lib/api";
+import { liveReads } from "@/src/lib/live-updates";
 import Constants from "expo-constants";
 import { useEffect, useRef } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { router, type Href } from "expo-router";
 import * as Crypto from "expo-crypto";
 import { useAuth } from "@/src/auth/auth-context";
@@ -97,6 +97,8 @@ export function NotificationBootstrap() {
     if (Platform.OS === "web" || state !== "authenticated" || !user?.id) return;
     let active = true;
     let running = false;
+    let checkedAt = 0, failures = 0;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     let responseSubscription: { remove(): void } | undefined;
     let tokenSubscription: { remove(): void } | undefined;
     let receivedSubscription: { remove(): void } | undefined;
@@ -167,7 +169,9 @@ export function NotificationBootstrap() {
         });
         receivedSubscription = Notifications.addNotificationReceivedListener(notification => {
           if (active) {
-            invalidateApiReads(["/v1/notifications", "/v1/messages/inbox"]);
+            const data = notification.request.content.data ?? {};
+            const thread = threadIdFromPath(data.path);
+            liveReads.event(["/v1/notifications/inbox", "/v1/messages/inbox", ...(thread ? ["/v1/messages/threads/" + thread] : [])]);
             void observePush(notification.request.content.data ?? {});
           }
         });
@@ -190,20 +194,24 @@ export function NotificationBootstrap() {
       });
 
     const ensureRegistered = async () => {
-      if (!active || running) return;
+      if (!active || running || AppState.currentState !== "active" || Date.now() - checkedAt < 60_000) return;
+      if (retry) clearTimeout(retry);
       running = true;
       try {
         const granted = await requestNativeNotificationPermission();
-        if (!active || !granted) return;
+        if (!active || !granted) { checkedAt = Date.now(); return; }
 
         const availability = pushSetupAvailability();
-        if (!availability.available) return;
+        if (!availability.available) { checkedAt = Date.now(); return; }
 
         const registered = await getRegisteredPushDevice(user.id).catch(() => null);
         if (!active) return;
         // Re-register daily so rotated provider tokens and app updates cannot leave a stale device.
         if (!registered || !registered.registeredAt || Date.now()-registered.registeredAt>86400_000 || registered.build_version !== String(Constants.expoConfig?.version ?? "unknown")) await registerPushDevice(user.id);
+        checkedAt = Date.now(); failures = 0;
       } catch (error) {
+        failures++;
+        if (active && failures <= 3) retry = setTimeout(() => void ensureRegistered(), Math.min(300_000, 15_000 * 2 ** failures));
         console.warn(
           "kampusone.notifications.bootstrap",
           error instanceof Error ? error.message : "unknown",
@@ -214,12 +222,16 @@ export function NotificationBootstrap() {
     };
 
     const initial = setTimeout(() => void ensureRegistered(), 2_500);
-    const retry = setInterval(() => void ensureRegistered(), 60_000);
+    const resume = AppState.addEventListener("change", state => {
+      if (state === "active" && Date.now() - checkedAt >= 86_400_000) void ensureRegistered();
+      else if (state !== "active" && retry) clearTimeout(retry);
+    });
 
     return () => {
       active = false;
       clearTimeout(initial);
-      clearInterval(retry);
+      if (retry) clearTimeout(retry);
+      resume.remove();
       responseSubscription?.remove();
       tokenSubscription?.remove();
       receivedSubscription?.remove();

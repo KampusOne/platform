@@ -1,3 +1,5 @@
+import { authApi } from "@/src/lib/api";
+import { ListSkeleton } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Redirect, router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -21,7 +23,7 @@ export default function EntryScreen() {
         <Text style={styles.errorTitle}>We can’t check your session</Text>
         <Text style={styles.errorBody}>{sessionRestoreError}</Text>
         <Pressable accessibilityRole="button" onPress={() => void retrySessionRestore()} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable>
-        <Pressable accessibilityRole="button" onPress={() => router.replace("/(auth)/sign-in")} style={styles.signOut}><Text style={styles.signOutText}>Go to sign in</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => {authApi.pauseRestore();router.replace("/(auth)/sign-in");}} style={styles.signOut}><Text style={styles.signOutText}>Go to sign in</Text></Pressable>
       </View>
     );
   }
@@ -31,7 +33,12 @@ export default function EntryScreen() {
     state === "loading" || introduction === "loading" ||
     (state === "authenticated" && profileState === "loading" && !profile)
   )
-    return null;
+    return <View style={styles.errorState}>
+      <Text accessibilityLiveRegion="polite" style={styles.errorTitle}>{state==='authenticated'?'Loading your profile':'Checking your session'}</Text>
+      <Text style={styles.errorBody}>You can keep this screen open or go to sign in.</Text>
+      <ListSkeleton count={2}/>
+      <Pressable accessibilityRole="button" onPress={()=>{authApi.pauseRestore();router.replace('/(auth)/sign-in');}} style={styles.signOut}><Text style={styles.signOutText}>Go to sign in</Text></Pressable>
+    </View>;
   if (state === "anonymous") return introduction === "loading" ? null : <Redirect href={introduction === "new" ? "/(auth)/intro" : "/(auth)/welcome"} />;
   if (profileState === "error") {
     return (

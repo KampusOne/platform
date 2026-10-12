@@ -1,6 +1,8 @@
+import { readMigratedPrivateCache } from "@/src/lib/private-cache-migration";
+import { SearchLoading } from "@/src/components/search-loading";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { readCache, writeCache } from "@/src/lib/device-cache";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -76,7 +78,7 @@ export default function FeedSearch() {
     active = useRef(scope);
   active.current = scope;
   const preparingSearch = Boolean(query.trim()) && query.trim()!==term;
-  const recentKey = `k1.search.recents.v1.${user?.id ?? "anonymous"}`;
+  const recentKey = `search-recents.${user?.id ?? "anonymous"}`;
   useEffect(() => {
     const timer = setTimeout(() => setTerm(query.trim()), 300);
     return () => clearTimeout(timer);
@@ -86,7 +88,7 @@ export default function FeedSearch() {
     recentRef.current = [];
     setRecents([]);
     if (user)
-      void AsyncStorage.getItem(recentKey)
+      void readMigratedPrivateCache(`k1.search.recents.v1.${user?.id}`,recentKey,user!.id)
         .then((raw) => {
           if (!live || !raw) return;
           try {
@@ -118,7 +120,7 @@ export default function FeedSearch() {
     );
     recentRef.current = next;
     setRecents(next);
-    void AsyncStorage.setItem(recentKey, JSON.stringify(next)).catch(
+    void writeCache(recentKey, JSON.stringify(next)).catch(
       () => undefined,
     );
   }
@@ -153,8 +155,7 @@ export default function FeedSearch() {
       })
       .catch((e) => {
         if (!controller.signal.aborted && generation.current === version) {
-          setRows([]);
-          setLoadedScope(scope);
+
           setError(
             e instanceof Error
               ? e.message
@@ -167,9 +168,9 @@ export default function FeedSearch() {
       });
     return () => controller.abort();
   }, [path, scope, retry, term, query, user?.id]);
-  const visible = loadedScope === scope && query.trim() === term ? rows : [];
+  const visible = query.trim() ? rows : [];
   async function next() {
-    if (!cursor || loading || paging.current || query.trim() !== term) return;
+    if (!cursor || loading || paging.current || query.trim() !== term || loadedScope !== scope) return;
     paging.current = true;
     setMore(true);
     const version = generation.current;
@@ -409,13 +410,8 @@ export default function FeedSearch() {
           keyboardDismissMode="on-drag"
           contentContainerStyle={styles.list}
           ListHeaderComponent={
-            preparingSearch ? (
-              <View accessibilityLiveRegion="polite" style={{flexDirection:"row",gap:9,alignItems:"center",paddingVertical:18}}>
-                <View style={{width:22,height:4,borderRadius:2,backgroundColor:theme.brand}}/>
-                <Text style={styles.muted}>Preparing your search…</Text>
-              </View>
-            ) : loading ? (
-              <FeedSkeleton count={2} />
+            preparingSearch || loading ? (
+              <SearchLoading label={effectiveTab==="PEOPLE"?"Searching people…":"Searching posts and replies…"} shape={effectiveTab==="PEOPLE"?"list":"posts"} hasResults={visible.length>0}/>
             ) : error ? (
               <View style={styles.empty}>
                 <Text accessibilityRole="alert" style={styles.body}>
@@ -432,7 +428,7 @@ export default function FeedSearch() {
             ) : null
           }
           ListEmptyComponent={
-            !loading && !error ? (
+            !loading && !preparingSearch && !error && (!term || loadedScope===scope) ? (
               <View style={styles.empty}>
                 <Ionicons
                   name={!term ? "search-outline" : "file-tray-outline"}
@@ -462,7 +458,7 @@ export default function FeedSearch() {
                         onPress={() => {
                           recentRef.current = [];
                           setRecents([]);
-                          void AsyncStorage.removeItem(recentKey).catch(
+                          void writeCache(recentKey,null).catch(
                             () => undefined,
                           );
                         }}

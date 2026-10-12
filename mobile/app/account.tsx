@@ -1,3 +1,4 @@
+import { installedBuildInfo } from "@/src/lib/build-version";
 import { useCallback, useEffect, useState } from "react";
 import { Text } from "react-native";
 import { router } from "expo-router";
@@ -16,6 +17,7 @@ type Device = {
 };
 export default function Account() {
   const { user, signOut } = useAuth();
+  const build=installedBuildInfo();
   const { theme } = useAppearance();
   const toast = useToast();
   const capabilities = useCapabilities();
@@ -171,6 +173,9 @@ export default function Account() {
             .finally(() => setBusy(false));
         }}
       />
+      <Text selectable style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12,lineHeight:20,marginTop:20}}>KampusOne {build.version}{build.versionCode?` · Android ${build.versionCode}`:''}{build.commit?`
+Build ${build.commit}`:`
+Build source is not embedded in this installation.`}</Text>
     </ToolPage>
   );
 }

@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/src/lib/live-updates";
 import {shareAgentLocation} from '@/src/lib/agent-location';
 import { BrandSwitch } from "@/src/components/brand-switch";
 import { useCallback, useState } from "react";
@@ -96,10 +97,7 @@ function AccountAgentDashboard() {
           setReady(true);
         });
       refresh();
-      const timer = role === "RIDER" ? setInterval(refresh, 30_000) : undefined;
-      return () => {
-        if (timer) clearInterval(timer);
-      };
+      return () => undefined;
     }, [load, role]),
   );
   useFocusEffect(useCallback(()=>{
@@ -108,6 +106,7 @@ function AccountAgentDashboard() {
     const refresh=async()=>{if(!active||pending||AppState.currentState!=='active')return;pending=true;try{await shareAgentLocation(profile.id,false);if(active)setLocationStatus('Current location shared while this screen is open.');}catch(e){if(active)setLocationStatus(e instanceof Error?e.message:'Refresh your location for rider routes.');}finally{pending=false;}};
     void refresh();const timer=setInterval(()=>void refresh(),30000);return()=>{active=false;clearInterval(timer);};
   },[role,online,profile?.id]));
+  useLiveRefresh("/v1/agents", () => load().catch(e => { setLoadError(e.message); setReady(true); }), 90_000, role === "RIDER");
   async function refreshPosition(){if(!profile)return;setBusy(true);try{await shareAgentLocation(profile.id);setLocationStatus('Current location shared for delivery routes.');}catch(e){toast(e instanceof Error?e.message:'Location could not refresh.','error');}finally{setBusy(false);}}
   async function reviewPickup(item:Item){setBusy(true);try{if(!profile)return;await shareAgentLocation(profile.id);router.push({pathname:'/delivery-route',params:{jobId:item.id}});}catch(e){toast(e instanceof Error?e.message:'Pickup route could not be reviewed.','error');}finally{setBusy(false);}}
 

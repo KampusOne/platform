@@ -15,7 +15,10 @@ export function AutoStreak(){
   }
   const initialRecord=setTimeout(()=>void record(),1800);
   const listener=AppState.addEventListener('change',state=>{if(state==='active')void record();});
-  const timer=setInterval(()=>{if(AppState.currentState==='active')void record();},60000);
-  return()=>{live=false;clearTimeout(initialRecord);listener.remove();clearInterval(timer);};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleMidnight=()=>{if(timer)clearTimeout(timer);if(AppState.currentState!=='active')return;const midnight=(Math.floor((Date.now()+3600000)/86400000)+1)*86400000-3600000;timer=setTimeout(()=>{void record();scheduleMidnight();},Math.max(1000,midnight-Date.now()+100));};
+  scheduleMidnight();
+  const clock=AppState.addEventListener('change',()=>scheduleMidnight());
+  return()=>{live=false;clearTimeout(initialRecord);listener.remove();clock.remove();if(timer)clearTimeout(timer);};
  },[user?.id]);return null;
 }

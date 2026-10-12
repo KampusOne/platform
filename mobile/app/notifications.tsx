@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/src/lib/live-updates";
 import { useCallback, useState, useRef } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -72,7 +73,8 @@ export default function Notifications() {
       setReady(true);
     }
   }, []);
-  useFocusEffect(useCallback(() => { void load(true);const timer=setInterval(()=>void load(),20000);return()=>clearInterval(timer); },[load]));
+  useFocusEffect(useCallback(() => { void load(true); },[load]));
+  useLiveRefresh("/v1/notifications/inbox", () => load(), 90_000);
   async function loadMore(){if(!nextCursor||moreBusy)return;setMoreBusy(true);extended.current=true;try{const result=await api<{notifications:Notice[];nextCursor:string|null}>("/v1/notifications/inbox?before="+encodeURIComponent(nextCursor));const incoming=normalizeNotices(result?.notifications);setItems(current=>[...current,...incoming.filter(n=>!current.some(old=>old.id===n.id))]);setNextCursor(typeof result?.nextCursor==="string"?result.nextCursor:null);}catch{toast("Could not load older notifications","error");}finally{setMoreBusy(false);}}
   async function open(n: Notice) {
     const wasUnread=!n.read_at;

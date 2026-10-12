@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/src/lib/live-updates";
 import { refreshScreenRead } from '@/src/lib/screen-read';
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
@@ -667,7 +668,8 @@ export default function ConversationScreen() {
   }, [scope, user?.id, id, draftChannel, draftRetry]);
   useEffect(() => {
     if (!draftReady || !draftChannel.ready || !user?.id || !id) return;
-    void saveConversationDraft(user.id, id, draftChannel.value).then(() => { if (activeScope.current === scope) setDraftWarning(""); }).catch(() => { if (activeScope.current === scope) setDraftWarning("This draft could not be saved on your device. Keep this screen open and try again."); });
+    const timer=setTimeout(()=>{void saveConversationDraft(user.id, id, draftChannel.value).then(() => { if (activeScope.current === scope) setDraftWarning(""); }).catch(() => { if (activeScope.current === scope) setDraftWarning("This draft could not be saved on your device. Keep this screen open and try again."); });},300);
+    return()=>clearTimeout(timer);
   }, [draftReady, draft, selectedMedia, replyingTo, voiceDraft, pendingMedia, sending, scope, user?.id, id, draftChannel]);
   const handleVoiceDraft = useCallback((voice: VoiceDraft | null) => {
     // The recorder may finish during navigation. Persist to its original thread.
@@ -705,7 +707,7 @@ export default function ConversationScreen() {
         };
       });
       setError("");
-      });
+      },()=>{if(activeScope.current===scope)setData(null);});
       // Read receipts are background bookkeeping, independent of message display.
       if (activeScope.current === scope)
         void api(`/v1/messages/threads/${id}/read`, { method: "PUT" }).catch(() => undefined);
@@ -718,11 +720,10 @@ export default function ConversationScreen() {
     initialScrollDone.current = false;
     atBottom.current = true;
     void load();
-    const timer = setInterval(() => {
-      if (AppState.currentState === "active") void load();
-    }, 10_000);
-    return () => clearInterval(timer);
+    return () => undefined;
   }, [load]));
+
+  useLiveRefresh(`/v1/messages/threads/${id}`, () => load(), 60_000);
 
   async function accept(value: boolean) {
     if (actionBusy) return;

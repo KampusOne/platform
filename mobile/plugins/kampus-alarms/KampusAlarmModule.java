@@ -1,5 +1,9 @@
 package app.kampusone.alarms;
 import android.content.Intent;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
+import android.content.Context;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 import android.net.Uri;
 import android.provider.Settings;
 import com.facebook.react.bridge.*;
@@ -7,6 +11,25 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 public class KampusAlarmModule extends ReactContextBaseJavaModule {
   KampusAlarmModule(ReactApplicationContext context) { super(context); }
+  static final String CHANGE_ACTION="app.kampusone.alarms.STATE_CHANGED";
+  private BroadcastReceiver stateReceiver;
+  @Override public void initialize() {
+    super.initialize();
+    stateReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){
+      ReactApplicationContext react=getReactApplicationContext();
+      if(react.hasActiveReactInstance())react.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit("KampusAlarmStateChanged",null);
+    }};
+    IntentFilter filter=new IntentFilter(CHANGE_ACTION);
+    if(android.os.Build.VERSION.SDK_INT>=33)getReactApplicationContext().registerReceiver(stateReceiver,filter,Context.RECEIVER_NOT_EXPORTED);
+    else getReactApplicationContext().registerReceiver(stateReceiver,filter);
+  }
+  @Override public void invalidate(){
+    if(stateReceiver!=null){try{getReactApplicationContext().unregisterReceiver(stateReceiver);}catch(IllegalArgumentException ignored){}stateReceiver=null;}
+    super.invalidate();
+  }
+  @ReactMethod public void addListener(String eventName) {}
+  @ReactMethod public void removeListeners(double count) {}
+  @ReactMethod public void eventSupport(Promise promise){promise.resolve(true);}
   @Override public String getName() { return "KampusAlarms"; }
   boolean alarmReady() {
     ReactApplicationContext context=getReactApplicationContext();

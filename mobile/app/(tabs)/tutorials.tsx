@@ -1,3 +1,4 @@
+import { SearchLoading } from "@/src/components/search-loading";
 import { DiscountCodeField } from "@/src/components/discount-code-field";
 import { InlineLoading } from "@/src/components/skeleton";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -921,7 +922,7 @@ export default function TutorialsScreen() {
         keyboardShouldPersistTaps="handled"
         keyExtractor={(listing) => listing.id}
         ListEmptyComponent={
-          canShowEmpty && !filteredResources.length ? (
+          canShowEmpty && !searchPending && !filteredResources.length ? (
             <TutorialsEmptyState filtered={hasActiveFilter} />
           ) : null
         }
@@ -938,6 +939,7 @@ export default function TutorialsScreen() {
                 {searchPending?"Searching tutors and courses…":`${filtered.length+filteredResources.length} matching tutorials and resources`}
               </Text>
             </View>:null}
+            {searchPending?<SearchLoading label="Searching tutors and courses…" hasResults={filtered.length+filteredResources.length>0}/>:null}
             <View style={styles.categories}>
               <FilterRow
                 items={learningCategories}

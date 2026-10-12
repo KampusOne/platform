@@ -2,47 +2,36 @@ import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Image, StyleSheet, Text, View } from "react-native";
 import { SplashScreen } from "expo-router";
 import { useAppearance } from "@/src/lib/appearance";
-import { useAuth } from "@/src/auth/auth-context";
 
 /** Branded launch motion that also covers startup/session restoration. */
 export function BrandIntro({ fontsReady, appearanceReady }: { fontsReady: boolean; appearanceReady: boolean }) {
   const { theme, isDark } = useAppearance();
-  const { state, sessionRestoreError, profileState } = useAuth();
   const [visible, setVisible] = useState(true);
   const [reduced, setReduced] = useState(false);
-  const [animationDone, setAnimationDone] = useState(false);
-  const [minimumElapsed, setMinimumElapsed] = useState(false);
   const [deadlineReached, setDeadlineReached] = useState(false);
   const mark = useRef(new Animated.Value(0)).current;
   const word = useRef(new Animated.Value(0)).current;
   const tagline = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const nativeHidden = useRef(false);
-  const routeReady =
-    Boolean(sessionRestoreError) ||
-    state === "anonymous" ||
-    (state === "authenticated" && (profileState === "ready" || profileState === "error"));
-  const visualReady =
-    deadlineReached ||
-    (fontsReady && appearanceReady && animationDone && minimumElapsed);
-  const ready = routeReady && visualReady;
+  const visualReady = deadlineReached || (fontsReady && appearanceReady);
+  // Session/profile work has its own usable entry UI and must never hold the branded overlay.
+  const ready = visualReady;
 
   useEffect(() => {
     let alive = true;
     void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
       if (!alive) return;
       setReduced(value);
-      if (value) { mark.setValue(1); word.setValue(1); tagline.setValue(1); setAnimationDone(true); return; }
+      if (value) { mark.setValue(1); word.setValue(1); tagline.setValue(1); return; }
       Animated.stagger(100, [mark, word, tagline].map((value, index) => Animated.timing(value, {
         toValue: 1, duration: index === 0 ? 440 : 340,
         easing: Easing.out(Easing.cubic), useNativeDriver: true,
-      }))).start(() => { if (alive) setAnimationDone(true); });
-    }).catch(() => { if (alive) { mark.setValue(1); word.setValue(1); tagline.setValue(1); setAnimationDone(true); } });
-    const minimumTimer = setTimeout(() => setMinimumElapsed(true), reduced ? 900 : 1_800);
-    const deadlineTimer = setTimeout(() => setDeadlineReached(true), 2_400);
+      }))).start();
+    }).catch(() => { if (alive) { mark.setValue(1); word.setValue(1); tagline.setValue(1); } });
+    const deadlineTimer = setTimeout(() => setDeadlineReached(true), 1_000);
     return () => {
       alive = false;
-      clearTimeout(minimumTimer);
       clearTimeout(deadlineTimer);
       [mark, word, tagline].forEach(value => value.stopAnimation());
     };

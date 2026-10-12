@@ -1,10 +1,12 @@
+import { readMigratedPrivateCache } from "@/src/lib/private-cache-migration";
 import {AcademicImportUsage} from "@/src/components/academic-import-usage";
 import { BulkMenu, BulkToolbar, SelectionCheckbox, useBulkSelection } from "@/src/components/bulk-selection";
 import { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { readCache, writeCache } from "@/src/lib/device-cache";
+import { refreshScreenRead } from "@/src/lib/screen-read";
 import { router, useFocusEffect } from "expo-router";
 
 import { ToolField, ToolPage } from "@/src/components/toolkit";
@@ -98,11 +100,11 @@ const sortEvents = (rows: Event[]) =>
   );
 
 const localCalendarKey = (userId?: string | null) =>
-  `@kampusone/calendar/personal/${userId || "anonymous"}`;
+  `calendar-local.${userId || "anonymous"}`;
 
 const readLocalEvents = async (key: string): Promise<Event[]> => {
   try {
-    const raw = await AsyncStorage.getItem(key);
+    const raw = await readMigratedPrivateCache(`@kampusone/calendar/personal/${key.slice("calendar-local.".length)}`,key,key.slice("calendar-local.".length));
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -545,7 +547,7 @@ export default function Calendar() {
       setActionError("");
 
       void Promise.all([
-        api<{ events: Event[] }>("/v1/calendar", { timeoutMs: 12_000 })
+        refreshScreenRead<{events:Event[]}>("/v1/calendar",snapshot=>{if(current===generation.current){setEvents(mergeCalendarEvents(normalizeEvents(snapshot.events),localEvents.current));setLoading(false);}})
           .then((result) => ({ rows: normalizeEvents(result?.events), error: "" }))
           .catch((caught) => ({
             rows: [] as Event[],
@@ -683,14 +685,14 @@ export default function Calendar() {
           (row) => row.id !== saved.id && row.id !== editing,
         );
         localEvents.current = nextLocal;
-        await AsyncStorage.setItem(storageKey, JSON.stringify(nextLocal));
+        await writeCache(storageKey, JSON.stringify(nextLocal));
       } else {
         const nextLocal = [
           ...localEvents.current.filter((row) => row.id !== saved.id),
           saved,
         ];
         localEvents.current = nextLocal;
-        await AsyncStorage.setItem(storageKey, JSON.stringify(nextLocal));
+        await writeCache(storageKey, JSON.stringify(nextLocal));
       }
 
       if (current !== generation.current) return;
@@ -731,7 +733,7 @@ export default function Calendar() {
       }
       const nextLocal = localEvents.current.filter((row) => row.id !== id);
       localEvents.current = nextLocal;
-      await AsyncStorage.setItem(storageKey, JSON.stringify(nextLocal));
+      await writeCache(storageKey, JSON.stringify(nextLocal));
       if (current === generation.current) {
         setEvents((rows) => rows.filter((row) => row.id !== id));
         setRemoving(null);
@@ -753,12 +755,12 @@ export default function Calendar() {
     const remoteIds=ids.filter(id=>!id.startsWith("local:"));
     if(remoteIds.length) await api("/v1/calendar/bulk-delete",{method:"POST",body:JSON.stringify({ids:remoteIds})});
     const next=localEvents.current.filter(row=>!ids.includes(row.id));
-    await AsyncStorage.setItem(storageKey,JSON.stringify(next));
+    await writeCache(storageKey,JSON.stringify(next));
     localEvents.current=next;
     setEvents(rows=>rows.filter(row=>!ids.includes(row.id)));
   }, "calendar dates");
   return (
-    <ToolPage title="Academic calendar" action={<BulkMenu selection={selection} />}>
+    <ToolPage syncPath="/v1/calendar" title="Academic calendar" action={<BulkMenu selection={selection} />}>
       <BulkToolbar selection={selection} count={events.length} />
       <AcademicImportUsage calendar />
       <View style={styles.hero}>

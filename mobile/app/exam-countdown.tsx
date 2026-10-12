@@ -17,13 +17,13 @@ export default function ExamCountdown(){
  const {theme}=useAppearance(),toast=useToast();
  const [period,setPeriod]=useState<ExamPeriod|null>(null),[ready,setReady]=useState(false),[error,setError]=useState(""),[sharing,setSharing]=useState(false),[now,setNow]=useState(Date.now());
  const load=useCallback(async()=>{setError("");try{if(shared){setPeriod({startsOn:startsOn!,endsOn:endsOn!,semester:'Shared exam period',status:'upcoming'});return;}const r=await api<{examPeriods:ExamPeriod[]}>("/v1/calendar/exam-periods");setPeriod(currentExamPeriod(r.examPeriods));}catch(e){setError(e instanceof Error?e.message:"Your academic calendar could not load.");}finally{setReady(true);}},[shared,startsOn,endsOn]);
+ useFocusEffect(useCallback(()=>{void load();setNow(Date.now());},[load]));
  useFocusEffect(useCallback(()=>{
-  void load();
-  setNow(Date.now());
-  const timer=setInterval(()=>{if(AppState.currentState==="active")setNow(Date.now());},1000);
-  const app=AppState.addEventListener("change",state=>{if(state==="active")setNow(Date.now());});
-  return()=>{clearInterval(timer);app.remove();};
- },[load]));
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const tick=()=>{if(timer)clearTimeout(timer);if(AppState.currentState!=="active")return;const time=Date.now();setNow(time);if(!period||time>=examPeriodEnd(period))return;const boundary=time<examPeriodStart(period)?1000:60000;timer=setTimeout(tick,boundary-time%boundary+10);};
+  tick();const app=AppState.addEventListener("change",tick);
+  return()=>{if(timer)clearTimeout(timer);app.remove();};
+ },[period]));
  const started=period?now>=examPeriodStart(period):false,finished=period?now>examPeriodEnd(period):false;
  const parts=countdownParts(period?examPeriodStart(period):now,now);
  async function share(){if(!period)return;setSharing(true);try{const p=countdownParts(examPeriodStart(period)),message=["Our exam period",formatExamDate(period.startsOn)+" to "+formatExamDate(period.endsOn),Date.now()>=examPeriodStart(period)?"The exam period has started.":p.days+" days, "+p.hours+" hours, "+p.minutes+" minutes and "+p.seconds+" seconds to go.","Countdown at the time of sharing. Get ready with KampusOne."].join("\n");await shareContent({title:"KampusOne exam period",message,url:sharedExamPeriodLink(period.startsOn,period.endsOn)});}catch(e){toast(e instanceof Error?e.message:"The countdown could not be shared.","error");}finally{setSharing(false);}}

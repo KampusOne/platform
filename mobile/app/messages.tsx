@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/src/lib/live-updates";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -156,15 +157,15 @@ export default function MessagesScreen() {
     }
     setError("");
     void load();
-    const timer = setInterval(() => {
-      if (AppState.currentState === "active" && !paged.current) void load();
-    }, 15_000);
+
     return () => {
       epoch.current += 1;
       loadingRef.current = false;
-      clearInterval(timer);
+
     };
   }, [load]));
+
+  useLiveRefresh("/v1/messages/inbox", () => !paged.current ? load() : undefined, 90_000);
 
   const visibleThreads = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("en-NG");

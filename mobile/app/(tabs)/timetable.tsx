@@ -1,3 +1,4 @@
+import { useActiveScreen } from "@/src/lib/use-active-screen";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import ExamTimetable from '../exam-timetable';
 import {AcademicImportUsage} from "@/src/components/academic-import-usage";
@@ -48,6 +49,7 @@ type Entry = {
 };
 
 export default function TimetableScreen() {
+  const activeScreen=useActiveScreen();
   const { theme, styles } = useThemeStyles(createStyles);
 
   const currentDay = new Date().getDay();
@@ -69,9 +71,11 @@ export default function TimetableScreen() {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
+    if(!activeScreen)return;
+    setNow(new Date());
     const timer = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [activeScreen]);
 
   const load = useCallback(async () => {
     try {

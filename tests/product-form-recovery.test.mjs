@@ -6,11 +6,11 @@ import {runInNewContext} from 'node:vm';
 import {randomUUID} from 'node:crypto';
 import {nairaToKobo} from '../mobile/src/lib/money-input.ts';
 const ts=createRequire(new URL('../server/package.json',import.meta.url))('typescript');
-function formHarness(api) {
+function formHarness(api,{role='VENDOR'}={}) {
   const states=[],refs=[],effects=[];let state=0,ref=0,mounted=false,tree;
   const react={useState:value=>{const i=state++;if(!(i in states))states[i]=value;return[states[i],v=>states[i]=typeof v==='function'?v(states[i]):v];},useRef:value=>refs[ref++]??(refs[ref-1]={current:value}),useCallback:fn=>fn,useEffect:fn=>{if(!mounted)effects.push(fn);}};
   const theme={font:{body:'Inter',displayStrong:'Lato',semibold:'Inter'},surfaceTint:'#F1DFC8',surface:'#fff',text:'#29231F',textMuted:'#9A8D84',deepBrand:'#A8462E',error:'#A8462E'};
-  const modules={'react':react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'Fragment'},'expo-crypto':{randomUUID},'@expo/vector-icons':{Ionicons:'Ionicons'},'expo-router':{router:{back(){}},useLocalSearchParams:()=>({role:'VENDOR'})},'react-native':{Image:'Image',Pressable:'Pressable',Text:'Text',View:'View'},'@/src/lib/money-input':{nairaToKobo},'@/src/components/toolkit':{ToolPage:'ToolPage',ToolButton:'ToolButton',ToolField:'ToolField'},'@/src/components/toast':{useToast:()=>()=>{}},'@/src/lib/appearance':{useAppearance:()=>({theme})},'@/src/lib/api':{api},'@/src/lib/uploads':{pickAndUpload:async()=>({url:'https://fixture.invalid/photo.jpg'})}};
+  const modules={'@/src/auth/auth-context':{useAuth:()=>({user:{id:'test-owner'}})},'@/src/lib/device-cache':{readCache:async()=>null,writeCache:async()=>{}},'react':react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'Fragment'},'expo-crypto':{randomUUID},'@expo/vector-icons':{Ionicons:'Ionicons'},'expo-router':{router:{back(){}},useLocalSearchParams:()=>({role})},'react-native':{Image:'Image',Pressable:'Pressable',Text:'Text',View:'View'},'@/src/lib/money-input':{nairaToKobo},'@/src/components/toolkit':{ToolPage:'ToolPage',ToolButton:'ToolButton',ToolField:'ToolField'},'@/src/components/toast':{useToast:()=>()=>{}},'@/src/lib/appearance':{useAppearance:()=>({theme})},'@/src/lib/api':{api},'@/src/lib/uploads':{pickAndUpload:async()=>({url:'https://fixture.invalid/photo.jpg'})}};
   const exports={};
   const code=ts.transpileModule(readFileSync(new URL('../mobile/app/agent-create.tsx',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
   runInNewContext(code,{exports,module:{exports},require:key=>{if(key in modules)return modules[key];throw Error(key);},setTimeout,clearTimeout,Error});
@@ -48,4 +48,19 @@ test('loaded categories do not permit invalid stock or malformed prices to be su
   assert.equal(h.by('ToolButton','Upload product').props.disabled,false);
   h.by('ToolField','Stock quantity').props.onChangeText('1.5');h.render();assert.equal(h.by('ToolButton','Upload product').props.disabled,true);
   h.by('ToolField','Stock quantity').props.onChangeText('2');h.by('ToolField','Price (₦)').props.onChangeText('abc');h.render();assert.equal(h.by('ToolButton','Upload product').props.disabled,true);
+});
+test('tutorial submission retry resumes the created listing without another create',async()=>{
+  const id=randomUUID();let creates=0,submits=0;
+  const h=formHarness(async(path,init)=>{
+    if(path==='/v1/agents/tutorials'){creates++;assert.ok(JSON.parse(init.body).requestId);return{id};}
+    if(path===`/v1/agents/tutorials/${id}/status`){if(++submits===1)throw Error('Connection interrupted');return{status:'SUBMITTED'};}
+    return null;
+  },{role:'TUTOR'});
+  await h.flush();
+  for(const [label,value]of [['Tutorial title','Calculus revision'],['Description','A helpful first-year calculus revision session.'],['Price (₦)','1000'],['Available places','20'],['Course code','MTH 101']])h.by('ToolField',label).props.onChangeText(value);
+  h.render();await h.by('ToolButton','Submit for review').props.onPress();await h.flush();
+  assert.equal(h.by('ToolField','Tutorial title').props.editable,false);
+  assert.equal(h.by('ToolButton','Retry submission').props.disabled,false);
+  await h.by('ToolButton','Retry submission').props.onPress();await h.flush();
+  assert.equal(creates,1);assert.equal(submits,2);
 });

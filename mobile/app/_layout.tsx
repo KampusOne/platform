@@ -1,3 +1,4 @@
+import { LiveUpdates } from "@/src/components/live-updates";
 import { AlarmSync } from "@/src/components/alarm-sync";
 import { checkBuildVersion } from "@/src/lib/build-version";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
@@ -91,7 +92,7 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <StartupProvider><ToastProvider><AlarmSync/><NotificationBootstrap /><AutoStreak />
+      <StartupProvider><ToastProvider><LiveUpdates/><AlarmSync/><NotificationBootstrap /><AutoStreak />
         <StatusBar style={isDark ? "light" : "dark"} />
         <ScreenVisitTracker />
         <ForegroundUsageTracker/>

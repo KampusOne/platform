@@ -1,3 +1,4 @@
+import { useActiveScreen } from "@/src/lib/use-active-screen";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { isPlayDistribution } from "@/src/lib/digital-billing-policy";
@@ -16,6 +17,7 @@ import { useAppearance } from "@/src/lib/appearance";
 import { api, ApiError, clearApiCache } from "@/src/lib/api";
 import { readCache, writeCache } from "@/src/lib/device-cache";
 import { pickAttachment, uploadAttachment, type StagedAttachment } from "@/src/lib/uploads";
+import { ImportProgress, useImportProgress } from "@/src/components/import-progress";
 import { AttachmentPreview } from "@/src/components/attachment-preview";
 import { StudyAnswer } from "@/src/components/study-answer";
 import { AIEdgeGlow } from "@/src/components/ai-edge-glow";
@@ -235,6 +237,7 @@ function normalizeSavedWork(value: unknown): SavedWork[] {
 }
 
 export default function StudentAI() {
+  const activeScreen=useActiveScreen();
   const {mode:initial,history:openHistoryParam,question:initialQuestion}=useLocalSearchParams<{mode?:string;history?:string;question?:string}>();
   const {user,profile}=useAuth();const {theme}=useAppearance();const toast=useToast();
   const [workspace,setWorkspace]=useState<"ask"|"study">(initial && initial!=="study"?"study":"ask");
@@ -246,6 +249,9 @@ export default function StudentAI() {
   const [screenFocused,setScreenFocused]=useState(true);
   const [waitingStarted,setWaitingStarted]=useState(0);
   const [waitingSeconds,setWaitingSeconds]=useState(0);
+  const {stage:documentStage,setStage:setDocumentStage,failureStage:documentFailureStage}=useImportProgress();
+  const [uploadFraction,setUploadFraction]=useState(0);
+  const [documentName,setDocumentName]=useState<string>();
   const [requestStage,setRequestStage]=useState<"uploading"|"waiting"|"recovering">("waiting");
   const [busy,setBusy]=useState(false);const [uploading,setUploading]=useState(false);const [loaded,setLoaded]=useState(false);const [voiceActive,setVoiceActive]=useState(false);const [voiceRecording,setVoiceRecording]=useState(false);
   const [error,setError]=useState("");const [status,setStatus]=useState<Status>();
@@ -270,7 +276,7 @@ export default function StudentAI() {
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;};},[]);
   const loadStatus=useCallback(async()=>{const account=owner.current;try{const result=normalizeStatus(await api<Status>("/v1/ai/status"));if(valid() && owner.current===account){setStatus(result);if(result && (!tierChosen.current||result.tier!=="pro"))setTier(result.tier);}}catch{if(valid() && owner.current===account)setStatus(undefined);}},[]);
   useFocusEffect(useCallback(()=>{setScreenFocused(true);void loadStatus();return()=>setScreenFocused(false);},[loadStatus]));
-  useEffect(()=>{if(!busy){setWaitingSeconds(0);return;}const timer=setInterval(()=>setWaitingSeconds(Math.floor((Date.now()-waitingStarted)/1000)),1000);return()=>clearInterval(timer);},[busy,waitingStarted]);
+  useEffect(()=>{if(!busy){setWaitingSeconds(0);return;}if(!activeScreen)return;setWaitingSeconds(Math.floor((Date.now()-waitingStarted)/1000));const timer=setInterval(()=>setWaitingSeconds(Math.floor((Date.now()-waitingStarted)/1000)),1000);return()=>clearInterval(timer);},[busy,waitingStarted,activeScreen]);
   const restoreThread=useCallback(async(id:string,version:number)=>{
     const result=await api<{turns:Turn[]}>(`/v1/ai/thread/${id}`);
     const safeTurns=(Array.isArray(result?.turns)?result.turns:[])
@@ -316,7 +322,7 @@ export default function StudentAI() {
       void writeCache(storageKey,{prompt,mode,tier,attachment:savedAttachment,key:key.current});
     },250);return()=>clearTimeout(timer);
   },[prompt,attachment,mode,tier,replyTo,loaded,busy,user?.id,storageKey]);
-  useEffect(()=>{if(!limit?.resetsAt)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[limit?.resetsAt]);
+  useEffect(()=>{if(!activeScreen||!limit?.resetsAt)return;const end=Date.parse(limit.resetsAt);setNow(Date.now());if(!Number.isFinite(end)||Date.now()>=end)return;const timer=setInterval(()=>{const current=Date.now();setNow(current);if(current>=end)clearInterval(timer);},1000);return()=>clearInterval(timer);},[limit?.resetsAt,activeScreen]);
   useEffect(()=>{if(limit?.resetsAt && now>=Date.parse(limit.resetsAt)){setLimit(undefined);setError("");void loadStatus();}},[limit,now,loadStatus]);
   function changePrompt(value:string){setPrompt(value);key.current=randomUUID();setError("");}
   function newConversation(){if(lock.current)return;setTurns([]);setReplyTo(undefined);setPrompt("");setAttachment(undefined);setError("");key.current=randomUUID();}
@@ -326,10 +332,11 @@ export default function StudentAI() {
     const outgoing=(promptOverride??prompt).trim();
     if(lock.current||!loaded||(!outgoing&&!attachment))return;
     const version=generation.current;const question=outgoing;let file=attachment;
+    if(!file){setDocumentStage(null);setDocumentName(undefined);}
     lock.current=true;setWaitingStarted(Date.now());setWaitingSeconds(0);setRequestStage(attachment&&!attachment.mediaId?"uploading":"waiting");setBusy(true);setError("");setLimit(undefined);
     setPending({prompt:question,...(file?{file}:{})});setPrompt("");setAttachment(undefined);
     try{
-      if(file){setUploading(true);file=await uploadAttachment(file,user!.id,question,tier);if(!valid()||version!==generation.current)return;setPending({prompt:question,file});setUploading(false);setRequestStage("waiting");}
+      if(file){setDocumentName(file.name);setUploadFraction(0);setDocumentStage(file.mediaId?"analysing":"validating");setUploading(true);file=await uploadAttachment(file,user!.id,question,tier,fraction=>{if(valid()&&version===generation.current)setUploadFraction(fraction);},{onStage:stage=>{if(valid()&&version===generation.current)setDocumentStage(stage);},onUploaded:uploaded=>{file=uploaded;if(valid()&&version===generation.current){setPending({prompt:question,file:uploaded});void writeCache(storageKey,{prompt:question,mode,tier,attachment:uploaded,key:key.current});}}});if(!valid()||version!==generation.current)return;setPending({prompt:question,file});setUploading(false);setDocumentStage("analysing");setRequestStage("waiting");}
       const savedFile=file?{name:file.name,type:file.type,...(file.mediaId?{mediaId:file.mediaId}:{})}:undefined;
       if(!valid()||version!==generation.current)return;
       setPending({prompt:question,...(file?{file}:{})});setPrompt("");setAttachment(undefined);
@@ -344,11 +351,12 @@ export default function StudentAI() {
       }),requestId);
       if(!result)throw new Error("Kira returned an incomplete response. Your draft is kept.");
       if(!valid()||version!==generation.current)return;
+      if(file)setDocumentStage("completed");
       setTurns(current=>[...current.filter(t=>t.requestId!==result.requestId),{...result,prompt:question,...(file?{file}:{})}]);setReplyTo(result.requestId);key.current=randomUUID();
       void loadStatus();
     }catch(e){
       if(!valid()||version!==generation.current)return;
-      setPrompt(question);setAttachment(file);setError(e instanceof Error?e.message:"The answer could not load. Your draft is kept.");
+      if(file)setDocumentStage("failed");setPrompt(question);setAttachment(file);setError(e instanceof Error?e.message:"The answer could not load. Your draft is kept.");
       if(e instanceof ApiError){if(e.details?.retryWithNewKey===true)key.current=randomUUID();if(e.status===429||e.details?.upgrade){setLimit({...(typeof e.details?.resetsAt==='string'?{resetsAt:e.details.resetsAt}:{}),upgrade:e.details?.upgrade===true});}}
       void loadStatus();
     }finally{if(valid()&&version===generation.current){lock.current=false;setBusy(false);setUploading(false);setPending(undefined);}}
@@ -423,6 +431,7 @@ export default function StudentAI() {
         }):null}
         {pending?<View>{renderUser(pending.prompt,pending.file,true)}<View accessibilityRole="text" accessibilityLabel="Kira is working" accessibilityLiveRegion="polite" style={{gap:10,marginTop:8}}><Text style={muted}>{requestStage==='uploading'?'Uploading your material…':requestStage==='recovering'?'Checking your saved answer…':pending.file?waitingSeconds<12?'Reading your material…':'Preparing your study response…':waitingSeconds<8?'Kira is working on your question…':waitingSeconds<20?'Still waiting for your answer…':'A detailed answer can take a little longer…'}</Text><SkeletonBlock width="76%"/><SkeletonBlock width="56%"/></View></View>:null}
       </ScrollView>
+      {documentStage&&documentName?<View style={{paddingHorizontal:16}}><ImportProgress failureStage={documentFailureStage} stage={documentStage} fileReceived={Boolean(pending?.file?.mediaId||attachment?.mediaId)} filename={documentName} subject="document" uploadFraction={uploadFraction} error={documentStage==="failed"?error:undefined}/></View>:null}
       <View style={{paddingHorizontal:16,paddingTop:8,paddingBottom:6}}>
         {error?<View accessibilityRole="alert" style={{padding:12,marginBottom:10,backgroundColor:theme.surfaceMuted,borderRadius:10}}><Text style={{...muted,color:theme.text}}>{error}{limit?.resetsAt?` Try again at ${new Date(limit.resetsAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}.`:''}</Text>{limit?.upgrade?smallButton('Get Kira Pro',()=>setSheet('plans')):null}</View>:null}
         {status&&!status.enabled?<Text style={{...muted,marginBottom:8}}>AI is temporarily unavailable. Your draft and saved conversations are kept.</Text>:null}

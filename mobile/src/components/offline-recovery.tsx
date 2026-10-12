@@ -19,10 +19,10 @@ export function OfflineRecovery(){
  },[]);
  async function retry(){setChecking(true);try{const state=await Network.getNetworkStateAsync();setOffline(state.isConnected===false||state.isInternetReachable===false);}finally{setChecking(false);}}
  if(!offline||dismissed)return null;
- return <SafeAreaView accessibilityViewIsModal style={[StyleSheet.absoluteFill,{backgroundColor:theme.canvas,zIndex:999,elevation:99}]}><View style={{flex:1,justifyContent:'center',alignItems:'center',padding:28,gap:14}}>
-  <Ionicons name="cloud-offline-outline" size={48} color={theme.deepBrand}/><Text accessibilityRole="header" style={{fontFamily:theme.font.display,fontSize:25,color:theme.text}}>You’re offline</Text>
-  <Text style={{fontFamily:theme.font.body,fontSize:14,lineHeight:22,textAlign:'center',color:theme.textMuted,maxWidth:330}}>Turn on mobile data or Wi-Fi to reconnect. Your account and saved work are still here.</Text>
-  <Pressable accessibilityRole="button" disabled={checking} onPress={()=>void retry().catch(()=>undefined)} style={{minHeight:48,backgroundColor:theme.deepBrand,paddingHorizontal:28,justifyContent:'center',borderRadius:12}}><Text style={{color:'#FFFFFF',fontFamily:theme.font.semibold}}>{checking?'Checking connection…':'Try again'}</Text></Pressable>
-  <Pressable accessibilityRole="button" onPress={()=>setDismissed(true)} style={{minHeight:44,justifyContent:'center'}}><Text style={{color:theme.accentText,fontFamily:theme.font.medium}}>View saved content</Text></Pressable>
+ return <SafeAreaView edges={["top"]} pointerEvents="box-none" style={{position:'absolute',top:0,left:0,right:0,zIndex:999}}><View style={{maxWidth:540,alignSelf:'center',width:'100%',backgroundColor:theme.surface,borderBottomWidth:1,borderColor:theme.border,paddingHorizontal:16,paddingVertical:10,flexDirection:'row',alignItems:'center',gap:10}}>
+  <Ionicons name="cloud-offline-outline" size={22} color={theme.deepBrand}/>
+  <View style={{flex:1,gap:3}}><Text accessibilityLiveRegion="polite" style={{fontFamily:theme.font.semibold,color:theme.text,fontSize:14}}>You’re offline</Text><Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12,lineHeight:17}}>Saved content is available. Changes need a connection.</Text></View>
+  <Pressable accessibilityRole="button" disabled={checking} onPress={()=>void retry().catch(()=>undefined)} style={{minHeight:44,justifyContent:'center',paddingHorizontal:8}}><Text style={{color:theme.accentText,fontFamily:theme.font.medium}}>{checking?'Checking…':'Retry'}</Text></Pressable>
+  <Pressable accessibilityRole="button" accessibilityLabel="Dismiss offline notice" onPress={()=>setDismissed(true)} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="close" size={20} color={theme.textMuted}/></Pressable>
  </View></SafeAreaView>;
 }

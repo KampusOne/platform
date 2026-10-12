@@ -1,3 +1,4 @@
+import { SearchLoading } from "@/src/components/search-loading";
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Image,Pressable,Text,View} from 'react-native';
 import {router,useFocusEffect} from 'expo-router';
@@ -43,6 +44,7 @@ export default function Communities(){
    </Text>
  </View>:null}
  {error?<View style={{padding:14,backgroundColor:theme.surfaceMuted,borderRadius:12,marginVertical:12}}><Text accessibilityRole="alert" style={[text,{color:theme.error}]}>{error}</Text>{!create?<ToolButton label="Try again" secondary onPress={()=>void load()}/>:null}</View>:null}
+ {searchPending?<SearchLoading label="Searching communities…" hasResults={visible.length>0}/>:null}
  {loading?<ScreenSkeleton/>:visible.length?visible.map(c=><Pressable key={c.id} accessibilityRole="button" accessibilityLabel={`Open ${c.name}`} onPress={()=>router.push({pathname:'/community',params:{id:c.id,...(c.kind!=='CLASS'?{kind:c.kind}:{})}})} style={{minHeight:98,flexDirection:'row',alignItems:'center',gap:14,padding:14,marginBottom:12,borderWidth:1,borderRadius:16,backgroundColor:theme.surface,borderColor:theme.border}}>{c.avatar_url?<Image source={{uri:c.avatar_url}} style={{width:56,height:56,borderRadius:12}}/>:<View style={{width:56,height:56,borderRadius:12,backgroundColor:theme.surfaceTint,alignItems:'center',justifyContent:'center'}}><Text style={[text,{fontSize:22,fontFamily:theme.font.displayStrong,color:theme.deepBrand}]}>{c.name.slice(0,1).toUpperCase()}</Text></View>}<View style={{flex:1,gap:4}}><Text style={[text,{fontFamily:theme.font.semibold,fontSize:16}]}>{c.name}</Text><Text style={[text,{fontSize:12,color:theme.textMuted}]}>{c.members} {c.members===1?'member':'members'} · {c.kind==='STUDY_GROUP'?'Study group':c.kind==='CLASS'?'Class community':'Community'}{c.joined_at?' · Joined':''}</Text>{c.description?<Text numberOfLines={2} style={[text,{fontSize:12,color:theme.textMuted}]}>{c.description}</Text>:null}</View><Text style={{color:theme.deepBrand,fontSize:20}}>›</Text></Pressable>):searchPending?<ScreenSkeleton variant="list" compact/>:<EmptyResult title={search?'No matching communities':'No communities yet'} body={search?'Try a different name or keyword.':'Create a community or a study group to get started.'}/>}
  </ToolPage>;
 }

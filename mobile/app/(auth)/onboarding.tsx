@@ -1,6 +1,6 @@
+import { readMigratedPrivateCache } from "@/src/lib/private-cache-migration";
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { InlineLoading } from "@/src/components/skeleton";
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -342,8 +342,8 @@ export default function OnboardingScreen() {
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [draftReady,setDraftReady]=useState(false);
-  useEffect(()=>{if(!user?.id)return;let active=true;void AsyncStorage.getItem(`k1.onboarding.${user.id}`).then(text=>{if(!active||!text)return;try{const saved=JSON.parse(text);setHeardSource(saved.heardSource??'');setHeardOther(saved.heardOther??'');setFirstName(saved.firstName??'');setLastName(saved.lastName??'');setUsername(saved.username??'');setBirthDate(saved.birthDate??'');setMatriculationNumber(saved.matriculationNumber??'');setCurrentLevel(saved.currentLevel??'');setAdmissionYear(saved.admissionYear??'');setGraduationYear(saved.graduationYear??'');setUniversityId(saved.universityId??'');setFacultyId(saved.facultyId??'');setDepartmentId(saved.departmentId??'');setCourseId(saved.courseId??'');setStep(Math.max(0,Math.min(2,Number(saved.step)||0)));}catch{}}).catch(()=>{}).finally(()=>{if(active)setDraftReady(true);});return()=>{active=false;};},[user?.id]);
-  useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>void AsyncStorage.setItem(`k1.onboarding.${user.id}`,JSON.stringify({heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step})).catch(()=>{}),300);return()=>clearTimeout(timer);},[draftReady,user?.id,heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step]);
+  useEffect(()=>{if(!user?.id)return;let active=true;void readMigratedPrivateCache(`k1.onboarding.${user.id}`,`onboarding.${user.id}`,user.id).then(text=>{if(!active||!text)return;try{const saved=JSON.parse(text);setHeardSource(saved.heardSource??'');setHeardOther(saved.heardOther??'');setFirstName(saved.firstName??'');setLastName(saved.lastName??'');setUsername(saved.username??'');setBirthDate(saved.birthDate??'');setMatriculationNumber(saved.matriculationNumber??'');setCurrentLevel(saved.currentLevel??'');setAdmissionYear(saved.admissionYear??'');setGraduationYear(saved.graduationYear??'');setUniversityId(saved.universityId??'');setFacultyId(saved.facultyId??'');setDepartmentId(saved.departmentId??'');setCourseId(saved.courseId??'');setStep(Math.max(0,Math.min(2,Number(saved.step)||0)));}catch{}}).catch(()=>{}).finally(()=>{if(active)setDraftReady(true);});return()=>{active=false;};},[user?.id]);
+  useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>void writeCache(`onboarding.${user.id}`,JSON.stringify({heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step})).catch(()=>{}),300);return()=>clearTimeout(timer);},[draftReady,user?.id,heardSource,heardOther,firstName,lastName,username,birthDate,matriculationNumber,currentLevel,admissionYear,graduationYear,universityId,facultyId,departmentId,courseId,step]);
 
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
@@ -550,7 +550,7 @@ export default function OnboardingScreen() {
         }),
       });
       setDraftReady(false);
-      if(user?.id) await AsyncStorage.removeItem(`k1.onboarding.${user.id}`);
+      if(user?.id) await writeCache(`onboarding.${user.id}`,null);
       await reloadProfile();
       router.replace("/");
     } catch (caught) {

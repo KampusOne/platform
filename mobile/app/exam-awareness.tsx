@@ -1,3 +1,4 @@
+import { useActiveScreen } from "@/src/lib/use-active-screen";
 import {Ionicons} from "@expo/vector-icons";
 import {router,useLocalSearchParams} from "expo-router";
 import {useCallback,useEffect,useState} from "react";
@@ -21,6 +22,7 @@ function untilPaper(start:string,now:number){
 }
 
 export default function ExamAwareness(){
+  const activeScreen=useActiveScreen();
  const {alarmId}=useLocalSearchParams<{alarmId?:string}>();
  const {theme,styles}=useThemeStyles(createStyles);
  const [exam,setExam]=useState<Exam|null>(null),[loading,setLoading]=useState(true);
@@ -36,7 +38,8 @@ export default function ExamAwareness(){
   }catch(e){setError(e instanceof Error?e.message:"This is not a saved exam reminder.");}
   finally{setLoading(false);}
  },[alarmId]);
- useEffect(()=>{void load();const timer=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(timer);},[load]);
+ useEffect(()=>{void load();},[load]);
+ useEffect(()=>{if(!activeScreen)return;setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(timer);},[activeScreen]);
  async function disable(){
   if(!exam||exam.disabled||busy)return;
   setBusy(true);setError("");

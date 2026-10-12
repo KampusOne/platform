@@ -51,6 +51,7 @@ public class KampusAlarmService extends Service {
       if(Build.VERSION.SDK_INT>=29)startForeground(NOTIFICATION_ID,notification,ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);else startForeground(NOTIFICATION_ID,notification);
       JSONObject active=new JSONObject(alarm.toString()).put("firedAt",firedAt).put("endsAt",firedAt+180000);KampusAlarmScheduler.prefs(this).edit().putString("active",active.toString()).apply();
       KampusAlarmScheduler.record(this,alarm,"ringing",firedAt);
+      sendBroadcast(new Intent(KampusAlarmModule.CHANGE_ACTION).setPackage(getPackageName()));
       wakeLock=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"KampusOne:alarm");wakeLock.acquire(185000);
       if(!alarm.optString("sound","default").equals("silent"))play();
       if(alarm.optBoolean("vibration",true)){vibrator=(Vibrator)getSystemService(VIBRATOR_SERVICE);if(vibrator!=null){long[] pattern=new long[]{0,600,400,600,1000};if(Build.VERSION.SDK_INT>=26)vibrator.vibrate(VibrationEffect.createWaveform(pattern,0));else vibrator.vibrate(pattern,0);}}
@@ -93,7 +94,7 @@ public class KampusAlarmService extends Service {
   void finish(String outcome){
     handler.removeCallbacksAndMessages(null);stopAudio();
     if(alarm!=null){KampusAlarmScheduler.record(this,alarm,outcome,firedAt);if("missed".equals(outcome)){channels();Notification notice=builder(MISSED).setSmallIcon(android.R.drawable.ic_lock_idle_alarm).setContentTitle("Missed alarm: "+alarm.optString("label","Reminder")).setContentText("Your alarm rang for three minutes. Check your timetable for what is next.").setAutoCancel(true).setContentIntent(KampusAlarmScheduler.open(this,alarm.optString("id"))).build();getSystemService(NotificationManager.class).notify(alarm.optString("id").hashCode(),notice);}}
-    alarm=null;KampusAlarmScheduler.prefs(this).edit().remove("active").apply();stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();
+    alarm=null;KampusAlarmScheduler.prefs(this).edit().remove("active").apply();sendBroadcast(new Intent(KampusAlarmModule.CHANGE_ACTION).setPackage(getPackageName()));stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();
   }
   void stopAudio(){if(player!=null){try{player.stop();}catch(Exception ignored){}player.release();player=null;}if(vibrator!=null)vibrator.cancel();if(wakeLock!=null&&wakeLock.isHeld())wakeLock.release();}
   @Override public void onDestroy(){handler.removeCallbacksAndMessages(null);stopAudio();KampusAlarmScheduler.prefs(this).edit().remove("active").apply();super.onDestroy();}

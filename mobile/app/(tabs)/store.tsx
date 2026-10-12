@@ -1,3 +1,7 @@
+import { useAuth } from "@/src/auth/auth-context";
+import { readCache, writeCache } from "@/src/lib/device-cache";
+import { SearchLoading } from "@/src/components/search-loading";
+import { SyncStatus } from "@/src/components/sync-status";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { refreshScreenRead } from '@/src/lib/screen-read';
@@ -88,6 +92,7 @@ const naira = (kobo: number) =>
   }).format(Number(kobo) / 100);
 
 export default function StoreScreen() {
+  const { user } = useAuth();
   const { product: focusedProduct } = useLocalSearchParams<{
     product?: string;
   }>();
@@ -120,6 +125,12 @@ export default function StoreScreen() {
   const [pickupHandoff, setPickupHandoff] = useState<"STORE" | "AGREED">("STORE");
   const [meetingPoint, setMeetingPoint] = useState("");
   const [cart, setCart] = useState<Cart>({});
+  const [cartOwner,setCartOwner]=useState<string|null>(null);
+  const cartReady=Boolean(user?.id&&cartOwner===user.id);
+  const pendingCart=useRef<{owner:string;value:Cart}|null>(null);
+  if(cartReady&&user?.id)pendingCart.current={owner:user.id,value:cart};
+  useEffect(()=>{let live=true;setCartOwner(null);pendingCart.current=null;setCart({});if(!user?.id)return;void readCache<Cart>("cart."+user.id).then(saved=>{if(!live)return;setCart(Object.fromEntries(Object.entries(saved??{}).filter(([id,n])=>/^[0-9a-f-]{36}$/i.test(id)&&Number.isSafeInteger(n)&&n>0&&n<=99).slice(0,50)));setCartOwner(user.id);});return()=>{live=false;const pending=pendingCart.current;if(pending?.owner===user.id)void writeCache("cart."+user.id,pending.value);};},[user?.id]);
+  useEffect(()=>{if(!cartReady||!user?.id)return;const timer=setTimeout(()=>void writeCache("cart."+user.id,cart),250);return()=>clearTimeout(timer);},[cart,user?.id,cartReady]);
   const [query, setQuery] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const searchPending = query.trim().toLocaleLowerCase("en-NG") !== searchTerm;
@@ -515,6 +526,8 @@ export default function StoreScreen() {
           ListEmptyComponent={catalogueEmpty}
           ListHeaderComponent={
             <>
+              <SyncStatus path="/v1/student/store"/>
+              {searchPending?<SearchLoading label="Searching products and sellers…" shape="products" hasResults={filtered.length>0}/>:null}
               <View style={styles.storeToolbar}>
                 {!featureDisabled ? (
                   <View

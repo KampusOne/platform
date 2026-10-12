@@ -1,3 +1,5 @@
+import { useAuth } from "@/src/auth/auth-context";
+import { readCache, writeCache } from "@/src/lib/device-cache";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { randomUUID } from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,18 +14,43 @@ import { pickAndUpload } from "@/src/lib/uploads";
 export default function CreateListing() {
   const { role } = useLocalSearchParams<{ role: string }>();
   const tutor = role === "TUTOR";
+  const {user}=useAuth();
+  const draftKey=`listing-draft.${user?.id}.${tutor?"tutor":"vendor"}`;
+  const [loadedDraftKey,setLoadedDraftKey]=useState("");
+  const draftReady=loadedDraftKey===draftKey;
+  const currentDraftKey=useRef(draftKey);
+  currentDraftKey.current=draftKey;
+  const requestPayload=useRef("");
+  const savedDraft=useRef<{key:string;value:Record<string,unknown>}|null>(null);
+  const formLock=useRef(false);
+  const draftCompleted=useRef(false);
   const { theme } = useAppearance();
   const toast = useToast();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
-  const [packageDays,setPackageDays]=useState("");
   const [stock, setStock] = useState("1");
   const [code, setCode] = useState("");
   const [location, setLocation] = useState("");
   const [image, setImage] = useState("");
   const [images,setImages]=useState<string[]>([]);
   const requestId=useRef(randomUUID());
+  const createdId=useRef<string|null>(null);
+  useEffect(()=>{
+    let active=true;
+    setLoadedDraftKey("");
+    savedDraft.current=null;createdId.current=null;requestId.current=randomUUID();requestPayload.current="";
+    formLock.current=false;draftCompleted.current=false;setBusy(false);
+    setName("");setDescription("");setPrice("");setStock("1");setCode("");setLocation("");setImage("");setImages([]);setCategory("");setCategoryQuery("");setShowAllCategories(false);
+    void readCache<Record<string,unknown>>(draftKey).then(d=>{
+      if(!active||currentDraftKey.current!==draftKey||!d)return;
+      const value=(key:string)=>typeof d[key]==="string"?d[key] as string:"";
+      setName(value("name"));setDescription(value("description"));setPrice(value("price"));setStock(value("stock")||"1");setCode(value("code"));setLocation(value("location"));setImage(value("image"));
+      setImages(Array.isArray(d.images)?d.images.filter((v):v is string=>typeof v==="string").slice(0,6):[]);setCategory(value("category"));
+      createdId.current=value("createdId")||null;requestId.current=value("requestId")||randomUUID();requestPayload.current=value("requestPayload");
+    }).finally(()=>{if(active&&currentDraftKey.current===draftKey)setLoadedDraftKey(draftKey);});
+    return()=>{active=false;const pending=savedDraft.current;if(pending?.key===draftKey&&user?.id)void writeCache(draftKey,pending.value).catch(()=>undefined);};
+  },[draftKey]);
   const [pricePreview,setPricePreview]=useState<{ready:boolean;baseKobo:number;platformKobo:number;processingEstimateKobo:number;customerEstimateKobo:number;sellerCommissionKobo:number}|null>(null);
   useEffect(()=>{
     if(tutor||!price.trim()){setPricePreview(null);return;}
@@ -41,7 +68,8 @@ export default function CreateListing() {
   const [categoriesError, setCategoriesError] = useState("");
   const alive = useRef(true), categoryRequest = useRef(0);
   useEffect(() => { alive.current = true; return () => { alive.current = false; categoryRequest.current++; }; }, []);
-  useEffect(()=>{requestId.current=randomUUID();},[name,description,price,stock,category,images]);
+  if(draftReady&&!draftCompleted.current)savedDraft.current={key:draftKey,value:{name,description,price,stock,code,location,image,images,category,createdId:createdId.current,requestId:requestId.current,requestPayload:requestPayload.current}};
+  useEffect(()=>{if(!draftReady||!user?.id)return;const timer=setTimeout(()=>{const pending=savedDraft.current;if(pending?.key===draftKey)void writeCache(draftKey,pending.value).catch(()=>undefined);},300);return()=>clearTimeout(timer);},[name,description,price,stock,code,location,image,images,category,draftKey,draftReady,user?.id]);
   const [busy, setBusy] = useState(false);
   const loadCategories = useCallback(async () => {
     const turn = ++categoryRequest.current;
@@ -57,37 +85,44 @@ export default function CreateListing() {
     } finally {
       if (alive.current && turn === categoryRequest.current) setCategoriesLoading(false);
     }
-  }, []);
+  }, [draftKey]);
   useEffect(() => { if (!tutor) void loadCategories(); }, [tutor, loadCategories]);
   let formHint = "";
-  if (!tutor && !categories.length) formHint = categoriesLoading ? "Loading product categories…" : "Load product categories to finish your listing.";
+  if(tutor&&code.trim().length<2)formHint="Add a course code.";
+  else if (!tutor && !categories.length) formHint = categoriesLoading ? "Loading product categories…" : "Load product categories to finish your listing.";
   else if (!tutor && !category) formHint = "Choose a product category below.";
   else if (!tutor && !image) formHint = "Add at least one product photo.";
-  else if (name.trim().length < 2) formHint = "Enter a name with at least 2 characters.";
-  else if (description.trim().length < 10) formHint = "Add a description with at least 10 characters.";
+  else if (name.trim().length < (tutor?3:2)) formHint = tutor?"Enter a title with at least 3 characters.":"Enter a name with at least 2 characters.";
+  else if (description.trim().length < (tutor?20:10)) formHint = tutor?"Add a description with at least 20 characters.":"Add a description with at least 10 characters.";
   else {
     try { nairaToKobo(price); } catch (e) { formHint = e instanceof Error ? e.message : "Enter a valid price."; }
     if (!formHint && (!/^\d+$/.test(stock.trim()) || Number(stock) > (tutor ? 500 : 1_000_000) || Number(stock) < (tutor ? 1 : 0))) formHint = tutor ? "Enter 1 to 500 available places." : "Enter a whole stock quantity from 0 to 1,000,000.";
   }
+  if(createdId.current)formHint="";
+  const fieldsLocked=busy||!draftReady||Boolean(createdId.current);
   async function upload() {
-    setBusy(true);
+    if(formLock.current||fieldsLocked)return;
+    const operationKey=draftKey;
+    formLock.current=true;setBusy(true);
     try {
       const file = await pickAndUpload("product");
-      if (file) {setImage(current=>current||file.url);setImages(current=>[...current,file.url].slice(0,6));}
+      if(alive.current&&currentDraftKey.current===operationKey&&file){setImage(current=>current||file.url);setImages(current=>[...current,file.url].slice(0,6));}
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Upload failed", "error");
+      if(alive.current&&currentDraftKey.current===operationKey)toast(e instanceof Error ? e.message : "Upload failed", "error");
     } finally {
-      setBusy(false);
+      if(alive.current&&currentDraftKey.current===operationKey){formLock.current=false;setBusy(false);}
     }
   }
   async function save() {
-    if (busy || formHint) return;
-    setBusy(true);
+    if (formLock.current || busy || !draftReady || formHint) return;
+    const operationKey=draftKey;
+    const stillCurrent=()=>alive.current&&currentDraftKey.current===operationKey;
+    formLock.current=true;setBusy(true);
     try {
       const path = tutor ? "/v1/agents/tutorials" : "/v1/agents/products";
       const body = tutor
         ? {
-            packageDays:packageDays?Number(packageDays):null,
+            requestId:requestId.current,
             courseCode: code,
             title: name,
             description,
@@ -107,20 +142,33 @@ export default function CreateListing() {
             imageUrls:images,
             requestId:requestId.current,
           };
-      const created = await api<{ id: string }>(path, {
+      const {requestId: _previous,...details}=body;
+      const signature=JSON.stringify(details);
+      if(!createdId.current&&requestPayload.current!==signature){requestId.current=randomUUID();requestPayload.current=signature;}
+      body.requestId=requestId.current;
+      await writeCache(draftKey,{...savedDraft.current?.value,requestId:requestId.current,requestPayload:signature});
+      if(!stillCurrent())return;
+      const created = createdId.current?{id:createdId.current}:await api<{ id: string }>(path, {
         method: "POST",
         body: JSON.stringify(body),
       });
+      if(!stillCurrent())return;
+      createdId.current=created.id;
+      await writeCache(draftKey,{...savedDraft.current?.value,createdId:created.id,requestId:requestId.current,requestPayload:signature});
+      if(!stillCurrent())return;
       if(tutor)await api(path + "/" + created.id + "/status", {
         method: "PATCH",
         body: JSON.stringify({ status: "SUBMITTED" }),
       });
+      if(!stillCurrent())return;
+      draftCompleted.current=true;savedDraft.current=null;
+      await writeCache(draftKey,null);
       toast(tutor?"Submitted for review":"Product uploaded", "success");
       router.back();
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not save listing", "error");
+      if(stillCurrent())toast(e instanceof Error ? e.message : "Could not save listing", "error");
     } finally {
-      setBusy(false);
+      if(stillCurrent()){formLock.current=false;setBusy(false);}
     }
   }
   const matchingCategories = categories.filter(c=>c.name.toLocaleLowerCase("en-NG").includes(categoryQuery.trim().toLocaleLowerCase("en-NG")));
@@ -144,19 +192,19 @@ export default function CreateListing() {
         <>
           <View style={{padding:18,borderRadius:22,backgroundColor:theme.surfaceTint,gap:8,marginBottom:20}}><Text style={{fontFamily:theme.font.displayStrong,fontSize:24,color:theme.text}}>Ready for your next sale</Text><Text style={{fontFamily:theme.font.body,lineHeight:22,color:theme.textMuted}}>Add clear photos and a price. Your product goes live when you upload it.</Text></View>
           <View style={{flexDirection:'row',flexWrap:'wrap',gap:12,marginBottom:18}}>
-            {images.map((url,index)=><View key={url} style={{width:'47%',aspectRatio:1,borderRadius:18,overflow:'hidden'}}><Image source={{uri:url}} style={{width:'100%',height:'100%'}}/><Pressable accessibilityRole="button" accessibilityLabel={`Remove photo ${index+1}`} onPress={()=>{const next=images.filter((_,i)=>i!==index);setImages(next);setImage(next[0]??'');}} style={{position:'absolute',right:8,top:8,padding:8,borderRadius:30,backgroundColor:theme.canvas}}><Ionicons name="close" size={18} color={theme.text}/></Pressable></View>)}
-            {images.length<6?<Pressable accessibilityRole="button" accessibilityLabel="Add product photo" disabled={busy} onPress={()=>void upload()} style={{width:'47%',aspectRatio:1,borderRadius:18,borderWidth:1,borderStyle:'dashed',borderColor:theme.deepBrand,alignItems:'center',justifyContent:'center',gap:8,backgroundColor:theme.surface}}><Ionicons name="camera-outline" size={28} color={theme.deepBrand}/><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>{busy?'Uploading…':'Add photo'}</Text></Pressable>:null}
+            {images.map((url,index)=><View key={url} style={{width:'47%',aspectRatio:1,borderRadius:18,overflow:'hidden'}}><Image source={{uri:url}} style={{width:'100%',height:'100%'}}/><Pressable accessibilityRole="button" accessibilityLabel={`Remove photo ${index+1}`} disabled={fieldsLocked} onPress={()=>{const next=images.filter((_,i)=>i!==index);setImages(next);setImage(next[0]??'');}} style={{position:'absolute',right:8,top:8,padding:8,borderRadius:30,backgroundColor:theme.canvas}}><Ionicons name="close" size={18} color={theme.text}/></Pressable></View>)}
+            {images.length<6?<Pressable accessibilityRole="button" accessibilityLabel="Add product photo" disabled={fieldsLocked} onPress={()=>void upload()} style={{width:'47%',aspectRatio:1,borderRadius:18,borderWidth:1,borderStyle:'dashed',borderColor:theme.deepBrand,alignItems:'center',justifyContent:'center',gap:8,backgroundColor:theme.surface}}><Ionicons name="camera-outline" size={28} color={theme.deepBrand}/><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>{busy?'Uploading…':'Add photo'}</Text></Pressable>:null}
           </View>
         </>
       ) : null}
       <Text style={{ fontFamily:theme.font.semibold, color:theme.deepBrand, fontSize:12, marginBottom:10 }}>01 · DETAILS</Text>
-      <ToolField
+      <ToolField editable={!fieldsLocked}
         label={tutor ? "Tutorial title" : "Product name"}
         value={name}
         onChangeText={setName}
         maxLength={160}
       />
-      <ToolField
+      <ToolField editable={!fieldsLocked}
         label="Description"
         value={description}
         onChangeText={setDescription}
@@ -164,13 +212,13 @@ export default function CreateListing() {
         maxLength={2000}
       />
       <Text style={{ fontFamily:theme.font.semibold, color:theme.deepBrand, fontSize:12, marginBottom:10 }}>02 · PRICE & AVAILABILITY</Text>
-      <ToolField
+      <ToolField editable={!fieldsLocked}
         label="Price (₦)"
         value={price}
         onChangeText={setPrice}
         keyboardType="decimal-pad"
       />
-      <ToolField
+      <ToolField editable={!fieldsLocked}
         label={tutor ? "Available places" : "Stock quantity"}
         value={stock}
         onChangeText={setStock}
@@ -178,10 +226,8 @@ export default function CreateListing() {
       />
       {tutor ? (
         <>
-          <ToolField label="Package access (days, optional)" value={packageDays} onChangeText={setPackageDays} keyboardType="number-pad"/>
-          <Text style={{color:theme.textMuted}}>Leave blank for a scheduled session. Packages start after payment and include tutor chat.</Text>
-          <ToolField label="Course code" value={code} onChangeText={setCode} />
-          <ToolField
+          <ToolField editable={!fieldsLocked} label="Course code" value={code} onChangeText={setCode} />
+          <ToolField editable={!fieldsLocked}
             label="Location"
             value={location}
             onChangeText={setLocation}
@@ -205,7 +251,8 @@ export default function CreateListing() {
             <Pressable
               accessibilityRole="radio"
               accessibilityLabel={c.name}
-              accessibilityState={{ selected: category === c.id }}
+              accessibilityState={{ selected: category === c.id, disabled: fieldsLocked }}
+              disabled={fieldsLocked}
               key={c.id}
               onPress={() => setCategory(c.id)}
               style={{
@@ -223,10 +270,11 @@ export default function CreateListing() {
         {categories.length > 0 && !matchingCategories.length ? <Text style={{ color: theme.textMuted }}>No matching category. Try another word.</Text> : null}
         </View>
       )}
-      {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['KampusOne service fee',pricePreview.platformKobo],['Estimated Paystack fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Paystack confirms its actual fee at checkout.</Text></View>:null}
+      {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['KampusOne service fee',pricePreview.platformKobo],['Estimated processing fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Checkout confirms the total and any processing fee.</Text></View>:null}
+      {createdId.current ? <Text accessibilityRole="alert" style={{color:theme.textMuted,lineHeight:22,marginBottom:12}}>Your listing was created. Retry to finish submitting it for review.</Text> : null}
       <ToolButton
-        label={busy ? "Uploading…" : tutor?"Submit for review":"Upload product"}
-        disabled={busy || Boolean(formHint)}
+        label={busy ? "Saving…" : createdId.current?"Retry submission":tutor?"Submit for review":"Upload product"}
+        disabled={busy || !draftReady || Boolean(formHint)}
         onPress={() => void save()}
       />
       {!busy && formHint ? <Text style={{ color: theme.textMuted, lineHeight: 22, marginTop: 10 }}>{formHint}</Text> : null}

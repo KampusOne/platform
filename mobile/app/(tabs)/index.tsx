@@ -1,3 +1,4 @@
+import { liveReads } from "@/src/lib/live-updates";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "@/src/lib/haptics";
@@ -217,8 +218,8 @@ export default function TodayScreen() {
     let active = true;
     const refresh = () => { void api<{ unreadCount: number }>("/v1/messages/inbox").then(result => { if (active) setUnreadMessages(result.unreadCount); }).catch(() => undefined); };
     refresh();
-    const timer = setInterval(refresh, 60_000);
-    return () => { active = false; clearInterval(timer); };
+    const stop = liveReads.subscribe("/v1/messages/inbox", refresh, 90_000);
+    return () => { active = false; stop(); };
   }, [user?.id]));
 
   const firstName = data?.profile?.first_name ?? profile?.first_name ?? "there";
