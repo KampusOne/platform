@@ -75,6 +75,7 @@ export default function FeedSearch() {
     scope = `${user?.id}:${user?.universityId}:${path}`,
     active = useRef(scope);
   active.current = scope;
+  const preparingSearch = Boolean(query.trim()) && query.trim()!==term;
   const recentKey = `k1.search.recents.v1.${user?.id ?? "anonymous"}`;
   useEffect(() => {
     const timer = setTimeout(() => setTerm(query.trim()), 300);
@@ -408,7 +409,12 @@ export default function FeedSearch() {
           keyboardDismissMode="on-drag"
           contentContainerStyle={styles.list}
           ListHeaderComponent={
-            loading ? (
+            preparingSearch ? (
+              <View accessibilityLiveRegion="polite" style={{flexDirection:"row",gap:9,alignItems:"center",paddingVertical:18}}>
+                <View style={{width:22,height:4,borderRadius:2,backgroundColor:theme.brand}}/>
+                <Text style={styles.muted}>Preparing your search…</Text>
+              </View>
+            ) : loading ? (
               <FeedSkeleton count={2} />
             ) : error ? (
               <View style={styles.empty}>

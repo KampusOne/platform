@@ -33,9 +33,9 @@ export function ImportProgress({ stage, uploadFraction, subject = "document" }: 
         </Text>
       </View>
       {determinate ? (
-        <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: percent }}
+        <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: percent ?? 0 }}
           style={{ height: 6, borderRadius: 3, backgroundColor: theme.surfaceMuted, overflow: "hidden" }}>
-          <View style={{ width: `${percent}%` as `${number}%`, height: 6,
+          <View style={{ width: `${percent ?? 0}%` as `${number}%`, height: 6,
             borderRadius: 3, backgroundColor: theme.brand }} />
         </View>
       ) : null}
