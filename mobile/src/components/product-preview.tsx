@@ -14,7 +14,7 @@ export type PreviewProduct={id:string;vendor_profile_id:string;name:string;descr
 type Seller={biography?:string|null;pickup_location?:string|null;rating?:number;review_count?:number};
 const money=(kobo:number)=>new Intl.NumberFormat('en-NG',{style:'currency',currency:'NGN',maximumFractionDigits:2}).format(kobo/100);
 
-export function ProductPreview({product,quantity,onAdd,onClose}:{product:PreviewProduct;quantity:number;onAdd:()=>void;onClose:()=>void}){
+export function ProductPreview({product,quantity,onAdd,onBuyNow,onClose,busy=false,cartReady=true,error:checkoutError=''}:{product:PreviewProduct;quantity:number;onAdd:()=>void;onBuyNow:()=>void;onClose:()=>void;busy?:boolean;cartReady?:boolean;error?:string}){
   const {theme}=useAppearance(),{width}=useWindowDimensions();
   const galleryWidth=Math.min(Math.max(240,width-32),540);
   const [seller,setSeller]=useState<Seller|null>(null),[error,setError]=useState(''),[attempt,setAttempt]=useState(0);
@@ -38,6 +38,11 @@ export function ProductPreview({product,quantity,onAdd,onClose}:{product:Preview
       <View style={{gap:8}}><Text style={{...text,fontFamily:theme.font.semibold}}>About this product</Text><Text selectable style={text}>{product.description||'The seller has not added a description.'}</Text></View>
       <View style={{padding:16,gap:8,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,borderRadius:16}}><Text style={{...text,fontSize:12,color:theme.textMuted}}>SOLD BY</Text><Pressable accessibilityRole="button" onPress={sellerProfile} style={{minHeight:44,flexDirection:'row',alignItems:'center',gap:8}}><Ionicons name="storefront-outline" color={theme.accentText} size={22}/><Text style={{...text,fontFamily:theme.font.semibold,flex:1}}>{product.vendor_name}</Text><Ionicons name="chevron-forward" size={20} color={theme.textMuted}/></Pressable>{seller?.biography?<Text style={text}>{seller.biography}</Text>:null}{(seller?.pickup_location||product.pickup_location)?<Text style={{...text,color:theme.textMuted}}>Pickup: {seller?.pickup_location||product.pickup_location}</Text>:null}{Number(seller?.review_count??product.review_count)>0?<Text style={{...text,color:theme.textMuted}}>{Number(seller?.rating??product.rating).toFixed(1)} / 5 · {seller?.review_count??product.review_count} purchase reviews</Text>:<Text style={{...text,color:theme.textMuted}}>No purchase reviews yet</Text>}{error?<><Text style={{...text,color:theme.textMuted}}>{error}</Text><ToolButton secondary label="Retry seller details" onPress={()=>setAttempt(n=>n+1)}/></>:null}</View>
     </ScrollView>
-    <View style={{paddingHorizontal:16,paddingVertical:12,borderTopWidth:1,borderTopColor:theme.border,backgroundColor:theme.surface,gap:8}}>{quantity?<Text accessibilityLiveRegion="polite" style={{...text,textAlign:'center',fontSize:13}}>{quantity} in your cart</Text>:null}<ToolButton label={!available?'Out of stock':quantity>=stock?'All available stock is in your cart':quantity?'Add another':'Add to cart'} disabled={!available||quantity>=stock} onPress={onAdd}/></View>
+    <View style={{paddingHorizontal:16,paddingVertical:12,borderTopWidth:1,borderTopColor:theme.border,backgroundColor:theme.surface,gap:8}}>
+      {checkoutError?<Text accessibilityRole="alert" style={{...text,color:theme.error}}>{checkoutError}</Text>:null}
+      {quantity?<Text accessibilityLiveRegion="polite" style={{...text,textAlign:'center',fontSize:13}}>{quantity} in your cart</Text>:null}
+      <ToolButton label={busy?'Opening checkout…':!available?'Out of stock':'Buy now'} disabled={!available||!cartReady||busy} onPress={onBuyNow}/>
+      <ToolButton label={quantity>=stock?'All available stock is in your cart':quantity?'Add another':'Add to cart'} secondary disabled={!available||quantity>=stock||!cartReady||busy} onPress={onAdd}/>
+    </View>
   </SafeAreaView>;
 }
