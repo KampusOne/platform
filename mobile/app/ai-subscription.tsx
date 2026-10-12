@@ -482,6 +482,7 @@ function AccountSubscription() {
   async function fetchQuote(discountCode = "", tier: Tier = selectedTier) {
     const result = await api<{ quote: PricingQuote }>("/v1/ai/subscription-quote", {
       method: "POST",
+      timeoutMs: 8000,
       body: JSON.stringify({ tier, discountCode: discountCode.trim(), requestId: key.current }),
     });
     const next = readKiraCheckoutQuote(result?.quote, tier);
@@ -518,7 +519,7 @@ function AccountSubscription() {
     await run(async () => {
       const result = await api<{ payment: { status: string } }>(
         "/v1/payments/status/" + encodeURIComponent(plan.checkout!.reference),
-        { cache: "no-store" },
+        { cache: "no-store", timeoutMs: 8000 },
       );
       if (!alive.current) return;
       setNotice(
@@ -541,6 +542,7 @@ function AccountSubscription() {
         amountKobo: number;
       }>("/v1/ai/subscription-checkout", {
         method: "POST",
+        timeoutMs: 12000,
         body: JSON.stringify({
           requestId: key.current,
           consent: true,

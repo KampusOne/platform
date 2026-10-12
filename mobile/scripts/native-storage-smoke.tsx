@@ -16,6 +16,7 @@ const thread = '44444444-4444-4444-8444-444444444444';
 const kira = 'ai-workspace-v3.' + owner;
 const dm = 'kampusone.message-draft.v1.' + owner + '.' + thread;
 const text = 'Native restart draft: GST, ₦6,000, café 🥂';
+const longText = 'Large native draft ₦ 🥂 '.repeat(4096);
 const marker = 'native.storage.smoke.phase';
 const scope = (user: string, university = campus) => JSON.stringify([user, university, ['STUDENT'], []]);
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -32,6 +33,7 @@ async function smoke() {
     await saveOwnedDraft(kira, { prompt: text, turns: [], workspace: 'ask' });
     const draft = JSON.stringify({ version: 1, text, media: [], batches: [] });
     await privateDraftStorage.setItem(dm, draft);
+    await saveOwnedDraft('listing-draft.' + owner, {description:longText});
     check((await readOwnedDraft<{prompt:string}>(kira))?.prompt === text, 'Kira write verification failed');
     check(await privateDraftStorage.getItem(dm) === draft, 'DM write verification failed');
     const records = (await AsyncStorage.getAllKeys()).filter(name => name.startsWith('k1.encrypted.v1.'));
@@ -41,6 +43,7 @@ async function smoke() {
     return 'NATIVE_STORAGE_WRITE_PASS';
   }
   check((await readOwnedDraft<{prompt:string}>(kira))?.prompt === text, 'Kira cold restart lost draft');
+  check((await readOwnedDraft<{description:string}>('listing-draft.'+owner))?.description === longText, 'Large native draft cold restart failed');
   check(JSON.parse((await privateDraftStorage.getItem(dm))!).text === text, 'DM cold restart lost draft');
   setDeviceCacheScope(scope(other), other);
   check(await secureSnapshots.read(kira) === null && await privateDraftStorage.getItem(dm) === null, 'Another account read a draft');
@@ -48,7 +51,8 @@ async function smoke() {
   check(await secureSnapshots.read(kira) === null, 'Another campus read a draft');
   setDeviceCacheScope(scope(owner), owner);
   check((await secureSnapshots.read<{prompt:string}>(kira))?.data.prompt === text, 'Original owner recovery failed');
-  const location = (await AsyncStorage.getAllKeys()).find(name => name.startsWith('k1.encrypted.v1.') && !name.endsWith('.index') && !name.endsWith('.scopes'))!;
+  const recordId = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, kira);
+  const location = (await AsyncStorage.getAllKeys()).find(name => name.startsWith('k1.encrypted.v1.') && name.endsWith('.'+recordId))!;
   const before = (await AsyncStorage.getItem(location))!;
   const envelope = JSON.parse(before);
   envelope.sealed = (envelope.sealed[0] === 'A' ? 'B' : 'A') + envelope.sealed.slice(1);

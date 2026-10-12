@@ -1,10 +1,12 @@
 /** Expo's Android fromCombined bridge takes bytes, even when its JS type permits base64. */
 export function snapshotCiphertextBytes(base64: string): Uint8Array {
-  if (!base64 || base64.length > 768 * 1024 || base64.length % 4 !== 0 ||
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64))
+  if (!base64 || base64.length > 768 * 1024 || base64.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(base64))
     throw new Error('Invalid encrypted snapshot');
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  const firstPadding = base64.indexOf('=');
+  if (firstPadding !== -1 && firstPadding !== base64.length - padding)
+    throw new Error('Invalid encrypted snapshot');
   const bytes = new Uint8Array(base64.length / 4 * 3 - padding);
   let offset = 0;
   for (let i = 0; i < base64.length; i += 4) {

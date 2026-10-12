@@ -58,7 +58,13 @@ export function useMarketplaceCart(owner: string) {
   const flush = useCallback(async () => {
     if (scope !== expected || !state.ready) throw new Error('Wait for your cart to restore before continuing.');
     const items = state.items;
-    await persist(owner, revision, items);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        persist(owner, revision, items),
+        new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('Saving your cart took too long. Your items are kept here. Try again before checkout.')),5000);}),
+      ]);
+    } finally { if (timer !== undefined) clearTimeout(timer); }
     if (scope !== expected || state.items !== items) throw new Error('Your cart changed. Review it before continuing.');
     notify({ ...state, saving: false, error: '' });
   }, [owner, revision, expected]);

@@ -1,0 +1,33 @@
+{
+  "paths": 794,
+  "appliedAt": "2026-10-12T23:28:24.327596+00:00",
+  "mapRevision": 51,
+  "correctedPlaces": [
+    {
+      "id": "60cfd3e2-6db6-581a-9048-76b057103a11",
+      "name": "Faculty of Arts",
+      "latitude": 6.403876,
+      "longitude": 5.62122,
+      "verifiedAt": null
+    },
+    {
+      "id": "c3928d61-f327-557e-a243-b5c3ae7bec19",
+      "name": "Faculty of Environmental Sciences",
+      "latitude": 6.402033,
+      "longitude": 5.619308,
+      "verifiedAt": null
+    },
+    {
+      "id": "c8a0887f-0b17-5856-b1aa-e3d1aefffcdb",
+      "name": "GST building",
+      "latitude": 6.40387,
+      "longitude": 5.61961,
+      "verifiedAt": null
+    }
+  ],
+  "directoryPlaces": 181,
+  "rollbackRehearsal": true,
+  "protectedDataFingerprintsUnchanged": true,
+  "source": "database/imports/uniben-map-review-2026-10-13.json",
+  "surveyedEntrances": false
+}

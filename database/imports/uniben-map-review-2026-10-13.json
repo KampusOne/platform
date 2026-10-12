@@ -1,0 +1,932 @@
+{
+  "reviewDate": "2026-10-13",
+  "institutionId": "6a79211e-6e85-4d95-be24-976edb26ba58",
+  "campusId": "1d60dcae-760d-4de7-8443-6a870d9bbe1a",
+  "archives": [
+    {
+      "name": "Map.zip",
+      "sha256": "19442dc3ec1c035894dfca9f9e88f66cf3f4db6fcd109fef1bcf5f95e12e9f57"
+    },
+    {
+      "name": "Map 2.zip",
+      "sha256": "0ce7a7438f7f8032ef10c592d21fcb2a8a833085285057bd97c5785a33d8dd5b"
+    }
+  ],
+  "annotatedReferenceSha256": "cceac1aae1fbbb20fa1c6067d65d0ca654bef634a50dcc8e39739e072f956ebb",
+  "framesReviewed": [
+    {
+      "archive": "Map.zip",
+      "frame": 1,
+      "filename": "Screenshot_2026-09-28-10-35-15-879_com.google.android.apps.maps.jpg",
+      "sha256": "3365dbd90b22d518a911c23f41f6c2f70fc499381c18f2a85fabec41f6fc5188",
+      "width": 1080,
+      "height": 2400,
+      "area": "Agriculture, Ekosodin and guest house",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 2,
+      "filename": "Screenshot_2026-09-28-10-35-19-132_com.google.android.apps.maps.jpg",
+      "sha256": "52ae30c35e313863a9dd912a95f973a9be1ef45265f80e7007160a5478f93220",
+      "width": 1080,
+      "height": 2400,
+      "area": "Staff school, Arts and central campus",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 3,
+      "filename": "Screenshot_2026-09-28-10-35-23-824_com.google.android.apps.maps.jpg",
+      "sha256": "43c0345ca06b094bcd66a924e1753ea4a941af9cfa71fba8c5273e1ade7f6991",
+      "width": 1080,
+      "height": 2400,
+      "area": "Engineering, staff school, halls and bank",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 4,
+      "filename": "Screenshot_2026-09-28-10-35-27-555_com.google.android.apps.maps.jpg",
+      "sha256": "63a1b00b0c631531cc7c2df43b94891121422b1500f7177769f15bf38df22453",
+      "width": 1080,
+      "height": 2400,
+      "area": "Main entrance and Engineering",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 5,
+      "filename": "Screenshot_2026-09-28-10-35-31-146_com.google.android.apps.maps.jpg",
+      "sha256": "c34d0086fd24a9d79f0e37dde597109057110fcac138ab1cb376c78beeb4fb57",
+      "width": 1080,
+      "height": 2400,
+      "area": "Library, halls and biochemistry",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 6,
+      "filename": "Screenshot_2026-09-28-10-35-34-984_com.google.android.apps.maps.jpg",
+      "sha256": "1f32a82268df7179818e92bc8ad4d7abc6f0e703e0577758c52a64b702380fb7",
+      "width": 1080,
+      "height": 2400,
+      "area": "Law, June 12 and medical campus",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 7,
+      "filename": "Screenshot_2026-09-28-10-35-49-543_com.google.android.apps.maps.jpg",
+      "sha256": "de0822f97e04317a099daa7a323a5988042c55cd2feeb322a675fa4036415c5e",
+      "width": 1080,
+      "height": 2400,
+      "area": "Engineering, Computer Science and Physical Sciences",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 8,
+      "filename": "Screenshot_2026-09-28-10-35-53-323_com.google.android.apps.maps.jpg",
+      "sha256": "45fc5606108a18fa4bcf123ec181e6036be3dc48584224ff7391c20ebbae891d",
+      "width": 1080,
+      "height": 2400,
+      "area": "Engineering, Education field and Physical Sciences",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 9,
+      "filename": "Screenshot_2026-09-28-10-35-58-446_com.google.android.apps.maps.jpg",
+      "sha256": "cbfb7a843ab3445c7caefe32e2e6200a270293796d5e701fc97f38764dd44690",
+      "width": 1080,
+      "height": 2400,
+      "area": "Physical Sciences and Festus Iyayi Hall",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 10,
+      "filename": "Screenshot_2026-09-28-10-36-03-941_com.google.android.apps.maps.jpg",
+      "sha256": "fb2b009b5d87b41d0174f67bb18e3a7baccf77eef3e29a771cf5c49ac80ea93c",
+      "width": 1080,
+      "height": 2400,
+      "area": "Medical hostel and anatomy",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 11,
+      "filename": "Screenshot_2026-09-28-10-36-12-310_com.google.android.apps.maps.jpg",
+      "sha256": "a3a84b6d4a9303e13de5cda4122f75d498f4ae190c10a74f59a55449517cdf4f",
+      "width": 1080,
+      "height": 2400,
+      "area": "Teaching hospital services",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 12,
+      "filename": "Screenshot_2026-09-28-10-36-21-789_com.google.android.apps.maps.jpg",
+      "sha256": "0b7a58f6dfa9f784efb74d8bf63fdfd184cba8cb56162171a42a18293e316336",
+      "width": 1080,
+      "height": 2400,
+      "area": "Main Bowl and indoor sports",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 13,
+      "filename": "Screenshot_2026-09-28-10-36-32-639_com.google.android.apps.maps.jpg",
+      "sha256": "566505fcb41fa2a5cf94a6f9809f3ae2a9797c3d4766fb6f0b2c03f3753f08a5",
+      "width": 1080,
+      "height": 2400,
+      "area": "Engineering laboratories",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 14,
+      "filename": "Screenshot_2026-09-28-10-36-50-740_com.google.android.apps.maps.jpg",
+      "sha256": "476ebb9c0940ca7f9a81bace9ad2bc77198d646d838dbeae49b58b5474631765",
+      "width": 1080,
+      "height": 2400,
+      "area": "Research laboratories, Education field and Environmental Sciences",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 15,
+      "filename": "Screenshot_2026-09-28-10-36-55-480_com.google.android.apps.maps.jpg",
+      "sha256": "321f14876c4ba624d9da3f694396a53a486fadfa7f0e1a0c54d4fd0c50fee3cb",
+      "width": 1080,
+      "height": 2400,
+      "area": "Arts, research centre and north road junction",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 16,
+      "filename": "Screenshot_2026-09-28-10-37-04-131_com.google.android.apps.maps.jpg",
+      "sha256": "6ae8746bbf170a22d6481695d8a53aaff0de972862992697b73348fb3e72e522",
+      "width": 1080,
+      "height": 2400,
+      "area": "Senior staff quarters and Ekosodin road",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 17,
+      "filename": "Screenshot_2026-09-28-10-37-12-768_com.google.android.apps.maps.jpg",
+      "sha256": "5ccd946a12d5257b6629379dec19c7834b342302699612e6c5cb1c4b45f171d9",
+      "width": 1080,
+      "height": 2400,
+      "area": "Ekosodin, Access ATM and road junction",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 18,
+      "filename": "Screenshot_2026-09-28-10-37-25-921_com.google.android.apps.maps.jpg",
+      "sha256": "97d35a69f42a196b77b7f337cf35c47e7c3b8dea849d18bd29f9080edf9a4e12",
+      "width": 1080,
+      "height": 2400,
+      "area": "Entrepreneurship centre, Nescafe and Law",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 19,
+      "filename": "Screenshot_2026-09-28-10-37-30-237_com.google.android.apps.maps.jpg",
+      "sha256": "1f57cfae6ae9ef421f841f3861cb32c8bf85f5a8f3f2d1fd70103266bd0c57e3",
+      "width": 1080,
+      "height": 2400,
+      "area": "Law complex and Abuja road",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 20,
+      "filename": "Screenshot_2026-09-28-10-37-38-107_com.google.android.apps.maps.jpg",
+      "sha256": "e76c0eee3e7983418e187724d8d201bdd6f5ebfbe37cfee0cd35c5bc7404d1c4",
+      "width": 1080,
+      "height": 2400,
+      "area": "June 12 and commercial services",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 21,
+      "filename": "Screenshot_2026-09-28-10-37-41-945_com.google.android.apps.maps.jpg",
+      "sha256": "5763ed4ca316e800804d181bbc65877142377bb9071053ba196fcb199cfc98e0",
+      "width": 1080,
+      "height": 2400,
+      "area": "Agriculture and chapel",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 22,
+      "filename": "Screenshot_2026-09-28-10-37-51-263_com.google.android.apps.maps.jpg",
+      "sha256": "124c5c4538ae6eadf0917c184fb7bec1bbeaeb0aa8c27434ae51b800fc75ccbd",
+      "width": 1080,
+      "height": 2400,
+      "area": "Pharmacy Annexe and CERHI",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 23,
+      "filename": "Screenshot_2026-09-28-10-38-09-516_com.google.android.apps.maps.jpg",
+      "sha256": "135005c353bb7f30bd560cdae133fb674f09950d64c74d1717ff9456927a6835",
+      "width": 1080,
+      "height": 2400,
+      "area": "Swift Canteen and Food Court",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 24,
+      "filename": "Screenshot_2026-09-28-10-38-20-567_com.google.android.apps.maps.jpg",
+      "sha256": "78b1d0b2bf1914814ec3fa9146bef42a62c10b848a59518d444c07f100bb6c8c",
+      "width": 1080,
+      "height": 2400,
+      "area": "Library, Alumni and medical hostel",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 25,
+      "filename": "Screenshot_2026-09-28-10-38-24-795_com.google.android.apps.maps.jpg",
+      "sha256": "940b45bd5c0f35eb1f79a01240d4548bdd5abed4f578d198edee25023c028d13",
+      "width": 1080,
+      "height": 2400,
+      "area": "Library, JUPEB and Microfinance bank",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 26,
+      "filename": "Screenshot_2026-09-28-10-38-28-363_com.google.android.apps.maps.jpg",
+      "sha256": "13c84f46d9ed453e61dae6de5579ca83a0c930723cabc90842aa1db9aa088259",
+      "width": 1080,
+      "height": 2400,
+      "area": "Postgraduate school, pharmacy and hospital road",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 27,
+      "filename": "Screenshot_2026-09-28-10-38-32-787_com.google.android.apps.maps.jpg",
+      "sha256": "896c94fc37a11e13b6e4883f39e9c10cec86c6560050eb1332e526479064ebc1",
+      "width": 1080,
+      "height": 2400,
+      "area": "Postgraduate and planning district",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 28,
+      "filename": "Screenshot_2026-09-28-10-38-37-585_com.google.android.apps.maps.jpg",
+      "sha256": "453a61e9b9ba7fda9fdd6701d260e152695cb7bd88ec385ee1f83479770a7b67",
+      "width": 1080,
+      "height": 2400,
+      "area": "Sports courts and postgraduate district",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 29,
+      "filename": "Screenshot_2026-09-28-10-38-44-363_com.google.android.apps.maps.jpg",
+      "sha256": "195948ae6d559589000250ea6fec025e5af4759682ee06aa04aff2b6085aefde",
+      "width": 1080,
+      "height": 2400,
+      "area": "Wema and Guaranty Trust bank",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 30,
+      "filename": "Screenshot_2026-09-28-10-38-51-749_com.google.android.apps.maps.jpg",
+      "sha256": "bc6d85b95b329f1ccc264311957b50da2c897fe6200d41ba8a1e5d786a61007f",
+      "width": 1080,
+      "height": 2400,
+      "area": "Fidelity, Stanbic and shopping block",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 31,
+      "filename": "Screenshot_2026-09-28-10-38-56-138_com.google.android.apps.maps.jpg",
+      "sha256": "069d62d0108a1a3fa78e202b5ff0c05b0effeed2bc197cb32e297c6363d8b963",
+      "width": 1080,
+      "height": 2400,
+      "area": "First Bank and Zenith bank",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 32,
+      "filename": "Screenshot_2026-09-28-10-39-01-294_com.google.android.apps.maps.jpg",
+      "sha256": "eb3060283e10e9c99e0bd49a3793c3fe488ec15ed1b4021b482585781514a06e",
+      "width": 1080,
+      "height": 2400,
+      "area": "Main gate transport and bank axis",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 33,
+      "filename": "Screenshot_2026-09-28-10-39-06-794_com.google.android.apps.maps.jpg",
+      "sha256": "0366786e5452beb019891c5943c242b453ac5a4fc0d3f35782556ba2f091dadb",
+      "width": 1080,
+      "height": 2400,
+      "area": "Demonstration school and geoscience centre",
+      "review": "Overlapping named landmarks, road junctions, building outlines and scale/compass checked. The illustration is an orientation diagram, not georeferenced geometry."
+    },
+    {
+      "archive": "Map.zip",
+      "frame": 34,
+      "filename": "images (54).jpeg",
+      "sha256": "75290ac157a31d11ef22973459b992170f9907a29a9e31b29e925d196e9eeadc",
+      "width": 554,
+      "height": 554,
+      "area": "Illustrated campus orientation diagram",
+      "review": "Used to cross-check district relationships only. It has no geographic scale or GPS reference and was excluded from all coordinate and footprint fitting."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 1,
+      "filename": "Screenshot_2026-10-06-18-32-37-880_com.google.android.apps.maps.jpg",
+      "sha256": "278997443ec8b2fef5fda098c5f361a85eb9e08b8bf54ceae7569711b902cf86",
+      "width": 1080,
+      "height": 2400,
+      "area": "Engineering / Physical Sciences",
+      "review": "Petroleum Engineering north, Materials and Metallurgy below, Computer Science further south; Physical Sciences 1000 LT at southern edge."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 2,
+      "filename": "Screenshot_2026-10-06-18-32-46-566_com.google.android.apps.maps.jpg",
+      "sha256": "380d1131065b9aa61d6ccd6b1bd9fe4b4962b5644e040a8492629785e6f87244",
+      "width": 1080,
+      "height": 2400,
+      "area": "Engineering",
+      "review": "Chemical Engineering, Mechanical Production Laboratory, Engineering Old 1000 LT and Petroleum/Materials cluster along Uniben Road south of Ethiope River Road. Ben Classic business label clipped."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 3,
+      "filename": "Screenshot_2026-10-06-18-32-54-132_com.google.android.apps.maps.jpg",
+      "sha256": "4952fe6b7b239d06919a0ee91322555171a17e9490e93bcbca1c2191be39a665",
+      "width": 1080,
+      "height": 2400,
+      "area": "Management / Physical Sciences",
+      "review": "Physical Sciences 1000 LT, Dr. Aihanuwa Aghahowa ICAN Lecture Theatre, Faculty of Management Sciences, Academy of Management Nigeria. Professor Iyayi Hall and Festus Iyayi Hall labels require duplicate/identity reconciliation."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 4,
+      "filename": "Screenshot_2026-10-06-18-33-01-084_com.google.android.apps.maps.jpg",
+      "sha256": "d741d9218e7be9c76151eb8427c89c8a72ce2c08d635af4538a8d40beb6793dd",
+      "width": 1080,
+      "height": 2400,
+      "area": "Hall 1 / Hall 2",
+      "review": "Hall 2 Love Garden, Hall 2 car park, Hall 1 bus stop and Hall 1 car park; supplies wider context for images 10 and 15."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 5,
+      "filename": "Screenshot_2026-10-06-18-33-07-446_com.google.android.apps.maps.jpg",
+      "sha256": "fd56b7aa617a8f495b6c1dc70c0c7ea81942fbe47afaf041ae24ec2cf9db5ae5",
+      "width": 1080,
+      "height": 2400,
+      "area": "Hall 2 / shopping",
+      "review": "LiviCutx Mobile Barbering, ShawarmaCreed (Karizos Lounge), Computer Village Technology; cropped business names retained as unresolved."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 6,
+      "filename": "Screenshot_2026-10-06-18-33-15-999_com.google.android.apps.maps.jpg",
+      "sha256": "41c88b3553b1e2887ba72221019dd0f31bc48ac7068e5ed635b1ef42cea291a6",
+      "width": 1080,
+      "height": 2400,
+      "area": "Education",
+      "review": "Distinctive Education block, Faculty of Education car park, UNIBEN Gym, UNIBEN Book Shop and Gladtidings Data. Blue dots and red edge indicator are screen UI, not place coordinates."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 7,
+      "filename": "Screenshot_2026-10-06-18-33-43-960_com.google.android.apps.maps.jpg",
+      "sha256": "784878c6e3e1687f7cb0e9bf731f05ae269643561af1078f7c28905f39e979b3",
+      "width": 1080,
+      "height": 2400,
+      "area": "June 12",
+      "review": "June 12 shopping mall, FagCoop Restaurant, Eros Laundromat, ROOOM XIX Benin City."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 8,
+      "filename": "Screenshot_2026-10-06-18-33-56-438_com.google.android.apps.maps.jpg",
+      "sha256": "321fd95c9d601c06e121653be1357eba4642d2287a5e96f7c2b6b19549dab840",
+      "width": 1080,
+      "height": 2400,
+      "area": "June 12 approaches",
+      "review": "Computer Village Technology, Laptek Solutions and Gracevine Chapel; Obian Kitchen name clipped at upper edge."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 9,
+      "filename": "Screenshot_2026-10-06-18-33-59-754_com.google.android.apps.maps.jpg",
+      "sha256": "77ae25102f85b1ae6e0a6662f7e0e52a479ff6968d6b393772e8fc29004c3e77",
+      "width": 1080,
+      "height": 2400,
+      "area": "June 12 / Agriculture shops",
+      "review": "Gracevine Chapel west of Faculty of Agriculture Shopping Mall, with June 12 and ROOOM XIX overlap to the north."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 10,
+      "filename": "Screenshot_2026-10-06-18-34-14-705_com.google.android.apps.maps.jpg",
+      "sha256": "0361c03f07ecfef23c065b7b9f03a08c831556b811fa7736a43ca7e351c6ca66",
+      "width": 1080,
+      "height": 2400,
+      "area": "Hall 1",
+      "review": "Hall 1 (Queen Idia), Hall 1 car park and TS Beauty Accessories. A second Hall 2 car-park label appears inside Hall 1; do not create a duplicate parking pin from that conflicting label."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 11,
+      "filename": "Screenshot_2026-10-06-18-34-21-810_com.google.android.apps.maps.jpg",
+      "sha256": "798fe6f12a193716f1bda037694691bf37e8c0ebc3e5d974b2321883691038f3",
+      "width": 1080,
+      "height": 2400,
+      "area": "Hostel food services",
+      "review": "The Food Faculty and El Mazon Catering near Hostel Mosque."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 12,
+      "filename": "Screenshot_2026-10-06-18-34-24-005_android.jpg",
+      "sha256": "96a6a7bf5bc7fa7469fbc14bec9251b4e0e39511c4bfc6840e920dfcfb603c5d",
+      "width": 1080,
+      "height": 2400,
+      "area": "Hostel food services",
+      "review": "Duplicate of image 11 with share sheet covering the lower map; no new independent place."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 13,
+      "filename": "Screenshot_2026-10-06-18-34-27-174_android.jpg",
+      "sha256": "058fe5d48bef0b9d49a762c16078115e81fc17377d054a47aa34789feaed2cfd",
+      "width": 1080,
+      "height": 2400,
+      "area": "Hostel food services",
+      "review": "Duplicate of image 11/12 with share UI; corroborates Food Faculty and El Mazon names."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 14,
+      "filename": "Screenshot_2026-10-06-18-34-42-149_com.google.android.apps.maps.jpg",
+      "sha256": "072483b8b42a85f3e82f0431720b47cc5e62307a1f46c79370096cd22dc772a1",
+      "width": 1080,
+      "height": 2400,
+      "area": "Buka",
+      "review": "Helena Food, Swift Canteen and Food Court (Buka), positioned across the road from the Hall 1 cluster."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 15,
+      "filename": "Screenshot_2026-10-06-18-34-50-052_com.google.android.apps.maps.jpg",
+      "sha256": "4aa3404493d199236535009fa7103cd67e9af381b0ea2dc7e545f5988be20cb6",
+      "width": 1080,
+      "height": 2400,
+      "area": "Hall 1 / Buka",
+      "review": "Wider overlap joins Hall 1, Helena Food and Buka. Hijay business label clipped."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 16,
+      "filename": "Screenshot_2026-10-06-18-34-57-103_com.google.android.apps.maps.jpg",
+      "sha256": "de1ee4340a928a30cbf3b3ffd5f56c4ae3b1835bb8b10998b044a6442a903500",
+      "width": 1080,
+      "height": 2400,
+      "area": "NDDC",
+      "review": "NDDC Hostel south of Akenzua Road, Yotacakes 'n' More within hostel complex."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 17,
+      "filename": "Screenshot_2026-10-06-18-35-04-112_com.google.android.apps.maps.jpg",
+      "sha256": "f5b19270818b0f1b0d48e5e9df1fe69c44bdfaf41e365bb4be549896a64611c6",
+      "width": 1080,
+      "height": 2400,
+      "area": "Clinical / NDDC",
+      "review": "Clinical Hostel west of NDDC and Clinic Hostel Male as a component of the clinical complex."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 18,
+      "filename": "Screenshot_2026-10-06-18-35-14-062_com.google.android.apps.maps.jpg",
+      "sha256": "cc38e55983b6c60d719eea7ecd965a12b0c694f0d2d849360d90fc0f18f9aa25",
+      "width": 1080,
+      "height": 2400,
+      "area": "Medical hostels",
+      "review": "Medical Hostel, Medical Hostel car park, ACE Academy, MTN LB-Net Library. Anatomy back gate supplies overlap to southwest."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 19,
+      "filename": "Screenshot_2026-10-06-18-35-22-497_com.google.android.apps.maps.jpg",
+      "sha256": "9e6de1d61ba61067328c945a665a843bf0b2943a0dde1a1060209923e7de625b",
+      "width": 1080,
+      "height": 2400,
+      "area": "UNIBEN / UBTH interface",
+      "review": "Anatomy Back Gate on Hospital Road, Nurses' Hostel Complex UBTH, YUTECH NIN & BVN Solution Hub, Fex Grillx and Chopx. Adjacent hospital facilities are distinct from the campus medical-complex buildings."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 20,
+      "filename": "Screenshot_2026-10-06-18-35-53-413_com.google.android.apps.maps.jpg",
+      "sha256": "6612145e444bd6faf62177b57bc340f8d26deb4790aa02bd904aa0c1ecb91c8b",
+      "width": 1080,
+      "height": 2400,
+      "area": "UBTH",
+      "review": "Pathology Lab, Chemical Pathology Department, Paediatric Surgical Ward, Joasi Motors label and School of Post-Basic Nursing. Commercial label on ward block does not identify the building itself."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 21,
+      "filename": "Screenshot_2026-10-06-18-35-59-923_com.google.android.apps.maps.jpg",
+      "sha256": "1d1d5764d2cd2768efac9da218d5e83ef5d2dde79086fc071f07002f7bc560bd",
+      "width": 1080,
+      "height": 2400,
+      "area": "UBTH",
+      "review": "Department of Pharmacology, Physical Science Department UBTH and School of Post-Basic Nursing Studies. UBTH Physical Science is distinct from UNIBEN Faculty of Physical Sciences."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 22,
+      "filename": "Screenshot_2026-10-06-18-36-05-973_com.google.android.apps.maps.jpg",
+      "sha256": "1629a7ea90f7b12ad68f2641bd40bdd2c6acd26f7c65548c5d4e57092f2dcafd",
+      "width": 1080,
+      "height": 2400,
+      "area": "UBTH / College services",
+      "review": "Oba Akenzua Complex, Biochemistry Animal House, School of Dentistry operational site and Institute of Human Virology. Separate hospital-site record from the sourced main-campus Dentistry building."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 23,
+      "filename": "Screenshot_2026-10-06-18-36-09-988_com.google.android.apps.maps.jpg",
+      "sha256": "b8eabfb8165884f268eec586a7aba0efda5ea68eae859957086c2d70a433ada2",
+      "width": 1080,
+      "height": 2400,
+      "area": "UBTH",
+      "review": "Oba Akenzua Complex overlap and UBTH Dermatology and Rheumatology Clinic to southwest."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 24,
+      "filename": "Screenshot_2026-10-06-18-36-16-420_com.google.android.apps.maps.jpg",
+      "sha256": "57671b302c05ba604c10cd8ec4659c3f1b223090c8e8117c71d31bbe9eb1f0ba",
+      "width": 1080,
+      "height": 2400,
+      "area": "UBTH",
+      "review": "UBTH Blood Bank and hospital road bends; Lagos Road at western edge."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 25,
+      "filename": "Screenshot_2026-10-06-18-36-22-187_com.google.android.apps.maps.jpg",
+      "sha256": "06af048b702c367c863828c4820209081d320f5b01293c3ef6277cb723354057",
+      "width": 1080,
+      "height": 2400,
+      "area": "UBTH",
+      "review": "Brachytherapy, Blood Bank and Institute of Health Sciences and Technology context. Eputa Happeniess label has unclear identity and remains unresolved."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 26,
+      "filename": "Screenshot_2026-10-06-18-36-27-970_com.google.android.apps.maps.jpg",
+      "sha256": "f0dcc4dc802dacb5f268b9bdb229ada6067aad95e6e36b27c1ffbd48a351390e",
+      "width": 1080,
+      "height": 2400,
+      "area": "UBTH",
+      "review": "Wider overlapping view confirms Institute of Health Sciences and Technology northeast of Brachytherapy and Blood Bank. Same unresolved Eputa label."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 27,
+      "filename": "Screenshot_2026-10-06-18-36-37-838_com.google.android.apps.maps.jpg",
+      "sha256": "3c944e8c894e25df4664031365e828b504006b67853ab2ca3404820934523d37",
+      "width": 1080,
+      "height": 2400,
+      "area": "Campus planning services",
+      "review": "Academic Planning Division / Student Affairs label, Physical Planning Division, KC Cars and Gypsy Car Polishing and Buffing. Planning division is not automatically the Student Affairs office."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 28,
+      "filename": "Screenshot_2026-10-06-18-36-45-028_com.google.android.apps.maps.jpg",
+      "sha256": "77b27c04c88ce05198cb2bd9a1a58363383a67a4ce6fbcbcb9cc3862aae3f91f",
+      "width": 1080,
+      "height": 2400,
+      "area": "Sports",
+      "review": "Indoor Sports Hall, Handball Court, Volleyball Court and Foursquare Students' Fellowship."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 29,
+      "filename": "Screenshot_2026-10-06-18-36-53-015_com.google.android.apps.maps.jpg",
+      "sha256": "716178e13b3f8a439c6450295b6bee9536e98cb3311055e882e308c9d87120ce",
+      "width": 1080,
+      "height": 2400,
+      "area": "Sports / pools",
+      "review": "Children's Swimming Pool, adult swimming pool, tennis, basketball and Divvys Design. Map is rotated; compass determines north."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 30,
+      "filename": "Screenshot_2026-10-06-18-36-58-764_com.google.android.apps.maps.jpg",
+      "sha256": "fc3c26d7745906576e62eedf27b1972a2d7b9047ab838cd751d70c73995a3717",
+      "width": 1080,
+      "height": 2400,
+      "area": "Sports / golf",
+      "review": "Tennis Court, UNIBEN Golf Course and shopping-complex context. Map rotation retained for correspondence."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 31,
+      "filename": "Screenshot_2026-10-06-18-37-06-038_com.google.android.apps.maps.jpg",
+      "sha256": "7afe26fb8c06568d857d6ba194207b85c4779f72c22c6ee0140413e98762ba1f",
+      "width": 1080,
+      "height": 2400,
+      "area": "Main-gate shops / pools",
+      "review": "Main-gate Shopping Complex, Swimming Pool, children's pool, Shopping Zone, KOFA X, Public Transport, Frame Dynasty, 9mobile SIM services, Affordable Meal Hub and Divvys Design."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 32,
+      "filename": "Screenshot_2026-10-06-18-37-14-478_com.google.android.apps.maps.jpg",
+      "sha256": "59b2fb30114fa1b51113d5722eff13f4a4fb18265f653be3bf60ad142f1c4250",
+      "width": 1080,
+      "height": 2400,
+      "area": "Main-gate shops / transport",
+      "review": "Public Transport loop, Litas Hub, Finetech Gadget and Phone Repair, Shopping Zone, KOFA X and Frame Dynasty."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 33,
+      "filename": "Screenshot_2026-10-06-18-37-19-191_com.google.android.apps.maps.jpg",
+      "sha256": "b63873dc30e0db422934aa5df722ead115993d36e4fba103e901cf111d0ef8cd",
+      "width": 1080,
+      "height": 2400,
+      "area": "Main gate / banks approach",
+      "review": "Main-gate roundabout, Ransome Kuti Road, Rodelenz Industries, Liz Photo Studio, OK Bar and Lounge, Esthy Cakes, J Relish and Events, Linguistics Studies, Tee Beauty Glamour."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 34,
+      "filename": "Screenshot_2026-10-06-18-37-23-082_com.google.android.apps.maps.jpg",
+      "sha256": "6eaf30405f188925c3ba4552462d74e6e1d55c8e5d8098c910fd1985c962bab8",
+      "width": 1080,
+      "height": 2400,
+      "area": "Main gate",
+      "review": "Benin-Ore Road, main entrance, Crowns Collections, Riri's Haven, Zteller Technologies, Institution of Light, Tee Beauty, Linguistics and Esthy Cakes. Full red University pin is distinct from offscreen red UI indicator."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 35,
+      "filename": "Screenshot_2026-10-06-18-37-27-900_com.google.android.apps.maps.jpg",
+      "sha256": "e932961a82c25f43bc62fd38a91ef87aeede346ce234e4cf3422f6ee5f7aeccd",
+      "width": 1080,
+      "height": 2400,
+      "area": "Banks / main-gate services",
+      "review": "Wema Bank, Spago'clock, Liz Photo Studio, OK Bar and Lounge, Rodelenz Industries. Discount Para label clipped."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 36,
+      "filename": "Screenshot_2026-10-06-18-37-33-210_com.google.android.apps.maps.jpg",
+      "sha256": "79c3505da864792767526c63f438e2072e65f6a43479bc2004bb19f1aa29a1cb",
+      "width": 1080,
+      "height": 2400,
+      "area": "Banks",
+      "review": "Wema Bank and Guaranty Trust Bank relative positions along campus road; Spago'clock northwest."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 37,
+      "filename": "Screenshot_2026-10-06-18-37-41-103_com.google.android.apps.maps.jpg",
+      "sha256": "8212a3265d803ae1960dadb3cc4fbafd43039d7c6bf40a292e466d77892e4af2",
+      "width": 1080,
+      "height": 2400,
+      "area": "Worship / lodge",
+      "review": "St. Albert Catholic Church, St. Albert's Lodge, All Saints Chapel and Nije Web Service; church/lodge/chapel are distinct places."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 38,
+      "filename": "Screenshot_2026-10-06-18-37-52-600_com.google.android.apps.maps.jpg",
+      "sha256": "ffe6c5dc891c8e934e2be423a7dda10261a3675ed95918fb27f7ca6b01d9bf99",
+      "width": 1080,
+      "height": 2400,
+      "area": "Worship approaches",
+      "review": "Life Vitality GNLD Supplement and adjacent bus stop/road junction. No GPS metadata or verified user-position fix."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 39,
+      "filename": "Screenshot_2026-10-06-18-37-58-133_com.google.android.apps.maps.jpg",
+      "sha256": "e77602f284c01f82e07cacb373df36349d9f1b8499c2e8dcdd289f19c5a124e9",
+      "width": 1080,
+      "height": 2400,
+      "area": "Worship approaches",
+      "review": "UNIBEN Central Mosque north of St. Albert Church and adjacent bus stop; not the Hostel Mosque from image 11."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 40,
+      "filename": "Screenshot_2026-10-06-18-38-23-431_com.google.android.apps.maps.jpg",
+      "sha256": "eb7ec690e9621456b37c75ced094f28ee89a33ee7a2b653c01c408dbee4243c1",
+      "width": 1080,
+      "height": 2400,
+      "area": "Research / north campus",
+      "review": "Petroleum and Energy System Research Centre, Central Research Laboratory, Centre for Research Innovation and Development (label partially truncated). Northern staff-quarter and Ethiope River Road context."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 41,
+      "filename": "Screenshot_2026-10-06-18-38-29-607_com.google.android.apps.maps.jpg",
+      "sha256": "e8df92f7f8cfa82765b880ea82f97e185774bbef7dcc616068ba615fbe04f32d",
+      "width": 1080,
+      "height": 2400,
+      "area": "Ekosodin gate / staff quarters",
+      "review": "Senior Staff Quarters, Ogab Shoe Spa, Sanctus Collections, Access Bank ATM, Petroleum and Energy System Research Centre. Ekosodin Road and Ramat Street establish surrounding context."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 42,
+      "filename": "Screenshot_2026-10-06-18-38-34-004_com.google.android.apps.maps.jpg",
+      "sha256": "8f7846cb018baf11b1d6a9f6d325d8d37df5b768fd0bd7bb491383d765f53a9d",
+      "width": 1080,
+      "height": 2400,
+      "area": "Ekosodin gate",
+      "review": "Gate security post, D Splendor Design, Access Bank ATM and Benue River Close; overlapping street layout with image 41."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 43,
+      "filename": "Screenshot_2026-10-06-18-38-40-560_com.google.android.apps.maps.jpg",
+      "sha256": "a7f1f42a1f432b80f34f5cb1869ebe2a33182e4e7eb9ffdbde2fe05c7caa503f",
+      "width": 1080,
+      "height": 2400,
+      "area": "Health Centre",
+      "review": "Health Centre, Health Centre car park and Cheniels Clothing south of Ethiope River Road. Parking-lot access roads are not the hospital building footprint."
+    },
+    {
+      "archive": "Map 2.zip",
+      "frame": 44,
+      "filename": "Screenshot_2026-10-06-18-38-49-883_com.google.android.apps.maps.jpg",
+      "sha256": "a86eb2788da701e00eb7a66ddace453f799d8998091d3d83d5c1d6fdb77b32dc",
+      "width": 1080,
+      "height": 2400,
+      "area": "Health Centre / Agriculture",
+      "review": "Health Centre and car park, Cheniels Clothing and New Faculty of Agriculture to the south; Drive Path label is an internal road, not an independently surveyed footpath."
+    }
+  ],
+  "corrections": [
+    {
+      "id": "c3928d61-f327-557e-a243-b5c3ae7bec19",
+      "name": "Faculty of Environmental Sciences",
+      "category": "ACADEMIC",
+      "latitude": 6.402033,
+      "longitude": 5.619308,
+      "before": {
+        "latitude": 6.4028,
+        "longitude": 5.62065
+      },
+      "confidence": 0.7,
+      "sourceFeatureId": "14e74369-c08e-4d5f-a7dc-9afc06756518",
+      "sourceFrames": [
+        "Map.zip:14",
+        "Map 2.zip:40"
+      ],
+      "reason": "Distinctive western Education-field building matches the retained Overture footprint. The old pin was east of Uniben Road in the entrepreneurship cluster."
+    },
+    {
+      "id": "60cfd3e2-6db6-581a-9048-76b057103a11",
+      "name": "Faculty of Arts",
+      "category": "ACADEMIC",
+      "latitude": 6.403876,
+      "longitude": 5.62122,
+      "before": {
+        "latitude": 6.4033,
+        "longitude": 5.62217
+      },
+      "confidence": 0.7,
+      "sourceFeatureId": "bb430539-d552-4920-a402-b0c408a04d74",
+      "sourceFrames": [
+        "Map.zip:2",
+        "Map.zip:15"
+      ],
+      "reason": "Retained Overture named Arts point corroborates the complex northeast of the road junction, across Uniben Road from the research field."
+    },
+    {
+      "id": "c8a0887f-0b17-5856-b1aa-e3d1aefffcdb",
+      "name": "GST building",
+      "category": "ACADEMIC",
+      "description": "General Studies building in the research and Education-field area, west of Uniben Road. Location identified from the supplied campus reference; confirm the final entrance on campus.",
+      "latitude": 6.40387,
+      "longitude": 5.61961,
+      "confidence": 0.55,
+      "before": null,
+      "search_aliases": [
+        "GST",
+        "GST Building",
+        "General Studies",
+        "General Studies building"
+      ],
+      "sourceFrames": [
+        "Map.zip:14",
+        "Map 2.zip:40",
+        "05-1000440965.jpg"
+      ],
+      "reason": "Reported by the campus owner in the circled cluster west of Uniben Road, northwest of Book Shop and north of Environmental Sciences. Point represents the cluster; a particular entrance or room is not asserted."
+    }
+  ],
+  "environmentalSciencesFootprint": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          5.6192251,
+          6.4022519
+        ],
+        [
+          5.6191379,
+          6.4019114
+        ],
+        [
+          5.6191782,
+          6.4019012
+        ],
+        [
+          5.6191679,
+          6.4018612
+        ],
+        [
+          5.6193266,
+          6.4018211
+        ],
+        [
+          5.6193481,
+          6.4019049
+        ],
+        [
+          5.6194111,
+          6.401889
+        ],
+        [
+          5.6194223,
+          6.4019328
+        ],
+        [
+          5.6194676,
+          6.4019213
+        ],
+        [
+          5.6194933,
+          6.4020215
+        ],
+        [
+          5.6194505,
+          6.4020323
+        ],
+        [
+          5.6194639,
+          6.4020849
+        ],
+        [
+          5.6194202,
+          6.4020959
+        ],
+        [
+          5.6194458,
+          6.4021961
+        ],
+        [
+          5.6192251,
+          6.4022519
+        ]
+      ]
+    ]
+  },
+  "method": "All 34 Map.zip and 44 Map 2.zip reference frames reviewed as overlapping districts. Named roads, landmarks, compass direction and scale bars were checked against existing OSM routes and Overture footprints. Blind template/feature matches were rejected when the district or scale disagreed. Google screenshot pixels, traced geometry and images are not bundled or published.",
+  "unchanged": "Retain original OSM route topology, real building footprints, other campus data and previously corrected bank-axis and sports points.",
+  "limitations": [
+    "All three places have no surveyed entrance; verified_at remains null.",
+    "GST is a reported approximate cluster location, not a new surveyed polygon.",
+    "These corrections do not certify every campus room, building entrance or walking path."
+  ]
+}

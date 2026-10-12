@@ -24,6 +24,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Keyboard,
   Linking,
   Platform,
   Pressable,
@@ -118,6 +119,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const contentWidth = Math.min(windowWidth, 540);
   const horizontalPadding = compactPhone ? 14 : 20;
   const [preview,setPreview]=useState<Product|null>(null);
+  const directBuy = useRef('');
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -144,6 +146,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
+  const [immediateQuantity, setImmediateQuantity] = useState(1);
   const [cartOpen, setCartOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [noteFocused, setNoteFocused] = useState(false);
@@ -272,9 +275,9 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const cartItems = useMemo(
     () =>
       products
-        .filter((product) => Boolean(cart[product.id]) && (!checkoutScreen || !immediateProduct || product.id === immediateProduct))
-        .map((product) => ({ product, quantity: checkoutScreen && immediateProduct ? 1 : cart[product.id] ?? 0 })),
-    [cart, products, checkoutScreen, immediateProduct],
+        .filter((product) => Boolean(cart[product.id]) && (!checkoutScreen || !immediateProduct || product.id === immediateProduct && immediateQuantity > 0))
+        .map((product) => ({ product, quantity: checkoutScreen && immediateProduct ? immediateQuantity : cart[product.id] ?? 0 })),
+    [cart, products, checkoutScreen, immediateProduct, immediateQuantity],
   );
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartItems.reduce(
@@ -303,10 +306,11 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     agreedPickup ? `Agreed pickup meeting point: ${meetingPoint.trim()}` : "",
     deliveryNote.trim(),
   ].filter(Boolean).join("\n");
+  const cartAvailable = cartItems.every(item => item.quantity > 0 && item.quantity <= Number(item.product.stock_quantity));
   const checkoutReady =
-    !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone) &&
+    cartAvailable && !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone) &&
     (!agreedPickup || meetingPoint.trim().length >= 5) && orderNote.length <= 500;
-  const checkoutBlockedLabel = orderNote.length > 500
+  const checkoutBlockedLabel = !cartAvailable ? "Update the unavailable items in your cart" : !effectiveMode ? "This seller has no delivery or pickup option yet" : orderNote.length > 500
     ? "Shorten your handoff note to continue"
     : agreedPickup && meetingPoint.trim().length < 5
       ? "Enter the agreed pickup point"
@@ -348,6 +352,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   }
 
   function openCart() {
+    Keyboard.dismiss();
     setCheckoutError("");
     setCartOpen(true);
   }
@@ -378,6 +383,13 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   }
 
   function changeQuantity(product: Product, delta: number) {
+    if (busy || !cartReady) return;
+    if (checkoutScreen && immediateProduct === product.id) {
+      const next = Math.min(Number(product.stock_quantity), 99, Math.max(0, immediateQuantity + delta));
+      setImmediateQuantity(next);
+      if (next > 0) setCart(current => ({ ...current, [product.id]: Math.max(current[product.id] ?? 0, next) }));
+      return;
+    }
     setCart((current) => {
       const nextQuantity = Math.min(
         Number(product.stock_quantity), 99,
@@ -393,7 +405,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   async function proceedToCheckout() {
     if (checkoutLock.current || !cartReady || !cartItems.length) return;
     checkoutLock.current = true; setBusy(true); setCheckoutError("");
-    try { await sharedCart.flush(); setCartOpen(false); router.push('/marketplace-checkout'); }
+    try { await sharedCart.flush(); Keyboard.dismiss(); setCartOpen(false); router.push('/marketplace-checkout'); }
     catch (error) { setCheckoutError(error instanceof Error ? error.message : 'Your cart could not be saved. Try again.'); }
     finally { checkoutLock.current = false; setBusy(false); }
   }
@@ -423,8 +435,8 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     setCheckoutError("");
     setNotice("");
     try {
-      if (!validQuote) {
-        if (quoteRequest.current.payload !== orderPayload)
+      if (!validQuote || Date.parse(validQuote.expiresAt) <= Date.now()) {
+        if (quoteRequest.current.payload !== orderPayload || reviewedQuote && Date.parse(reviewedQuote.quote.expiresAt) <= Date.now())
           quoteRequest.current = {
             payload: orderPayload,
             id: Crypto.randomUUID(),
@@ -488,6 +500,15 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     }
   }
 
+  useEffect(() => {
+    if (checkoutScreen || !immediateProduct || !cartReady || loading || busy || directBuy.current === immediateProduct) return;
+    const product = products.find(item => item.id === immediateProduct);
+    if (!product) return;
+    directBuy.current = immediateProduct;
+    router.setParams({buyNow:undefined});
+    void buyNow(product);
+  }, [checkoutScreen, immediateProduct, cartReady, loading, busy, products]);
+
   if (checkoutScreen) return <SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:theme.canvas}}>
     <View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingVertical:8,gap:12}}>
       <Pressable accessibilityRole="button" accessibilityLabel="Back to marketplace" disabled={busy} onPress={()=>router.back()} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="arrow-back" size={24} color={theme.text}/></Pressable>
@@ -525,6 +546,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                   </View>
                   <QuantityStepper
                     compact
+                    disabled={busy}
                     onChange={(delta) => changeQuantity(product, delta)}
                     product={product}
                     quantity={quantity}
@@ -1230,6 +1252,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
               onChangeQuantity={(delta) => changeQuantity(product, delta)}
               product={product}
               quantity={cart[product.id] ?? 0}
+              disabled={!cartReady || busy}
               width={productWidth}
             />
           )}
@@ -1336,6 +1359,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                   </View>
                   <QuantityStepper
                     compact
+                    disabled={busy}
                     onChange={(delta) => changeQuantity(product, delta)}
                     product={product}
                     quantity={quantity}
@@ -1368,6 +1392,7 @@ function ProductCard({
   product,
   quantity,
   width,
+  disabled = false,
 }: {
   onPreview:()=>void;
   onAdd: () => void;
@@ -1375,6 +1400,7 @@ function ProductCard({
   product: Product;
   quantity: number;
   width: number;
+  disabled?: boolean;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
 
@@ -1442,6 +1468,7 @@ function ProductCard({
         {quantity ? (
           <QuantityStepper
             onChange={onChangeQuantity}
+            disabled={disabled}
             product={product}
             quantity={quantity}
           />
@@ -1450,15 +1477,15 @@ function ProductCard({
             accessibilityLabel={
               outOfStock
                 ? `${product.name} is out of stock`
-                : `Add ${product.name} to cart`
+                : disabled ? `Restoring cart before adding ${product.name}` : `Add ${product.name} to cart`
             }
             accessibilityRole="button"
-            accessibilityState={{ disabled: outOfStock }}
-            disabled={outOfStock}
+            accessibilityState={{ disabled: outOfStock || disabled }}
+            disabled={outOfStock || disabled}
             onPress={onAdd}
             style={({ pressed }) => [
               styles.addButton,
-              outOfStock && styles.addButtonDisabled,
+              (outOfStock || disabled) && styles.addButtonDisabled,
               pressed && !outOfStock && styles.buttonPressed,
             ]}
           >
@@ -1500,18 +1527,20 @@ function productIcon(product: Product): keyof typeof Ionicons.glyphMap {
 
 function QuantityStepper({
   compact = false,
+  disabled = false,
   product,
   quantity,
   onChange,
 }: {
   compact?: boolean;
+  disabled?: boolean;
   product: Product;
   quantity: number;
   onChange: (delta: number) => void;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const atLimit = quantity >= Number(product.stock_quantity);
+  const atLimit = disabled || quantity >= Math.min(99, Number(product.stock_quantity));
 
   return (
     <View
@@ -1521,6 +1550,8 @@ function QuantityStepper({
       <Pressable
         accessibilityLabel={`Remove one ${product.name}`}
         accessibilityRole="button"
+        disabled={disabled}
+        accessibilityState={{disabled}}
         onPress={() => onChange(-1)}
         style={({ pressed }) => [
           styles.stepperButton,
@@ -1949,6 +1980,8 @@ const createStyles = (theme: Theme) =>
       color: "#FFFFFF",
       fontFamily: theme.font.semibold,
       fontSize: 12.5,
+      flexShrink: 1,
+      textAlign: "center",
     },
     addButtonTextDisabled: { color: theme.textSubtle },
     stepper: {

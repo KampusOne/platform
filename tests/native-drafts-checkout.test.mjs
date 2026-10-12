@@ -36,7 +36,7 @@ test('production native adapter uses bytes and restores authenticated Unicode af
 });
 test('base64 ciphertext conversion rejects malformed or truncated envelopes',()=>{
   for(const raw of ['', 'a'.repeat(31),'!!!!','YWJjZA==','a'.repeat(800000)])assert.throws(()=>bytes.snapshotCiphertextBytes(raw));
-  for(const n of [28,29,30,4097]){const input=randomBytes(n);assert.deepEqual(Buffer.from(bytes.snapshotCiphertextBytes(input.toString('base64'))),input);}
+  for(const n of [28,29,30,4097,131073,262172]){const input=randomBytes(n);assert.deepEqual(Buffer.from(bytes.snapshotCiphertextBytes(input.toString('base64'))),input);}
 });
 const {readKiraCheckoutQuote}=load('kira-checkout-quote.ts');
 const quote={quoteId:product,tier:'pro',version:'synthetic',amountKobo:600000,paystackAmountKobo:581000,estimatedProcessingKobo:19000,feeBearer:'CUSTOMER_PASSTHROUGH',expiresAt:'2026-10-13T00:30:00Z'};
