@@ -17,7 +17,6 @@ import {
   authApi,
   onSessionChange,
   setAccessToken,
-  clearApiCache,
   type Session,
   type SessionUser,
 } from "@/src/lib/api";
@@ -233,7 +232,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let previous = AppState.currentState;
     const subscription = AppState.addEventListener("change", next => {
       if (next === "active" && previous !== "active" && sessionUserId.current) {
-        clearApiCache();
+        // Returning to the foreground must not evict all academic and store reads.
+        // Session refresh validates credentials while account isolation remains enforced.
         void retrySessionRestore();
       }
       previous = next;

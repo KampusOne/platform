@@ -19,7 +19,7 @@ export function waitForRequest<T>(operation: Promise<T>, signal?: AbortSignal | 
 export function invalidationTargets(path: string): string[] | null {
   const resource = path.split("?")[0] ?? "";
   if (/^\/v1\/student\/feed\/[^/]+\/view$/.test(resource) ||
-      ["/v1/student/events", "/v1/analytics/events", "/v1/notifications/alarm-events"].includes(resource)) return [];
+      ["/v1/student/events", "/v1/analytics/events", "/v1/notifications/alarm-events", "/v1/usage"].includes(resource)) return [];
   if (/^\/v1\/notifications\/(?:devices|deliveries|attempts)(?:\/|$)/.test(resource)) return [];
   if (resource.startsWith("/v1/account/streak")) return ["/v1/account/streak", "/v1/student/home"];
   if (resource.startsWith("/v1/student/feed") || resource.startsWith("/v1/student/publishing"))

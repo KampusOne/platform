@@ -178,18 +178,24 @@ export function clearApiCache() {
 }
 
 
-function invalidateMutation(path: string) {
-  const targets = invalidationTargets(path);
-  if (targets === null) { clearApiCache(); return; }
-  if (!targets.length) return;
+/** Invalidate only resources affected by a trusted event, retaining academic and
+ * marketplace reads when a message or notification arrives. */
+export function invalidateApiReads(prefixes: readonly string[]) {
+  if (!prefixes.length) return;
   // A message receipt must not prevent an unrelated screen's in-flight read
   // from entering the cache. Only changed resources advance their generation.
   for (const key of new Set([...reads.keys(), ...inFlight.keys()])) {
-    if (targets.some((prefix) => matchesRead(key, prefix)))
+    if (prefixes.some((prefix) => matchesRead(key, prefix)))
       readVersions.delete(key);
   }
-  for (const key of reads.keys()) if (targets.some((prefix) => matchesRead(key, prefix))) reads.delete(key);
-  for (const key of inFlight.keys()) if (targets.some((prefix) => matchesRead(key, prefix))) inFlight.delete(key);
+  for (const key of reads.keys()) if (prefixes.some((prefix) => matchesRead(key, prefix))) reads.delete(key);
+  for (const key of inFlight.keys()) if (prefixes.some((prefix) => matchesRead(key, prefix))) inFlight.delete(key);
+}
+
+function invalidateMutation(path: string) {
+  const targets = invalidationTargets(path);
+  if (targets === null) { clearApiCache(); return; }
+  invalidateApiReads(targets);
 }
 
 /** Account-local, bounded in-memory data only. Never persisted or publicly cached. */
@@ -543,7 +549,7 @@ export async function api<T>(
     }
   }
   // Explicit caller headers may alter representation; never share those requests.
-  if (!cacheable.test(path) || init.headers || init.cache === "no-store" || init.credentials || init.mode || init.redirect || init.integrity || init.timeoutMs !== undefined || !canRefresh)
+  if (!cacheable.test(path) || init.headers || init.cache === "no-store" || init.credentials || init.mode || init.redirect || init.integrity || (init.timeoutMs !== undefined && init.timeoutMs !== 15_000) || !canRefresh)
     return request<T>(path, init, canRefresh);
   if (init.signal?.aborted) throw init.signal.reason ?? new Error("Request cancelled");
   const ttlMs = readCacheTtl(path);

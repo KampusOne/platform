@@ -265,11 +265,11 @@ export async function getRegisteredPushDevice(userId: string) {
   return device ? { ...device, registeredAt: saved.registeredAt } : null;
 }
 
-export async function unregisterPushDevice(userId: string) {
+export async function unregisterPushDevice(userId: string, timeoutMs = 1_500) {
   const saved = await readCache<{ id: string }>(registrationKey(userId));
   if (!saved?.id) return;
   await api("/v1/notifications/devices/" + encodeURIComponent(saved.id), {
-    method: "DELETE",
+    method: "DELETE", timeoutMs,
   });
   await writeCache(registrationKey(userId), null);
 }
