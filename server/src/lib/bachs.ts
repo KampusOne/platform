@@ -60,8 +60,8 @@ export type BachsPaymentDetail = {
   [key: string]: unknown;
 };
 
-function providerError(message: string): AppError {
-  return new AppError(503, "PROVIDER_UNAVAILABLE", message);
+function providerError(message: string, details?: Record<string, unknown>): AppError {
+  return new AppError(503, "PROVIDER_UNAVAILABLE", message, details);
 }
 
 function apiConfiguration(env: Bindings) {
@@ -128,8 +128,21 @@ async function apiRequest(
   const body = (await response.json().catch(() => null)) as unknown;
   if (response.status === 429)
     throw new AppError(429, "RATE_LIMITED", "Bachs is busy. Check this payment again shortly.");
-  if (!response.ok || typeof body !== "object" || !body || Array.isArray(body))
-    throw providerError("Bachs could not confirm the payment request. No purchase has been credited.");
+  if (!response.ok || typeof body !== "object" || !body || Array.isArray(body)) {
+    // Preserve a classified provider rejection for support without disclosing
+    // customer data, credentials or the provider's unrestricted error body.
+    const code = typeof body === "object" && body && !Array.isArray(body)
+      ? (body as Record<string, unknown>).error_code : undefined;
+    const providerCode = typeof code === "string" && /^[A-Z][A-Z_]{1,79}$/.test(code) ? code : "UNCLASSIFIED";
+    const operation = path === "/v1/accounts/checkout/settings" ? "checkout_settings"
+      : path === "/v1/checkout-sessions" ? "create_checkout"
+      : path.startsWith("/v1/checkout-sessions/") ? "read_checkout" : "read_payment";
+    const details = { provider: "BACHS", providerCode, providerStatus: response.status, operation };
+    console.error(JSON.stringify({ level: "error", event: "payment.provider_rejected", ...details }));
+    throw providerError(providerCode === "ACCOUNT_NOT_ACTIVATED"
+      ? "Bachs has not approved this account for live payments yet. No purchase has been credited."
+      : "Bachs could not confirm the payment request. No purchase has been credited.", details);
+  }
   return body as Record<string, unknown>;
 }
 

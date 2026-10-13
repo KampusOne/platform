@@ -104,6 +104,28 @@ describe("Bachs isolated checkout foundation", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("reports a classified provider rejection without returning or logging private response details", async () => {
+    const logger = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+      error_code: "VALIDATION_ERROR", detail: "private customer email and token", errors: [{ field: "customer.email" }],
+    }, { status: 400 })));
+    try {
+      await expect(createBachsCheckout(sandbox, request)).rejects.toMatchObject({
+        status: 503, details: { provider: "BACHS", providerCode: "VALIDATION_ERROR", providerStatus: 400, operation: "create_checkout" },
+      });
+      expect(JSON.stringify(logger.mock.calls)).not.toContain("private");
+      expect(JSON.parse(logger.mock.calls[0]![0])).not.toHaveProperty("detail");
+    } finally { logger.mockRestore(); }
+  });
+
+  it("identifies a live account approval block without claiming a payment succeeded", async () => {
+    const logger = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ error_code: "ACCOUNT_NOT_ACTIVATED" }, { status: 400 })));
+    try {
+      await expect(createBachsCheckout(sandbox, request)).rejects.toThrow("has not approved this account for live payments");
+    } finally { logger.mockRestore(); }
+  });
+
   it("fetches provider evidence without granting access or changing ledgers", async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(Response.json({

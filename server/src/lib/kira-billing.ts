@@ -112,10 +112,19 @@ export async function kiraBillingStatus(
     catalog,
   };
 }
-function kiraPricingError(error:unknown):never {
-  if(error instanceof Error && /KIRA_|DISCOUNT_|BUYER_TENANT_MISMATCH/.test(error.message)) {
-    const reason=/KIRA_QUOTE_EXPIRED/.test(error.message)?'KIRA_QUOTE_EXPIRED':/KIRA_PRICE_CHANGED/.test(error.message)?'KIRA_PRICE_CHANGED':/DISCOUNT_CANNOT_COMBINE/.test(error.message)?'DISCOUNT_CANNOT_COMBINE':/DISCOUNT_/.test(error.message)?'DISCOUNT_UNAVAILABLE':'KIRA_CHECKOUT_CONFLICT';
-    throw new AppError(409,'CONFLICT',reason==='DISCOUNT_CANNOT_COMBINE'?'This Kira offer already includes a discount. Discount codes cannot be combined with it.':reason==='DISCOUNT_UNAVAILABLE'?'This discount is unavailable or its use limit has been reached. Check the code and try again.':'Refresh your Kira plan and review its current total before paying.',{reason,reaccept:true});
+export function kiraPricingError(error:unknown):never {
+  // Drizzle wraps the PostgreSQL exception in cause; its outer message contains
+  // the query rather than the database's reason. Never return that query to users.
+  let current=error;
+  const visited=new Set<unknown>();
+  for(let depth=0;depth<5 && current instanceof Error && !visited.has(current);depth++) {
+    visited.add(current);
+    const message=current.message;
+    if(/^(?:KIRA_[A-Z_]+|DISCOUNT_[A-Z_]+|BUYER_TENANT_MISMATCH)$/.test(message)) {
+      const reason=message==='KIRA_QUOTE_EXPIRED'?'KIRA_QUOTE_EXPIRED':message==='KIRA_PRICE_CHANGED'?'KIRA_PRICE_CHANGED':message==='KIRA_CHECKOUT_ALREADY_ACTIVE'?'KIRA_CHECKOUT_ALREADY_ACTIVE':message==='DISCOUNT_CANNOT_COMBINE'?'DISCOUNT_CANNOT_COMBINE':message.startsWith('DISCOUNT_')?'DISCOUNT_UNAVAILABLE':'KIRA_CHECKOUT_CONFLICT';
+      throw new AppError(409,'CONFLICT',reason==='KIRA_CHECKOUT_ALREADY_ACTIVE'?'A Kira payment is already saved. Check its status, or wait for it to expire before opening another.':reason==='DISCOUNT_CANNOT_COMBINE'?'This Kira offer already includes a discount. Discount codes cannot be combined with it.':reason==='DISCOUNT_UNAVAILABLE'?'This discount is unavailable or its use limit has been reached. Check the code and try again.':'Refresh your Kira plan and review its current total before paying.',{reason,reaccept:reason!=='KIRA_CHECKOUT_ALREADY_ACTIVE'});
+    }
+    current=current.cause;
   }
   throw error;
 }
