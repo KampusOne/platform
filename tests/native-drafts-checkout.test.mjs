@@ -1,10 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
+import { typescript as ts } from './helpers/typescript.mjs';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-const ts = createRequire(new URL('../mobile/package.json',import.meta.url))('typescript');
 function load(file,mocks={}) {
   const exports={};
   runInNewContext(ts.transpileModule(readFileSync(new URL('../mobile/src/lib/'+file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,module:{exports},require:name=>{if(name in mocks)return mocks[name];throw Error('Missing dependency '+name);},Uint8Array,TextEncoder,TextDecoder,Date,Error,Number,Promise,setTimeout,clearTimeout});

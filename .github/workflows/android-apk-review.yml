@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/android-apk-review.yml'
       - 'mobile/**'
+      - 'tests/**'
 permissions:
   contents: read
   actions: read

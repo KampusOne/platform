@@ -1,11 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { typescript as ts } from './helpers/typescript.mjs';
 import { runInNewContext } from 'node:vm';
 import { randomUUID } from 'node:crypto';
 import { hookRenderer, virtualClock } from './helpers/hook-renderer.mjs';
-const ts=createRequire(new URL('../mobile/package.json',import.meta.url))('typescript');
 const owner='11111111-1111-4111-8111-111111111111',vendor='22222222-2222-4222-8222-222222222222',id='33333333-3333-4333-8333-333333333333';
 function load(relative,mocks,globals={}){const exports={};runInNewContext(ts.transpileModule(readFileSync(new URL('../mobile/'+relative,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,module:{exports},require:name=>{if(name in mocks)return mocks[name];throw Error('Missing '+name);},Date,Error,Number,Math,setTimeout,clearTimeout,...globals});return exports;}
 function fixture({width=393,initialCart={},params={}}={}){
