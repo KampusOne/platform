@@ -35,6 +35,7 @@
     "LOGISTICS_ENABLED": "true",
     "PAYMENTS_ENABLED": "true",
     "PAYOUTS_ENABLED": "true",
+    "BACHS_AGENT_PAYOUTS_ENABLED": "false",
     "AI_ASSISTANT_ENABLED": "true",
     "KIRA_SUBSCRIPTIONS_ENABLED": "true",
     "BACHS_PRICED_CHECKOUT_ENABLED": "true",

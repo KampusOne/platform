@@ -34,7 +34,7 @@ export async function probe(request, env) {
       if(result.paystackConfigured){const r=await read('https://api.paystack.co',env.PAYSTACK_SECRET_KEY,'/bank?country=nigeria&currency=NGN&perPage=100');result.paystackBanksHttp=r.http;result.paystackBanksAvailable=r.http===200&&r.data?.status===true&&Array.isArray(r.data.data)&&r.data.data.length>0;}
       if(!bachs.liveKey)return result;
       const [banks,destinations,account]=await Promise.all([read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/reference/banks?country=NG'),read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/payouts/destinations?limit=10'),read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/accounts/me')]);
-      result.bachsBanksHttp=banks.http;result.bachsBanksAvailable=banks.http===200&&Array.isArray(banks.data?.banks)&&banks.data.banks.length>0;
+      result.secureBankStorageConfigured=/^[a-f0-9]{64}$/i.test(env.KYC_ENCRYPTION_KEY??'');result.bankIdempotencyConfigured=typeof env.KYC_FINGERPRINT_SECRET==='string'&&env.KYC_FINGERPRINT_SECRET.length>=24;result.bachsBanksHttp=banks.http;result.bachsBanksAvailable=banks.http===200&&banks.data?.country==='NG'&&Array.isArray(banks.data?.banks)&&banks.data.banks.length>0;
       result.destinationReadHttp=destinations.http;result.accountReadHttp=account.http;
       const enabled=account.data?.enabled_capabilities;result.connectEnabled=Array.isArray(enabled)&&enabled.includes('connect');result.payoutsEnabled=Array.isArray(enabled)&&enabled.includes('payouts');result.platformMetadataUsable=account.http===200&&Array.isArray(enabled);result.platformIdentifierUsable=typeof account.data?.id==='string'&&/^acct_[A-Za-z0-9_-]{8,128}$/.test(account.data.id);
       const capabilities=account.data?.capabilities;result.capabilityShape=Array.isArray(capabilities)?'array':capabilities&&typeof capabilities==='object'?'object':'absent';
@@ -124,7 +124,7 @@ if(process.argv.includes('--self-test')) {
     if(!token||!/^[a-f0-9]{32}$/i.test(account??''))throw new Error('Deployment credentials unavailable');
     stage='binding metadata';
     const settings=await cf('/workers/scripts/platformp/settings');
-    const inherited=['HF_TOKEN','HF_CHAT_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET','PAYSTACK_SECRET_KEY'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
+    const inherited=['HF_TOKEN','HF_CHAT_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET','PAYSTACK_SECRET_KEY','KYC_ENCRYPTION_KEY','KYC_FINGERPRINT_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
     report(`Production BACHS API secret present: ${settings.bindings?.some(b=>b.name==='BACHS_API_KEY')===true}`);
     report(`Production BACHS webhook secret present: ${settings.bindings?.some(b=>b.name==='BACHS_WEBHOOK_SECRET')===true}`);
     report(`Production Workers AI binding present: ${settings.bindings?.some(b=>b.name==='AI'&&b.type==='ai')===true}`);

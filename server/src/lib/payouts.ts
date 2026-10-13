@@ -26,6 +26,7 @@ export async function ledgerPayoutsReady(env: Bindings) {
 }
 export async function requireLedgerPayouts(env: Bindings, provider=bachsAgentProvider(env)?'BACHS':'PAYSTACK') {
   if(env.PAYMENTS_ENABLED!=='true'||env.PAYOUTS_ENABLED!=='true')throw new AppError(503,'FEATURE_DISABLED','New withdrawals are paused. Your earnings remain in your account.');
+  if(provider==='BACHS'&&env.BACHS_AGENT_PAYOUTS_ENABLED!=='true')throw new AppError(503,'FEATURE_DISABLED','Agent payouts are awaiting Bachs Connect activation and bank-transfer verification. You can save your bank details.');
   const mode = provider==='BACHS'?bachsPayoutMode(env):requireTransfers(env);
   if(provider==='BACHS')await requireBachsConnect(env);
   if (!(await payoutFeeComponentsReady(env)))
@@ -46,6 +47,7 @@ export async function payoutFeeComponentsReady(env: Bindings) {
 export async function payoutAvailability(env:Bindings,schemaReady:boolean){
   if(env.PAYMENTS_ENABLED!=='true'||env.PAYOUTS_ENABLED!=='true')return {enabled:false,reason:'New withdrawals are paused. Your earnings remain in your wallet.'};
   if(!schemaReady)return {enabled:false,reason:'Withdrawals are awaiting the database update. Your earnings remain in your wallet.'};
+  if(bachsAgentProvider(env)&&env.BACHS_AGENT_PAYOUTS_ENABLED!=='true')return {enabled:false,reason:'Agent payouts are awaiting Bachs Connect activation and bank-transfer verification. You can save your bank details.'};
   try{
     if(bachsAgentProvider(env)){
       if(!(await bachsPlatform(env)).connect)return {enabled:false,reason:'Bachs Connect activation is pending. You can save bank details; agent payouts will open after activation.'};

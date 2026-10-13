@@ -1,0 +1,82 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "releaseMode": "BANK_EDITING_ONLY",
+  "approval": {
+    "productionMigrationApproved": true,
+    "payoutsDeferredByUser": true,
+    "at": "2026-10-13T20:07:08Z",
+    "instruction": "Give the current APK; agent payouts deferred until Bachs Connect is ready."
+  },
+  "verifiedAt": "2026-10-13T20:18:20.080Z",
+  "rehearsal": {
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "freshCurrentProductionClone": false
+  },
+  "checks": {
+    "agentBanks": "passed",
+    "fixturesRolledBack": true,
+    "isolatedBranchRehearsal": "passed",
+    "currentProductionDryRun": "passed",
+    "bankRevisionIsolation": "passed",
+    "payoutIdempotencyAndRecovery": "passed",
+    "newBachsAgentTransfersDisabled": true,
+    "existingAccountCountsPreserved": true,
+    "mediaAndBookingsPreserved": true,
+    "financialRecordsPreserved": true,
+    "privatePrivileges": "passed"
+  },
+  "provider": {
+    "name": "BACHS",
+    "liveConnectEnabled": false,
+    "bankNameLookup": "passed",
+    "verifiedAgentBankPayout": "DEFERRED_BY_USER",
+    "probeRunId": 38458136449
+  },
+  "preservedCounts": {
+    "public.users": 20,
+    "public.orders": 0,
+    "public.profiles": 20,
+    "public.order_items": 0,
+    "public.ledger_lines": 0,
+    "public.delivery_jobs": 0,
+    "public.media_objects": 142,
+    "public.payout_requests": 0,
+    "public.vendor_products": 2,
+    "public.ledger_transactions": 0,
+    "app_private.agent_payout_quotes": 0,
+    "app_private.payout_account_setups": 0,
+    "app_private.agent_payout_settlements": 0,
+    "app_private.verified_collection_receipts": 0
+  },
+  "deliveryZones": 2,
+  "migrations": [
+    {
+      "version": "20261013190000_agent_withdrawal_commission",
+      "sourceBlobSha": "bb2cacb3fc4450a3e52b0e79cfc55e85eae888ec"
+    },
+    {
+      "version": "20261013200000_delivery_checkout_recovery",
+      "sourceBlobSha": "f039d4a94181c1ad545bc9a60ad12c15ee511b21"
+    },
+    {
+      "version": "20261013205000_bachs_bank_details",
+      "sourceBlobSha": "007a79d85317fe3a7f893d259ed3b5d34aafc172"
+    },
+    {
+      "version": "20261013210000_bachs_agent_banks_and_payouts",
+      "sourceBlobSha": "d824ff6b05345341ef825bdeb70674050dc4747f"
+    },
+    {
+      "version": "20261013213000_payout_reconciliation_schedule",
+      "sourceBlobSha": "bea344cd15a01ded53f37ca05eed050e15cae8ae"
+    }
+  ],
+  "limitations": [
+    "No real agent bank payout was initiated or verified.",
+    "The existing isolated branch was used at the project branch quota; current production was additionally rehearsed inside a rolled-back transaction."
+  ]
+}

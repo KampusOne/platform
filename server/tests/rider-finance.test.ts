@@ -2917,7 +2917,7 @@ describe('Bachs bank payout approval and verified recovery',()=>{
  async function fixture(){
   providerState='pending';wrongDestination=false;loseAcknowledgement=false;funded=0;bankPosts=0;actualBankPayouts=0;recoveryAmount=0;bachsMock();
   const f=await payoutFixture(),setup=crypto.randomUUID(),policy=crypto.randomUUID();
-  env.BACHS_PRICED_CHECKOUT_ENABLED='true';env.BACHS_API_KEY='sk_live_synthetic_fixture';env.ENVIRONMENT='production';env.KYC_ENCRYPTION_KEY='ab'.repeat(32);
+  env.BACHS_PRICED_CHECKOUT_ENABLED='true';env.BACHS_AGENT_PAYOUTS_ENABLED='true';env.BACHS_API_KEY='sk_live_synthetic_fixture';env.ENVIRONMENT='production';env.KYC_ENCRYPTION_KEY='ab'.repeat(32);
   const envelope=await encryptBankDetails(env,{bankCode:'058',accountNumber:'0123456789',accountName:'Synthetic verified owner',contactEmail:'synthetic@example.invalid'},f.owner.user,campus,setup);
   await pg.query("update app_private.payout_account_setups set status='SUPERSEDED' where id=$1",[f.setup]);
   await pg.query("insert into app_private.payout_account_setups(id,user_id,agent_profile_id,application_id,institution_id,request_hash,status,bank_code,bank_name,account_name,account_last4,recipient_code,provider_mode,reviewed_by,reviewed_at,provider,connected_account_id,bank_details_envelope)values($1,$2,$3,$4,$5,'synthetic','APPROVED','058','Synthetic Bank','Synthetic verified owner','6789',$6,'live',$7,now(),'BACHS',$8,$9::jsonb)",[setup,f.owner.user,f.owner.profile,f.application,campus,destinationId,buyer,accountId,JSON.stringify(envelope)]);
@@ -2927,7 +2927,7 @@ describe('Bachs bank payout approval and verified recovery',()=>{
   const q=await payoutQuote(f),p=await payoutRequest(f,q);bachsReference=p.saved.provider_reference;
   return {f,q,p,path:'/v1/admin/operations/payouts/'+p.saved.id};
  }
- afterEach(()=>{env.BACHS_PRICED_CHECKOUT_ENABLED=undefined;env.BACHS_API_KEY=undefined;env.ENVIRONMENT='local';env.KYC_ENCRYPTION_KEY=undefined;});
+ afterEach(()=>{env.BACHS_PRICED_CHECKOUT_ENABLED=undefined;env.BACHS_AGENT_PAYOUTS_ENABLED=undefined;env.BACHS_API_KEY=undefined;env.ENVIRONMENT='local';env.KYC_ENCRYPTION_KEY=undefined;});
  async function payoutEvent(eventId:string,reference:string,type='payout.paid'){
   env.BACHS_WEBHOOK_SECRET='synthetic-payout-webhook-secret';
   const raw=JSON.stringify({id:eventId,type,data:{id:'pay_bankfixture',reference,amount:'1.00',status:'completed'}}),timestamp=String(Math.floor(Date.now()/1000));
@@ -2965,6 +2965,12 @@ describe('Bachs bank payout approval and verified recovery',()=>{
   const {f,path}=await fixture();wrongDestination=true;
   expect((await request(path+'/approve',buyer,'POST',{confirm:true})).status).toBe(409);expect(bankPosts).toBe(0);expect(funded).toBe(0);
   expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(700000);
+ });
+ it('keeps new agent transfers paused even if Connect is active until separately enabled',async()=>{
+  const {f,path}=await fixture();env.BACHS_AGENT_PAYOUTS_ENABLED='false';
+  const response=await request(path+'/approve',buyer,'POST',{confirm:true});
+  expect(response.status).toBe(503);expect(await response.json()).toMatchObject({error:expect.stringContaining('awaiting')});
+  expect(bankPosts).toBe(0);expect(funded).toBe(0);expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(700000);
  });
  it('uses signed payout events only to trigger a fresh provider check and deduplicates final receipts',async()=>{
   const {f,p,path}=await fixture();

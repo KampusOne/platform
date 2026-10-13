@@ -66,6 +66,7 @@ function fundingAmount(row: Settlement) {
     return gross;
 }
 export async function sendBachsAgentPayout(env: Bindings, payoutId: string) {
+    if(env.BACHS_AGENT_PAYOUTS_ENABLED!=='true')throw new AppError(503,'FEATURE_DISABLED','Agent payouts are awaiting activation and bank-transfer verification. Your saved request remains pending.');
     if (env.PAYMENTS_ENABLED !== 'true' || env.PAYOUTS_ENABLED !== 'true')
         throw new AppError(503, 'FEATURE_DISABLED', 'New bank transfers are paused. This payout remains pending.');
     let row = await settlement(env, payoutId);

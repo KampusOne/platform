@@ -78,6 +78,10 @@ export const groups = {
   ],
 };
 
+export function agentPayoutsConfiguredOff(source){
+  const productionVars=/"vars"\s*:\s*\{([\s\S]*?)\}/.exec(source)?.[1]??'';
+  return /"BACHS_AGENT_PAYOUTS_ENABLED"\s*:\s*"false"/.test(productionVars);
+}
 export function verifySchemaProof(proof, group, loadMigration) {
   const required = groups[group];
   if (!required) throw new Error("Unknown migration proof group");
@@ -94,6 +98,13 @@ export function verifySchemaProof(proof, group, loadMigration) {
     proof?.checks?.fixturesRolledBack !== true ||
     !Array.isArray(proof?.migrations)
   ) throw new Error("Approved and verified production migration proof is required");
+  const bankEditingOnly=group==='agentBanks'&&proof?.releaseMode==='BANK_EDITING_ONLY';
+  if(bankEditingOnly&&(
+    proof?.approval?.payoutsDeferredByUser!==true||
+    proof?.checks?.newBachsAgentTransfersDisabled!==true||
+    proof?.provider?.bankNameLookup!=='passed'||
+    !agentPayoutsConfiguredOff(readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8'))
+  ))throw new Error('Bank editing release requires explicit payout deferral and disabled Bachs agent transfers');
   if(group==='agentBanks'&&(
     proof?.rehearsal?.parentBranchId!=='br-quiet-butterfly-ayrj264q'||
     !/^br-[a-z0-9-]+$/.test(proof?.rehearsal?.branchId??'')||
@@ -102,9 +113,9 @@ export function verifySchemaProof(proof, group, loadMigration) {
     proof?.checks?.bankRevisionIsolation!=='passed'||
     proof?.checks?.payoutIdempotencyAndRecovery!=='passed'||
     proof?.provider?.name!=='BACHS'||
-    proof?.provider?.liveConnectEnabled!==true||
+    !bankEditingOnly&&proof?.provider?.liveConnectEnabled!==true||
     proof?.provider?.bankNameLookup!=='passed'||
-    proof?.provider?.verifiedAgentBankPayout!=='passed'
+    !bankEditingOnly&&proof?.provider?.verifiedAgentBankPayout!=='passed'
   ))throw new Error('Bachs Connect activation, a verified agent bank payout and isolated bank/payout rehearsal are required before an APK release');
   if (group === "cache" && (
     proof?.rehearsal?.parentBranchId !== "br-quiet-butterfly-ayrj264q" ||
