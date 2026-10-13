@@ -49,7 +49,7 @@ payoutSetupRoutes.get("/", async (c) => {
     university_id: string;
     bank_status: string;
   }>(
-    sql`select p.id,p.agent_type,p.display_name,p.university_id,a.bank_status from public.agent_profiles p join public.agent_applications a on a.id=p.application_id where p.user_id=${user.id}::uuid and p.university_id=${user.universityId}::uuid and p.status='ACTIVE' and a.status='APPROVED' order by p.created_at`,
+    sql`select p.id,p.agent_type,p.display_name,p.university_id,a.bank_status,(app_private.payout_setup_has_pending(p.id) or exists(select 1 from app_private.payout_account_setups s where s.agent_profile_id=p.id and s.status='RESOLVING' and s.updated_at>now()-interval '2 minutes')) as bank_edit_locked from public.agent_profiles p join public.agent_applications a on a.id=p.application_id where p.user_id=${user.id}::uuid and p.university_id=${user.universityId}::uuid and p.status='ACTIVE' and a.status='APPROVED' order by p.created_at`,
   );
   const records = await db.execute<
     Record<string, unknown> & { agent_profile_id: string }
@@ -151,6 +151,7 @@ payoutSetupRoutes.post("/resolve", async (c) => {
         "That verification did not complete. Start a new attempt.",
         { restartRequired: true },
       );
+    if (previous.status === 'SUPERSEDED') throw new AppError(409, 'CONFLICT', 'This bank account was removed or replaced. Start a new account setup.', {restartRequired:true});
     return c.json({ account: await accountById(c.env, d.requestId) });
   }
   const profile = firstRow(
@@ -238,6 +239,39 @@ payoutSetupRoutes.post("/resolve", async (c) => {
     }
     throw caught;
   }
+});
+
+payoutSetupRoutes.delete('/:id', async c => {
+  const id = z.string().uuid().safeParse(c.req.param('id'));
+  if (!id.success) throw new AppError(400, 'BAD_REQUEST', 'Choose a saved bank account.');
+  const user = currentUser(c), db = database(c.env);
+  const owned = firstRow(await db.execute<{agent_profile_id:string;status:string}>(sql`select s.agent_profile_id,s.status from app_private.payout_account_setups s join public.agent_profiles p on p.id=s.agent_profile_id where s.id=${id.data}::uuid and s.user_id=${user.id}::uuid and p.user_id=${user.id}::uuid and s.institution_id=${user.universityId}::uuid and p.university_id=${user.universityId}::uuid`));
+  if (!owned) throw new AppError(404, 'NOT_FOUND', 'This saved bank account is not available.');
+  const client = sqlClient(c.env);
+  const result = await client.transaction([
+    // Payout reservation, bank replacement and removal share this profile lock.
+    client`select id from public.agent_profiles where id=${owned.agent_profile_id}::uuid for update`,
+    client`with removed as (
+      update app_private.payout_account_setups s set status='SUPERSEDED',updated_at=now()
+      where s.id=${id.data}::uuid and s.user_id=${user.id}::uuid and s.institution_id=${user.universityId}::uuid
+        and s.status in('PENDING_PROVIDER','PENDING_REVIEW','APPROVED','REJECTED')
+        and not app_private.payout_setup_has_pending(s.agent_profile_id)
+        and not exists(select 1 from app_private.payout_account_setups r where r.agent_profile_id=s.agent_profile_id and r.status='RESOLVING' and r.updated_at>now()-interval '2 minutes')
+        and not exists(select 1 from app_private.payout_account_setups newer where newer.agent_profile_id=s.agent_profile_id and newer.status in('PENDING_PROVIDER','PENDING_REVIEW','APPROVED','REJECTED') and (newer.created_at,newer.id)>(s.created_at,s.id))
+      returning s.id,s.application_id
+    ), cleared as (
+      update public.agent_applications set bank_status='NOT_STARTED',bank_provider=null,bank_recipient_code=null,bank_account_name=null,bank_account_last4=null,updated_at=now()
+      where id in(select application_id from removed) returning id
+    )
+    insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata)
+      select ${user.id}::uuid,${user.universityId}::uuid,'payout.account_removed','payout_account',removed.id::text,${c.get('requestId') ?? null},'succeeded','{}'::jsonb from removed join cleared on cleared.id=removed.application_id returning target_id`,
+    client`select status,not exists(select 1 from app_private.payout_account_setups other where other.agent_profile_id=${owned.agent_profile_id}::uuid and other.status not in('SUPERSEDED','FAILED')) as no_account from app_private.payout_account_setups where id=${id.data}::uuid and user_id=${user.id}::uuid and institution_id=${user.universityId}::uuid`,
+  ]);
+  const receipt = result[2]?.[0] as {status?:string;no_account?:boolean}|undefined;
+  if (!result[1]?.length && !(receipt?.status === 'SUPERSEDED' && receipt.no_account)) throw new AppError(409, 'CONFLICT', 'A withdrawal or bank verification is in progress, or this account was replaced. Refresh your bank details before trying again.');
+  // Historical approved destinations and financial receipts remain sealed.
+  // Removing the active destination makes it unavailable for new withdrawals.
+  return c.json({deleted:true,agentProfileId:owned.agent_profile_id});
 });
 
 payoutSetupRoutes.get("/review", async (c) => {

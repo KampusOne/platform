@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { feedTime, compactCount } from '../mobile/src/lib/feed-time.ts';
+import { typescript as ts } from './helpers/typescript.mjs';
+import { normalizeApiTimestamp } from '../mobile/src/lib/api-date.ts';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+const exports={};
+runInNewContext(ts.transpileModule(readFileSync(new URL('../mobile/src/lib/feed-time.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,module:{exports},Date,Intl,require:name=>{assert.equal(name,'./api-date');return {normalizeApiTimestamp};}});
+const { feedTime, compactCount } = exports;
 const now = Date.parse('2026-09-22T12:00:00Z');
 const at = (seconds) => new Date(now - seconds * 1000).toISOString();
 for (const [seconds, expected] of [[0,'now'],[59,'now'],[60,'1m'],[3599,'59m'],[3600,'1h'],[86399,'23h'],[86400,'1d'],[604799,'6d'],[604800,'1w'],[1209600,'2w'],[1814400,'3w'],[2419199,'3w']]) {

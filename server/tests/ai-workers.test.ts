@@ -49,16 +49,15 @@ describe('Workers AI recovery', () => {
     await expect(generateAI(env(native({response:''})),input)).rejects.toMatchObject({reason:'AI_EMPTY_OUTPUT'});
     await expect(generateAI(env(native({response:'Partial',usage:{completion_tokens:3072}})),input)).rejects.toMatchObject({reason:'AI_INCOMPLETE'});
   });
-  it('retains the original private pixels when OCR supplies plausible timetable text', async () => {
-    const run=native(), toMarkdown=vi.fn().mockResolvedValue([{format:'markdown',data:'Monday, MAT 101, 08:00–09:00, LT 1'}]);
+  it('reads the original private photo in one inference without waiting for OCR', async () => {
+    const run=native(), toMarkdown=vi.fn().mockResolvedValue([{format:'markdown',data:'WRONG OCR TEXT'}]);
     const result=await generateAI({...env(run),AI:{run,toMarkdown}}, {...input,tier:'pro',media:{mimeType:'image/png',data:btoa('PRIVATE_PIXELS')}});
     expect(result.provider).toBe('workers-ai');
-    const files=toMarkdown.mock.calls[0][0]; expect(files[0].blob).toBeInstanceOf(Blob);
-    expect(await files[0].blob.text()).toBe('PRIVATE_PIXELS');
+    expect(toMarkdown).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
     expect(run.mock.calls[0][0]).toBe('@cf/google/gemma-4-26b-a4b-it');
     expect(run.mock.calls[0][1].messages.at(-1).content).toEqual(expect.arrayContaining([
       expect.objectContaining({type:'image_url',image_url:{url:'data:image/png;base64,'+btoa('PRIVATE_PIXELS')}}),
-      expect.objectContaining({type:'text',text:expect.stringContaining('MAT 101')}),
     ]));
     expect(run.mock.calls[0][1].image).toBeUndefined();
   });
@@ -70,4 +69,37 @@ describe('Workers AI recovery', () => {
     expect(run.mock.calls[0][1].image).toBeUndefined();
   });
 
+});
+
+describe('schedule inference deadline regression', () => {
+  const schedule = {documentType:'class_timetable',entries:[{title:'Mathematics',courseCode:'MTH 201',dayOfWeek:1,startsAt:'08:00',endsAt:'10:00',venue:'LT 1',lecturer:''}],events:[],warnings:[]};
+  it('finishes a real-length schedule attempt after the old 45-second cut-off',async()=>{
+    vi.useFakeTimers();
+    try {
+      const run=vi.fn(()=>new Promise(resolve=>setTimeout(()=>resolve({choices:[{finish_reason:'stop',message:{content:JSON.stringify(schedule)}}]}),60000)));
+      const toMarkdown=vi.fn(()=>new Promise(()=>{}));
+      const pending=generateAI({...env(run),AI:{run,toMarkdown}},{mode:'timetable',documentKind:'class',prompt:'',media:{mimeType:'image/jpeg',data:btoa('PRIVATE_PIXELS')}});
+      await vi.advanceTimersByTimeAsync(60001);
+      expect(JSON.parse((await pending).text).entries[0].courseCode).toBe('MTH 201');
+      expect(toMarkdown).not.toHaveBeenCalled();
+      expect(run.mock.calls[0][1]).toMatchObject({chat_template_kwargs:{enable_thinking:false},response_format:{type:'json_object'}});
+    } finally { vi.useRealTimers(); }
+  });
+  it('reserves time for the configured fallback instead of consuming its whole deadline',async()=>{
+    vi.useFakeTimers();
+    try {
+      const run=vi.fn(()=>new Promise(()=>{}));
+      const fetcher=vi.fn().mockResolvedValue(Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(schedule)}}]}));
+      const pending=generateAI({...env(run),HF_TOKEN:'synthetic',HF_CHAT_MODEL:'test/chat',HF_VISION_MODEL:'test/vision'},{mode:'timetable',prompt:'',media:{mimeType:'image/png',data:btoa('PIXELS')}},fetcher);
+      await vi.advanceTimersByTimeAsync(75001);
+      expect((await pending).provider).toBe('huggingface');
+      expect(run).toHaveBeenCalledTimes(1); expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+  it('gives dated exams their own schema without conflicting weekly instructions',async()=>{
+    const run=native({response:'{"documentType":"exam_timetable","entries":[],"warnings":[]}'});
+    await generateAI(env(run),{mode:'timetable',documentKind:'exam',prompt:'Read exams'});
+    const instruction=run.mock.calls[0][1].messages[0].content;
+    expect(instruction).toContain('exam_timetable');expect(instruction).not.toContain('dayOfWeek');
+  });
 });

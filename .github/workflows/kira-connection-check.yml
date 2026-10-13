@@ -1,7 +1,7 @@
 name: Verify live Kira providers
 on:
   push:
-    branches: [main, fix/keyboard-ai-recovery-20261009, perf/secure-universal-cache-20261010, fix/seller-product-management-20261013]
+    branches: [main, fix/keyboard-ai-recovery-20261009, perf/secure-universal-cache-20261010, fix/seller-product-management-20261013, fix/academic-imports-bank-management-20261014]
     paths: ['scripts/kira-connection-check.mjs', '.github/workflows/kira-connection-check.yml']
   workflow_dispatch:
 permissions:
@@ -10,7 +10,7 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 4
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:

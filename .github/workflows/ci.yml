@@ -113,6 +113,8 @@ jobs:
         working-directory: mobile
       - run: npm run check
         working-directory: mobile
+      - name: Test import response recovery and Android purchase dates
+        run: node --experimental-strip-types --test tests/academic-import-recovery.test.mjs tests/feed-time.test.mjs
       - name: Verify live GPS map routing and map viewer
         run: |
           node scripts/check-campus-location.cjs

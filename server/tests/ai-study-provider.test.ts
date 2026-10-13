@@ -153,3 +153,49 @@ describe("student AI persistence and quota boundaries",()=>{
   it("does not retry authentication failures or switch providers",async()=>{for(const status of [401,403]){provider.mockResolvedValueOnce(new Response("PRIVATE_INPUT",{status}));const result=await json(await request("/ai","POST",draft()),503);expect(JSON.stringify(result)).not.toContain("PRIVATE_INPUT");}expect(provider).toHaveBeenCalledTimes(2);expect(provider.mock.calls.every(([url])=>String(url).startsWith("https://router.huggingface.co/"))).toBe(true);});
   it("falls back from the reasoning model to the cheaper HF chat model on model/capacity failures",async()=>{for(const status of [402,404,422,429,500]){const before=provider.mock.calls.length;provider.mockResolvedValueOnce(new Response("PRIVATE_INPUT",{status}));const result=await json(await request("/ai","POST",draft()));expect(result.text).toContain("Voltage");const calls=provider.mock.calls.slice(before);expect(calls).toHaveLength(2);expect(calls.every(([url])=>String(url).startsWith("https://router.huggingface.co/"))).toBe(true);const first=JSON.parse(String(calls[0]?.[1]?.body)),fallback=JSON.parse(String(calls[1]?.[1]?.body));expect(first.model).toBe("test/reasoning:nscale");expect(fallback.model).toBe("test/model:nscale");expect(JSON.stringify(result)).not.toContain("PRIVATE_INPUT");}});
 });
+
+describe('academic import recovery',()=>{
+  const classRow={title:'Mathematics',courseCode:'MTH 201',venue:'LT 1',lecturer:'',dayOfWeek:1,startsAt:'08:00',endsAt:'10:00'};
+  const previews={
+    class:{documentType:'class_timetable',entries:[classRow],events:[],warnings:[]},
+    calendar:{documentType:'academic_calendar',entries:[],events:[{title:'Registration',startsOn:'2026-10-19',endsOn:'2026-10-23',semester:'First semester'}],warnings:[]},
+    exam:{documentType:'exam_timetable',entries:[{title:'Mathematics',courseCode:'MTH 201',date:'2026-11-20',startsAt:'08:00',endsAt:'10:00',venue:'LT 1'}],warnings:[]},
+  };
+  async function photo(){
+    const mediaId=crypto.randomUUID(),bytes=new Uint8Array([255,216,255,217]);
+    await db.query("insert into public.media_objects(id,owner_user_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,'resource',$3,'image/jpeg',$4,'schedule.jpg')",[mediaId,owner,'private-'+mediaId,bytes.length]);
+    env.PRIVATE_BUCKET={get:async key=>key==='private-'+mediaId?{size:bytes.length,arrayBuffer:async()=>bytes.slice().buffer}:null} as unknown as R2Bucket;
+    return mediaId;
+  }
+  it.each(['class','calendar','exam'] as const)('returns and persists a reviewable %s photo preview in one vision call',async kind=>{
+    const run=vi.fn().mockResolvedValue({choices:[{finish_reason:'stop',message:{content:JSON.stringify(previews[kind])}}]}),toMarkdown=vi.fn(()=>new Promise(()=>{}));
+    env.AI={run,toMarkdown};env.HF_TOKEN='';
+    const body={...draft('timetable'),prompt:'',notes:'Use the rows in this source.',documentKind:kind,mediaId:await photo()};
+    const result=await json(await request('/ai','POST',body));
+    expect(result.documentType).toBe(previews[kind].documentType);
+    expect((await json(await request('/ai/requests/'+body.idempotencyKey))).status).toBe('completed');
+    expect(await json(await request('/ai','POST',body))).toEqual(result);
+    expect(run).toHaveBeenCalledTimes(1);expect(toMarkdown).not.toHaveBeenCalled();
+    expect(run.mock.calls[0][1].messages.at(-1).content).toEqual(expect.arrayContaining([expect.objectContaining({type:'image_url'})]));
+  });
+  it('retries a failed photo with the same owned upload, AI reservation and weekly allowance',async()=>{
+    const run=vi.fn().mockRejectedValueOnce(new Error('3007: synthetic timeout')).mockResolvedValueOnce({response:JSON.stringify(previews.class)});
+    env.AI={run};env.HF_TOKEN='';
+    const body={...draft('timetable'),prompt:'',documentKind:'class',mediaId:await photo()};
+    expect((await json(await request('/ai','POST',body),504)).error.details).toMatchObject({reason:'AI_TIMEOUT',retryWithNewKey:false});
+    await db.query("update app_private.ai_requests set created_at=now()-interval '1 hour' where idempotency_key=$1",[body.idempotencyKey]);
+    expect((await json(await request('/ai','POST',body))).entries[0].courseCode).toBe('MTH 201');
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(await count()).toBe(1);
+    expect((await db.query<{count:number}>('select count(*)::int count from app_private.academic_import_usage where user_id=$1 and request_id=$2',[owner,body.idempotencyKey])).rows[0].count).toBe(1);
+  });
+  it('bounds same-attempt provider retries and never leaks another user’s saved preview',async()=>{
+    const run=vi.fn().mockRejectedValue(new Error('3007: synthetic timeout'));
+    env.AI={run};env.HF_TOKEN='';
+    const body={...draft('timetable'),prompt:'',documentKind:'exam',mediaId:await photo()};
+    for(let n=0;n<3;n++)expect((await json(await request('/ai','POST',body),504)).error.details.retryWithNewKey).toBe(n===2);
+    expect((await json(await request('/ai','POST',body),503)).error.details.retryWithNewKey).toBe(true);
+    expect(run).toHaveBeenCalledTimes(3);expect(await count()).toBe(1);
+    await json(await request('/ai/requests/'+body.idempotencyKey,'GET',undefined,other),404);
+  });
+});
