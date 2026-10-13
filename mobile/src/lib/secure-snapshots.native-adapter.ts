@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { SecureSnapshots } from './secure-snapshots';
+import { snapshotCiphertextBytes } from './snapshot-ciphertext';
 const keyName = (id: string) => 'kampusone.snapshot-key.' + id;
 const encoder = new TextEncoder(), decoder = new TextDecoder();
 async function cryptoKey(id: string, create: boolean) {
@@ -25,7 +26,7 @@ export const secureSnapshots = new SecureSnapshots({
   open: async (id,sealed,aad) => {
     const Crypto = await import('expo-crypto'), key = await cryptoKey(id,false);
     if (!key) return null;
-    return decoder.decode(await Crypto.aesDecryptAsync(Crypto.AESSealedData.fromCombined(sealed),key,{additionalData:encoder.encode(aad)}));
+    return decoder.decode(await Crypto.aesDecryptAsync(Crypto.AESSealedData.fromCombined(snapshotCiphertextBytes(sealed)),key,{additionalData:encoder.encode(aad)}));
   },
   destroyKey: async id => { if (Platform.OS !== 'web') await (await import('expo-secure-store')).deleteItemAsync(keyName(id)); },
 });

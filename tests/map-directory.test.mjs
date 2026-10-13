@@ -5,8 +5,27 @@ import {UNIBEN_UGBOWO_FALLBACK} from '../mobile/src/lib/campus-data.ts';
 const source=JSON.parse(readFileSync(new URL('../database/imports/uniben-map2-2026-10-06.json',import.meta.url),'utf8'));
 const corrections=JSON.parse(readFileSync(new URL('../database/imports/uniben-ground-truth-corrections-2026-10-07.json',import.meta.url),'utf8'));
 const referencePois=JSON.parse(readFileSync(new URL('../database/imports/uniben-reference-pois-2026-10-09.json',import.meta.url),'utf8'));
-const correctionById=new Map(corrections.places.map(place=>[place.id,place]));
+const latestReview=JSON.parse(readFileSync(new URL('../database/imports/uniben-map-review-2026-10-13.json',import.meta.url),'utf8'));
+const correctionById=new Map([...corrections.places,...latestReview.corrections].map(place=>[place.id,place]));
 const correctedDirectory=source.directory.map(place=>{const correction=correctionById.get(place.id);return correction?{...place,latitude:correction.latitude,longitude:correction.longitude,verified_at:null}:place;});
+
+test('both reference archives are fully indexed and GST stays in the owner-reported west field cluster',()=>{
+  assert.equal(latestReview.framesReviewed.length,78);
+  assert.equal(latestReview.framesReviewed.filter(frame=>frame.archive==='Map.zip').length,34);
+  assert.equal(latestReview.framesReviewed.filter(frame=>frame.archive==='Map 2.zip').length,44);
+  for(const frame of latestReview.framesReviewed)assert.match(frame.sha256,/^[a-f0-9]{64}$/);
+  for(const expected of latestReview.corrections){
+    const actual=UNIBEN_UGBOWO_FALLBACK.find(place=>place.id===expected.id);
+    assert.ok(actual,expected.name);assert.equal(Number(actual.latitude),expected.latitude);assert.equal(Number(actual.longitude),expected.longitude);assert.equal(actual.verified_at,null);
+  }
+  const gst=UNIBEN_UGBOWO_FALLBACK.find(place=>place.name==='GST building');
+  const env=UNIBEN_UGBOWO_FALLBACK.find(place=>place.name==='Faculty of Environmental Sciences');
+  const shop=UNIBEN_UGBOWO_FALLBACK.find(place=>place.name==='UNIBEN Book Shop');
+  assert.ok(Number(gst.latitude)>Number(env.latitude)&&Number(gst.latitude)>Number(shop.latitude));
+  assert.ok(Number(gst.longitude)<Number(shop.longitude));
+  assert.ok(gst.search_aliases.includes('General Studies'));
+  assert.ok(Number(env.longitude)<5.6199,'Environmental Sciences must be west of Uniben Road');
+});
 
 test('all 44 source images have individual review provenance and unresolved labels stay out',()=>{
   assert.equal(source.images.length,44);
@@ -17,8 +36,8 @@ test('all 44 source images have individual review provenance and unresolved labe
 });
 
 test('offline places retain reviewed live IDs and actual verification timestamps',()=>{
-  assert.equal(UNIBEN_UGBOWO_FALLBACK.length,180);
-  assert.equal(new Set(UNIBEN_UGBOWO_FALLBACK.map(p=>p.id)).size,180);
+  assert.equal(UNIBEN_UGBOWO_FALLBACK.length,181);
+  assert.equal(new Set(UNIBEN_UGBOWO_FALLBACK.map(p=>p.id)).size,181);
   for(const expected of correctedDirectory){
     const actual=UNIBEN_UGBOWO_FALLBACK.find(p=>p.id===expected.id);
     assert.ok(actual,expected.name);

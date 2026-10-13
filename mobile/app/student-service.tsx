@@ -801,9 +801,12 @@ export default function StudentService() {
                             </Text>
                           ) : null}
                           {data.selectedProductId ? (
-                            <Text style={{ ...body, marginTop: 8 }}>
-                              {item.description}
-                            </Text>
+                            <>
+                              <Text style={{ ...body, marginTop: 8 }}>{item.description}</Text>
+                              <Pressable accessibilityRole="button" accessibilityLabel="Buy now" disabled={item.stock_quantity <= 0} onPress={event => {event.stopPropagation();router.push({pathname:'/(tabs)/store',params:{product:item.id,buyNow:item.id}});}} style={{minHeight:48,marginTop:16,paddingHorizontal:16,alignItems:'center',justifyContent:'center',borderRadius:12,backgroundColor:item.stock_quantity>0?theme.deepBrand:theme.surfaceMuted}}>
+                                <Text style={{...body,fontFamily:theme.font.semibold,color:item.stock_quantity>0?'#FFFFFF':theme.textMuted}}>{item.stock_quantity>0?'Buy now':'Sold out'}</Text>
+                              </Pressable>
+                            </>
                           ) : null}
                         </Pressable>
                       ))}

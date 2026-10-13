@@ -446,7 +446,7 @@ function AccountAI() {
       {documentStage&&documentName?<View style={{paddingHorizontal:16}}><ImportProgress failureStage={documentFailureStage} stage={documentStage} fileReceived={Boolean(pending?.file?.mediaId||attachment?.mediaId)} filename={documentName} subject="document" uploadFraction={uploadFraction} error={documentStage==="failed"?error:undefined}/></View>:null}
       <View style={{paddingHorizontal:16,paddingTop:8,paddingBottom:6}}>
         <DraftRecovery loading={restored.loading} error={restored.error} onRetry={restored.retry} />
-        {draftSave.warning?<Text accessibilityRole="alert" style={{...muted,color:theme.error,marginBottom:8}}>{draftSave.warning}</Text>:null}
+        {draftSave.warning&&draftSave.warning!==error?<Text accessibilityRole="alert" style={{...muted,color:theme.error,marginBottom:8}}>{draftSave.warning}</Text>:null}
         {error?<View accessibilityRole="alert" style={{padding:12,marginBottom:10,backgroundColor:theme.surfaceMuted,borderRadius:10}}><Text style={{...muted,color:theme.text}}>{error}{limit?.resetsAt?` Try again at ${new Date(limit.resetsAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}.`:''}</Text>{limit?.upgrade?smallButton('Get Kira Pro',()=>setSheet('plans')):null}</View>:null}
         {status&&!status.enabled?<Text style={{...muted,marginBottom:8}}>AI is temporarily unavailable. Your draft and saved conversations are kept.</Text>:null}
         {!status&&loaded?smallButton('Check AI availability',()=>void loadStatus(),busy):null}

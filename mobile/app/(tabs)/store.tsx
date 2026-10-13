@@ -2,7 +2,8 @@ import {cacheScopeForUser} from '@/src/lib/request-policy';
 import {ProductPreview} from '@/src/components/product-preview';
 import {MediaImage} from '@/src/components/media-image';
 import { useAuth } from "@/src/auth/auth-context";
-import { readCache, writeCache,getDeviceCacheRevision } from "@/src/lib/device-cache";
+import { getDeviceCacheRevision } from "@/src/lib/device-cache";
+import { useMarketplaceCart } from "@/src/lib/marketplace-cart";
 import { SearchLoading } from "@/src/components/search-loading";
 import { SyncStatus } from "@/src/components/sync-status";
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
@@ -23,6 +24,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Keyboard,
   Linking,
   Platform,
   Pressable,
@@ -32,7 +34,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { PopularShops } from "@/src/components/popular-shops";
 import { CreateAction } from "@/src/components/create-action";
 
@@ -41,7 +43,7 @@ import { ApiError, api } from "@/src/lib/api";
 import { useToast } from "@/src/components/toast";
 import { theme } from "@/src/theme";
 
-type Product = {
+export type Product = {
   id: string;
   vendor_profile_id: string;
   name: string;
@@ -78,7 +80,6 @@ type CheckoutQuote = {
   expiresAt: string;
   fare: { routeMetres: number; distanceBasis: string;routeAccessNotice?:string|null } | null;
 };
-type Cart = Record<string, number>;
 type CatalogIssue = { code: string; message: string };
 type CatalogueMode = "DEMO" | "LIVE";
 type CatalogResponse = {
@@ -98,11 +99,10 @@ const naira = (kobo: number) =>
   }).format(Number(kobo) / 100);
 
 export default function StoreScreen(){const{user}=useAuth();return <OwnedStoreScreen key={user?cacheScopeForUser(user):'anonymous'}/>;}
-function OwnedStoreScreen() {
+export function MarketplaceCheckoutScreen(){const{user}=useAuth();return <OwnedStoreScreen key={user?cacheScopeForUser(user):'anonymous'} checkoutScreen/>;}
+function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const { user } = useAuth();
-  const { product: focusedProduct } = useLocalSearchParams<{
-    product?: string;
-  }>();
+  const { product: focusedProduct, buyNow: immediateProduct } = useLocalSearchParams<{ product?: string; buyNow?: string }>();
   useFocusEffect(
     useCallback(
       () => () => {
@@ -113,11 +113,13 @@ function OwnedStoreScreen() {
   );
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const { width: windowWidth,fontScale } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const compactPhone = windowWidth < 400;
   const contentWidth = Math.min(windowWidth, 540);
   const horizontalPadding = compactPhone ? 14 : 20;
   const [preview,setPreview]=useState<Product|null>(null);
+  const directBuy = useRef('');
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -131,13 +133,8 @@ function OwnedStoreScreen() {
   const [deliveryLocation, setDeliveryLocation] = useState("");
   const [pickupHandoff, setPickupHandoff] = useState<"STORE" | "AGREED">("STORE");
   const [meetingPoint, setMeetingPoint] = useState("");
-  const [cart, setCart] = useState<Cart>({});
-  const [cartOwner,setCartOwner]=useState<string|null>(null);
-  const cartReady=Boolean(user?.id&&cartOwner===user.id);
-  const pendingCart=useRef<{owner:string;value:Cart}|null>(null);
-  if(cartReady&&user?.id)pendingCart.current={owner:user.id,value:cart};
-  useEffect(()=>{let live=true;const revision=getDeviceCacheRevision();setCartOwner(null);pendingCart.current=null;setCart({});if(!user?.id)return;void readCache<Cart>("cart."+user.id).then(saved=>{if(!live||revision!==getDeviceCacheRevision())return;setCart(Object.fromEntries(Object.entries(saved??{}).filter(([id,n])=>/^[0-9a-f-]{36}$/i.test(id)&&Number.isSafeInteger(n)&&n>0&&n<=99).slice(0,50)));setCartOwner(user.id);});return()=>{live=false;const pending=pendingCart.current;if(revision===getDeviceCacheRevision()&&pending?.owner===user.id)void writeCache("cart."+user.id,pending.value);};},[user?.id]);
-  useEffect(()=>{if(!cartReady||!user?.id)return;const revision=getDeviceCacheRevision();const timer=setTimeout(()=>{if(revision===getDeviceCacheRevision())void writeCache("cart."+user.id,cart);},250);return()=>clearTimeout(timer);},[cart,user?.id,cartReady]);
+  const sharedCart = useMarketplaceCart(user?.id ?? "");
+  const cart = sharedCart.items, setCart = sharedCart.update, cartReady = sharedCart.ready;
   const [query, setQuery] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const searchPending = query.trim().toLocaleLowerCase("en-NG") !== searchTerm;
@@ -149,6 +146,7 @@ function OwnedStoreScreen() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
+  const [immediateQuantity, setImmediateQuantity] = useState(1);
   const [cartOpen, setCartOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [noteFocused, setNoteFocused] = useState(false);
@@ -239,7 +237,7 @@ function OwnedStoreScreen() {
     }, [load]),
   );
 
-  const columns=windowWidth<360||fontScale>1.3||products.length===1?1:2;
+  const columns=2;
   const productWidth=(contentWidth-horizontalPadding*2-(columns-1)*12)/columns;
   useEffect(()=>{if(focusedProduct){const found=products.find(product=>product.id===focusedProduct);if(found)setPreview(found);}},[focusedProduct,products]);
 
@@ -277,9 +275,9 @@ function OwnedStoreScreen() {
   const cartItems = useMemo(
     () =>
       products
-        .filter((product) => Boolean(cart[product.id]))
-        .map((product) => ({ product, quantity: cart[product.id] ?? 0 })),
-    [cart, products],
+        .filter((product) => Boolean(cart[product.id]) && (!checkoutScreen || !immediateProduct || product.id === immediateProduct && immediateQuantity > 0))
+        .map((product) => ({ product, quantity: checkoutScreen && immediateProduct ? immediateQuantity : cart[product.id] ?? 0 })),
+    [cart, products, checkoutScreen, immediateProduct, immediateQuantity],
   );
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartItems.reduce(
@@ -308,10 +306,11 @@ function OwnedStoreScreen() {
     agreedPickup ? `Agreed pickup meeting point: ${meetingPoint.trim()}` : "",
     deliveryNote.trim(),
   ].filter(Boolean).join("\n");
+  const cartAvailable = cartItems.every(item => item.quantity > 0 && item.quantity <= Number(item.product.stock_quantity));
   const checkoutReady =
-    !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone) &&
+    cartAvailable && !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone) &&
     (!agreedPickup || meetingPoint.trim().length >= 5) && orderNote.length <= 500;
-  const checkoutBlockedLabel = orderNote.length > 500
+  const checkoutBlockedLabel = !cartAvailable ? "Update the unavailable items in your cart" : !effectiveMode ? "This seller has no delivery or pickup option yet" : orderNote.length > 500
     ? "Shorten your handoff note to continue"
     : agreedPickup && meetingPoint.trim().length < 5
       ? "Enter the agreed pickup point"
@@ -334,8 +333,7 @@ function OwnedStoreScreen() {
       expectedUnitPriceKobo: Number(product.price_kobo),
     })),
   });
-  const validQuote =
-    reviewedQuote?.payload === orderPayload ? reviewedQuote.quote : null;
+  const validQuote = reviewedQuote?.payload === orderPayload && Date.parse(reviewedQuote.quote.expiresAt) > Date.now() ? reviewedQuote.quote : null;
   const featureDisabled = catalogIssue?.code === "FEATURE_DISABLED";
 
   function retryLoad() {
@@ -354,11 +352,13 @@ function OwnedStoreScreen() {
   }
 
   function openCart() {
+    Keyboard.dismiss();
     setCheckoutError("");
     setCartOpen(true);
   }
 
   function add(product: Product) {
+    if (!cartReady || busy) return;
     const activeVendor = cartItems[0]?.product.vendor_profile_id;
     if (activeVendor && activeVendor !== product.vendor_profile_id) {
       const activeSeller =
@@ -377,15 +377,22 @@ function OwnedStoreScreen() {
     }
     setCart((current) => ({
       ...current,
-      [product.id]: Math.min((current[product.id] ?? 0) + 1, stock),
+      [product.id]: Math.min((current[product.id] ?? 0) + 1, stock, 99),
     }));
     setNotice(`${product.name} added to your cart.`);
   }
 
   function changeQuantity(product: Product, delta: number) {
+    if (busy || !cartReady) return;
+    if (checkoutScreen && immediateProduct === product.id) {
+      const next = Math.min(Number(product.stock_quantity), 99, Math.max(0, immediateQuantity + delta));
+      setImmediateQuantity(next);
+      if (next > 0) setCart(current => ({ ...current, [product.id]: Math.max(current[product.id] ?? 0, next) }));
+      return;
+    }
     setCart((current) => {
       const nextQuantity = Math.min(
-        Number(product.stock_quantity),
+        Number(product.stock_quantity), 99,
         Math.max(0, (current[product.id] ?? 0) + delta),
       );
       const next = { ...current };
@@ -395,15 +402,41 @@ function OwnedStoreScreen() {
     });
   }
 
+  async function proceedToCheckout() {
+    if (checkoutLock.current || !cartReady || !cartItems.length) return;
+    checkoutLock.current = true; setBusy(true); setCheckoutError("");
+    try { await sharedCart.flush(); Keyboard.dismiss(); setCartOpen(false); router.push('/marketplace-checkout'); }
+    catch (error) { setCheckoutError(error instanceof Error ? error.message : 'Your cart could not be saved. Try again.'); }
+    finally { checkoutLock.current = false; setBusy(false); }
+  }
+
+  async function buyNow(product: Product) {
+    if (checkoutLock.current || !cartReady || Number(product.stock_quantity) <= 0) return;
+    const activeVendor = cartItems[0]?.product.vendor_profile_id;
+    if (activeVendor && activeVendor !== product.vendor_profile_id) {
+      Alert.alert('One seller per checkout', 'Your cart contains another seller. Finish or clear that cart before buying this product.');
+      return;
+    }
+    checkoutLock.current = true; setBusy(true); setCheckoutError("");
+    try {
+      // Buy the selected product immediately; other same-seller items remain in the cart.
+      setCart(current => ({ ...current, [product.id]: current[product.id] ?? 1 }));
+      await sharedCart.flush(); setPreview(null);
+      router.push({pathname:'/marketplace-checkout',params:{buyNow:product.id}});
+    } catch (error) { setCheckoutError(error instanceof Error ? error.message : 'Your cart could not be saved. Try again.'); }
+    finally { checkoutLock.current = false; setBusy(false); }
+  }
+
   async function checkout() {
-    if (checkoutLock.current || !checkoutEnabled || !cartItems.length || !checkoutReady) return;
+    if (checkoutLock.current || !cartReady || !checkoutEnabled || !cartItems.length || !checkoutReady) return;
+    const revision = getDeviceCacheRevision();
     checkoutLock.current=true;
     setBusy(true);
     setCheckoutError("");
     setNotice("");
     try {
-      if (!validQuote) {
-        if (quoteRequest.current.payload !== orderPayload)
+      if (!validQuote || Date.parse(validQuote.expiresAt) <= Date.now()) {
+        if (quoteRequest.current.payload !== orderPayload || reviewedQuote && Date.parse(reviewedQuote.quote.expiresAt) <= Date.now())
           quoteRequest.current = {
             payload: orderPayload,
             id: Crypto.randomUUID(),
@@ -419,6 +452,8 @@ function OwnedStoreScreen() {
             }),
           },
         );
+        if (revision !== getDeviceCacheRevision()) return;
+        if (!result.quote?.id || !Number.isSafeInteger(result.quote.pricing?.totalKobo) || !Number.isFinite(Date.parse(result.quote.expiresAt))) throw new Error('Your checkout total could not be read. Try again.');
         setReviewedQuote({ payload: orderPayload, quote: result.quote });
         return;
       }
@@ -433,7 +468,8 @@ function OwnedStoreScreen() {
           }),
         },
       );
-      setCart({});
+      if (revision !== getDeviceCacheRevision()) return;
+      setCart(current => { const next={...current}; for(const item of cartItems){const remaining=(next[item.product.id]??0)-item.quantity;if(remaining>0)next[item.product.id]=remaining;else delete next[item.product.id];} return next; });
       setReviewedQuote(null);
       quoteRequest.current = { payload: "", id: "" };
       setCartOpen(false);
@@ -444,7 +480,7 @@ function OwnedStoreScreen() {
       setNotice(
         `Order #${order.id.slice(0, 8)} was created. You can always resume it from Purchases.`,
       );
-      router.push({
+      router.replace({
         pathname: "/payment-review",
         params: { id: order.id, type: "STORE_ORDER" },
       });
@@ -454,7 +490,7 @@ function OwnedStoreScreen() {
         quoteRequest.current = { payload: "", id: "" };
       }
       setCheckoutError(
-        caught instanceof ApiError
+        caught instanceof Error
           ? caught.message
           : "The order could not be created.",
       );
@@ -464,396 +500,24 @@ function OwnedStoreScreen() {
     }
   }
 
-  const catalogueData =
-    !loading && !featureDisabled && products.length > 0 ? filtered : [];
-  const catalogueEmpty = loading ? (
-    <CatalogSkeleton />
-  ) : featureDisabled ? (
-    <StateMessage
-      body="We’re finishing vendor verification, delivery safeguards, and secure checkout before opening the campus pilot."
-      icon="storefront-outline"
-      title="The store is opening soon"
-    />
-  ) : catalogIssue && !products.length ? (
-    <StateMessage
-      actionLabel="Try again"
-      body={catalogIssue.message}
-      icon="cloud-offline-outline"
-      onAction={retryLoad}
-      title="Store unavailable"
-      tone="error"
-    />
-  ) : !catalogIssue && !products.length ? (
-    <StateMessage
-      actionLabel="Refresh"
-      body="Published products from approved campus vendors will appear here."
-      icon="storefront-outline"
-      onAction={retryLoad}
-      title="No products yet"
-    />
-  ) : !searchPending && products.length > 0 && !filtered.length ? (
-    <StateMessage
-      actionLabel="Clear filters"
-      body="Try a different product name, seller, or category."
-      icon="search-outline"
-      onAction={clearFilters}
-      title="Nothing matches your search"
-    />
-  ) : null;
+  useEffect(() => {
+    if (checkoutScreen || !immediateProduct || !cartReady || loading || busy || directBuy.current === immediateProduct) return;
+    const product = products.find(item => item.id === immediateProduct);
+    if (!product) return;
+    directBuy.current = immediateProduct;
+    router.setParams({buyNow:undefined});
+    void buyNow(product);
+  }, [checkoutScreen, immediateProduct, cartReady, loading, busy, products]);
 
-  return (
-    <SafeAreaView edges={["top"]} style={styles.safe}>
-      <View pointerEvents="none" style={styles.ambientTop} />
-      <View pointerEvents="none" style={styles.ambientBottom} />
-      <Animated.View
-        style={[
-          styles.listFrame,
-          {
-            opacity: entry,
-            transform: [
-              {
-                translateY: entry.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [8, 0],
-                }),
-              },
-            ],
-            width: contentWidth,
-          },
-        ]}
-      >
-        <FlatList
-          accessibilityLabel="Campus store products"
-          columnWrapperStyle={columns===2?styles.productRow:undefined}
-          contentContainerStyle={[
-            styles.listContent,
-            compactPhone && styles.listContentCompact,
-          ]}
-          data={catalogueData}
-          extraData={cart}
-          initialNumToRender={8}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-          keyExtractor={(product) => product.id}
-          ListEmptyComponent={catalogueEmpty}
-          ListHeaderComponent={
-            <>
-              <SyncStatus path="/v1/student/store"/>
-              {searchPending?<SearchLoading label="Searching products and sellers…" shape="products" hasResults={filtered.length>0}/>:null}
-              <View style={styles.storeToolbar}>
-                {!featureDisabled ? (
-                  <View
-                    style={[
-                      styles.search,
-                      styles.toolbarSearch,
-                      searchFocused && styles.inputFocused,
-                    ]}
-                  >
-                    <Ionicons
-                      name="search-outline"
-                      size={20}
-                      color={theme.brandPressed}
-                    />
-                    <TextInput
-                      accessibilityLabel="Search products or vendors"
-                      autoCapitalize="none"
-                      onBlur={() => setSearchFocused(false)}
-                      onChangeText={setQuery}
-                      onFocus={() => setSearchFocused(true)}
-                      placeholder="Search products or vendors"
-                      placeholderTextColor={theme.textSubtle}
-                      returnKeyType="search"
-                      style={styles.searchInput}
-                      value={query}
-                    />
-                    {query ? (
-                      <Pressable
-                        accessibilityLabel="Clear search"
-                        accessibilityRole="button"
-                        hitSlop={4}
-                        onPress={() => setQuery("")}
-                        style={({ pressed }) => [
-                          styles.clearSearch,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <Ionicons
-                          name="close"
-                          size={20}
-                          color={theme.textMuted}
-                        />
-                      </Pressable>
-                    ) : null}
-                  </View>
-                ) : null}
-
-                <Pressable
-                  accessibilityLabel={
-                    cartCount
-                      ? `Open cart with ${cartCount} ${cartCount === 1 ? "item" : "items"}`
-                      : "Open cart"
-                  }
-                  accessibilityRole="button"
-                  hitSlop={4}
-                  onPress={openCart}
-                  style={({ pressed }) => [
-                    styles.cartButton,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Ionicons
-                    name="cart-outline"
-                    size={25}
-                    color={theme.brandPressed}
-                  />
-                  {cartCount ? (
-                    <View style={styles.cartBadge}>
-                      <Text style={styles.cartBadgeText}>
-                        {cartCount > 99 ? "99+" : cartCount}
-                      </Text>
-                    </View>
-                  ) : null}
-                </Pressable>
-              </View>
-
-              {!featureDisabled && query.trim() ? (
-                <View accessibilityLiveRegion="polite"
-                  style={{ flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 8 }}>
-                  <Ionicons name={searchPending ? "search-outline" : "checkmark-circle-outline"} size={17}
-                    color={theme.brandPressed} />
-                  <Text style={{ color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 12, flex: 1 }}>
-                    {searchPending
-                      ? "Searching products and sellers…"
-                      : `${filtered.length} ${filtered.length === 1 ? "result" : "results"} for “${query.trim()}”`}
-                  </Text>
-                </View>
-              ) : null}
-
-              {!featureDisabled && catalogueMode === "LIVE" && (
-                <PopularShops
-                  selected={selectedShop}
-                  onSelect={setSelectedShop}
-                />
-              )}
-              {!featureDisabled && categories.length > 1 ? (
-                <ScrollView
-                  accessibilityLabel="Product categories"
-                  contentContainerStyle={[
-                    styles.categories,
-                    compactPhone && styles.categoriesCompact,
-                  ]}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={[
-                    styles.categoryScroller,
-                    compactPhone && styles.categoryScrollerCompact,
-                  ]}
-                >
-                  {categories.map((category) => {
-                    const selected = category === selectedCategory;
-                    return (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        key={category}
-                        onPress={() => setSelectedCategory(category)}
-                        style={({ pressed }) => [
-                          styles.categoryChip,
-                          selected && styles.categoryChipSelected,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.categoryChipText,
-                            selected && styles.categoryChipTextSelected,
-                          ]}
-                        >
-                          {category}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              ) : null}
-
-              {!featureDisabled && notice ? (
-                <View
-                  accessibilityLiveRegion="polite"
-                  accessibilityRole="alert"
-                  style={[
-                    styles.notice,
-                    notice.includes("unpaid") && styles.noticeWarning,
-                  ]}
-                >
-                  <Ionicons
-                    name={
-                      notice.includes("unpaid")
-                        ? "information-circle-outline"
-                        : "checkmark-circle-outline"
-                    }
-                    size={19}
-                    color={
-                      notice.includes("unpaid") ? theme.warning : theme.success
-                    }
-                  />
-                  <Text style={styles.noticeText}>{notice}</Text>
-                </View>
-              ) : null}
-              {!featureDisabled && notice.includes("Purchases") ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => router.push("/purchases")}
-                  style={({ pressed }) => [
-                    styles.purchasesLink,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.purchasesLinkText}>Open Purchases</Text>
-                  <Ionicons
-                    name="arrow-forward"
-                    size={17}
-                    color={theme.brandPressed}
-                  />
-                </Pressable>
-              ) : null}
-
-              {!loading &&
-              catalogIssue &&
-              !featureDisabled &&
-              products.length ? (
-                <View accessibilityRole="alert" style={styles.partialError}>
-                  <Ionicons
-                    name="cloud-offline-outline"
-                    size={20}
-                    color={theme.error}
-                  />
-                  <Text style={styles.partialErrorText}>
-                    Couldn’t refresh. Showing the last products we loaded.
-                  </Text>
-                  <Pressable
-                    accessibilityLabel="Retry loading the store"
-                    accessibilityRole="button"
-                    onPress={retryLoad}
-                    style={({ pressed }) => [
-                      styles.inlineRetry,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text style={styles.inlineRetryText}>Retry</Text>
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {!loading && !featureDisabled && products.length > 0 ? (
-                <View style={styles.resultsHeader}>
-                  <Text style={styles.resultsTitle}>
-                    {selectedCategory === "All"
-                      ? catalogueMode === "DEMO"
-                        ? "Demo products"
-                        : "All products"
-                      : selectedCategory}
-                  </Text>
-                  <Text style={styles.resultsCount}>
-                    {filtered.length} {filtered.length === 1 ? "item" : "items"}
-                  </Text>
-                </View>
-              ) : null}
-            </>
-          }
-          key={`store-${columns}-${compactPhone?'compact':'regular'}`}
-          maxToRenderPerBatch={10}
-          numColumns={columns}
-          ItemSeparatorComponent={
-            compactPhone
-              ? () => <View style={styles.compactProductGap} />
-              : undefined
-          }
-          removeClippedSubviews={Platform.OS === "android"}
-          renderItem={({ item: product }) => (
-            <ProductCard
-              onPreview={()=>setPreview(product)}
-              onAdd={() => add(product)}
-              onChangeQuantity={(delta) => changeQuantity(product, delta)}
-              product={product}
-              quantity={cart[product.id] ?? 0}
-              width={productWidth}
-            />
-          )}
-          showsVerticalScrollIndicator={false}
-          style={styles.catalogue}
-          windowSize={7}
-        />
-      </Animated.View>
-
-      <Modal visible={Boolean(preview)} animationType={reducedMotion?"none":"slide"} onRequestClose={()=>setPreview(null)}>{preview?<ProductPreview key={preview.id} product={preview} quantity={cart[preview.id]??0} onClose={()=>setPreview(null)} onAdd={()=>add(preview)}/>:null}</Modal>
-
-      <Modal
-        animationType={reducedMotion ? "none" : "slide"}
-        onRequestClose={closeCart}
-        transparent
-        visible={cartOpen}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalBackdrop}
-        >
-          <Pressable
-            accessibilityLabel="Close cart"
-            accessibilityRole="button"
-            accessibilityState={{ disabled: busy }}
-            disabled={busy}
-            onPress={closeCart}
-            style={StyleSheet.absoluteFill}
-          />
-          <View
-            accessibilityViewIsModal
-            onAccessibilityEscape={closeCart}
-            style={styles.modal}
-          >
-            <View style={styles.sheetHandle} />
-            <View style={styles.modalTop}>
-              <View style={styles.modalHeading}>
-                <Text style={styles.modalTitle}>Your cart</Text>
-                <Text style={styles.modalSubtitle}>
-                  {cartCount} {cartCount === 1 ? "item" : "items"}
-                </Text>
-              </View>
-              <Pressable
-                accessibilityLabel="Close cart"
-                accessibilityRole="button"
-                accessibilityState={{ disabled: busy }}
-                disabled={busy}
-                onPress={closeCart}
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  busy && styles.controlDisabled,
-                  pressed && !busy && styles.pressed,
-                ]}
-              >
-                <Ionicons
-                  name="close"
-                  size={22}
-                  color={busy ? theme.textSubtle : theme.text}
-                />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              contentContainerStyle={styles.cartContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {!cartItems.length ? (
-                <StateMessage
-                  actionLabel="Continue shopping"
-                  body="Choose an item from a campus seller to begin your cart."
-                  icon="cart-outline"
-                  onAction={() => setCartOpen(false)}
-                  title="Your cart is empty"
-                />
-              ) : null}
-
+  if (checkoutScreen) return <SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:theme.canvas}}>
+    <View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingVertical:8,gap:12}}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Back to marketplace" disabled={busy} onPress={()=>router.back()} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="arrow-back" size={24} color={theme.text}/></Pressable>
+      <Text style={styles.modalTitle}>Checkout</Text>
+    </View>
+    <ScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{padding:16,paddingBottom:24,width:'100%',maxWidth:580,alignSelf:'center'}} keyboardShouldPersistTaps="handled">
+      {loading || !cartReady ? <><Text style={styles.modalSubtitle}>Restoring your cart…</Text>{sharedCart.error ? <StateMessage title="Your cart needs recovery" body={sharedCart.error} actionLabel="Try again" onAction={sharedCart.retry} icon="alert-circle-outline"/> : null}</> : null}
+      {catalogIssue ? <StateMessage title="Store could not refresh" body={catalogIssue.message} actionLabel="Try again" onAction={retryLoad} icon="cloud-offline-outline"/> : null}
+      {cartReady && !loading && !cartItems.length ? <StateMessage title="Your cart is empty" body="Choose a product before starting checkout." actionLabel="Continue shopping" onAction={()=>router.back()} icon="cart-outline"/> : null}
               {cartItems.map(({ product, quantity }) => (
                 <View key={product.id} style={styles.cartItem}>
                   {product.image_url ? (
@@ -882,15 +546,16 @@ function OwnedStoreScreen() {
                   </View>
                   <QuantityStepper
                     compact
+                    disabled={busy}
                     onChange={(delta) => changeQuantity(product, delta)}
                     product={product}
                     quantity={quantity}
                   />
                 </View>
               ))}
-
-              {cartItems.length && checkoutEnabled ? (
-                <>
+      {sharedCart.error ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>{sharedCart.error}</Text> : null}
+      {cartItems.length && !loading && !checkoutEnabled ? <StateMessage title="Checkout is unavailable" body="Your items are kept. The store is not accepting payment yet. Refresh to check availability." actionLabel="Check again" onAction={retryLoad} icon="information-circle-outline"/> : null}
+      {cartItems.length && checkoutEnabled ? <>
                   <DiscountCodeField scope="STORE" disabled={busy} onApply={setDiscountCode}/>
                   {checkoutError ? (
                     <View
@@ -1211,6 +876,9 @@ function OwnedStoreScreen() {
                     {validQuote?.pricing.pricingNotice ? <Text style={styles.pricingNotice}>{validQuote.pricing.pricingNotice}</Text> : null}
                   </View>
 
+      </> : null}
+    </ScrollView>
+    {cartItems.length && checkoutEnabled ? <View style={styles.checkoutFooter}>
                   <Pressable
                     accessibilityLabel={
                       busy
@@ -1267,9 +935,448 @@ function OwnedStoreScreen() {
                     Payment opens on the provider’s secure page after your order
                     is created.
                   </Text>
-                </>
+    </View> : null}
+  </SafeAreaView>;
+
+  const catalogueData =
+    !loading && !featureDisabled && products.length > 0 ? filtered : [];
+  const catalogueEmpty = loading ? (
+    <CatalogSkeleton />
+  ) : featureDisabled ? (
+    <StateMessage
+      body="We’re finishing vendor verification, delivery safeguards, and secure checkout before opening the campus pilot."
+      icon="storefront-outline"
+      title="The store is opening soon"
+    />
+  ) : catalogIssue && !products.length ? (
+    <StateMessage
+      actionLabel="Try again"
+      body={catalogIssue.message}
+      icon="cloud-offline-outline"
+      onAction={retryLoad}
+      title="Store unavailable"
+      tone="error"
+    />
+  ) : !catalogIssue && !products.length ? (
+    <StateMessage
+      actionLabel="Refresh"
+      body="Published products from approved campus vendors will appear here."
+      icon="storefront-outline"
+      onAction={retryLoad}
+      title="No products yet"
+    />
+  ) : !searchPending && products.length > 0 && !filtered.length ? (
+    <StateMessage
+      actionLabel="Clear filters"
+      body="Try a different product name, seller, or category."
+      icon="search-outline"
+      onAction={clearFilters}
+      title="Nothing matches your search"
+    />
+  ) : null;
+
+  return (
+    <SafeAreaView edges={["top"]} style={styles.safe}>
+      <View pointerEvents="none" style={styles.ambientTop} />
+      <View pointerEvents="none" style={styles.ambientBottom} />
+      <Animated.View
+        style={[
+          styles.listFrame,
+          {
+            opacity: entry,
+            transform: [
+              {
+                translateY: entry.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [8, 0],
+                }),
+              },
+            ],
+            width: contentWidth,
+          },
+        ]}
+      >
+        <FlatList
+          accessibilityLabel="Campus store products"
+          columnWrapperStyle={columns===2?styles.productRow:undefined}
+          contentContainerStyle={[
+            styles.listContent,
+            compactPhone && styles.listContentCompact,
+          ]}
+          data={catalogueData}
+          extraData={cart}
+          initialNumToRender={8}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          keyExtractor={(product) => product.id}
+          ListEmptyComponent={catalogueEmpty}
+          ListHeaderComponent={
+            <>
+              {sharedCart.error ? <StateMessage title="Your cart needs attention" body={sharedCart.error} actionLabel="Try again" onAction={sharedCart.retry} icon="alert-circle-outline"/> : null}
+              <SyncStatus path="/v1/student/store"/>
+              {searchPending?<SearchLoading label="Searching products and sellers…" shape="products" hasResults={filtered.length>0}/>:null}
+              <View style={styles.storeToolbar}>
+                {!featureDisabled ? (
+                  <View
+                    style={[
+                      styles.search,
+                      styles.toolbarSearch,
+                      searchFocused && styles.inputFocused,
+                    ]}
+                  >
+                    <Ionicons
+                      name="search-outline"
+                      size={20}
+                      color={theme.brandPressed}
+                    />
+                    <TextInput
+                      accessibilityLabel="Search products or vendors"
+                      autoCapitalize="none"
+                      onBlur={() => setSearchFocused(false)}
+                      onChangeText={setQuery}
+                      onFocus={() => setSearchFocused(true)}
+                      placeholder="Search products or vendors"
+                      placeholderTextColor={theme.textSubtle}
+                      returnKeyType="search"
+                      style={styles.searchInput}
+                      value={query}
+                    />
+                    {query ? (
+                      <Pressable
+                        accessibilityLabel="Clear search"
+                        accessibilityRole="button"
+                        hitSlop={4}
+                        onPress={() => setQuery("")}
+                        style={({ pressed }) => [
+                          styles.clearSearch,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Ionicons
+                          name="close"
+                          size={20}
+                          color={theme.textMuted}
+                        />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                <Pressable
+                  accessibilityLabel={
+                    cartCount
+                      ? `Open cart with ${cartCount} ${cartCount === 1 ? "item" : "items"}`
+                      : "Open cart"
+                  }
+                  accessibilityRole="button"
+                  hitSlop={4}
+                  onPress={openCart}
+                  style={({ pressed }) => [
+                    styles.cartButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons
+                    name="cart-outline"
+                    size={25}
+                    color={theme.brandPressed}
+                  />
+                  {cartCount ? (
+                    <View style={styles.cartBadge}>
+                      <Text style={styles.cartBadgeText}>
+                        {cartCount > 99 ? "99+" : cartCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              </View>
+
+              {!featureDisabled && query.trim() ? (
+                <View accessibilityLiveRegion="polite"
+                  style={{ flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 8 }}>
+                  <Ionicons name={searchPending ? "search-outline" : "checkmark-circle-outline"} size={17}
+                    color={theme.brandPressed} />
+                  <Text style={{ color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 12, flex: 1 }}>
+                    {searchPending
+                      ? "Searching products and sellers…"
+                      : `${filtered.length} ${filtered.length === 1 ? "result" : "results"} for “${query.trim()}”`}
+                  </Text>
+                </View>
               ) : null}
+
+              {!featureDisabled && catalogueMode === "LIVE" && (
+                <PopularShops
+                  selected={selectedShop}
+                  onSelect={setSelectedShop}
+                />
+              )}
+              {!featureDisabled && categories.length > 1 ? (
+                <ScrollView
+                  accessibilityLabel="Product categories"
+                  contentContainerStyle={[
+                    styles.categories,
+                    compactPhone && styles.categoriesCompact,
+                  ]}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={[
+                    styles.categoryScroller,
+                    compactPhone && styles.categoryScrollerCompact,
+                  ]}
+                >
+                  {categories.map((category) => {
+                    const selected = category === selectedCategory;
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        key={category}
+                        onPress={() => setSelectedCategory(category)}
+                        style={({ pressed }) => [
+                          styles.categoryChip,
+                          selected && styles.categoryChipSelected,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.categoryChipText,
+                            selected && styles.categoryChipTextSelected,
+                          ]}
+                        >
+                          {category}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              ) : null}
+
+              {!featureDisabled && notice ? (
+                <View
+                  accessibilityLiveRegion="polite"
+                  accessibilityRole="alert"
+                  style={[
+                    styles.notice,
+                    notice.includes("unpaid") && styles.noticeWarning,
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      notice.includes("unpaid")
+                        ? "information-circle-outline"
+                        : "checkmark-circle-outline"
+                    }
+                    size={19}
+                    color={
+                      notice.includes("unpaid") ? theme.warning : theme.success
+                    }
+                  />
+                  <Text style={styles.noticeText}>{notice}</Text>
+                </View>
+              ) : null}
+              {!featureDisabled && notice.includes("Purchases") ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/purchases")}
+                  style={({ pressed }) => [
+                    styles.purchasesLink,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.purchasesLinkText}>Open Purchases</Text>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={17}
+                    color={theme.brandPressed}
+                  />
+                </Pressable>
+              ) : null}
+
+              {!loading &&
+              catalogIssue &&
+              !featureDisabled &&
+              products.length ? (
+                <View accessibilityRole="alert" style={styles.partialError}>
+                  <Ionicons
+                    name="cloud-offline-outline"
+                    size={20}
+                    color={theme.error}
+                  />
+                  <Text style={styles.partialErrorText}>
+                    Couldn’t refresh. Showing the last products we loaded.
+                  </Text>
+                  <Pressable
+                    accessibilityLabel="Retry loading the store"
+                    accessibilityRole="button"
+                    onPress={retryLoad}
+                    style={({ pressed }) => [
+                      styles.inlineRetry,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={styles.inlineRetryText}>Retry</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {!loading && !featureDisabled && products.length > 0 ? (
+                <View style={styles.resultsHeader}>
+                  <Text style={styles.resultsTitle}>
+                    {selectedCategory === "All"
+                      ? catalogueMode === "DEMO"
+                        ? "Demo products"
+                        : "All products"
+                      : selectedCategory}
+                  </Text>
+                  <Text style={styles.resultsCount}>
+                    {filtered.length} {filtered.length === 1 ? "item" : "items"}
+                  </Text>
+                </View>
+              ) : null}
+            </>
+          }
+          key={`store-${columns}-${compactPhone?'compact':'regular'}`}
+          maxToRenderPerBatch={10}
+          numColumns={columns}
+          ItemSeparatorComponent={
+            compactPhone
+              ? () => <View style={styles.compactProductGap} />
+              : undefined
+          }
+          removeClippedSubviews={Platform.OS === "android"}
+          renderItem={({ item: product }) => (
+            <ProductCard
+              onPreview={()=>setPreview(product)}
+              onAdd={() => add(product)}
+              onChangeQuantity={(delta) => changeQuantity(product, delta)}
+              product={product}
+              quantity={cart[product.id] ?? 0}
+              disabled={!cartReady || busy}
+              width={productWidth}
+            />
+          )}
+          showsVerticalScrollIndicator={false}
+          style={styles.catalogue}
+          windowSize={7}
+        />
+      </Animated.View>
+
+      <Modal visible={Boolean(preview)} animationType={reducedMotion?"none":"slide"} onRequestClose={()=>setPreview(null)}>{preview?<ProductPreview key={preview.id} product={preview} quantity={cart[preview.id]??0} onClose={()=>setPreview(null)} onAdd={()=>add(preview)} onBuyNow={()=>void buyNow(preview)} busy={busy} cartReady={cartReady} error={checkoutError || sharedCart.error}/>:null}</Modal>
+
+      <Modal
+        animationType={reducedMotion ? "none" : "slide"}
+        onRequestClose={closeCart}
+        transparent
+        visible={cartOpen}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalBackdrop}
+        >
+          <Pressable
+            accessibilityLabel="Close cart"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: busy }}
+            disabled={busy}
+            onPress={closeCart}
+            style={StyleSheet.absoluteFill}
+          />
+          <View
+            accessibilityViewIsModal
+            onAccessibilityEscape={closeCart}
+            style={[styles.modal, { height: Math.min(windowHeight * 0.75, 560) }]}
+          >
+            <View style={styles.sheetHandle} />
+            <View style={styles.modalTop}>
+              <View style={styles.modalHeading}>
+                <Text style={styles.modalTitle}>Your cart</Text>
+                <Text style={styles.modalSubtitle}>
+                  {cartCount} {cartCount === 1 ? "item" : "items"}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Close cart"
+                accessibilityRole="button"
+                accessibilityState={{ disabled: busy }}
+                disabled={busy}
+                onPress={closeCart}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  busy && styles.controlDisabled,
+                  pressed && !busy && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  name="close"
+                  size={22}
+                  color={busy ? theme.textSubtle : theme.text}
+                />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={{ flex: 1, minHeight: 0 }}
+              contentContainerStyle={styles.cartContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {!cartItems.length ? (
+                <StateMessage
+                  actionLabel="Continue shopping"
+                  body="Choose an item from a campus seller to begin your cart."
+                  icon="cart-outline"
+                  onAction={() => setCartOpen(false)}
+                  title="Your cart is empty"
+                />
+              ) : null}
+
+              {cartItems.map(({ product, quantity }) => (
+                <View key={product.id} style={styles.cartItem}>
+                  {product.image_url ? (
+                    <Image
+                      accessible={false}
+                      resizeMode="cover"
+                      source={{ uri: product.image_url }}
+                      style={styles.cartItemImage}
+                    />
+                  ) : (
+                    <View style={styles.cartItemFallback}>
+                      <Ionicons
+                        name={productIcon(product)}
+                        size={20}
+                        color={theme.brandPressed}
+                      />
+                    </View>
+                  )}
+                  <View style={styles.cartItemCopy}>
+                    <Text numberOfLines={2} style={styles.cartItemName}>
+                      {product.name}
+                    </Text>
+                    <Text style={styles.cartItemMeta}>
+                      {naira(product.price_kobo)} each
+                    </Text>
+                  </View>
+                  <QuantityStepper
+                    compact
+                    disabled={busy}
+                    onChange={(delta) => changeQuantity(product, delta)}
+                    product={product}
+                    quantity={quantity}
+                  />
+                </View>
+              ))}
+
+
             </ScrollView>
+            <View style={[styles.checkoutFooter, { paddingBottom: Math.max(16, insets.bottom) }]}>
+              {(sharedCart.error || checkoutError) ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>{sharedCart.error || checkoutError}</Text> : null}
+              <View style={styles.totalRow}><Text style={styles.totalLabel}>Items subtotal</Text><Text style={styles.grandValue}>{naira(subtotal)}</Text></View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Proceed to checkout" disabled={!cartReady || !cartItems.length || busy} onPress={()=>void proceedToCheckout()} style={[styles.checkout, (!cartReady || !cartItems.length || busy) && styles.checkoutDisabled]}>
+                {busy ? <InlineLoading color="#FFFFFF"/> : <><Text style={styles.checkoutText}>Proceed to checkout</Text><Ionicons name="arrow-forward" size={20} color="#FFFFFF"/></>}
+              </Pressable>
+              {!cartReady && sharedCart.error ? <Pressable accessibilityRole="button" onPress={sharedCart.retry} style={{minHeight:44,justifyContent:'center'}}><Text style={styles.paymentHelp}>Try restoring your cart again</Text></Pressable> : null}
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -1285,6 +1392,7 @@ function ProductCard({
   product,
   quantity,
   width,
+  disabled = false,
 }: {
   onPreview:()=>void;
   onAdd: () => void;
@@ -1292,6 +1400,7 @@ function ProductCard({
   product: Product;
   quantity: number;
   width: number;
+  disabled?: boolean;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
 
@@ -1325,6 +1434,7 @@ function ProductCard({
         </View>
         <Text
           android_hyphenationFrequency="none"
+          numberOfLines={2}
           style={styles.name}
           textBreakStrategy="simple"
         >
@@ -1358,6 +1468,7 @@ function ProductCard({
         {quantity ? (
           <QuantityStepper
             onChange={onChangeQuantity}
+            disabled={disabled}
             product={product}
             quantity={quantity}
           />
@@ -1366,15 +1477,15 @@ function ProductCard({
             accessibilityLabel={
               outOfStock
                 ? `${product.name} is out of stock`
-                : `Add ${product.name} to cart`
+                : disabled ? `Restoring cart before adding ${product.name}` : `Add ${product.name} to cart`
             }
             accessibilityRole="button"
-            accessibilityState={{ disabled: outOfStock }}
-            disabled={outOfStock}
+            accessibilityState={{ disabled: outOfStock || disabled }}
+            disabled={outOfStock || disabled}
             onPress={onAdd}
             style={({ pressed }) => [
               styles.addButton,
-              outOfStock && styles.addButtonDisabled,
+              (outOfStock || disabled) && styles.addButtonDisabled,
               pressed && !outOfStock && styles.buttonPressed,
             ]}
           >
@@ -1416,18 +1527,20 @@ function productIcon(product: Product): keyof typeof Ionicons.glyphMap {
 
 function QuantityStepper({
   compact = false,
+  disabled = false,
   product,
   quantity,
   onChange,
 }: {
   compact?: boolean;
+  disabled?: boolean;
   product: Product;
   quantity: number;
   onChange: (delta: number) => void;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
 
-  const atLimit = quantity >= Number(product.stock_quantity);
+  const atLimit = disabled || quantity >= Math.min(99, Number(product.stock_quantity));
 
   return (
     <View
@@ -1437,6 +1550,8 @@ function QuantityStepper({
       <Pressable
         accessibilityLabel={`Remove one ${product.name}`}
         accessibilityRole="button"
+        disabled={disabled}
+        accessibilityState={{disabled}}
         onPress={() => onChange(-1)}
         style={({ pressed }) => [
           styles.stepperButton,
@@ -1865,6 +1980,8 @@ const createStyles = (theme: Theme) =>
       color: "#FFFFFF",
       fontFamily: theme.font.semibold,
       fontSize: 12.5,
+      flexShrink: 1,
+      textAlign: "center",
     },
     addButtonTextDisabled: { color: theme.textSubtle },
     stepper: {
@@ -2043,7 +2160,8 @@ const createStyles = (theme: Theme) =>
       justifyContent: "center",
       width: 44,
     },
-    cartContent: { paddingBottom: 38, paddingTop: 18 },
+    cartContent: { paddingBottom: 16, paddingTop: 16 },
+    checkoutFooter: { paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: theme.border, backgroundColor: theme.surface, gap: 8 },
     cartItem: {
       alignItems: "center",
       borderBottomColor: theme.border,

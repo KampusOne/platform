@@ -12,6 +12,7 @@ import { useAppearance } from "@/src/lib/appearance";
 import { api, ApiError } from "@/src/lib/api";
 import { isPlayDistribution } from "@/src/lib/digital-billing-policy";
 import {cacheScopeForUser} from '@/src/lib/request-policy';
+import { readKiraCheckoutQuote, type KiraPricingQuote } from '@/src/lib/kira-checkout-quote';
 
 type Tier = "standard" | "pro";
 type Checkout = {
@@ -44,21 +45,7 @@ type CatalogPlan = {
   offer: { active: boolean; startsAt: string | null; endsAt: string | null; percent: number };
 };
 
-type PricingQuote = {
-  quoteId: string;
-  tier: Tier;
-  version: string;
-  amountKobo: number;
-  listedAmountKobo: number;
-  discountAmountKobo: number;
-  discountPercent: number;
-  offerDiscountPercent: number;
-  couponDiscountPercent: number;
-  discountCode: string | null;
-  expiresAt: string;
-  paystackAmountKobo: number;
-  feeBearer: "LEGACY_INCLUSIVE" | "CUSTOMER_PASSTHROUGH";
-};
+type PricingQuote = KiraPricingQuote;
 
 type Plan = {
   amountKobo: number;
@@ -495,11 +482,10 @@ function AccountSubscription() {
   async function fetchQuote(discountCode = "", tier: Tier = selectedTier) {
     const result = await api<{ quote: PricingQuote }>("/v1/ai/subscription-quote", {
       method: "POST",
+      timeoutMs: 8000,
       body: JSON.stringify({ tier, discountCode: discountCode.trim(), requestId: key.current }),
     });
-    const next = result?.quote;
-    if (!next || next.tier !== tier || !next.quoteId || !Number.isSafeInteger(next.amountKobo) || next.amountKobo < 0 || next.paystackAmountKobo !== next.amountKobo || !Number.isFinite(Date.parse(next.expiresAt)))
-      throw new Error("Your checkout quote could not be read. Try again.");
+    const next = readKiraCheckoutQuote(result?.quote, tier);
     if (!alive.current) return null;
     setQuote(next);
     setNow(Date.now());
@@ -533,7 +519,7 @@ function AccountSubscription() {
     await run(async () => {
       const result = await api<{ payment: { status: string } }>(
         "/v1/payments/status/" + encodeURIComponent(plan.checkout!.reference),
-        { cache: "no-store" },
+        { cache: "no-store", timeoutMs: 8000 },
       );
       if (!alive.current) return;
       setNotice(
@@ -556,6 +542,7 @@ function AccountSubscription() {
         amountKobo: number;
       }>("/v1/ai/subscription-checkout", {
         method: "POST",
+        timeoutMs: 12000,
         body: JSON.stringify({
           requestId: key.current,
           consent: true,
