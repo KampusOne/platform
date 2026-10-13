@@ -39,7 +39,7 @@ jobs:
       - name: Verify production API, GPS recovery and map loading
         run: |
           set -euo pipefail
-          for phase in platform october experience october4 october6 followup current cache screenFixes agentBanks; do
+          for phase in platform october experience october4 october6 followup current cache screenFixes agentBanks campusLandmarks; do
             node server/scripts/verify-schema-proof.mjs "$phase"
           done
           curl --fail --silent --show-error --retry 2 --max-time 20 https://platformp.divine-haze-54eb.workers.dev/health/ready

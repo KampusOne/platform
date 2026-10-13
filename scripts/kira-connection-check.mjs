@@ -13,7 +13,7 @@ export async function probe(request, env) {
       const imageMessages=image?[{role:'system',content:'Read the image faithfully. Return only the visible text.'},{role:'user',content:[{type:'text',text:'Read the course code and class time in this timetable image.'},{type:'image_url',image_url:{url:image}}]}]:messages;
       const result=await env.AI.run(model,{messages:imageMessages,max_tokens:image?512:128,temperature:0.1,stream:false},{signal:AbortSignal.timeout(35000)});
       const text=typeof result?.response==='string'?result.response:result?.choices?.[0]?.message?.content;
-      return {outcome:typeof text==='string'&&(image?/MAT\s*101/.test(text):text.trim().length>8)?'generation_succeeded':'generation_unusable'};
+      return {outcome:typeof text==='string'&&(image?/MAT\s*101/i.test(text)&&/0?8[:.]00/.test(text)&&/0?9[:.]00/.test(text):text.trim().length>8)?'generation_succeeded':'generation_unusable'};
     }catch(error){const code=/\b(3036|3040|5035|5016|5018|3023|3041|3007|3008|5007|3042)\b/.exec(String(error?.message??''))?.[1];return{outcome:'provider_rejected',...(code?{code}: {})};}
   };
   const hfCheck=async()=>{
@@ -95,8 +95,19 @@ export async function probe(request, env) {
         return{outcome:detail.ok&&receipt?.reference===reference&&receipt?.status==='open'&&receipt?.currency==='NGN'&&Number(receipt?.amount)===6000?'unpaid_checkout_succeeded':'checkout_unusable',http:detail.status};
       }catch{return{outcome:'transport_failure'};}
     };
-    const [image,pdfConversion,unpaidCheckout,vision]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck(),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+env.PROBE_TIMETABLE_PNG)]);
-    return{image,pdf:pdfConversion,unpaidCheckout,vision};
+    const handwriting=env.PROBE_HANDWRITING;
+    const handwrittenPixels=Uint8Array.from(atob(handwriting.pngBase64),c=>c.charCodeAt(0));
+    const jpeg=Uint8Array.from(atob(handwriting.jpegBase64),c=>c.charCodeAt(0));
+    // A raster-only PDF exercises paper scans, rather than extracting an existing text layer.
+    const scanParts=['%PDF-1.4\n'],scanOffsets=[0];let length=scanParts[0].length;
+    const scanObjects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>',`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${handwriting.width} ${handwriting.height}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`,null];
+    for(let i=0;i<3;i++){scanOffsets.push(length);const item=`${i+1} 0 obj\n${scanObjects[i]}\nendobj\n`;scanParts.push(item);length+=item.length;}
+    scanOffsets.push(length);const imageHeader=`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${handwriting.width} /Height ${handwriting.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`,imageFooter='\nendstream\nendobj\n';
+    scanParts.push(imageHeader,jpeg,imageFooter);length+=imageHeader.length+jpeg.length+imageFooter.length;
+    scanOffsets.push(length);const drawImage=`q ${handwriting.width} 0 0 ${handwriting.height} 0 0 cm /Im0 Do Q`,contents=`5 0 obj\n<< /Length ${drawImage.length} >>\nstream\n${drawImage}\nendstream\nendobj\n`;scanParts.push(contents);length+=contents.length;
+    scanParts.push('xref\n0 6\n0000000000 65535 f \n'+scanOffsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`);
+    const [image,pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck(),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+env.PROBE_TIMETABLE_PNG),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+handwriting.pngBase64),convert('handwritten-paper-scan.pdf',new Blob(scanParts,{type:'application/pdf'}))]);
+    return{image,pdf:pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper};
   };
   const [standard,pro,huggingface,conversion,uploads,banks]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck(),convert('probe.txt',new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})),extended(),bankSupport()]);
   return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs,conversion,uploads,banks},{headers:{'Cache-Control':'no-store'}});
@@ -141,8 +152,9 @@ if(process.argv.includes('--self-test')) {
     if(typeof sessionToken!=='string')throw new Error('Missing preview session');
     const form=new FormData(),probeToken=randomBytes(32).toString('hex');
     const png=process.env.PROBE_VERIFY_UPLOADS==='true'?readFileSync(new URL('./fixtures/synthetic-timetable.png',import.meta.url)).toString('base64'):'';
+    const handwriting=process.env.PROBE_VERIFY_UPLOADS==='true'?JSON.parse(readFileSync(new URL('./fixtures/handwritten-timetable.json',import.meta.url),'utf8')):null;
     form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
-    form.set('probe.mjs',new Blob([`export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)}})};`],{type:'application/javascript+module'}),'probe.mjs');
+    form.set('probe.mjs',new Blob([`export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)}})};`],{type:'application/javascript+module'}),'probe.mjs');
     form.set('wrangler-session-config',JSON.stringify({workers_dev:true}));
     stage='preview upload';
     const preview=await cf('/workers/scripts/platformp/edge-preview',{method:'POST',body:form,headers:{'cf-preview-upload-config-token':sessionToken}});
@@ -161,10 +173,10 @@ if(process.argv.includes('--self-test')) {
     if(result.banks)report(`Bank capability verification: ${JSON.stringify(result.banks)}`);
     if(process.env.PROBE_METADATA_ONLY==='true')report(`BACHS webhook targets: ${JSON.stringify(result.webhooks)}`);
     else if(process.env.PROBE_BANKS_ONLY!=='true')report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
-    if(process.env.PROBE_VERIFY_UPLOADS==='true'&&process.env.PROBE_BANKS_ONLY!=='true')for(const name of ['image','pdf','unpaidCheckout','vision']){
+    if(process.env.PROBE_VERIFY_UPLOADS==='true'&&process.env.PROBE_BANKS_ONLY!=='true')for(const name of ['image','pdf','unpaidCheckout','vision','handwritingVision','scannedPaper']){
       const item=result.uploads?.[name],outcome=item?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable','generation_succeeded','generation_unusable'];
       report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}${/^\d{4}$/.test(item?.code??'')?` code ${item.code}`:''}`);
-      if(outcome!==(name==='unpaidCheckout'?'unpaid_checkout_succeeded':name==='vision'?'generation_succeeded':'conversion_succeeded'))process.exitCode=1;
+      if(outcome!==(name==='unpaidCheckout'?'unpaid_checkout_succeeded':['vision','handwritingVision'].includes(name)?'generation_succeeded':'conversion_succeeded'))process.exitCode=1;
     }
     if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
     report(process.env.PROBE_BANKS_ONLY==='true'?'Bank lookup and capability check only. No transfers, payouts, credential export or application writes. Preview expires after three minutes.':'No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');

@@ -41,7 +41,7 @@ type RawStarterPlace = readonly [
   verifiedAt: string | null,
 ];
 
-// Generated from database/imports/uniben-map2-2026-10-06.json plus 2026-10-07 corrections and 2026-10-09 reference POIs.
+// Generated from the reviewed campus directory, reference POIs and owner corrections through 2026-10-13.
 const RAW_UNIBEN_UGBOWO_PLACES = [
   [
     "71329ef0-fcc7-5931-96f9-bf100342a72e",
@@ -579,11 +579,12 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
     "2be8a76a-ef9f-5a69-a3cc-3abbd5803bae",
     "Exams and Records",
     "SERVICE",
-    "Examinations and records office area.",
-    "6.399",
-    "5.6121",
+    "Examinations and records office area in the owner-marked building cluster.",
+    "6.398015",
+    "5.61408",
     [
       "Exams & Records",
+      "Examinations and Records",
       "Records Office"
     ],
     null
@@ -608,13 +609,13 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
     "Faculty of Arts",
     "ACADEMIC",
     "Faculty of Arts, University of Benin Ugbowo Campus.",
-    "6.4033",
-    "5.62217",
+    "6.403876",
+    "5.62122",
     [
       "Arts",
       "Faculty Arts"
     ],
-    "2026-10-01T03:35:26.871484+00:00"
+    null
   ],
   [
     "23e74882-cc36-4597-8f51-c7b0525c7a59",
@@ -659,8 +660,8 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
     "Faculty of Environmental Sciences",
     "ACADEMIC",
     "Faculty of Environmental Sciences campus building.",
-    "6.4028",
-    "5.62065",
+    "6.402033",
+    "5.619308",
     [
       "Environmental Science",
       "Environmental Sciences"
@@ -1358,12 +1359,16 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
   ],
   [
     "2436a456-902d-57fb-8310-cf9b8f7d5946",
-    "Main Bowl",
+    "School Field (Football Field)",
     "SPORT",
-    "Main sports bowl within the university sports complex.",
-    "6.3992",
-    "5.61295",
+    "School football field within the UNIBEN sports complex.",
+    "6.398387",
+    "5.61207",
     [
+      "School Field",
+      "Football Field",
+      "UNIBEN Football Field",
+      "Main Bowl",
       "UNIBEN Main Bowl",
       "Main Stadium Bowl"
     ],
@@ -2188,11 +2193,12 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
     "65f3124d-3690-50a6-a01e-1a7afe90eec5",
     "UNIBEN Sports Complex",
     "SPORT",
-    "University sports complex.",
-    "6.3992",
-    "5.61295",
+    "University sports complex at the school football field.",
+    "6.398037",
+    "5.612018",
     [
       "Sports Complex",
+      "School Sports Complex",
       "Stadium"
     ],
     null
@@ -2392,6 +2398,21 @@ const RAW_UNIBEN_UGBOWO_PLACES = [
       "UNIBEN Shopping Complex",
       "Uniben shopping complex",
       "Shopping Complex"
+    ],
+    null
+  ],
+  [
+    "c8a0887f-0b17-5856-b1aa-e3d1aefffcdb",
+    "GST building",
+    "ACADEMIC",
+    "General Studies building in the research and Education-field area, west of Uniben Road. Location identified from the supplied campus reference; confirm the final entrance on campus.",
+    "6.40387",
+    "5.61961",
+    [
+      "GST",
+      "GST Building",
+      "General Studies",
+      "General Studies building"
     ],
     null
   ]

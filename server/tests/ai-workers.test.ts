@@ -49,14 +49,17 @@ describe('Workers AI recovery', () => {
     await expect(generateAI(env(native({response:''})),input)).rejects.toMatchObject({reason:'AI_EMPTY_OUTPUT'});
     await expect(generateAI(env(native({response:'Partial',usage:{completion_tokens:3072}})),input)).rejects.toMatchObject({reason:'AI_INCOMPLETE'});
   });
-  it('reads private timetable pixels as text before reasoning, retaining the Pro model', async () => {
+  it('retains the original private pixels when OCR supplies plausible timetable text', async () => {
     const run=native(), toMarkdown=vi.fn().mockResolvedValue([{format:'markdown',data:'Monday, MAT 101, 08:00–09:00, LT 1'}]);
     const result=await generateAI({...env(run),AI:{run,toMarkdown}}, {...input,tier:'pro',media:{mimeType:'image/png',data:btoa('PRIVATE_PIXELS')}});
     expect(result.provider).toBe('workers-ai');
     const files=toMarkdown.mock.calls[0][0]; expect(files[0].blob).toBeInstanceOf(Blob);
     expect(await files[0].blob.text()).toBe('PRIVATE_PIXELS');
-    expect(run.mock.calls[0][0]).toBe('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
-    expect(run.mock.calls[0][1].messages.at(-1).content).toContain('MAT 101');
+    expect(run.mock.calls[0][0]).toBe('@cf/google/gemma-4-26b-a4b-it');
+    expect(run.mock.calls[0][1].messages.at(-1).content).toEqual(expect.arrayContaining([
+      expect.objectContaining({type:'image_url',image_url:{url:'data:image/png;base64,'+btoa('PRIVATE_PIXELS')}}),
+      expect.objectContaining({type:'text',text:expect.stringContaining('MAT 101')}),
+    ]));
     expect(run.mock.calls[0][1].image).toBeUndefined();
   });
   it('recovers visually when conversion cannot read a photo', async () => {
