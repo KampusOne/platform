@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Pressable } from 'react-native';
+import { Pressable } from 'react-native';
 import { useAppearance } from '@/src/lib/appearance';
 
 export function RetryIconButton({
@@ -33,8 +33,7 @@ export function RetryIconButton({
         opacity: unavailable ? 0.5 : pressed ? 0.7 : 1,
       })}
     >
-      {busy ? <ActivityIndicator size="small" color={theme.deepBrand} /> :
-        <Ionicons name="refresh-outline" size={21} color={theme.deepBrand} />}
+      <Ionicons name={busy ? 'hourglass-outline' : 'refresh-outline'} size={21} color={theme.deepBrand} />
     </Pressable>
   );
 }
