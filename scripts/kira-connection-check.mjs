@@ -8,9 +8,9 @@ export async function probe(request, env) {
   let difference=0;for(let i=0;i<64;i++)difference|=supplied.charCodeAt(i)^env.PROBE_TOKEN.charCodeAt(i);
   if(difference)return new Response(null,{status:404});
   const messages=[{role:'system',content:'Answer briefly and accurately.'},{role:'user',content:"State Ohm's law in one sentence."}];
-  const modelCheck=async(model)=>{
+  const modelCheck=async(model,image)=>{
     try {
-      const result=await env.AI.run(model,{messages,max_tokens:128,temperature:0.1,stream:false},{signal:AbortSignal.timeout(35000)});
+      const result=await env.AI.run(model,{messages,max_tokens:128,temperature:0.1,stream:false,...(image?{image}:{})},{signal:AbortSignal.timeout(35000)});
       const text=typeof result?.response==='string'?result.response:result?.choices?.[0]?.message?.content;
       return {outcome:typeof text==='string'&&text.trim().length>8?'generation_succeeded':'generation_unusable'};
     }catch(error){const code=/\b(3036|3040|5035|5016|5018|3023|3041|3007|3008|5007|3042)\b/.exec(String(error?.message??''))?.[1];return{outcome:'provider_rejected',...(code?{code}: {})};}
@@ -49,7 +49,7 @@ export async function probe(request, env) {
     let timer;try{
       const result=await Promise.race([env.AI.toMarkdown([{name,blob}]),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),20000);})]);
       return{outcome:typeof result?.[0]?.data==='string'&&/MAT\s*101/.test(result[0].data)?'conversion_succeeded':'conversion_unusable'};
-    }catch{return{outcome:'provider_rejected'};}finally{clearTimeout(timer);}
+    }catch(error){const code=/\b(3036|3040|5035|5016|5018|3023|3041|3007|3008|5007|3042)\b/.exec(String(error?.message??''))?.[1];return{outcome:'provider_rejected',...(code?{code}:{})};}finally{clearTimeout(timer);}
   };
   const extended=async()=>{
     if(env.PROBE_VERIFY_UPLOADS!=='true')return{};
@@ -71,8 +71,8 @@ export async function probe(request, env) {
         return{outcome:detail.ok&&receipt?.reference===reference&&receipt?.status==='open'&&receipt?.currency==='NGN'&&Number(receipt?.amount)===6000?'unpaid_checkout_succeeded':'checkout_unusable',http:detail.status};
       }catch{return{outcome:'transport_failure'};}
     };
-    const [image,pdfConversion,unpaidCheckout]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck()]);
-    return{image,pdf:pdfConversion,unpaidCheckout};
+    const [image,pdfConversion,unpaidCheckout,vision]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck(),modelCheck('@cf/meta/llama-3.2-11b-vision-instruct','data:image/png;base64,'+env.PROBE_TIMETABLE_PNG)]);
+    return{image,pdf:pdfConversion,unpaidCheckout,vision};
   };
   const [standard,pro,huggingface,conversion,uploads]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck(),convert('probe.txt',new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})),extended()]);
   return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs,conversion,uploads},{headers:{'Cache-Control':'no-store'}});
@@ -136,10 +136,10 @@ if(process.argv.includes('--self-test')) {
     report(`BACHS settings: HTTP ${Number.isInteger(result.bachs?.http)?result.bachs.http:'unavailable'}; bank transfer enabled: ${result.bachs?.bankTransferEnabled===true}; fee preference: ${['org_pays','customer_pays'].includes(result.bachs?.feePreference)?result.bachs.feePreference:'unknown'}; failure: ${['request_type','timeout','network'].includes(result.bachs?.failure)?result.bachs.failure:'none'}`);
     if(process.env.PROBE_METADATA_ONLY==='true')report(`BACHS webhook targets: ${JSON.stringify(result.webhooks)}`);
     else report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
-    if(process.env.PROBE_VERIFY_UPLOADS==='true')for(const name of ['image','pdf','unpaidCheckout']){
-      const outcome=result.uploads?.[name]?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable'];
-      report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}`);
-      if(outcome!==(name==='unpaidCheckout'?'unpaid_checkout_succeeded':'conversion_succeeded'))process.exitCode=1;
+    if(process.env.PROBE_VERIFY_UPLOADS==='true')for(const name of ['image','pdf','unpaidCheckout','vision']){
+      const item=result.uploads?.[name],outcome=item?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable','generation_succeeded','generation_unusable'];
+      report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}${/^\d{4}$/.test(item?.code??'')?` code ${item.code}`:''}`);
+      if(outcome!==(name==='unpaidCheckout'?'unpaid_checkout_succeeded':name==='vision'?'generation_succeeded':'conversion_succeeded'))process.exitCode=1;
     }
     if(process.env.PROBE_METADATA_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
     report('No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');
