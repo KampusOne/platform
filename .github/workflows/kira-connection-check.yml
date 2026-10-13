@@ -18,6 +18,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install the real private document reader dependencies
+        run: npm ci
+        working-directory: server
+      - name: Install the shared contract dependencies for the reader bundle
+        run: npm ci
+        working-directory: packages/contracts
       - name: Verify probe access boundary
         run: node scripts/kira-connection-check.mjs --self-test
       - name: Verify real Standard and Pro inference

@@ -1,8 +1,9 @@
 import {randomBytes} from 'node:crypto';
 import {appendFileSync,readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
 
 // An expiring, token-protected preview; never a production route or user prompt.
-export async function probe(request, env) {
+export async function probe(request, env, readPrivateAIPdf) {
   const supplied=request.headers.get('x-probe-token')??'', expiry=Number(env.PROBE_EXPIRES_AT);
   if(request.method!=='POST'||new URL(request.url).pathname!=='/__kira_probe'||!/^[a-f0-9]{64}$/.test(supplied)||!/^[a-f0-9]{64}$/.test(env.PROBE_TOKEN??'')||!Number.isFinite(expiry)||expiry<=Date.now()||expiry>Date.now()+240000)return new Response(null,{status:404});
   let difference=0;for(let i=0;i<64;i++)difference|=supplied.charCodeAt(i)^env.PROBE_TOKEN.charCodeAt(i);
@@ -106,7 +107,8 @@ export async function probe(request, env) {
     scanParts.push(imageHeader,jpeg,imageFooter);length+=imageHeader.length+jpeg.length+imageFooter.length;
     scanOffsets.push(length);const drawImage=`q ${handwriting.width} 0 0 ${handwriting.height} 0 0 cm /Im0 Do Q`,contents=`5 0 obj\n<< /Length ${drawImage.length} >>\nstream\n${drawImage}\nendstream\nendobj\n`;scanParts.push(contents);length+=contents.length;
     scanParts.push('xref\n0 6\n0000000000 65535 f \n'+scanOffsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`);
-    const [image,pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck(),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+env.PROBE_TIMETABLE_PNG),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+handwriting.pngBase64),convert('handwritten-paper-scan.pdf',new Blob(scanParts,{type:'application/pdf'}))]);
+    const readScan=async()=>{try{const bytes=new Uint8Array(await new Blob(scanParts,{type:'application/pdf'}).arrayBuffer()),text=await readPrivateAIPdf(env,bytes,{timeoutMs:35000});return{outcome:typeof text==='string'&&/MAT\s*101/i.test(text)&&/0?8[:.]00/.test(text)&&/0?9[:.]00/.test(text)?'conversion_succeeded':'conversion_unusable'};}catch(error){return{outcome:'provider_rejected',...(typeof error?.reason==='string'&&/^AI_[A-Z_]+$/.test(error.reason)?{reason:error.reason}:{})};}};
+    const [image,pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck(),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+env.PROBE_TIMETABLE_PNG),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+handwriting.pngBase64),readScan()]);
     return{image,pdf:pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper};
   };
   const [standard,pro,huggingface,conversion,uploads,banks]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck(),convert('probe.txt',new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})),extended(),bankSupport()]);
@@ -153,8 +155,12 @@ if(process.argv.includes('--self-test')) {
     const form=new FormData(),probeToken=randomBytes(32).toString('hex');
     const png=process.env.PROBE_VERIFY_UPLOADS==='true'?readFileSync(new URL('./fixtures/synthetic-timetable.png',import.meta.url)).toString('base64'):'';
     const handwriting=process.env.PROBE_VERIFY_UPLOADS==='true'?JSON.parse(readFileSync(new URL('./fixtures/handwritten-timetable.json',import.meta.url),'utf8')):null;
+    stage='document reader bundle';
+    const {build}=createRequire(new URL('../server/package.json',import.meta.url))('esbuild');
+    const reader=await build({stdin:{contents:"export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent'});
     form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
-    form.set('probe.mjs',new Blob([`export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)}})};`],{type:'application/javascript+module'}),'probe.mjs');
+    form.set('probe.mjs',new Blob([`import {readPrivateAIPdf} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)}},readPrivateAIPdf)};`],{type:'application/javascript+module'}),'probe.mjs');
+    form.set('document-reader.mjs',new Blob([reader.outputFiles[0].text],{type:'application/javascript+module'}),'document-reader.mjs');
     form.set('wrangler-session-config',JSON.stringify({workers_dev:true}));
     stage='preview upload';
     const preview=await cf('/workers/scripts/platformp/edge-preview',{method:'POST',body:form,headers:{'cf-preview-upload-config-token':sessionToken}});

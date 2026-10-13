@@ -12,18 +12,22 @@ export function decodeAIText(bytes: Uint8Array): string {
   if (text.length>MAX_AI_DOCUMENT_CHARACTERS) throw new AIProviderError(422,"AI_DOCUMENT_TOO_LONG","This text file contains too much material for one request. Upload a smaller section.");
   return text;
 }
-/** No URL fetching, document scripts or OCR. Scanned-only PDFs fail clearly. */
-export async function extractAIPdf(bytes: Uint8Array): Promise<string> {
+type PdfReadOptions = {readScannedPage?:(document:Awaited<ReturnType<typeof getDocumentProxy>>,pageNumber:number)=>Promise<string|null>};
+/** Private text extraction; an optional bounded vision reader handles scan pages. */
+export async function extractAIPdf(bytes: Uint8Array, options:PdfReadOptions = {}): Promise<string> {
   if (!bytes.length || bytes.length > MAX_AI_MEDIA_BYTES || new TextDecoder().decode(bytes.subarray(0,5)) !== "%PDF-") throw new AIProviderError(400, "AI_INVALID_PDF", "This file is not a readable PDF.");
   let document: Awaited<ReturnType<typeof getDocumentProxy>> | undefined;
   try {
-    document = await getDocumentProxy(bytes, { useSystemFonts: false, disableAutoFetch: true, disableStream: true, stopAtErrors: true });
+    // PDF.js may transfer/detach its input buffer. Keep the private upload intact
+    // for retry and for a caller that needs to inspect the same bytes again.
+    document = await getDocumentProxy(bytes.slice(), { useSystemFonts: false, disableAutoFetch: true, disableStream: true, stopAtErrors: true, maxImageSize:4*1024*1024 });
     if (document.numPages > 40) throw new AIProviderError(422, "AI_DOCUMENT_TOO_LONG", "Use a PDF of up to 40 pages, or upload one section at a time.");
     const pages: string[] = []; let length = 0, readablePages = 0;
     for (let n = 1; n <= document.numPages; n++) {
       const page = await document.getPage(n);
       const content = await page.getTextContent();
-      const text = content.items.map(item => "str" in item ? item.str + (item.hasEOL ? "\n" : " ") : "").join("").trim();
+      let text = content.items.map(item => "str" in item ? item.str + (item.hasEOL ? "\n" : " ") : "").join("").trim();
+      if(!text&&options.readScannedPage)text=(await options.readScannedPage(document,n))??'';
       length += text.length;
       if (length > MAX_AI_DOCUMENT_CHARACTERS) throw new AIProviderError(422, "AI_DOCUMENT_TOO_LONG", "This PDF contains too much text for one request. Upload a smaller section.");
       // A blank cover/scan must not reject readable pages in the same PDF. Mark
