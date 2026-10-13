@@ -87,13 +87,13 @@ export async function probe(request, env, readPrivateAIPdf) {
       if(!bachs.liveKey||!bachs.bankTransferEnabled||bachs.feePreference!=='org_pays')return{outcome:'configuration_missing'};
       const reference='K1-DIAG-B-'+crypto.randomUUID(),origin='https://api.bachs.io';
       try{
-        const r=await fetch(origin+'/v1/checkout-sessions',{method:'POST',redirect:'manual',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+env.BACHS_API_KEY,'Content-Type':'application/json','Idempotency-Key':reference},body:JSON.stringify({pricing:{currency:'NGN',amount:'6000.00'},reference,payment_method_types:['NGN_BANK_TRANSFER'],expires_in_minutes:2,metadata:{purpose:'UNPAID_RELEASE_DIAGNOSTIC'}})});
+        const r=await fetch(origin+'/v1/checkout-sessions',{method:'POST',redirect:'manual',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+env.BACHS_API_KEY,'Content-Type':'application/json','Idempotency-Key':reference},body:JSON.stringify({pricing:{currency:'NGN',amount:'313.00'},reference,payment_method_types:['NGN_BANK_TRANSFER'],expires_in_minutes:2,metadata:{purpose:'UNPAID_RELEASE_DIAGNOSTIC'}})});
         const data=await r.json().catch(()=>null);
-        if(!r.ok)return{outcome:'provider_rejected',http:r.status};
+        if(!r.ok){const message=typeof data?.message==='string'?data.message:typeof data?.error?.message==='string'?data.error.message:'';const minimum=/at least\s+([\d,.]+)\s+NGN/i.exec(message)?.[1];return{outcome:'provider_rejected',http:r.status,...(minimum?{minimumNgn:Number(minimum.replaceAll(',',''))}:{})};}
         if(typeof data?.checkout_id!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(data.checkout_id)||data.reference!==reference||data.status!=='open')return{outcome:'checkout_unusable'};
         const detail=await fetch(origin+'/v1/checkout-sessions/'+encodeURIComponent(data.checkout_id),{redirect:'manual',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+env.BACHS_API_KEY}});
         const receipt=await detail.json().catch(()=>null);
-        return{outcome:detail.ok&&receipt?.reference===reference&&receipt?.status==='open'&&receipt?.currency==='NGN'&&Number(receipt?.amount)===6000?'unpaid_checkout_succeeded':'checkout_unusable',http:detail.status};
+        return{outcome:detail.ok&&receipt?.reference===reference&&receipt?.status==='open'&&receipt?.currency==='NGN'&&Number(receipt?.amount)===313?'unpaid_checkout_succeeded':'checkout_unusable',http:detail.status};
       }catch{return{outcome:'transport_failure'};}
     };
     const handwriting=env.PROBE_HANDWRITING;
@@ -181,7 +181,7 @@ if(process.argv.includes('--self-test')) {
     else if(process.env.PROBE_BANKS_ONLY!=='true')report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
     if(process.env.PROBE_VERIFY_UPLOADS==='true'&&process.env.PROBE_BANKS_ONLY!=='true')for(const name of ['image','pdf','unpaidCheckout','vision','handwritingVision','scannedPaper']){
       const item=result.uploads?.[name],outcome=item?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable','generation_succeeded','generation_unusable'];
-      report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}${/^\d{4}$/.test(item?.code??'')?` code ${item.code}`:''}`);
+      report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}${/^\d{4}$/.test(item?.code??'')?` code ${item.code}`:''}${Number.isInteger(item?.http)?` HTTP ${item.http}`:''}${Number.isFinite(item?.minimumNgn)?` minimum NGN ${item.minimumNgn}`:''}`);
       if(outcome!==(name==='unpaidCheckout'?'unpaid_checkout_succeeded':['vision','handwritingVision'].includes(name)?'generation_succeeded':'conversion_succeeded'))process.exitCode=1;
     }
     if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
