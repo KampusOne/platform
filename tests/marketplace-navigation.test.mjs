@@ -26,6 +26,7 @@ function fixture({width=393,initialCart={},params={}}={}){
   '@/src/auth/auth-context':{useAuth:()=>({user:{id:owner,universityId:'A',roles:['STUDENT'],operatorRoles:[]}})},
   '@/src/lib/appearance':{useThemeStyles:styles=>({theme,styles:styles(theme)})},'@/src/lib/device-cache':device,'@/src/lib/marketplace-cart':cart,
   '@/src/lib/request-policy':{cacheScopeForUser:()=> 'verified'},'@/src/lib/api':{api,ApiError:class extends Error{}},
+  '@/src/components/retry-icon-button':{RetryIconButton:'RetryIconButton'},
   '@/src/lib/screen-read':{refreshScreenRead:async(_path,apply)=>{apply({products:[product],deliveryZones:[],checkoutEnabled:true,riderDeliveryEnabled:false,catalogueMode:'LIVE'});}},
   '@/src/components/keyboard-viewport':{KeyboardScrollView:'ScrollView',KeyboardModal:'Modal'},'@expo/vector-icons':{Ionicons:'Ionicons'},
   '@/src/components/visual-system':{useReducedMotionPreference:()=>true},'@/src/components/toast':{useToast:()=>()=>{}},'@/src/theme':{theme},

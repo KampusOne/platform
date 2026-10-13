@@ -42,6 +42,7 @@ const quote={quoteId:product,tier:'pro',version:'synthetic',amountKobo:600000,pa
 test('the actual production Pro amount breakdown is accepted without changing its total',()=>{
   assert.equal(readKiraCheckoutQuote(quote,'pro').amountKobo,600000);
   assert.equal(readKiraCheckoutQuote({...quote,feeBearer:'LEGACY_INCLUSIVE',paystackAmountKobo:600000},'pro').amountKobo,600000);
+  assert.equal(readKiraCheckoutQuote({...quote,feeBearer:'MERCHANT_ABSORBS',paystackAmountKobo:600000,estimatedProcessingKobo:0},'pro').amountKobo,600000);
 });
 test('Kira rejects mismatched money, other tiers and malformed or unbounded quote fields',()=>{
   for(const changed of [{paystackAmountKobo:600000},{amountKobo:600000.5},{estimatedProcessingKobo:-1},{tier:'standard'},{expiresAt:'invalid'},{quoteId:'invalid'},{feeBearer:'unknown'}])assert.throws(()=>readKiraCheckoutQuote({...quote,...changed},'pro'));

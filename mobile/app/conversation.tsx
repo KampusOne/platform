@@ -52,6 +52,7 @@ import { messageDestination, messageTextParts } from "@/src/lib/message-links";
 import { readConversationDraft, saveConversationDraft, type ConversationDraft, type DraftReply, type VoiceDraft } from "@/src/lib/message-drafts";
 import {acknowledgePendingText,updatePendingTextRetry,onPendingTextChange,onTextDelivered,readPendingText,restoreBlockedText} from '@/src/lib/message-drafts';
 import {retryableTextError,type PendingText} from '@/src/lib/text-retry-coordinator';
+import { RetryIconButton } from '@/src/components/retry-icon-button';
 import {cacheScopeForUser} from '@/src/lib/request-policy';
 import {transferTextOnce} from '@/src/lib/text-transfer';
 import {getDeviceCacheRevision} from '@/src/lib/device-cache';
@@ -610,7 +611,7 @@ function PendingMediaBubble({
           <>
             <Ionicons name="alert-circle-outline" size={14} color={theme.error} />
             <Text numberOfLines={1} style={styles.pendingError}>{batch.error || "Couldn’t send media."}</Text>
-            <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retryMediaButton}><Text style={styles.retryMediaText}>Retry</Text></Pressable>
+            <RetryIconButton label="Retry sending media" onPress={onRetry} />
           </>
         )}
       </View>
@@ -724,7 +725,7 @@ export default function ConversationScreen() {
       setError("");
       },()=>{if(activeScope.current===scope)setData(null);});
       const awaiting=pending.current;
-      if(activeScope.current===scope&&user?.id&&awaiting&&received.messages?.some(message=>message.id===awaiting.id&&message.sender_id===user.id&&message.body===awaiting.body))void acknowledgePendingText(user.id,id,awaiting.id).catch(()=>undefined);
+      if(activeScope.current===scope&&user?.id&&awaiting&&received.messages?.some(message=>message.id===awaiting.id&&message.sender_id===user.id&&message.body===awaiting.body&&(message.reply_to_message_id??null)===(awaiting.replyToMessageId??null)))void acknowledgePendingText(user.id,id,awaiting.id).catch(()=>undefined);
       // Read receipts are background bookkeeping, independent of message display.
       if (activeScope.current === scope&&!before){
         const incoming=(received.messages??[]).filter(message=>message.sender_id!==user?.id);
@@ -1068,7 +1069,7 @@ export default function ConversationScreen() {
       if(durable&&user?.id){
         const retry={attempts:0,nextAttemptAt:Date.now()+2000,blocked:!retryableTextError(caught),error:caught instanceof Error?caught.message:'Message confirmation failed.'};
         await updatePendingTextRetry(user.id,id,message.id,retry).catch(()=>undefined);
-        if(activeScope.current===scope){pending.current={...message,retry};setPendingTextState({...message,retry});setError(retry.blocked?retry.error:'Message saved. It will retry when connected.');}
+        if(activeScope.current===scope){pending.current={...message,retry};setPendingTextState({...message,retry});setError(retry.blocked?retry.error:'Message saved. It will retry when connected.');void load();}
         return;
       }
       pending.current=null;setPendingTextState(null);
@@ -1405,11 +1406,11 @@ export default function ConversationScreen() {
               )}
               ListFooterComponent={pendingMedia.length || voiceSending || pendingTextState ? (
                 <View style={styles.pendingList}>
-                  {pendingTextState?<View style={{alignSelf:'flex-end',maxWidth:300,padding:14,borderRadius:16,backgroundColor:theme.surfaceMuted,gap:8}}>
+                  {pendingTextState&&!sending?<View style={{alignSelf:'flex-end',maxWidth:300,gap:4}}>
                     {!data?.messages.some(message=>message.id===pendingTextState.id)?<Text style={{fontFamily:theme.font.body,color:theme.text}}>{pendingTextState.body}</Text>:null}
-                    <Text accessibilityLiveRegion="polite" style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12}}>{pendingTextState.retry&&!pendingTextState.retry.blocked?'Waiting for confirmation. Retry continues when connected.':'Confirmation needs a retry.'}</Text>
+                    <View style={{flexDirection:'row',alignItems:'center',gap:8}}><Text accessibilityLiveRegion="polite" style={{flex:1,fontFamily:theme.font.body,color:theme.textMuted,fontSize:12}}>{pendingTextState.retry&&!pendingTextState.retry.blocked?'Waiting for confirmation':'Message needs attention'}</Text><RetryIconButton label="Retry sending message" busy={actionBusy} onPress={()=>void retryPendingText()} /></View>
                     {pendingTextState.retry?.blocked&&pendingTextState.retry.error?<Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12}}>{pendingTextState.retry.error}</Text>:null}
-                    <View style={{flexDirection:'row',gap:12}}><Pressable accessibilityRole="button" disabled={actionBusy||sending} onPress={()=>void retryPendingText()} style={{minHeight:44,justifyContent:'center'}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>Retry safely</Text></Pressable>{pendingTextState.retry?.blocked?<Pressable accessibilityRole="button" disabled={actionBusy||sending} onPress={editPendingText} style={{minHeight:44,justifyContent:'center'}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>Edit as new draft</Text></Pressable>:null}</View>
+                    {pendingTextState.retry?.blocked?<Pressable accessibilityRole="button" disabled={actionBusy} onPress={editPendingText} style={{minHeight:44,justifyContent:'center'}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>Edit as new draft</Text></Pressable>:null}
                   </View>:null}
                   {voiceSending&&voiceDraft&&!data?.messages.some(message=>message.id===voiceDraft.messageId)?<View style={{alignSelf:'flex-end',width:240,borderRadius:18,padding:12,backgroundColor:theme.deepBrand}}><VoicePlayback uri={voiceDraft.uri} compact mine/><Text accessibilityLiveRegion="polite" style={{color:'#FFFFFF',fontFamily:theme.font.body,fontSize:11,marginTop:4}}>Sending voice note…</Text></View>:null}
                   {pendingMedia.map((batch) => (
@@ -1829,8 +1830,6 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   pendingStatusRow: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: 250, paddingHorizontal: 3 },
   pendingStatus: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 10 },
   pendingError: { flex: 1, color: theme.error, fontFamily: theme.font.body, fontSize: 10 },
-  retryMediaButton: { minHeight: 28, paddingHorizontal: 8, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.surfaceMuted },
-  retryMediaText: { color: theme.deepBrand, fontFamily: theme.font.semibold, fontSize: 10 },
   composerDock: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, backgroundColor: theme.canvas, gap: 7 },
   pickerMenu: { borderRadius: 16, padding: 6, gap: 3, backgroundColor: theme.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
   pickerAction: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 7 },

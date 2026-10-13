@@ -20,6 +20,15 @@ const policy: CommerceFees = {
   allowProcessorSubsidy: false,
 };
 describe("inclusive campus pricing", () => {
+  it('applies the requested 2.5% product commission once and preserves the seller base amount',()=>{
+    const productPolicy={...policy,buyerBasisPoints:250,sellerCommissionBasisPoints:0};
+    const listing=listingPrice(400000,productPolicy);
+    expect(listing.buyerComponentKobo).toBe(10000);
+    const quote=checkoutPrice([{baseKobo:400000,quantity:1}],productPolicy,null);
+    expect(quote.sellerNetKobo).toBe(400000);
+    expect(quote.totalKobo).toBe(listing.customerPriceKobo);
+    expect(quote.totalKobo-quote.estimatedProcessingKobo).toBeGreaterThanOrEqual(410000);
+  });
   it('rounds the inclusive display upward at the approved increment and submits no second processing allowance',()=>{
     const rounded={...policy,buyerFlatPerItemKobo:5000,collection:{...policy.collection,displayRoundKobo:10000}};
     const listing=listingPrice(550000,rounded);

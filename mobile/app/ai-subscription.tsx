@@ -13,6 +13,7 @@ import { api, ApiError } from "@/src/lib/api";
 import { isPlayDistribution } from "@/src/lib/digital-billing-policy";
 import {cacheScopeForUser} from '@/src/lib/request-policy';
 import { readKiraCheckoutQuote, type KiraPricingQuote } from '@/src/lib/kira-checkout-quote';
+import { RetryIconButton } from '@/src/components/retry-icon-button';
 
 type Tier = "standard" | "pro";
 type Checkout = {
@@ -300,7 +301,7 @@ function PlayPlanAccess() {
       {status?.subscription.currentPeriodEnd?<Text style={{color:theme.textMuted}}>Current access ends {new Date(status.subscription.currentPeriodEnd).toLocaleDateString("en-NG")}.</Text>:null}
       {error?<Text accessibilityRole="alert" style={{color:theme.error}}>{error}</Text>:null}
       <ToolButton label="Open Kira" onPress={()=>router.push('/ai')} />
-      {error?<ToolButton secondary label="Try again" disabled={loading} onPress={()=>void load()} />:null}
+      {error?<RetryIconButton label="Refresh Kira plan" busy={loading} onPress={()=>void load()} />:null}
     </View>
   </ToolPage>;
 }
@@ -482,7 +483,7 @@ function AccountSubscription() {
   async function fetchQuote(discountCode = "", tier: Tier = selectedTier) {
     const result = await api<{ quote: PricingQuote }>("/v1/ai/subscription-quote", {
       method: "POST",
-      timeoutMs: 8000,
+      timeoutMs: 20000,
       body: JSON.stringify({ tier, discountCode: discountCode.trim(), requestId: key.current }),
     });
     const next = readKiraCheckoutQuote(result?.quote, tier);
@@ -776,7 +777,7 @@ function AccountSubscription() {
           {!checkout && !quoteValid ? (
             <View style={{ gap: 9 }}>
               <Text style={muted}>{quote ? "This quote has expired. Refresh the total before paying." : "Refresh the server total to review your checkout."}</Text>
-              <ToolButton secondary label="Refresh total" disabled={busy || !checkoutEnabled} onPress={() => void refreshQuote()} />
+              <RetryIconButton label="Refresh checkout total" busy={busy} disabled={!checkoutEnabled} onPress={() => void refreshQuote()} />
             </View>
           ) : null}
           {error ? <ToolButton secondary label="Reload plan and payment" disabled={busy || loading} onPress={() => void load(true)} /> : null}
@@ -831,7 +832,7 @@ function AccountSubscription() {
           <Text style={{ color: theme.text, fontFamily: theme.font.semibold }}>Current plan: {currentTier === "pro" ? "Pro" : "Standard"}</Text>
         </View> : null}
         <Text style={muted}>Choose the study support that works for you. Each plan includes the features below.</Text>
-        {error ? <View style={{ padding: 14, gap: 8, backgroundColor: theme.surfaceMuted, borderRadius: 14 }}><Text accessibilityRole="alert" style={{ ...text, color: theme.error }}>{error}</Text><ToolButton secondary label="Try again" disabled={busy || loading} onPress={() => void load(true)} /></View> : null}
+        {error ? <View style={{ padding: 14, gap: 10,flexDirection:'row',alignItems:'center', backgroundColor: theme.surfaceMuted, borderRadius: 14 }}><Text accessibilityRole="alert" style={{ ...text,flex:1, color: theme.error }}>{error}</Text><RetryIconButton label="Refresh Kira pricing" busy={busy || loading} onPress={() => void load(true)} /></View> : null}
         {(["standard", "pro"] as const).map((tier) => {
           const catalog = plan.catalog?.[tier];
           const allowance = tier === "standard" ? standardBenefits : benefits;

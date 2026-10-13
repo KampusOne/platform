@@ -5,6 +5,7 @@ import { useOwnedDraftRestore } from '@/src/lib/use-owned-draft-restore';
 import { restoreListingDraft } from '@/src/lib/form-drafts';
 import { moveListingPhoto } from '@/src/lib/listing-photos';
 import { DraftRecovery } from '@/src/components/draft-recovery';
+import { RetryIconButton } from '@/src/components/retry-icon-button';
 import { MediaImage } from '@/src/components/media-image';
 import { ImageViewer } from '@/src/components/image-viewer';
 import { cacheScopeForUser } from '@/src/lib/request-policy';
@@ -66,7 +67,7 @@ function CreateListingForm() {
     let valid=true,amount:number;try{amount=nairaToKobo(price);}catch{setCalculatingRates(false);return;}
     setCalculatingRates(true);
     const controller=new AbortController();
-    const timer=setTimeout(()=>void api<typeof pricePreview>('/v1/agents/products/price-preview?priceKobo='+amount,{timeoutMs:8000,signal:controller.signal,cache:'no-store'}).then(r=>{if(valid){setPricePreview(r);if(!r?.ready)setRateError(r?.message||'Marketplace rates are not configured for this campus yet.');}}).catch(error=>{if(valid)setRateError(error instanceof Error?error.message:'Rates could not load. Please retry.');}).finally(()=>{if(valid)setCalculatingRates(false);}),300);
+    const timer=setTimeout(()=>void api<typeof pricePreview>('/v1/agents/products/price-preview?priceKobo='+amount,{timeoutMs:15000,signal:controller.signal,cache:'no-store'}).then(r=>{if(valid){setPricePreview(r);if(!r?.ready)setRateError(r?.message||'Checkout pricing is temporarily unavailable. You can still upload this product.');}}).catch(error=>{if(valid)setRateError(error instanceof Error?error.message:'Checkout pricing could not load. You can still upload this product.');}).finally(()=>{if(valid)setCalculatingRates(false);}),300);
     return()=>{valid=false;clearTimeout(timer);controller.abort();};
   },[price,tutor,rateRetry]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>(
@@ -109,7 +110,6 @@ function CreateListingForm() {
     try { nairaToKobo(price); } catch (e) { formHint = e instanceof Error ? e.message : "Enter a valid price."; }
     if (!formHint && (!/^\d+$/.test(stock.trim()) || Number(stock) > (tutor ? 500 : 1_000_000) || Number(stock) < (tutor ? 1 : 0))) formHint = tutor ? "Enter 1 to 500 available places." : "Enter a whole stock quantity from 0 to 1,000,000.";
   }
-  if(!formHint&&!tutor&&!createdId.current){if(calculatingRates||(pricePreview?.ready&&pricePreview.baseKobo!==nairaToKobo(price)))formHint='Calculating rates…';else if(!pricePreview?.ready)formHint=rateError||'Calculate your product rates before uploading.';}
   if(createdId.current)formHint="";
   const fieldsLocked=busy||!draftReady||Boolean(createdId.current);
   async function upload() {
@@ -153,7 +153,7 @@ function CreateListingForm() {
             imageUrl: image || null,
             imageUrls:images,
             requestId:requestId.current,
-            pricingPolicyId:pricePreview?.ruleId,
+            pricingPolicyId:pricePreview?.ready&&pricePreview.baseKobo===nairaToKobo(price)?pricePreview.ruleId:undefined,
           };
       const {requestId: _previous,...details}=body;
       const signature=JSON.stringify(Object.fromEntries(Object.entries(details).filter(([field])=>field!=='pricingPolicyId')));
@@ -262,7 +262,7 @@ function CreateListingForm() {
         <View style={{ gap: 10, marginBottom: 16 }}>
         <Text style={{ fontFamily: theme.font.semibold, color: theme.text }}>Product category (required)</Text>
         {categoriesLoading ? <Text style={{ color: theme.textMuted }}>Loading categories…</Text> : null}
-        {categoriesError ? <><Text accessibilityRole="alert" style={{ color: theme.error, lineHeight: 22 }}>{categoriesError}</Text><ToolButton secondary label="Retry product categories" disabled={categoriesLoading} onPress={() => void loadCategories()} /></> : null}
+        {categoriesError ? <View style={{flexDirection:'row',alignItems:'center',gap:10}}><Text accessibilityRole="alert" style={{ flex:1,color: theme.error, lineHeight: 22 }}>{categoriesError}</Text><RetryIconButton label="Retry product categories" busy={categoriesLoading} onPress={() => void loadCategories()} /></View> : null}
         {categories.length > 8 ? <ToolField label="Find a category" value={categoryQuery} onChangeText={setCategoryQuery} placeholder="Books, materials, clothing…" /> : null}
         <View
           style={{
@@ -296,7 +296,7 @@ function CreateListingForm() {
         </View>
       )}
       {!tutor&&calculatingRates?<Text accessibilityLiveRegion="polite" style={{color:theme.textMuted,marginBottom:12}}>Calculating rates…</Text>:null}
-      {!tutor&&rateError&&!calculatingRates?<View style={{gap:8,marginBottom:16}}><Text accessibilityRole="alert" style={{color:theme.error}}>{rateError}</Text><ToolButton secondary label="Retry rate calculation" onPress={()=>setRateRetry(n=>n+1)}/></View>:null}
+      {!tutor&&rateError&&!calculatingRates?<View style={{flexDirection:'row',alignItems:'center',gap:10,marginBottom:16}}><Text accessibilityRole="alert" style={{flex:1,fontFamily:theme.font.body,color:theme.textMuted,lineHeight:21}}>{rateError}</Text><RetryIconButton label="Refresh product pricing" disabled={busy} onPress={()=>setRateRetry(n=>n+1)}/></View>:null}
       {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['KampusOne service fee',pricePreview.platformKobo],['Estimated processing fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Your price plus the service fee goes to checkout. The processor adds its charge; checkout confirms the final total.</Text></View>:null}
       {createdId.current ? <Text accessibilityRole="alert" style={{color:theme.textMuted,lineHeight:22,marginBottom:12}}>Your listing was created. Retry to finish submitting it for review.</Text> : null}
       <ToolButton
