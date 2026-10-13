@@ -1,9 +1,13 @@
 import { useLiveRefresh } from "@/src/lib/live-updates";
 import {shareAgentLocation} from '@/src/lib/agent-location';
 import { BrandSwitch } from "@/src/components/brand-switch";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { AppState, Linking, Pressable, Text, View } from "react-native";
+import { Alert, AppState, Linking, Pressable, Text, View } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
+import { MediaImage } from '@/src/components/media-image';
+import { RetryIconButton } from '@/src/components/retry-icon-button';
+import { cacheScopeForUser } from '@/src/lib/request-policy';
 import {
   ToolPage,
   ToolButton,
@@ -32,6 +36,8 @@ type Item = {
   pickup_location?: string;
   delivery_note?: string;
   price_kobo?: number;
+  image_url?: string | null;
+  image_urls?: string[];
   rider_earning_kobo?: number;
   commission_kobo?: number;
   fare_kobo?: number;
@@ -44,7 +50,8 @@ const money = (value: number) =>
   );
 export default function AgentDashboard() {
   const { user } = useAuth();
-  return <AccountAgentDashboard key={user?.id ?? "anonymous"} />;
+  const {role}=useLocalSearchParams<{role?:string}>();
+  return <AccountAgentDashboard key={(user?cacheScopeForUser(user):'anonymous')+':'+(role??'default')} />;
 }
 function AccountAgentDashboard() {
   const { role: requested } = useLocalSearchParams<{ role?: string }>();
@@ -67,8 +74,11 @@ function AccountAgentDashboard() {
   const [code, setCode] = useState("");
   const [selected, setSelected] = useState<Item | null>(null);
   const [ridesSuspended, setRidesSuspended] = useState(false);
+  const mounted=useRef(true),readVersion=useRef(0);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;readVersion.current++;};},[]);
   const load = useCallback(async () => {
     if (!role) return;
+    const version=++readVersion.current;
     const r = await api<{
       products?: Item[];
       listings?: Item[];
@@ -82,13 +92,35 @@ function AccountAgentDashboard() {
           : role === "TUTOR"
             ? "tutorials"
             : "deliveries"),
+      {cache:'reload'},
     );
+    if(!mounted.current||version!==readVersion.current)return;
     setItems(r.products ?? r.listings ?? r.jobs ?? []);
     setOnline(r.presence?.online ?? false);
     setRidesSuspended(r.finance?.rides_suspended ?? false);
     setReady(true);
     setLoadError("");
   }, [role]);
+  async function deleteProduct(item:Item){
+    if(busy||role!=='VENDOR')return;
+    setBusy(true);
+    try{
+      try{await api('/v1/agents/products/'+encodeURIComponent(item.id)+'/status',{method:'PATCH',body:JSON.stringify({status:'ARCHIVED'})});}
+      catch(error){
+        const fresh=await api<{products:Item[]}>('/v1/agents/products',{cache:'reload'}).catch(()=>null);
+        if(!mounted.current)return;
+        if(!Array.isArray(fresh?.products)||fresh.products.some(p=>p.id===item.id))throw error;
+      }
+      if(!mounted.current)return;
+      readVersion.current++;setItems(current=>current.filter(p=>p.id!==item.id));toast('Product deleted','success');
+    }catch(error){if(mounted.current)toast(error instanceof Error?error.message:'Product could not be deleted.','error');}
+    finally{if(mounted.current)setBusy(false);}
+  }
+  function confirmDelete(item:Item){
+    Alert.alert('Delete product?',`Remove ${item.name??'this product'} from your listings and marketplace?`,[
+      {text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>void deleteProduct(item)},
+    ]);
+  }
   useFocusEffect(
     useCallback(() => {
       const refresh = () =>
@@ -161,11 +193,6 @@ function AccountAgentDashboard() {
               : "Your workspaces"
       }
       action={seller ? <HeaderMenu label="Seller dashboard options" items={[
-        { label: "Store profile", icon: "storefront-outline", onPress: () => router.push("/store-settings"), disabled: !profile },
-        { label: "Orders & delivery", icon: "receipt-outline", onPress: () => router.push("/vendor-orders"), disabled: !profile },
-        { label: "Earnings & payouts", icon: "wallet-outline", onPress: () => router.push("/earnings"), disabled: !profile },
-        { label: "Seller trial", icon: "gift-outline", onPress: () => router.push("/trial"), disabled: !profile },
-        { label: "View seller profile", icon: "person-circle-outline", onPress: () => profile && router.push({ pathname: "/student-service", params: { id: profile.id } }), disabled: !profile },
         { label: "Refresh dashboard", icon: "refresh-outline", onPress: () => void load().catch(e => setLoadError(e.message)), disabled: !profile || busy },
         { label: "Refresh delivery location", icon: "locate-outline", onPress: () => void refreshPosition(), disabled: !profile || busy },
         { label: "Campus capture missions", icon: "map-outline", onPress: () => router.push("/map-capture"), disabled: !profile },
@@ -180,6 +207,12 @@ function AccountAgentDashboard() {
             "Manage your availability, pickup routes and deliveries."}
         </Text>
       </View> : null}
+      {profile?<View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:18}}>{[
+        {label:'Orders',icon:'receipt-outline' as const,path:role==='VENDOR'?'/vendor-orders':'/agent'},
+        {label:'Earnings',icon:'wallet-outline' as const,path:'/earnings'},
+        {label:'Profile',icon:'person-outline' as const,path:role==='VENDOR'?'/store-settings':'/business-profile-edit'},
+        {label:'Bank',icon:'card-outline' as const,path:'/bank-account'},
+      ].map(action=><Pressable key={action.label} accessibilityRole="button" onPress={()=>router.push({pathname:action.path as '/earnings',params:{profileId:profile.id}})} style={{flex:1,minWidth:65,alignItems:'center',gap:6,paddingVertical:14,backgroundColor:theme.surface,borderWidth:1,borderColor:theme.border,borderRadius:12}}><Ionicons name={action.icon} size={22} color={theme.deepBrand}/><Text style={{color:theme.text,fontFamily:theme.font.semibold,fontSize:12}}>{action.label}</Text></Pressable>)}</View>:null}
       {ready&&profile&&!loadError ? <View style={{ flexDirection:"row", gap:10, marginBottom:16 }}>
         <View style={{ flex:1, backgroundColor:theme.surfaceTint, padding:16, borderRadius:15 }}>
           <Text style={{ fontFamily:theme.font.displayStrong, color:theme.deepBrand, fontSize:27 }}>
@@ -226,11 +259,7 @@ function AccountAgentDashboard() {
       {(loadError || caps.error) && (
         <View style={{ marginVertical: 14 }}>
           <Text style={{ color: theme.text }}>{loadError || caps.error}</Text>
-          <ToolButton
-            secondary
-            label="Try again"
-            onPress={() => void load().catch((e) => setLoadError(e.message))}
-          />
+          <RetryIconButton label="Refresh dashboard" onPress={() => void load().catch((e) => setLoadError(e.message))}/>
         </View>
       )}
       {caps.ready && !role && !caps.error && (
@@ -355,7 +384,18 @@ function AccountAgentDashboard() {
               borderColor: theme.border,
             }}
           >
-            <Text
+            {role==='VENDOR'?<View style={{flexDirection:'row',alignItems:'center',gap:12}}>
+              {item.image_urls?.[0]||item.image_url?<MediaImage uri={item.image_urls?.[0]||item.image_url!} accessibilityLabel={`${item.name??'Product'} cover photo`} style={{width:64,height:64,borderRadius:12}}/>:
+                <View accessibilityLabel="No product photo" style={{width:64,height:64,borderRadius:12,backgroundColor:theme.surfaceMuted,alignItems:'center',justifyContent:'center'}}><Ionicons name="image-outline" size={25} color={theme.textMuted}/></View>}
+              <View style={{flex:1,minWidth:0,gap:6}}>
+                <Text numberOfLines={2} style={{fontFamily:theme.font.semibold,color:theme.text,fontSize:16}}>{item.name}</Text>
+                <Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12}}>{item.status.replaceAll('_',' ')} · {money(Number(item.price_kobo??0))}</Text>
+              </View>
+              <HeaderMenu label={`Options for ${item.name??'product'}`} items={[
+                {label:'Edit product',icon:'create-outline',disabled:busy,onPress:()=>router.push({pathname:'/agent-create',params:{role:'VENDOR',id:item.id}})},
+                {label:'Delete product',icon:'trash-outline',disabled:busy,onPress:()=>confirmDelete(item)},
+              ]}/>
+            </View>:<Text
               style={{
                 fontFamily: theme.font.semibold,
                 color: theme.text,
@@ -367,7 +407,7 @@ function AccountAgentDashboard() {
                 item.name ??
                 item.title ??
                 item.zone_name}
-            </Text>
+            </Text>}
             {role === "RIDER" && (
               <View style={{ gap: 6, marginVertical: 8 }}>
                 <Text style={{ color: theme.textMuted }}>
@@ -455,7 +495,7 @@ function AccountAgentDashboard() {
                 }
               />
             ) : null}
-            <Text
+            {role!=='VENDOR'?<Text
               style={{
                 fontFamily: theme.font.body,
                 color: theme.textMuted,
@@ -468,7 +508,7 @@ function AccountAgentDashboard() {
                 ? " · " +
                   money(Number(item.price_kobo ?? item.rider_earning_kobo ?? 0))
                 : ""}
-            </Text>
+            </Text>:null}
             {role === "RIDER" && item.commission_kobo != null ? (
               <Text style={{ color: theme.textMuted }}>
                 Fare {money(item.fare_kobo ?? 0)} ·{" "}

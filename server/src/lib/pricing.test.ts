@@ -127,17 +127,17 @@ describe("inclusive campus pricing", () => {
     expect(quote.payableKobo).toBe(price.customerPriceKobo);
     expect(quote.cashDueKobo).toBe(30000);
     expect(quote.totalKobo).toBe(quote.payableKobo + 30000);
-    expect(fare).toMatchObject({ commissionKobo: 3000, riderNetKobo: 27000 });
+    expect(fare).toMatchObject({ commissionKobo: 0, riderNetKobo: 30000 });
   });
-  it("calculates ₦300–₦450 in campus distance bands and a ten percent commission", () => {
+  it("calculates ₦300–₦500 in campus distance bands with withdrawal-only commission", () => {
     expect(
       [0, 1000, 1001, 2000, 2001, 3001, 5000].map(
         (m) => campusFare(m).fareKobo,
       ),
-    ).toEqual([30000, 30000, 35000, 35000, 40000, 45000, 45000]);
+    ).toEqual([30000, 30000, 35000, 35000, 40000, 45000, 50000]);
     expect(campusFare(3001)).toMatchObject({
-      commissionKobo: 4500,
-      riderNetKobo: 40500,
+      commissionKobo: 0,
+      riderNetKobo: 45000,
     });
   });
   it("keeps Kira Pro fixed at ₦6,000; local published processing leaves an estimated ₦5,810", () => {

@@ -384,9 +384,17 @@ export const vendorProductSchema = vendorProductDetailsSchema
   })
   .superRefine(validatePackageDimensions);
 
-export const vendorProductUpdateSchema = vendorProductDetailsSchema.superRefine(
-  validatePackageDimensions,
-);
+export const vendorProductUpdateSchema = vendorProductDetailsSchema.extend({
+  imageUrls: z.array(z.string().url()).max(6).optional(),
+  stockQuantity: z.number().int().min(0).max(1_000_000).optional(),
+  expectedStockQuantity: z.number().int().min(0).max(1_000_000).optional(),
+  expectedRevision: z.number().int().min(1).optional(),
+}).superRefine(validatePackageDimensions).superRefine((value, context) => {
+  if (value.stockQuantity !== undefined && value.expectedStockQuantity === undefined)
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Review current stock before changing it.", path: ["expectedStockQuantity"] });
+  if (value.imageUrls !== undefined && value.imageUrl !== undefined && value.imageUrl !== (value.imageUrls[0] ?? null))
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "The cover must be the first product photo.", path: ["imageUrl"] });
+});
 
 export const vendorProductStockSchema = z.object({
   stockQuantity: z.number().int().min(0).max(1_000_000),
@@ -623,6 +631,8 @@ export const payoutRequestSchema = z
     amountKobo: z.number().int().positive().max(1_000_000_000),
     quoteId: z.string().uuid(),
     requestId: z.string().uuid(),
+    expectedCommissionKobo: z.number().int().min(0).max(1_000_000_000).optional(),
+    expectedBankNetKobo: z.number().int().positive().max(1_000_000_000).optional(),
   })
   .strict();
 

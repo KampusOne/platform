@@ -5,7 +5,8 @@ import { createSession } from "../src/services/sessions";
 import { sha256 } from "../src/lib/security";
 import { app } from "../src/app";
 import type { AuthenticatedUser, Bindings } from "../src/types";
-import { pdfFixture } from "./helpers/pdf";
+import { pdfFixture, scannedPdfFixture } from "./helpers/pdf";
+import {readFileSync} from 'node:fs';
 import { nativeKiraVoiceBody } from "../../mobile/src/lib/kira-voice-upload";
 
 let db: PGlite;
@@ -88,9 +89,23 @@ describe("student AI persistence and quota boundaries",()=>{
     await json(await request(`/ai/requests/${body.idempotencyKey}`,'GET',undefined,other),404);
     expect(provider).toHaveBeenCalledTimes(1);
   });
+  it('reads an owned raster PDF through the authenticated route and replays without another scan or inference',async()=>{
+    const fixture=JSON.parse(readFileSync(new URL('../../scripts/fixtures/handwritten-timetable.json',import.meta.url),'utf8'));
+    const bytes=scannedPdfFixture(Uint8Array.from(Buffer.from(fixture.jpegBase64,'base64')),fixture.width,fixture.height);
+    const mediaId=crypto.randomUUID(),run=vi.fn().mockResolvedValueOnce({response:'Handwritten class: MAT 101, 8:00 - 9:00, LT 1'}).mockResolvedValueOnce({response:'Voltage equals current multiplied by resistance.'});
+    env.AI={run};
+    await db.query("insert into public.media_objects(id,owner_user_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,'resource',$3,'application/pdf',$4,'handwritten.pdf')",[mediaId,owner,'private-'+mediaId,bytes.byteLength]);
+    env.PRIVATE_BUCKET={get:async key=>key==='private-'+mediaId?{size:bytes.byteLength,arrayBuffer:async()=>bytes.slice().buffer}:null} as unknown as R2Bucket;
+    const body={...draft('summary'),prompt:'Summarise the attached class',mediaId},result=await json(await request('/ai','POST',body));
+    const payload=run.mock.calls[1]![1];
+    expect(String(payload.messages.at(-1).content)).toContain('Handwritten class: MAT 101');
+    expect(await json(await request('/ai','POST',body))).toEqual(result);
+    expect(run).toHaveBeenCalledTimes(2);expect(provider).not.toHaveBeenCalled();
+    await json(await request(`/ai/history/${body.idempotencyKey}`,'GET',undefined,other),404);
+  });
   it('reads processing reservations without starting another metered call',async()=>{
     const key=crypto.randomUUID();await db.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) values($1,$2,repeat('a',64),'summary','PROCESSING','{}'::jsonb)",[owner,key]);
-    expect(await json(await request(`/ai/requests/${key}`))).toEqual({requestId:key,status:'processing'});
+    expect(await json(await request(`/ai/requests/${key}`))).toEqual({requestId:key,status:'processing',stage:'analysing'});
     expect(provider).not.toHaveBeenCalled();
     await db.query("update app_private.ai_requests set created_at=now()-interval '6 minutes' where idempotency_key=$1",[key]);
     const stale=await json(await request(`/ai/requests/${key}`),409);expect(stale.error.details).toMatchObject({reason:'AI_STALE_REQUEST',retryWithNewKey:true});

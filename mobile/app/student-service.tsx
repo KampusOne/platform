@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from "react";
 import {
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -185,13 +184,6 @@ export default function StudentService() {
       );
     } finally {
       setBusy(false);
-    }
-  }
-  async function openContact(url: string) {
-    try {
-      await Linking.openURL(url);
-    } catch {
-      toast("This contact app could not open on your device.", "error");
     }
   }
   const b = data?.service;
@@ -556,26 +548,9 @@ export default function StudentService() {
               >
                 {!data.isOwner
                   ? contact(
-                      "Message",
+                      "Contact agent",
                       "chatbubble-outline",
                       () => void message(),
-                    )
-                  : null}
-                {b.contact_phone_e164
-                  ? contact(
-                      "Call",
-                      "call-outline",
-                      () => void openContact(`tel:${b.contact_phone_e164}`),
-                    )
-                  : null}
-                {b.whatsapp_e164
-                  ? contact(
-                      "WhatsApp",
-                      "logo-whatsapp",
-                      () =>
-                        void openContact(
-                          `https://wa.me/${b.whatsapp_e164!.replace(/\D/g, "")}`,
-                        ),
                     )
                   : null}
               </View>

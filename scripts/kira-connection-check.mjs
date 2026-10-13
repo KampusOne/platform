@@ -1,18 +1,20 @@
 import {randomBytes} from 'node:crypto';
 import {appendFileSync,readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
 
 // An expiring, token-protected preview; never a production route or user prompt.
-export async function probe(request, env) {
+export async function probe(request, env, readPrivateAIPdf) {
   const supplied=request.headers.get('x-probe-token')??'', expiry=Number(env.PROBE_EXPIRES_AT);
   if(request.method!=='POST'||new URL(request.url).pathname!=='/__kira_probe'||!/^[a-f0-9]{64}$/.test(supplied)||!/^[a-f0-9]{64}$/.test(env.PROBE_TOKEN??'')||!Number.isFinite(expiry)||expiry<=Date.now()||expiry>Date.now()+240000)return new Response(null,{status:404});
   let difference=0;for(let i=0;i<64;i++)difference|=supplied.charCodeAt(i)^env.PROBE_TOKEN.charCodeAt(i);
   if(difference)return new Response(null,{status:404});
   const messages=[{role:'system',content:'Answer briefly and accurately.'},{role:'user',content:"State Ohm's law in one sentence."}];
-  const modelCheck=async(model)=>{
+  const modelCheck=async(model,image)=>{
     try {
-      const result=await env.AI.run(model,{messages,max_tokens:128,temperature:0.1,stream:false},{signal:AbortSignal.timeout(35000)});
+      const imageMessages=image?[{role:'system',content:'Read the image faithfully. Return only the visible text.'},{role:'user',content:[{type:'text',text:'Read the course code and class time in this timetable image.'},{type:'image_url',image_url:{url:image}}]}]:messages;
+      const result=await env.AI.run(model,{messages:imageMessages,max_tokens:image?512:128,temperature:0.1,stream:false},{signal:AbortSignal.timeout(35000)});
       const text=typeof result?.response==='string'?result.response:result?.choices?.[0]?.message?.content;
-      return {outcome:typeof text==='string'&&text.trim().length>8?'generation_succeeded':'generation_unusable'};
+      return {outcome:typeof text==='string'&&(image?/MAT\s*101/i.test(text)&&/0?8[:.]00/.test(text)&&/0?9[:.]00/.test(text):text.trim().length>8)?'generation_succeeded':'generation_unusable'};
     }catch(error){const code=/\b(3036|3040|5035|5016|5018|3023|3041|3007|3008|5007|3042)\b/.exec(String(error?.message??''))?.[1];return{outcome:'provider_rejected',...(code?{code}: {})};}
   };
   const hfCheck=async()=>{
@@ -26,6 +28,29 @@ export async function probe(request, env) {
     }catch{return{outcome:'transport_failure'};}
   };
   const bachs={configured:Boolean(env.BACHS_API_KEY&&env.BACHS_WEBHOOK_SECRET),liveKey:env.BACHS_API_KEY?.startsWith('sk_live_')===true};
+  const bankSupport=async()=>{
+    const result={paystackConfigured:Boolean(env.PAYSTACK_SECRET_KEY),paystackLive:env.PAYSTACK_SECRET_KEY?.startsWith('sk_live_')===true};
+    const read=async(origin,key,path,body)=>{const r=await fetch(origin+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(10000)});return{http:r.status,data:await r.json().catch(()=>null)};};
+    try{
+      if(result.paystackConfigured){const r=await read('https://api.paystack.co',env.PAYSTACK_SECRET_KEY,'/bank?country=nigeria&currency=NGN&perPage=100');result.paystackBanksHttp=r.http;result.paystackBanksAvailable=r.http===200&&r.data?.status===true&&Array.isArray(r.data.data)&&r.data.data.length>0;}
+      if(!bachs.liveKey)return result;
+      const [banks,destinations,account]=await Promise.all([read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/reference/banks?country=NG'),read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/payouts/destinations?limit=10'),read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/accounts/me')]);
+      result.secureBankStorageConfigured=/^[a-f0-9]{64}$/i.test(env.KYC_ENCRYPTION_KEY??'');result.bankIdempotencyConfigured=typeof env.KYC_FINGERPRINT_SECRET==='string'&&env.KYC_FINGERPRINT_SECRET.length>=24;result.bachsBanksHttp=banks.http;result.bachsBanksAvailable=banks.http===200&&banks.data?.country==='NG'&&Array.isArray(banks.data?.banks)&&banks.data.banks.length>0;
+      result.destinationReadHttp=destinations.http;result.accountReadHttp=account.http;
+      const enabled=account.data?.enabled_capabilities;result.connectEnabled=Array.isArray(enabled)&&enabled.includes('connect');result.payoutsEnabled=Array.isArray(enabled)&&enabled.includes('payouts');result.platformMetadataUsable=account.http===200&&Array.isArray(enabled);result.platformIdentifierUsable=typeof account.data?.id==='string'&&/^acct_[A-Za-z0-9_-]{8,128}$/.test(account.data.id);
+      const capabilities=account.data?.capabilities;result.capabilityShape=Array.isArray(capabilities)?'array':capabilities&&typeof capabilities==='object'?'object':'absent';
+      const statuses=['active','inactive','restricted','pending'];
+      const cap=name=>{const v=Array.isArray(capabilities)?capabilities.find(v=>v.name===name||v.id===name)?.status:capabilities?.[name]?.status??capabilities?.[name];return statuses.includes(v)?v:'unknown';};
+      result.connectStatus=cap('connect');result.payoutStatus=cap('payouts');
+      const items=Array.isArray(destinations.data)?destinations.data:destinations.data?.items??destinations.data?.data??destinations.data?.destinations;
+      result.savedDestinationCount=Array.isArray(items)?items.length:0;
+      const existing=Array.isArray(items)?items.find(d=>d.currency==='NGN'&&/^\d{10}$/.test(d.account_number??'')&&typeof d.bank_code==='string'):null;
+      if(existing){const r=await read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/misc/bank-accounts/resolve',{country:'NG',account_number:existing.account_number,bank_code:existing.bank_code});result.bankResolveHttp=r.http;result.bankNameFetched=r.http===200&&r.data?.resolved===true&&typeof r.data.account_name==='string'&&r.data.account_name.trim().length>1&&r.data.account_number===existing.account_number;}
+      else result.bankResolveOutcome='no_saved_destination_for_live_verification';
+    }catch{result.outcome='transport_failure';}
+    return result;
+  };
+  if(env.PROBE_BANKS_ONLY==='true')return Response.json({kind:'kampusone-kira-probe-v1',bachs,banks:await bankSupport()},{headers:{'Cache-Control':'no-store'}});
   if(bachs.configured) {
     try {
       const origin=bachs.liveKey?'https://api.bachs.io':'https://sandbox-api.bachs.io';
@@ -49,7 +74,7 @@ export async function probe(request, env) {
     let timer;try{
       const result=await Promise.race([env.AI.toMarkdown([{name,blob}]),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),20000);})]);
       return{outcome:typeof result?.[0]?.data==='string'&&/MAT\s*101/.test(result[0].data)?'conversion_succeeded':'conversion_unusable'};
-    }catch{return{outcome:'provider_rejected'};}finally{clearTimeout(timer);}
+    }catch(error){const code=/\b(3036|3040|5035|5016|5018|3023|3041|3007|3008|5007|3042)\b/.exec(String(error?.message??''))?.[1];return{outcome:'provider_rejected',...(code?{code}:{})};}finally{clearTimeout(timer);}
   };
   const extended=async()=>{
     if(env.PROBE_VERIFY_UPLOADS!=='true')return{};
@@ -71,11 +96,23 @@ export async function probe(request, env) {
         return{outcome:detail.ok&&receipt?.reference===reference&&receipt?.status==='open'&&receipt?.currency==='NGN'&&Number(receipt?.amount)===6000?'unpaid_checkout_succeeded':'checkout_unusable',http:detail.status};
       }catch{return{outcome:'transport_failure'};}
     };
-    const [image,pdfConversion,unpaidCheckout]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck()]);
-    return{image,pdf:pdfConversion,unpaidCheckout};
+    const handwriting=env.PROBE_HANDWRITING;
+    const handwrittenPixels=Uint8Array.from(atob(handwriting.pngBase64),c=>c.charCodeAt(0));
+    const jpeg=Uint8Array.from(atob(handwriting.jpegBase64),c=>c.charCodeAt(0));
+    // A raster-only PDF exercises paper scans, rather than extracting an existing text layer.
+    const scanParts=['%PDF-1.4\n'],scanOffsets=[0];let length=scanParts[0].length;
+    const scanObjects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>',`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${handwriting.width} ${handwriting.height}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`,null];
+    for(let i=0;i<3;i++){scanOffsets.push(length);const item=`${i+1} 0 obj\n${scanObjects[i]}\nendobj\n`;scanParts.push(item);length+=item.length;}
+    scanOffsets.push(length);const imageHeader=`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${handwriting.width} /Height ${handwriting.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`,imageFooter='\nendstream\nendobj\n';
+    scanParts.push(imageHeader,jpeg,imageFooter);length+=imageHeader.length+jpeg.length+imageFooter.length;
+    scanOffsets.push(length);const drawImage=`q ${handwriting.width} 0 0 ${handwriting.height} 0 0 cm /Im0 Do Q`,contents=`5 0 obj\n<< /Length ${drawImage.length} >>\nstream\n${drawImage}\nendstream\nendobj\n`;scanParts.push(contents);length+=contents.length;
+    scanParts.push('xref\n0 6\n0000000000 65535 f \n'+scanOffsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`);
+    const readScan=async()=>{try{const bytes=new Uint8Array(await new Blob(scanParts,{type:'application/pdf'}).arrayBuffer()),text=await readPrivateAIPdf(env,bytes,{timeoutMs:35000});return{outcome:typeof text==='string'&&/MAT\s*101/i.test(text)&&/0?8[:.]00/.test(text)&&/0?9[:.]00/.test(text)?'conversion_succeeded':'conversion_unusable'};}catch(error){return{outcome:'provider_rejected',...(typeof error?.reason==='string'&&/^AI_[A-Z_]+$/.test(error.reason)?{reason:error.reason}:{})};}};
+    const [image,pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck(),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+env.PROBE_TIMETABLE_PNG),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+handwriting.pngBase64),readScan()]);
+    return{image,pdf:pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper};
   };
-  const [standard,pro,huggingface,conversion,uploads]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck(),convert('probe.txt',new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})),extended()]);
-  return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs,conversion,uploads},{headers:{'Cache-Control':'no-store'}});
+  const [standard,pro,huggingface,conversion,uploads,banks]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck(),convert('probe.txt',new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})),extended(),bankSupport()]);
+  return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs,conversion,uploads,banks},{headers:{'Cache-Control':'no-store'}});
 }
 
 if(process.argv.includes('--self-test')) {
@@ -100,7 +137,7 @@ if(process.argv.includes('--self-test')) {
     if(!token||!/^[a-f0-9]{32}$/i.test(account??''))throw new Error('Deployment credentials unavailable');
     stage='binding metadata';
     const settings=await cf('/workers/scripts/platformp/settings');
-    const inherited=['HF_TOKEN','HF_CHAT_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
+    const inherited=['HF_TOKEN','HF_CHAT_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET','PAYSTACK_SECRET_KEY','KYC_ENCRYPTION_KEY','KYC_FINGERPRINT_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
     report(`Production BACHS API secret present: ${settings.bindings?.some(b=>b.name==='BACHS_API_KEY')===true}`);
     report(`Production BACHS webhook secret present: ${settings.bindings?.some(b=>b.name==='BACHS_WEBHOOK_SECRET')===true}`);
     report(`Production Workers AI binding present: ${settings.bindings?.some(b=>b.name==='AI'&&b.type==='ai')===true}`);
@@ -117,8 +154,13 @@ if(process.argv.includes('--self-test')) {
     if(typeof sessionToken!=='string')throw new Error('Missing preview session');
     const form=new FormData(),probeToken=randomBytes(32).toString('hex');
     const png=process.env.PROBE_VERIFY_UPLOADS==='true'?readFileSync(new URL('./fixtures/synthetic-timetable.png',import.meta.url)).toString('base64'):'';
-    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'}]}));
-    form.set('probe.mjs',new Blob([`export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)}})};`],{type:'application/javascript+module'}),'probe.mjs');
+    const handwriting=process.env.PROBE_VERIFY_UPLOADS==='true'?JSON.parse(readFileSync(new URL('./fixtures/handwritten-timetable.json',import.meta.url),'utf8')):null;
+    stage='document reader bundle';
+    const {build}=createRequire(new URL('../server/package.json',import.meta.url))('esbuild');
+    const reader=await build({stdin:{contents:"export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent'});
+    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
+    form.set('probe.mjs',new Blob([`import {readPrivateAIPdf} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)}},readPrivateAIPdf)};`],{type:'application/javascript+module'}),'probe.mjs');
+    form.set('document-reader.mjs',new Blob([reader.outputFiles[0].text],{type:'application/javascript+module'}),'document-reader.mjs');
     form.set('wrangler-session-config',JSON.stringify({workers_dev:true}));
     stage='preview upload';
     const preview=await cf('/workers/scripts/platformp/edge-preview',{method:'POST',body:form,headers:{'cf-preview-upload-config-token':sessionToken}});
@@ -128,21 +170,22 @@ if(process.argv.includes('--self-test')) {
     if(!r.ok)throw new Error(`HTTP ${r.status}`);
     const result=await r.json();if(result.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');
     const outcomes=new Set(['generation_succeeded','generation_unusable','provider_rejected','configuration_missing','transport_failure']);
-    if(process.env.PROBE_METADATA_ONLY!=='true')for(const name of ['standard','pro','huggingface']){
+    if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true')for(const name of ['standard','pro','huggingface']){
       const value=result[name];if(!outcomes.has(value?.outcome))throw new Error('Unexpected outcome');
       report(`${name}: ${value.outcome}${Number.isInteger(value.http)?` HTTP ${value.http}`:''}${/^\d{4}$/.test(value.code??'')?` code ${value.code}`:''}${['credits_or_payment','rate_limit','unclassified'].includes(value.hint)?` ${value.hint}`:''}`);
     }
     report(`BACHS configuration complete: ${result.bachs?.configured===true}; live key: ${result.bachs?.liveKey===true}`);
     report(`BACHS settings: HTTP ${Number.isInteger(result.bachs?.http)?result.bachs.http:'unavailable'}; bank transfer enabled: ${result.bachs?.bankTransferEnabled===true}; fee preference: ${['org_pays','customer_pays'].includes(result.bachs?.feePreference)?result.bachs.feePreference:'unknown'}; failure: ${['request_type','timeout','network'].includes(result.bachs?.failure)?result.bachs.failure:'none'}`);
+    if(result.banks)report(`Bank capability verification: ${JSON.stringify(result.banks)}`);
     if(process.env.PROBE_METADATA_ONLY==='true')report(`BACHS webhook targets: ${JSON.stringify(result.webhooks)}`);
-    else report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
-    if(process.env.PROBE_VERIFY_UPLOADS==='true')for(const name of ['image','pdf','unpaidCheckout']){
-      const outcome=result.uploads?.[name]?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable'];
-      report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}`);
-      if(outcome!==(name==='unpaidCheckout'?'unpaid_checkout_succeeded':'conversion_succeeded'))process.exitCode=1;
+    else if(process.env.PROBE_BANKS_ONLY!=='true')report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
+    if(process.env.PROBE_VERIFY_UPLOADS==='true'&&process.env.PROBE_BANKS_ONLY!=='true')for(const name of ['image','pdf','unpaidCheckout','vision','handwritingVision','scannedPaper']){
+      const item=result.uploads?.[name],outcome=item?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable','generation_succeeded','generation_unusable'];
+      report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}${/^\d{4}$/.test(item?.code??'')?` code ${item.code}`:''}`);
+      if(outcome!==(name==='unpaidCheckout'?'unpaid_checkout_succeeded':['vision','handwritingVision'].includes(name)?'generation_succeeded':'conversion_succeeded'))process.exitCode=1;
     }
-    if(process.env.PROBE_METADATA_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
-    report('No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');
+    if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
+    report(process.env.PROBE_BANKS_ONLY==='true'?'Bank lookup and capability check only. No transfers, payouts, credential export or application writes. Preview expires after three minutes.':'No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');
   }catch(error){report(`CHECK FAILED at ${stage}: ${/^HTTP [1-5][0-9]{2}$/.test(error?.message??'')?error.message:'raw error withheld'}`);process.exitCode=1;}
   finally{if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');}
 }

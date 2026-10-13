@@ -555,8 +555,6 @@ function AccountSubscription() {
       if (!alive.current) return;
       if (result.amountKobo !== amount)
         throw new Error("Your checkout total changed. Reopen checkout and try again.");
-      await load();
-      if (!alive.current) return;
       opening.current = true;
       await Linking.openURL(result.authorizationUrl);
     });

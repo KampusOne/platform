@@ -89,6 +89,8 @@ jobs:
         run: node server/scripts/verify-schema-proof.mjs current
       - name: Guard seller categories and verified BACHS entitlement migrations
         run: node server/scripts/verify-schema-proof.mjs screenFixes
+      - name: Guard approved bank-editing release and deferred payouts
+        run: node server/scripts/verify-schema-proof.mjs agentBanks && node server/scripts/verify-schema-proof.mjs campusLandmarks
       - name: Guard versioned cache activation
         run: |
           if grep -q '"VERSIONED_READ_CACHE_ENABLED": "true"' server/wrangler.jsonc; then

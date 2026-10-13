@@ -25,6 +25,7 @@ type Balance = {
 };
 type Earnings = {
   withdrawalsEnabled?: boolean;
+  withdrawalUnavailableReason?: string | null;
   withdrawalMinimums?: { agent_type: string; minimum_withdrawal_kobo: number }[];
   commissionPaymentsEnabled?: boolean;
   riderCommissionCheckout?: {
@@ -48,7 +49,7 @@ type Earnings = {
     requested_at: string;
     financial_version?: string | null;
     bank_net_kobo?: number;
-    returned_to_wallet?: boolean;
+    returned_to_wallet?: boolean;provider_failure_reason?:string;
   }[];
 };
 const money = (v: unknown) =>
@@ -60,6 +61,7 @@ type PayoutQuote = {
   amountKobo: number;
   walletDebitKobo: number;
   bankNetKobo: number;
+  payoutCommissionKobo: number;
   transferFeeAllowanceKobo: number;
   expectedTransferFeeKobo: number;
   expectedStatutoryDutyKobo: number;
@@ -82,6 +84,7 @@ function AccountEarnings() {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [acceptedFee, setAcceptedFee] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [commissionReference, setCommissionReference] = useState("");
   const repaymentRequest = useRef({ profileId: "", id: "" });
@@ -199,6 +202,7 @@ function AccountEarnings() {
         }),
       });
       setFee({ ...r.quote, requestId: Crypto.randomUUID() });
+      setAcceptedFee(false);
       setConfirm(true);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Fee quote unavailable", "error");
@@ -207,7 +211,7 @@ function AccountEarnings() {
     }
   }
   async function withdraw() {
-    if (!profile || !fee) return;
+    if (!profile || !fee || !acceptedFee || busy) return;
     setBusy(true);
     try {
       await api("/v1/agents/payouts", {
@@ -217,12 +221,14 @@ function AccountEarnings() {
           quoteId: fee.id,
           requestId: fee.requestId,
           amountKobo: fee.amountKobo,
+          expectedCommissionKobo: fee.payoutCommissionKobo,
+          expectedBankNetKobo: fee.bankNetKobo,
         }),
       });
       setConfirm(false);
       setAmount("");
       await load();
-      toast("Withdrawal requested", "success");
+      toast("Payout pending approval", "success");
     } catch (e) {
       toast(
         e instanceof Error ? e.message : "Could not request payout",
@@ -377,8 +383,7 @@ function AccountEarnings() {
         />
         {data && !data.withdrawalsEnabled && (
           <Text style={{ color: theme.textMuted, marginBottom: 12 }}>
-            Withdrawals are not available yet. Your recorded earnings remain
-            visible here.
+            {data.withdrawalUnavailableReason ?? 'Withdrawals are not available yet. Your earnings remain in your wallet.'}
           </Text>
         )}
         <Text
@@ -389,13 +394,16 @@ function AccountEarnings() {
         {confirm ? (
           <>
             <Text style={{ color: theme.text, marginVertical: 12 }}>
-              Wallet debit {money(fee?.walletDebitKobo)}. Transfer to {fee?.bankName} ·••{fee?.accountLast4}: {money(fee?.bankNetKobo)}.
-              {"\n"}Transfer fee allowance deducted: {money(fee?.transferFeeAllowanceKobo)}. {fee?.feeBearer === "PLATFORM" ? "KampusOne absorbs the transfer fee." : "Any unused transfer fee allowance returns to your wallet after verification."}
-              {"\n"}Expected statutory duty: {money(fee?.expectedStatutoryDutyKobo)}, absorbed by KampusOne and reconciled separately. Any receiving-bank deduction is unverified.
+              Withdrawal · {money(fee?.walletDebitKobo)}
+              {"\n"}Commission · {money(fee?.payoutCommissionKobo)}
+              {Number(fee?.transferFeeAllowanceKobo)>0 ? `\nTransfer fee · ${money(fee?.transferFeeAllowanceKobo)}` : ""}
+              {"\n"}Bank amount · {money(fee?.bankNetKobo)}
+              {"\n"}{fee?.bankName} ·••{fee?.accountLast4}
             </Text>
+            <Pressable accessibilityRole="checkbox" accessibilityState={{checked:acceptedFee}} onPress={()=>setAcceptedFee(v=>!v)} style={{paddingVertical:12}}><Text style={{color:theme.text}}>{acceptedFee?"☑":"☐"} I accept this deduction and bank amount.</Text></Pressable>
             <ToolButton
               label={`Confirm ${money(fee?.walletDebitKobo)} withdrawal`}
-              disabled={busy}
+              disabled={busy || !acceptedFee}
               onPress={() => void withdraw()}
             />
             <ToolButton
@@ -422,6 +430,7 @@ function AccountEarnings() {
       </View>
       {data?.payoutRequests.map((p) => (
         <View key={p.id}>
+          {p.provider_failure_reason?<Text style={{color:theme.error,marginVertical:8}}>{p.provider_failure_reason}</Text>:null}
           <ToolRow
             title={money(p.amount_kobo)}
             detail={

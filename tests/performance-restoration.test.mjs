@@ -69,8 +69,8 @@ test('timetable and exam imports expose real transfer progress rather than fake 
   assert.match(exam, /retryWithNewKey/);
 });
 
-test('logout navigation and legal approval notice are explicit', () => {
+test('logout navigation remains explicit and legal publication checks stay internal', () => {
   assert.match(read('mobile/app/account.tsx'), /router\.replace\("\/\(auth\)\/welcome"\)/);
-  assert.match(read('mobile/app/legal.tsx'), /Pending legal and operator verification/);
+  assert.doesNotMatch(read('mobile/app/legal.tsx'), /Draft prepared|Pending legal and operator verification/);
   assert.match(read('docs/legal/2026-10-12-publication-checklist.md'), /NOT APPROVED FOR PUBLICATION/);
 });

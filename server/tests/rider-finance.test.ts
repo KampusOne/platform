@@ -22,6 +22,9 @@ import { financePolicyRoutes } from "../src/routes/finance-policies";
 import { aiRoutes } from "../src/routes/ai";
 import { tutorCommerceRoutes } from "../src/routes/tutor-commerce";
 import { mediaRoutes } from "../src/routes/media";
+import {encryptBankDetails} from "../src/lib/bank-envelope";
+import {payoutAdminRoutes} from "../src/routes/payouts-admin";
+import {withdrawalCommissionTiers} from "../src/lib/payout-commission";
 import { adminRoutes } from "../src/routes/admin";
 import { AppError } from "../src/lib/errors";
 import { riderFinanceSummary } from "../src/lib/rider-finance";
@@ -79,6 +82,7 @@ const app = new Hono()
   .route("/ai", aiRoutes)
   .route("/materials", tutorCommerceRoutes)
   .route("/media", mediaRoutes)
+  .route("/v1/admin/operations/payouts",payoutAdminRoutes)
   .route("/v1/admin", adminRoutes)
   .route("/finance", financePolicyRoutes);
 app.onError((e, c) =>
@@ -284,6 +288,12 @@ beforeAll(async () => {
     "20261003124000_payout_fee_components.sql",
     "20261003125000_verified_refund_accounting.sql",
     "20261003126000_tutorial_pricing_context.sql",
+    "20261009100000_payment_idempotency_inbox.sql",
+    "20261013190000_agent_withdrawal_commission.sql",
+    "20261013200000_delivery_checkout_recovery.sql",
+    "20261013205000_bachs_bank_details.sql",
+    "20261013210000_bachs_agent_banks_and_payouts.sql",
+    "20261013213000_payout_reconciliation_schedule.sql",
   ])
     await pg.exec(
       readFileSync(
@@ -291,6 +301,10 @@ beforeAll(async () => {
         "utf8",
       ),
     );
+  // Reuse the production durable Bachs inbox DDL without replacing the
+  // independently tested collection accounting in this finance fixture.
+  const bachsCutover=readFileSync(new URL("../../database/neon/migrations/20261010140000_bachs_collection_cutover.sql",import.meta.url),"utf8");
+  await pg.exec(bachsCutover.slice(bachsCutover.indexOf("create table if not exists app_private.bachs_webhook_inbox"),bachsCutover.indexOf("create function app_private.bachs_collection_ready")));
   for (const uni of [campus, otherCampus])
     await pg.query(
       "insert into universities(id,name,slug,updated_at)values($1,'Synthetic campus '||$1::uuid::text,$1::uuid::text,now())",
@@ -1317,7 +1331,7 @@ describe("approved inclusive store checkout", () => {
         },
       ),
     );
-    expect(await balance(r, "RIDER_COMMISSION_RECEIVABLE")).toBe(3000);
+    expect(await balance(r, "RIDER_COMMISSION_RECEIVABLE")).toBe(0);
     expect(await balance(r)).toBe(0);
   });
   it("holds funds for expired orders and successful second payments for review without funding the seller twice", async () => {
@@ -2195,7 +2209,7 @@ async function payoutQuote(
 }
 async function payoutRequest(
   f: Awaited<ReturnType<typeof payoutFixture>>,
-  quote: { id: string; amountKobo: number },
+  quote: { id: string; amountKobo: number;payoutCommissionKobo?:number;bankNetKobo?:number },
   requestId = crypto.randomUUID(),
 ) {
   const input = {
@@ -2203,6 +2217,7 @@ async function payoutRequest(
     quoteId: quote.id,
     requestId,
     amountKobo: quote.amountKobo,
+    expectedCommissionKobo:quote.payoutCommissionKobo,expectedBankNetKobo:quote.bankNetKobo,
   };
   const saved = await json(
     await request("/agents/payouts", f.owner.user, "POST", input),
@@ -2815,4 +2830,164 @@ describe("verified agent withdrawals", () => {
       ),
     ).not.toContain(otp);
   });
+});
+
+describe("graduated withdrawal commission and one-action approval",()=>{
+  async function commissionFixture(type="VENDOR"){
+    const f=await payoutFixture(type);
+    const policy=crypto.randomUUID();
+    await pg.query("insert into app_private.payout_cost_policies(id,university_id,agent_type,version,fee_bearer,low_fee_kobo,middle_fee_kobo,high_fee_kobo,duty_threshold_kobo,duty_kobo,minimum_withdrawal_kobo,commission_tiers,source_url,approval_note,approved_by)values($1,$2,$3,$1::uuid::text,'PLATFORM',1000,2500,5000,1000000,5000,200000,$4::jsonb,'https://paystack.com/pricing','Reviewed graduated commission policy',$5)",[policy,campus,type,JSON.stringify(withdrawalCommissionTiers),buyer]);
+    await pg.query("update app_private.active_payout_cost_policies set policy_id=$1 where university_id=$2 and agent_type=$3",[policy,campus,type]);
+    return {...f,policy};
+  }
+  it.each(["VENDOR","TUTOR","RIDER"])("enforces the ₦2,000 minimum and explicit commission consent for %s",async type=>{
+    const f=await commissionFixture(type);
+    expect((await request('/agents/payout-quote',f.owner.user,'POST',{agentProfileId:f.owner.profile,amountKobo:199999})).status).toBe(409);
+    const q=await payoutQuote(f,200000);expect(q.payoutCommissionKobo).toBe(16000);expect(q.bankNetKobo).toBe(184000);expect(q.expectedTransferFeeKobo).toBe(1000);
+    const input={agentProfileId:f.owner.profile,quoteId:q.id,requestId:crypto.randomUUID(),amountKobo:q.amountKobo};
+    expect((await request('/agents/payouts',f.owner.user,'POST',input)).status).toBe(409);
+    expect((await request('/agents/payouts',f.owner.user,'POST',{...input,expectedCommissionKobo:1,expectedBankNetKobo:199999})).status).toBe(409);
+    const p=await payoutRequest(f,q);
+    expect((await pg.query("select title from in_app_notifications where dedupe_key=$1",['payout:'+p.saved.id+':REQUESTED'])).rows[0]?.title).toBe('Payout pending');
+    await request('/agents/payouts',f.owner.user,'POST',p.input);
+    expect((await pg.query("select id from in_app_notifications where dedupe_key=$1",['payout:'+p.saved.id+':REQUESTED'])).rows).toHaveLength(1);
+  });
+  it("books commission once after exact verified success and restores it on reversal",async()=>{
+    const f=await commissionFixture(),q=await payoutQuote(f,700000),p=await payoutRequest(f,q);
+    expect(q.payoutCommissionKobo).toBe(56000);expect(q.bankNetKobo).toBe(644000);
+    await pg.query("select app_private.review_ledger_payout($1,$2,$3,'APPROVED','Confirmed exact withdrawal')",[p.saved.id,campus,buyer]);
+    await pg.query("select app_private.prepare_ledger_transfer($1,$2)",[p.saved.id,campus]);
+    const proof=(status:string,amount=q.bankNetKobo)=>pg.query<{state:string}>("select app_private.record_ledger_transfer($1,$2,2500,$3,'live',$4,'TRF_commission',now()) as state",[p.saved.provider_reference,amount,f.recipient,status]);
+    expect((await proof('success',700000)).rows[0]?.state).toBe('REQUIRES_REVIEW');
+    expect((await pg.query("select id from ledger_transactions where idempotency_key=$1",['payout-paid:'+p.saved.provider_reference])).rows).toHaveLength(0);
+    expect((await proof('success')).rows[0]?.state).toBe('PAID');await proof('success');
+    expect((await pg.query("select sum(l.amount_kobo)::bigint as total from ledger_lines l join ledger_accounts a on a.id=l.account_id join ledger_transactions t on t.id=l.transaction_id where t.idempotency_key=$1 and a.account_code='PLATFORM_COMMISSION'",['payout-paid:'+p.saved.provider_reference])).rows[0]?.total).toBe(56000);
+    expect(await balance(f.owner,'VENDOR_AVAILABLE')).toBe(300000);
+    await proof('reversed');await proof('reversed');
+    expect(await balance(f.owner,'VENDOR_AVAILABLE')).toBe(1000000);
+    expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(0);
+  });
+  it("returns the full reserve on proven failure and permits a new request",async()=>{
+    const f=await commissionFixture(),q=await payoutQuote(f),p=await payoutRequest(f,q);
+    await pg.query("select app_private.review_ledger_payout($1,$2,$3,'APPROVED','Confirmed exact withdrawal')",[p.saved.id,campus,buyer]);
+    await pg.query("select app_private.prepare_ledger_transfer($1,$2)",[p.saved.id,campus]);
+    await pg.query("select app_private.record_ledger_transfer($1,$2,0,$3,'live','failed','TRF_failed',now())",[p.saved.provider_reference,q.bankNetKobo,f.recipient]);
+    expect(await balance(f.owner,'VENDOR_AVAILABLE')).toBe(1000000);
+    expect((await payoutRequest(f,await payoutQuote(f,200000))).saved.id).toBeTruthy();
+  });
+  it("approves and sends only the sealed bank amount once, with no mandatory note",async()=>{
+    const f=await commissionFixture(),q=await payoutQuote(f),p=await payoutRequest(f,q);
+    const fetcher=vi.fn(async(url:string,init?:RequestInit)=>{
+      if(url.endsWith('/transfer')){const d=JSON.parse(String(init?.body));expect(d.amount).toBe(q.bankNetKobo);expect(d.recipient).toBe(f.recipient);return Response.json({status:true,data:{reference:d.reference,amount:d.amount,currency:'NGN',domain:'live',status:'pending',transfer_code:'TRF_approve'}});}
+      return Response.json({status:true,data:{reference:p.saved.provider_reference,amount:q.bankNetKobo,currency:'NGN',domain:'live',status:'pending',transfer_code:'TRF_approve',fee_charged:0,recipient:{recipient_code:f.recipient},updatedAt:new Date().toISOString()}});
+    });vi.stubGlobal('fetch',fetcher);
+    const path='/v1/admin/operations/payouts/'+p.saved.id+'/approve';
+    expect((await request(path,buyer,'POST',{})).status).toBe(400);
+    expect((await request(path,f.owner.user,'POST',{confirm:true})).status).toBe(403);
+    expect((await json(await request(path,buyer,'POST',{confirm:true}))).status).toBe('PROCESSING');
+    expect((await json(await request(path,buyer,'POST',{confirm:true}))).status).toBe('PROCESSING');
+    expect(fetcher.mock.calls.filter(([url])=>url.endsWith('/transfer'))).toHaveLength(1);
+    const details=await json(await request('/v1/admin/operations/payouts/'+p.saved.id+'/details',buyer));expect(details.profile.user_id).toBe(f.owner.user);expect(Number(details.balances.available_kobo)).toBe(300000);
+    expect((await request('/v1/admin/operations/payouts/'+p.saved.id+'/details',f.owner.user)).status).toBe(403);
+  });
+});
+
+describe('Bachs bank payout approval and verified recovery',()=>{
+ const platformId='acct_platformfixture',accountId='acct_agentfixture',destinationId='pd_bankfixture';
+ let providerState='pending',wrongDestination=false,loseAcknowledgement=false,funded=0,bankPosts=0,actualBankPayouts=0,recoveryAmount=0;
+ function bachsMock(){
+  vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
+   const path=new URL(url).pathname,body=init?.body?JSON.parse(String(init.body)):null;
+   if(path==='/v1/accounts/me')return Response.json({id:platformId,enabled_capabilities:['connect','payouts']});
+   if(path==='/v1/accounts/'+accountId)return Response.json({id:accountId,parent_organization_id:platformId,capabilities:{payouts:{status:'active'},transfers:{status:'active'}}});
+   if(path==='/v1/payouts/destinations/'+destinationId)return Response.json({id:destinationId,is_usable:true,currency:'NGN',account_name:'Synthetic verified owner',bank_code:'058',account_number:wrongDestination?'1111111111':'0123456789'});
+   if(path==='/v1/payouts/quotes')return Response.json({from_currency:'NGN',to_currency:'NGN',from_amount:body.amount,to_amount:(Number(body.amount)-100).toFixed(2),exchange_rate:'1.00'});
+   if(path==='/v1/transfers'&&body.destination===accountId){funded=Number(body.amount)*100;return Response.json({id:'tr_fundingfixture',source:platformId,destination:accountId,amount:body.amount,currency:'NGN',status:'paid',transfer_group:body.transfer_group});}
+   if(path==='/v1/transfers/tr_fundingfixture')return Response.json({id:'tr_fundingfixture',source:platformId,destination:accountId,amount:(funded/100).toFixed(2),currency:'NGN',status:'paid',transfer_group:bachsReference});
+   if(path==='/v1/payouts'&&body){bankPosts++;if(actualBankPayouts===0)actualBankPayouts++;if(loseAcknowledgement){loseAcknowledgement=false;throw Error('Lost provider acknowledgement');}return Response.json(payoutProof(body.reference));}
+   if(path==='/v1/payouts/pay_bankfixture')return Response.json(payoutProof(bachsReference));
+   if(path==='/v1/balances')return Response.json({account_id:accountId,balances:[{currency:'NGN',available_balance:((providerState==='completed'?funded-654000:funded)/100).toFixed(2)}]});
+   if(path==='/v1/transfers'&&body.destination==='self'){recoveryAmount=Number(body.amount)*100;return Response.json({id:'tr_recoveryfixture',source:accountId,destination:platformId,amount:body.amount,currency:'NGN',status:'paid',transfer_group:body.transfer_group});}
+   if(path==='/v1/transfers/tr_recoveryfixture')return Response.json({id:'tr_recoveryfixture',source:accountId,destination:platformId,amount:(recoveryAmount/100).toFixed(2),currency:'NGN',status:'paid',transfer_group:bachsReference});
+   throw Error('Unexpected Bachs test path: '+path);
+  }));
+ }
+ let bachsReference='';
+ function payoutProof(reference:string){return {id:'pay_bankfixture',status:providerState,amount:'6440.00',fee:'100.00',total_debited:'6540.00',currency:'NGN',source_currency:'NGN',destination:destinationId,reference,completed_at:providerState==='completed'?new Date().toISOString():null};}
+ async function fixture(){
+  providerState='pending';wrongDestination=false;loseAcknowledgement=false;funded=0;bankPosts=0;actualBankPayouts=0;recoveryAmount=0;bachsMock();
+  const f=await payoutFixture(),setup=crypto.randomUUID(),policy=crypto.randomUUID();
+  env.BACHS_PRICED_CHECKOUT_ENABLED='true';env.BACHS_AGENT_PAYOUTS_ENABLED='true';env.BACHS_API_KEY='sk_live_synthetic_fixture';env.ENVIRONMENT='production';env.KYC_ENCRYPTION_KEY='ab'.repeat(32);
+  const envelope=await encryptBankDetails(env,{bankCode:'058',accountNumber:'0123456789',accountName:'Synthetic verified owner',contactEmail:'synthetic@example.invalid'},f.owner.user,campus,setup);
+  await pg.query("update app_private.payout_account_setups set status='SUPERSEDED' where id=$1",[f.setup]);
+  await pg.query("insert into app_private.payout_account_setups(id,user_id,agent_profile_id,application_id,institution_id,request_hash,status,bank_code,bank_name,account_name,account_last4,recipient_code,provider_mode,reviewed_by,reviewed_at,provider,connected_account_id,bank_details_envelope)values($1,$2,$3,$4,$5,'synthetic','APPROVED','058','Synthetic Bank','Synthetic verified owner','6789',$6,'live',$7,now(),'BACHS',$8,$9::jsonb)",[setup,f.owner.user,f.owner.profile,f.application,campus,destinationId,buyer,accountId,JSON.stringify(envelope)]);
+  await pg.query("update agent_applications set bank_provider='BACHS',bank_recipient_code=$2 where id=$1",[f.application,destinationId]);
+  await pg.query("insert into app_private.payout_cost_policies(id,university_id,agent_type,version,fee_bearer,low_fee_kobo,middle_fee_kobo,high_fee_kobo,duty_threshold_kobo,duty_kobo,minimum_withdrawal_kobo,commission_tiers,provider,source_url,approval_note,approved_by)values($1,$2,'VENDOR',$1::uuid::text,'PLATFORM',0,0,0,1000000,0,200000,$3::jsonb,'BACHS','https://docs.bachs.io/connect/payouts','Reviewed withdrawal commission; Bachs provider costs absorbed',$4)",[policy,campus,JSON.stringify(withdrawalCommissionTiers),buyer]);
+  await pg.query("update app_private.active_payout_cost_policies set policy_id=$1 where university_id=$2 and agent_type='VENDOR'",[policy,campus]);
+  const q=await payoutQuote(f),p=await payoutRequest(f,q);bachsReference=p.saved.provider_reference;
+  return {f,q,p,path:'/v1/admin/operations/payouts/'+p.saved.id};
+ }
+ afterEach(()=>{env.BACHS_PRICED_CHECKOUT_ENABLED=undefined;env.BACHS_AGENT_PAYOUTS_ENABLED=undefined;env.BACHS_API_KEY=undefined;env.ENVIRONMENT='local';env.KYC_ENCRYPTION_KEY=undefined;});
+ async function payoutEvent(eventId:string,reference:string,type='payout.paid'){
+  env.BACHS_WEBHOOK_SECRET='synthetic-payout-webhook-secret';
+  const raw=JSON.stringify({id:eventId,type,data:{id:'pay_bankfixture',reference,amount:'1.00',status:'completed'}}),timestamp=String(Math.floor(Date.now()/1000));
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.BACHS_WEBHOOK_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const digest=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(timestamp+'.'+raw));
+  const signature=Array.from(new Uint8Array(digest),v=>v.toString(16).padStart(2,'0')).join('');
+  return app.request('/payments/bachs/webhook',{method:'POST',headers:{'Content-Type':'application/json','X-Bachs-Signature-V2':`t=${timestamp},v1=${signature}`},body:raw},env);
+ }
+ it('funds and pays the exact bank amount once; a pending provider receipt never books commission',async()=>{
+  const {f,q,p,path}=await fixture();expect(q.bankNetKobo).toBe(644000);expect(q.provider).toBe('BACHS');
+  expect((await json(await request(path+'/approve',buyer,'POST',{confirm:true}))).status).toBe('PROCESSING');
+  expect((await json(await request(path+'/approve',buyer,'POST',{confirm:true}))).status).toBe('PROCESSING');
+  expect(funded).toBe(700000);expect(bankPosts).toBe(1);expect(actualBankPayouts).toBe(1);expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(700000);
+  expect((await pg.query("select id from ledger_transactions where idempotency_key=$1",['payout-paid:'+p.saved.provider_reference])).rows).toHaveLength(0);
+  providerState='completed';await json(await request(path+'/check',buyer,'POST',{}));await json(await request(path+'/check',buyer,'POST',{}));
+  expect((await pg.query("select status from payout_requests where id=$1",[p.saved.id])).rows[0]?.status).toBe('PAID');
+  expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(0);expect(await balance(f.owner,'VENDOR_AVAILABLE')).toBe(300000);
+  const entries=(await pg.query("select a.account_code,l.direction,l.amount_kobo from ledger_lines l join ledger_accounts a on a.id=l.account_id join ledger_transactions t on t.id=l.transaction_id where t.idempotency_key=$1",['payout-paid:'+p.saved.provider_reference])).rows;
+  expect(entries).toContainEqual(expect.objectContaining({account_code:'PLATFORM_COMMISSION',direction:'CREDIT',amount_kobo:56000}));
+  expect((await pg.query("select id from ledger_transactions where idempotency_key=$1",['bachs-payout-fee:'+p.saved.provider_reference])).rows).toHaveLength(1);
+  expect((await pg.query("select recovery_amount_kobo,recovery_journal_id from app_private.bachs_payout_bridges where payout_id=$1",[p.saved.id])).rows[0]).toMatchObject({recovery_amount_kobo:46000,recovery_journal_id:expect.any(String)});
+  expect((await pg.query("select sum(case when l.direction='DEBIT' then l.amount_kobo else -l.amount_kobo end)::bigint as net from ledger_lines l join ledger_accounts a on a.id=l.account_id join ledger_transactions t on t.id=l.transaction_id where a.account_code='BACHS_PAYOUT_CLEARING' and t.reference_type='AGENT_PAYOUT' and t.reference_id=$1",[p.saved.id])).rows[0]?.net).toBe(0);
+ });
+ it('keeps a lost acknowledgement on the same idempotency key and restores all funds after verified bank failure',async()=>{
+  const {f,p,path}=await fixture();loseAcknowledgement=true;
+  expect((await request(path+'/approve',buyer,'POST',{confirm:true})).status).toBe(503);
+  expect(actualBankPayouts).toBe(1);expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(700000);
+  await json(await request(path+'/approve',buyer,'POST',{confirm:true}));expect(actualBankPayouts).toBe(1);expect(bankPosts).toBe(2);
+  providerState='failed';await json(await request(path+'/check',buyer,'POST',{}));await json(await request(path+'/check',buyer,'POST',{}));
+  expect(await balance(f.owner,'VENDOR_AVAILABLE')).toBe(1000000);expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(0);
+  expect((await pg.query("select recovery_journal_id from app_private.bachs_payout_bridges where payout_id=$1",[p.saved.id])).rows[0]?.recovery_journal_id).toBeTruthy();
+  expect((await pg.query("select id from ledger_transactions where idempotency_key=$1",['payout-paid:'+p.saved.provider_reference])).rows).toHaveLength(0);
+ });
+ it('rejects a changed bank destination before funding or payout creation',async()=>{
+  const {f,path}=await fixture();wrongDestination=true;
+  expect((await request(path+'/approve',buyer,'POST',{confirm:true})).status).toBe(409);expect(bankPosts).toBe(0);expect(funded).toBe(0);
+  expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(700000);
+ });
+ it('keeps new agent transfers paused even if Connect is active until separately enabled',async()=>{
+  const {f,path}=await fixture();env.BACHS_AGENT_PAYOUTS_ENABLED='false';
+  const response=await request(path+'/approve',buyer,'POST',{confirm:true});
+  expect(response.status).toBe(503);expect(await response.json()).toMatchObject({error:expect.stringContaining('awaiting')});
+  expect(bankPosts).toBe(0);expect(funded).toBe(0);expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(700000);
+ });
+ it('uses signed payout events only to trigger a fresh provider check and deduplicates final receipts',async()=>{
+  const {f,p,path}=await fixture();
+  await json(await request(path+'/approve',buyer,'POST',{confirm:true}));
+  expect((await app.request('/payments/bachs/webhook',{method:'POST',body:'{}'},env)).status).toBe(401);
+  expect((await payoutEvent('evt_payout_fixture_success',p.saved.provider_reference)).status).toBe(503);
+  expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(700000);
+  providerState='completed';
+  expect((await payoutEvent('evt_payout_fixture_success',p.saved.provider_reference)).status).toBe(200);
+  expect((await payoutEvent('evt_payout_fixture_success',p.saved.provider_reference)).status).toBe(200);
+  expect((await pg.query("select count(*)::int as count from ledger_transactions where idempotency_key=$1",['payout-paid:'+p.saved.provider_reference])).rows[0]?.count).toBe(1);
+  expect(await balance(f.owner,'VENDOR_PAYOUT_RESERVED')).toBe(0);
+ });
+ it('reports verified bank failure automatically and restores the full withdrawal without commission',async()=>{
+  const {f,p,path}=await fixture();await json(await request(path+'/approve',buyer,'POST',{confirm:true}));providerState='failed';
+  expect((await payoutEvent('evt_payout_fixture_failed',p.saved.provider_reference,'payout.failed')).status).toBe(200);
+  expect(await balance(f.owner,'VENDOR_AVAILABLE')).toBe(1000000);
+  expect((await pg.query("select status from payout_requests where id=$1",[p.saved.id])).rows[0]?.status).toBe('FAILED');
+ });
 });

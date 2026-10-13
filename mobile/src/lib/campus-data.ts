@@ -11,7 +11,7 @@ export type CampusPlace = {
   search_aliases?: readonly string[] | null;
 };
 
-// Generated from database/imports/uniben-map2-2026-10-06.json plus 2026-10-07, 2026-10-09 and 2026-10-13 sourced corrections.
+// Generated from the reviewed campus directory, reference POIs and owner corrections through 2026-10-13.
 export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
   [
     "71329ef0-fcc7-5931-96f9-bf100342a72e",
@@ -99,7 +99,7 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "5.611847",
     [
       "All Saints Chapel UNIBEN",
-      "All Saints\u2019 Chapel University of Benin"
+      "All Saints’ Chapel University of Benin"
     ],
     null
   ],
@@ -252,7 +252,7 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "6.39565",
     "5.62075",
     [
-      "CERHI Caf\u00e9",
+      "CERHI Café",
       "CERHI"
     ],
     null
@@ -277,7 +277,7 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "6.398135",
     "5.610638",
     [
-      "Children\u2019s Swimming Pool",
+      "Children’s Swimming Pool",
       "Children Swimming Pool"
     ],
     null
@@ -540,7 +540,7 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "6.399764",
     "5.609461",
     [
-      "Esthy Cakes N\u2019More",
+      "Esthy Cakes N’More",
       "Esthy Cakes"
     ],
     null
@@ -549,11 +549,12 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "2be8a76a-ef9f-5a69-a3cc-3abbd5803bae",
     "Exams and Records",
     "SERVICE",
-    "Examinations and records office area.",
-    "6.399",
-    "5.6121",
+    "Examinations and records office area in the owner-marked building cluster.",
+    "6.398015",
+    "5.61408",
     [
       "Exams & Records",
+      "Examinations and Records",
       "Records Office"
     ],
     null
@@ -815,7 +816,7 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "6.39646",
     "5.611227",
     [
-      "Foursquare Students\u2019 Fellowship",
+      "Foursquare Students’ Fellowship",
       "Foursquare Students Fellowship"
     ],
     null
@@ -853,21 +854,6 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "5.62114",
     [
       "Gracevine Chapel UNIBEN"
-    ],
-    null
-  ],
-  [
-    "c8a0887f-0b17-5856-b1aa-e3d1aefffcdb",
-    "GST building",
-    "ACADEMIC",
-    "General Studies building in the research and Education-field area, west of Uniben Road. Location identified from the supplied campus reference; confirm the final entrance on campus.",
-    "6.40387",
-    "5.61961",
-    [
-      "GST",
-      "GST Building",
-      "General Studies",
-      "General Studies building"
     ],
     null
   ],
@@ -1343,12 +1329,16 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
   ],
   [
     "2436a456-902d-57fb-8310-cf9b8f7d5946",
-    "Main Bowl",
+    "School Field (Football Field)",
     "SPORT",
-    "Main sports bowl within the university sports complex.",
-    "6.3992",
-    "5.61295",
+    "School football field within the UNIBEN sports complex.",
+    "6.398387",
+    "5.61207",
     [
+      "School Field",
+      "Football Field",
+      "UNIBEN Football Field",
+      "Main Bowl",
       "UNIBEN Main Bowl",
       "Main Stadium Bowl"
     ],
@@ -1522,7 +1512,7 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "6.393121",
     "5.615766",
     [
-      "Nurses\u2019 Hostel Complex UBTH",
+      "Nurses’ Hostel Complex UBTH",
       "Nurses Hostel",
       "Nurses' Hostel Complex University of Benin Teaching Hospital"
     ],
@@ -1686,20 +1676,6 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "2026-10-01T14:05:24.968391+00:00"
   ],
   [
-    "da274dde-3a1e-5fe4-ad0d-ff9b30c66439",
-    "Promise Land Restaurant",
-    "FOOD",
-    "Restaurant landmark in the UNIBEN bank/farm axis.",
-    "6.403188",
-    "5.610078",
-    [
-      "Promise_land Restaurant",
-      "Promise land Restaurant",
-      "Promise Land UNIBEN"
-    ],
-    null
-  ],
-  [
     "c76628f7-4998-5c9c-a878-f856f7ed8c26",
     "Riri's Haven",
     "SERVICE",
@@ -1707,7 +1683,7 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "6.400284",
     "5.609063",
     [
-      "Riri\u2019s Haven"
+      "Riri’s Haven"
     ],
     null
   ],
@@ -1815,20 +1791,6 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     null
   ],
   [
-    "9dd57650-a5cc-5774-b7cc-a8d985bba7a6",
-    "Shopping Complex UNIBEN",
-    "SERVICE",
-    "Campus shopping complex behind the Fidelity Bank area.",
-    "6.402388",
-    "5.610422",
-    [
-      "UNIBEN Shopping Complex",
-      "Uniben shopping complex",
-      "Shopping Complex"
-    ],
-    null
-  ],
-  [
     "6eb7ff0e-2a61-558d-b5b4-4915dfd392fa",
     "Shopping Zone",
     "SERVICE",
@@ -1848,7 +1810,7 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "6.401617",
     "5.6101",
     [
-      "Spago\u2019clock",
+      "Spago’clock",
       "Spago clock"
     ],
     null
@@ -1876,7 +1838,7 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "6.401377",
     "5.611222",
     [
-      "St. Albert\u2019s Lodge UNIBEN",
+      "St. Albert’s Lodge UNIBEN",
       "St Albert Lodge"
     ],
     null
@@ -2128,20 +2090,6 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     null
   ],
   [
-    "cf0a2dea-8b98-5113-806a-8a188c816cdf",
-    "UNIBEN Farm Project",
-    "ACADEMIC",
-    "University farm project landmark on Ugbowo Campus.",
-    "6.403063",
-    "5.610922",
-    [
-      "Uniben Farm Project",
-      "UNIBEN Farm project",
-      "Farm Project"
-    ],
-    null
-  ],
-  [
     "df1a80c7-3041-5f6b-96ae-945155927624",
     "UNIBEN Golf Course",
     "SPORT",
@@ -2215,11 +2163,12 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "65f3124d-3690-50a6-a01e-1a7afe90eec5",
     "UNIBEN Sports Complex",
     "SPORT",
-    "University sports complex.",
-    "6.3992",
-    "5.61295",
+    "University sports complex at the school football field.",
+    "6.398037",
+    "5.612018",
     [
       "Sports Complex",
+      "School Sports Complex",
       "Stadium"
     ],
     null
@@ -2337,7 +2286,7 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "6.394562",
     "5.61799",
     [
-      "yotacakes\u2019n\u2019more",
+      "yotacakes’n’more",
       "yotacakes'n'more"
     ],
     null
@@ -2377,6 +2326,63 @@ export const UNIBEN_UGBOWO_FALLBACK: CampusPlace[] = ([
     "5.608965",
     [
       "Zteller Technologies"
+    ],
+    null
+  ],
+  [
+    "da274dde-3a1e-5fe4-ad0d-ff9b30c66439",
+    "Promise Land Restaurant",
+    "FOOD",
+    "Restaurant landmark in the UNIBEN bank/farm axis.",
+    "6.403188",
+    "5.610078",
+    [
+      "Promise_land Restaurant",
+      "Promise land Restaurant",
+      "Promise Land UNIBEN"
+    ],
+    null
+  ],
+  [
+    "cf0a2dea-8b98-5113-806a-8a188c816cdf",
+    "UNIBEN Farm Project",
+    "ACADEMIC",
+    "University farm project landmark on Ugbowo Campus.",
+    "6.403063",
+    "5.610922",
+    [
+      "Uniben Farm Project",
+      "UNIBEN Farm project",
+      "Farm Project"
+    ],
+    null
+  ],
+  [
+    "9dd57650-a5cc-5774-b7cc-a8d985bba7a6",
+    "Shopping Complex UNIBEN",
+    "SERVICE",
+    "Campus shopping complex behind the Fidelity Bank area.",
+    "6.402388",
+    "5.610422",
+    [
+      "UNIBEN Shopping Complex",
+      "Uniben shopping complex",
+      "Shopping Complex"
+    ],
+    null
+  ],
+  [
+    "c8a0887f-0b17-5856-b1aa-e3d1aefffcdb",
+    "GST building",
+    "ACADEMIC",
+    "General Studies building in the research and Education-field area, west of Uniben Road. Location identified from the supplied campus reference; confirm the final entrance on campus.",
+    "6.40387",
+    "5.61961",
+    [
+      "GST",
+      "GST Building",
+      "General Studies",
+      "General Studies building"
     ],
     null
   ]

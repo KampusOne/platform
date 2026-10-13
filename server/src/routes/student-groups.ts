@@ -123,16 +123,21 @@ studentGroupRoutes.delete('/:id/posts/:postId',async c=>{
  await recordAudit(c.env,{actorUserId:u.id,universityId:u.universityId,action:'community.post.deleted',targetType:'student_group_post',targetId:postId,requestId:c.get('requestId'),metadata:{groupId:group.id,ownPost:deleted.author_user_id===u.id}});
  return c.json({deleted:true});
 });
+studentGroupRoutes.get('/:id/likes',async c=>{
+ const {u,group}=await access(c,true),ids=z.array(z.string().uuid()).min(1).max(50).safeParse((c.req.query('ids')??'').split(','));
+ if(!ids.success)throw new AppError(400,'BAD_REQUEST','Choose valid community posts.');
+ const result=await database(c.env).execute(sql`select p.id,exists(select 1 from public.student_group_post_likes l where l.post_id=p.id and l.user_id=${u.id}::uuid) liked,(select count(*)::int from public.student_group_post_likes l where l.post_id=p.id) like_count from public.student_group_posts p where p.id=any(${'{'+ids.data.join(',')+'}'}::uuid[]) and p.group_id=${group.id}::uuid and p.institution_id=${u.universityId}::uuid`);
+ return c.json({likes:result.rows});
+});
 studentGroupRoutes.put('/:id/posts/:postId/like',async c=>{
  const {u,group}=await access(c,true),postId=id(c.req.param('postId'));
- const result=await database(c.env).execute(sql`insert into public.student_group_post_likes(post_id,group_id,institution_id,user_id) select id,group_id,institution_id,${u.id}::uuid from public.student_group_posts where id=${postId}::uuid and group_id=${group.id}::uuid and institution_id=${u.universityId}::uuid on conflict(post_id,user_id) do nothing returning post_id`);
- if(!firstRow(result)){const exists=firstRow(await database(c.env).execute(sql`select id from public.student_group_posts where id=${postId}::uuid and group_id=${group.id}::uuid and institution_id=${u.universityId}::uuid`));if(!exists)throw new AppError(404,'NOT_FOUND','Post not found.');}
- return c.json({liked:true});
+ const result=firstRow(await database(c.env).execute(sql`with target as(select id,group_id,institution_id from public.student_group_posts where id=${postId}::uuid and group_id=${group.id}::uuid and institution_id=${u.universityId}::uuid),added as(insert into public.student_group_post_likes(post_id,group_id,institution_id,user_id) select id,group_id,institution_id,${u.id}::uuid from target on conflict(post_id,user_id) do nothing returning post_id) select target.id,true liked,((select count(*) from public.student_group_post_likes l where l.post_id=target.id)+(select count(*) from added))::int like_count from target`));
+ if(!result)throw new AppError(404,'NOT_FOUND','Post not found.');return c.json(result);
 });
 studentGroupRoutes.delete('/:id/posts/:postId/like',async c=>{
  const {u,group}=await access(c,true),postId=id(c.req.param('postId'));
- await database(c.env).execute(sql`delete from public.student_group_post_likes where post_id=${postId}::uuid and group_id=${group.id}::uuid and institution_id=${u.universityId}::uuid and user_id=${u.id}::uuid`);
- return c.json({liked:false});
+ const result=firstRow(await database(c.env).execute(sql`with target as(select id from public.student_group_posts where id=${postId}::uuid and group_id=${group.id}::uuid and institution_id=${u.universityId}::uuid),removed as(delete from public.student_group_post_likes where post_id=${postId}::uuid and group_id=${group.id}::uuid and institution_id=${u.universityId}::uuid and user_id=${u.id}::uuid returning post_id) select target.id,false liked,greatest(0,(select count(*) from public.student_group_post_likes l where l.post_id=target.id)-(select count(*) from removed))::int like_count from target`));
+ if(!result)throw new AppError(404,'NOT_FOUND','Post not found.');return c.json(result);
 });
 studentGroupRoutes.get('/:id/posts/:postId/comments',async c=>{
  const {u,group}=await access(c,true);

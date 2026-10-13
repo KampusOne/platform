@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import {withdrawalCommission,withdrawalCommissionTiers} from "./payout-commission";
 import { payoutCostQuote, type PayoutCostPolicy } from "./payout-costs";
 
 const policy: PayoutCostPolicy = { feeBearer: "PLATFORM", lowFeeKobo: 1000, middleFeeKobo: 2500, highFeeKobo: 5000, dutyThresholdKobo: 1_000_000, dutyKobo: 5000, minimumWithdrawalKobo: 1 };
@@ -31,4 +32,10 @@ describe("separate NGN payout costs", () => {
     expect(() => payoutCostQuote(499_999, { ...policy, minimumWithdrawalKobo: 500_000 })).toThrow("minimum withdrawal");
     expect(payoutCostQuote(100_000, { ...policy, minimumWithdrawalKobo: 100_000 }).expectedTransferFeeKobo).toBe(1000);
   });
+});
+
+describe('graduated commission bands',()=>{
+ it.each([[200000,16000],[1000000,80000],[1000001,80000],[5000000,320000],[6000000,370000]])('computes %i kobo without a fee cliff', (amount,fee)=>{expect(withdrawalCommission(amount,withdrawalCommissionTiers)).toBe(fee);});
+ it('keeps the bank net increasing across boundaries and splitting no cheaper',()=>{for(const n of [999999,1000000,1000001,4999999,5000000,5000001]){const a=payoutCostQuote(n,{...policy,commissionTiers:withdrawalCommissionTiers});const b=payoutCostQuote(n+1,{...policy,commissionTiers:withdrawalCommissionTiers});expect(b.bankNetKobo).toBeGreaterThanOrEqual(a.bankNetKobo);}expect(withdrawalCommission(2000000,withdrawalCommissionTiers)).toBeLessThanOrEqual(2*withdrawalCommission(1000000,withdrawalCommissionTiers));});
+ it('rejects increasing rates and incomplete policies',()=>{expect(()=>withdrawalCommission(200000,[{upToKobo:null,basisPoints:801}])).toThrow();expect(()=>withdrawalCommission(200000,[{upToKobo:1000000,basisPoints:500},{upToKobo:null,basisPoints:800}])).toThrow();});
 });

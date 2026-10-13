@@ -33,3 +33,22 @@ export function pdfFixture(pages: (string | null)[]): Uint8Array {
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return new TextEncoder().encode(pdf);
 }
+
+/** Real raster PDF pages with an embedded JPEG and optional native-text pages. */
+export function scannedPdfFixture(jpeg:Uint8Array,width:number,height:number,pages:(string|null)[]=[null]):Uint8Array{
+  const encoder=new TextEncoder(),parts:Uint8Array[]=[encoder.encode('%PDF-1.4\n')],offsets=[0];let size=parts[0]!.length;
+  const append=(part:string|Uint8Array)=>{const bytes=typeof part==='string'?encoder.encode(part):part;parts.push(bytes);size+=bytes.length;};
+  const object=(id:number,body:string)=>{offsets.push(size);append(`${id} 0 obj\n${body}\nendobj\n`);};
+  object(1,'<< /Type /Catalog /Pages 2 0 R >>');
+  object(2,`<< /Type /Pages /Count ${pages.length} /Kids [${pages.map((_,i)=>`${5+i*2} 0 R`).join(' ')}] >>`);
+  offsets.push(size);append(`3 0 obj\n<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`);append(jpeg);append('\nendstream\nendobj\n');
+  object(4,'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  pages.forEach((text,index)=>{
+    const id=5+index*2;
+    object(id,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /Font << /F1 4 0 R >> /XObject << /Im0 3 0 R >> >> /Contents ${id+1} 0 R >>`);
+    const stream=text===null?`q ${width} 0 0 ${height} 0 0 cm /Im0 Do Q`:`BT /F1 20 Tf 20 200 Td (${text.replace(/[\\()]/g,'\\$&')}) Tj ET`;
+    object(id+1,`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  });
+  const xref=size;append(`xref\n0 ${offsets.length}\n0000000000 65535 f \n`+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  const result=new Uint8Array(size);let offset=0;for(const part of parts){result.set(part,offset);offset+=part.length;}return result;
+}

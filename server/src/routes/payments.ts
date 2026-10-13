@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { reconcilePayout } from '../lib/payouts';
+import { reconcilePayout,payoutFeeComponentsReady } from '../lib/payouts';
 
 import { paymentInitializationSchema } from "@kampusone/contracts";
 
@@ -598,10 +598,32 @@ paymentRoutes.post('/bachs/webhook', async context => {
   if (new TextEncoder().encode(raw).byteLength > 65536) throw new AppError(413, 'BAD_REQUEST', 'The payment event is too large.');
   if (!await validBachsDelivery(context.env, raw, context.req.header('X-Bachs-Timestamp'), context.req.header('X-Bachs-Signature'), context.req.header('X-Bachs-Signature-V2')))
     throw new AppError(401, 'UNAUTHENTICATED', 'The payment event signature is invalid.');
-  let event: { id?: string; type?: string; data?: { checkout_id?: string; reference?: string } };
+  let event: { id?: string; type?: string; data?: { id?:string;payout_id?:string;checkout_id?: string; reference?: string } };
   try { event = JSON.parse(raw); } catch { throw new AppError(400, 'BAD_REQUEST', 'The payment event is not valid JSON.'); }
-  if (!event || !['checkout.completed', 'collection.succeeded'].includes(event.type ?? '')) return context.json({ status: 'ignored' });
+  if (!event || !['checkout.completed', 'collection.succeeded','payout.paid','payout.failed'].includes(event.type ?? '')) return context.json({ status: 'ignored' });
   if (typeof event.id !== 'string' || !/^evt_[A-Za-z0-9_-]{6,90}$/.test(event.id)) throw new AppError(400, 'BAD_REQUEST', 'The payment event ID is invalid.');
+  if(event.type==='payout.paid'||event.type==='payout.failed'){
+    if(!await payoutFeeComponentsReady(context.env))throw new AppError(503,'FEATURE_DISABLED','Bank payout verification is awaiting the database update.');
+    const payoutIdentifier=typeof event.data?.payout_id==='string'?event.data.payout_id:typeof event.data?.id==='string'?event.data.id:null;
+    const reference=typeof event.data?.reference==='string'?event.data.reference:null;
+    const saved=firstRow(await database(context.env).execute<{payout_id:string;provider_reference:string}>(sql`select s.payout_id,s.provider_reference from app_private.agent_payout_settlements s left join app_private.bachs_payout_bridges b on b.payout_id=s.payout_id where s.provider='BACHS' and s.initiated_at is not null and ((${reference}::text is not null and s.provider_reference=${reference}) or (${reference}::text is null and ${payoutIdentifier}::text is not null and b.provider_payout_id=${payoutIdentifier}))`));
+    if(!saved)return context.json({status:'ignored'});
+    const claim=await claimBachsWebhook(context.env,event.type,event.id,raw);
+    if(claim.state==='DUPLICATE')return context.json({status:'already_processed'});
+    if(claim.state==='REQUIRES_REVIEW')return context.json({status:'requires_review'});
+    if(claim.state==='BUSY')throw new AppError(503,'PROVIDER_UNAVAILABLE','Payout verification is in progress.');
+    try{
+      await reconcilePayout(context.env,saved.provider_reference);
+      const status=firstRow(await database(context.env).execute<{status:string}>(sql`select status from public.payout_requests where id=${saved.payout_id}::uuid`))?.status;
+      const outcome=status==='PAID'||status==='FAILED'?'PROCESSED':status==='REQUIRES_REVIEW'?'REQUIRES_REVIEW':'RETRYABLE';
+      await finishBachsWebhook(context.env,event.type,event.id,claim,outcome);
+      if(outcome==='RETRYABLE')throw new AppError(503,'PROVIDER_UNAVAILABLE','The bank payout is awaiting an independent provider result.');
+      return context.json({status:outcome==='PROCESSED'?'reconciled':'requires_review'});
+    }catch(error){
+      await finishBachsWebhook(context.env,event.type,event.id,claim,'RETRYABLE','RECONCILIATION_FAILED').catch(()=>{});
+      throw error;
+    }
+  }
   // A signed notification provides an identifier, never authoritative paid amounts.
   const saved = firstRow(await database(context.env).execute<{ reference: string; resourceType: string }>(sql`
     select q.provider_reference as reference,q.resource_type as "resourceType" from app_private.bachs_checkout_quotes q

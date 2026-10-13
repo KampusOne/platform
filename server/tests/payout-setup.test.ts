@@ -18,6 +18,7 @@ import {
 import { payoutSetupRoutes } from "../src/routes/payout-setup";
 import { createSession } from "../src/services/sessions";
 import { compareBankName } from "../src/lib/payout-provider";
+import {decryptBankDetails,type BankEnvelope} from '../src/lib/bank-envelope';
 import { AppError } from "../src/lib/errors";
 import type { Bindings, Variables } from "../src/types";
 let db: PGlite;
@@ -117,6 +118,7 @@ beforeAll(async () => {
       "utf8",
     ),
   );
+  await db.exec(readFileSync(new URL("../../database/neon/migrations/20261013205000_bachs_bank_details.sql",import.meta.url),"utf8"));
   for (const id of [school, otherSchool])
     await db.query(
       "insert into public.universities(id,name,slug,updated_at) values($1::uuid,'Test School '||$1::text,$1::text,now())",
@@ -127,6 +129,7 @@ beforeAll(async () => {
       "insert into public.users(id,email,password_hash,email_verified_at,updated_at) values($1,$2,'test-only',now(),now())",
       [id, `payout${i}@example.invalid`],
     );
+    await db.query("insert into public.profiles(id,user_id,university_id,username,display_name,updated_at) values($1::uuid,$1::uuid,$2::uuid,'fixture_'||right(replace($1::text,'-',''),12),'Fixture owner',now()) on conflict(user_id) do update set university_id=excluded.university_id",[id,i===2?otherSchool:school]);
     const s = await createSession(env, {
       id,
       email: `payout${i}@example.invalid`,
@@ -406,4 +409,96 @@ describe("requirements 215–224: payout setup without money movement", () => {
     await payload(await request("/banks"), 429);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+});
+describe('Bachs bank verification and dashboard editing',()=>{
+ const platform='acct_platform_fixture',recipient='acct_recipient_fixture',destination='pd_bank_fixture_01';
+ let connect=false;
+ function bachs(number='0123456789',usable=true){
+  const fetch=vi.fn(async(url:string,init?:RequestInit)=>{
+   const path=new URL(url).pathname;
+   if(path==='/v1/reference/banks')return Response.json({country:'NG',banks:[{code:'058',name:'Fixture Bank'}]});
+   if(path==='/v1/misc/bank-accounts/resolve'){
+    const body=JSON.parse(String(init?.body));
+    return Response.json({resolved:true,account_number:body.account_number,account_name:'ADA TEST'});
+   }
+   if(path==='/v1/accounts/me')return Response.json({id:platform,enabled_capabilities:connect?['connect','payouts']:['payouts']});
+   if(path==='/v1/accounts'&&init?.method==='POST')return Response.json({id:recipient,parent_organization_id:platform});
+   if(path==='/v1/accounts/'+recipient)return Response.json({id:recipient,parent_organization_id:platform,capabilities:{transfers:{status:'active'},payouts:{status:usable?'active':'restricted'}}});
+   if(path==='/v1/payouts/destinations')return Response.json({items:[{id:destination,currency:'NGN',account_number:number,account_name:'ADA TEST',bank_code:'058',is_usable:usable}]});
+   throw Error('Unexpected Bachs endpoint: '+path);
+  });
+  vi.stubGlobal('fetch',fetch);return fetch;
+ }
+ beforeAll(async()=>{
+  env.ENVIRONMENT='production';env.BACHS_PRICED_CHECKOUT_ENABLED='true';env.BACHS_API_KEY='sk_live_bachs_fixture';env.KYC_ENCRYPTION_KEY='74'.repeat(32);
+  await db.query("update public.payout_requests set status='REJECTED' where id=$1",[uuid(80)]);
+  await db.exec("update app_private.request_rate_limits set window_started_at=now()-interval '2 days',blocked_until=null where scope in('PAYOUT_ACCOUNT','PAYOUT_BANK_LIST','PAYOUT_NAME_LOOKUP')");
+ });
+ it('loads Bachs Nigerian banks and resolves the name before saving',async()=>{
+  const fetch=bachs();
+  expect((await payload(await request('/banks'))).banks).toEqual([{code:'058',name:'Fixture Bank'}]);
+  expect(await payload(await request('/account-name','POST',{agentProfileId:profile,bankCode:'058',accountNumber:'0123456789',authorizedAccount:true}))).toEqual({accountName:'ADA TEST'});
+  expect(fetch.mock.calls.every(c=>new URL(String(c[0])).host==='api.bachs.io')).toBe(true);
+  expect((await db.query('select id from app_private.payout_account_setups where provider=\'BACHS\'')).rows).toHaveLength(0);
+ });
+ it('denies another campus and an unauthorized lookup before contacting Bachs',async()=>{
+  const fetch=bachs(),body={agentProfileId:profile,bankCode:'058',accountNumber:'0123456789',authorizedAccount:true};
+  await payload(await request('/account-name','POST',body,foreign),403);
+  await payload(await request('/account-name','POST',{...body,authorizedAccount:false}),400);
+  expect(fetch).not.toHaveBeenCalled();
+ });
+ it('saves encrypted bank details while Connect is disabled and replays without duplication',async()=>{
+  connect=false;const fetch=bachs();
+  const saved=await payload(await request('/resolve','POST',details(100)),201);
+  expect(saved.account).toMatchObject({provider:'BACHS',status:'PENDING_PROVIDER',account_name:'ADA TEST',account_last4:'6789'});
+  expect(JSON.stringify(saved)).not.toContain('0123456789');expect(saved.account.bank_details_envelope).toBeUndefined();
+  const row=(await db.query<{bank_details_envelope:BankEnvelope}>('select bank_details_envelope from app_private.payout_account_setups where id=$1',[uuid(100)])).rows[0];
+  expect(JSON.stringify(row)).not.toContain('0123456789');
+  expect((await decryptBankDetails(env,row.bank_details_envelope,owner,school,uuid(100))).accountNumber).toBe('0123456789');
+  expect((await payload(await request('/resolve','POST',details(100)))).account.id).toBe(uuid(100));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const own=await payload(await request(''));
+  expect(fetch.mock.calls[0]?.[0]).toContain('/v1/misc/bank-accounts/resolve');expect(own.profiles[0].account.id).toBe(uuid(100));
+ });
+ it('shows the Connect activation blocker and leaves bank approval pending',async()=>{
+  const fetch=bachs();
+  const result=await payload(await request('/'+uuid(100)+'/review','POST',{decision:'APPROVED',ownershipConfirmed:true},reviewer),503);
+  expect(result.error.message).toContain('Connect is not enabled');
+  expect(fetch.mock.calls.map(c=>new URL(String(c[0])).pathname)).toEqual(['/v1/accounts/me']);
+  expect((await db.query('select status from app_private.payout_account_setups where id=$1',[uuid(100)])).rows[0]).toMatchObject({status:'PENDING_PROVIDER'});
+ });
+ it('approves the exact connected recipient with one consent checkbox and no mandatory note',async()=>{
+  connect=true;const fetch=bachs();
+  expect((await payload(await request('/'+uuid(100)+'/review','POST',{decision:'APPROVED',ownershipConfirmed:true},reviewer))).account.status).toBe('APPROVED');
+  const applicationRow=(await db.query('select bank_provider,bank_status,bank_recipient_code from public.agent_applications where id=$1',[application])).rows[0];
+  expect(applicationRow).toEqual({bank_provider:'BACHS',bank_status:'VERIFIED',bank_recipient_code:destination});
+  expect(fetch.mock.calls.every(c=>!new URL(String(c[0])).pathname.startsWith('/v1/transfers'))).toBe(true);
+  expect((await payload(await request('/review?status=APPROVED','GET',undefined,reviewer))).accounts[0].payout_eligible).toBe(true);
+  await expect(db.query('update app_private.payout_account_setups set account_last4=\'9999\' where id=$1',[uuid(100)])).rejects.toThrow('APPROVED_BANK_DETAILS_IMMUTABLE');
+ });
+ it('edits a saved account by creating a new sealed revision without modifying the approved snapshot',async()=>{
+  bachs('9876543210');
+  expect((await payload(await request('/resolve','POST',{...details(101),accountNumber:'9876543210'}),201)).account).toMatchObject({status:'PENDING_PROVIDER',account_last4:'3210'});
+  expect((await db.query('select status,account_last4 from app_private.payout_account_setups where id=$1',[uuid(100)])).rows[0]).toEqual({status:'SUPERSEDED',account_last4:'6789'});
+  expect((await payload(await request(''))).profiles[0].account.id).toBe(uuid(101));
+ });
+ it('keeps an unapproved Bachs destination pending and safely resumes provisioning',async()=>{
+  bachs('9876543210',false);
+  await payload(await request('/'+uuid(101)+'/review','POST',{decision:'APPROVED',ownershipConfirmed:true},reviewer),409);
+  expect((await db.query('select status from app_private.payout_account_setups where id=$1',[uuid(101)])).rows[0]).toMatchObject({status:'PENDING_PROVIDER'});
+  const fetch=bachs('9876543210');
+  await payload(await request('/'+uuid(101)+'/review','POST',{decision:'APPROVED',ownershipConfirmed:true},reviewer));
+  expect(fetch.mock.calls.find(c=>new URL(String(c[0])).pathname==='/v1/accounts')?.[1]?.headers).toMatchObject({'Idempotency-Key':'k1-bank:'+uuid(101)+':account'});
+ });
+ it('blocks bank edits and recipient provisioning while a withdrawal is reserved',async()=>{
+  const fetch=bachs();
+  await db.query('insert into public.payout_requests(id,university_id,agent_profile_id,requested_by_user_id,amount_kobo) values($1,$2,$3,$4,200000)',[uuid(180),school,profile,owner]);
+  await payload(await request('/resolve','POST',details(102)),409);
+  expect(fetch).not.toHaveBeenCalled();
+ });
+ it('honors the bank verification kill switch',async()=>{
+  const fetch=bachs();env.PAYMENTS_ENABLED='false';
+  try{await payload(await request('/account-name','POST',{agentProfileId:profile,bankCode:'058',accountNumber:'0123456789',authorizedAccount:true}),503);}finally{env.PAYMENTS_ENABLED='true';}
+  expect(fetch).not.toHaveBeenCalled();
+ });
 });

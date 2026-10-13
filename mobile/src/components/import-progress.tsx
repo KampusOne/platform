@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Text, View } from "react-native";
+import {Ionicons} from '@expo/vector-icons';
 import { useAppearance } from "@/src/lib/appearance";
 import { importProgress, type ImportStage } from "@/src/lib/import-progress";
 export function useImportProgress(){
@@ -38,15 +39,19 @@ export function ImportProgress({ stage, uploadFraction, subject = "document", fi
         {percent !== null?<Text accessible={false} style={{color:theme.text,fontFamily:theme.font.medium}}>{percent}%</Text>:null}
       </View>
       {filename ? <Text numberOfLines={2} style={{ color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12 }}>{filename}{fileReceived ? " · Uploaded" : ""}{fileType ? ` · ${fileType}` : ""}</Text> : null}
-        <View accessibilityRole="progressbar" accessibilityLabel={title}
+      {percent !== null || stage === 'completed' ? <View accessibilityRole="progressbar" accessibilityLabel={title}
           accessibilityState={{ busy }}
           accessibilityValue={percent !== null ? { min: 0, max: 100, now: percent } : { text: title }}
           style={{ height: 6, borderRadius: 3, backgroundColor: theme.surfaceMuted, overflow: "hidden" }}>
-          <View style={{ width: `${percent ?? (stage === "completed" ? 100 : 35)}%` as `${number}%`, height: 6,
-            alignSelf: percent !== null || stage === "completed" ? "flex-start" : "center",
-            opacity: percent === null && busy ? 0.6 : 1,
+          <View style={{ width: `${percent ?? 100}%` as `${number}%`, height: 6,
             borderRadius: 3, backgroundColor: stage === "failed" ? theme.error : theme.brand }} />
-        </View>
+        </View> : <View accessibilityLabel={title} style={{flexDirection:'row',gap:10,flexWrap:'wrap'}}>
+          {(['uploaded','reading','analysing','finishing'] as const).map((step,index)=>{
+            const actual=stage==='failed'?failureStage:stage,steps=['uploaded','reading','analysing','finishing','review','saving','completed'];
+            const position=steps.indexOf(actual??''),done=position>index,current=actual===step;
+            return <View key={step} style={{flexDirection:'row',gap:4,alignItems:'center'}}><Ionicons name={done?'checkmark-circle':current?'ellipse':'ellipse-outline'} size={14} color={done||current?theme.deepBrand:theme.textMuted}/><Text style={{fontFamily:theme.font.body,fontSize:11,color:done||current?theme.deepBrand:theme.textMuted}}>{['Uploaded','Reading','Analysing','Finishing'][index]}</Text></View>;
+          })}
+        </View>}
       <Text style={{ color: theme.textMuted, fontFamily: theme.font.body, fontSize: 12, lineHeight: 18 }}>
         {error || detail}
       </Text>

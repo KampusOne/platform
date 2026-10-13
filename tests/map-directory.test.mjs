@@ -6,7 +6,8 @@ const source=JSON.parse(readFileSync(new URL('../database/imports/uniben-map2-20
 const corrections=JSON.parse(readFileSync(new URL('../database/imports/uniben-ground-truth-corrections-2026-10-07.json',import.meta.url),'utf8'));
 const referencePois=JSON.parse(readFileSync(new URL('../database/imports/uniben-reference-pois-2026-10-09.json',import.meta.url),'utf8'));
 const latestReview=JSON.parse(readFileSync(new URL('../database/imports/uniben-map-review-2026-10-13.json',import.meta.url),'utf8'));
-const correctionById=new Map([...corrections.places,...latestReview.corrections].map(place=>[place.id,place]));
+const fieldReview=JSON.parse(readFileSync(new URL('../database/imports/uniben-field-records-review-2026-10-13.json',import.meta.url),'utf8'));
+const correctionById=new Map([...corrections.places,...latestReview.corrections,...fieldReview.corrections].map(place=>[place.id,place]));
 const correctedDirectory=source.directory.map(place=>{const correction=correctionById.get(place.id);return correction?{...place,latitude:correction.latitude,longitude:correction.longitude,verified_at:null}:place;});
 
 test('both reference archives are fully indexed and GST stays in the owner-reported west field cluster',()=>{
@@ -65,21 +66,39 @@ test('reference POIs preserve the user screenshot bank-axis landmarks without cl
 test('ground-truth correction removes the stale sports pin and moves banks into the reported bank block',()=>{
   assert.equal(corrections.places.length,7);
   for(const correction of corrections.places){
+    const expected=correctionById.get(correction.id);
     const actual=UNIBEN_UGBOWO_FALLBACK.find(place=>place.id===correction.id);
     assert.ok(actual,correction.name);
-    assert.equal(Number(actual.latitude),correction.latitude);
-    assert.equal(Number(actual.longitude),correction.longitude);
+    assert.equal(Number(actual.latitude),expected.latitude);
+    assert.equal(Number(actual.longitude),expected.longitude);
     assert.equal(actual.verified_at,null);
   }
-  const sports=corrections.places.find(place=>place.name==='UNIBEN Sports Complex');
-  const bowl=UNIBEN_UGBOWO_FALLBACK.find(place=>place.name==='Main Bowl');
+  const sports=UNIBEN_UGBOWO_FALLBACK.find(place=>place.name==='UNIBEN Sports Complex');
+  const bowl=UNIBEN_UGBOWO_FALLBACK.find(place=>place.search_aliases.includes('Main Bowl'));
   assert.ok(sports&&bowl);
-  assert.equal(sports.latitude,Number(bowl.latitude));
-  assert.equal(sports.longitude,Number(bowl.longitude));
+  assert.ok(Math.abs(Number(sports.latitude)-Number(bowl.latitude))<0.0005);
+  assert.ok(Math.abs(Number(sports.longitude)-Number(bowl.longitude))<0.0005);
   const banks=corrections.places.filter(place=>/Bank/.test(place.name));
   assert.equal(banks.length,6);
   for(const bank of banks){
     assert.ok(bank.latitude>=6.4020&&bank.latitude<=6.4026,bank.name+' latitude should stay inside the reported bank block');
     assert.ok(bank.longitude>=5.6095&&bank.longitude<=5.6107,bank.name+' longitude should stay inside the reported bank block');
   }
+});
+
+test('field labels and office move together while stable IDs and old field search names survive',()=>{
+  assert.equal(fieldReview.references.length,4);
+  for(const ref of fieldReview.references)assert.match(ref.sha256,/^[a-f0-9]{64}$/);
+  for(const expected of fieldReview.corrections){
+    const actual=UNIBEN_UGBOWO_FALLBACK.find(place=>place.id===expected.id);
+    assert.ok(actual);assert.equal(actual.name,expected.name);assert.equal(actual.category,expected.category);
+    assert.equal(Number(actual.latitude),expected.latitude);assert.equal(Number(actual.longitude),expected.longitude);
+    assert.deepEqual(actual.search_aliases,expected.search_aliases);assert.equal(actual.verified_at,null);
+  }
+  const field=UNIBEN_UGBOWO_FALLBACK.find(p=>p.search_aliases.includes('Football Field'));
+  const exams=UNIBEN_UGBOWO_FALLBACK.find(p=>p.name==='Exams and Records');
+  const sports=UNIBEN_UGBOWO_FALLBACK.find(p=>p.name==='UNIBEN Sports Complex');
+  assert.ok(field.search_aliases.includes('Main Bowl'));
+  assert.ok(Number(exams.longitude)-Number(field.longitude)>0.0015,'Office must leave the field for the marked building cluster');
+  assert.ok(Number(sports.longitude)<5.6122,'Sports Complex must leave the auditorium junction');
 });

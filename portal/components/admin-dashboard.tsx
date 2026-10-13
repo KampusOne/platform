@@ -1,5 +1,6 @@
 "use client";
 
+import {DecisionConsent} from "./decision-consent";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -996,13 +997,8 @@ function ApplicationInspector({
             <input name="providerReference" />
           </label>
           </>}<label>
-            Verification note
-            <textarea
-              name="verificationNote"
-              minLength={10}
-              required
-              placeholder="Record what evidence was reviewed. Never paste a raw NIN or BVN."
-            />
+            Confirm review
+            <DecisionConsent name="verificationNote" />
           </label>
           <button className="button button--secondary" disabled={busy}>
             {busy ? "Saving…" : "Record verification"}
@@ -1021,13 +1017,8 @@ function ApplicationInspector({
             </select>
           </label>
           <label>
-            Reviewer note
-            <textarea
-              name="note"
-              minLength={3}
-              required
-              placeholder="Record the evidence and reason for this decision."
-            />
+            Confirm review
+            <DecisionConsent name="note" />
           </label>
           <TransientNotice message={error} />
           <button className="button button--primary" disabled={busy}>
@@ -1259,13 +1250,8 @@ function TutorialsView({
                   </select>
                 </label>
                 <label>
-                  Reviewer note
-                  <textarea
-                    name="note"
-                    minLength={3}
-                    required
-                    placeholder="Record what was checked and why."
-                  />
+                  Confirm review
+                  <DecisionConsent name="note" />
                 </label>
                 <div className="inline-actions">
                   <button
@@ -1348,13 +1334,8 @@ function TutorialsView({
                   </select>
                 </label>
                 <label>
-                  Reviewer note
-                  <textarea
-                    name="note"
-                    minLength={3}
-                    required
-                    placeholder="Record content, ownership and quality checks."
-                  />
+                  Confirm review
+                  <DecisionConsent name="note" />
                 </label>
                 <div className="inline-actions">
                   <button
@@ -2138,7 +2119,7 @@ function OperationsView({
                 </label>
                 <label>
                   Decision note
-                  <textarea name="note" minLength={10} required />
+                  <DecisionConsent name="note" />
                 </label>
                 <button className="button button--small" disabled={busy}>
                   Save decision
@@ -2252,7 +2233,7 @@ function OperationsView({
                 </label>
                 <label>
                   Reconciliation note
-                  <textarea name="note" minLength={10} required />
+                  <DecisionConsent name="note" />
                 </label>
                 <button className="button button--small" disabled={busy}>
                   Resolve event

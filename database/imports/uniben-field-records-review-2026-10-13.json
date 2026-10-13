@@ -1,0 +1,96 @@
+{
+  "reviewDate": "2026-10-13",
+  "institutionId": "6a79211e-6e85-4d95-be24-976edb26ba58",
+  "campusId": "1d60dcae-760d-4de7-8443-6a870d9bbe1a",
+  "references": [
+    {
+      "filename": "01-1000442453.jpg",
+      "sha256": "85b339a737f070d18a34bf070bd030b06bca902a6565722634f4e4ec939622e7"
+    },
+    {
+      "filename": "02-1000442451.jpg",
+      "sha256": "0117c1a39d6b5f1e7746f73261de486d3193ab2761444115a19a28cfb276a9fe"
+    },
+    {
+      "filename": "03-1000442449.jpg",
+      "sha256": "bd55b5bcead5ce6b634334b46e6d59b776505a3256c9cfb4bb53038dbc81eb03"
+    },
+    {
+      "filename": "04-1000442447.jpg",
+      "sha256": "42c5c77821cef95cf21f61e7e3030c0d4ba4be37b5b516cc0085e87f9b480c5b"
+    }
+  ],
+  "corrections": [
+    {
+      "id": "2be8a76a-ef9f-5a69-a3cc-3abbd5803bae",
+      "name": "Exams and Records",
+      "category": "SERVICE",
+      "description": "Examinations and records office area in the owner-marked building cluster.",
+      "latitude": 6.398015,
+      "longitude": 5.61408,
+      "before": {
+        "name": "Exams and Records",
+        "category": "SERVICE",
+        "latitude": 6.399,
+        "longitude": 5.6121
+      },
+      "confidence": 0.55,
+      "search_aliases": [
+        "Exams & Records",
+        "Examinations and Records",
+        "Records Office"
+      ],
+      "reason": "Move the office from the football field to the building cluster marked in screenshots 03 and 04. The pin represents the area, not a surveyed entrance."
+    },
+    {
+      "id": "2436a456-902d-57fb-8310-cf9b8f7d5946",
+      "name": "School Field (Football Field)",
+      "category": "SPORT",
+      "description": "School football field within the UNIBEN sports complex.",
+      "latitude": 6.398387,
+      "longitude": 5.61207,
+      "before": {
+        "name": "Main Bowl",
+        "category": "SPORT",
+        "latitude": 6.3992,
+        "longitude": 5.61295
+      },
+      "confidence": 0.6,
+      "search_aliases": [
+        "School Field",
+        "Football Field",
+        "UNIBEN Football Field",
+        "Main Bowl",
+        "UNIBEN Main Bowl",
+        "Main Stadium Bowl"
+      ],
+      "reason": "Name and place the existing Main Bowl landmark inside the field identified by the owner, retaining old search aliases and the same ID."
+    },
+    {
+      "id": "65f3124d-3690-50a6-a01e-1a7afe90eec5",
+      "name": "UNIBEN Sports Complex",
+      "category": "SPORT",
+      "description": "University sports complex at the school football field.",
+      "latitude": 6.398037,
+      "longitude": 5.612018,
+      "before": {
+        "name": "UNIBEN Sports Complex",
+        "category": "SPORT",
+        "latitude": 6.3992,
+        "longitude": 5.61295
+      },
+      "confidence": 0.6,
+      "search_aliases": [
+        "Sports Complex",
+        "School Sports Complex",
+        "Stadium"
+      ],
+      "reason": "Move the sports-complex label away from the auditorium junction and into the owner-identified field."
+    }
+  ],
+  "method": "Six existing app pins georeference the screenshot annotations with an affine fit accounting for bearing. Residuals are below one pixel. The marked office area is checked against retained Overture building footprints 9070facb-d8cc-4726-ae3c-2b2f2d1ceb51 and 004ba215-8119-48ce-96ac-5eb7e84b043b. Only named directory pins change; no screenshot imagery or traced polygons are bundled.",
+  "limitations": [
+    "These are owner-reported area locations, not surveyed entrances.",
+    "Other campus places and original route and building geometry remain unchanged."
+  ]
+}

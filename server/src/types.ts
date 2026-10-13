@@ -31,6 +31,8 @@ export type Bindings = {
   LOGISTICS_ENABLED?: string;
   PAYMENTS_ENABLED: string;
   PAYOUTS_ENABLED?: string;
+  /** New Bachs agent transfers remain off until live Connect payout acceptance. */
+  BACHS_AGENT_PAYOUTS_ENABLED?: string;
   KIRA_SUBSCRIPTIONS_ENABLED?: string;
   AI_ASSISTANT_ENABLED: string;
   DATABASE_URL?: string;

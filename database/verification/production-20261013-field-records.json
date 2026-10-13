@@ -1,0 +1,74 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-13T22:20:00Z",
+    "scope": "Owner requested the field and Exams and Records correction in the same Android release"
+  },
+  "migrations": [
+    {
+      "version": "20261013233000_uniben_field_records_correction",
+      "appliedAt": "2026-10-13T22:29:36.607517+00:00",
+      "sourceBlobSha": "b4afef91add5b050a04cb5c5f33ca24dcc007eab"
+    }
+  ],
+  "verifiedAt": "2026-10-13T22:29:37.163621+00:00",
+  "mapRevision": 54,
+  "correctedPlaces": [
+    {
+      "id": "2be8a76a-ef9f-5a69-a3cc-3abbd5803bae",
+      "name": "Exams and Records",
+      "aliases": [
+        "Exams & Records",
+        "Examinations and Records",
+        "Records Office"
+      ],
+      "category": "SERVICE",
+      "latitude": 6.398015,
+      "longitude": 5.61408,
+      "verifiedAt": null
+    },
+    {
+      "id": "2436a456-902d-57fb-8310-cf9b8f7d5946",
+      "name": "School Field (Football Field)",
+      "aliases": [
+        "School Field",
+        "Football Field",
+        "UNIBEN Football Field",
+        "Main Bowl",
+        "UNIBEN Main Bowl",
+        "Main Stadium Bowl"
+      ],
+      "category": "SPORT",
+      "latitude": 6.398387,
+      "longitude": 5.61207,
+      "verifiedAt": null
+    },
+    {
+      "id": "65f3124d-3690-50a6-a01e-1a7afe90eec5",
+      "name": "UNIBEN Sports Complex",
+      "aliases": [
+        "Sports Complex",
+        "School Sports Complex",
+        "Stadium"
+      ],
+      "category": "SPORT",
+      "latitude": 6.398037,
+      "longitude": 5.612018,
+      "verifiedAt": null
+    }
+  ],
+  "directoryPlaces": 181,
+  "checks": {
+    "campusLandmarks": "passed",
+    "fixturesRolledBack": true,
+    "replaySafety": "passed",
+    "protectedMapDataUnchanged": true,
+    "transactionalCacheInvalidation": "passed"
+  },
+  "source": "database/imports/uniben-field-records-review-2026-10-13.json",
+  "surveyedEntrances": false
+}

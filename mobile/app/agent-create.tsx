@@ -4,6 +4,7 @@ import { useOwnedDraftSave } from '@/src/lib/use-owned-draft-save';
 import { useOwnedDraftRestore } from '@/src/lib/use-owned-draft-restore';
 import { restoreListingDraft } from '@/src/lib/form-drafts';
 import { moveListingPhoto } from '@/src/lib/listing-photos';
+import { productEditMatches, sellerProductPhotos, type SellerProduct } from '@/src/lib/listing-editor';
 import { DraftRecovery } from '@/src/components/draft-recovery';
 import { RetryIconButton } from '@/src/components/retry-icon-button';
 import { MediaImage } from '@/src/components/media-image';
@@ -14,21 +15,28 @@ import { randomUUID } from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
 import { nairaToKobo } from '@/src/lib/money-input';
 import { router, useLocalSearchParams } from "expo-router";
-import { Pressable, Text, View } from "react-native";
+import { Alert, Pressable, Text, View } from "react-native";
 import { ToolPage, ToolButton, ToolField } from "@/src/components/toolkit";
 import { useToast } from "@/src/components/toast";
 import { useAppearance } from "@/src/lib/appearance";
 import { api } from "@/src/lib/api";
 import { pickAndUpload } from "@/src/lib/uploads";
 export default function CreateListing() {
-  const {user}=useAuth(),{role}=useLocalSearchParams<{role:string}>();
-  return <CreateListingForm key={(user?cacheScopeForUser(user):'signed-out')+':'+(role==='TUTOR'?'tutor':'vendor')}/>;
+  const {user}=useAuth(),{role,id}=useLocalSearchParams<{role:string;id?:string}>();
+  return <CreateListingForm key={(user?cacheScopeForUser(user):'signed-out')+':'+(role==='TUTOR'?'tutor':'vendor')+':'+(id??'new')}/>;
 }
 function CreateListingForm() {
-  const { role } = useLocalSearchParams<{ role: string }>();
+  const { role, id } = useLocalSearchParams<{ role: string; id?: string }>();
   const tutor = role === "TUTOR";
+  const editing = !tutor && Boolean(id);
   const {user}=useAuth();
-  const draftKey=`listing-draft.${user?.id}.${tutor?"tutor":"vendor"}`;
+  const draftKey=editing?`listing-draft.${user?.id}.vendor.edit.${id}`:`listing-draft.${user?.id}.${tutor?"tutor":"vendor"}`;
+  const editDraft=useRef<ReturnType<typeof restoreListingDraft>|null>(null);
+  const [product,setProduct]=useState<SellerProduct|null>(null);
+  const [editRevision,setEditRevision]=useState<number|undefined>();
+  const [editStock,setEditStock]=useState<number|undefined>();
+  const [editReady,setEditReady]=useState(false),[editLoading,setEditLoading]=useState(false);
+  const [editError,setEditError]=useState(''),[editConflict,setEditConflict]=useState(false),[editRetry,setEditRetry]=useState(0);
   const currentDraftKey=useRef(draftKey);
   currentDraftKey.current=draftKey;
   const requestPayload=useRef("");
@@ -55,10 +63,45 @@ function CreateListingForm() {
   const restored=useOwnedDraftRestore<unknown>(draftKey,value=>{
     if(value===null)return;
     const d=restoreListingDraft(value);
+    if(editing)editDraft.current=d;
     setName(d.name??'');setDescription(d.description??'');setPrice(d.price??'');setStock(d.stock||'1');setCode(d.code??'');setLocation(d.location??'');setImages(d.images);setCategory(d.category??'');
-    createdId.current=d.createdId??null;requestId.current=d.requestId??randomUUID();requestPayload.current=d.requestPayload??'';
+    createdId.current=editing?null:d.createdId??null;requestId.current=d.requestId??randomUUID();requestPayload.current=d.requestPayload??'';
   },Boolean(user?.id));
   const draftReady=restored.ready;
+  const applyProduct=(p:SellerProduct)=>{
+    setName(p.name);setDescription(p.description);setPrice(String(Number(p.price_kobo)/100));setStock(String(p.stock_quantity));
+    setCategory(p.category_id);setImages(sellerProductPhotos(p));setEditRevision(Number(p.listing_revision));setEditStock(Number(p.stock_quantity));
+  };
+  useEffect(()=>{
+    if(!editing||!draftReady||!user?.id)return;
+    let active=true;const controller=new AbortController();
+    setEditLoading(true);setEditReady(false);setEditError('');
+    void api<{products:SellerProduct[]}>('/v1/agents/products',{cache:'reload',signal:controller.signal,timeoutMs:15000}).then(result=>{
+      if(!active)return;
+      const p=result.products?.find(p=>p.id===id&&p.status!=='ARCHIVED');
+      if(!p)throw Error('This product is no longer available to edit.');
+      setProduct(p);
+      const d=editDraft.current;
+      if(!d){applyProduct(p);setEditConflict(false);}else{
+        setEditRevision(d.editRevision??Number(p.listing_revision));setEditStock(d.editStock??Number(p.stock_quantity));
+        let alreadySaved=false;
+        try { alreadySaved=productEditMatches(p,{name:d.name,description:d.description,categoryId:d.category,priceKobo:nairaToKobo(d.price),imageUrls:d.images,
+          ...(Number(d.stock)!==d.editStock?{stockQuantity:Number(d.stock)}:{}),preparationMinutes:Number(p.preparation_minutes),packageWeightGrams:p.package_weight_grams,
+          packageLengthCm:p.package_length_cm===null?null:Number(p.package_length_cm),packageWidthCm:p.package_width_cm===null?null:Number(p.package_width_cm),packageHeightCm:p.package_height_cm===null?null:Number(p.package_height_cm),bicycleDeliveryEligible:p.bicycle_delivery_eligible}); } catch { /* Incomplete drafts remain editable. */ }
+        createdId.current=alreadySaved?p.id:null;
+        const conflict=!alreadySaved&&d.editRevision!==undefined&&(d.editRevision!==Number(p.listing_revision)||Number(d.stock)!==d.editStock&&d.editStock!==Number(p.stock_quantity));
+        setEditConflict(conflict);
+        if(conflict)setEditError('This product changed. Reload its current details before saving.');
+      }
+      setEditReady(true);
+    }).catch(error=>{if(active)setEditError(error instanceof Error?error.message:'Product details could not load.');}).finally(()=>{if(active)setEditLoading(false);});
+    return()=>{active=false;controller.abort();};
+  },[editing,id,draftReady,editRetry]);
+  function reloadProduct(){
+    Alert.alert('Reload product?','Replace unsaved changes with the current product details.',[
+      {text:'Cancel',style:'cancel'},{text:'Reload',onPress:()=>{editDraft.current=null;createdId.current=null;setEditConflict(false);setEditRetry(n=>n+1);}},
+    ]);
+  }
   const [pricePreview,setPricePreview]=useState<{ready:boolean;ruleId?:string;message?:string;baseKobo:number;platformKobo:number;processingEstimateKobo:number;customerEstimateKobo:number;sellerCommissionKobo:number}|null>(null);
   const [calculatingRates,setCalculatingRates]=useState(false),[rateError,setRateError]=useState(''),[rateRetry,setRateRetry]=useState(0);
   useEffect(()=>{
@@ -81,8 +124,9 @@ function CreateListingForm() {
   const alive = useRef(true), categoryRequest = useRef(0);
   useEffect(() => { alive.current = true; return () => { alive.current = false; categoryRequest.current++; }; }, []);
   const [busy, setBusy] = useState(false);
-  const listingDraft={name,description,price,stock,code,location,image,images,category,createdId:createdId.current,requestId:requestId.current,requestPayload:requestPayload.current};
-  const draftSave=useOwnedDraftSave(draftKey,listingDraft,draftReady&&Boolean(user?.id)&&!busy&&!draftCompleted.current);
+  const listingDraft={name,description,price,stock,code,location,image,images,category,createdId:createdId.current,requestId:requestId.current,requestPayload:requestPayload.current,
+    ...(editing&&editRevision!==undefined&&editStock!==undefined?{editRevision,editStock}:{})};
+  const draftSave=useOwnedDraftSave(draftKey,listingDraft,draftReady&&Boolean(user?.id)&&(!editing||editReady)&&!busy&&!draftCompleted.current);
   const loadCategories = useCallback(async () => {
     const turn = ++categoryRequest.current;
     setCategoriesLoading(true); setCategoriesError("");
@@ -111,7 +155,7 @@ function CreateListingForm() {
     if (!formHint && (!/^\d+$/.test(stock.trim()) || Number(stock) > (tutor ? 500 : 1_000_000) || Number(stock) < (tutor ? 1 : 0))) formHint = tutor ? "Enter 1 to 500 available places." : "Enter a whole stock quantity from 0 to 1,000,000.";
   }
   if(createdId.current)formHint="";
-  const fieldsLocked=busy||!draftReady||Boolean(createdId.current);
+  const fieldsLocked=busy||!draftReady||Boolean(createdId.current)||editing&&(!editReady||editLoading||editConflict);
   async function upload() {
     if(formLock.current||fieldsLocked||images.length>=6)return;
     const operationKey=draftKey;
@@ -126,11 +170,36 @@ function CreateListingForm() {
     }
   }
   async function save() {
-    if (formLock.current || busy || !draftReady || formHint) return;
+    if (formLock.current || busy || !draftReady || formHint || editing&&(!editReady||editLoading||editConflict||!product)) return;
     const operationKey=draftKey;
     const stillCurrent=()=>alive.current&&currentDraftKey.current===operationKey;
     formLock.current=true;setBusy(true);
     try {
+      if(editing&&product){
+        const details={name,description,categoryId:category,priceKobo:nairaToKobo(price),imageUrl:image||null,imageUrls:images,
+          expectedRevision:editRevision,
+          ...(Number(stock)!==editStock?{stockQuantity:Number(stock),expectedStockQuantity:editStock}:{}),
+          preparationMinutes:Number(product.preparation_minutes),packageWeightGrams:product.package_weight_grams,
+          packageLengthCm:product.package_length_cm===null?null:Number(product.package_length_cm),
+          packageWidthCm:product.package_width_cm===null?null:Number(product.package_width_cm),
+          packageHeightCm:product.package_height_cm===null?null:Number(product.package_height_cm),bicycleDeliveryEligible:product.bicycle_delivery_eligible};
+        await draftSave.persist(listingDraft);if(!stillCurrent())return;
+        if(!createdId.current){
+          try { await api('/v1/agents/products/'+encodeURIComponent(product.id),{method:'PUT',body:JSON.stringify(details)}); }
+          catch(error){
+            const fresh=await api<{products:SellerProduct[]}>('/v1/agents/products',{cache:'reload'}).catch(()=>null);
+            if(!stillCurrent())return;
+            const actual=fresh?.products?.find(p=>p.id===product.id);
+            if(!actual||!productEditMatches(actual,details)){
+              if(error&&typeof error==='object'&&'code'in error&&error.code==='CONFLICT'){setEditConflict(true);setEditError('This product changed. Reload its current details before saving.');}
+              throw error;
+            }
+          }
+          if(!stillCurrent())return;createdId.current=product.id;
+        }
+        draftCompleted.current=true;draftSave.discard();await writeCache(draftKey,null);
+        if(!stillCurrent())return;toast('Product saved','success');router.back();return;
+      }
       const path = tutor ? "/v1/agents/tutorials" : "/v1/agents/products";
       const body = tutor
         ? {
@@ -190,26 +259,26 @@ function CreateListingForm() {
   const matchingCategories = categories.filter(c=>c.name.toLocaleLowerCase("en-NG").includes(categoryQuery.trim().toLocaleLowerCase("en-NG")));
   const visibleCategories = categoryQuery.trim() || showAllCategories ? matchingCategories : matchingCategories.slice(0,8);
   return (
-    <ToolPage title={tutor ? "Create tutorial" : "Create product"}>
+    <ToolPage title={editing?"Edit product":tutor ? "Create tutorial" : "Create product"}>
       <DraftRecovery error={restored.error} loading={restored.loading} onRetry={restored.retry}/>
+      {editing&&editLoading?<Text style={{fontFamily:theme.font.body,color:theme.textMuted,marginBottom:12}}>Loading product…</Text>:null}
+      {editing&&editError?<View style={{flexDirection:'row',alignItems:'center',gap:10,marginBottom:16}}><Text accessibilityRole="alert" style={{flex:1,fontFamily:theme.font.body,color:theme.error}}>{editError}</Text><RetryIconButton label={editConflict?'Reload current product':'Retry loading product'} busy={editLoading} onPress={()=>editConflict?reloadProduct():setEditRetry(n=>n+1)}/></View>:null}
       {draftSave.warning?<Text accessibilityRole="alert" style={{fontFamily:theme.font.body,color:theme.error,lineHeight:21,marginBottom:12}}>{draftSave.warning}</Text>:null}
-      <View style={{ padding:16, borderRadius:16, borderWidth:1, borderColor:theme.border,
+      {tutor ? <View style={{ padding:16, borderRadius:16, borderWidth:1, borderColor:theme.border,
         backgroundColor:theme.surface, marginBottom:20, gap:6 }}>
         <Text style={{ fontFamily:theme.font.semibold, color:theme.deepBrand, fontSize:12 }}>
-          {tutor?"TUTOR WORKSPACE":"SELLER WORKSPACE"} · NEW LISTING
+          TUTOR WORKSPACE · NEW LISTING
         </Text>
         <Text style={{ fontFamily:theme.font.displayStrong, color:theme.text, fontSize:21 }}>
-          {tutor?"Share your knowledge":"Make your product easy to discover"}
+          Share your knowledge
         </Text>
         <Text style={{ fontFamily:theme.font.body, color:theme.textMuted, lineHeight:20, fontSize:13 }}>
-          {tutor?"Describe the tutorial, set your price and submit for approval.":
-            "Good photos, an honest description and accurate stock help students decide."}
+          Describe the tutorial, set your price and submit for approval.
         </Text>
-      </View>
+      </View> : null}
       {!tutor ? (
         <>
-          <View style={{padding:18,borderRadius:22,backgroundColor:theme.surfaceTint,gap:8,marginBottom:20}}><Text style={{fontFamily:theme.font.displayStrong,fontSize:24,color:theme.text}}>Ready for your next sale</Text><Text style={{fontFamily:theme.font.body,lineHeight:22,color:theme.textMuted}}>Add clear photos and a price. Your product goes live when you upload it.</Text></View>
-          <View style={{flexDirection:'row',flexWrap:'wrap',gap:12,marginBottom:18}}>
+          <View style={{flexDirection:'row',flexWrap:'wrap',alignItems:'flex-start',gap:12,marginBottom:18}}>
             {images.map((url,index)=><View key={url} style={{width:'47%',gap:6}}>
               <Pressable accessibilityRole="button" accessibilityLabel={`Preview product photo ${index+1}`} onPress={()=>setPhotoPreview(url)} style={{aspectRatio:1,borderRadius:16,overflow:'hidden'}}><MediaImage uri={url} accessibilityLabel={`Product photo ${index+1}`} style={{width:'100%',aspectRatio:1}}/></Pressable>
               <Text style={{fontFamily:theme.font.semibold,color:index===0?theme.deepBrand:theme.textMuted,fontSize:12}}>{index===0?'Cover photo':`Photo ${index+1}`}</Text>
@@ -218,7 +287,7 @@ function CreateListingForm() {
             </View>)}
             {images.length<6?<Pressable accessibilityRole="button" accessibilityLabel="Add product photo" disabled={fieldsLocked} onPress={()=>void upload()} style={{width:'47%',aspectRatio:1,borderRadius:18,borderWidth:1,borderStyle:'dashed',borderColor:theme.deepBrand,alignItems:'center',justifyContent:'center',gap:8,backgroundColor:theme.surface}}><Ionicons name="camera-outline" size={28} color={theme.deepBrand}/><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>{busy?'Uploading…':'Add photo'}</Text></Pressable>:null}
           </View>
-          <Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12,lineHeight:18,marginBottom:16}}>Tap a photo to preview it. Move a photo to the first position to use it as the cover.</Text>
+          <Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12,lineHeight:18,marginBottom:16}}>First photo is your cover.</Text>
           <ImageViewer uri={photoPreview} label="Product photo preview" onClose={()=>setPhotoPreview(null)}/>
         </>
       ) : null}
@@ -298,10 +367,10 @@ function CreateListingForm() {
       {!tutor&&calculatingRates?<Text accessibilityLiveRegion="polite" style={{color:theme.textMuted,marginBottom:12}}>Calculating rates…</Text>:null}
       {!tutor&&rateError&&!calculatingRates?<View style={{flexDirection:'row',alignItems:'center',gap:10,marginBottom:16}}><Text accessibilityRole="alert" style={{flex:1,fontFamily:theme.font.body,color:theme.textMuted,lineHeight:21}}>{rateError}</Text><RetryIconButton label="Refresh product pricing" disabled={busy} onPress={()=>setRateRetry(n=>n+1)}/></View>:null}
       {!tutor&&pricePreview?.ready?<View style={{padding:18,borderRadius:18,backgroundColor:theme.surface,borderColor:theme.border,borderWidth:1,gap:8,marginBottom:18}}><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>Price preview</Text>{[['Your price',pricePreview.baseKobo],['KampusOne service fee',pricePreview.platformKobo],['Estimated processing fee',pricePreview.processingEstimateKobo],['Customer estimate',pricePreview.customerEstimateKobo]].map(([label,amount])=><View key={String(label)} style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontFamily:theme.font.body,color:theme.textMuted}}>{label}</Text><Text style={{fontFamily:theme.font.semibold,color:theme.text}}>₦{(Number(amount)/100).toLocaleString('en-NG',{maximumFractionDigits:2})}</Text></View>)}<Text style={{fontFamily:theme.font.body,fontSize:12,lineHeight:18,color:theme.textMuted}}>Your price plus the service fee goes to checkout. The processor adds its charge; checkout confirms the final total.</Text></View>:null}
-      {createdId.current ? <Text accessibilityRole="alert" style={{color:theme.textMuted,lineHeight:22,marginBottom:12}}>Your listing was created. Retry to finish submitting it for review.</Text> : null}
+      {createdId.current ? <Text accessibilityRole="alert" style={{color:theme.textMuted,lineHeight:22,marginBottom:12}}>{editing?'Product saved. Finish to close this form.':'Your listing was created. Retry to finish submitting it for review.'}</Text> : null}
       <ToolButton
-        label={busy ? "Saving…" : createdId.current?"Retry submission":tutor?"Submit for review":"Upload product"}
-        disabled={busy || !draftReady || Boolean(formHint)}
+        label={busy ? "Saving…" : editing?createdId.current?'Done':'Save changes':createdId.current?"Retry submission":tutor?"Submit for review":"Upload product"}
+        disabled={busy || !draftReady || Boolean(formHint)||editing&&(!editReady||editLoading||editConflict)}
         onPress={() => void save()}
       />
       {!busy && formHint ? <Text style={{ color: theme.textMuted, lineHeight: 22, marginTop: 10 }}>{formHint}</Text> : null}

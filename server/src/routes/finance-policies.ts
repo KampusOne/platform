@@ -12,6 +12,7 @@ import { pricedTutorialReady } from "../lib/tutorial-pricing";
 import { kiraBillingReady, resolveKiraPlanPrice } from "../lib/kira-billing";
 import { resolveProviderCollection } from "../lib/payment-pricing";
 import { materialCommerceReady } from "../lib/material-commerce";
+import {withdrawalCommission,withdrawalCommissionTiers} from "../lib/payout-commission";
 import { payoutFeeComponentsReady } from "../lib/payouts";
 import {
   listingPrice,
@@ -37,7 +38,7 @@ financePolicyRoutes.get("/transfer-policies", async (c) => {
   if (!(await payoutFeeComponentsReady(c.env)))
     return c.json({ ready: false, policies: [] });
   const rows = await database(c.env)
-    .execute(sql`select p.id,p.university_id,p.agent_type,p.version,p.fee_bearer,p.low_fee_kobo,p.middle_fee_kobo,p.high_fee_kobo,p.duty_threshold_kobo,p.duty_kobo,p.minimum_withdrawal_kobo,p.statutory_duty_policy,p.source_url,p.approval_note,p.approved_at,a.policy_id=p.id as active
+    .execute(sql`select p.id,p.university_id,p.agent_type,p.version,p.fee_bearer,p.low_fee_kobo,p.middle_fee_kobo,p.high_fee_kobo,p.duty_threshold_kobo,p.duty_kobo,p.minimum_withdrawal_kobo,p.commission_tiers,p.provider,p.statutory_duty_policy,p.source_url,p.approval_note,p.approved_at,a.policy_id=p.id as active
   from app_private.payout_cost_policies p left join app_private.active_payout_cost_policies a on a.university_id=p.university_id and a.agent_type=p.agent_type where (${scope}::uuid is null or p.university_id=${scope}::uuid) order by p.approved_at desc limit 100`);
   return c.json({ ready: true, policies: rows.rows });
 });
@@ -50,28 +51,33 @@ financePolicyRoutes.post("/transfer-policies", async (c) => {
         agentType: z.enum(["VENDOR", "TUTOR", "RIDER"]),
         version: z.string().trim().min(3).max(80),
         feeBearer: z.enum(["PLATFORM", "PAYEE"]),
+        provider:z.enum(["PAYSTACK","BACHS"]).default("PAYSTACK"),
         lowFeeKobo: z.number().int().min(0).max(1000000),
         middleFeeKobo: z.number().int().min(0).max(1000000),
         highFeeKobo: z.number().int().min(0).max(1000000),
         dutyThresholdKobo: z.number().int().min(0).max(2000000000),
         dutyKobo: z.number().int().min(0).max(1000000),
-        minimumWithdrawalKobo: z.number().int().min(1).max(1_000_000_000).default(500000),
+        minimumWithdrawalKobo: z.number().int().min(1).max(1_000_000_000).default(200000),
         statutoryDutyPolicy: z.literal("PLATFORM_ABSORBS_PENDING_STATEMENT").default("PLATFORM_ABSORBS_PENDING_STATEMENT"),
         sourceUrl: z.url().refine((v) => {
           const u = new URL(v);
           return (
             u.protocol === "https:" &&
             [
+              "docs.bachs.io","bachs.io",
               "paystack.com",
               "support.paystack.com",
               "dashboard.paystack.com",
             ].includes(u.hostname)
           );
         }),
-        approvalNote: z.string().trim().min(10).max(2000),
+        commissionTiers: z.array(z.object({upToKobo:z.number().int().positive().max(1_000_000_000).nullable(),basisPoints:z.number().int().min(500).max(800)}).strict()).min(1).max(8).default(withdrawalCommissionTiers).refine(tiers=>{try{withdrawalCommission(0,tiers);return true;}catch{return false;}}),
+        confirm: z.literal(true).optional(),
+        approvalNote: z.string().trim().max(2000).optional(),
       })
-      .strict(),
+      .strict().refine(value=>(value.confirm===true||(value.approvalNote?.length??0)>=10)&&(value.provider!=="BACHS"||value.feeBearer==="PLATFORM")),
   );
+  const approvalNote=data.approvalNote?.trim()||"Reviewer confirmed the withdrawal commission bands and provider cost policy.";
   const user = currentUser(c);
   await resolveAdminScope(c.env, user, data.universityId, "finance.review");
   if (!(await payoutFeeComponentsReady(c.env)))
@@ -84,8 +90,8 @@ financePolicyRoutes.post("/transfer-policies", async (c) => {
   const previous = (await database(c.env).execute(sql`select p.* from app_private.active_payout_cost_policies a join app_private.payout_cost_policies p on p.id=a.policy_id where a.university_id=${data.universityId}::uuid and a.agent_type=${data.agentType}`)).rows[0] ?? null;
   try {
     await database(c.env)
-      .execute(sql`with added as(insert into app_private.payout_cost_policies(id,university_id,agent_type,version,fee_bearer,low_fee_kobo,middle_fee_kobo,high_fee_kobo,duty_threshold_kobo,duty_kobo,minimum_withdrawal_kobo,statutory_duty_policy,source_url,approval_note,approved_by)
-  values(${policyId}::uuid,${data.universityId}::uuid,${data.agentType},${data.version},${data.feeBearer},${data.lowFeeKobo},${data.middleFeeKobo},${data.highFeeKobo},${data.dutyThresholdKobo},${data.dutyKobo},${data.minimumWithdrawalKobo},${data.statutoryDutyPolicy},${data.sourceUrl},${data.approvalNote},${user.id}::uuid) returning *)
+      .execute(sql`with added as(insert into app_private.payout_cost_policies(id,university_id,agent_type,version,fee_bearer,low_fee_kobo,middle_fee_kobo,high_fee_kobo,duty_threshold_kobo,duty_kobo,minimum_withdrawal_kobo,statutory_duty_policy,commission_tiers,provider,source_url,approval_note,approved_by)
+  values(${policyId}::uuid,${data.universityId}::uuid,${data.agentType},${data.version},${data.feeBearer},${data.lowFeeKobo},${data.middleFeeKobo},${data.highFeeKobo},${data.dutyThresholdKobo},${data.dutyKobo},${data.minimumWithdrawalKobo},${data.statutoryDutyPolicy},${JSON.stringify(data.commissionTiers)}::jsonb,${data.provider},${data.sourceUrl},${approvalNote},${user.id}::uuid) returning *)
   insert into app_private.active_payout_cost_policies(university_id,agent_type,policy_id)select university_id,agent_type,id from added on conflict(university_id,agent_type)do update set policy_id=excluded.policy_id`);
   } catch (e) {
     if (e instanceof Error && e.message.includes("unique"))
@@ -106,7 +112,7 @@ financePolicyRoutes.post("/transfer-policies", async (c) => {
     metadata: {
       previousPolicy: previous,
       approvedPolicy: data,
-      reason: data.approvalNote,
+      reason: approvalNote,
     },
   });
   return c.json({ id: policyId }, 201);

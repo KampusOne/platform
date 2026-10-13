@@ -10,6 +10,14 @@ const compatiblePrerequisites = new Set([
 const manifest = JSON.parse(readFileSync(new URL("../../database/verification/2026-09-30-migration-manifest.json", import.meta.url), "utf8"));
 
 export const groups = {
+  campusLandmarks: ["20261013233000_uniben_field_records_correction"],
+  agentBanks: [
+    '20261013190000_agent_withdrawal_commission',
+    '20261013200000_delivery_checkout_recovery',
+    '20261013205000_bachs_bank_details',
+    '20261013210000_bachs_agent_banks_and_payouts',
+    '20261013213000_payout_reconciliation_schedule',
+  ],
   screenFixes: ["20261010130000_default_product_categories", "20261010140000_bachs_collection_cutover"],
   cache: ["20261010120000_versioned_read_cache"],
   current: [
@@ -71,6 +79,10 @@ export const groups = {
   ],
 };
 
+export function agentPayoutsConfiguredOff(source){
+  const productionVars=/"vars"\s*:\s*\{([\s\S]*?)\}/.exec(source)?.[1]??'';
+  return /"BACHS_AGENT_PAYOUTS_ENABLED"\s*:\s*"false"/.test(productionVars);
+}
 export function verifySchemaProof(proof, group, loadMigration) {
   const required = groups[group];
   if (!required) throw new Error("Unknown migration proof group");
@@ -87,6 +99,26 @@ export function verifySchemaProof(proof, group, loadMigration) {
     proof?.checks?.fixturesRolledBack !== true ||
     !Array.isArray(proof?.migrations)
   ) throw new Error("Approved and verified production migration proof is required");
+  if(group==='campusLandmarks'&&(proof?.checks?.protectedMapDataUnchanged!==true||proof?.checks?.replaySafety!=='passed'||proof?.checks?.transactionalCacheInvalidation!=='passed'))throw new Error('Landmark correction requires replay, map preservation and cache invalidation proof');
+  const bankEditingOnly=group==='agentBanks'&&proof?.releaseMode==='BANK_EDITING_ONLY';
+  if(bankEditingOnly&&(
+    proof?.approval?.payoutsDeferredByUser!==true||
+    proof?.checks?.newBachsAgentTransfersDisabled!==true||
+    proof?.provider?.bankNameLookup!=='passed'||
+    !agentPayoutsConfiguredOff(readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8'))
+  ))throw new Error('Bank editing release requires explicit payout deferral and disabled Bachs agent transfers');
+  if(group==='agentBanks'&&(
+    proof?.rehearsal?.parentBranchId!=='br-quiet-butterfly-ayrj264q'||
+    !/^br-[a-z0-9-]+$/.test(proof?.rehearsal?.branchId??'')||
+    proof.rehearsal.branchId===proof.branchId||
+    proof?.checks?.isolatedBranchRehearsal!=='passed'||
+    proof?.checks?.bankRevisionIsolation!=='passed'||
+    proof?.checks?.payoutIdempotencyAndRecovery!=='passed'||
+    proof?.provider?.name!=='BACHS'||
+    !bankEditingOnly&&proof?.provider?.liveConnectEnabled!==true||
+    proof?.provider?.bankNameLookup!=='passed'||
+    !bankEditingOnly&&proof?.provider?.verifiedAgentBankPayout!=='passed'
+  ))throw new Error('Bachs Connect activation, a verified agent bank payout and isolated bank/payout rehearsal are required before an APK release');
   if (group === "cache" && (
     proof?.rehearsal?.parentBranchId !== "br-quiet-butterfly-ayrj264q" ||
     !/^br-[a-z0-9-]+$/.test(proof?.rehearsal?.branchId ?? "") ||
@@ -153,7 +185,7 @@ export function verifySchemaProof(proof, group, loadMigration) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const root = new URL("../../", import.meta.url);
   try {
-    const proofFile = process.argv[2] === "screenFixes" ? "production-20261010-screen-fixes.json" : process.argv[2] === "cache" ? "production-20261010-cache.json" : process.argv[2] === "current" ? "production-20261009-current.json" : process.argv[2] === "followup" ? "production-20261006-followup.json" : process.argv[2] === "october6" ? "production-20261006-release.json" : process.argv[2] === "october4" ? "production-20261004-corrections.json" : process.argv[2] === "experience" ? "production-20261003-experience.json" : process.argv[2] === "october" ? "production-20261001-october.json" : process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
+    const proofFile = process.argv[2] === "campusLandmarks" ? "production-20261013-field-records.json" : process.argv[2] === "agentBanks" ? "production-20261013-agent-banks.json" : process.argv[2] === "screenFixes" ? "production-20261010-screen-fixes.json" : process.argv[2] === "cache" ? "production-20261010-cache.json" : process.argv[2] === "current" ? "production-20261009-current.json" : process.argv[2] === "followup" ? "production-20261006-followup.json" : process.argv[2] === "october6" ? "production-20261006-release.json" : process.argv[2] === "october4" ? "production-20261004-corrections.json" : process.argv[2] === "experience" ? "production-20261003-experience.json" : process.argv[2] === "october" ? "production-20261001-october.json" : process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
     const proof = JSON.parse(readFileSync(new URL(`database/verification/${proofFile}`, root), "utf8"));
     const count = verifySchemaProof(proof, process.argv[2], (version) =>
       readFileSync(new URL(`database/neon/migrations/${version}.sql`, root)));

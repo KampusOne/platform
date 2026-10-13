@@ -114,7 +114,7 @@ app.get("/health/ready", async (context) => {
   const checks = { ...configured.checks, database: databaseReady };
   const ready = Object.values(checks).every(Boolean);
   return context.json(
-    { status: ready ? "ready" : "not_ready", checks, requestId: context.get("requestId") },
+    { status: ready ? "ready" : "not_ready", checks, agentPayoutsEnabled:context.env.BACHS_AGENT_PAYOUTS_ENABLED==='true',requestId: context.get("requestId") },
     ready ? 200 : 503,
   );
 });

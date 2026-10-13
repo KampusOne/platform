@@ -26,9 +26,6 @@ export default function Legal() {
             ? "How accounts, academic tools, communities, campus services and payments are expected to work."
             : "What information KampusOne uses, why it is needed, who may receive it and the choices available to you."}
         </Text>
-        <Text style={{ color: theme.brandPressed, fontFamily: theme.font.semibold, fontSize: 12 }}>
-          Draft prepared 12 October 2026 · Pending legal and operator verification
-        </Text>
       </View>
       {sections.map((section, index) => (
         <View key={section.title} style={{ borderBottomWidth: 1, borderBottomColor: theme.border,

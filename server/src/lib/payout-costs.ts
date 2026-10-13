@@ -1,4 +1,5 @@
-/** Payout costs are separate from collection fees and commercial commission. */
+import {withdrawalCommission,type WithdrawalCommissionTier} from './payout-commission';
+/** Withdrawal commission and provider costs are recorded separately. */
 export type PayoutCostPolicy = {
   feeBearer: "PLATFORM" | "PAYEE";
   lowFeeKobo: number;
@@ -7,6 +8,7 @@ export type PayoutCostPolicy = {
   dutyThresholdKobo: number;
   dutyKobo: number;
   minimumWithdrawalKobo: number;
+  commissionTiers?:WithdrawalCommissionTier[];
 };
 
 export function payoutCostQuote(walletDebitKobo: number, policy: PayoutCostPolicy) {
@@ -20,13 +22,16 @@ export function payoutCostQuote(walletDebitKobo: number, policy: PayoutCostPolic
   // Reserve the requested-amount band. The actual provider band applies to the
   // sealed bank transfer; any unused transfer allowance is returned after GET proof.
   const transferFeeAllowanceKobo = policy.feeBearer === "PAYEE" ? band(walletDebitKobo) : 0;
-  const bankNetKobo = walletDebitKobo - transferFeeAllowanceKobo;
+  const payoutCommissionKobo=withdrawalCommission(walletDebitKobo,policy.commissionTiers);
+  const bankNetKobo = walletDebitKobo - transferFeeAllowanceKobo-payoutCommissionKobo;
   if (bankNetKobo <= 0) throw new RangeError("That amount does not cover the reviewed transfer fee.");
   const expectedTransferFeeKobo = band(bankNetKobo);
   const expectedStatutoryDutyKobo = bankNetKobo >= policy.dutyThresholdKobo ? policy.dutyKobo : 0;
   return {
     walletDebitKobo,
     bankNetKobo,
+    payoutCommissionKobo,
+    commissionTiers:policy.commissionTiers??[],
     expectedTransferFeeKobo,
     expectedStatutoryDutyKobo,
     transferFeeAllowanceKobo,

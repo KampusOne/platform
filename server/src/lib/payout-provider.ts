@@ -1,6 +1,7 @@
 import { z } from "@kampusone/contracts";
 import type { Bindings } from "../types";
 import { AppError } from "./errors";
+import {bachsAgentProvider,bachsPayoutMode,bachsBanks,bachsBankName} from "./bachs-connect";
 import { requireFeature } from "./features";
 
 export function requirePayoutProvider(env: Bindings) {
@@ -9,6 +10,7 @@ export function requirePayoutProvider(env: Bindings) {
     "PAYMENTS_ENABLED",
     "Payout account setup is currently unavailable. Please try again later.",
   );
+  if(bachsAgentProvider(env))return bachsPayoutMode(env);
   if (
     !env.PAYSTACK_SECRET_KEY ||
     !/^sk_(test|live)_/.test(env.PAYSTACK_SECRET_KEY)
@@ -73,20 +75,24 @@ async function providerRequest(
   return withMeta ? payload : payload.data;
 }
 type Bank = { code: string; name: string };
-let bankCache: { expiresAt: number; banks: Bank[] } | undefined;
-let bankRequest: Promise<Bank[]> | undefined;
+const bankCache=new Map<string,{expiresAt:number;banks:Bank[]}>();
+const bankRequests=new Map<string,Promise<Bank[]>>();
 export async function listNigerianBanks(env: Bindings) {
-  requirePayoutProvider(env);
-  if (bankCache && bankCache.expiresAt > Date.now()) return bankCache.banks;
-  if (bankRequest) return bankRequest;
-  bankRequest = fetchNigerianBanks(env)
+  const mode=requirePayoutProvider(env),bachs=bachsAgentProvider(env),key=(bachs?'BACHS:':'PAYSTACK:')+mode;
+  const cached=bankCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.banks;
+  const inFlight=bankRequests.get(key);
+  if (inFlight) return inFlight;
+  // Only the public bank directory is cached. Account names and numbers are not.
+  const bankRequest = (bachs?bachsBanks(env):fetchNigerianBanks(env))
     .then((banks) => {
-      bankCache = { banks, expiresAt: Date.now() + 60 * 60 * 1000 };
+      bankCache.set(key,{ banks, expiresAt: Date.now() + 60 * 60 * 1000 });
       return banks;
     })
     .finally(() => {
-      bankRequest = undefined;
+      bankRequests.delete(key);
     });
+  bankRequests.set(key,bankRequest);
   return bankRequest;
 }
 async function fetchNigerianBanks(env: Bindings) {
@@ -176,11 +182,13 @@ export async function accountRequestHash(env: Bindings, value: string) {
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 }
-export async function resolvePayoutAccount(
+export async function resolveBankAccountName(
   env: Bindings,
   bankCode: string,
   accountNumber: string,
 ) {
+  requirePayoutProvider(env);
+  if(bachsAgentProvider(env))return bachsBankName(env,bankCode,accountNumber);
   const query = new URLSearchParams({
     bank_code: bankCode,
     account_number: accountNumber,
@@ -197,6 +205,15 @@ export async function resolvePayoutAccount(
       "PROVIDER_UNAVAILABLE",
       "The bank returned inconsistent account details. Please try again.",
     );
+  return resolved.data.account_name;
+}
+export async function resolvePayoutAccount(env: Bindings, bankCode: string, accountNumber: string) {
+  const accountName = await resolveBankAccountName(env,bankCode,accountNumber);
+  if(bachsAgentProvider(env)){
+    const bank=(await listNigerianBanks(env)).find(b=>b.code===bankCode);
+    if(!bank)throw new AppError(400,"BAD_REQUEST","Choose a bank from the supported Nigerian bank list.");
+    return {name:accountName,last4:accountNumber.slice(-4),bankName:bank.name,recipientCode:null};
+  }
   // Creating a recipient only tokenizes the destination; it never transfers money.
   const recipient = z
     .object({
@@ -211,7 +228,7 @@ export async function resolvePayoutAccount(
     .safeParse(
       await providerRequest(env, "/transferrecipient", {
         type: "nuban",
-        name: resolved.data.account_name,
+        name: accountName,
         account_number: accountNumber,
         bank_code: bankCode,
         currency: "NGN",
@@ -229,7 +246,7 @@ export async function resolvePayoutAccount(
       "The payout destination could not be confirmed. Please try again.",
     );
   return {
-    name: resolved.data.account_name,
+    name: accountName,
     last4: accountNumber.slice(-4),
     recipientCode: recipient.data.recipient_code,
     bankName: recipient.data.details.bank_name,

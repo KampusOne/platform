@@ -40,7 +40,7 @@ describe('Workers AI recovery', () => {
     expect(run.mock.calls[1][1].messages.at(-2).content).toContain('get_my_timetable');
     expect(run.mock.calls[1][1].messages.at(-1)).toEqual({role:'tool',content:'{"time":"10:00"}'});
   });
-  it.each([['3036','AI_PROVIDER_QUOTA'],['3040','AI_PROVIDER_BUSY'],['3007','AI_TIMEOUT']])('classifies %s without exposing provider data', async(code,reason)=>{
+  it.each([['3036','AI_PROVIDER_QUOTA'],['3040','AI_PROVIDER_BUSY'],['3007','AI_TIMEOUT'],['5016','AI_MODEL_ACCESS'],['5018','AI_MODEL_ACCESS']])('classifies %s without exposing provider data', async(code,reason)=>{
     const run=vi.fn().mockRejectedValue(new Error(`${code}: PRIVATE_PROVIDER_BODY`));
     await expect(generateAI(env(run),input)).rejects.toMatchObject({reason});
     await expect(generateAI(env(run),input)).rejects.not.toThrow('PRIVATE_PROVIDER_BODY');
@@ -49,21 +49,25 @@ describe('Workers AI recovery', () => {
     await expect(generateAI(env(native({response:''})),input)).rejects.toMatchObject({reason:'AI_EMPTY_OUTPUT'});
     await expect(generateAI(env(native({response:'Partial',usage:{completion_tokens:3072}})),input)).rejects.toMatchObject({reason:'AI_INCOMPLETE'});
   });
-  it('reads private timetable pixels as text before reasoning, retaining the Pro model', async () => {
+  it('retains the original private pixels when OCR supplies plausible timetable text', async () => {
     const run=native(), toMarkdown=vi.fn().mockResolvedValue([{format:'markdown',data:'Monday, MAT 101, 08:00–09:00, LT 1'}]);
     const result=await generateAI({...env(run),AI:{run,toMarkdown}}, {...input,tier:'pro',media:{mimeType:'image/png',data:btoa('PRIVATE_PIXELS')}});
     expect(result.provider).toBe('workers-ai');
     const files=toMarkdown.mock.calls[0][0]; expect(files[0].blob).toBeInstanceOf(Blob);
     expect(await files[0].blob.text()).toBe('PRIVATE_PIXELS');
-    expect(run.mock.calls[0][0]).toBe('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
-    expect(run.mock.calls[0][1].messages.at(-1).content).toContain('MAT 101');
+    expect(run.mock.calls[0][0]).toBe('@cf/google/gemma-4-26b-a4b-it');
+    expect(run.mock.calls[0][1].messages.at(-1).content).toEqual(expect.arrayContaining([
+      expect.objectContaining({type:'image_url',image_url:{url:'data:image/png;base64,'+btoa('PRIVATE_PIXELS')}}),
+      expect.objectContaining({type:'text',text:expect.stringContaining('MAT 101')}),
+    ]));
     expect(run.mock.calls[0][1].image).toBeUndefined();
   });
   it('recovers visually when conversion cannot read a photo', async () => {
     const run=native(),toMarkdown=vi.fn().mockResolvedValue([{format:'error',data:'Unreadable'}]);
     await generateAI({...env(run),AI:{run,toMarkdown}},{...input,media:{mimeType:'image/png',data:btoa('PIXELS')}});
-    expect(run.mock.calls[0][0]).toBe('@cf/meta/llama-3.2-11b-vision-instruct');
-    expect(run.mock.calls[0][1].image).toBe('data:image/png;base64,'+btoa('PIXELS'));
+    expect(run.mock.calls[0][0]).toBe('@cf/google/gemma-4-26b-a4b-it');
+    expect(run.mock.calls[0][1].messages.at(-1).content).toEqual(expect.arrayContaining([expect.objectContaining({type:'image_url',image_url:{url:'data:image/png;base64,'+btoa('PIXELS')}})]));
+    expect(run.mock.calls[0][1].image).toBeUndefined();
   });
 
 });
