@@ -1306,6 +1306,7 @@ export default function ConversationScreen() {
   const canAttach = data?.thread.status === "ACCEPTED";
   const locked = sending || voiceSending || actionBusy || messageActionBusy || !draftReady;
   const peerName = data?.profile?.display_name || "Conversation";
+  const peerUserId = data?.profile?.user_id;
   const handleVoiceActive = useCallback((active: boolean) => {
     if (activeScope.current !== scope) return;
     setVoiceActive(active);
@@ -1331,13 +1332,22 @@ export default function ConversationScreen() {
             >
               <Ionicons name="chevron-back" size={27} color={theme.text} />
             </Pressable>
-            <ProfileAvatar name={peerName} imageUrl={data?.profile?.profile_image_url} size={40} />
-            <View style={styles.headerCopy}>
-              <Text numberOfLines={1} style={styles.headerName}>{peerName}</Text>
-              <Text numberOfLines={1} style={styles.headerStatus}>
-                {incoming ? "Message request" : data?.thread.status === "ACCEPTED" ? "KampusOne message" : "Conversation"}
-              </Text>
-            </View>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`View ${peerName}'s profile`}
+              accessibilityState={{ disabled: !peerUserId }}
+              disabled={!peerUserId}
+              onPress={() => { if (peerUserId) router.push({ pathname: "/student-profile", params: { id: peerUserId } }); }}
+              style={styles.headerProfile}
+            >
+              <ProfileAvatar name={peerName} imageUrl={data?.profile?.profile_image_url} size={40} />
+              <View style={styles.headerCopy}>
+                <Text numberOfLines={1} style={styles.headerName}>{peerName}</Text>
+                <Text numberOfLines={1} style={styles.headerStatus}>
+                  {incoming ? "Message request" : data?.thread.status === "ACCEPTED" ? "KampusOne message" : "Conversation"}
+                </Text>
+              </View>
+            </Pressable>
             {data?.profile ? (
               <ProfileActions userId={data.profile.user_id} name={data.profile.display_name} onChanged={() => void load()} />
             ) : <View style={styles.headerButton} />}
@@ -1762,6 +1772,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   shell: { flex: 1, width: "100%", maxWidth: 540, alignSelf: "center" },
   header: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border, backgroundColor: theme.canvas },
   headerButton: { width: 42, height: 42, alignItems: "center", justifyContent: "center" },
+  headerProfile: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: "row", alignItems: "center", gap: 10 },
   headerCopy: { flex: 1, minWidth: 0, gap: 2 },
   headerName: { color: theme.text, fontFamily: theme.font.semibold, fontSize: 16 },
   headerStatus: { color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11 },
