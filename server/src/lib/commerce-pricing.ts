@@ -264,14 +264,15 @@ export async function prepareStoreQuote(
         "FEATURE_DISABLED",
         "Rider delivery is not available yet.",
       );
-    const zone=firstRow(await database(env).execute<{id:string}>(sql`select id from public.delivery_zones where id=${data.deliveryZoneId??null}::uuid and university_id=${user.universityId}::uuid and active`));
+    const zone=firstRow(await database(env).execute<{id:string;campus_id:string|null}>(sql`select id,to_jsonb(delivery_zones)->>'campus_id' as campus_id from public.delivery_zones where id=${data.deliveryZoneId??null}::uuid and university_id=${user.universityId}::uuid and active`));
     if(!zone)throw new AppError(409,'CONFLICT','Choose an active delivery coverage zone.');
-    if(!vendor.pickup_place_id||!data.deliveryPlaceId)throw new AppError(422,'BAD_REQUEST','The store pickup and your delivery point must be selected on the campus map before a rider fare can be reviewed.');
-    const pickup=await mappedDeliveryPoint(env,user.universityId!,vendor.pickup_place_id),destination=await mappedDeliveryPoint(env,user.universityId!,data.deliveryPlaceId);
-    if(pickup.campus_id!==destination.campus_id)throw new AppError(422,'BAD_REQUEST','Cross-campus rider delivery is outside the mapped campus route coverage.');
-    const position=await currentAgentPosition(env,data.vendorProfileId,user.universityId!);
-    const origin:[number,number]=position?[position.longitude,position.latitude]:[pickup.longitude,pickup.latitude];
-    const route=await campusDeliveryRoute(env,user.universityId!,pickup.campus_id,origin,[destination.longitude,destination.latitude]);
+    if(!data.deliveryPlaceId)throw new AppError(422,'BAD_REQUEST','Choose your delivery point on the campus map.');
+    const [destination,position,pickup]=await Promise.all([mappedDeliveryPoint(env,user.universityId!,data.deliveryPlaceId),currentAgentPosition(env,data.vendorProfileId,user.universityId!),vendor.pickup_place_id?mappedDeliveryPoint(env,user.universityId!,vendor.pickup_place_id):Promise.resolve(null)]);
+    if(zone.campus_id&&zone.campus_id!==destination.campus_id)throw new AppError(422,'BAD_REQUEST','Choose the delivery zone for your selected campus point.');
+    if(pickup&&pickup.campus_id!==destination.campus_id)throw new AppError(422,'BAD_REQUEST','Cross-campus delivery is unavailable. Choose pickup.');
+    if(!position&&!pickup)throw new AppError(422,'BAD_REQUEST','The seller needs to save a pickup point or share their current campus location. You can still choose store pickup.');
+    const origin:[number,number]=position?[position.longitude,position.latitude]:[pickup!.longitude,pickup!.latitude];
+    const route=await campusDeliveryRoute(env,user.universityId!,destination.campus_id,origin,[destination.longitude,destination.latitude]);
     fare={...campusFare(route.distanceMetres),route,distanceBasis:'OSM_BICYCLE_NETWORK',pickupLocationBasis:position?'CURRENT_VENDOR_POSITION':'APPROVED_STOREFRONT_PICKUP'};
   }
   let pricing;

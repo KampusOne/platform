@@ -631,6 +631,8 @@ export const payoutRequestSchema = z
     amountKobo: z.number().int().positive().max(1_000_000_000),
     quoteId: z.string().uuid(),
     requestId: z.string().uuid(),
+    expectedCommissionKobo: z.number().int().min(0).max(1_000_000_000).optional(),
+    expectedBankNetKobo: z.number().int().positive().max(1_000_000_000).optional(),
   })
   .strict();
 

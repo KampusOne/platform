@@ -1386,7 +1386,8 @@ studentRoutes.post("/tutorial-reviews", async (context) => {
 });
 
 studentRoutes.get('/delivery-places',async c=>{const u=currentUser(c);const r=await database(c.env).execute(sql`
- select p.id,p.name,p.campus_id,c.name campus_name from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.status='PUBLISHED'
+ select p.id,p.name,p.campus_id,c.name campus_name,
+ (select z.id from public.delivery_zones z where z.university_id=p.university_id and z.active and to_jsonb(z)->>'campus_id'=p.campus_id::text order by z.created_at,z.id limit 1) as delivery_zone_id from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.status='PUBLISHED'
  where p.university_id=${u.universityId}::uuid and p.status='PUBLISHED'and ((p.source_provider='OSM'and p.confidence>=.8 and p.latitude is not null and p.longitude is not null)or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null)) order by c.name,p.name limit 1000`);return c.json({places:r.rows});});
 
 studentRoutes.get("/store", async (context) => {
@@ -1418,7 +1419,7 @@ studentRoutes.get("/store", async (context) => {
   const [products, zones] = await Promise.all([
     database(context.env).execute(sql`
       select products.id, products.vendor_profile_id, products.name, products.description,
-        products.category, products.price_kobo, products.stock_quantity, products.image_url, coalesce(to_jsonb(products)->'image_urls','[]'::jsonb) as image_urls,
+        products.category, products.price_kobo, products.stock_quantity, products.image_url, coalesce(to_jsonb(products)->'image_urls','[]'::jsonb) as image_urls,profiles.user_id as vendor_user_id,
         products.preparation_minutes, storefronts.display_name as vendor_name,
         storefronts.pickup_location,
         coalesce((to_jsonb(storefronts)->>'pickup_enabled')::boolean,false) as pickup_enabled,
@@ -1579,7 +1580,7 @@ studentRoutes.post("/orders", async (context) => {
       201,
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "";
+    let message="",cause=error;for(let n=0;n<5&&cause instanceof Error;n++){message+=cause.message;cause=cause.cause;}
     if(message.includes('PRICE_QUOTE')||message.includes('PRODUCT_PRICE_CHANGED'))throw new AppError(409,'CONFLICT','Your quote expired or an item price changed. Review a fresh checkout total.');
     if (message.includes("PRODUCT_UNAVAILABLE_OR_STOCK_LOW"))
       throw new AppError(

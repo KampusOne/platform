@@ -47,6 +47,7 @@ import { theme } from "@/src/theme";
 export type Product = {
   id: string;
   vendor_profile_id: string;
+  vendor_user_id?: string;
   name: string;
   description: string;
   category: string;
@@ -309,13 +310,13 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   ].filter(Boolean).join("\n");
   const cartAvailable = cartItems.every(item => item.quantity > 0 && item.quantity <= Number(item.product.stock_quantity));
   const checkoutReady =
-    cartAvailable && !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone) &&
+    cartAvailable && !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone && !!deliveryPlace) &&
     (!agreedPickup || meetingPoint.trim().length >= 5) && orderNote.length <= 500;
   const checkoutBlockedLabel = !cartAvailable ? "Update the unavailable items in your cart" : !effectiveMode ? "This seller has no delivery or pickup option yet" : orderNote.length > 500
     ? "Shorten your handoff note to continue"
     : agreedPickup && meetingPoint.trim().length < 5
       ? "Enter the agreed pickup point"
-      : "Select a delivery zone to continue";
+      : !deliveryPlace && effectiveMode === 'RIDER' ? "Choose a delivery location" : "Select a delivery zone to continue";
   const orderPayload = JSON.stringify({
     vendorProfileId: cartItems[0]?.product.vendor_profile_id,
     ...(discountCode?{discountCode}:{}),
@@ -485,7 +486,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
       );
       router.replace({
         pathname: "/payment-review",
-        params: { id: order.id, type: "STORE_ORDER" },
+        params: { id: order.id, type: "STORE_ORDER", autoPay: '1' },
       });
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "CONFLICT") {
@@ -501,6 +502,20 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
       checkoutLock.current=false;
       setBusy(false);
     }
+  }
+
+  async function contactVendor(){
+    if(!vendorProduct||busy)return;
+    const revision=getDeviceCacheRevision();setBusy(true);setCheckoutError('');
+    try{
+      const userId=vendorProduct.vendor_user_id??(await api<{service:{user_id:string}}>('/v1/people/services/'+encodeURIComponent(vendorProduct.vendor_profile_id))).service.user_id;
+      if(revision!==getDeviceCacheRevision())return;
+      const result=await api<{thread:{id:string}}>('/v1/messages/threads',{method:'POST',body:JSON.stringify({userId})});
+      if(revision!==getDeviceCacheRevision())return;
+      if(!result.thread?.id)throw new Error('The vendor conversation could not open.');
+      router.push({pathname:'/conversation',params:{id:result.thread.id}});
+    }catch(error){if(revision===getDeviceCacheRevision())setCheckoutError(error instanceof Error?error.message:'The vendor conversation could not open.');}
+    finally{if(revision===getDeviceCacheRevision())setBusy(false);}
   }
 
   useEffect(() => {
@@ -646,7 +661,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                           ? "Your rider collects from the vendor’s verified pickup point. The route is reviewed before you confirm."
                           : "Collect from this address, or use a meeting point already agreed with the vendor."}
                       </Text>
-                      <Pressable disabled={busy} accessibilityRole="button" onPress={()=>{setCartOpen(false);router.push({pathname:"/student-service",params:{id:vendorProduct.vendor_profile_id}});}} style={styles.vendorContact}>
+                      <Pressable disabled={busy} accessibilityRole="button" onPress={()=>void contactVendor()} style={styles.vendorContact}>
                         <Ionicons name="chatbubble-outline" size={16} color={theme.brandPressed} />
                         <Text style={styles.vendorContactText}>Contact vendor</Text>
                         <Ionicons name="chevron-forward" size={14} color={theme.brandPressed} />
@@ -763,6 +778,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         label="Delivery point on the campus map"
                         value={deliveryPlace}
                         onChange={setDeliveryPlace}
+                        onSelect={place=>{setDeliveryLocation(place.name);if(place.delivery_zone_id)setSelectedZoneId(place.delivery_zone_id);else if(zones.length===1&&zones[0])setSelectedZoneId(zones[0].id);setCheckoutError('');}}
                       />
                     </>
                   ) : null}

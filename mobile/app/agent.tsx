@@ -193,11 +193,6 @@ function AccountAgentDashboard() {
               : "Your workspaces"
       }
       action={seller ? <HeaderMenu label="Seller dashboard options" items={[
-        { label: "Store profile", icon: "storefront-outline", onPress: () => router.push("/store-settings"), disabled: !profile },
-        { label: "Orders & delivery", icon: "receipt-outline", onPress: () => router.push("/vendor-orders"), disabled: !profile },
-        { label: "Earnings & payouts", icon: "wallet-outline", onPress: () => router.push("/earnings"), disabled: !profile },
-        { label: "Seller trial", icon: "gift-outline", onPress: () => router.push("/trial"), disabled: !profile },
-        { label: "View seller profile", icon: "person-circle-outline", onPress: () => profile && router.push({ pathname: "/student-service", params: { id: profile.id } }), disabled: !profile },
         { label: "Refresh dashboard", icon: "refresh-outline", onPress: () => void load().catch(e => setLoadError(e.message)), disabled: !profile || busy },
         { label: "Refresh delivery location", icon: "locate-outline", onPress: () => void refreshPosition(), disabled: !profile || busy },
         { label: "Campus capture missions", icon: "map-outline", onPress: () => router.push("/map-capture"), disabled: !profile },
@@ -212,6 +207,12 @@ function AccountAgentDashboard() {
             "Manage your availability, pickup routes and deliveries."}
         </Text>
       </View> : null}
+      {profile?<View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:18}}>{[
+        {label:'Orders',icon:'receipt-outline' as const,path:role==='VENDOR'?'/vendor-orders':'/agent'},
+        {label:'Earnings',icon:'wallet-outline' as const,path:'/earnings'},
+        {label:'Profile',icon:'person-outline' as const,path:role==='VENDOR'?'/store-settings':'/business-profile-edit'},
+        {label:'Bank',icon:'card-outline' as const,path:'/bank-account'},
+      ].map(action=><Pressable key={action.label} accessibilityRole="button" onPress={()=>router.push({pathname:action.path as '/earnings',params:{profileId:profile.id}})} style={{flex:1,minWidth:65,alignItems:'center',gap:6,paddingVertical:14,backgroundColor:theme.surface,borderWidth:1,borderColor:theme.border,borderRadius:12}}><Ionicons name={action.icon} size={22} color={theme.deepBrand}/><Text style={{color:theme.text,fontFamily:theme.font.semibold,fontSize:12}}>{action.label}</Text></Pressable>)}</View>:null}
       {ready&&profile&&!loadError ? <View style={{ flexDirection:"row", gap:10, marginBottom:16 }}>
         <View style={{ flex:1, backgroundColor:theme.surfaceTint, padding:16, borderRadius:15 }}>
           <Text style={{ fontFamily:theme.font.displayStrong, color:theme.deepBrand, fontSize:27 }}>

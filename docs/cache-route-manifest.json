@@ -1254,7 +1254,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 448
+          "line": 454
         }
       ],
       "classification": "mutation",
@@ -1272,7 +1272,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 318
+          "line": 324
         }
       ],
       "classification": "mutation",
@@ -1290,7 +1290,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 304
+          "line": 310
         }
       ],
       "classification": "security",
@@ -1308,7 +1308,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 257
+          "line": 263
         }
       ],
       "classification": "security",
@@ -1326,7 +1326,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 389
+          "line": 395
         }
       ],
       "classification": "mutation",
@@ -1344,7 +1344,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 355
+          "line": 361
         }
       ],
       "classification": "mutation",
@@ -1362,7 +1362,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 189
+          "line": 195
         }
       ],
       "classification": "mutation",
@@ -1380,7 +1380,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 190
+          "line": 196
         }
       ],
       "classification": "security",
@@ -1398,7 +1398,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 209
+          "line": 215
         }
       ],
       "classification": "mutation",
@@ -1596,7 +1596,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 280
+          "line": 286
         }
       ],
       "classification": "security",
@@ -1758,7 +1758,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 30
+          "line": 31
         }
       ],
       "classification": "security",
@@ -1776,7 +1776,7 @@
       "sources": [
         {
           "file": "server/src/routes/finance-policies.ts",
-          "line": 44
+          "line": 45
         }
       ],
       "classification": "mutation",
@@ -1880,11 +1880,11 @@
     },
     {
       "method": "POST",
-      "path": "/v1/admin/operations/payouts/:id/check",
+      "path": "/v1/admin/operations/payouts/:id/approve",
       "sources": [
         {
           "file": "server/src/routes/payouts-admin.ts",
-          "line": 189
+          "line": 218
         }
       ],
       "classification": "mutation",
@@ -1898,11 +1898,47 @@
     },
     {
       "method": "POST",
+      "path": "/v1/admin/operations/payouts/:id/check",
+      "sources": [
+        {
+          "file": "server/src/routes/payouts-admin.ts",
+          "line": 236
+        }
+      ],
+      "classification": "mutation",
+      "backend": "fresh",
+      "authorization": "Source router auth/signature/idempotency; no response reuse",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/operations/payouts/:id/details",
+      "sources": [
+        {
+          "file": "server/src/routes/payouts-admin.ts",
+          "line": 75
+        }
+      ],
+      "classification": "security",
+      "backend": "fresh",
+      "authorization": "Fresh session, tenant, role and object checks in source router",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "POST",
       "path": "/v1/admin/operations/payouts/:id/duty-reconciliation",
       "sources": [
         {
           "file": "server/src/routes/payouts-admin.ts",
-          "line": 72
+          "line": 95
         }
       ],
       "classification": "mutation",
@@ -1920,7 +1956,7 @@
       "sources": [
         {
           "file": "server/src/routes/payouts-admin.ts",
-          "line": 214
+          "line": 261
         }
       ],
       "classification": "mutation",
@@ -1956,7 +1992,7 @@
       "sources": [
         {
           "file": "server/src/routes/payouts-admin.ts",
-          "line": 136
+          "line": 214
         }
       ],
       "classification": "mutation",
@@ -1974,7 +2010,7 @@
       "sources": [
         {
           "file": "server/src/routes/payouts-admin.ts",
-          "line": 25
+          "line": 27
         }
       ],
       "classification": "security",
@@ -2838,7 +2874,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1925
+          "line": 1927
         }
       ],
       "classification": "mutation",
@@ -2856,7 +2892,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1942
+          "line": 1945
         }
       ],
       "classification": "financial",
@@ -2874,7 +2910,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1929
+          "line": 1931
         }
       ],
       "classification": "mutation",
@@ -3055,7 +3091,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1916
+          "line": 1918
         }
       ],
       "classification": "private-operational",
@@ -3073,7 +3109,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1889
+          "line": 1891
         }
       ],
       "classification": "mutation",
@@ -4383,6 +4419,24 @@
     },
     {
       "method": "GET",
+      "path": "/v1/communities/groups/:id/likes",
+      "sources": [
+        {
+          "file": "server/src/routes/student-groups.ts",
+          "line": 126
+        }
+      ],
+      "classification": "private-display",
+      "backend": "fresh",
+      "authorization": "Fresh session, tenant, role and object checks in source router",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "GET",
       "path": "/v1/communities/groups/:id/members",
       "sources": [
         {
@@ -4441,7 +4495,7 @@
       "sources": [
         {
           "file": "server/src/routes/student-groups.ts",
-          "line": 147
+          "line": 152
         }
       ],
       "classification": "mutation",
@@ -4459,7 +4513,7 @@
       "sources": [
         {
           "file": "server/src/routes/student-groups.ts",
-          "line": 137
+          "line": 142
         }
       ],
       "classification": "private-display",
@@ -4477,7 +4531,7 @@
       "sources": [
         {
           "file": "server/src/routes/student-groups.ts",
-          "line": 141
+          "line": 146
         }
       ],
       "classification": "mutation",
@@ -4495,7 +4549,7 @@
       "sources": [
         {
           "file": "server/src/routes/student-groups.ts",
-          "line": 132
+          "line": 137
         }
       ],
       "classification": "mutation",
@@ -4513,7 +4567,7 @@
       "sources": [
         {
           "file": "server/src/routes/student-groups.ts",
-          "line": 126
+          "line": 132
         }
       ],
       "classification": "mutation",
@@ -4531,7 +4585,7 @@
       "sources": [
         {
           "file": "server/src/routes/student-groups.ts",
-          "line": 150
+          "line": 155
         }
       ],
       "classification": "mutation",
@@ -4639,7 +4693,7 @@
       "sources": [
         {
           "file": "server/src/routes/student-groups.ts",
-          "line": 163
+          "line": 168
         }
       ],
       "classification": "mutation",
@@ -4657,7 +4711,7 @@
       "sources": [
         {
           "file": "server/src/routes/student-groups.ts",
-          "line": 172
+          "line": 177
         }
       ],
       "classification": "mutation",
@@ -4675,7 +4729,7 @@
       "sources": [
         {
           "file": "server/src/routes/student-groups.ts",
-          "line": 154
+          "line": 159
         }
       ],
       "classification": "private-display",
@@ -7038,7 +7092,25 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 280
+          "line": 298
+        }
+      ],
+      "classification": "mutation",
+      "backend": "fresh",
+      "authorization": "Source router auth/signature/idempotency; no response reuse",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "POST",
+      "path": "/v1/payout-setup/account-name",
+      "sources": [
+        {
+          "file": "server/src/routes/payout-setup.ts",
+          "line": 99
         }
       ],
       "classification": "mutation",
@@ -7056,7 +7128,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 67
+          "line": 72
         }
       ],
       "classification": "security",
@@ -7074,7 +7146,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 94
+          "line": 108
         }
       ],
       "classification": "mutation",
@@ -7092,7 +7164,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 227
+          "line": 243
         }
       ],
       "classification": "security",
@@ -7110,7 +7182,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 37
+          "line": 42
         }
       ],
       "classification": "security",
@@ -7418,7 +7490,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1799
+          "line": 1800
         }
       ],
       "classification": "mutation",
@@ -8006,7 +8078,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1474
+          "line": 1475
         }
       ],
       "classification": "mutation",
@@ -8024,7 +8096,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1612
+          "line": 1613
         }
       ],
       "classification": "financial",
@@ -8042,7 +8114,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1481
+          "line": 1482
         }
       ],
       "classification": "mutation",
@@ -8060,7 +8132,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1685
+          "line": 1686
         }
       ],
       "classification": "mutation",
@@ -8240,7 +8312,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1733
+          "line": 1734
         }
       ],
       "classification": "financial",
@@ -8258,7 +8330,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1392
+          "line": 1393
         }
       ],
       "classification": "private-display",

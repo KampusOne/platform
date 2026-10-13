@@ -23,7 +23,7 @@ aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "explanation", "quiz", "notes", "timetable"]);
 const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), documentKind:z.enum(["exam","class","calendar"]).optional(), mediaId: z.string().uuid().optional(), extractedText: z.string().trim().max(50000).optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
-type Saved = { failureStatus?: number; failureDetails?: Record<string,unknown>; documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; fileType?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
+type Saved = { processingStage?: 'reading'|'analysing'|'finishing'; failureStatus?: number; failureDetails?: Record<string,unknown>; documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; fileType?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
@@ -192,7 +192,7 @@ aiRoutes.get("/requests/:id", async c => {
   if(!id.success) throw new AppError(400,"BAD_REQUEST","Invalid Kira request.");
   const row=firstRow(await database(c.env).execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${currentUser(c).id}::uuid and idempotency_key=${id.data}::uuid and mode<>'transcription'`));
   if(!row) throw new AppError(404,"NOT_FOUND","This Kira attempt has not been submitted.",{reason:"AI_REQUEST_NOT_FOUND"});
-  if(row.status==='PROCESSING'&&Date.now()-Date.parse(row.created_at)<=300000) return c.json({requestId:id.data,status:"processing"});
+  if(row.status==='PROCESSING'&&Date.now()-Date.parse(row.created_at)<=300000) return c.json({requestId:id.data,status:"processing",stage:row.result?.processingStage??"analysing"});
   return c.json({...replay(row,row.request_hash),status:"completed"});
 });
 aiRoutes.get("/history", async c => {
@@ -426,7 +426,11 @@ aiRoutes.post("/", async c => {
     throw new AppError(429,"RATE_LIMITED","You've reached your current usage limit. Your draft is kept.",{reason:"AI_CHAT_LIMIT",resetsAt,retryAfter,upgrade:!quota.pro});
   }
   const job = (async () => {
+    const progress=async(stage:'reading'|'analysing'|'finishing')=>{
+      await db.execute(sql`update app_private.ai_requests set result=result || ${JSON.stringify({processingStage:stage})}::jsonb where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid and status='PROCESSING'`);
+    };
     try {
+      await progress(attached?'reading':'analysing');
       let importConsumed = false;
       const consumeImport = async () => {
         if (importConsumed || !(d.mode === 'timetable' || d.mediaId)) return;
@@ -459,12 +463,13 @@ aiRoutes.post("/", async c => {
       }
       if(new TextEncoder().encode(prompt+JSON.stringify(history)).length>160000)throw new AIProviderError(422,'AI_DOCUMENT_TOO_LONG','This section is too long. Ask about a smaller part of the document.');
       await consumeImport();
-      const aiInput={mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:d.documentKind==='calendar'?'This import is an academic calendar. Extract dated activities and semester dates only; do not create weekly classes.':d.documentKind==='class'?'This import is a weekly class timetable. Preserve the source classification and never convert dates into class hours.':''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
+      const aiInput={onProgress:progress,mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:d.documentKind==='calendar'?'This import is an academic calendar. Extract dated activities and semester dates only; do not create weekly classes.':d.documentKind==='class'?'This import is a weekly class timetable. Preserve the source classification and never convert dates into class hours.':''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
       const generated = isRestrictedKampusOneRequest(d.prompt)
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: selectedProvider, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'
           ? await generateAI(c.env,aiInput)
           : await runStudentAssistant(c.env,u,aiInput);
+      await progress('finishing');
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
         const extracted = d.documentKind==='exam'?parseExamDocument(generated.text):parseScheduleDocument(generated.text, sourceText);

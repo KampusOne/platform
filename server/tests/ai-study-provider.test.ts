@@ -90,7 +90,7 @@ describe("student AI persistence and quota boundaries",()=>{
   });
   it('reads processing reservations without starting another metered call',async()=>{
     const key=crypto.randomUUID();await db.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) values($1,$2,repeat('a',64),'summary','PROCESSING','{}'::jsonb)",[owner,key]);
-    expect(await json(await request(`/ai/requests/${key}`))).toEqual({requestId:key,status:'processing'});
+    expect(await json(await request(`/ai/requests/${key}`))).toEqual({requestId:key,status:'processing',stage:'analysing'});
     expect(provider).not.toHaveBeenCalled();
     await db.query("update app_private.ai_requests set created_at=now()-interval '6 minutes' where idempotency_key=$1",[key]);
     const stale=await json(await request(`/ai/requests/${key}`),409);expect(stale.error.details).toMatchObject({reason:'AI_STALE_REQUEST',retryWithNewKey:true});

@@ -1,5 +1,6 @@
 "use client";
 
+import {DecisionConsent} from "./decision-consent";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { portalApi } from "@/lib/api";
 import { useAdminContext } from "./admin-context";
@@ -49,7 +50,7 @@ function ScopedRefunds(){
       <label>Campus<select required name="universityId" defaultValue={scope}><option value="">Choose campus</option>{access?.universities?.map(u=><option value={u.id} key={u.id}>{u.name}</option>)}</select></label>
       <label>Original payment reference<input required name="reference" maxLength={100} pattern="[A-Za-z0-9_.-]+" disabled={busy}/></label>
       <label>Customer refund (₦)<input required name="amount" inputMode="decimal" disabled={busy}/></label>
-      <label>Reason<input required name="reason" minLength={10} maxLength={1000} disabled={busy}/></label>
+      <label>Reason<DecisionConsent name="reason" /></label>
       <button className="button button--primary" disabled={busy}>{busy?"Saving…":"Request review"}</button>
     </form></details>:null}
     {loaded&&!rows.length?<p>No refund requests for this scope.</p>:null}

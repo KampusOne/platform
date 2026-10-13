@@ -1,0 +1,50 @@
+{
+  "environment": "rehearsal",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-mute-sunset-ayzh9xrc",
+  "parentBranchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "verifiedAt": "2026-10-13T19:48:18.812439+00:00",
+  "migrations": [
+    {
+      "version": "20261013190000_agent_withdrawal_commission",
+      "sourceBlobSha": "bb2cacb3fc4450a3e52b0e79cfc55e85eae888ec"
+    },
+    {
+      "version": "20261013200000_delivery_checkout_recovery",
+      "sourceBlobSha": "f039d4a94181c1ad545bc9a60ad12c15ee511b21"
+    },
+    {
+      "version": "20261013205000_bachs_bank_details",
+      "sourceBlobSha": "007a79d85317fe3a7f893d259ed3b5d34aafc172"
+    },
+    {
+      "version": "20261013210000_bachs_agent_banks_and_payouts",
+      "sourceBlobSha": "d824ff6b05345341ef825bdeb70674050dc4747f"
+    },
+    {
+      "version": "20261013213000_payout_reconciliation_schedule",
+      "sourceBlobSha": "bea344cd15a01ded53f37ca05eed050e15cae8ae"
+    }
+  ],
+  "checks": {
+    "atomicMigrationApply": "passed",
+    "sourceLedgerRegistered": "passed",
+    "bankSetupFunction": "passed",
+    "BachsPayoutReceiptFunction": "passed",
+    "graduatedCommissionBoundaries": "passed",
+    "mappedDeliveryZones": 2
+  },
+  "provider": {
+    "name": "BACHS",
+    "bankNameLookup": "passed",
+    "liveConnectEnabled": false,
+    "verifiedAgentBankPayout": "blocked"
+  },
+  "productionMigrationsApplied": false,
+  "apkReleased": false,
+  "limitations": [
+    "The existing owned rehearsal branch was used because the Neon project is at its branch limit. This is not a new snapshot of current production.",
+    "No real agent transfer has been initiated. Live Connect capability activation and explicit bank-transfer acceptance remain required."
+  ]
+}

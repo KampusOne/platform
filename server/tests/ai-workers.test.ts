@@ -40,7 +40,7 @@ describe('Workers AI recovery', () => {
     expect(run.mock.calls[1][1].messages.at(-2).content).toContain('get_my_timetable');
     expect(run.mock.calls[1][1].messages.at(-1)).toEqual({role:'tool',content:'{"time":"10:00"}'});
   });
-  it.each([['3036','AI_PROVIDER_QUOTA'],['3040','AI_PROVIDER_BUSY'],['3007','AI_TIMEOUT']])('classifies %s without exposing provider data', async(code,reason)=>{
+  it.each([['3036','AI_PROVIDER_QUOTA'],['3040','AI_PROVIDER_BUSY'],['3007','AI_TIMEOUT'],['5016','AI_MODEL_ACCESS'],['5018','AI_MODEL_ACCESS']])('classifies %s without exposing provider data', async(code,reason)=>{
     const run=vi.fn().mockRejectedValue(new Error(`${code}: PRIVATE_PROVIDER_BODY`));
     await expect(generateAI(env(run),input)).rejects.toMatchObject({reason});
     await expect(generateAI(env(run),input)).rejects.not.toThrow('PRIVATE_PROVIDER_BODY');
@@ -62,8 +62,9 @@ describe('Workers AI recovery', () => {
   it('recovers visually when conversion cannot read a photo', async () => {
     const run=native(),toMarkdown=vi.fn().mockResolvedValue([{format:'error',data:'Unreadable'}]);
     await generateAI({...env(run),AI:{run,toMarkdown}},{...input,media:{mimeType:'image/png',data:btoa('PIXELS')}});
-    expect(run.mock.calls[0][0]).toBe('@cf/meta/llama-3.2-11b-vision-instruct');
-    expect(run.mock.calls[0][1].image).toBe('data:image/png;base64,'+btoa('PIXELS'));
+    expect(run.mock.calls[0][0]).toBe('@cf/google/gemma-4-26b-a4b-it');
+    expect(run.mock.calls[0][1].messages.at(-1).content).toEqual(expect.arrayContaining([expect.objectContaining({type:'image_url',image_url:{url:'data:image/png;base64,'+btoa('PIXELS')}})]));
+    expect(run.mock.calls[0][1].image).toBeUndefined();
   });
 
 });

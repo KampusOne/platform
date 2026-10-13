@@ -1,4 +1,4 @@
-export type ImportStage = "selecting" | "validating" | "selected" | "uploading" | "uploaded" | "reading" | "analysing" | "review" | "saving" | "completed" | "failed";
+export type ImportStage = "selecting" | "validating" | "selected" | "uploading" | "uploaded" | "reading" | "analysing" | "finishing" | "review" | "saving" | "completed" | "failed";
 
 /** Only transfer callbacks can supply a percentage. Processing has no numeric progress. */
 export function importProgress(stage: ImportStage, subject: string, fraction?: number) {
@@ -10,6 +10,7 @@ export function importProgress(stage: ImportStage, subject: string, fraction?: n
     uploaded: ["Upload complete", "Your file is saved. Preparing it for reading."],
     reading: ["Reading your " + subject, "Extracting readable information from the PDF, image or text."],
     analysing: ["AI analysing your " + subject, "Checking the information. You will review the result before saving."],
+    finishing: ["Preparing your result", "The analysis has finished. Checking and saving the result for review."],
     review: ["Ready for review", "Check the extracted information and make any changes before saving."],
     saving: ["Saving your changes", "Waiting for the server to confirm your reviewed information."],
     completed: ["Saved successfully", "The server has confirmed your changes."],

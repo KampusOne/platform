@@ -43,13 +43,13 @@ export async function probe(request, env) {
       result.connectStatus=cap('connect');result.payoutStatus=cap('payouts');
       const items=Array.isArray(destinations.data)?destinations.data:destinations.data?.items??destinations.data?.data??destinations.data?.destinations;
       result.savedDestinationCount=Array.isArray(items)?items.length:0;
-      const quote=await read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/payouts/quotes',{from_currency:'NGN',to_currency:'NGN',amount:'2000.00'});result.ngnPayoutQuoteHttp=quote.http;result.ngnPayoutQuoteAvailable=quote.http===201&&quote.data?.from_currency==='NGN'&&quote.data?.to_currency==='NGN'&&Number(quote.data.from_amount)===2000&&Number(quote.data.to_amount)>0&&Number(quote.data.exchange_rate)===1;result.ngnQuotedFee=result.ngnPayoutQuoteAvailable?2000-Number(quote.data.to_amount):null;
       const existing=Array.isArray(items)?items.find(d=>d.currency==='NGN'&&/^\d{10}$/.test(d.account_number??'')&&typeof d.bank_code==='string'):null;
       if(existing){const r=await read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/misc/bank-accounts/resolve',{country:'NG',account_number:existing.account_number,bank_code:existing.bank_code});result.bankResolveHttp=r.http;result.bankNameFetched=r.http===200&&r.data?.resolved===true&&typeof r.data.account_name==='string'&&r.data.account_name.trim().length>1&&r.data.account_number===existing.account_number;}
       else result.bankResolveOutcome='no_saved_destination_for_live_verification';
     }catch{result.outcome='transport_failure';}
     return result;
   };
+  if(env.PROBE_BANKS_ONLY==='true')return Response.json({kind:'kampusone-kira-probe-v1',bachs,banks:await bankSupport()},{headers:{'Cache-Control':'no-store'}});
   if(bachs.configured) {
     try {
       const origin=bachs.liveKey?'https://api.bachs.io':'https://sandbox-api.bachs.io';
@@ -141,7 +141,7 @@ if(process.argv.includes('--self-test')) {
     if(typeof sessionToken!=='string')throw new Error('Missing preview session');
     const form=new FormData(),probeToken=randomBytes(32).toString('hex');
     const png=process.env.PROBE_VERIFY_UPLOADS==='true'?readFileSync(new URL('./fixtures/synthetic-timetable.png',import.meta.url)).toString('base64'):'';
-    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'}]}));
+    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
     form.set('probe.mjs',new Blob([`export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)}})};`],{type:'application/javascript+module'}),'probe.mjs');
     form.set('wrangler-session-config',JSON.stringify({workers_dev:true}));
     stage='preview upload';
@@ -152,7 +152,7 @@ if(process.argv.includes('--self-test')) {
     if(!r.ok)throw new Error(`HTTP ${r.status}`);
     const result=await r.json();if(result.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');
     const outcomes=new Set(['generation_succeeded','generation_unusable','provider_rejected','configuration_missing','transport_failure']);
-    if(process.env.PROBE_METADATA_ONLY!=='true')for(const name of ['standard','pro','huggingface']){
+    if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true')for(const name of ['standard','pro','huggingface']){
       const value=result[name];if(!outcomes.has(value?.outcome))throw new Error('Unexpected outcome');
       report(`${name}: ${value.outcome}${Number.isInteger(value.http)?` HTTP ${value.http}`:''}${/^\d{4}$/.test(value.code??'')?` code ${value.code}`:''}${['credits_or_payment','rate_limit','unclassified'].includes(value.hint)?` ${value.hint}`:''}`);
     }
@@ -160,14 +160,14 @@ if(process.argv.includes('--self-test')) {
     report(`BACHS settings: HTTP ${Number.isInteger(result.bachs?.http)?result.bachs.http:'unavailable'}; bank transfer enabled: ${result.bachs?.bankTransferEnabled===true}; fee preference: ${['org_pays','customer_pays'].includes(result.bachs?.feePreference)?result.bachs.feePreference:'unknown'}; failure: ${['request_type','timeout','network'].includes(result.bachs?.failure)?result.bachs.failure:'none'}`);
     if(result.banks)report(`Bank capability verification: ${JSON.stringify(result.banks)}`);
     if(process.env.PROBE_METADATA_ONLY==='true')report(`BACHS webhook targets: ${JSON.stringify(result.webhooks)}`);
-    else report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
-    if(process.env.PROBE_VERIFY_UPLOADS==='true')for(const name of ['image','pdf','unpaidCheckout','vision']){
+    else if(process.env.PROBE_BANKS_ONLY!=='true')report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
+    if(process.env.PROBE_VERIFY_UPLOADS==='true'&&process.env.PROBE_BANKS_ONLY!=='true')for(const name of ['image','pdf','unpaidCheckout','vision']){
       const item=result.uploads?.[name],outcome=item?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable','generation_succeeded','generation_unusable'];
       report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}${/^\d{4}$/.test(item?.code??'')?` code ${item.code}`:''}`);
       if(outcome!==(name==='unpaidCheckout'?'unpaid_checkout_succeeded':name==='vision'?'generation_succeeded':'conversion_succeeded'))process.exitCode=1;
     }
-    if(process.env.PROBE_METADATA_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
-    report('No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');
+    if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
+    report(process.env.PROBE_BANKS_ONLY==='true'?'Bank lookup and capability check only. No transfers, payouts, credential export or application writes. Preview expires after three minutes.':'No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');
   }catch(error){report(`CHECK FAILED at ${stage}: ${/^HTTP [1-5][0-9]{2}$/.test(error?.message??'')?error.message:'raw error withheld'}`);process.exitCode=1;}
   finally{if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');}
 }

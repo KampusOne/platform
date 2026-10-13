@@ -39,7 +39,7 @@ import {
   requireFeature,
 } from "../lib/features";
 import { deriveHandoffCode, hashOtp } from "../lib/security";
-import { ledgerPayoutsReady,payoutFeeComponentsReady,requireLedgerPayouts,quotePayout,payoutQuoteSchema,payoutRate,payoutError,reconcilePayout } from "../lib/payouts";
+import { ledgerPayoutsReady,payoutFeeComponentsReady,requireLedgerPayouts,quotePayout,payoutQuoteSchema,payoutRate,payoutError,reconcilePayout,payoutAvailability } from "../lib/payouts";
 import { riderFinanceReady,riderFinanceSummary,reconcileRiderCommission } from '../lib/rider-finance';
 import { initializePaystackOnce } from '../lib/payment-idempotency';
 import { inclusiveStoreReady, approvedCommercePolicy } from '../lib/commerce-pricing';
@@ -1858,6 +1858,7 @@ agentRoutes.get("/earnings", async (context) => {
     group by c.rider_profile_id,c.university_id,u.name order by u.name`)).rows:[];
   const payoutReady=await ledgerPayoutsReady(context.env);
   const payoutCostsReady=await payoutFeeComponentsReady(context.env);
+  const availability=await payoutAvailability(context.env,payoutCostsReady);
   const withdrawalMinimums=payoutCostsReady?(await database(context.env).execute(sql`select p.agent_type,p.minimum_withdrawal_kobo from app_private.active_payout_cost_policies a join app_private.payout_cost_policies p on p.id=a.policy_id and p.university_id=a.university_id and p.agent_type=a.agent_type where a.university_id=${user.universityId}::uuid`)).rows:[];
   const ledgerSummary=async(type:string)=>payoutReady?firstRow(await database(context.env).execute(sql`
    select app_private.finance_balance(${user.universityId}::uuid,${user.id}::uuid,${type+'_PAYOUT_RESERVED'}) as reserved_kobo,
@@ -1868,7 +1869,8 @@ agentRoutes.get("/earnings", async (context) => {
   if(storeFinance&&vendorPayout)Object.assign(storeFinance,vendorPayout);
   if(riderFinance&&riderPayout)Object.assign(riderFinance,riderPayout);
   return context.json({
-    withdrawalsEnabled:context.env.PAYMENTS_ENABLED==='true'&&context.env.PAYOUTS_ENABLED==='true'&&payoutCostsReady,
+    withdrawalsEnabled:availability.enabled,
+    withdrawalUnavailableReason:availability.reason,
     withdrawalMinimums,
     commissionPaymentsEnabled:Boolean(riderFinance && context.env.PAYMENTS_ENABLED==='true'),
     riderCommissionCheckout:riderCheckout,
@@ -1881,8 +1883,8 @@ agentRoutes.get("/earnings", async (context) => {
     store: storeFinance??firstRow(store),
     legacyRecordedStore:storeFinance?firstRow(store):null,
     deliveries: riderFinance??firstRow(deliveries),
-    payoutRequests: payoutReady?(await database(context.env).execute(sql`select p.id,p.agent_profile_id,p.amount_kobo,p.status,p.requested_at,p.paid_at,s.bank_net_kobo,s.fee_allowance_kobo,
-     p.financial_version,s.failure_release_journal_id is not null as returned_to_wallet from public.payout_requests p left join app_private.agent_payout_settlements s on s.payout_id=p.id where p.requested_by_user_id=${user.id}::uuid and p.university_id=${user.universityId}::uuid order by p.requested_at desc limit 50`)).rows:payouts.rows,
+    payoutRequests: payoutCostsReady?(await database(context.env).execute(sql`select p.id,p.agent_profile_id,p.amount_kobo,p.status,p.requested_at,p.paid_at,s.bank_net_kobo,s.fee_allowance_kobo,
+     p.financial_version,(select b.provider_failure_reason from app_private.bachs_payout_bridges b where b.payout_id=p.id) as provider_failure_reason,s.failure_release_journal_id is not null as returned_to_wallet from public.payout_requests p left join app_private.agent_payout_settlements s on s.payout_id=p.id where p.requested_by_user_id=${user.id}::uuid and p.university_id=${user.universityId}::uuid order by p.requested_at desc limit 50`)).rows:payouts.rows,
   });
 });
 
@@ -1928,9 +1930,10 @@ agentRoutes.post('/payout-quote',async c=>{
 });
 agentRoutes.post('/payouts',async c=>{
  await requireLedgerPayouts(c.env);const user=currentUser(c),data=await input(c,payoutRequestSchema);
- const quote=firstRow(await database(c.env).execute<{agent_profile_id:string;amount_kobo:number}>(sql`select agent_profile_id,amount_kobo from app_private.agent_payout_quotes
+ const quote=firstRow(await database(c.env).execute<{agent_profile_id:string;amount_kobo:number;payout_commission_kobo:number;bank_net_kobo:number}>(sql`select agent_profile_id,amount_kobo,payout_commission_kobo,bank_net_kobo from app_private.agent_payout_quotes
   where id=${data.quoteId}::uuid and user_id=${user.id}::uuid and university_id=${user.universityId}::uuid`));
  if(!quote||quote.agent_profile_id!==data.agentProfileId||Number(quote.amount_kobo)!==data.amountKobo)throw new AppError(409,'CONFLICT','The withdrawal details changed. Review a new quote.');
+ if(Number(quote.payout_commission_kobo)>0&&(data.expectedCommissionKobo!==Number(quote.payout_commission_kobo)||data.expectedBankNetKobo!==Number(quote.bank_net_kobo)))throw new AppError(409,'CONFLICT','Review and accept the withdrawal commission and bank amount in the latest app before requesting this payout.');
  await payoutRate(c.env,user.id,'PAYOUT_REQUEST',20);
  let payoutId:string;
  try{payoutId=firstRow(await database(c.env).execute<{id:string}>(sql`select app_private.create_ledger_payout(${data.quoteId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${data.requestId}::uuid) as id`))!.id;}
@@ -1944,5 +1947,5 @@ agentRoutes.get('/payouts/:id',async c=>{
  const own=firstRow(await database(c.env).execute<{provider_reference:string}>(sql`select provider_reference from app_private.agent_payout_settlements where payout_id=${id(c.req.param('id'))}::uuid and user_id=${user.id}::uuid and university_id=${user.universityId}::uuid`));
  if(!own)throw new AppError(404,'NOT_FOUND','That withdrawal is not available.');
  await reconcilePayout(c.env,own.provider_reference,user.id,user.universityId);
- return c.json({payout:firstRow(await database(c.env).execute(sql`select p.id,p.status,p.amount_kobo,p.requested_at,p.paid_at,s.bank_net_kobo,s.fee_allowance_kobo,s.failure_release_journal_id is not null as returned_to_wallet from public.payout_requests p join app_private.agent_payout_settlements s on s.payout_id=p.id where p.id=${c.req.param('id')}::uuid`))});
+ return c.json({payout:firstRow(await database(c.env).execute(sql`select p.id,p.status,p.amount_kobo,p.requested_at,p.paid_at,s.bank_net_kobo,s.fee_allowance_kobo,(select b.provider_failure_reason from app_private.bachs_payout_bridges b where b.payout_id=p.id) as provider_failure_reason,s.failure_release_journal_id is not null as returned_to_wallet from public.payout_requests p join app_private.agent_payout_settlements s on s.payout_id=p.id where p.id=${c.req.param('id')}::uuid`))});
 });

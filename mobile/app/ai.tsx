@@ -354,7 +354,7 @@ function AccountAI() {
       await draftSave.persist(currentDraft(question,file,requestId));
       if(!valid()||version!==generation.current)return;
       const result=normalizeTurn(await requestKiraResult<Turn>({
-        submit:()=>api<Turn>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:240000,body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,extractedText:file?.sourceText,replyTo,tier,idempotencyKey:requestId,consent:true})}),
+        submit:()=>api<Turn>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:240000,onAIProgress:next=>{if(file&&valid()&&version===generation.current)setDocumentStage(next);},body:JSON.stringify({mode,prompt:question,mediaId:file?.mediaId,extractedText:file?.sourceText,replyTo,tier,idempotencyKey:requestId,consent:true})}),
         check:()=>api<Turn&{status?:string}>(`/v1/ai/requests/${requestId}`,{cache:"no-store",signal:controller.signal,timeoutMs:12000}),
         isCurrent:()=>valid()&&version===generation.current,
         onRecovering:()=>{if(valid()&&version===generation.current)setRequestStage("recovering");},

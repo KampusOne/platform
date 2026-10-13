@@ -202,18 +202,18 @@ export function listingPrice(baseKobo: number, policy: CommerceFees) {
 export function campusFare(routeMetres: number) {
   if (!Number.isFinite(routeMetres) || routeMetres < 0 || routeMetres > 100_000)
     throw new RangeError("A usable campus route is required.");
-  // ₦300 through 1 km, ₦50 for each subsequent started kilometre, capped at ₦450.
+  // ₦300 through 1 km, ₦50 for each subsequent started kilometre, capped at ₦500.
   const fareKobo = Math.min(
-    45000,
+    50000,
     30000 + Math.ceil(Math.max(0, routeMetres - 1000) / 1000) * 5000,
   );
-  const commissionKobo = percentageKobo(fareKobo, 1000);
+  const commissionKobo = 0; // Agent commission is charged on a reviewed withdrawal.
   return {
     fareKobo,
     commissionKobo,
     riderNetKobo: fareKobo - commissionKobo,
     routeMetres: Math.ceil(routeMetres),
-    tariffVersion: "campus-300-450-v1",
+    tariffVersion: "campus-300-500-v2",
   };
 }
 export function checkoutPrice(

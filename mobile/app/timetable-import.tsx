@@ -57,12 +57,12 @@ function ImportTimetableForm() {
     type ScanResult={entries:Entry[];events?:Event[];documentType?:string;warnings?:string[]};
     let r:ScanResult;
     try {
-      r=await api<ScanResult>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:75000,body:JSON.stringify({mode:"timetable",documentKind:kind==="calendar"?"calendar":"class",prompt:text,notes,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
+      r=await api<ScanResult>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:120000,onAIProgress:next=>{if(version===generation.current)setStage(next);},body:JSON.stringify({mode:"timetable",documentKind:kind==="calendar"?"calendar":"class",prompt:text,notes,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
     } catch (caught) {
       const legacyNotesRejected=caught instanceof ApiError&&caught.status===400&&caught.code==="BAD_REQUEST"&&caught.message==="Check the highlighted information and try again.";
       if(!legacyNotesRejected)throw caught;
       const legacyPrompt=[text.trim(),`Student timetable preferences (filter the visible timetable only; do not invent classes):\n${notes.trim()}`].filter(Boolean).join("\n\n");
-      r=await api<ScanResult>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:75000,body:JSON.stringify({mode:"timetable",prompt:legacyPrompt,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
+      r=await api<ScanResult>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:120000,onAIProgress:next=>{if(version===generation.current)setStage(next);},body:JSON.stringify({mode:"timetable",prompt:legacyPrompt,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
     }
     if(version!==generation.current)return;
     if(!r||!Array.isArray(r.entries))throw new Error("The AI returned an incomplete timetable. Your file is still here; please retry.");
