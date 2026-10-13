@@ -26,6 +26,18 @@ function fixture() {
   cache.setDeviceCacheScope(JSON.stringify([account,'A',[],[]]),account);
   return {data,keys,io,store,cache,advance:n=>{now+=n;},cold:()=>cache.setDeviceCacheScope(JSON.stringify([account,'A',['TUTOR'],[]]),account)};
 }
+test('product edit drafts use the encrypted owner store separately from a new listing and retain their concurrency baseline',async()=>{
+ const f=fixture(),createKey=`listing-draft.${account}.vendor`,editKey=`listing-draft.${account}.vendor.edit.33333333-3333-4333-8333-333333333333`;
+ await f.cache.saveOwnedDraft(createKey,{name:'New listing draft'});
+ const edit={name:'Edited notebook',description:'An existing product description.',price:'1000',stock:'3',category:'33333333-3333-4333-8333-333333333333',images:['https://fixture.invalid/cover.jpg'],editRevision:4,editStock:3};
+ await f.cache.saveOwnedDraft(editKey,edit);f.cold();
+ assert.equal((await f.cache.readOwnedDraft(createKey)).name,'New listing draft');
+ const restored=forms.restoreListingDraft(await f.cache.readOwnedDraft(editKey));
+ assert.equal(restored.name,edit.name);assert.equal(restored.editRevision,4);assert.equal(restored.editStock,3);
+ assert.equal([...f.data.values()].some(value=>value.includes('Edited notebook')),false);
+ assert.throws(()=>forms.restoreListingDraft({...edit,editStock:-1}),/saved draft/);
+ await assert.rejects(f.cache.readOwnedDraft(editKey.replace(account,other)),/different session/);
+});
 test('primary restore distinguishes no draft from encrypted unreadable work and preserves ciphertext',async()=>{
   for(const corruption of ['envelope','ciphertext','missing-key','oversize']){
     const f=fixture(),key='listing-draft.'+account;assert.equal(await f.cache.readOwnedDraft(key),null);await f.cache.saveOwnedDraft(key,{name:'My existing work'});f.cold();

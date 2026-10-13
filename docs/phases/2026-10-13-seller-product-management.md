@@ -1,0 +1,9 @@
+# Android 0.3.31: seller product management
+
+Each seller product row shows its cover photo, name, status and seller price, with an accessible three-dot menu for Edit and Delete. Deletion requires confirmation and uses the existing ARCHIVED state, removing the listing from the seller list and marketplace while retaining referenced purchases and their prices. Delayed list responses cannot restore a deleted row.
+
+The product form supports editing an existing owned product, including its name, description, category, seller price, stock and up to six ordered photos. The first photo remains the cover. Existing preparation and package details are retained. Update authorization and the approved category remain server-owned. Optional revision and stock checks reject stale writes, while unchanged stock is left alone when sales reduce inventory. Gallery changes, cover changes, stock changes and their audit record commit together; status changes and their audit also commit together.
+
+Edit drafts use a separate key in the existing encrypted, owner-scoped listing namespace. Failed restoration blocks blank writes. An unavailable product cannot fall back to creation. Lost responses are confirmed by a fresh authorized read of the same intent, and conflicts retain the draft until explicit reload. The product form starts with photos and fields, without the two introductory marketing cards.
+
+Validation covers ownership and campus-category isolation, stock races, lost responses, gallery order, legacy photo preservation, atomic audit rollback and retained purchase records after removal. App and server type checks, the existing regression suites, production builds and the generated route manifest are checked before release. No production product is edited or deleted for testing. Version 0.3.31 / build 61 retains the merged 2.5% product commission, Kira payment and conversation-profile fixes, and the established APK signing and deployment guards.

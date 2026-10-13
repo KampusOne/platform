@@ -4,7 +4,11 @@ import {calendarDraftFields} from './calendar-editor';
 const strings = <const Keys extends readonly string[]>(row: Record<string, unknown>, keys: Keys): Record<Keys[number], string> => Object.fromEntries(keys.map(key => [key, draftString(row, key)])) as Record<Keys[number], string>;
 export function restoreListingDraft(value: unknown) {
   const row = draftRecord(value), fields = strings(row, ['name', 'description', 'price', 'stock', 'code', 'location', 'category']);
-  return { ...fields, requestPayload: draftString(row, 'requestPayload', '', 64000), images: listingPhotos(row.images, draftString(row, 'image')), requestId: draftIdentifier(row, 'requestId'), createdId: draftIdentifier(row, 'createdId') };
+  const revision=row.editRevision, stock=row.editStock;
+  if ((revision !== undefined || stock !== undefined) &&
+      (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 1 || typeof stock !== 'number' || !Number.isSafeInteger(stock) || stock < 0 || stock > 1_000_000)) throw draftFormatError();
+  return { ...fields, requestPayload: draftString(row, 'requestPayload', '', 64000), images: listingPhotos(row.images, draftString(row, 'image')), requestId: draftIdentifier(row, 'requestId'), createdId: draftIdentifier(row, 'createdId'),
+    ...(typeof revision === 'number' && typeof stock === 'number' ? {editRevision:revision,editStock:stock} : {}) };
 }
 export function restoreTimetableDraft(value: unknown) {
   const row = draftRecord(value);

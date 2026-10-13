@@ -1019,7 +1019,7 @@ agentRoutes.get("/products", async (context) => {
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
     select products.id, products.name, products.description, products.category,
-      products.category_id, products.price_kobo, products.stock_quantity, products.image_url,
+      products.category_id, products.price_kobo, products.stock_quantity, products.image_url, products.image_urls,
       products.status, products.submitted_at, products.moderation_note,
       products.preparation_minutes, products.package_weight_grams,
       products.package_length_cm, products.package_width_cm, products.package_height_cm,
@@ -1029,7 +1029,8 @@ agentRoutes.get("/products", async (context) => {
     from public.vendor_products products
     join public.agent_profiles profiles on profiles.id = products.vendor_profile_id
     left join public.product_categories categories on categories.id = products.category_id
-    where profiles.user_id = ${user.id}::uuid order by products.updated_at desc
+    where profiles.user_id = ${user.id}::uuid and products.university_id=profiles.university_id
+      and products.status<>'ARCHIVED' order by products.updated_at desc
   `);
   return context.json({ products: result.rows });
 });
@@ -1123,6 +1124,7 @@ agentRoutes.put("/products/:id", async (context) => {
     "Store operations are not enabled in this environment.",
   );
   const user = currentUser(context);
+  if(!z.string().uuid().safeParse(context.req.param('id')).success)throw new AppError(400,'BAD_REQUEST','Choose a valid product.');
   const parsed = vendorProductUpdateSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(
@@ -1154,11 +1156,16 @@ agentRoutes.put("/products/:id", async (context) => {
     status: string;
     listing_revision: number;
   }>(sql`
-    update public.vendor_products set
+    with updated as (update public.vendor_products set
       name = ${parsed.data.name}, description = ${parsed.data.description},
       category = ${category.name}, category_id = ${category.id}::uuid,
       price_kobo = ${parsed.data.priceKobo},
-      image_url = ${parsed.data.imageUrl ?? null},
+      image_url = case when ${parsed.data.imageUrls !== undefined} then ${parsed.data.imageUrls?.[0] ?? null}
+        when ${parsed.data.imageUrl !== undefined} then ${parsed.data.imageUrl ?? null} else image_url end,
+      image_urls = case when ${parsed.data.imageUrls !== undefined} then ${JSON.stringify(parsed.data.imageUrls ?? [])}::jsonb
+        when ${parsed.data.imageUrl !== undefined} and image_url is distinct from ${parsed.data.imageUrl ?? null}
+          then ${JSON.stringify(parsed.data.imageUrl ? [parsed.data.imageUrl] : [])}::jsonb else image_urls end,
+      stock_quantity = coalesce(${parsed.data.stockQuantity ?? null}::integer,stock_quantity),
       preparation_minutes = ${parsed.data.preparationMinutes},
       package_weight_grams = ${parsed.data.packageWeightGrams ?? null},
       package_length_cm = ${parsed.data.packageLengthCm ?? null},
@@ -1170,32 +1177,22 @@ agentRoutes.put("/products/:id", async (context) => {
       and vendor_profile_id = ${profile.id}::uuid
       and university_id = ${profile.university_id}::uuid
       and status <> 'ARCHIVED'
+      and (${parsed.data.expectedRevision === undefined} or listing_revision=${parsed.data.expectedRevision ?? null}::integer)
+      and (${parsed.data.stockQuantity === undefined} or stock_quantity=${parsed.data.expectedStockQuantity ?? null}::integer)
       and not exists (
         select 1 from public.vendor_storefronts storefronts
         where storefronts.vendor_profile_id = ${profile.id}::uuid
           and storefronts.status = 'SUSPENDED'
       )
-    returning id, university_id, status, listing_revision
+    returning id, university_id, status, listing_revision), audited as (
+      insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata)
+      select ${user.id}::uuid,university_id,'product.saved','vendor_product',id::text,${context.get("requestId") ?? null},'succeeded',
+        jsonb_build_object('status',status,'listingRevision',listing_revision) from updated returning id
+    ) select updated.* from updated cross join (select count(*) from audited) audit
   `);
   const product = firstRow(result);
   if (!product)
-    throw new AppError(
-      404,
-      "NOT_FOUND",
-      "That editable product does not exist.",
-    );
-  await recordAudit(context.env, {
-    actorUserId: user.id,
-    universityId: product.university_id,
-    action: "product.saved",
-    targetType: "vendor_product",
-    targetId: product.id,
-    requestId: context.get("requestId"),
-    metadata: {
-      status: product.status,
-      listingRevision: product.listing_revision,
-    },
-  });
+    throw new AppError(409,"CONFLICT","This product changed or is no longer editable. Reload its current details before saving.");
   return context.json(product);
 });
 
@@ -1277,16 +1274,17 @@ agentRoutes.patch("/products/:id/status", async (context) => {
     "Store operations are not enabled in this environment.",
   );
   const user = currentUser(context);
+  if(!z.string().uuid().safeParse(context.req.param('id')).success)throw new AppError(400,'BAD_REQUEST','Choose a valid product.');
   const parsed = vendorProductStateSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(400, "BAD_REQUEST", "Choose a valid product status.");
   const targetStatus=parsed.data.status==='SUBMITTED'?'PUBLISHED':parsed.data.status;
-  await operationalVendorProfile(context.env, user.id);
+  const profile=await operationalVendorProfile(context.env, user.id);
   const result = await database(context.env).execute<{
     id: string;
     university_id: string;
   }>(sql`
-    update public.vendor_products products set
+    with updated as (update public.vendor_products products set
       status = ${targetStatus},
       submitted_at = case when ${targetStatus} = 'SUBMITTED' then now() else products.submitted_at end,
       moderation_note = case when ${targetStatus} = 'SUBMITTED' then null else products.moderation_note end,
@@ -1298,6 +1296,8 @@ agentRoutes.patch("/products/:id/status", async (context) => {
     where products.id = ${context.req.param("id")}::uuid and products.vendor_profile_id = profiles.id
       and profiles.user_id = ${user.id}::uuid and profiles.agent_type = 'VENDOR'
       and profiles.status = 'ACTIVE' and categories.id = products.category_id
+      and profiles.id=${profile.id}::uuid and products.university_id=${profile.university_id}::uuid
+      and categories.university_id=products.university_id
       and categories.status = 'APPROVED'
       and not exists (
         select 1 from public.vendor_storefronts blocked_storefront
@@ -1305,7 +1305,11 @@ agentRoutes.patch("/products/:id/status", async (context) => {
           and blocked_storefront.status = 'SUSPENDED'
       )
       and (products.status = ${targetStatus} or (products.status in ('DRAFT','NEEDS_CORRECTION','SUBMITTED','PAUSED') and ${targetStatus}='PUBLISHED') or (products.status='PUBLISHED' and ${targetStatus}='PAUSED') or ${targetStatus}='ARCHIVED')
-    returning products.id, products.university_id
+    returning products.id, products.university_id), audited as (
+      insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata)
+      select ${user.id}::uuid,university_id,${`product.${parsed.data.status.toLowerCase()}`},'vendor_product',id::text,
+        ${context.get('requestId')??null},'succeeded','{}'::jsonb from updated returning id
+    ) select updated.* from updated cross join (select count(*) from audited) audit
   `);
   const product = firstRow(result);
   if (!product) {
@@ -1317,14 +1321,6 @@ agentRoutes.patch("/products/:id/status", async (context) => {
         : "That product status change is not allowed.",
     );
   }
-  await recordAudit(context.env, {
-    actorUserId: user.id,
-    universityId: product.university_id,
-    action: `product.${parsed.data.status.toLowerCase()}`,
-    targetType: "vendor_product",
-    targetId: product.id,
-    requestId: context.get("requestId"),
-  });
   return context.json({ status: targetStatus });
 });
 
