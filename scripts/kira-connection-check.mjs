@@ -36,6 +36,7 @@ export async function probe(request, env) {
       const [banks,destinations,account]=await Promise.all([read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/reference/banks?country=NG'),read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/payouts/destinations?limit=10'),read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/accounts/me')]);
       result.bachsBanksHttp=banks.http;result.bachsBanksAvailable=banks.http===200&&Array.isArray(banks.data?.banks)&&banks.data.banks.length>0;
       result.destinationReadHttp=destinations.http;result.accountReadHttp=account.http;
+      const enabled=account.data?.enabled_capabilities;result.connectEnabled=Array.isArray(enabled)&&enabled.includes('connect');result.payoutsEnabled=Array.isArray(enabled)&&enabled.includes('payouts');result.platformMetadataUsable=account.http===200&&Array.isArray(enabled);
       const capabilities=account.data?.capabilities;result.capabilityShape=Array.isArray(capabilities)?'array':capabilities&&typeof capabilities==='object'?'object':'absent';
       const statuses=['active','inactive','restricted','pending'];
       const cap=name=>{const v=Array.isArray(capabilities)?capabilities.find(v=>v.name===name||v.id===name)?.status:capabilities?.[name]?.status??capabilities?.[name];return statuses.includes(v)?v:'unknown';};
