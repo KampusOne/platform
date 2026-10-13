@@ -10,9 +10,10 @@ export async function probe(request, env) {
   const messages=[{role:'system',content:'Answer briefly and accurately.'},{role:'user',content:"State Ohm's law in one sentence."}];
   const modelCheck=async(model,image)=>{
     try {
-      const result=await env.AI.run(model,{messages,max_tokens:128,temperature:0.1,stream:false,...(image?{image}:{})},{signal:AbortSignal.timeout(35000)});
+      const imageMessages=image?[{role:'system',content:'Read the image faithfully. Return only the visible text.'},{role:'user',content:[{type:'text',text:'Read the course code and class time in this timetable image.'},{type:'image_url',image_url:{url:image}}]}]:messages;
+      const result=await env.AI.run(model,{messages:imageMessages,max_tokens:image?512:128,temperature:0.1,stream:false},{signal:AbortSignal.timeout(35000)});
       const text=typeof result?.response==='string'?result.response:result?.choices?.[0]?.message?.content;
-      return {outcome:typeof text==='string'&&text.trim().length>8?'generation_succeeded':'generation_unusable'};
+      return {outcome:typeof text==='string'&&(image?/MAT\s*101/.test(text):text.trim().length>8)?'generation_succeeded':'generation_unusable'};
     }catch(error){const code=/\b(3036|3040|5035|5016|5018|3023|3041|3007|3008|5007|3042)\b/.exec(String(error?.message??''))?.[1];return{outcome:'provider_rejected',...(code?{code}: {})};}
   };
   const hfCheck=async()=>{
@@ -26,6 +27,27 @@ export async function probe(request, env) {
     }catch{return{outcome:'transport_failure'};}
   };
   const bachs={configured:Boolean(env.BACHS_API_KEY&&env.BACHS_WEBHOOK_SECRET),liveKey:env.BACHS_API_KEY?.startsWith('sk_live_')===true};
+  const bankSupport=async()=>{
+    const result={paystackConfigured:Boolean(env.PAYSTACK_SECRET_KEY),paystackLive:env.PAYSTACK_SECRET_KEY?.startsWith('sk_live_')===true};
+    const read=async(origin,key,path,body)=>{const r=await fetch(origin+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(10000)});return{http:r.status,data:await r.json().catch(()=>null)};};
+    try{
+      if(result.paystackConfigured){const r=await read('https://api.paystack.co',env.PAYSTACK_SECRET_KEY,'/bank?country=nigeria&currency=NGN&perPage=100');result.paystackBanksHttp=r.http;result.paystackBanksAvailable=r.http===200&&r.data?.status===true&&Array.isArray(r.data.data)&&r.data.data.length>0;}
+      if(!bachs.liveKey)return result;
+      const [banks,destinations,account]=await Promise.all([read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/reference/banks?country=NG'),read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/payouts/destinations?limit=10'),read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/accounts/me')]);
+      result.bachsBanksHttp=banks.http;result.bachsBanksAvailable=banks.http===200&&Array.isArray(banks.data?.banks)&&banks.data.banks.length>0;
+      result.destinationReadHttp=destinations.http;result.accountReadHttp=account.http;
+      const capabilities=account.data?.capabilities;result.capabilityShape=Array.isArray(capabilities)?'array':capabilities&&typeof capabilities==='object'?'object':'absent';
+      const statuses=['active','inactive','restricted','pending'];
+      const cap=name=>{const v=Array.isArray(capabilities)?capabilities.find(v=>v.name===name||v.id===name)?.status:capabilities?.[name]?.status??capabilities?.[name];return statuses.includes(v)?v:'unknown';};
+      result.connectStatus=cap('connect');result.payoutStatus=cap('payouts');
+      const items=Array.isArray(destinations.data)?destinations.data:destinations.data?.items??destinations.data?.data??destinations.data?.destinations;
+      result.savedDestinationCount=Array.isArray(items)?items.length:0;
+      const existing=Array.isArray(items)?items.find(d=>d.currency==='NGN'&&/^\d{10}$/.test(d.account_number??'')&&typeof d.bank_code==='string'):null;
+      if(existing){const r=await read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/misc/bank-accounts/resolve',{country:'NG',account_number:existing.account_number,bank_code:existing.bank_code});result.bankResolveHttp=r.http;result.bankNameFetched=r.http===200&&r.data?.resolved===true&&typeof r.data.account_name==='string'&&r.data.account_name.trim().length>1&&r.data.account_number===existing.account_number;}
+      else result.bankResolveOutcome='no_saved_destination_for_live_verification';
+    }catch{result.outcome='transport_failure';}
+    return result;
+  };
   if(bachs.configured) {
     try {
       const origin=bachs.liveKey?'https://api.bachs.io':'https://sandbox-api.bachs.io';
@@ -71,11 +93,11 @@ export async function probe(request, env) {
         return{outcome:detail.ok&&receipt?.reference===reference&&receipt?.status==='open'&&receipt?.currency==='NGN'&&Number(receipt?.amount)===6000?'unpaid_checkout_succeeded':'checkout_unusable',http:detail.status};
       }catch{return{outcome:'transport_failure'};}
     };
-    const [image,pdfConversion,unpaidCheckout,vision]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck(),modelCheck('@cf/meta/llama-3.2-11b-vision-instruct','data:image/png;base64,'+env.PROBE_TIMETABLE_PNG)]);
+    const [image,pdfConversion,unpaidCheckout,vision]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck(),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+env.PROBE_TIMETABLE_PNG)]);
     return{image,pdf:pdfConversion,unpaidCheckout,vision};
   };
-  const [standard,pro,huggingface,conversion,uploads]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck(),convert('probe.txt',new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})),extended()]);
-  return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs,conversion,uploads},{headers:{'Cache-Control':'no-store'}});
+  const [standard,pro,huggingface,conversion,uploads,banks]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck(),convert('probe.txt',new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})),extended(),bankSupport()]);
+  return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs,conversion,uploads,banks},{headers:{'Cache-Control':'no-store'}});
 }
 
 if(process.argv.includes('--self-test')) {
@@ -100,7 +122,7 @@ if(process.argv.includes('--self-test')) {
     if(!token||!/^[a-f0-9]{32}$/i.test(account??''))throw new Error('Deployment credentials unavailable');
     stage='binding metadata';
     const settings=await cf('/workers/scripts/platformp/settings');
-    const inherited=['HF_TOKEN','HF_CHAT_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
+    const inherited=['HF_TOKEN','HF_CHAT_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET','PAYSTACK_SECRET_KEY'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
     report(`Production BACHS API secret present: ${settings.bindings?.some(b=>b.name==='BACHS_API_KEY')===true}`);
     report(`Production BACHS webhook secret present: ${settings.bindings?.some(b=>b.name==='BACHS_WEBHOOK_SECRET')===true}`);
     report(`Production Workers AI binding present: ${settings.bindings?.some(b=>b.name==='AI'&&b.type==='ai')===true}`);
@@ -134,6 +156,7 @@ if(process.argv.includes('--self-test')) {
     }
     report(`BACHS configuration complete: ${result.bachs?.configured===true}; live key: ${result.bachs?.liveKey===true}`);
     report(`BACHS settings: HTTP ${Number.isInteger(result.bachs?.http)?result.bachs.http:'unavailable'}; bank transfer enabled: ${result.bachs?.bankTransferEnabled===true}; fee preference: ${['org_pays','customer_pays'].includes(result.bachs?.feePreference)?result.bachs.feePreference:'unknown'}; failure: ${['request_type','timeout','network'].includes(result.bachs?.failure)?result.bachs.failure:'none'}`);
+    if(result.banks)report(`Bank capability verification: ${JSON.stringify(result.banks)}`);
     if(process.env.PROBE_METADATA_ONLY==='true')report(`BACHS webhook targets: ${JSON.stringify(result.webhooks)}`);
     else report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
     if(process.env.PROBE_VERIFY_UPLOADS==='true')for(const name of ['image','pdf','unpaidCheckout','vision']){
