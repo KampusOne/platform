@@ -36,13 +36,14 @@ export async function probe(request, env) {
       const [banks,destinations,account]=await Promise.all([read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/reference/banks?country=NG'),read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/payouts/destinations?limit=10'),read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/accounts/me')]);
       result.bachsBanksHttp=banks.http;result.bachsBanksAvailable=banks.http===200&&Array.isArray(banks.data?.banks)&&banks.data.banks.length>0;
       result.destinationReadHttp=destinations.http;result.accountReadHttp=account.http;
-      const enabled=account.data?.enabled_capabilities;result.connectEnabled=Array.isArray(enabled)&&enabled.includes('connect');result.payoutsEnabled=Array.isArray(enabled)&&enabled.includes('payouts');result.platformMetadataUsable=account.http===200&&Array.isArray(enabled);
+      const enabled=account.data?.enabled_capabilities;result.connectEnabled=Array.isArray(enabled)&&enabled.includes('connect');result.payoutsEnabled=Array.isArray(enabled)&&enabled.includes('payouts');result.platformMetadataUsable=account.http===200&&Array.isArray(enabled);result.platformIdentifierUsable=typeof account.data?.id==='string'&&/^acct_[A-Za-z0-9_-]{8,128}$/.test(account.data.id);
       const capabilities=account.data?.capabilities;result.capabilityShape=Array.isArray(capabilities)?'array':capabilities&&typeof capabilities==='object'?'object':'absent';
       const statuses=['active','inactive','restricted','pending'];
       const cap=name=>{const v=Array.isArray(capabilities)?capabilities.find(v=>v.name===name||v.id===name)?.status:capabilities?.[name]?.status??capabilities?.[name];return statuses.includes(v)?v:'unknown';};
       result.connectStatus=cap('connect');result.payoutStatus=cap('payouts');
       const items=Array.isArray(destinations.data)?destinations.data:destinations.data?.items??destinations.data?.data??destinations.data?.destinations;
       result.savedDestinationCount=Array.isArray(items)?items.length:0;
+      const quote=await read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/payouts/quotes',{from_currency:'NGN',to_currency:'NGN',amount:'2000.00'});result.ngnPayoutQuoteHttp=quote.http;result.ngnPayoutQuoteAvailable=quote.http===201&&quote.data?.from_currency==='NGN'&&quote.data?.to_currency==='NGN'&&Number(quote.data.from_amount)===2000&&Number(quote.data.to_amount)>0&&Number(quote.data.exchange_rate)===1;result.ngnQuotedFee=result.ngnPayoutQuoteAvailable?2000-Number(quote.data.to_amount):null;
       const existing=Array.isArray(items)?items.find(d=>d.currency==='NGN'&&/^\d{10}$/.test(d.account_number??'')&&typeof d.bank_code==='string'):null;
       if(existing){const r=await read('https://api.bachs.io',env.BACHS_API_KEY,'/v1/misc/bank-accounts/resolve',{country:'NG',account_number:existing.account_number,bank_code:existing.bank_code});result.bankResolveHttp=r.http;result.bankNameFetched=r.http===200&&r.data?.resolved===true&&typeof r.data.account_name==='string'&&r.data.account_name.trim().length>1&&r.data.account_number===existing.account_number;}
       else result.bankResolveOutcome='no_saved_destination_for_live_verification';
