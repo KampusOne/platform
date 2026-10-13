@@ -1038,7 +1038,7 @@ agentRoutes.get('/products/price-preview',async c=>{
  const profile=await operationalVendorProfile(c.env,currentUser(c).id),price=Number(c.req.query('priceKobo'));
  if(!Number.isSafeInteger(price)||price<0||price>100_000_000)throw new AppError(400,'BAD_REQUEST','Enter a whole kobo price.');
  const policy=await approvedCommercePolicy(c.env,profile.university_id,'STORE');
- if(!policy)return c.json({ready:false,message:"Marketplace rates are not configured for this campus yet."});
+ if(!policy)return c.json({ready:false,message:"Checkout pricing is temporarily unavailable. You can still upload this product."});
  const p=listingPrice(price,policy);
  return c.json({ready:true,ruleId:policy.id,baseKobo:price,platformKobo:p.buyerComponentKobo,processingEstimateKobo:p.processingAllowanceKobo,customerEstimateKobo:p.customerPriceKobo,sellerCommissionKobo:percentageKobo(price,policy.sellerCommissionBasisPoints,'ceil')});
 });

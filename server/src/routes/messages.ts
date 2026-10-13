@@ -583,6 +583,9 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
     );
   }
 
+  const recipient = thread.initiator_id === user.id ? thread.recipient_id : thread.initiator_id;
+  const notificationBody = data.body ? body.slice(0, 180) : media
+    ? `Sent a ${messageMediaLabel(media.content_type).toLowerCase()}.` : 'Sent a message.';
   const result = firstRow(
     await db.execute<{
       id: string;
@@ -611,66 +614,41 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
         set updated_at=now()
         where id=${thread.id}::uuid
           and exists(select 1 from inserted)
+      ),
+      notices as (
+        insert into public.in_app_notifications(user_id,institution_id,actor_user_id,title,body,path,dedupe_key)
+        select ${recipient}::uuid,recipient_profile.university_id,${user.id}::uuid,
+          coalesce(sender_profile.display_name,sender_profile.username,'Someone')
+            || ${thread.status === 'REQUESTED' ? ' sent you a message request' : ' sent you a message'},
+          ${notificationBody},${'/conversation?id='+thread.id},'message:'||message.id::text
+        from inserted message
+        join public.profiles recipient_profile on recipient_profile.user_id=${recipient}::uuid and recipient_profile.deleted_at is null
+        join public.profiles sender_profile on sender_profile.user_id=${user.id}::uuid and sender_profile.deleted_at is null
+        on conflict do nothing returning user_id,title,body,dedupe_key
+      ),
+      queued as (
+        insert into app_private.notification_outbox(user_id,channel,subject,body,dedupe_key)
+        select user_id,'PUSH',title,body,dedupe_key from notices on conflict do nothing
       )
       select id,sender_id,body,created_at from inserted
     `),
   );
   if (!result) {
+    // A competing retry can commit this exact intent after the first lookup.
+    // Confirm it rather than treating a successful send as a permanent conflict.
+    const confirmed=firstRow(await db.execute(sql`
+      select id,sender_id,body,created_at from public.direct_messages
+      where id=${data.id}::uuid and thread_id=${thread.id}::uuid and sender_id=${user.id}::uuid
+        and body=${body} and media_id is not distinct from ${data.mediaId??null}::uuid
+        and reply_to_message_id is not distinct from ${data.replyToMessageId??null}::uuid
+    `));
+    if(confirmed)return c.json({message:confirmed});
     throw new AppError(
       409,
       "CONFLICT",
       "This message was already sent, or your request is awaiting acceptance.",
     );
   }
-
-  const recipient =
-    thread.initiator_id === user.id
-      ? thread.recipient_id
-      : thread.initiator_id;
-  const notificationBody = data.body
-    ? body.slice(0, 180)
-    : media
-      ? `Sent a ${messageMediaLabel(media.content_type).toLowerCase()}.`
-      : "Sent a message.";
-  await db.execute(sql`
-    insert into public.in_app_notifications(
-      user_id,institution_id,actor_user_id,title,body,path,dedupe_key
-    )
-    select
-      ${recipient}::uuid,
-      recipient_profile.university_id,
-      ${user.id}::uuid,
-      coalesce(sender_profile.display_name,sender_profile.username,'Someone')
-        || ${thread.status === "REQUESTED"
-          ? " sent you a message request"
-          : " sent you a message"},
-      ${notificationBody},
-      ${"/conversation?id=" + thread.id},
-      ${"message:" + result.id}
-    from public.profiles recipient_profile
-    join public.profiles sender_profile
-      on sender_profile.user_id=${user.id}::uuid
-    where recipient_profile.user_id=${recipient}::uuid
-      and recipient_profile.deleted_at is null
-      and sender_profile.deleted_at is null
-    on conflict do nothing
-  `);
-
-  await db.execute(sql`
-    insert into app_private.notification_outbox(
-      user_id,channel,subject,body,dedupe_key
-    )
-    select
-      notice.user_id,
-      'PUSH',
-      notice.title,
-      notice.body,
-      notice.dedupe_key
-    from public.in_app_notifications notice
-    where notice.user_id=${recipient}::uuid
-      and notice.dedupe_key=${"message:" + result.id}
-    on conflict do nothing
-  `);
 
   return c.json({ message: result }, 201);
 });

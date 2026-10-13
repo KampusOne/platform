@@ -16,6 +16,7 @@ function formHarness(api,{rates=async amount=>({ready:true,ruleId:'33333333-3333
   modules['@/src/lib/use-owned-draft-restore']={useOwnedDraftRestore:()=>restore};
   modules['@/src/lib/form-drafts']={restoreListingDraft:value=>value};
   modules['@/src/components/draft-recovery']={DraftRecovery:'DraftRecovery'};
+  modules['@/src/components/retry-icon-button']={RetryIconButton:'RetryIconButton'};
   modules['@/src/components/media-image']={MediaImage:'MediaImage'};
   modules['@/src/components/image-viewer']={ImageViewer:'ImageViewer'};
   modules['@/src/lib/listing-photos']={moveListingPhoto:(photos,from,to)=>{const next=[...photos];next.splice(to,0,next.splice(from,1)[0]);return next;}};
@@ -38,11 +39,11 @@ test('a failed category read is visible and retry restores a completed product f
     if(path==='/v1/agents/products'){created=JSON.parse(init.body);return{id:randomUUID()};}
     return null;
   });
-  await h.flush();assert.ok(h.by('ToolButton','Retry product categories'));
+  await h.flush();assert.ok(h.by('RetryIconButton','Retry product categories'));
   for(const [label,value] of [['Product name','Testing'],['Description','Testing marketplace storefront'],['Price (₦)','1000'],['Stock quantity','2']])h.by('ToolField',label).props.onChangeText(value);
   await h.by('Pressable','Add product photo').props.onPress();await h.flush();
   assert.equal(h.by('ToolButton','Upload product').props.disabled,true);
-  await h.by('ToolButton','Retry product categories').props.onPress();await h.flush();
+  await h.by('RetryIconButton','Retry product categories').props.onPress();await h.flush();
   h.by('Pressable','Stationery').props.onPress();h.render();
   assert.equal(h.by('ToolButton','Upload product').props.disabled,false);
   assert.equal(h.by('ToolField','Description').props.value,'Testing marketplace storefront');
@@ -103,12 +104,21 @@ test('failed draft restoration locks listing edits and create actions while expo
  assert.equal(h.by('DraftRecovery').props.error,'Saved copy could not be restored');assert.equal(h.by('ToolField','Product name').props.editable,false);assert.equal(h.by('Pressable','Add product photo').props.disabled,true);
  await h.by('ToolButton','Upload product').props.onPress();assert.equal(creates,0);
 });
-test('a product calculates rates before upload and keeps the form available after a failed calculation',async()=>{
+test('a failed optional price preview does not block a valid product; its icon refresh pins a recovered policy',async()=>{
   const category={id:randomUUID(),name:'Stationery'};let rateReads=0,created;
   const h=formHarness(async(path,init)=>path==='/v1/agents/product-categories'?{categories:[category]}:path==='/v1/agents/products'?(created=JSON.parse(init.body),{id:randomUUID()}):null,{rates:async amount=>{if(++rateReads===1)throw Error('Rates could not load');return{ready:true,ruleId:'33333333-3333-4333-8333-333333333333',baseKobo:amount,platformKobo:10000,processingEstimateKobo:2000,customerEstimateKobo:amount+12000,sellerCommissionKobo:0};}});
   await h.flush();for(const [label,value]of [['Product name','Stationery pack'],['Description','A stationery pack with an honest description.'],['Price (₦)','1000'],['Stock quantity','2']])h.by('ToolField',label).props.onChangeText(value);
   h.by('Pressable','Stationery').props.onPress();h.render();await h.by('Pressable','Add product photo').props.onPress();await h.flush();
-  assert.equal(h.by('ToolButton','Upload product').props.disabled,true);assert.ok(h.by('ToolButton','Retry rate calculation'));
-  h.by('ToolButton','Retry rate calculation').props.onPress();await h.flush();assert.equal(h.by('ToolButton','Upload product').props.disabled,false);
+  assert.equal(h.by('ToolButton','Upload product').props.disabled,false);assert.ok(h.by('RetryIconButton','Refresh product pricing'));
+  h.by('RetryIconButton','Refresh product pricing').props.onPress();await h.flush();assert.equal(h.by('ToolButton','Upload product').props.disabled,false);
   await h.by('ToolButton','Upload product').props.onPress();await h.flush();assert.equal(created.pricingPolicyId,'33333333-3333-4333-8333-333333333333');assert.equal(created.priceKobo,100000);
+});
+test('a campus without checkout rates can upload a valid listing without inventing a policy or losing photos',async()=>{
+ const category={id:randomUUID(),name:'Stationery'};let created;
+ const h=formHarness(async(path,init)=>path==='/v1/agents/product-categories'?{categories:[category]}:path==='/v1/agents/products'?(created=JSON.parse(init.body),{id:randomUUID()}):null,{rates:async()=>({ready:false,message:'Checkout pricing is temporarily unavailable. You can still upload this product.'})});
+ await h.flush();for(const [label,value]of [['Product name','Stationery pack'],['Description','A stationery pack with an honest description.'],['Price (₦)','1000'],['Stock quantity','2']])h.by('ToolField',label).props.onChangeText(value);
+ h.by('Pressable','Stationery').props.onPress();h.render();await h.by('Pressable','Add product photo').props.onPress();await h.flush();
+ assert.equal(h.by('ToolButton','Upload product').props.disabled,false);
+ await h.by('ToolButton','Upload product').props.onPress();await h.flush();
+ assert.equal(created.pricingPolicyId,undefined);assert.equal(created.priceKobo,100000);assert.equal(created.imageUrls.length,1);
 });

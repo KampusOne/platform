@@ -1,5 +1,6 @@
 import {mappedDeliveryPoint,currentAgentPosition,campusDeliveryRoute} from './delivery-routing';
 import {discountError} from "./discount-error";
+import { isoTimestamp } from './wire-timestamps';
 import { sql } from "drizzle-orm";
 import { storeOrderSchema, z } from "@kampusone/contracts";
 import { database, firstRow } from "./database";
@@ -126,7 +127,7 @@ function responseQuote(q: {
           route:f.route??null,routeAccessNotice:(f.route as {notice?:string}|null)?.notice??null,pickupLocationBasis:f.pickupLocationBasis??null,
         }
       : null,
-    expiresAt: q.expires_at,
+    expiresAt: isoTimestamp(q.expires_at),
   };
 }
 export async function prepareStoreQuote(

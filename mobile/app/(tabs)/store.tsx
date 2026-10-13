@@ -37,6 +37,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { PopularShops } from "@/src/components/popular-shops";
 import { CreateAction } from "@/src/components/create-action";
+import { RetryIconButton } from '@/src/components/retry-icon-button';
 
 import { useReducedMotionPreference } from "@/src/components/visual-system";
 import { ApiError, api } from "@/src/lib/api";
@@ -435,6 +436,8 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     setCheckoutError("");
     setNotice("");
     try {
+      await sharedCart.flush();
+      if (revision !== getDeviceCacheRevision()) return;
       if (!validQuote || Date.parse(validQuote.expiresAt) <= Date.now()) {
         if (quoteRequest.current.payload !== orderPayload || reviewedQuote && Date.parse(reviewedQuote.quote.expiresAt) <= Date.now())
           quoteRequest.current = {
@@ -1654,7 +1657,7 @@ function StateMessage({
       <Text style={styles.stateTitle}>{title}</Text>
       <Text style={styles.stateBody}>{body}</Text>
       {actionLabel && onAction ? (
-        <Pressable
+        /^(?:Try again|Check again|Retry|Refresh)/i.test(actionLabel) ? <RetryIconButton label={actionLabel} onPress={onAction} /> : <Pressable
           accessibilityRole="button"
           onPress={onAction}
           style={({ pressed }) => [
