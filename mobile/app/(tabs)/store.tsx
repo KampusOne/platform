@@ -435,6 +435,8 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     setCheckoutError("");
     setNotice("");
     try {
+      await sharedCart.flush();
+      if (revision !== getDeviceCacheRevision()) return;
       if (!validQuote || Date.parse(validQuote.expiresAt) <= Date.now()) {
         if (quoteRequest.current.payload !== orderPayload || reviewedQuote && Date.parse(reviewedQuote.quote.expiresAt) <= Date.now())
           quoteRequest.current = {

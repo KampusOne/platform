@@ -1,0 +1,156 @@
+name: Build review Android APK
+on:
+  push:
+    branches: [fix/checkout-persistence-release-20261013]
+    paths:
+      - '.github/workflows/android-apk-review.yml'
+      - 'mobile/**'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 35
+    env:
+      SOURCE_SHA: ${{ github.sha }}
+      EXPO_PUBLIC_ANDROID_DISTRIBUTION: direct
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install dependencies
+        run: npm ci
+        working-directory: mobile
+      - name: Check app types
+        run: npm run check
+        working-directory: mobile
+      - name: Verify production API, GPS recovery and map loading
+        run: |
+          set -euo pipefail
+          for phase in platform october experience october4 october6 followup current cache screenFixes; do
+            node server/scripts/verify-schema-proof.mjs "$phase"
+          done
+          curl --fail --silent --show-error --retry 2 --max-time 20 https://platformp.divine-haze-54eb.workers.dev/health/ready
+          node mobile/scripts/check-campus-location.cjs
+          node mobile/scripts/check-campus-map.cjs
+          node --experimental-strip-types --test tests/performance-regression.test.mjs
+      - name: Configure Android push credentials
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID || secrets.EXPO_EAS_PROJECT_ID }}
+        run: |
+          test -n "$GOOGLE_SERVICES_JSON_BASE64"
+          test -n "$EXPO_PUBLIC_EAS_PROJECT_ID"
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > mobile/google-services.json
+          node mobile/scripts/verify-push-build.cjs
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --no-install
+        working-directory: mobile
+        env:
+          CI: "1"
+          EXPO_NO_TELEMETRY: "1"
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID || secrets.EXPO_EAS_PROJECT_ID }}
+          GOOGLE_SERVICES_JSON_PATH: ./google-services.json
+      - name: Build ARM64 installable APK
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+        working-directory: mobile/android
+        env:
+          CI: "1"
+          NODE_ENV: production
+          EXPO_PUBLIC_KAMPUSONE_API_URL: https://mobile.kampusone.app/api
+          EXPO_PUBLIC_KAMPUSONE_API_FALLBACK_URL: https://platformp.divine-haze-54eb.workers.dev
+          EXPO_PUBLIC_BUILD_ID: ${{ github.sha }}
+          EXPO_PUBLIC_EAS_PROJECT_ID: ${{ vars.EXPO_EAS_PROJECT_ID || secrets.EXPO_EAS_PROJECT_ID }}
+      - name: Prepare and verify APK
+        run: |
+          set -euo pipefail
+          cp mobile/android/app/build/outputs/apk/release/*.apk KampusOne-Android-0.3.28-arm64.apk
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          build_tools="$(find "$sdk_root/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          apksigner="$build_tools/apksigner"
+          aapt="$build_tools/aapt"
+          test -x "$apksigner"
+          test -x "$aapt"
+          "$apksigner" verify --print-certs KampusOne-Android-0.3.28-arm64.apk >/tmp/apkverify.txt 2>&1 || { cat /tmp/apkverify.txt; exit 1; }
+          "$aapt" dump badging KampusOne-Android-0.3.28-arm64.apk >/tmp/apkbadging.txt
+          grep -q "package: name='app.kampusone.mobile'" /tmp/apkbadging.txt
+          grep -q "versionName='0.3.28'" /tmp/apkbadging.txt
+          target="$(sed -n "s/^targetSdkVersion:'\([0-9][0-9]*\)'/\1/p" /tmp/apkbadging.txt | head -1)"
+          test "${target:-0}" -ge 36
+          node --input-type=module <<'JS'
+          import {readFileSync,statSync,writeFileSync,createReadStream} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const verify=readFileSync('/tmp/apkverify.txt','utf8');
+          const raw=/certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/i.exec(verify)?.[1];
+          if(!raw) throw new Error('Signing certificate digest missing from apksigner output.');
+          const cert=raw.replaceAll(':','').toUpperCase();
+          if(!/^[A-F0-9]{64}$/.test(cert)) throw new Error('Invalid signing certificate digest.');
+          if(cert!=='FAC61745DC0903786FB9EDE62A962B399F7348F0BB6F899B8332667591033B9C') throw new Error('The signing identity differs from the existing 0.3.20 test APK; do not replace it with a new random key.');
+          const expected=JSON.parse(readFileSync('mobile/app.json','utf8')).expo;
+          const badging=readFileSync('/tmp/apkbadging.txt','utf8');
+          const versionCode=Number(/\bversionCode='(\d+)'/.exec(badging)?.[1]);
+          const targetSdkVersion=Number(/^targetSdkVersion:'(\d+)'$/m.exec(badging)?.[1]);
+          const abi=/^native-code:\s*(.*)$/m.exec(badging)?.[1];
+          if(versionCode!==expected.android.versionCode || abi!=="'arm64-v8a'") throw new Error('The packaged version code or ARM64 architecture does not match this release.');
+          const digest=createHash('sha256');
+          for await (const chunk of createReadStream('KampusOne-Android-0.3.28-arm64.apk')) digest.update(chunk);
+          const receipt={
+            sourceSha:process.env.SOURCE_SHA,
+            packageName:'app.kampusone.mobile',
+            versionName:expected.version,
+            versionCode,
+            targetSdkVersion,
+            abi:'arm64-v8a',
+            certificateSha256:cert.match(/.{2}/g).join(':'),
+            apkSha256:digest.digest('hex'),
+            apkSizeBytes:statSync('KampusOne-Android-0.3.28-arm64.apk').size,
+            verifiedAt:new Date().toISOString()
+          };
+          writeFileSync('KampusOne-Android-0.3.28-arm64-build.json',JSON.stringify(receipt,null,2)+'\n');
+          console.log(JSON.stringify(receipt));
+          JS
+      - name: Verify compatibility with the unchanged deployed backend
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          git fetch origin main --depth=1
+          test "$(git rev-parse origin/main)" = "$main_sha"
+          for directory in server database packages/contracts packages/design-tokens; do
+            test "$(git rev-parse "HEAD:$directory")" = "$(git rev-parse "origin/main:$directory")" || { echo "Review build backend differs from the deployed main."; exit 1; }
+          done
+          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-worker.yml/runs" -f branch=main -f head_sha="$main_sha" > /tmp/review-worker-runs.json
+          gh api "repos/$GITHUB_REPOSITORY/commits/$main_sha/status" > /tmp/review-web-statuses.json
+          REVIEW_BACKEND_SHA="$main_sha" node --input-type=module <<'JS'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          import {verifyDeploymentRecords,verifyProductionAliases} from './server/scripts/verify-published-web-release.mjs';
+          import {verifyNativeApiBoundaries} from './server/scripts/verify-native-release.mjs';
+          const backend=process.env.REVIEW_BACKEND_SHA;
+          const records=verifyDeploymentRecords({sourceSha:backend,mainSha:backend,repository:process.env.GITHUB_REPOSITORY,workerRuns:JSON.parse(readFileSync('/tmp/review-worker-runs.json','utf8')),statuses:JSON.parse(readFileSync('/tmp/review-web-statuses.json','utf8'))});
+          await verifyProductionAliases(backend);
+          await verifyNativeApiBoundaries();
+          writeFileSync('KampusOne-Android-0.3.28-arm64-review.json',JSON.stringify({sourceSha:process.env.SOURCE_SHA,deployedBackendSha:backend,...records,apiPrimary:'https://mobile.kampusone.app/api',apiFallback:'https://platformp.divine-haze-54eb.workers.dev',method:'verified-review-source-with-identical-deployed-backend',published:false,verifiedAt:new Date().toISOString()},null,2)+'\n');
+          JS
+      - name: Upload review APK without changing production downloads
+        uses: actions/upload-artifact@v4
+        with:
+          name: KampusOne-Android-0.3.28-arm64-review
+          path: |
+            KampusOne-Android-0.3.28-arm64.apk
+            KampusOne-Android-0.3.28-arm64-build.json
+            KampusOne-Android-0.3.28-arm64-review.json
+          if-no-files-found: error
+          retention-days: 14

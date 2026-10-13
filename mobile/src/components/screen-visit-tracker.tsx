@@ -52,6 +52,7 @@ const knownRoutes = new Set([
   "earnings",
   "guidelines",
   "learning-checkout",
+  "marketplace-checkout",
   "learning-library",
   "legal",
   "message-media",
