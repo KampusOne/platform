@@ -114,7 +114,8 @@ export async function probe(request, env, readPrivateAIPdf, importReader) {
         const generated=await importReader.generateAI({...env,AI_ASSISTANT_ENABLED:'true'},{mode:'timetable',documentKind:kind,prompt,...(media?{media}:{}),deadlineAt:Date.now()+110000});
         const parsed=kind==='exam'?importReader.parseExamDocument(generated.text):importReader.parseScheduleDocument(generated.text,prompt);
         const rows=kind==='calendar'?parsed.events:parsed.entries;
-        return{outcome:rows.length>0?'preview_succeeded':'preview_unusable',rows:rows.length};
+        const valid=kind==='calendar'?rows.length===3&&['2026-10-19','2026-10-26','2027-03-22'].every(date=>rows.some(row=>row.startsOn===date)):kind==='exam'?rows.length===2&&rows.some(row=>row.courseCode.replace(/\s/g,'')==='MTH201'&&row.date==='2026-11-20'&&row.startsAt==='08:00'&&row.endsAt==='10:00')&&rows.some(row=>row.courseCode.replace(/\s/g,'')==='CSC201'&&row.date==='2026-11-23'&&row.startsAt==='09:00'&&row.endsAt==='11:00'):rows.length===1&&rows[0].courseCode?.replace(/\s/g,'')==='MAT101'&&rows[0].dayOfWeek===1&&rows[0].startsAt==='08:00'&&rows[0].endsAt==='09:00'&&Boolean(rows[0].title);
+        return{outcome:valid?'preview_succeeded':'preview_unusable',rows:rows.length};
       }catch(error){return{outcome:'provider_rejected',...(typeof error?.reason==='string'&&/^AI_[A-Z_]+$/.test(error.reason)?{reason:error.reason}:{})};}
     };
     const photoPreview=await scheduleCheck('class','',{mimeType:'image/png',data:env.PROBE_TIMETABLE_PNG});
@@ -197,7 +198,7 @@ if(process.argv.includes('--self-test')) {
     else if(process.env.PROBE_BANKS_ONLY!=='true')report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
     if(process.env.PROBE_VERIFY_UPLOADS==='true'&&process.env.PROBE_BANKS_ONLY!=='true')for(const name of ['image','pdf','unpaidCheckout','vision','handwritingVision','scannedPaper','photoPreview','handwrittenPreview','printedPdfPreview','calendarPreview','examPreview']){
       const item=result.uploads?.[name],outcome=item?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable','generation_succeeded','generation_unusable','preview_succeeded','preview_unusable'];
-      report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}${/^\d{4}$/.test(item?.code??'')?` code ${item.code}`:''}`);
+      report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}${Number.isSafeInteger(item?.rows)?` rows ${item.rows}`:''}${/^\d{4}$/.test(item?.code??'')?` code ${item.code}`:''}`);
       if(outcome!==(name.endsWith('Preview')?'preview_succeeded':name==='unpaidCheckout'?'unpaid_checkout_succeeded':['vision','handwritingVision'].includes(name)?'generation_succeeded':'conversion_succeeded'))process.exitCode=1;
     }
     if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
