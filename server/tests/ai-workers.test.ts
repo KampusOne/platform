@@ -71,3 +71,29 @@ describe('Workers AI recovery', () => {
   });
 
 });
+
+describe('academic document extraction deadlines', () => {
+  it('reads a dense image beyond the old 45-second limit and still returns reviewable JSON', async () => {
+    vi.useFakeTimers();
+    try {
+      const output=JSON.stringify({documentType:'class_timetable',entries:[{title:'Mathematics',courseCode:'MAT 101',dayOfWeek:1,startsAt:'08:00',endsAt:'09:00',venue:'LT 1',lecturer:''}],events:[],warnings:[]});
+      const run=vi.fn().mockImplementation(()=>new Promise(resolve=>setTimeout(()=>resolve({choices:[{finish_reason:'stop',message:{content:output}}]}),55000)));
+      const toMarkdown=vi.fn().mockImplementation(()=>new Promise(resolve=>setTimeout(()=>resolve([{format:'markdown',data:'Monday MAT 101 08:00–09:00 LT 1'}]),15000)));
+      const pending=generateAI({AI_ASSISTANT_ENABLED:'true',AI:{run,toMarkdown}},{mode:'timetable',prompt:'',media:{mimeType:'image/jpeg',data:btoa('PRIVATE_PIXELS')}});
+      await vi.advanceTimersByTimeAsync(70000);
+      expect(JSON.parse((await pending).text).entries[0]).toMatchObject({courseCode:'MAT 101',startsAt:'08:00'});
+      expect(run.mock.calls[0][1].chat_template_kwargs).toEqual({enable_thinking:false});
+      expect(run.mock.calls[0][1].messages.at(-1).content.some((part:{type:string})=>part.type==='image_url')).toBe(true);
+    } finally {vi.useRealTimers();}
+  });
+  it('leaves time for the configured alternative after native extraction stalls',async()=>{
+    vi.useFakeTimers();
+    try{
+      const run=vi.fn().mockImplementation(()=>new Promise(()=>{}));
+      const fetcher=vi.fn().mockResolvedValue(Response.json({choices:[{finish_reason:'stop',message:{content:'{"entries":[],"events":[],"warnings":[]}'}}]}));
+      const pending=generateAI({AI_ASSISTANT_ENABLED:'true',AI:{run},HF_TOKEN:'synthetic',HF_CHAT_MODEL:'test/chat'},{mode:'timetable',prompt:'Monday MAT 101 08:00–09:00'},fetcher);
+      await vi.advanceTimersByTimeAsync(60000);
+      expect((await pending).provider).toBe('huggingface');expect(fetcher).toHaveBeenCalledTimes(1);expect(run).toHaveBeenCalledTimes(1);
+    }finally{vi.useRealTimers();}
+  });
+});

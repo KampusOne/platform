@@ -69,6 +69,45 @@ payoutSetupRoutes.get("/", async (c) => {
       Boolean((bachsAgentProvider(c.env)?c.env.BACHS_API_KEY&&c.env.KYC_ENCRYPTION_KEY:c.env.PAYSTACK_SECRET_KEY)&&c.env.KYC_FINGERPRINT_SECRET),
   });
 });
+payoutSetupRoutes.delete('/:id', async c => {
+  const user = currentUser(c), id = z.string().uuid().safeParse(c.req.param('id'));
+  if (!id.success) throw new AppError(400, 'BAD_REQUEST', 'Choose a saved bank account.');
+  const db = database(c.env);
+  const account = firstRow(await db.execute<{ agent_profile_id: string; application_id: string; status: string }>(sql`
+    select s.agent_profile_id,s.application_id,s.status from app_private.payout_account_setups s
+    join public.agent_profiles p on p.id=s.agent_profile_id
+    where s.id=${id.data}::uuid and s.user_id=${user.id}::uuid and s.institution_id=${user.universityId}::uuid
+      and p.user_id=${user.id}::uuid and p.university_id=${user.universityId}::uuid`));
+  if (!account) throw new AppError(404, 'NOT_FOUND', 'This bank account was not found.');
+  if (account.status === 'SUPERSEDED') return c.json({ deleted: true });
+  const client = sqlClient(c.env);
+  const results = await client.transaction([
+    client`select id from public.agent_profiles where id=${account.agent_profile_id}::uuid for update`,
+    client`with removed as (
+      update app_private.payout_account_setups s set status='SUPERSEDED',updated_at=now()
+      where s.id=${id.data}::uuid and s.user_id=${user.id}::uuid and s.institution_id=${user.universityId}::uuid
+        and s.status in ('PENDING_PROVIDER','PENDING_REVIEW','APPROVED','REJECTED')
+        and not app_private.payout_setup_has_pending(s.agent_profile_id)
+        and not exists(select 1 from app_private.payout_account_setups r where r.agent_profile_id=s.agent_profile_id and r.status='RESOLVING')
+        and exists(select 1 from public.agent_profiles p where p.id=s.agent_profile_id and p.user_id=${user.id}::uuid and p.university_id=${user.universityId}::uuid and p.status='ACTIVE')
+        and s.id=(select r.id from app_private.payout_account_setups r where r.agent_profile_id=s.agent_profile_id and r.status not in ('SUPERSEDED','FAILED') order by r.created_at desc,r.id desc limit 1)
+      returning s.id,s.application_id,s.institution_id
+    ), unlinked as (
+      update public.agent_applications a set bank_status='PENDING',bank_provider=null,bank_recipient_code=null,bank_account_name=null,bank_account_last4=null,updated_at=now()
+      from removed where a.id=removed.application_id returning a.id
+    ), audited as (
+      insert into app_private.audit_events(actor_user_id,university_id,action,target_type,target_id,request_id,outcome,metadata)
+      select ${user.id}::uuid,removed.institution_id,'payout.account_removed','payout_account',removed.id::text,${c.get('requestId') ?? null},'succeeded','{}'::jsonb from removed returning id
+    ) select id from removed where exists(select 1 from unlinked) and exists(select 1 from audited)`,
+    // Clear the secret after revocation in a separate statement: approved-bank
+    // immutability protects financial history until the status is revoked.
+    client`update app_private.payout_account_setups set bank_details_envelope=null where id=${id.data}::uuid and user_id=${user.id}::uuid and institution_id=${user.universityId}::uuid and status='SUPERSEDED'`,
+  ]);
+  if (!results[1]?.length) throw new AppError(409, 'CONFLICT', 'This bank account changed or has a payout in progress. Refresh your bank details before removing it.');
+  // Historical masked receipts remain valid; this destination cannot be used
+  // for another withdrawal and its encrypted account number is erased.
+  return c.json({ deleted: true });
+});
 payoutSetupRoutes.get("/banks", async (c) => {
   const user = currentUser(c);
   if (
@@ -144,7 +183,7 @@ payoutSetupRoutes.post("/resolve", async (c) => {
         "CONFLICT",
         "This account verification is already in progress.",
       );
-    if (previous.status === "FAILED")
+    if (previous.status === "FAILED" || previous.status === 'SUPERSEDED')
       throw new AppError(
         409,
         "CONFLICT",

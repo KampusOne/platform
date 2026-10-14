@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { readOwnedDraft, saveOwnedDraft, setDeviceCacheScope } from '../src/lib/device-cache';
 import { secureSnapshots } from '../src/lib/secure-snapshots.native-adapter';
+import { ForegroundUsageSampler } from '../src/lib/foreground-usage';
+import { normalizeServerDates } from '../src/lib/server-date';
 import { privateDraftStorage } from '../src/lib/private-draft-storage';
 
 const owner = '11111111-1111-4111-8111-111111111111';
@@ -21,7 +23,22 @@ const marker = 'native.storage.smoke.phase';
 const scope = (user: string, university = campus) => JSON.stringify([user, university, ['STUDENT'], []]);
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 
+async function nativeTimeSmoke() {
+  const row = normalizeServerDates({created_at:'2026-10-13 23:21:04.928123+00',expiresAt:'2026-10-14T00:21:04.928123+0100'});
+  check(new Date(row.created_at).toISOString() === '2026-10-13T23:21:04.928Z', 'Hermes rejected normalized SQL timestamp');
+  check(new Date(row.expiresAt).toISOString() === '2026-10-13T23:21:04.928Z', 'Hermes rejected compact SQL offset');
+  let samples = 0;
+  const sampler = new ForegroundUsageSampler((start,end) => {
+    check(Number.isFinite(new Date(start).getTime()) && Number.isFinite(new Date(end).getTime()), 'Foreground sampler emitted invalid date');
+    new Date(start).toISOString(); new Date(end).toISOString(); samples++;
+  });
+  sampler.setForeground(true);
+  await new Promise(resolve => setTimeout(resolve, 650));
+  sampler.stop();
+  check(samples === 1, 'Real Hermes foreground clock failed during screen cleanup');
+}
 async function smoke() {
+  await nativeTimeSmoke();
   const phase = await AsyncStorage.getItem(marker);
   setDeviceCacheScope(scope(owner), owner);
   if (!phase) {
@@ -40,7 +57,7 @@ async function smoke() {
     const raw = (await AsyncStorage.multiGet(records)).map(([,value]) => value ?? '').join('');
     check(records.length >= 4 && !raw.includes('Native restart draft'), 'Plaintext leaked into storage');
     await AsyncStorage.setItem(marker, 'restart');
-    return 'NATIVE_STORAGE_WRITE_PASS';
+    return 'NATIVE_STORAGE_WRITE_PASS · NATIVE_TIME_PASS';
   }
   check((await readOwnedDraft<{prompt:string}>(kira))?.prompt === text, 'Kira cold restart lost draft');
   check((await readOwnedDraft<{description:string}>('listing-draft.'+owner))?.description === longText, 'Large native draft cold restart failed');
@@ -62,7 +79,7 @@ async function smoke() {
   check(checks.some(result => result.status === 'rejected'), 'Tampered data was accepted');
   check(await AsyncStorage.getItem(location) === JSON.stringify(envelope), 'Tampered draft was discarded');
   await AsyncStorage.setItem(location, before);
-  return 'NATIVE_STORAGE_RESTART_PASS';
+  return 'NATIVE_STORAGE_RESTART_PASS · NATIVE_TIME_PASS';
 }
 function SmokeApp() {
   const [status, setStatus] = useState('NATIVE_STORAGE_RUNNING');

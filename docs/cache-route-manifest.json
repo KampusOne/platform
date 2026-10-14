@@ -7092,7 +7092,25 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 298
+          "line": 337
+        }
+      ],
+      "classification": "mutation",
+      "backend": "fresh",
+      "authorization": "Source router auth/signature/idempotency; no response reuse",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/payout-setup/:id",
+      "sources": [
+        {
+          "file": "server/src/routes/payout-setup.ts",
+          "line": 72
         }
       ],
       "classification": "mutation",
@@ -7110,7 +7128,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 99
+          "line": 138
         }
       ],
       "classification": "mutation",
@@ -7128,7 +7146,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 72
+          "line": 111
         }
       ],
       "classification": "security",
@@ -7146,7 +7164,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 108
+          "line": 147
         }
       ],
       "classification": "mutation",
@@ -7164,7 +7182,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 243
+          "line": 282
         }
       ],
       "classification": "security",

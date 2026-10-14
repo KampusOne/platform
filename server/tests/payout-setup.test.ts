@@ -502,3 +502,39 @@ describe('Bachs bank verification and dashboard editing',()=>{
   expect(fetch).not.toHaveBeenCalled();
  });
 });
+
+describe('agent-owned bank removal',()=>{
+  beforeAll(async()=>{await db.query("update public.payout_requests set status='REJECTED' where id=$1",[uuid(180)]);});
+  async function seedAccount(id:number){
+    await db.query("update app_private.payout_account_setups set status='SUPERSEDED' where agent_profile_id=$1",[profile]);
+    await db.query("insert into app_private.payout_account_setups(id,user_id,agent_profile_id,application_id,institution_id,request_hash,status,bank_code,bank_name,account_name,account_last4,recipient_code,provider_mode) values($1,$2,$3,$4,$5,'removal-fixture','PENDING_REVIEW','058','Test bank','ADA TEST','6789','RCP_remove','live')",[uuid(id),owner,profile,application,school]);
+    await db.query("update public.agent_applications set bank_status='VERIFIED',bank_recipient_code='RCP_remove',bank_account_name='ADA TEST',bank_account_last4='6789' where id=$1",[application]);
+  }
+  it('removes an owned destination, clears the active linkage and cannot resurrect it through an old setup request',async()=>{
+    await seedAccount(551);const fetch=provider();
+    expect(await payload(await request('/'+uuid(551),'DELETE'))).toEqual({deleted:true});
+    expect((await payload(await request(''))).profiles[0].account).toBeNull();
+    expect((await db.query("select bank_recipient_code,bank_account_name,bank_account_last4 from public.agent_applications where id=$1",[application])).rows[0]).toEqual({bank_recipient_code:null,bank_account_name:null,bank_account_last4:null});
+    expect(await payload(await request('/'+uuid(551),'DELETE'))).toEqual({deleted:true});
+    expect((await db.query("select count(*)::int n from app_private.audit_events where action='payout.account_removed' and target_id=$1",[uuid(551)])).rows[0]?.n).toBe(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('denies another account and campus without changing the destination',async()=>{
+    await seedAccount(552);
+    await payload(await request('/'+uuid(552),'DELETE',undefined,foreign),404);
+    expect((await db.query('select status from app_private.payout_account_setups where id=$1',[uuid(552)])).rows[0]?.status).toBe('PENDING_REVIEW');
+  });
+  it('keeps the destination intact while a payout or bank change holds it',async()=>{
+    await seedAccount(553);
+    await db.query('insert into public.payout_requests(id,university_id,agent_profile_id,requested_by_user_id,amount_kobo) values($1,$2,$3,$4,200000)',[uuid(580),school,profile,owner]);
+    try{await payload(await request('/'+uuid(553),'DELETE'),409);expect((await db.query('select status from app_private.payout_account_setups where id=$1',[uuid(553)])).rows[0]?.status).toBe('PENDING_REVIEW');}
+    finally{await db.query("update public.payout_requests set status='REJECTED' where id=$1",[uuid(580)]);}
+  });
+  it('revokes an approved account before erasing its encrypted number while retaining its historical receipt',async()=>{
+    await seedAccount(554);
+    await db.query("update app_private.payout_account_setups set bank_details_envelope=$2::jsonb where id=$1",[uuid(554),JSON.stringify({sealed:'synthetic-private-number'})]);
+    await db.query("update app_private.payout_account_setups set status='APPROVED' where id=$1",[uuid(554)]);
+    await payload(await request('/'+uuid(554),'DELETE'));
+    expect((await db.query('select status,bank_details_envelope,account_last4 from app_private.payout_account_setups where id=$1',[uuid(554)])).rows[0]).toEqual({status:'SUPERSEDED',bank_details_envelope:null,account_last4:'6789'});
+  });
+});

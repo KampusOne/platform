@@ -61,6 +61,7 @@ export async function workersAICompletion(env: WorkersAIEnvironment, input: AIIn
     const remaining = Math.max(1, deadline - Date.now());
     result = await Promise.race([env.AI!.run(config.model, {
       messages: nativeMessages, max_tokens: maxTokens, temperature: 0.2, stream: false,
+      ...(openAIFormat && input.mode === 'timetable' ? { chat_template_kwargs: { enable_thinking: false }, response_format: { type: 'json_object' } } : {}),
       ...(input.media && !openAIFormat ? { image: `data:${input.media.mimeType};base64,${input.media.data}` } : {}),
       ...(!input.media && tools?.length ? { tools: openAIFormat ? tools : tools.map(tool => tool.function) } : {}),
     }, { signal: AbortSignal.timeout(remaining) }), new Promise<never>((_, reject) => {

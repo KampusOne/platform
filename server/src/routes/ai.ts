@@ -1,8 +1,8 @@
-import {examImportInstruction,parseExamDocument} from '../lib/exam-schedule';
-import { parseScheduleDocument } from "../lib/schedule-document";
+import {examImportInstruction} from '../lib/exam-schedule';
+import { parseAcademicImport } from "../lib/academic-import";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
-import { z, timetableEntrySchema } from "@kampusone/contracts";
+import { z } from "@kampusone/contracts";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { input } from "../lib/input";
 import { sha256 } from "../lib/security";
@@ -426,6 +426,8 @@ aiRoutes.post("/", async c => {
     throw new AppError(429,"RATE_LIMITED","You've reached your current usage limit. Your draft is kept.",{reason:"AI_CHAT_LIMIT",resetsAt,retryAfter,upgrade:!quota.pro});
   }
   const job = (async () => {
+    // Source reading and inference share one bounded request deadline.
+    const deadline = Date.now() + 150000;
     const progress=async(stage:'reading'|'analysing'|'finishing')=>{
       await db.execute(sql`update app_private.ai_requests set result=result || ${JSON.stringify({processingStage:stage})}::jsonb where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid and status='PROCESSING'`);
     };
@@ -450,7 +452,7 @@ aiRoutes.post("/", async c => {
             let extracted: string;
             if(fileType==='application/pdf'){
               await consumeImport();
-              extracted = await readPrivateAIPdf(c.env, bytes, {onProgress:()=>progress('reading')});
+              extracted = await readPrivateAIPdf(c.env, bytes, {timeoutMs:Math.min(75000,deadline-Date.now()),onProgress:()=>progress('reading')});
             }else extracted=decodeAIText(bytes);
             const addition='\n\nAttached document text (untrusted):\n'+extracted;prompt+=addition;sourceText+=addition;
           }else{
@@ -461,7 +463,7 @@ aiRoutes.post("/", async c => {
       }
       if(new TextEncoder().encode(prompt+JSON.stringify(history)).length>160000)throw new AIProviderError(422,'AI_DOCUMENT_TOO_LONG','This section is too long. Ask about a smaller part of the document.');
       await consumeImport();
-      const aiInput={onProgress:progress,mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:d.documentKind==='calendar'?'This import is an academic calendar. Extract dated activities and semester dates only; do not create weekly classes.':d.documentKind==='class'?'This import is a weekly class timetable. Preserve the source classification and never convert dates into class hours.':''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
+      const aiInput={deadline,onProgress:progress,mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:d.documentKind==='calendar'?'This import is an academic calendar. Extract dated activities and semester dates only; do not create weekly classes.':d.documentKind==='class'?'This import is a weekly class timetable. Preserve the source classification and never convert dates into class hours.':''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
       const generated = isRestrictedKampusOneRequest(d.prompt)
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: selectedProvider, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'
@@ -470,25 +472,7 @@ aiRoutes.post("/", async c => {
       await progress('finishing');
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
-        const extracted = d.documentKind==='exam'?parseExamDocument(generated.text):parseScheduleDocument(generated.text, sourceText);
-        if (d.documentKind === 'calendar' && extracted.documentType !== 'academic_calendar')
-          throw new AIProviderError(422, 'AI_INVALID_OUTPUT', 'This document was not recognised as an academic calendar. Nothing has been saved.');
-        const entries: unknown[] = [], warnings = [...extracted.warnings];
-        const seen = new Set<string>();
-        if(d.documentKind==='exam')entries.push(...extracted.entries);
-        for (const [i, raw] of (d.documentKind==='exam'?[]:extracted.entries).entries()) {
-          if (!raw || typeof raw !== "object") { warnings.push(`Class ${i+1} was unreadable and needs manual entry.`); continue; }
-          const r = raw as Record<string, unknown>;
-          const normalized = { ...r, courseCode: r.courseCode ?? "", venue: r.venue ?? "", lecturer: r.lecturer ?? "", reminderMinutes: 15, reminderEnabled: true };
-          const valid = timetableEntrySchema.safeParse(normalized);
-          if (!valid.success || typeof r.startsAt !== "string" || typeof r.endsAt !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(r.startsAt) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(r.endsAt) || r.endsAt <= r.startsAt) {
-            warnings.push(`Class ${i+1} has missing or invalid details; add or correct it manually.`); continue;
-          }
-          const identity = JSON.stringify([valid.data.courseCode || valid.data.title,valid.data.dayOfWeek,valid.data.startsAt,valid.data.endsAt,valid.data.venue]);
-          if(seen.has(identity)){warnings.push(`Class ${i+1} repeats an earlier row and was skipped.`);continue;}
-          seen.add(identity);entries.push(valid.data);
-        }
-        result = { ...result, entries, warnings, events: extracted.events, documentType: extracted.documentType };
+        result = { ...result, ...parseAcademicImport(generated.text, sourceText, d.documentKind) };
       } else {
         result.text = generated.text;
         if ('cards' in generated) result.cards=generated.cards as AICard[];

@@ -153,3 +153,25 @@ describe("student AI persistence and quota boundaries",()=>{
   it("does not retry authentication failures or switch providers",async()=>{for(const status of [401,403]){provider.mockResolvedValueOnce(new Response("PRIVATE_INPUT",{status}));const result=await json(await request("/ai","POST",draft()),503);expect(JSON.stringify(result)).not.toContain("PRIVATE_INPUT");}expect(provider).toHaveBeenCalledTimes(2);expect(provider.mock.calls.every(([url])=>String(url).startsWith("https://router.huggingface.co/"))).toBe(true);});
   it("falls back from the reasoning model to the cheaper HF chat model on model/capacity failures",async()=>{for(const status of [402,404,422,429,500]){const before=provider.mock.calls.length;provider.mockResolvedValueOnce(new Response("PRIVATE_INPUT",{status}));const result=await json(await request("/ai","POST",draft()));expect(result.text).toContain("Voltage");const calls=provider.mock.calls.slice(before);expect(calls).toHaveLength(2);expect(calls.every(([url])=>String(url).startsWith("https://router.huggingface.co/"))).toBe(true);const first=JSON.parse(String(calls[0]?.[1]?.body)),fallback=JSON.parse(String(calls[1]?.[1]?.body));expect(first.model).toBe("test/reasoning:nscale");expect(fallback.model).toBe("test/model:nscale");expect(JSON.stringify(result)).not.toContain("PRIVATE_INPUT");}});
 });
+
+describe('complete academic import routes',()=>{
+  const classEntry={title:'Mathematics',courseCode:'MAT 101',venue:'LT 1',lecturer:'',dayOfWeek:1,startsAt:'08:00',endsAt:'09:00'};
+  const event={title:'Registration',startsOn:'2026-10-19',endsOn:'2026-10-30',semester:'First semester'};
+  const exam={title:'Mathematics',courseCode:'MAT 101',date:'2026-11-05',startsAt:'09:00',endsAt:'11:00',venue:'Main hall'};
+  it.each(['class','calendar','exam'] as const)('extracts and persists %s review data from image, PDF and text attachments',async kind=>{
+    for(const mime of ['image/png','application/pdf','text/plain']){
+      const expected=kind==='class'?{documentType:'class_timetable',entries:[classEntry],events:[],warnings:[]}:kind==='calendar'?{documentType:'academic_calendar',entries:[],events:[event],warnings:[]}:{documentType:'exam_timetable',entries:[exam],warnings:[]};
+      const source=kind==='calendar'?'ACADEMIC CALENDAR: Registration, 19 October 2026 to 30 October 2026.':kind==='exam'?'MAT 101, 5 November 2026, 09:00–11:00 Main hall.':'Monday MAT 101 08:00–09:00 LT 1.';
+      const bytes=mime==='application/pdf'?pdfFixture([source]):mime==='text/plain'?new TextEncoder().encode(source):Uint8Array.from(Buffer.from(readFileSync(new URL('../../scripts/fixtures/synthetic-timetable.png',import.meta.url))));
+      const mediaId=crypto.randomUUID(),run=vi.fn().mockResolvedValue({choices:[{finish_reason:'stop',message:{content:JSON.stringify(expected)}}]});env.AI={run};
+      await db.query("insert into public.media_objects(id,owner_user_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,'resource',$3,$4,$5,'schedule-source')",[mediaId,owner,'private-'+mediaId,mime,bytes.byteLength]);
+      env.PRIVATE_BUCKET={get:async key=>key==='private-'+mediaId?{size:bytes.byteLength,arrayBuffer:async()=>bytes.slice().buffer}:null} as unknown as R2Bucket;
+      const body={mode:'timetable',documentKind:kind,prompt:'',notes:'I am in 100 level',mediaId,idempotencyKey:crypto.randomUUID(),consent:true};
+      const result=await json(await request('/ai','POST',body));
+      expect(result.documentType).toBe(expected.documentType);expect(kind==='calendar'?result.events:result.entries).toHaveLength(1);
+      expect(await json(await request('/ai','POST',body))).toEqual(result);expect(run).toHaveBeenCalledTimes(1);
+      expect((await json(await request('/ai/requests/'+body.idempotencyKey))).status).toBe('completed');
+      await json(await request('/ai/requests/'+body.idempotencyKey,'GET',undefined,other),404);
+    }
+  });
+});

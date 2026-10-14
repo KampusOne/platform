@@ -43,4 +43,4 @@ PY
     exit 1
   fi
 done
-node -e 'require("fs").writeFileSync("native-storage-proof/receipt.json",JSON.stringify({sourceSha:process.env.SOURCE_SHA,androidApi:35,runtime:"Hermes / installed Expo native modules",checks:["reproduced prior Android bridge failure","verified encrypted DM and Kira saves","cold process restart and OS key recovery","account and campus isolation","authenticated corruption rejection and retention"],passed:true},null,2))'
+node -e 'require("fs").writeFileSync("native-storage-proof/receipt.json",JSON.stringify({sourceSha:process.env.SOURCE_SHA,androidApi:35,runtime:"Hermes / installed Expo native modules",checks:["reproduced prior Android bridge failure","verified encrypted DM and Kira saves","cold process restart and OS key recovery","account and campus isolation","authenticated corruption rejection and retention","Hermes SQL timestamp normalization and real foreground sampler"],passed:true},null,2))'
