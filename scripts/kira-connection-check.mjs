@@ -158,6 +158,7 @@ if(process.argv.includes('--self-test')) {
     report(`Production BACHS API secret present: ${settings.bindings?.some(b=>b.name==='BACHS_API_KEY')===true}`);
     report(`Production BACHS webhook secret present: ${settings.bindings?.some(b=>b.name==='BACHS_WEBHOOK_SECRET')===true}`);
     report(`Production Workers AI binding present: ${settings.bindings?.some(b=>b.name==='AI'&&b.type==='ai')===true}`);
+    for(const name of ['GEMINI_API_KEY','GROQ_API_KEY'])report(`Existing ${name} secret present: ${settings.bindings?.some(b=>b.name===name&&b.type==='secret_text')===true}`);
     report(`Production binding count: ${settings.bindings?.length??0}`);
     report(`Production CPU cap: ${Number.isInteger(settings.limits?.cpu_ms)?settings.limits.cpu_ms+'ms':'platform default'}; free-plan deployment settings retained`);
     stage='isolated preview session';
