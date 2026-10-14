@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateAcademicImport,parseOrRecoverAcademicImport } from '../src/lib/academic-import-recovery';
 import {AIProviderError} from '../src/lib/ai-error';
 import { generateAI, type AIInput } from '../src/lib/ai-provider';
+import * as remoteImages from '../src/lib/remote-timetable-image';
+import {timetableImageRows} from '../src/lib/timetable-image-grid';
 vi.mock('../src/lib/ai-provider',()=>({generateAI:vi.fn()}));
 const source=JSON.parse(readFileSync(new URL('../../scripts/fixtures/uniben-engineering-2026.json',import.meta.url),'utf8'));
 const names=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -20,6 +22,20 @@ const response=(day:number)=>({labels:Object.fromEntries(labels[day]!.map((label
 const dayOf=(request:AIInput)=>names.findIndex(name=>request.prompt.includes('for '+name+'.'));
 beforeEach(()=>{vi.mocked(generateAI).mockReset().mockImplementation(async(_env,request)=>({text:JSON.stringify(response(dayOf(request))),provider:'workers-ai'}));});
 describe('one-import private cell transcription',{timeout:30000},()=>{
+  it('rereads only a day whose batch panel inventory is malformed and still verifies the full week',async()=>{
+    const request={...input(),provider:'groq' as const},crops=timetableImageRows(request.media!,10,['100','200','300','400','500'],[1,2,3,4,5],'200')!;
+    const remote=vi.spyOn(remoteImages,'remoteTimetableRows').mockResolvedValue(Object.assign(crops,{batch:{mimeType:'image/png',data:'YQ=='}}));
+    try {
+      vi.mocked(generateAI).mockImplementation(async(_env,call)=>{
+        if(call.prompt.startsWith('Transcribe this contact sheet')){const byDay=Object.fromEntries([1,2,3,4,5].map(day=>[String(day),response(day).labels]));byDay['5']!['10']='';return{text:JSON.stringify({labels:byDay,coverage:{complete:true,uncertain:[]}}),provider:'groq'};}
+        return{text:JSON.stringify(response(dayOf(call))),provider:'groq'};
+      });
+      const result=await parseOrRecoverAcademicImport({TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image'},request,broken(),'','class',{level:'200'});
+      expect(result.entries).toHaveLength(20);expect(generateAI).toHaveBeenCalledTimes(2);
+      const reread=vi.mocked(generateAI).mock.calls[1]![1];expect(reread.prompt).toContain('for Friday.');expect(reread.deadline).toBe(request.deadline);
+      expect(result.entries).toContainEqual(expect.objectContaining({courseCode:'GST212',dayOfWeek:3,startsAt:'15:00',endsAt:'17:00'}));
+    }finally{remote.mockRestore();}
+  });
   it('rereads an incomplete calendar once through the independent fallback under the original deadline',async()=>{
     const full={documentType:'academic_calendar',entries:[],events:[{title:'Exams',startsOn:'2026-11-05',endsOn:'2026-11-09',semester:''}],warnings:[],coverage:{complete:true,daysRead:[],rowCount:1,uncertain:[]}};
     vi.mocked(generateAI).mockResolvedValueOnce({text:JSON.stringify({...full,coverage:{...full.coverage,complete:false}}),provider:'groq'})

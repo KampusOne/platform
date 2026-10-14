@@ -43,6 +43,12 @@ describe('bounded private academic fallback',()=>{
     expect((await privateAcademicInference(await signed(),getKey,calls)).status).toBe(429);expect(calls).toHaveBeenCalledTimes(1);
     expect(calls.mock.calls[0]![0]).toBe('https://ai-gateway.vercel.sh/v1/credits');
   });
+  it('retries a timed-out balance lookup once while making only one inference request',async()=>{
+    const calls=vi.fn<typeof fetch>().mockRejectedValueOnce(new DOMException('slow metadata','TimeoutError')).mockResolvedValueOnce(Response.json({balance:5})).mockResolvedValueOnce(result());
+    expect((await privateAcademicInference(await signed(),getKey,calls)).status).toBe(200);
+    expect(calls.mock.calls.filter(([target])=>String(target).endsWith('/credits'))).toHaveLength(2);
+    expect(calls.mock.calls.filter(([target])=>String(target).endsWith('/chat/completions'))).toHaveLength(1);
+  });
   it('requires configured server identity and the fallback switch',async()=>{
     const calls=vi.fn<typeof fetch>(),input={mode:'timetable' as const,prompt:'Read',deadline:Date.now()+150000};
     await expect(gatewayAcademicCompletion({},input,[],4096,60000,calls)).rejects.toMatchObject({reason:'AI_NOT_CONFIGURED'});expect(calls).not.toHaveBeenCalled();

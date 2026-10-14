@@ -40,5 +40,6 @@ navigation, notification and Earnings changes already shipped in PR 103.
 Validation: signed relay integration, authorization boundaries, credit exhaustion,
 output truncation and multi-provider recovery; existing physical-row and complete
 academic import regressions; server types, portal lint/types and production build.
-The live eight-fixture gateway proof is required before enabling the Worker
-fallback in production. Its run and exact results are recorded after completion.
+The live eight-fixture gateway proof and five Kira checks (including an image
+question and a scanned PDF) are required before Worker activation. The final
+run IDs and exact results are attached to PR 104's validation record.

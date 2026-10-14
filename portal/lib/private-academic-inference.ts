@@ -40,7 +40,16 @@ export async function privateAcademicInference(request:Request,getKey:JWTVerifyG
   if(!token)return new Response(null,{status:503,headers});
   const deadline=Date.now()+input.timeoutMs;
   try {
-    const credits=await fetcher(gateway+'/credits',{headers:{Authorization:'Bearer '+token},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(Math.min(5000,input.timeoutMs))});
+    let credits:Response|undefined;
+    // Retry only the read-only balance lookup. Never retry metered inference.
+    for(let attempt=0;attempt<2;attempt++) {
+      try {
+        credits=await fetcher(gateway+'/credits',{headers:{Authorization:'Bearer '+token},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(Math.max(1,Math.min(5000,deadline-Date.now())))});
+        if(attempt===0&&(credits.status===429||credits.status>=500)&&deadline-Date.now()>1000){await credits.body?.cancel();credits=undefined;continue;}
+        break;
+      }catch(error){if(attempt===1||!(error instanceof Error)||!['AbortError','TimeoutError'].includes(error.name)||deadline-Date.now()<1000)throw error;}
+    }
+    if(!credits)return new Response(null,{status:503,headers});
     if(!credits.ok){await credits.body?.cancel();return new Response(null,{status:[402,429].includes(credits.status)?429:503,headers});}
     const balance=await credits.json() as {balance?:unknown};
     if(!Number.isFinite(Number(balance.balance))||Number(balance.balance)<.05)return new Response(null,{status:429,headers});
