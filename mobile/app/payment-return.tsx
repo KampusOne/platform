@@ -1,9 +1,10 @@
 import {useCallback,useRef,useState} from 'react';
-import {ActivityIndicator,AppState,Pressable,ScrollView,Text,View} from 'react-native';
+import {AppState,Pressable,ScrollView,Text,View} from 'react-native';
 import * as Network from 'expo-network';
 import {Ionicons} from '@expo/vector-icons';
 import {router,useFocusEffect,useLocalSearchParams} from 'expo-router';
 import {ToolButton,ToolPage} from '@/src/components/toolkit';
+import {InlineLoading} from '@/src/components/skeleton';
 import {useAppearance} from '@/src/lib/appearance';
 import {useAuth} from '@/src/auth/auth-context';
 import {api,invalidateApiReads} from '@/src/lib/api';
@@ -65,7 +66,7 @@ function OwnedPaymentReturn({reference}:{reference:string}) {
   return <ToolPage title="Payment status"><ScrollView contentContainerStyle={{gap:20,paddingTop:28,paddingBottom:40}}>
     <View accessibilityLiveRegion="polite" style={{alignItems:'center',gap:14,padding:24,borderRadius:24,backgroundColor:theme.surface,borderWidth:1,borderColor:theme.border}}>
       <View style={{width:82,height:82,borderRadius:41,backgroundColor:theme.surfaceSoft,alignItems:'center',justifyContent:'center'}}>
-        {success||review||failed?<Ionicons name={success?'checkmark-circle-outline':review?'time-outline':'close-circle-outline'} size={50} color={success?theme.success:failed?theme.error:theme.deepBrand}/>:<ActivityIndicator size="large" color={theme.deepBrand}/>}
+        {success||review||failed?<Ionicons name={success?'checkmark-circle-outline':review?'time-outline':'close-circle-outline'} size={50} color={success?theme.success:failed?theme.error:theme.deepBrand}/>:<InlineLoading size="large" color={theme.deepBrand}/>}
       </View>
       <Text style={{fontFamily:theme.font.display,fontSize:27,color:theme.text,textAlign:'center'}}>{heading}</Text>
       {payment?.title?<Text style={{fontFamily:theme.font.semibold,fontSize:16,color:theme.text,textAlign:'center'}}>{payment.title}</Text>:null}
