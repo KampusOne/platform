@@ -19,7 +19,7 @@ export async function GET(request:Request) {
       const started=Date.now();
       const inferred=await fetch('https://ai-gateway.vercel.sh/v1/chat/completions',{
         method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},redirect:'error',signal:AbortSignal.timeout(25000),
-        body:JSON.stringify({model:'alibaba/qwen3.8-27b',messages:[{role:'user',content:[{type:'text',text:'Read the visible timetable image. Return only JSON with courseCode, startsAt and endsAt. Use a spaced course code and 24-hour HH:MM times.'},{type:'image_url',image_url:{url:'data:image/png;base64,'+image}}]}],max_tokens:512,temperature:0,response_format:{type:'json_object'},reasoning:{effort:'none'}}),
+        body:JSON.stringify({model:'google/gemini-2.5-flash-lite',messages:[{role:'user',content:[{type:'text',text:'Read the visible timetable image. Return only JSON with courseCode, startsAt and endsAt. Use a spaced course code and 24-hour HH:MM times.'},{type:'image_url',image_url:{url:'data:image/png;base64,'+image}}]}],max_tokens:512,temperature:0,response_format:{type:'json_object'},reasoning:{effort:'none'}}),
       });
       const output=await inferred.json().catch(()=>({}));
       const source=String(output.choices?.[0]?.message?.content??'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
