@@ -5,6 +5,7 @@ import { incompleteSchedule, levelKey, readScheduleJSON, scheduleCoverage, verif
 import { timetableImageRows, timetableLayoutImage, type TimetableLayoutImage, type TimetableImageRow } from './timetable-image-grid';
 import { prepareTimetableImage } from './webp-pixels';
 import {remoteTimetableLayout,remoteTimetableRows} from './remote-timetable-image';
+import {academicGatewayConfigured} from './ai-gateway';
 
 const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const printedDays:Record<string,number>={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
@@ -17,7 +18,7 @@ export async function generateAcademicImport(env:AIEnvironment,input:AIInput,sou
   const layout=needsLayout?(env.TIMETABLE_IMAGE_PROCESSOR_URL?await remoteTimetableLayout(env,input.media!,input.deadline):timetableLayoutImage(input.media!)):undefined;
   const initial=needsLayout?{...input,scheduleLayout:true,...(layout?{media:layout}:{}),
     prompt:'FIRST READ ONLY THE LAYOUT. If this image is a timetable grid, return its documentType, all printed timeSlots in left-to-right 24-hour order, the printed levels in their TOP-TO-BOTTOM row order within each day, and daysSeen in their TOP-TO-BOTTOM printed order as numbers (Sunday=0, Monday=1, Tuesday=2, Wednesday=3, Thursday=4, Friday=5, Saturday=6). Set grid.rows:[], entries:[], events:[] and coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]}. Do not transcribe any courses yet. The next internal step reads each selected row. If this is a simple list instead of a grid, return the complete normal schedule with entries/events and coverage.\nStudent source context:\n'+input.prompt,
-    systemContext:(input.systemContext??'')+'\nThis is an internal layout read. A grid layout is intentionally not a finished schedule and will never be shown or saved as one. Read the time-column headers, weekdays and level labels only. The application assembles every selected weekday row before import.'+(layout?' The numbered contact sheet contains time headings in panels 0 then 1, followed by all day/level labels in panel order, left to right then top to bottom. Panel numbers are not source text. Copy the first day\'s level labels in their printed order and every distinct weekday. No course transcription is needed.':''),
+    systemContext:'This is an internal layout inventory, not a finished schedule. For a grid, return ONLY this exact JSON shape: {"documentType":"class_timetable","grid":{"timeSlots":[{"startsAt":"HH:MM","endsAt":"HH:MM"}],"levels":["printed level"],"daysSeen":[1],"rows":[]},"entries":[],"events":[],"warnings":[],"coverage":{"complete":false,"daysRead":[],"rowCount":0,"uncertain":[]}}. Replace the time placeholders with EVERY actual printed column in 24-hour HH:MM. timeSlots contains OBJECTS with startsAt/endsAt, never strings. documentType MUST be class_timetable, never class_grid or class_timetable_grid. Copy all actual levels and numeric weekdays. Do not read courses or generate any cell rows in this step. The application reads every selected physical row next. For a simple class list, use the complete normal schedule instead. Student selection (data): '+JSON.stringify(scope)+(layout?' The numbered contact sheet contains time headings in panels 0 then 1, followed by all day/level labels in panel order, left to right then top to bottom. Panel numbers are not source text. Copy the first day\'s level labels in their printed order and every distinct weekday. No course transcription is needed.':''),
   }:input;
   const layoutDeadline=()=>env.GROQ_API_KEY?(input.deadline??Date.now()+150000):Math.min(input.deadline??Infinity,Date.now()+35000);
   const read=()=>generateAI(env,needsLayout?{...initial,deadline:layoutDeadline()}:initial);
@@ -32,7 +33,16 @@ export async function generateAcademicImport(env:AIEnvironment,input:AIInput,sou
     });
   }
   input.onScheduleRead?.(null,generated.text);
-  return {...generated,extracted:await parseOrRecoverAcademicImport(env,{...input,provider:generated.provider},generated.text,sourceText,kind,scope,layout)};
+  try {return {...generated,extracted:await parseOrRecoverAcademicImport(env,{...input,provider:generated.provider},generated.text,sourceText,kind,scope,layout)};}
+  catch(error) {
+    // One independent reread can repair a provider's incomplete inventory.
+    // The full source, original deadline and single import reservation survive.
+    if(!(error instanceof AIProviderError)||!['AI_INCOMPLETE_SCHEDULE','AI_INVALID_OUTPUT'].includes(error.reason)
+      ||generated.provider==='gateway'||!academicGatewayConfigured(env)||(input.deadline??0)-Date.now()<20000)throw error;
+    generated=await generateAI(env,{...initial,provider:'gateway',deadline:input.deadline!});
+    input.onScheduleRead?.(null,generated.text);
+    return {...generated,extracted:await parseOrRecoverAcademicImport(env,{...input,provider:'gateway'},generated.text,sourceText,kind,scope,layout)};
+  }
 }
 
 function matchesPixelInventory(text:string,layout:TimetableLayoutImage) {
@@ -76,26 +86,39 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
     const timeSlots=verifiedTimetableTimeSlots(grid.timeSlots);
     if(grid.levels.length>1) {
       if(!Array.isArray(grid.timeSlots))throw incompleteSchedule();
-      const crops:(TimetableImageRow[]&{batch?:AIMedia})|undefined=env.TIMETABLE_IMAGE_PROCESSOR_URL?await remoteTimetableRows(env,input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel,input.deadline,input.provider==='groq'):timetableImageRows(input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel);
+      // This model reads the compact whole-week atlas reliably. The alternate
+      // vision pool gets larger individual day panels to retain faint labels.
+      const batchProvider=input.provider==='groq';
+      const crops:(TimetableImageRow[]&{batch?:AIMedia})|undefined=env.TIMETABLE_IMAGE_PROCESSOR_URL?await remoteTimetableRows(env,input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel,input.deadline,batchProvider):timetableImageRows(input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel);
       if(crops) {
         const atlas=crops.batch;
-        if(atlas&&input.provider==='groq'){
+        const batchRows=new Map<number,{dayOfWeek:number;level:string;cells:{from:number;to:number;label:string}[]}>();
+        if(atlas&&batchProvider){
+          try {
           const labels=Object.fromEntries(crops.map(crop=>[String(crop.day),Object.fromEntries(Array.from({length:crop.cells.length+1},(_,i)=>[String(i),i===0?'printed level':'exact panel text or empty string']))]));
           const result=await generateAI(env,{...input,media:atlas,scheduleLayout:true,
             prompt:`Transcribe this contact sheet. Each strip is headed DAY followed by its weekday number. The numbered panels BELOW that heading belong only to that day. Panel 0 is its printed level; later panels are its individual course cells. Return ONLY ${JSON.stringify({labels,coverage:{complete:true,uncertain:[]}})}. Keep every day and panel key exactly as supplied. Copy exact labels, including slash alternatives, laboratories and parentheses. Use "" for blank panels. Do not infer clocks or move text between panels. Mark incomplete if any selected panel is unreadable.`,
             systemContext:'Internal transcription of isolated timetable cells. DAY headings and panel numbers are application labels, not source text. Return the requested labels JSON only. Preserve all blank panels and exact course labels. Never add or infer a course.',
           });
           input.onScheduleRead?.(null,result.text);
+          if(result.provider==='gateway')throw incompleteSchedule();
           const part=readScheduleJSON(result.text),coverage=part.coverage as {complete?:unknown;uncertain?:unknown}|undefined,byDay=part.labels as Record<string,Record<string,unknown>>|undefined;
           if(coverage?.complete!==true||!Array.isArray(coverage.uncertain)||coverage.uncertain.length||!byDay||typeof byDay!=='object'||Array.isArray(byDay)||Object.keys(byDay).length!==crops.length)throw incompleteSchedule();
-          const rows=crops.map(crop=>{
+          for(const crop of crops){
             const labels=byDay[String(crop.day)],keys=Array.from({length:crop.cells.length+1},(_,i)=>String(i));
-            if(!labels||typeof labels!=='object'||Array.isArray(labels)||Object.keys(labels).length!==keys.length||keys.some(key=>typeof labels[key]!=='string'||String(labels[key]).length>160)||levelKey(labels['0'])!==printedLevel)throw incompleteSchedule();
-            return{dayOfWeek:crop.day,level:printedLevel,cells:crop.cells.map((cell,i)=>({...cell,label:cell.blank?'':labels[String(i+1)] as string}))};
-          });
-          return parseAcademicImport(JSON.stringify({documentType:'class_timetable',entries:[],events:[],warnings:[],coverage:{complete:true,daysRead:ordered,rowCount:rows.length,uncertain:[]},grid:{timeSlots,levels:[printedLevel],daysSeen:ordered,rows}}),sourceText,kind,{strict:true,scope});
+            if(!labels||typeof labels!=='object'||Array.isArray(labels)||Object.keys(labels).length!==keys.length||keys.some(key=>typeof labels[key]!=='string'||String(labels[key]).length>160)||levelKey(labels['0'])!==printedLevel)continue;
+            batchRows.set(crop.day,{dayOfWeek:crop.day,level:printedLevel,cells:crop.cells.map((cell,i)=>({...cell,label:cell.blank?'':labels[String(i+1)] as string}))});
+          }
+          }catch(error){
+            if(!(error instanceof AIProviderError)||!['AI_INCOMPLETE_SCHEDULE','AI_INCOMPLETE','AI_INVALID_OUTPUT'].includes(error.reason)||input.deadline!-Date.now()<20000)throw error;
+          }
+          if(batchRows.size!==crops.length){
+            if(input.deadline!-Date.now()<20000)throw incompleteSchedule();
+            console.info(JSON.stringify({event:'ai.timetable.focused_panel_recovery',days:crops.length-batchRows.size}));
+          }
         }
-        const rows=await Promise.all(crops.map(async crop=>{
+        const readCrop=async(crop:TimetableImageRow)=>{
+          const verified=batchRows.get(crop.day);if(verified)return verified;
           const keys=Array.from({length:crop.cells.length+1},(_,i)=>String(i));
           const schema={labels:Object.fromEntries(keys.map(key=>[key,key==='0'?'printed level':`panel ${key} text`])),coverage:{complete:true,uncertain:[]}};
           const request={...input,media:crop.media,scheduleLayout:true,
@@ -122,7 +145,14 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
             if(attempt===1||input.deadline!-Date.now()<20000)throw incompleteSchedule();
           }
           throw incompleteSchedule();
+        };
+        const rows:Awaited<ReturnType<typeof readCrop>>[]=new Array(crops.length);let nextCrop=0,failed=false;let failure:unknown;
+        // Two focused requests at a time stay below the alternate pool's burst
+        // limits without changing the full-week deadline or reservation.
+        await Promise.all(Array.from({length:Math.min(2,crops.length)},async()=>{
+          while(nextCrop<crops.length&&!failed){const index=nextCrop++;try{rows[index]=await readCrop(crops[index]!);}catch(error){failed=true;failure=error;}}
         }));
+        if(failed)throw failure;
         return parseAcademicImport(JSON.stringify({documentType:'class_timetable',entries:[],events:[],warnings:[],
           coverage:{complete:true,daysRead:ordered,rowCount:rows.length,uncertain:[]},
           grid:{timeSlots,levels:[printedLevel],daysSeen:ordered,rows},
@@ -133,7 +163,7 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
       // every requested day from the original and validate the assembled grid.
       console.info(JSON.stringify({event:'ai.timetable.original_row_read',reason:'pixel_geometry_unavailable'}));
     }
-    if(input.provider==='groq'){
+    if(input.provider==='groq'||input.provider==='gateway'){
       const result=await generateAI(env,{...input,scheduleLayout:true,
         prompt:`Read every selected ${printedLevel||'unlabelled'} level row for these weekdays: ${JSON.stringify(ordered)}. Use the original image, ignore other levels. The already verified time columns are ${JSON.stringify(timeSlots)}. Do not read clocks again. Return ONLY {"rows":[{"dayOfWeek":1,"level":${JSON.stringify(printedLevel)},"cells":[{"from":0,"to":1,"label":"exact visible text or empty string"}]}],"coverage":{"complete":true,"daysRead":${JSON.stringify(ordered)},"rowCount":${ordered.length},"uncertain":[]}}. Include exactly one row for EACH requested weekday. Every row must cover all ${timeSlots.length} columns without gaps or overlaps, including blanks. Follow actual merged-cell borders. Preserve slash alternatives and parentheses. Never move a course into a blank column or copy another level. If any selected cell or border is unreadable mark incomplete.`,
         systemContext:'Internal full-week transcription against one verified time-heading inventory. Return only rows, cell boundaries and exact labels. Column indices start at the first printed time column, excluding DAYS and LEVEL. from is inclusive; to is exclusive. No clocks or extra courses.',

@@ -1,6 +1,7 @@
 import { SignJWT } from 'jose';
 
 export const imageProcessingAudience='kampusone:private:timetable-image';
+export const academicInferenceAudience='kampusone:private:academic-inference';
 const encoder=new TextEncoder();
 let signingKey:Promise<CryptoKey>|undefined;
 let keySource:string|undefined;
@@ -24,11 +25,11 @@ export async function imageProcessingPublicKey(secret:string) {
   const jwk=await crypto.subtle.exportKey('jwk',await imageKey(secret));
   return {kty:'OKP',crv:'Ed25519',x:jwk.x!,alg:'EdDSA',use:'sig',kid:'image:'+jwk.x!.slice(0,16)};
 }
-export async function imageProcessingToken(secret:string,body:string) {
+export async function imageProcessingToken(secret:string,body:string,audience:typeof imageProcessingAudience|typeof academicInferenceAudience=imageProcessingAudience) {
   const key=await imageKey(secret),jwk=await imageProcessingPublicKey(secret);
   const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(body)));
   const bodyHash=Array.from(digest,byte=>byte.toString(16).padStart(2,'0')).join('');
   return new SignJWT({bodyHash}).setProtectedHeader({alg:'EdDSA',typ:'JWT',kid:jwk.kid})
-    .setIssuer('kampusone-worker').setAudience(imageProcessingAudience)
+    .setIssuer('kampusone-worker').setAudience(audience)
     .setIssuedAt().setExpirationTime('60s').setJti(crypto.randomUUID()).sign(key);
 }

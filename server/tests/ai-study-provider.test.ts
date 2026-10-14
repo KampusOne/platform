@@ -44,7 +44,7 @@ beforeAll(async () => {
   }
 }, 60000);
 beforeEach(async () => {
-  delete env.AI; delete env.AI_TEXT_PROVIDER;
+  delete env.AI; delete env.AI_TEXT_PROVIDER;delete env.GROQ_API_KEY;
   await db.exec("delete from app_private.ai_requests;delete from app_private.academic_import_usage;delete from app_private.request_rate_limits");
   delete env.PRIVATE_BUCKET;
   env.AI_UNLIMITED_EMAIL_HASHES = await sha256(ownerEmail);
@@ -61,6 +61,20 @@ beforeEach(async () => {
 afterAll(async () => { vi.unstubAllGlobals(); await db?.close(); });
 
 describe("student AI persistence and quota boundaries",()=>{
+  it('keeps a persisted Pro thread usable after automatic fallback while hiding routing metadata',async()=>{
+    env.AI={run:vi.fn().mockRejectedValue(new Error('4006 daily allocation'))};env.AI_TEXT_PROVIDER='workers-ai';env.GROQ_API_KEY='PRIVATE_TEST_GROQ';
+    provider.mockImplementation(async target=>String(target).includes('groq.com')?Response.json({choices:[{finish_reason:'stop',message:{content:'The result follows from the previous circuit.'}}]}):new Response(null,{status:402}));
+    const first=await json(await request('/ai','POST',{...draft(),tier:'pro'}));
+    expect(first.provider).toBeUndefined();expect(first.contextProvider).toBeUndefined();
+    const next=await json(await request('/ai','POST',{...draft(),tier:'pro',prompt:'Why?',replyTo:first.requestId}));
+    expect(next.threadId).toBe(first.threadId);
+    const sent=JSON.parse(String(provider.mock.calls.at(-1)![1]!.body));expect(sent.messages).toContainEqual({role:'assistant',content:first.text});
+    const row=(await db.query<{result:{provider:string;contextProvider:string}}>('select result from app_private.ai_requests where idempotency_key=$1',[next.requestId])).rows[0]!;
+    expect(row.result).toMatchObject({provider:'groq',contextProvider:'workers-ai'});
+    const legacy=crypto.randomUUID();await db.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) values($1,$2,repeat('a',64),'study','COMPLETED',$3::jsonb)",[owner,legacy,JSON.stringify({provider:'groq',version:3,prompt:'Legacy automatic fallback',text:'Legacy fallback answer'})]);
+    await json(await request('/ai','POST',{...draft(),replyTo:legacy}));
+    expect(JSON.parse(String(provider.mock.calls.at(-1)![1]!.body)).messages).toContainEqual({role:'assistant',content:'Legacy fallback answer'});
+  });
   it('uses Workers AI through the authenticated route and replays without another inference',async()=>{
     const run=vi.fn().mockResolvedValue({response:'Voltage equals current multiplied by resistance.'});
     env.AI={run};env.AI_TEXT_PROVIDER='workers-ai';

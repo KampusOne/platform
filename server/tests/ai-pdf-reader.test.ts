@@ -1,11 +1,12 @@
 import {readFileSync} from 'node:fs';
-import {describe,it,expect,vi} from 'vitest';
+import {afterEach,describe,it,expect,vi} from 'vitest';
 import {readPrivateAIPdf,scanImagePng} from '../src/lib/ai-pdf-reader';
 import {scannedPdfFixture,pdfFixture} from './helpers/pdf';
 
 const fixture=JSON.parse(readFileSync(new URL('../../scripts/fixtures/handwritten-timetable.json',import.meta.url),'utf8'));
 const jpeg=Uint8Array.from(Buffer.from(fixture.jpegBase64,'base64'));
 const pdf=(pages:(string|null)[]=[null])=>scannedPdfFixture(jpeg,fixture.width,fixture.height,pages);
+afterEach(()=>vi.unstubAllGlobals());
 describe('private scan PDF reading',()=>{
   it('encodes RGB and alpha scan pixels in a PNG accepted by a real decompressor',async()=>{
     for(const channels of [1,3,4]){
@@ -39,6 +40,14 @@ describe('private scan PDF reading',()=>{
     const run=vi.fn().mockResolvedValue({choices:[{finish_reason:'length',message:{content:'Half a page'}}]});
     await expect(readPrivateAIPdf({AI:{run}},pdf())).rejects.toMatchObject({reason:'AI_DOCUMENT_TOO_LONG'});
     await expect(readPrivateAIPdf({},pdf())).rejects.toMatchObject({reason:'AI_DOCUMENT_READER_UNAVAILABLE'});
+  });
+  it('reads an owned scan through the private fallback after native capacity is exhausted',async()=>{
+    const bytes=pdf(),before=bytes.slice(),calls=vi.fn<typeof fetch>().mockResolvedValue(Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({text:'MAT 101\n8:00 - 9:00\nLT 1',complete:true,uncertain:[]})}}]}));vi.stubGlobal('fetch',calls);
+    const env={AI_ASSISTANT_ENABLED:'true',JWT_SECRET:'private-scan-test-secret-'.repeat(3),TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image',AI:{run:vi.fn().mockRejectedValue(new Error('4006 daily allocation'))}};
+    expect(await readPrivateAIPdf(env,bytes)).toContain('[Page 1]\nMAT 101');expect(bytes).toEqual(before);expect(calls).toHaveBeenCalledTimes(1);
+    expect(calls.mock.calls[0]![0]).toBe('https://agents.kampusone.app/internal-processing/academic-inference');
+    calls.mockResolvedValue(Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({text:'Half a page',complete:false,uncertain:['rest unreadable']})}}]}));
+    await expect(readPrivateAIPdf(env,bytes)).rejects.toMatchObject({reason:'AI_UNREADABLE_DOCUMENT'});
   });
   it('bounds scan count, oversized pixel declarations and an unresponsive vision call',async()=>{
     const run=vi.fn().mockResolvedValue({response:'A scanned page'});

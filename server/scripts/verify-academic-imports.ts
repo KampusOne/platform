@@ -10,6 +10,7 @@ import { timetableExtractionInstruction, type TimetableScope } from '../src/lib/
 export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
   printedImage: string; handwriting: string; calendarPdf: string; facultyImage?: string; facultyWebp?: string; facultyPhoto?: string;
   case?: 'baseline'|'facultyGrid200'|'facultyGrid100'|'facultyWebp100'|'facultyPhoto100';
+  provider?:'gateway';
 }) {
   let alternativeCheck:Promise<Record<string,unknown>>|undefined;
   const checkAlternative=()=>alternativeCheck??=(async()=>{
@@ -37,12 +38,12 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
     },...(env.AI.toMarkdown?{toMarkdown:env.AI.toMarkdown.bind(env.AI)}:{})}:undefined};
     try {
       const input = {
-        mode: 'timetable' as const, tier: 'pro' as const, prompt, sourceDocument, ...(media?{media}:{}), deadline: Date.now() + 150000,
+        mode: 'timetable' as const, tier: 'pro' as const, prompt, sourceDocument, ...(media?{media}:{}), ...(fixtures.provider?{provider:fixtures.provider}:{}), deadline: Date.now() + 150000,
         systemContext: (kind === 'exam' ? examImportInstruction : kind === 'calendar'
           ? 'This import is an academic calendar. Extract every dated activity in both semesters, never weekly classes.'
           : 'Import this weekly class timetable. Student academic selection (data): '+JSON.stringify(scope))+'\n'+timetableExtractionInstruction,
         onProviderFailure:(failure:{provider:string;status:number;hint:string;parameter?:string})=>{providerFailures.push(failure);},
-        ...(name.startsWith('faculty')?{onScheduleRead:(day:number|null,text:string)=>{generatedText=text;try{reads.push({day,value:JSON.parse(text)});}catch{reads.push({day,jsonReadable:false,length:text.length});}}}:{}),
+        onScheduleRead:(day:number|null,text:string)=>{generatedText=text;try{reads.push({day,value:JSON.parse(text)});}catch{reads.push({day,jsonReadable:false,length:text.length,publicFixturePrefix:text.slice(0,1500)});}},
       };
       const generated = await generateAcademicImport({ ...observedEnv, AI_ASSISTANT_ENABLED: 'true' }, input,prompt,kind,scope);
       generatedText=generated.text;
@@ -68,12 +69,12 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
         && result.events.length === 8 && result.events.some(event => event.startsOn === '2027-02-01')
         : kind === 'exam' ? result.entries.length === 3 && (result.entries[0] as {date:string}).date === '2026-11-05'
         : result.documentType === 'class_timetable' && result.entries.some(entry => {const row=entry as {courseCode:string;dayOfWeek:number;startsAt:string;endsAt:string};return row.courseCode.replace(/\s/g,'') === 'MAT101' && row.dayOfWeek===1 && row.startsAt==='08:00' && row.endsAt==='09:00';});
-      return { name, outcome: valid ? 'extraction_succeeded' : 'extraction_unusable', classes: result.entries.length,
+      return { name, outcome: valid ? 'extraction_succeeded' : 'extraction_unusable', provider:generated.provider, classes: result.entries.length,
         events: result.events.length, elapsedMs: Date.now() - start,
         ...(name.startsWith('faculty')&&!valid?{mismatches:expectedFaculty.filter(expected=>!actualFaculty.some(actual=>JSON.stringify(actual)===JSON.stringify(expected))),actual:actualFaculty,diagnostic:{reads}}: {}) };
     } catch (error) {
       let diagnostic: Record<string,unknown>|undefined;
-      if(name.startsWith('faculty'))try{const value=JSON.parse(generatedText);diagnostic={documentType:value.documentType,coverage:value.coverage,warnings:value.warnings,grid:value.grid};}catch{diagnostic={jsonReadable:false};}
+      try{const value=JSON.parse(generatedText);diagnostic={documentType:value.documentType,coverage:value.coverage,warnings:value.warnings,grid:value.grid};}catch{diagnostic={jsonReadable:false};}
       return { name, outcome: 'extraction_failed', elapsedMs: Date.now() - start,
         ...((diagnostic||providerFailures.length)?{diagnostic:{...diagnostic,providers:providerFailures,reads,...(fixtures.case==='baseline'?{alternative:await checkAlternative()}:{})}}:{}),
         ...((error as {reason?:string}).reason?.match(/^AI_[A-Z_]+$/) ? {reason:(error as {reason:string}).reason} : {}) };
