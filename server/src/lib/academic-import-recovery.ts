@@ -146,12 +146,13 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
           }
           throw incompleteSchedule();
         };
-        const rows:Awaited<ReturnType<typeof readCrop>>[]=new Array(crops.length);let nextCrop=0;
+        const rows:Awaited<ReturnType<typeof readCrop>>[]=new Array(crops.length);let nextCrop=0,failed=false;let failure:unknown;
         // Two focused requests at a time stay below the alternate pool's burst
         // limits without changing the full-week deadline or reservation.
         await Promise.all(Array.from({length:Math.min(2,crops.length)},async()=>{
-          while(nextCrop<crops.length){const index=nextCrop++;rows[index]=await readCrop(crops[index]!);}
+          while(nextCrop<crops.length&&!failed){const index=nextCrop++;try{rows[index]=await readCrop(crops[index]!);}catch(error){failed=true;failure=error;}}
         }));
+        if(failed)throw failure;
         return parseAcademicImport(JSON.stringify({documentType:'class_timetable',entries:[],events:[],warnings:[],
           coverage:{complete:true,daysRead:ordered,rowCount:rows.length,uncertain:[]},
           grid:{timeSlots,levels:[printedLevel],daysSeen:ordered,rows},

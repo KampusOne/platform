@@ -15,15 +15,25 @@ export async function gatewayAcademicCompletion(env:AIEnvironment,input:AIInput,
   const latest=messages.filter(message=>message.role==='user').at(-1);
   const source=messages.filter(message=>message.role==='system'||message===latest).map(message=>({role:message.role,
     content:Array.isArray(message.content)?message.content.map(part=>part?.type==='image_url'?{type:'image_url',image_url:{url:part.image_url?.url}}:part):message.content}));
+  let response:Response;
+  for(let attempt=0;;attempt++){
   const body=JSON.stringify({messages:source,maxTokens:Math.min(maxTokens,4096),timeoutMs:Math.min(60000,Math.max(1,Math.floor(deadline-Date.now())))});
   if(new TextEncoder().encode(body).byteLength>4_200_000)throw new AIProviderError(503,'AI_PROVIDER_UNAVAILABLE','The complete image could not be read. Your original file is kept.');
   const authorization=await imageProcessingToken(env.JWT_SECRET!,body,academicInferenceAudience);
-  let response:Response;
   try {response=await fetcher(relay,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+authorization},body,redirect:'manual',signal:AbortSignal.timeout(Math.max(1,deadline-Date.now()))});}
   catch(error){
     console.warn(JSON.stringify({event:'ai.academic.gateway_transport_failed',timedOut:error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)}));
     input.onProviderFailure?.({provider:'gateway',status:0,hint:'transport'});
     throw new AIProviderError(error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)?504:503,error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)?'AI_TIMEOUT':'AI_PROVIDER_UNAVAILABLE','The reader could not finish. Your full file is kept; no import credit was used.');
+  }
+  // Only an explicit rejection before generation is retryable. A credit floor,
+  // lost response, timeout or ambiguous upstream error never repeats inference.
+  if(response.status!==429||response.headers.get('X-Academic-Retry-Safe')!=='rate-limit'||attempt>=2)break;
+  const raw=response.headers.get('Retry-After'),seconds=raw&&Number.isFinite(Number(raw))?Number(raw):20;
+  const delay=Math.max(1000,Math.min(45000,Math.ceil(seconds*1000)));
+  if(delay+3000>=deadline-Date.now())break;
+  await response.body?.cancel().catch(()=>undefined);await input.onProgress?.('analysing');
+  await new Promise(resolve=>setTimeout(resolve,delay));
   }
   if(!response.ok){
     await response.body?.cancel().catch(()=>undefined);

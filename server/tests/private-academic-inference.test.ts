@@ -2,12 +2,12 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {importJWK} from 'jose';
 import {privateAcademicInference,academicGatewayModel} from '../../portal/lib/private-academic-inference';
 import {imageProcessingPublicKey,imageProcessingToken,academicInferenceAudience} from '../src/lib/image-processing-auth';
-import {generateAI,type AIEnvironment} from '../src/lib/ai-provider';
+import {generateAI,type AIEnvironment,type AIMessage} from '../src/lib/ai-provider';
 import {gatewayAcademicCompletion} from '../src/lib/ai-gateway';
 
 const secret='academic-private-test-secret-'.repeat(3),url='https://agents.kampusone.app/internal-processing/academic-inference';
 const getKey=async()=>importJWK(await imageProcessingPublicKey(secret),'EdDSA');
-const messages=[{role:'system',content:'Read visible source only.'},{role:'user',content:[{type:'text',text:'Read my timetable'},{type:'image_url',image_url:{url:'data:image/png;base64,YQ=='}}]}];
+const messages:AIMessage[]=[{role:'system',content:'Read visible source only.'},{role:'user',content:[{type:'text',text:'Read my timetable'},{type:'image_url',image_url:{url:'data:image/png;base64,YQ=='}}]}];
 const body=()=>JSON.stringify({messages,maxTokens:2048,timeoutMs:60000});
 const signed=async(text=body(),audience:typeof academicInferenceAudience|'kampusone:private:timetable-image'=academicInferenceAudience)=>new Request(url,{method:'POST',headers:{Authorization:'Bearer '+await imageProcessingToken(secret,text,audience),'x-vercel-oidc-token':'PRIVATE_OIDC'},body:text});
 const result=(finish_reason='stop')=>Response.json({choices:[{finish_reason,message:{content:'{"visible":true}'}}],private:'UPSTREAM_INTERNAL'});
@@ -53,6 +53,13 @@ describe('bounded private academic fallback',()=>{
     const calls=vi.fn<typeof fetch>(),input={mode:'timetable' as const,prompt:'Read',deadline:Date.now()+150000};
     await expect(gatewayAcademicCompletion({},input,[],4096,60000,calls)).rejects.toMatchObject({reason:'AI_NOT_CONFIGURED'});expect(calls).not.toHaveBeenCalled();
     await expect(gatewayAcademicCompletion({AI_ASSISTANT_ENABLED:'false',JWT_SECRET:secret,TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image'},input,[],4096,60000,calls)).rejects.toMatchObject({reason:'AI_NOT_CONFIGURED'});expect(calls).not.toHaveBeenCalled();
+  });
+  it('waits only for explicit rejected requests, without retrying a credit floor or ambiguous timeout',async()=>{
+    const env={AI_ASSISTANT_ENABLED:'true',JWT_SECRET:secret,TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image'},input={mode:'timetable' as const,prompt:'Read',deadline:Date.now()+150000};
+    const calls=vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(null,{status:429,headers:{'X-Academic-Retry-Safe':'rate-limit','Retry-After':'1'}})).mockResolvedValueOnce(result());
+    expect((await gatewayAcademicCompletion(env,input,messages,2048,150000,calls)).provider).toBe('gateway');expect(calls).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(calls.mock.calls[1]![1]!.body)).timeoutMs).toBeLessThanOrEqual(input.deadline-Date.now()+1000);
+    for(const status of [429,504]){calls.mockReset().mockResolvedValue(new Response(null,{status}));await expect(gatewayAcademicCompletion(env,input,messages,2048,150000,calls)).rejects.toMatchObject({reason:status===429?'AI_PROVIDER_LIMIT':'AI_TIMEOUT'});expect(calls).toHaveBeenCalledTimes(1);}
   });
   it('recovers after primary limits using one signed request and the same deadline',async()=>{
     const env:AIEnvironment={AI_ASSISTANT_ENABLED:'true',JWT_SECRET:secret,TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image',

@@ -13,6 +13,12 @@ available balance before inference and stops below $0.05. The AI kill switch,
 per-user/global limits, one import reservation and total deadline remain in the
 Worker. It is a bounded fallback, not unlimited image capacity.
 
+Explicit rate-limit rejections can wait for the returned retry window, at most
+twice and inside the original deadline. A credit floor, lost response, timeout
+or ambiguous upstream failure never repeats a potentially completed inference.
+After a focused day fails, no additional day read starts; in-flight reads settle
+before the whole import is failed.
+
 The private Next route accepts only the trusted Worker's Ed25519 signatures,
 with a distinct audience, exact body hash and 60-second expiry. Unsigned requests,
 remote image URLs, caller-selected models, action tools and oversized bodies are

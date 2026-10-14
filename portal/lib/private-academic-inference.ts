@@ -50,7 +50,7 @@ export async function privateAcademicInference(request:Request,getKey:JWTVerifyG
       }catch(error){if(attempt===1||!(error instanceof Error)||!['AbortError','TimeoutError'].includes(error.name)||deadline-Date.now()<1000)throw error;}
     }
     if(!credits)return new Response(null,{status:503,headers});
-    if(!credits.ok){await credits.body?.cancel();return new Response(null,{status:[402,429].includes(credits.status)?429:503,headers});}
+    if(!credits.ok){await credits.body?.cancel();return new Response(null,{status:[402,429].includes(credits.status)?429:503,headers:{...headers,...(credits.status===429?{'X-Academic-Retry-Safe':'rate-limit','Retry-After':credits.headers.get('retry-after')??'20'}:{})}});}
     const balance=await credits.json() as {balance?:unknown};
     if(!Number.isFinite(Number(balance.balance))||Number(balance.balance)<.05)return new Response(null,{status:429,headers});
     if(deadline<=Date.now())return new Response(null,{status:504,headers});
@@ -61,7 +61,7 @@ export async function privateAcademicInference(request:Request,getKey:JWTVerifyG
     });
     if(!response.ok){
       console.warn(JSON.stringify({event:'ai.academic.gateway_failed',httpStatus:response.status}));
-      await response.body?.cancel();return new Response(null,{status:[402,429].includes(response.status)?429:503,headers});
+      await response.body?.cancel();return new Response(null,{status:[402,429].includes(response.status)?429:503,headers:{...headers,...(response.status===429?{'X-Academic-Retry-Safe':'rate-limit','Retry-After':response.headers.get('retry-after')??'20'}:{})}});
     }
     const output=await response.json() as {choices?:{finish_reason?:unknown;message?:{content?:unknown}}[]};
     const choice=output.choices?.[0],text=choice?.message?.content;

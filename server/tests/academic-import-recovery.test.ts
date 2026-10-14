@@ -73,6 +73,11 @@ describe('one-import private cell transcription',{timeout:30000},()=>{
     const result=await parseOrRecoverAcademicImport({},input(),broken(),'','class',{level:'200'});
     expect(result.entries).toHaveLength(20);expect(generateAI).toHaveBeenCalledTimes(5);expect(peak).toBeLessThanOrEqual(2);
   });
+  it('stops starting more day reads after a failure and rejects the whole week',async()=>{
+    vi.mocked(generateAI).mockImplementation(async(_env,call)=>{const day=dayOf(call);if(day===1)throw new AIProviderError(422,'AI_INCOMPLETE_SCHEDULE','unreadable source');await new Promise(resolve=>setTimeout(resolve,5));return{text:JSON.stringify(response(day)),provider:'gateway'};});
+    await expect(parseOrRecoverAcademicImport({},input(),broken(),'','class',{level:'200'})).rejects.toMatchObject({reason:'AI_INCOMPLETE_SCHEDULE'});
+    expect(generateAI).toHaveBeenCalledTimes(2);
+  });
   it.each(['uncertain','missing-panel','wrong-level'])('rejects the entire week on a %s cell read',async failure=>{
     vi.mocked(generateAI).mockImplementation(async(_env,request)=>{const day=dayOf(request),value=response(day);
       if(day===4){if(failure==='uncertain')value.coverage.complete=false;else if(failure==='missing-panel')delete value.labels['7'];else value.labels['0']='100';}
