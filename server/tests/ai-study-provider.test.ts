@@ -183,3 +183,17 @@ describe('complete academic import routes',()=>{
     expect(result.entries[0]).toMatchObject({courseCode:'MAT 101',startsAt:'08:00'});expect(run).toHaveBeenCalledTimes(1);
   });
 });
+
+it('releases an expired upload-limit draft key while retaining active quota enforcement and single inference replay',async()=>{
+  const body={mode:'timetable',documentKind:'class',prompt:'Monday MAT 101 08:00-09:00 LT 1.',idempotencyKey:crypto.randomUUID(),consent:true};
+  const hash=await sha256(JSON.stringify([4,'timetable',body.prompt,'',null,null,'standard',null,'class']));
+  const failure={version:3,failureStatus:429,message:'Your upload allowance is used.',failureDetails:{reason:'ACADEMIC_IMPORT_LIMIT',resetsAt:new Date(Date.now()+60000).toISOString()}};
+  await db.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) values($1,$2,$3,'timetable','FAILED',$4::jsonb)",[owner,body.idempotencyKey,hash,JSON.stringify(failure)]);
+  await json(await request('/ai','POST',body),429);expect(provider).not.toHaveBeenCalled();
+  failure.failureDetails.resetsAt=new Date(Date.now()-60000).toISOString();
+  await db.query('update app_private.ai_requests set result=$3::jsonb where user_id=$1 and idempotency_key=$2',[owner,body.idempotencyKey,JSON.stringify(failure)]);
+  const expired=await json(await request('/ai','POST',body),409);expect(expired.error.details).toMatchObject({reason:'AI_ALLOWANCE_RENEWED',retryWithNewKey:true});expect(provider).not.toHaveBeenCalled();
+  provider.mockResolvedValue(Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({documentType:'class_timetable',entries:[{title:'Mathematics',courseCode:'MAT 101',dayOfWeek:1,startsAt:'08:00',endsAt:'09:00',venue:'LT 1',lecturer:''}],events:[],warnings:[]})}}]}));
+  const fresh={...body,idempotencyKey:crypto.randomUUID()};const result=await json(await request('/ai','POST',fresh));
+  expect(result.entries[0].courseCode).toBe('MAT 101');expect(await json(await request('/ai','POST',fresh))).toEqual(result);expect(provider).toHaveBeenCalledTimes(1);
+});

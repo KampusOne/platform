@@ -28,6 +28,7 @@ export async function submitTrackedAIRequest<T>(transport: Transport, init: ApiR
     const recoverable = error instanceof ApiError && (
       ['NETWORK_ERROR', 'NETWORK_UNAVAILABLE', 'REQUEST_TIMEOUT'].includes(error.code)
       || (error.status === 409 && error.details?.reason === 'AI_PROCESSING')
+      || (error.details?.reason === 'AI_SAVE_FAILED' && error.details?.retryWithNewKey === false)
       || (error.status >= 502 && !error.details?.reason));
     if (!recoverable || controller.signal.aborted) throw error;
     originalFailure = error;

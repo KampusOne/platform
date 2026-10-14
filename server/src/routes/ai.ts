@@ -36,7 +36,12 @@ function replay(row: RequestRow, hash: string) {
   if ((row.result?.version ?? 0) >= 2 && Date.now() - new Date(row.created_at).getTime() > AI_HISTORY_DAYS * 86400000) throw new AppError(410, "NOT_FOUND", "This AI result has expired. Start a new request.", { reason: "AI_EXPIRED", retryWithNewKey: true });
   if (row.result?.deleted) throw new AppError(410, "NOT_FOUND", "This saved result has been deleted.", { reason: "AI_DELETED", retryWithNewKey: true });
   if (row.status === "COMPLETED" && row.result) return publicResult(row.idempotency_key, row.result);
-  if (row.status === "FAILED" && row.result?.failureStatus === 429) throw new AppError(429, "RATE_LIMITED", row.result.message ?? "Your import allowance is used.", row.result.failureDetails);
+  if (row.status === 'FAILED' && row.result?.failureStatus === 429) {
+    const resetsAt = Date.parse(String(row.result.failureDetails?.resetsAt ?? ''));
+    if (Number.isFinite(resetsAt) && resetsAt <= Date.now())
+      throw new AppError(409, 'CONFLICT', 'Your upload allowance has renewed. Retry this document to use the new allowance.', { reason: 'AI_ALLOWANCE_RENEWED', retryWithNewKey: true });
+    throw new AppError(429, 'RATE_LIMITED', row.result.message ?? 'Your import allowance is used.', row.result.failureDetails);
+  }
   if (row.status === "FAILED") throw new AppError(503, "PROVIDER_UNAVAILABLE", row.result?.message ?? "That attempt did not finish. Start a new attempt when ready.", { reason: row.result?.reason ?? "AI_FAILED", retryWithNewKey: true });
   const stale = Date.now() - new Date(row.created_at).getTime() > 300000;
   throw new AppError(409, "CONFLICT", stale ? "That attempt did not finish in time. Your draft is kept; try again." : "This request is still processing. Retry to check the same attempt; do not submit it again.", { reason: stale ? "AI_STALE_REQUEST" : "AI_PROCESSING", retryWithNewKey: stale });

@@ -36,3 +36,8 @@ test('leaving the exam import cancels receipt polling and preserves the draft ke
   const pending=h.submit(async(_path,init)=>{if(init.method==='POST')return new Promise(()=>{});reads++;return {requestId:id,status:'processing',stage:'analysing'};},{...input,signal:controller.signal},()=>{});
   const rejected=assert.rejects(pending,/Left screen/);controller.abort(new Error('Left screen'));await rejected;await h.advance(60000);assert.equal(reads,0);assert.equal(h.timers.size,0);
 });
+test('an uncertain save acknowledgement retrieves the committed result without another inference',async()=>{
+  const h=harness();let posts=0;
+  const pending=h.submit(async(_path,init)=>{if(init.method==='POST'){posts++;throw new ApiError(503,'PROVIDER_UNAVAILABLE','Save acknowledgement lost',{reason:'AI_SAVE_FAILED',retryWithNewKey:false});}return {requestId:id,status:'completed',entries:[{courseCode:'MAT 101'}]};},input,()=>{});
+  await h.advance(1000);assert.equal((await pending).entries[0].courseCode,'MAT 101');assert.equal(posts,1);assert.equal(h.timers.size,0);
+});

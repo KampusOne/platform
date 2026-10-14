@@ -2,7 +2,7 @@ name: Verify live Kira providers
 on:
   push:
     branches: [main, fix/academic-uploads-agent-bank-20261014, fix/keyboard-ai-recovery-20261009, perf/secure-universal-cache-20261010, fix/seller-product-management-20261013]
-    paths: ['scripts/kira-connection-check.mjs', '.github/workflows/kira-connection-check.yml']
+    paths: ['scripts/kira-connection-check.mjs', '.github/workflows/kira-connection-check.yml', 'server/src/lib/ai*.ts', 'server/src/lib/academic-import.ts', 'server/src/lib/schedule-document.ts', 'server/src/lib/exam-schedule.ts', 'server/src/routes/ai.ts']
   workflow_dispatch:
 permissions:
   contents: read
