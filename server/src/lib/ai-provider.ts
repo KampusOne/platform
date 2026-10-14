@@ -121,7 +121,7 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
         const remaining = deadline - Date.now();
         // Leave time for a configured fallback. Document inference gets its
         // actual budget instead of the old unconditional 45-second cap.
-        const nativeBudget = alternate.configured && remaining > 15000 ? remaining - Math.min(15000, remaining / 4) : remaining;
+        const nativeBudget = Math.floor(alternate.configured && remaining > 15000 ? remaining - Math.min(15000, remaining / 4) : remaining);
         payload = await workersAICompletion(env, input, messages, tools, budget.maxTokens, nativeBudget) as typeof payload;
       } catch (error) {
         // A native model outage must not strand the configured alternative.

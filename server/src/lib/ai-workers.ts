@@ -20,7 +20,7 @@ export function workersAIConfiguration(env: WorkersAIEnvironment, tier = 'standa
 }
 /** Return the same completion shape as the HF adapter. Never execute tools here. */
 export async function workersAICompletion(env: WorkersAIEnvironment, input: AIInput, messages: AIMessage[], tools: AITool[] | undefined, maxTokens: number, timeoutMs: number): Promise<unknown> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + Math.max(1, Math.floor(timeoutMs));
   const config = workersAIConfiguration(env, input.tier, Boolean(input.media));
   const openAIFormat = config.model.startsWith('@cf/google/');
   if (!config.configured) throw new AIProviderError(503, 'AI_NOT_CONFIGURED', 'This AI option is temporarily unavailable. Your draft is kept.');

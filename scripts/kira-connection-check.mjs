@@ -148,8 +148,10 @@ if(process.argv.includes('--self-test')) {
   const fetchSafe=(url,options={})=>fetch(url,{...options,redirect:'error',signal:AbortSignal.timeout(options.probeInference?180000:45000)});
   const cf=async(suffix,options={})=>{
     const response=await fetchSafe(`https://api.cloudflare.com/client/v4/accounts/${account}${suffix}`,{...options,headers:{Authorization:`Bearer ${token}`,...options.headers}});
-    if(!response.ok)throw new Error(`HTTP ${response.status}`);
-    const data=await response.json();if(!data.success)throw new Error('Cloudflare operation failed');return data.result;
+    const data=await response.json().catch(()=>null);
+    const codes=Array.isArray(data?.errors)?data.errors.map(e=>e?.code).filter(Number.isSafeInteger).join(','):'';
+    if(!response.ok)throw new Error(`HTTP ${response.status}${codes?' CF '+codes:''}`);
+    if(!data?.success)throw new Error('Cloudflare operation failed'+(codes?' CF '+codes:''));return data.result;
   };
   let stage='configuration';
   try {

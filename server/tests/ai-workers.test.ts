@@ -72,6 +72,15 @@ describe('Workers AI recovery', () => {
 });
 
 describe('schedule inference deadline regression', () => {
+  it('keeps native inference usable when elapsed time leaves a fractional fallback split',async()=>{
+    let now=1700000000000;
+    const clock=vi.spyOn(Date,'now').mockImplementation(()=>++now);
+    try {
+      const run=native(),fetcher=vi.fn();
+      const result=await generateAI({...env(run),HF_TOKEN:'synthetic',HF_CHAT_MODEL:'test/chat'},input,fetcher);
+      expect(result.provider).toBe('workers-ai');expect(run).toHaveBeenCalledTimes(1);expect(fetcher).not.toHaveBeenCalled();
+    } finally { clock.mockRestore(); }
+  });
   const schedule = {documentType:'class_timetable',entries:[{title:'Mathematics',courseCode:'MTH 201',dayOfWeek:1,startsAt:'08:00',endsAt:'10:00',venue:'LT 1',lecturer:''}],events:[],warnings:[]};
   it('finishes a real-length schedule attempt after the old 45-second cut-off',async()=>{
     vi.useFakeTimers();
