@@ -54,6 +54,13 @@ describe('UNIBEN multi-level table extraction', () => {
 describe('complete list/calendar/exam extraction', () => {
   const entry = {title:'MTH201',courseCode:'MTH201',dayOfWeek:1,startsAt:'08:00',endsAt:'10:00'};
   const coverage = {complete:true,daysRead:[1],rowCount:1,uncertain:[]};
+  it('accepts the real reader weekday-name response without changing its class or clocks',()=>{
+    const value={documentType:'class_timetable',entries:[{...entry,lecturer:null,venue:'Lecture Hall 1'}],events:[],warnings:[],coverage:{...coverage,daysRead:['Monday']}};
+    expect(parseAcademicImport(JSON.stringify(value),'','class',{strict:true}).entries).toMatchObject([{courseCode:'MTH201',dayOfWeek:1,startsAt:'08:00',endsAt:'10:00',lecturer:'',venue:'Lecture Hall 1'}]);
+  });
+  it.each([[['Funday']],[['Monday',1]],[['Tuesday']]])('rejects invalid, duplicate or mismatched weekday coverage %j',daysRead=>{
+    expect(()=>parseAcademicImport(JSON.stringify({documentType:'class_timetable',entries:[entry],warnings:[],coverage:{...coverage,daysRead}}),'','class',{strict:true})).toThrow();
+  });
   it('accepts a complete explicit class list and rejects missing coverage, invalid rows and empty success', () => {
     const full = {documentType:'class_timetable',entries:[entry],warnings:[],coverage};
     expect(parseAcademicImport(JSON.stringify(full),'','class',{strict:true}).entries).toHaveLength(1);

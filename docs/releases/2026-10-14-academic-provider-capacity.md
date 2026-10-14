@@ -64,3 +64,8 @@ course/day/time comparisons, WebP, a rotated photograph, a full calendar PDF,
 printed/handwritten schedules, exam text, a Kira image question and scanned PDF.
 The final revision also bounds focused day reads to two simultaneous requests;
 authenticated persistence, history isolation and single-reservation tests pass.
+
+A production probe also returned a correct class with coverage day "Monday"
+instead of 1. Coverage now accepts explicit weekday names/abbreviations and
+numeric day strings; unknown, duplicate or mismatched days still fail. Class
+clocks, source completeness and the existing optional-field handling are unchanged.
