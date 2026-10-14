@@ -12,6 +12,7 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
 }) {
   const checked = async (name: string, kind: 'class' | 'calendar' | 'exam', prompt: string, media?: AIMedia, sourceDocument = false, scope:TimetableScope={level:'100'}) => {
     const start = Date.now();
+    let generatedText='';
     try {
       const generated = await generateAI({ ...env, AI_ASSISTANT_ENABLED: 'true' }, {
         mode: 'timetable', tier: 'pro', prompt, sourceDocument, media, deadline: Date.now() + 150000,
@@ -19,6 +20,7 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
           ? 'This import is an academic calendar. Extract every dated activity in both semesters, never weekly classes.'
           : 'Import this weekly class timetable. Student academic selection (data): '+JSON.stringify(scope))+'\n'+timetableExtractionInstruction,
       });
+      generatedText=generated.text;
       const result = parseAcademicImport(generated.text, prompt, kind,{strict:true,scope});
       const expectedFaculty = [
         [1,'EMA281/GET209','08:00','10:00'],[1,'','10:00','14:00'],[1,'CVE211','15:00','16:00'],
@@ -37,7 +39,10 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
         events: result.events.length, elapsedMs: Date.now() - start,
         ...(name==='facultyGrid200'&&!valid?{mismatches:expectedFaculty.filter(expected=>!actualFaculty.some(actual=>JSON.stringify(actual)===JSON.stringify(expected))),actual:actualFaculty}: {}) };
     } catch (error) {
+      let diagnostic: Record<string,unknown>|undefined;
+      if(name==='facultyGrid200')try{const value=JSON.parse(generatedText);diagnostic={documentType:value.documentType,coverage:value.coverage,warnings:value.warnings,grid:value.grid};}catch{diagnostic={jsonReadable:false};}
       return { name, outcome: 'extraction_failed', elapsedMs: Date.now() - start,
+        ...(diagnostic?{diagnostic}:{}),
         ...((error as {reason?:string}).reason?.match(/^AI_[A-Z_]+$/) ? {reason:(error as {reason:string}).reason} : {}) };
     }
   };
