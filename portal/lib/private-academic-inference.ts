@@ -4,7 +4,7 @@ import {privateWorkerBody,workerSigningKey} from './private-worker-request';
 const headers={'Cache-Control':'no-store'};
 const gateway='https://ai-gateway.vercel.sh/v1';
 // Fixed, verified vision model. Never accept model, tools or upstream URLs from a caller.
-export const academicGatewayModel='google/gemini-2.5-flash-lite';
+export const academicGatewayModel='google/gemini-2.5-flash';
 type Message={role:'system'|'user';content:string|({type:'text';text:string}|{type:'image_url';image_url:{url:string}})[]};
 function validMessages(value:unknown):value is Message[] {
   if(!Array.isArray(value)||value.length!==2||value[0]?.role!=='system'||value[1]?.role!=='user')return false;
