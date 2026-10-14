@@ -41,6 +41,7 @@ import { RetryIconButton } from '@/src/components/retry-icon-button';
 
 import { useReducedMotionPreference } from "@/src/components/visual-system";
 import { ApiError, api } from "@/src/lib/api";
+import { checkoutRecipientErrors, checkoutServerFieldErrors, normalizeNigerianPhone, type CheckoutFieldErrors } from '@/src/lib/store-checkout-validation';
 import { useToast } from "@/src/components/toast";
 import { theme } from "@/src/theme";
 
@@ -160,6 +161,9 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const [catalogIssue, setCatalogIssue] = useState<CatalogIssue | null>(null);
   const [discountCode,setDiscountCode]=useState("");
   const [checkoutError, setCheckoutError] = useState("");
+  const [checkoutFields, setCheckoutFields] = useState<CheckoutFieldErrors>({});
+  const checkoutScroll = useRef<ScrollView>(null);
+  const checkoutFieldPositions = useRef<Record<string, number>>({});
   const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<
     "IN_APP" | "CASH"
   >("IN_APP");
@@ -321,8 +325,8 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     vendorProfileId: cartItems[0]?.product.vendor_profile_id,
     ...(discountCode?{discountCode}:{}),
     fulfilmentMode: effectiveMode,
-    recipientName,
-    recipientPhoneE164: recipientPhone,
+    recipientName: recipientName.trim(),
+    recipientPhoneE164: normalizeNigerianPhone(recipientPhone),
     deliveryLocation: effectiveMode === "PICKUP" ? null : deliveryLocation,
     deliveryPaymentMethod:
       effectiveMode === "RIDER" ? deliveryPaymentMethod : "IN_APP",
@@ -431,6 +435,13 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
 
   async function checkout() {
     if (checkoutLock.current || !cartReady || !checkoutEnabled || !cartItems.length || !checkoutReady) return;
+    const errors = checkoutRecipientErrors(JSON.parse(orderPayload));
+    setCheckoutFields(errors);
+    if (Object.keys(errors).length) {
+      setCheckoutError(Object.values(errors).join(' '));
+      revealCheckoutField(errors);
+      return;
+    }
     const revision = getDeviceCacheRevision();
     checkoutLock.current=true;
     setBusy(true);
@@ -489,6 +500,11 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
         params: { id: order.id, type: "STORE_ORDER", autoPay: '1' },
       });
     } catch (caught) {
+      if (caught instanceof ApiError) {
+        const errors = checkoutServerFieldErrors(caught.details);
+        setCheckoutFields(errors);
+        if (Object.keys(errors).length) revealCheckoutField(errors);
+      }
       if (caught instanceof ApiError && caught.code === "CONFLICT") {
         setReviewedQuote(null);
         quoteRequest.current = { payload: "", id: "" };
@@ -502,6 +518,16 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
       checkoutLock.current=false;
       setBusy(false);
     }
+  }
+
+  function revealCheckoutField(errors: CheckoutFieldErrors) {
+    Keyboard.dismiss();
+    const field = Object.keys(errors).find(key => key in checkoutFieldPositions.current);
+    checkoutScroll.current?.scrollTo({ y: field ? Math.max(0, checkoutFieldPositions.current[field]! - 30) : 0, animated: !reducedMotion });
+  }
+  function clearCheckoutField(field: string) {
+    setCheckoutFields(current => ({ ...current, [field]: '' }));
+    setCheckoutError('');
   }
 
   async function contactVendor(){
@@ -532,7 +558,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
       <Pressable accessibilityRole="button" accessibilityLabel="Back to marketplace" disabled={busy} onPress={()=>router.back()} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Ionicons name="arrow-back" size={24} color={theme.text}/></Pressable>
       <Text style={styles.modalTitle}>Checkout</Text>
     </View>
-    <ScrollView style={{flex:1,minHeight:0}} contentContainerStyle={{padding:16,paddingBottom:24,width:'100%',maxWidth:580,alignSelf:'center'}} keyboardShouldPersistTaps="handled">
+    <ScrollView ref={checkoutScroll} style={{flex:1,minHeight:0}} contentContainerStyle={{padding:16,paddingBottom:24,width:'100%',maxWidth:580,alignSelf:'center'}} keyboardShouldPersistTaps="handled">
       {loading || !cartReady ? <><Text style={styles.modalSubtitle}>Restoring your cart…</Text>{sharedCart.error ? <StateMessage title="Your cart needs recovery" body={sharedCart.error} actionLabel="Try again" onAction={sharedCart.retry} icon="alert-circle-outline"/> : null}</> : null}
       {catalogIssue ? <StateMessage title="Store could not refresh" body={catalogIssue.message} actionLabel="Try again" onAction={retryLoad} icon="cloud-offline-outline"/> : null}
       {cartReady && !loading && !cartItems.length ? <StateMessage title="Your cart is empty" body="Choose a product before starting checkout." actionLabel="Continue shopping" onAction={()=>router.back()} icon="cart-outline"/> : null}
@@ -749,36 +775,44 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                   <TextInput
                     accessibilityLabel="Recipient name"
                     value={recipientName}
-                    onChangeText={setRecipientName}
+                    onChangeText={value => { setRecipientName(value); clearCheckoutField('recipientName'); }}
+                    onLayout={event => { checkoutFieldPositions.current.recipientName = event.nativeEvent.layout.y; }}
                     maxLength={120}
-                    style={styles.noteInput}
+                    style={[styles.noteInput, checkoutFields.recipientName && styles.inputError]}
                   />
+                  {checkoutFields.recipientName ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>{checkoutFields.recipientName}</Text> : null}
                   <Text style={styles.sectionLabel}>
-                    Recipient phone (+234)
+                    Recipient phone
                   </Text>
                   <TextInput
                     accessibilityLabel="Recipient phone"
                     value={recipientPhone}
-                    onChangeText={setRecipientPhone}
+                    onChangeText={value => { setRecipientPhone(value); clearCheckoutField('recipientPhoneE164'); }}
+                    onLayout={event => { checkoutFieldPositions.current.recipientPhoneE164 = event.nativeEvent.layout.y; }}
                     keyboardType="phone-pad"
-                    maxLength={14}
-                    style={styles.noteInput}
+                    maxLength={24}
+                    placeholder="08012345678 or +2348012345678"
+                    placeholderTextColor={theme.textSubtle}
+                    style={[styles.noteInput, checkoutFields.recipientPhoneE164 && styles.inputError]}
                   />
+                  {checkoutFields.recipientPhoneE164 ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>{checkoutFields.recipientPhoneE164}</Text> : null}
                   {effectiveMode !== "PICKUP" ? (
                     <>
                       <Text style={styles.sectionLabel}>Delivery address</Text>
                       <TextInput
                         accessibilityLabel="Delivery address"
                         value={deliveryLocation}
-                        onChangeText={setDeliveryLocation}
+                        onChangeText={value => { setDeliveryLocation(value); clearCheckoutField('deliveryLocation'); }}
+                        onLayout={event => { checkoutFieldPositions.current.deliveryLocation = event.nativeEvent.layout.y; }}
                         maxLength={500}
-                        style={styles.noteInput}
+                        style={[styles.noteInput, checkoutFields.deliveryLocation && styles.inputError]}
                       />
+                      {checkoutFields.deliveryLocation ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>{checkoutFields.deliveryLocation}</Text> : null}
                       <CampusPlaceChoice
                         label="Delivery point on the campus map"
                         value={deliveryPlace}
                         onChange={setDeliveryPlace}
-                        onSelect={place=>{setDeliveryLocation(place.name);if(place.delivery_zone_id)setSelectedZoneId(place.delivery_zone_id);else if(zones.length===1&&zones[0])setSelectedZoneId(zones[0].id);setCheckoutError('');}}
+                        onSelect={place=>{setDeliveryLocation(place.name);clearCheckoutField('deliveryLocation');if(place.delivery_zone_id)setSelectedZoneId(place.delivery_zone_id);else if(zones.length===1&&zones[0])setSelectedZoneId(zones[0].id);setCheckoutError('');}}
                       />
                     </>
                   ) : null}
@@ -2262,6 +2296,7 @@ const createStyles = (theme: Theme) =>
       marginTop: 16,
       padding: 12,
     },
+    inputError: { borderColor: theme.error, borderWidth: 2 },
     checkoutErrorText: {
       color: theme.error,
       flex: 1,

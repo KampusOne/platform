@@ -5,10 +5,16 @@ import {createRequire} from 'node:module';
 // An expiring, token-protected preview; never a production route or user prompt.
 export async function probe(request, env, readPrivateAIPdf, verifyAcademicImports) {
   const supplied=request.headers.get('x-probe-token')??'', expiry=Number(env.PROBE_EXPIRES_AT);
-  if(request.method!=='POST'||new URL(request.url).pathname!=='/__kira_probe'||!/^[a-f0-9]{64}$/.test(supplied)||!/^[a-f0-9]{64}$/.test(env.PROBE_TOKEN??'')||!Number.isFinite(expiry)||expiry<=Date.now()||expiry>Date.now()+240000)return new Response(null,{status:404});
+  const path=new URL(request.url).pathname;
+  if(request.method!=='POST'||!['/__kira_probe','/__kira_probe_ready'].includes(path)||!/^[a-f0-9]{64}$/.test(supplied)||!/^[a-f0-9]{64}$/.test(env.PROBE_TOKEN??'')||!Number.isFinite(expiry)||expiry<=Date.now()||expiry>Date.now()+240000)return new Response(null,{status:404});
   let difference=0;for(let i=0;i<64;i++)difference|=supplied.charCodeAt(i)^env.PROBE_TOKEN.charCodeAt(i);
   if(difference)return new Response(null,{status:404});
-  if(env.PROBE_ACADEMIC_ONLY==='true')return Response.json({kind:'kampusone-kira-probe-v1',academicImports:await verifyAcademicImports(env,{printedImage:env.PROBE_TIMETABLE_PNG,handwriting:env.PROBE_HANDWRITING.pngBase64,calendarPdf:env.PROBE_CALENDAR_PDF,facultyImage:env.PROBE_FACULTY_JPEG})},{headers:{'Cache-Control':'no-store'}});
+  if(path==='/__kira_probe_ready')return Response.json({kind:'kampusone-kira-probe-ready'},{headers:{'Cache-Control':'no-store'}});
+  if(env.PROBE_ACADEMIC_ONLY==='true') {
+    const academicCase=request.headers.get('x-probe-academic-case');
+    if(!['baseline','facultyGrid200','facultyGrid100','facultyWebp100'].includes(academicCase))return new Response(null,{status:400});
+    return Response.json({kind:'kampusone-kira-probe-v1',academicImports:await verifyAcademicImports(env,{printedImage:env.PROBE_TIMETABLE_PNG,handwriting:env.PROBE_HANDWRITING.pngBase64,calendarPdf:env.PROBE_CALENDAR_PDF,facultyImage:env.PROBE_FACULTY_JPEG,facultyWebp:env.PROBE_FACULTY_WEBP,case:academicCase})},{headers:{'Cache-Control':'no-store'}});
+  }
   const messages=[{role:'system',content:'Answer briefly and accurately.'},{role:'user',content:"State Ohm's law in one sentence."}];
   const modelCheck=async(model,image)=>{
     try {
@@ -123,6 +129,15 @@ if(process.argv.includes('--self-test')) {
   if(invalid.status!==404)throw new Error('Probe token boundary failed');
   const response=await probe(new Request('https://test.invalid/__kira_probe',{method:'POST',headers:{'x-probe-token':token}}),env);
   const data=await response.json();if(data.standard.outcome!=='generation_succeeded'||data.pro.outcome!=='generation_succeeded')throw new Error('Probe result failed');
+  const academicEnv={...env,PROBE_ACADEMIC_ONLY:'true',PROBE_HANDWRITING:{pngBase64:''}};
+  let selected;
+  const academic=async(_env,fixtures)=>{selected=fixtures.case;return[{name:selected}];};
+  const ready=await probe(new Request('https://test.invalid/__kira_probe_ready',{method:'POST',headers:{'x-probe-token':token}}),academicEnv,undefined,academic);
+  if((await ready.json()).kind!=='kampusone-kira-probe-ready'||selected!==undefined)throw new Error('Readiness performed inference');
+  const unknown=await probe(new Request('https://test.invalid/__kira_probe',{method:'POST',headers:{'x-probe-token':token,'x-probe-academic-case':'unknown'}}),academicEnv,undefined,academic);
+  if(unknown.status!==400||selected!==undefined)throw new Error('Unknown academic case was accepted');
+  const single=await probe(new Request('https://test.invalid/__kira_probe',{method:'POST',headers:{'x-probe-token':token,'x-probe-academic-case':'facultyGrid100'}}),academicEnv,undefined,academic);
+  if(single.status!==200||selected!=='facultyGrid100')throw new Error('Academic case isolation failed');
   console.log('PASS: isolated probe requires the token and returns classified outcomes only.');
 } else {
   const lines=[],report=line=>{console.log(line);lines.push(line);};
@@ -143,6 +158,7 @@ if(process.argv.includes('--self-test')) {
     report(`Production BACHS webhook secret present: ${settings.bindings?.some(b=>b.name==='BACHS_WEBHOOK_SECRET')===true}`);
     report(`Production Workers AI binding present: ${settings.bindings?.some(b=>b.name==='AI'&&b.type==='ai')===true}`);
     report(`Production binding count: ${settings.bindings?.length??0}`);
+    report(`Production CPU cap: ${Number.isInteger(settings.limits?.cpu_ms)?settings.limits.cpu_ms+'ms':'platform default'}; isolated image-check cap: 30000ms`);
     stage='isolated preview session';
     const session=await cf('/workers/scripts/platformp/subdomain/edge-preview');
     let sessionToken=session.token,host='platformp.divine-haze-54eb.workers.dev';
@@ -158,22 +174,48 @@ if(process.argv.includes('--self-test')) {
     const handwriting=process.env.PROBE_VERIFY_UPLOADS==='true'?JSON.parse(readFileSync(new URL('./fixtures/handwritten-timetable.json',import.meta.url),'utf8')):null;
     stage='document reader bundle';
     const {build}=createRequire(new URL('../server/package.json',import.meta.url))('esbuild');
-    const reader=await build({stdin:{contents:"export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';export {verifyAcademicImports} from './scripts/verify-academic-imports.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent'});
-    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_ACADEMIC_ONLY',type:'plain_text',text:process.env.PROBE_ACADEMIC_ONLY==='true'?'true':'false'},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
+    const reader=await build({stdin:{contents:"export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';export {verifyAcademicImports} from './scripts/verify-academic-imports.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent',plugins:[{name:'private-webp-module',setup(build){build.onResolve({filter:/webp_dec\.wasm$/},()=>({path:'./webp-decoder.wasm',external:true}));}}]});
+    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',limits:{cpu_ms:30000},bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_ACADEMIC_ONLY',type:'plain_text',text:process.env.PROBE_ACADEMIC_ONLY==='true'?'true':'false'},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
     const faculty=readFileSync(new URL('./fixtures/uniben-engineering-2026.jpg',import.meta.url)).toString('base64');
-    form.set('probe.mjs',new Blob([`import {readPrivateAIPdf,verifyAcademicImports} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)},PROBE_FACULTY_JPEG:${JSON.stringify(faculty)},PROBE_CALENDAR_PDF:${JSON.stringify(readFileSync(new URL("./fixtures/synthetic-academic-calendar.pdf",import.meta.url)).toString("base64"))}},readPrivateAIPdf,verifyAcademicImports)};`],{type:'application/javascript+module'}),'probe.mjs');
+    const facultyWebp=readFileSync(new URL('./fixtures/uniben-engineering-2026.webp',import.meta.url)).toString('base64');
+    form.set('probe.mjs',new Blob([`import {readPrivateAIPdf,verifyAcademicImports} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)},PROBE_FACULTY_JPEG:${JSON.stringify(faculty)},PROBE_FACULTY_WEBP:${JSON.stringify(facultyWebp)},PROBE_CALENDAR_PDF:${JSON.stringify(readFileSync(new URL("./fixtures/synthetic-academic-calendar.pdf",import.meta.url)).toString("base64"))}},readPrivateAIPdf,verifyAcademicImports)};`],{type:'application/javascript+module'}),'probe.mjs');
+    form.set('webp-decoder.wasm',new Blob([readFileSync(new URL('../server/node_modules/@jsquash/webp/codec/dec/webp_dec.wasm',import.meta.url))],{type:'application/wasm'}),'webp-decoder.wasm');
     form.set('document-reader.mjs',new Blob([reader.outputFiles[0].text],{type:'application/javascript+module'}),'document-reader.mjs');
     form.set('wrangler-session-config',JSON.stringify({workers_dev:true}));
     stage='preview upload';
     const preview=await cf('/workers/scripts/platformp/edge-preview',{method:'POST',body:form,headers:{'cf-preview-upload-config-token':sessionToken}});
     if(typeof preview.preview_token!=='string')throw new Error('Missing preview token');
-    stage='live inference';
-    const r=await fetchSafe(`https://${host}/__kira_probe`,{method:'POST',probeTimeoutMs:180000,headers:{'cf-workers-preview-token':preview.preview_token,'x-probe-token':probeToken}});
-    if(!r.ok)throw new Error(`HTTP ${r.status}`);
-    const result=await r.json();if(result.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');
+    // Preview compilation can briefly return 503 after adding a WASM module.
+    // Retry ONLY token-protected readiness, without model or payment I/O.
+    stage='preview readiness';
+    for(let attempt=0;attempt<4;attempt++) {
+      const ready=await fetchSafe(`https://${host}/__kira_probe_ready`,{method:'POST',probeTimeoutMs:20000,headers:{'cf-workers-preview-token':preview.preview_token,'x-probe-token':probeToken}});
+      if(ready.ok&&(await ready.json()).kind==='kampusone-kira-probe-ready')break;
+      if(ready.status!==503||attempt===3)throw new Error(`HTTP ${ready.status}`);
+      await ready.body?.cancel();await new Promise(resolve=>setTimeout(resolve,1000));
+    }
+    const run=async academicCase=>{
+      stage='live inference'+(academicCase?' '+academicCase:'');
+      if(academicCase)report('Checking academic '+academicCase);
+      const r=await fetchSafe(`https://${host}/__kira_probe`,{method:'POST',probeTimeoutMs:180000,headers:{'cf-workers-preview-token':preview.preview_token,'x-probe-token':probeToken,...(academicCase?{'x-probe-academic-case':academicCase}:{})}});
+      if(!r.ok){const body=await r.text();const code=/error(?: code)?[\s:]+(\d{4})/i.exec(body)?.[1]??/"code"\s*:\s*(\d{4})\b/.exec(body)?.[1];const hint=/memory/i.test(body)?'memory':/CPU|resource limit|execution time/i.test(body)?'cpu':/WebAssembly|wasm/i.test(body)?'wasm':'unclassified';throw new Error(`HTTP ${r.status}${code?' edge code '+code:''}; ${hint}`);}
+      const value=await r.json();if(value.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');return value;
+    };
+    let result;
+    if(process.env.PROBE_ACADEMIC_ONLY==='true') {
+      // Each request matches one app import's memory/CPU envelope. Do not keep
+      // three independent dense-table imports in one Worker invocation.
+      const academicImports=[];
+      for(const name of ['baseline','facultyGrid200','facultyGrid100','facultyWebp100']) {
+        const value=await run(name);
+        academicImports.push(...value.academicImports);
+        for(const item of value.academicImports)report(`Completed academic ${item.name}: ${item.outcome}; ${item.elapsedMs}ms`);
+      }
+      result={kind:'kampusone-kira-probe-v1',academicImports};
+    } else result=await run();
     if(process.env.PROBE_ACADEMIC_ONLY==='true'){
-      if(!Array.isArray(result.academicImports)||result.academicImports.length!==5)throw new Error('Missing academic extraction proofs');
-      for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes??0}, events ${item.events??0}; ${item.elapsedMs}ms${/^AI_[A-Z_]+$/.test(item.reason??'')?`; ${item.reason}`:''}`);if(item.name==='facultyGrid200'&&Array.isArray(item.actual))report('Faculty fixture cells: '+JSON.stringify(item.actual));if(item.name==='facultyGrid200'&&item.diagnostic)report('Faculty fixture validation: '+JSON.stringify(item.diagnostic));if(item.outcome!=='extraction_succeeded')process.exitCode=1;}
+      if(!Array.isArray(result.academicImports)||result.academicImports.length!==7)throw new Error('Missing academic extraction proofs');
+      for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes??0}, events ${item.events??0}; ${item.elapsedMs}ms${/^AI_[A-Z_]+$/.test(item.reason??'')?`; ${item.reason}`:''}`);if(item.name.startsWith('faculty')&&Array.isArray(item.actual))report('Faculty fixture cells: '+JSON.stringify(item.actual));if(item.name.startsWith('faculty')&&item.diagnostic)report('Faculty fixture validation: '+JSON.stringify(item.diagnostic));if(item.outcome!=='extraction_succeeded')process.exitCode=1;}
       report('Private academic extraction checks only. No payment sessions, bank lookups or student-data writes.');
     } else {
     const outcomes=new Set(['generation_succeeded','generation_unusable','provider_rejected','configuration_missing','transport_failure']);
@@ -198,6 +240,6 @@ if(process.argv.includes('--self-test')) {
     if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
     report(process.env.PROBE_BANKS_ONLY==='true'?'Bank lookup and capability check only. No transfers, payouts, credential export or application writes. Preview expires after three minutes.':'No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');
     }
-  }catch(error){report(`CHECK FAILED at ${stage}: ${/^HTTP [1-5][0-9]{2}$/.test(error?.message??'')?error.message:'raw error withheld'}`);process.exitCode=1;}
+  }catch(error){report(`CHECK FAILED at ${stage}: ${/^HTTP [1-5][0-9]{2}(?:(?: edge code [0-9]{4})?; (?:memory|cpu|wasm|unclassified))?$/.test(error?.message??'')?error.message:'raw error withheld'}`);process.exitCode=1;}
   finally{if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');}
 }

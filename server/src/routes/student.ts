@@ -1472,10 +1472,15 @@ studentRoutes.get("/store", async (context) => {
   });
 });
 
+const checkoutFieldLabels = {
+  recipientName: 'Recipient name', recipientPhoneE164: 'Recipient phone',
+  deliveryLocation: 'Delivery address', deliveryZoneId: 'Delivery zone',
+  deliveryPlaceId: 'Delivery point', deliveryNote: 'Delivery note',
+};
 studentRoutes.post('/order-quotes',async context=>{
   requireFeature(context.env,'STORE_ENABLED','Store checkout is not available yet.');
   requireFeature(context.env,'PAYMENTS_ENABLED','Store payments are not available yet.');
-  const data=await validatedInput(context,storeQuoteSchema);
+  const data=await validatedInput(context,storeQuoteSchema,checkoutFieldLabels);
   return context.json({quote:await prepareStoreQuote(context.env,currentUser(context),data)},201);
 });
 
@@ -1486,13 +1491,7 @@ studentRoutes.post("/orders", async (context) => {
     "Store orders are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const parsed = storeOrderSchema.safeParse(await jsonBody(context));
-  if (!parsed.success)
-    throw new AppError(
-      400,
-      "BAD_REQUEST",
-      "Check the order details and try again.",
-    );
+  const parsed = { data: await validatedInput(context,storeOrderSchema,checkoutFieldLabels) };
   if (
     new Set(parsed.data.items.map((item) => item.productId)).size !==
     parsed.data.items.length

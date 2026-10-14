@@ -175,7 +175,7 @@ describe('complete academic import routes',()=>{
       const content=payload.messages.at(-1).content,text=Array.isArray(content)?content.filter((part:{type:string})=>part.type==='text').map((part:{text:string})=>part.text).join('\n'):String(content);
       const day=names.findIndex(name=>text.includes('for '+name+'.'));
       const value=day<0?{...grid,coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]},grid:{...grid.grid,rows:[]}}
-        :{labels:labels[day],coverage:{complete:true,uncertain:[]}};
+        :{labels:Object.fromEntries(labels[day]!.map((label,panel)=>[String(panel),label])),coverage:{complete:true,uncertain:[]}};
       return {response:JSON.stringify(value)};
     });env.AI={run};
     const body={mode:'timetable',documentKind:'class',prompt:'',mediaId,idempotencyKey:crypto.randomUUID(),consent:true};

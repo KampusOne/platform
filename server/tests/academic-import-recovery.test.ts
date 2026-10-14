@@ -16,7 +16,7 @@ const labels=[[],
 ];
 const input=():AIInput=>({mode:'timetable',prompt:'',media:{mimeType:'image/jpeg',data:image},deadline:Date.now()+150000});
 const broken=()=>{const value=structuredClone(source);value.grid.rows[2].level='100';return JSON.stringify(value);};
-const response=(day:number)=>({labels:structuredClone(labels[day]),coverage:{complete:true,uncertain:[]}});
+const response=(day:number)=>({labels:Object.fromEntries(labels[day]!.map((label,panel)=>[String(panel),label])),coverage:{complete:true,uncertain:[]}});
 const dayOf=(request:AIInput)=>names.findIndex(name=>request.prompt.includes('for '+name+'.'));
 beforeEach(()=>{vi.mocked(generateAI).mockReset().mockImplementation(async(_env,request)=>({text:JSON.stringify(response(dayOf(request))),provider:'workers-ai'}));});
 describe('one-import private cell transcription',()=>{
@@ -37,9 +37,22 @@ describe('one-import private cell transcription',()=>{
   });
   it.each(['uncertain','missing-panel','wrong-level'])('rejects the entire week on a %s cell read',async failure=>{
     vi.mocked(generateAI).mockImplementation(async(_env,request)=>{const day=dayOf(request),value=response(day);
-      if(day===4){if(failure==='uncertain')value.coverage.complete=false;else if(failure==='missing-panel')value.labels.pop();else value.labels[0]='100';}
+      if(day===4){if(failure==='uncertain')value.coverage.complete=false;else if(failure==='missing-panel')delete value.labels['7'];else value.labels['0']='100';}
       return{text:JSON.stringify(value),provider:'workers-ai'};});
     await expect(parseOrRecoverAcademicImport({},input(),broken(),'','class',{level:'200'})).rejects.toMatchObject({reason:'AI_INCOMPLETE_SCHEDULE'});
+  });
+  it('rereads a malformed panel inventory once without shifting labels or changing the import deadline',async()=>{
+    let mondayReads=0;
+    vi.mocked(generateAI).mockImplementation(async(_env,request)=>{
+      const day=dayOf(request),value=response(day);
+      if(day===1&&mondayReads++===0)value.labels['7']='';
+      return {text:JSON.stringify(value),provider:'workers-ai'};
+    });
+    const request=input(),result=await parseOrRecoverAcademicImport({},request,broken(),'','class',{level:'200'});
+    expect(result.entries).toHaveLength(20);expect(generateAI).toHaveBeenCalledTimes(6);
+    expect(result.entries).toContainEqual(expect.objectContaining({courseCode:'CVE211',dayOfWeek:1,startsAt:'15:00',endsAt:'16:00'}));
+    const retry=vi.mocked(generateAI).mock.calls.map(([,call])=>call).find(call=>call.prompt.includes('previous response'))!;
+    expect(retry.deadline).toBeLessThanOrEqual(request.deadline!);expect(retry.media).toEqual(vi.mocked(generateAI).mock.calls[0]![1].media);
   });
   it('filters selected courses only after reading every physical cell',async()=>{
     const result=await parseOrRecoverAcademicImport({},input(),broken(),'','class',{level:'200',courseCodes:['GET211']});

@@ -4,6 +4,7 @@ import type { AIMedia } from './ai-provider';
 
 type Pixels = { width:number; height:number; data:Uint8Array };
 export type TimetableImageRow = { day:number; cells:{from:number;to:number}[]; media:AIMedia };
+export type TimetableLayoutImage = AIMedia & { timeColumnCount:number; levelRowCount:number };
 const maxPixels=4_000_000;
 function pixels(media:AIMedia):Pixels|undefined {
   const bytes=Uint8Array.from(atob(media.data),c=>c.charCodeAt(0));
@@ -31,7 +32,7 @@ const digitRows=['111101101101111','010110010010111','111001111100111','11100111
 /** The first vision read needs only headings and the day/level inventory. A
  * compact contact sheet removes course distractions and large JPEG payloads.
  * All source labels are retained, in numbered panel order, without text OCR. */
-export function timetableLayoutImage(media:AIMedia):AIMedia|undefined {
+export function timetableLayoutImage(media:AIMedia):TimetableLayoutImage|undefined {
   try {
     const im=pixels(media);if(!im||im.width*im.height>maxPixels)return;
     const radius=Math.max(1,Math.round(im.width/700));
@@ -72,18 +73,27 @@ export function timetableLayoutImage(media:AIMedia):AIMedia|undefined {
     const middle=2+Math.floor((vertical.length-3)/2),scale=2;
     const strips=[{x0:vertical[2]!,x1:vertical[middle]!,y0:headerTop,y1:horizontal[1]!},
       {x0:vertical[middle]!,x1:vertical.at(-1)!,y0:headerTop,y1:horizontal[1]!}];
-    let row=1;
-    while(row<horizontal.length-1) {
-      let end=row+1;while(end+1<horizontal.length&&horizontal[end+1]!-horizontal[row]!<=100)end++;
-      strips.push({x0:vertical[0]!,x1:vertical[2]!,y0:horizontal[row]!,y1:horizontal[end]!});row=end;
+    const dayBorders=[horizontal[1]!];
+    for(const y of horizontal.slice(2)) {
+      let dark=0,total=0;
+      for(let x=vertical[0]!+radius*2;x<vertical[1]!-radius*2;x++) {
+        total++;for(let dy=-radius;dy<=radius;dy++)if(gray(x,y+dy)<200){dark++;break;}
+      }
+      if(total&&dark/total>=.90)dayBorders.push(y);
     }
-    const width=Math.max(...strips.slice(0,2).map(s=>(s.x1-s.x0)*scale+32),(vertical[2]!-vertical[0]!)*scale*3+96);
-    const headerHeight=(horizontal[1]!-headerTop)*scale+30,tileWidth=(vertical[2]!-vertical[0]!)*scale+32,tileHeight=230;
-    const height=headerHeight*2+Math.ceil((strips.length-2)/3)*tileHeight;
+    const grouped=dayBorders.length>=2&&dayBorders.length<=8&&dayBorders.at(-1)===horizontal.at(-1);
+    // Split at real DAY borders, never at an arbitrary height through a day.
+    if(grouped)for(let i=0;i<dayBorders.length-1;i++)strips.push({x0:vertical[0]!,x1:vertical[2]!,y0:dayBorders[i]!,y1:dayBorders[i+1]!});
+    else strips.push({x0:vertical[0]!,x1:vertical[2]!,y0:horizontal[1]!,y1:horizontal.at(-1)!});
+    const tileWidth=(vertical[2]!-vertical[0]!)*scale+32;
+    const width=Math.max(...strips.slice(0,2).map(s=>(s.x1-s.x0)*scale+32),tileWidth*(grouped?3:1));
+    const headerHeight=(horizontal[1]!-headerTop)*scale+30;
+    const tileHeight=Math.max(...strips.slice(2).map(s=>(s.y1-s.y0)*scale+32));
+    const height=headerHeight*2+Math.ceil((strips.length-2)/(grouped?3:1))*tileHeight;
     if(width*height>maxPixels)return;
     const out=new Uint8Array(width*height*4).fill(255);
     for(let i=0;i<strips.length;i++) {
-      const s=strips[i]!,baseX=i<2?0:((i-2)%3)*tileWidth,baseY=i<2?i*headerHeight:headerHeight*2+Math.floor((i-2)/3)*tileHeight;
+      const s=strips[i]!,baseX=i<2?0:grouped?((i-2)%3)*tileWidth:0,baseY=i<2?i*headerHeight:headerHeight*2+Math.floor((i-2)/(grouped?3:1))*tileHeight;
       for(const [j,digit] of String(i).split('').entries())for(let r=0;r<5;r++)for(let c=0;c<3;c++)if(digitRows[Number(digit)]![r*3+c]==='1')for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++) {
         const p=((baseY+4+r*2+dy)*width+baseX+4+j*8+c*2+dx)*4;out[p]=out[p+1]=out[p+2]=0;
       }
@@ -93,7 +103,7 @@ export function timetableLayoutImage(media:AIMedia):AIMedia|undefined {
       }
     }
     const encoded=encodePng({width,height,data:out,channels:4,depth:8});let binary='';for(let i=0;i<encoded.length;i+=8192)binary+=String.fromCharCode(...encoded.subarray(i,i+8192));
-    return {mimeType:'image/png',data:btoa(binary)};
+    return {mimeType:'image/png',data:btoa(binary),timeColumnCount:vertical.length-3,levelRowCount:horizontal.length-2};
   }catch{return;}
 }
 
@@ -157,8 +167,11 @@ export function timetableImageRows(media:AIMedia,timeColumnCount:number,levels:s
       }
       borders.push(timeColumnCount);
       const cells=borders.slice(1).map((to,i)=>({from:borders[i]!,to}));
-      const scale=Math.max(1,Math.min(4,Math.floor(1600/(columns.at(-1)!-columns[0]!))));
-      const width=(columns.at(-1)!-columns[0]!)*scale+60,panelHeight=(y1-y0)*scale+32,height=panelHeight*(cells.length+1);
+      const widest=Math.max(vertical[2]!-vertical[1]!,...cells.map(cell=>columns[cell.to]!-columns[cell.from]!));
+      const scale=Math.max(1,Math.min(4,Math.floor(1600/widest)));
+      // A single-cell panel need not retain a full timetable-width of blank
+      // pixels. Compact panels improve text size and bound decode/encode RAM.
+      const width=widest*scale+60,panelHeight=(y1-y0)*scale+32,height=panelHeight*(cells.length+1);
       if(width*height>maxPixels)return;
       const out=new Uint8Array(width*height*4).fill(255);
       const dot=(x:number,y:number)=>{if(x>=width||y>=height)return;const p=(y*width+x)*4;out[p]=out[p+1]=out[p+2]=0;};

@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { normalizeNigerianPhone, recipientNameError, recipientPhoneError } from './commerce-input.ts';
 export { z };
+export * from './commerce-input.ts';
 
 export type {
   CompositeTypes,
@@ -542,11 +544,12 @@ export const storeOrderSchema = z
     deliveryZoneId: z.string().uuid().nullable().optional(),
     deliveryPaymentMethod: z.enum(["IN_APP", "CASH"]).default("IN_APP"),
     quoteId: z.string().uuid().optional(),
-    recipientName: z.string().trim().min(2).max(120),
+    recipientName: z.string().trim().min(2, recipientNameError).max(120, 'Keep the recipient name within 120 characters.'),
     recipientPhoneE164: z
       .string()
       .trim()
-      .regex(/^\+234[789][0-9]{9}$/),
+      .transform(normalizeNigerianPhone)
+      .pipe(z.string().regex(/^\+234[789][0-9]{9}$/, recipientPhoneError)),
     deliveryLocation: z.string().trim().max(500).nullable().optional(),
     deliveryLandmark: z.string().trim().min(2).max(200).nullable().optional(),
     deliveryPlaceId: z.string().uuid().nullable().optional(),

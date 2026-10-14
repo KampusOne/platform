@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@jsquash/webp": "1.5.0",
     "@kampusone/contracts": "file:../packages/contracts",
     "@neondatabase/serverless": "^1.1.0",
     "aws4fetch": "^1.0.20",

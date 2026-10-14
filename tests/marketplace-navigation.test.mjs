@@ -5,18 +5,21 @@ import { typescript as ts } from './helpers/typescript.mjs';
 import { runInNewContext } from 'node:vm';
 import { randomUUID } from 'node:crypto';
 import { hookRenderer, virtualClock } from './helpers/hook-renderer.mjs';
+class ApiError extends Error {constructor(status,code,message,details){super(message);Object.assign(this,{status,code,details});}}
 const owner='11111111-1111-4111-8111-111111111111',vendor='22222222-2222-4222-8222-222222222222',id='33333333-3333-4333-8333-333333333333';
 function load(relative,mocks,globals={}){const exports={};runInNewContext(ts.transpileModule(readFileSync(new URL('../mobile/'+relative,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,module:{exports},require:name=>{if(name in mocks)return mocks[name];throw Error('Missing '+name);},Date,Error,Number,Math,setTimeout,clearTimeout,...globals});return exports;}
-function fixture({width=393,initialCart={},params={}}={}){
- const host=hookRenderer(),time=virtualClock(),routes=[],requests=[],saves=[];let tree,checkout=false,stored=initialCart,failSaves=false;
+function fixture({width=393,initialCart={},params={},fillRecipient=true}={}){
+ const host=hookRenderer(),time=virtualClock(),routes=[],requests=[],saves=[];let tree,checkout=false,stored=initialCart,failSaves=false,quoteError=null;
  const react={...host.react,useSyncExternalStore:(_subscribe,snapshot)=>snapshot()};
  const jsx={jsx:(type,props,key)=>({type,props,key}),jsxs:(type,props,key)=>({type,props,key}),Fragment:'Fragment'};
  const font=new Proxy({},{get:()=> 'Lato'}),theme=new Proxy({font,motion:{screen:0},border:'#E7E0D8',canvas:'#FBF7F2',surface:'#fff'},{get:(o,k)=>o[k]??'#8D4B35'});
  const device={getDeviceCacheRevision:()=>1,readOwnedDraft:async()=>stored,saveOwnedDraft:async(_key,items)=>{if(failSaves)throw Error('Cart storage is unavailable');stored=items;saves.push(items);return'device';}};
  const globals={setTimeout:time.schedule,clearTimeout:time.cancel};
+ const commerceInput=load('../packages/contracts/src/commerce-input.ts',{});
+ const checkoutValidation=load('src/lib/store-checkout-validation.ts',{'../../../packages/contracts/src/commerce-input':commerceInput});
  const cart=load('src/lib/marketplace-cart.ts',{'react':react,'./device-cache':device},globals);
  const product={id,vendor_profile_id:vendor,name:'Campus wireless headphones with a long full product name',description:'All details',category:'Phones & accessories',price_kobo:1000000,stock_quantity:5,image_url:null,vendor_name:'Campus Audio',pickup_enabled:true,pickup_location:'Store counter'};
- const api=async(path,options)=>{requests.push({path,body:JSON.parse(options?.body??'{}')});if(path.endsWith('order-quotes'))return{quote:{id:randomUUID(),expiresAt:new Date(Date.now()+60000).toISOString(),pricing:{listedItemsKobo:1000000,discountKobo:0,fareKobo:0,cashDueKobo:0,payableKobo:1000000,totalKobo:1000000},fare:null}};if(path.endsWith('/orders'))return{id:randomUUID(),totalKobo:1000000};return{};};
+ const api=async(path,options)=>{requests.push({path,body:JSON.parse(options?.body??'{}')});if(path.endsWith('order-quotes')&&quoteError)throw quoteError;if(path.endsWith('order-quotes'))return{quote:{id:randomUUID(),expiresAt:new Date(Date.now()+60000).toISOString(),pricing:{listedItemsKobo:1000000,discountKobo:0,fareKobo:0,cashDueKobo:0,payableKobo:1000000,totalKobo:1000000},fare:null}};if(path.endsWith('/orders'))return{id:randomUUID(),totalKobo:1000000};return{};};
  const router={push:path=>routes.push(path),replace:path=>routes.push(path),back:()=>routes.push('back'),setParams:()=>{}};
  const modules={
   'react':react,'react/jsx-runtime':jsx,
@@ -25,7 +28,8 @@ function fixture({width=393,initialCart={},params={}}={}){
   'expo-router':{router,useLocalSearchParams:()=>params,useFocusEffect:fn=>host.react.useEffect(fn,[fn])},'expo-crypto':{randomUUID},
   '@/src/auth/auth-context':{useAuth:()=>({user:{id:owner,universityId:'A',roles:['STUDENT'],operatorRoles:[]}})},
   '@/src/lib/appearance':{useThemeStyles:styles=>({theme,styles:styles(theme)})},'@/src/lib/device-cache':device,'@/src/lib/marketplace-cart':cart,
-  '@/src/lib/request-policy':{cacheScopeForUser:()=> 'verified'},'@/src/lib/api':{api,ApiError:class extends Error{}},
+  '@/src/lib/request-policy':{cacheScopeForUser:()=> 'verified'},'@/src/lib/api':{api,ApiError},
+  '@/src/lib/store-checkout-validation':checkoutValidation,
   '@/src/components/retry-icon-button':{RetryIconButton:'RetryIconButton'},
   '@/src/lib/screen-read':{refreshScreenRead:async(_path,apply)=>{apply({products:[product],deliveryZones:[],checkoutEnabled:true,riderDeliveryEnabled:false,catalogueMode:'LIVE'});}},
   '@/src/components/keyboard-viewport':{KeyboardScrollView:'ScrollView',KeyboardModal:'Modal'},'@expo/vector-icons':{Ionicons:'Ionicons'},
@@ -39,8 +43,20 @@ function fixture({width=393,initialCart={},params={}}={}){
  const all=()=>nodes(tree);
  const by=(label)=>all().find(({node})=>node.props?.accessibilityLabel===label)?.node;
  const settle=async()=>{await time.advance(0);for(let i=0;i<5;i++){render();await time.advance(0);}};
- render();return{render,settle,all,by,routes,requests,saves,product,openCheckout:(buyNow)=>{checkout=true;params.buyNow=buyNow;render();},stored:()=>stored,setSaveFailure:value=>{failSaves=value;}};
+ render();return{render,settle,all,by,routes,requests,saves,product,openCheckout:(buyNow)=>{checkout=true;params.buyNow=buyNow;render();if(fillRecipient){by('Recipient name')?.props.onChangeText('Ada Student');by('Recipient phone')?.props.onChangeText('08031234567');render();}},stored:()=>stored,setSaveFailure:value=>{failSaves=value;},setQuoteError:value=>{quoteError=value;}};
 }
+
+test('checkout identifies blank and invalid recipient fields before any quote or order request',async()=>{
+ const f=fixture({initialCart:{[id]:1},fillRecipient:false});await f.settle();f.openCheckout();await f.settle();
+ f.by('Review route and checkout total').props.onPress();await f.settle();
+ assert.equal(f.requests.length,0);assert.ok(f.all().some(({node})=>String(node.props?.children??'').includes('Enter a recipient name')));
+ assert.ok(f.all().some(({node})=>node.props?.accessibilityRole==='alert'&&String(node.props.children).includes('Nigerian mobile number')));
+ assert.equal(f.by('Recipient name').props.style.at(-1).borderWidth,2);assert.equal(f.by('Recipient phone').props.style.at(-1).borderWidth,2);
+ f.by('Recipient name').props.onChangeText('Ada Student');f.by('Recipient phone').props.onChangeText('0803123456');f.render();
+ f.by('Review route and checkout total').props.onPress();await f.settle();assert.equal(f.requests.length,0);
+ f.by('Recipient phone').props.onChangeText('0803 123 4567');f.render();f.by('Review route and checkout total').props.onPress();await f.settle();
+ assert.equal(f.requests.length,1);assert.equal(f.requests[0].body.recipientPhoneE164,'+2348031234567');
+});
 
 test('a single product stays in two columns at phone widths and Add to cart is immediate',async()=>{
  for(const width of [320,393,430]){
@@ -90,4 +106,13 @@ test('checkout visits reach both analytics and the first-party activity stream',
  },{setTimeout:time.schedule,clearTimeout:time.cancel});
  host.render(()=>ScreenVisitTracker());await time.advance(1200);
  assert.deepEqual(analytics,['marketplace-checkout']);assert.equal(activity.length,1);assert.equal(activity[0].event,'screen_view');assert.equal(activity[0].details.screen,'marketplace-checkout');
+});
+
+
+test('checkout shows API field errors underneath the rejected recipient input',async()=>{
+ const f=fixture({initialCart:{[id]:1}});await f.settle();f.openCheckout();await f.settle();
+ f.setQuoteError(new ApiError(400,'BAD_REQUEST','Recipient phone: Check this phone number.',{fields:{recipientPhoneE164:['Check this phone number.']}}));
+ f.by('Review route and checkout total').props.onPress();await f.settle();
+ assert.equal(f.requests.length,1);assert.equal(f.by('Recipient phone').props.style.at(-1).borderWidth,2);
+ assert.ok(f.all().some(({node})=>node.props?.accessibilityRole==='alert'&&node.props.children==='Check this phone number.'));
 });
