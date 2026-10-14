@@ -5,6 +5,7 @@
   "compatibility_date": "2026-09-09",
   "workers_dev": true,
   "preview_urls": false,
+  "limits": { "cpu_ms": 30000 },
   "keep_vars": false, // remove obsolete dashboard text vars; Wrangler retains existing secrets
   "ai": { "binding": "AI" },
   "observability": {

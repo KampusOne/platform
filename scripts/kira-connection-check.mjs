@@ -158,6 +158,7 @@ if(process.argv.includes('--self-test')) {
     report(`Production BACHS webhook secret present: ${settings.bindings?.some(b=>b.name==='BACHS_WEBHOOK_SECRET')===true}`);
     report(`Production Workers AI binding present: ${settings.bindings?.some(b=>b.name==='AI'&&b.type==='ai')===true}`);
     report(`Production binding count: ${settings.bindings?.length??0}`);
+    report(`Production CPU cap: ${Number.isInteger(settings.limits?.cpu_ms)?settings.limits.cpu_ms+'ms':'platform default'}; isolated image-check cap: 30000ms`);
     stage='isolated preview session';
     const session=await cf('/workers/scripts/platformp/subdomain/edge-preview');
     let sessionToken=session.token,host='platformp.divine-haze-54eb.workers.dev';
@@ -174,7 +175,7 @@ if(process.argv.includes('--self-test')) {
     stage='document reader bundle';
     const {build}=createRequire(new URL('../server/package.json',import.meta.url))('esbuild');
     const reader=await build({stdin:{contents:"export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';export {verifyAcademicImports} from './scripts/verify-academic-imports.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent',plugins:[{name:'private-webp-module',setup(build){build.onResolve({filter:/webp_dec\.wasm$/},()=>({path:'./webp-decoder.wasm',external:true}));}}]});
-    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_ACADEMIC_ONLY',type:'plain_text',text:process.env.PROBE_ACADEMIC_ONLY==='true'?'true':'false'},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
+    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',limits:{cpu_ms:30000},bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_ACADEMIC_ONLY',type:'plain_text',text:process.env.PROBE_ACADEMIC_ONLY==='true'?'true':'false'},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
     const faculty=readFileSync(new URL('./fixtures/uniben-engineering-2026.jpg',import.meta.url)).toString('base64');
     const facultyWebp=readFileSync(new URL('./fixtures/uniben-engineering-2026.webp',import.meta.url)).toString('base64');
     form.set('probe.mjs',new Blob([`import {readPrivateAIPdf,verifyAcademicImports} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)},PROBE_FACULTY_JPEG:${JSON.stringify(faculty)},PROBE_FACULTY_WEBP:${JSON.stringify(facultyWebp)},PROBE_CALENDAR_PDF:${JSON.stringify(readFileSync(new URL("./fixtures/synthetic-academic-calendar.pdf",import.meta.url)).toString("base64"))}},readPrivateAIPdf,verifyAcademicImports)};`],{type:'application/javascript+module'}),'probe.mjs');
@@ -205,7 +206,11 @@ if(process.argv.includes('--self-test')) {
       // Each request matches one app import's memory/CPU envelope. Do not keep
       // three independent dense-table imports in one Worker invocation.
       const academicImports=[];
-      for(const name of ['baseline','facultyGrid200','facultyGrid100','facultyWebp100'])academicImports.push(...(await run(name)).academicImports);
+      for(const name of ['baseline','facultyGrid200','facultyGrid100','facultyWebp100']) {
+        const value=await run(name);
+        academicImports.push(...value.academicImports);
+        for(const item of value.academicImports)report(`Completed academic ${item.name}: ${item.outcome}; ${item.elapsedMs}ms`);
+      }
       result={kind:'kampusone-kira-probe-v1',academicImports};
     } else result=await run();
     if(process.env.PROBE_ACADEMIC_ONLY==='true'){
