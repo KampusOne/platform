@@ -2,11 +2,12 @@ import { AIProviderError } from "./ai-error.ts";
 export { AIProviderError } from "./ai-error.ts";
 import { scheduleInstruction, parseScheduleDocument } from "./schedule-document.ts";
 import { workersAICompletion, workersAIConfiguration, type WorkersAIEnvironment } from './ai-workers.ts';
-import {geminiAcademicCompletion} from './ai-gemini';
+import {geminiAcademicCompletion} from './ai-gemini.ts';
+import {groqAcademicCompletion} from './ai-groq.ts';
 /** All inference stays server-side behind provider adapters. */
 export type AIMode = "study" | "summary" | "explanation" | "quiz" | "notes" | "timetable";
 export type AITier = "standard" | "pro";
-export type AIProvider = "huggingface" | "workers-ai" | "gemini";
+export type AIProvider = "huggingface" | "workers-ai" | "gemini" | "groq";
 export type AIEnvironment = WorkersAIEnvironment & {
   JWT_SECRET?:string; TIMETABLE_IMAGE_PROCESSOR_URL?:string;
   AI_ASSISTANT_ENABLED?: string; HF_TOKEN?: string; HF_CHAT_MODEL?: string;
@@ -198,9 +199,18 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
     if (text.length > 50000) throw new AIProviderError(502, "AI_INVALID_OUTPUT", "This response was too long. Try a smaller source.");
     return { text, calls, provider };
   } catch (error) {
-    if(input.mode==='timetable'&&env.GEMINI_API_KEY&&error instanceof AIProviderError&&error.status>=500&&deadline-Date.now()>1000){
-      console.warn(JSON.stringify({event:'ai.provider.fallback',to:'gemini',reason:error.reason}));
-      return geminiAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
+    if(input.mode==='timetable'&&error instanceof AIProviderError&&error.status>=500&&deadline-Date.now()>1000){
+      let last=error;
+      if(env.GROQ_API_KEY){
+        console.warn(JSON.stringify({event:'ai.provider.fallback',to:'groq',reason:error.reason}));
+        try{return await groqAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);}
+        catch(failure){if(!(failure instanceof AIProviderError))throw failure;last=failure;}
+      }
+      if(env.GEMINI_API_KEY&&deadline-Date.now()>1000){
+        console.warn(JSON.stringify({event:'ai.provider.fallback',to:'gemini',reason:last.reason}));
+        return geminiAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
+      }
+      throw last;
     }
     if (error instanceof AIProviderError) throw error;
     if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) throw new AIProviderError(504, "AI_TIMEOUT", "AI took too long. Your draft is kept.");

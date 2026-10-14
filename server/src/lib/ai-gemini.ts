@@ -1,4 +1,4 @@
-import {AIProviderError} from './ai-error';
+import {AIProviderError} from './ai-error.ts';
 import type {AIEnvironment,AIInput,AIMessage} from './ai-provider';
 
 /** Use the existing server-only Gemini credential for academic recovery. No
@@ -6,7 +6,7 @@ import type {AIEnvironment,AIInput,AIMessage} from './ai-provider';
 export async function geminiAcademicCompletion(env:AIEnvironment,input:AIInput,messages:AIMessage[],maxTokens:number,
   timeoutMs:number,fetcher:typeof fetch=fetch) {
   if(input.mode!=='timetable'||!env.GEMINI_API_KEY)throw new AIProviderError(503,'AI_NOT_CONFIGURED','The document reader is temporarily unavailable. Your file is kept.');
-  const configured=env.GEMINI_MODEL?.trim()||'gemini-3.8-flash';
+  const configured=(env.GEMINI_MODEL?.trim()||'gemini-3.8-flash').replace(/^models\//,'');
   if(!/^gemini-[a-z0-9.-]{1,80}$/.test(configured))throw new AIProviderError(503,'AI_NOT_CONFIGURED','The document reader is temporarily unavailable. Your file is kept.');
   const deadline=Math.min(input.deadline??Infinity,Date.now()+timeoutMs);
   const text=(value:unknown)=>typeof value==='string'?value:Array.isArray(value)?value.filter(p=>p?.type==='text'&&typeof p.text==='string').map(p=>p.text).join('\n'):'';
