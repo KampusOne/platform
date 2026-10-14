@@ -90,7 +90,7 @@ export function aiMessages(input: AIInput): AIMessage[] {
   const content: unknown[] = [{ type: "text", text: input.prompt || "Read the attached study material." }];
   if (input.media) {
     if (!input.media.mimeType.startsWith("image/")) throw new AIProviderError(400, "AI_UNSUPPORTED_MEDIA", "Extract document text before sending it to AI.");
-    content.push({ type: "image_url", image_url: { url: `data:${input.media.mimeType};base64,${input.media.data}` } });
+    content.push({ type: "image_url", image_url: { url: `data:${input.media.mimeType};base64,${input.media.data}`, ...(input.mode==='timetable'?{detail:'high'}:{}) } });
   }
   return [
     { role: "system", content: aiSystemInstruction(input.mode) + (input.systemContext ? "\n" + input.systemContext : "") },

@@ -1,5 +1,5 @@
 import { generateAI, type AIEnvironment, type AIMedia } from '../src/lib/ai-provider';
-import { parseAcademicImport } from '../src/lib/academic-import';
+import { generateAcademicImport } from '../src/lib/academic-import-recovery';
 import { readPrivateAIPdf } from '../src/lib/ai-pdf-reader';
 import { examImportInstruction } from '../src/lib/exam-schedule';
 import { decodeAIText } from '../src/lib/ai-document';
@@ -14,14 +14,15 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
     const start = Date.now();
     let generatedText='';
     try {
-      const generated = await generateAI({ ...env, AI_ASSISTANT_ENABLED: 'true' }, {
-        mode: 'timetable', tier: 'pro', prompt, sourceDocument, media, deadline: Date.now() + 150000,
+      const input = {
+        mode: 'timetable' as const, tier: 'pro' as const, prompt, sourceDocument, ...(media?{media}:{}), deadline: Date.now() + 150000,
         systemContext: (kind === 'exam' ? examImportInstruction : kind === 'calendar'
           ? 'This import is an academic calendar. Extract every dated activity in both semesters, never weekly classes.'
           : 'Import this weekly class timetable. Student academic selection (data): '+JSON.stringify(scope))+'\n'+timetableExtractionInstruction,
-      });
+      };
+      const generated = await generateAcademicImport({ ...env, AI_ASSISTANT_ENABLED: 'true' }, input,prompt,kind,scope);
       generatedText=generated.text;
-      const result = parseAcademicImport(generated.text, prompt, kind,{strict:true,scope});
+      const result = generated.extracted;
       const expectedFaculty = [
         [1,'EMA281/GET209','08:00','10:00'],[1,'','10:00','14:00'],[1,'CVE211','15:00','16:00'],
         [2,'EEE211/GET201','09:00','11:00'],[2,'ECP281/GET211','11:00','12:00'],[2,'ENT211','12:00','14:00'],[2,'GET205/MEE361','14:00','15:00'],[2,'PRE211','16:00','17:00'],

@@ -1,5 +1,5 @@
 import {examImportInstruction} from '../lib/exam-schedule';
-import { parseAcademicImport } from "../lib/academic-import";
+import { generateAcademicImport } from "../lib/academic-import-recovery";
 import { levelKey, type TimetableScope } from '../lib/timetable-extraction';
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
@@ -486,17 +486,18 @@ aiRoutes.post("/", async c => {
       const generated = isRestrictedKampusOneRequest(d.prompt)
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: selectedProvider, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'
-          ? await generateAI(c.env,aiInput)
+          ? await generateAcademicImport(c.env,aiInput,sourceText,d.documentKind,timetableScope)
           : await runStudentAssistant(c.env,u,aiInput);
-      await progress('finishing');
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
-        result = { ...result, ...parseAcademicImport(generated.text, sourceText, d.documentKind, {strict:true,scope:timetableScope}) };
+        if(!('extracted' in generated))throw new AIProviderError(422,'AI_INVALID_OUTPUT','This document could not be read as a schedule. Your file is kept.');
+        result = { ...result, ...generated.extracted };
       } else {
         result.text = generated.text;
         if ('cards' in generated) result.cards=generated.cards as AICard[];
         if ('actions' in generated) result.actions=generated.actions as AIAction[];
       }
+      await progress('finishing');
       await db.execute(sql`update app_private.ai_requests set status='COMPLETED',result=${JSON.stringify(result)}::jsonb where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid and status='PROCESSING'`);
       return publicResult(d.idempotencyKey, result);
     } catch (caught) {
