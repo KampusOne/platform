@@ -10,9 +10,9 @@ export class ForegroundUsageSampler{
   private stopped=false;
   private started=0;
   private timer:ReturnType<typeof setTimeout>|undefined;
-  constructor(private sample:(startedAt:number,endedAt:number,seconds:number)=>void,private now=Date.now,private schedule=setTimeout,private cancel=clearTimeout){}
+  constructor(private sample:(startedAt:number,endedAt:number,seconds:number)=>void,private now=()=>Date.now(),private schedule=setTimeout,private cancel=clearTimeout,private invalidClock:()=>void=()=>{}){}
   setForeground(value:boolean){if(this.stopped||value===this.foreground)return;this.capture();this.foreground=value;this.started=this.now();this.plan();}
   stop(){if(this.stopped)return;this.capture();this.stopped=true;this.foreground=false;if(this.timer!==undefined)this.cancel(this.timer);this.timer=undefined;}
-  private capture(){const end=this.now(),elapsed=end-this.started;this.started=end;if(!this.foreground||elapsed<500)return;const seconds=Math.min(elapsed/1000,60);this.sample(end-seconds*1000,end,seconds);}
+  private capture(){const end=this.now(),elapsed=end-this.started;this.started=end;if(!Number.isFinite(end)||!Number.isFinite(elapsed)||Math.abs(end)>8640000000000000){this.invalidClock();return;}if(!this.foreground||elapsed<500)return;const seconds=Math.min(elapsed/1000,60);this.sample(end-seconds*1000,end,seconds);}
   private plan(){if(this.timer!==undefined)this.cancel(this.timer);this.timer=undefined;if(!this.foreground||this.stopped)return;this.timer=this.schedule(()=>{this.timer=undefined;this.capture();this.plan();},30000);}
 }

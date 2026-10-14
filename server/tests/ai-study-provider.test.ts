@@ -153,3 +153,47 @@ describe("student AI persistence and quota boundaries",()=>{
   it("does not retry authentication failures or switch providers",async()=>{for(const status of [401,403]){provider.mockResolvedValueOnce(new Response("PRIVATE_INPUT",{status}));const result=await json(await request("/ai","POST",draft()),503);expect(JSON.stringify(result)).not.toContain("PRIVATE_INPUT");}expect(provider).toHaveBeenCalledTimes(2);expect(provider.mock.calls.every(([url])=>String(url).startsWith("https://router.huggingface.co/"))).toBe(true);});
   it("falls back from the reasoning model to the cheaper HF chat model on model/capacity failures",async()=>{for(const status of [402,404,422,429,500]){const before=provider.mock.calls.length;provider.mockResolvedValueOnce(new Response("PRIVATE_INPUT",{status}));const result=await json(await request("/ai","POST",draft()));expect(result.text).toContain("Voltage");const calls=provider.mock.calls.slice(before);expect(calls).toHaveLength(2);expect(calls.every(([url])=>String(url).startsWith("https://router.huggingface.co/"))).toBe(true);const first=JSON.parse(String(calls[0]?.[1]?.body)),fallback=JSON.parse(String(calls[1]?.[1]?.body));expect(first.model).toBe("test/reasoning:nscale");expect(fallback.model).toBe("test/model:nscale");expect(JSON.stringify(result)).not.toContain("PRIVATE_INPUT");}});
 });
+
+describe('complete academic import routes',()=>{
+  const classEntry={title:'Mathematics',courseCode:'MAT 101',venue:'LT 1',lecturer:'',dayOfWeek:1,startsAt:'08:00',endsAt:'09:00'};
+  const event={title:'Registration',startsOn:'2026-10-19',endsOn:'2026-10-30',semester:'First semester'};
+  const exam={title:'Mathematics',courseCode:'MAT 101',date:'2026-11-05',startsAt:'09:00',endsAt:'11:00',venue:'Main hall'};
+  it.each(['class','calendar','exam'] as const)('extracts and persists %s review data from image, PDF and text attachments',async kind=>{
+    for(const mime of ['image/png','application/pdf','text/plain']){
+      const expected=kind==='class'?{documentType:'class_timetable',entries:[classEntry],events:[],warnings:[]}:kind==='calendar'?{documentType:'academic_calendar',entries:[],events:[event],warnings:[]}:{documentType:'exam_timetable',entries:[exam],warnings:[]};
+      const source=kind==='calendar'?'ACADEMIC CALENDAR: Registration, 19 October 2026 to 30 October 2026.':kind==='exam'?'MAT 101, 5 November 2026, 09:00–11:00 Main hall.':'Monday MAT 101 08:00–09:00 LT 1.';
+      const bytes=mime==='application/pdf'?pdfFixture([source]):mime==='text/plain'?new TextEncoder().encode(source):Uint8Array.from(Buffer.from(readFileSync(new URL('../../scripts/fixtures/synthetic-timetable.png',import.meta.url))));
+      const mediaId=crypto.randomUUID(),run=vi.fn().mockResolvedValue({choices:[{finish_reason:'stop',message:{content:JSON.stringify(expected)}}]});env.AI={run};
+      await db.query("insert into public.media_objects(id,owner_user_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,'resource',$3,$4,$5,'schedule-source')",[mediaId,owner,'private-'+mediaId,mime,bytes.byteLength]);
+      env.PRIVATE_BUCKET={get:async key=>key==='private-'+mediaId?{size:bytes.byteLength,arrayBuffer:async()=>bytes.slice().buffer}:null} as unknown as R2Bucket;
+      const body={mode:'timetable',documentKind:kind,prompt:'',notes:'I am in 100 level',mediaId,idempotencyKey:crypto.randomUUID(),consent:true};
+      const result=await json(await request('/ai','POST',body));
+      expect(result.documentType).toBe(expected.documentType);expect(kind==='calendar'?result.events:result.entries).toHaveLength(1);
+      expect(await json(await request('/ai','POST',body))).toEqual(result);expect(run).toHaveBeenCalledTimes(1);
+      expect((await json(await request('/ai/requests/'+body.idempotencyKey))).status).toBe('completed');
+      await json(await request('/ai/requests/'+body.idempotencyKey,'GET',undefined,other),404);
+    }
+  });
+  it('reads a valid owned PDF above 8 MB without rejecting it as an invalid file',async()=>{
+    const original=pdfFixture(['Monday MAT 101 08:00-09:00 LT 1.']),bytes=new Uint8Array(9*1024*1024).fill(32);bytes.set(original);
+    const mediaId=crypto.randomUUID(),run=vi.fn().mockResolvedValue({response:JSON.stringify({documentType:'class_timetable',entries:[classEntry],events:[],warnings:[]})});env.AI={run};
+    await db.query("insert into public.media_objects(id,owner_user_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,'resource',$3,'application/pdf',$4,'schedule.pdf')",[mediaId,owner,'private-'+mediaId,bytes.byteLength]);
+    env.PRIVATE_BUCKET={get:async()=>({size:bytes.byteLength,arrayBuffer:async()=>bytes.slice().buffer})} as unknown as R2Bucket;
+    const result=await json(await request('/ai','POST',{mode:'timetable',documentKind:'class',prompt:'',mediaId,idempotencyKey:crypto.randomUUID(),consent:true}));
+    expect(result.entries[0]).toMatchObject({courseCode:'MAT 101',startsAt:'08:00'});expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+it('releases an expired upload-limit draft key while retaining active quota enforcement and single inference replay',async()=>{
+  const body={mode:'timetable',documentKind:'class',prompt:'Monday MAT 101 08:00-09:00 LT 1.',idempotencyKey:crypto.randomUUID(),consent:true};
+  const hash=await sha256(JSON.stringify([4,'timetable',body.prompt,'',null,null,'standard',null,'class']));
+  const failure={version:3,failureStatus:429,message:'Your upload allowance is used.',failureDetails:{reason:'ACADEMIC_IMPORT_LIMIT',resetsAt:new Date(Date.now()+60000).toISOString()}};
+  await db.query("insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,status,result) values($1,$2,$3,'timetable','FAILED',$4::jsonb)",[owner,body.idempotencyKey,hash,JSON.stringify(failure)]);
+  await json(await request('/ai','POST',body),429);expect(provider).not.toHaveBeenCalled();
+  failure.failureDetails.resetsAt=new Date(Date.now()-60000).toISOString();
+  await db.query('update app_private.ai_requests set result=$3::jsonb where user_id=$1 and idempotency_key=$2',[owner,body.idempotencyKey,JSON.stringify(failure)]);
+  const expired=await json(await request('/ai','POST',body),409);expect(expired.error.details).toMatchObject({reason:'AI_ALLOWANCE_RENEWED',retryWithNewKey:true});expect(provider).not.toHaveBeenCalled();
+  provider.mockResolvedValue(Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({documentType:'class_timetable',entries:[{title:'Mathematics',courseCode:'MAT 101',dayOfWeek:1,startsAt:'08:00',endsAt:'09:00',venue:'LT 1',lecturer:''}],events:[],warnings:[]})}}]}));
+  const fresh={...body,idempotencyKey:crypto.randomUUID()};const result=await json(await request('/ai','POST',fresh));
+  expect(result.entries[0].courseCode).toBe('MAT 101');expect(await json(await request('/ai','POST',fresh))).toEqual(result);expect(provider).toHaveBeenCalledTimes(1);
+});

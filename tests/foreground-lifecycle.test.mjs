@@ -88,3 +88,10 @@ test('usage collection coalesces reconnect bursts, sends a bounded backlog and c
  await time.advance(30000);assert.equal(sends,4);assert.equal(cached.length,3);assert.ok(deleted.includes('k1-foreground-usage:'+account));assert.ok(saved.length);
  app.currentState='background';appChanged('background');await time.advance(120000);assert.equal(sends,4);owner='B';revision++;app.currentState='active';appChanged('active');await time.advance(30000);assert.equal(sends,4);cleanup();assert.equal(time.timers.size,0);
 });
+test('a corrupt foreground clock cannot throw Invalid time value during screen cleanup',async()=>{
+ const exports={};runInNewContext(ts.transpileModule(readFileSync(new URL('../mobile/src/lib/foreground-usage.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,module:{exports},Date,Math,setTimeout,clearTimeout,Number});
+ const time=clock();let now=NaN,errors=0,samples=0;
+ const sampler=new exports.ForegroundUsageSampler((start,end)=>{new Date(start).toISOString();new Date(end).toISOString();samples++;},()=>now,time.schedule,time.cancel,()=>errors++);
+ sampler.setForeground(true);await time.advance(30000);sampler.setForeground(false);assert.equal(samples,0);assert.ok(errors>0);assert.equal(time.timers.size,0);
+ now=Date.now();sampler.setForeground(true);now+=10000;sampler.stop();assert.equal(samples,1);assert.equal(time.timers.size,0);
+});

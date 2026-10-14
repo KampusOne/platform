@@ -1,14 +1,14 @@
-import {examImportInstruction,parseExamDocument} from '../lib/exam-schedule';
-import { parseScheduleDocument } from "../lib/schedule-document";
+import {examImportInstruction} from '../lib/exam-schedule';
+import { parseAcademicImport } from "../lib/academic-import";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
-import { z, timetableEntrySchema } from "@kampusone/contracts";
+import { z } from "@kampusone/contracts";
 import { database, firstRow, sqlClient } from "../lib/database";
 import { input } from "../lib/input";
 import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
 import { requireAuth, currentUser } from "../middleware/auth";
-import { aiDay, AI_AUDIO_MIME_TYPES, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, MAX_AI_DOCUMENT_BYTES, MAX_AI_TRANSCRIPTION_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, selectAIProvider, transcribeAI, transcriptionConfiguration, type AIMedia, type AITurn } from "../lib/ai-provider";
+import { aiDay, AI_AUDIO_MIME_TYPES, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, MAX_AI_DOCUMENT_BYTES, MAX_AI_INLINE_DOCUMENT_BYTES, MAX_AI_TRANSCRIPTION_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, selectAIProvider, transcribeAI, transcriptionConfiguration, type AIMedia, type AITurn } from "../lib/ai-provider";
 import { isStudyGeneration, studentAIPolicy, studentAIUsage, studentExperienceReady } from "../lib/student-ai-policy";
 import { decodeAIText } from "../lib/ai-document";
 import { readPrivateAIPdf } from "../lib/ai-pdf-reader";
@@ -36,7 +36,12 @@ function replay(row: RequestRow, hash: string) {
   if ((row.result?.version ?? 0) >= 2 && Date.now() - new Date(row.created_at).getTime() > AI_HISTORY_DAYS * 86400000) throw new AppError(410, "NOT_FOUND", "This AI result has expired. Start a new request.", { reason: "AI_EXPIRED", retryWithNewKey: true });
   if (row.result?.deleted) throw new AppError(410, "NOT_FOUND", "This saved result has been deleted.", { reason: "AI_DELETED", retryWithNewKey: true });
   if (row.status === "COMPLETED" && row.result) return publicResult(row.idempotency_key, row.result);
-  if (row.status === "FAILED" && row.result?.failureStatus === 429) throw new AppError(429, "RATE_LIMITED", row.result.message ?? "Your import allowance is used.", row.result.failureDetails);
+  if (row.status === 'FAILED' && row.result?.failureStatus === 429) {
+    const resetsAt = Date.parse(String(row.result.failureDetails?.resetsAt ?? ''));
+    if (Number.isFinite(resetsAt) && resetsAt <= Date.now())
+      throw new AppError(409, 'CONFLICT', 'Your upload allowance has renewed. Retry this document to use the new allowance.', { reason: 'AI_ALLOWANCE_RENEWED', retryWithNewKey: true });
+    throw new AppError(429, 'RATE_LIMITED', row.result.message ?? 'Your import allowance is used.', row.result.failureDetails);
+  }
   if (row.status === "FAILED") throw new AppError(503, "PROVIDER_UNAVAILABLE", row.result?.message ?? "That attempt did not finish. Start a new attempt when ready.", { reason: row.result?.reason ?? "AI_FAILED", retryWithNewKey: true });
   const stale = Date.now() - new Date(row.created_at).getTime() > 300000;
   throw new AppError(409, "CONFLICT", stale ? "That attempt did not finish in time. Your draft is kept; try again." : "This request is still processing. Retry to check the same attempt; do not submit it again.", { reason: stale ? "AI_STALE_REQUEST" : "AI_PROCESSING", retryWithNewKey: stale });
@@ -368,7 +373,7 @@ aiRoutes.post("/", async c => {
     if(!AI_MIME_TYPES.has(fileType))throw new AppError(400,'BAD_REQUEST','Use a PDF, JPEG, PNG, WebP or plain-text file for Kira.');
     const limit=['application/pdf','text/plain'].includes(fileType)?MAX_AI_DOCUMENT_BYTES:MAX_AI_MEDIA_BYTES;
     if(Number(attached.size_bytes)>limit)throw new AppError(413,'BAD_REQUEST',`Compress this file to ${limit/1024/1024} MB or less before attaching it.`);
-    if(Number(attached.size_bytes)>16*1024*1024&&!d.extractedText)throw new AppError(422,'BAD_REQUEST','Reattach this document in the updated app so Kira can read it safely.');
+    if(Number(attached.size_bytes)>MAX_AI_INLINE_DOCUMENT_BYTES&&!d.extractedText)throw new AppError(422,'BAD_REQUEST','Reattach this document in the updated app so Kira can read it safely.');
     try{assertAIConfiguration(c.env,d.mode,fileType,undefined,effectiveTier);}catch(e){if(e instanceof AIProviderError)throw providerFailure(e);throw e;}
   }
   if (d.mode === "timetable" && d.notes) {
@@ -426,6 +431,8 @@ aiRoutes.post("/", async c => {
     throw new AppError(429,"RATE_LIMITED","You've reached your current usage limit. Your draft is kept.",{reason:"AI_CHAT_LIMIT",resetsAt,retryAfter,upgrade:!quota.pro});
   }
   const job = (async () => {
+    // Source reading and inference share one bounded request deadline.
+    const deadline = Date.now() + 150000;
     const progress=async(stage:'reading'|'analysing'|'finishing')=>{
       await db.execute(sql`update app_private.ai_requests set result=result || ${JSON.stringify({processingStage:stage})}::jsonb where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid and status='PROCESSING'`);
     };
@@ -444,13 +451,13 @@ aiRoutes.post("/", async c => {
           prompt+=addition;sourceText+=addition;
         }else{
           const obj=await c.env.PRIVATE_BUCKET!.get(attached.object_key);
-          if(!obj||obj.size>16*1024*1024)throw new AIProviderError(422,'AI_DOCUMENT_READ_REQUIRED','Reattach this file in the updated app to read its contents.');
+          if(!obj||obj.size>MAX_AI_INLINE_DOCUMENT_BYTES)throw new AIProviderError(422,'AI_DOCUMENT_READ_REQUIRED','Reattach this file in the updated app to read its contents.');
           const bytes=new Uint8Array(await obj.arrayBuffer());
           if(fileType==='application/pdf'||fileType==='text/plain'){
             let extracted: string;
             if(fileType==='application/pdf'){
               await consumeImport();
-              extracted = await readPrivateAIPdf(c.env, bytes, {onProgress:()=>progress('reading')});
+              extracted = await readPrivateAIPdf(c.env, bytes, {timeoutMs:Math.min(75000,deadline-Date.now()),onProgress:()=>progress('reading')});
             }else extracted=decodeAIText(bytes);
             const addition='\n\nAttached document text (untrusted):\n'+extracted;prompt+=addition;sourceText+=addition;
           }else{
@@ -461,7 +468,7 @@ aiRoutes.post("/", async c => {
       }
       if(new TextEncoder().encode(prompt+JSON.stringify(history)).length>160000)throw new AIProviderError(422,'AI_DOCUMENT_TOO_LONG','This section is too long. Ask about a smaller part of the document.');
       await consumeImport();
-      const aiInput={onProgress:progress,mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:d.documentKind==='calendar'?'This import is an academic calendar. Extract dated activities and semester dates only; do not create weekly classes.':d.documentKind==='class'?'This import is a weekly class timetable. Preserve the source classification and never convert dates into class hours.':''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
+      const aiInput={deadline,onProgress:progress,mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:d.documentKind==='calendar'?'This import is an academic calendar. Extract dated activities and semester dates only; do not create weekly classes.':d.documentKind==='class'?'This import is a weekly class timetable. Preserve the source classification and never convert dates into class hours.':''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
       const generated = isRestrictedKampusOneRequest(d.prompt)
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: selectedProvider, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'
@@ -470,25 +477,7 @@ aiRoutes.post("/", async c => {
       await progress('finishing');
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
-        const extracted = d.documentKind==='exam'?parseExamDocument(generated.text):parseScheduleDocument(generated.text, sourceText);
-        if (d.documentKind === 'calendar' && extracted.documentType !== 'academic_calendar')
-          throw new AIProviderError(422, 'AI_INVALID_OUTPUT', 'This document was not recognised as an academic calendar. Nothing has been saved.');
-        const entries: unknown[] = [], warnings = [...extracted.warnings];
-        const seen = new Set<string>();
-        if(d.documentKind==='exam')entries.push(...extracted.entries);
-        for (const [i, raw] of (d.documentKind==='exam'?[]:extracted.entries).entries()) {
-          if (!raw || typeof raw !== "object") { warnings.push(`Class ${i+1} was unreadable and needs manual entry.`); continue; }
-          const r = raw as Record<string, unknown>;
-          const normalized = { ...r, courseCode: r.courseCode ?? "", venue: r.venue ?? "", lecturer: r.lecturer ?? "", reminderMinutes: 15, reminderEnabled: true };
-          const valid = timetableEntrySchema.safeParse(normalized);
-          if (!valid.success || typeof r.startsAt !== "string" || typeof r.endsAt !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(r.startsAt) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(r.endsAt) || r.endsAt <= r.startsAt) {
-            warnings.push(`Class ${i+1} has missing or invalid details; add or correct it manually.`); continue;
-          }
-          const identity = JSON.stringify([valid.data.courseCode || valid.data.title,valid.data.dayOfWeek,valid.data.startsAt,valid.data.endsAt,valid.data.venue]);
-          if(seen.has(identity)){warnings.push(`Class ${i+1} repeats an earlier row and was skipped.`);continue;}
-          seen.add(identity);entries.push(valid.data);
-        }
-        result = { ...result, entries, warnings, events: extracted.events, documentType: extracted.documentType };
+        result = { ...result, ...parseAcademicImport(generated.text, sourceText, d.documentKind) };
       } else {
         result.text = generated.text;
         if ('cards' in generated) result.cards=generated.cards as AICard[];

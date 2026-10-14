@@ -3397,7 +3397,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 244
+          "line": 249
         }
       ],
       "classification": "mutation",
@@ -3415,7 +3415,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 321
+          "line": 326
         }
       ],
       "classification": "mutation",
@@ -3433,7 +3433,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 224
+          "line": 229
         }
       ],
       "classification": "mutation",
@@ -3451,7 +3451,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 336
+          "line": 341
         }
       ],
       "classification": "mutation",
@@ -3469,7 +3469,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 206
+          "line": 211
         }
       ],
       "classification": "volatile",
@@ -3487,7 +3487,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 198
+          "line": 203
         }
       ],
       "classification": "volatile",
@@ -3505,7 +3505,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 189
+          "line": 194
         }
       ],
       "classification": "volatile",
@@ -3523,7 +3523,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 59
+          "line": 64
         }
       ],
       "classification": "volatile",
@@ -3541,7 +3541,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 101
+          "line": 106
         }
       ],
       "classification": "mutation",
@@ -3559,7 +3559,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 97
+          "line": 102
         }
       ],
       "classification": "mutation",
@@ -3577,7 +3577,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 96
+          "line": 101
         }
       ],
       "classification": "financial",
@@ -3595,7 +3595,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 214
+          "line": 219
         }
       ],
       "classification": "volatile",
@@ -3613,7 +3613,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 105
+          "line": 110
         }
       ],
       "classification": "mutation",
@@ -3631,7 +3631,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 345
+          "line": 350
         }
       ],
       "classification": "mutation",
@@ -7092,7 +7092,25 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 298
+          "line": 337
+        }
+      ],
+      "classification": "mutation",
+      "backend": "fresh",
+      "authorization": "Source router auth/signature/idempotency; no response reuse",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/payout-setup/:id",
+      "sources": [
+        {
+          "file": "server/src/routes/payout-setup.ts",
+          "line": 72
         }
       ],
       "classification": "mutation",
@@ -7110,7 +7128,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 99
+          "line": 138
         }
       ],
       "classification": "mutation",
@@ -7128,7 +7146,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 72
+          "line": 111
         }
       ],
       "classification": "security",
@@ -7146,7 +7164,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 108
+          "line": 147
         }
       ],
       "classification": "mutation",
@@ -7164,7 +7182,7 @@
       "sources": [
         {
           "file": "server/src/routes/payout-setup.ts",
-          "line": 243
+          "line": 282
         }
       ],
       "classification": "security",

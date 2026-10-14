@@ -3,7 +3,7 @@ import {appendFileSync,readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 
 // An expiring, token-protected preview; never a production route or user prompt.
-export async function probe(request, env, readPrivateAIPdf) {
+export async function probe(request, env, readPrivateAIPdf, verifyAcademicImports) {
   const supplied=request.headers.get('x-probe-token')??'', expiry=Number(env.PROBE_EXPIRES_AT);
   if(request.method!=='POST'||new URL(request.url).pathname!=='/__kira_probe'||!/^[a-f0-9]{64}$/.test(supplied)||!/^[a-f0-9]{64}$/.test(env.PROBE_TOKEN??'')||!Number.isFinite(expiry)||expiry<=Date.now()||expiry>Date.now()+240000)return new Response(null,{status:404});
   let difference=0;for(let i=0;i<64;i++)difference|=supplied.charCodeAt(i)^env.PROBE_TOKEN.charCodeAt(i);
@@ -12,7 +12,7 @@ export async function probe(request, env, readPrivateAIPdf) {
   const modelCheck=async(model,image)=>{
     try {
       const imageMessages=image?[{role:'system',content:'Read the image faithfully. Return only the visible text.'},{role:'user',content:[{type:'text',text:'Read the course code and class time in this timetable image.'},{type:'image_url',image_url:{url:image}}]}]:messages;
-      const result=await env.AI.run(model,{messages:imageMessages,max_tokens:image?512:128,temperature:0.1,stream:false},{signal:AbortSignal.timeout(35000)});
+      const result=await env.AI.run(model,{messages:imageMessages,max_tokens:image?512:128,temperature:0.1,stream:false,...(model.startsWith('@cf/google/')?{chat_template_kwargs:{enable_thinking:false}}:{})},{signal:AbortSignal.timeout(35000)});
       const text=typeof result?.response==='string'?result.response:result?.choices?.[0]?.message?.content;
       return {outcome:typeof text==='string'&&(image?/MAT\s*101/i.test(text)&&/0?8[:.]00/.test(text)&&/0?9[:.]00/.test(text):text.trim().length>8)?'generation_succeeded':'generation_unusable'};
     }catch(error){const code=/\b(3036|3040|5035|5016|5018|3023|3041|3007|3008|5007|3042)\b/.exec(String(error?.message??''))?.[1];return{outcome:'provider_rejected',...(code?{code}: {})};}
@@ -111,8 +111,8 @@ export async function probe(request, env, readPrivateAIPdf) {
     const [image,pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper]=await Promise.all([convert('synthetic-timetable.png',new Blob([png],{type:'image/png'})),convert('synthetic-timetable.pdf',new Blob([pdf],{type:'application/pdf'})),checkoutCheck(),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+env.PROBE_TIMETABLE_PNG),modelCheck('@cf/google/gemma-4-26b-a4b-it','data:image/png;base64,'+handwriting.pngBase64),readScan()]);
     return{image,pdf:pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper};
   };
-  const [standard,pro,huggingface,conversion,uploads,banks]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck(),convert('probe.txt',new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})),extended(),bankSupport()]);
-  return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs,conversion,uploads,banks},{headers:{'Cache-Control':'no-store'}});
+  const [standard,pro,huggingface,conversion,uploads,banks,academicImports]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck(),convert('probe.txt',new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})),extended(),bankSupport(),env.PROBE_VERIFY_UPLOADS==='true'&&env.PROBE_BANKS_ONLY!=='true'?verifyAcademicImports(env,{printedImage:env.PROBE_TIMETABLE_PNG,handwriting:env.PROBE_HANDWRITING.pngBase64,calendarPdf:env.PROBE_CALENDAR_PDF}):Promise.resolve([])]);
+  return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs,conversion,uploads,banks,academicImports},{headers:{'Cache-Control':'no-store'}});
 }
 
 if(process.argv.includes('--self-test')) {
@@ -126,7 +126,7 @@ if(process.argv.includes('--self-test')) {
 } else {
   const lines=[],report=line=>{console.log(line);lines.push(line);};
   const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_API_TOKEN;
-  const fetchSafe=(url,options={})=>fetch(url,{...options,redirect:'error',signal:AbortSignal.timeout(45000)});
+  const fetchSafe=(url,options={})=>fetch(url,{...options,redirect:'error',signal:AbortSignal.timeout(options.probeTimeoutMs??45000)});
   const cf=async(suffix,options={})=>{
     const response=await fetchSafe(`https://api.cloudflare.com/client/v4/accounts/${account}${suffix}`,{...options,headers:{Authorization:`Bearer ${token}`,...options.headers}});
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
@@ -137,7 +137,7 @@ if(process.argv.includes('--self-test')) {
     if(!token||!/^[a-f0-9]{32}$/i.test(account??''))throw new Error('Deployment credentials unavailable');
     stage='binding metadata';
     const settings=await cf('/workers/scripts/platformp/settings');
-    const inherited=['HF_TOKEN','HF_CHAT_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET','PAYSTACK_SECRET_KEY','KYC_ENCRYPTION_KEY','KYC_FINGERPRINT_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
+    const inherited=['HF_TOKEN','HF_CHAT_MODEL','HF_REASONING_MODEL','HF_PRO_MODEL','HF_VISION_MODEL','AI_TEXT_PROVIDER','WORKERS_AI_CHAT_MODEL','WORKERS_AI_PRO_MODEL','WORKERS_AI_VISION_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET','PAYSTACK_SECRET_KEY','KYC_ENCRYPTION_KEY','KYC_FINGERPRINT_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
     report(`Production BACHS API secret present: ${settings.bindings?.some(b=>b.name==='BACHS_API_KEY')===true}`);
     report(`Production BACHS webhook secret present: ${settings.bindings?.some(b=>b.name==='BACHS_WEBHOOK_SECRET')===true}`);
     report(`Production Workers AI binding present: ${settings.bindings?.some(b=>b.name==='AI'&&b.type==='ai')===true}`);
@@ -157,16 +157,16 @@ if(process.argv.includes('--self-test')) {
     const handwriting=process.env.PROBE_VERIFY_UPLOADS==='true'?JSON.parse(readFileSync(new URL('./fixtures/handwritten-timetable.json',import.meta.url),'utf8')):null;
     stage='document reader bundle';
     const {build}=createRequire(new URL('../server/package.json',import.meta.url))('esbuild');
-    const reader=await build({stdin:{contents:"export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent'});
+    const reader=await build({stdin:{contents:"export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';export {verifyAcademicImports} from './scripts/verify-academic-imports.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent'});
     form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
-    form.set('probe.mjs',new Blob([`import {readPrivateAIPdf} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)}},readPrivateAIPdf)};`],{type:'application/javascript+module'}),'probe.mjs');
+    form.set('probe.mjs',new Blob([`import {readPrivateAIPdf,verifyAcademicImports} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)},PROBE_CALENDAR_PDF:${JSON.stringify(readFileSync(new URL("./fixtures/synthetic-academic-calendar.pdf",import.meta.url)).toString("base64"))}},readPrivateAIPdf,verifyAcademicImports)};`],{type:'application/javascript+module'}),'probe.mjs');
     form.set('document-reader.mjs',new Blob([reader.outputFiles[0].text],{type:'application/javascript+module'}),'document-reader.mjs');
     form.set('wrangler-session-config',JSON.stringify({workers_dev:true}));
     stage='preview upload';
     const preview=await cf('/workers/scripts/platformp/edge-preview',{method:'POST',body:form,headers:{'cf-preview-upload-config-token':sessionToken}});
     if(typeof preview.preview_token!=='string')throw new Error('Missing preview token');
     stage='live inference';
-    const r=await fetchSafe(`https://${host}/__kira_probe`,{method:'POST',headers:{'cf-workers-preview-token':preview.preview_token,'x-probe-token':probeToken}});
+    const r=await fetchSafe(`https://${host}/__kira_probe`,{method:'POST',probeTimeoutMs:180000,headers:{'cf-workers-preview-token':preview.preview_token,'x-probe-token':probeToken}});
     if(!r.ok)throw new Error(`HTTP ${r.status}`);
     const result=await r.json();if(result.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');
     const outcomes=new Set(['generation_succeeded','generation_unusable','provider_rejected','configuration_missing','transport_failure']);
@@ -183,6 +183,10 @@ if(process.argv.includes('--self-test')) {
       const item=result.uploads?.[name],outcome=item?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable','generation_succeeded','generation_unusable'];
       report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}${/^\d{4}$/.test(item?.code??'')?` code ${item.code}`:''}`);
       if(outcome!==(name==='unpaidCheckout'?'unpaid_checkout_succeeded':['vision','handwritingVision'].includes(name)?'generation_succeeded':'conversion_succeeded'))process.exitCode=1;
+    }
+    if(process.env.PROBE_VERIFY_UPLOADS==='true'&&process.env.PROBE_BANKS_ONLY!=='true') {
+      if(!Array.isArray(result.academicImports)||result.academicImports.length!==4)throw new Error('Missing academic extraction proofs');
+      for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes}, events ${item.events}; ${item.elapsedMs}ms${/^AI_[A-Z_]+$/.test(item.reason??'')?`; ${item.reason}`:''}`);if(item.outcome!=='extraction_succeeded')process.exitCode=1;}
     }
     if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
     report(process.env.PROBE_BANKS_ONLY==='true'?'Bank lookup and capability check only. No transfers, payouts, credential export or application writes. Preview expires after three minutes.':'No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');

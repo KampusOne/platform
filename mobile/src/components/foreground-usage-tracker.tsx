@@ -6,6 +6,7 @@ import * as Network from 'expo-network';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useAuth} from '../auth/auth-context';
 import {api,ApiError} from '../lib/api';
+import {recordActivityEvent} from '../lib/activity-events';
 import {analyticsScreenName} from '../lib/analytics';
 import {cacheScopeForUser} from '../lib/request-policy';
 import {getDeviceCacheRevision,isDeviceCacheOwner,readCache,writeCache} from '../lib/device-cache';
@@ -43,7 +44,7 @@ export function ForegroundUsageTracker(){
    }
    if(owned())await writeCache(key,retained,48*3600000);
   }
-  const sampler=new ForegroundUsageSampler((start,end,seconds)=>enqueue({id:randomUUID(),ownerUserId:owner,platform,screen,startedAt:new Date(start).toISOString(),endedAt:new Date(end).toISOString(),seconds}));
+  const sampler=new ForegroundUsageSampler((start,end,seconds)=>enqueue({id:randomUUID(),ownerUserId:owner,platform,screen,startedAt:new Date(start).toISOString(),endedAt:new Date(end).toISOString(),seconds}),undefined,undefined,undefined,()=>recordActivityEvent('feature_failed',{screen,feature:'foreground_usage',errorCode:'USAGE_INVALID_CLOCK'}));
   let previousForeground=foreground();
   const visibility=()=>{const visible=foreground();if(visible===previousForeground)return;previousForeground=visible;if(!visible)controller?.abort();sampler.setForeground(visible);if(visible&&online)enqueue();};
   const state=AppState.addEventListener('change',visibility);
