@@ -14,7 +14,7 @@ async function imageOperation(env:AIEnvironment,body:Record<string,unknown>,dead
   let stage='signing',httpStatus:number|undefined;
   try {
     const token=await imageProcessingToken(env.JWT_SECRET,encoded);stage='transport';
-    const response=await fetch(imageProcessorURL,{method:'POST',redirect:'error',signal:AbortSignal.timeout(remaining),headers:{'Content-Type':'application/json','Cache-Control':'no-store',Authorization:'Bearer '+token},body:encoded});
+    const response=await fetch(imageProcessorURL,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(remaining),headers:{'Content-Type':'application/json','Cache-Control':'no-store',Authorization:'Bearer '+token},body:encoded});
     stage='response';httpStatus=response.status;
     if(!response.ok)throw new Error('Image service unavailable');
     if(Number(response.headers.get('content-length')??0)>4_200_000)throw new Error('Invalid image service response');
