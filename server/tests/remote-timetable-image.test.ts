@@ -52,4 +52,15 @@ describe('private image processing on existing free hosting',()=>{
     const bytes=Buffer.from(rows!.batch!.data,'base64'),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.length);
     expect(view.getUint32(16)*view.getUint32(20)).toBeLessThanOrEqual(4_000_000);
   });
+  it('straightens a photographed ruled timetable before selecting complete physical rows',async()=>{
+    vi.stubGlobal('fetch',(url:string|URL|Request,init?:RequestInit)=>privateTimetableImage(new Request(String(url),init),getKey));
+    const source={mimeType:'image/jpeg',data:readFileSync(new URL('../../scripts/fixtures/uniben-engineering-2026-photo.jpg',import.meta.url)).toString('base64')};
+    const layout=await remoteTimetableLayout(env,source,Date.now()+150000);
+    expect(layout).toMatchObject({timeColumnCount:10,levelRowCount:25});
+    const rows=await remoteTimetableRows(env,source,10,levels,days,'100',Date.now()+150000,true);
+    expect(rows?.map(row=>row.day)).toEqual(days);
+    expect(rows?.[0]?.cells).toContainEqual({from:4,to:6});
+    expect(rows?.[1]?.cells.slice(0,2)).toEqual([{from:0,to:2},{from:2,to:3}]);
+    expect(rows?.batch).toMatchObject({mimeType:'image/png'});
+  });
 });
