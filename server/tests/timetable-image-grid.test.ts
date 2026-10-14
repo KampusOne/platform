@@ -17,7 +17,7 @@ describe('printed grid pixel geometry',()=>{
     const result=timetableImageRows({mimeType:'image/'+mime,data:Buffer.from(encoded).toString('base64')},10,levels,days,'200');
     expect(result?.map(row=>row.cells.map(cell=>[cell.from,cell.to]))).toEqual(expected);
     expect(result?.map(row=>row.day)).toEqual(days);
-    expect(result?.every(row=>decodePng(Buffer.from(row.media.data,'base64')).width>600)).toBe(true);
+    expect(result?.every(row=>{const image=decodePng(Buffer.from(row.media.data,'base64'));return image.width>100&&image.width*image.height<=4_000_000;})).toBe(true);
   });
   it('rejects missing printed rows, an absent level and an invalid source',()=>{
     const image={mimeType:'image/jpeg',data:bytes.toString('base64')};

@@ -60,15 +60,17 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
   const calendarBytes = Uint8Array.from(atob(fixtures.calendarPdf), c => c.charCodeAt(0));
   const calendar = await readPrivateAIPdf(env, calendarBytes);
   const exams = decodeAIText(new TextEncoder().encode('EXAM TIMETABLE 2026.\nMAT 101 Mathematics; 2026-11-05; 09:00-11:00; Main hall.\nCSC 101 Computing; 2026-11-06; 12:00-14:00; LT 1.\nPHY 101 Physics; 2026-11-09; 09:00-11:00; LT 2.'));
-  return Promise.all([
+  const baseline=Promise.all([
     checked('classImage', 'class', '', {mimeType:'image/png',data:fixtures.printedImage}),
     checked('handwrittenClass', 'class', 'Student notes: This handwritten class is on Monday. The written hours are 08:00 to 09:00.', {mimeType:'image/png',data:fixtures.handwriting}),
     checked('calendarPdf', 'calendar', calendar, undefined, true),
     checked('examText', 'exam', exams, undefined, true),
-    ...(fixtures.facultyImage?[
-      checked('facultyGrid200','class','',{mimeType:'image/jpeg',data:fixtures.facultyImage},true,{level:'200',department:'Computer Engineering'}),
-      checked('facultyGrid100','class',"I'm in 100lvl",{mimeType:'image/jpeg',data:fixtures.facultyImage},true,{level:'100'}),
-    ]:[]),
-    ...(fixtures.facultyWebp?[checked('facultyWebp100','class',"I'm in 100lvl",{mimeType:'image/webp',data:fixtures.facultyWebp},true,{level:'100'})]:[]),
   ]);
+  const faculty=[];
+  if(fixtures.facultyImage) {
+    faculty.push(await checked('facultyGrid200','class','',{mimeType:'image/jpeg',data:fixtures.facultyImage},true,{level:'200',department:'Computer Engineering'}));
+    faculty.push(await checked('facultyGrid100','class',"I'm in 100lvl",{mimeType:'image/jpeg',data:fixtures.facultyImage},true,{level:'100'}));
+  }
+  if(fixtures.facultyWebp)faculty.push(await checked('facultyWebp100','class',"I'm in 100lvl",{mimeType:'image/webp',data:fixtures.facultyWebp},true,{level:'100'}));
+  return [...await baseline,...faculty];
 }

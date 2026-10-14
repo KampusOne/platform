@@ -171,7 +171,7 @@ if(process.argv.includes('--self-test')) {
     if(typeof preview.preview_token!=='string')throw new Error('Missing preview token');
     stage='live inference';
     const r=await fetchSafe(`https://${host}/__kira_probe`,{method:'POST',probeTimeoutMs:180000,headers:{'cf-workers-preview-token':preview.preview_token,'x-probe-token':probeToken}});
-    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    if(!r.ok){const body=await r.text();const code=/error(?: code)?[\s:]+(\d{4})/i.exec(body)?.[1];const hint=/memory/i.test(body)?'memory':/CPU/.test(body)?'cpu':/WebAssembly|wasm/i.test(body)?'wasm':'unclassified';throw new Error(`HTTP ${r.status}${code?' edge code '+code:''}; ${hint}`);}
     const result=await r.json();if(result.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');
     if(process.env.PROBE_ACADEMIC_ONLY==='true'){
       if(!Array.isArray(result.academicImports)||result.academicImports.length!==7)throw new Error('Missing academic extraction proofs');
