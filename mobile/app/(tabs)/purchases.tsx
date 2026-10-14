@@ -1,3 +1,4 @@
+import { apiDate, formatApiDate } from '@/src/lib/api-date';
 import { KeyboardScrollView as ScrollView } from '@/src/components/keyboard-viewport';
 import { KeyboardModal as Modal } from '@/src/components/keyboard-viewport';
 import { InlineLoading } from "@/src/components/skeleton";
@@ -86,21 +87,21 @@ const NAIRA_FORMATTER = new Intl.NumberFormat("en-NG", {
   currency: "NGN",
   maximumFractionDigits: 0,
 });
-const DATE_FORMATTER = new Intl.DateTimeFormat("en-NG", {
+const DATE_OPTIONS: Intl.DateTimeFormatOptions = {
   day: "numeric",
   month: "short",
   year: "numeric",
-});
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-NG", {
+};
+const DATE_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
   day: "numeric",
   month: "short",
   hour: "numeric",
   minute: "2-digit",
-});
+};
 
 const naira = (kobo: number) => NAIRA_FORMATTER.format(Number(kobo) / 100);
-const date = (value: string) => DATE_FORMATTER.format(new Date(value));
-const dateTime = (value: string) => DATE_TIME_FORMATTER.format(new Date(value));
+const date = (value: string) => formatApiDate(value, DATE_OPTIONS);
+const dateTime = (value: string) => formatApiDate(value, DATE_TIME_OPTIONS);
 
 const statusLabel = (status: string) =>
   status.replaceAll("_", " ").toLowerCase();
@@ -238,7 +239,7 @@ function BookingRecord({
   const canCancel =
     item.status === "CONFIRMED" &&
     Boolean(item.scheduled_for) &&
-    Date.parse(item.scheduled_for!) > currentTime;
+    (apiDate(item.scheduled_for)?.getTime() ?? Number.NaN) > currentTime;
   const canReview = item.status === "COMPLETED" && !item.review_id;
   const hasPrimaryAction =
     item.status === "PENDING_PAYMENT" ||
@@ -246,7 +247,7 @@ function BookingRecord({
     canReview;
   const canDispute = BOOKING_DISPUTE_STATUSES.has(item.status);
   const completionAvailableTime = item.completion_available_at
-    ? Date.parse(item.completion_available_at)
+    ? apiDate(item.completion_available_at)?.getTime() ?? Number.NaN
     : Number.NaN;
   const hasValidCompletionTime = Number.isFinite(completionAvailableTime);
   const completionAvailable =

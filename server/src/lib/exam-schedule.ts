@@ -1,5 +1,5 @@
 import {z} from '@kampusone/contracts';
-import {AIProviderError} from './ai-error';
+import {AIProviderError} from './ai-error.ts';
 
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>{
  const parsed=new Date(value+'T12:00:00Z');return Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===value;

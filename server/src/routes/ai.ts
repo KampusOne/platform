@@ -1,4 +1,4 @@
-import {examImportInstruction,parseExamDocument} from '../lib/exam-schedule';
+import {parseExamDocument} from '../lib/exam-schedule';
 import { parseScheduleDocument } from "../lib/schedule-document";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
@@ -23,7 +23,7 @@ aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "explanation", "quiz", "notes", "timetable"]);
 const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), documentKind:z.enum(["exam","class","calendar"]).optional(), mediaId: z.string().uuid().optional(), extractedText: z.string().trim().max(50000).optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
-type Saved = { processingStage?: 'reading'|'analysing'|'finishing'; failureStatus?: number; failureDetails?: Record<string,unknown>; documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; fileType?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
+type Saved = { startedAt?: string; retryCount?: number; processingStage?: 'reading'|'analysing'|'finishing'; failureStatus?: number; failureDetails?: Record<string,unknown>; documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; fileType?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
@@ -31,18 +31,23 @@ function requireSchema(env: Bindings) {
 function publicResult(id: string, value: Saved) {
   return { requestId: id, ...(Array.isArray(value.entries) ? { importRequestId: id } : {}), threadId: value.threadId ?? id, tier: value.tier ?? "standard", cards: value.cards ?? [], actions: value.actions ?? [], feedback: value.feedback ?? null, ...(typeof value.text === "string" ? { text: value.text } : {}), ...(Array.isArray(value.entries) ? { entries: value.entries, events: value.events ?? [], documentType: value.documentType ?? "class_timetable", warnings: value.warnings ?? [] } : {}) };
 }
+const retryableReasons = new Set(['AI_TIMEOUT', 'AI_PROVIDER_BUSY', 'AI_PROVIDER_UNAVAILABLE', 'AI_DOCUMENT_READER_UNAVAILABLE', 'AI_SAVE_FAILED']);
+function canRetryRequest(row: RequestRow) {
+  return row.status === 'FAILED' && !row.result?.deleted && retryableReasons.has(row.result?.reason ?? '') && (row.result?.retryCount ?? 0) < 2 && Date.now() - Date.parse(row.created_at) <= AI_HISTORY_DAYS * 86400000;
+}
+function requestStartedAt(row: RequestRow) { return Date.parse(row.result?.startedAt ?? row.created_at); }
 function replay(row: RequestRow, hash: string) {
   if (row.request_hash !== hash) throw new AppError(409, "CONFLICT", "This request reference belongs to a different draft.", { reason: "AI_REQUEST_CONFLICT" });
   if ((row.result?.version ?? 0) >= 2 && Date.now() - new Date(row.created_at).getTime() > AI_HISTORY_DAYS * 86400000) throw new AppError(410, "NOT_FOUND", "This AI result has expired. Start a new request.", { reason: "AI_EXPIRED", retryWithNewKey: true });
   if (row.result?.deleted) throw new AppError(410, "NOT_FOUND", "This saved result has been deleted.", { reason: "AI_DELETED", retryWithNewKey: true });
   if (row.status === "COMPLETED" && row.result) return publicResult(row.idempotency_key, row.result);
   if (row.status === "FAILED" && row.result?.failureStatus === 429) throw new AppError(429, "RATE_LIMITED", row.result.message ?? "Your import allowance is used.", row.result.failureDetails);
-  if (row.status === "FAILED") throw new AppError(503, "PROVIDER_UNAVAILABLE", row.result?.message ?? "That attempt did not finish. Start a new attempt when ready.", { reason: row.result?.reason ?? "AI_FAILED", retryWithNewKey: true });
-  const stale = Date.now() - new Date(row.created_at).getTime() > 300000;
+  if (row.status === "FAILED") throw new AppError(503, "PROVIDER_UNAVAILABLE", row.result?.message ?? "That attempt did not finish. Start a new attempt when ready.", { reason: row.result?.reason ?? "AI_FAILED", retryWithNewKey: !canRetryRequest(row) });
+  const stale = Date.now() - requestStartedAt(row) > 300000;
   throw new AppError(409, "CONFLICT", stale ? "That attempt did not finish in time. Your draft is kept; try again." : "This request is still processing. Retry to check the same attempt; do not submit it again.", { reason: stale ? "AI_STALE_REQUEST" : "AI_PROCESSING", retryWithNewKey: stale });
 }
-function providerFailure(error: AIProviderError) {
-  return new AppError(error.status, error.status === 429 ? "RATE_LIMITED" : error.status === 400 || error.status === 422 ? "BAD_REQUEST" : "PROVIDER_UNAVAILABLE", error.message, { reason: error.reason, retryWithNewKey: true });
+function providerFailure(error: AIProviderError, retryCount = 0) {
+  return new AppError(error.status, error.status === 429 ? "RATE_LIMITED" : error.status === 400 || error.status === 422 ? "BAD_REQUEST" : "PROVIDER_UNAVAILABLE", error.message, { reason: error.reason, retryWithNewKey: !retryableReasons.has(error.reason) || retryCount >= 2 });
 }
 async function hashBytes(bytes: Uint8Array) {
   const copy = new Uint8Array(bytes.byteLength); copy.set(bytes);
@@ -192,7 +197,7 @@ aiRoutes.get("/requests/:id", async c => {
   if(!id.success) throw new AppError(400,"BAD_REQUEST","Invalid Kira request.");
   const row=firstRow(await database(c.env).execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${currentUser(c).id}::uuid and idempotency_key=${id.data}::uuid and mode<>'transcription'`));
   if(!row) throw new AppError(404,"NOT_FOUND","This Kira attempt has not been submitted.",{reason:"AI_REQUEST_NOT_FOUND"});
-  if(row.status==='PROCESSING'&&Date.now()-Date.parse(row.created_at)<=300000) return c.json({requestId:id.data,status:"processing",stage:row.result?.processingStage??"analysing"});
+  if(row.status==='PROCESSING'&&Date.now()-requestStartedAt(row)<=300000) return c.json({requestId:id.data,status:"processing",stage:row.result?.processingStage??"analysing"});
   return c.json({...replay(row,row.request_hash),status:"completed"});
 });
 aiRoutes.get("/history", async c => {
@@ -351,7 +356,8 @@ aiRoutes.post("/", async c => {
   const hash = await sha256(JSON.stringify([4,d.mode,d.prompt,d.notes ?? "",d.mediaId ?? null,d.replyTo ?? null,d.tier,d.extractedText??null,d.documentKind??null]));
   const findRequest = async () => firstRow(await db.execute<RequestRow>(sql`select idempotency_key,request_hash,status,result,created_at from app_private.ai_requests where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid`));
   const cached = await findRequest();
-  if (cached) return c.json(replay(cached, hash));
+  const retrying = cached && cached.request_hash === hash && canRetryRequest(cached);
+  if (cached && !retrying) return c.json(replay(cached, hash));
   const quota = await studentAIPolicy(c.env, u), day = aiDay();
   const effectiveTier = quota.complimentary ? 'pro' : d.tier;
   if(d.tier==='pro' && !quota.pro) throw new AppError(403,"FORBIDDEN","Pro requires an active monthly plan.",{reason:"AI_PRO_REQUIRED",upgrade:true});
@@ -395,7 +401,7 @@ aiRoutes.post("/", async c => {
     }
   }
   if (new TextEncoder().encode(prompt + JSON.stringify(history)).length > 60000) throw new AppError(413, "BAD_REQUEST", "This study context is too long. Use a shorter source or start a new session.");
-  const saved: Saved = { version: 3, tier: effectiveTier, provider: selectedProvider, prompt: d.prompt, threadId, ...(d.replyTo ? {parentId:d.replyTo} : {}), ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}), ...(fileType ? {fileType} : {}) };
+  const saved: Saved = { version: 3, startedAt: new Date().toISOString(), retryCount: retrying ? (cached!.result?.retryCount ?? 0) + 1 : 0, tier: effectiveTier, provider: selectedProvider, prompt: d.prompt, threadId, ...(d.replyTo ? {parentId:d.replyTo} : {}), ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}), ...(fileType ? {fileType} : {}) };
   const client = sqlClient(c.env);
   // The lock is a separate statement: READ COMMITTED obtains a fresh snapshot
   // AFTER any wait. Putting lock + count in one CTE would race on stale snapshots.
@@ -403,8 +409,8 @@ aiRoutes.post("/", async c => {
   // Exempt accounts skip only the personal daily cap, never the shared budget.
   const reservation = await client.transaction([
     client`select pg_advisory_xact_lock(734241)`,
-    client`update app_private.ai_requests set status='FAILED',result=result || '{"reason":"AI_TIMEOUT","message":"This attempt timed out. Your draft is kept."}'::jsonb where user_id=${u.id}::uuid and status='PROCESSING' and created_at<now()-interval '5 minutes'`,
-    client`insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,result)
+    client`update app_private.ai_requests set status='FAILED',result=result || '{"reason":"AI_TIMEOUT","message":"This attempt timed out. Your draft is kept."}'::jsonb where user_id=${u.id}::uuid and status='PROCESSING' and coalesce(nullif(result->>'startedAt','')::timestamptz,created_at)<now()-interval '5 minutes'`,
+    retrying ? client`update app_private.ai_requests set status='PROCESSING',result=${JSON.stringify(saved)}::jsonb where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid and request_hash=${hash} and status='FAILED' and coalesce((result->>'retryCount')::integer,0)=${cached!.result?.retryCount ?? 0} returning idempotency_key` : client`insert into app_private.ai_requests(user_id,idempotency_key,request_hash,mode,result)
       select ${u.id}::uuid,${d.idempotencyKey}::uuid,${hash},${d.mode},${JSON.stringify(saved)}::jsonb
       where (select count(*) from app_private.ai_requests where created_at>=${day.startsAt}::timestamptz)<${quota.global}
       and (${quota.unlimited}::boolean or (
@@ -425,6 +431,7 @@ aiRoutes.post("/", async c => {
     c.header('Retry-After',String(retryAfter));
     throw new AppError(429,"RATE_LIMITED","You've reached your current usage limit. Your draft is kept.",{reason:"AI_CHAT_LIMIT",resetsAt,retryAfter,upgrade:!quota.pro});
   }
+  const deadlineAt = Date.now() + 150000;
   const job = (async () => {
     const progress=async(stage:'reading'|'analysing'|'finishing')=>{
       await db.execute(sql`update app_private.ai_requests set result=result || ${JSON.stringify({processingStage:stage})}::jsonb where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid and status='PROCESSING'`);
@@ -434,7 +441,7 @@ aiRoutes.post("/", async c => {
       let importConsumed = false;
       const consumeImport = async () => {
         if (importConsumed || !(d.mode === 'timetable' || d.mediaId)) return;
-        const kind = d.mode === 'timetable' ? (d.documentKind === 'calendar' || /calendar|exam period|academic dates/i.test(d.prompt) ? 'calendar' : 'timetable') : fileType?.startsWith('image/') ? 'image' : 'document';
+        const kind = d.mode === 'timetable' ? ((d.documentKind ? d.documentKind === 'calendar' : /calendar|exam period|academic dates/i.test(d.prompt)) ? 'calendar' : 'timetable') : fileType?.startsWith('image/') ? 'image' : 'document';
         await consumeAcademicImportQuota(c.env,u,kind,d.idempotencyKey,quota.pro);
         importConsumed = true;
       };
@@ -450,7 +457,7 @@ aiRoutes.post("/", async c => {
             let extracted: string;
             if(fileType==='application/pdf'){
               await consumeImport();
-              extracted = await readPrivateAIPdf(c.env, bytes, {onProgress:()=>progress('reading')});
+              extracted = await readPrivateAIPdf(c.env, bytes, {timeoutMs: Math.min(75000, deadlineAt - Date.now()), onProgress:()=>progress('reading')});
             }else extracted=decodeAIText(bytes);
             const addition='\n\nAttached document text (untrusted):\n'+extracted;prompt+=addition;sourceText+=addition;
           }else{
@@ -461,7 +468,7 @@ aiRoutes.post("/", async c => {
       }
       if(new TextEncoder().encode(prompt+JSON.stringify(history)).length>160000)throw new AIProviderError(422,'AI_DOCUMENT_TOO_LONG','This section is too long. Ask about a smaller part of the document.');
       await consumeImport();
-      const aiInput={onProgress:progress,mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:d.documentKind==='calendar'?'This import is an academic calendar. Extract dated activities and semester dates only; do not create weekly classes.':d.documentKind==='class'?'This import is a weekly class timetable. Preserve the source classification and never convert dates into class hours.':''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
+      const aiInput={onProgress:progress,deadlineAt,...(d.documentKind?{documentKind:d.documentKind}:{}),mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId),systemContext:memoryContext,history,tier:effectiveTier,...(media ? {media} : {})};
       const generated = isRestrictedKampusOneRequest(d.prompt)
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: selectedProvider, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'
@@ -505,7 +512,7 @@ aiRoutes.post("/", async c => {
       console.warn(JSON.stringify({ event: "ai.request.failed", requestId: c.get("requestId"), mode: d.mode, reason: failure.reason }));
       // A lost acknowledgement must not overwrite a result already committed.
       await db.execute(sql`update app_private.ai_requests set status='FAILED',result=${JSON.stringify({ ...saved, reason: failure.reason, message: failure.message })}::jsonb where user_id=${u.id}::uuid and idempotency_key=${d.idempotencyKey}::uuid and status='PROCESSING'`).catch(() => undefined);
-      const error = providerFailure(failure);
+      const error = providerFailure(failure, saved.retryCount);
       if (failure.reason === "AI_SAVE_FAILED") throw new AppError(error.status, error.code, error.message, { reason: failure.reason, retryWithNewKey: false });
       throw error;
     }

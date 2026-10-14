@@ -502,3 +502,40 @@ describe('Bachs bank verification and dashboard editing',()=>{
   expect(fetch).not.toHaveBeenCalled();
  });
 });
+
+describe('owned bank account removal',()=>{
+ const account=uuid(250);
+ async function saved(status='APPROVED',id=account){
+  await db.query("update app_private.payout_account_setups set status='SUPERSEDED' where agent_profile_id=$1",[profile]);
+  await db.query("update public.payout_requests set status='REJECTED' where agent_profile_id=$1 and status in('REQUESTED','IN_REVIEW','APPROVED','PROCESSING','OTP_REQUIRED','FAILED','REQUIRES_REVIEW')",[profile]);
+  await db.query("insert into app_private.payout_account_setups(id,user_id,agent_profile_id,application_id,institution_id,request_hash,status,bank_code,bank_name,account_name,account_last4,recipient_code,provider_mode,provider) values($1,$2,$3,$4,$5,'synthetic-removal',$6,'058','Test Bank','ADA TEST','6789','RCP_syntheticremoval','test','PAYSTACK')",[id,owner,profile,application,school,status]);
+  await db.query("update public.agent_applications set bank_status='VERIFIED',bank_provider='PAYSTACK',bank_recipient_code='RCP_syntheticremoval',bank_account_name='ADA TEST',bank_account_last4='6789' where id=$1",[application]);
+ }
+ it('removes the active destination, keeps its sealed history, and safely repeats a lost delete response',async()=>{
+  await saved();const fetch=provider();
+  expect((await payload(await request('/'+account,'DELETE'))).deleted).toBe(true);
+  expect((await payload(await request(''))).profiles[0].account).toBeNull();
+  expect((await db.query('select bank_status,bank_provider,bank_recipient_code,bank_account_name,bank_account_last4 from public.agent_applications where id=$1',[application])).rows[0]).toEqual({bank_status:'NOT_STARTED',bank_provider:null,bank_recipient_code:null,bank_account_name:null,bank_account_last4:null});
+  expect((await db.query('select status,account_last4,recipient_code from app_private.payout_account_setups where id=$1',[account])).rows[0]).toEqual({status:'SUPERSEDED',account_last4:'6789',recipient_code:'RCP_syntheticremoval'});
+  expect((await payload(await request('/'+account,'DELETE'))).deleted).toBe(true);
+  expect((await db.query<{count:number}>("select count(*)::int count from app_private.audit_events where action='payout.account_removed' and target_id=$1",[account])).rows[0].count).toBe(1);
+  expect(fetch).not.toHaveBeenCalled();
+ });
+ it('rejects a different owner or campus without changing the account',async()=>{
+  await saved('PENDING_REVIEW',uuid(251));
+  await payload(await request('/'+uuid(251),'DELETE',undefined,foreign),404);
+  expect((await payload(await request(''))).profiles[0].account.id).toBe(uuid(251));
+ });
+ it('blocks deletion while a withdrawal reserves the destination',async()=>{
+  await saved('PENDING_REVIEW',uuid(252));
+  await db.query('insert into public.payout_requests(id,university_id,agent_profile_id,requested_by_user_id,amount_kobo) values($1,$2,$3,$4,200000)',[uuid(253),school,profile,owner]);
+  await payload(await request('/'+uuid(252),'DELETE'),409);
+  expect((await payload(await request(''))).profiles[0]).toMatchObject({bank_edit_locked:true,account:{id:uuid(252)}});
+ });
+ it('a stale delete cannot clear a replacement bank account',async()=>{
+  await saved('PENDING_REVIEW',uuid(254));
+  await saved('PENDING_REVIEW',uuid(255));
+  await payload(await request('/'+uuid(254),'DELETE'),409);
+  expect((await payload(await request(''))).profiles[0].account.id).toBe(uuid(255));
+ });
+});

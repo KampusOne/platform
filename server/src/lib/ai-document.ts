@@ -1,9 +1,11 @@
 import { getDocumentProxy } from "unpdf";
-import { AIProviderError, MAX_AI_MEDIA_BYTES } from "./ai-provider";
+import { AIProviderError } from "./ai-provider";
 export const MAX_AI_DOCUMENT_CHARACTERS = 45000;
+// Match the private Worker read limit; larger files use the existing document reader.
+const MAX_INLINE_DOCUMENT_BYTES = 16 * 1024 * 1024;
 /** Decode normal editor exports, including Windows UTF-16 files with a BOM. */
 export function decodeAIText(bytes: Uint8Array): string {
-  if (!bytes.length || bytes.length > MAX_AI_MEDIA_BYTES) throw new AIProviderError(400,"AI_INVALID_TEXT","This text file is empty or too large.");
+  if (!bytes.length || bytes.length > MAX_INLINE_DOCUMENT_BYTES) throw new AIProviderError(400,"AI_INVALID_TEXT","This text file is empty or too large.");
   const encoding=bytes[0]===0xff&&bytes[1]===0xfe?"utf-16le":bytes[0]===0xfe&&bytes[1]===0xff?"utf-16be":"utf-8";
   let text: string;
   try { text=new TextDecoder(encoding,{fatal:true}).decode(bytes).replace(/^\uFEFF/,"").replace(/\r\n?/g,"\n").trim(); }
@@ -15,7 +17,7 @@ export function decodeAIText(bytes: Uint8Array): string {
 type PdfReadOptions = {readScannedPage?:(document:Awaited<ReturnType<typeof getDocumentProxy>>,pageNumber:number)=>Promise<string|null>};
 /** Private text extraction; an optional bounded vision reader handles scan pages. */
 export async function extractAIPdf(bytes: Uint8Array, options:PdfReadOptions = {}): Promise<string> {
-  if (!bytes.length || bytes.length > MAX_AI_MEDIA_BYTES || new TextDecoder().decode(bytes.subarray(0,5)) !== "%PDF-") throw new AIProviderError(400, "AI_INVALID_PDF", "This file is not a readable PDF.");
+  if (!bytes.length || bytes.length > MAX_INLINE_DOCUMENT_BYTES || new TextDecoder().decode(bytes.subarray(0,5)) !== "%PDF-") throw new AIProviderError(400, "AI_INVALID_PDF", "This file is not a readable PDF.");
   let document: Awaited<ReturnType<typeof getDocumentProxy>> | undefined;
   try {
     // PDF.js may transfer/detach its input buffer. Keep the private upload intact

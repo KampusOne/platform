@@ -7,6 +7,13 @@ const fixture=JSON.parse(readFileSync(new URL('../../scripts/fixtures/handwritte
 const jpeg=Uint8Array.from(Buffer.from(fixture.jpegBase64,'base64'));
 const pdf=(pages:(string|null)[]=[null])=>scannedPdfFixture(jpeg,fixture.width,fixture.height,pages);
 describe('private scan PDF reading',()=>{
+  it('reads a valid PDF above 8 MB within the advertised 16 MB private-reader limit',async()=>{
+    const bytes=pdfFixture(['MAT 101 Monday 08:00 to 09:00 LT 1'],{paddingBytes:8*1024*1024});
+    expect(bytes.length).toBeGreaterThan(8*1024*1024);
+    const run=vi.fn();
+    expect(await readPrivateAIPdf({AI:{run}},bytes)).toContain('MAT 101');
+    expect(run).not.toHaveBeenCalled();
+  });
   it('encodes RGB and alpha scan pixels in a PNG accepted by a real decompressor',async()=>{
     for(const channels of [1,3,4]){
       const data=Uint8ClampedArray.from({length:2*2*channels},(_,i)=>i*7),png=await scanImagePng({width:2,height:2,channels,data});

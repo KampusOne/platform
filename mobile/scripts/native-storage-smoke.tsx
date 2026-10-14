@@ -1,3 +1,4 @@
+import { apiDate, formatApiDate } from '../src/lib/api-date';
 // CI-only entry point. Never referenced by the production package.json or router.
 import { registerRootComponent } from 'expo';
 import * as Crypto from 'expo-crypto';
@@ -22,6 +23,10 @@ const scope = (user: string, university = campus) => JSON.stringify([user, unive
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 
 async function smoke() {
+  const postgres = '2026-09-15 13:31:40.722796+00';
+  check(apiDate(postgres)?.toISOString() === '2026-09-15T13:31:40.722Z', 'Android purchase timestamp normalization failed');
+  check(formatApiDate(postgres, {day:'numeric',month:'short'}).length > 0, 'Android purchase date rendering failed');
+  check(formatApiDate('not-a-date', {day:'numeric'}) === 'Date unavailable', 'Malformed purchase date crashed');
   const phase = await AsyncStorage.getItem(marker);
   setDeviceCacheScope(scope(owner), owner);
   if (!phase) {
