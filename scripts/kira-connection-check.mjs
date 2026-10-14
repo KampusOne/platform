@@ -122,11 +122,13 @@ export async function probe(request, env, readPrivateAIPdf, importReader) {
     const handwrittenPreview=await scheduleCheck('class','',{mimeType:'image/png',data:handwriting.pngBase64});
     const paperText=await readPrivateAIPdf(env,new Uint8Array(await new Blob([pdf]).arrayBuffer()));
     const printedPdfPreview=await scheduleCheck('class',paperText);
+    const calendarPhotoPreview=await scheduleCheck('calendar','',{mimeType:'image/png',data:env.PROBE_CALENDAR_PNG});
+    const examPhotoPreview=await scheduleCheck('exam','',{mimeType:'image/png',data:env.PROBE_EXAM_PNG});
     const [calendarPreview,examPreview]=await Promise.all([
       scheduleCheck('calendar','ACADEMIC CALENDAR 2026/2027. First semester: Registration 19 October 2026 to 23 October 2026; Lectures 26 October 2026 to 15 January 2027. Second semester: Lectures 22 March 2027 to 25 June 2027. Preserve all three activities.'),
       scheduleCheck('exam','EXAM TIMETABLE. MTH 201 Mathematics: 20 November 2026, 8:00 AM to 10:00 AM, LT 1. CSC 201 Computing: 23 November 2026, 9:00 AM to 11:00 AM, LT 2. Preserve both papers.'),
     ]);
-    return{image,pdf:pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper,photoPreview,handwrittenPreview,printedPdfPreview,calendarPreview,examPreview};
+    return{image,pdf:pdfConversion,unpaidCheckout,vision,handwritingVision,scannedPaper,photoPreview,handwrittenPreview,printedPdfPreview,calendarPreview,examPreview,calendarPhotoPreview,examPhotoPreview};
   };
   const [standard,pro,huggingface,conversion,uploads,banks]=await Promise.all([modelCheck('@cf/meta/llama-3.1-8b-instruct-fast'),modelCheck('@cf/meta/llama-3.3-70b-instruct-fp8-fast'),hfCheck(),convert('probe.txt',new Blob(['Monday: MAT 101, 8:00 AM to 9:00 AM, Lecture Hall 1.'],{type:'text/plain'})),extended(),bankSupport()]);
   return Response.json({kind:'kampusone-kira-probe-v1',standard,pro,huggingface,bachs,conversion,uploads,banks},{headers:{'Cache-Control':'no-store'}});
@@ -171,12 +173,14 @@ if(process.argv.includes('--self-test')) {
     if(typeof sessionToken!=='string')throw new Error('Missing preview session');
     const form=new FormData(),probeToken=randomBytes(32).toString('hex');
     const png=process.env.PROBE_VERIFY_UPLOADS==='true'?readFileSync(new URL('./fixtures/synthetic-timetable.png',import.meta.url)).toString('base64'):'';
+    const calendarPng=process.env.PROBE_VERIFY_UPLOADS==='true'?readFileSync(new URL('./fixtures/synthetic-calendar.png',import.meta.url)).toString('base64'):'';
+    const examPng=process.env.PROBE_VERIFY_UPLOADS==='true'?readFileSync(new URL('./fixtures/synthetic-exam.png',import.meta.url)).toString('base64'):'';
     const handwriting=process.env.PROBE_VERIFY_UPLOADS==='true'?JSON.parse(readFileSync(new URL('./fixtures/handwritten-timetable.json',import.meta.url),'utf8')):null;
     stage='document reader bundle';
     const {build}=createRequire(new URL('../server/package.json',import.meta.url))('esbuild');
     const reader=await build({stdin:{contents:"export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';export {generateAI} from './src/lib/ai-provider.ts';export {parseScheduleDocument} from './src/lib/schedule-document.ts';export {parseExamDocument} from './src/lib/exam-schedule.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent'});
     form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
-    form.set('probe.mjs',new Blob([`import * as importReader from './document-reader.mjs';const {readPrivateAIPdf}=importReader;export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)}},readPrivateAIPdf,importReader)};`],{type:'application/javascript+module'}),'probe.mjs');
+    form.set('probe.mjs',new Blob([`import * as importReader from './document-reader.mjs';const {readPrivateAIPdf}=importReader;export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_CALENDAR_PNG:${JSON.stringify(calendarPng)},PROBE_EXAM_PNG:${JSON.stringify(examPng)},PROBE_HANDWRITING:${JSON.stringify(handwriting)}},readPrivateAIPdf,importReader)};`],{type:'application/javascript+module'}),'probe.mjs');
     form.set('document-reader.mjs',new Blob([reader.outputFiles[0].text],{type:'application/javascript+module'}),'document-reader.mjs');
     form.set('wrangler-session-config',JSON.stringify({workers_dev:true}));
     stage='preview upload';
@@ -196,7 +200,7 @@ if(process.argv.includes('--self-test')) {
     if(result.banks)report(`Bank capability verification: ${JSON.stringify(result.banks)}`);
     if(process.env.PROBE_METADATA_ONLY==='true')report(`BACHS webhook targets: ${JSON.stringify(result.webhooks)}`);
     else if(process.env.PROBE_BANKS_ONLY!=='true')report(`Private file conversion: ${['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected'].includes(result.conversion?.outcome)?result.conversion.outcome:'unknown'}`);
-    if(process.env.PROBE_VERIFY_UPLOADS==='true'&&process.env.PROBE_BANKS_ONLY!=='true')for(const name of ['image','pdf','unpaidCheckout','vision','handwritingVision','scannedPaper','photoPreview','handwrittenPreview','printedPdfPreview','calendarPreview','examPreview']){
+    if(process.env.PROBE_VERIFY_UPLOADS==='true'&&process.env.PROBE_BANKS_ONLY!=='true')for(const name of ['image','pdf','unpaidCheckout','vision','handwritingVision','scannedPaper','photoPreview','handwrittenPreview','printedPdfPreview','calendarPreview','examPreview','calendarPhotoPreview','examPhotoPreview']){
       const item=result.uploads?.[name],outcome=item?.outcome,allowed=['conversion_succeeded','conversion_unusable','configuration_missing','provider_rejected','transport_failure','unpaid_checkout_succeeded','checkout_unusable','generation_succeeded','generation_unusable','preview_succeeded','preview_unusable'];
       report(`${name}: ${allowed.includes(outcome)?outcome:'unknown'}${Number.isSafeInteger(item?.rows)?` rows ${item.rows}`:''}${/^\d{4}$/.test(item?.code??'')?` code ${item.code}`:''}`);
       if(outcome!==(name.endsWith('Preview')?'preview_succeeded':name==='unpaidCheckout'?'unpaid_checkout_succeeded':['vision','handwritingVision'].includes(name)?'generation_succeeded':'conversion_succeeded'))process.exitCode=1;

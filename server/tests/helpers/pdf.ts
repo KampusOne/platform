@@ -1,5 +1,5 @@
 /** Small real PDF fixtures with accurate offsets, no external generator/runtime. */
-export function pdfFixture(pages: (string | null)[]): Uint8Array {
+export function pdfFixture(pages: (string | null)[], options: { paddingBytes?: number } = {}): Uint8Array {
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     `<< /Type /Pages /Count ${pages.length} /Kids [${pages.map((_, i) => `${4 + i * 2} 0 R`).join(" ")}] >>`,
@@ -18,6 +18,7 @@ export function pdfFixture(pages: (string | null)[]): Uint8Array {
       `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
     );
   }
+  if (options.paddingBytes) objects.push(`<< /Length ${options.paddingBytes} >>\nstream\n${" ".repeat(options.paddingBytes)}\nendstream`);
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
   for (const [index, value] of objects.entries()) {
