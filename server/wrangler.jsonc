@@ -18,6 +18,7 @@
   ],
   "vars": {
     "TIMETABLE_IMAGE_PROCESSOR_URL": "https://agents.kampusone.app/internal-processing/timetable-image",
+    "AI_GATEWAY_FALLBACK_ENABLED": "true",
     "ENVIRONMENT": "production",
     "SHARED_READ_CACHE_ENABLED": "true",
     "VERSIONED_READ_CACHE_ENABLED": "true",

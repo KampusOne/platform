@@ -5,6 +5,7 @@ import { incompleteSchedule, levelKey, readScheduleJSON, scheduleCoverage, verif
 import { timetableImageRows, timetableLayoutImage, type TimetableLayoutImage, type TimetableImageRow } from './timetable-image-grid';
 import { prepareTimetableImage } from './webp-pixels';
 import {remoteTimetableLayout,remoteTimetableRows} from './remote-timetable-image';
+import {academicGatewayConfigured} from './ai-gateway';
 
 const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const printedDays:Record<string,number>={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
@@ -32,7 +33,16 @@ export async function generateAcademicImport(env:AIEnvironment,input:AIInput,sou
     });
   }
   input.onScheduleRead?.(null,generated.text);
-  return {...generated,extracted:await parseOrRecoverAcademicImport(env,{...input,provider:generated.provider},generated.text,sourceText,kind,scope,layout)};
+  try {return {...generated,extracted:await parseOrRecoverAcademicImport(env,{...input,provider:generated.provider},generated.text,sourceText,kind,scope,layout)};}
+  catch(error) {
+    // One independent reread can repair a provider's incomplete inventory.
+    // The full source, original deadline and single import reservation survive.
+    if(!(error instanceof AIProviderError)||!['AI_INCOMPLETE_SCHEDULE','AI_INVALID_OUTPUT'].includes(error.reason)
+      ||generated.provider==='gateway'||!academicGatewayConfigured(env)||(input.deadline??0)-Date.now()<20000)throw error;
+    generated=await generateAI(env,{...initial,provider:'gateway',deadline:input.deadline!});
+    input.onScheduleRead?.(null,generated.text);
+    return {...generated,extracted:await parseOrRecoverAcademicImport(env,{...input,provider:'gateway'},generated.text,sourceText,kind,scope,layout)};
+  }
 }
 
 function matchesPixelInventory(text:string,layout:TimetableLayoutImage) {
@@ -76,10 +86,11 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
     const timeSlots=verifiedTimetableTimeSlots(grid.timeSlots);
     if(grid.levels.length>1) {
       if(!Array.isArray(grid.timeSlots))throw incompleteSchedule();
-      const crops:(TimetableImageRow[]&{batch?:AIMedia})|undefined=env.TIMETABLE_IMAGE_PROCESSOR_URL?await remoteTimetableRows(env,input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel,input.deadline,input.provider==='groq'):timetableImageRows(input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel);
+      const batchProvider=input.provider==='groq'||input.provider==='gateway';
+      const crops:(TimetableImageRow[]&{batch?:AIMedia})|undefined=env.TIMETABLE_IMAGE_PROCESSOR_URL?await remoteTimetableRows(env,input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel,input.deadline,batchProvider):timetableImageRows(input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel);
       if(crops) {
         const atlas=crops.batch;
-        if(atlas&&input.provider==='groq'){
+        if(atlas&&batchProvider){
           const labels=Object.fromEntries(crops.map(crop=>[String(crop.day),Object.fromEntries(Array.from({length:crop.cells.length+1},(_,i)=>[String(i),i===0?'printed level':'exact panel text or empty string']))]));
           const result=await generateAI(env,{...input,media:atlas,scheduleLayout:true,
             prompt:`Transcribe this contact sheet. Each strip is headed DAY followed by its weekday number. The numbered panels BELOW that heading belong only to that day. Panel 0 is its printed level; later panels are its individual course cells. Return ONLY ${JSON.stringify({labels,coverage:{complete:true,uncertain:[]}})}. Keep every day and panel key exactly as supplied. Copy exact labels, including slash alternatives, laboratories and parentheses. Use "" for blank panels. Do not infer clocks or move text between panels. Mark incomplete if any selected panel is unreadable.`,
@@ -133,7 +144,7 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
       // every requested day from the original and validate the assembled grid.
       console.info(JSON.stringify({event:'ai.timetable.original_row_read',reason:'pixel_geometry_unavailable'}));
     }
-    if(input.provider==='groq'){
+    if(input.provider==='groq'||input.provider==='gateway'){
       const result=await generateAI(env,{...input,scheduleLayout:true,
         prompt:`Read every selected ${printedLevel||'unlabelled'} level row for these weekdays: ${JSON.stringify(ordered)}. Use the original image, ignore other levels. The already verified time columns are ${JSON.stringify(timeSlots)}. Do not read clocks again. Return ONLY {"rows":[{"dayOfWeek":1,"level":${JSON.stringify(printedLevel)},"cells":[{"from":0,"to":1,"label":"exact visible text or empty string"}]}],"coverage":{"complete":true,"daysRead":${JSON.stringify(ordered)},"rowCount":${ordered.length},"uncertain":[]}}. Include exactly one row for EACH requested weekday. Every row must cover all ${timeSlots.length} columns without gaps or overlaps, including blanks. Follow actual merged-cell borders. Preserve slash alternatives and parentheses. Never move a course into a blank column or copy another level. If any selected cell or border is unreadable mark incomplete.`,
         systemContext:'Internal full-week transcription against one verified time-heading inventory. Return only rows, cell boundaries and exact labels. Column indices start at the first printed time column, excluding DAYS and LEVEL. from is inclusive; to is exclusive. No clocks or extra courses.',

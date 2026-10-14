@@ -4,12 +4,14 @@ import { scheduleInstruction, parseScheduleDocument } from "./schedule-document.
 import { workersAICompletion, workersAIConfiguration, type WorkersAIEnvironment } from './ai-workers.ts';
 import {geminiAcademicCompletion} from './ai-gemini.ts';
 import {groqAcademicCompletion,groqCompletion} from './ai-groq.ts';
+import {academicGatewayConfigured,gatewayAcademicCompletion} from './ai-gateway.ts';
 /** All inference stays server-side behind provider adapters. */
 export type AIMode = "study" | "summary" | "explanation" | "quiz" | "notes" | "timetable";
 export type AITier = "standard" | "pro";
-export type AIProvider = "huggingface" | "workers-ai" | "gemini" | "groq";
+export type AIProvider = "huggingface" | "workers-ai" | "gemini" | "groq" | "gateway";
 export type AIEnvironment = WorkersAIEnvironment & {
   JWT_SECRET?:string; TIMETABLE_IMAGE_PROCESSOR_URL?:string;
+  AI_GATEWAY_FALLBACK_ENABLED?:string;
   AI_ASSISTANT_ENABLED?: string; HF_TOKEN?: string; HF_CHAT_MODEL?: string;
   HF_REASONING_MODEL?: string; HF_VISION_MODEL?: string; HF_PRO_MODEL?: string; HF_TRANSCRIPTION_MODEL?: string;
   HF_TRANSCRIPTION_FALLBACK_MODEL?: string;
@@ -116,6 +118,7 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
   const deadline = Math.min(Date.now() + budget.timeoutMs, input.deadline ?? Infinity);
   if (deadline <= Date.now()) throw new AIProviderError(504, 'AI_TIMEOUT', 'Reading took too long. Your file and draft are kept.');
   try {
+    if(input.mode==='timetable'&&input.provider==='gateway')return await gatewayAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
     if(input.mode==='timetable'&&input.provider==='groq'&&env.GROQ_API_KEY)return await groqAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
     if(input.mode==='timetable'&&input.provider==='gemini'&&env.GEMINI_API_KEY)return await geminiAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
     let provider: AIProvider = config.provider;
@@ -194,16 +197,21 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
       console.warn(JSON.stringify({event:'ai.provider.fallback',to:'groq',reason:error.reason}));
       return readAICompletion(await groqCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher,tools),input.mode,'groq');
     }
-    if(input.mode==='timetable'&&error instanceof AIProviderError&&error.status>=500&&deadline-Date.now()>1000){
+    if(input.mode==='timetable'&&input.provider!=='gateway'&&error instanceof AIProviderError&&error.status>=500&&deadline-Date.now()>1000){
       let last=error;
-      if(env.GROQ_API_KEY){
+      if(env.GROQ_API_KEY&&input.provider!=='groq'){
         console.warn(JSON.stringify({event:'ai.provider.fallback',to:'groq',reason:error.reason}));
         try{return await groqAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);}
         catch(failure){if(!(failure instanceof AIProviderError))throw failure;last=failure;}
       }
-      if(env.GEMINI_API_KEY&&deadline-Date.now()>1000){
+      if(env.GEMINI_API_KEY&&input.provider!=='gemini'&&deadline-Date.now()>1000){
         console.warn(JSON.stringify({event:'ai.provider.fallback',to:'gemini',reason:last.reason}));
-        return geminiAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
+        try{return await geminiAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);}
+        catch(failure){if(!(failure instanceof AIProviderError))throw failure;last=failure;}
+      }
+      if(academicGatewayConfigured(env)&&deadline-Date.now()>1000){
+        console.warn(JSON.stringify({event:'ai.provider.fallback',to:'gateway',reason:last.reason}));
+        return gatewayAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
       }
       throw last;
     }
