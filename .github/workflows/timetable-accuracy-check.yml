@@ -2,7 +2,7 @@ name: Verify complete timetable extraction
 on:
   push:
     branches: [main, fix/timetable-accuracy-credit-recovery-20261014]
-    paths: ['scripts/kira-connection-check.mjs', 'scripts/fixtures/uniben-engineering-*', 'server/scripts/verify-academic-imports.ts', 'server/src/lib/ai*.ts', 'server/src/lib/timetable-extraction.ts', 'server/src/lib/academic-import.ts', 'server/src/lib/schedule-document.ts', 'server/src/routes/ai.ts', '.github/workflows/timetable-accuracy-check.yml']
+    paths: ['scripts/kira-connection-check.mjs', 'scripts/fixtures/uniben-engineering-*', 'server/scripts/verify-academic-imports.ts', 'server/src/lib/ai*.ts', 'server/src/lib/timetable-*.ts', 'server/src/lib/academic-import*.ts', 'server/src/lib/schedule-document.ts', 'server/src/routes/ai.ts', '.github/workflows/timetable-accuracy-check.yml']
   workflow_dispatch:
 permissions:
   contents: read

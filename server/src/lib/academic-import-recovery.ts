@@ -2,17 +2,23 @@ import { generateAI, type AIEnvironment, type AIInput } from './ai-provider';
 import { parseAcademicImport } from './academic-import';
 import { AIProviderError } from './ai-error';
 import { incompleteSchedule, levelKey, readScheduleJSON, scheduleCoverage, type TimetableScope } from './timetable-extraction';
-import { timetableImageRows } from './timetable-image-grid';
+import { timetableImageRows, timetableLayoutImage } from './timetable-image-grid';
 
 const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
 export async function generateAcademicImport(env:AIEnvironment,input:AIInput,sourceText:string,
   kind?:'class'|'calendar'|'exam',scope:TimetableScope={}) {
-  const initial=input.media&&scope.level&&kind!=='calendar'&&kind!=='exam'?{...input,
+  const layout=input.media&&scope.level&&kind!=='calendar'&&kind!=='exam'?timetableLayoutImage(input.media):undefined;
+  const initial=input.media&&scope.level&&kind!=='calendar'&&kind!=='exam'?{...input,...(layout?{media:layout,scheduleLayout:true}:{}),
     prompt:'FIRST READ ONLY THE LAYOUT. If this image is a timetable grid, return its documentType, all printed timeSlots in left-to-right 24-hour order, the printed levels in their TOP-TO-BOTTOM row order within each day, and daysSeen in their TOP-TO-BOTTOM printed order. Set grid.rows:[], entries:[], events:[] and coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]}. Do not transcribe any courses yet. The next internal step reads each selected row. If this is a simple list instead of a grid, return the complete normal schedule with entries/events and coverage.\nStudent source context:\n'+input.prompt,
-    systemContext:(input.systemContext??'')+'\nThis is an internal layout read. A grid layout is intentionally not a finished schedule and will never be shown or saved as one. Read the time-column headers, weekdays and level labels only. The application assembles every selected weekday row before import.',
+    systemContext:(input.systemContext??'')+'\nThis is an internal layout read. A grid layout is intentionally not a finished schedule and will never be shown or saved as one. Read the time-column headers, weekdays and level labels only. The application assembles every selected weekday row before import.'+(layout?' The numbered contact sheet contains time headings in panels 0 then 1, followed by all day/level labels in panel order, left to right then top to bottom. Panel numbers are not source text. Copy the first day\'s level labels in their printed order and every distinct weekday. No course transcription is needed.':''),
   }:input;
-  const generated=await generateAI(env,initial);
+  const read=()=>generateAI(env,layout?{...initial,deadline:Math.min(input.deadline??Infinity,Date.now()+30000)}:initial);
+  let generated:Awaited<ReturnType<typeof generateAI>>;
+  try{generated=await read();}catch(error){
+    if(!layout||!(error instanceof AIProviderError)||error.status<500||(input.deadline??0)-Date.now()<30000)throw error;
+    generated=await read();
+  }
   input.onScheduleRead?.(null,generated.text);
   return {...generated,extracted:await parseOrRecoverAcademicImport(env,input,generated.text,sourceText,kind,scope)};
 }

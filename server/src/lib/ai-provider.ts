@@ -16,7 +16,7 @@ export type AIEnvironment = WorkersAIEnvironment & {
 };
 export type AIMedia = { mimeType: string; data: string };
 export type AITurn = { prompt: string; text: string };
-export type AIInput = { mode: AIMode; prompt: string; requestPrompt?: string; sourceDocument?: boolean; media?: AIMedia; history?: AITurn[]; provider?: AIProvider; tier?: AITier; systemContext?: string; deadline?: number; onScheduleRead?:(day:number|null,text:string)=>void; onProgress?:(stage:'reading'|'analysing')=>Promise<void> };
+export type AIInput = { mode: AIMode; prompt: string; requestPrompt?: string; sourceDocument?: boolean; media?: AIMedia; history?: AITurn[]; provider?: AIProvider; tier?: AITier; systemContext?: string; deadline?: number; scheduleLayout?:boolean; onScheduleRead?:(day:number|null,text:string)=>void; onProgress?:(stage:'reading'|'analysing')=>Promise<void> };
 export type AITool = { type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } };
 export type AIToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 export type AIMessage = { role: "system" | "user" | "assistant" | "tool"; content: unknown; tool_calls?: AIToolCall[]; tool_call_id?: string };
@@ -98,8 +98,8 @@ export function aiMessages(input: AIInput): AIMessage[] {
     { role: "user", content: input.media ? content : input.prompt || "Read the supplied material." },
   ];
 }
-export function aiCompletionBudget(input: Pick<AIInput,"mode"|"tier"|"sourceDocument">) {
-  if (input.mode === "timetable") return { maxTokens: 8192, timeoutMs: 150000 };
+export function aiCompletionBudget(input: Pick<AIInput,"mode"|"tier"|"sourceDocument"|"scheduleLayout">) {
+  if (input.mode === "timetable") return { maxTokens: input.scheduleLayout?2048:8192, timeoutMs: 150000 };
   const detailed = input.mode === "explanation" || input.mode === "notes";
   // Reading a document and producing revision notes needs more time than a
   // short Ask turn. The deadline covers every model attempt, including fallback.

@@ -28,6 +28,75 @@ function groups(values:number[]) {
 }
 const digitRows=['111101101101111','010110010010111','111001111100111','111001111001111','101101111001001','111100111001111','111100111101111','111001001001001','111101111101111','111101111001111'];
 
+/** The first vision read needs only headings and the day/level inventory. A
+ * compact contact sheet removes course distractions and large JPEG payloads.
+ * All source labels are retained, in numbered panel order, without text OCR. */
+export function timetableLayoutImage(media:AIMedia):AIMedia|undefined {
+  try {
+    const im=pixels(media);if(!im||im.width*im.height>maxPixels)return;
+    const radius=Math.max(1,Math.round(im.width/700));
+    const gray=(x:number,y:number)=>{const p=(y*im.width+x)*4;return (im.data[p]!+im.data[p+1]!+im.data[p+2]!)/3;};
+    let horizontal:number[]=[];
+    const left=Math.ceil(im.width*.10),right=Math.floor(im.width*.98);
+    for(const threshold of [180,200,220]) {
+      const candidates:number[]=[];
+      for(let y=radius;y<im.height-radius;y++) {
+        let count=0;for(let x=left;x<right;x++){for(let dy=-radius;dy<=radius;dy++)if(gray(x,y+dy)<threshold){count++;break;}}
+        if(count>(right-left)*.8)candidates.push(y);
+      }
+      const lines=groups(candidates).filter(g=>g.length<=radius*5).map(g=>Math.round(g.reduce((a,b)=>a+b,0)/g.length));
+      while(lines.length>3&&lines[1]!-lines[0]!>(lines[2]!-lines[1]!)*2)lines.shift();
+      const gaps=lines.slice(1).map((y,i)=>y-lines[i]!);const median=gaps.slice().sort((a,b)=>a-b)[Math.floor(gaps.length/2)];
+      if(lines.length>=12&&median&&gaps.every(g=>g>=radius*3&&g<=median*3)&&gaps[0]!<=median*1.8&&lines.length>horizontal.length)horizontal=lines;
+    }
+    if(!horizontal.length)return;
+    const top=horizontal[0]!,bottom=horizontal.at(-1)!,candidates:number[]=[];
+    for(let x=radius;x<im.width-radius;x++) {
+      let count=0;for(let y=top;y<bottom;y++)for(let dx=-radius;dx<=radius;dx++)if(gray(x+dx,y)<180){count++;break;}
+      if(count>(bottom-top)*.7)candidates.push(x);
+    }
+    const vertical=groups(candidates).filter(g=>g.length<=radius*7).map(g=>Math.round(g.reduce((a,b)=>a+b,0)/g.length));
+    if(vertical.length<8||vertical.length>27)return;
+    const headerIndex=horizontal.findIndex((y,i)=>{
+      const end=horizontal[i+1];if(end===undefined)return false;
+      let walls=0;
+      for(const x of vertical) {
+        let count=0,total=0;for(let yy=y+radius*2;yy<end-radius;yy++){total++;for(let dx=-radius;dx<=radius;dx++)if(gray(x+dx,yy)<200){count++;break;}}
+        if(total&&count/total>=.90)walls++;
+      }
+      return walls>=vertical.length*.85;
+    });
+    if(headerIndex<0)return;
+    horizontal=horizontal.slice(headerIndex);
+    const headerTop=horizontal[0]!;
+    const middle=2+Math.floor((vertical.length-3)/2),scale=2;
+    const strips=[{x0:vertical[2]!,x1:vertical[middle]!,y0:headerTop,y1:horizontal[1]!},
+      {x0:vertical[middle]!,x1:vertical.at(-1)!,y0:headerTop,y1:horizontal[1]!}];
+    let row=1;
+    while(row<horizontal.length-1) {
+      let end=row+1;while(end+1<horizontal.length&&horizontal[end+1]!-horizontal[row]!<=100)end++;
+      strips.push({x0:vertical[0]!,x1:vertical[2]!,y0:horizontal[row]!,y1:horizontal[end]!});row=end;
+    }
+    const width=Math.max(...strips.slice(0,2).map(s=>(s.x1-s.x0)*scale+32),(vertical[2]!-vertical[0]!)*scale*3+96);
+    const headerHeight=(horizontal[1]!-headerTop)*scale+30,tileWidth=(vertical[2]!-vertical[0]!)*scale+32,tileHeight=230;
+    const height=headerHeight*2+Math.ceil((strips.length-2)/3)*tileHeight;
+    if(width*height>maxPixels)return;
+    const out=new Uint8Array(width*height*4).fill(255);
+    for(let i=0;i<strips.length;i++) {
+      const s=strips[i]!,baseX=i<2?0:((i-2)%3)*tileWidth,baseY=i<2?i*headerHeight:headerHeight*2+Math.floor((i-2)/3)*tileHeight;
+      for(const [j,digit] of String(i).split('').entries())for(let r=0;r<5;r++)for(let c=0;c<3;c++)if(digitRows[Number(digit)]![r*3+c]==='1')for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++) {
+        const p=((baseY+4+r*2+dy)*width+baseX+4+j*8+c*2+dx)*4;out[p]=out[p+1]=out[p+2]=0;
+      }
+      for(let y=s.y0;y<=s.y1;y++)for(let x=s.x0;x<=s.x1;x++)for(let dy=0;dy<scale;dy++)for(let dx=0;dx<scale;dx++) {
+        const p=((baseY+20+(y-s.y0)*scale+dy)*width+baseX+16+(x-s.x0)*scale+dx)*4;
+        const shade=gray(x,y);out[p]=out[p+1]=out[p+2]=shade>235?255:Math.round(shade/16)*16;
+      }
+    }
+    const encoded=encodePng({width,height,data:out,channels:4,depth:8});let binary='';for(let i=0;i<encoded.length;i+=8192)binary+=String.fromCharCode(...encoded.subarray(i,i+8192));
+    return {mimeType:'image/png',data:btoa(binary)};
+  }catch{return;}
+}
+
 /** Detect ruled table borders from private pixels, then isolate the selected
  * level's cells. Models transcribe cell labels; they never choose the level,
  * column index or duration. Nothing leaves the existing private AI adapter.

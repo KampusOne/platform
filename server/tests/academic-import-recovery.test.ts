@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseOrRecoverAcademicImport } from '../src/lib/academic-import-recovery';
+import { generateAcademicImport,parseOrRecoverAcademicImport } from '../src/lib/academic-import-recovery';
+import {AIProviderError} from '../src/lib/ai-error';
 import { generateAI, type AIInput } from '../src/lib/ai-provider';
 vi.mock('../src/lib/ai-provider',()=>({generateAI:vi.fn()}));
 const source=JSON.parse(readFileSync(new URL('../../scripts/fixtures/uniben-engineering-2026.json',import.meta.url),'utf8'));
@@ -19,6 +20,15 @@ const response=(day:number)=>({labels:structuredClone(labels[day]),coverage:{com
 const dayOf=(request:AIInput)=>names.findIndex(name=>request.prompt.includes('for '+name+'.'));
 beforeEach(()=>{vi.mocked(generateAI).mockReset().mockImplementation(async(_env,request)=>({text:JSON.stringify(response(dayOf(request))),provider:'workers-ai'}));});
 describe('one-import private cell transcription',()=>{
+  it('retries a transient compact layout failure once and preserves the full import deadline for the cells',async()=>{
+    const value=structuredClone(source);value.coverage={complete:false,daysRead:[],rowCount:0,uncertain:[]};value.grid.rows=[];
+    vi.mocked(generateAI).mockRejectedValueOnce(new AIProviderError(503,'AI_PROVIDER_BUSY','busy')).mockResolvedValueOnce({text:JSON.stringify(value),provider:'workers-ai'});
+    const request=input(),result=await generateAcademicImport({},request,'','class',{level:'200'});
+    expect(result.extracted.entries).toHaveLength(20);expect(generateAI).toHaveBeenCalledTimes(7);
+    const calls=vi.mocked(generateAI).mock.calls.map(([,call])=>call);
+    expect(calls.slice(0,2).every(call=>call.scheduleLayout&&call.media?.mimeType==='image/png'&&call.deadline!<request.deadline!)).toBe(true);
+    expect(calls.slice(2).every(call=>call.deadline===request.deadline)).toBe(true);
+  });
   it('assembles all five selected rows under the same deadline without asking the model for clocks or row selection',async()=>{
     const request=input(),result=await parseOrRecoverAcademicImport({},request,broken(),'','class',{level:'200'});
     expect(result.entries).toHaveLength(20);expect(generateAI).toHaveBeenCalledTimes(5);
