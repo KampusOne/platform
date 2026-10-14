@@ -48,7 +48,7 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
         : result.documentType === 'class_timetable' && result.entries.some(entry => {const row=entry as {courseCode:string;dayOfWeek:number;startsAt:string;endsAt:string};return row.courseCode.replace(/\s/g,'') === 'MAT101' && row.dayOfWeek===1 && row.startsAt==='08:00' && row.endsAt==='09:00';});
       return { name, outcome: valid ? 'extraction_succeeded' : 'extraction_unusable', classes: result.entries.length,
         events: result.events.length, elapsedMs: Date.now() - start,
-        ...(name.startsWith('faculty')&&!valid?{mismatches:expectedFaculty.filter(expected=>!actualFaculty.some(actual=>JSON.stringify(actual)===JSON.stringify(expected))),actual:actualFaculty}: {}) };
+        ...(name.startsWith('faculty')&&!valid?{mismatches:expectedFaculty.filter(expected=>!actualFaculty.some(actual=>JSON.stringify(actual)===JSON.stringify(expected))),actual:actualFaculty,diagnostic:{reads}}: {}) };
     } catch (error) {
       let diagnostic: Record<string,unknown>|undefined;
       if(name.startsWith('faculty'))try{const value=JSON.parse(generatedText);diagnostic={documentType:value.documentType,coverage:value.coverage,warnings:value.warnings,grid:value.grid};}catch{diagnostic={jsonReadable:false};}

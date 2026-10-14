@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { generateAcademicImport } from './academic-import-recovery';
+import { prepareTimetableImage, webpDimensions } from './webp-pixels';
+import { timetableImageRows, timetableLayoutImage } from './timetable-image-grid';
 const slots = [{ startsAt: '08:00', endsAt: '09:00' }, { startsAt: '09:00', endsAt: '10:00' }];
 const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const layout = { documentType: 'class_timetable', entries: [], events: [], grid: { timeSlots: slots, levels: ['100', '200'], daysSeen: [1, 2], rows: [] }, coverage: { complete: false, daysRead: [], rowCount: 0, uncertain: [] } };
@@ -22,6 +24,15 @@ function fallbackFixture(change = () => { }) {
     return { env, input, calls };
 }
 describe('complete source-image import recovery', () => {
+    it('decodes the private WebP original without losing grid geometry or exposing a URL',async()=>{
+        const bytes=readFileSync(new URL('../../../scripts/fixtures/uniben-engineering-2026.webp',import.meta.url));
+        expect(webpDimensions(bytes)).toEqual({width:691,height:471});
+        const original={mimeType:'image/webp',data:bytes.toString('base64')};
+        const prepared=await prepareTimetableImage(original);
+        expect(original.mimeType).toBe('image/webp');expect(prepared.mimeType).toBe('image/png');
+        expect(timetableLayoutImage(prepared)).toMatchObject({timeColumnCount:10,levelRowCount:25});
+        expect(timetableImageRows(prepared,10,['100','200','300','400','500'],[1,2,3,4,5],'100')).toHaveLength(5);
+    });
     it('reads every selected weekday when pixel border isolation is unavailable', async () => {
         const f = fallbackFixture(), result = await generateAcademicImport(f.env, f.input, '', 'class', { level: '100' });
         expect(result.extracted.entries).toMatchObject([{ courseCode: 'MTH101', dayOfWeek: 1, startsAt: '09:00', endsAt: '10:00' }, { courseCode: 'PHY101', dayOfWeek: 2, startsAt: '09:00', endsAt: '10:00' }]);

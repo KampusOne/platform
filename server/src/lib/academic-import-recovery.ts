@@ -2,7 +2,8 @@ import { generateAI, type AIEnvironment, type AIInput } from './ai-provider';
 import { parseAcademicImport } from './academic-import';
 import { AIProviderError } from './ai-error';
 import { incompleteSchedule, levelKey, readScheduleJSON, scheduleCoverage, type TimetableScope } from './timetable-extraction';
-import { timetableImageRows, timetableLayoutImage } from './timetable-image-grid';
+import { timetableImageRows, timetableLayoutImage, type TimetableLayoutImage } from './timetable-image-grid';
+import { prepareTimetableImage } from './webp-pixels';
 
 const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const printedDays:Record<string,number>={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
@@ -10,6 +11,7 @@ const printedDay=(value:unknown)=>typeof value==='string'?printedDays[value.trim
 
 export async function generateAcademicImport(env:AIEnvironment,input:AIInput,sourceText:string,
   kind?:'class'|'calendar'|'exam',scope:TimetableScope={}) {
+  if(input.media&&kind!=='calendar'&&kind!=='exam')input={...input,media:await prepareTimetableImage(input.media)};
   const needsLayout=Boolean(input.media&&scope.level&&kind!=='calendar'&&kind!=='exam');
   const layout=needsLayout?timetableLayoutImage(input.media!):undefined;
   const initial=needsLayout?{...input,scheduleLayout:true,...(layout?{media:layout}:{}),
@@ -22,15 +24,28 @@ export async function generateAcademicImport(env:AIEnvironment,input:AIInput,sou
     if(!needsLayout||!(error instanceof AIProviderError)||error.status<500||(input.deadline??0)-Date.now()<60000)throw error;
     generated=await read();
   }
+  if(layout&&!matchesPixelInventory(generated.text,layout)) {
+    generated=await generateAI(env,{...initial,deadline:Math.min(input.deadline??Infinity,Date.now()+35000),
+      prompt:initial.prompt+`\nThe application verified ${layout.timeColumnCount} printed time columns and ${layout.levelRowCount} individual level rows from the pixels. Your inventory must account for all of them. The whole day/level strip is in panel 2. Read it top to bottom, including every weekday. Do not combine or skip time columns or level labels.`,
+    });
+  }
   input.onScheduleRead?.(null,generated.text);
-  return {...generated,extracted:await parseOrRecoverAcademicImport(env,input,generated.text,sourceText,kind,scope)};
+  return {...generated,extracted:await parseOrRecoverAcademicImport(env,input,generated.text,sourceText,kind,scope,layout)};
+}
+
+function matchesPixelInventory(text:string,layout:TimetableLayoutImage) {
+  try {
+    const value=readScheduleJSON(text),grid=value.grid as {timeSlots?:unknown;levels?:unknown;daysSeen?:unknown}|undefined;
+    return Array.isArray(grid?.timeSlots)&&grid.timeSlots.length===layout.timeColumnCount
+      &&Array.isArray(grid.levels)&&Array.isArray(grid.daysSeen)&&grid.levels.length*grid.daysSeen.length===layout.levelRowCount;
+  } catch {return false;}
 }
 
 /** A dense grid is one user import even when the provider needs focused reads.
  * Never expose a subset: all day rows must finish within the original deadline,
  * agree on their printed time headers, and pass the same full-grid validator. */
 export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AIInput, text: string, sourceText: string,
-  kind?: 'class'|'calendar'|'exam', scope:TimetableScope={}) {
+  kind?: 'class'|'calendar'|'exam', scope:TimetableScope={}, verifiedLayout?:TimetableLayoutImage) {
   let parsed:ReturnType<typeof parseAcademicImport>|undefined, failure:unknown;
   try { parsed=parseAcademicImport(text,sourceText,kind,{strict:true,scope}); }
   catch(error) {failure=error;}
@@ -39,6 +54,8 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
   let value:Record<string,unknown>;
   try {value=readScheduleJSON(text);}catch{if(parsed)return parsed;throw failure;}
   const grid=value.grid as {daysSeen?:unknown;levels?:unknown;timeSlots?:unknown}|undefined;
+  const pixelLayout=verifiedLayout??(input.media&&scope.level&&kind!=='calendar'&&kind!=='exam'?timetableLayoutImage(input.media):undefined);
+  if(pixelLayout&&!matchesPixelInventory(text,pixelLayout))throw incompleteSchedule('The time columns or weekday rows were missed while reading. Your full file is kept; no import credit was used.');
   const dense=input.media&&scope.level&&Array.isArray(grid?.levels)&&grid.levels.length>1;
   if(parsed&&!dense)return parsed;
   {
