@@ -62,7 +62,7 @@ beforeEach(async () => {
   env.AI_ASSISTANT_ENABLED = "true";
   provider.mockReset();
   provider.mockImplementation(async url => String(url).includes("huggingface.co")
-    ? Response.json({ choices: [{ finish_reason: "stop", message: { content: '{"entries":[],"warnings":[]}' } }] })
+    ? Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({documentType:'class_timetable',entries:[{title:'Mathematics',courseCode:'MTH201',dayOfWeek:1,startsAt:'08:00',endsAt:'10:00'}],events:[],warnings:[],coverage:{complete:true,daysRead:[1],rowCount:1,uncertain:[]}}) } }] })
     : Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "Voltage equals current times resistance." }] } }] }));
   vi.stubGlobal("fetch", provider);
 });
@@ -88,6 +88,7 @@ describe("account-specific AI daily allowance", () => {
     expect(rows.rows[0]?.count).toBe(16);
   });
   it("enforces calendar imports before provider work and preserves the quota error on replay", async () => {
+    provider.mockImplementation(async()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({documentType:'academic_calendar',entries:[],events:[{title:'Exams',startsOn:'2026-11-05',endsOn:'2026-11-09',semester:''}],warnings:[],coverage:{complete:true,daysRead:[],rowCount:1,uncertain:[]}})}}]}));
     for(let i=0;i<3;i++) await json(await request("/ai","POST",{...draft("timetable"),prompt:"Extract this academic calendar exam period."},other));
     const fourth={...draft("timetable"),prompt:"Extract this academic calendar exam period."};
     const denied=await json(await request("/ai","POST",fourth,other),429);

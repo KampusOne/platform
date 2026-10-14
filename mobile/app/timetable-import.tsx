@@ -20,7 +20,6 @@ import { cacheScopeForUser } from '@/src/lib/request-policy';
 import { syncAlarms, type Alarm } from "@/src/lib/alarms";
 type Entry = { title: string; courseCode: string; venue: string; lecturer: string; dayOfWeek: number; startsAt: string; endsAt: string; reminderMinutes: number; reminderEnabled: boolean };
 type Event = {title:string;startsOn:string;endsOn:string;semester:string};
-type Draft = { notes?:string; entries: Entry[]; events?:Event[]; documentType?:string; text: string; attachment?:StagedAttachment|undefined; warnings?: string[]; key?: string; saveKey?:string };
 const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 export default function ImportTimetable() {
   const {user}=useAuth();return <ImportTimetableForm key={user?cacheScopeForUser(user):'signed-out'}/>;
@@ -28,7 +27,9 @@ export default function ImportTimetable() {
 function ImportTimetableForm() {
   const {kind}=useLocalSearchParams<{kind?:string}>();
   const [notes,setNotes]=useState("");
-  const {user}=useAuth(), {theme}=useAppearance(), toast=useToast();
+  const {user,profile}=useAuth(), {theme}=useAppearance(), toast=useToast();
+  const [scheduleLevel,setScheduleLevel]=useState(''),[courseCodes,setCourseCodes]=useState('');
+  const levelEdited=useRef(false);
   const [entries,setEntries]=useState<Entry[]>([]),[events,setEvents]=useState<Event[]>([]),[documentType,setDocumentType]=useState("");
   const [text,setText]=useState(""),[attachment,setAttachment]=useState<StagedAttachment>(),[paste,setPaste]=useState(true);
   const [warnings,setWarnings]=useState<string[]>([]),[busy,setBusy]=useState(false),[completed,setCompleted]=useState(false),[error,setError]=useState(""),[expanded,setExpanded]=useState<number|null>(null);
@@ -43,27 +44,22 @@ function ImportTimetableForm() {
   const restored=useOwnedDraftRestore<unknown>('timetable-draft.'+user?.id,value=>{
     if(value===null)return;
     const d=restoreTimetableDraft(value);
-    setEntries(d.entries);setEvents(d.events);setDocumentType(d.documentType);setText(d.text);setNotes(d.notes);setPaste(true);setAttachment(d.attachment);setWarnings(d.warnings);key.current=d.key??randomUUID();saveKey.current=d.saveKey??randomUUID();
+    setEntries(d.entries);setEvents(d.events);setDocumentType(d.documentType);setText(d.text);setNotes(d.notes);setPaste(true);setAttachment(d.attachment);setWarnings(d.warnings);setScheduleLevel(d.scheduleLevel);setCourseCodes(d.courseCodes);levelEdited.current=Boolean(d.scheduleLevel);key.current=d.key??randomUUID();saveKey.current=d.saveKey??randomUUID();
   },Boolean(user?.id));
   const loaded=restored.ready&&!completed;
-  const draft=()=>({notes,entries,events,documentType,text,attachment,warnings,key:key.current,saveKey:saveKey.current});
+  const draft=()=>({notes,scheduleLevel,courseCodes,entries,events,documentType,text,attachment,warnings,key:key.current,saveKey:saveKey.current});
   const draftSave=useOwnedDraftSave('timetable-draft.'+user?.id,draft(),loaded,250);
-  function changed(){key.current=randomUUID();saveKey.current=randomUUID();setError("");}
+  function changed(){key.current=randomUUID();saveKey.current=randomUUID();setError("");setEntries([]);setEvents([]);setDocumentType('');setWarnings([]);}
   async function attach(){if(locked.current||!loaded)return;const version=generation.current;locked.current=true;setBusy(true);setStage("selecting");try{const f=await pickAttachment();if(f&&version===generation.current){setAttachment(f);setStage("selected");changed();}}catch(e){if(version===generation.current){setStage("failed");setError(e instanceof Error?e.message:"Choose your file again.");}}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
-  async function scan(){if(locked.current||!loaded||!user?.id)return;const controller=new AbortController();requestController.current=controller;const version=generation.current,owner=account.current;locked.current=true;setBusy(true);setError("");setStage(attachment&&!attachment.mediaId?"uploading":"reading");setUploadFraction(0);try{
-    await draftSave.persist(draft());if(version!==generation.current)return;
-    const file=attachment?await uploadAttachment(attachment,user!.id,text,"standard",fraction=>{if(version===generation.current)setUploadFraction(fraction);},{signal:controller.signal,onStage:next=>{if(version===generation.current)setStage(next);},onUploaded:uploaded=>{if(version===generation.current)setAttachment(uploaded);}}):undefined;if(version!==generation.current)return;setAttachment(file);setStage("analysing");
-    await draftSave.persist({...draft(),attachment:file});
+  async function scan(){if(locked.current||!loaded||!user?.id)return;
+    const selectedCourses=courseCodes.split(/[,;\n]+/).map(code=>code.trim()).filter(Boolean);
+    if(kind!=='calendar'&&((scheduleLevel&&!/^\d{3}$/.test(scheduleLevel))||selectedCourses.some(code=>! /^[A-Za-z]{2,8}\s*\d{3,4}[A-Za-z]?$/.test(code)))){setError('Use a level such as 200 and separate course codes with commas.');return;}
+    const controller=new AbortController();requestController.current=controller;const version=generation.current;locked.current=true;setBusy(true);setError("");setEntries([]);setEvents([]);setWarnings([]);setDocumentType('');setStage(attachment&&!attachment.mediaId?"uploading":"reading");setUploadFraction(0);let prepared=attachment;try{
+    await draftSave.persist({...draft(),entries:[],events:[],warnings:[],documentType:''});if(version!==generation.current)return;
+    const file=attachment?await uploadAttachment(attachment,user!.id,text,"standard",fraction=>{if(version===generation.current)setUploadFraction(fraction);},{signal:controller.signal,onStage:next=>{if(version===generation.current)setStage(next);},onUploaded:uploaded=>{prepared=uploaded;if(version===generation.current)setAttachment(uploaded);}}):undefined;if(version!==generation.current)return;prepared=file;setAttachment(file);setStage("analysing");
+    await draftSave.persist({...draft(),attachment:file,entries:[],events:[],warnings:[],documentType:''});
     type ScanResult={entries:Entry[];events?:Event[];documentType?:string;warnings?:string[]};
-    let r:ScanResult;
-    try {
-      r=await api<ScanResult>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:180000,onAIProgress:next=>{if(version===generation.current)setStage(next);},body:JSON.stringify({mode:"timetable",documentKind:kind==="calendar"?"calendar":"class",prompt:text,notes,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
-    } catch (caught) {
-      const legacyNotesRejected=caught instanceof ApiError&&caught.status===400&&caught.code==="BAD_REQUEST"&&caught.message==="Check the highlighted information and try again.";
-      if(!legacyNotesRejected)throw caught;
-      const legacyPrompt=[text.trim(),`Student timetable preferences (filter the visible timetable only; do not invent classes):\n${notes.trim()}`].filter(Boolean).join("\n\n");
-      r=await api<ScanResult>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:180000,onAIProgress:next=>{if(version===generation.current)setStage(next);},body:JSON.stringify({mode:"timetable",prompt:legacyPrompt,mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
-    }
+    const r=await api<ScanResult>("/v1/ai",{method:"POST",signal:controller.signal,timeoutMs:180000,onAIProgress:next=>{if(version===generation.current)setStage(next);},body:JSON.stringify({mode:"timetable",documentKind:kind==="calendar"?"calendar":"class",prompt:text,notes,...(kind!=='calendar'?{...(scheduleLevel?{scheduleLevel}:{}),...(selectedCourses.length?{courseCodes:selectedCourses}:{})}:{}),mediaId:file?.mediaId,extractedText:file?.sourceText,idempotencyKey:key.current,consent:true})});
     if(version!==generation.current)return;
     if(!r||!Array.isArray(r.entries))throw new Error("The AI returned an incomplete timetable. Your file is still here; please retry.");
     if(kind==="calendar"&&r.documentType!=="academic_calendar")
@@ -72,7 +68,7 @@ function ImportTimetableForm() {
     setEntries(parsedEntries);setEvents(parsedEvents);setDocumentType(r.documentType??"class_timetable");setWarnings(r.warnings??[]);setExpanded(null);saveKey.current=randomUUID();
     await draftSave.persist({...draft(),attachment:file,entries:parsedEntries,events:parsedEvents,documentType:r.documentType??"class_timetable",warnings:r.warnings??[],saveKey:saveKey.current});
     if(version===generation.current)setStage("review");
-  }catch(e){if(version!==generation.current)return;if(e instanceof ApiError&&e.details?.retryWithNewKey===true)key.current=randomUUID();setStage("failed");setError(e instanceof Error?e.message:"Could not read the file. Your draft is kept.");}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
+  }catch(e){if(version!==generation.current)return;if(e instanceof ApiError&&e.details?.retryWithNewKey===true)key.current=randomUUID();setStage("failed");setError(e instanceof Error?e.message:"Could not read the file. Your draft is kept.");await draftSave.persist({...draft(),attachment:prepared,key:key.current,entries:[],events:[],warnings:[],documentType:''}).catch(()=>undefined);}finally{if(version===generation.current){locked.current=false;setBusy(false);}}}
   const calendar=documentType==="academic_calendar";
   async function save(){if(locked.current||!loaded)return;const version=generation.current,owner=account.current;
     const clock=/^([01]\d|2[0-3]):[0-5]\d$/;
@@ -101,8 +97,11 @@ function ImportTimetableForm() {
     </View>:null}
     <Pressable accessibilityRole="button" disabled={!loaded||busy} onPress={()=>setPaste(v=>!v)} style={{paddingVertical:12}}><Text style={{...body,color:theme.deepBrand}}>{paste?"Hide text":"Paste timetable text"}</Text></Pressable>
     {paste?<ToolField label="Timetable text" multiline value={text} maxLength={20000} editable={loaded&&!busy} onChangeText={v=>{setText(v);changed();}} placeholder={kind==="calendar"?"Paste academic calendar activities and dates…":"Monday · MTH 201 · 8:00 AM–10:00 AM · LT 1"}/>:null}
+    {kind!=='calendar'?<View><ToolField label="Level to import" value={levelEdited.current?scheduleLevel:scheduleLevel||profile?.level_code||''} maxLength={3} editable={loaded&&!busy} onChangeText={value=>{levelEdited.current=true;setScheduleLevel(value);changed();}} placeholder="200"/>
+      <ToolField label="Courses (optional, separated by commas)" value={courseCodes} maxLength={2000} editable={loaded&&!busy} onChangeText={value=>{setCourseCodes(value);changed();}} placeholder="GET 201, ECP 281, MEE 211"/>
+      <Text style={{...muted,marginBottom:12}}>Leave courses blank to read all classes for your selected level.</Text></View>:null}
     <ToolField label="Notes (optional)" multiline value={notes} maxLength={2000} editable={loaded&&!busy} onChangeText={value=>{setNotes(value);changed();}} placeholder="I do not offer CSE 201. Include my other courses."/>
-    <Text style={{...muted,marginBottom:12}}>Processed privately by AI. Review before saving.</Text>
+    <Text style={{...muted,marginBottom:12}}>Processed privately by AI. Review before saving. Failed scans do not use an import credit.</Text>
     <ToolButton label={busy?"Reading your document…":kind==="calendar"?"Read calendar":"Read timetable"} disabled={!loaded||busy||(!attachment&&!text.trim())} onPress={()=>void scan()}/>
     {busy&&stage!=="selecting"&&stage!=="saving"?<ToolButton secondary label="Stop reading" onPress={()=>{requestController.current?.abort();setError("Stopped waiting. Your file and draft are kept; retry reuses this request.");setStage("failed");}}/>:null}
     {error?<Text accessibilityRole="alert" style={{...body,color:theme.error,marginVertical:12}}>{error}</Text>:null}

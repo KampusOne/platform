@@ -177,7 +177,9 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
       }
     }
     const choice = payload.choices?.[0], message = choice?.message;
-    if (choice?.finish_reason === "length") throw new AIProviderError(502, "AI_INCOMPLETE", "This answer was cut short. Try a smaller document section or a more focused question.");
+    if (choice?.finish_reason === "length") throw new AIProviderError(502, "AI_INCOMPLETE", input.mode === 'timetable'
+      ? 'The schedule response was cut short. Your full file is kept; retry without losing an import credit.'
+      : 'This answer was cut short. Try a smaller document section or a more focused question.');
     const raw = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
     if (raw.length > 3) throw new AIProviderError(422, "AI_TOO_MANY_ACTIONS", "Try one campus task at a time.");
     const calls: AIToolCall[] = raw.map(call => {

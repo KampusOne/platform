@@ -2,7 +2,7 @@ import { aiLimit } from "./ai-provider";
 import { sha256 } from "./security";
 import type { AuthenticatedUser, Bindings } from "../types";
 import { sql } from "drizzle-orm";
-import { database, firstRow } from "./database";
+import { database, firstRow, sqlClient } from "./database";
 import { AppError } from "./errors";
 
 export type AIQuota = { user: number; global: number; unlimited: boolean };
@@ -74,8 +74,10 @@ export async function academicImportUsage(env: Bindings, user: AuthenticatedUser
   const usage = firstRow(await database(env).execute<{ used: number; calendar_used: number; resets_at: string }>(sql`
     select count(*)::int as used,count(*) filter(where kind='calendar')::int as calendar_used,
     ((date_trunc('week',now() at time zone 'Africa/Lagos')+interval '7 days') at time zone 'Africa/Lagos') as resets_at
-    from app_private.academic_import_usage where user_id=${user.id}::uuid
+    from app_private.academic_import_usage usage where user_id=${user.id}::uuid
     and created_at>=(date_trunc('week',now() at time zone 'Africa/Lagos') at time zone 'Africa/Lagos')
+    and not exists(select 1 from app_private.ai_requests request where request.user_id=usage.user_id and request.idempotency_key=usage.request_id
+      and (request.status='FAILED' or (request.status='PROCESSING' and request.created_at<now()-interval '5 minutes')))
   `));
   const used = Number(usage?.used ?? 0), calendarUsed = Number(usage?.calendar_used ?? 0);
   return { ...limits, available: true, used, remaining: Math.max(0, limits.limit-used), calendar: { limit: limits.calendarLimit, used: calendarUsed, remaining: Math.max(0, limits.calendarLimit-calendarUsed) }, resetsAt: usage?.resets_at ?? null };
@@ -85,9 +87,19 @@ export async function consumeAcademicImportQuota(env: Bindings, user: Authentica
   const limits = academicImportLimits(pro);
   const ready = firstRow(await database(env).execute<{ ready: boolean }>(sql`select to_regprocedure('app_private.reserve_academic_import(uuid,uuid,uuid,text,integer,integer)') is not null as ready`));
   if (!ready?.ready) throw new AppError(503,"PROVIDER_UNAVAILABLE","Imports are being updated. You can still add your data manually.",{reason:"IMPORT_QUOTA_NOT_READY"});
-  const result = firstRow(await database(env).execute<{ status: string }>(sql`
-    select app_private.reserve_academic_import(${user.id}::uuid,${user.universityId}::uuid,${requestId}::uuid,${kind},${limits.limit},${limits.calendarLimit}) as status
-  `));
+  const client = sqlClient(env);
+  // Failed scans and dead jobs are refundable; completed results and live jobs
+  // still hold one reservation. Serialise cleanup with the existing quota lock,
+  // then let reserve_academic_import recheck the fresh counts in this transaction.
+  // This also restores allowances spent on failures before this fix shipped.
+  const results = await client.transaction([
+    client`select pg_advisory_xact_lock(hashtextextended(${user.id}::text||':academic-import',0))`,
+    client`delete from app_private.academic_import_usage usage using app_private.ai_requests request
+      where usage.user_id=${user.id}::uuid and request.user_id=usage.user_id and request.idempotency_key=usage.request_id
+      and (request.status='FAILED' or (request.status='PROCESSING' and request.created_at<now()-interval '5 minutes'))`,
+    client`select app_private.reserve_academic_import(${user.id}::uuid,${user.universityId}::uuid,${requestId}::uuid,${kind},${limits.limit},${limits.calendarLimit}) as status`,
+  ], {isolationLevel:'ReadCommitted'});
+  const result = results[2]?.[0] as {status:string} | undefined;
   if (result?.status === "RESERVED" || result?.status === "REPLAY") return;
   const usage = await academicImportUsage(env,user,pro);
   throw new AppError(429,"RATE_LIMITED",result?.status === "CALENDAR_LIMIT"
