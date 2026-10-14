@@ -13,17 +13,16 @@ export type WorkersAIEnvironment = {
   WORKERS_AI_PRO_MODEL?: string;
   WORKERS_AI_VISION_MODEL?: string;
 };
-export function workersAIConfiguration(env: WorkersAIEnvironment, tier = 'standard', image = false, schedulePrecision = false) {
+export function workersAIConfiguration(env: WorkersAIEnvironment, tier = 'standard', image = false) {
   const chat = env.WORKERS_AI_CHAT_MODEL?.trim() || '@cf/meta/llama-3.1-8b-instruct-fast';
-  const model = image&&schedulePrecision ? '@cf/moonshotai/kimi-k2.6' : image ? env.WORKERS_AI_VISION_MODEL?.trim() || '@cf/google/gemma-4-26b-a4b-it' : tier === 'pro' ? env.WORKERS_AI_PRO_MODEL?.trim() || '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : chat;
+  const model = image ? env.WORKERS_AI_VISION_MODEL?.trim() || '@cf/google/gemma-4-26b-a4b-it' : tier === 'pro' ? env.WORKERS_AI_PRO_MODEL?.trim() || '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : chat;
   return { model, configured: typeof env.AI?.run === 'function' && /^@cf\/[a-z0-9._-]+\/[a-z0-9._-]+$/i.test(model) };
 }
 /** Return the same completion shape as the HF adapter. Never execute tools here. */
 export async function workersAICompletion(env: WorkersAIEnvironment, input: AIInput, messages: AIMessage[], tools: AITool[] | undefined, maxTokens: number, timeoutMs: number): Promise<unknown> {
   const deadline = Date.now() + timeoutMs;
-  const config = workersAIConfiguration(env, input.tier, Boolean(input.media), input.mode==='timetable'&&input.schedulePrecision===true);
-  const moonshot=config.model.startsWith('@cf/moonshotai/');
-  const openAIFormat = config.model.startsWith('@cf/google/')||moonshot;
+  const config = workersAIConfiguration(env, input.tier, Boolean(input.media));
+  const openAIFormat = config.model.startsWith('@cf/google/');
   if (!config.configured) throw new AIProviderError(503, 'AI_NOT_CONFIGURED', 'This AI option is temporarily unavailable. Your draft is kept.');
   // The native API accepts traditional function results as role=tool messages.
   let nativeMessages = openAIFormat ? messages : messages.map(message => message.tool_calls?.length ? {
@@ -63,7 +62,7 @@ export async function workersAICompletion(env: WorkersAIEnvironment, input: AIIn
     const remaining = Math.max(1, deadline - Date.now());
     result = await Promise.race([env.AI!.run(config.model, {
       messages: nativeMessages, max_tokens: maxTokens, temperature: input.mode === 'timetable' ? 0 : 0.2, stream: false,
-      ...(openAIFormat && input.mode === 'timetable' ? { chat_template_kwargs: moonshot?{thinking:false}:{ enable_thinking: false }, response_format: { type: 'json_object' } } : {}),
+      ...(openAIFormat && input.mode === 'timetable' ? { chat_template_kwargs: { enable_thinking: false }, response_format: { type: 'json_object' } } : {}),
       ...(input.media && !openAIFormat ? { image: `data:${input.media.mimeType};base64,${input.media.data}` } : {}),
       ...(!input.media && tools?.length ? { tools: openAIFormat ? tools : tools.map(tool => tool.function) } : {}),
     }, { signal: AbortSignal.timeout(remaining) }), new Promise<never>((_, reject) => {

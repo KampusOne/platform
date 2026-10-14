@@ -159,24 +159,29 @@ describe('complete academic import routes',()=>{
   const classEntry={title:'Mathematics',courseCode:'MAT 101',venue:'LT 1',lecturer:'',dayOfWeek:1,startsAt:'08:00',endsAt:'09:00'};
   const event={title:'Registration',startsOn:'2026-10-19',endsOn:'2026-10-30',semester:'First semester'};
   const exam={title:'Mathematics',courseCode:'MAT 101',date:'2026-11-05',startsAt:'09:00',endsAt:'11:00',venue:'Main hall'};
-  it('reads a dense uploaded grid with one layout and precision pass inside one credit reservation',async()=>{
+  it('reads a dense uploaded grid with isolated cells inside one credit reservation',async()=>{
     const grid=JSON.parse(readFileSync(new URL('../../scripts/fixtures/uniben-engineering-2026.json',import.meta.url),'utf8'));
     const bytes=new Uint8Array(readFileSync(new URL('../../scripts/fixtures/uniben-engineering-2026.jpg',import.meta.url))),mediaId=crypto.randomUUID();
     await db.query("update public.profiles set current_level='200' where user_id=$1",[owner]);
     await db.query("insert into public.media_objects(id,owner_user_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,'resource',$3,'image/jpeg',$4,'faculty.jpg')",[mediaId,owner,'private-'+mediaId,bytes.length]);
     env.PRIVATE_BUCKET={get:async()=>({size:bytes.length,arrayBuffer:async()=>bytes.slice().buffer})} as unknown as R2Bucket;
     const names=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const labels=[[],['200','EMA281/GET209','200 LEVEL LABORATORY (ELA201)','','CVE211','',''],
+      ['200','','EEE211/GET201','ECP281/GET211','ENT211','GET205/MEE361(CO)','','PRE211',''],
+      ['200','MEE211/GET207','ECP281/GET211','200 LEVEL LABORATORY (ELA201)','','GST212','CVE211'],
+      ['200','','','EEE211/GET201','GET203/MEE221','MEE211/GET207','PRE211',''],
+      ['200','','','ECP281/GET211','EMA281/GET209','','GET205/MEE361(CO)','','','']];
     const run=vi.fn().mockImplementation(async(_model,payload)=>{
       const content=payload.messages.at(-1).content,text=Array.isArray(content)?content.filter((part:{type:string})=>part.type==='text').map((part:{text:string})=>part.text).join('\n'):String(content);
-      const day=names.findIndex(name=>text.includes('ONLY the '+name+' row'));
-      const value=_model.startsWith('@cf/moonshotai/')?grid:day<0?{...grid,coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]},grid:{...grid.grid,rows:[]}}
-        :{...grid,coverage:{complete:true,daysRead:[day],rowCount:1,uncertain:[]},grid:{...grid.grid,daysSeen:[day],rows:[grid.grid.rows[day-1]]}};
+      const day=names.findIndex(name=>text.includes('for '+name+'.'));
+      const value=day<0?{...grid,coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]},grid:{...grid.grid,rows:[]}}
+        :{labels:labels[day],coverage:{complete:true,uncertain:[]}};
       return {response:JSON.stringify(value)};
     });env.AI={run};
     const body={mode:'timetable',documentKind:'class',prompt:'',mediaId,idempotencyKey:crypto.randomUUID(),consent:true};
-    const result=await json(await request('/ai','POST',body));expect(result.entries).toHaveLength(20);expect(run).toHaveBeenCalledTimes(2);
+    const result=await json(await request('/ai','POST',body));expect(result.entries).toHaveLength(20);expect(run).toHaveBeenCalledTimes(6);
     expect((await json(await request('/ai/status'))).imports.used).toBe(1);
-    expect(await json(await request('/ai','POST',body))).toEqual(result);expect(run).toHaveBeenCalledTimes(2);
+    expect(await json(await request('/ai','POST',body))).toEqual(result);expect(run).toHaveBeenCalledTimes(6);
     await db.query('update public.profiles set current_level=null where user_id=$1',[owner]);
   });
   it.each(['length','partial','invalid-row'] as const)('refunds a %s timetable attempt, then charges the full retry and its receipt only once',async failure=>{
