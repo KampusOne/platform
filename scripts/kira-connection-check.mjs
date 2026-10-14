@@ -10,7 +10,11 @@ export async function probe(request, env, readPrivateAIPdf, verifyAcademicImport
   let difference=0;for(let i=0;i<64;i++)difference|=supplied.charCodeAt(i)^env.PROBE_TOKEN.charCodeAt(i);
   if(difference)return new Response(null,{status:404});
   if(path==='/__kira_probe_ready')return Response.json({kind:'kampusone-kira-probe-ready'},{headers:{'Cache-Control':'no-store'}});
-  if(env.PROBE_ACADEMIC_ONLY==='true')return Response.json({kind:'kampusone-kira-probe-v1',academicImports:await verifyAcademicImports(env,{printedImage:env.PROBE_TIMETABLE_PNG,handwriting:env.PROBE_HANDWRITING.pngBase64,calendarPdf:env.PROBE_CALENDAR_PDF,facultyImage:env.PROBE_FACULTY_JPEG,facultyWebp:env.PROBE_FACULTY_WEBP})},{headers:{'Cache-Control':'no-store'}});
+  if(env.PROBE_ACADEMIC_ONLY==='true') {
+    const academicCase=request.headers.get('x-probe-academic-case');
+    if(!['baseline','facultyGrid200','facultyGrid100','facultyWebp100'].includes(academicCase))return new Response(null,{status:400});
+    return Response.json({kind:'kampusone-kira-probe-v1',academicImports:await verifyAcademicImports(env,{printedImage:env.PROBE_TIMETABLE_PNG,handwriting:env.PROBE_HANDWRITING.pngBase64,calendarPdf:env.PROBE_CALENDAR_PDF,facultyImage:env.PROBE_FACULTY_JPEG,facultyWebp:env.PROBE_FACULTY_WEBP,case:academicCase})},{headers:{'Cache-Control':'no-store'}});
+  }
   const messages=[{role:'system',content:'Answer briefly and accurately.'},{role:'user',content:"State Ohm's law in one sentence."}];
   const modelCheck=async(model,image)=>{
     try {
@@ -125,6 +129,15 @@ if(process.argv.includes('--self-test')) {
   if(invalid.status!==404)throw new Error('Probe token boundary failed');
   const response=await probe(new Request('https://test.invalid/__kira_probe',{method:'POST',headers:{'x-probe-token':token}}),env);
   const data=await response.json();if(data.standard.outcome!=='generation_succeeded'||data.pro.outcome!=='generation_succeeded')throw new Error('Probe result failed');
+  const academicEnv={...env,PROBE_ACADEMIC_ONLY:'true',PROBE_HANDWRITING:{pngBase64:''}};
+  let selected;
+  const academic=async(_env,fixtures)=>{selected=fixtures.case;return[{name:selected}];};
+  const ready=await probe(new Request('https://test.invalid/__kira_probe_ready',{method:'POST',headers:{'x-probe-token':token}}),academicEnv,undefined,academic);
+  if((await ready.json()).kind!=='kampusone-kira-probe-ready'||selected!==undefined)throw new Error('Readiness performed inference');
+  const unknown=await probe(new Request('https://test.invalid/__kira_probe',{method:'POST',headers:{'x-probe-token':token,'x-probe-academic-case':'unknown'}}),academicEnv,undefined,academic);
+  if(unknown.status!==400||selected!==undefined)throw new Error('Unknown academic case was accepted');
+  const single=await probe(new Request('https://test.invalid/__kira_probe',{method:'POST',headers:{'x-probe-token':token,'x-probe-academic-case':'facultyGrid100'}}),academicEnv,undefined,academic);
+  if(single.status!==200||selected!=='facultyGrid100')throw new Error('Academic case isolation failed');
   console.log('PASS: isolated probe requires the token and returns classified outcomes only.');
 } else {
   const lines=[],report=line=>{console.log(line);lines.push(line);};
@@ -180,10 +193,21 @@ if(process.argv.includes('--self-test')) {
       if(ready.status!==503||attempt===3)throw new Error(`HTTP ${ready.status}`);
       await ready.body?.cancel();await new Promise(resolve=>setTimeout(resolve,1000));
     }
-    stage='live inference';
-    const r=await fetchSafe(`https://${host}/__kira_probe`,{method:'POST',probeTimeoutMs:180000,headers:{'cf-workers-preview-token':preview.preview_token,'x-probe-token':probeToken}});
-    if(!r.ok){const body=await r.text();const code=/error(?: code)?[\s:]+(\d{4})/i.exec(body)?.[1];const hint=/memory/i.test(body)?'memory':/CPU/.test(body)?'cpu':/WebAssembly|wasm/i.test(body)?'wasm':'unclassified';throw new Error(`HTTP ${r.status}${code?' edge code '+code:''}; ${hint}`);}
-    const result=await r.json();if(result.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');
+    const run=async academicCase=>{
+      stage='live inference'+(academicCase?' '+academicCase:'');
+      if(academicCase)report('Checking academic '+academicCase);
+      const r=await fetchSafe(`https://${host}/__kira_probe`,{method:'POST',probeTimeoutMs:180000,headers:{'cf-workers-preview-token':preview.preview_token,'x-probe-token':probeToken,...(academicCase?{'x-probe-academic-case':academicCase}:{})}});
+      if(!r.ok){const body=await r.text();const code=/error(?: code)?[\s:]+(\d{4})/i.exec(body)?.[1]??/"code"\s*:\s*(\d{4})\b/.exec(body)?.[1];const hint=/memory/i.test(body)?'memory':/CPU|resource limit|execution time/i.test(body)?'cpu':/WebAssembly|wasm/i.test(body)?'wasm':'unclassified';throw new Error(`HTTP ${r.status}${code?' edge code '+code:''}; ${hint}`);}
+      const value=await r.json();if(value.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');return value;
+    };
+    let result;
+    if(process.env.PROBE_ACADEMIC_ONLY==='true') {
+      // Each request matches one app import's memory/CPU envelope. Do not keep
+      // three independent dense-table imports in one Worker invocation.
+      const academicImports=[];
+      for(const name of ['baseline','facultyGrid200','facultyGrid100','facultyWebp100'])academicImports.push(...(await run(name)).academicImports);
+      result={kind:'kampusone-kira-probe-v1',academicImports};
+    } else result=await run();
     if(process.env.PROBE_ACADEMIC_ONLY==='true'){
       if(!Array.isArray(result.academicImports)||result.academicImports.length!==7)throw new Error('Missing academic extraction proofs');
       for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes??0}, events ${item.events??0}; ${item.elapsedMs}ms${/^AI_[A-Z_]+$/.test(item.reason??'')?`; ${item.reason}`:''}`);if(item.name.startsWith('faculty')&&Array.isArray(item.actual))report('Faculty fixture cells: '+JSON.stringify(item.actual));if(item.name.startsWith('faculty')&&item.diagnostic)report('Faculty fixture validation: '+JSON.stringify(item.diagnostic));if(item.outcome!=='extraction_succeeded')process.exitCode=1;}

@@ -1612,7 +1612,7 @@ agentRoutes.put('/location',async c=>{
  return c.json({saved:true});
 });
 async function routeRiderToPickup(env:Bindings,profile:{id:string;university_id:string},jobId:string){
- const db=database(env),job=firstRow(await db.execute<{pickup_place_id:string|null;vendor_profile_id:string;rider_profile_id:string|null}>(sql`select s.pickup_place_id,o.vendor_profile_id,j.rider_profile_id from public.delivery_jobs j join public.orders o on o.id=j.order_id join public.vendor_storefronts s on s.vendor_profile_id=o.vendor_profile_id and s.university_id=j.university_id where j.id=${jobId}::uuid and j.university_id=${profile.university_id}::uuid and ((j.status='AVAILABLE'and o.status in('PAID','ACCEPTED','READY'))or j.rider_profile_id=${profile.id}::uuid)`));
+ const db=database(env),job=firstRow(await db.execute<{pickup_place_id:string|null;vendor_profile_id:string;rider_profile_id:string|null}>(sql`select s.pickup_place_id,o.vendor_profile_id,j.rider_profile_id from public.delivery_jobs j join public.orders o on o.id=j.order_id join public.vendor_storefronts s on s.vendor_profile_id=o.vendor_profile_id and s.university_id=j.university_id where j.id=${jobId}::uuid and j.university_id=${profile.university_id}::uuid and ${paidAgentOrders('o')} and ((j.status='AVAILABLE'and o.status in('PAID','ACCEPTED','READY'))or j.rider_profile_id=${profile.id}::uuid)`));
  if(!job)throw new AppError(404,'NOT_FOUND','This delivery is not available to your rider profile.');
  if(!job.pickup_place_id)throw new AppError(422,'BAD_REQUEST','The store needs its pickup point mapped before a rider route is available.');
  const position=await currentAgentPosition(env,profile.id,profile.university_id);if(!position)throw new AppError(422,'BAD_REQUEST','Share a current location accurate to 50 metres before reserving or reviewing a ride.');
@@ -1817,6 +1817,7 @@ agentRoutes.get("/earnings", async (context) => {
         select coalesce(sum(orders.subtotal_kobo) filter (where orders.earnings_state = 'PENDING'), 0)::bigint as pending_kobo,
           coalesce(sum(orders.subtotal_kobo) filter (where orders.earnings_state = 'AVAILABLE'), 0)::bigint as gross_available_kobo
         from public.orders orders join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id where profiles.user_id = ${user.id}::uuid
+          and profiles.agent_type='VENDOR' and orders.university_id=${user.universityId}::uuid and ${paidAgentOrders()}
       ), payouts as (
         select coalesce(sum(requests.amount_kobo) filter (where requests.status in ('REQUESTED','IN_REVIEW','APPROVED','PROCESSING','FAILED')), 0)::bigint as reserved_kobo,
           coalesce(sum(requests.amount_kobo) filter (where requests.status = 'PAID'), 0)::bigint as withdrawn_kobo

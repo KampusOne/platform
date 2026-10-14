@@ -9,6 +9,7 @@ import { timetableExtractionInstruction, type TimetableScope } from '../src/lib/
  * short transcription request that cannot certify a structured schedule. */
 export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
   printedImage: string; handwriting: string; calendarPdf: string; facultyImage?: string; facultyWebp?: string;
+  case?: 'baseline'|'facultyGrid200'|'facultyGrid100'|'facultyWebp100';
 }) {
   const checked = async (name: string, kind: 'class' | 'calendar' | 'exam', prompt: string, media?: AIMedia, sourceDocument = false, scope:TimetableScope={level:'100'}) => {
     const start = Date.now();
@@ -57,20 +58,20 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
         ...((error as {reason?:string}).reason?.match(/^AI_[A-Z_]+$/) ? {reason:(error as {reason:string}).reason} : {}) };
     }
   };
-  const calendarBytes = Uint8Array.from(atob(fixtures.calendarPdf), c => c.charCodeAt(0));
-  const calendar = await readPrivateAIPdf(env, calendarBytes);
+  const baselineSelected=!fixtures.case||fixtures.case==='baseline';
+  const calendar = baselineSelected?await readPrivateAIPdf(env,Uint8Array.from(atob(fixtures.calendarPdf), c => c.charCodeAt(0))):'';
   const exams = decodeAIText(new TextEncoder().encode('EXAM TIMETABLE 2026.\nMAT 101 Mathematics; 2026-11-05; 09:00-11:00; Main hall.\nCSC 101 Computing; 2026-11-06; 12:00-14:00; LT 1.\nPHY 101 Physics; 2026-11-09; 09:00-11:00; LT 2.'));
-  const baseline=Promise.all([
+  const baseline=baselineSelected?Promise.all([
     checked('classImage', 'class', '', {mimeType:'image/png',data:fixtures.printedImage}),
     checked('handwrittenClass', 'class', 'Student notes: This handwritten class is on Monday. The written hours are 08:00 to 09:00.', {mimeType:'image/png',data:fixtures.handwriting}),
     checked('calendarPdf', 'calendar', calendar, undefined, true),
     checked('examText', 'exam', exams, undefined, true),
-  ]);
+  ]):Promise.resolve([]);
   const faculty=[];
   if(fixtures.facultyImage) {
-    faculty.push(await checked('facultyGrid200','class','',{mimeType:'image/jpeg',data:fixtures.facultyImage},true,{level:'200',department:'Computer Engineering'}));
-    faculty.push(await checked('facultyGrid100','class',"I'm in 100lvl",{mimeType:'image/jpeg',data:fixtures.facultyImage},true,{level:'100'}));
+    if(!fixtures.case||fixtures.case==='facultyGrid200')faculty.push(await checked('facultyGrid200','class','',{mimeType:'image/jpeg',data:fixtures.facultyImage},true,{level:'200',department:'Computer Engineering'}));
+    if(!fixtures.case||fixtures.case==='facultyGrid100')faculty.push(await checked('facultyGrid100','class',"I'm in 100lvl",{mimeType:'image/jpeg',data:fixtures.facultyImage},true,{level:'100'}));
   }
-  if(fixtures.facultyWebp)faculty.push(await checked('facultyWebp100','class',"I'm in 100lvl",{mimeType:'image/webp',data:fixtures.facultyWebp},true,{level:'100'}));
+  if(fixtures.facultyWebp&&(!fixtures.case||fixtures.case==='facultyWebp100'))faculty.push(await checked('facultyWebp100','class',"I'm in 100lvl",{mimeType:'image/webp',data:fixtures.facultyWebp},true,{level:'100'}));
   return [...await baseline,...faculty];
 }

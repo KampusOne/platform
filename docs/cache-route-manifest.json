@@ -2874,7 +2874,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1934
+          "line": 1935
         }
       ],
       "classification": "mutation",
@@ -2892,7 +2892,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1952
+          "line": 1953
         }
       ],
       "classification": "financial",
@@ -2910,7 +2910,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1938
+          "line": 1939
         }
       ],
       "classification": "mutation",
@@ -3091,7 +3091,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1925
+          "line": 1926
         }
       ],
       "classification": "private-operational",
@@ -3109,7 +3109,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1898
+          "line": 1899
         }
       ],
       "classification": "mutation",

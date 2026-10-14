@@ -13,6 +13,7 @@ vi.mock('../lib/fulfilment',async original=>({...await original<typeof import('.
 vi.mock('../lib/commerce-pricing',async original=>({...await original<typeof import('../lib/commerce-pricing')>(),inclusiveStoreReady:async()=>false}));
 vi.mock('../lib/tutorial-pricing',async original=>({...await original<typeof import('../lib/tutorial-pricing')>(),pricedTutorialReady:async()=>false}));
 vi.mock('../lib/rider-finance',async original=>({...await original<typeof import('../lib/rider-finance')>(),riderFinanceSummary:async()=>null}));
+vi.mock('../lib/payouts',async original=>({...await original<typeof import('../lib/payouts')>(),ledgerPayoutsReady:async()=>false,payoutFeeComponentsReady:async()=>false,payoutAvailability:async()=>({enabled:false,reason:'disabled'})}));
 import { agentRoutes } from './agents';
 
 const db=new PGlite(),dialect=new PgDialect();
@@ -35,10 +36,16 @@ beforeAll(async()=>{
     create table agent_applications(id uuid,user_id uuid,agent_type text,display_name text,phone_e164 text,legal_name text,kyc_status text,bank_status text,phone_verified_at timestamptz,status text,review_note text,submitted_at timestamptz,reviewed_at timestamptz,updated_at timestamptz);
     create table tutorial_listings(id uuid,tutor_profile_id uuid,title text);
     create table tutorial_bookings(id uuid,listing_id uuid,status text,amount_kobo int,earnings_state text,scheduled_for timestamptz,created_at timestamptz);
+    create table payout_requests(id uuid,agent_profile_id uuid,requested_by_user_id uuid,amount_kobo int,status text,requested_at timestamptz);
+    create table vendor_storefronts(vendor_profile_id uuid,university_id uuid,pickup_place_id uuid,pickup_location text);
   `);
   await db.query('insert into agent_profiles(id,user_id,university_id,agent_type,status) values($1,$2,$3,\'VENDOR\',\'ACTIVE\')',[vendor,stubs.user.id,uni]);
   for(const [i,state] of states.entries())await db.query('insert into orders(id,vendor_profile_id,university_id,status,subtotal_kobo,delivery_fee_kobo,total_kobo,earnings_state) values($1,$2,$3,$4,10000,0,10000,\'PENDING\')',[orderId(i),vendor,uni,state]);
   await db.query('insert into orders(id,vendor_profile_id,university_id,status,subtotal_kobo,total_kobo) values($1,$2,$3,\'PAID\',10000,10000)',[orderId(99),vendor,otherUni]);
+  const rider='55555555-5555-4555-8555-555555555555';
+  await db.query('insert into agent_profiles(id,user_id,university_id,agent_type,status) values($1,$2,$3,\'RIDER\',\'ACTIVE\')',[rider,stubs.user.id,uni]);
+  await db.query('insert into vendor_storefronts(vendor_profile_id,university_id) values($1,$2)',[vendor,uni]);
+  await db.query('insert into delivery_jobs(id,order_id,university_id,status,rider_profile_id) values($1,$2,$3,\'RESERVED\',$4)',[orderId(50),orderId(states.indexOf('CANCELLED')),uni,rider]);
 });
 beforeEach(()=>{stubs.execute.mockReset().mockImplementation((statement:SQL)=>{const q=dialect.sqlToQuery(statement);return db.query(q.sql,q.params);});});
 afterAll(async()=>{await db.close();});
@@ -60,5 +67,14 @@ describe('paid agent order visibility at the API boundary',()=>{
     const response=await app.request('/v1/agents/dashboard',{},env);expect(response.status).toBe(200);
     const data=await response.json() as {metrics:{store:{orders:number;delivered:number;pending_earnings_kobo:number}},activity:{orders:unknown[]}};
     expect(data.metrics.store.orders).toBe(5);expect(data.metrics.store.delivered).toBe(1);expect(Number(data.metrics.store.pending_earnings_kobo)).toBe(50000);expect(data.activity.orders).toHaveLength(5);
+  });
+  it('excludes unsuccessful orders from legacy store earnings',async()=>{
+    const response=await app.request('/v1/agents/earnings',{},env);expect(response.status).toBe(200);
+    const data=await response.json() as {store:{pending_kobo:number}};
+    expect(Number(data.store.pending_kobo)).toBe(50000);
+  });
+  it('denies a previously assigned rider route once the order is cancelled',async()=>{
+    const response=await app.request('/v1/agents/deliveries/'+orderId(50)+'/route',{}, {...env,LOGISTICS_ENABLED:'true'});
+    expect(response.status).toBe(404);expect(stubs.execute).toHaveBeenCalledTimes(2);
   });
 });
