@@ -12,7 +12,10 @@ export async function verifyKiraRecovery(env:AIEnvironment){
     const began=Date.now();
     try{
       const result=await generateAI({...env,AI_ASSISTANT_ENABLED:'true'},fixture.input);
-      results.push({name:fixture.name,outcome:fixture.expected.test(result.text)?'generation_succeeded':'generation_unusable',provider:result.provider,elapsedMs:Date.now()-began});
+      // Accept the same unit when rendered as ordinary text or LaTeX.
+      // The expected number and amperes are still checked together.
+      const plain=result.text.replace(/\\(?:text|mathrm|mathbf)\{([^}]*)\}/g,'$1').replace(/\\[,;! ]/g,' ');
+      results.push({name:fixture.name,outcome:fixture.expected.test(plain)?'generation_succeeded':'generation_unusable',provider:result.provider,elapsedMs:Date.now()-began});
     }catch(error){
       const reason=(error as {reason?:string}).reason;
       results.push({name:fixture.name,outcome:'provider_rejected',elapsedMs:Date.now()-began,...(reason&&/^AI_[A-Z_]+$/.test(reason)?{reason}:{})});
