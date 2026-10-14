@@ -43,7 +43,7 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
           ? 'This import is an academic calendar. Extract every dated activity in both semesters, never weekly classes.'
           : 'Import this weekly class timetable. Student academic selection (data): '+JSON.stringify(scope))+'\n'+timetableExtractionInstruction,
         onProviderFailure:(failure:{provider:string;status:number;hint:string;parameter?:string})=>{providerFailures.push(failure);},
-        ...(name.startsWith('faculty')?{onScheduleRead:(day:number|null,text:string)=>{generatedText=text;try{reads.push({day,value:JSON.parse(text)});}catch{reads.push({day,jsonReadable:false,length:text.length});}}}:{}),
+        onScheduleRead:(day:number|null,text:string)=>{generatedText=text;try{reads.push({day,value:JSON.parse(text)});}catch{reads.push({day,jsonReadable:false,length:text.length,publicFixturePrefix:text.slice(0,1500)});}},
       };
       const generated = await generateAcademicImport({ ...observedEnv, AI_ASSISTANT_ENABLED: 'true' }, input,prompt,kind,scope);
       generatedText=generated.text;
@@ -74,7 +74,7 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
         ...(name.startsWith('faculty')&&!valid?{mismatches:expectedFaculty.filter(expected=>!actualFaculty.some(actual=>JSON.stringify(actual)===JSON.stringify(expected))),actual:actualFaculty,diagnostic:{reads}}: {}) };
     } catch (error) {
       let diagnostic: Record<string,unknown>|undefined;
-      if(name.startsWith('faculty'))try{const value=JSON.parse(generatedText);diagnostic={documentType:value.documentType,coverage:value.coverage,warnings:value.warnings,grid:value.grid};}catch{diagnostic={jsonReadable:false};}
+      try{const value=JSON.parse(generatedText);diagnostic={documentType:value.documentType,coverage:value.coverage,warnings:value.warnings,grid:value.grid};}catch{diagnostic={jsonReadable:false};}
       return { name, outcome: 'extraction_failed', elapsedMs: Date.now() - start,
         ...((diagnostic||providerFailures.length)?{diagnostic:{...diagnostic,providers:providerFailures,reads,...(fixtures.case==='baseline'?{alternative:await checkAlternative()}:{})}}:{}),
         ...((error as {reason?:string}).reason?.match(/^AI_[A-Z_]+$/) ? {reason:(error as {reason:string}).reason} : {}) };

@@ -32,7 +32,10 @@ export async function gatewayAcademicCompletion(env:AIEnvironment,input:AIInput,
   }
   const payload=await response.json().catch(()=>({})) as {choices?:{finish_reason?:string;message?:{content?:unknown}}[]};
   const choice=payload.choices?.[0],text=choice?.message?.content;
-  if(choice?.finish_reason==='length')throw new AIProviderError(502,'AI_INCOMPLETE','The schedule response was cut short. Your full file is kept; no import credit was used.');
+  if(choice?.finish_reason==='length'){
+    if(typeof text==='string'&&text.length<=50000)input.onScheduleRead?.(null,text);
+    throw new AIProviderError(502,'AI_INCOMPLETE','The schedule response was cut short. Your full file is kept; no import credit was used.');
+  }
   if(choice?.finish_reason!=='stop'||typeof text!=='string'||!text.trim()||text.length>50000)throw new AIProviderError(502,'AI_INVALID_OUTPUT','The complete document could not be read. Your full file is kept.');
   return{text:text.trim(),calls:[],provider:'gateway' as const};
 }
