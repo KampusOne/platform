@@ -1,0 +1,263 @@
+{
+  "documentType": "class_timetable",
+  "entries": [],
+  "events": [],
+  "warnings": [],
+  "coverage": {
+    "complete": true,
+    "daysRead": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "rowCount": 5,
+    "uncertain": []
+  },
+  "grid": {
+    "timeSlots": [
+      {
+        "startsAt": "08:00",
+        "endsAt": "09:00"
+      },
+      {
+        "startsAt": "09:00",
+        "endsAt": "10:00"
+      },
+      {
+        "startsAt": "10:00",
+        "endsAt": "11:00"
+      },
+      {
+        "startsAt": "11:00",
+        "endsAt": "12:00"
+      },
+      {
+        "startsAt": "12:00",
+        "endsAt": "13:00"
+      },
+      {
+        "startsAt": "13:00",
+        "endsAt": "14:00"
+      },
+      {
+        "startsAt": "14:00",
+        "endsAt": "15:00"
+      },
+      {
+        "startsAt": "15:00",
+        "endsAt": "16:00"
+      },
+      {
+        "startsAt": "16:00",
+        "endsAt": "17:00"
+      },
+      {
+        "startsAt": "17:00",
+        "endsAt": "18:00"
+      }
+    ],
+    "levels": [
+      "100",
+      "200",
+      "300",
+      "400",
+      "500"
+    ],
+    "daysSeen": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "rows": [
+      {
+        "dayOfWeek": 1,
+        "level": "200",
+        "cells": [
+          {
+            "from": 0,
+            "to": 2,
+            "label": "EMA281/GET209"
+          },
+          {
+            "from": 2,
+            "to": 6,
+            "label": "200 LEVEL LABORATORY (ELA201)"
+          },
+          {
+            "from": 6,
+            "to": 7,
+            "label": ""
+          },
+          {
+            "from": 7,
+            "to": 8,
+            "label": "CVE211"
+          },
+          {
+            "from": 8,
+            "to": 10,
+            "label": ""
+          }
+        ]
+      },
+      {
+        "dayOfWeek": 2,
+        "level": "200",
+        "cells": [
+          {
+            "from": 0,
+            "to": 1,
+            "label": ""
+          },
+          {
+            "from": 1,
+            "to": 3,
+            "label": "EEE211/GET201"
+          },
+          {
+            "from": 3,
+            "to": 4,
+            "label": "ECP281/GET211"
+          },
+          {
+            "from": 4,
+            "to": 6,
+            "label": "ENT211"
+          },
+          {
+            "from": 6,
+            "to": 7,
+            "label": "GET205/MEE361(CO)"
+          },
+          {
+            "from": 7,
+            "to": 8,
+            "label": ""
+          },
+          {
+            "from": 8,
+            "to": 9,
+            "label": "PRE211"
+          },
+          {
+            "from": 9,
+            "to": 10,
+            "label": ""
+          }
+        ]
+      },
+      {
+        "dayOfWeek": 3,
+        "level": "200",
+        "cells": [
+          {
+            "from": 0,
+            "to": 1,
+            "label": "MEE211/GET207"
+          },
+          {
+            "from": 1,
+            "to": 2,
+            "label": "ECP281/GET211"
+          },
+          {
+            "from": 2,
+            "to": 6,
+            "label": "200 LEVEL LABORATORY (ELA201)"
+          },
+          {
+            "from": 6,
+            "to": 7,
+            "label": ""
+          },
+          {
+            "from": 7,
+            "to": 9,
+            "label": "GST212"
+          },
+          {
+            "from": 9,
+            "to": 10,
+            "label": "CVE211"
+          }
+        ]
+      },
+      {
+        "dayOfWeek": 4,
+        "level": "200",
+        "cells": [
+          {
+            "from": 0,
+            "to": 2,
+            "label": ""
+          },
+          {
+            "from": 2,
+            "to": 3,
+            "label": "EEE211/GET201"
+          },
+          {
+            "from": 3,
+            "to": 6,
+            "label": "GET203/MEE221"
+          },
+          {
+            "from": 6,
+            "to": 8,
+            "label": "MEE211/GET207"
+          },
+          {
+            "from": 8,
+            "to": 9,
+            "label": "PRE211"
+          },
+          {
+            "from": 9,
+            "to": 10,
+            "label": ""
+          }
+        ]
+      },
+      {
+        "dayOfWeek": 5,
+        "level": "200",
+        "cells": [
+          {
+            "from": 0,
+            "to": 2,
+            "label": ""
+          },
+          {
+            "from": 2,
+            "to": 3,
+            "label": "ECP281/GET211"
+          },
+          {
+            "from": 3,
+            "to": 4,
+            "label": "EMA281/GET209"
+          },
+          {
+            "from": 4,
+            "to": 5,
+            "label": ""
+          },
+          {
+            "from": 5,
+            "to": 7,
+            "label": "GET205/MEE361(CO)"
+          },
+          {
+            "from": 7,
+            "to": 10,
+            "label": ""
+          }
+        ]
+      }
+    ]
+  }
+}

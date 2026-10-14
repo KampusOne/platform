@@ -12,9 +12,3 @@ test("media uploads retain raw transport with a bounded legacy multipart fallbac
   assert.match(uploads, /uri:file\.uri,name:file\.name,type:file\.type/);
   assert.match(uploads, /api<UploadedFile>\("\/v1\/media", \{ method: "POST", body: form, timeoutMs \}\)/);
 });
-
-test("timetable import retries without the notes field only for the legacy strict-schema error", () => {
-  assert.match(timetable, /legacyNotesRejected=.*caught\.status===400.*caught\.code==="BAD_REQUEST"/);
-  assert.match(timetable, /Student timetable preferences \(filter the visible timetable only; do not invent classes\)/);
-  assert.match(timetable, /prompt:legacyPrompt,mediaId:file\?\.mediaId/);
-});

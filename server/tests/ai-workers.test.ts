@@ -73,6 +73,14 @@ describe('Workers AI recovery', () => {
 });
 
 describe('academic document extraction deadlines', () => {
+  it('transcribes isolated timetable pixels with high detail and no flattened OCR',async()=>{
+    const run=native(),toMarkdown=vi.fn();
+    await generateAI({...env(run),AI:{run,toMarkdown}},{mode:'timetable',prompt:'Read the selected cells',media:{mimeType:'image/jpeg',data:btoa('PRIVATE_PIXELS')}});
+    expect(run.mock.calls[0][0]).toBe('@cf/google/gemma-4-26b-a4b-it');
+    expect(run.mock.calls[0][1].chat_template_kwargs).toEqual({enable_thinking:false});
+    expect(run.mock.calls[0][1].messages.at(-1).content).toEqual(expect.arrayContaining([expect.objectContaining({type:'image_url',image_url:{url:'data:image/jpeg;base64,'+btoa('PRIVATE_PIXELS'),detail:'high'}})]));
+    expect(toMarkdown).not.toHaveBeenCalled();
+  });
   it('reads a dense image beyond the old 45-second limit and still returns reviewable JSON', async () => {
     vi.useFakeTimers();
     try {
@@ -83,6 +91,8 @@ describe('academic document extraction deadlines', () => {
       await vi.advanceTimersByTimeAsync(70000);
       expect(JSON.parse((await pending).text).entries[0]).toMatchObject({courseCode:'MAT 101',startsAt:'08:00'});
       expect(run.mock.calls[0][1].chat_template_kwargs).toEqual({enable_thinking:false});
+      expect(toMarkdown).not.toHaveBeenCalled();
+      expect(run.mock.calls[0][1].temperature).toBe(0);
       expect(run.mock.calls[0][1].messages.at(-1).content.some((part:{type:string})=>part.type==='image_url')).toBe(true);
     } finally {vi.useRealTimers();}
   });
@@ -92,8 +102,18 @@ describe('academic document extraction deadlines', () => {
       const run=vi.fn().mockImplementation(()=>new Promise(()=>{}));
       const fetcher=vi.fn().mockResolvedValue(Response.json({choices:[{finish_reason:'stop',message:{content:'{"entries":[],"events":[],"warnings":[]}'}}]}));
       const pending=generateAI({AI_ASSISTANT_ENABLED:'true',AI:{run},HF_TOKEN:'synthetic',HF_CHAT_MODEL:'test/chat'},{mode:'timetable',prompt:'Monday MAT 101 08:00–09:00'},fetcher);
-      await vi.advanceTimersByTimeAsync(60000);
+      await vi.advanceTimersByTimeAsync(120000);
       expect((await pending).provider).toBe('huggingface');expect(fetcher).toHaveBeenCalledTimes(1);expect(run).toHaveBeenCalledTimes(1);
     }finally{vi.useRealTimers();}
+  });
+  it('does not let an unavailable fallback cut off a dense vision response at 60 seconds',async()=>{
+    vi.useFakeTimers();
+    try {
+      const run=vi.fn().mockImplementation(()=>new Promise(resolve=>setTimeout(()=>resolve({choices:[{finish_reason:'stop',message:{content:'{"entries":[],"events":[],"warnings":[]}'}}]}),105000)));
+      const fetcher=vi.fn().mockResolvedValue(new Response('provider unavailable',{status:402}));
+      const pending=generateAI({AI_ASSISTANT_ENABLED:'true',AI:{run},HF_TOKEN:'synthetic',HF_VISION_MODEL:'test/vision'},{mode:'timetable',prompt:'',media:{mimeType:'image/jpeg',data:btoa('PRIVATE_PIXELS')}},fetcher);
+      await vi.advanceTimersByTimeAsync(105000);
+      expect((await pending).provider).toBe('workers-ai');expect(fetcher).not.toHaveBeenCalled();expect(run).toHaveBeenCalledTimes(1);
+    } finally {vi.useRealTimers();}
   });
 });

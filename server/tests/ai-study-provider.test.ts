@@ -45,7 +45,7 @@ beforeAll(async () => {
 }, 60000);
 beforeEach(async () => {
   delete env.AI; delete env.AI_TEXT_PROVIDER;
-  await db.exec("delete from app_private.ai_requests;delete from app_private.request_rate_limits");
+  await db.exec("delete from app_private.ai_requests;delete from app_private.academic_import_usage;delete from app_private.request_rate_limits");
   delete env.PRIVATE_BUCKET;
   env.AI_UNLIMITED_EMAIL_HASHES = await sha256(ownerEmail);
   env.AI_DAILY_USER_LIMIT = "5"; env.AI_DAILY_GLOBAL_LIMIT = "100"; env.AI_ASSISTANT_ENABLED = "true";
@@ -155,12 +155,76 @@ describe("student AI persistence and quota boundaries",()=>{
 });
 
 describe('complete academic import routes',()=>{
+  const coverage={complete:true,daysRead:[1],rowCount:1,uncertain:[]};
   const classEntry={title:'Mathematics',courseCode:'MAT 101',venue:'LT 1',lecturer:'',dayOfWeek:1,startsAt:'08:00',endsAt:'09:00'};
   const event={title:'Registration',startsOn:'2026-10-19',endsOn:'2026-10-30',semester:'First semester'};
   const exam={title:'Mathematics',courseCode:'MAT 101',date:'2026-11-05',startsAt:'09:00',endsAt:'11:00',venue:'Main hall'};
+  it('reads a dense uploaded grid with isolated cells inside one credit reservation',async()=>{
+    const grid=JSON.parse(readFileSync(new URL('../../scripts/fixtures/uniben-engineering-2026.json',import.meta.url),'utf8'));
+    const bytes=new Uint8Array(readFileSync(new URL('../../scripts/fixtures/uniben-engineering-2026.jpg',import.meta.url))),mediaId=crypto.randomUUID();
+    await db.query("update public.profiles set current_level='200' where user_id=$1",[owner]);
+    await db.query("insert into public.media_objects(id,owner_user_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,'resource',$3,'image/jpeg',$4,'faculty.jpg')",[mediaId,owner,'private-'+mediaId,bytes.length]);
+    env.PRIVATE_BUCKET={get:async()=>({size:bytes.length,arrayBuffer:async()=>bytes.slice().buffer})} as unknown as R2Bucket;
+    const names=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const labels=[[],['200','EMA281/GET209','200 LEVEL LABORATORY (ELA201)','','CVE211','',''],
+      ['200','','EEE211/GET201','ECP281/GET211','ENT211','GET205/MEE361(CO)','','PRE211',''],
+      ['200','MEE211/GET207','ECP281/GET211','200 LEVEL LABORATORY (ELA201)','','GST212','CVE211'],
+      ['200','','','EEE211/GET201','GET203/MEE221','MEE211/GET207','PRE211',''],
+      ['200','','','ECP281/GET211','EMA281/GET209','','GET205/MEE361(CO)','','','']];
+    const run=vi.fn().mockImplementation(async(_model,payload)=>{
+      const content=payload.messages.at(-1).content,text=Array.isArray(content)?content.filter((part:{type:string})=>part.type==='text').map((part:{text:string})=>part.text).join('\n'):String(content);
+      const day=names.findIndex(name=>text.includes('for '+name+'.'));
+      const value=day<0?{...grid,coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]},grid:{...grid.grid,rows:[]}}
+        :{labels:labels[day],coverage:{complete:true,uncertain:[]}};
+      return {response:JSON.stringify(value)};
+    });env.AI={run};
+    const body={mode:'timetable',documentKind:'class',prompt:'',mediaId,idempotencyKey:crypto.randomUUID(),consent:true};
+    const result=await json(await request('/ai','POST',body));expect(result.entries).toHaveLength(20);expect(run).toHaveBeenCalledTimes(6);
+    expect((await json(await request('/ai/status'))).imports.used).toBe(1);
+    expect(await json(await request('/ai','POST',body))).toEqual(result);expect(run).toHaveBeenCalledTimes(6);
+    await db.query('update public.profiles set current_level=null where user_id=$1',[owner]);
+  });
+  it.each(['length','partial','invalid-row'] as const)('refunds a %s timetable attempt, then charges the full retry and its receipt only once',async failure=>{
+    const full={documentType:'class_timetable',entries:[classEntry],events:[],warnings:[],coverage};
+    const broken=failure==='partial'?{...full,coverage:{...coverage,complete:false},warnings:['Only half the schedule was read.']}
+      :failure==='invalid-row'?{...full,entries:[{...classEntry,startsAt:'20:00',endsAt:'09:00'}]}:full;
+    const run=vi.fn().mockResolvedValueOnce({choices:[{finish_reason:failure==='length'?'length':'stop',message:{content:JSON.stringify(broken)}}]})
+      .mockResolvedValue({choices:[{finish_reason:'stop',message:{content:JSON.stringify(full)}}]});env.AI={run};
+    const body={mode:'timetable',documentKind:'class',prompt:'Monday MAT 101 08:00-09:00 LT 1.',idempotencyKey:crypto.randomUUID(),consent:true};
+    const failed=await request('/ai','POST',body);expect(failed.status).toBe(failure==='length'?502:422);
+    expect((await json(await request('/ai/status'))).imports.used).toBe(0);
+    expect((await db.query("select status from app_private.ai_requests where idempotency_key=$1",[body.idempotencyKey])).rows[0]?.status).toBe('FAILED');
+    const retry={...body,idempotencyKey:crypto.randomUUID()},result=await json(await request('/ai','POST',retry));
+    expect(result.entries).toHaveLength(1);
+    expect(await json(await request('/ai','POST',retry))).toEqual(result);
+    expect((await json(await request('/ai/requests/'+retry.idempotencyKey))).entries).toHaveLength(1);
+    expect((await json(await request('/ai/status'))).imports.used).toBe(1);expect(run).toHaveBeenCalledTimes(2);
+    expect((await db.query('select count(*)::int as count from app_private.academic_import_usage')).rows[0]?.count).toBe(1);
+  });
+  it('uses the stored level and derives the uploaded UNIBEN grid times from its columns',async()=>{
+    await db.query("update public.profiles set current_level='200' where user_id=$1",[owner]);
+    const grid=JSON.parse(readFileSync(new URL('../../scripts/fixtures/uniben-engineering-2026.json',import.meta.url),'utf8'));
+    const run=vi.fn().mockResolvedValue({response:JSON.stringify(grid)});env.AI={run};
+    const body={mode:'timetable',documentKind:'class',prompt:'Read my faculty timetable',idempotencyKey:crypto.randomUUID(),consent:true};
+    const result=await json(await request('/ai','POST',body));
+    expect(result.entries).toHaveLength(20);
+    expect(result.entries.filter((entry:{dayOfWeek:number})=>entry.dayOfWeek===3)).toMatchObject([
+      {courseCode:'MEE211/GET207',startsAt:'08:00',endsAt:'09:00'},
+      {courseCode:'ECP281/GET211',startsAt:'09:00',endsAt:'10:00'},
+      {title:'200 LEVEL LABORATORY (ELA201)',startsAt:'10:00',endsAt:'14:00'},
+      {courseCode:'GST212',startsAt:'15:00',endsAt:'17:00'},
+      {courseCode:'CVE211',startsAt:'17:00',endsAt:'18:00'},
+    ]);
+    expect(String(run.mock.calls[0]?.[1]?.messages[0].content)).toContain('"level":"200"');
+    expect(result.entries.some((entry:{courseCode:string})=>['MTH101','PHY101','GST112'].includes(entry.courseCode))).toBe(false);
+    // Explicit carryover/alternative selection replaces the default row scope.
+    const mismatched=await request('/ai','POST',{...body,scheduleLevel:'100',idempotencyKey:crypto.randomUUID()});
+    expect(mismatched.status).toBe(422);
+    await db.query('update public.profiles set current_level=null where user_id=$1',[owner]);
+  });
   it.each(['class','calendar','exam'] as const)('extracts and persists %s review data from image, PDF and text attachments',async kind=>{
     for(const mime of ['image/png','application/pdf','text/plain']){
-      const expected=kind==='class'?{documentType:'class_timetable',entries:[classEntry],events:[],warnings:[]}:kind==='calendar'?{documentType:'academic_calendar',entries:[],events:[event],warnings:[]}:{documentType:'exam_timetable',entries:[exam],warnings:[]};
+      const expected=kind==='class'?{documentType:'class_timetable',entries:[classEntry],events:[],warnings:[],coverage}:kind==='calendar'?{documentType:'academic_calendar',entries:[],events:[event],warnings:[],coverage:{...coverage,daysRead:[]}}:{documentType:'exam_timetable',entries:[exam],warnings:[],coverage:{...coverage,daysRead:[]}};
       const source=kind==='calendar'?'ACADEMIC CALENDAR: Registration, 19 October 2026 to 30 October 2026.':kind==='exam'?'MAT 101, 5 November 2026, 09:00–11:00 Main hall.':'Monday MAT 101 08:00–09:00 LT 1.';
       const bytes=mime==='application/pdf'?pdfFixture([source]):mime==='text/plain'?new TextEncoder().encode(source):Uint8Array.from(Buffer.from(readFileSync(new URL('../../scripts/fixtures/synthetic-timetable.png',import.meta.url))));
       const mediaId=crypto.randomUUID(),run=vi.fn().mockResolvedValue({choices:[{finish_reason:'stop',message:{content:JSON.stringify(expected)}}]});env.AI={run};
@@ -176,7 +240,7 @@ describe('complete academic import routes',()=>{
   });
   it('reads a valid owned PDF above 8 MB without rejecting it as an invalid file',async()=>{
     const original=pdfFixture(['Monday MAT 101 08:00-09:00 LT 1.']),bytes=new Uint8Array(9*1024*1024).fill(32);bytes.set(original);
-    const mediaId=crypto.randomUUID(),run=vi.fn().mockResolvedValue({response:JSON.stringify({documentType:'class_timetable',entries:[classEntry],events:[],warnings:[]})});env.AI={run};
+    const mediaId=crypto.randomUUID(),run=vi.fn().mockResolvedValue({response:JSON.stringify({documentType:'class_timetable',entries:[classEntry],events:[],warnings:[],coverage})});env.AI={run};
     await db.query("insert into public.media_objects(id,owner_user_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,'resource',$3,'application/pdf',$4,'schedule.pdf')",[mediaId,owner,'private-'+mediaId,bytes.byteLength]);
     env.PRIVATE_BUCKET={get:async()=>({size:bytes.byteLength,arrayBuffer:async()=>bytes.slice().buffer})} as unknown as R2Bucket;
     const result=await json(await request('/ai','POST',{mode:'timetable',documentKind:'class',prompt:'',mediaId,idempotencyKey:crypto.randomUUID(),consent:true}));
@@ -193,7 +257,7 @@ it('releases an expired upload-limit draft key while retaining active quota enfo
   failure.failureDetails.resetsAt=new Date(Date.now()-60000).toISOString();
   await db.query('update app_private.ai_requests set result=$3::jsonb where user_id=$1 and idempotency_key=$2',[owner,body.idempotencyKey,JSON.stringify(failure)]);
   const expired=await json(await request('/ai','POST',body),409);expect(expired.error.details).toMatchObject({reason:'AI_ALLOWANCE_RENEWED',retryWithNewKey:true});expect(provider).not.toHaveBeenCalled();
-  provider.mockResolvedValue(Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({documentType:'class_timetable',entries:[{title:'Mathematics',courseCode:'MAT 101',dayOfWeek:1,startsAt:'08:00',endsAt:'09:00',venue:'LT 1',lecturer:''}],events:[],warnings:[]})}}]}));
+  provider.mockResolvedValue(Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({documentType:'class_timetable',entries:[{title:'Mathematics',courseCode:'MAT 101',dayOfWeek:1,startsAt:'08:00',endsAt:'09:00',venue:'LT 1',lecturer:''}],events:[],warnings:[],coverage:{complete:true,daysRead:[1],rowCount:1,uncertain:[]}})}}]}));
   const fresh={...body,idempotencyKey:crypto.randomUUID()};const result=await json(await request('/ai','POST',fresh));
   expect(result.entries[0].courseCode).toBe('MAT 101');expect(await json(await request('/ai','POST',fresh))).toEqual(result);expect(provider).toHaveBeenCalledTimes(1);
 });

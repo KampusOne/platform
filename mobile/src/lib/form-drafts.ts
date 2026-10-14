@@ -21,7 +21,7 @@ export function restoreTimetableDraft(value: unknown) {
     const e = draftRecord(value);
     return { title: draftString(e, 'title'), startsOn: draftString(e, 'startsOn'), endsOn: draftString(e, 'endsOn'), semester: draftString(e, 'semester') };
   });
-  return { entries, events, documentType: draftString(row, 'documentType'), text: draftString(row, 'text'), notes: draftString(row, 'notes'), attachment: draftAttachment(row.attachment), warnings: draftRows(row, 'warnings', 100, value => { if (typeof value !== 'string') throw draftFormatError(); return value; }), key: draftIdentifier(row, 'key'), saveKey: draftIdentifier(row, 'saveKey') };
+  return { entries, events, documentType: draftString(row, 'documentType'), text: draftString(row, 'text'), notes: draftString(row, 'notes'), scheduleLevel: draftString(row, 'scheduleLevel', '', 3), courseCodes: draftString(row, 'courseCodes', '', 2000), attachment: draftAttachment(row.attachment), warnings: draftRows(row, 'warnings', 100, value => { if (typeof value !== 'string') throw draftFormatError(); return value; }), key: draftIdentifier(row, 'key'), saveKey: draftIdentifier(row, 'saveKey') };
 }
 export function restoreExamDraft(value: unknown) {
   const row = draftRecord(value);

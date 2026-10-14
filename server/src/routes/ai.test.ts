@@ -35,7 +35,7 @@ beforeEach(()=>{vi.resetAllMocks();mocks.execute.mockImplementation(async(s:SQL)
   if(statement.includes("to_regprocedure('app_private.reserve_academic_import"))return {rows:[{ready:true}]};
   if(statement.includes("select app_private.reserve_academic_import"))return {rows:[{status:"RESERVED"}]};
   return {rows:[]};
-});mocks.transaction.mockResolvedValue([[],[],[{idempotency_key:key}]]);mocks.fetch.mockResolvedValue(Response.json({choices:[{finish_reason:"stop",message:{content:"Energy explanation"}}]}));vi.stubGlobal("fetch",mocks.fetch);});
+});mocks.transaction.mockImplementation(async statements=>statements[2]?.text.includes('reserve_academic_import')?[[],[],[{status:'RESERVED'}]]:[[],[],[{idempotency_key:key}]]);mocks.fetch.mockResolvedValue(Response.json({choices:[{finish_reason:"stop",message:{content:"Energy explanation"}}]}));vi.stubGlobal("fetch",mocks.fetch);});
 afterEach(()=>vi.unstubAllGlobals());
 describe("AI router security and idempotency",()=>{
   it("reports plan-aware long-form voice input only when transcription is configured",async()=>{
@@ -79,16 +79,16 @@ describe("AI router security and idempotency",()=>{
   it("rejects mutated keys, deleted results and processing replays",async()=>{for(const [row,status] of [[cached("COMPLETED",{text:"Private"},"other-hash"),409],[cached("COMPLETED",{deleted:true}),410],[cached("PROCESSING",null),409]] as const){mocks.execute.mockResolvedValueOnce(row);const r=await post();expect(r.status).toBe(status);expect(JSON.stringify(await r.json())).not.toContain("Private");}expect(mocks.fetch).not.toHaveBeenCalled();});
   it("returns a persistent-limit reset without provider I/O",async()=>{mocks.transaction.mockResolvedValueOnce([[],[],[]]);const r=await post();expect(r.status).toBe(429);expect(r.headers.get("Retry-After")).toBeTruthy();expect((await r.json() as {error:{details:{reason:string}}}).error.details.reason).toBe("AI_CHAT_LIMIT");expect(mocks.fetch).not.toHaveBeenCalled();});
   it("accepts timetable notes and forwards them as filtering preferences",async()=>{
-    mocks.fetch.mockResolvedValueOnce(Response.json({choices:[{finish_reason:"stop",message:{content:'{"documentType":"class_timetable","entries":[],"events":[],"warnings":[]}'}}]}));
+    mocks.fetch.mockResolvedValueOnce(Response.json({choices:[{finish_reason:"stop",message:{content:JSON.stringify({documentType:'class_timetable',entries:[{title:'MTH 201',courseCode:'MTH 201',dayOfWeek:1,startsAt:'08:00',endsAt:'10:00'}],events:[],warnings:[],coverage:{complete:true,daysRead:[1],rowCount:1,uncertain:[]}})}}]}));
     const response=await post({mode:"timetable",prompt:"Monday MTH 201 08:00-10:00",notes:"I do not offer CSE 201. Include my other courses."});
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({documentType:"class_timetable",entries:[]});
+    expect(await response.json()).toMatchObject({documentType:"class_timetable",entries:[{courseCode:'MTH 201'}]});
     const init=mocks.fetch.mock.calls[0]?.[1] as RequestInit;
     const providerBody=JSON.parse(String(init.body)) as {messages:{content:unknown}[]};
     const sent=String(providerBody.messages.at(-1)?.content ?? "");
     expect(sent).toContain("Student schedule preferences");
     expect(sent).toContain("I do not offer CSE 201");
-    expect(queries().some(q=>q.sql.includes("select app_private.reserve_academic_import"))).toBe(true);
+    expect(mocks.transaction.mock.calls.some(([statements])=>statements[2]?.text.includes('select app_private.reserve_academic_import'))).toBe(true);
   });
   it("rejects an unowned private attachment before reservation",async()=>{expect((await post({mediaId})).status).toBe(404);const media=queries().find(q=>q.sql.includes("public.media_objects"))!;expect(media.sql).toContain("owner_user_id=");expect(media.params).toContain(owner);expect(mocks.transaction).not.toHaveBeenCalled();});
   it("records terminal provider failure without saving a successful answer",async()=>{mocks.fetch.mockResolvedValueOnce(new Response("confidential upstream detail",{status:403}));const r=await post();expect(r.status).toBe(503);expect(JSON.stringify(await r.json())).not.toContain("confidential");expect(queries().some(q=>q.sql.includes("status='FAILED'"))).toBe(true);expect(mocks.fetch).toHaveBeenCalledTimes(1);});

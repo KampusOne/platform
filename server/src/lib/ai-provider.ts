@@ -16,7 +16,7 @@ export type AIEnvironment = WorkersAIEnvironment & {
 };
 export type AIMedia = { mimeType: string; data: string };
 export type AITurn = { prompt: string; text: string };
-export type AIInput = { mode: AIMode; prompt: string; requestPrompt?: string; sourceDocument?: boolean; media?: AIMedia; history?: AITurn[]; provider?: AIProvider; tier?: AITier; systemContext?: string; deadline?: number; onProgress?:(stage:'reading'|'analysing')=>Promise<void> };
+export type AIInput = { mode: AIMode; prompt: string; requestPrompt?: string; sourceDocument?: boolean; media?: AIMedia; history?: AITurn[]; provider?: AIProvider; tier?: AITier; systemContext?: string; deadline?: number; scheduleLayout?:boolean; onScheduleRead?:(day:number|null,text:string)=>void; onProgress?:(stage:'reading'|'analysing')=>Promise<void> };
 export type AITool = { type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } };
 export type AIToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 export type AIMessage = { role: "system" | "user" | "assistant" | "tool"; content: unknown; tool_calls?: AIToolCall[]; tool_call_id?: string };
@@ -90,7 +90,7 @@ export function aiMessages(input: AIInput): AIMessage[] {
   const content: unknown[] = [{ type: "text", text: input.prompt || "Read the attached study material." }];
   if (input.media) {
     if (!input.media.mimeType.startsWith("image/")) throw new AIProviderError(400, "AI_UNSUPPORTED_MEDIA", "Extract document text before sending it to AI.");
-    content.push({ type: "image_url", image_url: { url: `data:${input.media.mimeType};base64,${input.media.data}` } });
+    content.push({ type: "image_url", image_url: { url: `data:${input.media.mimeType};base64,${input.media.data}`, ...(input.mode==='timetable'?{detail:'high'}:{}) } });
   }
   return [
     { role: "system", content: aiSystemInstruction(input.mode) + (input.systemContext ? "\n" + input.systemContext : "") },
@@ -98,8 +98,8 @@ export function aiMessages(input: AIInput): AIMessage[] {
     { role: "user", content: input.media ? content : input.prompt || "Read the supplied material." },
   ];
 }
-export function aiCompletionBudget(input: Pick<AIInput,"mode"|"tier"|"sourceDocument">) {
-  if (input.mode === "timetable") return { maxTokens: 8192, timeoutMs: 90000 };
+export function aiCompletionBudget(input: Pick<AIInput,"mode"|"tier"|"sourceDocument"|"scheduleLayout">) {
+  if (input.mode === "timetable") return { maxTokens: input.scheduleLayout?2048:8192, timeoutMs: 150000 };
   const detailed = input.mode === "explanation" || input.mode === "notes";
   // Reading a document and producing revision notes needs more time than a
   // short Ask turn. The deadline covers every model attempt, including fallback.
@@ -116,7 +116,10 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
     if (config.provider === 'workers-ai') {
       try {
         const alternative = providerConfiguration({ ...env, AI_TEXT_PROVIDER: 'huggingface' }, input.mode, input.media?.mimeType, undefined, input.tier);
-        const firstAttempt = alternative.configured ? (input.mode === 'timetable' || input.sourceDocument ? 60000 : 45000) : budget.timeoutMs;
+        // Dense tables need longer than short document answers. A configured
+        // fallback must not cut the vision model off at 60 seconds; keep 30
+        // seconds for recovery within the overall academic deadline.
+        const firstAttempt = alternative.configured ? (input.mode === 'timetable' ? 120000 : input.sourceDocument ? 60000 : 45000) : budget.timeoutMs;
         payload = await workersAICompletion(env, input, messages, tools, budget.maxTokens, Math.min(deadline - Date.now(), firstAttempt)) as typeof payload;
       } catch (error) {
         // A native model outage must not strand the configured alternative.
@@ -177,7 +180,9 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
       }
     }
     const choice = payload.choices?.[0], message = choice?.message;
-    if (choice?.finish_reason === "length") throw new AIProviderError(502, "AI_INCOMPLETE", "This answer was cut short. Try a smaller document section or a more focused question.");
+    if (choice?.finish_reason === "length") throw new AIProviderError(502, "AI_INCOMPLETE", input.mode === 'timetable'
+      ? 'The schedule response was cut short. Your full file is kept; retry without losing an import credit.'
+      : 'This answer was cut short. Try a smaller document section or a more focused question.');
     const raw = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
     if (raw.length > 3) throw new AIProviderError(422, "AI_TOO_MANY_ACTIONS", "Try one campus task at a time.");
     const calls: AIToolCall[] = raw.map(call => {

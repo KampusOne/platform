@@ -1,0 +1,32 @@
+name: Verify complete timetable extraction
+on:
+  push:
+    branches: [main, fix/timetable-accuracy-credit-recovery-20261014]
+    paths: ['scripts/kira-connection-check.mjs', 'scripts/fixtures/uniben-engineering-*', 'server/scripts/verify-academic-imports.ts', 'server/src/lib/ai*.ts', 'server/src/lib/timetable-*.ts', 'server/src/lib/academic-import*.ts', 'server/src/lib/schedule-document.ts', 'server/src/routes/ai.ts', '.github/workflows/timetable-accuracy-check.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  academic:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: server
+      - run: npm ci
+        working-directory: packages/contracts
+      - run: node scripts/kira-connection-check.mjs --self-test
+      - name: Verify full class, calendar, exam and multi-level faculty imports
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROBE_VERIFY_UPLOADS: 'true'
+          PROBE_ACADEMIC_ONLY: 'true'
+        run: node scripts/kira-connection-check.mjs

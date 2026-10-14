@@ -1,5 +1,6 @@
 import { z } from "@kampusone/contracts";
 import { AIProviderError } from "./ai-error.ts";
+import { timetableExtractionInstruction } from './timetable-extraction.ts';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   const parsed = new Date(value + "T12:00:00Z");
@@ -16,7 +17,8 @@ Return JSON only: {"documentType":"class_timetable|academic_calendar|unknown","e
 For class_timetable, each entry has title, courseCode, venue, lecturer, dayOfWeek (Sunday=0 to Saturday=6), startsAt and endsAt in 24-hour HH:MM. Copy readable days and hours only. Optional text may be empty. Never infer a class time from a date or invent a course from a heading. "First Semester" and "Second Semester" are headings, never classes.
 For academic_calendar, entries MUST be empty. Each event has title, startsOn, endsOn (YYYY-MM-DD), semester (heading text or empty). Preserve every readable activity row in every semester, including overlapping rows. For a dated holiday with a blank end date use its single start date as endsOn. Never turn a range of lecture dates into recurring classes. The user needs a separate lecture timetable for hourly classes. Do not invent hours, rooms or lecturers. If a row is unclear, omit it and identify it in warnings. Check dates against weekday labels and warn about contradictions without silently changing the printed date. A proposed next-session start may be a one-day event labelled "Proposed".
 Example: "FIRST SEMESTER / Mon 5 Jan 2026 to Fri 16 Jan 2026 / Registration" becomes an academic_calendar event with startsOn "2026-01-05", endsOn "2026-01-16", title "Registration", semester "First semester" and no class entries. Never extract 05:00 or 16:00 from those dates.
-Return unknown with empty entries/events if the document is not a readable schedule.`;
+Return unknown with empty entries/events if the document is not a readable schedule.
+${timetableExtractionInstruction}`;
 
 export function parseScheduleDocument(text: string, sourceText = "") {
   let value: Record<string, unknown>;
