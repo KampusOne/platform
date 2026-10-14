@@ -119,7 +119,7 @@ export async function probe(request, env, readPrivateAIPdf, importReader) {
       }catch(error){return{outcome:'provider_rejected',...(typeof error?.reason==='string'&&/^AI_[A-Z_]+$/.test(error.reason)?{reason:error.reason}:{})};}
     };
     const photoPreview=await scheduleCheck('class','',{mimeType:'image/png',data:env.PROBE_TIMETABLE_PNG});
-    const handwrittenPreview=await scheduleCheck('class','',{mimeType:'image/png',data:handwriting.pngBase64});
+    const handwrittenPreview=await scheduleCheck('class','The student states that this handwritten class is on Monday. Read the course code, hours and venue from the photo; use the supplied weekday.',{mimeType:'image/png',data:handwriting.pngBase64});
     const paperText=await readPrivateAIPdf(env,new Uint8Array(await new Blob([pdf]).arrayBuffer()));
     const printedPdfPreview=await scheduleCheck('class',paperText);
     const calendarPhotoPreview=await scheduleCheck('calendar','',{mimeType:'image/png',data:env.PROBE_CALENDAR_PNG});

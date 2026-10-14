@@ -42,7 +42,8 @@ export function providerConfiguration(env: AIEnvironment, mode: AIMode, mimeType
   const image = mimeType?.startsWith("image/") ?? false;
   const token = env.HF_TOKEN?.trim();
   const chatModel = env.HF_CHAT_MODEL?.trim();
-  const workers = workersAIConfiguration(env, tier, image);
+  // Schedules require the same structured reader for photos and extracted text.
+  const workers = workersAIConfiguration(env, tier, image || mode === 'timetable');
   // The native binding activates text inference without adding billable/free-
   // plan variable slots. An explicit HF preference still permits recovery.
   if ((env.AI_TEXT_PROVIDER === 'workers-ai' || (workers.configured && env.AI_TEXT_PROVIDER !== 'huggingface'))) {

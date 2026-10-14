@@ -109,6 +109,7 @@ describe('schedule inference deadline regression', () => {
     const run=native({response:'{"documentType":"exam_timetable","entries":[],"warnings":[]}'});
     await generateAI(env(run),{mode:'timetable',documentKind:'exam',prompt:'Read exams'});
     const instruction=run.mock.calls[0][1].messages[0].content;
+    expect(run.mock.calls[0][0]).toBe('@cf/google/gemma-4-26b-a4b-it');
     expect(instruction).toContain('exam_timetable');expect(instruction).not.toContain('dayOfWeek');
   });
 });

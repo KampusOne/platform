@@ -1,4 +1,4 @@
-import { normalizeApiTimestamp } from './api-date';
+import { normalizeApiTimestamp } from './api-date.ts';
 
 /** KampusOne's requested timeline policy: relative for 28 days, then a date. */
 export function feedTime(value: unknown, now = Date.now()): { text: string; label: string; exact: string } {
