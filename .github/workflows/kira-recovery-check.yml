@@ -1,7 +1,7 @@
 name: Verify Kira recovery and document reading
 on:
   push:
-    branches: [main, fix/ai-upload-completion-20261014]
+    branches: [fix/kira-response-check-20261014]
     paths: ['server/src/lib/ai*.ts', 'server/scripts/verify-kira-recovery.ts', 'scripts/kira-connection-check.mjs', '.github/workflows/kira-recovery-check.yml']
 permissions:
   contents: read
