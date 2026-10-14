@@ -1,5 +1,5 @@
 name: Build current verified Android APK
-# Includes active AI responses and shared timetable headings.
+# Includes native BACHS receipts using the established loading component.
 on:
   push:
     branches: [main]
