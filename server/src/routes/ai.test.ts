@@ -38,6 +38,22 @@ beforeEach(()=>{vi.resetAllMocks();mocks.execute.mockImplementation(async(s:SQL)
 });mocks.transaction.mockImplementation(async statements=>statements[2]?.text.includes('reserve_academic_import')?[[],[],[{status:'RESERVED'}]]:[[],[],[{idempotency_key:key}]]);mocks.fetch.mockResolvedValue(Response.json({choices:[{finish_reason:"stop",message:{content:"Energy explanation"}}]}));vi.stubGlobal("fetch",mocks.fetch);});
 afterEach(()=>vi.unstubAllGlobals());
 describe("AI router security and idempotency",()=>{
+  it('keeps a negotiated inference response active before the model finishes, then saves its normal receipt',async()=>{
+    let complete!:(value:Response)=>void;
+    mocks.fetch.mockImplementationOnce(()=>new Promise(resolve=>{complete=resolve;}));
+    const response=await app.request('/ai',{method:'POST',headers:{Authorization:'Bearer test','Content-Type':'application/json',Accept:'application/vnd.kampusone.ai-result+json'},body:JSON.stringify(body)},env);
+    expect(response.status).toBe(200);expect(response.headers.get('Content-Type')).toBe('application/vnd.kampusone.ai-result+json');
+    const reader=response.body!.getReader(),first=await reader.read();expect(first.value!.byteLength).toBeGreaterThan(1024);
+    // The response is already visible while the deferred inference is pending.
+    for(let i=0;i<20&&!complete;i++)await Promise.resolve();
+    expect(complete).toBeTypeOf('function');
+    complete(Response.json({choices:[{finish_reason:'stop',message:{content:'Energy explanation'}}]}));
+    let text=new TextDecoder().decode(first.value);
+    for(;;){const next=await reader.read();if(next.done)break;text+=new TextDecoder().decode(next.value);}
+    expect(JSON.parse(text)).toMatchObject({requestId:key,text:'Energy explanation'});
+    expect(queries().some(q=>q.sql.includes("status='COMPLETED'"))).toBe(true);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
   it("reports plan-aware long-form voice input only when transcription is configured",async()=>{
     const longFormEnv={...env,GEMINI_API_KEY:"synthetic",GEMINI_TRANSCRIPTION_MODEL:"gemini-3.8-flash"};
     const r=await app.request("/ai/status",{headers:{Authorization:"Bearer test"}},longFormEnv);expect(r.status).toBe(200);expect(await r.json()).toMatchObject({voiceEnabled:true,voice:{maxSeconds:60,longFormReady:true},askSession:{windowMinutes:15,limit:15,remaining:0}});

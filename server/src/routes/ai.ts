@@ -1,5 +1,6 @@
 import {examImportInstruction} from '../lib/exam-schedule';
 import { generateAcademicImport } from "../lib/academic-import-recovery";
+import { aiResultStream, aiResultStreamType } from '../lib/ai-result-stream';
 import { levelKey, type TimetableScope } from '../lib/timetable-extraction';
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
@@ -515,5 +516,10 @@ aiRoutes.post("/", async c => {
     }
   })();
   try { c.executionCtx.waitUntil(job.catch(() => undefined)); } catch { /* Unit-test/request runtimes may not provide an execution context. */ }
+  if(c.req.header('Accept')?.split(',').some(type=>type.trim()===aiResultStreamType)) {
+    c.header('Content-Type',aiResultStreamType);
+    c.header('X-Content-Type-Options','nosniff');
+    return c.newResponse(aiResultStream(job,d.idempotencyKey),200);
+  }
   return c.json(await job);
 });

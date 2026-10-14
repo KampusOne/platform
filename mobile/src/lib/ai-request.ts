@@ -10,6 +10,8 @@ export async function submitTrackedAIRequest<T>(transport: Transport, init: ApiR
   let id = '';
   try { id = JSON.parse(String(init.body)).idempotencyKey ?? ''; } catch { /* The API validates the submission. */ }
   if (!/^[a-f0-9-]{36}$/i.test(id)) return transport<T>('/v1/ai', init);
+  const headers = new Headers(init.headers);
+  headers.set('Accept', 'application/vnd.kampusone.ai-result+json');
   const controller = new AbortController();
   const abort = () => controller.abort(init.signal?.reason ?? new Error('Reading stopped. Your file and draft are kept.'));
   if (init.signal?.aborted) abort();
@@ -24,9 +26,17 @@ export async function submitTrackedAIRequest<T>(transport: Transport, init: ApiR
     controller.signal.addEventListener('abort', cancelled, { once: true });
     timer = setTimeout(() => { controller.signal.removeEventListener('abort', cancelled); resolve(); }, ms);
   });
-  const submission = transport<T>('/v1/ai', { ...init, signal: controller.signal }).catch(error => {
+  const submission = transport<T>('/v1/ai', { ...init, headers, signal: controller.signal }).then(value => {
+    const result = value as {requestId?:string;status?:string;httpStatus?:number;error?:{code?:string;message?:string;details?:Record<string,unknown>}};
+    if (result?.status === 'failed') {
+      if (result.requestId !== id || !Number.isInteger(result.httpStatus) || result.httpStatus! < 400 || result.httpStatus! > 599
+        || !result.error?.code || !result.error.message) throw new Error('The AI result could not be verified. Your file and draft are kept.');
+      throw new ApiError(result.httpStatus!, result.error.code, result.error.message, result.error.details);
+    }
+    return value;
+  }).catch(error => {
     const recoverable = error instanceof ApiError && (
-      ['NETWORK_ERROR', 'NETWORK_UNAVAILABLE', 'REQUEST_TIMEOUT'].includes(error.code)
+      ['NETWORK_ERROR', 'NETWORK_UNAVAILABLE', 'REQUEST_TIMEOUT', 'INVALID_RESPONSE'].includes(error.code)
       || (error.status === 409 && error.details?.reason === 'AI_PROCESSING')
       || (error.details?.reason === 'AI_SAVE_FAILED' && error.details?.retryWithNewKey === false)
       || (error.status >= 502 && !error.details?.reason));

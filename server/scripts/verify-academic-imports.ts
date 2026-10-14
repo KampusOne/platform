@@ -8,8 +8,8 @@ import { timetableExtractionInstruction, type TimetableScope } from '../src/lib/
 /** Live checks use the app's actual inference and validation adapters, not a
  * short transcription request that cannot certify a structured schedule. */
 export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
-  printedImage: string; handwriting: string; calendarPdf: string; facultyImage?: string; facultyWebp?: string;
-  case?: 'baseline'|'facultyGrid200'|'facultyGrid100'|'facultyWebp100';
+  printedImage: string; handwriting: string; calendarPdf: string; facultyImage?: string; facultyWebp?: string; facultyPhoto?: string;
+  case?: 'baseline'|'facultyGrid200'|'facultyGrid100'|'facultyWebp100'|'facultyPhoto100';
 }) {
   const checked = async (name: string, kind: 'class' | 'calendar' | 'exam', prompt: string, media?: AIMedia, sourceDocument = false, scope:TimetableScope={level:'100'}) => {
     const start = Date.now();
@@ -73,5 +73,6 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
     if(!fixtures.case||fixtures.case==='facultyGrid100')faculty.push(await checked('facultyGrid100','class',"I'm in 100lvl",{mimeType:'image/jpeg',data:fixtures.facultyImage},true,{level:'100'}));
   }
   if(fixtures.facultyWebp&&(!fixtures.case||fixtures.case==='facultyWebp100'))faculty.push(await checked('facultyWebp100','class',"I'm in 100lvl",{mimeType:'image/webp',data:fixtures.facultyWebp},true,{level:'100'}));
+  if(fixtures.facultyPhoto&&(!fixtures.case||fixtures.case==='facultyPhoto100'))faculty.push(await checked('facultyPhoto100','class',"I'm in 100lvl",{mimeType:'image/jpeg',data:fixtures.facultyPhoto},true,{level:'100'}));
   return [...await baseline,...faculty];
 }

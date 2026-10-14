@@ -13,8 +13,8 @@ export async function probe(request, env, readPrivateAIPdf, verifyAcademicImport
   if(env.PROBE_IMAGE_KEY_ONLY==='true')return Response.json({kind:'kampusone-kira-probe-v1',imageProcessingKey:await imageProcessingPublicKey(env.JWT_SECRET)},{headers:{'Cache-Control':'no-store'}});
   if(env.PROBE_ACADEMIC_ONLY==='true') {
     const academicCase=request.headers.get('x-probe-academic-case');
-    if(!['baseline','facultyGrid200','facultyGrid100','facultyWebp100'].includes(academicCase))return new Response(null,{status:400});
-    return Response.json({kind:'kampusone-kira-probe-v1',academicImports:await verifyAcademicImports(env,{printedImage:env.PROBE_TIMETABLE_PNG,handwriting:env.PROBE_HANDWRITING.pngBase64,calendarPdf:env.PROBE_CALENDAR_PDF,facultyImage:env.PROBE_FACULTY_JPEG,facultyWebp:env.PROBE_FACULTY_WEBP,case:academicCase})},{headers:{'Cache-Control':'no-store'}});
+    if(!['baseline','facultyGrid200','facultyGrid100','facultyWebp100','facultyPhoto100'].includes(academicCase))return new Response(null,{status:400});
+    return Response.json({kind:'kampusone-kira-probe-v1',academicImports:await verifyAcademicImports(env,{printedImage:env.PROBE_TIMETABLE_PNG,handwriting:env.PROBE_HANDWRITING.pngBase64,calendarPdf:env.PROBE_CALENDAR_PDF,facultyImage:env.PROBE_FACULTY_JPEG,facultyWebp:env.PROBE_FACULTY_WEBP,facultyPhoto:env.PROBE_FACULTY_PHOTO,case:academicCase})},{headers:{'Cache-Control':'no-store'}});
   }
   const messages=[{role:'system',content:'Answer briefly and accurately.'},{role:'user',content:"State Ohm's law in one sentence."}];
   const modelCheck=async(model,image)=>{
@@ -176,10 +176,11 @@ if(process.argv.includes('--self-test')) {
     stage='document reader bundle';
     const {build}=createRequire(new URL('../server/package.json',import.meta.url))('esbuild');
     const reader=await build({stdin:{contents:"export {imageProcessingPublicKey} from './src/lib/image-processing-auth.ts';export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';export {verifyAcademicImports} from './scripts/verify-academic-imports.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent',plugins:[{name:'private-webp-module',setup(build){build.onResolve({filter:/webp_dec\.wasm$/},()=>({path:'./webp-decoder.wasm',external:true}));}}]});
-    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},...(process.env.PROBE_IMAGE_KEY_ONLY==='true'?[]:[{name:'TIMETABLE_IMAGE_PROCESSOR_URL',type:'plain_text',text:'https://agents.kampusone.app/internal-processing/timetable-image'}]),{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_IMAGE_KEY_ONLY',type:'plain_text',text:process.env.PROBE_IMAGE_KEY_ONLY==='true'?'true':'false'},{name:'PROBE_ACADEMIC_ONLY',type:'plain_text',text:process.env.PROBE_ACADEMIC_ONLY==='true'?'true':'false'},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
+    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},...(process.env.PROBE_IMAGE_KEY_ONLY==='true'?[]:[{name:'TIMETABLE_IMAGE_PROCESSOR_URL',type:'plain_text',text:'https://agents.kampusone.app/internal-processing/timetable-image'}]),{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+240000)},{name:'PROBE_IMAGE_KEY_ONLY',type:'plain_text',text:process.env.PROBE_IMAGE_KEY_ONLY==='true'?'true':'false'},{name:'PROBE_ACADEMIC_ONLY',type:'plain_text',text:process.env.PROBE_ACADEMIC_ONLY==='true'?'true':'false'},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
     const faculty=readFileSync(new URL('./fixtures/uniben-engineering-2026.jpg',import.meta.url)).toString('base64');
+    const facultyPhoto=readFileSync(new URL('./fixtures/uniben-engineering-2026-photo.jpg',import.meta.url)).toString('base64');
     const facultyWebp=readFileSync(new URL('./fixtures/uniben-engineering-2026.webp',import.meta.url)).toString('base64');
-    form.set('probe.mjs',new Blob([`import {imageProcessingPublicKey,readPrivateAIPdf,verifyAcademicImports} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)},PROBE_FACULTY_JPEG:${JSON.stringify(faculty)},PROBE_FACULTY_WEBP:${JSON.stringify(facultyWebp)},PROBE_CALENDAR_PDF:${JSON.stringify(readFileSync(new URL("./fixtures/synthetic-academic-calendar.pdf",import.meta.url)).toString("base64"))}},readPrivateAIPdf,verifyAcademicImports,imageProcessingPublicKey)};`],{type:'application/javascript+module'}),'probe.mjs');
+    form.set('probe.mjs',new Blob([`import {imageProcessingPublicKey,readPrivateAIPdf,verifyAcademicImports} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)},PROBE_FACULTY_JPEG:${JSON.stringify(faculty)},PROBE_FACULTY_WEBP:${JSON.stringify(facultyWebp)},PROBE_FACULTY_PHOTO:${JSON.stringify(facultyPhoto)},PROBE_CALENDAR_PDF:${JSON.stringify(readFileSync(new URL("./fixtures/synthetic-academic-calendar.pdf",import.meta.url)).toString("base64"))}},readPrivateAIPdf,verifyAcademicImports,imageProcessingPublicKey)};`],{type:'application/javascript+module'}),'probe.mjs');
     form.set('webp-decoder.wasm',new Blob([readFileSync(new URL('../server/node_modules/@jsquash/webp/codec/dec/webp_dec.wasm',import.meta.url))],{type:'application/wasm'}),'webp-decoder.wasm');
     form.set('document-reader.mjs',new Blob([reader.outputFiles[0].text],{type:'application/javascript+module'}),'document-reader.mjs');
     form.set('wrangler-session-config',JSON.stringify({workers_dev:true}));
@@ -213,7 +214,7 @@ if(process.argv.includes('--self-test')) {
       // Each request matches one app import's memory/CPU envelope. Do not keep
       // three independent dense-table imports in one Worker invocation.
       const academicImports=[];
-      for(const name of ['baseline','facultyGrid200','facultyGrid100','facultyWebp100']) {
+      for(const name of ['baseline','facultyGrid200','facultyGrid100','facultyWebp100','facultyPhoto100']) {
         const value=await run(name);
         academicImports.push(...value.academicImports);
         for(const item of value.academicImports)report(`Completed academic ${item.name}: ${item.outcome}; ${item.elapsedMs}ms`);
@@ -222,7 +223,7 @@ if(process.argv.includes('--self-test')) {
     } else result=await run();
     if(process.env.PROBE_IMAGE_KEY_ONLY!=='true') {
     if(process.env.PROBE_ACADEMIC_ONLY==='true'){
-      if(!Array.isArray(result.academicImports)||result.academicImports.length!==7)throw new Error('Missing academic extraction proofs');
+      if(!Array.isArray(result.academicImports)||result.academicImports.length!==8)throw new Error('Missing academic extraction proofs');
       for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes??0}, events ${item.events??0}; ${item.elapsedMs}ms${/^AI_[A-Z_]+$/.test(item.reason??'')?`; ${item.reason}`:''}`);if(item.name.startsWith('faculty')&&Array.isArray(item.actual))report('Faculty fixture cells: '+JSON.stringify(item.actual));if(item.name.startsWith('faculty')&&item.diagnostic)report('Faculty fixture validation: '+JSON.stringify(item.diagnostic));if(item.outcome!=='extraction_succeeded')process.exitCode=1;}
       report('Private academic extraction checks only. No payment sessions, bank lookups or student-data writes.');
     } else {
