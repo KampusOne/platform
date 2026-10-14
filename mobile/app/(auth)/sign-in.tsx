@@ -14,6 +14,7 @@ import {
   TextLink,
 } from "@/src/components/auth-ui";
 import { ApiError, authApi } from "@/src/lib/api";
+import { validPaymentReference } from '@/src/lib/payment-flow';
 import { theme } from "@/src/theme";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,7 +24,7 @@ export default function SignInScreen() {
 
   const {height}=useWindowDimensions();
   const illustrationHeight=Math.max(112,Math.min(218,height*0.2));
-  const params = useLocalSearchParams<{ email?: string; reason?: string }>();
+  const params = useLocalSearchParams<{ email?: string; reason?: string; paymentReference?: string }>();
   const { beginSession } = useAuth();
   const [email, setEmail] = useState(
     typeof params.email === "string" ? params.email : "",
@@ -32,6 +33,7 @@ export default function SignInScreen() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const validEmail = emailPattern.test(email.trim());
+  const finishSignIn=()=>router.replace(validPaymentReference(params.paymentReference)?{pathname:'/payment-return',params:{reference:params.paymentReference}}:"/");
 
   async function submit() {
     if(loading)return;
@@ -45,7 +47,7 @@ export default function SignInScreen() {
     try {
       const session = await authApi.login(email.trim(), password);
       await beginSession(session);
-      router.replace("/");
+      finishSignIn();
     } catch (caught) {
       if (caught instanceof ApiError && caught.details?.verificationRequired) {
         router.replace({
@@ -124,7 +126,7 @@ export default function SignInScreen() {
         </PrimaryButton>
       </View>
 
-      <SocialAuthButtons />
+      <SocialAuthButtons onSignedIn={finishSignIn}/>
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>New here?</Text>

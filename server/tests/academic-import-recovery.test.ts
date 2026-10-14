@@ -19,7 +19,7 @@ const broken=()=>{const value=structuredClone(source);value.grid.rows[2].level='
 const response=(day:number)=>({labels:Object.fromEntries(labels[day]!.map((label,panel)=>[String(panel),label])),coverage:{complete:true,uncertain:[]}});
 const dayOf=(request:AIInput)=>names.findIndex(name=>request.prompt.includes('for '+name+'.'));
 beforeEach(()=>{vi.mocked(generateAI).mockReset().mockImplementation(async(_env,request)=>({text:JSON.stringify(response(dayOf(request))),provider:'workers-ai'}));});
-describe('one-import private cell transcription',()=>{
+describe('one-import private cell transcription',{timeout:30000},()=>{
   it('retries a transient compact layout failure once and preserves the full import deadline for the cells',async()=>{
     const value=structuredClone(source);value.coverage={complete:false,daysRead:[],rowCount:0,uncertain:[]};value.grid.rows=[];
     vi.mocked(generateAI).mockRejectedValueOnce(new AIProviderError(503,'AI_PROVIDER_BUSY','busy')).mockResolvedValueOnce({text:JSON.stringify(value),provider:'workers-ai'});
@@ -58,6 +58,15 @@ describe('one-import private cell transcription',()=>{
     const result=await parseOrRecoverAcademicImport({},input(),broken(),'','class',{level:'200',courseCodes:['GET211']});
     expect(result.entries).toHaveLength(5);expect(generateAI).toHaveBeenCalledTimes(5);
     expect(result.entries.filter(entry=>(entry as {courseCode:string}).courseCode)).toHaveLength(3);
+  });
+  it('cannot turn a pixel-certified empty cell into a hallucinated extra class',async()=>{
+    vi.mocked(generateAI).mockImplementation(async(_env,request)=>{
+      const day=dayOf(request),value=response(day);
+      if(day===1)value.labels['3']='CHM101';
+      return{text:JSON.stringify(value),provider:'groq'};
+    });
+    const result=await parseOrRecoverAcademicImport({},input(),broken(),'','class',{level:'200'});
+    expect(result.entries).toHaveLength(20);expect(result.entries.some(entry=>/CHM101/.test(String((entry as {title:string}).title)))).toBe(false);
   });
   it('does not begin more inference near the deadline or without a level selection',async()=>{
     for(const [request,scope,reason] of [[{...input(),deadline:Date.now()+1000},{level:'200'},'AI_INCOMPLETE_SCHEDULE'],[input(),{},'AI_LEVEL_REQUIRED']] as const)

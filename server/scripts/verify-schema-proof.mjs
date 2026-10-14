@@ -10,6 +10,7 @@ const compatiblePrerequisites = new Set([
 const manifest = JSON.parse(readFileSync(new URL("../../database/verification/2026-09-30-migration-manifest.json", import.meta.url), "utf8"));
 
 export const groups = {
+  commerceNotifications: ["20261014200000_commerce_notifications"],
   paymentRecovery: ["20261014160000_verified_store_payment_recovery"],
   campusLandmarks: ["20261013233000_uniben_field_records_correction"],
   agentBanks: [
@@ -186,7 +187,7 @@ export function verifySchemaProof(proof, group, loadMigration) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const root = new URL("../../", import.meta.url);
   try {
-    const proofFile = process.argv[2] === "paymentRecovery" ? "production-20261014-payment-recovery.json" : process.argv[2] === "campusLandmarks" ? "production-20261013-field-records.json" : process.argv[2] === "agentBanks" ? "production-20261013-agent-banks.json" : process.argv[2] === "screenFixes" ? "production-20261010-screen-fixes.json" : process.argv[2] === "cache" ? "production-20261010-cache.json" : process.argv[2] === "current" ? "production-20261009-current.json" : process.argv[2] === "followup" ? "production-20261006-followup.json" : process.argv[2] === "october6" ? "production-20261006-release.json" : process.argv[2] === "october4" ? "production-20261004-corrections.json" : process.argv[2] === "experience" ? "production-20261003-experience.json" : process.argv[2] === "october" ? "production-20261001-october.json" : process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
+    const proofFile = process.argv[2] === "commerceNotifications" ? "production-20261014-commerce-notifications.json" : process.argv[2] === "paymentRecovery" ? "production-20261014-payment-recovery.json" : process.argv[2] === "campusLandmarks" ? "production-20261013-field-records.json" : process.argv[2] === "agentBanks" ? "production-20261013-agent-banks.json" : process.argv[2] === "screenFixes" ? "production-20261010-screen-fixes.json" : process.argv[2] === "cache" ? "production-20261010-cache.json" : process.argv[2] === "current" ? "production-20261009-current.json" : process.argv[2] === "followup" ? "production-20261006-followup.json" : process.argv[2] === "october6" ? "production-20261006-release.json" : process.argv[2] === "october4" ? "production-20261004-corrections.json" : process.argv[2] === "experience" ? "production-20261003-experience.json" : process.argv[2] === "october" ? "production-20261001-october.json" : process.argv[2] === "platform" ? "production-20261001-platform.json" : process.argv[2] === "corrections" ? "production-20260921-corrections.json" : "production-20260920.json";
     const proof = JSON.parse(readFileSync(new URL(`database/verification/${proofFile}`, root), "utf8"));
     const count = verifySchemaProof(proof, process.argv[2], (version) =>
       readFileSync(new URL(`database/neon/migrations/${version}.sql`, root)));

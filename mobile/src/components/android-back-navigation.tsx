@@ -45,6 +45,10 @@ export function AndroidBackNavigation() {
 
       lastBack.current = 0;
 
+      // The focused receipt clears its saved callback and goes to Home. Let it
+      // handle back even when an older authentication screen exists in history.
+      if(current==='payment-return'||current==='payment/return')return false;
+
       // Let Expo Router/React Navigation consume ordinary back presses.
       // Calling router.back() here duplicates the navigator's own handler and
       // was able to unwind the same history twice during route transitions.

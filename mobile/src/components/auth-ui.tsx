@@ -243,7 +243,7 @@ function GoogleMark() {
   return <Image accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" source={require("@/assets/auth/google-g.png")} resizeMode="contain" style={{width:20,height:20,flexShrink:0}} />;
 }
 
-export function SocialAuthButtons() {
+export function SocialAuthButtons({onSignedIn}:{onSignedIn?:()=>void}={}) {
   const { theme, styles } = useThemeStyles(createStyles);
   const pathname = usePathname();
   const { beginSession } = useAuth();
@@ -281,7 +281,8 @@ export function SocialAuthButtons() {
           screen,
           component: "social_auth_button",
         });
-        router.replace("/");
+        if(onSignedIn)onSignedIn();
+        else router.replace("/");
       }
     } catch (e) {
       trackAuthAction(`${provider}_sign_in_failed`, {

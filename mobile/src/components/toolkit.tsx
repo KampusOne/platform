@@ -26,6 +26,7 @@ export function ToolPage({
   action,
   refreshing = false,
   onRefresh,
+  onBack,
   syncPath,
   status,
 }: {
@@ -34,6 +35,7 @@ export function ToolPage({
   action?: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
+  onBack?: () => void;
   syncPath?: string;
   status?: ReactNode;
 }) {
@@ -85,7 +87,8 @@ export function ToolPage({
                 screen: analyticsScreenName(pathname),
                 component: "tool_header",
               });
-              router.canGoBack() ? router.back() : router.replace("/explore");
+              if (onBack) onBack();
+              else router.canGoBack() ? router.back() : router.replace("/explore");
             }}
             style={styles.icon}
           >

@@ -34,6 +34,7 @@ beforeAll(async()=>{
  await pg.exec("update app_private.active_kira_price_plans set plan_id=(select id from app_private.kira_price_plans where version='ACTIVE_TEST') where tier='pro'");
  await pg.exec(sql('20261010140000_bachs_collection_cutover.sql'));
  await pg.exec(sql('20261014160000_verified_store_payment_recovery.sql'));
+ await pg.exec(sql('20261014200000_commerce_notifications.sql'));
 
 },60000);
 afterAll(async()=>{await pg?.close();});afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers();});

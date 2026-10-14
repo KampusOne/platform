@@ -3,7 +3,7 @@ export { AIProviderError } from "./ai-error.ts";
 import { scheduleInstruction, parseScheduleDocument } from "./schedule-document.ts";
 import { workersAICompletion, workersAIConfiguration, type WorkersAIEnvironment } from './ai-workers.ts';
 import {geminiAcademicCompletion} from './ai-gemini.ts';
-import {groqAcademicCompletion} from './ai-groq.ts';
+import {groqAcademicCompletion,groqCompletion} from './ai-groq.ts';
 /** All inference stays server-side behind provider adapters. */
 export type AIMode = "study" | "summary" | "explanation" | "quiz" | "notes" | "timetable";
 export type AITier = "standard" | "pro";
@@ -188,21 +188,12 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
         payload = await response.json() as typeof payload;
       }
     }
-    const choice = payload.choices?.[0], message = choice?.message;
-    if (choice?.finish_reason === "length") throw new AIProviderError(502, "AI_INCOMPLETE", input.mode === 'timetable'
-      ? 'The schedule response was cut short. Your full file is kept; retry without losing an import credit.'
-      : 'This answer was cut short. Try a smaller document section or a more focused question.');
-    const raw = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
-    if (raw.length > 3) throw new AIProviderError(422, "AI_TOO_MANY_ACTIONS", "Try one campus task at a time.");
-    const calls: AIToolCall[] = raw.map(call => {
-      if (!call || typeof call !== "object" || typeof call.id !== "string" || call.id.length > 160 || call.type !== "function" || typeof call.function?.name !== "string" || typeof call.function?.arguments !== "string" || call.function.arguments.length > 10000) throw new AIProviderError(502, "AI_INVALID_OUTPUT", "That action was not understood. Nothing was changed.");
-      return call as AIToolCall;
-    });
-    const text = typeof message?.content === "string" ? studentSafeText(message.content.trim()) : "";
-    if (!text && !calls.length) throw new AIProviderError(502, "AI_EMPTY_OUTPUT", "AI returned no answer. Your draft is kept.");
-    if (text.length > 50000) throw new AIProviderError(502, "AI_INVALID_OUTPUT", "This response was too long. Try a smaller source.");
-    return { text, calls, provider };
+    return readAICompletion(payload,input.mode,provider);
   } catch (error) {
+    if(input.mode!=='timetable'&&env.GROQ_API_KEY&&error instanceof AIProviderError&&error.status>=500&&deadline-Date.now()>1000){
+      console.warn(JSON.stringify({event:'ai.provider.fallback',to:'groq',reason:error.reason}));
+      return readAICompletion(await groqCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher,tools),input.mode,'groq');
+    }
     if(input.mode==='timetable'&&error instanceof AIProviderError&&error.status>=500&&deadline-Date.now()>1000){
       let last=error;
       if(env.GROQ_API_KEY){
@@ -220,6 +211,23 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
     if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) throw new AIProviderError(504, "AI_TIMEOUT", "AI took too long. Your draft is kept.");
     throw new AIProviderError(503, "AI_PROVIDER_UNAVAILABLE", "AI could not connect. Your draft is kept.");
   }
+}
+function readAICompletion(payload:{choices?:{message?:{content?:unknown;tool_calls?:unknown};finish_reason?:string}[]},mode:AIMode,provider:AIProvider){
+    const choice = payload.choices?.[0], message = choice?.message;
+    if (choice?.finish_reason === "length") throw new AIProviderError(502, "AI_INCOMPLETE", mode === 'timetable'
+      ? 'The schedule response was cut short. Your full file is kept; retry without losing an import credit.'
+      : 'This answer was cut short. Try a smaller document section or a more focused question.');
+    if(provider==='groq'&&!['stop','tool_calls'].includes(choice?.finish_reason??''))throw new AIProviderError(502,'AI_INVALID_OUTPUT','AI did not finish its answer. Your draft is kept.');
+    const raw = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+    if (raw.length > 3) throw new AIProviderError(422, "AI_TOO_MANY_ACTIONS", "Try one campus task at a time.");
+    const calls: AIToolCall[] = raw.map(call => {
+      if (!call || typeof call !== "object" || typeof call.id !== "string" || call.id.length > 160 || call.type !== "function" || typeof call.function?.name !== "string" || typeof call.function?.arguments !== "string" || call.function.arguments.length > 10000) throw new AIProviderError(502, "AI_INVALID_OUTPUT", "That action was not understood. Nothing was changed.");
+      return call as AIToolCall;
+    });
+    const text = typeof message?.content === "string" ? studentSafeText(message.content.trim()) : "";
+    if (!text && !calls.length) throw new AIProviderError(502, "AI_EMPTY_OUTPUT", "AI returned no answer. Your draft is kept.");
+    if (text.length > 50000) throw new AIProviderError(502, "AI_INVALID_OUTPUT", "This response was too long. Try a smaller source.");
+    return { text, calls, provider };
 }
 export async function generateAI(env: AIEnvironment, input: AIInput, fetcher: typeof fetch = fetch): Promise<{ text: string; provider: AIProvider }> {
   const result = await completeAI(env, input, aiMessages(input), undefined, fetcher);

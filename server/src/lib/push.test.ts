@@ -7,6 +7,13 @@ const env={}as Bindings,token='ExpoPushToken[syntheticToken123456]';
 const notice={title:'Campus update',body:'Lecture venue changed.',path:'/community?id=synthetic',id:'synthetic-delivery',preferenceCategory:'announcements'};
 afterEach(()=>vi.unstubAllGlobals());
 describe('push provider acknowledgement boundary',()=>{
+ it('sends purchase updates on the audible orders channel with independent preferences',async()=>{
+  expect(notificationChannels(undefined,{campusUpdates:false,pushCampusUpdates:false}).orders).toEqual({in_app_enabled:true,push_enabled:true});
+  expect(notificationChannels({orders:{in_app_enabled:true,push_enabled:false}}).orders.push_enabled).toBe(false);
+  const fetcher=vi.fn().mockResolvedValue(Response.json({data:{status:'ok',id:'order-ticket'}}));vi.stubGlobal('fetch',fetcher);
+  await sendCampusPush(env,token,{...notice,preferenceCategory:'orders',path:'/order-detail?id=synthetic',notificationId:'owned-notice'});
+  expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toMatchObject({sound:'default',channelId:'kampusone-orders-v1',categoryId:'KAMPUSONE_ORDER',data:{notificationId:'owned-notice',path:'/order-detail?id=synthetic',preferenceCategory:'orders'}});
+ });
  it('uses the native update channel and carries the delivery and deep link identifiers',async()=>{
   const fetcher=vi.fn(async(_url:string,init:RequestInit)=>{expect(JSON.parse(String(init.body))).toMatchObject({to:token,channelId:'kampusone-updates-v2',data:{deliveryId:notice.id,path:notice.path,preferenceCategory:'announcements'}});return Response.json({data:{status:'ok',id:'ticket'}});});
   vi.stubGlobal('fetch',fetcher);expect(await sendCampusPush(env,token,notice)).toEqual({status:'ACCEPTED',ticketId:'ticket'});

@@ -1,7 +1,7 @@
 type AIMedia = { mimeType:string; data:string };
 
 type Pixels = { width:number; height:number; data:Uint8Array };
-export type TimetableImageRow = { day:number; cells:{from:number;to:number}[]; media:AIMedia };
+export type TimetableImageRow = { day:number; cells:{from:number;to:number;blank?:true}[]; media:AIMedia };
 export type TimetableLayoutImage = AIMedia & { timeColumnCount:number; levelRowCount:number };
 export type TimetableCodecs = {
   decodeJpeg(bytes:Uint8Array):Pixels;
@@ -170,7 +170,15 @@ function timetableImageRows(media:AIMedia,timeColumnCount:number,levels:string[]
         else if(count/total>.85)return; // damaged border: do not invent a merge
       }
       borders.push(timeColumnCount);
-      const cells=borders.slice(1).map((to,i)=>({from:borders[i]!,to}));
+      const cells=borders.slice(1).map((to,i)=>{
+        const from=borders[i]!,margin=radius*2;
+        // Certify only a clean empty interior, before adding panel numbers.
+        // Faint ink, scan noise or too little interior stays unknown for OCR.
+        const left=columns[from]!+margin,right=columns[to]!-margin,top=y0+margin,bottom=y1-margin;
+        let blank=right-left>=8&&bottom-top>=8;
+        for(let y=top;blank&&y<bottom;y++)for(let x=left;x<right;x++)if(gray(x,y)<235){blank=false;break;}
+        return{from,to,...(blank?{blank:true as const}:{})};
+      });
       const widest=Math.max(vertical[2]!-vertical[1]!,...cells.map(cell=>columns[cell.to]!-columns[cell.from]!));
       const scale=Math.max(1,Math.min(4,Math.floor(1600/widest)));
       // A single-cell panel need not retain a full timetable-width of blank

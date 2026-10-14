@@ -385,15 +385,10 @@ function AccountEarnings() {
           }}
           keyboardType="decimal-pad"
         />
-        {data && !data.withdrawalsEnabled && (
-          <Text style={{ color: theme.textMuted, marginBottom: 12 }}>
-            {data.withdrawalUnavailableReason ?? 'Withdrawals are not available yet. Your earnings remain in your wallet.'}
-          </Text>
-        )}
         <Text
           style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}
         >
-          {minimumWithdrawalKobo == null ? "Withdrawal policy is awaiting approval" : `Minimum withdrawal · ${money(minimumWithdrawalKobo)}`}
+          {data ? `Minimum withdrawal · ${minimumWithdrawalKobo == null ? 'Not set yet' : money(minimumWithdrawalKobo)}` : 'Minimum withdrawal · —'}
         </Text>
         {confirm ? (
           <>

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useForegroundPoll } from '@/lib/use-foreground-poll';
 
 import { PortalApiError, portalApi } from "@/lib/api";
+import { nativePaymentReturnUrl, validPaymentReference } from '../../packages/contracts/src/payment-links';
 
 type PaymentStatus = {
   payment: {
@@ -20,8 +21,8 @@ export function PaymentReturn({ reference }: { reference: string }) {
   return <ReferencePaymentReturn key={reference} reference={reference}/>;
 }
 function ReferencePaymentReturn({ reference }: { reference: string }) {
-  const appReturn='kampusone://payment-return?reference='+encodeURIComponent(reference);
-  useEffect(()=>{if(/^K1-[A-Za-z0-9-]{1,95}$/.test(reference))window.location.replace('kampusone://payment-return?reference='+encodeURIComponent(reference));},[reference]);
+  const appReturn=nativePaymentReturnUrl(reference);
+  useEffect(()=>{if(validPaymentReference(reference))window.location.replace(appReturn);},[reference,appReturn]);
   const [payment, setPayment] = useState<PaymentStatus["payment"] | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);

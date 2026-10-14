@@ -55,6 +55,7 @@ notificationRoutes.put('/preferences',async c=>{
   preferences.pushAnnouncements=channels.announcements.push_enabled;
   preferences.pushNewsletter=channels.newsletter.push_enabled;
   preferences.pushCampusUpdates=channels.campusUpdates.push_enabled;
+  preferences.pushOrders=channels.orders.push_enabled;
  } else {
   preferences=notificationPreferences(data);
   channels=notificationChannels(null,preferences);
@@ -63,7 +64,7 @@ notificationRoutes.put('/preferences',async c=>{
  return c.json({preferences,channels});
 });
 
-function noticeVisible(user:ReturnType<typeof currentUser>){return sql`n.user_id=${user.id}::uuid and (n.institution_id is null or n.institution_id=${user.universityId}::uuid) and ${unblockedAuthor(user.id,sql`n.actor_user_id`)} and coalesce(n.dedupe_key,'') not like 'message:%' and coalesce(n.path,'') not like '/conversation%' and(coalesce(n.dedupe_key,'') not like 'post-mention:%' or exists(select 1 from public.profiles prefs where prefs.user_id=${user.id}::uuid and coalesce(prefs.settings->'notificationChannels'->'mentions'->>'in_app_enabled',prefs.settings->'notificationPreferences'->>'mentions','true')='true'))`;
+function noticeVisible(user:ReturnType<typeof currentUser>){return sql`n.user_id=${user.id}::uuid and (n.institution_id is null or n.institution_id=${user.universityId}::uuid) and ${unblockedAuthor(user.id,sql`n.actor_user_id`)} and coalesce(n.dedupe_key,'') not like 'message:%' and coalesce(n.path,'') not like '/conversation%' and(coalesce(n.dedupe_key,'') not like 'commerce:%' or exists(select 1 from public.profiles prefs where prefs.user_id=n.user_id and coalesce(prefs.settings->'notificationChannels'->'orders'->>'in_app_enabled',prefs.settings->'notificationPreferences'->>'orders','true')='true')) and(coalesce(n.dedupe_key,'') not like 'post-mention:%' or exists(select 1 from public.profiles prefs where prefs.user_id=${user.id}::uuid and coalesce(prefs.settings->'notificationChannels'->'mentions'->>'in_app_enabled',prefs.settings->'notificationPreferences'->>'mentions','true')='true'))`;
 }
 async function unreadNotices(env:Bindings,user:ReturnType<typeof currentUser>){return firstRow(await database(env).execute<{unread_count:number}>(sql`select count(*)::int as unread_count from public.in_app_notifications n where ${noticeVisible(user)} and n.read_at is null`))?.unread_count??0;}
 notificationRoutes.get('/inbox',async c=>{

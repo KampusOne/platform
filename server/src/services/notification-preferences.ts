@@ -13,11 +13,13 @@ export const defaultNotificationPreferences = {
   announcements: true,
   newsletter: true,
   campusUpdates: true,
+  orders: true,
   pushMessages: true,
   pushMentions: true,
   pushAnnouncements: true,
   pushNewsletter: true,
   pushCampusUpdates: true,
+  pushOrders: true,
 };
 
 export type NotificationPreferences = typeof defaultNotificationPreferences;
@@ -37,6 +39,7 @@ export const notificationCategories = [
   "announcements",
   "newsletter",
   "campusUpdates",
+  "orders",
   "security",
 ] as const;
 
@@ -92,6 +95,8 @@ export function notificationChannels(
                     ? prefs.pushNewsletter
                     : category === "campusUpdates"
                       ? prefs.pushCampusUpdates
+                      : category === "orders"
+                        ? prefs.pushOrders
                       : (category === "classReminders" || category === "profilePosts")),
         },
       ];

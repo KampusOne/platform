@@ -35,6 +35,6 @@ export async function remoteTimetableLayout(env:AIEnvironment,media:AIMedia,dead
 export async function remoteTimetableRows(env:AIEnvironment,media:AIMedia,timeColumnCount:number,levels:string[],days:number[],selectedLevel:string,deadline?:number,wantBatch=false):Promise<(TimetableImageRow[]&{batch?:AIMedia})|undefined> {
   const {rows,batch}=await imageOperation(env,{operation:'rows',media,timeColumnCount,levels,days,selectedLevel,...(wantBatch?{batch:true}:{})},deadline);
   if(rows&&(!Array.isArray(rows)||rows.length!==days.length||rows.some((row,i)=>row.day!==days[i]||!mediaValid(row.media)||!Array.isArray(row.cells)||row.cells.length<1||row.cells.length>24||row.cells.some((cell,j)=>!Number.isInteger(cell.from)||!Number.isInteger(cell.to)||cell.from!==(j?row.cells[j-1]!.to:0)||cell.to<=cell.from||cell.to>timeColumnCount)||row.cells.at(-1)?.to!==timeColumnCount)))throw new AIProviderError(502,'AI_INCOMPLETE_SCHEDULE','The image cells could not be verified. Your full file is kept; no import credit was used.');
-  if(batch&&!mediaValid(batch))throw new AIProviderError(502,'AI_INCOMPLETE_SCHEDULE','The image cells could not be verified. Your full file is kept; no import credit was used.');
+  if(rows?.some(row=>row.cells.some(cell=>cell.blank!==undefined&&cell.blank!==true))||batch&&!mediaValid(batch))throw new AIProviderError(502,'AI_INCOMPLETE_SCHEDULE','The image cells could not be verified. Your full file is kept; no import credit was used.');
   return rows&&batch?Object.assign(rows,{batch}):rows;
 }

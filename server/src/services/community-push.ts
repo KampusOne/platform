@@ -16,6 +16,7 @@ type Notice={
 };
 
 export function preferenceCategoryFor(dedupeKey:string,_notice?:Notice|null):NotificationCategory{
+ if(dedupeKey.startsWith('commerce:'))return 'orders';
  if(dedupeKey.startsWith('managed-profile-post:'))return 'newsletter';
  if(dedupeKey.startsWith('message:'))return 'messages';
  if(dedupeKey.startsWith('feed-like:'))return 'likes';

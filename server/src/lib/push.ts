@@ -69,6 +69,7 @@ async function sendFcmPush(env:Bindings,nativeToken:string,message:{title:string
 }
 export type PushDeviceTarget={expoToken:string;nativeToken?:string|null;platform?:string|null};
 function presentationFor(preferenceCategory:string){
+ if(preferenceCategory==='orders')return{channelId:'kampusone-orders-v1',categoryId:'KAMPUSONE_ORDER'};
  if(preferenceCategory==='messages')return{channelId:'kampusone-messages-v1',categoryId:'KAMPUSONE_MESSAGE'};
  if(preferenceCategory==='newsletter')return{channelId:'kampusone-newsletter-v1',categoryId:'KAMPUSONE_NEWSLETTER'};
  if(['likes','commentLikes','comments','replies','reposts','quotes','follows','profilePosts','mentions'].includes(preferenceCategory))
