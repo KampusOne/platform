@@ -45,6 +45,13 @@ describe('Workers AI recovery', () => {
     await expect(generateAI(env(run),input)).rejects.toMatchObject({reason});
     await expect(generateAI(env(run),input)).rejects.not.toThrow('PRIVATE_PROVIDER_BODY');
   });
+  it.each(['transport','invalid-json'])('keeps the primary quota failure when the alternative has a %s failure',async(fault)=>{
+    const run=vi.fn().mockRejectedValue(new Error('3036: PRIVATE_PROVIDER_BODY'));
+    const fetcher=fault==='transport'?vi.fn().mockRejectedValue(new TypeError('PRIVATE_NETWORK_DETAILS'))
+      :vi.fn().mockResolvedValue(new Response('PRIVATE_INVALID_JSON',{status:200}));
+    await expect(generateAI({...env(run),HF_TOKEN:'synthetic',HF_CHAT_MODEL:'test/chat'},input,fetcher)).rejects.toMatchObject({reason:'AI_PROVIDER_QUOTA'});
+    expect(run).toHaveBeenCalledTimes(1);expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it('rejects empty and token-exhausted native output',async()=>{
     await expect(generateAI(env(native({response:''})),input)).rejects.toMatchObject({reason:'AI_EMPTY_OUTPUT'});
     await expect(generateAI(env(native({response:'Partial',usage:{completion_tokens:3072}})),input)).rejects.toMatchObject({reason:'AI_INCOMPLETE'});

@@ -17,7 +17,8 @@ The importer validates the layout's time headings once. Focused day reads now
 return only row cell boundaries and labels; the application supplies clocks from
 those shared headings. The full grid validator still rejects missing columns,
 overlaps, unreadable cells, mixed levels and incomplete days before review.
-Per-row requests have shorter bounds within the existing overall deadline.
+All row reads share the existing full import deadline; the connection stays
+active while they finish rather than prematurely cutting off a legitimate read.
 
 Regression coverage includes slow response heartbeat and cleanup, preserved
 failure details, same-key receipt recovery, invalid headings, missing cells and

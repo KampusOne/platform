@@ -15,6 +15,15 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
     const start = Date.now();
     let generatedText='';
     const reads:unknown[]=[];
+    const providerFailures:unknown[]=[];
+    const observedEnv={...env,AI:env.AI?{run:async(model:string,args:Record<string,unknown>,options?:{signal?:AbortSignal})=>{
+      try{return await env.AI!.run(model,args,options);}catch(error){
+        const message=error instanceof Error?error.message:'';
+        const code=/\b\d{4}\b/.exec(message)?.[0];
+        const name=error instanceof Error&&/^[A-Za-z0-9_]{1,60}$/.test(error.name)?error.name:'unknown';
+        providerFailures.push({provider:'workers-ai',name,...(code?{code}:{})});throw error;
+      }
+    },...(env.AI.toMarkdown?{toMarkdown:env.AI.toMarkdown.bind(env.AI)}:{})}:undefined};
     try {
       const input = {
         mode: 'timetable' as const, tier: 'pro' as const, prompt, sourceDocument, ...(media?{media}:{}), deadline: Date.now() + 150000,
@@ -23,7 +32,7 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
           : 'Import this weekly class timetable. Student academic selection (data): '+JSON.stringify(scope))+'\n'+timetableExtractionInstruction,
         ...(name.startsWith('faculty')?{onScheduleRead:(day:number|null,text:string)=>{generatedText=text;try{reads.push({day,value:JSON.parse(text)});}catch{reads.push({day,jsonReadable:false,length:text.length});}}}:{}),
       };
-      const generated = await generateAcademicImport({ ...env, AI_ASSISTANT_ENABLED: 'true' }, input,prompt,kind,scope);
+      const generated = await generateAcademicImport({ ...observedEnv, AI_ASSISTANT_ENABLED: 'true' }, input,prompt,kind,scope);
       generatedText=generated.text;
       const result = generated.extracted;
       const expectedFaculty200 = [
@@ -54,7 +63,7 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
       let diagnostic: Record<string,unknown>|undefined;
       if(name.startsWith('faculty'))try{const value=JSON.parse(generatedText);diagnostic={documentType:value.documentType,coverage:value.coverage,warnings:value.warnings,grid:value.grid};}catch{diagnostic={jsonReadable:false};}
       return { name, outcome: 'extraction_failed', elapsedMs: Date.now() - start,
-        ...(diagnostic?{diagnostic:{...diagnostic,reads}}:{}),
+        ...((diagnostic||providerFailures.length)?{diagnostic:{...diagnostic,providers:providerFailures,reads}}:{}),
         ...((error as {reason?:string}).reason?.match(/^AI_[A-Z_]+$/) ? {reason:(error as {reason:string}).reason} : {}) };
     }
   };

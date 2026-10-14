@@ -128,12 +128,14 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
         const hf = providerConfiguration({ ...env, AI_TEXT_PROVIDER: 'huggingface' }, input.mode, input.media?.mimeType, undefined, input.tier);
         if (!(error instanceof AIProviderError) || error.status < 500 || !hf.configured || deadline - Date.now() < 1000) throw error;
         console.warn(JSON.stringify({ event: 'ai.provider.fallback', from: 'workers-ai', to: 'huggingface', reason: error.reason }));
-        const response = await fetcher('https://router.huggingface.co/v1/chat/completions', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hf.token}` }, signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
-          body: JSON.stringify({ model: hf.model, messages, max_tokens: budget.maxTokens, temperature: 0.2, stream: false, ...(tools?.length && !input.media ? { tools, tool_choice: 'auto' } : {}) }),
-        });
-        if (!response.ok) { void response.body?.cancel().catch(() => undefined); throw error; }
-        payload = await response.json() as typeof payload;
+        try {
+          const response = await fetcher('https://router.huggingface.co/v1/chat/completions', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hf.token}` }, signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+            body: JSON.stringify({ model: hf.model, messages, max_tokens: budget.maxTokens, temperature: 0.2, stream: false, ...(tools?.length && !input.media ? { tools, tool_choice: 'auto' } : {}) }),
+          });
+          if (!response.ok) { void response.body?.cancel().catch(() => undefined); throw error; }
+          payload = await response.json() as typeof payload;
+        } catch { throw error; } // Preserve the classified primary failure if the alternative cannot connect.
         provider = 'huggingface';
       }
     } else {

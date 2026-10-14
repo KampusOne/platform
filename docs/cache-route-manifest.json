@@ -3415,7 +3415,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 250
+          "line": 251
         }
       ],
       "classification": "mutation",
@@ -3433,7 +3433,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 327
+          "line": 328
         }
       ],
       "classification": "mutation",
@@ -3451,7 +3451,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 230
+          "line": 231
         }
       ],
       "classification": "mutation",
@@ -3469,7 +3469,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 342
+          "line": 343
         }
       ],
       "classification": "mutation",
@@ -3487,7 +3487,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 212
+          "line": 213
         }
       ],
       "classification": "volatile",
@@ -3505,7 +3505,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 204
+          "line": 205
         }
       ],
       "classification": "volatile",
@@ -3523,7 +3523,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 195
+          "line": 196
         }
       ],
       "classification": "volatile",
@@ -3541,7 +3541,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 65
+          "line": 66
         }
       ],
       "classification": "volatile",
@@ -3559,7 +3559,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 107
+          "line": 108
         }
       ],
       "classification": "mutation",
@@ -3577,7 +3577,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 103
+          "line": 104
         }
       ],
       "classification": "mutation",
@@ -3595,7 +3595,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 102
+          "line": 103
         }
       ],
       "classification": "financial",
@@ -3613,7 +3613,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 220
+          "line": 221
         }
       ],
       "classification": "volatile",
@@ -3631,7 +3631,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 111
+          "line": 112
         }
       ],
       "classification": "mutation",
@@ -3649,7 +3649,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 351
+          "line": 352
         }
       ],
       "classification": "mutation",
