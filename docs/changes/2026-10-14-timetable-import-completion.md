@@ -27,3 +27,9 @@ against the same 19-class expected result, exercising original-image fallback.
 The release workflow verifies package/version, existing signing identity,
 matching deployed source, and APK hash before publication. No schema migration
 or hosting-plan change is required.
+
+Live checks also found Cloudflare's daily service allowance exhausted and the
+HF alternative limited. Academic imports can recover through the existing
+server-only Gemini credential under the same deadline, allowance reservation,
+JSON validation and private-image flow. This fallback is limited to academic
+extraction and does not forward chat history or execute assistant tools.

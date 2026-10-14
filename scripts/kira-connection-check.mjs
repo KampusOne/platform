@@ -154,7 +154,7 @@ if(process.argv.includes('--self-test')) {
     if(!token||!/^[a-f0-9]{32}$/i.test(account??''))throw new Error('Deployment credentials unavailable');
     stage='binding metadata';
     const settings=await cf('/workers/scripts/platformp/settings');
-    const inherited=['JWT_SECRET','HF_TOKEN','HF_CHAT_MODEL','HF_REASONING_MODEL','HF_PRO_MODEL','HF_VISION_MODEL','AI_TEXT_PROVIDER','WORKERS_AI_CHAT_MODEL','WORKERS_AI_PRO_MODEL','WORKERS_AI_VISION_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET','PAYSTACK_SECRET_KEY','KYC_ENCRYPTION_KEY','KYC_FINGERPRINT_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
+    const inherited=['JWT_SECRET','HF_TOKEN','HF_CHAT_MODEL','HF_REASONING_MODEL','HF_PRO_MODEL','HF_VISION_MODEL','GEMINI_API_KEY','GEMINI_MODEL','AI_TEXT_PROVIDER','WORKERS_AI_CHAT_MODEL','WORKERS_AI_PRO_MODEL','WORKERS_AI_VISION_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET','PAYSTACK_SECRET_KEY','KYC_ENCRYPTION_KEY','KYC_FINGERPRINT_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
     report(`Production BACHS API secret present: ${settings.bindings?.some(b=>b.name==='BACHS_API_KEY')===true}`);
     report(`Production BACHS webhook secret present: ${settings.bindings?.some(b=>b.name==='BACHS_WEBHOOK_SECRET')===true}`);
     report(`Production Workers AI binding present: ${settings.bindings?.some(b=>b.name==='AI'&&b.type==='ai')===true}`);

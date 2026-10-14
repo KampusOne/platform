@@ -2,10 +2,11 @@ import { AIProviderError } from "./ai-error.ts";
 export { AIProviderError } from "./ai-error.ts";
 import { scheduleInstruction, parseScheduleDocument } from "./schedule-document.ts";
 import { workersAICompletion, workersAIConfiguration, type WorkersAIEnvironment } from './ai-workers.ts';
+import {geminiAcademicCompletion} from './ai-gemini';
 /** All inference stays server-side behind provider adapters. */
 export type AIMode = "study" | "summary" | "explanation" | "quiz" | "notes" | "timetable";
 export type AITier = "standard" | "pro";
-export type AIProvider = "huggingface" | "workers-ai";
+export type AIProvider = "huggingface" | "workers-ai" | "gemini";
 export type AIEnvironment = WorkersAIEnvironment & {
   JWT_SECRET?:string; TIMETABLE_IMAGE_PROCESSOR_URL?:string;
   AI_ASSISTANT_ENABLED?: string; HF_TOKEN?: string; HF_CHAT_MODEL?: string;
@@ -197,6 +198,10 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
     if (text.length > 50000) throw new AIProviderError(502, "AI_INVALID_OUTPUT", "This response was too long. Try a smaller source.");
     return { text, calls, provider };
   } catch (error) {
+    if(input.mode==='timetable'&&env.GEMINI_API_KEY&&error instanceof AIProviderError&&error.status>=500&&deadline-Date.now()>1000){
+      console.warn(JSON.stringify({event:'ai.provider.fallback',to:'gemini',reason:error.reason}));
+      return geminiAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
+    }
     if (error instanceof AIProviderError) throw error;
     if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) throw new AIProviderError(504, "AI_TIMEOUT", "AI took too long. Your draft is kept.");
     throw new AIProviderError(503, "AI_PROVIDER_UNAVAILABLE", "AI could not connect. Your draft is kept.");
