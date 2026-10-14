@@ -67,6 +67,12 @@ describe('one-import private cell transcription',{timeout:30000},()=>{
     expect(vi.mocked(generateAI).mock.calls.every(([,call])=>call.deadline===request.deadline&&call.media?.data!==image&&call.media?.mimeType==='image/png')).toBe(true);
     expect(result.entries).toContainEqual(expect.objectContaining({courseCode:'GST212',dayOfWeek:3,startsAt:'15:00',endsAt:'17:00'}));
   });
+  it('bounds simultaneous day reads while still assembling every requested weekday',async()=>{
+    let active=0,peak=0;
+    vi.mocked(generateAI).mockImplementation(async(_env,call)=>{active++;peak=Math.max(peak,active);await new Promise(resolve=>setTimeout(resolve,5));active--;return{text:JSON.stringify(response(dayOf(call))),provider:'gateway'};});
+    const result=await parseOrRecoverAcademicImport({},input(),broken(),'','class',{level:'200'});
+    expect(result.entries).toHaveLength(20);expect(generateAI).toHaveBeenCalledTimes(5);expect(peak).toBeLessThanOrEqual(2);
+  });
   it.each(['uncertain','missing-panel','wrong-level'])('rejects the entire week on a %s cell read',async failure=>{
     vi.mocked(generateAI).mockImplementation(async(_env,request)=>{const day=dayOf(request),value=response(day);
       if(day===4){if(failure==='uncertain')value.coverage.complete=false;else if(failure==='missing-panel')delete value.labels['7'];else value.labels['0']='100';}

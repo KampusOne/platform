@@ -33,6 +33,12 @@ of becoming invented source material. Original file bytes and page limits remain
 unchanged. The existing global AI switch controls this recovery without adding
 a binding to the full free-plan Worker environment.
 
+Conversation routing is stored separately from the provider that answered a turn.
+Automatic fallback no longer makes the next authenticated Pro message reject its
+own parent or omit its saved history. Existing automatically generated Groq turns
+can continue; unrelated legacy provider conversations remain gated. The routing
+metadata stays private and needs no data migration.
+
 This change is backend-only and needs no database migration or native update.
 Android 0.3.36 (version code 66) remains the verified signed APK for the payment,
 navigation, notification and Earnings changes already shipped in PR 103.
@@ -43,3 +49,12 @@ academic import regressions; server types, portal lint/types and production buil
 The live eight-fixture gateway proof and five Kira checks (including an image
 question and a scanned PDF) are required before Worker activation. The final
 run IDs and exact results are attached to PR 104's validation record.
+
+Pre-deployment live runs 38646712753 (academic source aa37a9af24fdd715b4063293bb5b0ce9c6c02f70)
+and 38645685763 (Kira source ef9bf6cbd8c43c266262acdcb586b612f09ab5b4),
+using the canonical relay on aa37a9a, passed all eight academic and five Kira
+fixtures after retrying only failed jobs. These include exact 20-class/19-class
+course/day/time comparisons, WebP, a rotated photograph, a full calendar PDF,
+printed/handwritten schedules, exam text, a Kira image question and scanned PDF.
+The final revision also bounds focused day reads to two simultaneous requests;
+authenticated persistence, history isolation and single-reservation tests pass.

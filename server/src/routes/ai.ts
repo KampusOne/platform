@@ -25,7 +25,7 @@ aiRoutes.use("/*", requireAuth);
 aiRoutes.use("/*", async (c, next) => { c.header("Cache-Control", "private, no-store"); await next(); });
 const modes = z.enum(["study", "summary", "explanation", "quiz", "notes", "timetable"]);
 const requestSchema = z.object({ mode: modes, provider: z.literal("huggingface").optional(), tier: z.enum(["standard", "pro"]).default("standard"), prompt: z.string().trim().max(20000), notes: z.string().trim().max(2000).optional(), documentKind:z.enum(["exam","class","calendar"]).optional(), scheduleLevel:z.string().trim().regex(/^\d{3}$/).optional(), courseCodes:z.array(z.string().trim().regex(/^[A-Za-z]{2,8}\s*\d{3,4}[A-Za-z]?$/)).max(60).optional(), mediaId: z.string().uuid().optional(), extractedText: z.string().trim().max(50000).optional(), replyTo: z.string().uuid().optional(), idempotencyKey: z.string().uuid(), consent: z.literal(true) }).strict();
-type Saved = { processingStage?: 'reading'|'analysing'|'finishing'; failureStatus?: number; failureDetails?: Record<string,unknown>; documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; fileType?: string; threadId?: string; provider?: string; deleted?: boolean; reason?: string; message?: string };
+type Saved = { processingStage?: 'reading'|'analysing'|'finishing'; failureStatus?: number; failureDetails?: Record<string,unknown>; documentType?: string; events?: unknown[]; sourceText?: string; parentId?: string; tier?: string; cards?: AICard[]; actions?: AIAction[]; feedback?: { rating: "like" | "dislike" } | null; version?: number; text?: string; transcriptionText?: string; entries?: unknown[]; warnings?: string[]; prompt?: string; mediaId?: string; fileName?: string; fileType?: string; threadId?: string; contextProvider?:string; provider?: string; deleted?: boolean; reason?: string; message?: string };
 type RequestRow = { idempotency_key: string; request_hash: string; status: string; result: Saved | null; created_at: string };
 function requireSchema(env: Bindings) {
   if (env.UNIFIED_SCHEMA_READY !== "true") throw new AppError(503, "PROVIDER_UNAVAILABLE", "AI storage is not ready. Your draft has not been submitted.", { reason: "AI_SCHEMA_NOT_READY" });
@@ -401,9 +401,9 @@ aiRoutes.post("/", async c => {
   if (d.replyTo && d.mode !== "timetable") {
     const parent = firstRow(await db.execute<{ result: Saved }>(sql`select result from app_private.ai_requests where user_id=${u.id}::uuid and idempotency_key=${d.replyTo}::uuid and mode<>'timetable' and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days'`));
     if (!parent || parent.result.deleted) throw new AppError(404, "NOT_FOUND", "The earlier study session is no longer available. Start a new session.");
-    if (parent.result.provider !== selectedProvider) throw new AppError(400, "BAD_REQUEST", "Start a new conversation to use the updated AI. Your previous conversation has not been forwarded.", { reason: "AI_PROVIDER_CONTEXT" });
+    if ((parent.result.contextProvider ?? (parent.result.provider==='groq'&&c.env.GROQ_API_KEY ? selectedProvider : parent.result.provider)) !== selectedProvider) throw new AppError(400, "BAD_REQUEST", "Start a new conversation to use the updated AI. Your previous conversation has not been forwarded.", { reason: "AI_PROVIDER_CONTEXT" });
     threadId = parent.result.threadId ?? d.replyTo;
-    const turns = await db.execute<{ prompt: string; text: string }>(sql`select left(coalesce(result->>'prompt',''),1500) as prompt,left(result->>'text',3000) as text from app_private.ai_requests where user_id=${u.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${threadId} and result->>'provider'=${selectedProvider} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc limit ${effectiveTier==='pro'?12:6}`);
+    const turns = await db.execute<{ prompt: string; text: string }>(sql`select left(coalesce(result->>'prompt',''),1500) as prompt,left(result->>'text',3000) as text from app_private.ai_requests where user_id=${u.id}::uuid and coalesce(result->>'threadId',idempotency_key::text)=${threadId} and coalesce(result->>'contextProvider',case when result->>'provider'='groq' and ${Boolean(c.env.GROQ_API_KEY)} then ${selectedProvider} else result->>'provider' end)=${selectedProvider} and status='COMPLETED' and result ? 'text' and created_at>now()-interval '90 days' order by created_at desc limit ${effectiveTier==='pro'?12:6}`);
     history.push(...turns.rows.reverse());
   }
   let memoryContext='';
@@ -415,7 +415,7 @@ aiRoutes.post("/", async c => {
     }
   }
   if (new TextEncoder().encode(prompt + JSON.stringify(history)).length > 60000) throw new AppError(413, "BAD_REQUEST", "This study context is too long. Use a shorter source or start a new session.");
-  const saved: Saved = { version: 3, tier: effectiveTier, provider: selectedProvider, prompt: d.prompt, threadId, ...(d.replyTo ? {parentId:d.replyTo} : {}), ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}), ...(fileType ? {fileType} : {}) };
+  const saved: Saved = { version: 3, tier: effectiveTier, provider: selectedProvider, contextProvider:selectedProvider, prompt: d.prompt, threadId, ...(d.replyTo ? {parentId:d.replyTo} : {}), ...(d.mediaId ? { mediaId: d.mediaId } : {}), ...(fileName ? { fileName } : {}), ...(fileType ? {fileType} : {}) };
   const client = sqlClient(c.env);
   // The lock is a separate statement: READ COMMITTED obtains a fresh snapshot
   // AFTER any wait. Putting lock + count in one CTE would race on stale snapshots.

@@ -117,7 +117,7 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
             console.info(JSON.stringify({event:'ai.timetable.focused_panel_recovery',days:crops.length-batchRows.size}));
           }
         }
-        const rows=await Promise.all(crops.map(async crop=>{
+        const readCrop=async(crop:TimetableImageRow)=>{
           const verified=batchRows.get(crop.day);if(verified)return verified;
           const keys=Array.from({length:crop.cells.length+1},(_,i)=>String(i));
           const schema={labels:Object.fromEntries(keys.map(key=>[key,key==='0'?'printed level':`panel ${key} text`])),coverage:{complete:true,uncertain:[]}};
@@ -145,6 +145,12 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
             if(attempt===1||input.deadline!-Date.now()<20000)throw incompleteSchedule();
           }
           throw incompleteSchedule();
+        };
+        const rows:Awaited<ReturnType<typeof readCrop>>[]=new Array(crops.length);let nextCrop=0;
+        // Two focused requests at a time stay below the alternate pool's burst
+        // limits without changing the full-week deadline or reservation.
+        await Promise.all(Array.from({length:Math.min(2,crops.length)},async()=>{
+          while(nextCrop<crops.length){const index=nextCrop++;rows[index]=await readCrop(crops[index]!);}
         }));
         return parseAcademicImport(JSON.stringify({documentType:'class_timetable',entries:[],events:[],warnings:[],
           coverage:{complete:true,daysRead:ordered,rowCount:rows.length,uncertain:[]},
