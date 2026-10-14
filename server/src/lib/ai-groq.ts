@@ -41,7 +41,12 @@ export async function groqCompletion(env:AIEnvironment,input:AIInput,messages:AI
       :/model.*(?:not found|decommissioned|not supported|not available)/i.test(message)?'model_unavailable'
       :/key|auth|permission/i.test(message)?'authentication':/quota|rate limit|tokens per/i.test(message)?'service_limit':'unclassified';
     const parameter=['messages','response_format','reasoning_effort','reasoning_format','max_completion_tokens','model','temperature','image_url'].includes(failure.error?.param??'')?failure.error!.param:undefined;
-    input.onProviderFailure?.({provider:'groq',status:response.status,hint,...(parameter?{parameter}:{})});
+    const dimension=/tokens per day|\bTPD\b/i.test(message)?'tokens_per_day':/tokens per minute|\bTPM\b/i.test(message)?'tokens_per_minute':/requests per day|\bRPD\b/i.test(message)?'requests_per_day':'unknown';
+    const quantities=Object.fromEntries(['Limit','Used','Requested'].map(label=>[label.toLowerCase(),Number(new RegExp(label+'[ :]+([0-9]+)','i').exec(message)?.[1])]).filter(([,value])=>Number.isFinite(value)));
+    const imageCount=source.reduce((n,m)=>n+(Array.isArray(m.content)?m.content.filter(p=>p?.type==='image_url').length:0),0);
+    const textBytes=new TextEncoder().encode(JSON.stringify(source.map(m=>({role:m.role,content:Array.isArray(m.content)?m.content.filter(p=>p?.type==='text').map(p=>p.text):m.content})))).length;
+    const capacity={dimension,quantities,imageCount,textBytes,outputBudget:Math.min(maxTokens,4096)};
+    input.onProviderFailure?.({provider:'groq',status:response.status,hint,...capacity,...(parameter?{parameter}:{})});
     console.warn(JSON.stringify({event:'ai.provider.failed',provider:'groq',httpStatus:response.status}));
     throw new AIProviderError(503,response.status===429?'AI_PROVIDER_LIMIT':[401,403].includes(response.status)?'AI_PROVIDER_AUTH':'AI_PROVIDER_UNAVAILABLE',
       'The document reader is temporarily unavailable. Your full file is kept; no import credit was used.');

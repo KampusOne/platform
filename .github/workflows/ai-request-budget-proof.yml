@@ -1,0 +1,30 @@
+name: Diagnose academic request budget
+on:
+  push:
+    branches: [fix/ai-request-budget-proof-20261014]
+    paths: ['server/src/lib/ai-groq.ts', '.github/workflows/ai-request-budget-proof.yml']
+permissions:
+  contents: read
+jobs:
+  budget:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: server
+      - run: npm ci
+        working-directory: packages/contracts
+      - name: Inspect fixed public timetable request capacity
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROBE_ACADEMIC_ONLY: 'true'
+          PROBE_ACADEMIC_CASE: facultyGrid100
+        run: node scripts/kira-connection-check.mjs
