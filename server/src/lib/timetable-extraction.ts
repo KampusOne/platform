@@ -49,7 +49,13 @@ export function readScheduleJSON(text: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 export function scheduleCoverage(value: Record<string, unknown>) {
-  const parsed = coverageSchema.safeParse(value.coverage);
+  const names:Record<string,number>={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
+  const raw=value.coverage,coverage=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:undefined;
+  // Explicit weekday names are the same inventory as their numeric labels.
+  // Unknown labels, duplicates and missing days still fail the full validator.
+  const normalized=coverage?{...coverage,daysRead:Array.isArray(coverage.daysRead)?coverage.daysRead.map(value=>typeof value==='string'?
+    names[value.trim().replace(/\.$/,'').toLowerCase()]??(/^[0-6]$/.test(value.trim())?Number(value.trim()):value):value):coverage.daysRead}:raw;
+  const parsed = coverageSchema.safeParse(normalized);
   if (!parsed.success || new Set(parsed.data.daysRead).size !== parsed.data.daysRead.length) throw incompleteSchedule();
   // Older/contradictory model output sometimes calls a partial extraction a
   // success while admitting omitted rows in prose. Keep that failure visible.
