@@ -23,7 +23,15 @@ The reader keeps the same full-source validators and pixel-derived physical cell
 spans. The fallback can make one independent reread of an incomplete schedule,
 within the original deadline. Truncation, unreadable cells and missing weekdays
 still fail the whole import, keep the file and consume no successful-import
-credit. The alternate provider is recorded accurately.
+credit. The alternate provider is recorded accurately in adapter results and diagnostics.
+
+Scanned PDF pages and Kira image attachments use the same private transcription
+recovery when native vision is exhausted. Only source pixels go to this relay.
+The study answer then uses the separate text pool with the original Pro history
+and allowed tools intact. Unreadable or incomplete transcripts still fail instead
+of becoming invented source material. Original file bytes and page limits remain
+unchanged. The existing global AI switch controls this recovery without adding
+a binding to the full free-plan Worker environment.
 
 This change is backend-only and needs no database migration or native update.
 Android 0.3.36 (version code 66) remains the verified signed APK for the payment,

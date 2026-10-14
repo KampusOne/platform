@@ -1,7 +1,7 @@
 name: Verify Kira recovery and document reading
 on:
   push:
-    branches: [main, fix/ai-upload-completion-20261014]
+    branches: [main, fix/ai-upload-completion-20261014, fix/ai-upload-capacity-20261014]
     paths: ['server/src/lib/ai*.ts', 'server/scripts/verify-kira-recovery.ts', 'scripts/kira-connection-check.mjs', '.github/workflows/kira-recovery-check.yml']
 permissions:
   contents: read
@@ -26,4 +26,5 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PROBE_KIRA_ONLY: 'true'
+          PROBE_VERIFY_UPLOADS: 'true'
         run: node scripts/kira-connection-check.mjs

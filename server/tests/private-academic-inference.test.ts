@@ -66,4 +66,18 @@ describe('bounded private academic fallback',()=>{
     await expect(gatewayAcademicCompletion(env,{mode:'timetable',prompt:'Read'},[],2048,60000,calls)).rejects.toMatchObject({reason:'AI_INCOMPLETE'});
     calls.mockClear();await expect(gatewayAcademicCompletion(env,{mode:'timetable',prompt:'Read',deadline:Date.now()-1},[],2048,60000,calls)).rejects.toMatchObject({reason:'AI_TIMEOUT'});expect(calls).not.toHaveBeenCalled();
   });
+  it('transcribes an image through the private vision pool then answers through the text pool with Pro history intact',async()=>{
+    const env:AIEnvironment={AI_ASSISTANT_ENABLED:'true',JWT_SECRET:secret,TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image',AI:{run:vi.fn().mockRejectedValue(new Error('4006 daily allocation'))},HF_TOKEN:'PRIVATE_HF',HF_CHAT_MODEL:'test/chat',HF_VISION_MODEL:'test/vision',GROQ_API_KEY:'PRIVATE_GROQ'};
+    const calls=vi.fn<typeof fetch>().mockImplementation(async(target,init)=>{
+      if(String(target)===url)return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({text:'V = 12 V; R = 6 ohms',complete:true,uncertain:[]})}}]});
+      const sent=JSON.parse(String(init!.body));
+      return String(target).includes('groq')&&sent.model==='openai/gpt-oss-20b'?Response.json({choices:[{finish_reason:'stop',message:{content:'The current is 2 amperes.'}}]}):new Response(null,{status:429});
+    });
+    const generated=await generateAI(env,{mode:'study',tier:'pro',prompt:'Explain this result',history:[{prompt:'PRIVATE_HISTORY',text:'PRIVATE_ANSWER'}],media:{mimeType:'image/png',data:'YQ=='},deadline:Date.now()+75000},calls);
+    expect(generated.text).toContain('2 amperes');
+    const vision=JSON.parse(String(calls.mock.calls.find(([target])=>String(target)===url)![1]!.body));
+    expect(JSON.stringify(vision)).not.toMatch(/PRIVATE_HISTORY|PRIVATE_ANSWER/);
+    const text=JSON.parse(String(calls.mock.calls.at(-1)![1]!.body));expect(text.model).toBe('openai/gpt-oss-20b');
+    expect(JSON.stringify(text)).toMatch(/PRIVATE_HISTORY/);expect(JSON.stringify(text)).toMatch(/V = 12 V/);expect(JSON.stringify(text)).not.toMatch(/image_url|data:image/);
+  });
 });
