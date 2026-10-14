@@ -2,7 +2,7 @@ name: Verify existing AI model capabilities
 # Uses only a fixed public arithmetic prompt; never user files or key export.
 on:
   push:
-    branches: [fix/ai-account-readiness-20261014]
+    branches: [fix/ai-provider-budget-20261014]
     paths: ['.github/workflows/ai-model-capabilities.yml', 'scripts/kira-connection-check.mjs']
 permissions:
   contents: read
