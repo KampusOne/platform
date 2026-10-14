@@ -8,7 +8,7 @@
       "sources": [
         {
           "file": "server/src/app.ts",
-          "line": 101
+          "line": 102
         }
       ],
       "classification": "private-operational",
@@ -26,7 +26,25 @@
       "sources": [
         {
           "file": "server/src/app.ts",
-          "line": 121
+          "line": 127
+        }
+      ],
+      "classification": "public-reference",
+      "backend": "fresh",
+      "authorization": "Public, source-specific HTTP policy; latest release stays version aware",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "GET",
+      "path": "/health/image-processing-key",
+      "sources": [
+        {
+          "file": "server/src/app.ts",
+          "line": 104
         }
       ],
       "classification": "public-reference",
@@ -44,7 +62,7 @@
       "sources": [
         {
           "file": "server/src/app.ts",
-          "line": 102
+          "line": 103
         }
       ],
       "classification": "public-reference",
@@ -62,7 +80,7 @@
       "sources": [
         {
           "file": "server/src/app.ts",
-          "line": 104
+          "line": 110
         }
       ],
       "classification": "public-reference",
@@ -4819,7 +4837,7 @@
       "sources": [
         {
           "file": "server/src/app.ts",
-          "line": 129
+          "line": 135
         }
       ],
       "classification": "public-reference",

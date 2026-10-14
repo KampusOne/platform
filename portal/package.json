@@ -13,9 +13,13 @@
   },
   "dependencies": {
     "@kampusone/design-tokens": "file:../packages/design-tokens",
+    "fast-png": "6.4.0",
+    "jose": "6.2.12",
+    "jpeg-js": "0.4.4",
     "next": "16.3.4",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@types/node": "24.10.0",

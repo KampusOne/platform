@@ -4,6 +4,7 @@ import { AIProviderError } from './ai-error';
 import { incompleteSchedule, levelKey, readScheduleJSON, scheduleCoverage, type TimetableScope } from './timetable-extraction';
 import { timetableImageRows, timetableLayoutImage, type TimetableLayoutImage } from './timetable-image-grid';
 import { prepareTimetableImage } from './webp-pixels';
+import {remoteTimetableLayout,remoteTimetableRows} from './remote-timetable-image';
 
 const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const printedDays:Record<string,number>={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
@@ -11,9 +12,9 @@ const printedDay=(value:unknown)=>typeof value==='string'?printedDays[value.trim
 
 export async function generateAcademicImport(env:AIEnvironment,input:AIInput,sourceText:string,
   kind?:'class'|'calendar'|'exam',scope:TimetableScope={}) {
-  if(input.media&&kind!=='calendar'&&kind!=='exam')input={...input,media:await prepareTimetableImage(input.media)};
+  if(input.media&&!env.TIMETABLE_IMAGE_PROCESSOR_URL&&kind!=='calendar'&&kind!=='exam')input={...input,media:await prepareTimetableImage(input.media)};
   const needsLayout=Boolean(input.media&&scope.level&&kind!=='calendar'&&kind!=='exam');
-  const layout=needsLayout?timetableLayoutImage(input.media!):undefined;
+  const layout=needsLayout?(env.TIMETABLE_IMAGE_PROCESSOR_URL?await remoteTimetableLayout(env,input.media!,input.deadline):timetableLayoutImage(input.media!)):undefined;
   const initial=needsLayout?{...input,scheduleLayout:true,...(layout?{media:layout}:{}),
     prompt:'FIRST READ ONLY THE LAYOUT. If this image is a timetable grid, return its documentType, all printed timeSlots in left-to-right 24-hour order, the printed levels in their TOP-TO-BOTTOM row order within each day, and daysSeen in their TOP-TO-BOTTOM printed order as numbers (Sunday=0, Monday=1, Tuesday=2, Wednesday=3, Thursday=4, Friday=5, Saturday=6). Set grid.rows:[], entries:[], events:[] and coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]}. Do not transcribe any courses yet. The next internal step reads each selected row. If this is a simple list instead of a grid, return the complete normal schedule with entries/events and coverage.\nStudent source context:\n'+input.prompt,
     systemContext:(input.systemContext??'')+'\nThis is an internal layout read. A grid layout is intentionally not a finished schedule and will never be shown or saved as one. Read the time-column headers, weekdays and level labels only. The application assembles every selected weekday row before import.'+(layout?' The numbered contact sheet contains time headings in panels 0 then 1, followed by all day/level labels in panel order, left to right then top to bottom. Panel numbers are not source text. Copy the first day\'s level labels in their printed order and every distinct weekday. No course transcription is needed.':''),
@@ -54,7 +55,7 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
   let value:Record<string,unknown>;
   try {value=readScheduleJSON(text);}catch{if(parsed)return parsed;throw failure;}
   const grid=value.grid as {daysSeen?:unknown;levels?:unknown;timeSlots?:unknown}|undefined;
-  const pixelLayout=verifiedLayout??(input.media&&scope.level&&kind!=='calendar'&&kind!=='exam'?timetableLayoutImage(input.media):undefined);
+  const pixelLayout=verifiedLayout??(!env.TIMETABLE_IMAGE_PROCESSOR_URL&&input.media&&scope.level&&kind!=='calendar'&&kind!=='exam'?timetableLayoutImage(input.media):undefined);
   if(pixelLayout&&!matchesPixelInventory(text,pixelLayout))throw incompleteSchedule('The time columns or weekday rows were missed while reading. Your full file is kept; no import credit was used.');
   const dense=input.media&&scope.level&&Array.isArray(grid?.levels)&&grid.levels.length>1;
   if(parsed&&!dense)return parsed;
@@ -72,7 +73,7 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
     const ordered=(days as number[]).slice().sort((a,b)=>a-b);
     if(grid.levels.length>1) {
       if(!Array.isArray(grid.timeSlots))throw incompleteSchedule();
-      const crops=timetableImageRows(input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel);
+      const crops=env.TIMETABLE_IMAGE_PROCESSOR_URL?await remoteTimetableRows(env,input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel,input.deadline):timetableImageRows(input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel);
       if(crops) {
         const rows=await Promise.all(crops.map(async crop=>{
           const keys=Array.from({length:crop.cells.length+1},(_,i)=>String(i));

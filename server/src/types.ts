@@ -37,6 +37,7 @@ export type Bindings = {
   AI_ASSISTANT_ENABLED: string;
   DATABASE_URL?: string;
   JWT_SECRET?: string;
+  TIMETABLE_IMAGE_PROCESSOR_URL?:string;
   OTP_PEPPER?: string;
   BUNNY_STREAM_API_KEY?:string;
   BUNNY_STREAM_LIBRARY_ID?:string;
