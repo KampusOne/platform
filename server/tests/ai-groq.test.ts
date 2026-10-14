@@ -6,6 +6,14 @@ const result=(finish_reason='stop')=>Response.json({choices:[{finish_reason,mess
 const env=():AIEnvironment=>({AI_ASSISTANT_ENABLED:'true',AI:{run:vi.fn().mockRejectedValue(new Error('4006: you have used up your daily free allocation of 10,000 neurons'))},HF_TOKEN:'PRIVATE_HF',HF_CHAT_MODEL:'test/chat',HF_VISION_MODEL:'test/vision',GROQ_API_KEY:'PRIVATE_GROQ',GEMINI_API_KEY:'PRIVATE_GEMINI'});
 const input=()=>({mode:'timetable' as const,prompt:'Read my full timetable',media:{mimeType:'image/png',data:btoa('PRIVATE_PIXELS')},deadline:Date.now()+150000});
 describe('academic recovery with the existing Groq credential',()=>{
+  it('waits for a provider retry window within this same request and deadline',async()=>{
+    vi.useFakeTimers();
+    try{
+      const fetcher=vi.fn().mockResolvedValueOnce(new Response('',{status:429,headers:{'Retry-After':'10'}})).mockResolvedValueOnce(result());
+      const pending=groqAcademicCompletion(env(),input(),[{role:'user',content:'Read'}],2048,150000,fetcher);
+      await vi.advanceTimersByTimeAsync(10250);expect((await pending).provider).toBe('groq');expect(fetcher).toHaveBeenCalledTimes(2);
+    }finally{vi.useRealTimers();}
+  });
   it('reads the private source after native and HF limits without another reservation or the rejected Gemini call',async()=>{
     const fetcher=vi.fn<typeof fetch>().mockImplementation(async url=>String(url).includes('huggingface')?new Response('PRIVATE_BODY',{status:402}):result());
     const generated=await generateAI(env(),input(),fetcher);expect(generated.provider).toBe('groq');expect(JSON.parse(generated.text)).toEqual(source);

@@ -5,19 +5,29 @@ import type {AIEnvironment,AIInput,AIMessage} from './ai-provider.ts';
 export async function groqAcademicCompletion(env:AIEnvironment,input:AIInput,messages:AIMessage[],maxTokens:number,
   timeoutMs:number,fetcher:typeof fetch=fetch){
   if(input.mode!=='timetable'||!env.GROQ_API_KEY)throw new AIProviderError(503,'AI_NOT_CONFIGURED','The document reader is temporarily unavailable. Your file is kept.');
-  const remaining=Math.min(input.deadline??Infinity,Date.now()+timeoutMs)-Date.now();
-  if(remaining<=0)throw new AIProviderError(504,'AI_TIMEOUT','Reading took too long. Your file and draft are kept.');
+  const deadline=Math.min(input.deadline??Infinity,Date.now()+timeoutMs);
+  if(deadline<=Date.now())throw new AIProviderError(504,'AI_TIMEOUT','Reading took too long. Your file and draft are kept.');
   const latest=messages.filter(m=>m.role==='user').at(-1);
   const source=messages.filter(m=>m.role==='system'||m===latest).map(m=>({...m,
     content:Array.isArray(m.content)?m.content.map(p=>p?.type==='image_url'?{type:'image_url',image_url:{url:p.image_url?.url}}:p):m.content}));
   let response:Response;
+  for(let attempt=0;;attempt++){
   try{response=await fetcher('https://api.groq.com/openai/v1/chat/completions',{
-    method:'POST',redirect:'manual',signal:AbortSignal.timeout(remaining),headers:{'Content-Type':'application/json',Authorization:'Bearer '+env.GROQ_API_KEY},
+    method:'POST',redirect:'manual',signal:AbortSignal.timeout(Math.max(1,deadline-Date.now())),headers:{'Content-Type':'application/json',Authorization:'Bearer '+env.GROQ_API_KEY},
     body:JSON.stringify({model:'qwen/qwen3.8-27b',messages:source,temperature:0,max_completion_tokens:maxTokens,
       reasoning_effort:'none',reasoning_format:'hidden',response_format:{type:'json_object'},stream:false}),
   });}catch(error){
     if(error instanceof Error&&['TimeoutError','AbortError'].includes(error.name))throw new AIProviderError(504,'AI_TIMEOUT','Reading took too long. Your file and draft are kept.');
     throw new AIProviderError(503,'AI_PROVIDER_UNAVAILABLE','The document reader could not connect. Your file is kept.');
+  }
+  if(response.status!==429||attempt>=3)break;
+  const raw=response.headers.get('Retry-After'),reset=response.headers.get('x-ratelimit-reset-tokens')??'';
+  const delay=raw&&Number.isFinite(Number(raw))?Number(raw)*1000:raw&&Number.isFinite(Date.parse(raw))?Date.parse(raw)-Date.now():
+    /^(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?$/.test(reset)?Number(/([\d.]+)m/.exec(reset)?.[1]??0)*60000+Number(/([\d.]+)s/.exec(reset)?.[1]??0)*1000:0;
+  if(delay<=0||delay+5000>=deadline-Date.now())break;
+  await response.body?.cancel().catch(()=>undefined);
+  await input.onProgress?.('analysing');
+  await new Promise(resolve=>setTimeout(resolve,Math.max(1000,Math.ceil(delay)+250)));
   }
   if(!response.ok){
     const failure=await response.json().catch(()=>({})) as {error?:{message?:string;param?:string}};

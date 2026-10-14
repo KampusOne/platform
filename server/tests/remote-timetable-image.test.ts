@@ -44,4 +44,12 @@ describe('private image processing on existing free hosting',()=>{
     vi.stubGlobal('fetch',async()=>Response.json({rows:[{day:1,cells:[{from:0,to:1}],media:{mimeType:'image/png',data:'YQ=='}}]}));
     await expect(remoteTimetableRows(env,media('jpg'),10,levels,days,'100')).rejects.toMatchObject({reason:'AI_INCOMPLETE_SCHEDULE'});
   });
+  it('packs every requested day into one private image without changing physical cell spans',async()=>{
+    vi.stubGlobal('fetch',(url:string|URL|Request,init?:RequestInit)=>privateTimetableImage(new Request(String(url),init),getKey));
+    const rows=await remoteTimetableRows(env,media('jpg'),10,levels,days,'200',Date.now()+150000,true);
+    expect(rows?.map(row=>row.day)).toEqual(days);expect(rows?.batch).toMatchObject({mimeType:'image/png'});
+    expect(rows?.[0]?.cells.slice(0,2)).toEqual([{from:0,to:2},{from:2,to:6}]);
+    const bytes=Buffer.from(rows!.batch!.data,'base64'),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.length);
+    expect(view.getUint32(16)*view.getUint32(20)).toBeLessThanOrEqual(4_000_000);
+  });
 });

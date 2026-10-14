@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import {decode as jpeg} from 'jpeg-js';
 import {decode as decodePng,encode as encodePng} from 'fast-png';
 import {createTimetablePixels} from '../../packages/contracts/src/timetable-pixels';
+import type {TimetableImageRow} from '../../packages/contracts/src/timetable-pixels';
 
 const audience='kampusone:private:timetable-image',maxBody=4_200_000;
 const remoteKeys=createRemoteJWKSet(new URL('https://platformp.divine-haze-54eb.workers.dev/health/image-processing-key'),{timeoutDuration:5000,cooldownDuration:60000});
@@ -15,6 +16,21 @@ const signingKey:JWTVerifyGetKey=async(header,token)=>{
   return remoteKeys(header,token);
 };
 const pixels=createTimetablePixels({decodeJpeg:bytes=>jpeg(bytes,{useTArray:true,maxResolutionInMP:4,maxMemoryUsageInMB:48,tolerantDecoding:false}),decodePng,encodePng});
+
+async function rowAtlas(rows:TimetableImageRow[]) {
+  if(!rows.length||rows.length>7)return;
+  const sources=await Promise.all(rows.map(async row=>{const bytes=Buffer.from(row.media.data,'base64'),meta=await sharp(bytes,{limitInputPixels:4_000_000}).metadata();return{row,bytes,width:meta.width!,height:meta.height!};}));
+  const columns=Math.min(rows.length,3),tileWidth=Math.max(...sources.map(s=>s.width))+16,tileHeight=Math.max(...sources.map(s=>s.height))+48;
+  const width=columns*tileWidth,height=Math.ceil(rows.length/columns)*tileHeight;
+  if(width*height>24_000_000)return;
+  const overlays=sources.flatMap((s,i)=>{const left=i%columns*tileWidth,top=Math.floor(i/columns)*tileHeight;
+    const header=Buffer.from(`<svg width="${tileWidth}" height="44"><rect width="100%" height="100%" fill="white"/><text x="8" y="31" font-size="28" font-family="sans-serif" font-weight="bold">DAY ${s.row.day}</text></svg>`);
+    return[{input:header,left,top},{input:s.bytes,left,top:top+44}];});
+  const scale=Math.min(1,Math.sqrt(3_900_000/(width*height)));
+  const data=await sharp({create:{width,height,channels:3,background:'white'}}).composite(overlays).resize(Math.floor(width*scale),Math.floor(height*scale)).png().toBuffer();
+  if(data.length>2_900_000)return;
+  return{mimeType:'image/png',data:data.toString('base64')};
+}
 
 /** Pure private CPU work. No database, user authorization, AI calls or files. */
 export async function privateTimetableImage(request:Request,getKey:JWTVerifyGetKey=signingKey) {
@@ -43,7 +59,8 @@ export async function privateTimetableImage(request:Request,getKey:JWTVerifyGetK
     if(input.operation==='layout')result={layout:pixels.timetableLayoutImage(media)};
     else {
       if(!Number.isInteger(input.timeColumnCount)||input.timeColumnCount<1||input.timeColumnCount>24||!Array.isArray(input.levels)||input.levels.length<2||input.levels.length>20||input.levels.some((x:unknown)=>typeof x!=='string'||!/^[0-9]{3}$/.test(x))||!Array.isArray(input.days)||input.days.length<1||input.days.length>7||input.days.some((x:unknown)=>typeof x!=='number'||!Number.isInteger(x)||x<0||x>6)||typeof input.selectedLevel!=='string')return new Response(null,{status:400,headers});
-      result={rows:pixels.timetableImageRows(media,input.timeColumnCount,input.levels,input.days,input.selectedLevel)};
+      const rows=pixels.timetableImageRows(media,input.timeColumnCount,input.levels,input.days,input.selectedLevel);
+      result={rows,...(rows&&input.batch===true?{batch:await rowAtlas(rows)}:{})};
     }
     const output=JSON.stringify(result);
     if(Buffer.byteLength(output)>maxBody)return Response.json({},{headers});

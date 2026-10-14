@@ -95,8 +95,10 @@ export function aiMessages(input: AIInput): AIMessage[] {
     if (!input.media.mimeType.startsWith("image/")) throw new AIProviderError(400, "AI_UNSUPPORTED_MEDIA", "Extract document text before sending it to AI.");
     content.push({ type: "image_url", image_url: { url: `data:${input.media.mimeType};base64,${input.media.data}`, ...(input.mode==='timetable'?{detail:'high'}:{}) } });
   }
+  const focused=input.mode==='timetable'&&input.scheduleLayout;
+  const system=focused?'You read private academic source pixels faithfully. Follow the exact JSON shape requested. Never invent missing text or move a label. For a simple class LIST return documentType:"class_timetable", entries with title, courseCode, dayOfWeek (Sunday=0), startsAt and endsAt in HH:MM, venue and lecturer, events:[], warnings:[], and coverage:{complete:true,daysRead:[all printed weekdays],rowCount:number of entries,uncertain:[]}. If any required text is unreadable mark incomplete.':aiSystemInstruction(input.mode);
   return [
-    { role: "system", content: aiSystemInstruction(input.mode) + (input.systemContext ? "\n" + input.systemContext : "") },
+    { role: "system", content: system + (input.systemContext ? "\n" + input.systemContext : "") },
     ...(input.history ?? []).slice(input.tier==='pro'?-12:-6).flatMap(turn => [{ role: "user" as const, content: turn.prompt }, { role: "assistant" as const, content: turn.text }]),
     { role: "user", content: input.media ? content : input.prompt || "Read the supplied material." },
   ];
@@ -114,6 +116,7 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
   const deadline = Math.min(Date.now() + budget.timeoutMs, input.deadline ?? Infinity);
   if (deadline <= Date.now()) throw new AIProviderError(504, 'AI_TIMEOUT', 'Reading took too long. Your file and draft are kept.');
   try {
+    if(input.mode==='timetable'&&input.provider==='groq'&&env.GROQ_API_KEY)return await groqAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
     let provider: AIProvider = config.provider;
     let payload: { choices?: { message?: { content?: unknown; tool_calls?: unknown }; finish_reason?: string }[] };
     if (config.provider === 'workers-ai') {

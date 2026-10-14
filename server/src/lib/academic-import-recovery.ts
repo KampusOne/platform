@@ -1,8 +1,8 @@
-import { generateAI, type AIEnvironment, type AIInput } from './ai-provider';
+import { generateAI, type AIEnvironment, type AIInput, type AIMedia } from './ai-provider';
 import { parseAcademicImport } from './academic-import';
 import { AIProviderError } from './ai-error';
 import { incompleteSchedule, levelKey, readScheduleJSON, scheduleCoverage, verifiedTimetableTimeSlots, type TimetableScope } from './timetable-extraction';
-import { timetableImageRows, timetableLayoutImage, type TimetableLayoutImage } from './timetable-image-grid';
+import { timetableImageRows, timetableLayoutImage, type TimetableLayoutImage, type TimetableImageRow } from './timetable-image-grid';
 import { prepareTimetableImage } from './webp-pixels';
 import {remoteTimetableLayout,remoteTimetableRows} from './remote-timetable-image';
 
@@ -19,19 +19,20 @@ export async function generateAcademicImport(env:AIEnvironment,input:AIInput,sou
     prompt:'FIRST READ ONLY THE LAYOUT. If this image is a timetable grid, return its documentType, all printed timeSlots in left-to-right 24-hour order, the printed levels in their TOP-TO-BOTTOM row order within each day, and daysSeen in their TOP-TO-BOTTOM printed order as numbers (Sunday=0, Monday=1, Tuesday=2, Wednesday=3, Thursday=4, Friday=5, Saturday=6). Set grid.rows:[], entries:[], events:[] and coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]}. Do not transcribe any courses yet. The next internal step reads each selected row. If this is a simple list instead of a grid, return the complete normal schedule with entries/events and coverage.\nStudent source context:\n'+input.prompt,
     systemContext:(input.systemContext??'')+'\nThis is an internal layout read. A grid layout is intentionally not a finished schedule and will never be shown or saved as one. Read the time-column headers, weekdays and level labels only. The application assembles every selected weekday row before import.'+(layout?' The numbered contact sheet contains time headings in panels 0 then 1, followed by all day/level labels in panel order, left to right then top to bottom. Panel numbers are not source text. Copy the first day\'s level labels in their printed order and every distinct weekday. No course transcription is needed.':''),
   }:input;
-  const read=()=>generateAI(env,needsLayout?{...initial,deadline:Math.min(input.deadline??Infinity,Date.now()+35000)}:initial);
+  const layoutDeadline=()=>env.GROQ_API_KEY?input.deadline:Math.min(input.deadline??Infinity,Date.now()+35000);
+  const read=()=>generateAI(env,needsLayout?{...initial,deadline:layoutDeadline()}:initial);
   let generated:Awaited<ReturnType<typeof generateAI>>;
   try{generated=await read();}catch(error){
     if(!needsLayout||!(error instanceof AIProviderError)||error.status<500||(input.deadline??0)-Date.now()<60000)throw error;
     generated=await read();
   }
   if(layout&&!matchesPixelInventory(generated.text,layout)) {
-    generated=await generateAI(env,{...initial,deadline:Math.min(input.deadline??Infinity,Date.now()+35000),
+    generated=await generateAI(env,{...initial,deadline:layoutDeadline(),
       prompt:initial.prompt+`\nThe application verified ${layout.timeColumnCount} printed time columns and ${layout.levelRowCount} individual level rows from the pixels. Your inventory must account for all of them. The whole day/level strip is in panel 2. Read it top to bottom, including every weekday. Do not combine or skip time columns or level labels.`,
     });
   }
   input.onScheduleRead?.(null,generated.text);
-  return {...generated,extracted:await parseOrRecoverAcademicImport(env,input,generated.text,sourceText,kind,scope,layout)};
+  return {...generated,extracted:await parseOrRecoverAcademicImport(env,{...input,provider:generated.provider},generated.text,sourceText,kind,scope,layout)};
 }
 
 function matchesPixelInventory(text:string,layout:TimetableLayoutImage) {
@@ -75,8 +76,25 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
     const timeSlots=verifiedTimetableTimeSlots(grid.timeSlots);
     if(grid.levels.length>1) {
       if(!Array.isArray(grid.timeSlots))throw incompleteSchedule();
-      const crops=env.TIMETABLE_IMAGE_PROCESSOR_URL?await remoteTimetableRows(env,input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel,input.deadline):timetableImageRows(input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel);
+      const crops:(TimetableImageRow[]&{batch?:AIMedia})|undefined=env.TIMETABLE_IMAGE_PROCESSOR_URL?await remoteTimetableRows(env,input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel,input.deadline,input.provider==='groq'):timetableImageRows(input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel);
       if(crops) {
+        const atlas=crops.batch;
+        if(atlas&&input.provider==='groq'){
+          const labels=Object.fromEntries(crops.map(crop=>[String(crop.day),Object.fromEntries(Array.from({length:crop.cells.length+1},(_,i)=>[String(i),i===0?'printed level':'exact panel text or empty string']))]));
+          const result=await generateAI(env,{...input,media:atlas,scheduleLayout:true,
+            prompt:`Transcribe this contact sheet. Each strip is headed DAY followed by its weekday number. The numbered panels BELOW that heading belong only to that day. Panel 0 is its printed level; later panels are its individual course cells. Return ONLY ${JSON.stringify({labels,coverage:{complete:true,uncertain:[]}})}. Keep every day and panel key exactly as supplied. Copy exact labels, including slash alternatives, laboratories and parentheses. Use "" for blank panels. Do not infer clocks or move text between panels. Mark incomplete if any selected panel is unreadable.`,
+            systemContext:'Internal transcription of isolated timetable cells. DAY headings and panel numbers are application labels, not source text. Return the requested labels JSON only. Preserve all blank panels and exact course labels. Never add or infer a course.',
+          });
+          input.onScheduleRead?.(null,result.text);
+          const part=readScheduleJSON(result.text),coverage=part.coverage as {complete?:unknown;uncertain?:unknown}|undefined,byDay=part.labels as Record<string,Record<string,unknown>>|undefined;
+          if(coverage?.complete!==true||!Array.isArray(coverage.uncertain)||coverage.uncertain.length||!byDay||typeof byDay!=='object'||Array.isArray(byDay)||Object.keys(byDay).length!==crops.length)throw incompleteSchedule();
+          const rows=crops.map(crop=>{
+            const labels=byDay[String(crop.day)],keys=Array.from({length:crop.cells.length+1},(_,i)=>String(i));
+            if(!labels||typeof labels!=='object'||Array.isArray(labels)||Object.keys(labels).length!==keys.length||keys.some(key=>typeof labels[key]!=='string'||String(labels[key]).length>160)||levelKey(labels['0'])!==printedLevel)throw incompleteSchedule();
+            return{dayOfWeek:crop.day,level:printedLevel,cells:crop.cells.map((cell,i)=>({...cell,label:labels[String(i+1)] as string}))};
+          });
+          return parseAcademicImport(JSON.stringify({documentType:'class_timetable',entries:[],events:[],warnings:[],coverage:{complete:true,daysRead:ordered,rowCount:rows.length,uncertain:[]},grid:{timeSlots,levels:[printedLevel],daysSeen:ordered,rows}}),sourceText,kind,{strict:true,scope});
+        }
         const rows=await Promise.all(crops.map(async crop=>{
           const keys=Array.from({length:crop.cells.length+1},(_,i)=>String(i));
           const schema={labels:Object.fromEntries(keys.map(key=>[key,key==='0'?'printed level':`panel ${key} text`])),coverage:{complete:true,uncertain:[]}};
@@ -114,6 +132,17 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
       // Pixel isolation is an optimization, not an admission requirement. Read
       // every requested day from the original and validate the assembled grid.
       console.info(JSON.stringify({event:'ai.timetable.original_row_read',reason:'pixel_geometry_unavailable'}));
+    }
+    if(input.provider==='groq'){
+      const result=await generateAI(env,{...input,scheduleLayout:true,
+        prompt:`Read every selected ${printedLevel||'unlabelled'} level row for these weekdays: ${JSON.stringify(ordered)}. Use the original image, ignore other levels. The already verified time columns are ${JSON.stringify(timeSlots)}. Do not read clocks again. Return ONLY {"rows":[{"dayOfWeek":1,"level":${JSON.stringify(printedLevel)},"cells":[{"from":0,"to":1,"label":"exact visible text or empty string"}]}],"coverage":{"complete":true,"daysRead":${JSON.stringify(ordered)},"rowCount":${ordered.length},"uncertain":[]}}. Include exactly one row for EACH requested weekday. Every row must cover all ${timeSlots.length} columns without gaps or overlaps, including blanks. Follow actual merged-cell borders. Preserve slash alternatives and parentheses. Never move a course into a blank column or copy another level. If any selected cell or border is unreadable mark incomplete.`,
+        systemContext:'Internal full-week transcription against one verified time-heading inventory. Return only rows, cell boundaries and exact labels. Column indices start at the first printed time column, excluding DAYS and LEVEL. from is inclusive; to is exclusive. No clocks or extra courses.',
+      });
+      input.onScheduleRead?.(null,result.text);
+      const part=readScheduleJSON(result.text),coverage=scheduleCoverage(part);
+      if(!Array.isArray(part.rows)||part.rows.length!==ordered.length||coverage.rowCount!==ordered.length||coverage.daysRead.length!==ordered.length||ordered.some(day=>!coverage.daysRead.includes(day)))throw incompleteSchedule();
+      return parseAcademicImport(JSON.stringify({documentType:'class_timetable',entries:[],events:[],warnings:[],coverage,
+        grid:{timeSlots,levels:printedLevel?[printedLevel]:[],daysSeen:ordered,rows:part.rows}}),sourceText,kind,{strict:true,scope});
     }
     const rows=await Promise.all(ordered.map(async day=>{
       const result=await generateAI(env,{...input,scheduleLayout:true,
