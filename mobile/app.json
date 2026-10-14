@@ -36,6 +36,11 @@
               "scheme": "https",
               "host": "links.kampusone.app",
               "pathPrefix": "/s/"
+            },
+            {
+              "scheme": "https",
+              "host": "links.kampusone.app",
+              "pathPrefix": "/payment/return"
             }
           ],
           "category": [

@@ -1,3 +1,4 @@
+import { PaymentRecovery } from "@/src/components/payment-recovery";
 import { LiveUpdates } from "@/src/components/live-updates";
 import { AlarmSync } from "@/src/components/alarm-sync";
 import { checkBuildVersion } from "@/src/lib/build-version";
@@ -92,7 +93,7 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <StartupProvider><ToastProvider><LiveUpdates/><AlarmSync/><NotificationBootstrap /><AutoStreak />
+      <StartupProvider><ToastProvider><LiveUpdates/><PaymentRecovery/><AlarmSync/><NotificationBootstrap /><AutoStreak />
         <StatusBar style={isDark ? "light" : "dark"} />
         <ScreenVisitTracker />
         <ForegroundUsageTracker/>

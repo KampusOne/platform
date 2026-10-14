@@ -1,3 +1,4 @@
+import { collectionReference, paymentReturnUrl } from '../lib/collection-provider';
 import {cachedVersionedRead} from "../lib/cache-revision";
 import {livePublishingEnabled,publishRiderQueueReads} from '../services/live-read-publishers';
 import {mappedDeliveryPoint,currentAgentPosition,campusDeliveryRoute} from '../lib/delivery-routing';
@@ -1906,7 +1907,7 @@ agentRoutes.post('/rider-commission-checkout',async context=>{
   let intent;
   try{intent=firstRow(await database(context.env).execute<{id:string;provider_reference:string;amount_kobo:number;authorization_url:string|null;access_code:string|null;status:string}>(sql`
     select * from app_private.create_rider_commission_checkout(${crypto.randomUUID()}::uuid,${data.agentProfileId}::uuid,
-      ${user.id}::uuid,${data.requestId}::uuid,${`K1-RC-${crypto.randomUUID()}`})
+      ${user.id}::uuid,${data.requestId}::uuid,${collectionReference(context.env,'RC')})
   `));}catch(e){if(e instanceof Error && e.message.includes('RIDER_NO_COMMISSION_DUE'))throw new AppError(409,'CONFLICT','Your ride commissions are already paid.');throw e;}
   if(!intent)throw new AppError(409,'CONFLICT','The commission checkout could not be prepared.');
   if(intent.status==='PAID')return context.json({status:'PAID',reference:intent.provider_reference});
@@ -1915,7 +1916,7 @@ agentRoutes.post('/rider-commission-checkout',async context=>{
   if(intent.authorization_url && intent.access_code)return context.json({authorizationUrl:intent.authorization_url,reference:intent.provider_reference,amountKobo:Number(intent.amount_kobo)});
   // Stable reference survives a timeout; a receipt can still reconcile a late payment.
   const initialized=await initializePaystackOnce(context.env,{email:user.email,amountKobo:Number(intent.amount_kobo),reference:intent.provider_reference,
-    ...(context.env.APP_ORIGIN?{callbackUrl:`${context.env.APP_ORIGIN.replace(/\/$/,'')}/payment/return`}:{}),metadata:{resourceType:'RIDER_COMMISSION',resourceId:intent.id}});
+    callbackUrl:paymentReturnUrl,metadata:{resourceType:'RIDER_COMMISSION',resourceId:intent.id,userId:user.id}});
   if(!initialized.access_code)throw new AppError(503,'PROVIDER_UNAVAILABLE','The provider returned an incomplete checkout. Try again.');
   await database(context.env).execute(sql`update app_private.rider_commission_checkouts set status='INITIALIZED',authorization_url=${initialized.authorization_url!},access_code=${initialized.access_code}
     where id=${intent.id}::uuid and status='CREATED'`);

@@ -14,10 +14,9 @@ export async function verifySavedStorePayments(env: Bindings) {
   return Promise.all(attempts.rows.map(async attempt => {
     try {
       const receipt=await verifyCollection(env,attempt.reference);
-      return {order:attempt.order_id,reference:attempt.reference,paymentStatus:attempt.status,
-        providerStatus:receipt.status,amountKobo:receipt.amountKobo,feeKobo:receipt.feeKobo,paidAt:receipt.paidAt};
+      return {paymentStatus:attempt.status,providerStatus:receipt.status};
     } catch (error) {
-      return {order:attempt.order_id,paymentStatus:attempt.status,code:(error as {code?:string}).code??'VERIFICATION_FAILED'};
+      return {paymentStatus:attempt.status,code:(error as {code?:string}).code??'VERIFICATION_FAILED'};
     }
   }));
 }

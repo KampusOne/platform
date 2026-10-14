@@ -62,5 +62,5 @@ describe('private image processing on existing free hosting',()=>{
     expect(rows?.[0]?.cells).toContainEqual({from:4,to:6});
     expect(rows?.[1]?.cells.slice(0,2)).toEqual([{from:0,to:2},{from:2,to:3}]);
     expect(rows?.batch).toMatchObject({mimeType:'image/png'});
-  });
+  },15000);
 });

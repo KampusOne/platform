@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from "react";
 import {
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +11,8 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import { ToolPage } from "@/src/components/toolkit";
 import { useAuth } from "@/src/auth/auth-context";
-import { api } from "@/src/lib/api";
+import { openHostedPayment } from "@/src/lib/hosted-payment";
+import { api,ApiError } from "@/src/lib/api";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 
 type Summary = {
@@ -94,7 +94,7 @@ export default function PaymentReview() {
     if (!paymentRequest.current)
       paymentRequest.current = `review-${purchase.id}-${Date.now()}`;
     try {
-      const result = await api<{ authorizationUrl: string }>(
+      const result = await api<{ authorizationUrl: string;reference:string }>(
         "/v1/payments/initialize",
         {
           method: "POST",
@@ -105,8 +105,10 @@ export default function PaymentReview() {
           }),
         },
       );
-      await Linking.openURL(result.authorizationUrl);
+      if(!user)throw new Error('Sign in before opening checkout.');
+      await openHostedPayment(user.id,result);
     } catch (caught) {
+      if(caught instanceof ApiError&&caught.details&&typeof caught.details.reference==='string')router.replace({pathname:'/payment-return',params:{reference:caught.details.reference}});
       setError(
         caught instanceof Error
           ? caught.message
@@ -245,7 +247,7 @@ export default function PaymentReview() {
               <View style={styles.totalRow}>
                 <View>
                   <Text style={styles.totalLabel}>Pay now</Text>
-                  <Text style={styles.totalHint}>Secure Paystack checkout</Text>
+                  <Text style={styles.totalHint}>Secure BACHS checkout</Text>
                 </View>
                 <Text style={styles.totalValue}>
                   {money(purchase.amount_kobo)}
@@ -354,8 +356,7 @@ export default function PaymentReview() {
                 color={theme.textMuted}
               />
               <Text style={styles.securityText}>
-                Payment opens in Paystack. KampusOne does not store your card
-                details.
+                Payment opens in BACHS. Return here to confirm your receipt and track your order.
               </Text>
             </View>
           </>

@@ -33,7 +33,7 @@ export function appleAssociation(teamId: string | undefined) {
       details: [
         {
           appIDs: [`${teamId}.app.kampusone.mobile`],
-          components: [{ "/": "/s/*" }],
+          components: [{ "/": "/s/*" }, { "/": "/payment/return" }],
         },
       ],
     },

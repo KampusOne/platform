@@ -33,7 +33,7 @@ let storageQueue: Promise<void> = Promise.resolve();
 // Persist only non-content bookkeeping. Profiles, last-session and unknown
 // future payloads stay in RAM instead of unencrypted shared device storage.
 const diskSafe = (key: string) => /^(?:streak\.open\.|push-device\.)[0-9a-f-]{36}$/i.test(key);
-const ownerKey = /^(?:profile|settings|home|timetable-draft|exam-draft|kira-draft|kira-plans|ai-draft|ai-workspace-v3|publishing-draft|publisher-draft|listing-draft|campus-activity-draft|answer-draft|message-draft|cart|search-recents|onboarding|calendar-editor-draft|business-profile-draft|calendar-local|telemetry)\./;
+const ownerKey = /^(?:profile|settings|home|payment-draft|timetable-draft|exam-draft|kira-draft|kira-plans|ai-draft|ai-workspace-v3|publishing-draft|publisher-draft|listing-draft|campus-activity-draft|answer-draft|message-draft|cart|search-recents|onboarding|calendar-editor-draft|business-profile-draft|calendar-local|telemetry)\./;
 const permittedOwner = (key:string) => !ownerKey.test(key) || Boolean(activeScope && activeOwner && key.includes(activeOwner));
 function storageOperation(operation: () => Promise<void>): Promise<void> {
   const next = storageQueue.then(operation, operation);

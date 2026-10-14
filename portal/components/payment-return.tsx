@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForegroundPoll } from '@/lib/use-foreground-poll';
 
 import { PortalApiError, portalApi } from "@/lib/api";
@@ -20,6 +20,8 @@ export function PaymentReturn({ reference }: { reference: string }) {
   return <ReferencePaymentReturn key={reference} reference={reference}/>;
 }
 function ReferencePaymentReturn({ reference }: { reference: string }) {
+  const appReturn='kampusone://payment-return?reference='+encodeURIComponent(reference);
+  useEffect(()=>{if(/^K1-[A-Za-z0-9-]{1,95}$/.test(reference))window.location.replace('kampusone://payment-return?reference='+encodeURIComponent(reference));},[reference]);
   const [payment, setPayment] = useState<PaymentStatus["payment"] | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -103,15 +105,7 @@ function ReferencePaymentReturn({ reference }: { reference: string }) {
         <div className="payment-return-actions">
           <a
             className="button button--primary"
-            href={
-              payment?.resource_type === "RIDER_COMMISSION"
-                ? "kampusone://earnings"
-                : payment?.resource_type === "KIRA_SUBSCRIPTION"
-                  ? "kampusone://ai-subscription"
-                  : payment?.resource_type === "TUTORIAL_PURCHASE"
-                    ? "kampusone://learning-library"
-                    : "kampusone://purchases"
-            }
+            href={appReturn}
           >
             Open KampusOne
           </a>

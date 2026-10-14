@@ -1,7 +1,8 @@
+import { openHostedPayment } from '@/src/lib/hosted-payment';
 import * as Crypto from "expo-crypto";
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { AppState, Linking, Pressable, Text, View } from "react-native";
+import { AppState, Pressable, Text, View } from "react-native";
 import {
   ToolPage,
   ToolButton,
@@ -76,6 +77,7 @@ export default function EarningsScreen() {
   return <AccountEarnings key={user?.id ?? "anonymous"} />;
 }
 function AccountEarnings() {
+  const {user}=useAuth();
   const { theme } = useAppearance();
   const toast = useToast();
   const caps = useCapabilities();
@@ -145,8 +147,10 @@ function AccountEarnings() {
           "Your payment was received and needs finance review. Check payment for its latest status.",
           "info",
         );
-      else if (checkout.authorizationUrl)
-        await Linking.openURL(checkout.authorizationUrl);
+      else if (checkout.authorizationUrl) {
+        if(!user)throw new Error('Sign in before checkout.');
+        await openHostedPayment(user.id,{reference:checkout.reference,authorizationUrl:checkout.authorizationUrl});
+      }
     } catch (e) {
       if (e instanceof ApiError && e.code === "CONFLICT")
         repaymentRequest.current = { profileId: "", id: "" };

@@ -47,8 +47,15 @@ export async function financeReport(env: Bindings, scope: string | null, day?: s
     where (${scope}::uuid is null or t.university_id=${scope}::uuid)and(${window?.day ?? null}::date is null or(t.created_at at time zone 'Africa/Lagos')::date=${window?.day ?? null}::date)
     and exists(select 1 from public.ledger_lines l join public.ledger_accounts a on a.id=l.account_id where l.transaction_id=t.id and l.direction='CREDIT'and a.account_code='VENDOR_PENDING')
   `));
-  const receiptsReady = firstRow(await db.execute<{ready:boolean}>(sql`select to_regclass('app_private.verified_paystack_receipts')is not null ready`))?.ready;
-  const receipts = receiptsReady ? firstRow(await db.execute<{count:number}>(sql`select count(*)::int count from app_private.verified_paystack_receipts where(${scope}::uuid is null or university_id=${scope}::uuid)and(${window?.day ?? null}::date is null or(paid_at at time zone 'Africa/Lagos')::date=${window?.day ?? null}::date)`))?.count : null;
+  const receiptSchema = firstRow(await db.execute<{ready:boolean;collections_ready:boolean}>(sql`select to_regclass('app_private.verified_paystack_receipts')is not null ready,to_regclass('app_private.verified_collection_receipts')is not null and to_regclass('app_private.verified_bachs_receipts')is not null as collections_ready`));
+  const receiptsReady=receiptSchema?.ready;
+  const receipts = receiptsReady ? firstRow(await db.execute<{count:number}>(receiptSchema?.collections_ready?sql`
+    select count(*)::int as count from app_private.verified_collection_receipts r
+      left join app_private.verified_paystack_receipts p on p.provider_reference=r.paystack_reference
+      left join app_private.verified_bachs_receipts b on b.provider_reference=r.bachs_reference
+    where (${scope}::uuid is null or coalesce(p.university_id,b.university_id)=${scope}::uuid)
+      and (${window?.day??null}::date is null or(coalesce(p.paid_at,b.paid_at) at time zone 'Africa/Lagos')::date=${window?.day??null}::date)
+  `:sql`select count(*)::int count from app_private.verified_paystack_receipts where(${scope}::uuid is null or university_id=${scope}::uuid)and(${window?.day ?? null}::date is null or(paid_at at time zone 'Africa/Lagos')::date=${window?.day ?? null}::date)`))?.count : null;
   return { ...totals, gmv_kobo: Number(gmv?.gmv_kobo ?? 0), transactions_processed: receipts ?? Number(gmv?.transactions ?? 0), transactions_definition: receiptsReady ? "Verified provider receipts across purchase categories" : "Journal-backed store transactions; provider receipt reporting awaits its database update", profit_kobo: totals.platform_revenue_kobo - totals.expenses_kobo,
     arr_kobo: null, arr_definition: "Kira is paid one month at a time without automatic renewal. These payments are not contracted recurring revenue, so ARR is not reported.",
     definition: "Posted revenue credits less reversals; expense debits less reversals. Vendor proceeds exclude wallet release transfers. Profit is recorded revenue less recorded expenses, not a bank balance. GMV counts journal-backed store sales including delivery.",

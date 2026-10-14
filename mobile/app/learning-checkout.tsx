@@ -1,7 +1,8 @@
+import { openHostedPayment } from '@/src/lib/hosted-payment';
 import {isPlayDistribution} from "@/src/lib/digital-billing-policy";
 import {DiscountCodeField} from "@/src/components/discount-code-field";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, Platform, Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { randomUUID } from "expo-crypto";
 import { ToolPage, ToolButton } from "@/src/components/toolkit";
@@ -40,6 +41,7 @@ function AccountCheckout({
   resourceId: string | undefined;
   displayedPrice: string | undefined;
 }) {
+  const {user}=useAuth();
   const { theme } = useAppearance(),
     [discountCode,setDiscountCode]=useState(""),
     [quote, setQuote] = useState<Quote | null>(null),
@@ -134,6 +136,7 @@ function AccountCheckout({
         );
       const payment = await api<{
         authorizationUrl: string;
+        reference:string;
         amountKobo: number;
       }>(`/v1/tutor-commerce/purchases/${result.purchase.id}/payment`, {
         method: "POST",
@@ -144,7 +147,8 @@ function AccountCheckout({
         throw new Error(
           "The payment total changed. Review your saved purchase before paying.",
         );
-      await Linking.openURL(payment.authorizationUrl);
+      if(!user)throw new Error('Sign in before checkout.');
+      await openHostedPayment(user.id,payment);
     } catch (e) {
       if (alive.current)
         setError(

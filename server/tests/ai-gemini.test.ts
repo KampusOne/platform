@@ -15,7 +15,7 @@ describe('academic recovery through existing Gemini configuration',()=>{
     const [url,request]=fetcher.mock.calls[1]!,body=JSON.parse(String(request!.body));
     expect(String(url)).not.toContain('PRIVATE_GEMINI_KEY');expect(new Headers(request!.headers).get('x-goog-api-key')).toBe('PRIVATE_GEMINI_KEY');
     expect(body.contents[0].parts).toContainEqual({inlineData:input.media});expect(JSON.stringify(body)).not.toContain('PRIVATE_GEMINI_KEY');
-    expect(body.generationConfig.responseMimeType).toBe('application/json');expect(body.generationConfig.thinkingConfig).toEqual({thinkingLevel:'low'});
+    expect(body.generationConfig.responseMimeType).toBe('application/json');expect(body.generationConfig.thinkingConfig).toEqual({thinkingBudget:0});
     expect(request!.signal).toBeInstanceOf(AbortSignal);expect(request!.redirect).toBe('manual');
   });
   it.each([['MAX_TOKENS','AI_INCOMPLETE'],['SAFETY','AI_INVALID_OUTPUT']])('rejects a %s completion instead of saving a partial schedule',async(finish,reason)=>{
@@ -24,12 +24,22 @@ describe('academic recovery through existing Gemini configuration',()=>{
   it('replaces an unavailable configured model once within the same deadline',async()=>{
     const fetcher=vi.fn().mockResolvedValueOnce(new Response('PRIVATE_BODY',{status:404})).mockResolvedValueOnce(result());
     expect((await geminiAcademicCompletion({...env(),GEMINI_MODEL:'gemini-old-flash'},input,[{role:'user',content:'Read'}],2048,150000,fetcher)).provider).toBe('gemini');
-    expect(fetcher).toHaveBeenCalledTimes(2);expect(String(fetcher.mock.calls[1][0])).toContain('gemini-3.8-flash:generateContent');
+    expect(fetcher).toHaveBeenCalledTimes(2);expect(String(fetcher.mock.calls[1][0])).toContain('gemini-2.5-flash:generateContent');
   });
   it.each([401,403,429,500])('does not retry or reveal an HTTP %i provider response',async status=>{
     const fetcher=vi.fn().mockResolvedValue(new Response('PRIVATE_SOURCE_AND_KEY',{status}));
     const error=await geminiAcademicCompletion(env(),input,[{role:'user',content:'Read'}],2048,150000,fetcher).catch(e=>e);
     expect(error.status).toBe(503);expect(error.message).not.toContain('PRIVATE_SOURCE_AND_KEY');expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it('uses the available Flash model when a configured model requires billing',async()=>{
+    const fetcher=vi.fn().mockResolvedValueOnce(Response.json({error:{message:'Billing is required for this model'}},{status:429})).mockResolvedValueOnce(result());
+    await geminiAcademicCompletion({...env(),GEMINI_MODEL:'gemini-3.8-flash'},input,[{role:'user',content:'Read'}],2048,150000,fetcher);
+    expect(fetcher).toHaveBeenCalledTimes(2);expect(String(fetcher.mock.calls[1][0])).toContain('gemini-2.5-flash:generateContent');
+  });
+  it('keeps focused day reads on the provider that successfully read the layout',async()=>{
+    const configuration=env(),fetcher=vi.fn().mockResolvedValue(result());
+    expect((await generateAI(configuration,{...input,provider:'gemini',scheduleLayout:true},fetcher)).provider).toBe('gemini');
+    expect(configuration.AI!.run).not.toHaveBeenCalled();expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it('does not forward existing chat conversations to the academic fallback',async()=>{
     const fetcher=vi.fn().mockResolvedValue(new Response('No HF capacity',{status:402}));

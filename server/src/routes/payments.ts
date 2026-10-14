@@ -12,7 +12,7 @@ import {
   phase3SchemaReady,
   requireFeature,
 } from "../lib/features";
-import { collectionReference, isBachsReference } from "../lib/collection-provider";
+import { bachsCollectionsEnabled, collectionReference, isBachsReference, paymentReturnUrl } from "../lib/collection-provider";
 import { validBachsDelivery } from "../lib/bachs";
 import { validPaystackSignature } from "../lib/paystack";
 import { claimBachsWebhook, finishBachsWebhook, claimPaystackWebhook, finishPaystackWebhook, initializePaystackOnce } from "../lib/payment-idempotency";
@@ -266,6 +266,8 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
   }
   if (existing && Number(existing.amount_kobo) !== Number(item.amount_kobo))
     throw new AppError(409, "CONFLICT", "This payment attempt belongs to a previous price. Review the updated total before proceeding.");
+  if(existing&&bachsCollectionsEnabled(context.env)&&!isBachsReference(existing.provider_reference))
+    throw new AppError(409,'CONFLICT','Check this saved payment receipt before starting a new purchase.',{reference:existing.provider_reference});
   if (
     existing?.status === "INITIALIZED" &&
     existing.authorization_url &&
@@ -326,16 +328,14 @@ paymentRoutes.post("/initialize", requireAuth, async (context) => {
       attemptId = saved.id;
     }
   }
-  const callbackUrl = context.env.APP_ORIGIN
-    ? `${context.env.APP_ORIGIN.replace(/\/$/, "")}/payment/return`
-    : undefined;
+  const callbackUrl = paymentReturnUrl;
   let initialized: { authorization_url?: string; access_code?: string };
   try {
     initialized = await initializePaystackOnce(context.env, {
       email: user.email,
       amountKobo: Number(item.amount_kobo),
       reference,
-      ...(callbackUrl ? { callbackUrl } : {}),
+      callbackUrl,
       metadata: {
         resourceType: parsed.data.resourceType,
         resourceId: item.id,
@@ -431,7 +431,10 @@ paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
     resource_type: string;
     resource_id: string;
   }>(sql`
-    select provider_reference, status, resource_type, resource_id
+    select provider_reference, status, resource_type, resource_id,amount_kobo,completed_at,
+      case when resource_type='STORE_ORDER' then (select display_name from public.vendor_storefronts s join public.orders o on o.vendor_profile_id=s.vendor_profile_id where o.id=resource_id)
+        when resource_type='TUTORIAL_BOOKING' then (select l.title from public.tutorial_bookings b join public.tutorial_listings l on l.id=b.listing_id where b.id=resource_id) else 'Your purchase' end as title,
+      case when resource_type='STORE_ORDER' then (select o.status from public.orders o where o.id=resource_id) end as order_status
     from public.payment_attempts
     where provider_reference = ${context.req.param("reference")} and user_id = ${user.id}::uuid
     limit 1
@@ -463,7 +466,9 @@ paymentRoutes.get("/status/:reference", requireAuth, async (context) => {
       "Store payment status is temporarily unavailable.",
     );
   }
-  return context.json({ payment: attempt });
+  const paidStoreReceipt=attempt.resource_type==='STORE_ORDER'&&attempt.status==='SUCCEEDED'&&await inclusiveStoreReady(context.env)
+    ?firstRow(await database(context.env).execute<{amount_kobo:number}>(sql`select amount_kobo from app_private.commerce_settlements where order_id=${attempt.resource_id}::uuid and provider_reference=${reference}`)):undefined;
+  return context.json({ payment: {...attempt,...paidStoreReceipt} });
 });
 
 paymentRoutes.post("/paystack/webhook", async (context) => {

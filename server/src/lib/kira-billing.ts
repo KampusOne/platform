@@ -1,3 +1,4 @@
+import { paymentReturnUrl } from './collection-provider';
 import { sql } from "drizzle-orm";
 import { database, firstRow } from "./database";
 import { verifyCollection as verifyPaystack, collectionReference, collectionConfigured, bachsCollectionsEnabled } from "./collection-provider";
@@ -217,9 +218,7 @@ export async function initializeKira(
     email: user.email,
     amountKobo: checkout.amount_kobo,
     reference: checkout.provider_reference,
-    ...(env.APP_ORIGIN
-      ? { callbackUrl: env.APP_ORIGIN.replace(/\/$/, "") + "/payment/return" }
-      : {}),
+    callbackUrl:paymentReturnUrl,
     metadata: {
       resourceType: "KIRA_SUBSCRIPTION",
       resourceId: checkout.id,

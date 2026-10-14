@@ -117,6 +117,7 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
   if (deadline <= Date.now()) throw new AIProviderError(504, 'AI_TIMEOUT', 'Reading took too long. Your file and draft are kept.');
   try {
     if(input.mode==='timetable'&&input.provider==='groq'&&env.GROQ_API_KEY)return await groqAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
+    if(input.mode==='timetable'&&input.provider==='gemini'&&env.GEMINI_API_KEY)return await geminiAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
     let provider: AIProvider = config.provider;
     let payload: { choices?: { message?: { content?: unknown; tool_calls?: unknown }; finish_reason?: string }[] };
     if (config.provider === 'workers-ai') {
