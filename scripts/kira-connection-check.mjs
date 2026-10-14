@@ -18,8 +18,11 @@ export async function probe(request, env, readPrivateAIPdf, verifyAcademicImport
       try{
         const response=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+env.GROQ_API_KEY},redirect:'manual',signal:AbortSignal.timeout(15000),body:JSON.stringify({model,messages:[{role:'user',content:'Return only JSON: {"ok":true}.'}],temperature:0,max_completion_tokens:256,response_format:{type:'json_object'},...(model.startsWith('qwen/')?{reasoning_effort:'none',reasoning_format:'hidden'}:{reasoning_effort:'low'})})});
         const data=await response.json().catch(()=>({})),message=data?.error?.message??'';
-        const limits=Object.fromEntries(['x-ratelimit-limit-tokens','x-ratelimit-remaining-tokens','x-ratelimit-remaining-requests','retry-after'].map(name=>[name,response.headers.get(name)]).filter(([,value])=>value&&/^\d+(?:\.\d+)?$/.test(value)));
-        return{model,api:'groq',status:response.status,generated:data?.choices?.[0]?.message?.content?.includes('true')===true,limits,...(!response.ok?{hint:/quota|rate limit|tokens per/i.test(message)?'service_limit':/key|auth|permission/i.test(message)?'authentication':'provider_rejected'}:{})};
+        const limits=Object.fromEntries(['x-ratelimit-limit-tokens','x-ratelimit-remaining-tokens','x-ratelimit-remaining-requests','retry-after','x-ratelimit-reset-tokens','x-ratelimit-reset-requests'].map(name=>[name,response.headers.get(name)]).filter(([,value])=>value&&/^[0-9.hms]+$/.test(value)));
+        const dimension=/tokens per day|\bTPD\b/i.test(message)?'tokens_per_day':/tokens per minute|\bTPM\b/i.test(message)?'tokens_per_minute':/requests per day|\bRPD\b/i.test(message)?'requests_per_day':/requests per minute|\bRPM\b/i.test(message)?'requests_per_minute':'unknown';
+        const quantities=Object.fromEntries(['Limit','Used','Requested'].map(label=>[label.toLowerCase(),Number(new RegExp(label+'[ :]+([0-9]+)','i').exec(message)?.[1])]).filter(([,value])=>Number.isFinite(value)));
+        const retry=/try again in ([0-9.hms]+)\b/i.exec(message)?.[1];
+        return{model,api:'groq',status:response.status,generated:data?.choices?.[0]?.message?.content?.includes('true')===true,limits,...(!response.ok?{dimension,quantities,...(retry?{retry}:{}),hint:/quota|rate limit|tokens per/i.test(message)?'service_limit':/key|auth|permission/i.test(message)?'authentication':'provider_rejected'}:{})};
       }catch{return{model,api:'groq',status:0};}
     };
     const groq=[];for(const model of ['qwen/qwen3.8-27b','openai/gpt-oss-20b'])groq.push(await groqReadiness(model));
