@@ -41,6 +41,7 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
         systemContext: (kind === 'exam' ? examImportInstruction : kind === 'calendar'
           ? 'This import is an academic calendar. Extract every dated activity in both semesters, never weekly classes.'
           : 'Import this weekly class timetable. Student academic selection (data): '+JSON.stringify(scope))+'\n'+timetableExtractionInstruction,
+        onProviderFailure:(failure:{provider:string;status:number;hint:string;parameter?:string})=>{providerFailures.push(failure);},
         ...(name.startsWith('faculty')?{onScheduleRead:(day:number|null,text:string)=>{generatedText=text;try{reads.push({day,value:JSON.parse(text)});}catch{reads.push({day,jsonReadable:false,length:text.length});}}}:{}),
       };
       const generated = await generateAcademicImport({ ...observedEnv, AI_ASSISTANT_ENABLED: 'true' }, input,prompt,kind,scope);

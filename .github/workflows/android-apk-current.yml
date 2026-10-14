@@ -7,7 +7,7 @@ on:
       - ".github/workflows/android-apk-current.yml"
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -143,6 +143,21 @@ jobs:
           done
           node --test tests/native-release.test.mjs tests/published-web-release.test.mjs
           node server/scripts/verify-native-release.mjs /tmp/kampusone-current-worker-runs.json KampusOne-Android-0.3.35-arm64-release.json
+      - name: Publish the verified versioned testing APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$SOURCE_SHA"
+          cat > /tmp/kampusone-android-release-notes.txt <<'NOTES'
+          Android 0.3.35 / build 65. Fixes timetable time-heading disagreements and interrupted AI import responses, with existing-provider recovery for academic uploads. Uses the same testing signing identity for installation over the previous APK.
+          NOTES
+          gh release create android-0.3.35 \
+            KampusOne-Android-0.3.35-arm64.apk \
+            KampusOne-Android-0.3.35-arm64-build.json \
+            KampusOne-Android-0.3.35-arm64-release.json \
+            --target "$SOURCE_SHA" --title "KampusOne Android 0.3.35" \
+            --notes-file /tmp/kampusone-android-release-notes.txt --prerelease
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

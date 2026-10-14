@@ -31,7 +31,12 @@ export async function geminiAcademicCompletion(env:AIEnvironment,input:AIInput,m
       throw new AIProviderError(503,'AI_PROVIDER_UNAVAILABLE','The document reader could not connect. Your file is kept; try again.');
     }
     if(!response.ok) {
-      void response.body?.cancel().catch(()=>undefined);
+      const failure=await response.json().catch(()=>({})) as {error?:{message?:string}};
+      const message=typeof failure.error?.message==='string'?failure.error.message:'';
+      const hint=/key.*(?:invalid|not valid|expired|leaked)/i.test(message)?'key_invalid'
+        :/key.*restrict|permission|forbidden/i.test(message)?'key_restricted':/billing/i.test(message)?'billing_required'
+        :/quota|rate limit|resource exhausted/i.test(message)?'service_limit':'unclassified';
+      input.onProviderFailure?.({provider:'gemini',status:response.status,hint});
       if(response.status===404&&index===0&&models.length>1)continue;
       console.warn(JSON.stringify({event:'ai.provider.failed',provider:'gemini',httpStatus:response.status}));
       throw new AIProviderError(503,response.status===429?'AI_PROVIDER_LIMIT':[401,403].includes(response.status)?'AI_PROVIDER_AUTH':'AI_PROVIDER_UNAVAILABLE',

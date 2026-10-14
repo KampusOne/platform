@@ -20,7 +20,14 @@ export async function groqAcademicCompletion(env:AIEnvironment,input:AIInput,mes
     throw new AIProviderError(503,'AI_PROVIDER_UNAVAILABLE','The document reader could not connect. Your file is kept.');
   }
   if(!response.ok){
-    void response.body?.cancel().catch(()=>undefined);
+    const failure=await response.json().catch(()=>({})) as {error?:{message?:string;param?:string}};
+    const message=typeof failure.error?.message==='string'?failure.error.message:'';
+    const hint=/system.{0,60}(?:image|vision)|(?:image|vision).{0,60}system/i.test(message)?'image_system_message'
+      :/reasoning/i.test(message)?'reasoning_parameter':/image|base64|decode|resolution|pixel/i.test(message)?'image_input'
+      :/model.*(?:not found|decommissioned|not supported|not available)/i.test(message)?'model_unavailable'
+      :/key|auth|permission/i.test(message)?'authentication':/quota|rate limit|tokens per/i.test(message)?'service_limit':'unclassified';
+    const parameter=['messages','response_format','reasoning_effort','reasoning_format','max_completion_tokens','model','temperature','image_url'].includes(failure.error?.param??'')?failure.error!.param:undefined;
+    input.onProviderFailure?.({provider:'groq',status:response.status,hint,...(parameter?{parameter}:{})});
     console.warn(JSON.stringify({event:'ai.provider.failed',provider:'groq',httpStatus:response.status}));
     throw new AIProviderError(503,response.status===429?'AI_PROVIDER_LIMIT':[401,403].includes(response.status)?'AI_PROVIDER_AUTH':'AI_PROVIDER_UNAVAILABLE',
       'The document reader is temporarily unavailable. Your full file is kept; no import credit was used.');

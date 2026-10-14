@@ -19,7 +19,7 @@ export type AIEnvironment = WorkersAIEnvironment & {
 };
 export type AIMedia = { mimeType: string; data: string };
 export type AITurn = { prompt: string; text: string };
-export type AIInput = { mode: AIMode; prompt: string; requestPrompt?: string; sourceDocument?: boolean; media?: AIMedia; history?: AITurn[]; provider?: AIProvider; tier?: AITier; systemContext?: string; deadline?: number; scheduleLayout?:boolean; onScheduleRead?:(day:number|null,text:string)=>void; onProgress?:(stage:'reading'|'analysing')=>Promise<void> };
+export type AIInput = { mode: AIMode; prompt: string; requestPrompt?: string; sourceDocument?: boolean; media?: AIMedia; history?: AITurn[]; provider?: AIProvider; tier?: AITier; systemContext?: string; deadline?: number; scheduleLayout?:boolean; onProviderFailure?:(value:{provider:string;status:number;hint:string;parameter?:string})=>void; onScheduleRead?:(day:number|null,text:string)=>void; onProgress?:(stage:'reading'|'analysing')=>Promise<void> };
 export type AITool = { type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } };
 export type AIToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 export type AIMessage = { role: "system" | "user" | "assistant" | "tool"; content: unknown; tool_calls?: AIToolCall[]; tool_call_id?: string };
