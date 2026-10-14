@@ -22,9 +22,10 @@ export async function GET(request:Request) {
         body:JSON.stringify({model:'google/gemini-2.5-flash-lite',messages:[{role:'user',content:[{type:'text',text:'Read the visible timetable image. Return only JSON with courseCode, startsAt and endsAt. Use a spaced course code and 24-hour HH:MM times.'},{type:'image_url',image_url:{url:'data:image/png;base64,'+image.toString('base64')}}]}],max_tokens:256,temperature:0,response_format:{type:'json_object'},reasoning:{effort:'none'}}),
       });
       const output=await inferred.json().catch(()=>({}));
-      let value;try{value=JSON.parse(output.choices?.[0]?.message?.content??'');}catch{}
+      const source=String(output.choices?.[0]?.message?.content??'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
+      let value;try{value=JSON.parse(source);}catch{}
       const errorType=typeof output.error?.type==='string'&&/^[a-z0-9_]{1,70}$/.test(output.error.type)?output.error.type:undefined;
-      return Response.json({configured:true,status:inferred.status,generated:inferred.ok&&value?.courseCode==='MAT 101'&&value?.startsAt==='08:00'&&value?.endsAt==='09:00',elapsedMs:Date.now()-started,finishReason:output.choices?.[0]?.finish_reason,...(errorType?{errorType}:{})},{headers});
+      return Response.json({configured:true,status:inferred.status,generated:inferred.ok&&String(value?.courseCode??'').replace(/\s/g,'')==='MAT101'&&value?.startsAt==='08:00'&&value?.endsAt==='09:00',actual:value??source.slice(0,500),elapsedMs:Date.now()-started,finishReason:output.choices?.[0]?.finish_reason,...(errorType?{errorType}:{})},{headers});
     }
     const number=(value:unknown)=>{const parsed=Number(value);return Number.isFinite(parsed)?parsed:undefined;};
     const errorType=typeof data.error?.type==='string'&&/^[a-z0-9_]{1,70}$/.test(data.error.type)?data.error.type:undefined;
