@@ -57,7 +57,7 @@ describe('transactional commerce notifications',()=>{
     const id=await purchase(kind);await paid(id);await paid(id);
     expect(await notices()).toHaveLength(2);expect((await notices()).every(n=>n.body.includes('MTH201 course'))).toBe(true);
     const table=kind==='TUTORIAL_BOOKING'?'tutorial_bookings':'app_private.tutorial_material_purchases';
-    await db.query(`update ${table} set earnings_state='AVAILABLE' where id=$1`,[id]);
+    await db.query(`update ${table} set earnings_state='AVAILABLE'${kind==='TUTORIAL_BOOKING'?",status='COMPLETED'":''} where id=$1`,[id]);
     expect((await notices()).filter(n=>n.title==='Earnings available')).toHaveLength(1);
     expect((await notices()).filter(n=>n.title==='Purchase completed')).toHaveLength(1);
   });

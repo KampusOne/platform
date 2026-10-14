@@ -1,0 +1,36 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-14T19:51:39Z",
+    "scope": "Owner requested paid product/course, accepted/delivered order and cleared-purchase notifications in this release. No fee, balance or payout policy changes."
+  },
+  "migrations": [
+    {
+      "version": "20261014200000_commerce_notifications",
+      "sourceBlobSha": "a03cb92d71e75e4b8860458c610c8c380a1890fa",
+      "appliedAt": "2026-10-14T20:22:33.271Z"
+    }
+  ],
+  "verifiedAt": "2026-10-14T20:22:35.099Z",
+  "checks": {
+    "commerceNotifications": "passed",
+    "fixturesRolledBack": true,
+    "productionTriggersInstalled": 4,
+    "publicExecuteGrants": 0,
+    "isolatedNotificationLifecycle": "passed",
+    "duplicatePaymentAndStateEvents": "passed",
+    "transactionRollback": "passed",
+    "recipientAndUniversityIsolation": "passed",
+    "audibleAndroidChannel": "passed",
+    "productionFinancialRowsRewritten": false
+  },
+  "rehearsal": {
+    "engine": "PGlite",
+    "test": "server/tests/commerce-notifications.test.ts",
+    "productionFixturesCreated": false
+  }
+}

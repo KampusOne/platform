@@ -87,7 +87,8 @@ begin
   else
     buyer:=new.student_user_id;seller:=new.tutor_user_id;destination:='/learning-library';
   end if;
-  if new.earnings_state='AVAILABLE' and old.earnings_state in('PENDING','RESERVED') then
+  if new.earnings_state='AVAILABLE' and old.earnings_state in('PENDING','RESERVED')
+    and ((kind='STORE_ORDER' and new.status='DELIVERED') or (kind='TUTORIAL_BOOKING' and new.status='COMPLETED') or (kind='TUTORIAL_PURCHASE' and new.status='PAID')) then
     perform app_private.queue_commerce_notice(seller,new.university_id,buyer,'Earnings available',
       'The payment has cleared and your earnings are now available in your wallet.','/earnings','commerce:cleared:'||kind||':'||new.id::text||':seller');
     perform app_private.queue_commerce_notice(buyer,new.university_id,seller,'Purchase completed',

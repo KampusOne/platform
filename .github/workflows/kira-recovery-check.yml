@@ -1,0 +1,29 @@
+name: Verify Kira recovery and document reading
+on:
+  push:
+    branches: [main, fix/ai-upload-completion-20261014]
+    paths: ['server/src/lib/ai*.ts', 'server/scripts/verify-kira-recovery.ts', 'scripts/kira-connection-check.mjs', '.github/workflows/kira-recovery-check.yml']
+permissions:
+  contents: read
+jobs:
+  kira:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: server
+      - run: npm ci
+        working-directory: packages/contracts
+      - name: Verify Standard, Pro context and a fixed public study document
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROBE_KIRA_ONLY: 'true'
+        run: node scripts/kira-connection-check.mjs

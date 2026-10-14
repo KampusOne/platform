@@ -33,6 +33,7 @@ export default function SignInScreen() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const validEmail = emailPattern.test(email.trim());
+  const finishSignIn=()=>router.replace(validPaymentReference(params.paymentReference)?{pathname:'/payment-return',params:{reference:params.paymentReference}}:"/");
 
   async function submit() {
     if(loading)return;
@@ -46,7 +47,7 @@ export default function SignInScreen() {
     try {
       const session = await authApi.login(email.trim(), password);
       await beginSession(session);
-      router.replace(validPaymentReference(params.paymentReference)?{pathname:'/payment-return',params:{reference:params.paymentReference}}:"/");
+      finishSignIn();
     } catch (caught) {
       if (caught instanceof ApiError && caught.details?.verificationRequired) {
         router.replace({
@@ -125,7 +126,7 @@ export default function SignInScreen() {
         </PrimaryButton>
       </View>
 
-      <SocialAuthButtons />
+      <SocialAuthButtons onSignedIn={finishSignIn}/>
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>New here?</Text>

@@ -18,6 +18,9 @@ jobs:
         working-directory: packages/contracts
       - run: npm ci
         working-directory: server
+      - name: Install Expo Router for native callback integration checks
+        run: npm ci
+        working-directory: mobile
       - name: Check mounted route cache inventory
         run: node server/scripts/cache-route-manifest.mjs --check
       - run: node --experimental-strip-types --test tests/*.test.mjs tests/post-like-store.test.ts

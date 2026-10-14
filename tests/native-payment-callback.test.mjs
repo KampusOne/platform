@@ -19,7 +19,7 @@ const keys=readdirSync(new URL('../mobile/app',import.meta.url),{recursive:true}
 const context=()=>({default:()=>null});context.keys=()=>keys;
 const routes=getRoutes(context,{platform:'android',importMode:'sync',skipGenerated:true});
 const config=getReactNavigationConfig(routes,true);
-const reference='K1-B-O-e123f2b3-0df5-407f-910f-00646434e5c5';
+const reference='K1-B-O-22222222-2222-4222-8222-222222222222';
 
 function compile(file,mocks,globals={}) {
   const exports={};
