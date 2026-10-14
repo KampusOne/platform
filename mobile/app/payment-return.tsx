@@ -1,5 +1,5 @@
 import {useCallback,useRef,useState} from 'react';
-import {AppState,Pressable,ScrollView,Text,View} from 'react-native';
+import {AppState,BackHandler,Platform,Pressable,ScrollView,Text,View} from 'react-native';
 import * as Network from 'expo-network';
 import {Ionicons} from '@expo/vector-icons';
 import {router,useFocusEffect,useLocalSearchParams} from 'expo-router';
@@ -20,11 +20,13 @@ export default function PaymentReturn() {
   return <OwnedPaymentReturn key={(user?.id??state)+':'+reference} reference={reference}/>;
 }
 function OwnedPaymentReturn({reference}:{reference:string}) {
-  const {theme}=useAppearance(),{user,state}=useAuth();
+  const {theme}=useAppearance(),{user,state,sessionRestoreError,retrySessionRestore}=useAuth();
   const [payment,setPayment]=useState<Payment|null>(null),[error,setError]=useState(''),[checking,setChecking]=useState(false),[exhausted,setExhausted]=useState(false),[online,setOnline]=useState(true),[cycle,setCycle]=useState(0);
   const continuing=useRef(false);
   useFocusEffect(useCallback(()=>{
-    if(!user||!validPaymentReference(reference))return;
+    // The cached account can arrive before its secure session on a cold launch.
+    // Do not start owned payment requests until that session is authenticated.
+    if(state!=='authenticated'||!user||!validPaymentReference(reference))return;
     let alive=true,running=false,available=AppState.currentState==='active',connected=true,attempts=0,done=false;
     let timer:ReturnType<typeof setTimeout>|undefined,controller:AbortController|undefined;
     const revision=getDeviceCacheRevision();
@@ -53,17 +55,27 @@ function OwnedPaymentReturn({reference}:{reference:string}) {
     void Network.getNetworkStateAsync().then(network).catch(()=>undefined);
     setExhausted(false);void check();
     return()=>{alive=false;clear();controller?.abort();app.remove();net.remove();};
-  },[reference,user,cycle]));
+  },[reference,user,state,cycle]));
   const success=payment?.status==='SUCCEEDED',review=payment?.status==='REQUIRES_REVIEW',failed=payment?.status==='FAILED';
   const heading=success?'Payment successful':review?'Payment received for review':failed?'Payment not completed':'Confirming your payment';
   const body=success?'Your payment is confirmed and your purchase is saved.':review?'Your receipt is recorded. We need to review the order before fulfilment. You can follow its status in Purchases.':failed?'This checkout was not completed. Open your saved purchase to review payment.':!online?'You are offline. Confirmation resumes when you reconnect. Your payment reference is kept.':'Checking your receipt with the payment provider. You can leave this screen and return without paying again.';
-  async function leave() {
-    if(continuing.current||!user)return;continuing.current=true;
-    try {await dismissPayment(user.id,reference);router.replace(success&&payment?paymentContinuation(payment):'/(tabs)/purchases');}
+  const leave=useCallback(async(destination: 'home'|'purchase'='home')=> {
+    if(continuing.current||state==='loading')return;continuing.current=true;
+    try {
+      if(state==='authenticated'&&user) {
+        await dismissPayment(user.id,reference);
+        router.replace(destination==='purchase'?(success&&payment?paymentContinuation(payment):'/(tabs)/purchases'):'/(tabs)');
+      } else router.replace('/');
+    }
     catch(caught){setError(caught instanceof Error?caught.message:'Your receipt could not be kept. Try again.');}
     finally{continuing.current=false;}
-  }
-  return <ToolPage title="Payment status"><ScrollView contentContainerStyle={{gap:20,paddingTop:28,paddingBottom:40}}>
+  },[state,user,reference,success,payment]);
+  useFocusEffect(useCallback(()=>{
+    if(Platform.OS!=='android'||state!=='authenticated')return;
+    const subscription=BackHandler.addEventListener('hardwareBackPress',()=>{void leave();return true;});
+    return()=>subscription.remove();
+  },[leave,state]));
+  return <ToolPage title="Payment status" onBack={()=>void leave()}><ScrollView contentContainerStyle={{gap:20,paddingTop:28,paddingBottom:40}}>
     <View accessibilityLiveRegion="polite" style={{alignItems:'center',gap:14,padding:24,borderRadius:24,backgroundColor:theme.surface,borderWidth:1,borderColor:theme.border}}>
       <View style={{width:82,height:82,borderRadius:41,backgroundColor:theme.surfaceSoft,alignItems:'center',justifyContent:'center'}}>
         {success||review||failed?<Ionicons name={success?'checkmark-circle-outline':review?'time-outline':'close-circle-outline'} size={50} color={success?theme.success:failed?theme.error:theme.deepBrand}/>:<InlineLoading size="large" color={theme.deepBrand}/>}
@@ -74,12 +86,14 @@ function OwnedPaymentReturn({reference}:{reference:string}) {
       <Text style={{fontFamily:theme.font.body,fontSize:14,lineHeight:22,color:theme.textMuted,textAlign:'center'}}>{body}</Text>
       {validPaymentReference(reference)?<Text selectable style={{fontFamily:theme.font.body,fontSize:11,color:theme.textMuted,textAlign:'center'}}>Reference {reference}</Text>:<Text accessibilityRole="alert" style={{color:theme.error}}>This payment link is incomplete. Open Purchases to check your saved order.</Text>}
     </View>
-    {state==='anonymous'?<ToolButton label="Sign in to confirm payment" onPress={()=>router.push('/(auth)/sign-in')}/>:null}
+    {state==='loading'?<Text accessibilityLiveRegion="polite" style={{color:theme.textMuted,fontFamily:theme.font.body}}>Restoring your session…</Text>:null}
+    {state==='loading'&&sessionRestoreError?<><Text accessibilityRole="alert" style={{color:theme.error,fontFamily:theme.font.body}}>{sessionRestoreError}</Text><ToolButton label="Restore session again" onPress={()=>void retrySessionRestore()}/></>:null}
+    {state==='anonymous'?<ToolButton label="Sign in to confirm payment" onPress={()=>router.push({pathname:'/(auth)/sign-in',params:validPaymentReference(reference)?{paymentReference:reference}:{}})}/>:null}
     {error?<Text accessibilityRole="alert" style={{color:theme.error,fontFamily:theme.font.body,lineHeight:21}}>{error}</Text>:null}
-    {success?<ToolButton label={payment?.resource_type==='STORE_ORDER'?'Continue · Track order':'Continue'} onPress={()=>void leave()}/>:<>
-      {user&&validPaymentReference(reference)?<ToolButton label={checking?'Checking receipt…':'Check payment again'} disabled={checking||!online} onPress={()=>setCycle(value=>value+1)}/>:null}
+    {success?<><ToolButton label="Continue to Home" onPress={()=>void leave()}/><ToolButton secondary label={payment?.resource_type==='STORE_ORDER'?'Track order':'View purchase'} onPress={()=>void leave('purchase')}/></>:<>
+      {state==='authenticated'&&user&&validPaymentReference(reference)?<ToolButton label={checking?'Checking receipt…':'Check payment again'} disabled={checking||!online} onPress={()=>setCycle(value=>value+1)}/>:null}
       {exhausted&&!review&&!failed?<Text style={{color:theme.textMuted,fontFamily:theme.font.body}}>Confirmation is taking longer. Check again or follow the saved order in Purchases.</Text>:null}
-      <Pressable accessibilityRole="button" onPress={()=>void leave()} style={{minHeight:48,justifyContent:'center',alignItems:'center'}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>View my purchases</Text></Pressable>
+      {state==='authenticated'?<Pressable accessibilityRole="button" onPress={()=>void leave('purchase')} style={{minHeight:48,justifyContent:'center',alignItems:'center'}}><Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand}}>View my purchases</Text></Pressable>:null}
     </>}
   </ScrollView></ToolPage>;
 }

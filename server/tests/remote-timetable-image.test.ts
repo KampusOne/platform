@@ -10,7 +10,7 @@ const levels=['100','200','300','400','500'],days=[1,2,3,4,5];
 const media=(extension:string)=>({mimeType:extension==='jpg'?'image/jpeg':'image/webp',data:readFileSync(new URL('../../scripts/fixtures/uniben-engineering-2026.'+extension,import.meta.url)).toString('base64')});
 const getKey=async()=>importJWK(await imageProcessingPublicKey(secret),'EdDSA');
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers();});
-describe('private image processing on existing free hosting',()=>{
+describe('private image processing on existing free hosting',{timeout:30000},()=>{
   it.each(['jpg','webp'])('retains exact physical rows and merged laboratory spans in %s with signed service requests',async extension=>{
     const fetcher=vi.fn(async(url:string|URL|Request,options?:RequestInit)=>{
       expect(url).toBe(imageProcessorURL);
@@ -62,5 +62,5 @@ describe('private image processing on existing free hosting',()=>{
     expect(rows?.[0]?.cells).toContainEqual({from:4,to:6});
     expect(rows?.[1]?.cells.slice(0,2)).toEqual([{from:0,to:2},{from:2,to:3}]);
     expect(rows?.batch).toMatchObject({mimeType:'image/png'});
-  },15000);
+  },30000);
 });

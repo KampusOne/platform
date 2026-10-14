@@ -25,4 +25,10 @@ describe('printed grid pixel geometry',()=>{
     expect(timetableImageRows(image,10,levels,days,'600')).toBeUndefined();
     expect(timetableImageRows({...image,data:btoa('unreadable')},10,levels,days,'200')).toBeUndefined();
   });
+  it('certifies the empty late Tuesday cell from source pixels, without certifying nearby course text as blank',()=>{
+    const rows=timetableImageRows({mimeType:'image/jpeg',data:bytes.toString('base64')},10,levels,days,'100');
+    expect(rows?.find(row=>row.day===2)?.cells.find(cell=>cell.from===8&&cell.to===9)?.blank).toBe(true);
+    const senior=timetableImageRows({mimeType:'image/jpeg',data:bytes.toString('base64')},10,levels,days,'200');
+    expect(senior?.[0]?.cells.slice(0,2).some(cell=>cell.blank)).toBe(false);
+  });
 });

@@ -26,6 +26,11 @@ describe('academic recovery with the existing Groq credential',()=>{
   it('rejects a truncated completion and never treats it as the full week',async()=>{
     await expect(groqAcademicCompletion(env(),input(),[],2048,150000,vi.fn().mockResolvedValue(result('length')))).rejects.toMatchObject({reason:'AI_INCOMPLETE'});
   });
+  it('caps output reservation to leave room for the source under the 8k service limit',async()=>{
+    const fetcher=vi.fn().mockResolvedValue(result());
+    await groqAcademicCompletion(env(),input(),[{role:'user',content:'Return JSON'}],8192,150000,fetcher);
+    expect(JSON.parse(String(fetcher.mock.calls[0]![1].body)).max_completion_tokens).toBe(4096);
+  });
   it.each([401,403,429,500])('preserves an HTTP %i failure without leaking provider text or retrying it',async status=>{
     const fetcher=vi.fn().mockResolvedValue(new Response('PRIVATE_SOURCE_AND_KEY',{status}));
     const error=await groqAcademicCompletion(env(),input(),[],2048,150000,fetcher).catch(e=>e);
@@ -35,10 +40,13 @@ describe('academic recovery with the existing Groq credential',()=>{
     const fetcher=vi.fn<typeof fetch>().mockImplementation(async url=>String(url).includes('huggingface')?new Response('',{status:402}):String(url).includes('groq.com')?new Response('',{status:429}):Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(source)}]}}]}));
     expect((await generateAI(env(),input(),fetcher)).provider).toBe('gemini');expect(fetcher).toHaveBeenCalledTimes(3);
   });
-  it('does not change chat routing or bypass an expired academic deadline',async()=>{
-    const fetcher=vi.fn().mockResolvedValue(new Response('',{status:402}));
-    await expect(generateAI(env(),{mode:'study',prompt:'Hi',history:[{prompt:'PRIVATE_HISTORY',text:'PRIVATE_ANSWER'}]},fetcher)).rejects.toMatchObject({reason:'AI_PROVIDER_QUOTA'});
-    expect(fetcher.mock.calls.every(([url])=>String(url).includes('huggingface'))).toBe(true);fetcher.mockClear();
+  it('preserves Pro context through a text fallback without bypassing an expired academic deadline',async()=>{
+    const fetcher=vi.fn<typeof fetch>().mockImplementation(async url=>String(url).includes('huggingface')?new Response('',{status:402}):Response.json({choices:[{finish_reason:'stop',message:{content:'The same result follows from the previous explanation.'}}]}));
+    const generated=await generateAI(env(),{mode:'study',tier:'pro',prompt:'Why?',history:[{prompt:'PRIVATE_HISTORY',text:'PRIVATE_ANSWER'}]},fetcher);
+    expect(generated.provider).toBe('groq');
+    const body=JSON.parse(String(fetcher.mock.calls.at(-1)![1]!.body));
+    expect(body.model).toBe('openai/gpt-oss-20b');expect(JSON.stringify(body.messages)).toContain('PRIVATE_HISTORY');expect(JSON.stringify(body.messages)).toContain('PRIVATE_ANSWER');
+    expect(body.response_format).toBeUndefined();expect(body.max_completion_tokens).toBe(4096);fetcher.mockClear();
     await expect(groqAcademicCompletion(env(),{...input(),deadline:Date.now()-1},[],2048,150000,fetcher)).rejects.toMatchObject({reason:'AI_TIMEOUT'});
     expect(fetcher).not.toHaveBeenCalled();
   });

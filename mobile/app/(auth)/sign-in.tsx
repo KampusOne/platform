@@ -14,6 +14,7 @@ import {
   TextLink,
 } from "@/src/components/auth-ui";
 import { ApiError, authApi } from "@/src/lib/api";
+import { validPaymentReference } from '@/src/lib/payment-flow';
 import { theme } from "@/src/theme";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,7 +24,7 @@ export default function SignInScreen() {
 
   const {height}=useWindowDimensions();
   const illustrationHeight=Math.max(112,Math.min(218,height*0.2));
-  const params = useLocalSearchParams<{ email?: string; reason?: string }>();
+  const params = useLocalSearchParams<{ email?: string; reason?: string; paymentReference?: string }>();
   const { beginSession } = useAuth();
   const [email, setEmail] = useState(
     typeof params.email === "string" ? params.email : "",
@@ -45,7 +46,7 @@ export default function SignInScreen() {
     try {
       const session = await authApi.login(email.trim(), password);
       await beginSession(session);
-      router.replace("/");
+      router.replace(validPaymentReference(params.paymentReference)?{pathname:'/payment-return',params:{reference:params.paymentReference}}:"/");
     } catch (caught) {
       if (caught instanceof ApiError && caught.details?.verificationRequired) {
         router.replace({

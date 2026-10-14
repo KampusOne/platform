@@ -91,7 +91,7 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
           const rows=crops.map(crop=>{
             const labels=byDay[String(crop.day)],keys=Array.from({length:crop.cells.length+1},(_,i)=>String(i));
             if(!labels||typeof labels!=='object'||Array.isArray(labels)||Object.keys(labels).length!==keys.length||keys.some(key=>typeof labels[key]!=='string'||String(labels[key]).length>160)||levelKey(labels['0'])!==printedLevel)throw incompleteSchedule();
-            return{dayOfWeek:crop.day,level:printedLevel,cells:crop.cells.map((cell,i)=>({...cell,label:labels[String(i+1)] as string}))};
+            return{dayOfWeek:crop.day,level:printedLevel,cells:crop.cells.map((cell,i)=>({...cell,label:cell.blank?'':labels[String(i+1)] as string}))};
           });
           return parseAcademicImport(JSON.stringify({documentType:'class_timetable',entries:[],events:[],warnings:[],coverage:{complete:true,daysRead:ordered,rowCount:rows.length,uncertain:[]},grid:{timeSlots,levels:[printedLevel],daysSeen:ordered,rows}}),sourceText,kind,{strict:true,scope});
         }
@@ -115,7 +115,7 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
               &&keys.every(key=>typeof labels[key]==='string'&&(labels[key] as string).length<=160);
             if(indexed) {
               if(levelKey(labels['0'])!==printedLevel)throw incompleteSchedule();
-              return {dayOfWeek:crop.day,level:printedLevel,cells:crop.cells.map((cell,i)=>({...cell,label:labels[String(i+1)] as string}))};
+              return {dayOfWeek:crop.day,level:printedLevel,cells:crop.cells.map((cell,i)=>({...cell,label:cell.blank?'':labels[String(i+1)] as string}))};
             }
             // Retry a malformed panel inventory once, within this same import.
             // Uncertain pixels and mismatched levels never receive a guessed fix.

@@ -27,6 +27,7 @@ export const PUSH_CATEGORY = {
   SOCIAL: "KAMPUSONE_SOCIAL",
   NEWSLETTER: "KAMPUSONE_NEWSLETTER",
   UPDATE: "KAMPUSONE_UPDATE",
+  ORDER: "KAMPUSONE_ORDER",
 } as const;
 
 export const PUSH_CHANNEL = {
@@ -34,6 +35,7 @@ export const PUSH_CHANNEL = {
   SOCIAL: "kampusone-social-v1",
   NEWSLETTER: "kampusone-newsletter-v1",
   UPDATES: "kampusone-updates-v2",
+  ORDERS: "kampusone-orders-v1",
 } as const;
 
 const registrationKey = (userId: string) => "push-device." + userId;
@@ -83,6 +85,11 @@ export async function configureNativeNotifications() {
       enableVibrate: true,
     };
     await Promise.all([
+      Notifications.setNotificationChannelAsync(PUSH_CHANNEL.ORDERS, {
+        ...common,
+        name: "Orders and payments",
+        description: "Paid purchases, order updates and cleared earnings.",
+      }),
       Notifications.setNotificationChannelAsync(PUSH_CHANNEL.MESSAGES, {
         ...common,
         name: "Messages",
@@ -107,6 +114,9 @@ export async function configureNativeNotifications() {
   }
 
   await Promise.all([
+    Notifications.setNotificationCategoryAsync(PUSH_CATEGORY.ORDER, [
+      { identifier: PUSH_ACTION.READ, buttonTitle: "View purchase", options: { opensAppToForeground: true } },
+    ]),
     Notifications.setNotificationCategoryAsync(PUSH_CATEGORY.MESSAGE, [
       {
         identifier: PUSH_ACTION.REPLY,
