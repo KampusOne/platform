@@ -28,9 +28,10 @@ export async function workersAICompletion(env: WorkersAIEnvironment, input: AIIn
   let nativeMessages = openAIFormat ? messages : messages.map(message => message.tool_calls?.length ? {
     role: message.role, content: JSON.stringify(message.tool_calls.map(call => ({ name: call.function.name, arguments: JSON.parse(call.function.arguments) }))),
   } : { role: message.role, content: Array.isArray(message.content) ? message.content.filter(part => part?.type === 'text').map(part => part.text).join('\n') : message.content });
-  // OCR is particularly useful for dense timetables. It consumes this request's
-  // existing quota and deadline; the converted private bytes never become a URL.
-  if (input.media && typeof env.AI?.toMarkdown === 'function') {
+  // Flattened OCR can move courses across levels/blank columns and loses merged
+  // cell spans. Structured timetable vision must use the original pixels.
+  // Other study images retain the supplemental private transcription.
+  if (input.media && typeof env.AI?.toMarkdown === 'function' && !(input.mode === 'timetable' && openAIFormat)) {
     try {
       await input.onProgress?.('reading');
       const bytes = Uint8Array.from(atob(input.media.data), c => c.charCodeAt(0));
@@ -60,7 +61,7 @@ export async function workersAICompletion(env: WorkersAIEnvironment, input: AIIn
     await input.onProgress?.('analysing');
     const remaining = Math.max(1, deadline - Date.now());
     result = await Promise.race([env.AI!.run(config.model, {
-      messages: nativeMessages, max_tokens: maxTokens, temperature: 0.2, stream: false,
+      messages: nativeMessages, max_tokens: maxTokens, temperature: input.mode === 'timetable' ? 0 : 0.2, stream: false,
       ...(openAIFormat && input.mode === 'timetable' ? { chat_template_kwargs: { enable_thinking: false }, response_format: { type: 'json_object' } } : {}),
       ...(input.media && !openAIFormat ? { image: `data:${input.media.mimeType};base64,${input.media.data}` } : {}),
       ...(!input.media && tools?.length ? { tools: openAIFormat ? tools : tools.map(tool => tool.function) } : {}),

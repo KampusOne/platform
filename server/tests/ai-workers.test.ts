@@ -83,6 +83,8 @@ describe('academic document extraction deadlines', () => {
       await vi.advanceTimersByTimeAsync(70000);
       expect(JSON.parse((await pending).text).entries[0]).toMatchObject({courseCode:'MAT 101',startsAt:'08:00'});
       expect(run.mock.calls[0][1].chat_template_kwargs).toEqual({enable_thinking:false});
+      expect(toMarkdown).not.toHaveBeenCalled();
+      expect(run.mock.calls[0][1].temperature).toBe(0);
       expect(run.mock.calls[0][1].messages.at(-1).content.some((part:{type:string})=>part.type==='image_url')).toBe(true);
     } finally {vi.useRealTimers();}
   });
