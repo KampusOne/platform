@@ -215,7 +215,10 @@ if(process.argv.includes('--self-test')) {
       // Each request matches one app import's memory/CPU envelope. Do not keep
       // three independent dense-table imports in one Worker invocation.
       const academicImports=[];
-      for(const name of ['baseline','facultyGrid200','facultyGrid100','facultyWebp100','facultyPhoto100']) {
+      const selected=process.env.PROBE_ACADEMIC_CASE;
+      const cases=['baseline','facultyGrid200','facultyGrid100','facultyWebp100','facultyPhoto100'];
+      if(selected&&!cases.includes(selected))throw new Error('Invalid academic case');
+      for(const name of selected?[selected]:cases) {
         const value=await run(name);
         academicImports.push(...value.academicImports);
         for(const item of value.academicImports)report(`Completed academic ${item.name}: ${item.outcome}; ${item.elapsedMs}ms`);
@@ -224,7 +227,8 @@ if(process.argv.includes('--self-test')) {
     } else result=await run();
     if(process.env.PROBE_IMAGE_KEY_ONLY!=='true') {
     if(process.env.PROBE_ACADEMIC_ONLY==='true'){
-      if(!Array.isArray(result.academicImports)||result.academicImports.length!==8)throw new Error('Missing academic extraction proofs');
+      const expected=process.env.PROBE_ACADEMIC_CASE?(process.env.PROBE_ACADEMIC_CASE==='baseline'?4:1):8;
+      if(!Array.isArray(result.academicImports)||result.academicImports.length!==expected)throw new Error('Missing academic extraction proofs');
       for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes??0}, events ${item.events??0}; ${item.elapsedMs}ms${/^AI_[A-Z_]+$/.test(item.reason??'')?`; ${item.reason}`:''}`);if(item.name.startsWith('faculty')&&Array.isArray(item.actual))report('Faculty fixture cells: '+JSON.stringify(item.actual));if(item.diagnostic)report('Academic fixture validation: '+JSON.stringify(item.diagnostic));if(item.outcome!=='extraction_succeeded')process.exitCode=1;}
       report('Private academic extraction checks only. No payment sessions, bank lookups or student-data writes.');
     } else {

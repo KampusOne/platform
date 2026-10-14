@@ -8,6 +8,11 @@ permissions:
   contents: read
 jobs:
   academic:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        case: [baseline, facultyGrid200, facultyGrid100, facultyWebp100, facultyPhoto100]
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 6
@@ -29,4 +34,5 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PROBE_VERIFY_UPLOADS: 'true'
           PROBE_ACADEMIC_ONLY: 'true'
+          PROBE_ACADEMIC_CASE: ${{ matrix.case }}
         run: node scripts/kira-connection-check.mjs
