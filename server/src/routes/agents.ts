@@ -3,6 +3,7 @@ import {livePublishingEnabled,publishRiderQueueReads} from '../services/live-rea
 import {mappedDeliveryPoint,currentAgentPosition,campusDeliveryRoute} from '../lib/delivery-routing';
 import { z } from "@kampusone/contracts";
 import { input, id } from "../lib/input";
+import { paidAgentOrders } from '../lib/agent-order-visibility';
 import { readPublicBusiness } from "../lib/public-business";
 import { fulfilmentSchemaReady, requireFulfilmentSchema } from "../lib/fulfilment";
 import { sql } from "drizzle-orm";
@@ -257,6 +258,7 @@ agentRoutes.get("/dashboard", async (context) => {
           coalesce(sum(orders.subtotal_kobo) filter (where orders.earnings_state = 'PENDING'), 0)::bigint as pending_earnings_kobo,
           coalesce(sum(orders.subtotal_kobo) filter (where orders.earnings_state = 'AVAILABLE'), 0)::bigint as available_earnings_kobo
         from public.orders orders where orders.vendor_profile_id in (select id from vendor_profiles)
+          and orders.university_id=${user.universityId}::uuid and ${paidAgentOrders()}
       )
       select product_stats.products, order_stats.orders, order_stats.delivered,
         order_stats.gross_revenue_kobo, order_stats.pending_earnings_kobo,
@@ -285,7 +287,9 @@ agentRoutes.get("/dashboard", async (context) => {
         orders.total_kobo, orders.created_at
       from public.orders orders
       join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
-      where profiles.user_id = ${user.id}::uuid order by orders.created_at desc limit 12
+      where profiles.user_id = ${user.id}::uuid and profiles.agent_type='VENDOR'
+        and orders.university_id=${user.universityId}::uuid and ${paidAgentOrders()}
+      order by orders.created_at desc limit 12
     `),
   ]);
 
@@ -1338,6 +1342,7 @@ agentRoutes.get("/orders", async (context) => {
     left join public.order_items items on items.order_id = orders.id
     where profiles.user_id = ${user.id}::uuid and profiles.agent_type='VENDOR'
       and orders.university_id=${user.universityId}::uuid
+      and ${paidAgentOrders()}
     group by orders.id, zones.name order by orders.created_at desc limit 200
   `);
   return context.json({ orders: result.rows });
@@ -1379,6 +1384,7 @@ agentRoutes.get("/orders/:id", async (context) => {
       and profiles.user_id = ${user.id}::uuid
       and profiles.agent_type = 'VENDOR'
       and orders.university_id=${user.universityId}::uuid
+      and ${paidAgentOrders()}
     limit 1
   `);
   const order = firstRow(result);
@@ -1576,6 +1582,7 @@ agentRoutes.get("/deliveries", async (context) => {
     left join public.vendor_storefronts storefronts on storefronts.vendor_profile_id=vendors.id
     left join public.order_delivery_snapshots snapshots on snapshots.order_id=orders.id
     where jobs.university_id = ${profile.university_id}::uuid
+      and ${paidAgentOrders()}
       and ((jobs.status = 'AVAILABLE' and orders.status in ('PAID','ACCEPTED','READY') and (not ${await fulfilmentSchemaReady(context.env)} or to_jsonb(jobs)->>'request_posted_at' is not null)) or jobs.rider_profile_id = ${profile.id}::uuid)
     order by case when jobs.status = 'AVAILABLE' then 0 else 1 end, jobs.created_at
     limit 100

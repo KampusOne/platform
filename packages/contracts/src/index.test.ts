@@ -135,10 +135,16 @@ describe("shared API contracts", () => {
     });
 
     expect(order.recipientPhoneE164).toBe("+2348031234567");
-    expect(() => storeOrderSchema.parse({
+    expect(storeOrderSchema.parse({
       ...order,
       recipientPhoneE164: "08031234567",
-    })).toThrow();
+    }).recipientPhoneE164).toBe('+2348031234567');
+    for (const phone of ['2348031234567', '+234 803-123-4567', '0803 123 4567']) {
+      expect(storeOrderSchema.parse({ ...order, recipientPhoneE164: phone }).recipientPhoneE164).toBe('+2348031234567');
+    }
+    for (const phone of ['', '0803123456', '080312345678', '+2346031234567', '+18031234567']) {
+      expect(() => storeOrderSchema.parse({ ...order, recipientPhoneE164: phone })).toThrow();
+    }
     expect(() => storeOrderSchema.parse({
       ...order,
       deliveryLatitude: 6.335,

@@ -8,6 +8,7 @@ import { EmptyResult } from "@/src/components/product-ui";
 import { useAppearance } from "@/src/lib/appearance";
 import { useToast } from "@/src/components/toast";
 import { api } from "@/src/lib/api";
+import { isPaidAgentOrder } from '../../packages/contracts/src/commerce-input';
 
 type Order = {
   id: string;
@@ -75,7 +76,7 @@ export default function VendorOrders() {
     setError("");
     try {
       const result = await api<{ orders: Order[] }>("/v1/agents/orders");
-      if (version === generation.current) setOrders(result.orders);
+      if (version === generation.current) setOrders(result.orders.filter(order => isPaidAgentOrder(order.status)));
     } catch (e) {
       if (version === generation.current)
         setError(
@@ -91,10 +92,13 @@ export default function VendorOrders() {
     setPickupCode("");
     try {
       const result = await api<Detail>(`/v1/agents/orders/${orderId}`);
+      if (!isPaidAgentOrder(result.order.status)) throw new Error('This order is no longer available in your store orders.');
       if (selectedRef.current === orderId) setDetail(result);
     } catch (e) {
-      if (selectedRef.current === orderId)
+      if (selectedRef.current === orderId) {
+        setDetail(undefined);
         setError(e instanceof Error ? e.message : "This order could not load.");
+      }
     } finally {
       if (selectedRef.current === orderId) setDetailLoading(false);
     }
