@@ -3,10 +3,10 @@ export const dynamic='force-dynamic';
 
 // Read-only diagnostic on a Vercel-authenticated preview, absent in production.
 // Neither an inference request nor any credit/billing/key configuration occurs.
-export async function GET() {
+export async function GET(request:Request) {
   const headers={'Cache-Control':'no-store'};
   if(process.env.VERCEL_ENV!=='preview')return new Response(null,{status:404,headers});
-  const token=process.env.VERCEL_OIDC_TOKEN;
+  const token=request.headers.get('x-vercel-oidc-token')??process.env.VERCEL_OIDC_TOKEN;
   if(!token)return Response.json({configured:false},{headers});
   try {
     const response=await fetch('https://ai-gateway.vercel.sh/v1/credits',{
