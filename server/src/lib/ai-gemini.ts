@@ -6,14 +6,14 @@ import type {AIEnvironment,AIInput,AIMessage} from './ai-provider';
 export async function geminiAcademicCompletion(env:AIEnvironment,input:AIInput,messages:AIMessage[],maxTokens:number,
   timeoutMs:number,fetcher:typeof fetch=fetch) {
   if(input.mode!=='timetable'||!env.GEMINI_API_KEY)throw new AIProviderError(503,'AI_NOT_CONFIGURED','The document reader is temporarily unavailable. Your file is kept.');
-  const configured=(env.GEMINI_MODEL?.trim()||'gemini-2.5-flash').replace(/^models\//,'');
+  const configured=(env.GEMINI_MODEL?.trim()||'gemini-3.8-flash').replace(/^models\//,'');
   if(!/^gemini-[a-z0-9.-]{1,80}$/.test(configured))throw new AIProviderError(503,'AI_NOT_CONFIGURED','The document reader is temporarily unavailable. Your file is kept.');
   const deadline=Math.min(input.deadline??Infinity,Date.now()+timeoutMs);
   const text=(value:unknown)=>typeof value==='string'?value:Array.isArray(value)?value.filter(p=>p?.type==='text'&&typeof p.text==='string').map(p=>p.text).join('\n'):'';
   const system=messages.filter(m=>m.role==='system').map(m=>text(m.content)).join('\n');
   const parts:Record<string,unknown>[]=[{text:text(messages.filter(m=>m.role==='user').at(-1)?.content)||input.prompt}];
   if(input.media)parts.push({inlineData:{mimeType:input.media.mimeType,data:input.media.data}});
-  const models=configured==='gemini-2.5-flash'?[configured]:[configured,'gemini-2.5-flash'];
+  const models=configured==='gemini-3.5-flash-lite'?[configured]:[configured,'gemini-3.5-flash-lite'];
   for(const [index,model] of models.entries()) {
     const remaining=deadline-Date.now();
     if(remaining<=0)throw new AIProviderError(504,'AI_TIMEOUT','Reading took too long. Your file and draft are kept.');

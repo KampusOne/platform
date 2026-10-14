@@ -23,7 +23,7 @@ active while they finish rather than prematurely cutting off a legitimate read.
 Regression coverage includes slow response heartbeat and cleanup, preserved
 failure details, same-key receipt recovery, invalid headings, missing cells and
 merged durations. The live probe additionally checks a skewed full-table photo
-against the same 19-class expected result, exercising original-image fallback.
+against the same 19-class expected result, exercising validated deskew and complete row selection.
 The release workflow verifies package/version, existing signing identity,
 matching deployed source, and APK hash before publication. The payment correction uses the verified-store-payment recovery migration. No hosting-plan change was made.
 
@@ -41,3 +41,7 @@ New store, tutorial, material and commission references select BACHS when the cu
 A bounded scheduled reconciliation checks existing purchase references before expiration maintenance. The migration accepts independently verified payments made inside the original reservation window even if confirmation arrives after automatic expiry. Released stock is locked and reacquired once; unavailable stock remains a recorded payment requiring review. An atomic vendor-cancellation marker prevents revival of a deliberate cancellation. Settlement retains append-only balanced journals. Admin transaction counts include both verified providers.
 
 The reported live payment was independently verified and reconciled against its original saved purchase. Verification confirmed a paid order, the saved seller allocation in the pending wallet, a balanced settlement journal, zero unallocated suspense and a single stock conversion. Account and payment identifiers are omitted from this handoff. Store recovery, unavailable-stock and cancellation tests run against isolated PostgreSQL-compatible fixtures. Native checks cover secure receipt retention, account changes, continuation and storage failure.
+
+## Live upload release limitation
+
+The final live accuracy workflow has not passed. Native inference returns service-allowance exhaustion; the existing HF and Groq alternatives return provider limits, and Google generation is unavailable with the current account despite readable model metadata. Synthetic readiness tests do not demonstrate image extraction. The complete dense timetable, WebP and photographed timetable must pass the exact class-and-time fixture check before production AI readiness is claimed. The signed testing APK contains transport, draft and payment fixes; it does not remove an upstream account limit. No hosting plan or billing setting was changed.
