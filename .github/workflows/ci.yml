@@ -50,6 +50,9 @@ jobs:
       - name: Install dependencies for shared mobile session tests
         run: npm ci
         working-directory: mobile
+      - name: Install the private image service for signed integration tests
+        run: npm ci
+        working-directory: portal
       - run: npm run check
         working-directory: server
       - run: npm test -- --maxWorkers=2

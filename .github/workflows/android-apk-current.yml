@@ -1,4 +1,5 @@
 name: Build current verified Android APK
+# Includes the private image processor on existing free hosting.
 on:
   push:
     branches: [main]
