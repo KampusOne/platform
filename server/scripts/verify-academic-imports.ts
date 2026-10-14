@@ -13,12 +13,14 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
   const checked = async (name: string, kind: 'class' | 'calendar' | 'exam', prompt: string, media?: AIMedia, sourceDocument = false, scope:TimetableScope={level:'100'}) => {
     const start = Date.now();
     let generatedText='';
+    const reads:unknown[]=[];
     try {
       const input = {
         mode: 'timetable' as const, tier: 'pro' as const, prompt, sourceDocument, ...(media?{media}:{}), deadline: Date.now() + 150000,
         systemContext: (kind === 'exam' ? examImportInstruction : kind === 'calendar'
           ? 'This import is an academic calendar. Extract every dated activity in both semesters, never weekly classes.'
           : 'Import this weekly class timetable. Student academic selection (data): '+JSON.stringify(scope))+'\n'+timetableExtractionInstruction,
+        ...(name==='facultyGrid200'?{onScheduleRead:(day:number|null,text:string)=>{generatedText=text;try{reads.push({day,value:JSON.parse(text)});}catch{reads.push({day,jsonReadable:false,length:text.length});}}}:{}),
       };
       const generated = await generateAcademicImport({ ...env, AI_ASSISTANT_ENABLED: 'true' }, input,prompt,kind,scope);
       generatedText=generated.text;
@@ -43,7 +45,7 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
       let diagnostic: Record<string,unknown>|undefined;
       if(name==='facultyGrid200')try{const value=JSON.parse(generatedText);diagnostic={documentType:value.documentType,coverage:value.coverage,warnings:value.warnings,grid:value.grid};}catch{diagnostic={jsonReadable:false};}
       return { name, outcome: 'extraction_failed', elapsedMs: Date.now() - start,
-        ...(diagnostic?{diagnostic}:{}),
+        ...(diagnostic?{diagnostic:{...diagnostic,reads}}:{}),
         ...((error as {reason?:string}).reason?.match(/^AI_[A-Z_]+$/) ? {reason:(error as {reason:string}).reason} : {}) };
     }
   };

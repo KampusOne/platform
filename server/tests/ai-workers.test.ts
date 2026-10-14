@@ -73,6 +73,14 @@ describe('Workers AI recovery', () => {
 });
 
 describe('academic document extraction deadlines', () => {
+  it('uses the precision reader with original high-detail pixels and the correct nonreasoning template',async()=>{
+    const run=native(),toMarkdown=vi.fn();
+    await generateAI({...env(run),AI:{run,toMarkdown}},{mode:'timetable',prompt:'Read the selected rows',schedulePrecision:true,media:{mimeType:'image/jpeg',data:btoa('PRIVATE_PIXELS')}});
+    expect(run.mock.calls[0][0]).toBe('@cf/moonshotai/kimi-k2.6');
+    expect(run.mock.calls[0][1].chat_template_kwargs).toEqual({thinking:false});
+    expect(run.mock.calls[0][1].messages.at(-1).content).toEqual(expect.arrayContaining([expect.objectContaining({type:'image_url',image_url:{url:'data:image/jpeg;base64,'+btoa('PRIVATE_PIXELS'),detail:'high'}})]));
+    expect(toMarkdown).not.toHaveBeenCalled();
+  });
   it('reads a dense image beyond the old 45-second limit and still returns reviewable JSON', async () => {
     vi.useFakeTimers();
     try {

@@ -8,11 +8,11 @@ const names=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturd
 const input=():AIInput=>({mode:'timetable',prompt:'',media:{mimeType:'image/jpeg',data:'PRIVATE_PIXELS'},deadline:Date.now()+150000});
 const broken=()=>{const value=structuredClone(source);value.grid.rows[2].level='100';return JSON.stringify(value);};
 function part(day:number){return {...structuredClone(source),coverage:{complete:true,daysRead:[day],rowCount:1,uncertain:[]},grid:{...structuredClone(source.grid),daysSeen:[day],rows:[structuredClone(source.grid.rows[day-1])]}};}
-beforeEach(()=>{vi.mocked(generateAI).mockReset().mockImplementation(async(_env,request)=>{const day=names.findIndex(name=>request.prompt.includes('ONLY the '+name+' row'));return{text:JSON.stringify(part(day)),provider:'workers-ai'};});});
+beforeEach(()=>{vi.mocked(generateAI).mockReset().mockImplementation(async(_env,request)=>{if(request.schedulePrecision)throw new Error('Precision model unavailable');const day=names.findIndex(name=>request.prompt.includes('ONLY the '+name+' row'));return{text:JSON.stringify(part(day)),provider:'workers-ai'};});});
 describe('one-import focused day recovery',()=>{
   it('assembles all five selected rows and retains the original shared deadline',async()=>{
     const request=input(),result=await parseOrRecoverAcademicImport({},request,broken(),'','class',{level:'200'});
-    expect(result.entries).toHaveLength(20);expect(generateAI).toHaveBeenCalledTimes(5);
+    expect(result.entries).toHaveLength(20);expect(generateAI).toHaveBeenCalledTimes(6);
     expect(vi.mocked(generateAI).mock.calls.every(([,call])=>call.deadline===request.deadline&&call.media===request.media)).toBe(true);
     expect(result.entries).toContainEqual(expect.objectContaining({courseCode:'GST212',dayOfWeek:3,startsAt:'15:00',endsAt:'17:00'}));
   });
@@ -26,7 +26,7 @@ describe('one-import focused day recovery',()=>{
   });
   it('applies course filtering only after assembling every full day',async()=>{
     const result=await parseOrRecoverAcademicImport({},input(),broken(),'','class',{level:'200',courseCodes:['GET211']});
-    expect(result.entries).toHaveLength(5);expect(generateAI).toHaveBeenCalledTimes(5);
+    expect(result.entries).toHaveLength(5);expect(generateAI).toHaveBeenCalledTimes(6);
     expect(result.entries.filter(entry=>(entry as {courseCode:string}).courseCode)).toHaveLength(3);
   });
   it('does not start extra reads near the deadline or without an explicit row selection',async()=>{
@@ -38,6 +38,6 @@ describe('one-import focused day recovery',()=>{
     const value=structuredClone(source);value.grid.rows[2].cells[3].to=8;value.grid.rows[2].cells[4].from=8;
     const result=await parseOrRecoverAcademicImport({},input(),JSON.stringify(value),'','class',{level:'200'});
     expect(result.entries).toContainEqual(expect.objectContaining({courseCode:'GST212',startsAt:'15:00',endsAt:'17:00'}));
-    expect(generateAI).toHaveBeenCalledTimes(5);
+    expect(generateAI).toHaveBeenCalledTimes(6);
   });
 });

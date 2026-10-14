@@ -12,6 +12,7 @@ export async function generateAcademicImport(env:AIEnvironment,input:AIInput,sou
     systemContext:(input.systemContext??'')+'\nThis is an internal layout read. A grid layout is intentionally not a finished schedule and will never be shown or saved as one. Read the time-column headers, weekdays and level labels only. The application assembles every selected weekday row before import.',
   }:input;
   const generated=await generateAI(env,initial);
+  input.onScheduleRead?.(null,generated.text);
   return {...generated,extracted:await parseOrRecoverAcademicImport(env,input,generated.text,sourceText,kind,scope)};
 }
 
@@ -42,11 +43,28 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
       throw new AIProviderError(422,'AI_LEVEL_NOT_FOUND','The selected level is not on this timetable. Check your level. No import credit was used.');
     const printedLevel=grid.levels.length?scope.level:'';
     const ordered=(days as number[]).slice().sort((a,b)=>a-b);
+    if(grid.levels.length>1) {
+      // One stronger vision pass for the hard multi-level case, within this
+      // same request, credit reservation and deadline. No reasoning or tools.
+      try {
+        const precise=await generateAI(env,{...input,schedulePrecision:true,
+          prompt:`Extract ONLY the rows explicitly labelled ${printedLevel} level across ALL printed weekdays in this image. Do not include other levels. Return the complete grid with ordered 24-hour timeSlots and exactly one selected-level row per printed day. Read the physical cell borders: merged cells span every time column they cover, and blank columns stay blank. Preserve every course/laboratory label. entries and events must be empty because the application derives class times from the grid. coverage.rowCount is the number of weekday rows, not the number of classes.`,
+        });
+        input.onScheduleRead?.(null,precise.text);
+        const preciseValue=readScheduleJSON(precise.text),preciseGrid=preciseValue.grid as {daysSeen?:unknown}|undefined;
+        const preciseDays=preciseGrid?.daysSeen;
+        if(!Array.isArray(preciseDays)||preciseDays.length!==ordered.length||ordered.some(day=>!preciseDays.includes(day)))throw incompleteSchedule();
+        return parseAcademicImport(precise.text,sourceText,kind,{strict:true,scope});
+      }catch(error){
+        if(input.deadline!-Date.now()<20000)throw error;
+      }
+    }
     const parts=await Promise.all(ordered.map(async day=>{
       const result=await generateAI(env,{...input,
         prompt:`Read ONLY the ${dayNames[day]} row ${printedLevel?'labelled '+printedLevel+' level':'of this single-level timetable'} in this image. Ignore every other day and level. Copy the printed time headers and the exact horizontal cell boundaries. Do not count DAYS or LEVEL as time columns: column 0 is the first printed time column. A label spanning several time columns is one merged cell; follow its left and right grid borders. Include the blank columns. Return a grid with exactly ONE row, dayOfWeek:${day}, level:${JSON.stringify(printedLevel)}. Do not put any other row in this response.`,
         systemContext:(input.systemContext??'')+`\nThis is one internal day read. For THIS response use grid.daysSeen:[${day}], coverage.daysRead:[${day}], coverage.rowCount:1 and grid.rows containing exactly the requested row. The application assembles every printed day into one complete import. Do not extract other levels or copy their courses. Do not filter the selected row's cells by course codes.`,
       });
+      input.onScheduleRead?.(day,result.text);
       const part=readScheduleJSON(result.text), coverage=scheduleCoverage(part);
       const g=part.grid as {timeSlots?:unknown;levels?:unknown;daysSeen?:unknown;rows?:unknown}|undefined;
       const rows=g?.rows;
