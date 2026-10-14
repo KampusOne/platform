@@ -5,12 +5,14 @@ import { incompleteSchedule, levelKey, readScheduleJSON, scheduleCoverage, type 
 import { timetableImageRows, timetableLayoutImage } from './timetable-image-grid';
 
 const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const printedDays:Record<string,number>={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
+const printedDay=(value:unknown)=>typeof value==='string'?printedDays[value.trim().replace(/\.$/,'').toLowerCase()]:value;
 
 export async function generateAcademicImport(env:AIEnvironment,input:AIInput,sourceText:string,
   kind?:'class'|'calendar'|'exam',scope:TimetableScope={}) {
   const layout=input.media&&scope.level&&kind!=='calendar'&&kind!=='exam'?timetableLayoutImage(input.media):undefined;
   const initial=input.media&&scope.level&&kind!=='calendar'&&kind!=='exam'?{...input,...(layout?{media:layout,scheduleLayout:true}:{}),
-    prompt:'FIRST READ ONLY THE LAYOUT. If this image is a timetable grid, return its documentType, all printed timeSlots in left-to-right 24-hour order, the printed levels in their TOP-TO-BOTTOM row order within each day, and daysSeen in their TOP-TO-BOTTOM printed order. Set grid.rows:[], entries:[], events:[] and coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]}. Do not transcribe any courses yet. The next internal step reads each selected row. If this is a simple list instead of a grid, return the complete normal schedule with entries/events and coverage.\nStudent source context:\n'+input.prompt,
+    prompt:'FIRST READ ONLY THE LAYOUT. If this image is a timetable grid, return its documentType, all printed timeSlots in left-to-right 24-hour order, the printed levels in their TOP-TO-BOTTOM row order within each day, and daysSeen in their TOP-TO-BOTTOM printed order as numbers (Sunday=0, Monday=1, Tuesday=2, Wednesday=3, Thursday=4, Friday=5, Saturday=6). Set grid.rows:[], entries:[], events:[] and coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]}. Do not transcribe any courses yet. The next internal step reads each selected row. If this is a simple list instead of a grid, return the complete normal schedule with entries/events and coverage.\nStudent source context:\n'+input.prompt,
     systemContext:(input.systemContext??'')+'\nThis is an internal layout read. A grid layout is intentionally not a finished schedule and will never be shown or saved as one. Read the time-column headers, weekdays and level labels only. The application assembles every selected weekday row before import.'+(layout?' The numbered contact sheet contains time headings in panels 0 then 1, followed by all day/level labels in panel order, left to right then top to bottom. Panel numbers are not source text. Copy the first day\'s level labels in their printed order and every distinct weekday. No course transcription is needed.':''),
   }:input;
   const read=()=>generateAI(env,layout?{...initial,deadline:Math.min(input.deadline??Infinity,Date.now()+30000)}:initial);
@@ -42,7 +44,7 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
     if ((failure&&(!(failure instanceof AIProviderError) || failure.reason!=='AI_INCOMPLETE_SCHEDULE'))
       || kind==='calendar' || kind==='exam' || !input.media || !scope.level
       || !input.deadline || input.deadline-Date.now()<20000) throw failure??incompleteSchedule();
-    const days=grid?.daysSeen;
+    const days=Array.isArray(grid?.daysSeen)?grid.daysSeen.map(printedDay):grid?.daysSeen;
     if(value.documentType!=='class_timetable'||!Array.isArray(days)||!days.length||days.length>7
       ||days.some(day=>typeof day!=='number'||!Number.isInteger(day)||day<0||day>6)||new Set(days).size!==days.length) throw failure??incompleteSchedule();
     if(!Array.isArray(grid?.levels)||grid.levels.some(level=>typeof level!=='string'))throw incompleteSchedule();

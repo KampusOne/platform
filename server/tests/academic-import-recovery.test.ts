@@ -61,4 +61,11 @@ describe('one-import private cell transcription',()=>{
     await expect(parseOrRecoverAcademicImport({},input(),JSON.stringify(value),'','class',{level:'200'})).rejects.toMatchObject({reason:'AI_INCOMPLETE_SCHEDULE'});
     expect(generateAI).not.toHaveBeenCalled();
   });
+  it('accepts unambiguous printed weekday labels and rejects unknown ones before transcription',async()=>{
+    const value=structuredClone(source);value.grid.daysSeen=['MON','TUE','WED','THUR','FRI'];value.coverage.complete=false;
+    expect((await parseOrRecoverAcademicImport({},input(),JSON.stringify(value),'','class',{level:'200'})).entries).toHaveLength(20);
+    vi.mocked(generateAI).mockClear();value.grid.daysSeen[2]='sometime';
+    await expect(parseOrRecoverAcademicImport({},input(),JSON.stringify(value),'','class',{level:'200'})).rejects.toMatchObject({reason:'AI_INCOMPLETE_SCHEDULE'});
+    expect(generateAI).not.toHaveBeenCalled();
+  });
 });
