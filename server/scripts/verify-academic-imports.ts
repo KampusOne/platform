@@ -11,6 +11,15 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
   printedImage: string; handwriting: string; calendarPdf: string; facultyImage?: string; facultyWebp?: string; facultyPhoto?: string;
   case?: 'baseline'|'facultyGrid200'|'facultyGrid100'|'facultyWebp100'|'facultyPhoto100';
 }) {
+  let alternativeCheck:Promise<Record<string,unknown>>|undefined;
+  const checkAlternative=()=>alternativeCheck??=(async()=>{
+    if(!env.HF_TOKEN||!env.HF_CHAT_MODEL)return{outcome:'configuration_missing'};
+    try{
+      const result=await generateAI({...env,AI:undefined,AI_ASSISTANT_ENABLED:'true',AI_TEXT_PROVIDER:'huggingface'},
+        {mode:'study',prompt:'State 2 plus 2 briefly.',deadline:Date.now()+15000});
+      return{outcome:result.text?'generation_succeeded':'generation_unusable'};
+    }catch(error){return{outcome:'generation_failed',reason:(error as {reason?:string}).reason??'unknown'};}
+  })();
   const checked = async (name: string, kind: 'class' | 'calendar' | 'exam', prompt: string, media?: AIMedia, sourceDocument = false, scope:TimetableScope={level:'100'}) => {
     const start = Date.now();
     let generatedText='';
@@ -21,7 +30,9 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
         const message=error instanceof Error?error.message:'';
         const code=/\b\d{4}\b/.exec(message)?.[0];
         const name=error instanceof Error&&/^[A-Za-z0-9_]{1,60}$/.test(error.name)?error.name:'unknown';
-        providerFailures.push({provider:'workers-ai',name,...(code?{code}:{})});throw error;
+        const hint=/daily free allocation|used up.*neurons|neuron.*(?:allowance|quota|limit)/i.test(message)?'service_allowance'
+          :/temporarily at capacity|capacity temporarily|out of capacity/i.test(message)?'service_capacity':'unclassified';
+        providerFailures.push({provider:'workers-ai',name,hint,...(code?{code}:{})});throw error;
       }
     },...(env.AI.toMarkdown?{toMarkdown:env.AI.toMarkdown.bind(env.AI)}:{})}:undefined};
     try {
@@ -63,7 +74,7 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
       let diagnostic: Record<string,unknown>|undefined;
       if(name.startsWith('faculty'))try{const value=JSON.parse(generatedText);diagnostic={documentType:value.documentType,coverage:value.coverage,warnings:value.warnings,grid:value.grid};}catch{diagnostic={jsonReadable:false};}
       return { name, outcome: 'extraction_failed', elapsedMs: Date.now() - start,
-        ...((diagnostic||providerFailures.length)?{diagnostic:{...diagnostic,providers:providerFailures,reads}}:{}),
+        ...((diagnostic||providerFailures.length)?{diagnostic:{...diagnostic,providers:providerFailures,reads,...(fixtures.case==='baseline'?{alternative:await checkAlternative()}:{})}}:{}),
         ...((error as {reason?:string}).reason?.match(/^AI_[A-Z_]+$/) ? {reason:(error as {reason:string}).reason} : {}) };
     }
   };

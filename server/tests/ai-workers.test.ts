@@ -52,6 +52,13 @@ describe('Workers AI recovery', () => {
     await expect(generateAI({...env(run),HF_TOKEN:'synthetic',HF_CHAT_MODEL:'test/chat'},input,fetcher)).rejects.toMatchObject({reason:'AI_PROVIDER_QUOTA'});
     expect(run).toHaveBeenCalledTimes(1);expect(fetcher).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    ['4006: you have used up your daily free allocation of 10,000 neurons','AI_PROVIDER_QUOTA'],
+    ['4006: Service temporarily at capacity','AI_PROVIDER_BUSY'],
+    ['4006: PRIVATE_UNKNOWN_ERROR','AI_PROVIDER_UNAVAILABLE'],
+  ])('classifies a binding rejection by its known meaning without guessing from the shared error code',async(message,reason)=>{
+    await expect(generateAI(env(vi.fn().mockRejectedValue(new Error(message))),input)).rejects.toMatchObject({reason});
+  });
   it('rejects empty and token-exhausted native output',async()=>{
     await expect(generateAI(env(native({response:''})),input)).rejects.toMatchObject({reason:'AI_EMPTY_OUTPUT'});
     await expect(generateAI(env(native({response:'Partial',usage:{completion_tokens:3072}})),input)).rejects.toMatchObject({reason:'AI_INCOMPLETE'});
