@@ -70,7 +70,7 @@ describe('complete source-image import recovery', () => {
                     if (prompt.includes('FIRST READ ONLY'))
                         return { response: JSON.stringify({ ...layout, grid: { ...layout.grid, timeSlots: Array.from({ length: 10 }, (_, i) => ({ startsAt: String(i + 8).padStart(2, '0') + ':00', endsAt: String(i + 9).padStart(2, '0') + ':00' })), levels: ['100', '200', '300', '400', '500'], daysSeen: [1, 2, 3, 4, 5] } }) };
                     const day = days.findIndex(name => prompt.includes('for ' + name + '.'));
-                    return { response: JSON.stringify({ labels: labels[day], coverage: { complete: true, uncertain: [] } }) };
+                    return { response: JSON.stringify({ labels: Object.fromEntries(labels[day].map((label,panel)=>[String(panel),label])), coverage: { complete: true, uncertain: [] } }) };
                 } } };
         const media = { mimeType: 'image/jpeg', data: readFileSync(new URL('../../../scripts/fixtures/uniben-engineering-2026.jpg', import.meta.url)).toString('base64') };
         const result = await generateAcademicImport(env, { mode: 'timetable', prompt: '100 level', media, deadline: Date.now() + 150000 }, '', 'class', { level: '100' });

@@ -75,16 +75,32 @@ export async function parseOrRecoverAcademicImport(env: AIEnvironment, input: AI
       const crops=timetableImageRows(input.media,grid.timeSlots.length,grid.levels.map(levelKey),days as number[],printedLevel);
       if(crops) {
         const rows=await Promise.all(crops.map(async crop=>{
-          const result=await generateAI(env,{...input,media:crop.media,scheduleLayout:true,
-            prompt:`Transcribe the numbered image panels, in order, for ${dayNames[crop.day]}. Panel 0 is the printed LEVEL label. Panels 1 through ${crop.cells.length} are the actual cells from that row. Return ONLY {"labels":["level label","first cell","second cell"],"coverage":{"complete":true,"uncertain":[]}}. There must be ${crop.cells.length+1} labels. Use "" for a visibly blank cell. Copy the exact course codes, slash-separated alternatives, laboratories and parentheses. A line break inside one panel stays in one label. Do not infer time, level, courses or missing text. If a panel is illegible mark coverage.complete:false.`,
+          const keys=Array.from({length:crop.cells.length+1},(_,i)=>String(i));
+          const schema={labels:Object.fromEntries(keys.map(key=>[key,key==='0'?'printed level':`panel ${key} text`])),coverage:{complete:true,uncertain:[]}};
+          const request={...input,media:crop.media,scheduleLayout:true,
+            prompt:`Transcribe the numbered image panels, in order, for ${dayNames[crop.day]}. Panel 0 is the printed LEVEL label. Panels 1 through ${crop.cells.length} are the actual cells from that row. Return ONLY JSON in this exact shape: ${JSON.stringify(schema)}. Match each label to its visible panel number. The labels object must have exactly these keys: ${keys.join(', ')}. Use "" for a visibly blank numbered panel. Copy the exact course codes, slash-separated alternatives, laboratories and parentheses. A line break inside one panel stays in one label. Do not infer time, level, courses or missing text. If a panel is illegible mark coverage.complete:false.`,
             systemContext:'This is an internal transcription of isolated timetable cells. Return the requested labels JSON, not schedule entries, events or a grid. Panel numbers are application labels and are not part of the source text. Never combine panels or add courses from outside the supplied pixels. Preserve blank panels.',
-          });
-          input.onScheduleRead?.(crop.day,result.text);
-          const part=readScheduleJSON(result.text),coverage=part.coverage as {complete?:unknown;uncertain?:unknown}|undefined;
-          if(coverage?.complete!==true||!Array.isArray(coverage.uncertain)||coverage.uncertain.length||!Array.isArray(part.labels)
-            ||part.labels.length!==crop.cells.length+1||part.labels.some(label=>typeof label!=='string'||label.length>160)
-            ||levelKey(part.labels[0])!==printedLevel)throw incompleteSchedule();
-          return {dayOfWeek:crop.day,level:printedLevel,cells:crop.cells.map((cell,i)=>({...cell,label:(part.labels as string[])[i+1]!}))};
+          };
+          for(let attempt=0;attempt<2;attempt++) {
+            const result=await generateAI(env,attempt===0?request:{...request,
+              deadline:Math.min(input.deadline!,Date.now()+35000),
+              prompt:request.prompt+'\nThe previous response did not match the numbered panels. Read the same image again. Return one value for each visible panel number, including every blank. Do not insert any extra panel or shift a label to a different number.',
+            });
+            input.onScheduleRead?.(crop.day,result.text);
+            const part=readScheduleJSON(result.text),coverage=part.coverage as {complete?:unknown;uncertain?:unknown}|undefined;
+            if(coverage?.complete!==true||!Array.isArray(coverage.uncertain)||coverage.uncertain.length)throw incompleteSchedule();
+            const labels=part.labels as Record<string,unknown>|undefined;
+            const indexed=labels&&typeof labels==='object'&&!Array.isArray(labels)&&Object.keys(labels).length===keys.length
+              &&keys.every(key=>typeof labels[key]==='string'&&(labels[key] as string).length<=160);
+            if(indexed) {
+              if(levelKey(labels['0'])!==printedLevel)throw incompleteSchedule();
+              return {dayOfWeek:crop.day,level:printedLevel,cells:crop.cells.map((cell,i)=>({...cell,label:labels[String(i+1)] as string}))};
+            }
+            // Retry a malformed panel inventory once, within this same import.
+            // Uncertain pixels and mismatched levels never receive a guessed fix.
+            if(attempt===1||input.deadline!-Date.now()<20000)throw incompleteSchedule();
+          }
+          throw incompleteSchedule();
         }));
         return parseAcademicImport(JSON.stringify({documentType:'class_timetable',entries:[],events:[],warnings:[],
           coverage:{complete:true,daysRead:ordered,rowCount:rows.length,uncertain:[]},
