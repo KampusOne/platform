@@ -12,7 +12,8 @@ export async function probe(request, env, readPrivateAIPdf, verifyAcademicImport
   if(path==='/__kira_probe_ready')return Response.json({kind:'kampusone-kira-probe-ready'},{headers:{'Cache-Control':'no-store'}});
   if(env.PROBE_AI_MODELS_ONLY==='true') {
     const list=async(provider,url,key)=>{if(!key)return{provider,status:0,models:[]};try{const response=await fetch(url,{headers:provider==='gemini'?{'x-goog-api-key':key}:{Authorization:'Bearer '+key},redirect:'manual',signal:AbortSignal.timeout(10000)});const data=await response.json().catch(()=>({}));const items=provider==='gemini'?data.models:data.data;return{provider,status:response.status,models:Array.isArray(items)?items.map(item=>provider==='gemini'?item.name?.replace(/^models\//,''):item.id).filter(name=>typeof name==='string'&&/^[a-z0-9./_-]{1,100}$/i.test(name)).slice(0,100):[]};}catch{return{provider,status:0,models:[]};}};
-    return Response.json({kind:'kampusone-kira-probe-v1',models:await Promise.all([list('gemini','https://generativelanguage.googleapis.com/v1beta/models',env.GEMINI_API_KEY),list('groq','https://api.groq.com/openai/v1/models',env.GROQ_API_KEY)])},{headers:{'Cache-Control':'no-store'}});
+    const readiness=async(model)=>{if(!env.GEMINI_API_KEY)return{model,status:0};try{const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':env.GEMINI_API_KEY},redirect:'manual',signal:AbortSignal.timeout(15000),body:JSON.stringify({contents:[{role:'user',parts:[{text:'Return only the digit 4.'}]}],generationConfig:{temperature:0,maxOutputTokens:64}})});const data=await response.json().catch(()=>({})),message=data?.error?.message??'';return{model,status:response.status,generated:typeof data?.candidates?.[0]?.content?.parts?.[0]?.text==='string',hint:/billing/i.test(message)?'billing_required':/quota|rate limit|resource exhausted/i.test(message)?'service_limit':/not found|not supported|unavailable/i.test(message)?'model_unavailable':/key|permission/i.test(message)?'authentication':'none'};}catch{return{model,status:0};}};
+    return Response.json({kind:'kampusone-kira-probe-v1',models:await Promise.all([list('gemini','https://generativelanguage.googleapis.com/v1beta/models',env.GEMINI_API_KEY),list('groq','https://api.groq.com/openai/v1/models',env.GROQ_API_KEY)]),readiness:await Promise.all(['gemini-2.5-flash','gemini-3.5-flash-lite','gemini-3.8-flash','gemma-4-26b-a4b-it'].map(readiness))},{headers:{'Cache-Control':'no-store'}});
   }
   if(env.PROBE_IMAGE_KEY_ONLY==='true')return Response.json({kind:'kampusone-kira-probe-v1',imageProcessingKey:await imageProcessingPublicKey(env.JWT_SECRET)},{headers:{'Cache-Control':'no-store'}});
   if(env.PROBE_COLLECTIONS_ONLY==='true')return Response.json({kind:'kampusone-kira-probe-v1',collections:await verifySavedStorePayments(env)},{headers:{'Cache-Control':'no-store'}});
@@ -212,7 +213,7 @@ if(process.argv.includes('--self-test')) {
     };
     let result;
     if(process.env.PROBE_AI_MODELS_ONLY==='true') {
-      result=await run();if(!Array.isArray(result.models))throw new Error('Missing model capability metadata');report('Existing AI model capabilities: '+JSON.stringify(result.models));process.exitCode=0;
+      result=await run();if(!Array.isArray(result.models))throw new Error('Missing model capability metadata');report('Existing AI model capabilities: '+JSON.stringify(result.models));report('Existing AI synthetic readiness: '+JSON.stringify(result.readiness));process.exitCode=0;
     } else if(process.env.PROBE_COLLECTIONS_ONLY==='true') {
       result=await run();
       if(!Array.isArray(result.collections))throw new Error('Missing collection results');
