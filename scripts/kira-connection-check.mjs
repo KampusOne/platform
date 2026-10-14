@@ -3,13 +3,14 @@ import {appendFileSync,readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 
 // An expiring, token-protected preview; never a production route or user prompt.
-export async function probe(request, env, readPrivateAIPdf, verifyAcademicImports) {
+export async function probe(request, env, readPrivateAIPdf, verifyAcademicImports, imageProcessingPublicKey) {
   const supplied=request.headers.get('x-probe-token')??'', expiry=Number(env.PROBE_EXPIRES_AT);
   const path=new URL(request.url).pathname;
   if(request.method!=='POST'||!['/__kira_probe','/__kira_probe_ready'].includes(path)||!/^[a-f0-9]{64}$/.test(supplied)||!/^[a-f0-9]{64}$/.test(env.PROBE_TOKEN??'')||!Number.isFinite(expiry)||expiry<=Date.now()||expiry>Date.now()+240000)return new Response(null,{status:404});
   let difference=0;for(let i=0;i<64;i++)difference|=supplied.charCodeAt(i)^env.PROBE_TOKEN.charCodeAt(i);
   if(difference)return new Response(null,{status:404});
   if(path==='/__kira_probe_ready')return Response.json({kind:'kampusone-kira-probe-ready'},{headers:{'Cache-Control':'no-store'}});
+  if(env.PROBE_IMAGE_KEY_ONLY==='true')return Response.json({kind:'kampusone-kira-probe-v1',imageProcessingKey:await imageProcessingPublicKey(env.JWT_SECRET)},{headers:{'Cache-Control':'no-store'}});
   if(env.PROBE_ACADEMIC_ONLY==='true') {
     const academicCase=request.headers.get('x-probe-academic-case');
     if(!['baseline','facultyGrid200','facultyGrid100','facultyWebp100'].includes(academicCase))return new Response(null,{status:400});
@@ -153,12 +154,12 @@ if(process.argv.includes('--self-test')) {
     if(!token||!/^[a-f0-9]{32}$/i.test(account??''))throw new Error('Deployment credentials unavailable');
     stage='binding metadata';
     const settings=await cf('/workers/scripts/platformp/settings');
-    const inherited=['HF_TOKEN','HF_CHAT_MODEL','HF_REASONING_MODEL','HF_PRO_MODEL','HF_VISION_MODEL','AI_TEXT_PROVIDER','WORKERS_AI_CHAT_MODEL','WORKERS_AI_PRO_MODEL','WORKERS_AI_VISION_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET','PAYSTACK_SECRET_KEY','KYC_ENCRYPTION_KEY','KYC_FINGERPRINT_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
+    const inherited=['JWT_SECRET','HF_TOKEN','HF_CHAT_MODEL','HF_REASONING_MODEL','HF_PRO_MODEL','HF_VISION_MODEL','AI_TEXT_PROVIDER','WORKERS_AI_CHAT_MODEL','WORKERS_AI_PRO_MODEL','WORKERS_AI_VISION_MODEL','BACHS_API_KEY','BACHS_WEBHOOK_SECRET','PAYSTACK_SECRET_KEY','KYC_ENCRYPTION_KEY','KYC_FINGERPRINT_SECRET'].filter(name=>settings.bindings?.some(b=>b.name===name)).map(name=>({name,type:'inherit'}));
     report(`Production BACHS API secret present: ${settings.bindings?.some(b=>b.name==='BACHS_API_KEY')===true}`);
     report(`Production BACHS webhook secret present: ${settings.bindings?.some(b=>b.name==='BACHS_WEBHOOK_SECRET')===true}`);
     report(`Production Workers AI binding present: ${settings.bindings?.some(b=>b.name==='AI'&&b.type==='ai')===true}`);
     report(`Production binding count: ${settings.bindings?.length??0}`);
-    report(`Production CPU cap: ${Number.isInteger(settings.limits?.cpu_ms)?settings.limits.cpu_ms+'ms':'platform default'}; isolated image-check cap: 30000ms`);
+    report(`Production CPU cap: ${Number.isInteger(settings.limits?.cpu_ms)?settings.limits.cpu_ms+'ms':'platform default'}; free-plan deployment settings retained`);
     stage='isolated preview session';
     const session=await cf('/workers/scripts/platformp/subdomain/edge-preview');
     let sessionToken=session.token,host='platformp.divine-haze-54eb.workers.dev';
@@ -174,11 +175,11 @@ if(process.argv.includes('--self-test')) {
     const handwriting=process.env.PROBE_VERIFY_UPLOADS==='true'?JSON.parse(readFileSync(new URL('./fixtures/handwritten-timetable.json',import.meta.url),'utf8')):null;
     stage='document reader bundle';
     const {build}=createRequire(new URL('../server/package.json',import.meta.url))('esbuild');
-    const reader=await build({stdin:{contents:"export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';export {verifyAcademicImports} from './scripts/verify-academic-imports.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent',plugins:[{name:'private-webp-module',setup(build){build.onResolve({filter:/webp_dec\.wasm$/},()=>({path:'./webp-decoder.wasm',external:true}));}}]});
-    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',limits:{cpu_ms:30000},bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_ACADEMIC_ONLY',type:'plain_text',text:process.env.PROBE_ACADEMIC_ONLY==='true'?'true':'false'},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
+    const reader=await build({stdin:{contents:"export {imageProcessingPublicKey} from './src/lib/image-processing-auth.ts';export {readPrivateAIPdf} from './src/lib/ai-pdf-reader.ts';export {verifyAcademicImports} from './scripts/verify-academic-imports.ts';",resolveDir:new URL('../server/',import.meta.url).pathname,sourcefile:'probe-document-entry.ts'},bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,write:false,logLevel:'silent',plugins:[{name:'private-webp-module',setup(build){build.onResolve({filter:/webp_dec\.wasm$/},()=>({path:'./webp-decoder.wasm',external:true}));}}]});
+    form.set('metadata',JSON.stringify({main_module:'probe.mjs',compatibility_date:'2026-09-09',bindings:[...inherited,{name:'AI',type:'ai'},{name:'PROBE_TOKEN',type:'plain_text',text:probeToken},{name:'PROBE_EXPIRES_AT',type:'plain_text',text:String(Date.now()+180000)},{name:'PROBE_IMAGE_KEY_ONLY',type:'plain_text',text:process.env.PROBE_IMAGE_KEY_ONLY==='true'?'true':'false'},{name:'PROBE_ACADEMIC_ONLY',type:'plain_text',text:process.env.PROBE_ACADEMIC_ONLY==='true'?'true':'false'},{name:'PROBE_VERIFY_UPLOADS',type:'plain_text',text:process.env.PROBE_VERIFY_UPLOADS==='true'?'true':'false'},{name:'PROBE_METADATA_ONLY',type:'plain_text',text:process.env.PROBE_METADATA_ONLY==='true'?'true':'false'},{name:'PROBE_BANKS_ONLY',type:'plain_text',text:process.env.PROBE_BANKS_ONLY==='true'?'true':'false'}]}));
     const faculty=readFileSync(new URL('./fixtures/uniben-engineering-2026.jpg',import.meta.url)).toString('base64');
     const facultyWebp=readFileSync(new URL('./fixtures/uniben-engineering-2026.webp',import.meta.url)).toString('base64');
-    form.set('probe.mjs',new Blob([`import {readPrivateAIPdf,verifyAcademicImports} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)},PROBE_FACULTY_JPEG:${JSON.stringify(faculty)},PROBE_FACULTY_WEBP:${JSON.stringify(facultyWebp)},PROBE_CALENDAR_PDF:${JSON.stringify(readFileSync(new URL("./fixtures/synthetic-academic-calendar.pdf",import.meta.url)).toString("base64"))}},readPrivateAIPdf,verifyAcademicImports)};`],{type:'application/javascript+module'}),'probe.mjs');
+    form.set('probe.mjs',new Blob([`import {imageProcessingPublicKey,readPrivateAIPdf,verifyAcademicImports} from './document-reader.mjs';export default {fetch: (request,env)=>(${probe.toString()})(request,{...env,PROBE_TIMETABLE_PNG:${JSON.stringify(png)},PROBE_HANDWRITING:${JSON.stringify(handwriting)},PROBE_FACULTY_JPEG:${JSON.stringify(faculty)},PROBE_FACULTY_WEBP:${JSON.stringify(facultyWebp)},PROBE_CALENDAR_PDF:${JSON.stringify(readFileSync(new URL("./fixtures/synthetic-academic-calendar.pdf",import.meta.url)).toString("base64"))}},readPrivateAIPdf,verifyAcademicImports,imageProcessingPublicKey)};`],{type:'application/javascript+module'}),'probe.mjs');
     form.set('webp-decoder.wasm',new Blob([readFileSync(new URL('../server/node_modules/@jsquash/webp/codec/dec/webp_dec.wasm',import.meta.url))],{type:'application/wasm'}),'webp-decoder.wasm');
     form.set('document-reader.mjs',new Blob([reader.outputFiles[0].text],{type:'application/javascript+module'}),'document-reader.mjs');
     form.set('wrangler-session-config',JSON.stringify({workers_dev:true}));
@@ -202,7 +203,13 @@ if(process.argv.includes('--self-test')) {
       const value=await r.json();if(value.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');return value;
     };
     let result;
-    if(process.env.PROBE_ACADEMIC_ONLY==='true') {
+    if(process.env.PROBE_IMAGE_KEY_ONLY==='true') {
+      result=await run();const key=result.imageProcessingKey;
+      if(key?.kty!=='OKP'||key.crv!=='Ed25519'||!/^[-_A-Za-z0-9]{43}$/.test(key.x??'')||key.d!==undefined)throw new Error('Invalid public image key');
+      report('Image verification public key: '+JSON.stringify(key));
+      report('Public verification material only. No inference, payment I/O, credential export or application writes.');
+      process.exitCode=0;
+    } else if(process.env.PROBE_ACADEMIC_ONLY==='true') {
       // Each request matches one app import's memory/CPU envelope. Do not keep
       // three independent dense-table imports in one Worker invocation.
       const academicImports=[];
@@ -213,6 +220,7 @@ if(process.argv.includes('--self-test')) {
       }
       result={kind:'kampusone-kira-probe-v1',academicImports};
     } else result=await run();
+    if(process.env.PROBE_IMAGE_KEY_ONLY!=='true') {
     if(process.env.PROBE_ACADEMIC_ONLY==='true'){
       if(!Array.isArray(result.academicImports)||result.academicImports.length!==7)throw new Error('Missing academic extraction proofs');
       for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes??0}, events ${item.events??0}; ${item.elapsedMs}ms${/^AI_[A-Z_]+$/.test(item.reason??'')?`; ${item.reason}`:''}`);if(item.name.startsWith('faculty')&&Array.isArray(item.actual))report('Faculty fixture cells: '+JSON.stringify(item.actual));if(item.name.startsWith('faculty')&&item.diagnostic)report('Faculty fixture validation: '+JSON.stringify(item.diagnostic));if(item.outcome!=='extraction_succeeded')process.exitCode=1;}
@@ -239,6 +247,7 @@ if(process.argv.includes('--self-test')) {
     }
     if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
     report(process.env.PROBE_BANKS_ONLY==='true'?'Bank lookup and capability check only. No transfers, payouts, credential export or application writes. Preview expires after three minutes.':'No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');
+    }
     }
   }catch(error){report(`CHECK FAILED at ${stage}: ${/^HTTP [1-5][0-9]{2}(?:(?: edge code [0-9]{4})?; (?:memory|cpu|wasm|unclassified))?$/.test(error?.message??'')?error.message:'raw error withheld'}`);process.exitCode=1;}
   finally{if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');}
