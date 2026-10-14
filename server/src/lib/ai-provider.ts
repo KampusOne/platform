@@ -99,7 +99,7 @@ export function aiMessages(input: AIInput): AIMessage[] {
   ];
 }
 export function aiCompletionBudget(input: Pick<AIInput,"mode"|"tier"|"sourceDocument">) {
-  if (input.mode === "timetable") return { maxTokens: 8192, timeoutMs: 90000 };
+  if (input.mode === "timetable") return { maxTokens: 8192, timeoutMs: 150000 };
   const detailed = input.mode === "explanation" || input.mode === "notes";
   // Reading a document and producing revision notes needs more time than a
   // short Ask turn. The deadline covers every model attempt, including fallback.
@@ -116,7 +116,10 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
     if (config.provider === 'workers-ai') {
       try {
         const alternative = providerConfiguration({ ...env, AI_TEXT_PROVIDER: 'huggingface' }, input.mode, input.media?.mimeType, undefined, input.tier);
-        const firstAttempt = alternative.configured ? (input.mode === 'timetable' || input.sourceDocument ? 60000 : 45000) : budget.timeoutMs;
+        // Dense tables need longer than short document answers. A configured
+        // fallback must not cut the vision model off at 60 seconds; keep 30
+        // seconds for recovery within the overall academic deadline.
+        const firstAttempt = alternative.configured ? (input.mode === 'timetable' ? 120000 : input.sourceDocument ? 60000 : 45000) : budget.timeoutMs;
         payload = await workersAICompletion(env, input, messages, tools, budget.maxTokens, Math.min(deadline - Date.now(), firstAttempt)) as typeof payload;
       } catch (error) {
         // A native model outage must not strand the configured alternative.

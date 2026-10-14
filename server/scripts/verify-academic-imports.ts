@@ -34,7 +34,8 @@ export async function verifyAcademicImports(env: AIEnvironment, fixtures: {
         : kind === 'exam' ? result.entries.length === 3 && (result.entries[0] as {date:string}).date === '2026-11-05'
         : result.documentType === 'class_timetable' && result.entries.some(entry => {const row=entry as {courseCode:string;dayOfWeek:number;startsAt:string;endsAt:string};return row.courseCode.replace(/\s/g,'') === 'MAT101' && row.dayOfWeek===1 && row.startsAt==='08:00' && row.endsAt==='09:00';});
       return { name, outcome: valid ? 'extraction_succeeded' : 'extraction_unusable', classes: result.entries.length,
-        events: result.events.length, elapsedMs: Date.now() - start };
+        events: result.events.length, elapsedMs: Date.now() - start,
+        ...(name==='facultyGrid200'&&!valid?{mismatches:expectedFaculty.filter(expected=>!actualFaculty.some(actual=>JSON.stringify(actual)===JSON.stringify(expected))),actual:actualFaculty}: {}) };
     } catch (error) {
       return { name, outcome: 'extraction_failed', elapsedMs: Date.now() - start,
         ...((error as {reason?:string}).reason?.match(/^AI_[A-Z_]+$/) ? {reason:(error as {reason:string}).reason} : {}) };

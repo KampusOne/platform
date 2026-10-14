@@ -173,7 +173,7 @@ if(process.argv.includes('--self-test')) {
     const result=await r.json();if(result.kind!=='kampusone-kira-probe-v1')throw new Error('Unexpected probe result');
     if(process.env.PROBE_ACADEMIC_ONLY==='true'){
       if(!Array.isArray(result.academicImports)||result.academicImports.length!==5)throw new Error('Missing academic extraction proofs');
-      for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes??0}, events ${item.events??0}; ${item.elapsedMs}ms${/^AI_[A-Z_]+$/.test(item.reason??'')?`; ${item.reason}`:''}`);if(item.outcome!=='extraction_succeeded')process.exitCode=1;}
+      for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes??0}, events ${item.events??0}; ${item.elapsedMs}ms${/^AI_[A-Z_]+$/.test(item.reason??'')?`; ${item.reason}`:''}`);if(item.name==='facultyGrid200'&&Array.isArray(item.actual))report('Faculty fixture cells: '+JSON.stringify(item.actual));if(item.outcome!=='extraction_succeeded')process.exitCode=1;}
       report('Private academic extraction checks only. No payment sessions, bank lookups or student-data writes.');
     } else {
     const outcomes=new Set(['generation_succeeded','generation_unusable','provider_rejected','configuration_missing','transport_failure']);

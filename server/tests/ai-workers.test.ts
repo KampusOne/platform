@@ -92,8 +92,18 @@ describe('academic document extraction deadlines', () => {
       const run=vi.fn().mockImplementation(()=>new Promise(()=>{}));
       const fetcher=vi.fn().mockResolvedValue(Response.json({choices:[{finish_reason:'stop',message:{content:'{"entries":[],"events":[],"warnings":[]}'}}]}));
       const pending=generateAI({AI_ASSISTANT_ENABLED:'true',AI:{run},HF_TOKEN:'synthetic',HF_CHAT_MODEL:'test/chat'},{mode:'timetable',prompt:'Monday MAT 101 08:00–09:00'},fetcher);
-      await vi.advanceTimersByTimeAsync(60000);
+      await vi.advanceTimersByTimeAsync(120000);
       expect((await pending).provider).toBe('huggingface');expect(fetcher).toHaveBeenCalledTimes(1);expect(run).toHaveBeenCalledTimes(1);
     }finally{vi.useRealTimers();}
+  });
+  it('does not let an unavailable fallback cut off a dense vision response at 60 seconds',async()=>{
+    vi.useFakeTimers();
+    try {
+      const run=vi.fn().mockImplementation(()=>new Promise(resolve=>setTimeout(()=>resolve({choices:[{finish_reason:'stop',message:{content:'{"entries":[],"events":[],"warnings":[]}'}}]}),105000)));
+      const fetcher=vi.fn().mockResolvedValue(new Response('provider unavailable',{status:402}));
+      const pending=generateAI({AI_ASSISTANT_ENABLED:'true',AI:{run},HF_TOKEN:'synthetic',HF_VISION_MODEL:'test/vision'},{mode:'timetable',prompt:'',media:{mimeType:'image/jpeg',data:btoa('PRIVATE_PIXELS')}},fetcher);
+      await vi.advanceTimersByTimeAsync(105000);
+      expect((await pending).provider).toBe('workers-ai');expect(fetcher).not.toHaveBeenCalled();expect(run).toHaveBeenCalledTimes(1);
+    } finally {vi.useRealTimers();}
   });
 });
