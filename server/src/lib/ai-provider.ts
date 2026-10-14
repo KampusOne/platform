@@ -2,10 +2,12 @@ import { AIProviderError } from "./ai-error.ts";
 export { AIProviderError } from "./ai-error.ts";
 import { scheduleInstruction, parseScheduleDocument } from "./schedule-document.ts";
 import { workersAICompletion, workersAIConfiguration, type WorkersAIEnvironment } from './ai-workers.ts';
+import {geminiAcademicCompletion} from './ai-gemini.ts';
+import {groqAcademicCompletion} from './ai-groq.ts';
 /** All inference stays server-side behind provider adapters. */
 export type AIMode = "study" | "summary" | "explanation" | "quiz" | "notes" | "timetable";
 export type AITier = "standard" | "pro";
-export type AIProvider = "huggingface" | "workers-ai";
+export type AIProvider = "huggingface" | "workers-ai" | "gemini" | "groq";
 export type AIEnvironment = WorkersAIEnvironment & {
   JWT_SECRET?:string; TIMETABLE_IMAGE_PROCESSOR_URL?:string;
   AI_ASSISTANT_ENABLED?: string; HF_TOKEN?: string; HF_CHAT_MODEL?: string;
@@ -17,7 +19,7 @@ export type AIEnvironment = WorkersAIEnvironment & {
 };
 export type AIMedia = { mimeType: string; data: string };
 export type AITurn = { prompt: string; text: string };
-export type AIInput = { mode: AIMode; prompt: string; requestPrompt?: string; sourceDocument?: boolean; media?: AIMedia; history?: AITurn[]; provider?: AIProvider; tier?: AITier; systemContext?: string; deadline?: number; scheduleLayout?:boolean; onScheduleRead?:(day:number|null,text:string)=>void; onProgress?:(stage:'reading'|'analysing')=>Promise<void> };
+export type AIInput = { mode: AIMode; prompt: string; requestPrompt?: string; sourceDocument?: boolean; media?: AIMedia; history?: AITurn[]; provider?: AIProvider; tier?: AITier; systemContext?: string; deadline?: number; scheduleLayout?:boolean; onProviderFailure?:(value:{provider:string;status:number;hint:string;parameter?:string})=>void; onScheduleRead?:(day:number|null,text:string)=>void; onProgress?:(stage:'reading'|'analysing')=>Promise<void> };
 export type AITool = { type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } };
 export type AIToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 export type AIMessage = { role: "system" | "user" | "assistant" | "tool"; content: unknown; tool_calls?: AIToolCall[]; tool_call_id?: string };
@@ -93,8 +95,10 @@ export function aiMessages(input: AIInput): AIMessage[] {
     if (!input.media.mimeType.startsWith("image/")) throw new AIProviderError(400, "AI_UNSUPPORTED_MEDIA", "Extract document text before sending it to AI.");
     content.push({ type: "image_url", image_url: { url: `data:${input.media.mimeType};base64,${input.media.data}`, ...(input.mode==='timetable'?{detail:'high'}:{}) } });
   }
+  const focused=input.mode==='timetable'&&input.scheduleLayout;
+  const system=focused?'You read private academic source pixels faithfully. Follow the exact JSON shape requested. Never invent missing text or move a label. For a simple class LIST return documentType:"class_timetable", entries with title, courseCode, dayOfWeek (Sunday=0), startsAt and endsAt in HH:MM, venue and lecturer, events:[], warnings:[], and coverage:{complete:true,daysRead:[all printed weekdays],rowCount:number of entries,uncertain:[]}. If any required text is unreadable mark incomplete.':aiSystemInstruction(input.mode);
   return [
-    { role: "system", content: aiSystemInstruction(input.mode) + (input.systemContext ? "\n" + input.systemContext : "") },
+    { role: "system", content: system + (input.systemContext ? "\n" + input.systemContext : "") },
     ...(input.history ?? []).slice(input.tier==='pro'?-12:-6).flatMap(turn => [{ role: "user" as const, content: turn.prompt }, { role: "assistant" as const, content: turn.text }]),
     { role: "user", content: input.media ? content : input.prompt || "Read the supplied material." },
   ];
@@ -112,6 +116,8 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
   const deadline = Math.min(Date.now() + budget.timeoutMs, input.deadline ?? Infinity);
   if (deadline <= Date.now()) throw new AIProviderError(504, 'AI_TIMEOUT', 'Reading took too long. Your file and draft are kept.');
   try {
+    if(input.mode==='timetable'&&input.provider==='groq'&&env.GROQ_API_KEY)return await groqAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
+    if(input.mode==='timetable'&&input.provider==='gemini'&&env.GEMINI_API_KEY)return await geminiAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
     let provider: AIProvider = config.provider;
     let payload: { choices?: { message?: { content?: unknown; tool_calls?: unknown }; finish_reason?: string }[] };
     if (config.provider === 'workers-ai') {
@@ -128,12 +134,14 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
         const hf = providerConfiguration({ ...env, AI_TEXT_PROVIDER: 'huggingface' }, input.mode, input.media?.mimeType, undefined, input.tier);
         if (!(error instanceof AIProviderError) || error.status < 500 || !hf.configured || deadline - Date.now() < 1000) throw error;
         console.warn(JSON.stringify({ event: 'ai.provider.fallback', from: 'workers-ai', to: 'huggingface', reason: error.reason }));
-        const response = await fetcher('https://router.huggingface.co/v1/chat/completions', {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hf.token}` }, signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
-          body: JSON.stringify({ model: hf.model, messages, max_tokens: budget.maxTokens, temperature: 0.2, stream: false, ...(tools?.length && !input.media ? { tools, tool_choice: 'auto' } : {}) }),
-        });
-        if (!response.ok) { void response.body?.cancel().catch(() => undefined); throw error; }
-        payload = await response.json() as typeof payload;
+        try {
+          const response = await fetcher('https://router.huggingface.co/v1/chat/completions', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hf.token}` }, signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+            body: JSON.stringify({ model: hf.model, messages, max_tokens: budget.maxTokens, temperature: 0.2, stream: false, ...(tools?.length && !input.media ? { tools, tool_choice: 'auto' } : {}) }),
+          });
+          if (!response.ok) { void response.body?.cancel().catch(() => undefined); throw error; }
+          payload = await response.json() as typeof payload;
+        } catch { throw error; } // Preserve the classified primary failure if the alternative cannot connect.
         provider = 'huggingface';
       }
     } else {
@@ -195,6 +203,19 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
     if (text.length > 50000) throw new AIProviderError(502, "AI_INVALID_OUTPUT", "This response was too long. Try a smaller source.");
     return { text, calls, provider };
   } catch (error) {
+    if(input.mode==='timetable'&&error instanceof AIProviderError&&error.status>=500&&deadline-Date.now()>1000){
+      let last=error;
+      if(env.GROQ_API_KEY){
+        console.warn(JSON.stringify({event:'ai.provider.fallback',to:'groq',reason:error.reason}));
+        try{return await groqAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);}
+        catch(failure){if(!(failure instanceof AIProviderError))throw failure;last=failure;}
+      }
+      if(env.GEMINI_API_KEY&&deadline-Date.now()>1000){
+        console.warn(JSON.stringify({event:'ai.provider.fallback',to:'gemini',reason:last.reason}));
+        return geminiAcademicCompletion(env,input,messages,budget.maxTokens,deadline-Date.now(),fetcher);
+      }
+      throw last;
+    }
     if (error instanceof AIProviderError) throw error;
     if (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)) throw new AIProviderError(504, "AI_TIMEOUT", "AI took too long. Your draft is kept.");
     throw new AIProviderError(503, "AI_PROVIDER_UNAVAILABLE", "AI could not connect. Your draft is kept.");

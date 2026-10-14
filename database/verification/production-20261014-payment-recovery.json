@@ -1,0 +1,35 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-14T16:52:00Z",
+    "scope": "Owner requested recovery of the paid store order and BACHS checkout correction in this Android release."
+  },
+  "migrations": [
+    {
+      "version": "20261014160000_verified_store_payment_recovery",
+      "sourceBlobSha": "05bb07560438278d1aa2f846852bbbaf85a2da3f",
+      "appliedAt": "2026-10-14T17:03:06.681Z"
+    }
+  ],
+  "verifiedAt": "2026-10-14T17:05:00Z",
+  "checks": {
+    "paymentRecovery": "passed",
+    "fixturesRolledBack": true,
+    "isolatedPGliteReceiptAndStockRehearsal": "passed",
+    "lateVerificationIdempotency": "passed",
+    "vendorCancellationGuard": "passed",
+    "stockShortfallReview": "passed",
+    "independentlyVerifiedPaidOrderRecovered": "passed",
+    "balancedJournalVerified": "passed"
+  },
+  "rehearsal": {
+    "engine": "PGlite",
+    "test": "server/tests/bachs-cutover.test.ts",
+    "productionFixturesCreated": false,
+    "neonBranchUnavailableReason": "Existing branch limit; no branch was reset or removed."
+  }
+}

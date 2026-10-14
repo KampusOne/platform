@@ -11,6 +11,7 @@ import { closeDueElections } from "./services/community-elections";
 import { queueDuePurchaseReviews } from "./services/purchase-reviews";
 import { materialCommerceReady } from './lib/material-commerce';
 import { reconcileDuePayouts } from './lib/payouts';
+import { reconcileDueCollections } from './lib/collection-reconciliation';
 import { captureDailyAppReports } from './services/admin-report-snapshots';
 
 export default {
@@ -30,9 +31,9 @@ export default {
     executionContext.waitUntil(
       Promise.all([
         database(env).execute(sql`update public.student_alarms set enabled=false,updated_at=now() where enabled and cardinality(days)=0 and fires_at<=now()`),
-        database(env).execute(
+        reconcileDueCollections(env).then(()=>database(env).execute(
           sql`select * from app_private.expire_stale_commerce()`,
-        ),
+        )),
         database(env).execute(
           sql`select app_private.cleanup_request_rate_limits() as deleted`,
         ),

@@ -72,10 +72,11 @@ export async function workersAICompletion(env: WorkersAIEnvironment, input: AIIn
     if (error instanceof AIProviderError) throw error;
     if (error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name)) throw new AIProviderError(504, 'AI_TIMEOUT', 'AI took too long. Your draft is kept.');
     // Cloudflare AiError embeds an internal code. Log only the classified code.
-    const code = /\b(3036|3040|5035|5016|5018|3023|3041|3007|3008)\b/.exec(error instanceof Error ? error.message : '')?.[1];
+    const message=error instanceof Error?error.message:'';
+    const code = /\b(4006|3036|3040|5035|5016|5018|3023|3041|3007|3008)\b/.exec(message)?.[1];
     console.warn(JSON.stringify({ event: 'ai.provider.failed', provider: 'workers-ai', code: code ?? 'unclassified' }));
-    if (code === '3036') throw new AIProviderError(503, 'AI_PROVIDER_QUOTA', 'Kira has reached its service allowance. Your draft is kept; please try again later.');
-    if (code === '3040') throw new AIProviderError(503, 'AI_PROVIDER_BUSY', 'Kira is busy right now. Your draft is kept; try again shortly.');
+    if (code === '3036' || (code==='4006'&&/daily free allocation|used up.*neurons|neuron.*(?:allowance|quota|limit)/i.test(message))) throw new AIProviderError(503, 'AI_PROVIDER_QUOTA', 'Kira has reached its service allowance. Your draft is kept; please try again later.');
+    if (code === '3040' || (code==='4006'&&/temporarily at capacity|capacity temporarily|out of capacity/i.test(message))) throw new AIProviderError(503, 'AI_PROVIDER_BUSY', 'Kira is busy right now. Your draft is kept; try again shortly.');
     if (code === '3007' || code === '3008') throw new AIProviderError(504, 'AI_TIMEOUT', 'AI took too long. Your draft is kept.');
     if (['5016','5018','3041','5035'].includes(code ?? '')) throw new AIProviderError(503, 'AI_MODEL_ACCESS', 'Image reading is unavailable for this AI configuration. Your file is kept; please retry after the service is restored.');
     throw new AIProviderError(503, 'AI_PROVIDER_UNAVAILABLE', 'AI could not respond right now. Your draft is kept; please try again later.');

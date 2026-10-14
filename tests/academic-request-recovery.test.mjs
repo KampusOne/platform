@@ -10,7 +10,7 @@ function harness() {
   const schedule=(callback,delay)=>{const id=++next;timers.set(id,{callback,at:now+delay});return id;};
   class Clock extends Date { static now(){ return now; } }
   const source=ts.transpileModule(readFileSync(new URL('../mobile/src/lib/ai-request.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-  runInNewContext(source,{exports,module:{exports},require:()=>({ApiError}),Date:Clock,AbortController,Error,JSON,setTimeout:schedule,clearTimeout:id=>timers.delete(id)});
+  runInNewContext(source,{exports,module:{exports},require:()=>({ApiError}),Date:Clock,AbortController,Headers,Error,JSON,setTimeout:schedule,clearTimeout:id=>timers.delete(id)});
   return {submit:exports.submitTrackedAIRequest,timers,async advance(ms){now+=ms;for(const [id,timer] of [...timers])if(timer.at<=now){timers.delete(id);timer.callback();}for(let i=0;i<30;i++)await Promise.resolve();}};
 }
 const id='11111111-1111-4111-8111-111111111111';
@@ -40,4 +40,26 @@ test('an uncertain save acknowledgement retrieves the committed result without a
   const h=harness();let posts=0;
   const pending=h.submit(async(_path,init)=>{if(init.method==='POST'){posts++;throw new ApiError(503,'PROVIDER_UNAVAILABLE','Save acknowledgement lost',{reason:'AI_SAVE_FAILED',retryWithNewKey:false});}return {requestId:id,status:'completed',entries:[{courseCode:'MAT 101'}]};},input,()=>{});
   await h.advance(1000);assert.equal((await pending).entries[0].courseCode,'MAT 101');assert.equal(posts,1);assert.equal(h.timers.size,0);
+});
+test('a tracked submission opts into an active JSON response and preserves existing headers',async()=>{
+  const h=harness();let sent;
+  const result=await h.submit(async(_path,init)=>{sent=init;return{requestId:id,entries:[{courseCode:'PHY101'}]};},{...input,headers:{'X-Device-Label':'Synthetic phone'}},()=>{});
+  assert.equal(result.entries[0].courseCode,'PHY101');assert.equal(sent.headers.get('Accept'),'application/vnd.kampusone.ai-result+json');
+  assert.equal(sent.headers.get('X-Device-Label'),'Synthetic phone');assert.equal(h.timers.size,0);
+});
+test('a streamed provider failure reaches the import screen with its actual status and retry details',async()=>{
+  const h=harness();let posts=0;
+  const pending=h.submit(async(_path,init)=>{posts++;return{requestId:id,status:'failed',httpStatus:422,error:{code:'BAD_REQUEST',message:'Selected level is missing',details:{reason:'AI_LEVEL_NOT_FOUND',retryWithNewKey:true}}};},input,()=>{});
+  await assert.rejects(pending,error=>error.status===422&&error.message==='Selected level is missing'&&error.details?.retryWithNewKey===true);
+  assert.equal(posts,1);assert.equal(h.timers.size,0);
+});
+test('a streamed uncertain save still recovers the same saved result without a second POST',async()=>{
+  const h=harness();let posts=0;
+  const pending=h.submit(async(_path,init)=>init.method==='POST'?(posts++,{requestId:id,status:'failed',httpStatus:503,error:{code:'PROVIDER_UNAVAILABLE',message:'Check this attempt',details:{reason:'AI_SAVE_FAILED',retryWithNewKey:false}}}):{requestId:id,status:'completed',entries:[{courseCode:'CHM101'}]},input,()=>{});
+  await h.advance(1000);assert.equal((await pending).entries[0].courseCode,'CHM101');assert.equal(posts,1);
+});
+test('a truncated streaming body checks the same receipt rather than failing or resubmitting',async()=>{
+  const h=harness();let posts=0;
+  const pending=h.submit(async(_path,init)=>{if(init.method==='POST'){posts++;throw new ApiError(200,'INVALID_RESPONSE','Body interrupted');}return{requestId:id,status:'completed',entries:[{courseCode:'GST111'}]};},input,()=>{});
+  await h.advance(1000);assert.equal((await pending).entries[0].courseCode,'GST111');assert.equal(posts,1);
 });

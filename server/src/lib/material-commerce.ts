@@ -1,3 +1,4 @@
+import { paymentReturnUrl, collectionReference } from './collection-provider';
 import {discountError} from "./discount-error";
 import { sql } from "drizzle-orm";
 import { z } from "@kampusone/contracts";
@@ -191,7 +192,7 @@ export async function initializeMaterialPayment(
   };
   const attempt = firstRow(
     await database(env).execute<Attempt>(
-      sql`select * from app_private.prepare_material_payment(${crypto.randomUUID()}::uuid,${id}::uuid,${user.id}::uuid,${user.universityId}::uuid,${requestId},${'K1-L-'+crypto.randomUUID()})`,
+      sql`select * from app_private.prepare_material_payment(${crypto.randomUUID()}::uuid,${id}::uuid,${user.id}::uuid,${user.universityId}::uuid,${requestId},${collectionReference(env,'M')})`,
     ),
   );
   if (!attempt)
@@ -227,9 +228,7 @@ export async function initializeMaterialPayment(
     email: user.email,
     amountKobo: Number(purchase.amount_kobo),
     reference: attempt.provider_reference,
-    ...(env.APP_ORIGIN
-      ? { callbackUrl: env.APP_ORIGIN.replace(/\/$/, "") + "/payment/return" }
-      : {}),
+    callbackUrl:paymentReturnUrl,
     metadata: {
       resourceType: "TUTORIAL_PURCHASE",
       resourceId: id,

@@ -106,7 +106,7 @@ export function publicQuotePricing(p: unknown) {
     totalKobo: v.totalKobo,
     visibleProcessingKobo: v.visibleProcessingKobo??0,
     pricingAdjustmentKobo: v.pricingAdjustmentKobo??0,
-    pricingNotice: 'The displayed total estimates processing. Paystack receives the product subtotal and platform fee, then confirms its actual fee at checkout.',
+    pricingNotice: 'Review the displayed total before continuing to secure checkout. Your confirmed receipt is saved in KampusOne.',
   };
 }
 function responseQuote(q: {

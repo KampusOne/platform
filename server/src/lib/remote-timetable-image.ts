@@ -20,7 +20,7 @@ async function imageOperation(env:AIEnvironment,body:Record<string,unknown>,dead
     if(Number(response.headers.get('content-length')??0)>4_200_000)throw new Error('Invalid image service response');
     const text=await response.text();if(text.length>4_200_000)throw new Error('Invalid image service response');
     const value=JSON.parse(text);if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid image service response');
-    return value as {layout?:TimetableLayoutImage;rows?:TimetableImageRow[]};
+    return value as {layout?:TimetableLayoutImage;rows?:TimetableImageRow[];batch?:AIMedia};
   } catch {
     console.warn(JSON.stringify({event:'timetable.image.unavailable',stage,httpStatus:httpStatus??null,operation:body.operation}));
     throw new AIProviderError(503,'AI_PROVIDER_BUSY','The image reader is temporarily unavailable. Your full file is kept; no import credit was used.');
@@ -32,8 +32,9 @@ export async function remoteTimetableLayout(env:AIEnvironment,media:AIMedia,dead
   if(layout&&(!mediaValid(layout)||!Number.isInteger(layout.timeColumnCount)||layout.timeColumnCount<1||layout.timeColumnCount>24||!Number.isInteger(layout.levelRowCount)||layout.levelRowCount<1||layout.levelRowCount>140))throw new AIProviderError(502,'AI_INCOMPLETE_SCHEDULE','The image layout could not be verified. Your full file is kept; no import credit was used.');
   return layout;
 }
-export async function remoteTimetableRows(env:AIEnvironment,media:AIMedia,timeColumnCount:number,levels:string[],days:number[],selectedLevel:string,deadline?:number) {
-  const {rows}=await imageOperation(env,{operation:'rows',media,timeColumnCount,levels,days,selectedLevel},deadline);
+export async function remoteTimetableRows(env:AIEnvironment,media:AIMedia,timeColumnCount:number,levels:string[],days:number[],selectedLevel:string,deadline?:number,wantBatch=false):Promise<(TimetableImageRow[]&{batch?:AIMedia})|undefined> {
+  const {rows,batch}=await imageOperation(env,{operation:'rows',media,timeColumnCount,levels,days,selectedLevel,...(wantBatch?{batch:true}:{})},deadline);
   if(rows&&(!Array.isArray(rows)||rows.length!==days.length||rows.some((row,i)=>row.day!==days[i]||!mediaValid(row.media)||!Array.isArray(row.cells)||row.cells.length<1||row.cells.length>24||row.cells.some((cell,j)=>!Number.isInteger(cell.from)||!Number.isInteger(cell.to)||cell.from!==(j?row.cells[j-1]!.to:0)||cell.to<=cell.from||cell.to>timeColumnCount)||row.cells.at(-1)?.to!==timeColumnCount)))throw new AIProviderError(502,'AI_INCOMPLETE_SCHEDULE','The image cells could not be verified. Your full file is kept; no import credit was used.');
-  return rows;
+  if(batch&&!mediaValid(batch))throw new AIProviderError(502,'AI_INCOMPLETE_SCHEDULE','The image cells could not be verified. Your full file is kept; no import credit was used.');
+  return rows&&batch?Object.assign(rows,{batch}):rows;
 }

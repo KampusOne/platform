@@ -12,14 +12,18 @@ export function collectionConfigured(env: Bindings) {
   return Boolean(key && (env.ENVIRONMENT !== 'production' || key.startsWith('sk_live_')) && (!bachsCollectionsEnabled(env) || env.BACHS_WEBHOOK_SECRET));
 }
 export function collectionReference(env: Bindings, kind: 'AI' | 'O' | 'T' | 'M' | 'RC') {
-  return `K1-${bachsCollectionsEnabled(env) && kind === 'AI' ? 'B-' : ''}${kind}-${crypto.randomUUID()}`;
+  return `K1-${bachsCollectionsEnabled(env) ? 'B-' : ''}${kind}-${crypto.randomUUID()}`;
 }
 export function isBachsReference(reference: string) { return /^K1-B-(?:AI|O|T|M|RC)-/.test(reference); }
+export const paymentReturnUrl = 'https://links.kampusone.app/payment/return';
 
 type Intent = { userId: string; universityId: string; resourceType: 'STORE_ORDER' | 'TUTORIAL_BOOKING' | 'TUTORIAL_PURCHASE' | 'KIRA_SUBSCRIPTION' | 'RIDER_COMMISSION'; resourceId: string; amountKobo: number; snapshot: BachsPurchaseSnapshot; expiresAt: string };
 /** The database binds provider, buyer, campus and price before the durable POST claim. */
 export async function initializeCollection(env: Bindings, input: Parameters<typeof initializePaystack>[1]) {
-  if (!isBachsReference(input.reference)) return initializePaystack(env, input);
+  if (!isBachsReference(input.reference)) {
+    if (bachsCollectionsEnabled(env)) throw new AppError(409,'CONFLICT','This saved checkout uses the previous payment provider. Check its receipt before starting a new purchase.',{reference:input.reference});
+    return initializePaystack(env, input);
+  }
   if (!bachsCollectionsEnabled(env) || env.PAYMENTS_ENABLED !== 'true' || !collectionConfigured(env))
     throw new AppError(503, 'FEATURE_DISABLED', 'Payments are temporarily unavailable. Your purchase is saved.');
   const intent = firstRow(await database(env).execute<Intent>(sql`select * from app_private.bachs_purchase_intent(${input.reference})`));

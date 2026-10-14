@@ -17,12 +17,22 @@ If ANY selected row, cell, weekday, time header or page was skipped, cut off, il
 
 const day = z.number().int().min(0).max(6);
 const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+const timeSlotsSchema = z.array(z.object({ startsAt: clock, endsAt: clock })).min(1).max(24);
+export function verifiedTimetableTimeSlots(value: unknown) {
+  const parsed = timeSlotsSchema.safeParse(value);
+  if (!parsed.success) throw incompleteSchedule('The printed time headings could not be read. Your file is kept; no import credit was used.');
+  for (const [i, slot] of parsed.data.entries()) {
+    if (slot.endsAt <= slot.startsAt || (i > 0 && slot.startsAt < parsed.data[i - 1]!.endsAt))
+      throw incompleteSchedule('The printed time headings could not be verified. Your file is kept; no import credit was used.');
+  }
+  return parsed.data;
+}
 const coverageSchema = z.object({
   complete: z.literal(true), daysRead: z.array(day).max(7), rowCount: z.number().int().min(1).max(80),
   uncertain: z.array(z.string()).max(0),
 });
 const gridSchema = z.object({
-  timeSlots: z.array(z.object({ startsAt: clock, endsAt: clock })).min(1).max(24),
+  timeSlots: timeSlotsSchema,
   levels: z.array(z.string().max(40)).max(20), daysSeen: z.array(day).min(1).max(7),
   rows: z.array(z.object({ dayOfWeek: day, level: z.string().max(40),
     cells: z.array(z.object({ from: z.number().int().min(0), to: z.number().int().min(1), label: z.string().trim().max(160) })).min(1).max(24),
@@ -61,9 +71,7 @@ export function gridTimetableEntries(value: Record<string, unknown>, scope: Time
   if (new Set(grid.daysSeen).size !== grid.daysSeen.length || grid.daysSeen.length !== coverage.daysRead.length
     || grid.daysSeen.some(d => !coverage.daysRead.includes(d)) || coverage.rowCount !== grid.rows.length
     || grid.rows.length !== grid.daysSeen.length) throw incompleteSchedule();
-  for (const [i, slot] of grid.timeSlots.entries()) {
-    if (slot.endsAt <= slot.startsAt || (i > 0 && slot.startsAt < grid.timeSlots[i - 1]!.endsAt)) throw incompleteSchedule('The time-column headers could not be verified. Your file is kept; retry without losing an import credit.');
-  }
+  verifiedTimetableTimeSlots(grid.timeSlots);
   const seenDays = new Set<number>(), entries = [];
   for (const row of grid.rows) {
     if (seenDays.has(row.dayOfWeek) || !grid.daysSeen.includes(row.dayOfWeek) || levelKey(row.level) !== selected) throw incompleteSchedule('The timetable contains missing days or mixed level rows. Your file is kept; retry without losing an import credit.');

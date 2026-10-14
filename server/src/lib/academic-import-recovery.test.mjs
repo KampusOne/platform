@@ -14,7 +14,7 @@ function fallbackFixture(change = () => { }) {
                 if (prompt.includes('FIRST READ ONLY'))
                     return { response: JSON.stringify(layout) };
                 const day = prompt.includes('Monday') ? 1 : 2;
-                const part = { documentType: 'class_timetable', entries: [], events: [], warnings: [], grid: { timeSlots: slots, levels: ['100'], daysSeen: [day], rows: [{ dayOfWeek: day, level: '100', cells: [{ from: 0, to: 1, label: '' }, { from: 1, to: 2, label: day === 1 ? 'MTH101' : 'PHY101' }] }] }, coverage: { complete: true, daysRead: [day], rowCount: 1, uncertain: [] } };
+                const part = { row: { dayOfWeek: day, level: '100', cells: [{ from: 0, to: 1, label: '' }, { from: 1, to: 2, label: day === 1 ? 'MTH101' : 'PHY101' }] }, coverage: { complete: true, daysRead: [day], rowCount: 1, uncertain: [] } };
                 change(part, day);
                 return { response: JSON.stringify(part) };
             } } };
@@ -40,6 +40,7 @@ describe('complete source-image import recovery', () => {
         for (const request of f.calls)
             expect(JSON.stringify(request.messages)).toContain('data:image/webp;base64,');
         expect(f.calls[0]?.max_tokens).toBe(2048);
+        expect(f.calls.slice(1).every(call=>call.max_tokens===2048)).toBe(true);
     });
     it('filters requested courses only after reading the whole selected level', async () => {
         const f = fallbackFixture(), result = await generateAcademicImport(f.env, f.input, '', 'class', { level: '100', courseCodes: ['PHY 101'] });
@@ -47,21 +48,35 @@ describe('complete source-image import recovery', () => {
         expect(result.extracted.entries).toHaveLength(1);
         expect(result.extracted.entries[0]).toMatchObject({ courseCode: 'PHY101', dayOfWeek: 2 });
     });
-    it.each(['partial', 'wrong-level', 'wrong-day', 'different-headers'])('rejects %s without returning a half timetable', async (fault) => {
+    it('maps all weekday rows to the shared verified headings without comparing independent JSON clocks', async () => {
+        const f=fallbackFixture(part=>{part.row.level='100 Level';}),result=await generateAcademicImport(f.env,f.input,'','class',{level:'100'});
+        expect(result.extracted.entries.every(row=>row.startsAt==='09:00'&&row.endsAt==='10:00')).toBe(true);
+        for(const call of f.calls.slice(1)) {
+            expect(JSON.stringify(call.messages)).toContain('Do not read or return time headings again');
+            expect(JSON.stringify(call.messages)).toContain('08:00');
+        }
+    });
+    it.each(['partial', 'wrong-level', 'wrong-day', 'missing-column', 'overlap'])('rejects %s without returning a half timetable', async (fault) => {
         const f = fallbackFixture((part, day) => {
             if (day !== 2)
                 return;
-            const grid = part.grid;
+            const row = part.row;
             if (fault === 'partial')
                 part.coverage = { complete: false, daysRead: [2], rowCount: 1, uncertain: ['Tuesday'] };
             if (fault === 'wrong-level')
-                grid.rows[0].level = '200';
+                row.level = '200';
             if (fault === 'wrong-day')
-                grid.rows[0].dayOfWeek = 3;
-            if (fault === 'different-headers')
-                grid.timeSlots = [{ startsAt: '10:00', endsAt: '11:00' }, { startsAt: '11:00', endsAt: '12:00' }];
+                row.dayOfWeek = 3;
+            if (fault === 'missing-column') row.cells.pop();
+            if (fault === 'overlap') row.cells[1].from=0;
         });
         await expect(generateAcademicImport(f.env, f.input, '', 'class', { level: '100' })).rejects.toMatchObject({ reason: 'AI_INCOMPLETE_SCHEDULE' });
+    });
+    it('rejects overlapping shared headings before asking the provider for any weekday cells',async()=>{
+        const f=fallbackFixture();
+        f.env.AI.run=async(_model,request)=>{f.calls.push(request);return{response:JSON.stringify({...layout,grid:{...layout.grid,timeSlots:[slots[0],slots[0]]}})};};
+        await expect(generateAcademicImport(f.env,f.input,'','class',{level:'100'})).rejects.toMatchObject({reason:'AI_INCOMPLETE_SCHEDULE'});
+        expect(f.calls).toHaveLength(1);
     });
     it('keeps 100-level cell positions and merged durations on the real faculty image', async () => {
         const labels = { 1: ['100', 'PHY101', 'CHM101', '', '', 'GST111', '', 'MTH101', ''], 2: ['100', 'STA112', 'MTH102', 'PHY104', 'MTH102', 'CHM101', '', '', '', ''], 3: ['100', '', 'MTH101', '', 'PHY101', 'GST112', '', '', ''], 4: ['100', 'GET101/ENS211', '', 'PHY103', 'MTH102', '', '', '', '', ''], 5: ['100', 'MTH101', 'PHY104', 'STA112', 'PHY103', '', '', '', '', '', ''] };

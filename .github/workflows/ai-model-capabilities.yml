@@ -1,0 +1,30 @@
+name: Verify existing AI model capabilities
+# Uses only a fixed public arithmetic prompt; never user files or key export.
+on:
+  push:
+    branches: [fix/timetable-import-completion-20261014]
+    paths: ['.github/workflows/ai-model-capabilities.yml']
+permissions:
+  contents: read
+jobs:
+  models:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: server
+      - run: npm ci
+        working-directory: packages/contracts
+      - name: Read existing server-only model capabilities
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROBE_AI_MODELS_ONLY: 'true'
+        run: node scripts/kira-connection-check.mjs

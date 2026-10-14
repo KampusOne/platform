@@ -1,5 +1,6 @@
+import { openHostedPayment } from '@/src/lib/hosted-payment';
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, Platform, Pressable, Text, View } from "react-native";
+import { AppState, Platform, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { randomUUID } from "expo-crypto";
 import { router, useFocusEffect } from "expo-router";
@@ -556,7 +557,8 @@ function AccountSubscription() {
       if (result.amountKobo !== amount)
         throw new Error("Your checkout total changed. Reopen checkout and try again.");
       opening.current = true;
-      await Linking.openURL(result.authorizationUrl);
+      if(!user)throw new Error('Sign in before checkout.');
+      await openHostedPayment(user.id,result);
     });
   }
 

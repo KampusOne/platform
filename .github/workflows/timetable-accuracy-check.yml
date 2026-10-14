@@ -1,13 +1,18 @@
 name: Verify complete timetable extraction
 on:
   push:
-    branches: [main, fix/timetable-accuracy-credit-recovery-20261014, fix/checkout-agent-orders-upload-20261014, fix/free-image-processing-20261014]
+    branches: [main, fix/timetable-accuracy-credit-recovery-20261014, fix/checkout-agent-orders-upload-20261014, fix/free-image-processing-20261014, fix/timetable-import-completion-20261014]
     paths: ['scripts/kira-connection-check.mjs', 'scripts/fixtures/uniben-engineering-*', 'server/scripts/verify-academic-imports.ts', 'server/src/lib/ai*.ts', 'server/src/lib/timetable-*.ts', 'server/src/lib/remote-timetable-image.ts', 'server/src/lib/image-processing-auth.ts', 'portal/lib/private-timetable-image.ts', 'packages/contracts/src/timetable-pixels.ts', 'server/src/lib/academic-import*.ts', 'server/src/lib/schedule-document.ts', 'server/src/routes/ai.ts', '.github/workflows/timetable-accuracy-check.yml']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   academic:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        case: [baseline, facultyGrid200, facultyGrid100, facultyWebp100, facultyPhoto100]
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 6
@@ -29,4 +34,5 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PROBE_VERIFY_UPLOADS: 'true'
           PROBE_ACADEMIC_ONLY: 'true'
+          PROBE_ACADEMIC_CASE: ${{ matrix.case }}
         run: node scripts/kira-connection-check.mjs
