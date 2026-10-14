@@ -8,7 +8,7 @@ import { input } from "../lib/input";
 import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
 import { requireAuth, currentUser } from "../middleware/auth";
-import { aiDay, AI_AUDIO_MIME_TYPES, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, MAX_AI_DOCUMENT_BYTES, MAX_AI_TRANSCRIPTION_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, selectAIProvider, transcribeAI, transcriptionConfiguration, type AIMedia, type AITurn } from "../lib/ai-provider";
+import { aiDay, AI_AUDIO_MIME_TYPES, AI_HISTORY_DAYS, AI_MIME_TYPES, MAX_AI_MEDIA_BYTES, MAX_AI_DOCUMENT_BYTES, MAX_AI_INLINE_DOCUMENT_BYTES, MAX_AI_TRANSCRIPTION_BYTES, AIProviderError, assertAIConfiguration, generateAI, parseTimetableJSON, providerConfiguration, selectAIProvider, transcribeAI, transcriptionConfiguration, type AIMedia, type AITurn } from "../lib/ai-provider";
 import { isStudyGeneration, studentAIPolicy, studentAIUsage, studentExperienceReady } from "../lib/student-ai-policy";
 import { decodeAIText } from "../lib/ai-document";
 import { readPrivateAIPdf } from "../lib/ai-pdf-reader";
@@ -368,7 +368,7 @@ aiRoutes.post("/", async c => {
     if(!AI_MIME_TYPES.has(fileType))throw new AppError(400,'BAD_REQUEST','Use a PDF, JPEG, PNG, WebP or plain-text file for Kira.');
     const limit=['application/pdf','text/plain'].includes(fileType)?MAX_AI_DOCUMENT_BYTES:MAX_AI_MEDIA_BYTES;
     if(Number(attached.size_bytes)>limit)throw new AppError(413,'BAD_REQUEST',`Compress this file to ${limit/1024/1024} MB or less before attaching it.`);
-    if(Number(attached.size_bytes)>16*1024*1024&&!d.extractedText)throw new AppError(422,'BAD_REQUEST','Reattach this document in the updated app so Kira can read it safely.');
+    if(Number(attached.size_bytes)>MAX_AI_INLINE_DOCUMENT_BYTES&&!d.extractedText)throw new AppError(422,'BAD_REQUEST','Reattach this document in the updated app so Kira can read it safely.');
     try{assertAIConfiguration(c.env,d.mode,fileType,undefined,effectiveTier);}catch(e){if(e instanceof AIProviderError)throw providerFailure(e);throw e;}
   }
   if (d.mode === "timetable" && d.notes) {
@@ -446,7 +446,7 @@ aiRoutes.post("/", async c => {
           prompt+=addition;sourceText+=addition;
         }else{
           const obj=await c.env.PRIVATE_BUCKET!.get(attached.object_key);
-          if(!obj||obj.size>16*1024*1024)throw new AIProviderError(422,'AI_DOCUMENT_READ_REQUIRED','Reattach this file in the updated app to read its contents.');
+          if(!obj||obj.size>MAX_AI_INLINE_DOCUMENT_BYTES)throw new AIProviderError(422,'AI_DOCUMENT_READ_REQUIRED','Reattach this file in the updated app to read its contents.');
           const bytes=new Uint8Array(await obj.arrayBuffer());
           if(fileType==='application/pdf'||fileType==='text/plain'){
             let extracted: string;
@@ -463,7 +463,7 @@ aiRoutes.post("/", async c => {
       }
       if(new TextEncoder().encode(prompt+JSON.stringify(history)).length>160000)throw new AIProviderError(422,'AI_DOCUMENT_TOO_LONG','This section is too long. Ask about a smaller part of the document.');
       await consumeImport();
-      const aiInput={deadline,onProgress:progress,mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId&&!media),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:d.documentKind==='calendar'?'This import is an academic calendar. Extract dated activities and semester dates only; do not create weekly classes.':d.documentKind==='class'?'This import is a weekly class timetable. Preserve the source classification and never convert dates into class hours.':''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
+      const aiInput={deadline,onProgress:progress,mode:d.mode,prompt,requestPrompt:d.prompt,sourceDocument:Boolean(d.mediaId),systemContext:[memoryContext,d.documentKind==='exam'?examImportInstruction:d.documentKind==='calendar'?'This import is an academic calendar. Extract dated activities and semester dates only; do not create weekly classes.':d.documentKind==='class'?'This import is a weekly class timetable. Preserve the source classification and never convert dates into class hours.':''].filter(Boolean).join('\n\n'),history,tier:effectiveTier,...(media ? {media} : {})};
       const generated = isRestrictedKampusOneRequest(d.prompt)
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: selectedProvider, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'

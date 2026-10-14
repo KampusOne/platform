@@ -21,6 +21,7 @@ export type AITool = { type: "function"; function: { name: string; description: 
 export type AIToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
 export type AIMessage = { role: "system" | "user" | "assistant" | "tool"; content: unknown; tool_calls?: AIToolCall[]; tool_call_id?: string };
 export const MAX_AI_MEDIA_BYTES = 8 * 1024 * 1024;
+export const MAX_AI_INLINE_DOCUMENT_BYTES = 16 * 1024 * 1024;
 export const MAX_AI_DOCUMENT_BYTES = 100 * 1024 * 1024;
 export const MAX_AI_TRANSCRIPTION_BYTES = 8 * 1024 * 1024;
 export const AI_HISTORY_DAYS = 90;
@@ -115,7 +116,7 @@ export async function completeAI(env: AIEnvironment, input: AIInput, messages: A
     if (config.provider === 'workers-ai') {
       try {
         const alternative = providerConfiguration({ ...env, AI_TEXT_PROVIDER: 'huggingface' }, input.mode, input.media?.mimeType, undefined, input.tier);
-        const firstAttempt = alternative.configured ? (input.mode === 'timetable' ? 60000 : 45000) : budget.timeoutMs;
+        const firstAttempt = alternative.configured ? (input.mode === 'timetable' || input.sourceDocument ? 60000 : 45000) : budget.timeoutMs;
         payload = await workersAICompletion(env, input, messages, tools, budget.maxTokens, Math.min(deadline - Date.now(), firstAttempt)) as typeof payload;
       } catch (error) {
         // A native model outage must not strand the configured alternative.

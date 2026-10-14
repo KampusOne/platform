@@ -174,4 +174,12 @@ describe('complete academic import routes',()=>{
       await json(await request('/ai/requests/'+body.idempotencyKey,'GET',undefined,other),404);
     }
   });
+  it('reads a valid owned PDF above 8 MB without rejecting it as an invalid file',async()=>{
+    const original=pdfFixture(['Monday MAT 101 08:00-09:00 LT 1.']),bytes=new Uint8Array(9*1024*1024).fill(32);bytes.set(original);
+    const mediaId=crypto.randomUUID(),run=vi.fn().mockResolvedValue({response:JSON.stringify({documentType:'class_timetable',entries:[classEntry],events:[],warnings:[]})});env.AI={run};
+    await db.query("insert into public.media_objects(id,owner_user_id,kind,object_key,content_type,size_bytes,original_name) values($1,$2,'resource',$3,'application/pdf',$4,'schedule.pdf')",[mediaId,owner,'private-'+mediaId,bytes.byteLength]);
+    env.PRIVATE_BUCKET={get:async()=>({size:bytes.byteLength,arrayBuffer:async()=>bytes.slice().buffer})} as unknown as R2Bucket;
+    const result=await json(await request('/ai','POST',{mode:'timetable',documentKind:'class',prompt:'',mediaId,idempotencyKey:crypto.randomUUID(),consent:true}));
+    expect(result.entries[0]).toMatchObject({courseCode:'MAT 101',startsAt:'08:00'});expect(run).toHaveBeenCalledTimes(1);
+  });
 });

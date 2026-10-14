@@ -44,7 +44,7 @@ function OwnedBankAccount() {
   useEffect(() => {
     if (!showForm || !providerAvailable || banks.length) return;
     let active = true; setBanksLoading(true);
-    void api<{ banks: Bank[] }>('/v1/payout-setup/banks').then(result => { if (active && alive.current) { setBanksLoading(false); setBanks(result.banks); } })
+    void api<{ banks: Bank[] }>('/v1/payout-setup/banks').then(result => { if (!Array.isArray(result.banks)) throw new Error('The bank list could not be read. Please retry.'); if (active && alive.current) { setBanksLoading(false); setBanks(result.banks); } })
       .catch(e => { if (active && alive.current) setError(e.message); })
       .finally(() => { if (active && alive.current) setBanksLoading(false); });
     return () => { active = false; };
@@ -94,7 +94,7 @@ function OwnedBankAccount() {
   return <ToolPage title="Bank account">
     {error ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}><Text accessibilityRole="alert" style={{ ...text, color: theme.error, flex: 1 }}>{error}</Text><RetryIconButton label="Retry bank details" disabled={busy || looking} onPress={() => { setError(''); setLookupAttempt(v => v + 1); setBankAttempt(v => v + 1); void load().catch(e => { if (alive.current) setError(e.message); }); }} /></View> : null}
     {notice ? <Text accessibilityLiveRegion="polite" style={{ ...muted, marginBottom: 16 }}>{notice}</Text> : null}
-    {!ready ? <Text style={muted}>Loading bank details…</Text> : !profiles.length ? <Text style={text}>An approved agent profile is required.</Text> : <>
+    {!ready ? <Text style={muted}>Loading bank details…</Text> : !profiles.length ? (error ? null : <Text style={text}>An approved agent profile is required.</Text>) : <>
       {profiles.length > 1 ? <View style={{ flexDirection: 'row', gap: 20, marginBottom: 18 }}>{profiles.map(p => <Pressable key={p.id} accessibilityRole="radio" accessibilityState={{ checked: p.id === profileId }} disabled={busy} onPress={() => { clearForm(); setEditing(false); setProfileId(p.id); }} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ ...text, color: p.id === profileId ? theme.deepBrand : theme.textMuted }}>{p.display_name}</Text></Pressable>)}</View> : null}
       {profile?.account && !editing ? <View style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 14, padding: 18, backgroundColor: theme.surface, gap: 6 }}>
         <Text style={{ ...text, fontFamily: theme.font.semibold, fontSize: 16 }}>{profile.account.bank_name || 'Saved bank account'}</Text><Text style={muted}>•••• {profile.account.account_last4}</Text><Text style={{ ...text, marginTop: 8 }}>{profile.account.account_name}</Text><Text style={muted}>{statusLabel[profile.account.status] ?? 'Account saved'}</Text>

@@ -186,7 +186,7 @@ if(process.argv.includes('--self-test')) {
     }
     if(process.env.PROBE_VERIFY_UPLOADS==='true'&&process.env.PROBE_BANKS_ONLY!=='true') {
       if(!Array.isArray(result.academicImports)||result.academicImports.length!==4)throw new Error('Missing academic extraction proofs');
-      for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes}, events ${item.events}; ${item.elapsedMs}ms`);if(item.outcome!=='extraction_succeeded')process.exitCode=1;}
+      for(const item of result.academicImports){report(`Academic ${item.name}: ${item.outcome}; rows ${item.classes}, events ${item.events}; ${item.elapsedMs}ms${/^AI_[A-Z_]+$/.test(item.reason??'')?`; ${item.reason}`:''}`);if(item.outcome!=='extraction_succeeded')process.exitCode=1;}
     }
     if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
     report(process.env.PROBE_BANKS_ONLY==='true'?'Bank lookup and capability check only. No transfers, payouts, credential export or application writes. Preview expires after three minutes.':'No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');
