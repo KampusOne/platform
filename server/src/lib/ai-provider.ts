@@ -11,7 +11,6 @@ export type AITier = "standard" | "pro";
 export type AIProvider = "huggingface" | "workers-ai" | "gemini" | "groq" | "gateway";
 export type AIEnvironment = WorkersAIEnvironment & {
   JWT_SECRET?:string; TIMETABLE_IMAGE_PROCESSOR_URL?:string;
-  AI_GATEWAY_FALLBACK_ENABLED?:string;
   AI_ASSISTANT_ENABLED?: string; HF_TOKEN?: string; HF_CHAT_MODEL?: string;
   HF_REASONING_MODEL?: string; HF_VISION_MODEL?: string; HF_PRO_MODEL?: string; HF_TRANSCRIPTION_MODEL?: string;
   HF_TRANSCRIPTION_FALLBACK_MODEL?: string;

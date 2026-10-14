@@ -46,9 +46,10 @@ describe('bounded private academic fallback',()=>{
   it('requires configured server identity and the fallback switch',async()=>{
     const calls=vi.fn<typeof fetch>(),input={mode:'timetable' as const,prompt:'Read',deadline:Date.now()+150000};
     await expect(gatewayAcademicCompletion({},input,[],4096,60000,calls)).rejects.toMatchObject({reason:'AI_NOT_CONFIGURED'});expect(calls).not.toHaveBeenCalled();
+    await expect(gatewayAcademicCompletion({AI_ASSISTANT_ENABLED:'false',JWT_SECRET:secret,TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image'},input,[],4096,60000,calls)).rejects.toMatchObject({reason:'AI_NOT_CONFIGURED'});expect(calls).not.toHaveBeenCalled();
   });
   it('recovers after primary limits using one signed request and the same deadline',async()=>{
-    const env:AIEnvironment={AI_ASSISTANT_ENABLED:'true',AI_GATEWAY_FALLBACK_ENABLED:'true',JWT_SECRET:secret,TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image',
+    const env:AIEnvironment={AI_ASSISTANT_ENABLED:'true',JWT_SECRET:secret,TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image',
       AI:{run:vi.fn().mockRejectedValue(new Error('4006 daily allocation'))},HF_TOKEN:'PRIVATE_HF',HF_CHAT_MODEL:'test/chat',HF_VISION_MODEL:'test/vision',GROQ_API_KEY:'PRIVATE_GROQ',GEMINI_API_KEY:'PRIVATE_GEMINI'};
     const calls=vi.fn<typeof fetch>().mockImplementation(async(target,init)=>{
       if(String(target)===url){const request=new Request(String(target),init);request.headers.set('x-vercel-oidc-token','PRIVATE_OIDC');return privateAcademicInference(request,getKey,fetcher());}
@@ -57,11 +58,11 @@ describe('bounded private academic fallback',()=>{
     const deadline=Date.now()+150000,generated=await generateAI(env,{mode:'timetable',prompt:'Read',history:[{prompt:'PRIVATE_HISTORY',text:'PRIVATE_ANSWER'}],media:{mimeType:'image/png',data:'YQ=='},deadline},calls);
     expect(generated.provider).toBe('gateway');expect(JSON.parse(generated.text)).toEqual({visible:true});
     const gateways=calls.mock.calls.filter(([target])=>String(target)===url);expect(gateways).toHaveLength(1);
-    const sent=JSON.parse(String(gateways[0]![1]!.body));expect(sent.maxTokens).toBe(4096);expect(sent.timeoutMs).toBeLessThanOrEqual(deadline-Date.now()+1000);
+    const sent=JSON.parse(String(gateways[0]![1]!.body));expect(gateways[0]![1]!.redirect).toBe('manual');expect(sent.maxTokens).toBe(4096);expect(sent.timeoutMs).toBeLessThanOrEqual(deadline-Date.now()+1000);
     expect(JSON.stringify(sent)).not.toMatch(/PRIVATE_HISTORY|PRIVATE_ANSWER|PRIVATE_GROQ|PRIVATE_GEMINI/);expect(sent.messages).toHaveLength(2);
   });
   it('cannot accept truncated output or start an expired fallback',async()=>{
-    const env={AI_GATEWAY_FALLBACK_ENABLED:'true',JWT_SECRET:secret,TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image'},calls=vi.fn<typeof fetch>().mockResolvedValue(result('length'));
+    const env={AI_ASSISTANT_ENABLED:'true',JWT_SECRET:secret,TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image'},calls=vi.fn<typeof fetch>().mockResolvedValue(result('length'));
     await expect(gatewayAcademicCompletion(env,{mode:'timetable',prompt:'Read'},[],2048,60000,calls)).rejects.toMatchObject({reason:'AI_INCOMPLETE'});
     calls.mockClear();await expect(gatewayAcademicCompletion(env,{mode:'timetable',prompt:'Read',deadline:Date.now()-1},[],2048,60000,calls)).rejects.toMatchObject({reason:'AI_TIMEOUT'});expect(calls).not.toHaveBeenCalled();
   });

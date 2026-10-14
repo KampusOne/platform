@@ -38,7 +38,6 @@ export type Bindings = {
   DATABASE_URL?: string;
   JWT_SECRET?: string;
   TIMETABLE_IMAGE_PROCESSOR_URL?:string;
-  AI_GATEWAY_FALLBACK_ENABLED?:string;
   OTP_PEPPER?: string;
   BUNNY_STREAM_API_KEY?:string;
   BUNNY_STREAM_LIBRARY_ID?:string;

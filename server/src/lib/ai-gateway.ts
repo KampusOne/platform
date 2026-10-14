@@ -5,7 +5,7 @@ import {academicInferenceAudience,imageProcessingToken} from './image-processing
 const processor='https://agents.kampusone.app/internal-processing/timetable-image';
 const relay='https://agents.kampusone.app/internal-processing/academic-inference';
 export function academicGatewayConfigured(env:AIEnvironment) {
-  return env.AI_GATEWAY_FALLBACK_ENABLED==='true'&&env.TIMETABLE_IMAGE_PROCESSOR_URL===processor&&!!env.JWT_SECRET&&env.JWT_SECRET.length>=32;
+  return env.AI_ASSISTANT_ENABLED==='true'&&env.TIMETABLE_IMAGE_PROCESSOR_URL===processor&&!!env.JWT_SECRET&&env.JWT_SECRET.length>=32;
 }
 /** Recovery only, using the original quota reservation and overall deadline. */
 export async function gatewayAcademicCompletion(env:AIEnvironment,input:AIInput,messages:AIMessage[],maxTokens:number,timeoutMs:number,fetcher:typeof fetch=fetch) {
@@ -19,8 +19,12 @@ export async function gatewayAcademicCompletion(env:AIEnvironment,input:AIInput,
   if(new TextEncoder().encode(body).byteLength>4_200_000)throw new AIProviderError(503,'AI_PROVIDER_UNAVAILABLE','The complete image could not be read. Your original file is kept.');
   const authorization=await imageProcessingToken(env.JWT_SECRET!,body,academicInferenceAudience);
   let response:Response;
-  try {response=await fetcher(relay,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+authorization},body,redirect:'error',signal:AbortSignal.timeout(Math.max(1,deadline-Date.now()))});}
-  catch(error){throw new AIProviderError(error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)?504:503,error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)?'AI_TIMEOUT':'AI_PROVIDER_UNAVAILABLE','The reader could not finish. Your full file is kept; no import credit was used.');}
+  try {response=await fetcher(relay,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+authorization},body,redirect:'manual',signal:AbortSignal.timeout(Math.max(1,deadline-Date.now()))});}
+  catch(error){
+    console.warn(JSON.stringify({event:'ai.academic.gateway_transport_failed',timedOut:error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)}));
+    input.onProviderFailure?.({provider:'gateway',status:0,hint:'transport'});
+    throw new AIProviderError(error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)?504:503,error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)?'AI_TIMEOUT':'AI_PROVIDER_UNAVAILABLE','The reader could not finish. Your full file is kept; no import credit was used.');
+  }
   if(!response.ok){
     await response.body?.cancel().catch(()=>undefined);
     input.onProviderFailure?.({provider:'gateway',status:response.status,hint:[402,429].includes(response.status)?'service_limit':'unclassified'});

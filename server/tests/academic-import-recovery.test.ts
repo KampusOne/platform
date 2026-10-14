@@ -24,7 +24,7 @@ describe('one-import private cell transcription',{timeout:30000},()=>{
     const full={documentType:'academic_calendar',entries:[],events:[{title:'Exams',startsOn:'2026-11-05',endsOn:'2026-11-09',semester:''}],warnings:[],coverage:{complete:true,daysRead:[],rowCount:1,uncertain:[]}};
     vi.mocked(generateAI).mockResolvedValueOnce({text:JSON.stringify({...full,coverage:{...full.coverage,complete:false}}),provider:'groq'})
       .mockResolvedValueOnce({text:JSON.stringify(full),provider:'gateway'});
-    const deadline=Date.now()+150000,env={AI_GATEWAY_FALLBACK_ENABLED:'true',JWT_SECRET:'test-secret-'.repeat(4),TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image'};
+    const deadline=Date.now()+150000,env={AI_ASSISTANT_ENABLED:'true',JWT_SECRET:'test-secret-'.repeat(4),TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image'};
     const result=await generateAcademicImport(env,{mode:'timetable',prompt:'Read all dates',deadline},'','calendar');
     expect(result.provider).toBe('gateway');expect(result.extracted.events).toHaveLength(1);expect(generateAI).toHaveBeenCalledTimes(2);
     expect(vi.mocked(generateAI).mock.calls[1]![1]).toMatchObject({provider:'gateway',deadline,prompt:'Read all dates'});
@@ -32,7 +32,7 @@ describe('one-import private cell transcription',{timeout:30000},()=>{
   it('never loops or returns a partial calendar when the independent reread is incomplete',async()=>{
     const partial={documentType:'academic_calendar',entries:[],events:[],warnings:[],coverage:{complete:false,daysRead:[],rowCount:0,uncertain:[]}};
     vi.mocked(generateAI).mockResolvedValue({text:JSON.stringify(partial),provider:'gateway'});
-    const env={AI_GATEWAY_FALLBACK_ENABLED:'true',JWT_SECRET:'test-secret-'.repeat(4),TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image'};
+    const env={AI_ASSISTANT_ENABLED:'true',JWT_SECRET:'test-secret-'.repeat(4),TIMETABLE_IMAGE_PROCESSOR_URL:'https://agents.kampusone.app/internal-processing/timetable-image'};
     await expect(generateAcademicImport(env,{mode:'timetable',prompt:'Read',deadline:Date.now()+150000},'','calendar')).rejects.toMatchObject({reason:'AI_INCOMPLETE_SCHEDULE'});
     expect(generateAI).toHaveBeenCalledTimes(1);
   });
