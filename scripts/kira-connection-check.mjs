@@ -5,9 +5,11 @@ import {createRequire} from 'node:module';
 // An expiring, token-protected preview; never a production route or user prompt.
 export async function probe(request, env, readPrivateAIPdf, verifyAcademicImports) {
   const supplied=request.headers.get('x-probe-token')??'', expiry=Number(env.PROBE_EXPIRES_AT);
-  if(request.method!=='POST'||new URL(request.url).pathname!=='/__kira_probe'||!/^[a-f0-9]{64}$/.test(supplied)||!/^[a-f0-9]{64}$/.test(env.PROBE_TOKEN??'')||!Number.isFinite(expiry)||expiry<=Date.now()||expiry>Date.now()+240000)return new Response(null,{status:404});
+  const path=new URL(request.url).pathname;
+  if(request.method!=='POST'||!['/__kira_probe','/__kira_probe_ready'].includes(path)||!/^[a-f0-9]{64}$/.test(supplied)||!/^[a-f0-9]{64}$/.test(env.PROBE_TOKEN??'')||!Number.isFinite(expiry)||expiry<=Date.now()||expiry>Date.now()+240000)return new Response(null,{status:404});
   let difference=0;for(let i=0;i<64;i++)difference|=supplied.charCodeAt(i)^env.PROBE_TOKEN.charCodeAt(i);
   if(difference)return new Response(null,{status:404});
+  if(path==='/__kira_probe_ready')return Response.json({kind:'kampusone-kira-probe-ready'},{headers:{'Cache-Control':'no-store'}});
   if(env.PROBE_ACADEMIC_ONLY==='true')return Response.json({kind:'kampusone-kira-probe-v1',academicImports:await verifyAcademicImports(env,{printedImage:env.PROBE_TIMETABLE_PNG,handwriting:env.PROBE_HANDWRITING.pngBase64,calendarPdf:env.PROBE_CALENDAR_PDF,facultyImage:env.PROBE_FACULTY_JPEG,facultyWebp:env.PROBE_FACULTY_WEBP})},{headers:{'Cache-Control':'no-store'}});
   const messages=[{role:'system',content:'Answer briefly and accurately.'},{role:'user',content:"State Ohm's law in one sentence."}];
   const modelCheck=async(model,image)=>{
@@ -169,6 +171,15 @@ if(process.argv.includes('--self-test')) {
     stage='preview upload';
     const preview=await cf('/workers/scripts/platformp/edge-preview',{method:'POST',body:form,headers:{'cf-preview-upload-config-token':sessionToken}});
     if(typeof preview.preview_token!=='string')throw new Error('Missing preview token');
+    // Preview compilation can briefly return 503 after adding a WASM module.
+    // Retry ONLY token-protected readiness, without model or payment I/O.
+    stage='preview readiness';
+    for(let attempt=0;attempt<4;attempt++) {
+      const ready=await fetchSafe(`https://${host}/__kira_probe_ready`,{method:'POST',probeTimeoutMs:20000,headers:{'cf-workers-preview-token':preview.preview_token,'x-probe-token':probeToken}});
+      if(ready.ok&&(await ready.json()).kind==='kampusone-kira-probe-ready')break;
+      if(ready.status!==503||attempt===3)throw new Error(`HTTP ${ready.status}`);
+      await ready.body?.cancel();await new Promise(resolve=>setTimeout(resolve,1000));
+    }
     stage='live inference';
     const r=await fetchSafe(`https://${host}/__kira_probe`,{method:'POST',probeTimeoutMs:180000,headers:{'cf-workers-preview-token':preview.preview_token,'x-probe-token':probeToken}});
     if(!r.ok){const body=await r.text();const code=/error(?: code)?[\s:]+(\d{4})/i.exec(body)?.[1];const hint=/memory/i.test(body)?'memory':/CPU/.test(body)?'cpu':/WebAssembly|wasm/i.test(body)?'wasm':'unclassified';throw new Error(`HTTP ${r.status}${code?' edge code '+code:''}; ${hint}`);}
@@ -200,6 +211,6 @@ if(process.argv.includes('--self-test')) {
     if(process.env.PROBE_METADATA_ONLY!=='true'&&process.env.PROBE_BANKS_ONLY!=='true'&&(result.standard.outcome!=='generation_succeeded'||result.pro.outcome!=='generation_succeeded'))process.exitCode=1;
     report(process.env.PROBE_BANKS_ONLY==='true'?'Bank lookup and capability check only. No transfers, payouts, credential export or application writes. Preview expires after three minutes.':'No production route, credential export, account data or application write. Extended verification creates one unpaid BACHS checkout that expires in two minutes; no charge. Preview expires after three minutes.');
     }
-  }catch(error){report(`CHECK FAILED at ${stage}: ${/^HTTP [1-5][0-9]{2}$/.test(error?.message??'')?error.message:'raw error withheld'}`);process.exitCode=1;}
+  }catch(error){report(`CHECK FAILED at ${stage}: ${/^HTTP [1-5][0-9]{2}(?:(?: edge code [0-9]{4})?; (?:memory|cpu|wasm|unclassified))?$/.test(error?.message??'')?error.message:'raw error withheld'}`);process.exitCode=1;}
   finally{if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,lines.join('\n')+'\n');}
 }
