@@ -7,9 +7,11 @@ import styles from "./agent-intake.module.css";
 export function AgentRoleChoices({
   value,
   onChange,
+  disabledValues = [],
 }: {
   value: string;
   onChange(value: string): void;
+  disabledValues?: string[];
 }) {
   const roles = [
     {
@@ -42,6 +44,7 @@ export function AgentRoleChoices({
               name="agentType"
               value={role.value}
               checked={value === role.value}
+              disabled={disabledValues.includes(role.value)}
               onChange={() => onChange(role.value)}
             />
             <Image

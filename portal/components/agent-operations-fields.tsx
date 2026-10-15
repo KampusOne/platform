@@ -96,11 +96,13 @@ export function AgentOperationsFields({
   onChange,
   errors = {},
   offerLabel = "What products or services do you offer?",
+  offerPlaceholder = "e.g. Fresh meals, groceries or printing",
 }: {
   value: AgentOperations;
   onChange(value: AgentOperations): void;
   errors?: Record<string, string>;
   offerLabel?: string;
+  offerPlaceholder?: string;
 }) {
   const update = (key: keyof AgentOperations, answer: string | string[]) =>
     onChange({ ...value, [key]: answer });
@@ -166,7 +168,7 @@ export function AgentOperationsFields({
         <input
           value={value.primaryOffer}
           maxLength={200}
-          placeholder="e.g. Fresh meals, groceries or printing"
+          placeholder={offerPlaceholder}
           onChange={(event) => update("primaryOffer", event.target.value)}
           aria-invalid={Boolean(errors.primaryOffer)}
         />

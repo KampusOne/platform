@@ -103,6 +103,8 @@ jobs:
           fi
       - name: Guard transactional commerce notification migration
         run: node server/scripts/verify-schema-proof.mjs commerceNotifications
+      - name: Guard Exclusive agent role migration
+        run: node server/scripts/verify-schema-proof.mjs exclusiveRoles
       - name: Verify required production secret names
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

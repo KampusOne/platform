@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 
 import { AccessGate } from "@/components/access-gate";
-import { TrustedVendorApplication } from "@/components/trusted-vendor-application";
+import { ExclusiveAgentApplication } from "@/components/trusted-vendor-application";
 
 export default async function ExclusiveCampaignPage() {
   // Resolve before rendering a Suspense boundary so disabled campaigns send HTTP 404.
@@ -25,7 +25,7 @@ export default async function ExclusiveCampaignPage() {
   return (
     <AccessGate surface="agents">
       <Suspense fallback={<p>Opening Exclusive onboarding…</p>}>
-        <TrustedVendorApplication />
+        <ExclusiveAgentApplication />
       </Suspense>
     </AccessGate>
   );

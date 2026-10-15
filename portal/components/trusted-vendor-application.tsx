@@ -6,7 +6,7 @@ import { usePortalAuth } from "./auth-provider";
 import { portalApi } from "@/lib/api";
 import { PhoneField, BirthDateField } from "./intake-fields";
 import { normalizeIntakePhone } from "@/lib/intake-phone";
-import { AgentApplicationIllustration } from "./agent-illustrations";
+import { AgentApplicationIllustration, AgentRoleChoices } from "./agent-illustrations";
 import { AgentIntakeShell } from "./agent-intake-shell";
 import {
   AgentOperationsFields,
@@ -16,7 +16,9 @@ import {
 } from "./agent-operations-fields";
 import styles from "./agent-intake.module.css";
 
-type VendorDraft = {
+type AgentType = "VENDOR" | "TUTOR" | "RIDER";
+type AgentDraft = {
+  agentType: AgentType | "";
   businessName: string;
   legalName: string;
   address: string;
@@ -30,7 +32,8 @@ type VendorDraft = {
   acquisitionOther: string;
   operations: AgentOperations;
 };
-const blank: VendorDraft = {
+const blank: AgentDraft = {
+  agentType: "",
   businessName: "",
   legalName: "",
   address: "",
@@ -56,11 +59,15 @@ const categories = [
 ];
 const steps = [
   "Your contact details",
-  "Your business",
+  "Your work",
   "How you work",
   "Review & submit",
 ];
-type ExclusiveContext = { university_name: string; application_id: string | null };
+type ExclusiveContext = {
+  university_name: string;
+  applications: { id: string; agent_type: AgentType; status: string }[];
+};
+const roleLabels = { VENDOR: "Vendor", TUTOR: "Tutor", RIDER: "Rider" };
 
 function ageOnDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 0;
@@ -81,15 +88,15 @@ function ageOnDate(value: string) {
   return age;
 }
 
-export function TrustedVendorApplication() {
+export function ExclusiveAgentApplication() {
   const { user } = usePortalAuth();
-  return <TrustedVendorForm key={user?.id ?? "anonymous"} />;
+  return <ExclusiveAgentForm key={user?.id ?? "anonymous"} />;
 }
 
-function TrustedVendorForm() {
+function ExclusiveAgentForm() {
   const { user } = usePortalAuth();
   const [context, setContext] = useState<ExclusiveContext | null>(null);
-  const [draft, setDraft] = useState<VendorDraft>(blank);
+  const [draft, setDraft] = useState<AgentDraft>(blank);
   const [draftKey, setDraftKey] = useState("");
   const [step, setStep] = useState(0);
   const [whatsappSame, setWhatsappSame] = useState(true);
@@ -103,9 +110,15 @@ function TrustedVendorForm() {
   const [saved, setSaved] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
 
-  function update<K extends keyof VendorDraft>(
+  const vendor = draft.agentType === "VENDOR";
+  const tutor = draft.agentType === "TUTOR";
+  const roleLabel = draft.agentType ? roleLabels[draft.agentType] : "agent";
+  const nameLabel = vendor ? "Business name" : tutor ? "Tutor or teaching name" : "Rider or delivery service name";
+  const addressLabel = vendor ? "Business or pickup address" : tutor ? "Teaching or contact address" : "Base or pickup address";
+
+  function update<K extends keyof AgentDraft>(
     field: K,
-    value: VendorDraft[K],
+    value: AgentDraft[K],
   ) {
     setDraft((current) => ({
       ...current,
@@ -121,19 +134,22 @@ function TrustedVendorForm() {
       const response = await portalApi<{ context: ExclusiveContext }>(
         "/v1/trusted-vendors/context",
       );
-      const key = `k1.exclusive.v3.${user.id}`;
-      let restored: Partial<VendorDraft> = {},
+      const key = `k1.exclusive.v4.${user.id}`;
+      let restored: Partial<AgentDraft> = {},
         restoredStep = 0,
         restoredWhatsappSame = true;
       try {
-        const raw = sessionStorage.getItem(key);
+        const current = sessionStorage.getItem(key);
+        const raw = current ?? sessionStorage.getItem(`k1.exclusive.v3.${user.id}`);
         if (raw) {
           const stored = JSON.parse(raw) as {
-            draft?: Partial<VendorDraft>;
+            draft?: Partial<AgentDraft>;
             step?: number;
             whatsappSame?: boolean;
           };
           restored = stored.draft ?? {};
+          // Earlier drafts were explicitly vendor applications. Preserve them.
+          if (!current) restored.agentType = "VENDOR";
           restoredStep = Math.min(3, Math.max(0, Number(stored.step ?? 0)));
           restoredWhatsappSame = stored.whatsappSame !== false;
         }
@@ -142,7 +158,11 @@ function TrustedVendorForm() {
       }
       if (!active) return;
       setContext(response.context);
-      setSubmitted(Boolean(response.context.application_id));
+      const existing = response.context.applications.some(a => a.agent_type === restored.agentType);
+      if (existing || !["VENDOR", "TUTOR", "RIDER"].includes(restored.agentType ?? "")) {
+        restored = {};
+        restoredStep = 0;
+      }
       setDraft({
         ...blank,
         ...restored,
@@ -185,11 +205,13 @@ function TrustedVendorForm() {
   function validate(currentStep: number) {
     const errors: Record<string, string> = {};
     if (currentStep === 0) {
+      if (!["VENDOR", "TUTOR", "RIDER"].includes(draft.agentType))
+        errors.agentType = "Choose Vendor, Tutor or Rider.";
       if (draft.legalName.trim().length < 2)
         errors.legalName = "Enter your name.";
       const age = ageOnDate(draft.birth);
       if (age < 18 || age > 110)
-        errors.birth = "Invited business representatives must be at least 18.";
+        errors.birth = "Exclusive agents must be at least 18.";
       if (!/^\+234[789]\d{9}$/.test(draft.phone))
         errors.phone = "Enter a valid Nigerian mobile number.";
       if (!whatsappSame && !/^\+234[789]\d{9}$/.test(draft.whatsapp))
@@ -197,19 +219,19 @@ function TrustedVendorForm() {
     }
     if (currentStep === 1) {
       if (draft.businessName.trim().length < 2)
-        errors.businessName = "Enter your business name.";
-      if (!categories.includes(draft.category))
+        errors.businessName = `Enter your ${vendor ? "business" : "public profile"} name.`;
+      if (vendor && !categories.includes(draft.category))
         errors.category = "Choose a business category.";
       if (draft.campus.trim().length < 2)
         errors.campus = "Choose or enter the campus you serve.";
       if (draft.address.trim().length < 10)
-        errors.address = "Enter your business or pickup address.";
+        errors.address = `Enter your ${addressLabel.toLowerCase()}.`;
     }
     if (currentStep === 2)
       Object.assign(errors, validateOperations(draft.operations));
     if (currentStep === 3) {
       if (!authorized)
-        errors.authorized = "Confirm that you represent this business.";
+        errors.authorized = "Confirm that you can provide these products or services.";
       if (!terms) errors.terms = "Accept the agent terms to submit.";
     }
     setFieldErrors(errors);
@@ -246,16 +268,17 @@ function TrustedVendorForm() {
     try {
       const operations = draft.operations;
       const description = `${operations.primaryOffer.trim()}. ${operations.joiningReason}. Available ${operations.serviceDays.join(", ")} from ${operations.openingTime} to ${operations.closingTime}. Support: ${operations.supportChannel}, ${operations.responseTime.toLowerCase()}.`;
-      await portalApi("/v1/trusted-vendors/submit", {
+      const response = await portalApi<{ id: string; status: string }>("/v1/trusted-vendors/submit", {
         method: "POST",
         body: JSON.stringify({
           requestId: draft.request,
+          agentType: draft.agentType,
           businessName: draft.businessName.trim(),
           legalName: draft.legalName.trim(),
           birthDate: draft.birth,
           description,
           address: draft.address.trim(),
-          category: draft.category,
+          category: vendor ? draft.category : tutor ? "Tutoring" : "Delivery",
           campus: draft.campus.trim(),
           phone: draft.phone,
           whatsapp: whatsappSame ? draft.phone : draft.whatsapp,
@@ -265,6 +288,10 @@ function TrustedVendorForm() {
           terms: true,
         }),
       });
+      setContext(current => current && ({ ...current, applications: [
+        ...current.applications,
+        { id: response.id, agent_type: draft.agentType as AgentType, status: response.status },
+      ] }));
       setSubmitted(true);
     } catch (caught) {
       setError(
@@ -310,8 +337,8 @@ function TrustedVendorForm() {
 
   return (
     <AgentIntakeShell
-      title="Your Exclusive business profile"
-      description="Tell us about your business and how you serve students. The shared Exclusive campaign link takes you through a simple question based application."
+      title="Your Exclusive agent profile"
+      description="Join as a vendor, tutor or rider. Choose your role and answer a few questions about how you serve students."
     >
       <section className={`application-form ${styles.exclusiveCard}`}>
         {error && !context ? (
@@ -338,10 +365,10 @@ function TrustedVendorForm() {
             <span />
             <span />
           </div>
-        ) : submitted ? (
+        ) : submitted || context.applications.length === 3 ? (
           <section className="application-success" role="status">
             <AgentApplicationIllustration complete />
-            <h2>We have your business profile</h2>
+            <h2>{submitted ? `We have your ${roleLabel.toLowerCase()} profile` : "Your agent applications are submitted"}</h2>
             <p>
               Our team will review your answers and contact you through your
               KampusOne email. You can check the decision in your applications.
@@ -349,6 +376,15 @@ function TrustedVendorForm() {
             <Link className="button button--primary" href="/agents">
               View application status
             </Link>
+            {context.applications.length < 3 && (
+              <button type="button" className="button button--secondary" onClick={() => {
+                setDraft({ ...blank, request: crypto.randomUUID() });
+                setTerms(false);
+                setAuthorized(false);
+                setSubmitted(false);
+                goTo(0);
+              }}>Apply for another role</button>
+            )}
           </section>
         ) : (
           <form
@@ -385,9 +421,9 @@ function TrustedVendorForm() {
               </h2>
               <p className="field-help">
                 {step === 0
-                  ? "A real person we can contact about this business."
+                  ? "Choose your agent role and tell us how to contact you."
                   : step === 1
-                    ? "Details students will use to find your business."
+                    ? "Details students will use to find your products or services."
                     : step === 2
                       ? "Choose the options that match your usual service."
                       : "Check everything before sending your application."}
@@ -401,9 +437,20 @@ function TrustedVendorForm() {
             <fieldset className="wizard-step" disabled={busy}>
               {step === 0 && (
                 <>
+                  {context.applications.length > 0 && (
+                    <div className="workspace-notice" role="status">
+                      <p>Your applications: {context.applications.map(a => `${roleLabels[a.agent_type]} (${a.status.toLowerCase().replaceAll("_", " ")})`).join(", ")}.</p>
+                      <Link href="/agents">View application status</Link>
+                    </div>
+                  )}
+                  <AgentRoleChoices value={draft.agentType} onChange={value => {
+                    update("agentType", value as AgentType);
+                    update("category", "");
+                  }} disabledValues={context.applications.map(a => a.agent_type)} />
+                  {fieldErrors.agentType && <span className="field-error" role="alert">{fieldErrors.agentType}</span>}
                   {text(
                     "legalName",
-                    "Representative name",
+                    "Full name",
                     "e.g. Osas Egharevba",
                   )}
                   <BirthDateField
@@ -442,10 +489,10 @@ function TrustedVendorForm() {
               )}
               {step === 1 && (
                 <>
-                  {text("businessName", "Business name", "e.g. Osas Kitchen")}
+                  {text("businessName", nameLabel, vendor ? "e.g. Osas Kitchen" : tutor ? "e.g. Osas Maths Tutorials" : "e.g. Osas Deliveries")}
                   <label>Where did you hear about KampusOne? <span>optional</span><select value={draft.acquisition} onChange={event=>update("acquisition",event.target.value)}><option value="">Choose an option</option>{["FACEBOOK","TIKTOK","WHATSAPP","INSTAGRAM","FRIENDS","OTHER"].map(value=><option key={value} value={value}>{({FACEBOOK:"Facebook",TIKTOK:"TikTok",WHATSAPP:"WhatsApp",INSTAGRAM:"Instagram",FRIENDS:"Friends",OTHER:"Other"} as Record<string,string>)[value]}</option>)}</select></label>
                   {draft.acquisition==="OTHER"&&text("acquisitionOther","Tell us where","How you found KampusOne")}
-                  <label>
+                  {vendor && <label>
                     Business category
                     <select
                       value={draft.category}
@@ -464,7 +511,7 @@ function TrustedVendorForm() {
                         {fieldErrors.category}
                       </span>
                     )}
-                  </label>
+                  </label>}
                   {text(
                     "campus",
                     "Campus or service area",
@@ -473,8 +520,8 @@ function TrustedVendorForm() {
                   )}
                   {text(
                     "address",
-                    "Business or pickup address",
-                    "e.g. June 12 shopping complex, Ugbowo",
+                    addressLabel,
+                    vendor ? "e.g. June 12 shopping complex, Ugbowo" : "e.g. 12 Uselu Road, Benin City",
                     500,
                   )}
                 </>
@@ -484,19 +531,23 @@ function TrustedVendorForm() {
                   value={draft.operations}
                   onChange={(value) => update("operations", value)}
                   errors={fieldErrors}
+                  offerLabel={vendor ? "What products or services do you offer?" : tutor ? "Which courses or subjects do you teach?" : "What delivery services and areas do you cover?"}
+                  offerPlaceholder={vendor ? "e.g. Fresh meals, groceries or printing" : tutor ? "e.g. 100-level maths and physics, online or on campus" : "e.g. Food and parcel deliveries around Ugbowo"}
                 />
               )}
               {step === 3 && (
                 <>
                   <div className={styles.reviewCard}>
                     <dl className="application-review">
-                      <dt>Representative</dt>
+                      <dt>Agent role</dt>
+                      <dd>{roleLabel}</dd>
+                      <dt>Full name</dt>
                       <dd>
                         {draft.legalName} · {draft.phone}
                       </dd>
-                      <dt>Business</dt>
+                      <dt>{nameLabel}</dt>
                       <dd>
-                        {draft.businessName} · {draft.category}
+                        {draft.businessName}{vendor ? ` · ${draft.category}` : ""}
                       </dd>
                       <dt>Campus / address</dt>
                       <dd>
@@ -522,12 +573,12 @@ function TrustedVendorForm() {
                   <details>
                     <summary>Agent terms</summary>
                     <p className="field-help">
-                      Provide accurate business and contact details, follow
-                      campus rules, fulfil orders as agreed and respond to
-                      customers. Approval is reviewed by our team. Store access
+                      Provide accurate profile and contact details, follow
+                      campus rules, provide products or services as agreed and respond to
+                      customers. Approval is reviewed by our team. Agent access
                       and payout eligibility are separate; withdrawals require
                       verified bank details. This Exclusive campaign application
-                      applies only to this business and account.
+                      applies to your selected agent role and account.
                     </p>
                   </details>
                   <label className="checkbox">
@@ -536,7 +587,7 @@ function TrustedVendorForm() {
                       checked={authorized}
                       onChange={(event) => setAuthorized(event.target.checked)}
                     />
-                    I am at least 18 and authorised to represent this business.
+                    I am at least 18 and authorised to offer these products or services.
                   </label>
                   {fieldErrors.authorized && (
                     <span className="field-error">

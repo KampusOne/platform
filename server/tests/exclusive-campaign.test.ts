@@ -16,6 +16,7 @@ const campus = crypto.randomUUID();
 const platformReviewer = crypto.randomUUID();
 const campusReviewer = crypto.randomUUID();
 const student = crypto.randomUUID();
+const multiAgent = crypto.randomUUID();
 const tokens = new Map<string, string>();
 const env: Bindings = {
   ENVIRONMENT: "local",
@@ -49,7 +50,7 @@ async function result(response: Response, expectedStatus = 200) {
 beforeAll(async () => {
   db = await createTestDatabase();
   await db.query("insert into public.universities(id,name,slug,updated_at)values($1,'Campaign fixture campus','campaign-fixture',now())", [campus]);
-  for (const [index, userId] of [platformReviewer, campusReviewer, student].entries()) {
+  for (const [index, userId] of [platformReviewer, campusReviewer, student, multiAgent].entries()) {
     const email = `campaign-fixture-${index}@example.invalid`;
     await db.query("insert into public.users(id,email,password_hash,email_verified_at,updated_at)values($1,$2,'test-only',now(),now())", [userId, email]);
     await db.query("insert into public.profiles(id,user_id,username,display_name,university_id,updated_at)values(gen_random_uuid(),$1,$2,'Campaign fixture',$3,now())", [userId, `campaignfixture${index}`, campus]);
@@ -153,6 +154,59 @@ describe("Exclusive campaign management capability", () => {
         })
       ).status,
     ).toBe(409);
+  });
+
+  it.each(["VENDOR", "TUTOR", "RIDER"] as const)("submits, retries and approves the selected %s role from the shared link", async agentType => {
+    const payload = {
+      agentType,
+      requestId: crypto.randomUUID(),
+      businessName: `Exclusive Fixture ${agentType}`,
+      legalName: "Exclusive Fixture Agent",
+      birthDate: "2000-01-01",
+      description: "Reliable campus products or services for students every weekday.",
+      address: "12 Fixture Road, Campus service area",
+      category: agentType === "VENDOR" ? "Other" : agentType === "TUTOR" ? "Tutoring" : "Delivery",
+      campus: "Fixture campus",
+      phone: "+2348012345678",
+      operations: {
+        primaryOffer: agentType === "TUTOR" ? "Maths tutorials" : agentType === "RIDER" ? "Campus parcel delivery" : "Campus essentials",
+        joiningReason: "Reach more students",
+        serviceDays: ["Monday"], openingTime: "08:00", closingTime: "18:00",
+        fulfilmentMethods: ["Meet at an agreed location"],
+        supportChannel: "WhatsApp", responseTime: "Within 1 hour",
+      },
+      acquisition: { source: "FRIENDS" },
+      adultAuthorized: true, terms: true,
+    };
+    const submitted = await result(await request("/submit", multiAgent, "POST", payload), 201);
+    const countBeforeRetry = (await db.query("select count(*)::int n from app_private.trusted_vendor_invites")).rows[0].n;
+    expect(await result(await request("/submit", multiAgent, "POST", payload), 201)).toEqual(submitted);
+    expect((await db.query("select count(*)::int n from app_private.trusted_vendor_invites")).rows[0].n).toBe(countBeforeRetry);
+    expect((await request("/submit", multiAgent, "POST", { ...payload, requestId: crypto.randomUUID() })).status).toBe(409);
+    const application = (await db.query("select agent_type,updated_at::text revision from public.agent_applications where id=$1", [submitted.id])).rows[0];
+    expect(application.agent_type).toBe(agentType);
+    expect((await result(await request("/context", multiAgent))).context.applications).toContainEqual({ id: submitted.id, agent_type: agentType, status: "SUBMITTED" });
+    expect((await result(await request("/admin"))).applications).toEqual(expect.arrayContaining([expect.objectContaining({ id: submitted.id, agent_type: agentType })]));
+    expect((await request("/admin/" + submitted.id + "/review", multiAgent, "POST", { revision: application.revision, decision: "APPROVED", verifiedBusinessAndContact: true })).status).toBe(403);
+    expect(await result(await request("/admin/" + submitted.id + "/review", platformReviewer, "POST", { revision: application.revision, decision: "APPROVED", verifiedBusinessAndContact: true }))).toEqual({ status: "APPROVED" });
+    expect((await db.query("select agent_type,status from public.agent_profiles where application_id=$1", [submitted.id])).rows).toEqual([{ agent_type: agentType, status: "ACTIVE" }]);
+    expect((await db.query("select context from app_private.user_acquisition where user_id=$1 and context=$2", [multiAgent, agentType])).rows).toEqual([{ context: agentType }]);
+    expect((await db.query("select subject from app_private.notification_outbox where dedupe_key=$1", ["trusted-vendor-submitted:" + submitted.id])).rows[0].subject).toBe(`We received your ${agentType.toLowerCase()} profile`);
+  });
+
+  it("rejects unsupported roles and mismatched role categories without creating applications", async () => {
+    const body = {
+      requestId: crypto.randomUUID(), agentType: "ADMIN", businessName: "Fixture Service",
+      legalName: "Fixture Agent", birthDate: "2000-01-01", description: "Campus services for student customers.",
+      address: "12 Fixture Road, Campus service area", category: "Other", campus: "Fixture campus", phone: "+2348012345678",
+      operations: { primaryOffer: "Campus essentials", joiningReason: "Reach more students", serviceDays: ["Monday"], openingTime: "08:00", closingTime: "18:00", fulfilmentMethods: ["Campus delivery"], supportChannel: "WhatsApp", responseTime: "Within 1 hour" },
+      adultAuthorized: true, terms: true,
+    };
+    const before = (await db.query("select count(*)::int n from public.agent_applications")).rows[0].n;
+    expect((await request("/submit", multiAgent, "POST", body)).status).toBe(400);
+    expect((await request("/submit", multiAgent, "POST", { ...body, agentType: "TUTOR" })).status).toBe(400);
+    expect((await request("/submit", multiAgent, "POST", { ...body, agentType: "RIDER", category: "Tutoring" })).status).toBe(400);
+    expect((await db.query("select count(*)::int n from public.agent_applications")).rows[0].n).toBe(before);
   });
 
   it("rejects campus-wide reviewers without changing global state or recording a successful change", async () => {

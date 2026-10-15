@@ -1,0 +1,35 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-15T10:45:20Z",
+    "scope": "Owner requested the existing shared Exclusive link support all agents. Preserve the simplified question-only campaign and carry Vendor, Tutor or Rider through submission and approval."
+  },
+  "migrations": [
+    {
+      "version": "20261015110000_exclusive_agent_roles",
+      "sourceBlobSha": "dbbf39b52821bc066a9697bceac4ead54e566cc6"
+    }
+  ],
+  "verifiedAt": "2026-10-15T10:54:12.082Z",
+  "checks": {
+    "exclusiveRoles": "passed",
+    "fixturesRolledBack": true,
+    "rolePreservedOnSubmissionAndApproval": true,
+    "legacyVendorFormsAccepted": true,
+    "privatePrivileges": "passed",
+    "publicExecuteGrants": 0,
+    "existingAccountCountsPreserved": true,
+    "bankAndPayoutBoundaryUnchanged": true
+  },
+  "rehearsal": {
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "mode": "Transactional rehearsal on the existing release branch; all function changes and fixtures rolled back",
+    "acceptance": "database/verification/exclusive_agent_roles_acceptance.sql",
+    "productionAcceptance": "passed with all fixtures rolled back"
+  }
+}

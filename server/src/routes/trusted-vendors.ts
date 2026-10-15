@@ -53,14 +53,16 @@ trustedVendorRoutes.post('/invite', async c => {
 trustedVendorRoutes.get('/context', async c => {
   const actor = currentUser(c);
   if (!actor.universityId) throw new AppError(409, 'BAD_REQUEST', 'Choose your university in KampusOne before using Exclusive onboarding.');
-  const context = firstRow(await database(c.env).execute<{ university_name: string; application_id: string | null }>(sql`
+  const context = firstRow(await database(c.env).execute<{ university_name: string; application_id: string | null; applications: unknown[] }>(sql`
     select school.name university_name,
+      coalesce((select jsonb_agg(jsonb_build_object('id',a.id,'agent_type',a.agent_type,'status',a.status) order by a.submitted_at desc)
+        from public.agent_applications a
+        where a.user_id=${actor.id}::uuid and a.university_id=${actor.universityId}::uuid), '[]'::jsonb) applications,
       (select a.id::text
        from public.agent_applications a
        join app_private.trusted_vendor_intakes t on t.application_id=a.id
        where a.user_id=${actor.id}::uuid
          and a.university_id=${actor.universityId}::uuid
-         and a.agent_type='VENDOR'
        order by t.created_at desc
        limit 1) application_id
     from public.universities school
@@ -70,12 +72,13 @@ trustedVendorRoutes.get('/context', async c => {
   return c.json({ context });
 });
 const submission = z.object({
+  agentType: z.enum(['VENDOR', 'TUTOR', 'RIDER']).default('VENDOR'),
   token: token.optional(), requestId: z.string().uuid(), businessName: z.string().trim().min(2).max(160), legalName: z.string().trim().min(2).max(160),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => ageOn(value) >= 18 && ageOn(value) <= 110, 'Enter a valid date of birth. Exclusive applicants must be at least 18.'), description: z.string().trim().min(20).max(2000), address: z.string().trim().min(10).max(500),
-  category: z.enum(['Restaurant', 'Supermarket', 'Groceries', 'Fashion', 'Beauty', 'Electronics', 'Printing', 'Other']), campus: z.string().trim().min(2).max(100),
+  category: z.enum(['Restaurant', 'Supermarket', 'Groceries', 'Fashion', 'Beauty', 'Electronics', 'Printing', 'Other', 'Tutoring', 'Delivery']), campus: z.string().trim().min(2).max(100),
   phone: z.string().regex(/^\+234[789]\d{9}$/), whatsapp: z.string().regex(/^\+234[789]\d{9}$/).optional(),
   acquisition: acquisitionSchema.optional(), operations: agentOperationsSchema, adultAuthorized: z.literal(true), terms: z.literal(true),
-}).strict();
+}).strict().refine(data => data.agentType === 'TUTOR' ? data.category === 'Tutoring' : data.agentType === 'RIDER' ? data.category === 'Delivery' : !['Tutoring','Delivery'].includes(data.category), 'Choose a category for the selected agent role.');
 trustedVendorRoutes.post('/submit', async c => {
   const actor = currentUser(c), data = await input(c, submission), db = database(c.env);
   const allowed = firstRow(await db.execute<{ allowed: boolean }>(sql`select app_private.consume_request_rate_limit('TRUSTED_VENDOR_SUBMIT',${actor.id},10,3600,3600) allowed`));
@@ -83,6 +86,22 @@ trustedVendorRoutes.post('/submit', async c => {
 
   try {
     const { token: suppliedToken, requestId, acquisition, ...values } = data;
+
+    // The shared link must recover the same application after an interrupted response.
+    // Check ownership and the complete form before generating another internal invite.
+    if (!suppliedToken) {
+      const existing = firstRow(await db.execute<{ id: string; same_form: boolean }>(sql`
+        select a.id, t.form_hash=md5(${JSON.stringify(values)}::jsonb::text) same_form
+        from app_private.trusted_vendor_intakes t
+        join public.agent_applications a on a.id=t.application_id
+        where t.request_id=${requestId}::uuid and a.user_id=${actor.id}::uuid
+          and a.university_id=${actor.universityId}::uuid
+      `));
+      if (existing) {
+        if (!existing.same_form) throw new AppError(409, 'CONFLICT', 'These answers changed. Refresh before submitting again.');
+        return c.json({ id: existing.id, status: 'SUBMITTED' }, 201);
+      }
+    }
 
     if (suppliedToken) {
       const codeHash = await hash(suppliedToken);
@@ -150,14 +169,14 @@ trustedVendorRoutes.post('/submit', async c => {
     if (error instanceof AppError) throw error;
     if (error instanceof Error && /TRUSTED_CAMPAIGN_DISABLED/.test(error.message)) throw new AppError(404, 'NOT_FOUND', 'Page not found.');
     if (error instanceof Error && /TRUSTED_INVITE_EXPIRED|TRUSTED_INVITE_UNAVAILABLE|TRUSTED_INVITE_USED/.test(error.message)) throw new AppError(409, 'CONFLICT', 'The invitation is unavailable, expired, or already used.');
-    if (error instanceof Error && /agent_applications_university_id_user_id_agent_type_key/.test(error.message)) throw new AppError(409, 'CONFLICT', 'You already have a vendor application for this university. Check your application status instead of submitting another one.');
-    if (error instanceof Error && /TRUSTED_/.test(error.message)) throw new AppError(409, 'CONFLICT', 'Your age, business details or application changed. Check your answers and try again.');
+    if (error instanceof Error && /agent_applications_university_id_user_id_agent_type_key/.test(error.message)) throw new AppError(409, 'CONFLICT', 'You already have an application for this agent role at this university. Check your application status instead of submitting another one.');
+    if (error instanceof Error && /TRUSTED_/.test(error.message)) throw new AppError(409, 'CONFLICT', 'Your age, service details or application changed. Check your answers and try again.');
     throw error;
   }
 });
 trustedVendorRoutes.get('/admin', async c => {
   const scope = await resolveAdminScope(c.env, currentUser(c), c.req.query('universityId'), 'agents.review');
-  const rows = await database(c.env).execute(sql`select a.id,a.university_id,a.user_id,a.display_name,a.legal_name,a.phone_e164,a.status,a.updated_at::text revision,t.birth_date,t.description,t.address,t.category,t.campus,t.whatsapp_phone,t.document_media_id,t.business_details,t.review_note,t.approved_at,u.email,i.reason invitation_reason from app_private.trusted_vendor_intakes t join public.agent_applications a on a.id=t.application_id join app_private.trusted_vendor_invites i on i.id=t.invite_id join public.users u on u.id=a.user_id where(${scope}::uuid is null or a.university_id=${scope}::uuid)order by a.submitted_at desc limit 100`);
+  const rows = await database(c.env).execute(sql`select a.id,a.university_id,a.user_id,a.agent_type,a.display_name,a.legal_name,a.phone_e164,a.status,a.updated_at::text revision,t.birth_date,t.description,t.address,t.category,t.campus,t.whatsapp_phone,t.document_media_id,t.business_details,t.review_note,t.approved_at,u.email,i.reason invitation_reason from app_private.trusted_vendor_intakes t join public.agent_applications a on a.id=t.application_id join app_private.trusted_vendor_invites i on i.id=t.invite_id join public.users u on u.id=a.user_id where(${scope}::uuid is null or a.university_id=${scope}::uuid)order by a.submitted_at desc limit 100`);
   return c.json({ applications: rows.rows });
 });
 trustedVendorRoutes.post('/admin/invites', async c => {
@@ -169,7 +188,7 @@ trustedVendorRoutes.post('/admin/invites', async c => {
   return c.json({ id: row!.id, url: 'https://agents.kampusone.app/exclusive?invite=' + value, expiresInDays: 7 }, 201);
 });
 trustedVendorRoutes.post('/admin/:id/review', async c => {
-  const actor = currentUser(c), applicationId = id(c.req.param('id')), data = await input(c, z.object({ revision: z.string().min(1), decision: z.enum(['APPROVED', 'REJECTED']), note: z.string().trim().min(20).max(2000).default('Administrator reviewed the submitted business details and authorised contact and approved this vendor.'), verifiedBusinessAndContact: z.literal(true) }).strict()), db = database(c.env);
+  const actor = currentUser(c), applicationId = id(c.req.param('id')), data = await input(c, z.object({ revision: z.string().min(1), decision: z.enum(['APPROVED', 'REJECTED']), note: z.string().trim().min(20).max(2000).default('Administrator reviewed the submitted service details and authorised contact and approved this agent.'), verifiedBusinessAndContact: z.literal(true) }).strict()), db = database(c.env);
   const application = firstRow(await db.execute<{ university_id: string; user_id: string }>(sql`select university_id,user_id from public.agent_applications where id=${applicationId}::uuid`));
   if (!application) throw new AppError(404, 'NOT_FOUND', 'Application not found.');
   await resolveAdminScope(c.env, actor, application.university_id, 'agents.review');

@@ -6,6 +6,7 @@ import { useAdminContext } from "./admin-context";
 import { ExclusiveCampaignControl } from "./exclusive-campaign-control";
 
 type Row = {
+  agent_type: "VENDOR" | "TUTOR" | "RIDER";
   id: string;
   display_name: string;
   email: string;
@@ -121,9 +122,9 @@ export function TrustedVendorAdmin() {
 
   return (
     <section className="panel">
-      <h2>Exclusive vendor applications</h2>
+      <h2>Exclusive agent applications</h2>
       <p className="field-help">
-        Review Exclusive business answers and contact details, then approve once.
+        Review Exclusive service answers and contact details, then approve once.
       </p>
 
       {error ? (
@@ -135,7 +136,7 @@ export function TrustedVendorAdmin() {
       {rows.map((row) => (
         <article className="panel" key={row.id}>
           <h3>
-            {row.display_name} · {row.status}
+            {row.display_name} · {row.agent_type.toLowerCase()} · {row.status}
           </h3>
           <p>
             {row.legal_name} · {row.email} · {row.phone_e164}
@@ -168,7 +169,7 @@ export function TrustedVendorAdmin() {
           </p>
           <div className="form-actions">
             <span className="field-help">
-              Exclusive fast track · business and contact review required.
+              Exclusive fast track · service and contact review required.
             </span>
             {row.document_media_id ? (
               <button
@@ -188,7 +189,7 @@ export function TrustedVendorAdmin() {
 
           {["SUBMITTED", "IN_REVIEW"].includes(row.status) ? (
             <div className="form-stack">
-              <button type="button" className="button button--primary" disabled={busy} onClick={() => void approveReviewed(row)}>{busy ? "Approving…" : "Approve reviewed vendor"}</button>
+              <button type="button" className="button button--primary" disabled={busy} onClick={() => void approveReviewed(row)}>{busy ? "Approving…" : "Approve reviewed agent"}</button>
               <details><summary>Reject or record a specific review note</summary>
             <form
               className="form-stack"
@@ -197,7 +198,7 @@ export function TrustedVendorAdmin() {
               <label>
                 Decision
                 <select name="decision">
-                  <option value="APPROVED">Approve Exclusive vendor</option>
+                  <option value="APPROVED">Approve Exclusive agent</option>
                   <option value="REJECTED">Reject</option>
                 </select>
               </label>
@@ -208,11 +209,11 @@ export function TrustedVendorAdmin() {
                   required
                   minLength={20}
                   maxLength={2000}
-                  placeholder="Record how the business and authorised contact were verified."
+                  placeholder="Record how the service details and authorised contact were verified."
                 />
               </label>
               <label className="consent-row">
-                <input type="checkbox" required />I verified the business and
+                <input type="checkbox" required />I verified the service details and
                 authorised adult contact using the submitted answers and
                 appropriate reviewer checks.
               </label>
@@ -229,7 +230,7 @@ export function TrustedVendorAdmin() {
         <summary>Exclusive campaign settings</summary>
         <ExclusiveCampaignControl />
         <p className="field-help">
-          Share this one link with every Exclusive vendor. No email-specific token is required.
+          Share this one link with every Exclusive agent. No email-specific token is required.
           Turn the campaign off when you are done and the same link will return Page not found.
         </p>
         <label>

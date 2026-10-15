@@ -98,8 +98,8 @@ export function ExclusiveCampaignControl() {
           <p className="section-kicker">Exclusive campaign</p>
           <h2 id="exclusive-campaign-title">Control the shared Exclusive link</h2>
           <p>
-            Share one reusable link with every Exclusive vendor. Signed-in applicants
-            answer business questions while the normal agent application retains
+            Share one reusable link with every Exclusive agent. Signed-in applicants
+            choose Vendor, Tutor or Rider and answer service questions while the normal agent application retains
             document verification.
           </p>
         </div>
