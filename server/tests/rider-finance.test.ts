@@ -2997,6 +2997,53 @@ describe('Bachs bank payout approval and verified recovery',()=>{
 });
 
 describe('campus combined orders and private learning playlists',()=>{
+ it('reconciles historical delivered earnings once while preserving paid, disputed and unverified holds',async()=>{
+  const seller=await person(crypto.randomUUID(),campus,'VENDOR'),item=crypto.randomUUID();
+  await pg.query("insert into vendor_storefronts(vendor_profile_id,university_id,display_name,description,contact_phone_e164,pickup_location,opening_hours,status,pickup_enabled,submitted_at,reviewed_at,reviewed_by_user_id,moderated_revision)select $1,university_id,'Historical release fixture',description,contact_phone_e164,pickup_location,opening_hours,status,true,submitted_at,reviewed_at,reviewed_by_user_id,1 from vendor_storefronts where vendor_profile_id=$2",[seller.profile,vendor]);
+  await pg.query("insert into vendor_products(id,university_id,vendor_profile_id,name,description,category,category_id,price_kobo,stock_quantity,status,moderated_revision,submitted_at,reviewed_at,reviewed_by_user_id,package_weight_grams,package_length_cm,package_width_cm,package_height_cm,bicycle_delivery_eligible)select $1,university_id,$2,'Historical release item',description,category,category_id,price_kobo,20,status,1,submitted_at,reviewed_at,reviewed_by_user_id,300,10,10,10,true from vendor_products where id=$3",[item,seller.profile,product]);
+  const catalog=await json(await request('/student/store',buyer));
+  const unitPrice=Number(catalog.products.find((p:{id:string})=>p.id===item).price_kobo);
+  async function order(paid=true){
+   const input={...quoteInput('PICKUP'),vendorProfileId:seller.profile,items:[{productId:item,quantity:1,expectedUnitPriceKobo:unitPrice}]};
+   const q=await json(await request('/student/order-quotes',buyer,'POST',input),201);
+   const saved=await json(await request('/student/orders',buyer,'POST',{...input,quoteId:q.quote.id}),201);
+   if(paid){
+    const ref='K1-O-'+crypto.randomUUID();
+    await pg.query("insert into payment_attempts(id,user_id,university_id,resource_type,resource_id,provider_reference,amount_kobo,idempotency_key,status)values($1,$2,$3,'STORE_ORDER',$4,$5,$6,$1::uuid::text,'INITIALIZED')",[crypto.randomUUID(),buyer,campus,saved.id,ref,saved.payableKobo]);
+    const settled=await pg.query<{result:string}>('select app_private.record_priced_store_receipt($1,$2,$3,now()) result',[ref,saved.payableKobo,q.quote.pricing.estimatedProcessingKobo??0]);
+    expect(settled.rows[0]?.result).toBe('PAID');
+   }
+   return saved.id as string;
+  }
+  const delivered=await order(),paid=await order(),disputed=await order(),openDispute=await order(),unverified=await order(false);
+  // Reproduce records left by the previous release policy, inside this isolated
+  // database only. The production migration requires the real trigger enabled.
+  await pg.exec('alter table orders disable trigger priced_store_earnings_release');
+  try{
+   await pg.query("update orders set status='DELIVERED',completed_at=now()-interval '1 hour',earnings_state='PENDING'where id=any($1::uuid[])",[[delivered,openDispute,unverified]]);
+   await pg.query("update orders set status='DISPUTED',completed_at=now()-interval '1 hour',earnings_state='RESERVED'where id=$1",[disputed]);
+   for(const id of [disputed,openDispute])await pg.query("insert into disputes(id,university_id,opened_by_user_id,order_id,reason)values($1,$2,$3,$4,'Historical release hold fixture')",[crypto.randomUUID(),campus,buyer,id]);
+  }finally{await pg.exec('alter table orders enable trigger priced_store_earnings_release');}
+  const beforePending=await balance(seller,'VENDOR_PENDING');
+  const net=Number((await pg.query<{seller_net_kobo:number}>('select seller_net_kobo from app_private.order_price_snapshots where order_id=$1',[delivered])).rows[0]!.seller_net_kobo);
+  const migration=readFileSync(new URL('../../database/neon/migrations/20261017163000_release_completed_store_earnings.sql',import.meta.url),'utf8');
+  await pg.exec(migration);
+  await pg.exec(migration);
+  expect(await balance(seller,'VENDOR_AVAILABLE')).toBe(net);
+  expect(await balance(seller,'VENDOR_PENDING')).toBe(beforePending-net);
+  const states=(await pg.query<{id:string;status:string;earnings_state:string}>('select id,status,earnings_state from orders where id=any($1::uuid[])',[[delivered,paid,disputed,openDispute,unverified]])).rows;
+  expect(states.find(o=>o.id===delivered)?.earnings_state).toBe('AVAILABLE');
+  expect(states.find(o=>o.id===paid)?.status).toBe('PAID');
+  expect(states.find(o=>o.id===disputed)?.earnings_state).toBe('RESERVED');
+  expect(states.find(o=>o.id===openDispute)?.earnings_state).toBe('PENDING');
+  expect(states.find(o=>o.id===unverified)?.earnings_state).toBe('PENDING');
+  const posted=(await pg.query<{count:number;net:number}>("select count(distinct t.id)::int as count,sum(case when l.direction='DEBIT'then l.amount_kobo else-l.amount_kobo end)::bigint as net from ledger_transactions t join ledger_lines l on l.transaction_id=t.id where t.idempotency_key=$1",['store-release:'+delivered])).rows[0]!;
+  expect(posted.count).toBe(1);expect(Number(posted.net)).toBe(0);
+  expect(Number((await json(await request('/agents/earnings',seller.user))).store.available_kobo)).toBe(net);
+  await pg.exec('alter table orders disable trigger priced_store_earnings_release');
+  try{await expect(pg.exec(migration)).rejects.toThrow('STORE_RELEASE_TRIGGER_REQUIRED');}
+  finally{await pg.exec('rollback; alter table orders enable trigger priced_store_earnings_release');}
+ });
  it('reserves two vendors once, pays each share once, coordinates pickup and releases only after the buyer code',async()=>{
   const second=await person(crypto.randomUUID(),campus,'VENDOR'),p2=crypto.randomUUID();
   await pg.query("insert into vendor_storefronts(vendor_profile_id,university_id,display_name,description,contact_phone_e164,pickup_location,opening_hours,status,pickup_enabled,submitted_at,reviewed_at,reviewed_by_user_id,moderated_revision)select $1,university_id,'Second fixture store',description,contact_phone_e164,'Second fixture address',opening_hours,status,true,submitted_at,reviewed_at,reviewed_by_user_id,1 from vendor_storefronts where vendor_profile_id=$2",[second.profile,vendor]);

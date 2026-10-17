@@ -1,0 +1,43 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "migration": {
+    "version": "20261017163000_release_completed_store_earnings",
+    "sourceBlobSha": "18902d2129cea59de71579443f8ce92547e4ac64",
+    "appliedAt": "2026-10-17T16:22:51.207Z"
+  },
+  "authorization": "Owner reported completed vendor earnings incorrectly pending. Only the provider-verified delivered order without an open dispute was reconciled.",
+  "result": {
+    "releasedOrders": 1,
+    "sellerNetReleasedKobo": 30000,
+    "balancedReleaseJournals": 1,
+    "pendingBeforeKobo": 90000,
+    "availableBeforeKobo": 0,
+    "pendingAfterKobo": 60000,
+    "availableAfterKobo": 30000,
+    "openDisputeHoldPreservedKobo": 30000,
+    "undeliveredPaidHoldPreservedKobo": 30000
+  },
+  "checks": {
+    "financeTests": 56,
+    "serverTypes": "passed",
+    "serverBuild": "passed",
+    "mountedRoutePolicies": 518,
+    "ledgerReleaseIdempotent": true,
+    "missingTriggerFailsClosed": true,
+    "unverifiedPaymentExcluded": true,
+    "openDisputesExcluded": true,
+    "existingDeliveryStatesPreserved": true,
+    "providerRequests": 0,
+    "bankPayouts": 0
+  },
+  "rehearsal": {
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "freshProductionClone": false,
+    "mode": "Branch creation quota was exhausted. Native SQL was rehearsed without committing on the existing rehearsal branch (no eligible old orders). A rolled-back dry run on current production then verified the single eligible order, exact journal, balances and preserved holds before installation.",
+    "productionDryRunRolledBack": true
+  },
+  "client": "No client or API response change. Existing Earnings screen refreshes on focus and app resume."
+}
