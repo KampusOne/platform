@@ -29,3 +29,6 @@ Additional local coverage includes 415 app regressions, paging/cart/filter UI ch
 
 
 The first extended browser pass confirmed pagination/search/cart behavior on both phone widths and exposed a protected-link bug: web media normalization may return a same-origin proxy path or an HTTP loopback URL in development. Playback now resolves web paths to an absolute URL and requires HTTPS everywhere except a loopback-to-loopback development session; native HTTP stays rejected. The PDF renderer uses the same narrow local-development exception. Regression cases cover proxy resolution and insecure-origin rejection. Long-reader queues discard pages that moved out of view, and an in-flight render at an old window width is rerendered after rotation. The subsequent phone run verifies this correction before release.
+
+
+The reader also waits for restored authentication before its resource/access requests and mounts under the account cache scope. This fixes a startup race where an initial unscoped resource read was invalidated as the signed-in scope became active. A component regression proves no protected request runs during restoration and the file opens once the account is ready. Contents transitions honor reduced motion.

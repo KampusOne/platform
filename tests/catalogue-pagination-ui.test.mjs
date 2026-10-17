@@ -52,3 +52,19 @@ test('protected learning links resolve the web proxy and only allow insecure HTT
  assert.throws(()=>learningMediaUrl('http://localhost:8787/file','https://mobile.kampusone.app'));
  assert.throws(()=>learningMediaUrl('http://example.invalid/file','http://localhost:8100'));
 });
+
+
+test('the learning reader waits for restored authentication before requesting protected files',async()=>{
+ const host=hookRenderer();let auth={state:'loading',user:null},tree;const requests=[];
+ const resource={id:'resource',title:'Fluid mechanics',resource_type:'PDF',media_object_id:'file',can_access:true,access_model:'FREE'};
+ const api=async(path,options)=>{requests.push({path,method:options?.method});return path.includes('tutorial-resources')?{resource}:{url:'https://example.invalid/book.pdf?access=synthetic'};};
+ const modules={'react':host.react,'react/jsx-runtime':jsx,'react-native':{View:'View',Text:'Text',FlatList:'FlatList',Pressable:'Pressable',ScrollView:'ScrollView',Platform:{OS:'android'}},'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'@expo/vector-icons':{Ionicons:'Icon'},'expo-router':{useLocalSearchParams:()=>({id:'resource'}),router:{canGoBack:()=>false,replace(){},push(){}}},'expo-audio':{},'@/src/auth/auth-context':{useAuth:()=>auth},'@/src/lib/request-policy':{cacheScopeForUser:user=>user.id+':'+user.universityId},'@/src/components/visual-system':{useReducedMotionPreference:()=>true},'@/src/lib/api':{api},'@/src/lib/appearance':{useAppearance:()=>({theme})},'@/src/lib/learning-title':load('mobile/src/lib/learning-title.ts',{}),'@/src/lib/learning-media-url':load('mobile/src/lib/learning-media-url.ts',{}, {URL})};
+ for(const[file,name]of Object.entries({'toolkit':'ToolButton','keyboard-viewport':'KeyboardModal','learning-document':'LearningDocument','tutorial-player':'TutorialPlayer','profile-avatar':'ProfileAvatar','verified-badge':'VerifiedBadge','skeleton':'InlineLoading'}))modules['@/src/components/'+file]={[name]:name};
+ const Screen=load('mobile/app/learning-viewer.tsx',modules).default;
+ const render=()=>host.render(()=>{tree=Screen();if(typeof tree.type==='function')tree=tree.type(tree.props);return tree;});
+ render();await Promise.resolve();assert.equal(requests.length,0);
+ auth={state:'authenticated',user:{id:'owner',universityId:'campus'}};for(let i=0;i<5;i++){render();for(let n=0;n<30;n++)await Promise.resolve();}
+ assert.deepEqual(requests.map(r=>r.path),['/v1/student/tutorial-resources/resource','/v1/media/file/access']);
+ const reader=nodes(tree).find(n=>n.type==='LearningDocument');assert.ok(reader);assert.equal(reader.props.url,'https://example.invalid/book.pdf?access=synthetic');
+ const modal=nodes(tree).find(n=>n.type==='KeyboardModal');assert.equal(modal.props.animationType,'none');host.unmount();
+});

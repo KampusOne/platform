@@ -4,6 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { useAuth } from '@/src/auth/auth-context';
+import { cacheScopeForUser } from '@/src/lib/request-policy';
+import { useReducedMotionPreference } from '@/src/components/visual-system';
 import { api } from '@/src/lib/api';
 import { ToolButton } from '@/src/components/toolkit';
 import { KeyboardModal } from '@/src/components/keyboard-viewport';
@@ -29,7 +32,15 @@ function Audio({ url }: { url: string }) {
   </View>;
 }
 export default function LearningViewer() {
+  const {state,user}=useAuth(), {theme}=useAppearance();
+  if(state === 'authenticated' && user) return <OwnedLearningViewer key={cacheScopeForUser(user)} />;
+  return <SafeAreaView style={{flex:1,backgroundColor:theme.canvas,justifyContent:'center',alignItems:'center',padding:24,gap:18}}>
+    {state === 'loading' ? <><InlineLoading /><Text style={{color:theme.textMuted,fontFamily:theme.font.body}}>Opening your learning material…</Text></> : <><Text style={{color:theme.text,fontFamily:theme.font.body}}>Sign in to open this material.</Text><ToolButton label="Sign in" onPress={()=>router.push('/sign-in')} /></>}
+  </SafeAreaView>;
+}
+function OwnedLearningViewer() {
   const { id } = useLocalSearchParams<{ id: string }>(), { theme } = useAppearance();
+  const reducedMotion = useReducedMotionPreference();
   const [resource, setResource] = useState<Resource | null>(null), [index, setIndex] = useState(0), [playback, setPlayback] = useState<{ url: string; kind: 'file' | 'embed' } | null>(null);
   const [error, setError] = useState(''), [revision, setRevision] = useState(0), [contentsOpen, setContentsOpen] = useState(false);
   useEffect(() => { setResource(null); setIndex(0); setError(''); }, [id]);
@@ -83,6 +94,6 @@ export default function LearningViewer() {
         {parts.length > 1 ? <View style={{ gap: 12, paddingTop: 8 }}><Text style={{ color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 20 }}>Course contents</Text>{parts.map((item, n) => <View key={item.mediaId}>{partRow(item, n)}</View>)}</View> : null}
       </View>
     </ScrollView>}
-    <KeyboardModal visible={contentsOpen} transparent animationType="slide" onRequestClose={() => setContentsOpen(false)}><View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,.35)' }}><SafeAreaView edges={['bottom']} style={{ maxHeight: '75%', backgroundColor: theme.canvas, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 14 }}><View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ flex: 1, color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 22 }}>Contents</Text><Pressable accessibilityRole="button" accessibilityLabel="Close contents" onPress={() => setContentsOpen(false)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="close" size={24} color={theme.text} /></Pressable></View><FlatList data={parts} keyExtractor={item => item.mediaId} contentContainerStyle={{ gap: 10 }} renderItem={({ item, index: n }) => partRow(item, n)} /></SafeAreaView></View></KeyboardModal>
+    <KeyboardModal visible={contentsOpen} transparent animationType={reducedMotion?'none':'slide'} onRequestClose={() => setContentsOpen(false)}><View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,.35)' }}><SafeAreaView edges={['bottom']} style={{ maxHeight: '75%', backgroundColor: theme.canvas, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, gap: 14 }}><View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ flex: 1, color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 22 }}>Contents</Text><Pressable accessibilityRole="button" accessibilityLabel="Close contents" onPress={() => setContentsOpen(false)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="close" size={24} color={theme.text} /></Pressable></View><FlatList data={parts} keyExtractor={item => item.mediaId} contentContainerStyle={{ gap: 10 }} renderItem={({ item, index: n }) => partRow(item, n)} /></SafeAreaView></View></KeyboardModal>
   </SafeAreaView>;
 }
