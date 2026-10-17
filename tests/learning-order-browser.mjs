@@ -246,7 +246,7 @@ try {
 } catch(error) {
   if(browser)for(const [n,context]of browser.contexts().entries())for(const [p,page]of context.pages().entries()){
     await page.screenshot({path:resolve(evidence,`failed-latest-${n}-${p}.png`)}).catch(()=>{});
-    const frames=[];for(const frame of page.frames())frames.push({url:frame.url(),text:await frame.locator('body').innerText().catch(()=>''),viewport:await frame.evaluate(()=>({width:innerWidth,height:innerHeight})).catch(()=>null)});
+    const frames=[];for(const frame of page.frames())frames.push({url:frame.url(),text:await frame.locator('body').innerText().catch(()=>''),viewport:await frame.evaluate(()=>({width:innerWidth,height:innerHeight,reader:document.querySelector('#viewport')?{scrollTop:document.querySelector('#viewport').scrollTop,scrollHeight:document.querySelector('#viewport').scrollHeight,height:document.querySelector('#viewport').clientHeight}:null})).catch(()=>null)});
     writeFileSync(resolve(evidence,`failed-frames-${n}-${p}.json`),JSON.stringify({error:String(error),url:page.url(),frames},null,2));
   }
   throw error;

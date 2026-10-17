@@ -137,7 +137,12 @@ zoomIn.onclick = () => changeZoom(zoom + 0.25); zoomOut.onclick = () => changeZo
 document.querySelector('#retry').onclick = () => { if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage('refresh-access');else if(window.parent!==window)window.parent.postMessage('refresh-access',location.origin);else if(inputDocument)void openDocument(inputDocument); };
 label.onclick = () => { if(!pdf)return; input.value = String(currentPage); document.querySelector('#jump-error').textContent = ''; dialog.showModal(); input.focus(); input.select(); };
 document.querySelector('#cancel-jump').onclick = () => dialog.close();
-document.querySelector('#jump-form').onsubmit = event => { event.preventDefault(); const number = Number(input.value); if(!Number.isInteger(number) || number < 1 || number > pdf.numPages) { document.querySelector('#jump-error').textContent = `Choose a page from 1 to ${pdf.numPages}.`; return; } dialog.close(); goToPage(number); };
+function jumpToInputPage() { const number = Number(input.value); if(!pdf || !Number.isInteger(number) || number < 1 || number > pdf.numPages) { document.querySelector('#jump-error').textContent = `Choose a page from 1 to ${pdf?.numPages || 1}.`; return; } dialog.close(); goToPage(number); }
+// Page navigation is a local action. Sandboxed embeds deliberately disallow
+// form submission, so Go and Enter must not depend on a submit event.
+document.querySelector('#go').onclick = jumpToInputPage;
+input.addEventListener('keydown', event => { if(event.key === 'Enter') { event.preventDefault(); jumpToInputPage(); } });
+document.querySelector('#jump-form').onsubmit = event => { event.preventDefault(); jumpToInputPage(); };
 viewport.addEventListener('scroll', () => { if(!scrollFrame) scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; refreshVisible(); }); }, { passive: true });
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { const number = currentPage; for(const record of records)record.renderedZoom = 0; layout(); goToPage(number); }, 120); });
 viewport.addEventListener('dblclick', event => { const rect = viewport.getBoundingClientRect(); changeZoom(zoom > 1.4 ? 1 : 2, event.clientX - rect.left, event.clientY - rect.top); });
