@@ -18,6 +18,7 @@ The user requested faster app behavior while Android 0.3.40 was being delivered,
 - Mobile TypeScript and Expo production web export passed; whitespace checks passed.
 - The startup and chat regressions were also run against the base source: both fail there and pass after the fix.
 - An extraction check confirms that the chat row markup is identical before/after after substituting the captured message-array name.
+- The installed React Native 0.86 Flow source supports `FlatList.strictMode`, which its TypeScript declaration omits. A narrow declaration adds that existing optional flag; the runtime regression exercises the real installed wrapper and fails when the flag is absent.
 - Native signature, version, ABI, checksum and matching production deployment receipts are enforced by the release workflow. Its final SHA and result are recorded by Actions and the release receipts.
 
 ## Measurement limits
