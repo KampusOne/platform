@@ -1,3 +1,5 @@
+import { Pagination } from '@/src/components/pagination';
+import { MARKETPLACE_PAGE_SIZE, type PageInfo } from '@/src/lib/pagination';
 import {cacheScopeForUser} from '@/src/lib/request-policy';
 import {ProductPreview} from '@/src/components/product-preview';
 import {MediaImage} from '@/src/components/media-image';
@@ -89,6 +91,9 @@ type CatalogIssue = { code: string; message: string };
 type CatalogueMode = "DEMO" | "LIVE";
 type CatalogResponse = {
   products: Product[];
+  includedProducts?: Product[];
+  categories?: string[];
+  pagination?: PageInfo;
   deliveryZones: Zone[];
   catalogueMode?: CatalogueMode;
   checkoutEnabled?: boolean;
@@ -127,6 +132,14 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const directBuy = useRef('');
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
+  const [checkoutProducts, setCheckoutProducts] = useState<Product[]>([]);
+  const [catalogueCategories, setCatalogueCategories] = useState<string[]>([]);
+  const [pagination, setPagination] = useState<PageInfo | null>(null);
+  const [pageSelection, setPageSelection] = useState({ key: '', page: 1 });
+  const catalogueList = useRef<FlatList<Product>>(null);
+  const resultsOffset = useRef(0);
+  const readEpoch = useRef(0);
+  const [loadedCataloguePath, setLoadedCataloguePath] = useState('');
   const [zones, setZones] = useState<Zone[]>([]);
   const [riderDeliveryEnabled, setRiderDeliveryEnabled] = useState(false);
   const [riderPickupUnavailable, setRiderPickupUnavailable] = useState(false);
@@ -149,6 +162,19 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     return () => clearTimeout(timer);
   }, [query]);
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const filterKey = JSON.stringify([searchTerm, selectedCategory, focusedProduct ?? '']);
+  const currentPage = pageSelection.key === filterKey ? pageSelection.page : 1;
+  const cataloguePath = '/v1/student/store?page=' + currentPage
+    + (searchTerm ? '&q=' + encodeURIComponent(searchTerm) : '')
+    + (selectedCategory !== 'All' ? '&category=' + encodeURIComponent(selectedCategory) : '');
+  const includedIds = [...new Set([...Object.keys(cart), focusedProduct, immediateProduct].filter((value): value is string => Boolean(value)))].sort().join(',');
+  const catalogueReadPath = cataloguePath + (includedIds ? '&includeIds=' + encodeURIComponent(includedIds) : '');
+  const pageLoading = loadedCataloguePath !== cataloguePath;
+  const changePage = (next: number) => {
+    setPageSelection({ key: filterKey, page: next });
+    catalogueList.current?.scrollToOffset({ offset: resultsOffset.current, animated: false });
+  };
+
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
   const [immediateQuantity, setImmediateQuantity] = useState(1);
@@ -197,9 +223,11 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   }, [entry, reducedMotion]);
 
   const load = useCallback(async () => {
+    const turn = ++readEpoch.current;
     setCatalogIssue(null);
     try {
-      await refreshScreenRead<CatalogResponse>("/v1/student/store", data => {
+      await refreshScreenRead<CatalogResponse>(catalogueReadPath, data => {
+      if (turn !== readEpoch.current) return;
       const mode = data.catalogueMode ?? "LIVE";
       setProducts(
         (Array.isArray(data?.products) ? data.products : [])
@@ -217,6 +245,11 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                 : "Vendor",
           })),
       );
+      setCheckoutProducts([...new Map([...(data.products ?? []), ...(data.includedProducts ?? [])].map(product => [product.id, product])).values()]);
+      setCatalogueCategories(data.categories ?? []);
+      setPagination(data.pagination ?? null);
+      setLoadedCataloguePath(cataloguePath);
+      if (data.pagination && currentPage > data.pagination.totalPages) setPageSelection({ key: filterKey, page: data.pagination.totalPages });
       setZones(
         (Array.isArray(data?.deliveryZones) ? data.deliveryZones : []).filter(
           (zone) => Boolean(zone && typeof zone.id === "string"),
@@ -229,6 +262,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
       setLoading(false);
       });
     } catch (caught) {
+      if (turn !== readEpoch.current) return;
       setCatalogIssue(
         caught instanceof ApiError
           ? { code: caught.code, message: caught.message }
@@ -238,33 +272,34 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
             },
       );
     } finally {
-      setLoading(false);
+      if (turn === readEpoch.current) setLoading(false);
     }
-  }, []);
+  }, [catalogueReadPath, cataloguePath, currentPage, filterKey]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
+      return () => { readEpoch.current++; };
     }, [load]),
   );
 
   const columns=2;
   const productWidth=(contentWidth-horizontalPadding*2-(columns-1)*12)/columns;
-  useEffect(()=>{if(focusedProduct){const found=products.find(product=>product.id===focusedProduct);if(found)setPreview(found);}},[focusedProduct,products]);
+  useEffect(()=>{if(focusedProduct){const found=checkoutProducts.find(product=>product.id===focusedProduct);if(found)setPreview(found);}},[focusedProduct,checkoutProducts]);
 
   const categories = useMemo(
     () => [
       "All",
       ...Array.from(
-        new Set(products.map((product) => product.category).filter(Boolean)),
+        new Set([...catalogueCategories, ...products.map((product) => product.category)].filter(Boolean)),
       ),
     ],
-    [products],
+    [products, catalogueCategories],
   );
 
   const filtered = useMemo(() => {
     const term = searchTerm;
-    return products.filter((item) => {
+    return (focusedProduct ? checkoutProducts : products).filter((item) => {
       const matchesCategory =
         Boolean(focusedProduct) ||
         selectedCategory === "All" ||
@@ -280,14 +315,14 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
         matchesQuery
       );
     });
-  }, [products, searchTerm, selectedCategory, focusedProduct]);
+  }, [products, checkoutProducts, searchTerm, selectedCategory, focusedProduct]);
 
   const cartItems = useMemo(
     () =>
-      products
+      checkoutProducts
         .filter((product) => Boolean(cart[product.id]) && (!checkoutScreen || !immediateProduct || product.id === immediateProduct && immediateQuantity > 0))
         .map((product) => ({ product, quantity: checkoutScreen && immediateProduct ? immediateQuantity : cart[product.id] ?? 0 })),
-    [cart, products, checkoutScreen, immediateProduct, immediateQuantity],
+    [cart, checkoutProducts, checkoutScreen, immediateProduct, immediateQuantity],
   );
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartItems.reduce(
@@ -546,12 +581,12 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
 
   useEffect(() => {
     if (checkoutScreen || !immediateProduct || !cartReady || loading || busy || directBuy.current === immediateProduct) return;
-    const product = products.find(item => item.id === immediateProduct);
+    const product = checkoutProducts.find(item => item.id === immediateProduct);
     if (!product) return;
     directBuy.current = immediateProduct;
     router.setParams({buyNow:undefined});
     void buyNow(product);
-  }, [checkoutScreen, immediateProduct, cartReady, loading, busy, products]);
+  }, [checkoutScreen, immediateProduct, cartReady, loading, busy, checkoutProducts]);
 
   if (checkoutScreen) return <SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:theme.canvas}}>
     <View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingVertical:8,gap:12}}>
@@ -956,8 +991,11 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     </View> : null}
   </SafeAreaView>;
 
+  const resultTotal = focusedProduct ? filtered.length : pagination?.total ?? filtered.length;
+  const resultPaging = focusedProduct ? { page: 1, pageSize: MARKETPLACE_PAGE_SIZE, total: resultTotal, totalPages: 1 } : pagination ?? { page: currentPage, pageSize: MARKETPLACE_PAGE_SIZE, total: resultTotal, totalPages: Math.max(1, Math.ceil(resultTotal / MARKETPLACE_PAGE_SIZE)) };
+  const pageProducts = pagination ? filtered.slice(0, MARKETPLACE_PAGE_SIZE) : filtered.slice((currentPage - 1) * MARKETPLACE_PAGE_SIZE, currentPage * MARKETPLACE_PAGE_SIZE);
   const catalogueData =
-    !loading && !featureDisabled && products.length > 0 ? filtered : [];
+    !loading && !featureDisabled && !pageLoading && (products.length > 0 || focusedProduct) ? pageProducts : [];
   const catalogueEmpty = loading ? (
     <CatalogSkeleton />
   ) : featureDisabled ? (
@@ -975,6 +1013,8 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
       title="Store unavailable"
       tone="error"
     />
+  ) : !catalogIssue && !products.length && (searchTerm || selectedCategory !== 'All') ? (
+    <StateMessage actionLabel="Clear filters" body="Try another product name, seller, or category." icon="search-outline" onAction={clearFilters} title="Nothing matches your search" />
   ) : !catalogIssue && !products.length ? (
     <StateMessage
       actionLabel="Refresh"
@@ -1015,6 +1055,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
         ]}
       >
         <FlatList
+          ref={catalogueList}
           accessibilityLabel="Campus store products"
           columnWrapperStyle={columns===2?styles.productRow:undefined}
           contentContainerStyle={[
@@ -1027,11 +1068,12 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           keyExtractor={(product) => product.id}
-          ListEmptyComponent={catalogueEmpty}
+          ListEmptyComponent={pageLoading && catalogIssue ? <StateMessage title="This page could not load" body={catalogIssue.message} actionLabel="Try again" onAction={retryLoad} icon="cloud-offline-outline" /> : pageLoading && !catalogIssue ? <View accessibilityLabel="Loading products" style={{padding:24,gap:12}}><InlineLoading /><Text style={{color:theme.textMuted,fontFamily:theme.font.body}}>Loading products…</Text></View> : catalogueEmpty}
+          ListFooterComponent={!featureDisabled ? <Pagination {...resultPaging} label="Products" disabled={busy || pageLoading || searchPending} onChange={changePage} /> : null}
           ListHeaderComponent={
             <>
               {sharedCart.error ? <StateMessage title="Your cart needs attention" body={sharedCart.error} actionLabel="Try again" onAction={sharedCart.retry} icon="alert-circle-outline"/> : null}
-              <SyncStatus path="/v1/student/store"/>
+              <SyncStatus path={catalogueReadPath}/>
               {searchPending?<SearchLoading label="Searching products and sellers…" shape="products" hasResults={filtered.length>0}/>:null}
               <View style={styles.storeToolbar}>
                 {!featureDisabled ? (
@@ -1117,7 +1159,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                   <Text style={{ color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 12, flex: 1 }}>
                     {searchPending
                       ? "Searching products and sellers…"
-                      : `${filtered.length} ${filtered.length === 1 ? "result" : "results"} for “${query.trim()}”`}
+                      : `${resultTotal} ${resultTotal === 1 ? "result" : "results"} for “${query.trim()}”`}
                   </Text>
                 </View>
               ) : null}
@@ -1210,6 +1252,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
 
               {!loading &&
               catalogIssue &&
+              !pageLoading &&
               !featureDisabled &&
               products.length ? (
                 <View accessibilityRole="alert" style={styles.partialError}>
@@ -1236,7 +1279,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
               ) : null}
 
               {!loading && !featureDisabled && products.length > 0 ? (
-                <View style={styles.resultsHeader}>
+                <View onLayout={event=>{resultsOffset.current=event.nativeEvent.layout.y;}} style={styles.resultsHeader}>
                   <Text style={styles.resultsTitle}>
                     {selectedCategory === "All"
                       ? catalogueMode === "DEMO"
@@ -1245,7 +1288,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                       : selectedCategory}
                   </Text>
                   <Text style={styles.resultsCount}>
-                    {filtered.length} {filtered.length === 1 ? "item" : "items"}
+                    {resultTotal} {resultTotal === 1 ? "item" : "items"}
                   </Text>
                 </View>
               ) : null}
