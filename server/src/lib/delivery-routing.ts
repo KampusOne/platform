@@ -15,16 +15,9 @@ export async function mappedDeliveryPoint(env:Bindings,universityId:string,place
 export async function riderPickupAvailability(env:Bindings,universityId:string,vendorIds:string[]) {
  const ready=new Map<string,boolean>();
  if(!vendorIds.length||env.LOGISTICS_ENABLED!=='true')return ready;
- const db=database(env);
- const schema=firstRow(await db.execute<{maps:boolean;positions:boolean}>(sql`select
-  to_regclass('public.institution_campuses') is not null and to_regclass('public.campus_entrances') is not null as maps,
-  to_regclass('app_private.agent_route_positions') is not null as positions`));
- const position=schema?.positions?sql`exists(select 1 from app_private.agent_route_positions pos where pos.agent_profile_id=a.id and pos.institution_id=a.university_id
-  and pos.captured_at>=now()-interval '2 minutes' and pos.captured_at<=now()+interval '10 seconds' and pos.accuracy_metres<=50)`:sql`false`;
- const mapped=schema?.maps?sql`exists(select 1 from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.institution_id=p.university_id and c.status='PUBLISHED'
-  where p.id::text=to_jsonb(s)->>'pickup_place_id' and p.university_id=a.university_id and p.status='PUBLISHED'
-  and ((p.latitude is not null and p.longitude is not null) or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null and e.geom is not null)))`:sql`false`;
- const rows=await db.execute<{id:string;ready:boolean}>(sql`select a.id,(${position} or ${mapped}) as ready from public.agent_profiles a
+ // Saved addresses do not expire with a foreground GPS update. The precise
+ // map point is validated on save; historical stores can still use address delivery.
+ const rows=await database(env).execute<{id:string;ready:boolean}>(sql`select a.id,(length(trim(coalesce(s.pickup_location,'')))>=5) as ready from public.agent_profiles a
   join public.vendor_storefronts s on s.vendor_profile_id=a.id and s.university_id=a.university_id and s.status='APPROVED'
   where a.university_id=${universityId}::uuid and a.agent_type='VENDOR' and a.status='ACTIVE'
    and a.id in(select value::uuid from jsonb_array_elements_text(${JSON.stringify(vendorIds)}::jsonb))`);

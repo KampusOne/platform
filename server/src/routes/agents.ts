@@ -1,3 +1,4 @@
+import { requireVendorPickup } from '../lib/vendor-pickup';
 import { collectionReference, paymentReturnUrl } from '../lib/collection-provider';
 import {requireAgentRoleAccess, type AgentRoleProfile} from '../lib/agent-access';
 import {cachedVersionedRead} from "../lib/cache-revision";
@@ -1120,6 +1121,7 @@ agentRoutes.post("/products", async (context) => {
       "Check the product details and try again.",
     );
   const profile = await operationalVendorProfile(context.env, user.id);
+  await requireVendorPickup(context.env, profile.id, profile.university_id);
   if(parsed.data.pricingPolicyId){const policy=await approvedCommercePolicy(context.env,profile.university_id,'STORE');if(!policy||policy.id!==parsed.data.pricingPolicyId)throw new AppError(409,'CONFLICT','Marketplace rates changed. Recalculate the rates before uploading your product.');}
   const categoryResult = await database(context.env).execute<{
     id: string;
@@ -1150,7 +1152,7 @@ agentRoutes.post("/products", async (context) => {
       ${parsed.data.preparationMinutes}, ${parsed.data.packageWeightGrams ?? null},
       ${parsed.data.packageLengthCm ?? null}, ${parsed.data.packageWidthCm ?? null},
       ${parsed.data.packageHeightCm ?? null}, ${parsed.data.bicycleDeliveryEligible},'PUBLISHED',${JSON.stringify(parsed.data.imageUrls)}::jsonb,${parsed.data.requestId??null}::uuid
-    where not exists (
+    where exists (select 1 from public.vendor_storefronts ready where ready.vendor_profile_id=${profile.id}::uuid and ready.university_id=${profile.university_id}::uuid and length(trim(coalesce(ready.pickup_location,'')))>=5 and ready.pickup_place_id is not null) and not exists (
       select 1 from public.vendor_storefronts storefronts
       where storefronts.vendor_profile_id = ${profile.id}::uuid
         and storefronts.status = 'SUSPENDED'
@@ -1166,7 +1168,7 @@ agentRoutes.post("/products", async (context) => {
     );
   }
   const created=firstRow(result)!;
-  await database(context.env).execute(sql`insert into public.vendor_storefronts(vendor_profile_id,university_id,display_name,status) select ${profile.id}::uuid,${profile.university_id}::uuid,left(display_name,120),'APPROVED' from public.agent_profiles where id=${profile.id}::uuid on conflict(vendor_profile_id) do update set status='APPROVED' where vendor_storefronts.status<>'SUSPENDED'`);
+  await database(context.env).execute(sql`update public.vendor_storefronts set status='APPROVED' where vendor_profile_id=${profile.id}::uuid and university_id=${profile.university_id}::uuid and status<>'SUSPENDED'`);
   await recordAudit(context.env, {
     actorUserId: user.id,
     universityId: profile.university_id,
@@ -1195,6 +1197,7 @@ agentRoutes.put("/products/:id", async (context) => {
       "Check the product details and try again.",
     );
   const profile = await operationalVendorProfile(context.env, user.id);
+  await requireVendorPickup(context.env, profile.id, profile.university_id);
   const categoryResult = await database(context.env).execute<{
     id: string;
     name: string;
@@ -1342,6 +1345,7 @@ agentRoutes.patch("/products/:id/status", async (context) => {
     throw new AppError(400, "BAD_REQUEST", "Choose a valid product status.");
   const targetStatus=parsed.data.status==='SUBMITTED'?'PUBLISHED':parsed.data.status;
   const profile=await operationalVendorProfile(context.env, user.id);
+  if (targetStatus === 'PUBLISHED') await requireVendorPickup(context.env, profile.id, profile.university_id);
   const result = await database(context.env).execute<{
     id: string;
     university_id: string;
@@ -1722,6 +1726,7 @@ async function routeRiderToPickup(env:Bindings,profile:{id:string;university_id:
  const route=await campusDeliveryRoute(env,profile.university_id,pickup.campus_id,[position.longitude,position.latitude],vendor?[vendor.longitude,vendor.latitude]:[pickup.longitude,pickup.latitude]);
  const centre=firstRow(await db.execute<{latitude:number;longitude:number}>(sql`select latitude::float8 latitude,longitude::float8 longitude from public.institution_campuses where id=${pickup.campus_id}::uuid and institution_id=${profile.university_id}::uuid`));
  let quotedDeliveryRoute:unknown=null;if(job.rider_profile_id===profile.id&&await inclusiveStoreReady(env)){quotedDeliveryRoute=firstRow(await db.execute<{route:unknown}>(sql`select q.fare->'route'route from app_private.store_checkout_quotes q join app_private.order_price_snapshots s on s.quote_id=q.id join public.delivery_jobs j on j.order_id=s.order_id where j.id=${jobId}::uuid and j.university_id=${profile.university_id}::uuid and j.rider_profile_id=${profile.id}::uuid`))?.route??null;}
+ if(quotedDeliveryRoute&&!(quotedDeliveryRoute as {geometry?:unknown}).geometry)quotedDeliveryRoute=null;
  return {...route,campusId:pickup.campus_id,centre:centre?[centre.longitude,centre.latitude]:[pickup.longitude,pickup.latitude],quotedDeliveryRoute,pickupName:pickup.name,pickupLocationBasis:vendor?'CURRENT_VENDOR_POSITION':'APPROVED_STOREFRONT_PICKUP',pricingNote:'The reviewed fare covers pickup to the customer. The rider-to-pickup distance is shown separately and adds no charge.'};
 }
 agentRoutes.get('/deliveries/:id/route',async c=>{requireFeature(c.env,'LOGISTICS_ENABLED','Rider delivery is not available yet.');const p=await approvedProfile(c,currentUser(c).id,'RIDER',currentUser(c).universityId);return c.json({route:await routeRiderToPickup(c.env,p,id(c.req.param('id')))});});

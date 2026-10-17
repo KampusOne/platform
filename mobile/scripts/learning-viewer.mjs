@@ -5,7 +5,8 @@ const status = document.querySelector('#status'), error = document.querySelector
 const label = document.querySelector('#page-label'), counter = document.querySelector('#page-counter');
 const previous = document.querySelector('#previous'), next = document.querySelector('#next'), zoomIn = document.querySelector('#zoom-in'), zoomOut = document.querySelector('#zoom-out'), fit = document.querySelector('#fit');
 const dialog = document.querySelector('#jump-dialog'), input = document.querySelector('#page-input');
-let pdf = null, task = null, inputDocument = null, generation = 0, zoom = 1, currentPage = 1, records = [], renderQueue = [], activeRenders = 0, resizeTimer, zoomTimer, scrollFrame;
+clearTimeout(window.learningViewerBootTimer);
+let pdf = null, task = null, inputDocument = null, generation = 0, zoom = 1, currentPage = 1, records = [], renderQueue = [], activeRenders = 0, resizeTimer, zoomTimer, scrollFrame, pinching = false;
 const minimumZoom = 0.5, maximumZoom = 4;
 const width = () => Math.max(1, viewport.clientWidth - 12);
 function updateControls() {
@@ -29,15 +30,18 @@ function enqueue(record, retry = false) {
   record.failed = false; record.queued = true; renderQueue.push(record); void pump();
 }
 async function pump() {
-  if (activeRenders >= 2 || !renderQueue.length || !pdf) return;
+  if (pinching || activeRenders >= 2 || !renderQueue.length || !pdf) return;
   const record = renderQueue.shift(); record.queued = false;
   if (record.generation !== generation || !nearby(record)) { void pump(); return; }
   activeRenders++; record.rendering = true;
   const turn = generation, atZoom = zoom, documentPdf = pdf;
-  let page, canvas;
+  let page, canvas, renderTimer;
   try {
     record.message.textContent = `Loading page ${record.number}…`;
-    page = await documentPdf.getPage(record.number);
+    const deadline = new Promise((_, reject) => {
+      renderTimer = setTimeout(() => { reject(Error('This page stopped loading.')); record.renderTask?.cancel(); }, 15000);
+    });
+    page = await Promise.race([documentPdf.getPage(record.number), deadline]);
     if (turn !== generation) return;
     const base = page.getViewport({ scale: 1 });
     const ratio = base.height / base.width;
@@ -51,7 +55,7 @@ async function pump() {
     canvas = document.createElement('canvas'); canvas.width = Math.ceil(view.width); canvas.height = Math.ceil(view.height);
     canvas.setAttribute('aria-label', `PDF page ${record.number}`); canvas.setAttribute('role', 'img');
     record.renderTask = page.render({ canvasContext: canvas.getContext('2d', { alpha: false }), canvas, viewport: view });
-    await record.renderTask.promise;
+    await Promise.race([record.renderTask.promise, deadline]);
     if (turn !== generation || !record.node.isConnected) return;
     if (record.canvas) { record.canvas.remove(); record.canvas.width = record.canvas.height = 0; }
     record.canvas = canvas; canvas = null; record.node.append(record.canvas); record.message.hidden = true;
@@ -62,14 +66,15 @@ async function pump() {
       record.node.classList.add('retry'); record.node.tabIndex = 0;
     }
   } finally {
+    clearTimeout(renderTimer);
     if (canvas) canvas.width = canvas.height = 0;
     page?.cleanup(); record.renderTask = null; record.rendering = false; activeRenders--;
-    if (turn === generation && !record.failed && nearby(record) && (record.renderedZoom !== zoom || Math.abs((record.renderedWidth || 0)-width()*zoom)>0.5)) enqueue(record);
+    if (turn === generation && !pinching && !record.failed && nearby(record) && (record.renderedZoom !== zoom || Math.abs((record.renderedWidth || 0)-width()*zoom)>0.5)) enqueue(record);
     void pump();
   }
 }
 function refreshVisible() {
-  if (!pdf) return;
+  if (!pdf || pinching) return;
   const top = viewport.scrollTop, bottom = top + viewport.clientHeight, preload = viewport.clientHeight;
   let nearest = records[0], distance = Infinity;
   for (const record of records) {
@@ -98,24 +103,37 @@ function changeZoom(value, x = viewport.clientWidth / 2, y = viewport.clientHeig
 async function openDocument(data) {
   inputDocument = data;
   const turn = ++generation;
+  let loadingTimer;
   const oldTask = task; task = null; pdf = null; renderQueue = [];
   for (const record of records) { record.renderTask?.cancel(); if(record.canvas) record.canvas.width = record.canvas.height = 0; }
   records = []; pages.replaceChildren(); viewport.scrollTop = viewport.scrollLeft = 0;
-  zoom = 1; currentPage = 1; error.classList.remove('visible'); status.hidden = false; updateControls();
+  zoom = 1; currentPage = 1; error.classList.remove('visible'); status.textContent = 'Opening your document…'; status.hidden = false; updateControls();
   document.body.dataset.theme = data.dark ? 'dark' : 'light';
   try {
     await oldTask?.destroy();
+    pinch = null; pinching = false;
     if (turn !== generation) return;
     const target = new URL(data.url, location.origin);
     const localHost = hostname => ['localhost','127.0.0.1','[::1]'].includes(hostname);
     const localDevelopment = location.protocol === 'http:' && localHost(location.hostname) && target.protocol === 'http:' && localHost(target.hostname);
     if (target.protocol !== 'https:' && !localDevelopment || !target.searchParams.has('access')) throw Error('This private link has expired. Reopen the material.');
     document.title = data.title || 'Learning document';
-    task = getDocument({ url: target.href, disableAutoFetch: true, disableStream: true, isEvalSupported: false, rangeChunkSize: 262144 });
-    const result = await task.promise;
+    let resetProgressDeadline;
+    const loadingTimeout = new Promise((_, reject) => {
+      const reset = () => { clearTimeout(loadingTimer); loadingTimer = setTimeout(() => reject(Error('The document stopped downloading. Check your connection and retry.')), 15000); };
+      resetProgressDeadline = reset; reset();
+    });
+    task = getDocument({ url: target.href, disableAutoFetch: true, disableStream: false, isEvalSupported: false, rangeChunkSize: 262144 });
+    let loadedBytes = 0;
+    task.onProgress = progress => {
+      if (turn !== generation || progress.loaded <= loadedBytes) return;
+      loadedBytes = progress.loaded; resetProgressDeadline();
+      status.textContent = progress.total > 0 ? `Opening document · ${Math.min(100, Math.round(progress.loaded / progress.total * 100))}%` : `Opening document · ${Math.round(progress.loaded / 1024)} KB received`;
+    };
+    const result = await Promise.race([task.promise, loadingTimeout]);
     if (turn !== generation) return;
     pdf = result;
-    const first = await pdf.getPage(1), base = first.getViewport({ scale: 1 });
+    const first = await Promise.race([pdf.getPage(1), loadingTimeout]), base = first.getViewport({ scale: 1 });
     const ratio = base.height / base.width; first.cleanup();
     const fragment = document.createDocumentFragment();
     for (let number = 1; number <= pdf.numPages; number++) {
@@ -125,11 +143,14 @@ async function openDocument(data) {
       const retry = () => { if (record.failed) enqueue(record, true); }; node.addEventListener('click', retry); node.addEventListener('keydown', event => { if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); retry(); } });
       records.push(record); fragment.append(node);
     }
+    clearTimeout(loadingTimer);
     pages.append(fragment); input.max = String(pdf.numPages); layout(); status.hidden = true; updateControls(); refreshVisible();
   } catch (caught) {
+    clearTimeout(loadingTimer);
     if (turn !== generation) return;
+    void task?.destroy().catch(() => undefined); pdf = null; updateControls();
     status.hidden = true; errorMessage.textContent = caught?.message || 'This document could not load. Try again when you are online.'; error.classList.add('visible');
-  }
+  } finally { clearTimeout(loadingTimer); }
 }
 window.openLearningDocument = openDocument;
 previous.onclick = () => goToPage(currentPage - 1); next.onclick = () => goToPage(currentPage + 1);
@@ -145,26 +166,63 @@ input.addEventListener('keydown', event => { if(event.key === 'Enter') { event.p
 document.querySelector('#jump-form').onsubmit = event => { event.preventDefault(); jumpToInputPage(); };
 viewport.addEventListener('scroll', () => { if(!scrollFrame) scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; refreshVisible(); }); }, { passive: true });
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { const number = currentPage; for(const record of records)record.renderedZoom = 0; layout(); goToPage(number); }, 120); });
-viewport.addEventListener('dblclick', event => { const rect = viewport.getBoundingClientRect(); changeZoom(zoom > 1.4 ? 1 : 2, event.clientX - rect.left, event.clientY - rect.top); });
-let pinch = null, lastTap = null, startTouch = null;
+viewport.addEventListener('dblclick', event => { if(Date.now()-lastTouchZoom<500)return; const rect = viewport.getBoundingClientRect(); changeZoom(zoom > 1.4 ? 1 : 2, event.clientX - rect.left, event.clientY - rect.top); });
+let pinch = null, lastTap = null, startTouch = null, pinchFrame = 0, pendingPinch = null, lastTouchZoom = 0;
 const span = touches => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+function applyPinch() {
+  pinchFrame = 0;
+  if (!pinch || !pendingPinch) return;
+  const { distance, x, y } = pendingPinch;
+  // Absolute distance from the gesture start avoids multiplying deltas. The
+  // original content point follows the moving midpoint, including two-finger pan.
+  const target = Math.min(maximumZoom, Math.max(minimumZoom, pinch.zoom * distance / Math.max(20, pinch.distance)));
+  zoom = target; layout();
+  const page = records[pinch.page];
+  viewport.scrollLeft = (page.node.offsetLeft + pinch.localX * page.node.offsetWidth) - x;
+  viewport.scrollTop = (page.node.offsetTop - pages.offsetTop + pinch.localY * page.node.offsetHeight) - y;
+  updateControls();
+}
+function endPinch() {
+  if (pinchFrame) cancelAnimationFrame(pinchFrame);
+  applyPinch(); pinchFrame = 0; pendingPinch = null; pinch = null; pinching = false; lastTouchZoom = Date.now();
+  refreshVisible(); void pump();
+}
 viewport.addEventListener('touchstart', event => {
-  if(event.touches.length === 2) { const rect = viewport.getBoundingClientRect(); pinch = { distance: span(event.touches), zoom, x: (event.touches[0].clientX + event.touches[1].clientX)/2-rect.left, y: (event.touches[0].clientY + event.touches[1].clientY)/2-rect.top }; startTouch = null; lastTap = null; }
-  else if(event.touches.length === 1) startTouch = { x: event.touches[0].clientX, y: event.touches[0].clientY, time: Date.now() };
-}, { passive: true });
-viewport.addEventListener('touchmove', event => { if(event.touches.length === 2 && pinch) { event.preventDefault(); changeZoom(pinch.zoom * span(event.touches)/Math.max(1,pinch.distance),pinch.x,pinch.y,false); } }, { passive: false });
+  if (event.touches.length === 2 && pdf) {
+    event.preventDefault(); clearTimeout(zoomTimer);
+    const rect = viewport.getBoundingClientRect();
+    const x = (event.touches[0].clientX + event.touches[1].clientX)/2 - rect.left, y = (event.touches[0].clientY + event.touches[1].clientY)/2 - rect.top;
+    const pointY = viewport.scrollTop + y;
+    let index = records.findIndex(r => r.node.offsetTop - pages.offsetTop + r.node.offsetHeight >= pointY);
+    if (index < 0) index = records.length - 1;
+    const record = records[index];
+    pinch = { distance: span(event.touches), zoom, page: index,
+      localX: (viewport.scrollLeft + x - record.node.offsetLeft) / record.node.offsetWidth,
+      localY: (pointY - record.node.offsetTop + pages.offsetTop) / record.node.offsetHeight };
+    pinching = true; startTouch = null; lastTap = null;
+  } else if (event.touches.length === 1 && !pinch) startTouch = { x: event.touches[0].clientX, y: event.touches[0].clientY, time: Date.now() };
+}, { passive: false });
+viewport.addEventListener('touchmove', event => {
+  if (event.touches.length === 2 && pinch) {
+    event.preventDefault(); const rect = viewport.getBoundingClientRect();
+    pendingPinch = { distance: span(event.touches), x: (event.touches[0].clientX + event.touches[1].clientX)/2 - rect.left, y: (event.touches[0].clientY + event.touches[1].clientY)/2 - rect.top };
+    if (!pinchFrame) pinchFrame = requestAnimationFrame(applyPinch);
+  }
+}, { passive: false });
 viewport.addEventListener('touchend', event => {
-  if(pinch) { if(event.touches.length < 2) { pinch = null; refreshVisible(); } startTouch = null; return; }
-  if(startTouch && event.changedTouches.length === 1) {
+  if (pinch) { if (event.touches.length < 2) endPinch(); startTouch = null; return; }
+  if (startTouch && event.changedTouches.length === 1) {
     const touch = event.changedTouches[0], now = Date.now();
-    if(now-startTouch.time < 250 && Math.hypot(touch.clientX-startTouch.x,touch.clientY-startTouch.y)<12) {
-      if(lastTap && now-lastTap.time < 300 && Math.hypot(touch.clientX-lastTap.x,touch.clientY-lastTap.y)<30) { event.preventDefault(); const rect=viewport.getBoundingClientRect(); changeZoom(zoom > 1.4 ? 1 : 2,touch.clientX-rect.left,touch.clientY-rect.top); lastTap=null; }
-      else lastTap = { x:touch.clientX,y:touch.clientY,time:now };
+    if (now-startTouch.time < 250 && Math.hypot(touch.clientX-startTouch.x,touch.clientY-startTouch.y)<12) {
+      if (lastTap && now-lastTap.time < 300 && Math.hypot(touch.clientX-lastTap.x,touch.clientY-lastTap.y)<30) {
+        event.preventDefault(); const rect = viewport.getBoundingClientRect();
+        changeZoom(zoom > 1.4 ? 1 : 2, touch.clientX-rect.left,touch.clientY-rect.top); lastTap = null; lastTouchZoom = now;
+      } else lastTap = { x: touch.clientX, y: touch.clientY, time: now };
     } else lastTap = null;
   }
   startTouch = null;
 }, { passive: false });
-viewport.addEventListener('touchcancel', () => { pinch = startTouch = lastTap = null; refreshVisible(); }, { passive: true });
+viewport.addEventListener('touchcancel', () => { if(pinch)endPinch(); startTouch = lastTap = null; }, { passive: true });
 viewport.addEventListener('wheel', event => { if(event.ctrlKey) { event.preventDefault(); const rect=viewport.getBoundingClientRect(); changeZoom(zoom * (event.deltaY < 0 ? 1.1 : 0.9),event.clientX-rect.left,event.clientY-rect.top); } }, { passive: false });
 window.addEventListener('message', event => { if(event.origin === location.origin && event.source === window.parent && event.data?.url) void openDocument(event.data); });
 window.addEventListener('pagehide', () => { generation++; renderQueue=[]; for(const record of records)record.renderTask?.cancel(); void task?.destroy(); });

@@ -95,8 +95,8 @@ app.use("/v1/*", async (context, next) => {
   return cors({
     origin: (origin) => (origins.has(origin) ? origin : undefined),
     allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "HEAD", "OPTIONS"],
-    allowHeaders: ["Authorization", "Content-Type", "Cache-Control", "X-Request-Id", "X-Device-Label", "X-Admin-Bootstrap-Token"],
-    exposeHeaders: ["X-Request-Id"], credentials: true, maxAge: 86400,
+    allowHeaders: ["Authorization", "Content-Type", "Cache-Control", "Range", "X-Request-Id", "X-Device-Label", "X-Admin-Bootstrap-Token"],
+    exposeHeaders: ["X-Request-Id", "Accept-Ranges", "Content-Range", "Content-Length", "Content-Encoding"], credentials: true, maxAge: 86400,
   })(context, next);
 });
 app.get("/", (context) => context.json({ service: "kampusone-api", message: "KampusOne privileged API boundary", documentation: "/v1/config/public", requestId: context.get("requestId") }));

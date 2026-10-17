@@ -162,7 +162,7 @@ export async function prepareStoreQuote(
   if (previous) {
     const same = firstRow(
       await database(env).execute<{ same: boolean }>(
-        sql`select request_payload=${JSON.stringify(data)}::jsonb as same from app_private.store_checkout_quotes where id=${previous.id}::uuid`,
+        sql`select (request_payload=${JSON.stringify(data)}::jsonb or (${data.deliveryZoneId == null} and request_payload-'deliveryZoneId'=${JSON.stringify(data)}::jsonb-'deliveryZoneId')) as same from app_private.store_checkout_quotes where id=${previous.id}::uuid`,
       ),
     )?.same;
     if (!same)
@@ -266,9 +266,36 @@ export async function prepareStoreQuote(
         "FEATURE_DISABLED",
         "Rider delivery is not available yet.",
       );
+    // Resolve coverage from the saved store. Buyers only need their address;
+    // the optional landmark still enables an exact mapped route.
+    if (!data.deliveryZoneId) {
+      const coverage=firstRow(await database(env).execute<{id:string}>(sql`
+        select z.id from public.delivery_zones z
+        left join public.campus_places p on p.id=${vendor.pickup_place_id}::uuid and p.university_id=z.university_id
+        where z.university_id=${user.universityId}::uuid and z.active
+          and (to_jsonb(z)->>'campus_id' is null or to_jsonb(z)->>'campus_id'=p.campus_id::text)
+        order by (to_jsonb(z)->>'campus_id' is not null) desc,z.id limit 1
+      `));
+      data={...data,deliveryZoneId:coverage?.id??null};
+    }
     const zone=firstRow(await database(env).execute<{id:string;campus_id:string|null}>(sql`select id,to_jsonb(delivery_zones)->>'campus_id' as campus_id from public.delivery_zones where id=${data.deliveryZoneId??null}::uuid and university_id=${user.universityId}::uuid and active`));
     if(!zone)throw new AppError(409,'CONFLICT','Choose an active delivery coverage zone.');
-    if(!data.deliveryPlaceId)throw new AppError(422,'BAD_REQUEST','Choose your delivery point on the campus map.');
+    const load={pickupStops:vendorIds.length,quantity:data.items.reduce((sum,i)=>sum+i.quantity,0),weightGrams:data.items.reduce((sum,i)=>sum+Number(products.rows.find(p=>p.id===i.productId)?.package_weight_grams??300)*i.quantity,0),volumeCm3:data.items.reduce((sum,i)=>{const p=products.rows.find(p=>p.id===i.productId);return sum+Number(p?.package_length_cm??0)*Number(p?.package_width_cm??0)*Number(p?.package_height_cm??0)*i.quantity;},0)};
+    if (!data.deliveryPlaceId) {
+      const pickups=(await database(env).execute<{vendor_profile_id:string;pickup_location:string;campus_id:string|null}>(sql`
+        select s.vendor_profile_id,s.pickup_location,p.campus_id from public.vendor_storefronts s
+        left join public.campus_places p on p.id=s.pickup_place_id and p.university_id=s.university_id
+        where s.university_id=${user.universityId}::uuid and s.status='APPROVED'
+          and s.vendor_profile_id in(select value::uuid from jsonb_array_elements_text(${JSON.stringify(vendorIds)}::jsonb))
+      `)).rows;
+      if(pickups.length!==vendorIds.length||pickups.some(s=>!s.pickup_location||s.pickup_location.trim().length<5))
+        throw new AppError(409,'CONFLICT','The vendor needs to save a pickup address before a rider can collect this order.',{reason:'PICKUP_POINT_UNAVAILABLE'});
+      if(new Set(pickups.map(s=>s.campus_id).filter(Boolean)).size>1||pickups.some(s=>zone.campus_id&&s.campus_id&&zone.campus_id!==s.campus_id))
+        throw new AppError(422,'BAD_REQUEST','Choose stores from the same campus for rider delivery.');
+      // No route or coordinates are claimed for a typed address. Quote the
+      // campus base/load tariff; the rider uses the saved pickup and address.
+      fare={...campusFare(0,load),route:{notice:'Campus address delivery. Confirm the exact entrance with your rider.'},distanceBasis:'CAMPUS_ADDRESS',pickupLocationBasis:'SAVED_STOREFRONT_ADDRESS'};
+    } else {
     const [destination,position,pickup]=await Promise.all([mappedDeliveryPoint(env,user.universityId!,data.deliveryPlaceId),currentAgentPosition(env,data.vendorProfileId,user.universityId!),vendor.pickup_place_id?mappedDeliveryPoint(env,user.universityId!,vendor.pickup_place_id):Promise.resolve(null)]);
     if(zone.campus_id&&zone.campus_id!==destination.campus_id)throw new AppError(422,'BAD_REQUEST','Choose the delivery zone for your selected campus point.');
     if(pickup&&pickup.campus_id!==destination.campus_id)throw new AppError(422,'BAD_REQUEST','Cross-campus delivery is unavailable. Choose pickup.');
@@ -286,6 +313,7 @@ export async function prepareStoreQuote(
       totalDistance+=(await campusDeliveryRoute(env,user.universityId!,destination.campus_id,origin,[source.longitude,source.latitude])).distanceMetres;
     }
     fare={...campusFare(totalDistance,{pickupStops:vendorIds.length,quantity:data.items.reduce((sum,i)=>sum+i.quantity,0),weightGrams:data.items.reduce((sum,i)=>sum+Number(products.rows.find(p=>p.id===i.productId)?.package_weight_grams??300)*i.quantity,0),volumeCm3:data.items.reduce((sum,i)=>{const p=products.rows.find(p=>p.id===i.productId);return sum+Number(p?.package_length_cm??0)*Number(p?.package_width_cm??0)*Number(p?.package_height_cm??0)*i.quantity;},0)}),route,distanceBasis:'OSM_BICYCLE_NETWORK',pickupLocationBasis:position?'CURRENT_VENDOR_POSITION':'APPROVED_STOREFRONT_PICKUP'};
+    }
   }
   let pricing;
   try {

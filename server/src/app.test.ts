@@ -151,3 +151,14 @@ describe("KampusOne Worker", () => {
     expect(body.error.requestId).toBeTruthy();
   });
 });
+
+it('allows PDF byte-range requests and exposes the metadata needed for progressive private viewing',async()=>{
+  const response=await app.request('http://local.test/v1/media/00000000-0000-4000-8000-000000000001',{
+    method:'OPTIONS',headers:{Origin:'https://staging.kampusone.app','Access-Control-Request-Method':'GET','Access-Control-Request-Headers':'range'}
+  },env);
+  expect(response.status).toBe(204);
+  expect(response.headers.get('Access-Control-Allow-Headers')).toContain('Range');
+  const actual=await app.request('http://local.test/v1/config/public',{headers:{Origin:'https://staging.kampusone.app'}},env);
+  const headers=actual.headers.get('Access-Control-Expose-Headers')?.toLowerCase();
+  for(const name of ['accept-ranges','content-range','content-length','content-encoding'])expect(headers).toContain(name);
+});

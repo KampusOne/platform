@@ -40,7 +40,11 @@ export function PopularShops() {
     <View style={{ marginBottom: 20 }}>
       <Text style={{ fontFamily: theme.font.semibold, fontSize: 17, color: theme.text, marginBottom: 12 }}>Top campus brands</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 18 }}>
-        {shops.map(shop => (
+        {shops.map(shop => {
+          const roleName = /^(.*?)\s+(vendor|tutor|rider)$/i.exec(shop.display_name.trim());
+          const labelStyle = { fontFamily: theme.font.medium, fontSize: 12, textAlign: 'center' as const, color: theme.text };
+          const badge = shop.verified === true ? <VerifiedBadge size={11} label={`Verified ${shop.agent_type.toLowerCase()}`} /> : null;
+          return (
           <Pressable
             key={shop.id}
             accessibilityRole="button"
@@ -57,12 +61,14 @@ export function PopularShops() {
                 </View>
               )}
             </View>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, width: "100%" }}>
-              <Text numberOfLines={2} style={{ flexShrink: 1, fontFamily: theme.font.medium, fontSize: 12, textAlign: "center", color: theme.text }}>{shop.display_name}</Text>
-              {shop.verified === true ? <VerifiedBadge size={13} label={`Verified ${shop.agent_type.toLowerCase()}`} /> : null}
-            </View>
+            {roleName ? <View style={{ alignItems: 'center', width: '100%' }}>
+              <Text numberOfLines={1} style={labelStyle}>{roleName[1]}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 }}><Text style={labelStyle}>{roleName[2]}</Text>{badge}</View>
+            </View> : <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, width: "100%" }}>
+              <Text numberOfLines={2} style={[labelStyle, { flexShrink: 1 }]}>{shop.display_name}</Text>{badge}
+            </View>}
           </Pressable>
-        ))}
+        ); })}
       </ScrollView>
     </View>
   );

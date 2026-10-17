@@ -142,7 +142,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const [loadedCataloguePath, setLoadedCataloguePath] = useState('');
   const [zones, setZones] = useState<Zone[]>([]);
   const [riderDeliveryEnabled, setRiderDeliveryEnabled] = useState(false);
-  const [riderPickupUnavailable, setRiderPickupUnavailable] = useState(false);
   const [fulfilmentMode, setFulfilmentMode] = useState<
     "RIDER" | "PICKUP" | "VENDOR_DELIVERY"
   >("RIDER");
@@ -256,7 +255,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
         ),
       );
       setRiderDeliveryEnabled(data.riderDeliveryEnabled === true);
-      setRiderPickupUnavailable(false);
       setCatalogueMode(mode);
       setCheckoutEnabled(data.checkoutEnabled ?? mode === "LIVE");
       setLoading(false);
@@ -332,7 +330,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const selectedZone = zones.find((zone) => zone.id === selectedZoneId);
   const vendorProduct = cartItems[0]?.product;
   const multiVendor=new Set(cartItems.map(item=>item.product.vendor_profile_id)).size>1;
-  const riderReady = riderDeliveryEnabled && !riderPickupUnavailable && cartItems.length > 0 && cartItems.every(item=>item.product.rider_pickup_ready===true);
+  const riderReady = riderDeliveryEnabled && cartItems.length > 0;
   const fulfilmentModes = (
     ["RIDER", "PICKUP"] as const
   ).filter((mode) =>
@@ -355,13 +353,13 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   ].filter(Boolean).join("\n");
   const cartAvailable = cartItems.every(item => item.quantity > 0 && item.quantity <= Number(item.product.stock_quantity));
   const checkoutReady =
-    cartAvailable && !!effectiveMode && (effectiveMode !== "RIDER" || !!selectedZone && !!deliveryPlace) &&
+    cartAvailable && !!effectiveMode && (effectiveMode !== "RIDER" || deliveryLocation.trim().length >= 5) &&
     (!agreedPickup || meetingPoint.trim().length >= 5) && orderNote.length <= 500;
   const checkoutBlockedLabel = !cartAvailable ? "Update the unavailable items in your cart" : !effectiveMode ? "This seller has no delivery or pickup option yet" : orderNote.length > 500
     ? "Shorten your handoff note to continue"
     : agreedPickup && meetingPoint.trim().length < 5
       ? "Enter the agreed pickup point"
-      : !deliveryPlace && effectiveMode === 'RIDER' ? "Choose a delivery location" : "Select a delivery zone to continue";
+      : effectiveMode === 'RIDER' ? "Enter your delivery address" : "Check your order details";
   const orderPayload = JSON.stringify({
     pickupPointName:effectiveMode==='PICKUP'?(multiVendor?bulkPickup:singlePickup||vendorProduct?.pickup_location):null,
     vendorProfileId: cartItems[0]?.product.vendor_profile_id,
@@ -527,14 +525,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
         params: { id: order.id, type: "STORE_ORDER", autoPay: '1' },
       });
     } catch (caught) {
-      if (caught instanceof ApiError && caught.details?.reason === 'PICKUP_POINT_UNAVAILABLE') {
-        setRiderPickupUnavailable(true);
-        setFulfilmentMode('PICKUP');
-        setReviewedQuote(null);
-        quoteRequest.current = { payload: '', id: '' };
-        setCheckoutError('');
-        return;
-      }
       if (caught instanceof ApiError) {
         const errors = checkoutServerFieldErrors(caught.details);
         setCheckoutFields(errors);
@@ -709,7 +699,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         />
                       </Pressable>
                     ))}
-                    {riderDeliveryEnabled && !riderReady ? <View accessibilityLabel="Rider delivery unavailable" style={[styles.zone,{opacity:0.7}]}><View style={styles.zoneCopy}><Text style={styles.zoneName}>Rider delivery unavailable</Text><Text style={styles.zoneFee}>{fulfilmentModes.includes('PICKUP')?'Choose pickup while the seller confirms a collection point.':'Contact the vendor to arrange a collection point.'}</Text></View><Ionicons name="bicycle-outline" size={22} color={theme.textMuted}/></View>:null}
+
                   </View>
                   {!fulfilmentModes.length && vendorProduct ? <Pressable accessibilityRole="button" accessibilityLabel="Contact vendor about pickup" disabled={busy} onPress={()=>void contactVendor()} style={styles.vendorContact}><Ionicons name="chatbubble-outline" size={16} color={theme.brandPressed}/><Text style={styles.vendorContactText}>Contact vendor</Text><Ionicons name="chevron-forward" size={14} color={theme.brandPressed}/></Pressable>:null}
                   {(effectiveMode === "PICKUP" || effectiveMode === "RIDER") && vendorProduct ? (
@@ -747,69 +737,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                       {agreedPickup ? <><Text style={styles.sectionLabel}>Agreed meeting point</Text><TextInput accessibilityLabel="Meeting point agreed with the vendor" editable={!busy} value={meetingPoint} onChangeText={setMeetingPoint} maxLength={160} placeholder="Building, entrance or clear landmark" placeholderTextColor={theme.textSubtle} style={styles.noteInput}/><Text style={styles.pickupHelp}>This point is saved in your pickup instructions. Select it only after the vendor confirms.</Text></> : null}
                     </>
                   ) : null}
-                  {effectiveMode === "RIDER" ? (
-                    <>
-                      <Text style={styles.sectionLabel}>Delivery zone</Text>
-                      <View
-                        accessibilityRole="radiogroup"
-                        style={styles.zoneList}
-                      >
-                        {zones.map((zone) => {
-                          const selected = zone.id === selectedZoneId;
-                          return (
-                            <Pressable
-                              accessibilityRole="radio"
-                              accessibilityState={{ selected }}
-                              key={zone.id}
-                              onPress={() => {
-                                setCheckoutError("");
-                                setSelectedZoneId(zone.id);
-                              }}
-                              style={({ pressed }) => [
-                                styles.zone,
-                                selected && styles.zoneSelected,
-                                pressed && styles.pressed,
-                              ]}
-                            >
-                              <View style={styles.zoneCopy}>
-                                <Text style={styles.zoneName}>{zone.name}</Text>
-                                <Text style={styles.zoneFee}>
-                                  Fare shown after route review
-                                </Text>
-                              </View>
-                              <Ionicons
-                                name={
-                                  selected
-                                    ? "radio-button-on"
-                                    : "radio-button-off"
-                                }
-                                size={22}
-                                color={
-                                  selected
-                                    ? theme.brandPressed
-                                    : theme.textSubtle
-                                }
-                              />
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                      {!zones.length ? (
-                        <View style={styles.zoneWarning}>
-                          <Ionicons
-                            name="information-circle-outline"
-                            size={19}
-                            color={theme.warning}
-                          />
-                          <Text style={styles.zoneWarningText}>
-                            Checkout is unavailable until your university
-                            publishes a delivery zone.
-                          </Text>
-                        </View>
-                      ) : null}
-                    </>
-                  ) : null}
-
                   <Text style={styles.sectionLabel}>Recipient name</Text>
                   <TextInput
                     accessibilityLabel="Recipient name"
@@ -841,18 +768,22 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                       <TextInput
                         accessibilityLabel="Delivery address"
                         value={deliveryLocation}
-                        onChangeText={value => { setDeliveryLocation(value); clearCheckoutField('deliveryLocation'); }}
+                        onChangeText={value => { setDeliveryLocation(value); setDeliveryPlace(null); setSelectedZoneId(''); clearCheckoutField('deliveryLocation'); }}
                         onLayout={event => { checkoutFieldPositions.current.deliveryLocation = event.nativeEvent.layout.y; }}
+                        editable={!busy}
+                        placeholder="Hostel or house, street and room number"
+                        placeholderTextColor={theme.textSubtle}
+                        multiline
                         maxLength={500}
                         style={[styles.noteInput, checkoutFields.deliveryLocation && styles.inputError]}
                       />
                       {checkoutFields.deliveryLocation ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>{checkoutFields.deliveryLocation}</Text> : null}
                       <CampusPlaceChoice
-                        label="Delivery point on the campus map"
+                        label="Nearby campus landmark (optional)"
                         disabled={busy}
                         value={deliveryPlace}
                         onChange={setDeliveryPlace}
-                        onSelect={place=>{setDeliveryLocation(place.name);clearCheckoutField('deliveryLocation');setSelectedZoneId(place.delivery_zone_id??'');setCheckoutError('');}}
+                        onSelect={place=>{if (!deliveryLocation.trim()) setDeliveryLocation(place.name);clearCheckoutField('deliveryLocation');setSelectedZoneId(place.delivery_zone_id??'');setCheckoutError('');}}
                       />
                     </>
                   ) : null}
@@ -913,7 +844,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         <Text style={styles.totalValue}>{validQuote.pricing.pricingAdjustmentKobo < 0 ? "−" : "+"}{naira(Math.abs(validQuote.pricing.pricingAdjustmentKobo))}</Text>
                       </View>
                     ) : null}
-                    {validQuote?.fare ? (
+                    {validQuote?.fare?.distanceBasis === 'OSM_BICYCLE_NETWORK' ? (
                       <Text style={styles.totalLabel}>
                         Mapped rider route ·{" "}
                         {(validQuote.fare.routeMetres / 1000).toFixed(2)} km

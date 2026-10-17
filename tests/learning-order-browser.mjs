@@ -28,6 +28,14 @@ function fixturePDF(){
  let data='%PDF-1.4\n',offsets=[0];for(const [n,object]of objects.entries()){offsets.push(Buffer.byteLength(data));data+=`${n+1} 0 obj\n${object}\nendobj\n`;}
  const xref=Buffer.byteLength(data);data+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`+offsets.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;return Buffer.from(data);
 }
+function fixtureAudio() {
+  const rate = 8000, seconds = 60, body = Buffer.alloc(44 + rate * seconds * 2);
+  body.write('RIFF'); body.writeUInt32LE(body.length - 8, 4); body.write('WAVEfmt ', 8); body.writeUInt32LE(16, 16);
+  body.writeUInt16LE(1, 20); body.writeUInt16LE(1, 22); body.writeUInt32LE(rate, 24); body.writeUInt32LE(rate * 2, 28); body.writeUInt16LE(2, 32); body.writeUInt16LE(16, 34); body.write('data', 36); body.writeUInt32LE(body.length - 44, 40);
+  for (let n = 0; n < rate * seconds; n++) body.writeInt16LE(Math.round(Math.sin(2 * Math.PI * 440 * n / rate) * 1000), 44 + n * 2);
+  return body;
+}
+const audioFixture = fixtureAudio();
 const pdfFixture=fixturePDF();
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.ttf': 'font/ttf', '.json': 'application/json' };
 const web = createServer((req, res) => {
@@ -46,20 +54,25 @@ let browser;
 const results = [];
 try {
   browser = await chromium.launch({ headless: true });
-  async function scenario({ width = 390, dark = false, resource = {}, order = {}, timeline = defaultTimeline, pickupReady = true, catalogueSize = 1, tutorialCount = 0, density = 1 } = {}) {
+  async function scenario({ width = 390, dark = false, resource = {}, order = {}, timeline = defaultTimeline, pickupReady = true, catalogueSize = 1, tutorialCount = 0, density = 1, brandName = brand.display_name } = {}) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, locale: 'en-NG', timezoneId: 'Africa/Lagos', reducedMotion: 'reduce', deviceScaleFactor: density, hasTouch: true });
-    await context.addInitScript(mode => localStorage.setItem('k1.appearance', mode), dark ? 'dark' : 'light');
+    await context.addInitScript(mode => { localStorage.setItem('k1.appearance', mode); localStorage.setItem('k1.install-intro.v2', 'done'); Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true }); }, dark ? 'dark' : 'light');
+    await context.addInitScript(() => {
+      window.__fixtureAudio = [];
+      window.Audio = new Proxy(window.Audio, { construct(target, args) { const audio = Reflect.construct(target, args); window.__fixtureAudio.push(audio); return audio; } });
+    });
     const page = await context.newPage(), errors = [];
     page.on('pageerror', e => errors.push(e.stack ?? e.message));
     const catalogue = Array.from({length: catalogueSize}, (_,n) => ({ id: n ? `20000000-0000-4000-8000-${String(n).padStart(12,'0')}` : items[0].product_id, vendor_profile_id: vendorId, name: n ? `Campus product ${String(n+1).padStart(2,'0')}` : 'Campus headphones', description: 'Comfortable campus essentials.', category: 'Electronics', vendor_name: brand.display_name, price_kobo: 250000, stock_quantity: 3, image_url: null, pickup_enabled: true, pickup_location: 'Faculty of Engineering entrance', rider_pickup_ready: pickupReady }));
     let currentResource = { ...resourceBase, ...resource }, reviews = [], saveCalls = 0, lastQuote = null;
     await context.route('**/*', async route => {
-      const url = new URL(route.request().url()), path = url.pathname;
+      const url = new URL(route.request().url()), path = url.pathname.replace(/^\/api(?=\/v1\/)/, '');
       if (path.startsWith('/v1/')) {
-        const headers = { 'Access-Control-Allow-Origin': 'http://localhost:8100', 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Allow-Headers': 'authorization,content-type,x-device-label', 'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS', 'Cache-Control': 'no-store' };
+        const headers = { 'Access-Control-Allow-Origin': 'http://localhost:8100', 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Allow-Headers': 'authorization,content-type,x-device-label,cache-control,x-request-id,range', 'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS', 'Cache-Control': 'no-store' };
         if (route.request().method() === 'OPTIONS') { await route.fulfill({ status: 204, headers }); return; }
-        if(path === `/v1/media/${tutorId}` && url.searchParams.has('access')) {
-          await route.fulfill({status:200,headers:{...headers,'Accept-Ranges':'bytes'},contentType:currentResource.resource_type==='VIDEO'?'video/mp4':'application/pdf',body:currentResource.resource_type==='VIDEO'?videoFixture:pdfFixture});return;
+        if([`/v1/media/${tutorId}`, `/v1/media/${orderId}`].includes(path) && url.searchParams.has('access')) {
+          const audio = currentResource.resource_type === 'AUDIOBOOK';
+          await route.fulfill({status:200,headers:{...headers,'Accept-Ranges':'bytes'},contentType:audio?'audio/wav':currentResource.resource_type==='VIDEO'?'video/mp4':'application/pdf',body:audio?audioFixture:currentResource.resource_type==='VIDEO'?videoFixture:pdfFixture});return;
         }
         let body;
         if (path === '/v1/auth/refresh') body = { accessToken: 'synthetic-local-fixture', refreshToken: 'synthetic-local-fixture', expiresIn: 3600, refreshExpiresIn: 86400, user };
@@ -69,11 +82,11 @@ try {
         else if (path === `/v1/student/orders/${orderId}`) body = { order: { ...orderBase, ...order }, items, reviews, timeline };
         else if (path === '/v1/student/product-reviews') { const payload = route.request().postDataJSON(); reviews = [{ product_id: payload.productId, rating: payload.rating, body: payload.body }]; body = { id: 'synthetic-review' }; }
         else if (path === '/v1/student/catalog') body = { universities: [{ id: user.universityId, name: 'Synthetic university' }], faculties: [], departments: [] };
-        else if (path === '/v1/featured-brands/public') body = { brands: [brand, { ...brand, id: tutorId, display_name: 'Legacy brand', verified: false }] };
+        else if (path === '/v1/featured-brands/public') body = { brands: [{ ...brand, display_name: brandName }, { ...brand, id: tutorId, display_name: 'Legacy brand', verified: false }] };
         else if (path === '/v1/student/store') { const pageNumber=Number(url.searchParams.get('page')??1),query=url.searchParams.get('q')?.toLowerCase()??'',ids=(url.searchParams.get('includeIds')??'').split(','),matching=catalogue.filter(p=>p.name.toLowerCase().includes(query)); body={ products: matching.slice((pageNumber-1)*24,pageNumber*24), includedProducts:catalogue.filter(p=>ids.includes(p.id)),categories:['Electronics'],pagination:{page:pageNumber,pageSize:24,total:matching.length,totalPages:Math.max(1,Math.ceil(matching.length/24))},deliveryZones:[{id:vendorId,name:'Ugbowo campus',base_fee_kobo:0}],checkoutEnabled:true,riderDeliveryEnabled:true,catalogueMode:'LIVE' }; }
         else if(path === '/v1/student/tutorials') {const pageNumber=Number(url.searchParams.get('page')??1),query=url.searchParams.get('q')?.toLowerCase()??'',all=Array.from({length:tutorialCount},(_,n)=>({...resourceBase,id:`30000000-0000-4000-8000-${String(n).padStart(12,'0')}`,title:`Video lesson ${String(n+1).padStart(2,'0')}`,resource_type:'VIDEO',created_at:'2026-10-17T10:00:00Z'})).filter(r=>r.title.toLowerCase().includes(query));body={listings:[],resources:all.slice((pageNumber-1)*30,pageNumber*30),subjects:['Engineering'],pagination:{page:pageNumber,pageSize:30,total:all.length,totalPages:Math.max(1,Math.ceil(all.length/30))}};}
         else if(path === '/v1/student/tutors') body={tutors:[],pagination:{page:1,pageSize:30,total:0,totalPages:1}};
-        else if(path === `/v1/media/${tutorId}/access`) body={url:`https://platformp.divine-haze-54eb.workers.dev/v1/media/${tutorId}?access=synthetic-private-fixture`};
+        else if([`/v1/media/${tutorId}/access`, `/v1/media/${orderId}/access`].includes(path)) body={url:`https://platformp.divine-haze-54eb.workers.dev/v1/media/${path.split('/')[3]}?access=synthetic-private-fixture`};
         else if(path === `/v1/tutorial-storage/playback/${tutorId}`) body={kind:'file'};
         else if (path === '/v1/student/pickup-hubs') body = { hubs: [] };
         else if (path === '/v1/student/delivery-places') body = url.searchParams.has('cursor') ? { places: [{ id: tutorId, name: 'Physical Science Shopping Complex', campus_name: 'Ugbowo campus', search_aliases: ['Science shops', 'Physical Sciences'], delivery_zone_id: vendorId, has_map_point: true }], nextCursor: null } : { places: Array.from({ length: 200 }, (_,n) => ({ id: `10000000-0000-4000-8000-${String(n).padStart(12,'0')}`, name: `Campus location ${n}`, campus_name: 'Ugbowo campus', has_map_point: true, delivery_zone_id: vendorId })), nextCursor: vendorId };
@@ -90,7 +103,12 @@ try {
       else await route.abort();
     });
     async function open(path, ready) {
-      await page.goto('http://localhost:8100' + path);
+      // Checkout and catalogue flows start from the restored signed-in home.
+      // Keep tab navigation inside the running app, matching a phone session.
+      if (path === '/store' || path === '/tutorials') {
+        await page.goto('http://localhost:8100/');
+        await page.getByText(path === '/store' ? 'Shop now' : 'Tutorials', { exact: true }).click();
+      } else await page.goto('http://localhost:8100' + path);
       try { await page.getByText(ready, { exact: true }).first().waitFor({ timeout: 45000 }); }
       catch (error) { await page.screenshot({ path: resolve(evidence, `failed-${path.split('?')[0].replaceAll('/','_')}-${width}.png`) }); writeFileSync(resolve(evidence,'failed-page.json'),JSON.stringify({ url:page.url(), text:await page.locator('body').innerText(), errors },null,2)); throw error; }
       await page.getByLabel('Opening KampusOne', { exact: true }).waitFor({ state: 'hidden' });
@@ -139,8 +157,9 @@ try {
     await s.page.getByRole('textbox', { name: 'Recipient name', exact: true }).fill('Ada Student');
     await s.page.getByRole('textbox', { name: 'Recipient phone', exact: true }).fill('08031234567');
     assert.equal(await s.page.getByText('Cash at delivery', { exact: true }).count(), 0);
+    await s.page.getByRole('textbox', { name: 'Delivery address', exact: true }).fill('Hall 2, room 12, main gate');
     if (pickupReady) {
-      await s.page.getByRole('button', { name: 'Choose delivery point on the campus map', exact: true }).click();
+      await s.page.getByRole('button', { name: 'Choose nearby campus landmark (optional)', exact: true }).click();
       await s.page.getByText('201 locations', { exact: true }).waitFor();
       await s.page.getByRole('textbox', { name: 'Search campus locations', exact: true }).fill('ugbowo science shops');
       await s.page.getByRole('radio', { name: 'Physical Science Shopping Complex, Ugbowo campus', exact: true }).waitFor();
@@ -150,13 +169,12 @@ try {
       await s.page.getByRole('button', { name: /Confirm order and pay/ }).waitFor();
       assert.equal(s.quote.deliveryPaymentMethod, 'IN_APP'); assert.equal(s.quote.deliveryPlaceId, tutorId);
     } else {
-      await s.page.getByLabel('Rider delivery unavailable', { exact: true }).waitFor();
-      assert.equal(await s.page.getByRole('button', { name: 'Choose delivery point on the campus map', exact: true }).count(), 0);
       await s.page.getByRole('button', { name: 'Review route and checkout total', exact: true }).click();
       await s.page.getByRole('button', { name: /Confirm order and pay/ }).waitFor();
-      assert.equal(s.quote.fulfilmentMode, 'PICKUP'); assert.equal(s.quote.deliveryPaymentMethod, 'IN_APP');
+      assert.equal(s.quote.fulfilmentMode, 'RIDER'); assert.equal(s.quote.deliveryPaymentMethod, 'IN_APP');
+      assert.equal(s.quote.deliveryPlaceId,null); assert.equal(s.quote.deliveryLocation,'Hall 2, room 12, main gate');
     }
-    await s.page.screenshot({ path: resolve(evidence, `checkout-${pickupReady ? 'rider' : 'pickup'}.png`) });
+    await s.page.screenshot({ path: resolve(evidence, `checkout-${pickupReady ? 'landmark' : 'address'}.png`) });
     assert.deepEqual(s.errors, []); results.push({ pickupReady, inAppPaymentOnly: true, checkout: true }); await s.context.close();
   }
   const dark = await scenario({ width: 390, dark: true });
@@ -227,6 +245,42 @@ try {
     await s.page.waitForFunction(()=>document.querySelector('iframe').contentDocument.querySelector('#viewport').scrollTop>50);
     await s.page.screenshot({path:resolve(evidence,`pdf-reader-gestures-${dark?'dark':'light'}.png`)});
     assert.deepEqual(s.errors,[]);results.push({dark,fullHeightPdf:true,highDensityRendering:true,verticalSwipe:true,pinchZoom:true,jumpAndPageControls:true});await s.context.close();
+  }
+  for (const width of [320, 390]) {
+    const s = await scenario({ width, brandName: 'KampusOne Vendor' });
+    await s.open('/store', 'Top campus brands');
+    const tile = s.page.getByRole('button', { name: "View KampusOne Vendor's vendor profile, verified", exact: true });
+    const word = await tile.getByText('Vendor', { exact: true }).boundingBox();
+    const seal = await tile.getByRole('img', { name: 'Verified vendor', exact: true }).boundingBox();
+    assert.ok(word && seal); assert.ok(Math.abs(seal.x - word.x - word.width - 3) < 1, 'Seal stays beside Vendor');
+    assert.ok(Math.abs(seal.y + seal.height / 2 - word.y - word.height / 2) < 1, 'Seal aligns with Vendor'); assert.equal(seal.width, 11);
+    await s.page.screenshot({ path: resolve(evidence, `vendor-badge-${width}.png`) });
+    results.push({ width, vendorSealGap: seal.x - word.x - word.width, vendorSealSize: seal.width }); assert.deepEqual(s.errors, []); await s.context.close();
+  }
+  for (const width of [320, 390]) {
+    const s = await scenario({ width, dark: width === 390, resource: { resource_type: 'AUDIOBOOK', title: 'History of computer', parts: [{ mediaId: tutorId, title: 'Early computers' }, { mediaId: orderId, title: 'Modern computing' }] } });
+    await s.open(`/learning-viewer?id=${resourceId}`, 'History of computer');
+    const play = s.page.getByRole('button', { name: 'Play audio', exact: true });
+    await s.page.waitForFunction(() => window.__fixtureAudio.some(audio => audio.duration === 60));
+    await play.click(); await s.page.waitForFunction(() => window.__fixtureAudio.at(-1).currentTime > 0.1 && !window.__fixtureAudio.at(-1).paused);
+    await s.page.getByRole('button', { name: 'Pause audio', exact: true }).click(); await s.page.waitForFunction(() => window.__fixtureAudio.at(-1).paused);
+    const slider = s.page.getByRole('slider', { name: 'Audio position', exact: true });
+    await slider.fill('30'); await s.page.waitForFunction(() => Math.abs(window.__fixtureAudio.at(-1).currentTime - 30) < 1);
+    await s.page.getByRole('button', { name: 'Back 15 seconds', exact: true }).click(); await s.page.waitForFunction(() => Math.abs(window.__fixtureAudio.at(-1).currentTime - 15) < 1);
+    await s.page.getByRole('button', { name: 'Forward 15 seconds', exact: true }).click(); await s.page.waitForFunction(() => Math.abs(window.__fixtureAudio.at(-1).currentTime - 30) < 1);
+    await slider.focus(); await slider.press('ArrowRight'); await s.page.waitForFunction(() => Math.abs(window.__fixtureAudio.at(-1).currentTime - 31) < 0.5);
+    await s.page.getByRole('button', { name: 'Repeat audio', exact: true }).click(); assert.equal(await s.page.evaluate(() => window.__fixtureAudio.at(-1).loop), true);
+    await s.page.getByRole('button', { name: 'Playback speed 1 times. Change speed', exact: true }).click(); assert.equal(await s.page.evaluate(() => window.__fixtureAudio.at(-1).playbackRate), 1.25);
+    assert.equal(await s.page.getByRole('button', { name: 'Previous chapter', exact: true }).isDisabled(), true);
+    assert.equal(await s.page.getByRole('button', { name: /download/i }).count(), 0); assert.equal(await s.page.locator('a[download]').count(), 0);
+    const controls = s.page.getByLabel('Audiobook player', { exact: true });
+    for (const button of await controls.getByRole('button').all()) { const box = await button.boundingBox(); assert.ok(box && box.width >= 44 && box.height >= 44 && box.x >= 0 && box.x + box.width <= width, 'Usable control target fits phone'); }
+    await s.page.screenshot({ path: resolve(evidence, `audiobook-controls-${width}.png`) });
+    await s.page.getByRole('button', { name: 'Next chapter', exact: true }).click(); await s.page.getByText('Chapter 2 of 2', { exact: true }).waitFor();
+    await s.page.waitForFunction(() => window.__fixtureAudio.at(-1).duration === 60 && window.__fixtureAudio.at(-1).src.includes('000000000005'));
+    assert.equal(await s.page.getByRole('button', { name: 'Next chapter', exact: true }).isDisabled(), true);
+    await s.page.getByRole('button', { name: 'Previous chapter', exact: true }).click(); await s.page.getByText('Chapter 1 of 2', { exact: true }).waitFor();
+    assert.deepEqual(s.errors, []); results.push({ width, audiobookPlays: true, seekAndKeyboard: true, skip15s: true, repeatAndSpeed: true, chapterNavigation: true, noDownloadControl: true }); await s.context.close();
   }
   const video=await scenario({resource:{resource_type:'VIDEO',title:'Fluid mechanics masterclass',parts:[{mediaId:tutorId,title:'9b885811bf026a1490c70076c25997c9.mp4'}]}});
   await video.open(`/learning-viewer?id=${resourceId}`,'Fluid mechanics masterclass');

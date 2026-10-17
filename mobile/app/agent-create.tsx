@@ -68,6 +68,17 @@ function CreateListingForm() {
     createdId.current=editing?null:d.createdId??null;requestId.current=d.requestId??randomUUID();requestPayload.current=d.requestPayload??'';
   },Boolean(user?.id));
   const draftReady=restored.ready;
+  const [pickupReady,setPickupReady]=useState(false),[pickupLoading,setPickupLoading]=useState(!tutor),[pickupError,setPickupError]=useState(''),[pickupRetry,setPickupRetry]=useState(0);
+  useEffect(()=>{
+    if(tutor)return;
+    let active=true;const controller=new AbortController();setPickupLoading(true);setPickupReady(false);setPickupError('');
+    void api<{storefront:{pickup_location?:string|null;pickup_place_id?:string|null}|null}>('/v1/agents/storefront',{cache:'reload',signal:controller.signal,timeoutMs:12000}).then(result=>{
+      if(active)setPickupReady(Boolean(result.storefront?.pickup_place_id&&result.storefront.pickup_location&&result.storefront.pickup_location.trim().length>=5));
+    }).catch(error=>{if(active)setPickupError(error instanceof Error?error.message:'Your store details could not load.');}).finally(()=>{if(active)setPickupLoading(false);});
+    return()=>{active=false;controller.abort();};
+  },[tutor,draftKey,pickupRetry]);
+  const pickupBlocked=!tutor&&(pickupLoading||!pickupReady);
+
   const applyProduct=(p:SellerProduct)=>{
     setName(p.name);setDescription(p.description);setPrice(String(Number(p.price_kobo)/100));setStock(String(p.stock_quantity));
     setCategory(p.category_id);setImages(sellerProductPhotos(p));setEditRevision(Number(p.listing_revision));setEditStock(Number(p.stock_quantity));
@@ -156,7 +167,7 @@ function CreateListingForm() {
     if (!formHint && (!/^\d+$/.test(stock.trim()) || Number(stock) > (tutor ? 500 : 1_000_000) || Number(stock) < (tutor ? 1 : 0))) formHint = tutor ? "Enter 1 to 500 available places." : "Enter a whole stock quantity from 0 to 1,000,000.";
   }
   if(createdId.current)formHint="";
-  const fieldsLocked=busy||!draftReady||Boolean(createdId.current)||editing&&(!editReady||editLoading||editConflict);
+  const fieldsLocked=pickupBlocked||busy||!draftReady||Boolean(createdId.current)||editing&&(!editReady||editLoading||editConflict);
   async function upload() {
     if(uploading||fieldsLocked||images.length>=6)return;
     const operationKey=draftKey;
@@ -171,7 +182,7 @@ function CreateListingForm() {
     }
   }
   async function save() {
-    if (formLock.current || busy || uploading || !draftReady || formHint || editing&&(!editReady||editLoading||editConflict||!product)) return;
+    if (pickupBlocked || formLock.current || busy || uploading || !draftReady || formHint || editing&&(!editReady||editLoading||editConflict||!product)) return;
     const operationKey=draftKey;
     const stillCurrent=()=>alive.current&&currentDraftKey.current===operationKey;
     formLock.current=true;setBusy(true);
@@ -250,7 +261,9 @@ function CreateListingForm() {
       router.back();
     } catch (e) {
       if(stillCurrent()){
-        if(!tutor&&!createdId.current&&e&&typeof e==='object'&&'code' in e&&e.code==='CONFLICT')setRateRetry(n=>n+1);
+        const reason=e&&typeof e==='object'&&'details' in e?(e.details as {reason?:string}|null)?.reason:null;
+        if(reason==='VENDOR_PICKUP_REQUIRED')setPickupReady(false);
+        if(!tutor&&!createdId.current&&reason!=='VENDOR_PICKUP_REQUIRED'&&e&&typeof e==='object'&&'code' in e&&e.code==='CONFLICT')setRateRetry(n=>n+1);
         toast(e instanceof Error ? e.message : "Could not save listing", "error");
       }
     } finally {
@@ -262,6 +275,11 @@ function CreateListingForm() {
   return (
     <ToolPage title={editing?"Edit product":tutor ? "Create tutorial" : "Create product"}>
       <DraftRecovery error={restored.error} loading={restored.loading} onRetry={restored.retry}/>
+      {pickupBlocked?<View style={{padding:16,gap:12,marginBottom:20,borderRadius:16,backgroundColor:theme.surface,borderWidth:1,borderColor:theme.border}}>
+        <Text accessibilityRole={pickupError?'alert':undefined} style={{fontFamily:theme.font.body,color:theme.text,lineHeight:22}}>{pickupLoading?'Checking your store pickup details…':pickupError||'Save your pickup address and map location before uploading products.'}</Text>
+        {!pickupLoading?<ToolButton secondary label={pickupError?'Retry store details':'Save pickup address and location'} onPress={()=>pickupError?setPickupRetry(n=>n+1):router.replace('/store-settings')}/>:null}
+      </View>:null}
+
       {editing&&editLoading?<Text style={{fontFamily:theme.font.body,color:theme.textMuted,marginBottom:12}}>Loading product…</Text>:null}
       {editing&&editError?<View style={{flexDirection:'row',alignItems:'center',gap:10,marginBottom:16}}><Text accessibilityRole="alert" style={{flex:1,fontFamily:theme.font.body,color:theme.error}}>{editError}</Text><RetryIconButton label={editConflict?'Reload current product':'Retry loading product'} busy={editLoading} onPress={()=>editConflict?reloadProduct():setEditRetry(n=>n+1)}/></View>:null}
       {draftSave.warning?<Text accessibilityRole="alert" style={{fontFamily:theme.font.body,color:theme.error,lineHeight:21,marginBottom:12}}>{draftSave.warning}</Text>:null}
@@ -371,7 +389,7 @@ function CreateListingForm() {
       {createdId.current ? <Text accessibilityRole="alert" style={{color:theme.textMuted,lineHeight:22,marginBottom:12}}>{editing?'Product saved. Finish to close this form.':'Your listing was created. Retry to finish submitting it for review.'}</Text> : null}
       <ToolButton
         label={busy ? "Saving…" : editing?createdId.current?'Done':'Save changes':createdId.current?"Retry submission":tutor?"Submit for review":"Upload product"}
-        disabled={busy || !draftReady || Boolean(formHint)||editing&&(!editReady||editLoading||editConflict)}
+        disabled={pickupBlocked || busy || !draftReady || Boolean(formHint)||editing&&(!editReady||editLoading||editConflict)}
         onPress={() => void save()}
       />
       {!busy && formHint ? <Text style={{ color: theme.textMuted, lineHeight: 22, marginTop: 10 }}>{formHint}</Text> : null}

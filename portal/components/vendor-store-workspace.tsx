@@ -209,6 +209,8 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
   const selectedProduct = products.find((product) => product.id === selectedProductId) ?? null;
   const storeLocked = storefront?.status === "SUSPENDED";
   const storefrontApproved = storefront?.status === "APPROVED";
+  const pickupReady = Boolean(storefront?.pickup_place_id && storefront.pickup_location && storefront.pickup_location.trim().length >= 5);
+  const pickupRequiredMessage = 'Save your store pickup address and map location before uploading products.';
   const productImageUrl =
     productImageDraft.productId === selectedProductId
       ? productImageDraft.url
@@ -271,6 +273,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
 
   async function saveProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!pickupReady) { setError(pickupRequiredMessage); return; }
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const editing = selectedProduct !== null;
@@ -320,6 +323,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
 
   async function uploadProductImage(file: File | null) {
     if (!file) return;
+    if (!pickupReady) { setError(pickupRequiredMessage); return; }
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       setError("Choose a JPG, PNG or WebP product photo.");
       return;
@@ -375,6 +379,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
     productId: string,
     status: "SUBMITTED" | "PUBLISHED" | "PAUSED" | "ARCHIVED",
   ) {
+    if (["PUBLISHED", "SUBMITTED"].includes(status) && !pickupReady) { setError(pickupRequiredMessage); return; }
     setBusyKey(`product-${productId}`);
     setError("");
     setNotice("");
@@ -614,6 +619,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
           {selectedProduct && ["PUBLISHED", "PAUSED"].includes(selectedProduct.status) && (
             <div className="policy-warning"><strong>Material-change safety</strong><p>Editing price, description, category, image, preparation or package data removes this listing from sale until reviewed again. Use the stock control for inventory-only changes.</p></div>
           )}
+          {!pickupReady && <p role="alert" className="field-help">{storefrontResource.loading ? "Checking store pickup details…" : pickupRequiredMessage}</p>}
           <form className="form-stack" key={selectedProduct?.updated_at ?? "new-product"} onSubmit={saveProduct}>
             <div className="form-grid">
               <label>
@@ -671,7 +677,7 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
-                disabled={Boolean(busyKey) || storeLocked}
+                disabled={Boolean(busyKey) || storeLocked || !pickupReady}
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0] ?? null;
                   void uploadProductImage(file);
@@ -694,11 +700,11 @@ export function VendorStoreWorkspace({ onChanged }: { onChanged(): void }) {
             {selectedProduct?.listing_rules && <p className="field-help"><strong>Category policy:</strong> {selectedProduct.listing_rules}</p>}
             {!categoriesResource.loading && !categories.length && <p className="form-error">An administrator must approve a product category before you can save a listing.</p>}
             <div className="form-actions">
-              <button className="button button--primary" disabled={Boolean(busyKey) || storeLocked || !categories.length}>
+              <button className="button button--primary" disabled={Boolean(busyKey) || storeLocked || !pickupReady || !categories.length}>
                 {busyKey === "product-save" ? "Saving…" : selectedProduct ? "Save changes" : "Save product draft"}
               </button>
               {selectedProduct && ["DRAFT", "NEEDS_CORRECTION"].includes(selectedProduct.status) && (
-                <button className="button button--secondary" type="button" disabled={Boolean(busyKey) || storeLocked || !storefrontApproved} onClick={() => void changeProductStatus(selectedProduct.id, "SUBMITTED")}>
+                <button className="button button--secondary" type="button" disabled={Boolean(busyKey) || storeLocked || !pickupReady || !storefrontApproved} onClick={() => void changeProductStatus(selectedProduct.id, "SUBMITTED")}>
                   Submit for review
                 </button>
               )}

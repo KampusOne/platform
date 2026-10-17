@@ -4,6 +4,8 @@ on:
     paths:
       - "mobile/**"
       - "tests/learning-order*"
+      - "tests/learning-reader*"
+      - "tests/learning-document*"
       - ".github/workflows/resource-order-ui.yml"
 permissions:
   contents: read
@@ -32,7 +34,9 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/resource-order-browser" --no-save --ignore-scripts playwright@1.62.1
           "$RUNNER_TEMP/resource-order-browser/node_modules/.bin/playwright" install --with-deps chromium
       - name: Check phone layouts and resource/order interactions
-        run: node tests/learning-order-browser.mjs
+        run: |
+          node tests/learning-order-browser.mjs
+          node tests/learning-reader-browser.mjs
         env:
           PLAYWRIGHT_MODULE: ${{ runner.temp }}/resource-order-browser/node_modules/playwright/index.mjs
           UI_EVIDENCE_DIR: ${{ runner.temp }}/resource-order-evidence
