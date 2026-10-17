@@ -206,10 +206,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let networkEventSeen = false;
     const generation = sessionVersion.current;
+    // Device connectivity can be slow to resolve. It must not hold the secure
+    // session, cached profile and first screen behind an unrelated native read.
+    void Network.getNetworkStateAsync().then(network => {
+      if (active && !networkEventSeen)
+        setNetworkOffline(network.isConnected === false || network.isInternetReachable === false);
+    }).catch(() => undefined);
     void (async () => {
-      const network = await Network.getNetworkStateAsync().catch(() => null);
-      if (network) setNetworkOffline(network.isConnected === false || network.isInternetReachable === false);
       const savedUser = await readOfflineSession().catch(() => null);
       if (savedUser && active && generation === sessionVersion.current) {
         restoreOfflineAccount(savedUser);
@@ -228,6 +233,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (active) await retrySessionRestore();
     })();
     const subscription = Network.addNetworkStateListener(value => {
+      if (!active) return;
+      networkEventSeen = true;
       setNetworkOffline(value.isConnected === false || value.isInternetReachable === false);
       if (value.isConnected !== false && value.isInternetReachable !== false && active) void retrySessionRestore();
     });

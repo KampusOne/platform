@@ -88,6 +88,8 @@ type Message = {
   my_reaction: MessageReaction | null;
 };
 
+const EMPTY_MESSAGES: Message[] = [];
+
 type PinnedMessage = {
   id: string;
   sender_id: string;
@@ -1158,14 +1160,14 @@ export default function ConversationScreen() {
     }
   }
 
-  function beginReply(message: Message) {
+  const beginReply = useCallback((message: Message) => {
     if (message.unsent_at) return;
     setActionTarget(null);
     setReplyingTo(message);
     requestAnimationFrame(() => inputRef.current?.focus());
-  }
+  }, []);
 
-  function openActions(message: Message, mine: boolean, pageY: number) {
+  const openActions = useCallback((message: Message, mine: boolean, pageY: number) => {
     if (message.unsent_at) return;
     Keyboard.dismiss();
     setActionTarget({
@@ -1179,7 +1181,7 @@ export default function ConversationScreen() {
       forwarded: Boolean(message.forwarded_from_message_id),
       pageY,
     });
-  }
+  }, []);
 
   async function reactToMessage(target: MessageActionTarget, reaction: MessageReaction | null) {
     if (messageActionBusy) return;
@@ -1332,6 +1334,103 @@ export default function ConversationScreen() {
     if (active) requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
   }, [scope]);
 
+  const messageRows = data?.messages ?? EMPTY_MESSAGES;
+  // Keep FlatList cells untouched while the composer text changes.
+  const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
+    const mine = item.sender_id === user?.id;
+    if (item.unsent_at) {
+      return (
+        <View style={styles.unsentRow}>
+          <Ionicons name="arrow-undo-circle-outline" size={14} color={theme.textFaint} />
+          <Text style={styles.unsentText}>
+            {mine ? "You unsent a message." : `${peerName} unsent a message.`}
+          </Text>
+          <Text style={styles.unsentTime}>{formatMessageTime(item.created_at)}</Text>
+        </View>
+      );
+    }
+
+    const previous = index > 0 ? messageRows[index - 1] : undefined;
+    if (picturesBelongTogether(previous, item)) return null;
+    const pictureGroup: Message[] = [item];
+    if (item.media_type?.startsWith("image/")) {
+      for (
+        let nextIndex = index + 1;
+        nextIndex < messageRows.length && pictureGroup.length < 10;
+        nextIndex += 1
+      ) {
+        const next = messageRows[nextIndex];
+        if (!next || !picturesBelongTogether(pictureGroup[pictureGroup.length - 1], next)) break;
+        pictureGroup.push(next);
+      }
+    }
+    const groupedPictures = pictureGroup.length > 1;
+    const metaMessage = pictureGroup[pictureGroup.length - 1] || item;
+    const showBody = shouldShowBody(item);
+    const replyOwner = item.reply_sender_id === user?.id ? "You" : peerName;
+    const replyFallback = item.reply_media_id
+      ? mediaLabel(item.reply_media_type, item.reply_media_name)
+      : "";
+    const replyText = item.reply_unsent_at
+      ? "Message unsent"
+      : item.reply_body &&
+          item.reply_body !== "Attachment" &&
+          item.reply_body !== replyFallback
+        ? item.reply_body
+        : replyFallback || "Message";
+
+    return (
+      <SwipeReplyMessage
+        mine={mine}
+        disabled={locked}
+        onReply={() => beginReply(item)}
+        onLongPress={(event) => openActions(item, mine, event.nativeEvent.pageY)}
+      >
+        <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
+          <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+            {item.forwarded_from_message_id ? (
+              <View style={styles.forwardedLine}>
+                <Ionicons name="arrow-redo-outline" size={12} color={mine ? "rgba(255,255,255,0.75)" : theme.textMuted} />
+                <Text style={[styles.forwardedText, mine && styles.forwardedTextMine]}>Forwarded</Text>
+              </View>
+            ) : null}
+            {item.reply_to_message_id ? (
+              <View style={[styles.replyQuote, mine ? styles.replyQuoteMine : styles.replyQuoteOther]}>
+                <View style={[styles.replyAccent, mine && styles.replyAccentMine]} />
+                <View style={styles.replyQuoteCopy}>
+                  <Text numberOfLines={1} style={[styles.replyAuthor, mine && styles.replyAuthorMine]}>{replyOwner}</Text>
+                  <Text numberOfLines={1} style={[styles.replyText, mine && styles.replyTextMine]}>{replyText}</Text>
+                </View>
+              </View>
+            ) : null}
+            {showBody ? <MessageBody body={item.body} mine={mine} /> : null}
+            {groupedPictures ? (
+              <PictureGroup messages={pictureGroup} mine={mine} />
+            ) : item.media_id && item.media_type ? (
+              <MessageMedia message={item} mine={mine} onLongPress={event => openActions(item, mine, event.nativeEvent.pageY)} />
+            ) : null}
+          </View>
+          {item.reactions?.length ? (
+            <View style={[styles.reactionSummary, mine && styles.reactionSummaryMine]}>
+              {item.reactions.slice(0, 4).map((reaction) => (
+                <View key={reaction.reaction} style={[styles.reactionChip, item.my_reaction === reaction.reaction && styles.reactionChipMine]}>
+                  <Text style={styles.reactionChipEmoji}>{reaction.reaction}</Text>
+                  {reaction.count > 1 ? <Text style={styles.reactionCount}>{reaction.count}</Text> : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
+          <View style={[styles.messageMeta, mine && styles.messageMetaMine]}>
+            {item.pinned ? <Ionicons name="pin" size={11} color={theme.textFaint} /> : null}
+            <Text style={styles.messageTime}>{formatMessageTime(metaMessage.created_at)}</Text>
+            {mine ? <Ionicons name={pendingTextState?.id===metaMessage.id?'time-outline':metaMessage.read_at ? "checkmark-done" : "checkmark"} size={14} color={metaMessage.read_at ? theme.deepBrand : theme.textFaint} /> : null}
+          </View>
+        </View>
+      </SwipeReplyMessage>
+    );
+  }, [messageRows, user?.id, locked, peerName, pendingTextState?.id, styles, theme, beginReply, openActions]);
+
+
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.screen}>
       <BlurTargetView ref={blurTargetRef} style={styles.screen}>
@@ -1442,99 +1541,10 @@ export default function ConversationScreen() {
                   ))}
                 </View>
               ) : null}
-              renderItem={({ item, index }) => {
-                const mine = item.sender_id === user?.id;
-                if (item.unsent_at) {
-                  return (
-                    <View style={styles.unsentRow}>
-                      <Ionicons name="arrow-undo-circle-outline" size={14} color={theme.textFaint} />
-                      <Text style={styles.unsentText}>
-                        {mine ? "You unsent a message." : `${peerName} unsent a message.`}
-                      </Text>
-                      <Text style={styles.unsentTime}>{formatMessageTime(item.created_at)}</Text>
-                    </View>
-                  );
-                }
-
-                const previous = index > 0 ? data.messages[index - 1] : undefined;
-                if (picturesBelongTogether(previous, item)) return null;
-                const pictureGroup: Message[] = [item];
-                if (item.media_type?.startsWith("image/")) {
-                  for (
-                    let nextIndex = index + 1;
-                    nextIndex < data.messages.length && pictureGroup.length < 10;
-                    nextIndex += 1
-                  ) {
-                    const next = data.messages[nextIndex];
-                    if (!next || !picturesBelongTogether(pictureGroup[pictureGroup.length - 1], next)) break;
-                    pictureGroup.push(next);
-                  }
-                }
-                const groupedPictures = pictureGroup.length > 1;
-                const metaMessage = pictureGroup[pictureGroup.length - 1] || item;
-                const showBody = shouldShowBody(item);
-                const replyOwner = item.reply_sender_id === user?.id ? "You" : peerName;
-                const replyFallback = item.reply_media_id
-                  ? mediaLabel(item.reply_media_type, item.reply_media_name)
-                  : "";
-                const replyText = item.reply_unsent_at
-                  ? "Message unsent"
-                  : item.reply_body &&
-                      item.reply_body !== "Attachment" &&
-                      item.reply_body !== replyFallback
-                    ? item.reply_body
-                    : replyFallback || "Message";
-
-                return (
-                  <SwipeReplyMessage
-                    mine={mine}
-                    disabled={locked}
-                    onReply={() => beginReply(item)}
-                    onLongPress={(event) => openActions(item, mine, event.nativeEvent.pageY)}
-                  >
-                    <View style={[styles.messageRow, mine ? styles.messageRowMine : styles.messageRowOther]}>
-                      <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
-                        {item.forwarded_from_message_id ? (
-                          <View style={styles.forwardedLine}>
-                            <Ionicons name="arrow-redo-outline" size={12} color={mine ? "rgba(255,255,255,0.75)" : theme.textMuted} />
-                            <Text style={[styles.forwardedText, mine && styles.forwardedTextMine]}>Forwarded</Text>
-                          </View>
-                        ) : null}
-                        {item.reply_to_message_id ? (
-                          <View style={[styles.replyQuote, mine ? styles.replyQuoteMine : styles.replyQuoteOther]}>
-                            <View style={[styles.replyAccent, mine && styles.replyAccentMine]} />
-                            <View style={styles.replyQuoteCopy}>
-                              <Text numberOfLines={1} style={[styles.replyAuthor, mine && styles.replyAuthorMine]}>{replyOwner}</Text>
-                              <Text numberOfLines={1} style={[styles.replyText, mine && styles.replyTextMine]}>{replyText}</Text>
-                            </View>
-                          </View>
-                        ) : null}
-                        {showBody ? <MessageBody body={item.body} mine={mine} /> : null}
-                        {groupedPictures ? (
-                          <PictureGroup messages={pictureGroup} mine={mine} />
-                        ) : item.media_id && item.media_type ? (
-                          <MessageMedia message={item} mine={mine} onLongPress={event => openActions(item, mine, event.nativeEvent.pageY)} />
-                        ) : null}
-                      </View>
-                      {item.reactions?.length ? (
-                        <View style={[styles.reactionSummary, mine && styles.reactionSummaryMine]}>
-                          {item.reactions.slice(0, 4).map((reaction) => (
-                            <View key={reaction.reaction} style={[styles.reactionChip, item.my_reaction === reaction.reaction && styles.reactionChipMine]}>
-                              <Text style={styles.reactionChipEmoji}>{reaction.reaction}</Text>
-                              {reaction.count > 1 ? <Text style={styles.reactionCount}>{reaction.count}</Text> : null}
-                            </View>
-                          ))}
-                        </View>
-                      ) : null}
-                      <View style={[styles.messageMeta, mine && styles.messageMetaMine]}>
-                        {item.pinned ? <Ionicons name="pin" size={11} color={theme.textFaint} /> : null}
-                        <Text style={styles.messageTime}>{formatMessageTime(metaMessage.created_at)}</Text>
-                        {mine ? <Ionicons name={pendingTextState?.id===metaMessage.id?'time-outline':metaMessage.read_at ? "checkmark-done" : "checkmark"} size={14} color={metaMessage.read_at ? theme.deepBrand : theme.textFaint} /> : null}
-                      </View>
-                    </View>
-                  </SwipeReplyMessage>
-                );
-              }}
+              initialNumToRender={12}
+              maxToRenderPerBatch={8}
+              windowSize={7}
+              renderItem={renderMessage}
             />
           )}
 
