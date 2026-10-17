@@ -49,7 +49,7 @@ jobs:
           curl --fail --silent --show-error --retry 2 --max-time 20 https://platformp.divine-haze-54eb.workers.dev/health/ready
           node mobile/scripts/check-campus-location.cjs
           node mobile/scripts/check-campus-map.cjs
-          node --experimental-strip-types --test tests/performance-regression.test.mjs tests/vendor-workspace-ui.test.mjs tests/marketplace-navigation.test.mjs tests/campus-place-choice.test.mjs tests/payment-return.test.mjs tests/native-payment-callback.test.mjs tests/native-push-registration.test.mjs
+          node --experimental-strip-types --test tests/performance-regression.test.mjs tests/vendor-workspace-ui.test.mjs tests/marketplace-navigation.test.mjs tests/campus-place-choice.test.mjs tests/browser-schedulers.test.mjs tests/payment-return.test.mjs tests/native-payment-callback.test.mjs tests/native-push-registration.test.mjs
       - name: Configure Android push credentials
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}

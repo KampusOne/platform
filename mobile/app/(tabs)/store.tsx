@@ -676,6 +676,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                     ))}
                     {riderDeliveryEnabled && !riderReady ? <View accessibilityLabel="Rider delivery unavailable" style={[styles.zone,{opacity:0.7}]}><View style={styles.zoneCopy}><Text style={styles.zoneName}>Rider delivery unavailable</Text><Text style={styles.zoneFee}>{fulfilmentModes.includes('PICKUP')?'Choose pickup while the seller confirms a collection point.':'Contact the vendor to arrange a collection point.'}</Text></View><Ionicons name="bicycle-outline" size={22} color={theme.textMuted}/></View>:null}
                   </View>
+                  {!fulfilmentModes.length && vendorProduct ? <Pressable accessibilityRole="button" accessibilityLabel="Contact vendor about pickup" disabled={busy} onPress={()=>void contactVendor()} style={styles.vendorContact}><Ionicons name="chatbubble-outline" size={16} color={theme.brandPressed}/><Text style={styles.vendorContactText}>Contact vendor</Text><Ionicons name="chevron-forward" size={14} color={theme.brandPressed}/></Pressable>:null}
                   {(effectiveMode === "PICKUP" || effectiveMode === "RIDER") && vendorProduct ? (
                     <View style={styles.pickupDetails}>
                       <View style={styles.pickupHeading}>
@@ -813,6 +814,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                       {checkoutFields.deliveryLocation ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>{checkoutFields.deliveryLocation}</Text> : null}
                       <CampusPlaceChoice
                         label="Delivery point on the campus map"
+                        disabled={busy}
                         value={deliveryPlace}
                         onChange={setDeliveryPlace}
                         onSelect={place=>{setDeliveryLocation(place.name);clearCheckoutField('deliveryLocation');setSelectedZoneId(place.delivery_zone_id??'');setCheckoutError('');}}

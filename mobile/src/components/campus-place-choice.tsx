@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Keyboard, Pressable, Text, View } from "react-native";
+import { FlatList, Keyboard, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/src/lib/api";
@@ -36,6 +36,7 @@ export function CampusPlaceChoice({ label, value, onChange, onSelect, endpoint =
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(false);
+  useEffect(() => { if (disabled) { setOpen(false); setQuery(""); } }, [disabled]);
   useEffect(() => {
     if (options !== undefined) return;
     let mounted = true;
@@ -81,9 +82,10 @@ export function CampusPlaceChoice({ label, value, onChange, onSelect, endpoint =
         <Ionicons name="location-outline" size={22} color={theme.brand} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ ...text, fontFamily: theme.font.medium }}>{selected?.name ?? "Find a campus location"}</Text>
+          {loading ? <Text style={{ ...text, color: theme.textMuted, fontSize: 12, marginTop: 4 }}>Loading locations…</Text> : null}
           {selected?.campus_name ? <Text style={{ ...text, color: theme.textMuted, fontSize: 12, marginTop: 4 }}>{selected.campus_name}</Text> : null}
         </View>
-        {loading ? <ActivityIndicator color={theme.brand} size="small" /> : <Ionicons name="chevron-down" size={18} color={theme.textMuted} />}
+        <Ionicons name="chevron-down" size={18} color={theme.textMuted} />
       </Pressable>
       {error ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Text accessibilityRole="alert" style={{ ...text, flex: 1, color: theme.error }}>{error}</Text><RetryIconButton label="Retry campus locations" busy={loading} onPress={() => setRevision(n => n + 1)} /></View> : null}
       <KeyboardModal visible={open} animationType="none" onRequestClose={close}>
@@ -96,7 +98,7 @@ export function CampusPlaceChoice({ label, value, onChange, onSelect, endpoint =
             <View style={{ paddingHorizontal: 20 }}>
               <ToolField label="Search campus locations" placeholder="Building, hostel, faculty or landmark" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} clearButtonMode="while-editing" />
               <Text accessibilityLiveRegion="polite" style={{ ...text, color: theme.textMuted, fontSize: 12, marginBottom: 12 }}>{loading ? "Loading campus locations…" : `${filtered.length} ${filtered.length === 1 ? "location" : "locations"}`}</Text>
-              {value ? <Pressable accessibilityRole="button" accessibilityLabel="Clear selected location" onPress={() => { onChange(null); close(); }} style={{ minHeight: 44, justifyContent: "center" }}><Text style={{ ...text, color: theme.brand }}>Clear selected location</Text></Pressable> : null}
+              {value ? <Pressable accessibilityRole="button" accessibilityLabel="Clear selected location" disabled={disabled} onPress={() => { onChange(null); close(); }} style={{ minHeight: 44, justifyContent: "center" }}><Text style={{ ...text, color: theme.brand }}>Clear selected location</Text></Pressable> : null}
               {error ? <View style={{ flexDirection: "row", gap: 8, alignItems: "center", paddingBottom: 12 }}><Text accessibilityRole="alert" style={{ ...text, color: theme.error, flex: 1 }}>{error}</Text><RetryIconButton label="Retry campus locations" busy={loading} onPress={() => setRevision(n => n + 1)} /></View> : null}
             </View>
             <FlatList

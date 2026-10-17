@@ -11,7 +11,7 @@ export class ReadCoordinator {
   setRealtime(value:boolean){if(value===this.realtime)return;this.realtime=value;for(const row of this.rows)if(!row.running)row.due=this.now()+Math.min(300_000,row.interval*(value?5:1));this.plan();}
   reconcile(){this.event([...new Set([...this.rows].map(row=>row.path))]);}
   constructor(private invalidate: (prefixes: readonly string[]) => void, private now = Date.now,
-    private schedule = setTimeout, private cancel = clearTimeout, private random = Math.random) {}
+    private schedule = (callback:()=>void,delay:number)=>setTimeout(callback,delay), private cancel = (timer:ReturnType<typeof setTimeout>)=>clearTimeout(timer), private random = Math.random) {}
   subscribe(path: string, refresh: Listener['refresh'], interval = 60_000) {
     const bounded=Math.max(30_000,interval);
     const row: Listener = { path, refresh, interval:bounded, due:this.now()+Math.min(300_000,bounded*(this.realtime?5:1)),failures:0,running:false,dirty:false };

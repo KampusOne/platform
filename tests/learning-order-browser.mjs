@@ -42,7 +42,7 @@ try {
     const context = await browser.newContext({ viewport: { width, height: 844 }, locale: 'en-NG', timezoneId: 'Africa/Lagos', reducedMotion: 'reduce' });
     await context.addInitScript(mode => localStorage.setItem('k1.appearance', mode), dark ? 'dark' : 'light');
     const page = await context.newPage(), errors = [];
-    page.on('pageerror', e => errors.push(e.message));
+    page.on('pageerror', e => errors.push(e.stack ?? e.message));
     let currentResource = { ...resourceBase, ...resource }, reviews = [], saveCalls = 0, lastQuote = null;
     await context.route('**/*', async route => {
       const url = new URL(route.request().url()), path = url.pathname;

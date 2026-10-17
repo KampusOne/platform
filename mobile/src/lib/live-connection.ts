@@ -13,7 +13,7 @@ export class LiveConnection {
   private disabled=false;
   constructor(private ticket:(signal:AbortSignal)=>Promise<LiveTicket>,private open:(url:string,protocols:string[])=>Socket,
     private reconcile:()=>void,private change:(paths:string[])=>void,private ready:(value:boolean)=>void,
-    private schedule=setTimeout,private cancel=clearTimeout,private random=Math.random){}
+    private schedule=(callback:()=>void,delay:number)=>setTimeout(callback,delay),private cancel=(timer:ReturnType<typeof setTimeout>)=>clearTimeout(timer),private random=Math.random){}
   setAvailable(value:boolean){
     if(value===this.active||this.stopped)return;
     this.active=value;this.epoch++;
