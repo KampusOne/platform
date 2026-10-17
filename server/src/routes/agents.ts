@@ -912,7 +912,7 @@ agentRoutes.get("/storefront", async (context) => {
       and storefronts.university_id = ${profile.university_id}::uuid
     limit 1
   `),
-    db.execute(sql`select p.id,p.name,c.name campus_name from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.status='PUBLISHED' where p.university_id=${profile.university_id}::uuid and p.status='PUBLISHED'and ((p.source_provider='OSM'and p.confidence>=.8 and p.latitude is not null and p.longitude is not null)or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null))order by c.name,p.name limit 1000`),
+    db.execute(sql`select p.id,p.name,c.name campus_name,p.search_aliases from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.institution_id=p.university_id and c.status='PUBLISHED' where p.university_id=${profile.university_id}::uuid and p.status='PUBLISHED' and ((p.latitude is not null and p.longitude is not null)or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null and e.geom is not null))order by c.name,p.name limit 1000`),
     fulfilmentSchemaReady(context.env),
   ]);
   return context.json({ storefront: firstRow(result) ?? null, vendorProfileId: profile.id, pickupPoints: pickupPoints.rows, fulfilmentReady });

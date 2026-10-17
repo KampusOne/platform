@@ -32,3 +32,6 @@ mobile/public/maps/maplibre-gl*.mjs
 # Rebuilt by mobile/scripts/bundle-document-reader.mjs before web/native exports.
 /mobile/public/documents/reader.js
 /mobile/public/documents/viewer.js
+
+# Generated alongside the bundled private document viewer.
+mobile/public/documents/inter.ttf

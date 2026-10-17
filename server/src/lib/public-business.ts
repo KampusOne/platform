@@ -10,6 +10,7 @@ type Service = {
   agent_type: "VENDOR" | "TUTOR" | "RIDER";
   user_id: string;
   display_name: string;
+  verified: boolean;
   biography: string | null;
   owner_name: string;
   username: string | null;
@@ -33,7 +34,7 @@ export async function readPublicBusiness(
   const followerVisible = unblockedAuthor(viewer.id, sql`f.follower_id`);
   const record = firstRow(
     await db.execute<Service>(sql`
-    select a.id,a.agent_type,a.user_id,a.display_name,a.biography,
+    select a.id,a.agent_type,a.user_id,a.display_name,a.biography,(a.verified_at is not null) as verified,
       p.display_name as owner_name,p.username,p.profile_image_url,p.cover_image_url,
       coalesce(to_jsonb(a)->'public_details','{}'::jsonb) as public_details,
       (select count(*)::int from public.profile_follows f where f.followed_id=a.user_id and ${followerVisible}) as follower_count,
@@ -220,7 +221,7 @@ export async function readPublicBusiness(
       completed_trip_count: completedTrips,
       rating: Number(reviews[0]?.average_rating ?? 0),
       review_count: Number(reviews[0]?.total_count ?? 0),
-      verified: true,
+      verified: record.verified,
     },
     products,
     tutorials,

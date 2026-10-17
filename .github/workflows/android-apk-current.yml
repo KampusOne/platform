@@ -1,5 +1,5 @@
 name: Build current verified Android APK
-# Tutor and vendor listing actions, verified tutor identity, learning resource details and order timeline refresh.
+# Campus brand profile navigation and verified badges, with the tutor and order UI improvements.
 on:
   push:
     branches: [main]
@@ -49,7 +49,7 @@ jobs:
           curl --fail --silent --show-error --retry 2 --max-time 20 https://platformp.divine-haze-54eb.workers.dev/health/ready
           node mobile/scripts/check-campus-location.cjs
           node mobile/scripts/check-campus-map.cjs
-          node --experimental-strip-types --test tests/performance-regression.test.mjs tests/vendor-workspace-ui.test.mjs tests/payment-return.test.mjs tests/native-payment-callback.test.mjs tests/native-push-registration.test.mjs
+          node --experimental-strip-types --test tests/performance-regression.test.mjs tests/vendor-workspace-ui.test.mjs tests/marketplace-navigation.test.mjs tests/catalogue-pagination-ui.test.mjs tests/campus-place-choice.test.mjs tests/browser-schedulers.test.mjs tests/payment-return.test.mjs tests/native-payment-callback.test.mjs tests/native-push-registration.test.mjs
       - name: Configure Android push credentials
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
@@ -80,7 +80,7 @@ jobs:
       - name: Prepare and verify APK
         run: |
           set -euo pipefail
-          cp mobile/android/app/build/outputs/apk/release/*.apk KampusOne-Android-0.3.42-arm64.apk
+          cp mobile/android/app/build/outputs/apk/release/*.apk KampusOne-Android-0.3.43-arm64.apk
           sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           test -n "$sdk_root"
           build_tools="$(find "$sdk_root/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
@@ -88,10 +88,10 @@ jobs:
           aapt="$build_tools/aapt"
           test -x "$apksigner"
           test -x "$aapt"
-          "$apksigner" verify --print-certs KampusOne-Android-0.3.42-arm64.apk >/tmp/apkverify.txt 2>&1 || { cat /tmp/apkverify.txt; exit 1; }
-          "$aapt" dump badging KampusOne-Android-0.3.42-arm64.apk >/tmp/apkbadging.txt
+          "$apksigner" verify --print-certs KampusOne-Android-0.3.43-arm64.apk >/tmp/apkverify.txt 2>&1 || { cat /tmp/apkverify.txt; exit 1; }
+          "$aapt" dump badging KampusOne-Android-0.3.43-arm64.apk >/tmp/apkbadging.txt
           grep -q "package: name='app.kampusone.mobile'" /tmp/apkbadging.txt
-          grep -q "versionName='0.3.42'" /tmp/apkbadging.txt
+          grep -q "versionName='0.3.43'" /tmp/apkbadging.txt
           target="$(sed -n "s/^targetSdkVersion:'\([0-9][0-9]*\)'/\1/p" /tmp/apkbadging.txt | head -1)"
           test "${target:-0}" -ge 36
           node --input-type=module <<'JS'
@@ -110,7 +110,7 @@ jobs:
           const abi=/^native-code:\s*(.*)$/m.exec(badging)?.[1];
           if(versionCode!==expected.android.versionCode || abi!=="'arm64-v8a'") throw new Error('The packaged version code or ARM64 architecture does not match this release.');
           const digest=createHash('sha256');
-          for await (const chunk of createReadStream('KampusOne-Android-0.3.42-arm64.apk')) digest.update(chunk);
+          for await (const chunk of createReadStream('KampusOne-Android-0.3.43-arm64.apk')) digest.update(chunk);
           const receipt={
             sourceSha:process.env.SOURCE_SHA,
             packageName:'app.kampusone.mobile',
@@ -120,10 +120,10 @@ jobs:
             abi:'arm64-v8a',
             certificateSha256:cert.match(/.{2}/g).join(':'),
             apkSha256:digest.digest('hex'),
-            apkSizeBytes:statSync('KampusOne-Android-0.3.42-arm64.apk').size,
+            apkSizeBytes:statSync('KampusOne-Android-0.3.43-arm64.apk').size,
             verifiedAt:new Date().toISOString()
           };
-          writeFileSync('KampusOne-Android-0.3.42-arm64-build.json',JSON.stringify(receipt,null,2)+'\n');
+          writeFileSync('KampusOne-Android-0.3.43-arm64-build.json',JSON.stringify(receipt,null,2)+'\n');
           console.log(JSON.stringify(receipt));
           JS
       - name: Verify this APK source is deployed and still main
@@ -145,7 +145,7 @@ jobs:
             sleep 10
           done
           node --test tests/native-release.test.mjs tests/published-web-release.test.mjs
-          node server/scripts/verify-native-release.mjs /tmp/kampusone-current-worker-runs.json KampusOne-Android-0.3.42-arm64-release.json
+          node server/scripts/verify-native-release.mjs /tmp/kampusone-current-worker-runs.json KampusOne-Android-0.3.43-arm64-release.json
       - name: Publish the verified versioned testing APK
         env:
           GH_TOKEN: ${{ github.token }}
@@ -153,22 +153,22 @@ jobs:
           set -euo pipefail
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$SOURCE_SHA"
           cat > /tmp/kampusone-android-release-notes.txt <<'NOTES'
-          Android 0.3.42 / build 72. Adds cover-image rows and Edit/Delete menus for tutor materials and vendor products, tutor photos/names/verification on resource details, persisted bookmarks, a fixed Open/Buy button, and a cleaner order summary with expandable event history and compact reviews. Includes all performance, countdown, community, Alumni badge, message reply and notification changes from 0.3.41. Uses the existing signing identity. Agent withdrawals remain gated until Bachs Connect activation and bank-transfer verification.
+          Android 0.3.43 / build 73. Adds branded numbered pages after 24 marketplace products and 30 tutorial items, a full-height vertical PDF reader with swipe/pinch/double-tap zoom and sharp device-density rendering, and an inline lesson player with readable titles and tutor identity. Checkout now accepts in-app payment only, searches the full published campus directory, and offers rider delivery only when each seller has a pickup point. Top campus brand photos and names open their business profiles, and verified accounts show the brand seal in the rail and profile. Adds cover-image rows and Edit/Delete menus for tutor materials and vendor products, tutor photos/names/verification on resource details, persisted bookmarks, a fixed Open/Buy button, and a cleaner order summary with expandable event history and compact reviews. Includes all performance, countdown, community, Alumni badge, message reply and notification changes from 0.3.41. Uses the existing signing identity. Agent withdrawals remain gated until Bachs Connect activation and bank-transfer verification.
           NOTES
-          gh release create android-0.3.42 \
-            KampusOne-Android-0.3.42-arm64.apk \
-            KampusOne-Android-0.3.42-arm64-build.json \
-            KampusOne-Android-0.3.42-arm64-release.json \
-            --target "$SOURCE_SHA" --title "KampusOne Android 0.3.42" \
+          gh release create android-0.3.43 \
+            KampusOne-Android-0.3.43-arm64.apk \
+            KampusOne-Android-0.3.43-arm64-build.json \
+            KampusOne-Android-0.3.43-arm64-release.json \
+            --target "$SOURCE_SHA" --title "KampusOne Android 0.3.43" \
             --notes-file /tmp/kampusone-android-release-notes.txt --prerelease
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: KampusOne-Android-0.3.42-arm64
+          name: KampusOne-Android-0.3.43-arm64
           path: |
-            KampusOne-Android-0.3.42-arm64.apk
-            KampusOne-Android-0.3.42-arm64-build.json
-            KampusOne-Android-0.3.42-arm64-release.json
+            KampusOne-Android-0.3.43-arm64.apk
+            KampusOne-Android-0.3.43-arm64-build.json
+            KampusOne-Android-0.3.43-arm64-release.json
           if-no-files-found: error
           retention-days: 14
 
@@ -188,7 +188,7 @@ jobs:
           node-version: 22
       - uses: actions/download-artifact@v4
         with:
-          name: KampusOne-Android-0.3.42-arm64
+          name: KampusOne-Android-0.3.43-arm64
       - name: Verify the same published Worker and web release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -206,7 +206,7 @@ jobs:
             sleep 10
           done
           node --test tests/native-release.test.mjs tests/published-web-release.test.mjs tests/android-download-publication.test.mjs
-          node server/scripts/verify-published-web-release.mjs /tmp/kampusone-download-worker-runs.json /tmp/kampusone-download-vercel-statuses.json KampusOne-Android-0.3.42-arm64-web-release.json
+          node server/scripts/verify-published-web-release.mjs /tmp/kampusone-download-worker-runs.json /tmp/kampusone-download-vercel-statuses.json KampusOne-Android-0.3.43-arm64-web-release.json
       - name: Publish the verified testing APK to website downloads
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -214,7 +214,7 @@ jobs:
           BUILD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          node server/scripts/verify-android-download.mjs KampusOne-Android-0.3.42-arm64-build.json KampusOne-Android-0.3.42-arm64-release.json KampusOne-Android-0.3.42-arm64-web-release.json
-          cp KampusOne-Android-0.3.42-arm64.apk KampusOne-Android.apk
-          cp KampusOne-Android-0.3.42-arm64-build.json KampusOne-Android-build.json
+          node server/scripts/verify-android-download.mjs KampusOne-Android-0.3.43-arm64-build.json KampusOne-Android-0.3.43-arm64-release.json KampusOne-Android-0.3.43-arm64-web-release.json
+          cp KampusOne-Android-0.3.43-arm64.apk KampusOne-Android.apk
+          cp KampusOne-Android-0.3.43-arm64-build.json KampusOne-Android-build.json
           node server/scripts/publish-android-download.mjs

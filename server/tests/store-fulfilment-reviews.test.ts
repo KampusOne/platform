@@ -22,7 +22,7 @@ vi.mock("../src/lib/database", () => ({
   sqlClient: () => testSqlClient(pg),
   firstRow: (r: { rows: unknown[] }) => r.rows[0],
 }));
-vi.mock('../src/lib/delivery-routing',()=>({mappedDeliveryPoint:async()=>({campus_id:campus,name:'Synthetic mapped pickup',latitude:6.3,longitude:5.6}),currentAgentPosition:async()=>({latitude:6.3,longitude:5.6,captured_at:new Date().toISOString(),accuracy_metres:10}),campusDeliveryRoute:async()=>({distanceMetres:700,geometry:{type:'LineString',coordinates:[[5.6,6.3],[5.601,6.3]]},source:'ISOLATED_FINANCE_FIXTURE'})}));
+vi.mock('../src/lib/delivery-routing',()=>({riderPickupAvailability:async()=>new Map(),mappedDeliveryPoint:async()=>({campus_id:campus,name:'Synthetic mapped pickup',latitude:6.3,longitude:5.6}),currentAgentPosition:async()=>({latitude:6.3,longitude:5.6,captured_at:new Date().toISOString(),accuracy_metres:10}),campusDeliveryRoute:async()=>({distanceMetres:700,geometry:{type:'LineString',coordinates:[[5.6,6.3],[5.601,6.3]]},source:'ISOLATED_FINANCE_FIXTURE'})}));
 vi.mock("../src/middleware/auth", () => ({
   currentUser: (c: Context) => ({
     id: c.req.header("x-user"),

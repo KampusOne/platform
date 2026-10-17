@@ -1,3 +1,5 @@
+import { Pagination } from '@/src/components/pagination';
+import { LEARNING_PAGE_SIZE, type PageInfo } from '@/src/lib/pagination';
 import { matchesLearningSearch } from '../../../packages/contracts/src/learning-search';
 import { LearningFeed } from "@/src/components/learning-feed";
 import { TutorDirectory } from "@/src/components/tutor-directory";
@@ -653,6 +655,29 @@ export default function TutorialsScreen() {
   const searchPending = query.trim().toLowerCase() !== searchTerm;
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedFormat, setSelectedFormat] = useState("All");
+  const [cost, setCost] = useState('All prices');
+  const [subject, setSubject] = useState('All subjects');
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [pagination, setPagination] = useState<PageInfo | null>(null);
+  const [pageSelection, setPageSelection] = useState({ key: '', page: 1 });
+  const catalogueList = useRef<FlatList<Listing>>(null);
+  const filterKey = JSON.stringify([searchTerm, selectedCategory, selectedFormat, cost, subject, focusedListing]);
+  const currentPage = pageSelection.key === filterKey ? pageSelection.page : 1;
+  const readParams = new URLSearchParams({ page: String(currentPage), category: selectedCategory });
+  if (searchTerm) readParams.set('q', searchTerm);
+  const resourceType = Object.entries(resourceCategory).find(([, label]) => label === selectedCategory)?.[0];
+  if (resourceType) readParams.set('resourceType', resourceType);
+  if (selectedFormat !== 'All' && (selectedCategory === 'All' || selectedCategory === 'Tutors')) readParams.set('format', selectedFormat.toUpperCase().replace(/ /g, '_'));
+  if (cost === 'Free') readParams.set('cost', cost);
+  if (subject !== 'All subjects') readParams.set('subject', subject);
+  if (focusedListing) readParams.set('listing', focusedListing);
+  const cataloguePath = '/v1/student/tutorials?' + readParams;
+  const [loadedPath, setLoadedPath] = useState('');
+  const pageLoading = loadedPath !== cataloguePath;
+  const changePage = (next: number) => {
+    setPageSelection({ key: filterKey, page: next });
+    catalogueList.current?.scrollToOffset({ offset: 0, animated: false });
+  };
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -678,8 +703,14 @@ export default function TutorialsScreen() {
       const catalogue = await api<{
         listings: Listing[];
         resources?: Resource[];
-      }>("/v1/student/tutorials" + (searchTerm ? '?q=' + encodeURIComponent(searchTerm) : ''), { signal: controller.signal });
+        pagination?: PageInfo;
+        subjects?: string[];
+      }>(cataloguePath, { signal: controller.signal });
       if (controller.signal.aborted) return;
+      setPagination(catalogue.pagination ?? null);
+      setSubjects(catalogue.subjects ?? [...new Set((catalogue.resources ?? []).map(resource => resource.subject || resource.course_code).filter(Boolean))]);
+      setLoadedPath(cataloguePath);
+      if (catalogue.pagination && currentPage > catalogue.pagination.totalPages) setPageSelection({ key: filterKey, page: catalogue.pagination.totalPages });
       const safeListings = Array.isArray(catalogue?.listings)
         ? catalogue.listings
         : [];
@@ -743,7 +774,7 @@ export default function TutorialsScreen() {
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [searchTerm]);
+  }, [cataloguePath, currentPage, filterKey]);
 
   useFocusEffect(
     useCallback(() => {
@@ -756,8 +787,8 @@ export default function TutorialsScreen() {
     const availableFormats = Array.from(
       new Set(listings.map((listing) => displayFormat(listing.format))),
     );
-    return ["All", ...availableFormats];
-  }, [listings]);
+    return [...new Set(["All", "In person", "Online", "Hybrid", ...availableFormats, selectedFormat])];
+  }, [listings, selectedFormat]);
   const activeFormat = formats.includes(selectedFormat)
     ? selectedFormat
     : "All";
@@ -789,6 +820,12 @@ export default function TutorialsScreen() {
 
   const showListings =
     selectedCategory === "All" || selectedCategory === "Tutors";
+
+  const totalResults = pagination?.total ?? filteredResources.length + (showListings ? filtered.length : 0);
+  const pageInfo = pagination ?? { page: currentPage, pageSize: LEARNING_PAGE_SIZE, total: totalResults, totalPages: Math.max(1, Math.ceil(totalResults / LEARNING_PAGE_SIZE)) };
+  const pageOffset = pagination ? 0 : (currentPage - 1) * LEARNING_PAGE_SIZE;
+  const pageResources = selectedCategory === 'Tutors' ? [] : filteredResources.slice(pageOffset, pageOffset + LEARNING_PAGE_SIZE);
+  const pageListings = showListings ? filtered.slice(Math.max(0, pageOffset - filteredResources.length), Math.max(0, pageOffset - filteredResources.length) + LEARNING_PAGE_SIZE - pageResources.length) : [];
 
   const tutors = useMemo<TutorSummary[]>(() => {
     const tutorsById = new Map<string, TutorSummary>();
@@ -917,8 +954,11 @@ export default function TutorialsScreen() {
   return (
     <SafeAreaView edges={["top"]} style={styles.screen}>
       <FlatList
+        ref={catalogueList}
+        accessibilityLabel="Tutorial content"
         contentContainerStyle={styles.listContent}
-        data={showListings ? filtered : []}
+        data={!pageLoading ? pageListings : []}
+        ListFooterComponent={<Pagination {...pageInfo} label="Tutorials" onChange={changePage} disabled={Boolean(busy) || loading || pageLoading || searchPending} />}
         initialNumToRender={4}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
@@ -938,7 +978,7 @@ export default function TutorialsScreen() {
             {query.trim()?<View accessibilityLiveRegion="polite" style={{flexDirection:"row",alignItems:"center",gap:9,paddingVertical:10}}>
               <Ionicons name="search-outline" size={17} color={theme.brand}/>
               <Text style={{fontFamily:theme.font.medium,color:theme.textMuted,fontSize:12,flex:1}}>
-                {searchPending || loading ? "Searching tutors and materials…" : `${filtered.length + filteredResources.length} matching sessions and materials`}
+                {searchPending || loading ? "Searching tutors and materials…" : `${totalResults} matching sessions and materials`}
               </Text>
             </View>:null}
             {searchPending?<SearchLoading label="Searching tutors and materials…" hasResults={filtered.length+filteredResources.length>0}/>:null}
@@ -1073,9 +1113,13 @@ export default function TutorialsScreen() {
               </Pressable>
             ) : null}
 
-            <TutorDirectory query={searchTerm} expanded={selectedCategory==='Tutors'} />
-            {selectedCategory!=='Tutors'?<LearningFeed resources={filteredResources} category={selectedCategory} onOpen={resource=>router.push({pathname:'/learning-preview',params:{id:resource.id}})}/>:null}
-            {showListings&&filtered.length?<View style={styles.availableHeader}><Text style={styles.sectionTitle}>Book a session</Text><Text style={styles.availableCount}>{filtered.length} available</Text></View>:null}
+            <TutorDirectory query={searchTerm} expanded={selectedCategory==='Tutors'} onPageChange={()=>catalogueList.current?.scrollToOffset({offset:0,animated:false})} />
+            {selectedCategory !== 'Tutors' ? <View style={{gap:12,marginTop:14}}>
+              <FilterRow items={['All prices','Free']} selected={cost} onSelect={setCost} />
+              {subjects.length > 1 || subject !== 'All subjects' ? <FilterRow items={[...new Set(['All subjects', ...subjects, ...(subject !== 'All subjects' ? [subject] : [])])]} selected={subject} onSelect={setSubject} /> : null}
+              {!pageLoading ? <LearningFeed resources={pageResources} category={selectedCategory} hideFilters onOpen={resource=>router.push({pathname:'/learning-preview',params:{id:resource.id}})} /> : null}
+            </View> : null}
+            {showListings&&pageListings.length&&!pageLoading?<View style={styles.availableHeader}><Text style={styles.sectionTitle}>Book a session</Text><Text style={styles.availableCount}>{pageListings.length} on this page</Text></View>:null}
 
           </>
         }

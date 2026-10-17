@@ -32,7 +32,7 @@ export class TextRetryCoordinator {
     private timer: ReturnType<typeof setTimeout> | undefined;
     private controller: AbortController | null = null;
     private storageFailures = 0;
-    constructor(private list: () => Promise<QueuedText[]>, private send: (value: QueuedText, signal: AbortSignal) => Promise<void>, private acknowledge: (value: QueuedText) => Promise<void>, private defer: (value: QueuedText, retry: NonNullable<PendingText['retry']>) => Promise<void>, private now = Date.now, private schedule = setTimeout, private cancel = clearTimeout, private random = Math.random) { }
+    constructor(private list: () => Promise<QueuedText[]>, private send: (value: QueuedText, signal: AbortSignal) => Promise<void>, private acknowledge: (value: QueuedText) => Promise<void>, private defer: (value: QueuedText, retry: NonNullable<PendingText['retry']>) => Promise<void>, private now = Date.now, private schedule = (callback:()=>void,delay:number)=>setTimeout(callback,delay), private cancel = (timer:ReturnType<typeof setTimeout>)=>clearTimeout(timer), private random = Math.random) { }
     setAvailable(value: boolean) { if (this.stopped || value === this.active)
         return; this.active = value; this.epoch++; this.controller?.abort(); if (this.timer)
         this.cancel(this.timer); this.timer = undefined; if (value) {

@@ -1,3 +1,4 @@
+import { cataloguePage, cataloguePageInfo } from '../lib/catalogue-pagination';
 import { learningSearchTerms, learningTypeLabels } from '../../../packages/contracts/src/learning-search';
 import {acquisitionSchema} from '../lib/acquisition';
 import {isSingleCourseCode,courseCodeIdentity} from "../lib/course-code";
@@ -22,6 +23,7 @@ import { database, firstRow, sqlClient } from "../lib/database";
 import { cachedVersionedRead } from "../lib/cache-revision";
 import { campusDirectoryDefaultForUniversity } from "../lib/campus-defaults";
 import { id, input as validatedInput } from "../lib/input";
+import { riderPickupAvailability } from "../lib/delivery-routing";
 import { z } from "@kampusone/contracts";
 import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
@@ -972,12 +974,17 @@ studentRoutes.get("/tutorials", async (context) => {
       "Choose a valid learning-resource type.",
     );
   }
+  const paging = cataloguePage(context.req.query('page'), 30);
+  const category = context.req.query('category');
+  const format = context.req.query('format');
+  const cost = context.req.query('cost');
+  const subject = context.req.query('subject');
+  const focused = context.req.query('listing');
+  if (focused && !z.string().uuid().safeParse(focused).success) throw new AppError(400, 'BAD_REQUEST', 'Choose a valid tutorial.');
   const tutorVisible = unblockedAuthor(user.id, sql`profiles.user_id`);
   const tutorialReviewerVisible = unblockedAuthor(user.id, sql`reviews.student_user_id`);
   const resourceTutorVisible = unblockedAuthor(user.id, sql`resource_tutor.user_id`);
-  const [listings, resources] = await Promise.all([
-    database(context.env).execute(sql`
-      select listings.id, listings.course_id, listings.tutor_profile_id, listings.course_code, listings.title,
+  const listingQuery = sql`select listings.id, listings.updated_at, listings.course_id, listings.tutor_profile_id, listings.course_code, listings.title,
         listings.description, listings.format, listings.price_kobo, listings.capacity,
         listings.location_text, listings.cancellation_cutoff_hours, listings.is_demo,
         coalesce(profiles.display_name, listings.publisher_name, 'KampusOne tutor') as tutor_name,
@@ -1034,10 +1041,11 @@ studentRoutes.get("/tutorials", async (context) => {
                 (window_bookings.status = 'PENDING_PAYMENT' and window_bookings.payment_expires_at > now())
               )) < least(windows.capacity, listings.capacity)
         )
-      order by listings.updated_at desc limit 100
-    `),
-    database(context.env).execute(sql`
-      select resources.id, resources.listing_id, resources.course_code, resources.title,
+        and (${category == null || category === 'All' || category === 'Tutors'})
+        and (${format ?? null}::text is null or listings.format = ${format ?? null})
+        and (${cost !== 'Free'} or listings.price_kobo = 0)
+        and (${focused ?? null}::uuid is null or listings.id = ${focused ?? null}::uuid)`;
+  const resourceCatalogueQuery = sql`select resources.id, resources.listing_id, resources.course_code, resources.title,
         resources.description, resources.resource_type, resources.access_model, resources.cover_url,resources.subject,resources.parts,resources.created_at,
         resources.price_kobo, resources.level_code, resources.batch_label,
         resources.publisher_name, resource_tutor.display_name as tutor_name, resources.publisher_verified, resources.preview_text,
@@ -1058,11 +1066,29 @@ studentRoutes.get("/tutorials", async (context) => {
           resources.publisher_name, resource_tutor.display_name, resources.subject, ${resourceLabels},
           case when jsonb_array_length(resources.parts)>1 then 'playlist playlists playbook playbooks collection collections' end,
           (select string_agg(part->>'title',' ') from jsonb_array_elements(resources.parts) part)) ilike ${pattern(term)}`), sql` and `) : sql`true`}
-      order by resources.created_at desc,resources.id desc limit 150
-    `),
+        and (${category !== 'Tutors'})`;
+  const resourceQuery = sql`${resourceCatalogueQuery}
+        and (${cost !== 'Free'} or resources.access_model = 'FREE')
+        and (${subject ?? null}::text is null or coalesce(nullif(resources.subject,''),resources.course_code) = ${subject ?? null})
+        and (${focused == null})`;
+  const summary = paging.enabled ? await database(context.env).execute<{listings:number;resources:number;subjects:string[]}>(sql`
+    select (select count(*)::int from (${listingQuery}) l) as listings,
+      (select count(*)::int from (${resourceQuery}) r) as resources,
+      (select coalesce(array_agg(distinct coalesce(nullif(r.subject,''),r.course_code) order by coalesce(nullif(r.subject,''),r.course_code)), array[]::text[]) from (${resourceCatalogueQuery}) r) as subjects`) : { rows: [] };
+  const listingCount = Number(summary.rows[0]?.listings ?? 0), resourceCount = Number(summary.rows[0]?.resources ?? 0);
+  // Materials remain newest first, followed by bookable sessions. The two
+  // collections share one 30-item budget, including a page spanning both.
+  const resourceLimit = paging.enabled ? Math.min(30, Math.max(0, resourceCount - paging.offset)) : 150;
+  const listingLimit = paging.enabled ? 30 - resourceLimit : 100;
+  const [listings, resources] = await Promise.all([
+    database(context.env).execute(sql`${listingQuery} order by listings.updated_at desc, listings.id desc
+      limit ${listingLimit} offset ${paging.enabled ? Math.max(0,paging.offset-resourceCount) : 0}`),
+    database(context.env).execute(sql`${resourceQuery} order by resources.created_at desc, resources.id desc
+      limit ${resourceLimit} offset ${paging.enabled ? Math.min(paging.offset,resourceCount) : 0}`),
   ]);
+  const pageMeta = paging.enabled ? { subjects: summary.rows[0]?.subjects ?? [], pagination: cataloguePageInfo(paging, listingCount + resourceCount) } : {};
   if (!listings.rows.length && !resources.rows.length)
-    return context.json({ listings: [], resources: [] });
+    return context.json({ listings: [], resources: [], ...pageMeta });
   // Both collections use the same campus policy. Resolve it once, alongside
   // the independent readiness checks, rather than repeating a pricing waterfall.
   const [pricing, tutorialBillingReady, materialReady] = await Promise.all([
@@ -1070,6 +1096,7 @@ studentRoutes.get("/tutorials", async (context) => {
     pricedTutorialReady(context.env), materialCommerceReady(context.env),
   ]);
   return context.json({
+    ...pageMeta,
     listings: pricing.items.slice(0, listings.rows.length).map(l => ({ ...l, pricing_ready: Number(l.price_kobo) === 0 || (l.pricing_ready && paidAccessEnabled && tutorialBillingReady) })),
     resources: pricing.items.slice(listings.rows.length).map(r => ({ ...r, pricing_ready: r.access_model !== 'PAID' || (r.pricing_ready && paidAccessEnabled && materialReady) })),
   });
@@ -1079,17 +1106,21 @@ studentRoutes.get('/tutors', async c => {
   requireFeature(c.env, 'TUTORIALS_ENABLED', 'Tutor discovery is not enabled in this environment.');
   const u = currentUser(c), universityId = requireUniversity(u);
   const terms = learningSearchTerms(c.req.query('q') ?? '');
-  const rows = await database(c.env).execute(sql`
-    select a.id, a.user_id, a.display_name, a.biography, a.verified_at,
+  const paging = cataloguePage(c.req.query('page'), 30);
+  const tutorQuery = sql`
+    select a.id, a.user_id, a.display_name, a.biography, a.verified_at, (a.verified_at is not null) as verified,
       a.public_details->'categories' as specialties,
       coalesce(a.public_details->>'profileImageUrl',p.profile_image_url) as profile_image_url
     from public.agent_profiles a left join public.profiles p on p.user_id=a.user_id
     where a.university_id=${universityId}::uuid and a.agent_type='TUTOR' and a.status='ACTIVE'
       and not exists(select 1 from public.user_blocks b where (b.blocker_id=${u.id}::uuid and b.blocked_id=a.user_id) or (b.blocked_id=${u.id}::uuid and b.blocker_id=a.user_id))
       and ${terms.length ? sql.join(terms.map(term => sql`concat_ws(' ',a.display_name,a.biography,a.public_details->'categories','tutor tutors tutorial tutorials') ilike ${'%' + term.replace(/[\\%_]/g, '\\$&') + '%'}`), sql` and `) : sql`true`}
-    order by a.display_name, a.id limit 200
-  `);
-  return c.json({ tutors: rows.rows });
+  `;
+  const [rows, count] = await Promise.all([
+    database(c.env).execute(sql`${tutorQuery} order by a.display_name, a.id limit ${paging.enabled ? 30 : 200} offset ${paging.enabled ? paging.offset : 0}`),
+    paging.enabled ? database(c.env).execute<{total:number}>(sql`select count(*)::int as total from (${tutorQuery}) tutors`) : Promise.resolve({ rows: [] }),
+  ]);
+  return c.json({ tutors: rows.rows, ...(paging.enabled ? { pagination: cataloguePageInfo(paging,Number(count.rows[0]?.total ?? 0)) } : {}) });
 });
 
 studentRoutes.get('/learning-saved',async c=>{
@@ -1436,49 +1467,52 @@ studentRoutes.post("/tutorial-reviews", async (context) => {
   return context.json({ id, status: "PUBLISHED" }, 201);
 });
 
-studentRoutes.get('/delivery-places',async c=>{const u=currentUser(c);const r=await database(c.env).execute(sql`
- select p.id,p.name,p.campus_id,c.name campus_name,
- (select z.id from public.delivery_zones z where z.university_id=p.university_id and z.active and to_jsonb(z)->>'campus_id'=p.campus_id::text order by z.created_at,z.id limit 1) as delivery_zone_id from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.status='PUBLISHED'
- where p.university_id=${u.universityId}::uuid and p.status='PUBLISHED'and ((p.source_provider='OSM'and p.confidence>=.8 and p.latitude is not null and p.longitude is not null)or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null)) order by c.name,p.name limit 1000`);return c.json({places:r.rows});});
+studentRoutes.get('/delivery-places', async c => {
+  const universityId = requireUniversity(currentUser(c));
+  const cursorInput = c.req.query('cursor');
+  const cursor = cursorInput ? id(cursorInput) : null;
+  const result = await database(c.env).execute<{ id: string }>(sql`
+    select p.id,p.name,p.campus_id,c.name as campus_name,p.search_aliases,
+      (c.id is not null and ((p.latitude is not null and p.longitude is not null) or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null and e.geom is not null))) as has_map_point,
+      (select z.id from public.delivery_zones z where z.university_id=p.university_id and z.active
+        and (to_jsonb(z)->>'campus_id'=p.campus_id::text or to_jsonb(z)->>'campus_id' is null) order by (to_jsonb(z)->>'campus_id'=p.campus_id::text) desc nulls last,z.created_at,z.id limit 1) as delivery_zone_id
+    from public.campus_places p
+    left join public.institution_campuses c on c.id=p.campus_id and c.institution_id=p.university_id
+    where p.university_id=${universityId}::uuid and p.status='PUBLISHED'
+      and (p.campus_id is null or c.status='PUBLISHED')
+      and (${cursor}::uuid is null or p.id>${cursor}::uuid)
+    order by p.id limit 201
+  `);
+  const places = result.rows.slice(0, 200);
+  return c.json({ places, nextCursor: result.rows.length > 200 ? places.at(-1)!.id : null });
+});
 
 studentRoutes.get('/pickup-hubs',async c=>{const user=currentUser(c);return c.json({hubs:(await database(c.env).execute(sql`select name from public.commerce_pickup_hubs where university_id=${user.universityId}::uuid order by position`)).rows});});
 
 studentRoutes.get("/store", async (context) => {
-  const user = currentUser(context);
-  requireUniversity(user);
+  const user = currentUser(context), universityId = requireUniversity(user);
   const category = context.req.query("category")?.trim();
   const query = context.req.query("q")?.trim();
-  const liveStoreEnabled = featureEnabled(context.env, "STORE_ENABLED");
-
-  if (!liveStoreEnabled) {
-    if (!storeDemoEnabled(context.env)) {
-      requireFeature(
-        context.env,
-        "STORE_ENABLED",
-        "The campus store is not enabled in this environment.",
-      );
-    }
-    return context.json({
-      ...demoStoreCatalogue({ category, query }),
-      catalogueMode: "DEMO" as const,
-      checkoutEnabled: false,
-      deliveryZones: [],
+  const paging = cataloguePage(context.req.query('page'), 24);
+  const rawIds = context.req.query('includeIds');
+  const checkedIds = z.array(z.string().uuid()).max(52).safeParse(rawIds ? rawIds.split(',') : []);
+  if (!checkedIds.success) throw new AppError(400, 'BAD_REQUEST', 'Reopen your cart and try again.');
+  const includedIds = [...new Set(checkedIds.data)];
+  if (!featureEnabled(context.env, "STORE_ENABLED")) {
+    if (!storeDemoEnabled(context.env)) requireFeature(context.env, "STORE_ENABLED", "The campus store is not enabled in this environment.");
+    const demo = demoStoreCatalogue({ category, query });
+    return context.json({ ...demo,
+      products: paging.enabled ? demo.products.slice(paging.offset, paging.offset + paging.pageSize) : demo.products,
+      includedProducts: demoStoreCatalogue().products.filter(p => includedIds.includes(p.id)),
+      categories: [...new Set(demoStoreCatalogue().products.map(p => p.category))],
+      ...(paging.enabled ? { pagination: cataloguePageInfo(paging, demo.products.length) } : {}),
+      catalogueMode: "DEMO" as const, checkoutEnabled: false, deliveryZones: [],
     });
   }
-
-  const search = query ? `%${query}%` : null;
+  const search = query ? `%${query.replace(/[\\%_]/g, '\\$&')}%` : null;
   const sellerVisible = unblockedAuthor(user.id, sql`profiles.user_id`);
   const productReviewerVisible = unblockedAuthor(user.id, sql`product_reviews.buyer_user_id`);
-  const [products, zones] = await Promise.all([
-    database(context.env).execute(sql`
-      select products.id, products.vendor_profile_id, products.name, products.description,
-        products.category, products.price_kobo, products.stock_quantity, products.image_url, coalesce(to_jsonb(products)->'image_urls','[]'::jsonb) as image_urls,profiles.user_id as vendor_user_id,
-        products.preparation_minutes, storefronts.display_name as vendor_name,
-        storefronts.pickup_location,coalesce(to_jsonb(storefronts)->'pickup_locations','[]'::jsonb) as pickup_locations,
-        coalesce((to_jsonb(storefronts)->>'pickup_enabled')::boolean,false) as pickup_enabled,
-        coalesce((to_jsonb(storefronts)->>'self_delivery_enabled')::boolean,false) as self_delivery_enabled,
-        coalesce(reviews.rating, 0) as rating, coalesce(reviews.review_count, 0)::int as review_count
-      from public.vendor_products products
+  const productJoins = sql`from public.vendor_products products
       join public.agent_profiles profiles
         on profiles.id = products.vendor_profile_id
         and profiles.agent_type = 'VENDOR'
@@ -1490,38 +1524,52 @@ studentRoutes.get("/store", async (context) => {
       join public.product_categories categories
         on categories.id = products.category_id
         and categories.university_id = products.university_id
-        and categories.status = 'APPROVED'
-      left join lateral (
+        and categories.status = 'APPROVED'`;
+  const productScope = sql`products.university_id = ${requireUniversity(user)}::uuid and products.status = 'PUBLISHED'
+        and products.stock_quantity > 0
+        and ${sellerVisible}`;
+  const productFilters = sql`true and (${category ?? null}::text is null or products.category = ${category ?? null})
+        and (${search}::text is null or products.name ilike ${search} or products.description ilike ${search} or products.category ilike ${search} or storefronts.display_name ilike ${search})`;
+  const productDetail = sql`select products.id, products.vendor_profile_id, products.name, products.description,
+        products.category, products.price_kobo, products.stock_quantity, products.image_url, coalesce(to_jsonb(products)->'image_urls','[]'::jsonb) as image_urls,profiles.user_id as vendor_user_id,
+        products.preparation_minutes, storefronts.display_name as vendor_name,
+        storefronts.pickup_location,coalesce(to_jsonb(storefronts)->'pickup_locations','[]'::jsonb) as pickup_locations,
+        coalesce((to_jsonb(storefronts)->>'pickup_enabled')::boolean,false) as pickup_enabled,
+        coalesce((to_jsonb(storefronts)->>'self_delivery_enabled')::boolean,false) as self_delivery_enabled,
+        coalesce(reviews.rating, 0) as rating, coalesce(reviews.review_count, 0)::int as review_count ${productJoins} left join lateral (
         select avg(product_reviews.rating)::numeric(3,2) as rating, count(*)::int as review_count
         from public.product_reviews product_reviews
         where product_reviews.product_id = products.id and product_reviews.status = 'PUBLISHED'
           and ${productReviewerVisible}
-      ) reviews on true
-      where products.university_id = ${requireUniversity(user)}::uuid and products.status = 'PUBLISHED'
-        and products.stock_quantity > 0
-        and ${sellerVisible}
-        and (${category ?? null}::text is null or products.category = ${category ?? null})
-        and (${search}::text is null or products.name ilike ${search} or products.description ilike ${search} or storefronts.display_name ilike ${search})
-      order by products.updated_at desc limit 200
-    `),
-    database(context.env).execute(sql`
-      select id, name, base_fee_kobo, operating_hours, max_package_weight_grams,
+      ) reviews on true where ${productScope}`;
+  const [products, zones, summary, included] = await Promise.all([
+    database(context.env).execute(sql`${productDetail} and ${productFilters}
+      order by products.updated_at desc, products.id desc limit ${paging.enabled ? 24 : 200} offset ${paging.enabled ? paging.offset : 0}`),
+    database(context.env).execute(sql`select id, name, base_fee_kobo, operating_hours, max_package_weight_grams,
         max_package_dimension_cm, earning_formula_version
       from public.delivery_zones
-      where university_id = ${requireUniversity(user)}::uuid and active = true order by base_fee_kobo, name
-    `),
+      where university_id = ${requireUniversity(user)}::uuid and active = true order by base_fee_kobo, name`),
+    paging.enabled ? database(context.env).execute<{total:number;categories:string[]}>(sql`
+      select count(*) filter (where ${productFilters})::int as total,
+        coalesce(array_agg(distinct products.category order by products.category),array[]::text[]) as categories
+      ${productJoins} where ${productScope}`) : Promise.resolve({ rows: [] }),
+    includedIds.length ? database(context.env).execute(sql`${productDetail} and products.id in (${sql.join(includedIds.map(value => sql`${value}::uuid`), sql`, `)})`) : Promise.resolve({ rows: [] }),
   ]);
-  const inclusive=await inclusiveListings(context.env,user.universityId,'STORE',products.rows);
+  const all = [...products.rows, ...included.rows];
+  const [inclusive, pickupAvailability] = await Promise.all([
+    inclusiveListings(context.env, user.universityId, 'STORE', all),
+    riderPickupAvailability(context.env, universityId, [...new Set(all.map(product => String(product.vendor_profile_id)))])
+  ]);
+  const priced = inclusive.items.map(product => ({ ...product, rider_pickup_ready: pickupAvailability.get(String(product.vendor_profile_id)) === true }));
   return context.json({
-    products: inclusive.items,
-    sellers: [],
-    catalogueMode: "LIVE" as const,
-    checkoutEnabled: !!inclusive.policy && featureEnabled(context.env,'PAYMENTS_ENABLED'),
-    inclusivePricing:!!inclusive.policy,
-    riderDeliveryEnabled:featureEnabled(context.env,"LOGISTICS_ENABLED"),
-    deliveryZones: await inclusiveStoreReady(context.env)?(await database(context.env).execute<{id:string;name:string;route_distance_metres:number}>(sql`
+    products: priced.slice(0, products.rows.length), includedProducts: priced.slice(products.rows.length),
+    ...(paging.enabled ? { categories: summary.rows[0]?.categories ?? [], pagination: cataloguePageInfo(paging, Number(summary.rows[0]?.total ?? 0)) } : {}),
+    sellers: [], catalogueMode: "LIVE" as const,
+    checkoutEnabled: !!inclusive.policy && featureEnabled(context.env, 'PAYMENTS_ENABLED'), inclusivePricing: !!inclusive.policy,
+    riderDeliveryEnabled: featureEnabled(context.env, "LOGISTICS_ENABLED"),
+    deliveryZones: await inclusiveStoreReady(context.env) ? (await database(context.env).execute<{id:string;name:string;route_distance_metres:number}>(sql`
       select id,name,route_distance_metres from public.delivery_zones where university_id=${user.universityId}::uuid and active
-    `)).rows.map(zone=>({...zone,base_fee_kobo:0,distance_basis:'QUOTE_REQUIRED'})):zones.rows,
+    `)).rows.map(zone => ({ ...zone, base_fee_kobo: 0, distance_basis: 'QUOTE_REQUIRED' })) : zones.rows,
   });
 });
 
@@ -1529,11 +1577,19 @@ const checkoutFieldLabels = {
   recipientName: 'Recipient name', recipientPhoneE164: 'Recipient phone',
   deliveryLocation: 'Delivery address', deliveryZoneId: 'Delivery zone',
   deliveryPlaceId: 'Delivery point', deliveryNote: 'Delivery note',
+  deliveryPaymentMethod: 'Payment method',
 };
+function requireInAppCheckout(data: { deliveryPaymentMethod: string }) {
+  if (data.deliveryPaymentMethod !== 'IN_APP') {
+    const message = 'Pay for items and delivery in the app.';
+    throw new AppError(400, 'BAD_REQUEST', message, { fields: { deliveryPaymentMethod: [message] } });
+  }
+}
 studentRoutes.post('/order-quotes',async context=>{
   requireFeature(context.env,'STORE_ENABLED','Store checkout is not available yet.');
   requireFeature(context.env,'PAYMENTS_ENABLED','Store payments are not available yet.');
   const data=await validatedInput(context,storeQuoteSchema,checkoutFieldLabels);
+  requireInAppCheckout(data);
   return context.json({quote:await prepareStoreQuote(context.env,currentUser(context),data)},201);
 });
 
@@ -1545,6 +1601,7 @@ studentRoutes.post("/orders", async (context) => {
   );
   const user = currentUser(context);
   const parsed = { data: await validatedInput(context,storeOrderSchema,checkoutFieldLabels) };
+  requireInAppCheckout(parsed.data);
   if (
     new Set(parsed.data.items.map((item) => item.productId)).size !==
     parsed.data.items.length
@@ -1583,7 +1640,6 @@ studentRoutes.post("/orders", async (context) => {
       from app_private.store_checkout_quotes where id=${quoteId}::uuid and buyer_user_id=${user.id}::uuid and university_id=${universityId}::uuid`));
     if(!matching?.matching)throw new AppError(409,'CONFLICT','Your checkout details changed. Review a fresh total before creating the order.');
   }
-  if(!inclusiveReady && parsed.data.deliveryPaymentMethod==='CASH')throw new AppError(503,'FEATURE_DISABLED','Cash rider fares are awaiting the scheduled financial update.');
   const orderId = inclusiveReady?parsed.data.quoteId!:crypto.randomUUID();
   const [pickup, delivery] = await Promise.all([
     deriveHandoffCode(context.env, orderId, "pickup"),

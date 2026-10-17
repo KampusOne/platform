@@ -131,7 +131,7 @@ jobs:
       - name: Verify seller recovery and tutor discovery
         run: node --experimental-strip-types --test tests/vendor-workspace-ui.test.mjs tests/tutor-edit.test.mjs tests/learning-order-details.test.mjs
       - name: Verify encrypted drafts and durable marketplace checkout
-        run: node --experimental-strip-types --test tests/native-drafts-checkout.test.mjs tests/marketplace-navigation.test.mjs tests/payment-return.test.mjs tests/native-payment-callback.test.mjs
+        run: node --experimental-strip-types --test tests/native-drafts-checkout.test.mjs tests/marketplace-navigation.test.mjs tests/catalogue-pagination-ui.test.mjs tests/campus-place-choice.test.mjs tests/browser-schedulers.test.mjs tests/payment-return.test.mjs tests/native-payment-callback.test.mjs
       - run: npm run export:web
         working-directory: mobile
 

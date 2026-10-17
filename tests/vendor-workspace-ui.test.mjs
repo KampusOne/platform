@@ -84,7 +84,7 @@ test('a later delivery-option failure accurately reports saved store details and
 test('campus picker with supplied points never refetches the storefront', async () => {
   const points=[{id:'mapped',name:'Library'}]; let chosen;
   // Exercise the component with props using an independent hook host.
-  const host=hookRenderer(),m=load('mobile/src/components/campus-place-choice.tsx',{'react':host.react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})},'react-native':{View:'View',Text:'Text',Pressable:'Pressable'},'@/src/lib/api':{api:()=>{throw Error('Duplicate storefront request');}},'@/src/lib/appearance':{useAppearance:()=>({theme})},'./toolkit':{ToolField:'ToolField'},'./retry-icon-button':{RetryIconButton:'RetryIconButton'}});
+  const host=hookRenderer(),m=load('mobile/src/components/campus-place-choice.tsx',{'react':host.react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})},'react-native':{View:'View',Text:'Text',Pressable:'Pressable',FlatList:'FlatList',Keyboard:{dismiss(){}}},'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'@expo/vector-icons':{Ionicons:'Icon'},'./keyboard-viewport':{KeyboardModal:'Modal'},'@/src/lib/api':{api:()=>{throw Error('Duplicate storefront request');}},'@/src/lib/appearance':{useAppearance:()=>({theme})},'./toolkit':{ToolField:'ToolField'},'./retry-icon-button':{RetryIconButton:'RetryIconButton'}});
   const tree=host.render(()=>m.CampusPlaceChoice({label:'Map',value:null,onChange:value=>chosen=value,options:points}));
   assert.ok(tree); host.unmount();
 });

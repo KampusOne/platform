@@ -8,7 +8,7 @@ import { hookRenderer, virtualClock } from './helpers/hook-renderer.mjs';
 class ApiError extends Error {constructor(status,code,message,details){super(message);Object.assign(this,{status,code,details});}}
 const owner='11111111-1111-4111-8111-111111111111',vendor='22222222-2222-4222-8222-222222222222',id='33333333-3333-4333-8333-333333333333';
 function load(relative,mocks,globals={}){const exports={};runInNewContext(ts.transpileModule(readFileSync(new URL('../mobile/'+relative,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,module:{exports},require:name=>{if(name in mocks)return mocks[name];throw Error('Missing '+name);},Date,Error,Number,Math,setTimeout,clearTimeout,...globals});return exports;}
-function fixture({width=393,initialCart={},params={},fillRecipient=true}={}){
+function fixture({width=393,initialCart={},params={},fillRecipient=true,riderEnabled=false,pickupReady=true,catalogueSize=1}={}){
  const host=hookRenderer(),time=virtualClock(),routes=[],requests=[],saves=[];let tree,checkout=false,stored=initialCart,failSaves=false,quoteError=null;
  const react={...host.react,useSyncExternalStore:(_subscribe,snapshot)=>snapshot()};
  const jsx={jsx:(type,props,key)=>({type,props,key}),jsxs:(type,props,key)=>({type,props,key}),Fragment:'Fragment'};
@@ -18,7 +18,10 @@ function fixture({width=393,initialCart={},params={},fillRecipient=true}={}){
  const commerceInput=load('../packages/contracts/src/commerce-input.ts',{});
  const checkoutValidation=load('src/lib/store-checkout-validation.ts',{'../../../packages/contracts/src/commerce-input':commerceInput});
  const cart=load('src/lib/marketplace-cart.ts',{'react':react,'./device-cache':device},globals);
- const product={id,vendor_profile_id:vendor,name:'Campus wireless headphones with a long full product name',description:'All details',category:'Phones & accessories',price_kobo:1000000,stock_quantity:5,image_url:null,vendor_name:'Campus Audio',pickup_enabled:true,pickup_location:'Store counter'};
+ const product={id,vendor_profile_id:vendor,name:'Campus wireless headphones with a long full product name',description:'All details',category:'Phones & accessories',price_kobo:1000000,stock_quantity:5,image_url:null,vendor_name:'Campus Audio',pickup_enabled:true,pickup_location:'Store counter',rider_pickup_ready:pickupReady};
+ const catalogue=Array.from({length:catalogueSize},(_,n)=>({...product,id:n===0?id:`40000000-0000-4000-8000-${String(n).padStart(12,'0')}`,name:n===0?product.name:`Campus item ${n+1}`,category:n%2?'Books':product.category}));
+ const catalogueReads=[];
+ const readCatalogue=async(path,apply)=>{catalogueReads.push(path);const url=new URL(path,'https://fixture.invalid'),page=Number(url.searchParams.get('page')??1),term=url.searchParams.get('q'),category=url.searchParams.get('category'),ids=(url.searchParams.get('includeIds')??'').split(',');const matching=catalogue.filter(p=>(!term||p.name.toLowerCase().includes(term))&&(!category||p.category===category));apply({products:matching.slice((page-1)*24,page*24),includedProducts:catalogue.filter(p=>ids.includes(p.id)),categories:[...new Set(catalogue.map(p=>p.category))],pagination:{page,pageSize:24,total:matching.length,totalPages:Math.max(1,Math.ceil(matching.length/24))},deliveryZones:riderEnabled?[{id:vendor,name:'Ugbowo',base_fee_kobo:0}]:[],checkoutEnabled:true,riderDeliveryEnabled:riderEnabled,catalogueMode:'LIVE'});};
  const api=async(path,options)=>{if(path.endsWith('/pickup-hubs'))return{hubs:[]};requests.push({path,body:JSON.parse(options?.body??'{}')});if(path.endsWith('order-quotes')&&quoteError)throw quoteError;if(path.endsWith('order-quotes'))return{quote:{id:randomUUID(),expiresAt:new Date(Date.now()+60000).toISOString(),pricing:{listedItemsKobo:1000000,discountKobo:0,fareKobo:0,cashDueKobo:0,payableKobo:1000000,totalKobo:1000000},fare:null}};if(path.endsWith('/orders'))return{id:randomUUID(),totalKobo:1000000};return{};};
  const router={push:path=>routes.push(path),replace:path=>routes.push(path),back:()=>routes.push('back'),setParams:()=>{}};
  const modules={
@@ -28,22 +31,22 @@ function fixture({width=393,initialCart={},params={},fillRecipient=true}={}){
   'expo-router':{router,useLocalSearchParams:()=>params,useFocusEffect:fn=>host.react.useEffect(fn,[fn])},'expo-crypto':{randomUUID},
   '@/src/auth/auth-context':{useAuth:()=>({user:{id:owner,universityId:'A',roles:['STUDENT'],operatorRoles:[]}})},
   '@/src/lib/appearance':{useThemeStyles:styles=>({theme,styles:styles(theme)})},'@/src/lib/device-cache':device,'@/src/lib/marketplace-cart':cart,
-  '@/src/lib/request-policy':{cacheScopeForUser:()=> 'verified'},'@/src/lib/api':{api,ApiError},
+  '@/src/lib/pagination':load('src/lib/pagination.ts',{}),'@/src/lib/request-policy':{cacheScopeForUser:()=> 'verified'},'@/src/lib/api':{api,ApiError},
   '@/src/lib/store-checkout-validation':checkoutValidation,
   '@/src/components/retry-icon-button':{RetryIconButton:'RetryIconButton'},
-  '@/src/lib/screen-read':{refreshScreenRead:async(_path,apply)=>{apply({products:[product],deliveryZones:[],checkoutEnabled:true,riderDeliveryEnabled:false,catalogueMode:'LIVE'});}},
+  '@/src/lib/screen-read':{refreshScreenRead:readCatalogue},
   '@/src/components/keyboard-viewport':{KeyboardScrollView:'ScrollView',KeyboardModal:'Modal'},'@expo/vector-icons':{Ionicons:'Ionicons'},
   '@/src/components/visual-system':{useReducedMotionPreference:()=>true},'@/src/components/toast':{useToast:()=>()=>{}},'@/src/theme':{theme},
  };
- for(const [name,member] of Object.entries({'product-preview':'ProductPreview','media-image':'MediaImage','search-loading':'SearchLoading','sync-status':'SyncStatus','discount-code-field':'DiscountCodeField','campus-place-choice':'CampusPlaceChoice','popular-shops':'PopularShops','create-action':'CreateAction'}))modules['@/src/components/'+name]={[member]:member};
+ for(const [name,member] of Object.entries({'product-preview':'ProductPreview','media-image':'MediaImage','search-loading':'SearchLoading','sync-status':'SyncStatus','discount-code-field':'DiscountCodeField','campus-place-choice':'CampusPlaceChoice','popular-shops':'PopularShops','create-action':'CreateAction','pagination':'Pagination'}))modules['@/src/components/'+name]={[member]:member};
  modules['@/src/components/skeleton']={InlineLoading:'InlineLoading'};
  const screen=load('app/(tabs)/store.tsx',modules,globals);
  const render=()=>host.render(()=>{let node=(checkout?screen.MarketplaceCheckoutScreen:screen.default)();while(typeof node.type==='function')node=node.type(node.props);tree=node;return tree;});
- const nodes=(value,parents=[])=>Array.isArray(value)?value.flatMap(v=>nodes(v,parents)):value&&typeof value==='object'?[{node:value,parents},...nodes([value.props?.children,value.props?.ListHeaderComponent],[...parents,value])]:[];
+ const nodes=(value,parents=[])=>Array.isArray(value)?value.flatMap(v=>nodes(v,parents)):value&&typeof value==='object'?[{node:value,parents},...nodes([value.props?.children,value.props?.ListHeaderComponent,value.props?.ListFooterComponent],[...parents,value])]:[];
  const all=()=>nodes(tree);
  const by=(label)=>all().find(({node})=>node.props?.accessibilityLabel===label)?.node;
  const settle=async()=>{await time.advance(0);for(let i=0;i<5;i++){render();await time.advance(0);}};
- render();return{render,settle,all,by,routes,requests,saves,product,openCheckout:(buyNow)=>{checkout=true;params.buyNow=buyNow;render();if(fillRecipient){by('Recipient name')?.props.onChangeText('Ada Student');by('Recipient phone')?.props.onChangeText('08031234567');render();}},stored:()=>stored,setSaveFailure:value=>{failSaves=value;},setQuoteError:value=>{quoteError=value;}};
+ render();return{render,settle,all,by,routes,requests,saves,product,catalogueReads,advance:async n=>{render();await time.advance(n);await settle();},openCheckout:(buyNow)=>{checkout=true;params.buyNow=buyNow;render();if(fillRecipient){by('Recipient name')?.props.onChangeText('Ada Student');by('Recipient phone')?.props.onChangeText('08031234567');render();}},stored:()=>stored,setSaveFailure:value=>{failSaves=value;},setQuoteError:value=>{quoteError=value;}};
 }
 
 test('checkout identifies blank and invalid recipient fields before any quote or order request',async()=>{
@@ -115,4 +118,74 @@ test('checkout shows API field errors underneath the rejected recipient input',a
  f.by('Review route and checkout total').props.onPress();await f.settle();
  assert.equal(f.requests.length,1);assert.equal(f.by('Recipient phone').props.style.at(-1).borderWidth,2);
  assert.ok(f.all().some(({node})=>node.props?.accessibilityRole==='alert'&&node.props.children==='Check this phone number.'));
+});
+
+function businessFixture(options={}){
+ const {screen='brands',agent_type='VENDOR'}=options,verified=Object.hasOwn(options,'verified')?options.verified:true;
+ const host=hookRenderer(),routes=[];let tree;
+ const shop={id:vendor,agent_type,display_name:'Campus Audio',profile_image_url:'https://example.invalid/brand.jpg',verified};
+ const business={service:{...shop,user_id:owner,owner_name:'Ada Owner',categories:[],follower_count:0,followed:false,product_count:0,tutorial_count:0,completed_trip_count:0,review_count:0,rating:0},products:[],tutorials:[],reviews:[],commerceAvailable:false,isOwner:false};
+ const theme={font:{body:'Inter',medium:'InterMedium',semibold:'InterSemibold',display:'Lato',displayStrong:'LatoBold'}};
+ const jsx={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'Fragment'};
+ const modules={react:host.react,'react/jsx-runtime':jsx,'react-native':{View:'View',Text:'Text',Pressable:'Pressable',Image:'Image',ScrollView:'ScrollView',RefreshControl:'RefreshControl'},'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},
+  'expo-router':{router:{push:path=>routes.push(path)},useFocusEffect:fn=>host.react.useEffect(fn,[fn]),useLocalSearchParams:()=>({id:vendor})},'@expo/vector-icons':{Ionicons:'Ionicons'},
+  '@/src/lib/appearance':{useAppearance:()=>({theme})},'@/src/auth/auth-context':{useAuth:()=>({user:{id:owner}})},'@/src/lib/api':{api:async()=>screen==='brands'?{brands:[shop]}:business,peekApiCache:()=>business},
+  '@/src/lib/feed-posts':{validPostId:()=>true},'@/src/lib/share-content':{shareItem:async()=>{}},'@/src/components/toast':{useToast:()=>()=>{}},
+ };
+ for(const [file,name]of Object.entries({'verified-badge':'VerifiedBadge','profile-avatar':'ProfileAvatar','media-image':'MediaImage','skeleton':'ScreenSkeleton'}))modules['@/src/components/'+file]={[name]:name};
+ const component=screen==='brands'?load('src/components/popular-shops.tsx',modules).PopularShops:load('app/student-service.tsx',modules).default;
+ const render=()=>host.render(()=>tree=component());
+ const nodes=value=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
+ const settle=async()=>{for(let i=0;i<4;i++){await Promise.resolve();render();}};
+ render();return{routes,settle,nodes:()=>nodes(tree),unmount:host.unmount};
+}
+
+test('each campus brand opens its own business profile from the combined photo and name target',async()=>{
+ for(const agent_type of ['VENDOR','TUTOR','RIDER']){
+  const f=businessFixture({agent_type});await f.settle();
+  const button=f.nodes().find(node=>node.type==='Pressable'&&node.props.accessibilityLabel===`View Campus Audio's ${agent_type.toLowerCase()} profile, verified`);
+  assert.ok(button);assert.ok(button.props.children.some(node=>node?.props?.children?.type==='Image'),'The photo belongs to the profile tap target');
+  button.props.onPress();assert.equal(f.routes.length,1);assert.equal(f.routes[0].pathname,'/student-service');assert.equal(f.routes[0].params.id,vendor);f.unmount();
+ }
+});
+
+test('brand tiles and business profiles show a badge only for explicitly verified accounts',async()=>{
+ for(const screen of ['brands','profile'])for(const verified of [true,false,undefined]){
+  const f=businessFixture({screen,verified});await f.settle();
+  const badge=f.nodes().find(node=>node.type==='VerifiedBadge');
+  assert.equal(Boolean(badge),verified===true,`${screen}: ${verified}`);
+  if(badge)assert.equal(badge.props.label,'Verified vendor');f.unmount();
+ }
+});
+
+test('checkout offers pickup when the seller has no rider collection point',async()=>{
+ const f=fixture({initialCart:{[id]:1},riderEnabled:true,pickupReady:false});await f.settle();f.openCheckout();await f.settle();
+ assert.ok(f.by('Rider delivery unavailable'));
+ assert.equal(f.all().some(({node})=>node.type==='Text'&&node.props.children==='Rider delivery'),false);
+ f.by('Review route and checkout total').props.onPress();await f.settle();
+ assert.equal(f.requests[0].body.fulfilmentMode,'PICKUP');assert.equal(f.requests[0].body.deliveryPaymentMethod,'IN_APP');
+});
+
+test('rider checkout submits one in-app total and recovers if the seller pickup expires',async()=>{
+ const f=fixture({initialCart:{[id]:1},riderEnabled:true});await f.settle();f.openCheckout();await f.settle();
+ assert.equal(f.all().some(({node})=>String(node.props?.children??'').includes('Cash at delivery')),false);
+ const place=f.all().find(({node})=>node.type==='CampusPlaceChoice').node;
+ place.props.onChange(owner);place.props.onSelect({id:owner,name:'Main library entrance',delivery_zone_id:vendor});await f.settle();
+ f.setQuoteError(new ApiError(409,'CONFLICT','Rider pickup is unavailable.',{reason:'PICKUP_POINT_UNAVAILABLE'}));
+ f.by('Review route and checkout total').props.onPress();await f.settle();
+ assert.equal(f.requests[0].body.fulfilmentMode,'RIDER');assert.equal(f.requests[0].body.deliveryPaymentMethod,'IN_APP');assert.ok(f.by('Rider delivery unavailable'));
+ f.setQuoteError(null);f.by('Review route and checkout total').props.onPress();await f.settle();
+ assert.equal(f.requests.at(-1).body.fulfilmentMode,'PICKUP');
+});
+
+
+test('marketplace pages stop at 24, preserve cart products from other pages, and reset all filters to page one',async()=>{
+ const f=fixture({catalogueSize:55});await f.settle();const list=()=>f.all().find(({node})=>node.type==='FlatList').node,pager=()=>f.all().find(({node})=>node.type==='Pagination').node;
+ assert.equal(list().props.data.length,24);assert.equal(pager().props.total,55);assert.equal(pager().props.totalPages,3);
+ list().props.renderItem({item:list().props.data[0]}).props.onAdd();await f.settle();assert.ok(f.by('Open cart with 1 item'));
+ pager().props.onChange(2);await f.settle();assert.equal(list().props.data.length,24);assert.equal(list().props.data[0].name,'Campus item 25');assert.ok(f.by('Open cart with 1 item'),'Page 1 cart item remains available');
+ list().props.renderItem({item:list().props.data[0]}).props.onAdd();await f.settle();assert.ok(f.by('Open cart with 2 items'));
+ pager().props.onChange(3);await f.settle();assert.equal(list().props.data.length,7);assert.equal(pager().props.page,3);
+ f.by('Search products or vendors').props.onChangeText('Campus item 55');await f.advance(220);assert.equal(pager().props.page,1);assert.equal(list().props.data.length,1);assert.equal(list().props.data[0].name,'Campus item 55');assert.ok(f.by('Open cart with 2 items'));
+ f.openCheckout();await f.settle();assert.ok(f.all().filter(({node})=>node.props?.product?.id===id).length>0);assert.ok(f.all().filter(({node})=>node.props?.product?.name==='Campus item 25').length>0);
 });

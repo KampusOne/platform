@@ -1,3 +1,5 @@
+import { Pagination } from '@/src/components/pagination';
+import { MARKETPLACE_PAGE_SIZE, type PageInfo } from '@/src/lib/pagination';
 import {cacheScopeForUser} from '@/src/lib/request-policy';
 import {ProductPreview} from '@/src/components/product-preview';
 import {MediaImage} from '@/src/components/media-image';
@@ -61,6 +63,7 @@ export type Product = {
   review_count?: number;
   vendor_name: string;
   pickup_enabled?: boolean;
+  rider_pickup_ready?: boolean;
   self_delivery_enabled?: boolean;
   pickup_location?: string;
   pickup_locations?:string[];
@@ -88,6 +91,9 @@ type CatalogIssue = { code: string; message: string };
 type CatalogueMode = "DEMO" | "LIVE";
 type CatalogResponse = {
   products: Product[];
+  includedProducts?: Product[];
+  categories?: string[];
+  pagination?: PageInfo;
   deliveryZones: Zone[];
   catalogueMode?: CatalogueMode;
   checkoutEnabled?: boolean;
@@ -126,8 +132,17 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const directBuy = useRef('');
   const entry = useRef(new Animated.Value(0)).current;
   const [products, setProducts] = useState<Product[]>([]);
+  const [checkoutProducts, setCheckoutProducts] = useState<Product[]>([]);
+  const [catalogueCategories, setCatalogueCategories] = useState<string[]>([]);
+  const [pagination, setPagination] = useState<PageInfo | null>(null);
+  const [pageSelection, setPageSelection] = useState({ key: '', page: 1 });
+  const catalogueList = useRef<FlatList<Product>>(null);
+  const resultsOffset = useRef(0);
+  const readEpoch = useRef(0);
+  const [loadedCataloguePath, setLoadedCataloguePath] = useState('');
   const [zones, setZones] = useState<Zone[]>([]);
   const [riderDeliveryEnabled, setRiderDeliveryEnabled] = useState(false);
+  const [riderPickupUnavailable, setRiderPickupUnavailable] = useState(false);
   const [fulfilmentMode, setFulfilmentMode] = useState<
     "RIDER" | "PICKUP" | "VENDOR_DELIVERY"
   >("RIDER");
@@ -146,8 +161,20 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     const timer = setTimeout(() => setSearchTerm(query.trim().toLocaleLowerCase("en-NG")), 220);
     return () => clearTimeout(timer);
   }, [query]);
-  const [selectedShop, setSelectedShop] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const filterKey = JSON.stringify([searchTerm, selectedCategory, focusedProduct ?? '']);
+  const currentPage = pageSelection.key === filterKey ? pageSelection.page : 1;
+  const cataloguePath = '/v1/student/store?page=' + currentPage
+    + (searchTerm ? '&q=' + encodeURIComponent(searchTerm) : '')
+    + (selectedCategory !== 'All' ? '&category=' + encodeURIComponent(selectedCategory) : '');
+  const includedIds = [...new Set([...Object.keys(cart), focusedProduct, immediateProduct].filter((value): value is string => Boolean(value)))].sort().join(',');
+  const catalogueReadPath = cataloguePath + (includedIds ? '&includeIds=' + encodeURIComponent(includedIds) : '');
+  const pageLoading = loadedCataloguePath !== cataloguePath;
+  const changePage = (next: number) => {
+    setPageSelection({ key: filterKey, page: next });
+    catalogueList.current?.scrollToOffset({ offset: resultsOffset.current, animated: false });
+  };
+
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
   const [immediateQuantity, setImmediateQuantity] = useState(1);
@@ -165,9 +192,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const [checkoutFields, setCheckoutFields] = useState<CheckoutFieldErrors>({});
   const checkoutScroll = useRef<ScrollView>(null);
   const checkoutFieldPositions = useRef<Record<string, number>>({});
-  const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<
-    "IN_APP" | "CASH"
-  >("IN_APP");
   const [reviewedQuote, setReviewedQuote] = useState<{
     payload: string;
     quote: CheckoutQuote;
@@ -199,9 +223,11 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   }, [entry, reducedMotion]);
 
   const load = useCallback(async () => {
+    const turn = ++readEpoch.current;
     setCatalogIssue(null);
     try {
-      await refreshScreenRead<CatalogResponse>("/v1/student/store", data => {
+      await refreshScreenRead<CatalogResponse>(catalogueReadPath, data => {
+      if (turn !== readEpoch.current) return;
       const mode = data.catalogueMode ?? "LIVE";
       setProducts(
         (Array.isArray(data?.products) ? data.products : [])
@@ -219,17 +245,24 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                 : "Vendor",
           })),
       );
+      setCheckoutProducts([...new Map([...(data.products ?? []), ...(data.includedProducts ?? [])].map(product => [product.id, product])).values()]);
+      setCatalogueCategories(data.categories ?? []);
+      setPagination(data.pagination ?? null);
+      setLoadedCataloguePath(cataloguePath);
+      if (data.pagination && currentPage > data.pagination.totalPages) setPageSelection({ key: filterKey, page: data.pagination.totalPages });
       setZones(
         (Array.isArray(data?.deliveryZones) ? data.deliveryZones : []).filter(
           (zone) => Boolean(zone && typeof zone.id === "string"),
         ),
       );
       setRiderDeliveryEnabled(data.riderDeliveryEnabled === true);
+      setRiderPickupUnavailable(false);
       setCatalogueMode(mode);
       setCheckoutEnabled(data.checkoutEnabled ?? mode === "LIVE");
       setLoading(false);
       });
     } catch (caught) {
+      if (turn !== readEpoch.current) return;
       setCatalogIssue(
         caught instanceof ApiError
           ? { code: caught.code, message: caught.message }
@@ -239,33 +272,34 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
             },
       );
     } finally {
-      setLoading(false);
+      if (turn === readEpoch.current) setLoading(false);
     }
-  }, []);
+  }, [catalogueReadPath, cataloguePath, currentPage, filterKey]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
+      return () => { readEpoch.current++; };
     }, [load]),
   );
 
   const columns=2;
   const productWidth=(contentWidth-horizontalPadding*2-(columns-1)*12)/columns;
-  useEffect(()=>{if(focusedProduct){const found=products.find(product=>product.id===focusedProduct);if(found)setPreview(found);}},[focusedProduct,products]);
+  useEffect(()=>{if(focusedProduct){const found=checkoutProducts.find(product=>product.id===focusedProduct);if(found)setPreview(found);}},[focusedProduct,checkoutProducts]);
 
   const categories = useMemo(
     () => [
       "All",
       ...Array.from(
-        new Set(products.map((product) => product.category).filter(Boolean)),
+        new Set([...catalogueCategories, ...products.map((product) => product.category)].filter(Boolean)),
       ),
     ],
-    [products],
+    [products, catalogueCategories],
   );
 
   const filtered = useMemo(() => {
     const term = searchTerm;
-    return products.filter((item) => {
+    return (focusedProduct ? checkoutProducts : products).filter((item) => {
       const matchesCategory =
         Boolean(focusedProduct) ||
         selectedCategory === "All" ||
@@ -276,20 +310,19 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
           .toLowerCase()
           .includes(term);
       return (
-        (!selectedShop || item.vendor_profile_id === selectedShop) &&
         (!focusedProduct || item.id === focusedProduct) &&
         matchesCategory &&
         matchesQuery
       );
     });
-  }, [products, searchTerm, selectedCategory, focusedProduct, selectedShop]);
+  }, [products, checkoutProducts, searchTerm, selectedCategory, focusedProduct]);
 
   const cartItems = useMemo(
     () =>
-      products
+      checkoutProducts
         .filter((product) => Boolean(cart[product.id]) && (!checkoutScreen || !immediateProduct || product.id === immediateProduct && immediateQuantity > 0))
         .map((product) => ({ product, quantity: checkoutScreen && immediateProduct ? immediateQuantity : cart[product.id] ?? 0 })),
-    [cart, products, checkoutScreen, immediateProduct, immediateQuantity],
+    [cart, checkoutProducts, checkoutScreen, immediateProduct, immediateQuantity],
   );
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartItems.reduce(
@@ -299,11 +332,12 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const selectedZone = zones.find((zone) => zone.id === selectedZoneId);
   const vendorProduct = cartItems[0]?.product;
   const multiVendor=new Set(cartItems.map(item=>item.product.vendor_profile_id)).size>1;
+  const riderReady = riderDeliveryEnabled && !riderPickupUnavailable && cartItems.length > 0 && cartItems.every(item=>item.product.rider_pickup_ready===true);
   const fulfilmentModes = (
     ["RIDER", "PICKUP"] as const
   ).filter((mode) =>
     mode === "RIDER"
-      ? riderDeliveryEnabled
+      ? riderReady
       : mode === "PICKUP"
         ? multiVendor || vendorProduct?.pickup_enabled
         : vendorProduct?.self_delivery_enabled,
@@ -336,8 +370,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     recipientName: recipientName.trim(),
     recipientPhoneE164: normalizeNigerianPhone(recipientPhone),
     deliveryLocation: effectiveMode === "PICKUP" ? null : deliveryLocation,
-    deliveryPaymentMethod:
-      effectiveMode === "RIDER" ? deliveryPaymentMethod : "IN_APP",
+    deliveryPaymentMethod: "IN_APP",
     deliveryZoneId: effectiveMode === "RIDER" ? selectedZone?.id : null,
     deliveryPlaceId: effectiveMode === "PICKUP" ? null : deliveryPlace,
     deliveryNote: orderNote || null,
@@ -358,7 +391,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   function clearFilters() {
     setQuery("");
     setSelectedCategory("All");
-    setSelectedShop(null);
   }
 
   function closeCart() {
@@ -495,6 +527,14 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
         params: { id: order.id, type: "STORE_ORDER", autoPay: '1' },
       });
     } catch (caught) {
+      if (caught instanceof ApiError && caught.details?.reason === 'PICKUP_POINT_UNAVAILABLE') {
+        setRiderPickupUnavailable(true);
+        setFulfilmentMode('PICKUP');
+        setReviewedQuote(null);
+        quoteRequest.current = { payload: '', id: '' };
+        setCheckoutError('');
+        return;
+      }
       if (caught instanceof ApiError) {
         const errors = checkoutServerFieldErrors(caught.details);
         setCheckoutFields(errors);
@@ -541,12 +581,12 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
 
   useEffect(() => {
     if (checkoutScreen || !immediateProduct || !cartReady || loading || busy || directBuy.current === immediateProduct) return;
-    const product = products.find(item => item.id === immediateProduct);
+    const product = checkoutProducts.find(item => item.id === immediateProduct);
     if (!product) return;
     directBuy.current = immediateProduct;
     router.setParams({buyNow:undefined});
     void buyNow(product);
-  }, [checkoutScreen, immediateProduct, cartReady, loading, busy, products]);
+  }, [checkoutScreen, immediateProduct, cartReady, loading, busy, checkoutProducts]);
 
   if (checkoutScreen) return <SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:theme.canvas}}>
     <View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingVertical:8,gap:12}}>
@@ -640,7 +680,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         <View style={styles.zoneCopy}>
                           <Text style={styles.zoneName}>
                             {mode === "RIDER"
-                              ? "Rider · Recommended"
+                              ? "Rider delivery"
                               : mode === "PICKUP"
                                 ? "Pick up at the store"
                                 : "Delivery by the vendor"}
@@ -669,7 +709,9 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         />
                       </Pressable>
                     ))}
+                    {riderDeliveryEnabled && !riderReady ? <View accessibilityLabel="Rider delivery unavailable" style={[styles.zone,{opacity:0.7}]}><View style={styles.zoneCopy}><Text style={styles.zoneName}>Rider delivery unavailable</Text><Text style={styles.zoneFee}>{fulfilmentModes.includes('PICKUP')?'Choose pickup while the seller confirms a collection point.':'Contact the vendor to arrange a collection point.'}</Text></View><Ionicons name="bicycle-outline" size={22} color={theme.textMuted}/></View>:null}
                   </View>
+                  {!fulfilmentModes.length && vendorProduct ? <Pressable accessibilityRole="button" accessibilityLabel="Contact vendor about pickup" disabled={busy} onPress={()=>void contactVendor()} style={styles.vendorContact}><Ionicons name="chatbubble-outline" size={16} color={theme.brandPressed}/><Text style={styles.vendorContactText}>Contact vendor</Text><Ionicons name="chevron-forward" size={14} color={theme.brandPressed}/></Pressable>:null}
                   {(effectiveMode === "PICKUP" || effectiveMode === "RIDER") && vendorProduct ? (
                     <View style={styles.pickupDetails}>
                       <View style={styles.pickupHeading}>
@@ -681,7 +723,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                       </Text>
                       <Text style={styles.pickupHelp}>
                         {effectiveMode === "RIDER"
-                          ? "Your rider collects from the vendor’s verified pickup point. The route is reviewed before you confirm."
+                          ? "Your rider collects from the vendor’s saved pickup point. Review the route and total before you confirm."
                           : "Collect from this address, or use a meeting point already agreed with the vendor."}
                       </Text>
                       <Pressable disabled={busy} accessibilityRole="button" onPress={()=>void contactVendor()} style={styles.vendorContact}>
@@ -807,9 +849,10 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                       {checkoutFields.deliveryLocation ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>{checkoutFields.deliveryLocation}</Text> : null}
                       <CampusPlaceChoice
                         label="Delivery point on the campus map"
+                        disabled={busy}
                         value={deliveryPlace}
                         onChange={setDeliveryPlace}
-                        onSelect={place=>{setDeliveryLocation(place.name);clearCheckoutField('deliveryLocation');if(place.delivery_zone_id)setSelectedZoneId(place.delivery_zone_id);else if(zones.length===1&&zones[0])setSelectedZoneId(zones[0].id);setCheckoutError('');}}
+                        onSelect={place=>{setDeliveryLocation(place.name);clearCheckoutField('deliveryLocation');setSelectedZoneId(place.delivery_zone_id??'');setCheckoutError('');}}
                       />
                     </>
                   ) : null}
@@ -835,37 +878,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                   />
                   {orderNote.length > 500 ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>Keep the meeting point and note within 500 characters.</Text> : null}
 
-                  {effectiveMode === "RIDER" ? (
-                    <View style={{ marginVertical: 16 }}>
-                      <Text style={styles.sectionLabel}>
-                        Pay the rider fare
-                      </Text>
-                      <View style={styles.zoneList}>
-                        {(["IN_APP", "CASH"] as const).map((method) => (
-                          <Pressable
-                            key={method}
-                            accessibilityRole="radio"
-                            accessibilityState={{
-                              selected: deliveryPaymentMethod === method,
-                            }}
-                            disabled={busy}
-                            onPress={() => setDeliveryPaymentMethod(method)}
-                            style={[
-                              styles.zone,
-                              method === deliveryPaymentMethod &&
-                                styles.zoneSelected,
-                            ]}
-                          >
-                            <Text style={styles.zoneName}>
-                              {method === "IN_APP"
-                                ? "In app"
-                                : "Cash at delivery"}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
-                  ) : null}
                   <View style={styles.totals}>
                     <View style={styles.totalRow}>
                       <Text style={styles.totalLabel}>Items</Text>
@@ -901,14 +913,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         <Text style={styles.totalValue}>{validQuote.pricing.pricingAdjustmentKobo < 0 ? "−" : "+"}{naira(Math.abs(validQuote.pricing.pricingAdjustmentKobo))}</Text>
                       </View>
                     ) : null}
-                    {effectiveMode === "RIDER" &&
-                    deliveryPaymentMethod === "CASH" ? (
-                      <Text style={styles.totalLabel}>
-                        Pay {validQuote ? naira(validQuote.pricing.payableKobo) : "the reviewed online total"} online and{" "}
-                        {validQuote?naira(validQuote.pricing.cashDueKobo):"the reviewed fare"}{" "}
-                        to the rider at delivery.
-                      </Text>
-                    ) : null}
                     {validQuote?.fare ? (
                       <Text style={styles.totalLabel}>
                         Mapped rider route ·{" "}
@@ -922,7 +926,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         {effectiveMode==="RIDER"&&!validQuote?"Review route for total":naira(validQuote?.pricing.totalKobo ?? total)}
                       </Text>
                     </View>
-                    {validQuote && validQuote.pricing.cashDueKobo > 0 ? <View style={styles.totalRow}><Text style={styles.totalLabel}>Pay online</Text><Text style={styles.totalValue}>{naira(validQuote.pricing.payableKobo)}</Text></View> : null}
                     {validQuote?.pricing.pricingNotice ? <Text style={styles.pricingNotice}>{validQuote.pricing.pricingNotice}</Text> : null}
                   </View>
 
@@ -988,8 +991,11 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     </View> : null}
   </SafeAreaView>;
 
+  const resultTotal = focusedProduct ? filtered.length : pagination?.total ?? filtered.length;
+  const resultPaging = focusedProduct ? { page: 1, pageSize: MARKETPLACE_PAGE_SIZE, total: resultTotal, totalPages: 1 } : pagination ?? { page: currentPage, pageSize: MARKETPLACE_PAGE_SIZE, total: resultTotal, totalPages: Math.max(1, Math.ceil(resultTotal / MARKETPLACE_PAGE_SIZE)) };
+  const pageProducts = pagination ? filtered.slice(0, MARKETPLACE_PAGE_SIZE) : filtered.slice((currentPage - 1) * MARKETPLACE_PAGE_SIZE, currentPage * MARKETPLACE_PAGE_SIZE);
   const catalogueData =
-    !loading && !featureDisabled && products.length > 0 ? filtered : [];
+    !loading && !featureDisabled && !pageLoading && (products.length > 0 || focusedProduct) ? pageProducts : [];
   const catalogueEmpty = loading ? (
     <CatalogSkeleton />
   ) : featureDisabled ? (
@@ -1007,6 +1013,8 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
       title="Store unavailable"
       tone="error"
     />
+  ) : !catalogIssue && !products.length && (searchTerm || selectedCategory !== 'All') ? (
+    <StateMessage actionLabel="Clear filters" body="Try another product name, seller, or category." icon="search-outline" onAction={clearFilters} title="Nothing matches your search" />
   ) : !catalogIssue && !products.length ? (
     <StateMessage
       actionLabel="Refresh"
@@ -1047,6 +1055,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
         ]}
       >
         <FlatList
+          ref={catalogueList}
           accessibilityLabel="Campus store products"
           columnWrapperStyle={columns===2?styles.productRow:undefined}
           contentContainerStyle={[
@@ -1059,11 +1068,12 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           keyExtractor={(product) => product.id}
-          ListEmptyComponent={catalogueEmpty}
+          ListEmptyComponent={pageLoading && catalogIssue ? <StateMessage title="This page could not load" body={catalogIssue.message} actionLabel="Try again" onAction={retryLoad} icon="cloud-offline-outline" /> : pageLoading && !catalogIssue ? <View accessibilityLabel="Loading products" style={{padding:24,gap:12}}><InlineLoading /><Text style={{color:theme.textMuted,fontFamily:theme.font.body}}>Loading products…</Text></View> : catalogueEmpty}
+          ListFooterComponent={!featureDisabled ? <Pagination {...resultPaging} label="Products" disabled={busy || pageLoading || searchPending} onChange={changePage} /> : null}
           ListHeaderComponent={
             <>
               {sharedCart.error ? <StateMessage title="Your cart needs attention" body={sharedCart.error} actionLabel="Try again" onAction={sharedCart.retry} icon="alert-circle-outline"/> : null}
-              <SyncStatus path="/v1/student/store"/>
+              <SyncStatus path={catalogueReadPath}/>
               {searchPending?<SearchLoading label="Searching products and sellers…" shape="products" hasResults={filtered.length>0}/>:null}
               <View style={styles.storeToolbar}>
                 {!featureDisabled ? (
@@ -1149,16 +1159,13 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                   <Text style={{ color: theme.textMuted, fontFamily: theme.font.medium, fontSize: 12, flex: 1 }}>
                     {searchPending
                       ? "Searching products and sellers…"
-                      : `${filtered.length} ${filtered.length === 1 ? "result" : "results"} for “${query.trim()}”`}
+                      : `${resultTotal} ${resultTotal === 1 ? "result" : "results"} for “${query.trim()}”`}
                   </Text>
                 </View>
               ) : null}
 
               {!featureDisabled && catalogueMode === "LIVE" && (
-                <PopularShops
-                  selected={selectedShop}
-                  onSelect={setSelectedShop}
-                />
+                <PopularShops />
               )}
               {!featureDisabled && categories.length > 1 ? (
                 <ScrollView
@@ -1245,6 +1252,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
 
               {!loading &&
               catalogIssue &&
+              !pageLoading &&
               !featureDisabled &&
               products.length ? (
                 <View accessibilityRole="alert" style={styles.partialError}>
@@ -1271,7 +1279,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
               ) : null}
 
               {!loading && !featureDisabled && products.length > 0 ? (
-                <View style={styles.resultsHeader}>
+                <View onLayout={event=>{resultsOffset.current=event.nativeEvent.layout.y;}} style={styles.resultsHeader}>
                   <Text style={styles.resultsTitle}>
                     {selectedCategory === "All"
                       ? catalogueMode === "DEMO"
@@ -1280,7 +1288,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                       : selectedCategory}
                   </Text>
                   <Text style={styles.resultsCount}>
-                    {filtered.length} {filtered.length === 1 ? "item" : "items"}
+                    {resultTotal} {resultTotal === 1 ? "item" : "items"}
                   </Text>
                 </View>
               ) : null}

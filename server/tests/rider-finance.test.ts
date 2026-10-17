@@ -28,15 +28,16 @@ import {withdrawalCommissionTiers} from "../src/lib/payout-commission";
 import { adminRoutes } from "../src/routes/admin";
 import { AppError } from "../src/lib/errors";
 import { riderFinanceSummary } from "../src/lib/rider-finance";
+import { prepareStoreQuote, storeQuoteSchema } from "../src/lib/commerce-pricing";
 import { deriveHandoffCode } from "../src/lib/security";
-import type { Bindings } from "../src/types";
+import type { AuthenticatedUser, Bindings } from "../src/types";
 let pg: PGlite;
 vi.mock("../src/lib/database", () => ({
   database: () => testDatabaseAdapter(pg),
   sqlClient: () => testSqlClient(pg),
   firstRow: (r: { rows: unknown[] }) => r.rows[0],
 }));
-vi.mock('../src/lib/delivery-routing',()=>({mappedDeliveryPoint:async()=>({campus_id:campus,name:'Synthetic mapped pickup',latitude:6.3,longitude:5.6}),currentAgentPosition:async()=>({latitude:6.3,longitude:5.6,captured_at:new Date().toISOString(),accuracy_metres:10}),campusDeliveryRoute:async()=>({distanceMetres:700,geometry:{type:'LineString',coordinates:[[5.6,6.3],[5.601,6.3]]},source:'ISOLATED_FINANCE_FIXTURE'})}));
+vi.mock('../src/lib/delivery-routing',()=>({riderPickupAvailability:async()=>new Map(),mappedDeliveryPoint:async()=>({campus_id:campus,name:'Synthetic mapped pickup',latitude:6.3,longitude:5.6}),currentAgentPosition:async()=>({latitude:6.3,longitude:5.6,captured_at:new Date().toISOString(),accuracy_metres:10}),campusDeliveryRoute:async()=>({distanceMetres:700,geometry:{type:'LineString',coordinates:[[5.6,6.3],[5.601,6.3]]},source:'ISOLATED_FINANCE_FIXTURE'})}));
 vi.mock("../src/middleware/auth", () => ({
   currentUser: (c: Context) =>
     c.get("user") ?? {
@@ -999,6 +1000,15 @@ async function pricedOrder(mode = "RIDER", method = "IN_APP") {
   );
   return { input: data, quote: q.quote, order: o };
 }
+// Historical cash orders must remain payable and settle correctly after new
+// cash checkout is disabled. Seed the old database state without the HTTP entry points.
+async function legacyCashOrder() {
+  const data = storeQuoteSchema.parse(quoteInput('RIDER', 'CASH'));
+  const quote = await prepareStoreQuote(env, { id: buyer, universityId: campus, roles: ['STUDENT'], operatorRoles: [] } as unknown as AuthenticatedUser, data);
+  const [pickup, delivery] = await Promise.all([deriveHandoffCode(env, quote.id, 'pickup'), deriveHandoffCode(env, quote.id, 'delivery')]);
+  await pg.query('select * from app_private.create_priced_store_order($1,$2,$3,$4,$5)', [quote.id, buyer, campus, pickup.hash, delivery.hash]);
+  return { input: data, quote, order: { id: quote.id } };
+}
 describe("approved inclusive store checkout", () => {
   it("keeps checkout gated without an approved policy and restricts approval to the reviewer campus", async () => {
     const catalog = await json(await request("/student/store", buyer));
@@ -1045,8 +1055,17 @@ describe("approved inclusive store checkout", () => {
     expect(Number(live.deliveryZones[0].base_fee_kobo)).toBe(0);
     expect(live.deliveryZones[0].distance_basis).toBe("QUOTE_REQUIRED");
   });
-  it("holds the displayed product budget, separates cash fare, and reserves stock once across retries", async () => {
-    const data = quoteInput("RIDER", "CASH");
+  it("rejects new cash quotes and orders before reserving stock or creating a quote", async () => {
+    const before = (await pg.query('select (select count(*) from app_private.store_checkout_quotes) as quotes,(select count(*) from public.orders) as orders,(select stock_quantity from vendor_products where id=$1) as stock', [product])).rows[0];
+    for (const path of ['/student/order-quotes', '/student/orders']) {
+      const response = await request(path, buyer, 'POST', quoteInput('RIDER', 'CASH'));
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(await response.json())).toContain('Pay for items and delivery in the app.');
+    }
+    expect((await pg.query('select (select count(*) from app_private.store_checkout_quotes) as quotes,(select count(*) from public.orders) as orders,(select stock_quantity from vendor_products where id=$1) as stock', [product])).rows[0]).toEqual(before);
+  });
+  it("includes the rider fare in the in-app total and reserves stock once across retries", async () => {
+    const data = quoteInput("RIDER", "IN_APP");
     const before = (
       await pg.query<{ stock_quantity: number }>(
         "select stock_quantity from vendor_products where id=$1",
@@ -1066,8 +1085,8 @@ describe("approved inclusive store checkout", () => {
       listedItemsKobo: 365500,
       discountKobo: 0,
       fareKobo: 50000,
-      payableKobo: 365500,
-      cashDueKobo: 50000,
+      payableKobo: 415500,
+      cashDueKobo: 0,
       totalKobo: 415500,
     });
     for (const hidden of [
@@ -1111,8 +1130,8 @@ describe("approved inclusive store checkout", () => {
     ).toBe(409);
     expect(created).toMatchObject({
       totalKobo: 415500,
-      payableKobo: 365500,
-      cashDueKobo: 50000,
+      payableKobo: 415500,
+      cashDueKobo: 0,
     });
     expect(
       (
@@ -1138,7 +1157,7 @@ describe("approved inclusive store checkout", () => {
           [created.id],
         )
       ).rows[0]!.fare_payment_method,
-    ).toBe("CASH");
+    ).toBe("IN_APP");
   });
   it("refuses stale catalogue prices and price changes between quote and reservation", async () => {
     expect(
@@ -1178,8 +1197,8 @@ describe("approved inclusive store checkout", () => {
       [product, buyer],
     );
   });
-  it("sends only the quoted digital amount to Paystack, verifies receipt fees, and prevents duplicate settlement", async () => {
-    const prepared = await pricedOrder("RIDER", "CASH");
+  it("retains the quoted digital amount and idempotent settlement for pre-existing cash orders", async () => {
+    const prepared = await legacyCashOrder();
     const fetcher = vi.fn().mockImplementation(async (url, options) => {
       expect(url).toContain("/transaction/initialize");
       const data = JSON.parse(options.body);
