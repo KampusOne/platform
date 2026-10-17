@@ -232,10 +232,34 @@ begin
 end; $function$;
 
 
+create function app_private.move_store_dispute_earnings(p_order uuid,p_hold boolean,p_dispute uuid)returns void language plpgsql set search_path='' as $$
+declare o public.orders%rowtype;price app_private.order_price_snapshots%rowtype;r record;lines jsonb:='[]';
+begin
+ select * into o from public.orders where id=p_order;select * into price from app_private.order_price_snapshots where order_id=p_order;
+ for r in select vendor_user_id as owner,seller_net_kobo as amount from app_private.order_vendor_allocations where order_id=p_order and seller_net_kobo>0 union all select a.user_id,price.seller_net_kobo from public.agent_profiles a where a.id=o.vendor_profile_id and not exists(select 1 from app_private.order_vendor_allocations where order_id=p_order) and price.seller_net_kobo>0 order by owner loop
+  perform pg_advisory_xact_lock(hashtextextended('rider-finance:'||r.owner::text,0));
+  lines=lines||jsonb_build_array(jsonb_build_object('code',case when p_hold then 'VENDOR_AVAILABLE'else 'VENDOR_PENDING'end,'type','LIABILITY','owner',r.owner,'direction','DEBIT','amount',r.amount),jsonb_build_object('code',case when p_hold then 'VENDOR_PENDING'else 'VENDOR_AVAILABLE'end,'type','LIABILITY','owner',r.owner,'direction','CREDIT','amount',r.amount));
+ end loop;
+ if jsonb_array_length(lines)>0 then perform app_private.post_finance_journal(o.university_id,'STORE_ORDER',p_order::text,case when p_hold then 'store-dispute-hold:'else 'store-dispute-release:'end||p_dispute::text,case when p_hold then 'Hold vendor earnings during an order dispute'else 'Release vendor earnings after seller dispute resolution'end,lines);end if;
+end;$$;
+revoke all on function app_private.move_store_dispute_earnings(uuid,boolean,uuid)from public;
+
 create or replace function app_private.release_priced_store_earnings() returns trigger language plpgsql set search_path='' as $$
-declare price app_private.order_price_snapshots%rowtype; owner uuid; allocation record; lines jsonb:='[]';
+declare price app_private.order_price_snapshots%rowtype; owner uuid; allocation record; dispute_id uuid; lines jsonb:='[]';
 begin
   if new.pricing_formula_version<>'INCLUSIVE_V1' then return new;end if;
+  if new.status='DISPUTED' and old.earnings_state='AVAILABLE' then
+   select id into dispute_id from public.disputes where order_id=new.id and status in('OPEN','UNDER_REVIEW') order by created_at desc,id desc limit 1;
+   if dispute_id is null then raise exception 'STORE_DISPUTE_RECORD_REQUIRED';end if;
+   perform app_private.move_store_dispute_earnings(new.id,true,dispute_id);new.earnings_state='RESERVED';return new;
+  end if;
+  if old.status='DISPUTED' and new.status='DELIVERED' then
+   if exists(select 1 from public.disputes where order_id=new.id and status in('OPEN','UNDER_REVIEW'))then raise exception 'STORE_EARNINGS_NOT_ELIGIBLE';end if;
+   select id into dispute_id from public.disputes where order_id=new.id order by created_at desc,id desc limit 1;
+   if dispute_id is not null and exists(select 1 from public.ledger_transactions where idempotency_key='store-dispute-hold:'||dispute_id::text)then
+    perform app_private.move_store_dispute_earnings(new.id,false,dispute_id);new.earnings_state='AVAILABLE';return new;
+   end if;
+  end if;
   if new.status='DELIVERED' and old.status<>'DELIVERED' then new.completed_at=coalesce(new.completed_at,now());new.earnings_state='AVAILABLE';end if;
   if new.earnings_state<>'AVAILABLE' or old.earnings_state not in('PENDING','RESERVED','NOT_EARNED') then return new;end if;
   if new.status<>'DELIVERED' or new.completed_at is null or exists(select 1 from public.disputes where order_id=new.id and status in('OPEN','UNDER_REVIEW')) then raise exception 'STORE_EARNINGS_NOT_ELIGIBLE';end if;

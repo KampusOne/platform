@@ -2269,16 +2269,16 @@ describe("verified agent withdrawals", () => {
     const approved = await json(await request("/finance/transfer-policies", buyer, "POST", {
       universityId: campus, agentType: "VENDOR", version: crypto.randomUUID(), feeBearer: "PLATFORM",
       lowFeeKobo:1000,middleFeeKobo:2500,highFeeKobo:5000,dutyThresholdKobo:1_000_000,dutyKobo:5000,
-      minimumWithdrawalKobo:100_000,statutoryDutyPolicy:"PLATFORM_ABSORBS_PENDING_STATEMENT",
+      minimumWithdrawalKobo:500_000,statutoryDutyPolicy:"PLATFORM_ABSORBS_PENDING_STATEMENT",
       sourceUrl:"https://support.paystack.com/en/articles/2130370",approvalNote:"Synthetic reviewed independent seller minimum",
     }),201);
     expect(approved.id).toBeTruthy();
-    expect((await request("/agents/payout-quote",f.owner.user,"POST",{agentProfileId:f.owner.profile,amountKobo:99_999})).status).toBe(409);
-    const q=await payoutQuote(f,100_000);
-    expect(q.minimumWithdrawalKobo).toBe(100_000);
+    expect((await request("/agents/payout-quote",f.owner.user,"POST",{agentProfileId:f.owner.profile,amountKobo:499_999})).status).toBe(409);
+    const q=await payoutQuote(f,500_000);
+    expect(q.minimumWithdrawalKobo).toBe(500_000);
     expect(q.expectedTransferFeeKobo).toBe(1000);
     const minimums=(await json(await request("/agents/earnings",f.owner.user))).withdrawalMinimums;
-    expect(Number(minimums.find((p:{agent_type:string})=>p.agent_type==="VENDOR").minimum_withdrawal_kobo)).toBe(100_000);
+    expect(Number(minimums.find((p:{agent_type:string})=>p.agent_type==="VENDOR").minimum_withdrawal_kobo)).toBe(500_000);
     expect((await payoutRequest(f,q)).saved.id).toBeTruthy();
   });
   it("separates transfer GET fees from statement duty, absorbs duty, and reconciles each journal once", async () => {
@@ -2844,10 +2844,10 @@ describe("graduated withdrawal commission and one-action approval",()=>{
     await pg.query("update app_private.active_payout_cost_policies set policy_id=$1 where university_id=$2 and agent_type=$3",[policy,campus,type]);
     return {...f,policy};
   }
-  it.each(["VENDOR","TUTOR","RIDER"])("enforces the ₦2,000 minimum and explicit commission consent for %s",async type=>{
-    const f=await commissionFixture(type);
-    expect((await request('/agents/payout-quote',f.owner.user,'POST',{agentProfileId:f.owner.profile,amountKobo:199999})).status).toBe(409);
-    const q=await payoutQuote(f,200000);expect(q.payoutCommissionKobo).toBe(16000);expect(q.bankNetKobo).toBe(184000);expect(q.expectedTransferFeeKobo).toBe(1000);
+  it.each(["VENDOR","TUTOR","RIDER"])("enforces the role minimum and explicit commission consent for %s",async type=>{
+    const f=await commissionFixture(type),minimum=type==='RIDER'?200000:500000;
+    expect((await request('/agents/payout-quote',f.owner.user,'POST',{agentProfileId:f.owner.profile,amountKobo:minimum-1})).status).toBe(409);
+    const q=await payoutQuote(f,minimum);expect(q.payoutCommissionKobo).toBe(minimum*0.08);expect(q.bankNetKobo).toBe(minimum*0.92);expect(q.expectedTransferFeeKobo).toBe(1000);
     const input={agentProfileId:f.owner.profile,quoteId:q.id,requestId:crypto.randomUUID(),amountKobo:q.amountKobo};
     expect((await request('/agents/payouts',f.owner.user,'POST',input)).status).toBe(409);
     expect((await request('/agents/payouts',f.owner.user,'POST',{...input,expectedCommissionKobo:1,expectedBankNetKobo:199999})).status).toBe(409);
@@ -2877,7 +2877,7 @@ describe("graduated withdrawal commission and one-action approval",()=>{
     await pg.query("select app_private.prepare_ledger_transfer($1,$2)",[p.saved.id,campus]);
     await pg.query("select app_private.record_ledger_transfer($1,$2,0,$3,'live','failed','TRF_failed',now())",[p.saved.provider_reference,q.bankNetKobo,f.recipient]);
     expect(await balance(f.owner,'VENDOR_AVAILABLE')).toBe(1000000);
-    expect((await payoutRequest(f,await payoutQuote(f,200000))).saved.id).toBeTruthy();
+    expect((await payoutRequest(f,await payoutQuote(f,500000))).saved.id).toBeTruthy();
   });
   it("approves and sends only the sealed bank amount once, with no mandatory note",async()=>{
     const f=await commissionFixture(),q=await payoutQuote(f),p=await payoutRequest(f,q);
@@ -3024,6 +3024,9 @@ describe('campus combined orders and private learning playlists',()=>{
   const code=await deriveHandoffCode(env,o.id,'delivery');expect((await pg.query<{result:string}>("select app_private.coordinate_campus_order($1,$2,'COMPLETE',$3) result",[o.id,campus,code.hash])).rows[0]!.result).toBe('OK');
   expect(await balance(second,'VENDOR_PENDING')).toBe(0);expect(await balance(second,'VENDOR_AVAILABLE')).toBe(pending);
   await pg.query("update orders set status='DELIVERED' where id=$1",[o.id]);expect(await balance(second,'VENDOR_AVAILABLE')).toBe(pending);
+  const dispute=crypto.randomUUID();await pg.query("insert into disputes(id,university_id,opened_by_user_id,order_id,reason)values($1,$2,$3,$4,'Synthetic delivered item dispute')",[dispute,campus,buyer,o.id]);
+  await pg.query("update orders set status='DISPUTED',earnings_state='RESERVED'where id=$1",[o.id]);expect(await balance(second,'VENDOR_AVAILABLE')).toBe(0);expect(await balance(second,'VENDOR_PENDING')).toBe(pending);
+  await pg.query("update disputes set status='RESOLVED',resolution_code='RELEASE_EARNINGS'where id=$1",[dispute]);await pg.query("update orders set status='DELIVERED',earnings_state='PENDING'where id=$1",[o.id]);expect(await balance(second,'VENDOR_AVAILABLE')).toBe(pending);expect(await balance(second,'VENDOR_PENDING')).toBe(0);
   await expect(pg.query('update app_private.order_vendor_allocations set seller_net_kobo=1 where order_id=$1',[o.id])).rejects.toThrow('IMMUTABLE');
  });
  it('publishes a video playlist and gives every free part private, campus-scoped access',async()=>{

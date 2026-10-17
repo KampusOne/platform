@@ -1,0 +1,20 @@
+import {beforeAll,afterAll,it,expect,vi} from 'vitest';
+import {Hono} from 'hono';
+import type {PGlite} from '@electric-sql/pglite';
+import {createTestDatabase,testDatabaseAdapter} from './helpers/database';
+import {feedSocialRoutes} from '../src/routes/feed-social';
+import {AppError} from '../src/lib/errors';
+import type {Bindings,Variables} from '../src/types';
+let db:PGlite;const user=crypto.randomUUID(),campus=crypto.randomUUID();
+vi.mock('../src/lib/database',()=>({database:()=>testDatabaseAdapter(db),firstRow:(r:{rows:unknown[]})=>r.rows[0]}));
+vi.mock('../src/middleware/auth',()=>({requireAuth:async(_c:unknown,next:()=>Promise<void>)=>next(),currentUser:()=>({id:user,universityId:campus,roles:['STUDENT'],operatorRoles:[]})}));
+const app=new Hono<{Bindings:Bindings;Variables:Variables}>().route('/feed',feedSocialRoutes);app.onError((e,c)=>c.json({message:e.message},e instanceof AppError?e.status:500));
+beforeAll(async()=>{db=await createTestDatabase();await db.query("insert into universities(id,name,slug,updated_at)values($1,'Opportunity fixture',$1::uuid::text,now())",[campus]);await db.query("insert into users(id,email,password_hash,updated_at)values($1,$1::uuid::text||'@example.invalid','synthetic',now())",[user]);await db.query("insert into profiles(id,user_id,university_id,username,display_name,updated_at)values($1,$1,$2,'opportunity_fixture','Fixture student',now())",[user,campus]);},60000);
+afterAll(async()=>db?.close());
+it('publishes and retries a labeled scholarship and filters it by subtype',async()=>{
+ const data={requestId:crypto.randomUUID(),category:'OPPORTUNITY',opportunityType:'SCHOLARSHIP',title:'Synthetic scholarship',description:'A synthetic campus scholarship for verification.',deadline:'2027-10-17T23:59:00Z',registrationUrl:'https://example.invalid/apply'};
+ const create=()=>app.request('/feed/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)},{UNIFIED_SCHEMA_READY:'true'} as Bindings);
+ const first=await create(),a=await first.json() as {id:string;message?:string};expect(first.status,JSON.stringify(a)).toBe(201);expect((await create()).status).toBe(200);
+ const response=await app.request('/feed?category=OPPORTUNITY&opportunityType=SCHOLARSHIP',{},{UNIFIED_SCHEMA_READY:'true'} as Bindings),listed=await response.json()as any;expect(response.status,JSON.stringify(listed)).toBe(200);expect(listed.posts.map((p:any)=>p.id)).toContain(a.id);
+ const other=await app.request('/feed?category=OPPORTUNITY&opportunityType=INTERNSHIP',{},{UNIFIED_SCHEMA_READY:'true'} as Bindings);expect((await other.json()as any).posts).toHaveLength(0);
+});

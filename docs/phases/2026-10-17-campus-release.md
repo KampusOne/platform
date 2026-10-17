@@ -29,3 +29,14 @@ Implementation and acceptance checklist (unchecked items are not complete):
 - [ ] Reviewed migration installed, required Worker/web deployed from release commit, installable signed APK built and inspected, same signing identity as prior APK, download delivered.
 
 No deployment, migration installation or APK completion is implied by source changes. Record actual checks and receipts below as they finish.
+
+
+## Verified release preparation
+
+- 1,135 Worker tests across 131 files passed; the additional opportunity publishing/filter API test passed separately (1 test).
+- 364 client/session/cart/draft regressions passed. Mobile and Worker TypeScript checks passed. Mobile web export, portal lint/typecheck/build, and public blog lint/typecheck/build passed.
+- Both migrations were rehearsed with rollback, then installed in production on 2026-10-17 at 12:10:08Z. The Bachs combined-order acceptance passed before and after installation; all synthetic users, orders, receipts and journals rolled back. Existing users (21), agent profiles (4), orders (11), ledger transactions (10), ledger lines (23), media (194) and learning resources (5) were preserved. New private functions have no PUBLIC execute grants.
+- Signed Android release is prepared as 0.3.37 / build 67, retaining the established signing identity. APK build, publication and device acceptance remain unchecked until the release job finishes.
+- Agent withdrawals remain gated by the previously documented Bachs Connect activation and live transfer verification dependency. No approved active withdrawal fee policies exist in production. The requested business minimum is enforced in app/server/new database quotes; no unverified provider fees or live test transfers were introduced.
+- Blog source was released to the authenticated owner’s `warriorpikin/kampusone-landing` main branch at `e3abdb42d9bdd78bef4ac803b56dbc12d62e83b6`. Its deployed state still needs verification.
+- Bundled PDF scripts are generated during web and native builds from the checked-in reader/viewer sources. Generated bundles are excluded from source tracking.

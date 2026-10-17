@@ -1,0 +1,54 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-17T12:10:06.565Z",
+    "scope": "Owner requested combined vendor checkout, distance/quantity/bulk delivery pricing, post-delivery earnings, per-role suspension, tutor playlists, scanned PDF support and half-star reviews in the final APK."
+  },
+  "migrations": [
+    {
+      "version": "20261017120000_campus_release",
+      "sourceBlobSha": "43d431cd6e939baa99869c403830522134cd8510",
+      "appliedAt": "2026-10-17T12:10:08.260Z"
+    },
+    {
+      "version": "20261017121000_multi_vendor_checkout",
+      "sourceBlobSha": "46debfc612a4642c667d012915674bb7fbd87001",
+      "appliedAt": "2026-10-17T12:10:08.260Z"
+    }
+  ],
+  "verifiedAt": "2026-10-17T12:10:08.362Z",
+  "checks": {
+    "campusRelease": "passed",
+    "fixturesRolledBack": true,
+    "combinedBachsReceiptAndReplay": "passed",
+    "vendorAllocationAndStockIdempotency": "passed",
+    "buyerHandoffBeforeEarningsRelease": "passed",
+    "privatePrivileges": "passed",
+    "publicExecuteGrants": 0,
+    "existingAccountCountsPreserved": true,
+    "financialRecordsPreserved": true,
+    "providerRequestsDuringAcceptance": 0,
+    "liveAgentPayouts": "Awaiting Bachs Connect activation; existing disabled gate preserved"
+  },
+  "rehearsal": {
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "freshProductionClone": false,
+    "mode": "Existing rehearsal branch DDL rollback; branch creation quota was exhausted. Complete payment acceptance was then run in a rolled-back transaction on the current production schema before installation.",
+    "acceptance": "database/verification/campus_release_acceptance.sql",
+    "productionDryRun": "passed; schema and fixtures rolled back",
+    "postInstallAcceptance": "passed; all synthetic fixtures rolled back"
+  },
+  "preservedCounts": {
+    "users": 21,
+    "agent_profiles": 4,
+    "orders": 11,
+    "ledger_transactions": 10,
+    "ledger_lines": 23,
+    "media_objects": 194,
+    "learning_resources": 5
+  }
+}

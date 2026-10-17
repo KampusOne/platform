@@ -120,27 +120,9 @@ describe("seller order workspace", () => {
         (item: { id: string }) => item.id,
       ),
     ).toEqual([order]);
-    expect(
-      (
-        await request(
-          "/agents/orders",
-          200,
-          "GET",
-          undefined,
-          owner,
-          otherCampus,
-        )
-      ).orders,
-    ).toEqual([]);
-    await request(`/agents/orders/${order}`, 404, "GET", undefined, buyer);
-    await request(
-      `/agents/orders/${order}`,
-      404,
-      "GET",
-      undefined,
-      owner,
-      otherCampus,
-    );
+    await request('/agents/orders',403,'GET',undefined,owner,otherCampus);
+    await request(`/agents/orders/${order}`,403,'GET',undefined,buyer);
+    await request(`/agents/orders/${order}`,403,'GET',undefined,owner,otherCampus);
     expect((await request(`/agents/orders/${order}`)).items).toMatchObject([
       { name: "Book", quantity: 1, unit_price_kobo: 100000 },
     ]);
@@ -152,7 +134,7 @@ describe("seller order workspace", () => {
     });
     await request(
       `/agents/orders/${order}/status`,
-      404,
+      403,
       "PATCH",
       { status: "ACCEPTED" },
       owner,
@@ -160,7 +142,7 @@ describe("seller order workspace", () => {
     );
     await request(
       `/agents/orders/${order}/status`,
-      404,
+      403,
       "PATCH",
       { status: "ACCEPTED" },
       buyer,
