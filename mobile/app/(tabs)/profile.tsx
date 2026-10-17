@@ -168,6 +168,7 @@ export default function ProfileScreen() {
   const [feedState, setFeedState] = useState<ResourceState>("idle");
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [savedLearningFocused, setSavedLearningFocused] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [dataNotice, setDataNotice] = useState("");
@@ -667,7 +668,28 @@ export default function ProfileScreen() {
 
       {(profile || sessionProfile) ? (
         <>
-          <Pressable accessibilityRole="button" onPress={()=>router.push('/saved-learning' as '/learning-library')} style={{paddingVertical:14}}><Text style={{color:theme.deepBrand,fontFamily:theme.font.semibold}}>Saved videos, documents & playlists</Text></Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Saved learning, videos, documents and playlists"
+            accessibilityHint="Opens your saved learning materials."
+            onBlur={() => setSavedLearningFocused(false)}
+            onFocus={() => setSavedLearningFocused(true)}
+            onPress={() => router.push("/saved-learning")}
+            style={({ pressed }) => [
+              styles.learningLibrary,
+              pressed && styles.learningLibraryPressed,
+              savedLearningFocused && styles.learningLibraryFocused,
+            ]}
+          >
+            <View style={styles.learningLibraryIcon}>
+              <Ionicons accessible={false} color={theme.accentText} name="library-outline" size={24} />
+            </View>
+            <View style={styles.learningLibraryCopy}>
+              <Text style={styles.learningLibraryTitle}>Saved learning</Text>
+              <Text style={styles.learningLibraryDetail}>Videos, documents & playlists</Text>
+            </View>
+            <Ionicons accessible={false} color={theme.accentText} name="chevron-forward" size={20} />
+          </Pressable>
           <View style={styles.metrics}>
             <Metric
               icon="stats-chart-outline"
@@ -1474,6 +1496,42 @@ const createStyles = (theme: Theme) =>
       flex: 1,
       fontFamily: theme.font.medium,
       fontSize: 12,
+    },
+    learningLibrary: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceRaised,
+      borderColor: theme.border,
+      borderRadius: 20,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 12,
+      marginHorizontal: 20,
+      marginTop: 16,
+      minHeight: 88,
+      padding: 16,
+    },
+    learningLibraryPressed: { backgroundColor: theme.surfaceSoft },
+    learningLibraryFocused: { borderColor: theme.accentText },
+    learningLibraryIcon: {
+      alignItems: "center",
+      backgroundColor: theme.surfaceTint,
+      borderRadius: 14,
+      height: 44,
+      justifyContent: "center",
+      width: 44,
+    },
+    learningLibraryCopy: { flex: 1, gap: 3, minWidth: 0 },
+    learningLibraryTitle: {
+      color: theme.text,
+      fontFamily: theme.font.semibold,
+      fontSize: 15,
+      lineHeight: 22,
+    },
+    learningLibraryDetail: {
+      color: theme.textMuted,
+      fontFamily: theme.font.body,
+      fontSize: 12,
+      lineHeight: 18,
     },
     metrics: {
       backgroundColor: theme.surfaceGlassStrong,
