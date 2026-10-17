@@ -49,6 +49,8 @@ jobs:
       - name: Install the private image service for signed integration tests
         run: npm ci
         working-directory: portal
+      - name: Check mounted route cache inventory
+        run: node server/scripts/cache-route-manifest.mjs --check
       - run: npm run check && npm test -- --maxWorkers=2 && npm run build
         working-directory: server
       - name: Guard Phase 2 schema activation

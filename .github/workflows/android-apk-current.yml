@@ -1,5 +1,5 @@
 name: Build current verified Android APK
-# Store saving, seller analytics, tutor search and dashboard loading hotfix.
+# Store saving, seller analytics, tutor search and dashboard loading hotfix, with current route inventory.
 on:
   push:
     branches: [main]

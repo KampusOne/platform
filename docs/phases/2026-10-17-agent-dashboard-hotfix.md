@@ -34,4 +34,6 @@ The full Node regression suite passed (371 tests). Contracts checks and tests pa
 
 The repaired analytics statement also executed successfully on the live database with synthetic nonexistent tenant/vendor filters, returning fourteen aggregate rows. Schema inspection confirmed the referenced columns already exist. No database migration is required. This is not an authenticated physical-phone performance benchmark.
 
+The generated cache-route inventory is refreshed for changed source line locations; its 518 route policies remain unchanged. Worker deployment also checks this inventory before publication.
+
 The versioned APK workflow checks source/main identity, the matching Worker deployment, package `app.kampusone.mobile`, version code 68, ARM64, target SDK and the existing signing certificate. Website download publication additionally requires matching web deployments. The previous versioned APK remains available for rollback. Bachs Connect payout activation remains the existing external dependency.
