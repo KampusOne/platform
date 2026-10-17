@@ -17,6 +17,7 @@
     "@expo/vector-icons": "~15.0.3",
     "@kampusone/design-tokens": "file:../packages/design-tokens",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/slider": "5.2.0",
     "@react-native-firebase/analytics": "26.4.0",
     "@react-native-firebase/app": "26.4.0",
     "@vercel/functions": "3.9.9",

@@ -3,7 +3,7 @@ import { FlatList, Platform, Pressable, ScrollView, Text, View } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { AudiobookPlayer } from '@/src/components/audiobook-player';
 import { useAuth } from '@/src/auth/auth-context';
 import { cacheScopeForUser } from '@/src/lib/request-policy';
 import { useReducedMotionPreference } from '@/src/components/visual-system';
@@ -21,16 +21,6 @@ import { learningTitle } from '@/src/lib/learning-title';
 
 type Part = { mediaId: string; title: string };
 type Resource = { id: string; title: string; description?: string; resource_type: string; can_access: boolean; access_model: string; media_object_id: string | null; course_code?: string; tutor_profile_id?: string; tutor_name?: string; publisher_name?: string; tutor_image_url?: string | null; tutor_verified?: boolean; parts?: Part[] };
-function Audio({ url }: { url: string }) {
-  const player = useAudioPlayer(url), status = useAudioPlayerStatus(player), { theme } = useAppearance();
-  const time = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
-  return <View style={{ padding: 24, gap: 20, backgroundColor: theme.surface, borderRadius: 18 }}>
-    <Ionicons name="headset-outline" size={44} color={theme.deepBrand} />
-    <Text style={{ color: theme.text, fontFamily: theme.font.medium }}>{time(status.currentTime)} / {time(status.duration)}</Text>
-    <ToolButton label={status.playing ? 'Pause audio' : 'Play audio'} onPress={() => status.playing ? player.pause() : player.play()} />
-    <View style={{ flexDirection: 'row', gap: 12 }}><View style={{ flex: 1 }}><ToolButton secondary label="Back 15s" onPress={() => void player.seekTo(Math.max(0, status.currentTime - 15))} /></View><View style={{ flex: 1 }}><ToolButton secondary label="Forward 15s" onPress={() => void player.seekTo(Math.min(status.duration, status.currentTime + 15))} /></View></View>
-  </View>;
-}
 export default function LearningViewer() {
   const {state,user}=useAuth(), {theme}=useAppearance();
   if(state === 'authenticated' && user) return <OwnedLearningViewer key={cacheScopeForUser(user)} />;
@@ -86,7 +76,7 @@ function OwnedLearningViewer() {
       {parts.length > 1 ? <Pressable accessibilityRole="button" accessibilityLabel="Choose document part" onPress={() => setContentsOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, minHeight: 44, backgroundColor: theme.surfaceTint }}><Text numberOfLines={1} style={{ flex: 1, color: theme.text, fontFamily: theme.font.medium, fontSize: 12 }}>{index + 1} of {parts.length} · {partTitle}</Text><Ionicons name="chevron-down" size={16} color={theme.deepBrand} /></Pressable> : null}
       {state ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{state}</View> : playback ? <LearningDocument key={part?.mediaId} url={playback.url} title={partTitle} onRefresh={()=>setRevision(n=>n+1)} /> : null}
     </View> : <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
-      {video ? <View accessibilityLabel="Lesson video player" style={{ aspectRatio: 16 / 9, backgroundColor: playback && !state ? '#14110f' : theme.surfaceTint, minHeight: 210 }}>{playback && !state ? <TutorialPlayer key={part?.mediaId} {...playback} label={partTitle} /> : state}</View> : playback && !state ? <View style={{ padding: 18 }}><Audio key={part?.mediaId} url={playback.url} /></View> : state}
+      {video ? <View accessibilityLabel="Lesson video player" style={{ aspectRatio: 16 / 9, backgroundColor: playback && !state ? '#14110f' : theme.surfaceTint, minHeight: 210 }}>{playback && !state ? <TutorialPlayer key={part?.mediaId} {...playback} label={partTitle} /> : state}</View> : playback && !state ? <View style={{ padding: 18 }}><AudiobookPlayer key={part?.mediaId} url={playback.url} onRetry={() => setRevision(n => n + 1)} chapter={parts.length > 1 ? `Chapter ${index + 1} of ${parts.length}` : undefined} onPrevious={index > 0 ? () => selectPart(index - 1) : undefined} onNext={index + 1 < parts.length ? () => selectPart(index + 1) : undefined} /></View> : state}
       <View style={{ padding: 20, gap: 18 }}>
         <View style={{ gap: 7 }}><Text style={{ color: theme.deepBrand, fontFamily: theme.font.medium, fontSize: 12 }}>{parts.length > 1 ? `Lesson ${index + 1} of ${parts.length}` : video ? 'Your video lesson' : 'Your audiobook'}</Text><Text style={{ color: theme.text, fontFamily: theme.font.displayStrong, fontSize: 24, lineHeight: 31 }}>{partTitle}</Text></View>
         {resource ? <Pressable disabled={!resource.tutor_profile_id} accessibilityRole="button" accessibilityLabel={`View tutor ${tutorName}`} onPress={() => resource.tutor_profile_id && router.push({ pathname: '/student-service', params: { id: resource.tutor_profile_id } })} style={{ flexDirection: 'row', alignItems: 'center', gap: 11 }}><ProfileAvatar name={tutorName} imageUrl={resource.tutor_image_url} size={42} /><View style={{ flex: 1, gap: 4 }}><Text style={{ color: theme.textMuted, fontFamily: theme.font.body, fontSize: 11 }}>Your tutor</Text><View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}><Text style={{ color: theme.text, fontFamily: theme.font.semibold, flexShrink: 1 }}>{tutorName}</Text>{resource.tutor_verified === true ? <VerifiedBadge label="Verified tutor" size={14} /> : null}</View></View>{resource.tutor_profile_id ? <Ionicons name="chevron-forward" color={theme.textMuted} size={18} /> : null}</Pressable> : null}

@@ -1055,6 +1055,23 @@ describe("approved inclusive store checkout", () => {
     expect(Number(live.deliveryZones[0].base_fee_kobo)).toBe(0);
     expect(live.deliveryZones[0].distance_basis).toBe("QUOTE_REQUIRED");
   });
+  it('quotes and creates address-only rider orders with automatic coverage and exact idempotent totals',async()=>{
+    const input={...quoteInput(),deliveryPlaceId:null,deliveryZoneId:null,deliveryLocation:'Hall 2, Room B12, main gate'};
+    const q=await json(await request('/student/order-quotes',buyer,'POST',input),201);
+    expect(q.quote.fare).toMatchObject({distanceBasis:'CAMPUS_ADDRESS',pickupLocationBasis:'SAVED_STOREFRONT_ADDRESS',routeMetres:0});
+    expect(q.quote.fare.fareKobo).toBeGreaterThanOrEqual(50000);
+    expect((await json(await request('/student/order-quotes',buyer,'POST',input),201)).quote.id).toBe(q.quote.id);
+    const payload={...input,quoteId:q.quote.id};
+    const order=await json(await request('/student/orders',buyer,'POST',payload),201);
+    expect((await json(await request('/student/orders',buyer,'POST',payload),201)).id).toBe(order.id);
+    expect((await pg.query('select delivery_zone_id from orders where id=$1',[order.id])).rows[0]).toMatchObject({delivery_zone_id:zone});
+    expect((await pg.query('select delivery_location,pickup_location from order_delivery_snapshots where order_id=$1',[order.id])).rows[0]).toMatchObject({delivery_location:input.deliveryLocation,pickup_location:'Approved campus pickup gate'});
+    expect((await pg.query('select status,zone_id from delivery_jobs where order_id=$1',[order.id])).rows[0]).toMatchObject({status:'PAYMENT_PENDING',zone_id:zone});
+    expect((await pg.query('select latitude,longitude from order_delivery_snapshots where order_id=$1',[order.id])).rows[0]).toEqual({latitude:null,longitude:null});
+    expect((await request('/student/order-quotes',buyer,'POST',{...input,requestId:crypto.randomUUID(),deliveryLocation:''})).status).toBe(400);
+    expect((await request('/student/orders',buyer,'POST',{...payload,deliveryLocation:'A different unreviewed address'})).status).toBe(409);
+    expect((await request('/student/order-quotes',buyer,'POST',{...input,requestId:crypto.randomUUID(),deliveryZoneId:crypto.randomUUID()})).status).toBe(409);
+  });
   it("rejects new cash quotes and orders before reserving stock or creating a quote", async () => {
     const before = (await pg.query('select (select count(*) from app_private.store_checkout_quotes) as quotes,(select count(*) from public.orders) as orders,(select stock_quantity from vendor_products where id=$1) as stock', [product])).rows[0];
     for (const path of ['/student/order-quotes', '/student/orders']) {

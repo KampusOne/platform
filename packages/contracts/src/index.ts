@@ -575,13 +575,6 @@ export const storeOrderSchema = z
       .max(30),
   })
   .superRefine((value, context) => {
-    if (value.fulfilmentMode === "RIDER" && !value.deliveryZoneId) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Choose a rider delivery zone.",
-        path: ["deliveryZoneId"],
-      });
-    }
     if (
       value.fulfilmentMode !== "PICKUP" &&
       (value.deliveryLocation?.length ?? 0) < 5

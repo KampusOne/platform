@@ -61,12 +61,11 @@ describe('checkout campus directory and seller pickup readiness',()=>{
   await expect(mappedDeliveryPoint(env,uni,addressOnly)).rejects.toMatchObject({status:422});
   await expect(campusDeliveryRoute(env,uni,campus,[5.62,6.4],[5.6202,6.4002])).rejects.toMatchObject({status:422});
  });
- it('offers rider delivery only for a mapped pickup or a recent accurate seller position',async()=>{
-  let ready=await riderPickupAvailability(env,uni,vendors.map(v=>v.id));expect(ready.get(vendors[0]!.id)).toBe(true);expect(ready.get(vendors[1]!.id)).toBe(false);
+ it('keeps saved pickup addresses available after live GPS expires without exposing private coordinates',async()=>{
+  let ready=await riderPickupAvailability(env,uni,vendors.map(v=>v.id));expect(ready.get(vendors[0]!.id)).toBe(true);expect(ready.get(vendors[1]!.id)).toBe(true);
   await pg.query('insert into app_private.agent_route_positions(agent_profile_id,institution_id,latitude,longitude,accuracy_metres,captured_at)values($1,$2,6.4,5.62,10,now())',[vendors[1]!.id,uni]);
-  ready=await riderPickupAvailability(env,uni,vendors.map(v=>v.id));expect(ready.get(vendors[1]!.id)).toBe(true);
   await pg.query("update app_private.agent_route_positions set captured_at=now()-interval '3 minutes' where agent_profile_id=$1",[vendors[1]!.id]);
-  expect((await riderPickupAvailability(env,uni,vendors.map(v=>v.id))).get(vendors[1]!.id)).toBe(false);
+  expect((await riderPickupAvailability(env,uni,vendors.map(v=>v.id))).get(vendors[1]!.id)).toBe(true);
   expect((await riderPickupAvailability(env,foreignUni,vendors.map(v=>v.id))).size).toBe(0);
  });
 });

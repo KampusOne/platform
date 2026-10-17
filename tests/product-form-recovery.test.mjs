@@ -13,9 +13,9 @@ runInNewContext(ts.transpileModule(readFileSync(new URL('../mobile/src/lib/listi
 const {listingPhotos}=photoExports;
 const editorExports={};
 runInNewContext(ts.transpileModule(readFileSync(new URL('../mobile/src/lib/listing-editor.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:editorExports,module:{exports:editorExports},require:key=>{assert.equal(key,'./listing-photos');return{listingPhotos};}});
-function formHarness(api,{rates=async amount=>({ready:true,ruleId:'33333333-3333-4333-8333-333333333333',baseKobo:amount,platformKobo:0,processingEstimateKobo:0,customerEstimateKobo:amount,sellerCommissionKobo:0}),role='VENDOR',id,storedDraft,persist=async()=>{},photo=async()=>({url:'https://fixture.invalid/photo.jpg'}),restore={ready:true,error:'',loading:false,retry(){}}}={}) {
+function formHarness(api,{rates=async amount=>({ready:true,ruleId:'33333333-3333-4333-8333-333333333333',baseKobo:amount,platformKobo:0,processingEstimateKobo:0,customerEstimateKobo:amount,sellerCommissionKobo:0}),role='VENDOR',storefront={pickup_location:'Library store entrance',pickup_place_id:'saved-map-point'},id,storedDraft,persist=async()=>{},photo=async()=>({url:'https://fixture.invalid/photo.jpg'}),restore={ready:true,error:'',loading:false,retry(){}}}={}) {
   const host=hookRenderer(),clock=virtualClock(),react=host.react;let tree;
-  const callApi=(path,options)=>path.startsWith('/v1/agents/products/price-preview')?rates(Number(path.split('priceKobo=')[1]),options):api(path,options);
+  const callApi=(path,options)=>path==='/v1/agents/storefront'?Promise.resolve({storefront}):path.startsWith('/v1/agents/products/price-preview')?rates(Number(path.split('priceKobo=')[1]),options):api(path,options);
   const alerts=[];
   const theme={font:{body:'Inter',displayStrong:'Lato',semibold:'Inter'},surfaceTint:'#F1DFC8',surface:'#fff',text:'#29231F',textMuted:'#9A8D84',deepBrand:'#A8462E',error:'#A8462E'};
   const modules={'@/src/auth/auth-context':{useAuth:()=>({user:{id:'test-owner'}})},'@/src/lib/device-cache':{readCache:async()=>null,writeCache:async()=>{}},'react':react,'react/jsx-runtime':{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'Fragment'},'expo-crypto':{randomUUID},'@expo/vector-icons':{Ionicons:'Ionicons'},'expo-router':{router:{back(){}},useLocalSearchParams:()=>({role})},'react-native':{Image:'Image',Pressable:'Pressable',Text:'Text',View:'View'},'@/src/lib/money-input':{nairaToKobo},'@/src/components/toolkit':{ToolPage:'ToolPage',ToolButton:'ToolButton',ToolField:'ToolField'},'@/src/components/toast':{useToast:()=>()=>{}},'@/src/lib/appearance':{useAppearance:()=>({theme})},'@/src/lib/api':{api:callApi},'@/src/lib/uploads':{pickAndUpload:async()=>({url:'https://fixture.invalid/photo.jpg'})}};
@@ -170,4 +170,17 @@ test('a campus without checkout rates can upload a valid listing without inventi
  assert.equal(h.by('ToolButton','Upload product').props.disabled,false);
  await h.by('ToolButton','Upload product').props.onPress();await h.flush();
  assert.equal(created.pricingPolicyId,undefined);assert.equal(created.priceKobo,100000);assert.equal(created.imageUrls.length,1);
+});
+
+test('vendors cannot upload a photo or product without saved pickup details, while tutor uploads remain independent',async()=>{
+ for(const storefront of [null,{pickup_location:'Store gate',pickup_place_id:null},{pickup_location:'',pickup_place_id:'point'}]){
+  let uploads=0,writes=0;
+  const h=formHarness(async(path,init)=>{if(init?.method==='POST')writes++;return{categories:[editCategory]};},{storefront,photo:async()=>{uploads++;return{url:'https://fixture.invalid/photo.jpg'};}});
+  await h.flush();await h.flush();
+  assert.equal(h.by('Pressable','Add product photo').props.disabled,true);
+  await h.by('Pressable','Add product photo').props.onPress();await h.flush();assert.equal(uploads,0);assert.equal(writes,0);
+  assert.ok(h.by('ToolButton','Save pickup address and location'));
+ }
+ const tutor=formHarness(async()=>({}),{role:'TUTOR',storefront:null});await tutor.flush();
+ assert.equal(tutor.by('ToolButton','Save pickup address and location'),undefined);
 });

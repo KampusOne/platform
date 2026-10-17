@@ -160,6 +160,7 @@ function StoreForm() {
       {fieldError('pickup')}
       <ToolField label="Additional buyer pickup locations (one per line)" value={pickupLocations} onChangeText={setPickupLocations} editable={!busy} multiline placeholder="Faculty entrance\nLibrary meeting point"/>
       {fieldError('additionalLocations')}
+      <Text style={{color:theme.textMuted,fontFamily:theme.font.body,lineHeight:21}}>Save your pickup address and a map location before uploading products. Your saved store location stays available for riders.</Text>
       <CampusPlaceChoice
         options={pickupPoints} disabled={busy}
         label="Approved store or agreed pickup point on the campus map"

@@ -158,24 +158,25 @@ test('brand tiles and business profiles show a badge only for explicitly verifie
  }
 });
 
-test('checkout offers pickup when the seller has no rider collection point',async()=>{
+test('rider checkout accepts the customer address without mandatory map or zone selection',async()=>{
  const f=fixture({initialCart:{[id]:1},riderEnabled:true,pickupReady:false});await f.settle();f.openCheckout();await f.settle();
- assert.ok(f.by('Rider delivery unavailable'));
- assert.equal(f.all().some(({node})=>node.type==='Text'&&node.props.children==='Rider delivery'),false);
+ assert.equal(f.by('Rider delivery unavailable'),undefined);
+ f.by('Delivery address').props.onChangeText('Hall 2, room B12, main entrance');await f.settle();
  f.by('Review route and checkout total').props.onPress();await f.settle();
- assert.equal(f.requests[0].body.fulfilmentMode,'PICKUP');assert.equal(f.requests[0].body.deliveryPaymentMethod,'IN_APP');
+ assert.equal(f.requests[0].body.fulfilmentMode,'RIDER');assert.equal(f.requests[0].body.deliveryPaymentMethod,'IN_APP');
+ assert.equal(f.requests[0].body.deliveryLocation,'Hall 2, room B12, main entrance');assert.equal(f.requests[0].body.deliveryPlaceId,null);assert.equal(f.requests[0].body.deliveryZoneId??null,null);
 });
 
-test('rider checkout submits one in-app total and recovers if the seller pickup expires',async()=>{
+test('rider checkout preserves the chosen mode and shows a missing seller address error',async()=>{
  const f=fixture({initialCart:{[id]:1},riderEnabled:true});await f.settle();f.openCheckout();await f.settle();
  assert.equal(f.all().some(({node})=>String(node.props?.children??'').includes('Cash at delivery')),false);
  const place=f.all().find(({node})=>node.type==='CampusPlaceChoice').node;
  place.props.onChange(owner);place.props.onSelect({id:owner,name:'Main library entrance',delivery_zone_id:vendor});await f.settle();
  f.setQuoteError(new ApiError(409,'CONFLICT','Rider pickup is unavailable.',{reason:'PICKUP_POINT_UNAVAILABLE'}));
  f.by('Review route and checkout total').props.onPress();await f.settle();
- assert.equal(f.requests[0].body.fulfilmentMode,'RIDER');assert.equal(f.requests[0].body.deliveryPaymentMethod,'IN_APP');assert.ok(f.by('Rider delivery unavailable'));
+ assert.equal(f.requests[0].body.fulfilmentMode,'RIDER');assert.equal(f.requests[0].body.deliveryPaymentMethod,'IN_APP');assert.ok(f.all().some(({node})=>node.props?.children==='Rider pickup is unavailable.'));
  f.setQuoteError(null);f.by('Review route and checkout total').props.onPress();await f.settle();
- assert.equal(f.requests.at(-1).body.fulfilmentMode,'PICKUP');
+ assert.equal(f.requests.at(-1).body.fulfilmentMode,'RIDER');
 });
 
 

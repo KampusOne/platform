@@ -23,7 +23,7 @@ async function create(){const r=await request('/products','POST',{...details(),s
 async function row(id:string){return(await pg.query<any>('select * from public.vendor_products where id=$1',[id])).rows[0];}
 beforeAll(async()=>{
  pg=await createTestDatabase();
- for(const name of ['20260912200000_phase_3_commerce_foundation.sql','20260930220000_store_fulfilment_modes.sql','20261006101000_verified_vendor_publication.sql'])await pg.exec(readFileSync(new URL('../../database/neon/migrations/'+name,import.meta.url),'utf8'));
+ for(const name of ['20260912200000_phase_3_commerce_foundation.sql','20260930220000_store_fulfilment_modes.sql','20261001195000_delivery_route_positions.sql','20261006101000_verified_vendor_publication.sql'])await pg.exec(readFileSync(new URL('../../database/neon/migrations/'+name,import.meta.url),'utf8'));
  for(const id of [campus,otherCampus])await pg.query("insert into universities(id,name,slug,updated_at)values($1,'Synthetic campus '||$1::uuid::text,$1::uuid::text,now())",[id]);
  for(const [user,uni,profile,cat]of [[owner,campus,vendor,category],[other,otherCampus,otherVendor,otherCategory]]){
   await pg.query("insert into users(id,email,password_hash,updated_at)values($1,$1::uuid::text||'@example.invalid','synthetic',now())",[user]);
@@ -32,6 +32,8 @@ beforeAll(async()=>{
   await pg.query("insert into agent_applications(id,user_id,university_id,agent_type,display_name,phone_e164,statement)values($1,$2,$3,'VENDOR','Synthetic shop','+2348000000000','Synthetic fixture only')",[application,user,uni]);
   await pg.query("insert into agent_profiles(id,user_id,university_id,application_id,agent_type,display_name,verified_at)values($1,$2,$3,$4,'VENDOR','Synthetic shop',now())",[profile,user,uni,application]);
   await pg.query("insert into product_categories(id,university_id,name,status,reviewed_at)values($1,$2,'Books','APPROVED',now())",[cat,uni]);
+  await pg.query("insert into campus_places(id,university_id,name,category,status,latitude,longitude)values($1,$2,'Synthetic pickup','SERVICE','PUBLISHED',6.3,5.6)",[profile,uni]);
+  await pg.query("insert into vendor_storefronts(vendor_profile_id,university_id,display_name,pickup_location,pickup_place_id)values($1,$2,'Synthetic shop','Library store entrance',$1) on conflict(vendor_profile_id) do update set pickup_location=excluded.pickup_location,pickup_place_id=excluded.pickup_place_id",[profile,uni]);
  }
 },60000);
 afterAll(async()=>{await pg?.close();});
@@ -96,4 +98,19 @@ describe('owner product editing, photos and removal',()=>{
   try{expect((await request('/products/'+id,'PUT',details())).status).toBe(403);expect((await request('/products/'+id+'/status','PATCH',{status:'ARCHIVED'})).status).toBe(403);}
   finally{await pg.query("update public.vendor_storefronts set status='APPROVED' where vendor_profile_id=$1",[vendor]);}
  });
+});
+
+it('rejects creating or publishing a product until both pickup address and map location are saved',async()=>{
+ const before=(await pg.query('select count(*)::int as n from vendor_products')).rows[0] as {n:number};
+ const saved=(await pg.query<any>('select * from vendor_storefronts where vendor_profile_id=$1',[vendor])).rows[0];
+ for(const change of ["pickup_location=null", "pickup_place_id=null"]){
+  await pg.exec(`update vendor_storefronts set ${change} where vendor_profile_id='${vendor}'`);
+  const result=await request('/products','POST',{...details(),stockQuantity:3,requestId:crypto.randomUUID()});
+  expect(result.status,JSON.stringify(result.body)).toBe(409);expect(result.body.error).toMatch(/pickup address and map location/);
+  const existing=(await pg.query<{id:string}>('select id from vendor_products where vendor_profile_id=$1 limit 1',[vendor])).rows[0]!;
+  expect((await request('/products/'+existing.id+'/status','PATCH',{status:'PUBLISHED'})).status).toBe(409);
+  expect((await request('/products/'+existing.id,'PUT',details())).status).toBe(409);
+  expect((await pg.query('select count(*)::int as n from vendor_products')).rows[0]).toEqual(before);
+  await pg.query('update vendor_storefronts set pickup_location=$2,pickup_place_id=$3,status=$4 where vendor_profile_id=$1',[vendor,saved.pickup_location,saved.pickup_place_id,saved.status]);
+ }
 });

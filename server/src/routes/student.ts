@@ -1636,7 +1636,7 @@ studentRoutes.post("/orders", async (context) => {
   if(inclusiveReady && !parsed.data.quoteId)throw new AppError(409,'CONFLICT','Review the exact checkout total before creating this order.');
   if(inclusiveReady){
     const {quoteId,...details}=parsed.data;
-    const matching=firstRow(await database(context.env).execute<{matching:boolean}>(sql`select request_payload-'requestId'-'quoteId'=${JSON.stringify(details)}::jsonb as matching
+    const matching=firstRow(await database(context.env).execute<{matching:boolean}>(sql`select (request_payload-'requestId'-'quoteId'=${JSON.stringify(details)}::jsonb or (${details.deliveryZoneId == null} and request_payload-'requestId'-'quoteId'-'deliveryZoneId'=${JSON.stringify(details)}::jsonb-'deliveryZoneId')) as matching
       from app_private.store_checkout_quotes where id=${quoteId}::uuid and buyer_user_id=${user.id}::uuid and university_id=${universityId}::uuid`));
     if(!matching?.matching)throw new AppError(409,'CONFLICT','Your checkout details changed. Review a fresh total before creating the order.');
   }
