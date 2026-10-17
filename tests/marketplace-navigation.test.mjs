@@ -116,3 +116,41 @@ test('checkout shows API field errors underneath the rejected recipient input',a
  assert.equal(f.requests.length,1);assert.equal(f.by('Recipient phone').props.style.at(-1).borderWidth,2);
  assert.ok(f.all().some(({node})=>node.props?.accessibilityRole==='alert'&&node.props.children==='Check this phone number.'));
 });
+
+function businessFixture(options={}){
+ const {screen='brands',agent_type='VENDOR'}=options,verified=Object.hasOwn(options,'verified')?options.verified:true;
+ const host=hookRenderer(),routes=[];let tree;
+ const shop={id:vendor,agent_type,display_name:'Campus Audio',profile_image_url:'https://example.invalid/brand.jpg',verified};
+ const business={service:{...shop,user_id:owner,owner_name:'Ada Owner',categories:[],follower_count:0,followed:false,product_count:0,tutorial_count:0,completed_trip_count:0,review_count:0,rating:0},products:[],tutorials:[],reviews:[],commerceAvailable:false,isOwner:false};
+ const theme={font:{body:'Inter',medium:'InterMedium',semibold:'InterSemibold',display:'Lato',displayStrong:'LatoBold'}};
+ const jsx={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'Fragment'};
+ const modules={react:host.react,'react/jsx-runtime':jsx,'react-native':{View:'View',Text:'Text',Pressable:'Pressable',Image:'Image',ScrollView:'ScrollView',RefreshControl:'RefreshControl'},'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},
+  'expo-router':{router:{push:path=>routes.push(path)},useFocusEffect:fn=>host.react.useEffect(fn,[fn]),useLocalSearchParams:()=>({id:vendor})},'@expo/vector-icons':{Ionicons:'Ionicons'},
+  '@/src/lib/appearance':{useAppearance:()=>({theme})},'@/src/auth/auth-context':{useAuth:()=>({user:{id:owner}})},'@/src/lib/api':{api:async()=>screen==='brands'?{brands:[shop]}:business,peekApiCache:()=>business},
+  '@/src/lib/feed-posts':{validPostId:()=>true},'@/src/lib/share-content':{shareItem:async()=>{}},'@/src/components/toast':{useToast:()=>()=>{}},
+ };
+ for(const [file,name]of Object.entries({'verified-badge':'VerifiedBadge','profile-avatar':'ProfileAvatar','media-image':'MediaImage','skeleton':'ScreenSkeleton'}))modules['@/src/components/'+file]={[name]:name};
+ const component=screen==='brands'?load('src/components/popular-shops.tsx',modules).PopularShops:load('app/student-service.tsx',modules).default;
+ const render=()=>host.render(()=>tree=component());
+ const nodes=value=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
+ const settle=async()=>{for(let i=0;i<4;i++){await Promise.resolve();render();}};
+ render();return{routes,settle,nodes:()=>nodes(tree),unmount:host.unmount};
+}
+
+test('each campus brand opens its own business profile from the combined photo and name target',async()=>{
+ for(const agent_type of ['VENDOR','TUTOR','RIDER']){
+  const f=businessFixture({agent_type});await f.settle();
+  const button=f.nodes().find(node=>node.type==='Pressable'&&node.props.accessibilityLabel===`View Campus Audio's ${agent_type.toLowerCase()} profile, verified`);
+  assert.ok(button);assert.ok(button.props.children.some(node=>node?.props?.children?.type==='Image'),'The photo belongs to the profile tap target');
+  button.props.onPress();assert.equal(f.routes.length,1);assert.equal(f.routes[0].pathname,'/student-service');assert.equal(f.routes[0].params.id,vendor);f.unmount();
+ }
+});
+
+test('brand tiles and business profiles show a badge only for explicitly verified accounts',async()=>{
+ for(const screen of ['brands','profile'])for(const verified of [true,false,undefined]){
+  const f=businessFixture({screen,verified});await f.settle();
+  const badge=f.nodes().find(node=>node.type==='VerifiedBadge');
+  assert.equal(Boolean(badge),verified===true,`${screen}: ${verified}`);
+  if(badge)assert.equal(badge.props.label,'Verified vendor');f.unmount();
+ }
+});

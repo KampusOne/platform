@@ -14,6 +14,9 @@ const { chromium } = await import(pathToFileURL(modulePath).href);
 mkdirSync(evidence, { recursive: true });
 const user = { id: '00000000-0000-4000-8000-000000000001', universityId: '00000000-0000-4000-8000-000000000002', roles: ['STUDENT'], operatorRoles: [], email: 'ui-fixture@example.invalid' };
 const resourceId = '00000000-0000-4000-8000-000000000003', tutorId = '00000000-0000-4000-8000-000000000004', orderId = '00000000-0000-4000-8000-000000000005';
+const vendorId = '00000000-0000-4000-8000-000000000007';
+const brand = { id: vendorId, agent_type: 'VENDOR', display_name: 'Campus Audio', profile_image_url: 'http://localhost:8100/__fixture/avatar.png', verified: true };
+const vendorProfile = { service: { ...brand, user_id: tutorId, owner_name: 'Synthetic owner', username: 'campusaudio', biography: 'Headphones, speakers and accessories for campus life.', categories: ['Electronics'], follower_count: 12, followed: false, product_count: 0, tutorial_count: 0, completed_trip_count: 0, rating: 0, review_count: 0 }, products: [], tutorials: [], reviews: [], commerceAvailable: false, isOwner: false };
 const resourceBase = { id: resourceId, title: 'Fluid mechanics', description: 'Understand how fluids behave at rest and in motion, with worked examples for engineering students.', publisher_name: 'An old publisher', tutor_name: 'Gideon Igiehon', tutor_profile_id: tutorId, tutor_image_url: 'http://localhost:8100/__fixture/avatar.png', tutor_verified: true, is_saved: false, resource_type: 'PDF', page_count: 18, course_code: 'GET', subject: 'Engineering', access_model: 'FREE', can_access: true, price_kobo: 0, preview_text: null, listing_id: null, cover_url: 'http://localhost:8100/__fixture/cover.png' };
 const orderBase = { id: orderId, vendor_name: 'Gid', status: 'DELIVERED', fulfilment_mode: 'PICKUP', total_kobo: 31300, subtotal_kobo: 30000, delivery_fee_kobo: 0, created_at: '2026-10-15T09:00:00Z', delivery_location: 'Pickup from Gid', pickup_location: 'Faculty of Engineering, main entrance', pickup_instructions: null };
 const items = [{ product_id: '00000000-0000-4000-8000-000000000006', name: 'Engineering notebook', image_url: 'http://localhost:8100/__fixture/cover.png', quantity: 1, unit_price_kobo: 30000 }];
@@ -54,6 +57,10 @@ try {
         else if (path === `/v1/student/orders/${orderId}`) body = { order: { ...orderBase, ...order }, items, reviews, timeline };
         else if (path === '/v1/student/product-reviews') { const payload = route.request().postDataJSON(); reviews = [{ product_id: payload.productId, rating: payload.rating, body: payload.body }]; body = { id: 'synthetic-review' }; }
         else if (path === '/v1/student/catalog') body = { universities: [{ id: user.universityId, name: 'Synthetic university' }], faculties: [], departments: [] };
+        else if (path === '/v1/featured-brands/public') body = { brands: [brand, { ...brand, id: tutorId, display_name: 'Legacy brand', verified: false }] };
+        else if (path === '/v1/student/store') body = { products: [{ id: items[0].product_id, vendor_profile_id: vendorId, name: 'Campus headphones', description: 'Comfortable wired headphones.', category: 'Electronics', vendor_name: brand.display_name, price_kobo: 250000, stock_quantity: 3, image_url: null, pickup_enabled: true }], deliveryZones: [], checkoutEnabled: true, riderDeliveryEnabled: false, catalogueMode: 'LIVE' };
+        else if (path === '/v1/student/pickup-hubs') body = { hubs: [] };
+        else if (path === `/v1/people/services/${vendorId}`) body = vendorProfile;
         else if (path === '/v1/learning/alarms') body = { alarms: [] };
         else if (path === '/v1/learning/alarm-sounds') body = { sounds: [] };
         else if (path === '/v1/calendar/exam-periods') body = { examPeriods: [] };
@@ -109,6 +116,23 @@ try {
   await dark.open(`/order-detail?id=${orderId}`, 'Collected');
   await dark.page.screenshot({ path: resolve(evidence, 'order-dark.png') });
   assert.deepEqual(dark.errors, []); await dark.context.close();
+  for (const width of [360, 390]) {
+    const s = await scenario({ width });
+    await s.open('/store', 'Top campus brands');
+    const tile = s.page.getByRole('button', { name: "View Campus Audio's vendor profile, verified", exact: true });
+    await tile.waitFor();
+    assert.equal(await s.page.getByRole('img', { name: 'Verified vendor', exact: true }).count(), 1);
+    assert.equal(await s.page.getByRole('button', { name: "View Legacy brand's vendor profile", exact: true }).count(), 1);
+    await s.page.screenshot({ path: resolve(evidence, `campus-brands-${width}.png`) });
+    if (width === 360) await tile.locator('img').click();
+    else await tile.getByText(brand.display_name, { exact: true }).click();
+    await s.page.waitForURL(url => url.pathname === '/student-service' && url.searchParams.get('id') === vendorId);
+    await s.page.getByText('Vendor profile', { exact: true }).waitFor();
+    await s.page.getByRole('img', { name: 'Verified vendor', exact: true }).waitFor();
+    await s.page.screenshot({ path: resolve(evidence, `campus-brand-profile-${width}.png`) });
+    assert.deepEqual(s.errors, []); results.push({ width, brandPhotoOrNameOpensProfile: true, brandVerifiedBadge: true });
+    await s.context.close();
+  }
   const pending = await scenario({ order: { status: 'PENDING_PAYMENT' }, timeline: [{ status: 'PENDING_PAYMENT', occurred_at: '2026-10-15T09:00:00Z' }] });
   await pending.open(`/order-detail?id=${orderId}`, 'Awaiting payment');
   assert.equal(await pending.page.getByRole('button', { name: 'Review Engineering notebook', exact: true }).count(), 0);

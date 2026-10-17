@@ -12,7 +12,7 @@ export const featuredBrandRoutes=new Hono<{Bindings:Bindings;Variables:Variables
 featuredBrandRoutes.use('*',requireAuth);
 featuredBrandRoutes.get('/public',async c=>{
  const user=currentUser(c);if(!user.universityId)return c.json({brands:[]});
- const rows=await database(c.env).execute(sql`select a.id,a.agent_type,a.display_name,coalesce(a.public_details->>'profileImageUrl',p.profile_image_url) as profile_image_url,f.position from app_private.featured_brands f join public.agent_profiles a on a.id=f.agent_profile_id join public.profiles p on p.user_id=a.user_id and p.deleted_at is null
+ const rows=await database(c.env).execute(sql`select a.id,a.agent_type,a.display_name,(a.verified_at is not null) as verified,coalesce(a.public_details->>'profileImageUrl',p.profile_image_url) as profile_image_url,f.position from app_private.featured_brands f join public.agent_profiles a on a.id=f.agent_profile_id join public.profiles p on p.user_id=a.user_id and p.deleted_at is null
   where f.institution_id=${user.universityId}::uuid and f.enabled and a.university_id=f.institution_id and a.status='ACTIVE' and a.verified_at is not null
   and not exists(select 1 from public.user_blocks b where(b.blocker_id=${user.id}::uuid and b.blocked_id=a.user_id)or(b.blocker_id=a.user_id and b.blocked_id=${user.id}::uuid)) order by f.position,a.id limit 30`);
  return c.json({brands:rows.rows});

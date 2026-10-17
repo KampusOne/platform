@@ -146,7 +146,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     const timer = setTimeout(() => setSearchTerm(query.trim().toLocaleLowerCase("en-NG")), 220);
     return () => clearTimeout(timer);
   }, [query]);
-  const [selectedShop, setSelectedShop] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
@@ -276,13 +275,12 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
           .toLowerCase()
           .includes(term);
       return (
-        (!selectedShop || item.vendor_profile_id === selectedShop) &&
         (!focusedProduct || item.id === focusedProduct) &&
         matchesCategory &&
         matchesQuery
       );
     });
-  }, [products, searchTerm, selectedCategory, focusedProduct, selectedShop]);
+  }, [products, searchTerm, selectedCategory, focusedProduct]);
 
   const cartItems = useMemo(
     () =>
@@ -358,7 +356,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   function clearFilters() {
     setQuery("");
     setSelectedCategory("All");
-    setSelectedShop(null);
   }
 
   function closeCart() {
@@ -1155,10 +1152,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
               ) : null}
 
               {!featureDisabled && catalogueMode === "LIVE" && (
-                <PopularShops
-                  selected={selectedShop}
-                  onSelect={setSelectedShop}
-                />
+                <PopularShops />
               )}
               {!featureDisabled && categories.length > 1 ? (
                 <ScrollView

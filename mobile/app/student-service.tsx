@@ -15,6 +15,7 @@ import { api, peekApiCache } from "@/src/lib/api";
 import { shareItem } from "@/src/lib/share-content";
 import { validPostId } from "@/src/lib/feed-posts";
 import { ProfileAvatar } from "@/src/components/profile-avatar";
+import { VerifiedBadge } from "@/src/components/verified-badge";
 import { MediaImage } from "@/src/components/media-image";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
@@ -48,6 +49,7 @@ type Business = {
   agent_type: "VENDOR" | "TUTOR" | "RIDER";
   user_id: string;
   display_name: string;
+  verified?: boolean;
   biography: string | null;
   owner_name: string;
   username: string | null;
@@ -424,12 +426,9 @@ export default function StudentService() {
                 >
                   {b.display_name}
                 </Text>
-                <Ionicons
-                  accessibilityLabel="Approved campus business"
-                  name="checkmark-circle"
-                  size={21}
-                  color={theme.brand}
-                />
+                {b.verified === true ? (
+                  <VerifiedBadge size={20} label={`Verified ${b.agent_type.toLowerCase()}`} />
+                ) : null}
               </View>
               <Pressable
                 accessibilityRole="button"
