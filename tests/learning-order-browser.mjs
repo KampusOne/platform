@@ -188,6 +188,7 @@ try {
     const pageTwo=s.page.getByRole('button',{name:'Products page 2',exact:true});await pageTwo.scrollIntoViewIfNeeded();
     await s.page.getByRole('button',{name:'Add Campus product 24 to cart',exact:true}).waitFor();
     assert.equal(await s.page.getByRole('button',{name:'Add Campus product 25 to cart',exact:true}).count(),0);
+    await pageTwo.click({trial:true});
     await s.page.screenshot({path:resolve(evidence,`products-pagination-${width}.png`)});
     await pageTwo.click();await s.page.getByRole('button',{name:'Add Campus product 25 to cart',exact:true}).waitFor();
     await s.page.getByRole('button',{name:'Add Campus product 25 to cart',exact:true}).click();
@@ -242,6 +243,13 @@ try {
   assert.deepEqual(pending.errors, []); await pending.context.close();
   writeFileSync(resolve(evidence, 'checks.json'), JSON.stringify({ results, darkMode: true, pendingOrder: true }, null, 2));
   console.log(JSON.stringify({ results, darkMode: true, pendingOrder: true }));
+} catch(error) {
+  if(browser)for(const [n,context]of browser.contexts().entries())for(const [p,page]of context.pages().entries()){
+    await page.screenshot({path:resolve(evidence,`failed-latest-${n}-${p}.png`)}).catch(()=>{});
+    const frames=[];for(const frame of page.frames())frames.push({url:frame.url(),text:await frame.locator('body').innerText().catch(()=>''),viewport:await frame.evaluate(()=>({width:innerWidth,height:innerHeight})).catch(()=>null)});
+    writeFileSync(resolve(evidence,`failed-frames-${n}-${p}.json`),JSON.stringify({error:String(error),url:page.url(),frames},null,2));
+  }
+  throw error;
 } finally {
   await browser?.close(); await new Promise(done => web.close(done));
 }

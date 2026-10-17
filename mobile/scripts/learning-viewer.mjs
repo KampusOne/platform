@@ -20,14 +20,18 @@ function layout() {
   pages.style.width = `${Math.max(viewport.clientWidth, pageWidth + 12)}px`;
   for (const record of records) { record.node.style.width = `${pageWidth}px`; record.node.style.height = `${pageWidth * record.ratio}px`; }
 }
+function nearby(record) {
+  const top=record.node.offsetTop-pages.offsetTop, height=viewport.clientHeight;
+  return top+record.node.offsetHeight>=viewport.scrollTop-height && top<=viewport.scrollTop+height*2;
+}
 function enqueue(record, retry = false) {
-  if (!record || record.queued || record.rendering || record.failed && !retry || record.renderedZoom === zoom) return;
+  if (!record || record.queued || record.rendering || record.failed && !retry || record.renderedZoom === zoom && Math.abs((record.renderedWidth || 0)-width()*zoom)<0.5) return;
   record.failed = false; record.queued = true; renderQueue.push(record); void pump();
 }
 async function pump() {
   if (activeRenders >= 2 || !renderQueue.length || !pdf) return;
   const record = renderQueue.shift(); record.queued = false;
-  if (record.generation !== generation) { void pump(); return; }
+  if (record.generation !== generation || !nearby(record)) { void pump(); return; }
   activeRenders++; record.rendering = true;
   const turn = generation, atZoom = zoom, documentPdf = pdf;
   let page, canvas;
@@ -51,7 +55,7 @@ async function pump() {
     if (turn !== generation || !record.node.isConnected) return;
     if (record.canvas) { record.canvas.remove(); record.canvas.width = record.canvas.height = 0; }
     record.canvas = canvas; canvas = null; record.node.append(record.canvas); record.message.hidden = true;
-    record.renderedZoom = atZoom; record.node.classList.remove('retry'); record.node.removeAttribute('tabindex');
+    record.renderedZoom = atZoom; record.renderedWidth = cssWidth; record.node.classList.remove('retry'); record.node.removeAttribute('tabindex');
   } catch (caught) {
     if (turn === generation && caught?.name !== 'RenderingCancelledException') {
       record.failed = true; record.message.hidden = false; record.message.textContent = `Page ${record.number} could not load. Tap to retry.`;
@@ -60,7 +64,7 @@ async function pump() {
   } finally {
     if (canvas) canvas.width = canvas.height = 0;
     page?.cleanup(); record.renderTask = null; record.rendering = false; activeRenders--;
-    if (turn === generation && record.renderedZoom !== zoom && !record.failed) enqueue(record);
+    if (turn === generation && !record.failed && nearby(record) && (record.renderedZoom !== zoom || Math.abs((record.renderedWidth || 0)-width()*zoom)>0.5)) enqueue(record);
     void pump();
   }
 }
@@ -75,6 +79,7 @@ function refreshVisible() {
     if (pageBottom >= top - preload && pageTop <= bottom + preload) enqueue(record);
     else if (record.canvas && !record.rendering) { record.canvas.remove(); record.canvas.width = record.canvas.height = 0; record.canvas = null; record.renderedZoom = 0; record.message.hidden = false; record.message.textContent = `Page ${record.number}`; }
   }
+  renderQueue = renderQueue.filter(record => { if(nearby(record))return true; record.queued=false; return false; });
   if (nearest) currentPage = nearest.number;
   updateControls();
 }
@@ -101,8 +106,10 @@ async function openDocument(data) {
   try {
     await oldTask?.destroy();
     if (turn !== generation) return;
-    const target = new URL(data.url);
-    if (target.protocol !== 'https:' || !target.searchParams.has('access')) throw Error('This private link has expired. Reopen the material.');
+    const target = new URL(data.url, location.origin);
+    const localHost = hostname => ['localhost','127.0.0.1','[::1]'].includes(hostname);
+    const localDevelopment = location.protocol === 'http:' && localHost(location.hostname) && target.protocol === 'http:' && localHost(target.hostname);
+    if (target.protocol !== 'https:' && !localDevelopment || !target.searchParams.has('access')) throw Error('This private link has expired. Reopen the material.');
     document.title = data.title || 'Learning document';
     task = getDocument({ url: target.href, disableAutoFetch: true, disableStream: true, isEvalSupported: false, rangeChunkSize: 262144 });
     const result = await task.promise;

@@ -10,7 +10,7 @@ const jsx={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fr
 const theme=new Proxy({font:new Proxy({},{get:(_t,k)=>k}),motion:{screen:0}},{get:(target,k)=>target[k]??'#A8462E'});
 const nodes=value=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes([value.props?.children,value.props?.ListHeaderComponent,value.props?.ListFooterComponent])]:[];
 test('numbered pagination has a selected brand surface, labelled boundaries, and no redundant single-page control',()=>{
- const clicks=[],{Pagination}=load('mobile/src/components/pagination.tsx',{'react/jsx-runtime':jsx,'react-native':{Pressable:'Pressable',Text:'Text',View:'View'},'@expo/vector-icons':{Ionicons:'Icon'},'@/src/lib/appearance':{useAppearance:()=>({theme})},'@/src/lib/pagination':paging});
+ const clicks=[],{Pagination}=load('mobile/src/components/pagination.tsx',{'react/jsx-runtime':jsx,'react-native':{Pressable:'Pressable',Text:'Text',View:'View',useWindowDimensions:()=>({width:390})},'@expo/vector-icons':{Ionicons:'Icon'},'@/src/lib/appearance':{useAppearance:()=>({theme})},'@/src/lib/pagination':paging});
  assert.equal(Pagination({page:1,pageSize:24,total:24,totalPages:1,onChange:()=>{}}),null);
  const render=(page,disabled=false)=>nodes(Pagination({page,pageSize:24,total:2400,totalPages:100,label:'Products',disabled,onChange:n=>clicks.push(n)}));
  const first=render(1),selected=first.find(n=>n.props?.accessibilityLabel==='Products page 1');assert.equal(selected.props.accessibilityState.selected,true);assert.equal(selected.props.style({pressed:false})[1].backgroundColor,theme.deepBrand);
@@ -40,4 +40,15 @@ test('tutorials share 30 items per page across materials and sessions and reset 
 
 test('lesson titles never expose raw storage keys and preserve readable course names',()=>{
  const {learningTitle}=load('mobile/src/lib/learning-title.ts',{});assert.equal(learningTitle('9b885811bf026a1490c70076c25997c9.mp4','Lesson 2'),'Lesson 2');assert.equal(learningTitle('GET205_fluid-mechanics_pdf'),'GET205 fluid mechanics');assert.equal(learningTitle('Hydrostatics - worked examples.pdf'),'Hydrostatics - worked examples');
+});
+
+
+test('protected learning links resolve the web proxy and only allow insecure HTTP on local development hosts',()=>{
+ const {learningMediaUrl}=load('mobile/src/lib/learning-media-url.ts',{}, {URL});
+ assert.equal(learningMediaUrl('/api/v1/media/file?access=private','https://mobile.kampusone.app'),'https://mobile.kampusone.app/api/v1/media/file?access=private');
+ assert.equal(learningMediaUrl('https://media.example.invalid/file?access=private'),'https://media.example.invalid/file?access=private');
+ assert.equal(learningMediaUrl('http://localhost:8787/v1/media/file?access=private','http://localhost:8100'),'http://localhost:8787/v1/media/file?access=private');
+ assert.throws(()=>learningMediaUrl('http://localhost:8787/file'));
+ assert.throws(()=>learningMediaUrl('http://localhost:8787/file','https://mobile.kampusone.app'));
+ assert.throws(()=>learningMediaUrl('http://example.invalid/file','http://localhost:8100'));
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import { FlatList, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -13,6 +13,7 @@ import { ProfileAvatar } from '@/src/components/profile-avatar';
 import { VerifiedBadge } from '@/src/components/verified-badge';
 import { InlineLoading } from '@/src/components/skeleton';
 import { useAppearance } from '@/src/lib/appearance';
+import { learningMediaUrl } from '@/src/lib/learning-media-url';
 import { learningTitle } from '@/src/lib/learning-title';
 
 type Part = { mediaId: string; title: string };
@@ -50,8 +51,8 @@ export default function LearningViewer() {
     void (async () => {
       const media = video ? await api<{ kind: 'file' | 'embed'; url?: string }>(`/v1/tutorial-storage/playback/${part.mediaId}`, { method: 'POST', signal: controller.signal }) : { kind: 'file' as const };
       const url = media.kind === 'embed' ? media.url : (await api<{ url: string }>(`/v1/media/${part.mediaId}/access`, { method: 'POST', signal: controller.signal })).url;
-      if (!url || !/^https:\/\//.test(url)) throw new Error('This material is unavailable. Try again to refresh your access.');
-      if (!controller.signal.aborted) setPlayback({ url, kind: media.kind });
+      const safeUrl = learningMediaUrl(url, Platform.OS === 'web' ? window.location.origin : undefined);
+      if (!controller.signal.aborted) setPlayback({ url: safeUrl, kind: media.kind });
     })().catch(caught => { if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : 'The file could not load.'); });
     return () => controller.abort();
   }, [part?.mediaId, canAccess, video, revision, resource?.id]);
