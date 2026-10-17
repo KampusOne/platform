@@ -38,6 +38,8 @@ type Item = {
   price_kobo?: number;
   image_url?: string | null;
   image_urls?: string[];
+  cover_url?: string | null;
+  access_model?: string;
   rider_earning_kobo?: number;
   commission_kobo?: number;
   fare_kobo?: number;
@@ -76,7 +78,7 @@ function AccountAgentDashboard() {
   const [code, setCode] = useState("");
   const [selected, setSelected] = useState<Item | null>(null);
   const [ridesSuspended, setRidesSuspended] = useState(false);
-  const mounted=useRef(true),readVersion=useRef(0);
+  const mounted=useRef(true),readVersion=useRef(0),deleteLock=useRef(false);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;readVersion.current++;};},[]);
   const load = useCallback(async () => {
     if (!role) return;
@@ -104,25 +106,45 @@ function AccountAgentDashboard() {
     setReady(true);
     setLoadError("");
   }, [role]);
-  async function deleteProduct(item:Item){
-    if(busy||role!=='VENDOR')return;
+  async function deleteListing(item:Item){
+    if(!mounted.current||busy||deleteLock.current||temporarilySuspended||!['VENDOR','TUTOR'].includes(role??''))return;
+    deleteLock.current=true;
     setBusy(true);
+    const product=role==='VENDOR',noun=product?'Product':item.resource_type?'Material':'Tutorial';
     try{
-      try{await api('/v1/agents/products/'+encodeURIComponent(item.id)+'/status',{method:'PATCH',body:JSON.stringify({status:'ARCHIVED'})});}
+      try{
+        await api('/v1/agents/'+(product?'products/':item.resource_type?'tutorial-resources/':'tutorials/')+encodeURIComponent(item.id)+(product?'/status':''),
+          product?{method:'PATCH',body:JSON.stringify({status:'ARCHIVED'})}:{method:'DELETE'});
+      }
       catch(error){
-        const fresh=await api<{products:Item[]}>('/v1/agents/products',{cache:'reload'}).catch(()=>null);
+        const fresh=await api<{products?:Item[];resources?:Item[];listings?:Item[]}>('/v1/agents/'+(product?'products':'tutorials'),{cache:'reload'}).catch(()=>null);
         if(!mounted.current)return;
-        if(!Array.isArray(fresh?.products)||fresh.products.some(p=>p.id===item.id))throw error;
+        const remaining=product?fresh?.products:item.resource_type?fresh?.resources:fresh?.listings;
+        if(!Array.isArray(remaining)||remaining.some(p=>p.id===item.id))throw error;
       }
       if(!mounted.current)return;
-      readVersion.current++;setItems(current=>current.filter(p=>p.id!==item.id));toast('Product deleted','success');
-    }catch(error){if(mounted.current)toast(error instanceof Error?error.message:'Product could not be deleted.','error');}
-    finally{if(mounted.current)setBusy(false);}
+      readVersion.current++;setItems(current=>current.filter(p=>p.id!==item.id||p.resource_type!==item.resource_type));toast(noun+' deleted','success');
+    }catch(error){if(mounted.current)toast(error instanceof Error?error.message:noun+' could not be deleted.','error');}
+    finally{deleteLock.current=false;if(mounted.current)setBusy(false);}
   }
   function confirmDelete(item:Item){
-    Alert.alert('Delete product?',`Remove ${item.name??'this product'} from your listings and marketplace?`,[
-      {text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>void deleteProduct(item)},
+    const product=role==='VENDOR',noun=product?'product':item.resource_type?'material':'tutorial';
+    Alert.alert(`Delete ${noun}?`,`Remove “${item.name??item.title??'this '+noun}” from your listings? Existing purchases and bookings are kept.`,[
+      {text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>void deleteListing(item)},
     ]);
+  }
+  function editListing(item: Item) {
+    if (role === 'VENDOR') router.push({ pathname: '/agent-create', params: { role: 'VENDOR', id: item.id } });
+    else router.push({ pathname: '/tutor-edit', params: { id: item.id, kind: item.resource_type ? 'resource' : 'tutorial' } });
+  }
+  function openListing(item: Item) {
+    if (role === 'VENDOR') {
+      if (item.status === 'PUBLISHED') router.push({ pathname: '/(tabs)/store', params: { product: item.id } });
+      else editListing(item);
+    } else if (item.resource_type) {
+      if (item.status === 'PUBLISHED') router.push({ pathname: '/learning-preview', params: { id: item.id } });
+      else editListing(item);
+    } else router.push({ pathname: '/tutorial-manage', params: { id: item.id } });
   }
   useFocusEffect(
     useCallback(() => {
@@ -331,6 +353,7 @@ function AccountAgentDashboard() {
         </View>
       )}
       {role==='RIDER'&&rideTab==='AVAILABLE'?items.filter(i=>i.status==='AVAILABLE').map(i=><ToolButton key={'route-'+i.id} secondary disabled={busy} label={`Review pickup route · ${i.vendor_name??i.pickup_location??i.zone_name??'Available ride'}`} onPress={()=>void reviewPickup(i)}/>):null}
+      {profile&&!ready&&!loadError?<ScreenSkeleton variant="list" compact/>:null}
       {ready && !items.length && !loadError ? (
         <EmptyResult
           title={
@@ -356,23 +379,27 @@ function AccountAgentDashboard() {
         )
         .map((item) => (
           <View
-            key={item.id}
+            key={(item.resource_type?'resource:':'listing:')+item.id}
             style={{
               paddingVertical: 18,
               borderBottomWidth: 1,
               borderColor: theme.border,
             }}
           >
-            {role==='VENDOR'?<View style={{flexDirection:'row',alignItems:'center',gap:12}}>
-              {item.image_urls?.[0]||item.image_url?<MediaImage uri={item.image_urls?.[0]||item.image_url!} accessibilityLabel={`${item.name??'Product'} cover photo`} style={{width:64,height:64,borderRadius:12}}/>:
-                <View accessibilityLabel="No product photo" style={{width:64,height:64,borderRadius:12,backgroundColor:theme.surfaceMuted,alignItems:'center',justifyContent:'center'}}><Ionicons name="image-outline" size={25} color={theme.textMuted}/></View>}
+            {role==='VENDOR'||role==='TUTOR'?<View style={{flexDirection:'row',alignItems:'center',gap:4}}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.name??item.title??'listing'}`} disabled={Boolean(item.resource_type)&&!['PUBLISHED','DRAFT','REJECTED'].includes(item.status)} onPress={()=>openListing(item)} style={{flex:1,minWidth:0,flexDirection:'row',alignItems:'center',gap:12,paddingVertical:2}}>
+              {item.cover_url||item.image_urls?.[0]||item.image_url?<MediaImage uri={item.cover_url||item.image_urls?.[0]||item.image_url!} accessibilityLabel={`${item.name??item.title??'Listing'} cover photo`} resizeMode="cover" style={{width:72,height:72,borderRadius:12}}/>:
+                <View accessibilityLabel={role==='VENDOR'?'No product photo':'No cover photo'} style={{width:72,height:72,borderRadius:12,backgroundColor:theme.surfaceMuted,alignItems:'center',justifyContent:'center'}}><Ionicons name={role==='VENDOR'?'image-outline':item.resource_type==='VIDEO'?'play-circle-outline':item.resource_type==='AUDIOBOOK'?'headset-outline':item.resource_type?'document-text-outline':'school-outline'} size={25} color={theme.textMuted}/></View>}
               <View style={{flex:1,minWidth:0,gap:6}}>
-                <Text numberOfLines={2} style={{fontFamily:theme.font.semibold,color:theme.text,fontSize:16}}>{item.name}</Text>
-                <Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12}}>{item.status.replaceAll('_',' ')} · {money(Number(item.price_kobo??0))}</Text>
+                <Text numberOfLines={2} style={{fontFamily:theme.font.semibold,color:theme.text,fontSize:16}}>{item.name??item.title}</Text>
+                <Text numberOfLines={1} style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:12}}>{item.status.replaceAll('_',' ').toLowerCase().replace(/^./,value=>value.toUpperCase())}{item.resource_type?' · '+(item.resource_type==='PAST_QUESTION'?'Past questions':item.resource_type==='AUDIOBOOK'?'Audiobook':item.resource_type==='NOTE'?'Notes':item.resource_type==='VIDEO'?'Video':item.resource_type):''}</Text>
+                <Text style={{fontFamily:theme.font.semibold,color:theme.deepBrand,fontSize:13}}>{item.access_model==='BOOKING_INCLUDED'?'Included with booking':role==='TUTOR'&&Number(item.price_kobo??0)===0?'Free':money(Number(item.price_kobo??0))}</Text>
               </View>
-              <HeaderMenu label={`Options for ${item.name??'product'}`} items={[
-                {label:'Edit product',icon:'create-outline',disabled:busy,onPress:()=>router.push({pathname:'/agent-create',params:{role:'VENDOR',id:item.id}})},
-                {label:'Delete product',icon:'trash-outline',disabled:busy,onPress:()=>confirmDelete(item)},
+              </Pressable>
+              <HeaderMenu label={`Options for ${item.name??item.title??'listing'}`} items={[
+                {label:role==='VENDOR'?'Edit product':item.resource_type?'Edit material':'Edit tutorial',icon:'create-outline',disabled:busy||temporarilySuspended||!['DRAFT','REJECTED','PAUSED','PUBLISHED'].includes(item.status),onPress:()=>editListing(item)},
+                ...(role==='TUTOR'&&!item.resource_type?[{label:'Manage sessions & bookings',icon:'calendar-outline' as const,onPress:()=>router.push({pathname:'/tutorial-manage',params:{id:item.id}})}]:[]),
+                {label:role==='VENDOR'?'Delete product':item.resource_type?'Delete material':'Delete tutorial',icon:'trash-outline',destructive:true,disabled:busy||temporarilySuspended,onPress:()=>confirmDelete(item)},
               ]}/>
             </View>:<Text
               style={{
@@ -387,7 +414,6 @@ function AccountAgentDashboard() {
                 item.title ??
                 item.zone_name}
             </Text>}
-            {role==='TUTOR'?<ToolButton secondary label={item.resource_type?"View material":"View bookings"} onPress={()=>item.resource_type?router.push({pathname:'/learning-preview',params:{id:item.id}}):router.push("/tutor-learners")}/>:null}
             {role === 'RIDER' && item.pickups?.map((stop,index)=><View key={index} style={{padding:14,gap:7,marginTop:10,borderWidth:1,borderColor:theme.border,borderRadius:12}}><Text style={{color:theme.text,fontFamily:theme.font.semibold}}>{index+1}. {stop.vendor_name}</Text><Text style={{color:theme.textMuted}}>{stop.address}</Text>{stop.items?.map((line,n)=><Text key={n} style={{color:theme.text}}>{line.quantity} × {line.name}</Text>)}{stop.phone?<ToolButton secondary label="Call vendor" onPress={()=>void Linking.openURL('tel:'+stop.phone)}/>:null}{stop.whatsapp?<ToolButton secondary label="WhatsApp vendor" onPress={()=>void Linking.openURL('https://wa.me/'+stop.whatsapp!.replace(/\D/g,''))}/>:null}</View>)}
             {role === "RIDER" && (
               <View style={{ gap: 6, marginVertical: 8 }}>
@@ -464,19 +490,7 @@ function AccountAgentDashboard() {
                 ) : null}
               </View>
             ) : null}
-            {role === "TUTOR" && !item.resource_type ? (
-              <ToolButton
-                secondary
-                label="Manage tutorial"
-                onPress={() =>
-                  router.push({
-                    pathname: "/tutorial-manage",
-                    params: { id: item.id },
-                  })
-                }
-              />
-            ) : null}
-            {role!=='VENDOR'?<Text
+            {role==='RIDER'?<Text
               style={{
                 fontFamily: theme.font.body,
                 color: theme.textMuted,
