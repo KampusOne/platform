@@ -124,7 +124,7 @@ try {
     assert.equal(await s.page.getByRole('img', { name: 'Verified vendor', exact: true }).count(), 1);
     assert.equal(await s.page.getByRole('button', { name: "View Legacy brand's vendor profile", exact: true }).count(), 1);
     await s.page.screenshot({ path: resolve(evidence, `campus-brands-${width}.png`) });
-    if (width === 360) await tile.locator('img').click();
+    if (width === 360) await tile.click({ position: { x: 48, y: 34 } });
     else await tile.getByText(brand.display_name, { exact: true }).click();
     await s.page.waitForURL(url => url.pathname === '/student-service' && url.searchParams.get('id') === vendorId);
     await s.page.getByText('Vendor profile', { exact: true }).waitFor();
