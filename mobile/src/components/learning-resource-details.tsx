@@ -102,7 +102,7 @@ export function LearningResourceDetails({ resource }: { resource: LearningResour
     } });
   }
 
-  return <ToolPage title="Resource details"
+  return <ToolPage title="Resource"
     action={<View style={styles.headerActions}>
       <Pressable accessibilityRole="button" accessibilityLabel={saved ? "Remove from saved resources" : "Save resource"}
         accessibilityState={{ selected: saved, disabled: saving, busy: saving }} disabled={saving} onPress={() => void toggleSaved()}

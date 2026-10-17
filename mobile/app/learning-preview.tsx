@@ -44,7 +44,7 @@ export default function LearningPreview() {
   if (result?.scope === scope && !loading && !error) {
     return <LearningResourceDetails key={scope} resource={result.resource} />;
   }
-  return <ToolPage title="Resource details">
+  return <ToolPage title="Resource">
     {error && !loading ? <>
       <Text accessibilityRole="alert" style={{ color: theme.text, fontFamily: theme.font.body }}>{error}</Text>
       <ToolButton label="Retry" onPress={() => setRetry(n => n + 1)} />

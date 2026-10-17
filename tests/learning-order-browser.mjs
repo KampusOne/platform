@@ -83,6 +83,9 @@ try {
     await s.page.getByRole('button', { name: 'Remove from saved resources', exact: true }).waitFor(); assert.equal(s.saves, 1);
     await s.page.getByRole('button', { name: 'Remove from saved resources', exact: true }).click();
     await s.page.getByRole('button', { name: 'Save resource', exact: true }).waitFor(); assert.equal(s.saves, 2);
+    await s.page.getByRole('button', { name: 'Dismiss notification', exact: true }).click();
+    await s.page.getByRole('button', { name: 'Dismiss notification', exact: true }).waitFor({ state: 'hidden' });
+    await s.page.getByRole('button', { name: 'Go back', exact: true }).scrollIntoViewIfNeeded();
     await s.page.screenshot({ path: resolve(evidence, `resource-${width}.png`) });
     await s.page.getByText('Attach the full file in Kira to study the whole resource.', { exact: true }).scrollIntoViewIfNeeded();
     assert.equal(Math.round((await openButton.boundingBox()).y), Math.round(before.y), 'Primary action moved with page content');
