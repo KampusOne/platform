@@ -2208,7 +2208,7 @@
       "sources": [
         {
           "file": "server/src/routes/public-badges.ts",
-          "line": 34
+          "line": 35
         }
       ],
       "classification": "mutation",
@@ -6515,7 +6515,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 436
+          "line": 438
         }
       ],
       "classification": "mutation",
@@ -6533,7 +6533,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 811
+          "line": 813
         }
       ],
       "classification": "mutation",
@@ -6551,7 +6551,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 707
+          "line": 709
         }
       ],
       "classification": "mutation",
@@ -6569,7 +6569,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 674
+          "line": 676
         }
       ],
       "classification": "mutation",
@@ -6587,7 +6587,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 781
+          "line": 783
         }
       ],
       "classification": "mutation",
@@ -6605,7 +6605,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 736
+          "line": 738
         }
       ],
       "classification": "mutation",
@@ -6623,7 +6623,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 477
+          "line": 479
         }
       ],
       "classification": "mutation",
@@ -6641,7 +6641,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 455
+          "line": 457
         }
       ],
       "classification": "mutation",
@@ -6659,7 +6659,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 343
+          "line": 345
         }
       ],
       "classification": "volatile",
@@ -6677,7 +6677,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 290
+          "line": 292
         }
       ],
       "classification": "mutation",
@@ -7706,7 +7706,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 649
+          "line": 652
         },
         {
           "file": "server/src/routes/student.ts",
@@ -7728,7 +7728,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 588
+          "line": 591
         }
       ],
       "classification": "mutation",
@@ -7750,7 +7750,7 @@
         },
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 481
+          "line": 484
         }
       ],
       "classification": "private-display",
@@ -7772,7 +7772,7 @@
         },
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 532
+          "line": 535
         }
       ],
       "classification": "mutation",
@@ -7844,7 +7844,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 640
+          "line": 643
         }
       ],
       "classification": "mutation",
@@ -7862,7 +7862,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 615
+          "line": 618
         }
       ],
       "classification": "mutation",
@@ -7898,7 +7898,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 462
+          "line": 465
         },
         {
           "file": "server/src/routes/feed-posts.ts",
@@ -7928,7 +7928,7 @@
         },
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 293
+          "line": 296
         },
         {
           "file": "server/src/routes/feed-posts.ts",
@@ -8026,7 +8026,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 78
+          "line": 79
         }
       ],
       "classification": "private-display",
@@ -8088,7 +8088,7 @@
         },
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 200
+          "line": 203
         },
         {
           "file": "server/src/routes/student.ts",
@@ -8110,7 +8110,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 299
+          "line": 302
         },
         {
           "file": "server/src/routes/student.ts",
@@ -8240,7 +8240,7 @@
       "sources": [
         {
           "file": "server/src/routes/public-badges.ts",
-          "line": 65
+          "line": 66
         },
         {
           "file": "server/src/routes/student.ts",

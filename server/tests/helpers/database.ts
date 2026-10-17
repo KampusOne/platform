@@ -57,6 +57,7 @@ export const unifiedMigrations = [
   "20261009120000_class_alarm_daily_mute.sql",
   "20261015110000_exclusive_agent_roles.sql",
   "20261017120000_campus_release.sql",
+  "20261017183000_alumni_public_badges.sql",
 ];
 
 /** Schema only. No production rows, passwords or provider credentials. */

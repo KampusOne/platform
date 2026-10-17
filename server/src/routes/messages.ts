@@ -185,6 +185,8 @@ messageRoutes.get("/inbox", async (c) => {
         t.initiator_id,
         t.recipient_id,
         t.updated_at,
+        (select m.id from public.direct_messages m where m.thread_id=t.id and m.unsent_at is null order by m.created_at desc,m.id desc limit 1) as last_message_id,
+        (select m.sender_id from public.direct_messages m where m.thread_id=t.id and m.unsent_at is null order by m.created_at desc,m.id desc limit 1) as last_sender_id,
         p.user_id,
         p.display_name,
         p.profile_image_url,

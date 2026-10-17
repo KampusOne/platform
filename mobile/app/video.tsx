@@ -482,7 +482,7 @@ export default function VideoViewerScreen() {
             <View style={styles.authorCopy}>
               <View style={styles.nameRow}>
                 <Text numberOfLines={1} style={[styles.authorName, { fontFamily: theme.font.semibold }]}>{post.source_name}</Text>
-                {post.source_verified ? <VerifiedBadge size={15} /> : null}
+                {post.source_verified ? <VerifiedBadge kind={post.source_badge_kind} size={15} /> : null}
               </View>
               {post.source_username ? <Text numberOfLines={1} style={[styles.username, { fontFamily: theme.font.body }]}>@{post.source_username}</Text> : null}
             </View>

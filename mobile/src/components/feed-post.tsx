@@ -297,7 +297,7 @@ export const FeedPost = memo(function FeedPost({ post: unsafePost, onBookmark, o
           <View style={styles.sourceCopy}>
             <View style={styles.sourceNameRow}>
               <Text accessibilityLabel={`${post.source_name}${post.source_verified ? ", verified" : ""}`} numberOfLines={1} style={styles.sourceName}>{post.source_name}</Text>
-              {post.source_verified ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><VerifiedBadge size={13} /></View> : null}
+              {post.source_verified ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><VerifiedBadge kind={post.source_badge_kind} size={13} /></View> : null}
               {!detail ? <><Text style={styles.postTime}>·</Text><RelativeTime value={post.published_at} style={styles.postTime} /></> : null}
             </View>
             {detail ? <RelativeTime value={post.published_at} style={styles.postTime} /> : null}

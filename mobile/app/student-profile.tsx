@@ -19,7 +19,7 @@ import { FeedSkeleton, ProfileSkeleton } from "@/src/components/skeleton";
 import { useToast } from "@/src/components/toast";
 import { shareItem } from "@/src/lib/share-content";
 
-type Person={can_block?:boolean;post_notifications_enabled?:boolean;cgpa?:number|string|null;user_id:string;display_name:string;username:string|null;biography:string|null;profile_image_url:string|null;cover_image_url:string|null;university_name:string|null;department_name:string|null;current_level:number|null;verified:boolean;can_view_reposts?:boolean;follower_count:number;following_count:number;post_count:number;followed:boolean;has_events:boolean};
+type Person={can_block?:boolean;post_notifications_enabled?:boolean;cgpa?:number|string|null;user_id:string;display_name:string;username:string|null;biography:string|null;profile_image_url:string|null;cover_image_url:string|null;university_name:string|null;department_name:string|null;current_level:number|null;verified:boolean;badge_kind?:string|null;can_view_reposts?:boolean;follower_count:number;following_count:number;post_count:number;followed:boolean;has_events:boolean};
 type PersonResponse={profile:Person;roles:{id:string;agent_type:"VENDOR"|"TUTOR"|"RIDER"}[];isOwner:boolean};
 type Page={posts:SocialFeedPost[];nextCursor?:string|null};
 function safeProfilePage(value: unknown): SocialFeedPost[] {
@@ -57,7 +57,7 @@ function normalizePersonResponse(value: unknown): PersonResponse | null {
       university_name: nullable(p.university_name),
       department_name: nullable(p.department_name),
       current_level: Number.isFinite(Number(p.current_level)) ? Number(p.current_level) : null,
-      verified: p.verified === true,
+      verified: p.verified === true, badge_kind: typeof p.badge_kind === "string" ? p.badge_kind : "STANDARD",
       follower_count: number(p.follower_count),
       following_count: number(p.following_count),
       post_count: number(p.post_count),
@@ -133,7 +133,7 @@ export default function StudentProfile(){
         <View>{person.cover_image_url?<Pressable accessibilityRole="button" accessibilityLabel="View cover photo" onPress={()=>setPhotoView({uri:person.cover_image_url!,label:`${person.display_name}'s cover photo`})}><MediaImage uri={person.cover_image_url} accessibilityLabel={`${person.display_name}'s cover photo`} resizeMode="cover" style={{width:"100%",height:170}}/></Pressable>:<View style={{height:150,backgroundColor:theme.sand}}/>}{!data?.isOwner?<View style={{position:"absolute",top:12,right:14}}><ProfileActions userId={target} name={person.display_name} canBlock={person.can_block!==false} notifications={person.post_notifications_enabled===true} onChanged={()=>void load()}/></View>:null}</View>
         <View style={{paddingHorizontal:18,paddingBottom:16}}>
           <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"flex-end",marginTop:-38}}><Pressable accessibilityRole="button" accessibilityLabel="View profile photo" disabled={!person.profile_image_url} onPress={()=>setPhotoView({uri:person.profile_image_url!,label:`${person.display_name}'s profile photo`})} style={{padding:4,borderRadius:50,backgroundColor:theme.canvas}}><ProfileAvatar name={person.display_name} imageUrl={person.profile_image_url} size={80}/></Pressable><View style={{paddingBottom:4,flexDirection:"row",gap:7}}>{!data?.isOwner?button("Message",()=>void message(),messaging,true):null}{data?.isOwner?button("Edit profile",()=>router.push("/account-edit")):<Animated.View style={{transform:[{scale:followScale}]}}>{button(person.followed?"Following ✓":"Follow",()=>void toggleFollow(),following,person.followed)}</Animated.View>}</View></View>
-          <View style={{flexDirection:"row",alignItems:"center",gap:5,marginTop:12}}><Text style={{...label,fontFamily:theme.font.display,fontSize:23}}>{person.display_name}</Text>{person.verified?<VerifiedBadge size={16}/>:null}</View>
+          <View style={{flexDirection:"row",alignItems:"center",gap:5,marginTop:12}}><Text style={{...label,fontFamily:theme.font.display,fontSize:23}}>{person.display_name}</Text>{person.verified?<VerifiedBadge kind={person.badge_kind} size={16}/>:null}</View>
           <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between"}}>{person.username?<Text style={{...label,color:theme.textMuted,marginTop:3}}>@{person.username}</Text>:<View/>}<Pressable accessibilityRole="button" accessibilityLabel="Share this profile" onPress={()=>void shareItem("profile",target,person.display_name).catch(()=>toast("Sharing could not open.","error"))} style={{minHeight:44,minWidth:44,alignItems:"center",justifyContent:"center"}}><Ionicons name="share-outline" size={21} color={theme.brand}/></Pressable></View>
           {person.biography?<Text selectable style={{...label,lineHeight:21,marginTop:13}}>{person.biography}</Text>:null}
           <Text style={{...label,color:theme.textMuted,fontSize:12,lineHeight:19,marginTop:10}}>{[person.university_name,person.department_name,person.current_level?`${person.current_level} level`:null].filter(Boolean).join(" · ")}</Text>

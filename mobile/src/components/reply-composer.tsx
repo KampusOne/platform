@@ -25,14 +25,15 @@ function keep(key: string, draft: Draft) {
   if (draft.body || draft.photo) drafts.set(key, draft); else drafts.delete(key);
   while (drafts.size > 30) drafts.delete(drafts.keys().next().value!);
 }
-export function ReplyComposer({ post, parent, initialPhoto, onClose, onSent }: {
+export function ReplyComposer({ post, parent, initialPhoto, replyPath, onClose, onSent }: {
   post: SocialFeedPost; parent?: FeedComment | null | undefined; initialPhoto?: UploadedFile | null | undefined;
-  onClose(): void; onSent(comment: FeedComment): void;
+  replyPath?: string;
+  onClose(): void; onSent(comment?: FeedComment): void;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
   const keyboardViewport = useWebKeyboardViewport();
   const { user, profile } = useAuth();
-  const key = `${user?.id ?? "anonymous"}:${post.id}:${parent?.id ?? "root"}`;
+  const key = `${user?.id ?? "anonymous"}:${replyPath ?? post.id}:${parent?.id ?? "root"}`;
   const [draft, setDraft] = useState<Draft>(() => {
     const saved = drafts.get(key) ?? { body: "", photo: null, requestId: randomUUID() };
     return initialPhoto ? { ...saved, photo: initialPhoto, requestId: randomUUID() } : saved;
@@ -65,8 +66,8 @@ export function ReplyComposer({ post, parent, initialPhoto, onClose, onSent }: {
     if (!canSend || lock.current) return;
     lock.current = true; setBusy(true); setError("");
     try {
-      const result = await api<{ comment: FeedComment }>(commentsPath(post.id), { method: "POST", body: JSON.stringify({ body: draft.body.trim(), requestId: draft.requestId, ...(draft.photo ? { mediaId: draft.photo.id } : {}), ...(parent ? { parentCommentId: parent.id } : {}) }) });
-      if (alive.current) { drafts.delete(key); onSent(result.comment); onClose(); }
+      const result = await api<{ comment: FeedComment }>(replyPath ?? commentsPath(post.id), { method: "POST", body: JSON.stringify({ body: draft.body.trim(), requestId: draft.requestId, ...(draft.photo ? { mediaId: draft.photo.id } : {}), ...(parent ? { parentCommentId: parent.id } : {}) }) });
+      if (alive.current) { drafts.delete(key); onSent(replyPath ? undefined : result.comment); onClose(); }
     } catch (caught) { if (alive.current) setError(caught instanceof Error ? caught.message : "Your reply was not confirmed. Your draft is still here; try again."); }
     finally { lock.current = false; if (alive.current) setBusy(false); }
   }
@@ -83,7 +84,7 @@ export function ReplyComposer({ post, parent, initialPhoto, onClose, onSent }: {
           <View style={styles.context}>
             <View style={styles.avatarRail}><ProfileAvatar name={authorName} imageUrl={authorImage} size={38} /><View style={styles.threadLine} /></View>
             <View style={styles.contextCopy}>
-              <View style={styles.nameRow}><Text numberOfLines={1} style={styles.name}>{authorName}</Text>{authorVerified ? <VerifiedBadge size={13} /> : null}<Text style={styles.muted}>·</Text><RelativeTime value={parent?.created_at ?? post.published_at} style={styles.muted} /></View>
+              <View style={styles.nameRow}><Text numberOfLines={1} style={styles.name}>{authorName}</Text>{authorVerified ? <VerifiedBadge kind={parent ? parent.author_badge_kind : post.source_badge_kind} size={13} /> : null}<Text style={styles.muted}>·</Text><RelativeTime value={parent?.created_at ?? post.published_at} style={styles.muted} /></View>
               {contextBody ? <Text style={styles.contextBody}>{contextBody}</Text> : null}
               {(parent ? parent.image_url : post.image_url) ? <Image accessible accessibilityLabel="Original attachment" source={{ uri: (parent ? parent.image_url : post.image_url)! }} style={styles.contextPhoto} resizeMode="cover" /> : null}
               <Text style={styles.replying}>Replying to <Text style={styles.replyingName}>{authorName}</Text></Text>

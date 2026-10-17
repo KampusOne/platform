@@ -1,0 +1,48 @@
+{
+  "environment": "production",
+  "projectId": "rough-breeze-36415261",
+  "branchId": "br-quiet-butterfly-ayrj264q",
+  "database": "neondb",
+  "approval": {
+    "productionMigrationApproved": true,
+    "at": "2026-10-17T16:53:28Z",
+    "basis": "User requested admin-assigned purple Alumni badges and feed-style community comments; prior release authorization continues."
+  },
+  "verifiedAt": "2026-10-17T17:04:02.617370+00:00",
+  "migrations": [
+    {
+      "version": "20261017183000_alumni_public_badges",
+      "sourceBlobSha": "d5aecded55a336901f4b8fd72c112b530e28e41e"
+    }
+  ],
+  "checks": {
+    "communityExperience": "passed",
+    "fixturesRolledBack": true,
+    "noProductionFixturesCreated": true,
+    "alumniPermissionAndConflictTests": 4,
+    "communityExistingRegressions": 7,
+    "scopedOperationsRegressions": 23,
+    "nativeConstraintAndRetryIndex": "passed",
+    "identityAndOrderDigestsPreserved": true
+  },
+  "rehearsal": {
+    "branchId": "br-mute-sunset-ayzh9xrc",
+    "parentBranchId": "br-quiet-butterfly-ayrj264q",
+    "freshProductionClone": false,
+    "mode": "Additive migration tested twice in local PostgreSQL-compatible API fixtures and installed on the existing native rehearsal branch before production."
+  },
+  "preserved": {
+    "profiles": 21,
+    "orders": 11,
+    "journals": 11,
+    "comments": 0,
+    "media": 196,
+    "identityDigest": "9f3046d11d962a6573d1d197721a4c90",
+    "orderDigest": "774580a9435b0c7eb7d1587e3ff76dd6"
+  },
+  "result": {
+    "badgeTypesAssignedAutomatically": 0,
+    "newProviderCalls": 0,
+    "bankPayouts": 0
+  }
+}

@@ -1,3 +1,4 @@
+import { startsReplySwipe, completesReplySwipe } from "@/src/lib/swipe-reply";
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -38,7 +39,7 @@ export function SwipeReplyMessage({
   const offset = useRef(new Animated.Value(0)).current;
   const crossed = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const direction = -1;
+
 
   useEffect(() => {
     let mounted = true;
@@ -69,13 +70,11 @@ export function SwipeReplyMessage({
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gesture) => {
-          if (disabled) return false;
-          const horizontal = Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.35;
-          const correctDirection = direction < 0 ? gesture.dx < 0 : gesture.dx > 0;
-          return horizontal && correctDirection;
+          return startsReplySwipe(gesture.dx, gesture.dy, disabled);
         },
+        onPanResponderGrant: () => { offset.stopAnimation(); crossed.current = false; },
         onPanResponderMove: (_, gesture) => {
-          const directed = direction < 0 ? Math.min(0, gesture.dx) : Math.max(0, gesture.dx);
+          const directed = Math.min(0, gesture.dx);
           const clamped = Math.max(-74, Math.min(74, directed));
           offset.setValue(clamped);
           const reached = Math.abs(clamped) >= 46;
@@ -87,9 +86,7 @@ export function SwipeReplyMessage({
           }
         },
         onPanResponderRelease: (_, gesture) => {
-          const reached = Math.abs(gesture.dx) >= 52;
-          const correctDirection = direction < 0 ? gesture.dx < 0 : gesture.dx > 0;
-          if (reached && correctDirection && !disabled) {
+          if (completesReplySwipe(gesture.dx, gesture.dy, disabled)) {
             if (Platform.OS !== "web") {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }
@@ -103,16 +100,19 @@ export function SwipeReplyMessage({
           reset();
         },
       }),
-    [direction, disabled, onReply, reduceMotion],
+    [disabled, onReply, reduceMotion],
   );
 
   return (
     <View style={styles.swipeShell}>
+      <Animated.View pointerEvents="none" style={[styles.replyCue, styles.replyCueOther, { opacity: offset.interpolate({ inputRange: [-52, -12, 0], outputRange: [1, 0, 0], extrapolate: "clamp" }) }]}><Ionicons name="arrow-undo" size={20} color={styles.replyCueIcon.color} /></Animated.View>
       <Animated.View
         {...responder.panHandlers}
         style={{ transform: [{ translateX: offset }] }}
       >
         <Pressable
+          accessibilityActions={disabled ? [] : [{ name: "reply", label: mine ? "Reply to your message" : "Reply to message" }]}
+          onAccessibilityAction={event => { if (event.nativeEvent.actionName === "reply" && !disabled) onReply(); }}
           delayLongPress={260}
           onLongPress={(event) => {
             if (disabled) return;
@@ -440,6 +440,7 @@ export function MessageActionOverlay({
 }
 
 const createStyles = (theme: Theme) => StyleSheet.create({
+  replyCueIcon: { color: theme.accentText },
   swipeShell: { position: "relative" },
   replyCue: {
     position: "absolute",

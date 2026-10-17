@@ -64,7 +64,8 @@ feedSocialRoutes.get("/mentions", requireAuth, async c => {
   const prefix = query.replace(/[\\%_]/g, "\\$&") + "%";
   const result = await database(c.env).execute(sql`
     select p.user_id,p.username,p.display_name,p.profile_image_url,
-      coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified
+      coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,
+      coalesce(to_jsonb(p)->>'public_badge_kind','STANDARD') as badge_kind
     from public.profiles p join public.users account on account.id=p.user_id
     where p.deleted_at is null and account.deleted_at is null and account.status::text='ACTIVE'
       and p.username is not null and p.university_id=${university}::uuid
@@ -129,6 +130,7 @@ function projection(user: User, withViews: boolean, withPublishing: boolean) {
     case when posts.audience->>'studentPost' = 'true' then nullif(author.username, '') else null end as source_username,
     case when posts.audience->>'studentPost' = 'true'
       then coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) else sources.verified end as source_verified,
+    case when posts.audience->>'studentPost'='true' then coalesce(to_jsonb(author)->>'public_badge_kind','STANDARD') else 'STANDARD' end as source_badge_kind,
     coalesce(posts.author_user_id = ${user.id}::uuid, false) as can_delete,
     case when posts.audience->>'visibility' = 'PUBLIC' then 'PUBLIC' else 'CAMPUS' end as visibility,
     true as social_enabled,
@@ -166,6 +168,7 @@ function projection(user: User, withViews: boolean, withPublishing: boolean) {
       'image_url', quoted.image_url, 'media_type', quoted.audience->>'mediaType', 'media', coalesce(quoted.audience->'media', '[]'::jsonb), 'published_at', quoted.published_at,
       'source_image_url', case when quoted.audience->>'studentPost' = 'true' then quoted_author.profile_image_url else null end,
       'source_name', case when quoted.audience->>'studentPost' = 'true' then coalesce(quoted_author.display_name, 'KampusOne student') else quoted_source.name end,
+      'source_badge_kind', case when quoted.audience->>'studentPost'='true' then coalesce(to_jsonb(quoted_author)->>'public_badge_kind','STANDARD') else 'STANDARD' end,
       'source_verified', case when quoted.audience->>'studentPost' = 'true' then coalesce((to_jsonb(quoted_author)->>'public_badge_verified')::boolean, quoted_author.verification_status::text='VERIFIED', false) else quoted_source.verified end
     ) end as quoted_post`;
 }
@@ -508,7 +511,7 @@ feedSocialRoutes.get("/:id/comments", requireAuth, async (c) => {
       to_char(comments.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at,
       case when comments.deleted_at is null then coalesce(author.display_name, 'KampusOne user') else 'Comment deleted' end as author_name,
       author.user_id as author_user_id, author.profile_image_url as author_image_url, author.username as author_username,
-      coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
+      coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,coalesce(to_jsonb(author)->>'public_badge_kind','STANDARD') as author_badge_kind,
       comments.deleted_at is null and comments.author_user_id = ${user.id}::uuid as can_delete,
       (select count(*)::int from public.feed_comments replies where replies.post_id = comments.post_id and replies.parent_comment_id = comments.id
         and ${unblockedAuthor(user.id, sql`replies.author_user_id`)}
@@ -572,7 +575,7 @@ feedSocialRoutes.post("/:id/comments", requireAuth, async (c) => {
     select saved.id, saved.body, saved.created_at, saved.parent_comment_id, false as is_deleted, true as can_delete,
       coalesce(author.display_name, 'KampusOne user') as author_name,
       author.user_id as author_user_id, author.profile_image_url as author_image_url, author.username as author_username,
-      coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,
+      coalesce((to_jsonb(author)->>'public_badge_verified')::boolean, author.verification_status::text='VERIFIED', false) as author_verified,coalesce(to_jsonb(author)->>'public_badge_kind','STANDARD') as author_badge_kind,
       (select count(*)::int from public.feed_comments replies where replies.post_id = ${postId}::uuid and replies.parent_comment_id = saved.id
         and ${unblockedAuthor(user.id, sql`replies.author_user_id`)}
         and (replies.deleted_at is null or exists(select 1 from public.feed_comments child where child.post_id = replies.post_id and child.parent_comment_id = replies.id
@@ -653,9 +656,10 @@ feedSocialRoutes.put("/:id/bookmark", requireAuth, async (c, next) => {
   const postAuthorVisible = unblockedAuthor(user.id, sql`posts.author_user_id`);
   const result = await database(c.env).execute(sql`
     with target as (select posts.id from public.feed_posts posts where posts.id = ${postId}::uuid and ${visiblePost(campus(user))} and ${postAuthorVisible} for update),
-    saved as (insert into public.feed_bookmarks(user_id, post_id) select ${user.id}::uuid, id from target on conflict do nothing)
-    select id from target
+    saved as (insert into public.feed_bookmarks(user_id, post_id) select ${user.id}::uuid, id from target on conflict do nothing returning post_id)
+    select id,exists(select 1 from saved) as created from target
   `);
   if (!firstRow(result)) throw new AppError(404, "NOT_FOUND", "This post is unavailable.");
+  if (firstRow(result)?.created) await notifyFeedInteraction(c.env, postId, user.id, "favourite");
   return c.json({ bookmarked: true });
 });
