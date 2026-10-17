@@ -49,7 +49,7 @@ jobs:
           curl --fail --silent --show-error --retry 2 --max-time 20 https://platformp.divine-haze-54eb.workers.dev/health/ready
           node mobile/scripts/check-campus-location.cjs
           node mobile/scripts/check-campus-map.cjs
-          node --experimental-strip-types --test tests/performance-regression.test.mjs tests/vendor-workspace-ui.test.mjs tests/marketplace-navigation.test.mjs tests/payment-return.test.mjs tests/native-payment-callback.test.mjs tests/native-push-registration.test.mjs
+          node --experimental-strip-types --test tests/performance-regression.test.mjs tests/vendor-workspace-ui.test.mjs tests/marketplace-navigation.test.mjs tests/campus-place-choice.test.mjs tests/payment-return.test.mjs tests/native-payment-callback.test.mjs tests/native-push-registration.test.mjs
       - name: Configure Android push credentials
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
@@ -153,7 +153,7 @@ jobs:
           set -euo pipefail
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$SOURCE_SHA"
           cat > /tmp/kampusone-android-release-notes.txt <<'NOTES'
-          Android 0.3.43 / build 73. Top campus brand photos and names open their business profiles, and verified accounts show the brand seal in the rail and profile. Adds cover-image rows and Edit/Delete menus for tutor materials and vendor products, tutor photos/names/verification on resource details, persisted bookmarks, a fixed Open/Buy button, and a cleaner order summary with expandable event history and compact reviews. Includes all performance, countdown, community, Alumni badge, message reply and notification changes from 0.3.41. Uses the existing signing identity. Agent withdrawals remain gated until Bachs Connect activation and bank-transfer verification.
+          Android 0.3.43 / build 73. Checkout now accepts in-app payment only, searches the full published campus directory, and offers rider delivery only when each seller has a pickup point. Top campus brand photos and names open their business profiles, and verified accounts show the brand seal in the rail and profile. Adds cover-image rows and Edit/Delete menus for tutor materials and vendor products, tutor photos/names/verification on resource details, persisted bookmarks, a fixed Open/Buy button, and a cleaner order summary with expandable event history and compact reviews. Includes all performance, countdown, community, Alumni badge, message reply and notification changes from 0.3.41. Uses the existing signing identity. Agent withdrawals remain gated until Bachs Connect activation and bank-transfer verification.
           NOTES
           gh release create android-0.3.43 \
             KampusOne-Android-0.3.43-arm64.apk \

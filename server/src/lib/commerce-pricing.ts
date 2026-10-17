@@ -272,15 +272,16 @@ export async function prepareStoreQuote(
     const [destination,position,pickup]=await Promise.all([mappedDeliveryPoint(env,user.universityId!,data.deliveryPlaceId),currentAgentPosition(env,data.vendorProfileId,user.universityId!),vendor.pickup_place_id?mappedDeliveryPoint(env,user.universityId!,vendor.pickup_place_id):Promise.resolve(null)]);
     if(zone.campus_id&&zone.campus_id!==destination.campus_id)throw new AppError(422,'BAD_REQUEST','Choose the delivery zone for your selected campus point.');
     if(pickup&&pickup.campus_id!==destination.campus_id)throw new AppError(422,'BAD_REQUEST','Cross-campus delivery is unavailable. Choose pickup.');
-    if(!position&&!pickup)throw new AppError(422,'BAD_REQUEST','The seller needs to save a pickup point or share their current campus location. You can still choose store pickup.');
+    if(!position&&!pickup)throw new AppError(409,'CONFLICT','Rider delivery is unavailable for this seller. Choose pickup instead.',{reason:'PICKUP_POINT_UNAVAILABLE'});
     const origin:[number,number]=position?[position.longitude,position.latitude]:[pickup!.longitude,pickup!.latitude];
     const route=await campusDeliveryRoute(env,user.universityId!,destination.campus_id,origin,[destination.longitude,destination.latitude]);
+    if(!route.notice&&(destination.entrance_verified===false||pickup?.entrance_verified===false))route.notice='Confirm the exact pickup and delivery entrance with the rider.';
     let totalDistance=route.distanceMetres;
     for(const vendorId of vendorIds.filter(id=>id!==data.vendorProfileId)) {
       const point=await currentAgentPosition(env,vendorId,user.universityId!);
       const store=firstRow(await database(env).execute<{pickup_place_id:string|null}>(sql`select pickup_place_id from public.vendor_storefronts where vendor_profile_id=${vendorId}::uuid`));
       const mapped=point?null:store?.pickup_place_id?await mappedDeliveryPoint(env,user.universityId!,store.pickup_place_id):null;
-      if(!point&&!mapped)throw new AppError(422,'BAD_REQUEST','A seller needs a mapped pickup point before a rider can collect this combined order. You can choose a KampusOne pickup point.');
+      if(!point&&!mapped)throw new AppError(409,'CONFLICT','Rider delivery is unavailable for one of these sellers. Choose a KampusOne pickup point instead.',{reason:'PICKUP_POINT_UNAVAILABLE'});
       const source=point??mapped!;
       totalDistance+=(await campusDeliveryRoute(env,user.universityId!,destination.campus_id,origin,[source.longitude,source.latitude])).distanceMetres;
     }

@@ -61,6 +61,7 @@ export type Product = {
   review_count?: number;
   vendor_name: string;
   pickup_enabled?: boolean;
+  rider_pickup_ready?: boolean;
   self_delivery_enabled?: boolean;
   pickup_location?: string;
   pickup_locations?:string[];
@@ -128,6 +129,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [riderDeliveryEnabled, setRiderDeliveryEnabled] = useState(false);
+  const [riderPickupUnavailable, setRiderPickupUnavailable] = useState(false);
   const [fulfilmentMode, setFulfilmentMode] = useState<
     "RIDER" | "PICKUP" | "VENDOR_DELIVERY"
   >("RIDER");
@@ -164,9 +166,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const [checkoutFields, setCheckoutFields] = useState<CheckoutFieldErrors>({});
   const checkoutScroll = useRef<ScrollView>(null);
   const checkoutFieldPositions = useRef<Record<string, number>>({});
-  const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<
-    "IN_APP" | "CASH"
-  >("IN_APP");
   const [reviewedQuote, setReviewedQuote] = useState<{
     payload: string;
     quote: CheckoutQuote;
@@ -224,6 +223,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
         ),
       );
       setRiderDeliveryEnabled(data.riderDeliveryEnabled === true);
+      setRiderPickupUnavailable(false);
       setCatalogueMode(mode);
       setCheckoutEnabled(data.checkoutEnabled ?? mode === "LIVE");
       setLoading(false);
@@ -297,11 +297,12 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   const selectedZone = zones.find((zone) => zone.id === selectedZoneId);
   const vendorProduct = cartItems[0]?.product;
   const multiVendor=new Set(cartItems.map(item=>item.product.vendor_profile_id)).size>1;
+  const riderReady = riderDeliveryEnabled && !riderPickupUnavailable && cartItems.length > 0 && cartItems.every(item=>item.product.rider_pickup_ready===true);
   const fulfilmentModes = (
     ["RIDER", "PICKUP"] as const
   ).filter((mode) =>
     mode === "RIDER"
-      ? riderDeliveryEnabled
+      ? riderReady
       : mode === "PICKUP"
         ? multiVendor || vendorProduct?.pickup_enabled
         : vendorProduct?.self_delivery_enabled,
@@ -334,8 +335,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     recipientName: recipientName.trim(),
     recipientPhoneE164: normalizeNigerianPhone(recipientPhone),
     deliveryLocation: effectiveMode === "PICKUP" ? null : deliveryLocation,
-    deliveryPaymentMethod:
-      effectiveMode === "RIDER" ? deliveryPaymentMethod : "IN_APP",
+    deliveryPaymentMethod: "IN_APP",
     deliveryZoneId: effectiveMode === "RIDER" ? selectedZone?.id : null,
     deliveryPlaceId: effectiveMode === "PICKUP" ? null : deliveryPlace,
     deliveryNote: orderNote || null,
@@ -492,6 +492,14 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
         params: { id: order.id, type: "STORE_ORDER", autoPay: '1' },
       });
     } catch (caught) {
+      if (caught instanceof ApiError && caught.details?.reason === 'PICKUP_POINT_UNAVAILABLE') {
+        setRiderPickupUnavailable(true);
+        setFulfilmentMode('PICKUP');
+        setReviewedQuote(null);
+        quoteRequest.current = { payload: '', id: '' };
+        setCheckoutError('');
+        return;
+      }
       if (caught instanceof ApiError) {
         const errors = checkoutServerFieldErrors(caught.details);
         setCheckoutFields(errors);
@@ -637,7 +645,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         <View style={styles.zoneCopy}>
                           <Text style={styles.zoneName}>
                             {mode === "RIDER"
-                              ? "Rider · Recommended"
+                              ? "Rider delivery"
                               : mode === "PICKUP"
                                 ? "Pick up at the store"
                                 : "Delivery by the vendor"}
@@ -666,6 +674,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         />
                       </Pressable>
                     ))}
+                    {riderDeliveryEnabled && !riderReady ? <View accessibilityLabel="Rider delivery unavailable" style={[styles.zone,{opacity:0.7}]}><View style={styles.zoneCopy}><Text style={styles.zoneName}>Rider delivery unavailable</Text><Text style={styles.zoneFee}>{fulfilmentModes.includes('PICKUP')?'Choose pickup while the seller confirms a collection point.':'Contact the vendor to arrange a collection point.'}</Text></View><Ionicons name="bicycle-outline" size={22} color={theme.textMuted}/></View>:null}
                   </View>
                   {(effectiveMode === "PICKUP" || effectiveMode === "RIDER") && vendorProduct ? (
                     <View style={styles.pickupDetails}>
@@ -678,7 +687,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                       </Text>
                       <Text style={styles.pickupHelp}>
                         {effectiveMode === "RIDER"
-                          ? "Your rider collects from the vendor’s verified pickup point. The route is reviewed before you confirm."
+                          ? "Your rider collects from the vendor’s saved pickup point. Review the route and total before you confirm."
                           : "Collect from this address, or use a meeting point already agreed with the vendor."}
                       </Text>
                       <Pressable disabled={busy} accessibilityRole="button" onPress={()=>void contactVendor()} style={styles.vendorContact}>
@@ -806,7 +815,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         label="Delivery point on the campus map"
                         value={deliveryPlace}
                         onChange={setDeliveryPlace}
-                        onSelect={place=>{setDeliveryLocation(place.name);clearCheckoutField('deliveryLocation');if(place.delivery_zone_id)setSelectedZoneId(place.delivery_zone_id);else if(zones.length===1&&zones[0])setSelectedZoneId(zones[0].id);setCheckoutError('');}}
+                        onSelect={place=>{setDeliveryLocation(place.name);clearCheckoutField('deliveryLocation');setSelectedZoneId(place.delivery_zone_id??'');setCheckoutError('');}}
                       />
                     </>
                   ) : null}
@@ -832,37 +841,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                   />
                   {orderNote.length > 500 ? <Text accessibilityRole="alert" style={styles.checkoutErrorText}>Keep the meeting point and note within 500 characters.</Text> : null}
 
-                  {effectiveMode === "RIDER" ? (
-                    <View style={{ marginVertical: 16 }}>
-                      <Text style={styles.sectionLabel}>
-                        Pay the rider fare
-                      </Text>
-                      <View style={styles.zoneList}>
-                        {(["IN_APP", "CASH"] as const).map((method) => (
-                          <Pressable
-                            key={method}
-                            accessibilityRole="radio"
-                            accessibilityState={{
-                              selected: deliveryPaymentMethod === method,
-                            }}
-                            disabled={busy}
-                            onPress={() => setDeliveryPaymentMethod(method)}
-                            style={[
-                              styles.zone,
-                              method === deliveryPaymentMethod &&
-                                styles.zoneSelected,
-                            ]}
-                          >
-                            <Text style={styles.zoneName}>
-                              {method === "IN_APP"
-                                ? "In app"
-                                : "Cash at delivery"}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
-                  ) : null}
                   <View style={styles.totals}>
                     <View style={styles.totalRow}>
                       <Text style={styles.totalLabel}>Items</Text>
@@ -898,14 +876,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         <Text style={styles.totalValue}>{validQuote.pricing.pricingAdjustmentKobo < 0 ? "−" : "+"}{naira(Math.abs(validQuote.pricing.pricingAdjustmentKobo))}</Text>
                       </View>
                     ) : null}
-                    {effectiveMode === "RIDER" &&
-                    deliveryPaymentMethod === "CASH" ? (
-                      <Text style={styles.totalLabel}>
-                        Pay {validQuote ? naira(validQuote.pricing.payableKobo) : "the reviewed online total"} online and{" "}
-                        {validQuote?naira(validQuote.pricing.cashDueKobo):"the reviewed fare"}{" "}
-                        to the rider at delivery.
-                      </Text>
-                    ) : null}
                     {validQuote?.fare ? (
                       <Text style={styles.totalLabel}>
                         Mapped rider route ·{" "}
@@ -919,7 +889,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                         {effectiveMode==="RIDER"&&!validQuote?"Review route for total":naira(validQuote?.pricing.totalKobo ?? total)}
                       </Text>
                     </View>
-                    {validQuote && validQuote.pricing.cashDueKobo > 0 ? <View style={styles.totalRow}><Text style={styles.totalLabel}>Pay online</Text><Text style={styles.totalValue}>{naira(validQuote.pricing.payableKobo)}</Text></View> : null}
                     {validQuote?.pricing.pricingNotice ? <Text style={styles.pricingNotice}>{validQuote.pricing.pricingNotice}</Text> : null}
                   </View>
 

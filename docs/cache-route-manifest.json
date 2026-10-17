@@ -7650,7 +7650,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 677
+          "line": 678
         }
       ],
       "classification": "tenant-reference",
@@ -7669,7 +7669,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 123
+          "line": 124
         }
       ],
       "classification": "public-reference",
@@ -7688,7 +7688,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1439
+          "line": 1440
         }
       ],
       "classification": "private-display",
@@ -7706,7 +7706,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1852
+          "line": 1879
         }
       ],
       "classification": "mutation",
@@ -7724,7 +7724,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 644
+          "line": 645
         }
       ],
       "classification": "mutation",
@@ -7742,7 +7742,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 668
+          "line": 669
         }
       ],
       "classification": "mutation",
@@ -7764,7 +7764,7 @@
         },
         {
           "file": "server/src/routes/student.ts",
-          "line": 657
+          "line": 658
         }
       ],
       "classification": "mutation",
@@ -7880,7 +7880,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 638
+          "line": 639
         }
       ],
       "classification": "mutation",
@@ -7960,7 +7960,7 @@
         },
         {
           "file": "server/src/routes/student.ts",
-          "line": 633
+          "line": 634
         }
       ],
       "classification": "mutation",
@@ -8120,7 +8120,7 @@
         },
         {
           "file": "server/src/routes/student.ts",
-          "line": 245
+          "line": 246
         }
       ],
       "classification": "private-display",
@@ -8146,7 +8146,7 @@
         },
         {
           "file": "server/src/routes/student.ts",
-          "line": 569
+          "line": 570
         }
       ],
       "classification": "private-display",
@@ -8168,7 +8168,7 @@
         },
         {
           "file": "server/src/routes/student.ts",
-          "line": 595
+          "line": 596
         }
       ],
       "classification": "mutation",
@@ -8186,7 +8186,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 806
+          "line": 807
         }
       ],
       "classification": "mutation",
@@ -8204,7 +8204,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 833
+          "line": 834
         }
       ],
       "classification": "private-display",
@@ -8222,7 +8222,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 856
+          "line": 857
         }
       ],
       "classification": "mutation",
@@ -8240,7 +8240,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 487
+          "line": 488
         }
       ],
       "classification": "private-display",
@@ -8258,7 +8258,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1095
+          "line": 1096
         }
       ],
       "classification": "private-display",
@@ -8276,7 +8276,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 312
+          "line": 313
         }
       ],
       "classification": "mutation",
@@ -8298,7 +8298,7 @@
         },
         {
           "file": "server/src/routes/student.ts",
-          "line": 256
+          "line": 257
         }
       ],
       "classification": "private-display",
@@ -8316,7 +8316,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1533
+          "line": 1559
         }
       ],
       "classification": "mutation",
@@ -8334,7 +8334,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1665
+          "line": 1692
         }
       ],
       "classification": "financial",
@@ -8352,7 +8352,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1540
+          "line": 1567
         }
       ],
       "classification": "mutation",
@@ -8370,7 +8370,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1444
+          "line": 1460
         }
       ],
       "classification": "private-display",
@@ -8388,7 +8388,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1738
+          "line": 1765
         }
       ],
       "classification": "mutation",
@@ -8568,7 +8568,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1786
+          "line": 1813
         }
       ],
       "classification": "financial",
@@ -8586,7 +8586,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1446
+          "line": 1462
         }
       ],
       "classification": "private-display",
@@ -8604,7 +8604,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 817
+          "line": 818
         }
       ],
       "classification": "mutation",
@@ -8622,7 +8622,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 800
+          "line": 801
         }
       ],
       "classification": "mutation",
@@ -8640,7 +8640,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 750
+          "line": 751
         }
       ],
       "classification": "private-display",
@@ -8658,7 +8658,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 765
+          "line": 766
         }
       ],
       "classification": "mutation",
@@ -8676,7 +8676,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1301
+          "line": 1302
         }
       ],
       "classification": "mutation",
@@ -8694,7 +8694,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1256
+          "line": 1257
         }
       ],
       "classification": "mutation",
@@ -8712,7 +8712,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1171
+          "line": 1172
         }
       ],
       "classification": "mutation",
@@ -8730,7 +8730,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1098
+          "line": 1099
         }
       ],
       "classification": "mutation",
@@ -8748,7 +8748,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1106
+          "line": 1107
         }
       ],
       "classification": "private-display",
@@ -8766,7 +8766,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1398
+          "line": 1399
         }
       ],
       "classification": "mutation",
@@ -8784,7 +8784,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 947
+          "line": 948
         }
       ],
       "classification": "private-display",
@@ -8802,7 +8802,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1078
+          "line": 1079
         }
       ],
       "classification": "private-display",
@@ -8820,7 +8820,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 250
+          "line": 251
         }
       ],
       "classification": "private-display",

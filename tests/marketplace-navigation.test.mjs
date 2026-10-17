@@ -8,7 +8,7 @@ import { hookRenderer, virtualClock } from './helpers/hook-renderer.mjs';
 class ApiError extends Error {constructor(status,code,message,details){super(message);Object.assign(this,{status,code,details});}}
 const owner='11111111-1111-4111-8111-111111111111',vendor='22222222-2222-4222-8222-222222222222',id='33333333-3333-4333-8333-333333333333';
 function load(relative,mocks,globals={}){const exports={};runInNewContext(ts.transpileModule(readFileSync(new URL('../mobile/'+relative,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,module:{exports},require:name=>{if(name in mocks)return mocks[name];throw Error('Missing '+name);},Date,Error,Number,Math,setTimeout,clearTimeout,...globals});return exports;}
-function fixture({width=393,initialCart={},params={},fillRecipient=true}={}){
+function fixture({width=393,initialCart={},params={},fillRecipient=true,riderEnabled=false,pickupReady=true}={}){
  const host=hookRenderer(),time=virtualClock(),routes=[],requests=[],saves=[];let tree,checkout=false,stored=initialCart,failSaves=false,quoteError=null;
  const react={...host.react,useSyncExternalStore:(_subscribe,snapshot)=>snapshot()};
  const jsx={jsx:(type,props,key)=>({type,props,key}),jsxs:(type,props,key)=>({type,props,key}),Fragment:'Fragment'};
@@ -18,7 +18,7 @@ function fixture({width=393,initialCart={},params={},fillRecipient=true}={}){
  const commerceInput=load('../packages/contracts/src/commerce-input.ts',{});
  const checkoutValidation=load('src/lib/store-checkout-validation.ts',{'../../../packages/contracts/src/commerce-input':commerceInput});
  const cart=load('src/lib/marketplace-cart.ts',{'react':react,'./device-cache':device},globals);
- const product={id,vendor_profile_id:vendor,name:'Campus wireless headphones with a long full product name',description:'All details',category:'Phones & accessories',price_kobo:1000000,stock_quantity:5,image_url:null,vendor_name:'Campus Audio',pickup_enabled:true,pickup_location:'Store counter'};
+ const product={id,vendor_profile_id:vendor,name:'Campus wireless headphones with a long full product name',description:'All details',category:'Phones & accessories',price_kobo:1000000,stock_quantity:5,image_url:null,vendor_name:'Campus Audio',pickup_enabled:true,pickup_location:'Store counter',rider_pickup_ready:pickupReady};
  const api=async(path,options)=>{if(path.endsWith('/pickup-hubs'))return{hubs:[]};requests.push({path,body:JSON.parse(options?.body??'{}')});if(path.endsWith('order-quotes')&&quoteError)throw quoteError;if(path.endsWith('order-quotes'))return{quote:{id:randomUUID(),expiresAt:new Date(Date.now()+60000).toISOString(),pricing:{listedItemsKobo:1000000,discountKobo:0,fareKobo:0,cashDueKobo:0,payableKobo:1000000,totalKobo:1000000},fare:null}};if(path.endsWith('/orders'))return{id:randomUUID(),totalKobo:1000000};return{};};
  const router={push:path=>routes.push(path),replace:path=>routes.push(path),back:()=>routes.push('back'),setParams:()=>{}};
  const modules={
@@ -31,7 +31,7 @@ function fixture({width=393,initialCart={},params={},fillRecipient=true}={}){
   '@/src/lib/request-policy':{cacheScopeForUser:()=> 'verified'},'@/src/lib/api':{api,ApiError},
   '@/src/lib/store-checkout-validation':checkoutValidation,
   '@/src/components/retry-icon-button':{RetryIconButton:'RetryIconButton'},
-  '@/src/lib/screen-read':{refreshScreenRead:async(_path,apply)=>{apply({products:[product],deliveryZones:[],checkoutEnabled:true,riderDeliveryEnabled:false,catalogueMode:'LIVE'});}},
+  '@/src/lib/screen-read':{refreshScreenRead:async(_path,apply)=>{apply({products:[product],deliveryZones:riderEnabled?[{id:vendor,name:'Ugbowo',base_fee_kobo:0}]:[],checkoutEnabled:true,riderDeliveryEnabled:riderEnabled,catalogueMode:'LIVE'});}},
   '@/src/components/keyboard-viewport':{KeyboardScrollView:'ScrollView',KeyboardModal:'Modal'},'@expo/vector-icons':{Ionicons:'Ionicons'},
   '@/src/components/visual-system':{useReducedMotionPreference:()=>true},'@/src/components/toast':{useToast:()=>()=>{}},'@/src/theme':{theme},
  };
@@ -153,4 +153,24 @@ test('brand tiles and business profiles show a badge only for explicitly verifie
   assert.equal(Boolean(badge),verified===true,`${screen}: ${verified}`);
   if(badge)assert.equal(badge.props.label,'Verified vendor');f.unmount();
  }
+});
+
+test('checkout offers pickup when the seller has no rider collection point',async()=>{
+ const f=fixture({initialCart:{[id]:1},riderEnabled:true,pickupReady:false});await f.settle();f.openCheckout();await f.settle();
+ assert.ok(f.by('Rider delivery unavailable'));
+ assert.equal(f.all().some(({node})=>node.type==='Text'&&node.props.children==='Rider delivery'),false);
+ f.by('Review route and checkout total').props.onPress();await f.settle();
+ assert.equal(f.requests[0].body.fulfilmentMode,'PICKUP');assert.equal(f.requests[0].body.deliveryPaymentMethod,'IN_APP');
+});
+
+test('rider checkout submits one in-app total and recovers if the seller pickup expires',async()=>{
+ const f=fixture({initialCart:{[id]:1},riderEnabled:true});await f.settle();f.openCheckout();await f.settle();
+ assert.equal(f.all().some(({node})=>String(node.props?.children??'').includes('Cash at delivery')),false);
+ const place=f.all().find(({node})=>node.type==='CampusPlaceChoice').node;
+ place.props.onChange(owner);place.props.onSelect({id:owner,name:'Main library entrance',delivery_zone_id:vendor});await f.settle();
+ f.setQuoteError(new ApiError(409,'CONFLICT','Rider pickup is unavailable.',{reason:'PICKUP_POINT_UNAVAILABLE'}));
+ f.by('Review route and checkout total').props.onPress();await f.settle();
+ assert.equal(f.requests[0].body.fulfilmentMode,'RIDER');assert.equal(f.requests[0].body.deliveryPaymentMethod,'IN_APP');assert.ok(f.by('Rider delivery unavailable'));
+ f.setQuoteError(null);f.by('Review route and checkout total').props.onPress();await f.settle();
+ assert.equal(f.requests.at(-1).body.fulfilmentMode,'PICKUP');
 });

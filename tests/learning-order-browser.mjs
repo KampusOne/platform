@@ -38,19 +38,19 @@ let browser;
 const results = [];
 try {
   browser = await chromium.launch({ headless: true });
-  async function scenario({ width = 390, dark = false, resource = {}, order = {}, timeline = defaultTimeline } = {}) {
+  async function scenario({ width = 390, dark = false, resource = {}, order = {}, timeline = defaultTimeline, pickupReady = true } = {}) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, locale: 'en-NG', timezoneId: 'Africa/Lagos', reducedMotion: 'reduce' });
     await context.addInitScript(mode => localStorage.setItem('k1.appearance', mode), dark ? 'dark' : 'light');
     const page = await context.newPage(), errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    let currentResource = { ...resourceBase, ...resource }, reviews = [], saveCalls = 0;
+    let currentResource = { ...resourceBase, ...resource }, reviews = [], saveCalls = 0, lastQuote = null;
     await context.route('**/*', async route => {
       const url = new URL(route.request().url()), path = url.pathname;
       if (path.startsWith('/v1/')) {
         const headers = { 'Access-Control-Allow-Origin': 'http://localhost:8100', 'Access-Control-Allow-Credentials': 'true', 'Access-Control-Allow-Headers': 'authorization,content-type,x-device-label', 'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS', 'Cache-Control': 'no-store' };
         if (route.request().method() === 'OPTIONS') { await route.fulfill({ status: 204, headers }); return; }
         let body;
-        if (path === '/v1/auth/refresh') body = { accessToken: 'synthetic-local-fixture', refreshToken: 'synthetic-local-fixture', expiresIn: 3600, user };
+        if (path === '/v1/auth/refresh') body = { accessToken: 'synthetic-local-fixture', refreshToken: 'synthetic-local-fixture', expiresIn: 3600, refreshExpiresIn: 86400, user };
         else if (path === '/v1/student/me') body = { profile: { id: user.id, display_name: 'UI fixture student', university_id: user.universityId, university_name: 'Synthetic university', onboarding_completed_at: '2026-10-01T00:00:00Z', settings: {} } };
         else if (path === `/v1/student/tutorial-resources/${resourceId}`) body = { resource: currentResource };
         else if (path === `/v1/student/tutorial-resources/${resourceId}/save`) { saveCalls++; currentResource.is_saved = route.request().postDataJSON().saved; body = { saved: currentResource.is_saved }; }
@@ -58,8 +58,10 @@ try {
         else if (path === '/v1/student/product-reviews') { const payload = route.request().postDataJSON(); reviews = [{ product_id: payload.productId, rating: payload.rating, body: payload.body }]; body = { id: 'synthetic-review' }; }
         else if (path === '/v1/student/catalog') body = { universities: [{ id: user.universityId, name: 'Synthetic university' }], faculties: [], departments: [] };
         else if (path === '/v1/featured-brands/public') body = { brands: [brand, { ...brand, id: tutorId, display_name: 'Legacy brand', verified: false }] };
-        else if (path === '/v1/student/store') body = { products: [{ id: items[0].product_id, vendor_profile_id: vendorId, name: 'Campus headphones', description: 'Comfortable wired headphones.', category: 'Electronics', vendor_name: brand.display_name, price_kobo: 250000, stock_quantity: 3, image_url: null, pickup_enabled: true }], deliveryZones: [], checkoutEnabled: true, riderDeliveryEnabled: false, catalogueMode: 'LIVE' };
+        else if (path === '/v1/student/store') body = { products: [{ id: items[0].product_id, vendor_profile_id: vendorId, name: 'Campus headphones', description: 'Comfortable wired headphones.', category: 'Electronics', vendor_name: brand.display_name, price_kobo: 250000, stock_quantity: 3, image_url: null, pickup_enabled: true, pickup_location: 'Faculty of Engineering entrance', rider_pickup_ready: pickupReady }], deliveryZones: [{ id: vendorId, name: 'Ugbowo campus', base_fee_kobo: 0 }], checkoutEnabled: true, riderDeliveryEnabled: true, catalogueMode: 'LIVE' };
         else if (path === '/v1/student/pickup-hubs') body = { hubs: [] };
+        else if (path === '/v1/student/delivery-places') body = url.searchParams.has('cursor') ? { places: [{ id: tutorId, name: 'Physical Science Shopping Complex', campus_name: 'Ugbowo campus', search_aliases: ['Science shops', 'Physical Sciences'], delivery_zone_id: vendorId, has_map_point: true }], nextCursor: null } : { places: Array.from({ length: 200 }, (_,n) => ({ id: `10000000-0000-4000-8000-${String(n).padStart(12,'0')}`, name: `Campus location ${n}`, campus_name: 'Ugbowo campus', has_map_point: true, delivery_zone_id: vendorId })), nextCursor: vendorId };
+        else if (path === '/v1/student/order-quotes') { lastQuote = route.request().postDataJSON(); body = { quote: { id: orderId, expiresAt: new Date(Date.now()+120000).toISOString(), pricing: { listedItemsKobo: 250000, discountKobo: 0, fareKobo: 50000, payableKobo: 300000, cashDueKobo: 0, totalKobo: 300000 }, fare: { routeMetres: 700, distanceBasis: 'OSM_BICYCLE_NETWORK' } } }; }
         else if (path === `/v1/people/services/${vendorId}`) body = vendorProfile;
         else if (path === '/v1/learning/alarms') body = { alarms: [] };
         else if (path === '/v1/learning/alarm-sounds') body = { sounds: [] };
@@ -73,12 +75,13 @@ try {
     });
     async function open(path, ready) {
       await page.goto('http://localhost:8100' + path);
-      await page.getByText(ready, { exact: true }).first().waitFor({ timeout: 45000 });
+      try { await page.getByText(ready, { exact: true }).first().waitFor({ timeout: 45000 }); }
+      catch (error) { await page.screenshot({ path: resolve(evidence, `failed-${path.split('?')[0].replaceAll('/','_')}-${width}.png`) }); writeFileSync(resolve(evidence,'failed-page.json'),JSON.stringify({ url:page.url(), text:await page.locator('body').innerText(), errors },null,2)); throw error; }
       await page.getByLabel('Opening KampusOne', { exact: true }).waitFor({ state: 'hidden' });
       await page.evaluate(() => document.fonts.ready);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Viewport overflow');
     }
-    return { page, errors, open, context, get saves() { return saveCalls; } };
+    return { page, errors, open, context, get saves() { return saveCalls; }, get quote() { return lastQuote; } };
   }
   for (const width of [360, 390]) {
     const s = await scenario({ width });
@@ -109,6 +112,36 @@ try {
     await s.page.getByText('Your rating · 5/5', { exact: true }).waitFor();
     assert.deepEqual(s.errors, []); results.push({ width, bookmarks: true, pinnedAction: true, timeline: true, review: true });
     await s.context.close();
+  }
+  for (const pickupReady of [true, false]) {
+    const s = await scenario({ width: 390, pickupReady });
+    await s.open('/store', 'Top campus brands');
+    await s.page.getByRole('button', { name: 'Add Campus headphones to cart', exact: true }).click();
+    await s.page.getByRole('button', { name: 'Open cart with 1 item', exact: true }).click();
+    await s.page.getByRole('button', { name: 'Proceed to checkout', exact: true }).click();
+    await s.page.waitForURL(url => url.pathname === '/marketplace-checkout');
+    await s.page.getByRole('textbox', { name: 'Recipient name', exact: true }).fill('Ada Student');
+    await s.page.getByRole('textbox', { name: 'Recipient phone', exact: true }).fill('08031234567');
+    assert.equal(await s.page.getByText('Cash at delivery', { exact: true }).count(), 0);
+    if (pickupReady) {
+      await s.page.getByRole('button', { name: 'Choose delivery point on the campus map', exact: true }).click();
+      await s.page.getByText('201 locations', { exact: true }).waitFor();
+      await s.page.getByRole('textbox', { name: 'Search campus locations', exact: true }).fill('ugbowo science shops');
+      await s.page.getByRole('radio', { name: 'Physical Science Shopping Complex, Ugbowo campus', exact: true }).waitFor();
+      await s.page.screenshot({ path: resolve(evidence, 'checkout-location-search.png') });
+      await s.page.getByRole('radio', { name: 'Physical Science Shopping Complex, Ugbowo campus', exact: true }).click();
+      await s.page.getByRole('button', { name: 'Review route and checkout total', exact: true }).click();
+      await s.page.getByRole('button', { name: /Confirm order and pay/ }).waitFor();
+      assert.equal(s.quote.deliveryPaymentMethod, 'IN_APP'); assert.equal(s.quote.deliveryPlaceId, tutorId);
+    } else {
+      await s.page.getByLabel('Rider delivery unavailable', { exact: true }).waitFor();
+      assert.equal(await s.page.getByRole('button', { name: 'Choose delivery point on the campus map', exact: true }).count(), 0);
+      await s.page.getByRole('button', { name: 'Review route and checkout total', exact: true }).click();
+      await s.page.getByRole('button', { name: /Confirm order and pay/ }).waitFor();
+      assert.equal(s.quote.fulfilmentMode, 'PICKUP'); assert.equal(s.quote.deliveryPaymentMethod, 'IN_APP');
+    }
+    await s.page.screenshot({ path: resolve(evidence, `checkout-${pickupReady ? 'rider' : 'pickup'}.png`) });
+    assert.deepEqual(s.errors, []); results.push({ pickupReady, inAppPaymentOnly: true, checkout: true }); await s.context.close();
   }
   const dark = await scenario({ width: 390, dark: true });
   await dark.open(`/learning-preview?id=${resourceId}`, 'Fluid mechanics');

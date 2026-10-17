@@ -22,6 +22,7 @@ import { database, firstRow, sqlClient } from "../lib/database";
 import { cachedVersionedRead } from "../lib/cache-revision";
 import { campusDirectoryDefaultForUniversity } from "../lib/campus-defaults";
 import { id, input as validatedInput } from "../lib/input";
+import { riderPickupAvailability } from "../lib/delivery-routing";
 import { z } from "@kampusone/contracts";
 import { sha256 } from "../lib/security";
 import { AppError } from "../lib/errors";
@@ -1436,10 +1437,25 @@ studentRoutes.post("/tutorial-reviews", async (context) => {
   return context.json({ id, status: "PUBLISHED" }, 201);
 });
 
-studentRoutes.get('/delivery-places',async c=>{const u=currentUser(c);const r=await database(c.env).execute(sql`
- select p.id,p.name,p.campus_id,c.name campus_name,
- (select z.id from public.delivery_zones z where z.university_id=p.university_id and z.active and to_jsonb(z)->>'campus_id'=p.campus_id::text order by z.created_at,z.id limit 1) as delivery_zone_id from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.status='PUBLISHED'
- where p.university_id=${u.universityId}::uuid and p.status='PUBLISHED'and ((p.source_provider='OSM'and p.confidence>=.8 and p.latitude is not null and p.longitude is not null)or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null)) order by c.name,p.name limit 1000`);return c.json({places:r.rows});});
+studentRoutes.get('/delivery-places', async c => {
+  const universityId = requireUniversity(currentUser(c));
+  const cursorInput = c.req.query('cursor');
+  const cursor = cursorInput ? id(cursorInput) : null;
+  const result = await database(c.env).execute<{ id: string }>(sql`
+    select p.id,p.name,p.campus_id,c.name as campus_name,p.search_aliases,
+      (c.id is not null and ((p.latitude is not null and p.longitude is not null) or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null and e.geom is not null))) as has_map_point,
+      (select z.id from public.delivery_zones z where z.university_id=p.university_id and z.active
+        and (to_jsonb(z)->>'campus_id'=p.campus_id::text or to_jsonb(z)->>'campus_id' is null) order by (to_jsonb(z)->>'campus_id'=p.campus_id::text) desc nulls last,z.created_at,z.id limit 1) as delivery_zone_id
+    from public.campus_places p
+    left join public.institution_campuses c on c.id=p.campus_id and c.institution_id=p.university_id
+    where p.university_id=${universityId}::uuid and p.status='PUBLISHED'
+      and (p.campus_id is null or c.status='PUBLISHED')
+      and (${cursor}::uuid is null or p.id>${cursor}::uuid)
+    order by p.id limit 201
+  `);
+  const places = result.rows.slice(0, 200);
+  return c.json({ places, nextCursor: result.rows.length > 200 ? places.at(-1)!.id : null });
+});
 
 studentRoutes.get('/pickup-hubs',async c=>{const user=currentUser(c);return c.json({hubs:(await database(c.env).execute(sql`select name from public.commerce_pickup_hubs where university_id=${user.universityId}::uuid order by position`)).rows});});
 
@@ -1511,9 +1527,12 @@ studentRoutes.get("/store", async (context) => {
       where university_id = ${requireUniversity(user)}::uuid and active = true order by base_fee_kobo, name
     `),
   ]);
-  const inclusive=await inclusiveListings(context.env,user.universityId,'STORE',products.rows);
+  const [inclusive,pickupAvailability]=await Promise.all([
+    inclusiveListings(context.env,user.universityId,'STORE',products.rows),
+    riderPickupAvailability(context.env,requireUniversity(user),[...new Set(products.rows.map(product=>String(product.vendor_profile_id)))])
+  ]);
   return context.json({
-    products: inclusive.items,
+    products: inclusive.items.map(product=>({...product,rider_pickup_ready:pickupAvailability.get(String(product.vendor_profile_id))===true})),
     sellers: [],
     catalogueMode: "LIVE" as const,
     checkoutEnabled: !!inclusive.policy && featureEnabled(context.env,'PAYMENTS_ENABLED'),
@@ -1529,11 +1548,19 @@ const checkoutFieldLabels = {
   recipientName: 'Recipient name', recipientPhoneE164: 'Recipient phone',
   deliveryLocation: 'Delivery address', deliveryZoneId: 'Delivery zone',
   deliveryPlaceId: 'Delivery point', deliveryNote: 'Delivery note',
+  deliveryPaymentMethod: 'Payment method',
 };
+function requireInAppCheckout(data: { deliveryPaymentMethod: string }) {
+  if (data.deliveryPaymentMethod !== 'IN_APP') {
+    const message = 'Pay for items and delivery in the app.';
+    throw new AppError(400, 'BAD_REQUEST', message, { fields: { deliveryPaymentMethod: [message] } });
+  }
+}
 studentRoutes.post('/order-quotes',async context=>{
   requireFeature(context.env,'STORE_ENABLED','Store checkout is not available yet.');
   requireFeature(context.env,'PAYMENTS_ENABLED','Store payments are not available yet.');
   const data=await validatedInput(context,storeQuoteSchema,checkoutFieldLabels);
+  requireInAppCheckout(data);
   return context.json({quote:await prepareStoreQuote(context.env,currentUser(context),data)},201);
 });
 
@@ -1545,6 +1572,7 @@ studentRoutes.post("/orders", async (context) => {
   );
   const user = currentUser(context);
   const parsed = { data: await validatedInput(context,storeOrderSchema,checkoutFieldLabels) };
+  requireInAppCheckout(parsed.data);
   if (
     new Set(parsed.data.items.map((item) => item.productId)).size !==
     parsed.data.items.length
@@ -1583,7 +1611,6 @@ studentRoutes.post("/orders", async (context) => {
       from app_private.store_checkout_quotes where id=${quoteId}::uuid and buyer_user_id=${user.id}::uuid and university_id=${universityId}::uuid`));
     if(!matching?.matching)throw new AppError(409,'CONFLICT','Your checkout details changed. Review a fresh total before creating the order.');
   }
-  if(!inclusiveReady && parsed.data.deliveryPaymentMethod==='CASH')throw new AppError(503,'FEATURE_DISABLED','Cash rider fares are awaiting the scheduled financial update.');
   const orderId = inclusiveReady?parsed.data.quoteId!:crypto.randomUUID();
   const [pickup, delivery] = await Promise.all([
     deriveHandoffCode(context.env, orderId, "pickup"),
