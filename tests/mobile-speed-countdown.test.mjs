@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { hookRenderer, virtualClock } from './helpers/hook-renderer.mjs';
 import { typescript as ts } from './helpers/typescript.mjs';
@@ -24,6 +25,26 @@ function load(file, modules, globals = {}) {
 }
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const flush = () => new Promise(setImmediate);
+
+// Exercise the installed React Native wrapper: stable screen callbacks alone
+// are insufficient unless FlatList's own renderer memoization is enabled.
+function nativeFlatList() {
+  const require = createRequire(new URL('../mobile/package.json', import.meta.url));
+  const babel = require('@babel/core');
+  const source = readFileSync(new URL('../mobile/node_modules/react-native/Libraries/Lists/FlatList.js', import.meta.url), 'utf8');
+  const code = babel.transformSync(source, { filename: 'FlatList.js', babelrc: false, configFile: false, presets: [require.resolve('@react-native/babel-preset')] }).code;
+  const exports = {};
+  runInNewContext(code, { exports, module: { exports }, __DEV__: false, require: name => {
+    if (name === '@react-native/virtualized-lists') return { VirtualizedList: 'VirtualizedList', keyExtractor: item => item.id };
+    if (name.includes('ReactNativeFeatureFlags')) return new Proxy({ __esModule: true }, { get: (target, key) => target[key] ?? (() => false) });
+    if (name.includes('Components/View/View')) return 'View';
+    if (name.includes('StyleSheet')) return { default: { create: value => value } };
+    if (name.includes('deepDiffer')) return { default: () => false };
+    if (name.includes('Utilities/Platform')) return { default: { OS: 'android' } };
+    return require(name);
+  } });
+  return exports.default;
+}
 
 test('a batch of confirmed feed views preserves the list and untouched row identities', () => {
   const posts = Array.from({ length: 500 }, (_, i) => ({ id: String(i), view_count: 10 }));
@@ -93,14 +114,19 @@ test('typing 60 characters keeps the conversation cell renderer and message arra
   const list = nodes(tree).find(node => node.type === 'FlatList');
   assert.equal(list.props.data.length, 50);
   const renderer = list.props.renderItem, rows = list.props.data;
+  const NativeList = nativeFlatList(), native = new NativeList(list.props);
+  const nativeRenderer = native.render().props.renderItem;
   for (let i = 0; i < 60; i++) {
     nodes(tree).find(node => node.type === 'TextInput').props.onChangeText('a'.repeat(i + 1));
     tree = render();
     const current = nodes(tree).find(node => node.type === 'FlatList');
     assert.equal(current.props.renderItem, renderer);
     assert.equal(current.props.data, rows);
+    native.props = current.props;
+    assert.equal(native.render().props.renderItem, nativeRenderer, 'React Native must keep its cell renderer stable too');
   }
   assert.equal(list.props.windowSize, 7);
+  assert.equal(list.props.strictMode, true);
   host.unmount();
 });
 

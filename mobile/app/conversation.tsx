@@ -1544,6 +1544,7 @@ export default function ConversationScreen() {
               initialNumToRender={12}
               maxToRenderPerBatch={8}
               windowSize={7}
+              strictMode
               renderItem={renderMessage}
             />
           )}
