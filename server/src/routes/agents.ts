@@ -50,6 +50,7 @@ import { listingPrice, percentageKobo } from '../lib/pricing';
 import { pricedTutorialReady } from '../lib/tutorial-pricing';
 import { currentUser, requireAuth } from "../middleware/auth";
 import type { Bindings, Variables } from "../types";
+import { tutorManagementRoutes } from './tutor-management';
 
 export const agentRoutes = new Hono<{
   Bindings: Bindings;
@@ -413,10 +414,13 @@ agentRoutes.get("/tutorials", async (context) => {
         listings.format, listings.price_kobo, listings.capacity, listings.status,
         listings.location_text, listings.cancellation_cutoff_hours,
         listings.review_status, listings.review_note, listings.submitted_at,
-        listings.reviewed_at, listings.created_at, listings.updated_at
+        listings.reviewed_at, listings.created_at, listings.updated_at,
+        listings.updated_at::text as revision
       from public.tutorial_listings listings
       join public.agent_profiles profiles on profiles.id = listings.tutor_profile_id
-      where profiles.user_id = ${user.id}::uuid and listings.deleted_at is null
+      where profiles.user_id = ${user.id}::uuid and profiles.university_id = ${user.universityId}::uuid
+        and listings.university_id = profiles.university_id and listings.deleted_at is null
+        and listings.status <> 'ARCHIVED'
       order by listings.updated_at desc
     `),
     database(context.env).execute(sql`
@@ -433,6 +437,8 @@ agentRoutes.get("/tutorials", async (context) => {
       join public.users student_users on student_users.id = bookings.student_user_id
       left join public.profiles student_profiles on student_profiles.user_id = student_users.id
       where tutor_profiles.user_id = ${user.id}::uuid
+        and tutor_profiles.university_id = ${user.universityId}::uuid
+        and bookings.university_id = tutor_profiles.university_id
       order by bookings.created_at desc limit 200
     `),
     database(context.env).execute(sql`
@@ -442,10 +448,13 @@ agentRoutes.get("/tutorials", async (context) => {
         resources.preview_text, resources.file_url, resources.page_count,
         resources.duration_seconds, resources.status, resources.review_note,
         resources.submitted_at, resources.reviewed_at, resources.created_at,
-        resources.updated_at
+        resources.updated_at, resources.updated_at::text as revision,
+        resources.cover_url, resources.subject
       from public.tutorial_resources resources
       join public.agent_profiles profiles on profiles.id = resources.tutor_profile_id
-      where profiles.user_id = ${user.id}::uuid and resources.deleted_at is null
+      where profiles.user_id = ${user.id}::uuid and profiles.university_id = ${user.universityId}::uuid
+        and resources.university_id = profiles.university_id and resources.deleted_at is null
+        and resources.status <> 'ARCHIVED'
       order by resources.updated_at desc
     `),
   ]);
@@ -698,13 +707,17 @@ agentRoutes.delete("/tutorial-resources/:id", async (context) => {
     "Learning-resource operations are not enabled in this environment.",
   );
   const user = currentUser(context);
+  const resourceId = id(context.req.param('id'));
   const result = await database(context.env).execute<{ id: string }>(sql`
     update public.tutorial_resources resources set status = 'ARCHIVED',
       deleted_at = coalesce(deleted_at, now()), updated_at = now()
     from public.agent_profiles profiles
-    where resources.id = ${context.req.param("id")}::uuid
+    where resources.id = ${resourceId}::uuid
       and resources.tutor_profile_id = profiles.id and profiles.user_id = ${user.id}::uuid
-      and resources.deleted_at is null returning resources.id
+      and profiles.university_id = ${user.universityId}::uuid
+      and resources.university_id = profiles.university_id
+      and profiles.agent_type = 'TUTOR' and profiles.status = 'ACTIVE'
+    returning resources.id
   `);
   if (!firstRow(result))
     throw new AppError(
@@ -714,6 +727,8 @@ agentRoutes.delete("/tutorial-resources/:id", async (context) => {
     );
   return context.json({ status: "DELETED" });
 });
+
+agentRoutes.route('/', tutorManagementRoutes);
 
 agentRoutes.get("/tutorial-availability", async (context) => {
   requireFeature(

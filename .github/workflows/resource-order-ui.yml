@@ -1,0 +1,45 @@
+name: Resource and order phone UI
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - "tests/learning-order*"
+      - ".github/workflows/resource-order-ui.yml"
+permissions:
+  contents: read
+concurrency:
+  group: resource-order-ui-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  phone-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run export:web
+        working-directory: mobile
+        env:
+          EXPO_PUBLIC_KAMPUSONE_API_URL: http://localhost:8787
+      - name: Install the isolated browser verifier
+        run: |
+          npm install --prefix "$RUNNER_TEMP/resource-order-browser" --no-save --ignore-scripts playwright@1.62.1
+          "$RUNNER_TEMP/resource-order-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Check phone layouts and resource/order interactions
+        run: node tests/learning-order-browser.mjs
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/resource-order-browser/node_modules/playwright/index.mjs
+          UI_EVIDENCE_DIR: ${{ runner.temp }}/resource-order-evidence
+      - name: Upload phone screenshots and checks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-order-phone-ui
+          path: ${{ runner.temp }}/resource-order-evidence
+          if-no-files-found: warn

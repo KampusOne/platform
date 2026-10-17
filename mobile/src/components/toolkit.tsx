@@ -29,6 +29,7 @@ export function ToolPage({
   onBack,
   syncPath,
   status,
+  footer,
 }: {
   title: string;
   children: ReactNode;
@@ -38,6 +39,7 @@ export function ToolPage({
   onBack?: () => void;
   syncPath?: string;
   status?: ReactNode;
+  footer?: ReactNode;
 }) {
   const { theme, styles } = useThemeStyles(createStyles);
   const pathname = usePathname();
@@ -61,6 +63,7 @@ export function ToolPage({
         contentContainerStyle={[
           styles.content,
           compactPhone && styles.contentCompact,
+          footer ? { paddingBottom: 24 } : undefined,
         ]}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
@@ -106,6 +109,7 @@ export function ToolPage({
         {syncPath ? <SyncStatus path={syncPath}/> : null}
         {children}
       </ScrollView>
+      {footer ? <View style={[styles.footer, { paddingHorizontal: compactPhone ? 14 : 20 }]}>{footer}</View> : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -248,6 +252,15 @@ const createStyles = (theme: Theme) =>
   StyleSheet.create({
     safe: { backgroundColor: theme.canvas, flex: 1, width: "100%", minWidth: 0 },
     scroll: { flex: 1, width: "100%", alignSelf: "stretch" },
+    footer: {
+      width: "100%",
+      maxWidth: 540,
+      alignSelf: "center",
+      backgroundColor: theme.canvas,
+      borderTopWidth: 1,
+      borderTopColor: theme.border,
+      paddingVertical: 10,
+    },
     content: {
       width: "100%",
       maxWidth: 540,
