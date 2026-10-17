@@ -51,12 +51,12 @@ function fcmError(status:number,payload:any){
  if(status===413)return'MessageTooBig';
  return `PUSH_HTTP_${status}`;
 }
-async function sendFcmPush(env:Bindings,nativeToken:string,message:{title:string;body:string;path:string;id:string;notificationId?:string;messageId?:string;preferenceCategory:string;attemptId?:string;kind?:string}):Promise<PushResult>{
+async function sendFcmPush(env:Bindings,nativeToken:string,message:{title:string;body:string;path:string;id:string;actorUserId?:string;actorName?:string;actorImageUrl?:string;notificationId?:string;messageId?:string;preferenceCategory:string;attemptId?:string;kind?:string}):Promise<PushResult>{
  let account:FcmServiceAccount;try{account=JSON.parse(env.FCM_SERVICE_ACCOUNT_JSON||'') as FcmServiceAccount;}catch{return{status:'FAILED',errorCode:'InvalidCredentials'};}
  if(!account.project_id)return{status:'FAILED',errorCode:'InvalidCredentials'};
  const access=await fcmAccessToken(env);if(!access.token)return{status:access.uncertain?'UNKNOWN':'FAILED',errorCode:access.errorCode??'InvalidCredentials'};
  const presentation=presentationFor(message.preferenceCategory),ttl=message.preferenceCategory==='newsletter'?86400:message.preferenceCategory==='classReminders'?900:3600;
- const metadata={kind:message.kind??'kampusone-notification',path:message.path,...(message.attemptId?{attemptId:message.attemptId}:{deliveryId:message.id}),...(message.notificationId?{notificationId:message.notificationId}:{}),...(message.messageId?{messageId:message.messageId}:{}),preferenceCategory:message.preferenceCategory};
+ const metadata={kind:message.kind??'kampusone-notification',path:message.path,...(message.attemptId?{attemptId:message.attemptId}:{deliveryId:message.id}),...(message.notificationId?{notificationId:message.notificationId}:{}),...(message.messageId?{messageId:message.messageId}:{}),preferenceCategory:message.preferenceCategory,...(message.actorUserId?{actorUserId:message.actorUserId,actorName:message.actorName??"KampusOne user",actorImageUrl:message.actorImageUrl??""}:{})};
  try{
   const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(account.project_id)}/messages:send`,{
    method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${access.token}`},signal:AbortSignal.timeout(8000),
@@ -118,7 +118,7 @@ export async function sendCampusPush(
   body:string;
   path:string;
   id:string;
-  notificationId?:string;
+  actorUserId?:string;actorName?:string;actorImageUrl?:string;notificationId?:string;
   messageId?:string;
   preferenceCategory:string;
  }
@@ -146,6 +146,7 @@ export async function sendCampusPush(
      ...(message.notificationId?{notificationId:message.notificationId}:{}),
      ...(message.messageId?{messageId:message.messageId}:{}),
      preferenceCategory:message.preferenceCategory,
+     ...(message.actorUserId?{actorUserId:message.actorUserId,actorName:message.actorName??"KampusOne user",actorImageUrl:message.actorImageUrl??""}:{}),
     }
    })
   });
@@ -158,7 +159,7 @@ export async function sendCampusPush(
 export async function sendDevicePush(
  env:Bindings,
  device:PushDeviceTarget,
- message:{title:string;body:string;path:string;id:string;notificationId?:string;messageId?:string;preferenceCategory:string}
+ message:{title:string;body:string;path:string;id:string;actorUserId?:string;actorName?:string;actorImageUrl?:string;notificationId?:string;messageId?:string;preferenceCategory:string}
 ):Promise<PushResult>{
  if(device.platform==='android'&&device.nativeToken&&env.FCM_SERVICE_ACCOUNT_JSON)
   return sendFcmPush(env,device.nativeToken,message);

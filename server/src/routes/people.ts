@@ -61,7 +61,7 @@ peopleRoutes.get("/:id",async c=>{
       case when p.settings->>'hideCgpa' = 'false' then
         (select round(sum(g.quality_points)/nullif(sum(g.earned_units),0), 2) from public.gpa_terms g where g.user_id=p.user_id)
         else null end as cgpa,
-      coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,
+      coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,coalesce(to_jsonb(p)->>'public_badge_kind','STANDARD') as badge_kind,
       (p.user_id=${u.id}::uuid or not coalesce((p.settings->>'hideReposts')::boolean,false)) as can_view_reposts,
       (select count(*)::int from public.profile_follows f where f.followed_id=p.user_id and ${visibleFollower}) as follower_count,
       (select count(*)::int from public.profile_follows f where f.follower_id=p.user_id and ${visibleFollowing}) as following_count,
@@ -87,7 +87,7 @@ async function ensureConnectionTarget(db:ReturnType<typeof database>,target:stri
 function connectionProjection(viewer:AuthenticatedUser){
   return sql`p.user_id,p.display_name,p.username,p.profile_image_url,p.current_level,
     uni.name as university_name,d.name as department_name,
-    coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,
+    coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false) as verified,coalesce(to_jsonb(p)->>'public_badge_kind','STANDARD') as badge_kind,
     exists(select 1 from public.profile_follows mine where mine.follower_id=${viewer.id}::uuid and mine.followed_id=p.user_id) as followed`;
 }
 peopleRoutes.get("/:id/followers",async c=>{

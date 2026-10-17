@@ -154,7 +154,7 @@ discoveryRoutes.get("/search", requireAuth, async (c) => {
     }>(sql`
    select p.user_id as id,lower(coalesce(p.username,p.user_id::text)) as name_key,u.created_at,
     jsonb_build_object('kind','PERSON','id',p.user_id,'name',p.display_name,'username',p.username,'avatarUrl',p.profile_image_url,'bio',p.biography,
-     'verified',coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false),'university',university.name,
+     'badge_kind',coalesce(to_jsonb(p)->>'public_badge_kind','STANDARD'),'verified',coalesce((to_jsonb(p)->>'public_badge_verified')::boolean,p.verification_status::text='VERIFIED',false),'university',university.name,
      'followed',exists(select 1 from public.profile_follows f where f.follower_id=${user.id}::uuid and f.followed_id=p.user_id)) as result
    from public.profiles p join public.users u on u.id=p.user_id and u.status::text='ACTIVE'
    left join public.universities university on university.id=p.university_id

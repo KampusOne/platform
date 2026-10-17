@@ -18,6 +18,7 @@ export type FeedPostData = {
   correction_note: string | null;
   source_name: string;
   source_verified: boolean;
+  source_badge_kind?: string | null;
   bookmarked: boolean;
   can_delete?: boolean;
   source_username?: string | null;

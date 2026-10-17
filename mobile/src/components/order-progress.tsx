@@ -1,4 +1,26 @@
-import {Ionicons} from '@expo/vector-icons';
-import {Text,View} from 'react-native';
-import {useAppearance} from '@/src/lib/appearance';
-export function OrderProgress({status,pickup}:{status:string;pickup:boolean}){const{theme}=useAppearance();const steps=[{label:'Payment received',icon:'card-outline' as const,states:['PAID','ACCEPTED','READY','IN_DELIVERY','DELIVERED']},{label:'Preparing your items',icon:'bag-handle-outline' as const,states:['ACCEPTED','READY','IN_DELIVERY','DELIVERED']},{label:pickup?'Ready for pickup':'On the way',icon:pickup?'location-outline' as const:'bicycle-outline' as const,states:pickup?['READY','DELIVERED']:['IN_DELIVERY','DELIVERED']},{label:pickup?'Collected':'Delivered',icon:'checkmark-circle-outline' as const,states:['DELIVERED']}];const exceptional=['CANCELLED','DISPUTED','REFUNDED','PAYMENT_FAILED'].includes(status);return <View style={{padding:20,backgroundColor:theme.surface,borderRadius:18,borderWidth:1,borderColor:theme.border,gap:14,marginVertical:20}}><Text style={{fontFamily:theme.font.displayStrong,fontSize:19,color:theme.text}}>Order progress</Text>{exceptional?<Text style={{color:theme.deepBrand,fontFamily:theme.font.semibold}}>{status.replaceAll('_',' ')}</Text>:steps.map((step,i)=>{const complete=step.states.includes(status),next=!complete&&(i===0||steps[i-1]!.states.includes(status));return <View key={step.label} style={{flexDirection:'row',gap:12,alignItems:'center',minHeight:36}}><View style={{height:34,width:34,borderRadius:17,backgroundColor:complete?theme.deepBrand:theme.surfaceMuted,alignItems:'center',justifyContent:'center'}}><Ionicons name={complete?'checkmark':step.icon} size={18} color={complete?'#fff':theme.textMuted}/></View><Text style={{color:complete||next?theme.text:theme.textMuted,fontFamily:complete||next?theme.font.semibold:theme.font.body,fontSize:14,flex:1}}>{step.label}</Text>{next?<Text style={{color:theme.deepBrand,fontFamily:theme.font.medium,fontSize:11}}>UP NEXT</Text>:null}</View>;})}</View>;}
+import { Ionicons } from '@expo/vector-icons';
+import { Text, View } from 'react-native';
+import { useAppearance } from '@/src/lib/appearance';
+import { orderStages, orderStatusLabel } from '@/src/lib/order-presentation';
+
+export function OrderProgress({ status, pickup }: { status: string; pickup: boolean }) {
+  const { theme } = useAppearance();
+  const exceptional = ['CANCELLED', 'DISPUTED', 'REFUNDED', 'PAYMENT_FAILED'].includes(status);
+  const stages = orderStages(status, pickup);
+  const current = stages.findLastIndex(stage => stage.complete);
+  return <View style={{ gap: 20 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Ionicons name={status === 'DELIVERED' ? 'checkmark-circle' : exceptional ? 'alert-circle-outline' : 'time-outline'} size={20} color={status === 'DELIVERED' ? theme.success : theme.accentText} />
+      <Text accessibilityRole="header" style={{ flex: 1, fontFamily: theme.font.semibold, fontSize: 16, color: theme.text }}>{orderStatusLabel(status, pickup)}</Text>
+    </View>
+    {!exceptional ? <View accessibilityLabel={`Order progress: ${orderStatusLabel(status, pickup)}`} style={{ flexDirection: 'row' }}>
+      {stages.map((stage, index) => <View key={stage.label} style={{ flex: 1, alignItems: 'center', gap: 10 }}>
+        {index < stages.length - 1 ? <View style={{ position: 'absolute', height: 2, top: 18, left: '50%', width: '100%', backgroundColor: stages[index + 1]!.complete ? theme.success : theme.border }} /> : null}
+        <View style={{ height: 38, width: 38, borderRadius: 12, backgroundColor: stage.complete ? theme.surfaceTint : theme.surfaceMuted, borderWidth: index === current ? 1.5 : 0, borderColor: status === 'DELIVERED' ? theme.success : theme.accentText, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name={stage.complete ? 'checkmark' : stage.icon} size={18} color={stage.complete ? theme.success : theme.textFaint} />
+        </View>
+        <Text style={{ fontFamily: stage.complete ? theme.font.semibold : theme.font.body, fontSize: 10.5, color: stage.complete ? theme.text : theme.textMuted, textAlign: 'center', paddingHorizontal: 2 }}>{stage.label}</Text>
+      </View>)}
+    </View> : null}
+  </View>;
+}

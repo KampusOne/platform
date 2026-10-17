@@ -1,6 +1,7 @@
+import { orderDate, orderStatusLabel } from "@/src/lib/order-presentation";
 import {OrderProgress} from "@/src/components/order-progress";
 import { useCallback, useRef, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Image, Pressable, Text, TextInput, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ToolButton, ToolPage } from "@/src/components/toolkit";
@@ -13,6 +14,7 @@ type Item = {
   product_id: string;
   name: string;
   vendor_name?:string;
+  image_url?: string | null;
   quantity: number;
   unit_price_kobo: number;
 };
@@ -23,6 +25,9 @@ type Detail = {
     status: string;
     fulfilment_mode: string;
     total_kobo: number;
+    subtotal_kobo?: number;
+    delivery_fee_kobo?: number;
+    created_at?: string;
     delivery_code?: string;
     delivery_location: string;
     pickup_location: string | null;
@@ -123,7 +128,7 @@ export default function OrderDetail() {
   return (
     <ToolPage
       title="Your order"
-      refreshing={loading}
+      refreshing={loading && Boolean(data)}
       onRefresh={() => void load()}
     >
       {error ? (
@@ -146,57 +151,23 @@ export default function OrderDetail() {
         <ScreenSkeleton />
       ) : data ? (
         <>
-          <Text
-            style={{
-              ...text,
-              fontFamily: theme.font.displayStrong,
-              fontSize: 26,
-              lineHeight: 32,
-            }}
-          >
-            {data.order.vendor_name}
-          </Text>
-          <Text style={{ ...text, color: theme.textMuted, marginTop: 8 }}>
-            #{id.slice(0, 8)} ·{" "}
-            {data.order.status.replaceAll("_", " ").toLowerCase()}
-          </Text>
-          <OrderProgress status={data.order.status} pickup={data.order.fulfilment_mode==='PICKUP'}/>
-          <Text
-            style={{
-              ...text,
-              fontFamily: theme.font.semibold,
-              marginVertical: 20,
-            }}
-          >
-            {money(data.order.total_kobo)}
-          </Text>
-          <View
-            style={{
-              paddingVertical: 18,
-              borderTopWidth: 1,
-              borderBottomWidth: 1,
-              borderColor: theme.border,
-              gap: 8,
-            }}
-          >
-            <Text style={{ ...text, fontFamily: theme.font.semibold }}>
-              {data.order.fulfilment_mode === "PICKUP"
-                ? "Store pickup"
-                : data.order.fulfilment_mode === "VENDOR_DELIVERY"
-                  ? "Vendor delivery"
-                  : "Rider delivery"}
-            </Text>
-            <Text style={text}>
-              {data.order.fulfilment_mode === "PICKUP"
-                ? (data.order.pickup_location ?? data.order.delivery_location)
-                : data.order.delivery_location}
-            </Text>
-            {data.order.fulfilment_mode === "PICKUP" &&
-            data.order.pickup_instructions ? (
-              <Text style={{ ...text, color: theme.textMuted }}>
-                {data.order.pickup_instructions}
-              </Text>
-            ) : null}
+          <View style={{ backgroundColor: theme.surface, borderRadius: 22, borderWidth: 1, borderColor: theme.border, padding: 18, gap: 20 }}>
+            <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+              <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: theme.surfaceMuted, alignItems: "center", justifyContent: "center" }}><Ionicons name="storefront-outline" size={23} color={theme.accentText} /></View>
+              <View style={{ flex: 1, gap: 3 }}><Text numberOfLines={2} style={{ ...text, fontFamily: theme.font.displayStrong, fontSize: 23, lineHeight: 28 }}>{data.order.vendor_name}</Text><Text selectable style={{ ...text, color: theme.textMuted, fontSize: 12 }}>Order #{id.slice(0, 8).toUpperCase()}</Text></View>
+              <View style={{ alignItems: "flex-end", gap: 3 }}><Text style={{ ...text, fontFamily: theme.font.bold, fontSize: 19 }}>{money(data.order.total_kobo)}</Text><Text style={{ ...text, color: theme.textMuted, fontSize: 11 }}>Order total</Text></View>
+            </View>
+            <View style={{ height: 1, backgroundColor: theme.border }} />
+            <OrderProgress status={data.order.status} pickup={data.order.fulfilment_mode === 'PICKUP'} />
+            {data.order.created_at ? <Text style={{ ...text, color: theme.textMuted, fontSize: 11 }}>Placed {orderDate(data.order.created_at)}</Text> : null}
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 18, padding: 16, marginTop: 14 }}>
+            <Ionicons name={data.order.fulfilment_mode === "PICKUP" ? "storefront-outline" : "location-outline"} size={22} color={theme.accentText} />
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={{ ...text, fontFamily: theme.font.semibold }}>{data.order.fulfilment_mode === "PICKUP" ? "Store pickup" : data.order.fulfilment_mode === "VENDOR_DELIVERY" ? "Vendor delivery" : "Rider delivery"}</Text>
+              <Text style={{ ...text, color: theme.textMuted }}>{data.order.fulfilment_mode === "PICKUP" ? (data.order.pickup_location || data.order.delivery_location) : data.order.delivery_location}</Text>
+              {data.order.fulfilment_mode === "PICKUP" && data.order.pickup_instructions ? <Text style={{ ...text, color: theme.textMuted, fontSize: 12 }}>{data.order.pickup_instructions}</Text> : null}
+            </View>
           </View>
           {data.order.delivery_code ? (
             <View
@@ -247,18 +218,20 @@ export default function OrderDetail() {
               <View
                 key={item.product_id}
                 style={{
-                  paddingVertical: 18,
-                  borderBottomWidth: 1,
+                  padding: 16,
+                  marginTop: 12,
+                  backgroundColor: theme.surface,
+                  borderRadius: 18,
+                  borderWidth: 1,
                   borderColor: theme.border,
                   gap: 8,
                 }}
               >
-                <Text style={{ ...text, fontFamily: theme.font.semibold }}>
-                  {item.name}
-                </Text>{item.vendor_name?<Text style={{...text,color:theme.textMuted,fontSize:12}}>From {item.vendor_name}</Text>:null}
-                <Text style={{ ...text, color: theme.textMuted }}>
-                  {item.quantity} × {money(item.unit_price_kobo)}
-                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  {item.image_url ? <Image accessibilityLabel={item.name} source={{ uri: item.image_url }} style={{ width: 62, height: 62, borderRadius: 14, backgroundColor: theme.surfaceMuted }} /> : <View style={{ width: 62, height: 62, borderRadius: 14, backgroundColor: theme.surfaceMuted, alignItems: "center", justifyContent: "center" }}><Ionicons name="bag-handle-outline" size={24} color={theme.textMuted} /></View>}
+                  <View style={{ flex: 1, gap: 3 }}><Text style={{ ...text, fontFamily: theme.font.semibold }}>{item.name}</Text>{item.vendor_name ? <Text style={{ ...text, color: theme.textMuted, fontSize: 11 }}>From {item.vendor_name}</Text> : null}<Text style={{ ...text, color: theme.textMuted, fontSize: 12 }}>Qty {item.quantity} · {money(item.unit_price_kobo)} each</Text></View>
+                  <Text style={{ ...text, fontFamily: theme.font.semibold }}>{money(item.unit_price_kobo * item.quantity)}</Text>
+                </View>
                 {written ? (
                   <Text style={text}>
                     You rated this {written.rating}/5
@@ -368,31 +341,31 @@ export default function OrderDetail() {
               }
             />
           ) : null}
-          <Text
-            style={{
-              ...text,
-              fontFamily: theme.font.semibold,
-              fontSize: 18,
-              marginTop: 24,
-            }}
-          >
-            Order activity
-          </Text>
-          {data.timeline.map((event, index) => (
+          <View style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, padding: 16, borderRadius: 18, marginTop: 20, gap: 12 }}>
+            <Text style={{ ...text, fontFamily: theme.font.semibold, fontSize: 17 }}>Payment summary</Text>
+            {data.order.subtotal_kobo != null && Number.isFinite(Number(data.order.subtotal_kobo)) ? <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}><Text style={{ ...text, color: theme.textMuted }}>Items</Text><Text style={text}>{money(data.order.subtotal_kobo)}</Text></View> : null}
+            {Number(data.order.delivery_fee_kobo) > 0 ? <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}><Text style={{ ...text, color: theme.textMuted }}>Delivery</Text><Text style={text}>{money(data.order.delivery_fee_kobo!)}</Text></View> : null}
+            {data.order.subtotal_kobo != null && Number.isFinite(Number(data.order.subtotal_kobo)) && data.order.total_kobo - data.order.subtotal_kobo - Number(data.order.delivery_fee_kobo || 0) > 0 ? <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}><Text style={{ ...text, color: theme.textMuted }}>Fees</Text><Text style={text}>{money(data.order.total_kobo - data.order.subtotal_kobo - Number(data.order.delivery_fee_kobo || 0))}</Text></View> : null}
+            <View style={{ borderTopWidth: 1, borderColor: theme.border, paddingTop: 12, flexDirection: "row", justifyContent: "space-between", gap: 12 }}><Text style={{ ...text, fontFamily: theme.font.semibold }}>Total</Text><Text style={{ ...text, fontFamily: theme.font.bold }}>{money(data.order.total_kobo)}</Text></View>
+          </View>
+          <Text style={{ ...text, fontFamily: theme.font.semibold, fontSize: 18, marginTop: 24, marginBottom: 8 }}>Order activity</Text>
+          {[...data.timeline].reverse().map((event, index) => (
             <View
               key={`${event.occurred_at}-${index}`}
               style={{
-                borderLeftWidth: 2,
+                backgroundColor: theme.surface,
+                borderRadius: 14,
+                borderWidth: 1,
                 borderColor: theme.border,
                 padding: 12,
                 marginTop: 10,
               }}
             >
               <Text style={text}>
-                {event.status.replaceAll("_", " ").toLowerCase()}
+                {orderStatusLabel(event.status, data.order.fulfilment_mode === "PICKUP")}
               </Text>
               <Text style={{ ...text, color: theme.textMuted, fontSize: 12 }}>
-                {new Date(event.occurred_at).toLocaleString()}
+                {orderDate(event.occurred_at)}
               </Text>
             </View>
           ))}

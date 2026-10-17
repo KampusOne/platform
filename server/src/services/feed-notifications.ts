@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { database, firstRow } from "../lib/database";
 import type { Bindings } from "../types";
 
-export type FeedInteraction = "like" | "repost" | "comment";
+export type FeedInteraction = "like" | "repost" | "comment" | "favourite";
 
 export async function notifyFeedInteraction(
   env: Bindings,
@@ -37,7 +37,7 @@ export async function notifyFeedInteraction(
     if (!target?.author_user_id || target.author_user_id === actorUserId) return;
 
     const verb =
-      kind === "like" ? "liked" : kind === "repost" ? "reposted" : "replied to";
+      kind === "favourite" ? "saved" : kind === "like" ? "liked" : kind === "repost" ? "reposted" : "replied to";
     const title = `${target.actor_name} ${verb} your post`;
     const body = target.post_title;
     const path = `/post?id=${postId}`;

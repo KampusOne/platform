@@ -11,6 +11,8 @@ type Notice={
  id:string;
  path:string|null;
  institution_id:string|null;
+ actor_user_id:string|null;
+ actor_profile_image_url:string|null;
  actor_name:string|null;
  actor_username:string|null;
 };
@@ -19,6 +21,7 @@ export function preferenceCategoryFor(dedupeKey:string,_notice?:Notice|null):Not
  if(dedupeKey.startsWith('commerce:'))return 'orders';
  if(dedupeKey.startsWith('managed-profile-post:'))return 'newsletter';
  if(dedupeKey.startsWith('message:'))return 'messages';
+ if(dedupeKey.startsWith('feed-favourite:'))return 'likes';
  if(dedupeKey.startsWith('feed-like:'))return 'likes';
  if(dedupeKey.startsWith('feed-comment-like:'))return 'commentLikes';
  if(dedupeKey.startsWith('feed-comment:'))return 'comments';
@@ -58,7 +61,7 @@ export async function deliverCommunityPush(env:Bindings){
    if(!eligible){await db.execute(sql`update app_private.notification_outbox set state='FAILED',last_error_code='PUBLISHER_OR_AUDIENCE_CHANGED',completed_at=now()where id=${row.id}::uuid`);return;}
   }
   const inboxDedupe=row.dedupe_key.replace('announcement-push:','announcement:');
-  const notice=firstRow(await db.execute<Notice>(sql`select n.id,n.path,n.institution_id,coalesce(actor.display_name,actor.username) as actor_name,actor.username as actor_username from public.in_app_notifications n left join public.profiles actor on actor.user_id=n.actor_user_id and actor.deleted_at is null where n.user_id=${row.user_id}::uuid and n.dedupe_key=${inboxDedupe} limit 1`));
+  const notice=firstRow(await db.execute<Notice>(sql`select n.id,n.path,n.institution_id,n.actor_user_id,actor.profile_image_url as actor_profile_image_url,coalesce(actor.display_name,actor.username) as actor_name,actor.username as actor_username from public.in_app_notifications n left join public.profiles actor on actor.user_id=n.actor_user_id and actor.deleted_at is null where n.user_id=${row.user_id}::uuid and n.dedupe_key=${inboxDedupe} limit 1`));
   if(notice)await publishNotificationRead(env,row.user_id,'notice:'+notice.id,notice.institution_id).catch(()=>console.warn(JSON.stringify({level:'warn',event:'live.notification_enqueue_publish_failed'})));
   const category=preferenceCategoryFor(row.dedupe_key,notice);
   const runtime=await notificationRuntime(env,notice?.institution_id??null);
@@ -81,6 +84,7 @@ export async function deliverCommunityPush(env:Bindings){
     ...(notice?.id?{notificationId:notice.id}:{}),
     ...(row.dedupe_key.startsWith('message:')?{messageId:row.dedupe_key.split(':')[1]}:{}),
     preferenceCategory:category,
+    ...(notice?.actor_user_id?{actorUserId:notice.actor_user_id,actorName:notice.actor_name??"KampusOne user",actorImageUrl:notice.actor_profile_image_url??""}:{}),
    });
    await db.execute(sql`update app_private.community_push_deliveries set status=${result.status},ticket_id=${result.ticketId??null},error_code=${result.errorCode??null},updated_at=now(),next_attempt_at=now()+make_interval(secs=>${pushRetryDelaySeconds(attempt.attempts)}) where id=${attempt.id}::uuid`);
    if(result.status==='ACCEPTED')sent++;

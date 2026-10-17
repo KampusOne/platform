@@ -24,7 +24,7 @@ type Activity = {
   created_at?: string;
 };
 type Detail = {
-  profile: { email: string; display_name: string; username: string; roles?: string[]; current_level?: string | null; matriculation_number?: string | null; birth_date?: string | null; profile_image_url?: string | null; cover_image_url?: string | null; verification_status?: string | null; public_badge_verified?: boolean };
+  profile: { email: string; display_name: string; username: string; roles?: string[]; current_level?: string | null; matriculation_number?: string | null; birth_date?: string | null; profile_image_url?: string | null; cover_image_url?: string | null; verification_status?: string | null; public_badge_kind?: string; public_badge_verified?: boolean };
   restrictions: Restriction[];
   posts: Activity[];
   orders: Activity[];
@@ -163,7 +163,7 @@ function UserDetailContent({ id }: { id: string }) {
               {!profileImage && !coverImage && <p className="muted">No usable profile or cover photo is available.</p>}
               {skippedMedia && <p className="muted">A stored media link was invalid and was skipped instead of interrupting profile review.</p>}
             </div>
-            <p className="verification-summary"><strong>Account verification:</strong> {data.profile.verification_status ?? "UNKNOWN"} · {data.profile.public_badge_verified === true ? <><span className="brown-verification" aria-label="KampusOne badge assigned">✓</span> Public badge assigned</> : "Public badge not assigned"}</p>
+            <p className="verification-summary"><strong>Account verification:</strong> {data.profile.verification_status ?? "UNKNOWN"} · {data.profile.public_badge_verified === true ? <><span className="brown-verification" aria-label={data.profile.public_badge_kind === "ALUMNI" ? "Purple Alumni badge assigned" : "KampusOne badge assigned"} style={data.profile.public_badge_kind === "ALUMNI" ? { color: "#8B3FD1" } : undefined}>✓</span> {data.profile.public_badge_kind === "ALUMNI" ? "Alumni badge assigned" : "Public badge assigned"}</> : "Public badge not assigned"}</p>
             <h2>Activity</h2>
             {(["posts", "orders", "applications"] as const).map((key) => (
               <section key={key}>

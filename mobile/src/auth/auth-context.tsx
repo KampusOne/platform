@@ -42,6 +42,8 @@ type Profile = {
   first_name: string | null;
   last_name: string | null;
   display_name: string;
+  public_badge_verified?: boolean;
+  public_badge_kind?: string | null;
   profile_image_url?: string | null;
   university_id: string | null;
   university_name: string | null;

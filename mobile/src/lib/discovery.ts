@@ -45,6 +45,7 @@ export type SearchResult =
       university: string | null;
       followed: boolean;
       verified: boolean;
+      badge_kind?: string | null;
     }
   | {
       kind: "REPLY";

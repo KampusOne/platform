@@ -18,7 +18,7 @@ type ConnectionPerson={
   current_level:number|string|null;
   university_name:string|null;
   department_name:string|null;
-  verified:boolean;
+  verified:boolean;badge_kind?:string|null;
 };
 type ConnectionsPage={people:ConnectionPerson[];nextCursor?:string|null};
 function normalizePeople(value: unknown): ConnectionPerson[] {
@@ -36,7 +36,7 @@ function normalizePeople(value: unknown): ConnectionPerson[] {
       current_level: typeof raw.current_level === "number" || typeof raw.current_level === "string" ? raw.current_level : null,
       university_name: nullable(raw.university_name),
       department_name: nullable(raw.department_name),
-      verified: raw.verified === true,
+      verified: raw.verified === true, badge_kind: typeof raw.badge_kind === "string" ? raw.badge_kind : "STANDARD",
     }];
   });
 }
@@ -156,7 +156,7 @@ export default function SocialConnectionsScreen(){
             <View style={{flex:1,minWidth:0}}>
               <View style={{flexDirection:"row",alignItems:"center",gap:5}}>
                 <Text numberOfLines={1} style={{...label,fontFamily:theme.font.semibold,fontSize:15,flexShrink:1}}>{item.display_name}</Text>
-                {item.verified?<VerifiedBadge size={14}/>:null}
+                {item.verified?<VerifiedBadge kind={item.badge_kind} size={14}/>:null}
               </View>
               {item.username?<Text numberOfLines={1} style={{...label,color:theme.textMuted,fontSize:12,marginTop:2}}>@{item.username}</Text>:null}
               {meta?<Text numberOfLines={1} style={{...label,color:theme.textMuted,fontSize:11,marginTop:4}}>{meta}</Text>:null}

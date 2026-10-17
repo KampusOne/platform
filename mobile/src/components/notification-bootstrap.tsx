@@ -102,6 +102,47 @@ export function NotificationBootstrap() {
   const toast=useToast();
   const lastHandledResponse = useRef<string | null>(null);
 
+  // The shared event coordinator reconciles both inboxes; no per-screen polling loop.
+  // Seed the first snapshot quietly so opening the app never replays old alerts.
+  useEffect(() => {
+    if (state !== 'authenticated' || !user?.id) return;
+    let active = true, noticesReady = false, messagesReady = false;
+    const revision = getDeviceCacheRevision();
+    const seenNotices = new Set<string>(), seenMessages = new Set<string>();
+    const current = () => active && revision === getDeviceCacheRevision() && AppState.currentState === 'active';
+    const remember = (set: Set<string>, key: string) => { set.add(key); while (set.size > 150) set.delete(set.values().next().value!); };
+    async function notices() {
+      if (!current()) return;
+      const page = await api<{notifications:{id:string;title:string;body:string;path:string|null;read_at:string|null;actor_user_id:string|null;actor_name:string|null;actor_profile_image_url:string|null}[]}>('/v1/notifications/inbox');
+      if (!current()) return;
+      for (const row of [...page.notifications].reverse()) {
+        if (noticesReady && !row.read_at && !seenNotices.has(row.id)) toast(row.body, 'info', validAppPath(row.path) ? () => router.push(row.path as Href) : undefined, {
+          title: row.title, dedupeKey: 'notice:' + row.id,
+          ...(row.actor_user_id ? {actor:{id:row.actor_user_id,name:row.actor_name || 'KampusOne user',imageUrl:row.actor_profile_image_url}} : {}),
+        });
+        remember(seenNotices, row.id);
+      }
+      noticesReady = true;
+    }
+    async function messages() {
+      if (!current()) return;
+      const page = await api<{threads:{id:string;user_id:string;last_message_id:string|null;last_sender_id:string|null;last_message:string|null;display_name:string;profile_image_url:string|null;unread_count:number}[]}>('/v1/messages/inbox');
+      if (!current()) return;
+      for (const row of [...page.threads].reverse()) {
+        if (!row.last_message_id) continue;
+        if (messagesReady && row.last_sender_id !== user!.id && row.unread_count > 0 && !seenMessages.has(row.last_message_id)) toast(row.last_message || 'New message', 'info', () => router.push({pathname:'/conversation',params:{id:row.id}}), {
+          title: row.display_name, dedupeKey: 'message:' + row.last_message_id, actor: {id:row.user_id,name:row.display_name,imageUrl:row.profile_image_url},
+        });
+        remember(seenMessages, row.last_message_id);
+      }
+      messagesReady = true;
+    }
+    const offNotices = liveReads.subscribe('/v1/notifications/inbox', notices, 60_000);
+    const offMessages = liveReads.subscribe('/v1/messages/inbox', messages, 60_000);
+    void Promise.allSettled([notices(), messages()]);
+    return () => { active = false; offNotices(); offMessages(); };
+  }, [state, user ? cacheScopeForUser(user) : null, toast]);
+
   useEffect(() => {
     if (Platform.OS === "web" || state !== "authenticated" || !user?.id) return;
     let active = true;
@@ -166,8 +207,8 @@ export function NotificationBootstrap() {
         if (!active) return;
         Notifications.setNotificationHandler({
           handleNotification: async () => ({
-            shouldShowBanner: true,
-            shouldShowList: true,
+            shouldShowBanner: AppState.currentState !== 'active',
+            shouldShowList: AppState.currentState !== 'active',
             shouldPlaySound: true,
             shouldSetBadge: true,
           }),
@@ -178,7 +219,11 @@ export function NotificationBootstrap() {
         receivedSubscription = Notifications.addNotificationReceivedListener(notification => {
           if (active) {
             const content=notification.request.content;
-            if(AppState.currentState==='active' && (content.title||content.body))toast([content.title,content.body].filter(Boolean).join("\n"),"info",validAppPath(content.data?.path)?()=>router.push(content.data!.path as Href):undefined);
+            if(AppState.currentState==='active' && (content.title||content.body))toast(content.body || content.title || '',"info",validAppPath(content.data?.path)?()=>router.push(content.data!.path as Href):undefined,{
+              title:content.title||undefined,
+              dedupeKey:typeof content.data?.notificationId==='string'?'notice:'+content.data.notificationId:typeof content.data?.messageId==='string'?'message:'+content.data.messageId:notification.request.identifier,
+              ...(typeof content.data?.actorUserId==='string'?{actor:{id:content.data.actorUserId,name:typeof content.data.actorName==='string'?content.data.actorName:'KampusOne user',imageUrl:typeof content.data.actorImageUrl==='string'?content.data.actorImageUrl:null}}:{}),
+            });
             const data = notification.request.content.data ?? {};
             const thread = threadIdFromPath(data.path);
             liveReads.event(["/v1/notifications/inbox", "/v1/messages/inbox", ...(thread ? ["/v1/messages/threads/" + thread] : [])]);

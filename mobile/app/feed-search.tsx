@@ -264,7 +264,7 @@ export default function FeedSearch() {
           <View style={styles.resultCopy}>
             <View style={styles.nameRow}>
               <Text style={styles.name}>{item.name}</Text>
-              {item.verified ? <VerifiedBadge size={14} /> : null}
+              {item.verified ? <VerifiedBadge kind={item.badge_kind} size={14} /> : null}
             </View>
             <Text style={styles.muted}>
               @{item.username ?? "student"}

@@ -62,6 +62,7 @@ type StudentProfile = {
   current_level: string | null;
   graduation_year: number | null;
   verification_status: string | null;
+  public_badge_kind?: string | null;
   public_badge_verified?: boolean | null;
   follower_count?: number | null;
   following_count?: number | null;
@@ -102,6 +103,7 @@ type FeedPost = {
   title: string;
   source_name: string;
   source_verified?: boolean;
+  source_badge_kind?: string | null;
   bookmarked: boolean;
   published_at: string;
 };
@@ -547,7 +549,7 @@ export default function ProfileScreen() {
           </Pressable>
           <View style={styles.nameRow}>
             <Text style={styles.name}>{name}</Text>
-            {hasPublicBadge(profile) ? <VerifiedBadge size={16} /> : null}
+            {hasPublicBadge(profile) ? <VerifiedBadge kind={profile?.public_badge_kind} size={16} /> : null}
             <Pressable
               accessibilityLabel="Edit name"
               accessibilityRole="button"
@@ -804,7 +806,7 @@ export default function ProfileScreen() {
                             {post.source_name}
                           </Text>
                           {post.source_verified ? (
-                            <VerifiedBadge size={14} label={`${post.source_name}, verified`} />
+                            <VerifiedBadge kind={post.source_badge_kind} size={14} label={`${post.source_name}, verified`} />
                           ) : null}
                         </View>
                       </Pressable>
