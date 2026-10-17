@@ -1104,18 +1104,25 @@ studentRoutes.put('/tutorial-resources/:id/save',async c=>{
 });
 
 studentRoutes.get("/tutorial-resources/:id", async (context) => {
+  context.header("Cache-Control", "private, no-store");
   requireFeature(
     context.env,
     "TUTORIALS_ENABLED",
     "Learning resources are not enabled in this environment.",
   );
   const user = currentUser(context);
+  const resourceId = id(context.req.param("id"));
   const resourceTutorVisible = unblockedAuthor(user.id, sql`resource_tutor.user_id`);
   const result = await database(context.env).execute(sql`
     select resources.id, resources.listing_id, resources.course_code, resources.title,
       resources.description, resources.resource_type, resources.access_model, resources.cover_url,resources.subject,resources.parts,resources.created_at,
       resources.price_kobo, resources.level_code, resources.batch_label,
       resources.publisher_name, resources.publisher_verified, resources.preview_text,
+      resource_tutor.id as tutor_profile_id,
+      coalesce(nullif(btrim(resource_tutor.display_name), ''), resources.publisher_name) as tutor_name,
+      coalesce(nullif(to_jsonb(resource_tutor)->'public_details'->>'profileImageUrl', ''), tutor_owner.profile_image_url) as tutor_image_url,
+      (resource_tutor.verified_at is not null and not resources.is_demo) as tutor_verified,
+      exists(select 1 from public.learning_saves saves where saves.user_id=${user.id}::uuid and saves.resource_id=resources.id) as is_saved,
       resources.page_count, resources.duration_seconds, resources.download_count,
       resources.is_demo,
       ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`resources.media_object_id` : sql`null::uuid`} media_object_id,
@@ -1135,7 +1142,9 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
       ))) as can_access
     from public.tutorial_resources resources
     left join public.agent_profiles resource_tutor on resource_tutor.id = resources.tutor_profile_id
-    where resources.id = ${context.req.param("id")}::uuid
+      and resource_tutor.university_id = resources.university_id and resource_tutor.agent_type = 'TUTOR'
+    left join public.profiles tutor_owner on tutor_owner.user_id = resource_tutor.user_id and tutor_owner.deleted_at is null
+    where resources.id = ${resourceId}::uuid
       and resources.university_id = ${requireUniversity(user)}::uuid
       and ${resourceTutorVisible}
       and resources.status = 'PUBLISHED' and resources.deleted_at is null
