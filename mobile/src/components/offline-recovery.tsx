@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Network from 'expo-network';
 import { useAppearance } from '@/src/lib/appearance';
+import { setNetworkOffline } from '@/src/lib/network-state';
 
 /** A disconnected device has one recovery screen; server errors do not set it offline. */
 export function OfflineRecovery(){
@@ -11,7 +12,7 @@ export function OfflineRecovery(){
  const [offline,setOffline]=useState(false),[dismissed,setDismissed]=useState(false),[checking,setChecking]=useState(false);
  useEffect(()=>{
   let live=true;
-  const accept=(state:Network.NetworkState)=>{if(!live)return;const next=state.isConnected===false||state.isInternetReachable===false;setOffline(next);if(!next)setDismissed(false);};
+  const accept=(state:Network.NetworkState)=>{if(!live)return;const next=state.isConnected===false||state.isInternetReachable===false;setNetworkOffline(next);setOffline(next);if(!next)setDismissed(false);};
   void Network.getNetworkStateAsync().then(accept).catch(()=>undefined);
   const network=Network.addNetworkStateListener(accept);
   const app=AppState.addEventListener('change',state=>{if(state==='active')void Network.getNetworkStateAsync().then(accept).catch(()=>undefined);});

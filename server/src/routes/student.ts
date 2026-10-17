@@ -960,6 +960,7 @@ studentRoutes.get("/tutorials", async (context) => {
     "NOTE",
     "PDF",
     "AUDIOBOOK",
+    "VIDEO",
   ]);
   if (resourceType && !allowedResourceTypes.has(resourceType)) {
     throw new AppError(
@@ -1035,7 +1036,7 @@ studentRoutes.get("/tutorials", async (context) => {
     `),
     database(context.env).execute(sql`
       select resources.id, resources.listing_id, resources.course_code, resources.title,
-        resources.description, resources.resource_type, resources.access_model,
+        resources.description, resources.resource_type, resources.access_model, resources.cover_url,resources.subject,resources.parts,resources.created_at,
         resources.price_kobo, resources.level_code, resources.batch_label,
         resources.publisher_name, resources.publisher_verified, resources.preview_text,
         resources.page_count, resources.duration_seconds, resources.download_count,
@@ -1048,18 +1049,34 @@ studentRoutes.get("/tutorials", async (context) => {
         and ${resourceTutorVisible}
         and resources.status = 'PUBLISHED' and resources.deleted_at is null
         and resources.is_demo = false
+        and resource_tutor.status='ACTIVE'
         and (${paidAccessEnabled} or resources.access_model <> 'PAID')
         and (${resourceType ?? null}::text is null or resources.resource_type = ${resourceType ?? null})
         and (${search}::text is null or resources.title ilike ${search}
           or resources.description ilike ${search} or resources.course_code ilike ${search}
           or resources.publisher_name ilike ${search})
-      order by resources.updated_at desc limit 150
+      order by resources.created_at desc,resources.id desc limit 150
     `),
   ]);
   const tutorialPricing = await inclusiveListings(context.env,universityId,'TUTORIAL',listings.rows);
   const tutorialBillingReady=await pricedTutorialReady(context.env);
   const materialReady=await materialCommerceReady(context.env),resourcePricing=await inclusiveListings(context.env,universityId,'TUTORIAL',resources.rows);
   return context.json({ listings: tutorialPricing.items.map(l=>({...l,pricing_ready:Number(l.price_kobo)===0 || (l.pricing_ready && paidAccessEnabled && tutorialBillingReady)})), resources: resourcePricing.items.map(r=>({...r,pricing_ready:r.access_model!=='PAID'||(r.pricing_ready&&paidAccessEnabled&&materialReady)})) });
+});
+
+studentRoutes.get('/tutors',async c=>{
+ const u=currentUser(c);const rows=await database(c.env).execute(sql`select a.id,a.user_id,a.display_name,a.biography,a.verified_at,a.public_details->'categories' specialties,coalesce(a.public_details->>'profileImageUrl',p.profile_image_url) profile_image_url from public.agent_profiles a left join public.profiles p on p.user_id=a.user_id where a.university_id=${u.universityId}::uuid and a.agent_type='TUTOR' and a.status='ACTIVE' and not exists(select 1 from public.user_blocks b where(b.blocker_id=${u.id}::uuid and b.blocked_id=a.user_id)or(b.blocked_id=${u.id}::uuid and b.blocker_id=a.user_id)) order by a.display_name limit 200`);return c.json({tutors:rows.rows});
+});
+
+studentRoutes.get('/learning-saved',async c=>{
+ const user=currentUser(c);return c.json({resources:(await database(c.env).execute(sql`select r.id,r.title,r.resource_type,r.cover_url,r.publisher_name,r.subject,r.price_kobo,r.access_model from public.learning_saves s join public.tutorial_resources r on r.id=s.resource_id join public.agent_profiles a on a.id=r.tutor_profile_id where s.user_id=${user.id}::uuid and r.university_id=${user.universityId}::uuid and r.status='PUBLISHED' and r.deleted_at is null and a.status='ACTIVE' order by s.created_at desc limit 150`)).rows});
+});
+studentRoutes.put('/tutorial-resources/:id/save',async c=>{
+ const user=currentUser(c),resourceId=id(c.req.param('id'));const d=await validatedInput(c,z.object({saved:z.boolean()}));
+ const resource=firstRow(await database(c.env).execute(sql`select id from public.tutorial_resources where id=${resourceId}::uuid and university_id=${user.universityId}::uuid and status='PUBLISHED' and deleted_at is null`));
+ if(!resource)throw new AppError(404,'NOT_FOUND','This learning material is unavailable.');
+ if(d.saved)await database(c.env).execute(sql`insert into public.learning_saves(user_id,resource_id)values(${user.id}::uuid,${resourceId}::uuid)on conflict do nothing`);else await database(c.env).execute(sql`delete from public.learning_saves where user_id=${user.id}::uuid and resource_id=${resourceId}::uuid`);
+ return c.json({saved:d.saved});
 });
 
 studentRoutes.get("/tutorial-resources/:id", async (context) => {
@@ -1072,7 +1089,7 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
   const resourceTutorVisible = unblockedAuthor(user.id, sql`resource_tutor.user_id`);
   const result = await database(context.env).execute(sql`
     select resources.id, resources.listing_id, resources.course_code, resources.title,
-      resources.description, resources.resource_type, resources.access_model,
+      resources.description, resources.resource_type, resources.access_model, resources.cover_url,resources.subject,resources.parts,resources.created_at,
       resources.price_kobo, resources.level_code, resources.batch_label,
       resources.publisher_name, resources.publisher_verified, resources.preview_text,
       resources.page_count, resources.duration_seconds, resources.download_count,
@@ -1099,6 +1116,7 @@ studentRoutes.get("/tutorial-resources/:id", async (context) => {
       and ${resourceTutorVisible}
       and resources.status = 'PUBLISHED' and resources.deleted_at is null
       and resources.is_demo = false
+        and resource_tutor.status='ACTIVE'
     limit 1
   `);
   const resource = firstRow(result);
@@ -1390,6 +1408,8 @@ studentRoutes.get('/delivery-places',async c=>{const u=currentUser(c);const r=aw
  (select z.id from public.delivery_zones z where z.university_id=p.university_id and z.active and to_jsonb(z)->>'campus_id'=p.campus_id::text order by z.created_at,z.id limit 1) as delivery_zone_id from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.status='PUBLISHED'
  where p.university_id=${u.universityId}::uuid and p.status='PUBLISHED'and ((p.source_provider='OSM'and p.confidence>=.8 and p.latitude is not null and p.longitude is not null)or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null)) order by c.name,p.name limit 1000`);return c.json({places:r.rows});});
 
+studentRoutes.get('/pickup-hubs',async c=>{const user=currentUser(c);return c.json({hubs:(await database(c.env).execute(sql`select name from public.commerce_pickup_hubs where university_id=${user.universityId}::uuid order by position`)).rows});});
+
 studentRoutes.get("/store", async (context) => {
   const user = currentUser(context);
   requireUniversity(user);
@@ -1421,7 +1441,7 @@ studentRoutes.get("/store", async (context) => {
       select products.id, products.vendor_profile_id, products.name, products.description,
         products.category, products.price_kobo, products.stock_quantity, products.image_url, coalesce(to_jsonb(products)->'image_urls','[]'::jsonb) as image_urls,profiles.user_id as vendor_user_id,
         products.preparation_minutes, storefronts.display_name as vendor_name,
-        storefronts.pickup_location,
+        storefronts.pickup_location,coalesce(to_jsonb(storefronts)->'pickup_locations','[]'::jsonb) as pickup_locations,
         coalesce((to_jsonb(storefronts)->>'pickup_enabled')::boolean,false) as pickup_enabled,
         coalesce((to_jsonb(storefronts)->>'self_delivery_enabled')::boolean,false) as self_delivery_enabled,
         coalesce(reviews.rating, 0) as rating, coalesce(reviews.review_count, 0)::int as review_count
@@ -1649,7 +1669,7 @@ studentRoutes.get("/orders/:id", async (context) => {
   const [items, timeline, reviews] = await Promise.all([
     database(context.env).execute(sql`
       select items.product_id, items.quantity, items.unit_price_kobo,
-        products.name, products.image_url
+        products.name, products.image_url,(select display_name from public.agent_profiles where id=products.vendor_profile_id) as vendor_name
       from public.order_items items
       join public.vendor_products products on products.id = items.product_id
       where items.order_id = ${order.id}::uuid order by items.created_at, items.id
@@ -1710,7 +1730,7 @@ studentRoutes.post("/product-reviews", async (context) => {
     await database(context.env).execute(sql`
       select * from app_private.create_product_review(
         ${reviewId}::uuid, ${parsed.data.orderId}::uuid, ${parsed.data.productId}::uuid,
-        ${user.id}::uuid, ${parsed.data.rating}::smallint, ${parsed.data.body ?? null}
+        ${user.id}::uuid, ${parsed.data.rating}::numeric, ${parsed.data.body ?? null}
       )
     `);
   } catch (error) {

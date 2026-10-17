@@ -2,7 +2,10 @@ import { getDocument } from 'unpdf/pdfjs';
 if (!Promise.withResolvers) Promise.withResolvers = function () { let resolve, reject; const promise = new Promise((res, rej) => { resolve = res; reject = rej; }); return { promise, resolve, reject }; };
 const hostOrigin = new URL(document.baseURI).origin;
 const send = data => { const message = JSON.stringify(data); if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(message); else window.parent.postMessage(message, hostOrigin); };
-let active = false;
+let active = false, sequence = 0;
+const scans = new Map();
+window.completeCampusScan = data => { const pending = scans.get(data.scanId); if (!pending) return; scans.delete(data.scanId); clearTimeout(pending.timer); data.error ? pending.reject(new Error(data.error)) : pending.resolve(data.text); };
+const readScan = (id,page,image) => new Promise((resolve,reject) => { const scanId=++sequence, timer=setTimeout(()=>{scans.delete(scanId);reject(new Error('This scanned page is taking too long. Your file is kept.'));},65000); scans.set(scanId,{resolve,reject,timer}); send({type:'scan',id,scanId,page,image}); });
 window.readCampusDocument = async input => {
   if (active) return;
   active = true;
@@ -29,7 +32,14 @@ window.readCampusDocument = async input => {
       const indexes = totalPages <= maxPages ? Array.from({ length: totalPages }, (_, i) => i + 1) : [...new Set(Array.from({ length: maxPages }, (_, i) => 1 + Math.floor(i * (totalPages - 1) / (maxPages - 1))))];
       for (const n of indexes) {
         const page = await pdf.getPage(n), content = await page.getTextContent();
-        const text = content.items.map(item => 'str' in item ? item.str + (item.hasEOL ? '\n' : ' ') : '').join('').trim().slice(0, 30000);
+        let text = content.items.map(item => 'str' in item ? item.str + (item.hasEOL ? '\n' : ' ') : '').join('').trim().slice(0, 30000);
+        if (text.replace(/\s/g,'').length < 80) {
+          const viewport=page.getViewport({scale:Math.min(2,1600/page.getViewport({scale:1}).width)});
+          const canvas=document.createElement('canvas'); canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+          const context=canvas.getContext('2d',{alpha:false});
+          try { await page.render({canvasContext:context,canvas,viewport}).promise; text=await readScan(input.id,n,canvas.toDataURL('image/jpeg',0.8)); }
+          finally { canvas.width=0;canvas.height=0; }
+        }
         if (text) pages.push({ page: n, text });
         page.cleanup();
       }
@@ -46,5 +56,5 @@ window.readCampusDocument = async input => {
   } catch (error) { send({ type: 'error', id: input.id, message: error.message || 'The document could not be read. Remove password protection or attach a clear page image.' }); }
   finally { await task?.destroy().catch(() => undefined); active = false; }
 };
-window.addEventListener('message', event => { if (event.source === window.parent && event.origin === hostOrigin && event.data && typeof event.data === 'object') void window.readCampusDocument(event.data); });
+window.addEventListener('message', event => { if (event.source === window.parent && event.origin === hostOrigin && event.data && typeof event.data === 'object') { if(event.data.type==='scan-result')window.completeCampusScan(event.data); else void window.readCampusDocument(event.data); } });
 send({ type: 'ready' });

@@ -27,6 +27,7 @@ beforeAll(async()=>{
     await db.exec(schema.tables.find(statement=>statement.startsWith('CREATE TABLE public.'+name+' '))!);
     await db.exec('alter table public.'+name+' add primary key(id)');
   }
+  await db.exec('alter table agent_profiles add column suspension_ends_at timestamptz,add column suspension_reason text');
   for(const user of [owner,otherOwner])await db.query("insert into public.agent_profiles(university_id,user_id,application_id,agent_type,display_name,verified_at)values($1,$2,$3,'TUTOR','Test tutor',now())",[campus,user,crypto.randomUUID()]);
 },15000);
 afterAll(async()=>{await db?.close();});

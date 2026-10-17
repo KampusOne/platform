@@ -38,7 +38,7 @@ export function SwipeReplyMessage({
   const offset = useRef(new Animated.Value(0)).current;
   const crossed = useRef(false);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const direction = mine ? 1 : -1;
+  const direction = -1;
 
   useEffect(() => {
     let mounted = true;

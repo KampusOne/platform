@@ -1,3 +1,4 @@
+import {gatewayAcademicTranscription} from '../lib/ai-gateway';
 import {examImportInstruction} from '../lib/exam-schedule';
 import { generateAcademicImport } from "../lib/academic-import-recovery";
 import { aiResultStream, aiResultStreamType } from '../lib/ai-result-stream';
@@ -349,6 +350,28 @@ aiRoutes.delete("/history/:id", async c => {
   await database(c.env).execute(sql`update app_private.ai_requests set result='{"deleted":true,"version":3}'::jsonb where user_id=${currentUser(c).id}::uuid and idempotency_key=${id.data}::uuid and status<>'PROCESSING'`);
   return c.json({ deleted: true });
 });
+aiRoutes.post('/document-pages', async c => {
+  requireSchema(c.env);
+  const user=currentUser(c), data=await input(c,z.object({mediaId:z.string().uuid(),pageNumber:z.number().int().min(1).max(300),image:z.string().max(2_500_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/)}).strict());
+  const owned=firstRow(await database(c.env).execute(sql`select id from public.media_objects where id=${data.mediaId}::uuid and owner_user_id=${user.id}::uuid and institution_id=${user.universityId}::uuid and kind='resource' and content_type='application/pdf' and deleted_at is null`));
+  if(!owned)throw new AppError(404,'NOT_FOUND','This document is not available to this account.');
+  const hash=await sha256(data.image),db=database(c.env);
+  type Page={content_hash:string;status:string;extracted_text:string|null;updated_at:string};
+  const cached=firstRow(await db.execute<Page>(sql`select content_hash,status,extracted_text,updated_at from app_private.ai_document_pages where user_id=${user.id}::uuid and media_id=${data.mediaId}::uuid and page_number=${data.pageNumber}`));
+  if(cached?.status==='COMPLETED'&&cached.content_hash===hash)return c.json({text:cached.extracted_text});
+  const policy=await studentAIPolicy(c.env,user);
+  const limit=firstRow(await db.execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('AI_DOCUMENT_PAGE',${await sha256(user.id)},${policy.pro?300:100},3600,3600) allowed`));
+  if(!limit?.allowed)throw new AppError(429,'RATE_LIMITED','The document reader needs a short pause. Your file and completed pages are kept.');
+  await consumeAcademicImportQuota(c.env,user,'document',data.mediaId,policy.pro);
+  const claim=firstRow(await db.execute(sql`insert into app_private.ai_document_pages(user_id,media_id,page_number,content_hash,status) values(${user.id}::uuid,${data.mediaId}::uuid,${data.pageNumber},${hash},'PROCESSING') on conflict(user_id,media_id,page_number) do update set content_hash=excluded.content_hash,status='PROCESSING',updated_at=now() where ai_document_pages.status='FAILED' or ai_document_pages.updated_at<now()-interval '2 minutes' returning page_number`));
+  if(!claim)throw new AppError(409,'CONFLICT','This page is already being read. Retry in a moment.');
+  try {
+    const text=await gatewayAcademicTranscription(c.env,{mimeType:'image/jpeg',data:data.image.slice('data:image/jpeg;base64,'.length)},Date.now()+50_000);
+    await db.execute(sql`update app_private.ai_document_pages set status='COMPLETED',extracted_text=${text},updated_at=now() where user_id=${user.id}::uuid and media_id=${data.mediaId}::uuid and page_number=${data.pageNumber} and content_hash=${hash}`);
+    return c.json({text});
+  }catch(error){await db.execute(sql`update app_private.ai_document_pages set status='FAILED',updated_at=now() where user_id=${user.id}::uuid and media_id=${data.mediaId}::uuid and page_number=${data.pageNumber} and content_hash=${hash}`).catch(()=>undefined);throw error instanceof AIProviderError?providerFailure(error):error;}
+});
+
 aiRoutes.post("/", async c => {
   requireSchema(c.env);
   const d = await input(c, requestSchema);
@@ -457,7 +480,7 @@ aiRoutes.post("/", async c => {
       const consumeImport = async () => {
         if (importConsumed || !(d.mode === 'timetable' || d.mediaId)) return;
         const kind = d.mode === 'timetable' ? (d.documentKind === 'calendar' || /calendar|exam period|academic dates/i.test(d.prompt) ? 'calendar' : 'timetable') : fileType?.startsWith('image/') ? 'image' : 'document';
-        await consumeAcademicImportQuota(c.env,u,kind,d.idempotencyKey,quota.pro);
+        await consumeAcademicImportQuota(c.env,u,kind,d.mediaId??d.idempotencyKey,quota.pro);
         importConsumed = true;
       };
       if(attached){
@@ -488,12 +511,13 @@ aiRoutes.post("/", async c => {
         ? { text: KAMPUSONE_RESTRICTED_RESPONSE, provider: selectedProvider, cards: [] as AICard[], actions: [] as AIAction[] }
         : d.mode==='timetable'
           ? await generateAcademicImport(c.env,aiInput,sourceText,d.documentKind,timetableScope)
-          : await runStudentAssistant(c.env,u,aiInput);
+          : d.mode === 'study' ? await runStudentAssistant(c.env,u,aiInput) : await generateAI(c.env,aiInput);
       let result: Saved = { ...saved, provider: generated.provider };
       if (d.mode === "timetable") {
-        if(!('extracted' in generated))throw new AIProviderError(422,'AI_INVALID_OUTPUT','This document could not be read as a schedule. Your file is kept.');
+        if(!('extracted' in generated) || !generated.extracted || typeof generated.extracted !== 'object')throw new AIProviderError(422,'AI_INVALID_OUTPUT','This document could not be read as a schedule. Your file is kept.');
         result = { ...result, ...generated.extracted };
       } else {
+        if (d.mediaId && /(?:can(?:not|[’\x27]t)|unable to) (?:access|read|view|open|see) (?:the |your |any )?(?:attached|uploaded|document|file|pdf)/i.test(generated.text)) throw new AIProviderError(422,'AI_DOCUMENT_UNREADABLE','Your document uploaded, but Kira did not read it successfully. Your file is kept; retry reading.');
         result.text = generated.text;
         if ('cards' in generated) result.cards=generated.cards as AICard[];
         if ('actions' in generated) result.actions=generated.actions as AIAction[];

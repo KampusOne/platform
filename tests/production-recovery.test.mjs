@@ -212,3 +212,12 @@ test('logout removes old account draft files while preserving files of a concurr
  cache.setDeviceCacheScope('verified-A',account);const clearing=cache.clearDeviceCache();assert.equal(cache.isDeviceCacheOwner(account),false);cache.setDeviceCacheScope('verified-B',other);finish();await clearing;
  assert.equal(deletions.includes('kampusone.message-draft.v1.'+account+'.thread'),true);assert.equal(deletions.includes('kampusone.message-draft.v1.'+other+'.thread'),false);
 });
+
+test('disconnecting preserves the signed-in read cache and blocks mutations without a network attempt',async()=>{
+ let offline=false,calls=0;const transport=nativeTransport(async()=>{calls++;return Response.json({posts:[{id:'last-loaded'}]});},Date,{isOffline:()=>offline});
+ transport.setAccessToken('fixture-token',account,'trusted-scope');
+ assert.equal((await transport.api('/v1/student/feed')).posts[0].id,'last-loaded');offline=true;
+ assert.equal((await transport.api('/v1/student/feed')).posts[0].id,'last-loaded');
+ await assert.rejects(transport.api('/v1/student/feed/post/like',{method:'POST'}),error=>error.code==='NETWORK_UNAVAILABLE');
+ assert.equal(calls,1);offline=false;await transport.api('/v1/student/feed/post/like',{method:'POST'});assert.equal(calls,2);
+});

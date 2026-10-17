@@ -1,3 +1,4 @@
+import {opportunityTypes} from '../../../packages/contracts/src/opportunities';
 import { feedExperienceReady } from "../lib/feed-experience";
 import { sql, type SQL } from "drizzle-orm";
 import { Hono, type Context } from "hono";
@@ -22,6 +23,38 @@ type User = ReturnType<typeof currentUser>;
 const uuid = z.string().uuid();
 const pageSize = 40;
 export const feedSocialRoutes = new Hono<Env>();
+
+feedSocialRoutes.post('/activity', requireAuth, async c => {
+  const user = currentUser(c), university = campus(user);
+  const data = await input(c, z.object({
+    requestId: z.string().uuid(), category: z.enum(['EVENT','SPORTS','OPPORTUNITY']),
+    opportunityType: z.enum(opportunityTypes).optional(), title:z.string().trim().min(3).max(180),
+    description:z.string().trim().min(4).max(5000), venue:z.string().trim().max(300).optional(),
+    startsAt:z.string().datetime().optional(), deadline:z.string().datetime().optional(),
+    registrationUrl:z.string().url().refine(value=>new URL(value).protocol==='https:', 'Use an HTTPS link.').optional(),
+    mediaIds:z.array(z.string().uuid()).max(5).default([]),
+  }).strict());
+  const activity = {opportunityType:data.category==='OPPORTUNITY' ? data.opportunityType??'OTHER' : null,venue:data.venue??null,startsAt:data.startsAt??null,deadline:data.deadline??null,registrationUrl:data.registrationUrl??null};
+  if (data.category==='OPPORTUNITY' ? !data.deadline : !data.startsAt) throw new AppError(400,'BAD_REQUEST','Choose the date before publishing.');
+  const existing = firstRow(await database(c.env).execute<{id:string;title:string;body:string;activity:unknown}>(sql`select id,title,body,audience->'activity' as activity from public.feed_posts where author_user_id=${user.id}::uuid and client_request_id=${data.requestId}::uuid`));
+  if (existing) {
+    if(existing.title!==data.title || existing.body!==data.description || JSON.stringify(existing.activity)!==JSON.stringify(activity)) {
+      const old=existing.activity as Record<string,unknown>;
+      if (existing.title!==data.title || existing.body!==data.description || Object.entries(activity).some(([key,value])=>old?.[key]!==value)) throw new AppError(409,'CONFLICT','This publish request belongs to another update.');
+    }
+    return c.json({id:existing.id});
+  }
+  const limit=firstRow(await database(c.env).execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('STUDENT_POST',${await sha256(user.id)},10,3600,3600) allowed`));
+  if(!limit?.allowed)throw new AppError(429,'RATE_LIMITED','Please wait before publishing again.');
+  const media=data.mediaIds.length ? (await database(c.env).execute<{id:string;content_type:string}>(sql`select id,content_type from public.media_objects where id in (${sql.join(data.mediaIds.map(id=>sql`${id}::uuid`),sql`,`)}) and owner_user_id=${user.id}::uuid and institution_id=${university}::uuid and kind='post' and content_type like 'image/%' and deleted_at is null`)).rows : [];
+  if(media.length!==data.mediaIds.length)throw new AppError(400,'BAD_REQUEST','Wait for your own photos to finish uploading.');
+  const origin=(c.env.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'');
+  const photos=data.mediaIds.map(id=>({id,url:origin+'/v1/media/'+id,type:media.find(item=>item.id===id)!.content_type}));
+  const audience={studentPost:true,activity,media:photos,...(photos.length?{mediaType:'image'}:{})};
+  const result=firstRow(await database(c.env).execute<{id:string}>(sql`with source as(insert into public.content_sources(university_id,name,owner_user_id) values(${university}::uuid,${'student:'+user.id},${user.id}::uuid) on conflict(university_id,name) do update set owner_user_id=excluded.owner_user_id returning id) insert into public.feed_posts(university_id,source_id,author_user_id,category,title,summary,body,image_url,audience,status,published_at,client_request_id) select ${university}::uuid,id,${user.id}::uuid,${data.category},${data.title},${data.description.slice(0,500)},${data.description},${photos[0]?.url??null},${JSON.stringify(audience)}::jsonb,'PUBLISHED',now(),${data.requestId}::uuid from source on conflict(author_user_id,client_request_id) where client_request_id is not null do update set client_request_id=excluded.client_request_id where feed_posts.body=excluded.body and feed_posts.title=excluded.title returning id`));
+  if(!result)throw new AppError(409,'CONFLICT','This publish request belongs to another update.');
+  return c.json({id:result.id},201);
+});
 
 // Suggestion collections must run before /:id so their names are never parsed as UUIDs.
 feedSocialRoutes.get("/mentions", requireAuth, async c => {
@@ -174,6 +207,7 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
   const repostedBy = c.req.query("repostedBy") ? id(c.req.query("repostedBy")!) : null;
   if (author && repostedBy) throw new AppError(400, "BAD_REQUEST", "Choose either posts or reposts for a profile.");
   const category = c.req.query("category")?.toUpperCase() || null;
+  const opportunityType = c.req.query("opportunityType")?.toUpperCase() || null;
   const search = c.req.query("q")?.trim().slice(0, 200) || null;
   const tag = search && /^#[\p{L}\p{M}\p{N}_]+$/u.test(search) ? search.slice(1).toLowerCase() : null;
   const searchFilter = tag
@@ -217,7 +251,8 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
         and ${visiblePost(university)}
         and ${postAuthorVisible}
         and (${category}::text is null or posts.category = ${category})
-        and ${searchFilter}
+        and (${opportunityType}::text is null or coalesce(posts.audience->'activity'->>'opportunityType','OTHER')=${opportunityType})
+      and ${searchFilter}
         and (${cursor?.at ?? null}::timestamptz is null or
           (target_repost.created_at, posts.id) < (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
       order by target_repost.created_at desc, posts.id desc
@@ -245,6 +280,7 @@ feedSocialRoutes.get("/", requireAuth, async (c, next) => {
       and ${postAuthorVisible}
       and (${author}::uuid is null or posts.author_user_id=${author}::uuid)
       and (${category}::text is null or posts.category = ${category})
+      and (${opportunityType}::text is null or coalesce(posts.audience->'activity'->>'opportunityType','OTHER')=${opportunityType})
       and ${searchFilter}
       and (${cursor?.at ?? null}::timestamptz is null or
         (posts.published_at, posts.id) < (${cursor?.at ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))

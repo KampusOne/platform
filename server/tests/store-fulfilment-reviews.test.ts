@@ -247,7 +247,7 @@ describe("store fulfilment and optional reviews", () => {
     );
     await req(
       `/agents/orders/${order.id}/handoff`,
-      409,
+      403,
       "POST",
       { code },
       owner,
@@ -379,7 +379,7 @@ describe("store fulfilment and optional reviews", () => {
     );
     await req(
       `/agents/orders/${order.id}/dispatch`,
-      409,
+      403,
       "POST",
       undefined,
       buyer,
@@ -417,14 +417,14 @@ describe("store fulfilment and optional reviews", () => {
     ).toEqual([]);
     await req(
       `/agents/deliveries/${job}/reserve`,
-      409,
+      404,
       "POST",
       undefined,
       riders[0]!.user,
     );
     await req(
       `/agents/orders/${order.id}/rider-request`,
-      409,
+      403,
       "POST",
       undefined,
       buyer,

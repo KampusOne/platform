@@ -19,7 +19,7 @@ function fixture({width=393,initialCart={},params={},fillRecipient=true}={}){
  const checkoutValidation=load('src/lib/store-checkout-validation.ts',{'../../../packages/contracts/src/commerce-input':commerceInput});
  const cart=load('src/lib/marketplace-cart.ts',{'react':react,'./device-cache':device},globals);
  const product={id,vendor_profile_id:vendor,name:'Campus wireless headphones with a long full product name',description:'All details',category:'Phones & accessories',price_kobo:1000000,stock_quantity:5,image_url:null,vendor_name:'Campus Audio',pickup_enabled:true,pickup_location:'Store counter'};
- const api=async(path,options)=>{requests.push({path,body:JSON.parse(options?.body??'{}')});if(path.endsWith('order-quotes')&&quoteError)throw quoteError;if(path.endsWith('order-quotes'))return{quote:{id:randomUUID(),expiresAt:new Date(Date.now()+60000).toISOString(),pricing:{listedItemsKobo:1000000,discountKobo:0,fareKobo:0,cashDueKobo:0,payableKobo:1000000,totalKobo:1000000},fare:null}};if(path.endsWith('/orders'))return{id:randomUUID(),totalKobo:1000000};return{};};
+ const api=async(path,options)=>{if(path.endsWith('/pickup-hubs'))return{hubs:[]};requests.push({path,body:JSON.parse(options?.body??'{}')});if(path.endsWith('order-quotes')&&quoteError)throw quoteError;if(path.endsWith('order-quotes'))return{quote:{id:randomUUID(),expiresAt:new Date(Date.now()+60000).toISOString(),pricing:{listedItemsKobo:1000000,discountKobo:0,fareKobo:0,cashDueKobo:0,payableKobo:1000000,totalKobo:1000000},fare:null}};if(path.endsWith('/orders'))return{id:randomUUID(),totalKobo:1000000};return{};};
  const router={push:path=>routes.push(path),replace:path=>routes.push(path),back:()=>routes.push('back'),setParams:()=>{}};
  const modules={
   'react':react,'react/jsx-runtime':jsx,
@@ -74,23 +74,23 @@ test('Buy now checks out one chosen product while preserving the remaining cart 
  const f=fixture({initialCart:{[id]:3}});await f.settle();const list=f.all().find(({node})=>node.type==='FlatList').node;list.props.renderItem({item:f.product}).props.onPreview();f.render();
  const preview=f.all().find(({node})=>node.type==='ProductPreview').node;assert.equal(typeof preview.props.onBuyNow,'function');preview.props.onBuyNow();await f.settle();assert.equal(f.routes.at(-1).pathname,'/marketplace-checkout');assert.equal(f.routes.at(-1).params.buyNow,id);
  f.openCheckout(id);await f.settle();f.by('Review route and checkout total').props.onPress();f.by('Review route and checkout total').props.onPress();await f.settle();assert.equal(f.requests.filter(r=>r.path.endsWith('order-quotes')).length,1);
- assert.equal(f.requests[0].body.items[0].quantity,1);const confirm=f.all().find(({node})=>String(node.props?.accessibilityLabel??'').startsWith('Confirm order and pay')).node;confirm.props.onPress();await f.settle();assert.equal(f.stored()[id],2);assert.equal(f.routes.at(-1).pathname,'/payment-review');
+ assert.equal(f.requests[0].body.items[0].quantity,1);const confirm=f.all().find(({node})=>String(node.props?.accessibilityLabel??'').startsWith('Confirm order and pay')).node;confirm.props.onPress();await f.settle();assert.equal((f.stored().items??f.stored())[id],3);assert.equal(f.routes.at(-1).pathname,'/payment-review');
 });
 
 test('checkout retains quantity and blocks a quote until the changed cart is verified on disk',async()=>{
  const f=fixture({initialCart:{[id]:1}});await f.settle();f.openCheckout();await f.settle();f.setSaveFailure(true);
  const stepper=f.all().find(({node})=>node.props?.product?.id===id&&typeof node.props.onChange==='function').node;
  stepper.props.onChange(1);await f.settle();f.by('Review route and checkout total').props.onPress();await f.settle();
- assert.equal(f.requests.length,0);assert.equal(f.stored()[id],1);assert.ok(f.all().some(({node})=>String(node.props?.children??'').includes('Cart storage is unavailable')));
+ assert.equal(f.requests.length,0);assert.equal((f.stored().items??f.stored())[id],1);assert.ok(f.all().some(({node})=>String(node.props?.children??'').includes('Cart storage is unavailable')));
  f.setSaveFailure(false);f.by('Review route and checkout total').props.onPress();await f.settle();
- assert.equal(f.stored()[id],2);assert.equal(f.requests.length,1);assert.equal(f.requests[0].body.items[0].quantity,2);
+ assert.equal((f.stored().items??f.stored())[id],2);assert.equal(f.requests.length,1);assert.equal(f.requests[0].body.items[0].quantity,2);
 });
 
 test('confirmation verifies the cart again and a failed save creates no order',async()=>{
  const f=fixture({initialCart:{[id]:1}});await f.settle();f.openCheckout();await f.settle();f.by('Review route and checkout total').props.onPress();await f.settle();
  const confirm=()=>f.all().find(({node})=>String(node.props?.accessibilityLabel??'').startsWith('Confirm order and pay')).node;
  f.setSaveFailure(true);confirm().props.onPress();await f.settle();
- assert.equal(f.requests.filter(r=>r.path.endsWith('/orders')).length,0);assert.equal(f.routes.length,0);assert.equal(f.stored()[id],1);
+ assert.equal(f.requests.filter(r=>r.path.endsWith('/orders')).length,0);assert.equal(f.routes.length,0);assert.equal((f.stored().items??f.stored())[id],1);
  f.setSaveFailure(false);confirm().props.onPress();await f.settle();
  assert.equal(f.requests.filter(r=>r.path.endsWith('/orders')).length,1);assert.equal(f.routes.at(-1).pathname,'/payment-review');
 });

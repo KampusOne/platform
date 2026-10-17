@@ -199,13 +199,20 @@ export function listingPrice(baseKobo: number, policy: CommerceFees) {
     ruleId: policy.id,
   };
 }
-export function campusFare(routeMetres: number) {
+export function campusFare(routeMetres: number, load: {quantity?:number;weightGrams?:number;volumeCm3?:number;pickupStops?:number} = {}) {
   if (!Number.isFinite(routeMetres) || routeMetres < 0 || routeMetres > 100_000)
     throw new RangeError("A usable campus route is required.");
-  // ₦300 through 1 km, ₦50 for each subsequent started kilometre, capped at ₦500.
+  const quantity = load.quantity ?? 1, weight = load.weightGrams ?? 0, volume = load.volumeCm3 ?? 0, stops = load.pickupStops ?? 1;
+  if (![quantity,weight,volume,stops].every(Number.isFinite) || quantity < 1 || weight < 0 || volume < 0 || stops < 1) throw new RangeError('A usable package size is required.');
+  // ₦500 within 1 km. Each further km adds ₦100; each four extra
+  // items adds ₦50. Chargeable weight uses the greater of actual kg and
+  // volumetric kg (cm³ / 5000), with ₦100 per kg beyond 2 kg.
+  const distanceKobo = Math.ceil(Math.max(0,routeMetres-1000)/1000)*10_000;
+  const quantityKobo = Math.ceil(Math.max(0,quantity-1)/4)*5_000;
+  const bulkKobo = Math.ceil(Math.max(0,Math.max(weight/1000,volume/5000)-2))*10_000;
   const fareKobo = Math.min(
-    50000,
-    30000 + Math.ceil(Math.max(0, routeMetres - 1000) / 1000) * 5000,
+    150_000,
+    50_000 + distanceKobo + quantityKobo + bulkKobo + Math.max(0,stops-1)*10_000,
   );
   const commissionKobo = 0; // Agent commission is charged on a reviewed withdrawal.
   return {
@@ -213,7 +220,8 @@ export function campusFare(routeMetres: number) {
     commissionKobo,
     riderNetKobo: fareKobo - commissionKobo,
     routeMetres: Math.ceil(routeMetres),
-    tariffVersion: "campus-300-500-v2",
+    tariffVersion: "campus-distance-load-500-1500-v3",
+    quantity, chargeableKg: Math.max(weight/1000,volume/5000), pickupStops:stops,
   };
 }
 export function checkoutPrice(

@@ -99,6 +99,7 @@ type PinnedMessage = {
 };
 type Data = {
   thread: {
+    contactPolicy?:{restricted:boolean;suspended_until:string|null}|undefined;
     kind?: string;
     access_ends_at?: string | null;
     status: string;
@@ -200,6 +201,7 @@ function normalizeConversationData(value: unknown): Data {
   return {
     thread: {
       ...(typeof thread.kind === "string" ? { kind: thread.kind } : {}),
+      contactPolicy:thread.contactPolicy as Data["thread"]["contactPolicy"],
       access_ends_at: nullableString(thread.access_ends_at),
       status: typeof thread.status === "string" ? thread.status : "REQUESTED",
       recipient_id:
@@ -948,6 +950,10 @@ export default function ConversationScreen() {
       setPendingMedia((current) => current.filter((batch) => batch.id !== working.id));
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (caught) {
+      if(caught instanceof ApiError&&caught.details?.reason==='CHAT_CONTACT_BLOCKED'){
+        setPendingMedia(current=>current.filter(batch=>batch.id!==working.id));
+        setError(caught.message);await load().catch(()=>undefined);return;
+      }
       const message = caught instanceof Error ? caught.message : "Media could not be sent.";
       working = { ...working, status: "failed", error: message };
       setPendingMedia((current) => current.map((batch) => batch.id === working.id ? { ...working, items: [...working.items] } : batch));
@@ -1066,6 +1072,13 @@ export default function ConversationScreen() {
       await load();
     } catch (caught) {
       if(activeDraftChannel.current!==draftChannel||activeScope.current!==scope)return;
+      if(caught instanceof ApiError && caught.details?.reason==='CHAT_CONTACT_BLOCKED') {
+        pending.current=null;setPendingTextState(null);setDraft('');setReplyingTo(null);
+        draftChannel.value={...draftChannel.value,text:'',reply:null,pendingText:null};
+        if(user?.id) { await acknowledgePendingText(user.id,id,message.id).catch(()=>undefined);await saveScopedConversationDraft(user.id,id,draftChannel.value).catch(()=>undefined); }
+        setData(current=>current?{...current,messages:current.messages.filter(item=>item.id!==message.id)}:current);
+        setError(caught.message);void load();return;
+      }
       if(durable&&user?.id){
         const retry={attempts:0,nextAttemptAt:Date.now()+2000,blocked:!retryableTextError(caught),error:caught instanceof Error?caught.message:'Message confirmation failed.'};
         await updatePendingTextRetry(user.id,id,message.id,retry).catch(()=>undefined);
@@ -1302,7 +1315,8 @@ export default function ConversationScreen() {
 
   const incoming = data?.thread.status === "REQUESTED" && data.thread.recipient_id === user?.id;
   const tutorExpired = data?.thread.kind === "TUTOR" && !data.thread.access_ends_at;
-  const canSend = !tutorExpired && (data?.thread.status === "ACCEPTED" || (data?.thread.status === "REQUESTED" && !incoming && data.messages.length === 0));
+  const chatSuspended=Boolean(data?.thread.contactPolicy?.suspended_until && Date.parse(data.thread.contactPolicy.suspended_until)>Date.now());
+  const canSend = !chatSuspended && !tutorExpired && (data?.thread.status === "ACCEPTED" || (data?.thread.status === "REQUESTED" && !incoming && data.messages.length === 0));
   const canAttach = data?.thread.status === "ACCEPTED";
   const locked = sending || voiceSending || actionBusy || messageActionBusy || !draftReady;
   const peerName = data?.profile?.display_name || "Conversation";
@@ -1541,6 +1555,7 @@ export default function ConversationScreen() {
             </View>
           ) : canSend ? (
             <View style={styles.composerDock}>
+              {data.thread.contactPolicy?.restricted?<Text accessibilityLiveRegion="polite" style={{color:theme.textMuted,fontFamily:theme.font.body,fontSize:11,padding:8}}>This is an agent conversation. Do not share phone numbers or account details. A violation removes the message and pauses this chat for 3 days.</Text>:null}
               {draftWarning ? <Text accessibilityRole="alert" style={{ color: theme.error, fontFamily: theme.font.body, fontSize: 12, padding: 10 }}>{draftWarning}</Text> : null}
               {!draftReady && draftWarning ? <Pressable accessibilityRole="button" onPress={() => setDraftRetry(value => value + 1)} style={{ padding: 12 }}><Text style={{ color: theme.accentText }}>Retry draft recovery</Text></Pressable> : null}
               {replyingTo ? (
@@ -1640,7 +1655,7 @@ export default function ConversationScreen() {
           ) : data ? (
             <View style={styles.closedDock}>
               <Ionicons name={tutorExpired ? "time-outline" : "lock-closed-outline"} size={18} color={theme.textMuted} />
-              <Text style={styles.closedText}>{tutorExpired ? "Past messages remain available. Renew tutoring access to send new messages." : data.thread.status === "DECLINED" ? "This message request was declined." : "Your message request is waiting for acceptance."}</Text>
+              <Text style={styles.closedText}>{chatSuspended ? `This chat is suspended until ${new Date(data.thread.contactPolicy!.suspended_until!).toLocaleDateString("en-NG")}.` : tutorExpired ? "Past messages remain available. Renew tutoring access to send new messages." : data.thread.status === "DECLINED" ? "This message request was declined." : "Your message request is waiting for acceptance."}</Text>
             </View>
           ) : null}
         </View>

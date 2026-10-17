@@ -182,7 +182,7 @@ export async function uploadAttachment(file: StagedAttachment, userId: string, q
   if(['application/pdf','text/plain'].includes(file.type)){
     // Small documents can be read by the Worker, including scanned PDFs.
     // A web reader outage should not prevent an already uploaded file being sent.
-    if ((file.size ?? Number.MAX_SAFE_INTEGER) <= 16 * 1024 * 1024) return { ...file, mediaId };
+    if (file.type === 'text/plain' && (file.size ?? Number.MAX_SAFE_INTEGER) <= 16 * 1024 * 1024) return { ...file, mediaId };
     options.onStage?.("reading");
     const sourceText=file.sourceText??await readUploadedDocument(mediaId,file.name,file.type,query,tier,options.signal);
     requireUploadSession(revision);

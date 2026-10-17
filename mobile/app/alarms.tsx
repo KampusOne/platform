@@ -554,7 +554,7 @@ export default function Alarms() {
   const { theme, isDark } = useAppearance();
   const styles = useMemo(() => createStyles(theme, isDark), [theme, isDark]);
   const toast = useToast();
-  const [expanded, setExpanded] = useState<AlarmCategory[]>(["REGULAR"]);
+  const [expanded, setExpanded] = useState<AlarmCategory[]>([]);
   const [clearGroup,setClearGroup] = useState<AlarmCategory|"ALL"|null>(null);
   const [clearError,setClearError] = useState("");
   const [importOpen,setImportOpen] = useState(false);

@@ -5,6 +5,8 @@ import { withSessionLock } from "./session-lock";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { emitFeatureLifecycle } from "./analytics-bridge";
+import { isOffline } from './network-state';
+import { secureSnapshots } from './secure-snapshots.native-adapter';
 
 import {
   readRefreshToken,
@@ -231,6 +233,13 @@ export function onSessionChange(listener: (session: Session | null) => void) {
   };
 }
 
+export function restoreOfflineAccount(user: SessionUser) {
+  if (accessToken || accessAccountId) return;
+  accessAccountId = user.id;
+  accessScope = cacheScopeForUser(user);
+  setDeviceCacheScope(accessScope, user.id);
+}
+
 async function parse<T>(response: Response): Promise<T> {
   let payload: unknown;
   const denied=response.status===403?response.clone():null;
@@ -359,6 +368,7 @@ async function securelyAcceptSession(session: Session) {
 }
 
 async function refreshSession() {
+  if (isOffline()) throw new ApiError(0, 'NETWORK_UNAVAILABLE', 'Your network is disconnected. Saved content is available; reconnect to make changes.');
   if (!refreshPromise) {
     if (queuedSessionTransitions > 0) {
       throw new ApiError(
@@ -421,6 +431,7 @@ async function refreshSession() {
           setAccessToken(null);
           sessionListener?.(null);
           void removeRefreshToken();
+          void import('./offline-session').then(value => value.removeOfflineSession()).catch(() => undefined);
         }
         return null;
       })
@@ -441,6 +452,11 @@ async function request<T>(
   const { timeoutMs, signal: parentSignal, ...requestInit } = init;
   const epochAtStart = sessionEpoch;
   const guarded = !path.startsWith("/v1/auth/");
+  if (isOffline()) throw new ApiError(0, 'NETWORK_UNAVAILABLE', 'Your network is disconnected. Saved content is available; reconnect to make changes.');
+  if (guarded && accessAccountId && !accessToken) {
+    const restored = await refreshSession();
+    if (!restored) throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in again to continue.');
+  }
   const headers = new Headers(init.headers);
   if (init.cache === "reload" || init.cache === "no-store" || init.cache === "no-cache") headers.set("Cache-Control", "no-cache");
   if (
@@ -524,7 +540,15 @@ export async function api<T>(
 ): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const isRead = method === "GET";
+  const snapshotKey = 'snapshot.' + path;
+  if (isRead && isOffline() && init.cache !== 'no-store') {
+    const saved = reads.get(path);
+    if (saved && readCachePolicy(path).retainMs>0) return saved.value as T;
+    const record = await secureSnapshots.read<T>(snapshotKey);
+    if (record) return record.data;
+  }
   if (!isRead) {
+    if (isOffline()) throw new ApiError(0, 'NETWORK_UNAVAILABLE', 'Your network is disconnected. Reconnect to make changes.');
     const mutationEpoch=sessionEpoch;
     invalidateMutation(path);
     const feature = analyticsFeatureForRequest(path);
@@ -598,6 +622,17 @@ export async function api<T>(
         });
       }
       return value;
+    })
+    .then(value => {
+      void secureSnapshots.write(snapshotKey, value, /\/messages\//.test(path) ? 12 * 3600_000 : 7 * 86400_000).catch(() => undefined);
+      return value;
+    })
+    .catch(async error => {
+      if (epochAtStart === sessionEpoch && error instanceof ApiError && ['NETWORK_UNAVAILABLE', 'REQUEST_TIMEOUT'].includes(error.code)) {
+        const record = await secureSnapshots.read<T>(snapshotKey);
+        if (record && epochAtStart === sessionEpoch) return record.data;
+      }
+      throw error;
     })
     .finally(() => {
       if (inFlight.get(path) === operation) inFlight.delete(path);

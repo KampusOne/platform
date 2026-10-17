@@ -258,7 +258,7 @@ export const tutorialResourceSchema = z
     courseCode: z.string().trim().toUpperCase().min(2).max(24),
     title: z.string().trim().min(3).max(180),
     description: z.string().trim().min(10).max(2000),
-    resourceType: z.enum(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK"]),
+    resourceType: z.enum(["PAST_QUESTION", "NOTE", "PDF", "AUDIOBOOK", "VIDEO"]),
     accessModel: z.enum(["FREE", "BOOKING_INCLUDED", "PAID"]).default("FREE"),
     priceKobo: z.number().int().min(0).max(100_000_000).default(0),
     levelCode: z.string().trim().min(3).max(20).nullable().optional(),
@@ -324,7 +324,7 @@ export const tutorialCancellationSchema = z.object({
 
 export const tutorialReviewSchema = z.object({
   bookingId: z.string().uuid(),
-  rating: z.number().int().min(1).max(5),
+  rating: z.number().min(1).max(5).multipleOf(0.5),
   body: z.string().trim().min(3).max(1000).nullable().optional(),
 });
 
@@ -410,6 +410,7 @@ export const vendorStorefrontSchema = z.object({
     .trim()
     .regex(/^\+234[789][0-9]{9}$/),
   pickupLocation: z.string().trim().min(5).max(500),
+  pickupLocations: z.array(z.string().trim().min(3).max(500)).max(100).optional(),
   pickupPlaceId: z.string().uuid().nullable().optional(),
   pickupInstructions: z.string().trim().max(1000).nullable().optional(),
   openingHours: z
@@ -544,6 +545,7 @@ export const storeOrderSchema = z
     deliveryZoneId: z.string().uuid().nullable().optional(),
     deliveryPaymentMethod: z.enum(["IN_APP", "CASH"]).default("IN_APP"),
     quoteId: z.string().uuid().optional(),
+    pickupPointName:z.string().trim().min(2).max(300).nullable().optional(),
     recipientName: z.string().trim().min(2, recipientNameError).max(120, 'Keep the recipient name within 120 characters.'),
     recipientPhoneE164: z
       .string()
@@ -610,7 +612,7 @@ export const storeFulfilmentSchema = z
 export const productReviewSchema = z.object({
   orderId: z.string().uuid(),
   productId: z.string().uuid(),
-  rating: z.number().int().min(1).max(5),
+  rating: z.number().min(1).max(5).multipleOf(0.5),
   body: z.string().trim().min(3).max(1000).nullable().optional(),
 });
 

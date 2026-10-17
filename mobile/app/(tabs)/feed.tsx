@@ -18,6 +18,8 @@ import { sharePostLink, wasPostDeleted, type FeedPostData } from "@/src/lib/feed
 import { mergeById, type FeedPage, type SocialFeedPost } from "@/src/lib/feed-social";
 import { recordPostView } from "@/src/lib/post-views";
 
+import {opportunityTypes,opportunityLabels} from '../../../packages/contracts/src/opportunities';
+import {ChoiceField} from '@/src/components/choice-field';
 const categories = ["All", "Update", "Event", "Sports", "Opportunity", "Emergency"] as const;
 const emptyFeedIllustration = require("@/assets/illustrations/feed-empty-v2.png");
 function safePosts(page: FeedPage | null | undefined): SocialFeedPost[] {
@@ -40,6 +42,7 @@ export default function FeedScreen() {
   useEffect(() => { if (typeof hashtag === "string") { setQuery(hashtag); setSelected("All"); } }, [hashtag]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<(typeof categories)[number]>("All");
+  const [opportunityType,setOpportunityType] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -117,7 +120,7 @@ export default function FeedScreen() {
   useEffect(() => () => setVideoPlayback(null), [setVideoPlayback]);
 
   useEffect(() => { const timer = setTimeout(() => setSearch(query.trim()), 300); return () => clearTimeout(timer); }, [query]);
-  const path = useMemo(() => `/v1/student/feed?limit=20&q=${encodeURIComponent(search)}${selected === "All" ? "" : `&category=${selected.toUpperCase()}`}`, [search, selected]);
+  const path = useMemo(() => `/v1/student/feed?limit=20&q=${encodeURIComponent(search)}${selected === "All" ? "" : `&category=${selected.toUpperCase()}`}${selected === "Opportunity" && opportunityType ? `&opportunityType=${opportunityType}` : ""}`, [search, selected, opportunityType]);
   const scope = `${user?.id ?? "anonymous"}:${path}`;
   const load = useCallback(async (refresh = false) => {
     const version = ++loadVersion.current;
@@ -191,7 +194,7 @@ export default function FeedScreen() {
     <FlatList onScroll={recordScroll} scrollEventThrottle={250} contentContainerStyle={styles.listContent} data={filtered} initialNumToRender={4} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" keyExtractor={(post) => post.id}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="transparent" colors={["transparent"]} progressBackgroundColor="transparent" />} viewabilityConfig={viewabilityConfig} onViewableItemsChanged={onViewableItemsChanged}
       ListEmptyComponent={!loading && !error ? <FeedEmptyState filtered={Boolean(search) || selected !== "All"} /> : null}
-      ListHeaderComponent={<><View style={{ height: 4, opacity: refreshing ? 1 : 0 }}><SkeletonBlock height={4} /></View><Pressable accessibilityRole="button" accessibilityLabel="Search posts and people" onPress={()=>router.push({pathname:"/feed-search",params:{q:query}})} style={{flexDirection:"row",alignItems:"center",gap:12,minHeight:54,borderWidth:1,borderColor:theme.border,borderRadius:18,paddingHorizontal:17,backgroundColor:theme.surface}}><Ionicons name="search-outline" size={22} color={theme.brand}/><Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:14,flex:1}}>{query || "Search posts or @username"}</Text><Ionicons name="options-outline" size={20} color={theme.brand}/></Pressable>{query?<Pressable accessibilityRole="button" accessibilityLabel="Clear feed keyword" onPress={()=>setQuery("")} style={{minHeight:44,justifyContent:"center"}}><Text style={{color:theme.brand,fontFamily:theme.font.medium}}>Clear keyword filter</Text></Pressable>:null}<View style={styles.filters}><FilterRow items={categories} onSelect={(item) => setSelected(item as typeof selected)} selected={selected} /></View>{loading ? <FeedSkeleton /> : null}{error ? <Pressable accessibilityRole="button" onPress={() => void load()} style={styles.error}><Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={20} /><Text style={styles.errorText}>{error} Tap to retry.</Text></Pressable> : null}</>}
+      ListHeaderComponent={<><View style={{ height: 4, opacity: refreshing ? 1 : 0 }}><SkeletonBlock height={4} /></View><Pressable accessibilityRole="button" accessibilityLabel="Search posts and people" onPress={()=>router.push({pathname:"/feed-search",params:{q:query}})} style={{flexDirection:"row",alignItems:"center",gap:12,minHeight:54,borderWidth:1,borderColor:theme.border,borderRadius:18,paddingHorizontal:17,backgroundColor:theme.surface}}><Ionicons name="search-outline" size={22} color={theme.brand}/><Text style={{fontFamily:theme.font.body,color:theme.textMuted,fontSize:14,flex:1}}>{query || "Search posts or @username"}</Text><Ionicons name="options-outline" size={20} color={theme.brand}/></Pressable>{query?<Pressable accessibilityRole="button" accessibilityLabel="Clear feed keyword" onPress={()=>setQuery("")} style={{minHeight:44,justifyContent:"center"}}><Text style={{color:theme.brand,fontFamily:theme.font.medium}}>Clear keyword filter</Text></Pressable>:null}<View style={styles.filters}><FilterRow items={categories} onSelect={(item) => setSelected(item as typeof selected)} selected={selected} /></View>{selected === "Opportunity" ? <ChoiceField label="Opportunity category" value={opportunityType} options={[{value:"",label:"All opportunities"},...opportunityTypes.map(value=>({value,label:opportunityLabels[value]}))]} onChange={setOpportunityType}/> : null}{loading ? <FeedSkeleton /> : null}{error ? <Pressable accessibilityRole="button" onPress={() => void load()} style={styles.error}><Ionicons color={theme.deepBrand} name="cloud-offline-outline" size={20} /><Text style={styles.errorText}>{error} Tap to retry.</Text></Pressable> : null}</>}
       ListFooterComponent={cursor ? <Pressable accessibilityRole="button" accessibilityLabel="Load more posts" disabled={loadingMore} onPress={() => void loadMore()} style={styles.more}>{loadingMore ? <FeedSkeleton count={1} /> : <Text style={styles.moreText}>Load more posts</Text>}</Pressable> : null}
       maxToRenderPerBatch={5} removeClippedSubviews={Platform.OS === "android"} updateCellsBatchingPeriod={40}
       renderItem={renderPost}

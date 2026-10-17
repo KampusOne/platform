@@ -1,3 +1,4 @@
+import {VendorAnalytics} from "@/src/components/vendor-analytics";
 import { useLiveRefresh } from "@/src/lib/live-updates";
 import {shareAgentLocation} from '@/src/lib/agent-location';
 import { BrandSwitch } from "@/src/components/brand-switch";
@@ -24,7 +25,7 @@ import { HeaderMenu } from "@/src/components/header-menu";
 import { ScreenSkeleton } from "@/src/components/skeleton";
 type Item = {
   id: string;
-  title?: string;
+  title?: string;resource_type?:string;
   name?: string;
   zone_name?: string;
   store_name?: string;
@@ -42,6 +43,7 @@ type Item = {
   commission_kobo?: number;
   fare_kobo?: number;
   fare_payment_method?: "IN_APP" | "CASH";
+  pickups?:{vendor_name:string;address:string;phone:string|null;whatsapp:string|null;items:{name:string;quantity:number}[]}[];
   status: string;
 };
 const money = (value: number) =>
@@ -57,8 +59,9 @@ function AccountAgentDashboard() {
   const { role: requested } = useLocalSearchParams<{ role?: string }>();
   const caps = useCapabilities();
   const profile =
-    caps.profiles.find((p) => p.agent_type === requested) ?? caps.profiles[0];
+    requested ? caps.profiles.find((p) => p.agent_type === requested) : caps.profiles[0];
   const role = profile?.agent_type;
+  const temporarilySuspended=profile?.status==='PAUSED';
   const seller = role === "VENDOR" || requested === "VENDOR";
   const { theme } = useAppearance();
   const toast = useToast();
@@ -82,6 +85,7 @@ function AccountAgentDashboard() {
     const r = await api<{
       products?: Item[];
       listings?: Item[];
+      resources?: Item[];
       jobs?: Item[];
       presence?: { online: boolean };
       finance?: { rides_suspended: boolean } | null;
@@ -95,7 +99,7 @@ function AccountAgentDashboard() {
       {cache:'reload'},
     );
     if(!mounted.current||version!==readVersion.current)return;
-    setItems(r.products ?? r.listings ?? r.jobs ?? []);
+    setItems(role==='TUTOR'?[...(r.resources??[]),...(r.listings??[])]:r.products??r.jobs??[]);
     setOnline(r.presence?.online ?? false);
     setRidesSuspended(r.finance?.rides_suspended ?? false);
     setReady(true);
@@ -192,7 +196,11 @@ function AccountAgentDashboard() {
               ? "Available rides"
               : "Your workspaces"
       }
-      action={seller ? <HeaderMenu label="Seller dashboard options" items={[
+      action={role==='RIDER'?<HeaderMenu label="Rider options" items={[
+        {label:online?'Go offline':'Go online for deliveries',icon:'bicycle-outline',disabled:busy||temporarilySuspended,onPress:()=>void availability(!online)},
+        {label:'Refresh delivery location',icon:'locate-outline',disabled:busy||temporarilySuspended,onPress:()=>void refreshPosition()},
+        {label:'Refresh available rides',icon:'refresh-outline',onPress:()=>void load().catch(e=>setLoadError(e.message))},
+      ]}/>:seller ? <HeaderMenu label="Seller dashboard options" items={[
         { label: "Refresh dashboard", icon: "refresh-outline", onPress: () => void load().catch(e => setLoadError(e.message)), disabled: !profile || busy },
         { label: "Refresh delivery location", icon: "locate-outline", onPress: () => void refreshPosition(), disabled: !profile || busy },
         { label: "Campus capture missions", icon: "map-outline", onPress: () => router.push("/map-capture"), disabled: !profile },
@@ -207,6 +215,7 @@ function AccountAgentDashboard() {
             "Manage your availability, pickup routes and deliveries."}
         </Text>
       </View> : null}
+      {temporarilySuspended ? <View accessibilityRole="alert" style={{padding:18,marginBottom:18,borderRadius:16,backgroundColor:theme.surfaceTint,gap:8}}><Text style={{color:theme.deepBrand,fontFamily:theme.font.semibold}}>Temporarily suspended until {new Date(profile.suspension_ends_at!).toLocaleDateString('en-NG')}</Text><Text style={{color:theme.text}}>{profile.suspension_reason} You can view your account. Uploads, changes and withdrawals resume after the suspension.</Text></View> : null}
       {profile?<View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:18}}>{[
         {label:'Orders',icon:'receipt-outline' as const,path:role==='VENDOR'?'/vendor-orders':'/agent'},
         {label:'Earnings',icon:'wallet-outline' as const,path:'/earnings'},
@@ -233,8 +242,8 @@ function AccountAgentDashboard() {
           </Text>
         </View>
       </View> : null}
-      {!seller && caps.profiles.length>0?<ToolButton secondary label="Campus capture missions" onPress={()=>router.push("/map-capture")}/>:null}
-      {caps.profiles.length > 1 && (
+      {role === "TUTOR" && caps.profiles.length>0?<ToolButton secondary label="Campus capture missions" onPress={()=>router.push("/map-capture")}/>:null}
+      {role !== "RIDER" && caps.profiles.length > 1 && (
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
           {caps.profiles.map((p) => (
             <Pressable
@@ -268,7 +277,7 @@ function AccountAgentDashboard() {
           body="Your workspaces appear here once your agent application is approved."
         />
       )}
-      {!seller && profile ? (
+      {role === "TUTOR" && profile ? (
         <ToolRow
           title={`View ${profile.agent_type === "VENDOR" ? "Vendor" : profile.agent_type === "TUTOR" ? "Tutor" : "Rider"} Profile`}
           detail={profile.display_name}
@@ -281,7 +290,8 @@ function AccountAgentDashboard() {
           }
         />
       ) : null}
-      {!seller ? <ToolRow
+      {role==='VENDOR'?<VendorAnalytics/>:null}
+      {role === "TUTOR" ? <ToolRow
         title="Earnings & payouts"
         icon="wallet-outline"
         onPress={() => router.push("/earnings")}
@@ -298,32 +308,21 @@ function AccountAgentDashboard() {
           />
         </View>
       ) : null}
-      {!seller ? <ToolRow
+      {role === "TUTOR" ? <ToolRow
         title="Free trial"
         icon="gift-outline"
         onPress={() => router.push("/trial")}
       /> : null}
-      {role && role !== "RIDER" ? (
+      {role && role !== "RIDER" && !temporarilySuspended ? (
         <ToolButton
-          label={role === "VENDOR" ? "Create product" : "Create tutorial"}
+          label={role === "VENDOR" ? "Create product" : "Upload learning material"}
           onPress={() =>
-            router.push({ pathname: "/agent-create", params: { role } })
-          }
-        />
-      ) : role === "RIDER" ? (
-        <ToolRow
-          title="Available for deliveries"
-          trailing={
-            <BrandSwitch
-              label="Go online"
-              disabled={busy || ridesSuspended}
-              value={online}
-              onValueChange={(v) => void availability(v)}
-            />
+            role==='TUTOR' ? router.push('/learning-publish' as '/agent-create') : router.push({ pathname: "/agent-create", params: { role } })
           }
         />
       ) : null}
-      {role==='RIDER'?<View style={{gap:8,marginVertical:12}}><ToolButton secondary disabled={busy} label="Refresh delivery location" onPress={()=>void refreshPosition()}/><Text style={{color:theme.textMuted,fontFamily:theme.font.body,fontSize:12}}>{locationStatus}</Text></View>:null}
+      {role==='TUTOR'&&!temporarilySuspended?<ToolButton secondary label="Set up booking times & fee" onPress={()=>router.push({pathname:'/agent-create',params:{role:'TUTOR'}})}/>:null}
+      {role==='RIDER'?<Text style={{color:theme.textMuted,marginVertical:10}}>{online?'Online · available for deliveries':'Offline · go online from the rider options menu'}</Text>:null}
       {role === "RIDER" && (
         <View style={{ flexDirection: "row", gap: 12, marginVertical: 18 }}>
           {(["AVAILABLE", "ACTIVE", "HISTORY"] as const).map((tab) => (
@@ -408,6 +407,8 @@ function AccountAgentDashboard() {
                 item.title ??
                 item.zone_name}
             </Text>}
+            {role==='TUTOR'?<ToolButton secondary label={item.resource_type?"View material":"View bookings"} onPress={()=>item.resource_type?router.push({pathname:'/learning-preview',params:{id:item.id}}):router.push("/tutor-learners")}/>:null}
+            {role === 'RIDER' && item.pickups?.map((stop,index)=><View key={index} style={{padding:14,gap:7,marginTop:10,borderWidth:1,borderColor:theme.border,borderRadius:12}}><Text style={{color:theme.text,fontFamily:theme.font.semibold}}>{index+1}. {stop.vendor_name}</Text><Text style={{color:theme.textMuted}}>{stop.address}</Text>{stop.items?.map((line,n)=><Text key={n} style={{color:theme.text}}>{line.quantity} × {line.name}</Text>)}{stop.phone?<ToolButton secondary label="Call vendor" onPress={()=>void Linking.openURL('tel:'+stop.phone)}/>:null}{stop.whatsapp?<ToolButton secondary label="WhatsApp vendor" onPress={()=>void Linking.openURL('https://wa.me/'+stop.whatsapp!.replace(/\D/g,''))}/>:null}</View>)}
             {role === "RIDER" && (
               <View style={{ gap: 6, marginVertical: 8 }}>
                 <Text style={{ color: theme.textMuted }}>

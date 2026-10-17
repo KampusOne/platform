@@ -5,10 +5,10 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useAppearance } from '@/src/lib/appearance';
 import { useAuth } from '@/src/auth/auth-context';
 import { cacheScopeForUser } from '@/src/lib/request-policy';
-import { initialCrop, moveCrop, resizeCrop, sourceCrop, type Corner } from '@/src/lib/crop-selection';
+import { initialCrop, moveCrop, resizeCrop, sourceCrop, resizeFreeCrop, type Corner } from '@/src/lib/crop-selection';
 import { finishPhotoEdit, getPhotoEdit, getServerPhotoEdit, subscribePhotoEdit, type PhotoEditRequest } from '@/src/lib/photo-edit-session';
 
-const aspects = [['Original', 0], ['1:1', 1], ['4:5', 4/5], ['3:4', 3/4], ['4:3', 4/3], ['3:2', 3/2], ['16:9', 16/9]] as const;
+const aspects = [['Free', -1], ['Original', 0], ['1:1', 1], ['4:5', 4/5], ['3:4', 3/4], ['4:3', 4/3], ['3:2', 3/2], ['16:9', 16/9]] as const;
 export function PhotoEditorHost() {
   const {user}=useAuth(),scope=user?cacheScopeForUser(user):null;
   const request = useSyncExternalStore(subscribePhotoEdit, getPhotoEdit, getServerPhotoEdit);
@@ -32,14 +32,14 @@ function PhotoEditor({request}:{request:PhotoEditRequest}) {
   const {theme}=useAppearance(); const window=useWindowDimensions();
   const image=request.image, originalAspect=image.width/image.height;
   const fixed=request.kind==='avatar'?1:request.kind==='cover'?3:null;
-  const [aspect,setAspect]=useState(fixed??originalAspect);
+  const [aspect,setAspect]=useState(fixed??-1);
   const scale=Math.min((Math.min(window.width-40,560))/image.width, Math.max(150,window.height*0.52)/image.height);
   const width=image.width*scale, height=image.height*scale;
-  const [box,setBox]=useState(()=>initialCrop(width,height,aspect));
+  const [box,setBox]=useState(()=>initialCrop(width,height,aspect>0?aspect:originalAspect));
   const [ready,setReady]=useState(false),[busy,setBusy]=useState(false),[dragging,setDragging]=useState(false),[error,setError]=useState('');
   const alive=useRef(true),saving=useRef(false), current=useRef({box,busy,width,height});current.current={box,busy,width,height};
   const origin=useRef(box);
-  useEffect(()=>{setBox(initialCrop(width,height,aspect));},[width,height,aspect]);
+  useEffect(()=>{setBox(initialCrop(width,height,aspect>0?aspect:originalAspect));},[width,height,aspect]);
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
   const pan=useMemo(()=>PanResponder.create({
     onStartShouldSetPanResponder:()=>!current.current.busy,onMoveShouldSetPanResponder:()=>!current.current.busy,
@@ -73,10 +73,10 @@ function PhotoEditor({request}:{request:PhotoEditRequest}) {
               <View style={{position:'absolute',top:`${n*100/3}%`,left:0,right:0,height:1,backgroundColor:'rgba(255,255,255,0.7)'}}/>
             </View>):null}
           </View>
-          {!busy?(['tl','tr','bl','br'] as Corner[]).map(corner=><Handle key={corner} corner={corner} onStart={()=>{origin.current=current.current.box;setDragging(true);}} onMove={(dx,dy)=>setBox(resizeCrop(origin.current,dx,dy,corner,width,height))} onEnd={()=>setDragging(false)}/>):null}
+          {!busy?(['tl','tr','bl','br'] as Corner[]).map(corner=><Handle key={corner} corner={corner} onStart={()=>{origin.current=current.current.box;setDragging(true);}} onMove={(dx,dy)=>setBox(aspect<0?resizeFreeCrop(origin.current,dx,dy,corner,width,height):resizeCrop(origin.current,dx,dy,corner,width,height))} onEnd={()=>setDragging(false)}/>):null}
         </View>
       </View>
-      <Pressable accessibilityRole="button" disabled={busy} onPress={()=>setBox(initialCrop(width,height,aspect))} style={styles.action}><Text style={{...text,color:theme.deepBrand}}>Reset crop</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={()=>setBox(initialCrop(width,height,aspect>0?aspect:originalAspect))} style={styles.action}><Text style={{...text,color:theme.deepBrand}}>Reset crop</Text></Pressable>
       {error?<Text accessibilityRole="alert" style={{...text,color:theme.error}}>{error}</Text>:null}
     </ScrollView>
   </SafeAreaView></Modal>;

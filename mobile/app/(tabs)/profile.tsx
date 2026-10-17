@@ -667,6 +667,7 @@ export default function ProfileScreen() {
 
       {(profile || sessionProfile) ? (
         <>
+          <Pressable accessibilityRole="button" onPress={()=>router.push('/saved-learning' as '/learning-library')} style={{paddingVertical:14}}><Text style={{color:theme.deepBrand,fontFamily:theme.font.semibold}}>Saved videos, documents & playlists</Text></Pressable>
           <View style={styles.metrics}>
             <Metric
               icon="stats-chart-outline"

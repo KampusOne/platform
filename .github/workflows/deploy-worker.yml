@@ -101,6 +101,8 @@ jobs:
           if grep -q '"VERSIONED_READ_CACHE_ENABLED": "true"' server/wrangler.jsonc; then
             node server/scripts/verify-schema-proof.mjs cache
           fi
+      - name: Guard campus delivery and learning schema
+        run: node server/scripts/verify-schema-proof.mjs campusRelease
       - name: Guard transactional commerce notification migration
         run: node server/scripts/verify-schema-proof.mjs commerceNotifications
       - name: Guard Exclusive agent role migration

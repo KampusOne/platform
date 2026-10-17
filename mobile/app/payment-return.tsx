@@ -7,6 +7,7 @@ import {ToolButton,ToolPage} from '@/src/components/toolkit';
 import {InlineLoading} from '@/src/components/skeleton';
 import {useAppearance} from '@/src/lib/appearance';
 import {useAuth} from '@/src/auth/auth-context';
+import {confirmMarketplaceCartPurchase} from '@/src/lib/marketplace-cart';
 import {api,invalidateApiReads} from '@/src/lib/api';
 import {dismissPayment} from '@/src/lib/hosted-payment';
 import {paymentContinuation,validPaymentReference} from '@/src/lib/payment-flow';
@@ -39,6 +40,10 @@ function OwnedPaymentReturn({reference}:{reference:string}) {
         if(!alive||controller.signal.aborted||revision!==getDeviceCacheRevision())return;
         if(!result.payment||result.payment.provider_reference!==reference)throw new Error('This receipt could not be read. Your saved payment reference is kept.');
         setPayment(result.payment);
+        if (result.payment.status === 'SUCCEEDED' && result.payment.resource_type === 'STORE_ORDER') {
+          const order = await api<{items:{product_id:string;quantity:number}[]}>('/v1/student/orders/'+result.payment.resource_id, {cache:'no-store'});
+          if (alive && revision === getDeviceCacheRevision()) await confirmMarketplaceCartPurchase(user.id, result.payment.resource_id, order.items);
+        }
         done=['SUCCEEDED','FAILED','REQUIRES_REVIEW'].includes(result.payment.status);
         if(done)invalidateApiReads(['/v1/student/purchases','/v1/student/orders','/v1/agents','/v1/admin']);
       } catch(caught) {

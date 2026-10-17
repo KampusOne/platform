@@ -18,8 +18,9 @@ import {useOwnedDraftRestore} from '@/src/lib/use-owned-draft-restore';
 import {restoreCampusDraft} from '@/src/lib/form-drafts';
 import {DraftRecovery} from '@/src/components/draft-recovery';
 import {cacheScopeForUser} from '@/src/lib/request-policy';
+import {opportunityTypes, opportunityLabels} from '../../packages/contracts/src/opportunities';
 type Kind='EVENT'|'SPORTS'|'OPPORTUNITY';
-type Draft={kind:Kind;title:string;description:string;venue:string;date:string;time:string;link:string;images:UploadedFile[];requestId:string};
+type Draft={kind:Kind;opportunityType?:typeof opportunityTypes[number];title:string;description:string;venue:string;date:string;time:string;link:string;images:UploadedFile[];requestId:string};
 export default function CampusUpdateCreate(){
  const {user}=useAuth();return <UpdateForm key={user?cacheScopeForUser(user):'signed-out'} owner={user?.id??''}/>;
 }
@@ -43,7 +44,7 @@ function UpdateForm({owner}:{owner:string}){
    if(!when)throw new Error(draft.date?'Choose the start time before publishing.':'Choose a date before publishing.');
    await draftSave.persist(draft);
    if(revision!==getDeviceCacheRevision()||!isDeviceCacheOwner(owner))return;
-   const result=await api<{id:string}>('/v1/student/feed/activity',{method:'POST',body:JSON.stringify({requestId:draft.requestId,category:draft.kind,title:draft.title,description:draft.description,mediaIds:draft.images.map(image=>image.id),...(draft.kind==='OPPORTUNITY'?{deadline:when.toISOString()}:{venue:draft.venue,startsAt:when.toISOString()}),...(draft.link.trim()?{registrationUrl:draft.link.trim()}:{} )})});
+   const result=await api<{id:string}>('/v1/student/feed/activity',{method:'POST',body:JSON.stringify({requestId:draft.requestId,category:draft.kind,title:draft.title,description:draft.description,mediaIds:draft.images.map(image=>image.id),...(draft.kind==='OPPORTUNITY'?{deadline:when.toISOString(),opportunityType:draft.opportunityType??'OTHER'}:{venue:draft.venue,startsAt:when.toISOString()}),...(draft.link.trim()?{registrationUrl:draft.link.trim()}:{} )})});
    if(revision!==getDeviceCacheRevision()||!isDeviceCacheOwner(owner))return;
    draftSave.discard();await writeCache(key,null);router.replace({pathname:'/post',params:{id:result.id}});
   }catch(e){setError(e instanceof Error?e.message:'Your update could not publish. Your draft is kept.');}finally{lock.current=false;setBusy(false);}
@@ -53,6 +54,7 @@ function UpdateForm({owner}:{owner:string}){
   {draftSave.warning?<Text accessibilityRole="alert" style={{fontFamily:theme.font.body,color:theme.error,lineHeight:21}}>{draftSave.warning}</Text>:null}
   <Text style={{fontFamily:theme.font.body,color:theme.textMuted,lineHeight:21}}>Let other students know what’s happening. Your update appears in All and its category.</Text>
   <ChoiceField label="Update type" value={draft.kind} disabled={!ready||busy} options={[{value:'EVENT',label:'Event'},{value:'SPORTS',label:'Sports'},{value:'OPPORTUNITY',label:'Opportunity'}]} onChange={kind=>update({kind:kind as Kind})}/>
+  {draft.kind === 'OPPORTUNITY' ? <ChoiceField label="Opportunity category" value={draft.opportunityType ?? 'OTHER'} disabled={!ready || busy} options={opportunityTypes.map(value=>({value,label:opportunityLabels[value]}))} onChange={value=>update({opportunityType:value as typeof opportunityTypes[number]})}/> : null}
   <ToolField label="Title" value={draft.title} maxLength={180} editable={ready&&!busy} onChangeText={title=>update({title})} placeholder="What should students know?"/>
   <ToolField label="Description" value={draft.description} maxLength={5000} multiline editable={ready&&!busy} onChangeText={description=>update({description})} placeholder="Add the useful details"/>
   {draft.kind!=='OPPORTUNITY'?<ToolField label="Venue" value={draft.venue} editable={ready&&!busy} onChangeText={venue=>update({venue})} placeholder="Where is it happening?"/>:null}

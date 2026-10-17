@@ -10,7 +10,7 @@ import {currentUser,requireAuth} from '../middleware/auth';
 import type {Bindings,Variables} from '../types';
 export const studentGroupRoutes=new Hono<{Bindings:Bindings;Variables:Variables}>();
 studentGroupRoutes.use('/*',requireAuth);
-type Group={id:string;institution_id:string;owner_user_id:string;kind:string;name:string;description:string;guidelines:string;guidelines_version:number;keywords:string[];avatar_media_id:string|null;members_can_post:boolean;joined_at:string|null;member_role:string|null;notifications_enabled:boolean|null};
+type Group={id:string;institution_id:string;owner_user_id:string;kind:string;name:string;description:string;guidelines:string;guidelines_version:number;keywords:string[];avatar_media_id:string|null;cover_media_id:string|null;members_can_post:boolean;joined_at:string|null;member_role:string|null;notifications_enabled:boolean|null};
 const canPublish=(group:Group)=>!!group.joined_at&&(group.members_can_post||group.member_role==='ADMIN');
 const mediaUrl=(c:any,mediaId:string|null)=>mediaId?`${(c.env?.PUBLIC_API_ORIGIN??new URL(c.req.url).origin).replace(/\/$/,'')}/v1/media/${mediaId}`:null;
 async function access(c:any,membership=false){
@@ -38,14 +38,14 @@ studentGroupRoutes.get('/:id',async c=>{
  const counts=firstRow(await database(c.env).execute(sql`select count(*)::int members from public.student_group_members where group_id=${group.id}::uuid`));
  const request=firstRow(await database(c.env).execute(sql`select status from app_private.community_join_requests where group_id=${group.id}::uuid and user_id=${u.id}::uuid`));
  const pending=group.member_role==='ADMIN'?firstRow(await database(c.env).execute(sql`select count(*)::int pending_requests from app_private.community_join_requests where group_id=${group.id}::uuid and institution_id=${u.universityId}::uuid and status='PENDING'`)):null;
- return c.json({group:{...group,...counts,...pending,request_status:request?.status??null,avatar_url:mediaUrl(c,group.avatar_media_id)},canPost:canPublish(group)});
+ return c.json({group:{...group,...counts,...pending,request_status:request?.status??null,avatar_url:mediaUrl(c,group.avatar_media_id),cover_url:mediaUrl(c,group.cover_media_id)},canPost:canPublish(group)});
 });
 studentGroupRoutes.patch('/:id',async c=>{
  const {u,group}=await access(c,true);if(group.member_role!=='ADMIN')throw new AppError(403,'FORBIDDEN','Only community admins can edit the community.');
- const d=await input(c,z.object({name:z.string().trim().min(3).max(100),description:z.string().trim().max(1000),guidelines:z.string().trim().max(5000).optional(),membersCanPost:z.boolean(),avatarMediaId:z.string().uuid().nullable().optional()}).strict());
- if(d.avatarMediaId){const media=firstRow(await database(c.env).execute(sql`select id from public.media_objects where id=${d.avatarMediaId}::uuid and owner_user_id=${u.id}::uuid and institution_id=${u.universityId}::uuid and kind='post' and content_type like 'image/%' and deleted_at is null`));if(!media)throw new AppError(400,'BAD_REQUEST','Choose a community photo uploaded by your account.');}
- const avatar=d.avatarMediaId===undefined?group.avatar_media_id:d.avatarMediaId;
- await database(c.env).execute(sql`update public.student_groups g set name=${d.name},description=${d.description},guidelines=${d.guidelines??group.guidelines},guidelines_version=guidelines_version+case when guidelines is distinct from ${d.guidelines??group.guidelines} then 1 else 0 end,members_can_post=${d.membersCanPost},avatar_media_id=${avatar}::uuid where g.id=${group.id}::uuid and g.institution_id=${u.universityId}::uuid and exists(select 1 from public.student_group_members m where m.group_id=g.id and m.user_id=${u.id}::uuid and m.role='ADMIN')`);
+ const d=await input(c,z.object({name:z.string().trim().min(3).max(100),description:z.string().trim().max(1000),guidelines:z.string().trim().max(5000).optional(),membersCanPost:z.boolean(),avatarMediaId:z.string().uuid().nullable().optional(),coverMediaId:z.string().uuid().nullable().optional()}).strict());
+ for(const mediaId of [d.avatarMediaId,d.coverMediaId])if(mediaId){const media=firstRow(await database(c.env).execute(sql`select id from public.media_objects where id=${mediaId}::uuid and owner_user_id=${u.id}::uuid and institution_id=${u.universityId}::uuid and kind='post' and content_type like 'image/%' and deleted_at is null`));if(!media)throw new AppError(400,'BAD_REQUEST','Choose a community photo uploaded by your account.');}
+ const avatar=d.avatarMediaId===undefined?group.avatar_media_id:d.avatarMediaId,cover=d.coverMediaId===undefined?group.cover_media_id:d.coverMediaId;
+ await database(c.env).execute(sql`update public.student_groups g set name=${d.name},description=${d.description},guidelines=${d.guidelines??group.guidelines},guidelines_version=guidelines_version+case when guidelines is distinct from ${d.guidelines??group.guidelines} then 1 else 0 end,members_can_post=${d.membersCanPost},avatar_media_id=${avatar}::uuid,cover_media_id=${cover}::uuid where g.id=${group.id}::uuid and g.institution_id=${u.universityId}::uuid and exists(select 1 from public.student_group_members m where m.group_id=g.id and m.user_id=${u.id}::uuid and m.role='ADMIN')`);
  await recordAudit(c.env,{actorUserId:u.id,universityId:u.universityId,action:'community.profile.updated',targetType:'student_group',targetId:group.id,requestId:c.get('requestId'),metadata:{membersCanPost:d.membersCanPost,avatarMediaId:avatar}});
  return c.json({status:'saved'});
 });

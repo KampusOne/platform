@@ -186,24 +186,16 @@ export async function prepareStoreQuote(
       user_id: string;
       pickup_enabled: boolean;
       self_delivery_enabled: boolean;
-      pickup_place_id:string|null;
+      pickup_place_id:string|null;pickup_location:string|null;pickup_locations:string[];
     }>(sql`
-    select a.user_id,s.pickup_enabled,s.self_delivery_enabled,s.pickup_place_id from public.agent_profiles a join public.vendor_storefronts s on s.vendor_profile_id=a.id
+    select a.user_id,s.pickup_enabled,s.self_delivery_enabled,s.pickup_place_id,s.pickup_location,coalesce(to_jsonb(s)->'pickup_locations','[]'::jsonb) as pickup_locations from public.agent_profiles a join public.vendor_storefronts s on s.vendor_profile_id=a.id
     where a.id=${data.vendorProfileId}::uuid and a.university_id=${user.universityId}::uuid and a.status='ACTIVE' and a.agent_type='VENDOR' and s.status='APPROVED'
   `),
   );
   if (!vendor)
     throw new AppError(409, "CONFLICT", "This store is not accepting orders.");
   await requireUnblocked(env, user.id, vendor.user_id);
-  if (
-    (data.fulfilmentMode === "PICKUP" && !vendor.pickup_enabled) ||
-    (data.fulfilmentMode === "VENDOR_DELIVERY" && !vendor.self_delivery_enabled)
-  )
-    throw new AppError(
-      409,
-      "CONFLICT",
-      "Choose a delivery option this store offers.",
-    );
+  if(data.fulfilmentMode==='VENDOR_DELIVERY')throw new AppError(400,'BAD_REQUEST','Choose pickup or rider delivery.');
   if (data.fulfilmentMode !== "RIDER" && data.deliveryPaymentMethod === "CASH")
     throw new AppError(
       400,
@@ -213,13 +205,22 @@ export async function prepareStoreQuote(
   const products = await database(env).execute<{
     id: string;
     price_kobo: number;
-    stock_quantity: number;
+    vendor_profile_id:string; vendor_user_id:string; stock_quantity: number; package_weight_grams:number|null; package_length_cm:number|null; package_width_cm:number|null; package_height_cm:number|null;
   }>(sql`
-    select p.id,p.price_kobo,p.stock_quantity from public.vendor_products p join public.product_categories c on c.id=p.category_id and c.university_id=p.university_id
+    select p.id,p.vendor_profile_id,a.user_id as vendor_user_id,p.price_kobo,p.stock_quantity,p.package_weight_grams,p.package_length_cm,p.package_width_cm,p.package_height_cm from public.vendor_products p join public.agent_profiles a on a.id=p.vendor_profile_id and a.university_id=p.university_id and a.status='ACTIVE' join public.vendor_storefronts sf on sf.vendor_profile_id=a.id and sf.university_id=a.university_id and sf.status='APPROVED' join public.product_categories c on c.id=p.category_id and c.university_id=p.university_id
     where p.id in (select (value->>'productId')::uuid from jsonb_array_elements(${JSON.stringify(data.items)}::jsonb))
-      and p.vendor_profile_id=${data.vendorProfileId}::uuid and p.university_id=${user.universityId}::uuid
+      and p.university_id=${user.universityId}::uuid
       and p.status='PUBLISHED' and c.status='APPROVED'
   `);
+  const vendorIds=[...new Set(products.rows.map(p=>p.vendor_profile_id))];
+  if(products.rows.length!==data.items.length)throw new AppError(409,'CONFLICT','A product is no longer available.');
+  await Promise.all([...new Set(products.rows.map(p=>p.vendor_user_id))].map(id=>requireUnblocked(env,user.id,id)));
+  if(data.fulfilmentMode==='PICKUP') {
+    if(vendorIds.length>1){
+      const hubs=(await database(env).execute<{name:string}>(sql`select name from public.commerce_pickup_hubs where university_id=${user.universityId}::uuid order by position`)).rows;
+      if(!hubs.some(h=>h.name===data.pickupPointName))throw new AppError(422,'BAD_REQUEST','Choose a KampusOne pickup point for this combined order.');
+    } else {if(!vendor.pickup_enabled)throw new AppError(409,'CONFLICT','This store is not accepting pickup orders.');if(data.pickupPointName&&![vendor.pickup_location,...(vendor.pickup_locations??[])].includes(data.pickupPointName))throw new AppError(422,'BAD_REQUEST','Choose one of this vendor’s pickup locations.');}
+  }
   const items = data.items.map((item) => {
     const p = products.rows.find((p) => p.id === item.productId);
     if (!p || Number(p.stock_quantity) < item.quantity)
@@ -251,6 +252,7 @@ export async function prepareStoreQuote(
       );
     return {
       product_id: p.id,
+      vendor_profile_id:p.vendor_profile_id,
       quantity: item.quantity,
       base_kobo: Number(p.price_kobo),
       customer_unit_kobo: price.customerPriceKobo,
@@ -273,7 +275,16 @@ export async function prepareStoreQuote(
     if(!position&&!pickup)throw new AppError(422,'BAD_REQUEST','The seller needs to save a pickup point or share their current campus location. You can still choose store pickup.');
     const origin:[number,number]=position?[position.longitude,position.latitude]:[pickup!.longitude,pickup!.latitude];
     const route=await campusDeliveryRoute(env,user.universityId!,destination.campus_id,origin,[destination.longitude,destination.latitude]);
-    fare={...campusFare(route.distanceMetres),route,distanceBasis:'OSM_BICYCLE_NETWORK',pickupLocationBasis:position?'CURRENT_VENDOR_POSITION':'APPROVED_STOREFRONT_PICKUP'};
+    let totalDistance=route.distanceMetres;
+    for(const vendorId of vendorIds.filter(id=>id!==data.vendorProfileId)) {
+      const point=await currentAgentPosition(env,vendorId,user.universityId!);
+      const store=firstRow(await database(env).execute<{pickup_place_id:string|null}>(sql`select pickup_place_id from public.vendor_storefronts where vendor_profile_id=${vendorId}::uuid`));
+      const mapped=point?null:store?.pickup_place_id?await mappedDeliveryPoint(env,user.universityId!,store.pickup_place_id):null;
+      if(!point&&!mapped)throw new AppError(422,'BAD_REQUEST','A seller needs a mapped pickup point before a rider can collect this combined order. You can choose a KampusOne pickup point.');
+      const source=point??mapped!;
+      totalDistance+=(await campusDeliveryRoute(env,user.universityId!,destination.campus_id,origin,[source.longitude,source.latitude])).distanceMetres;
+    }
+    fare={...campusFare(totalDistance,{pickupStops:vendorIds.length,quantity:data.items.reduce((sum,i)=>sum+i.quantity,0),weightGrams:data.items.reduce((sum,i)=>sum+Number(products.rows.find(p=>p.id===i.productId)?.package_weight_grams??300)*i.quantity,0),volumeCm3:data.items.reduce((sum,i)=>{const p=products.rows.find(p=>p.id===i.productId);return sum+Number(p?.package_length_cm??0)*Number(p?.package_width_cm??0)*Number(p?.package_height_cm??0)*i.quantity;},0)}),route,distanceBasis:'OSM_BICYCLE_NETWORK',pickupLocationBasis:position?'CURRENT_VENDOR_POSITION':'APPROVED_STOREFRONT_PICKUP'};
   }
   let pricing;
   try {

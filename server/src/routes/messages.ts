@@ -1,3 +1,4 @@
+import {containsContactDetails} from '../lib/chat-contacts';
 import { publishUserReads } from "../lib/live-updates";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
@@ -101,6 +102,22 @@ async function threadFor(env: Bindings, userId: string, threadId: string) {
     thread.initiator_id === userId ? thread.recipient_id : thread.initiator_id,
   );
   return thread;
+}
+
+async function chatPolicy(env:Bindings,thread:Thread) {
+ const record=firstRow(await database(env).execute<{restricted:boolean;suspended_until:string|null}>(sql`select t.suspended_until,
+ exists(select 1 from public.agent_profiles a where a.user_id in(t.initiator_id,t.recipient_id) and a.agent_type in('VENDOR','RIDER') and a.status='ACTIVE')
+ and not exists(select 1 from public.agent_profiles a where a.user_id in(t.initiator_id,t.recipient_id) and a.agent_type='TUTOR' and a.status='ACTIVE') as restricted
+ from public.direct_threads t where t.id=${thread.id}::uuid`));
+ return record??{restricted:false,suspended_until:null};
+}
+async function guardContactMessage(env:Bindings,thread:Thread,actorId:string,messageId:string,body:string) {
+ const policy=await chatPolicy(env,thread);
+ if(!policy.restricted)return;
+ if(policy.suspended_until&&Date.parse(policy.suspended_until)>Date.now())throw new AppError(403,'FORBIDDEN','This conversation is suspended until '+new Date(policy.suspended_until).toLocaleDateString('en-NG')+'.',{reason:'CHAT_CONTACT_SUSPENDED',endsAt:policy.suspended_until});
+ if(!containsContactDetails(body))return;
+ const result=firstRow(await database(env).execute<{suspended_until:string}>(sql`with violation as(insert into app_private.chat_contact_violations(message_id,thread_id,actor_id,content_hash) values(${messageId}::uuid,${thread.id}::uuid,${actorId}::uuid,${await sha256(body)}) on conflict(message_id)do nothing returning message_id), suspended as(update public.direct_threads set suspended_until=now()+interval '3 days' where id=${thread.id}::uuid and exists(select 1 from violation) returning suspended_until)select suspended_until from suspended`));
+ throw new AppError(403,'FORBIDDEN','Phone numbers and account details cannot be shared with this agent. The message was removed and this conversation is suspended for 3 days.',{reason:'CHAT_CONTACT_BLOCKED',endsAt:result?.suspended_until??policy.suspended_until});
 }
 
 async function unreadMessages(env: Bindings, userId: string) {
@@ -408,7 +425,7 @@ messageRoutes.get("/threads/:id", async (c) => {
 
   const page = messages.rows.slice(0, 50).reverse();
   return c.json({
-    thread,
+    thread: {...thread,contactPolicy:await chatPolicy(c.env,thread)},
     messages: page,
     pinnedMessage: firstRow(pinnedMessage) ?? null,
     nextCursor: messages.rows.length > 50 ? (page[0] as { id?: string })?.id ?? null : null,
@@ -461,6 +478,7 @@ messageRoutes.post("/threads/:id/messages", async (c) => {
   const user = currentUser(c);
   const thread = await threadFor(c.env, user.id, id(c.req.param("id")));
   const data = await input(c, directMessageInputSchema);
+  await guardContactMessage(c.env,thread,user.id,data.id,data.body??'');
   const db = database(c.env);
 
   if (
@@ -797,6 +815,7 @@ messageRoutes.post("/threads/:id/messages/:messageId/forward", async (c) => {
   if (source.unsent_at) throw new AppError(409, "CONFLICT", "This message was unsent.");
   const data = await input(c, z.object({ targetThreadId: z.string().uuid() }).strict());
   const targetThread = await threadFor(c.env, user.id, data.targetThreadId);
+  await guardContactMessage(c.env,targetThread,user.id,crypto.randomUUID(),source.body);
   if (targetThread.status !== "ACCEPTED") {
     throw new AppError(403, "FORBIDDEN", "Accept that conversation before forwarding a message.");
   }

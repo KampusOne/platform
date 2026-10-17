@@ -7,13 +7,13 @@ export function CreateAction({ role }: { role: "VENDOR" | "TUTOR" }) {
   const { width } = useWindowDimensions();
   const { theme } = useAppearance();
   const caps = useCapabilities();
-  if (!caps.profiles.some((p) => p.agent_type === role)) return null;
+  if (!caps.profiles.some((p) => p.agent_type === role && p.status!=='PAUSED')) return null;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={role === "VENDOR" ? "Add product" : "Create tutorial"}
       onPress={() =>
-        router.push({ pathname: "/agent-create", params: { role } })
+        role === "TUTOR" ? router.push("/learning-publish") : router.push({ pathname: "/agent-create", params: { role } })
       }
       style={{
         position: "absolute",

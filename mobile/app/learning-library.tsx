@@ -1,3 +1,4 @@
+import {openHostedPayment} from '@/src/lib/hosted-payment';
 import {isPlayDistribution} from "@/src/lib/digital-billing-policy";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Platform, Text, View } from "react-native";
@@ -60,6 +61,7 @@ export default function LearningLibrary() {
   return <AccountLibrary key={user?.id} />;
 }
 function AccountLibrary() {
+  const {user}=useAuth();
   const { theme } = useAppearance(),
     [items, setItems] = useState<Purchase[]>([]),
     [next, setNext] = useState<string | null>(null),
@@ -138,6 +140,7 @@ function AccountLibrary() {
         keys.current.set(p.id, requestId);
         const result = await api<{
           authorizationUrl: string;
+          reference:string;
           amountKobo: number;
         }>(`/v1/tutor-commerce/purchases/${p.id}/payment`, {
           method: "POST",
@@ -148,7 +151,8 @@ function AccountLibrary() {
           throw new Error(
             "The checkout total did not match your saved purchase. Refresh its status.",
           );
-        await Linking.openURL(result.authorizationUrl);
+        if(!user)throw new Error('Sign in to continue payment.');
+        await openHostedPayment(user.id,result);
       }
       if (kind === "check" && p.reference) {
         const result = await api<{ payment: { status: string } }>(
@@ -164,14 +168,8 @@ function AccountLibrary() {
         );
         await load();
       }
-      if (kind === "open") {
-        if(p.resource_type==='VIDEO'){router.push({pathname:'/tutorial-watch',params:{id:p.media_object_id,title:p.title}});return;}
-        const result = await api<{ url: string }>(
-          `/v1/media/${p.media_object_id}/access`,
-          { method: "POST" },
-        );
-        if (alive.current) await Linking.openURL(result.url);
-      }
+      if (kind === "open") { router.push({pathname:'/learning-viewer',params:{id:p.resource_id}});return; }
+
       if (kind === "chat") {
         const result = await api<{ thread: { id: string } }>(
           "/v1/messages/threads",

@@ -124,6 +124,7 @@ function CreateListingForm() {
   const alive = useRef(true), categoryRequest = useRef(0);
   useEffect(() => { alive.current = true; return () => { alive.current = false; categoryRequest.current++; }; }, []);
   const [busy, setBusy] = useState(false);
+  const [uploading,setUploading]=useState(false);
   const listingDraft={name,description,price,stock,code,location,image,images,category,createdId:createdId.current,requestId:requestId.current,requestPayload:requestPayload.current,
     ...(editing&&editRevision!==undefined&&editStock!==undefined?{editRevision,editStock}:{})};
   const draftSave=useOwnedDraftSave(draftKey,listingDraft,draftReady&&Boolean(user?.id)&&(!editing||editReady)&&!busy&&!draftCompleted.current);
@@ -157,20 +158,20 @@ function CreateListingForm() {
   if(createdId.current)formHint="";
   const fieldsLocked=busy||!draftReady||Boolean(createdId.current)||editing&&(!editReady||editLoading||editConflict);
   async function upload() {
-    if(formLock.current||fieldsLocked||images.length>=6)return;
+    if(uploading||fieldsLocked||images.length>=6)return;
     const operationKey=draftKey;
-    formLock.current=true;setBusy(true);
+    setUploading(true);
     try {
       const file = await pickAndUpload("product");
       if(alive.current&&currentDraftKey.current===operationKey&&file)setImages(current=>current.includes(file.url)?current:[...current,file.url].slice(0,6));
     } catch (e) {
       if(alive.current&&currentDraftKey.current===operationKey)toast(e instanceof Error ? e.message : "Upload failed", "error");
     } finally {
-      if(alive.current&&currentDraftKey.current===operationKey){formLock.current=false;setBusy(false);}
+      if(alive.current&&currentDraftKey.current===operationKey)setUploading(false);
     }
   }
   async function save() {
-    if (formLock.current || busy || !draftReady || formHint || editing&&(!editReady||editLoading||editConflict||!product)) return;
+    if (formLock.current || busy || uploading || !draftReady || formHint || editing&&(!editReady||editLoading||editConflict||!product)) return;
     const operationKey=draftKey;
     const stillCurrent=()=>alive.current&&currentDraftKey.current===operationKey;
     formLock.current=true;setBusy(true);

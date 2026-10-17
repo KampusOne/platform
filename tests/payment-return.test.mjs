@@ -11,7 +11,7 @@ const flow=load('payment-flow.ts',{'../../../packages/contracts/src/payment-link
 function fixture(){let current=null,authorized=owner,storageFailure=false;const events=[];const lib=load('hosted-payment.ts',{'./payment-flow':flow,'./device-cache':{getDeviceCacheRevision:()=>1,isDeviceCacheOwner:id=>id===authorized,readOwnedDraft:async()=>current,saveOwnedDraft:async(key,value)=>{if(storageFailure)throw Error('Storage unavailable');events.push('saved');current=value;}},'expo-router':{router:{replace:path=>events.push(path)}},'react-native':{Linking:{openURL:async()=>events.push('opened')}}});return{lib,events,current:()=>current,fail:()=>{storageFailure=true;},switch:()=>{authorized='another-account';}};}
 test('keeps the owned receipt before leaving for checkout and restores it after returning',async()=>{
  const f=fixture();await f.lib.openHostedPayment(owner,{reference,authorizationUrl:'https://checkout.bachs.io/c/synthetic'});
- assert.equal(f.events[0],'saved');assert.equal(f.events[1].pathname,'/payment-return');assert.equal(f.events[1].params.reference,reference);assert.equal(f.events[2],'opened');assert.equal((await f.lib.pendingPayment(owner)).reference,reference);
+ assert.equal(f.events[0],'saved');assert.equal(f.events[1].pathname,'/checkout');assert.equal(f.events[1].params.reference,reference);assert.equal(f.events.length,2);assert.equal((await f.lib.pendingPayment(owner)).reference,reference);
  f.switch();assert.equal(await f.lib.pendingPayment(owner),null);
 });
 test('never opens checkout when the receipt cannot be safely retained',async()=>{

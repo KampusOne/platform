@@ -6,6 +6,7 @@ type CartState = { items: MarketplaceCart; ready: boolean; error: string; saving
 const empty: CartState = { items: {}, ready: false, error: '', saving: false };
 let state = empty, scope = '', epoch = 0, loading: Promise<void> | null = null;
 let writes: Promise<void> = Promise.resolve();
+let completedOrders: string[] = [];
 const listeners = new Set<() => void>();
 function notify(next: CartState) { state = next; for (const listener of listeners) listener(); }
 const keyFor = (owner: string) => 'cart.' + owner;
@@ -19,23 +20,47 @@ function cartValue(value: unknown): MarketplaceCart {
 }
 function activate(owner: string, revision: number) {
   const nextScope = owner ? owner + ':' + revision : '';
-  if (scope !== nextScope) { scope = nextScope; epoch++; loading = null; notify(empty); }
+  if (scope !== nextScope) { scope = nextScope; epoch++; loading = null; completedOrders = []; notify(empty); }
   if (!owner || state.ready || loading) return;
   const turn = epoch;
-  loading = readOwnedDraft<MarketplaceCart>(keyFor(owner), revision).then(saved => {
-    if (turn === epoch && revision === getDeviceCacheRevision()) notify({ items: cartValue(saved), ready: true, error: '', saving: false });
+  loading = readOwnedDraft<MarketplaceCart | {version:2;items:MarketplaceCart;completedOrders:string[]}>(keyFor(owner), revision).then(saved => {
+    if (turn === epoch && revision === getDeviceCacheRevision()) {
+      const record = saved && 'version' in saved && saved.version === 2 ? saved as {version:2;items:MarketplaceCart;completedOrders:string[]} : null;
+      completedOrders = record && Array.isArray(record.completedOrders) ? record.completedOrders.filter(id=>typeof id==='string').slice(-200) : [];
+      notify({ items: cartValue(record ? record.items : saved), ready: true, error: '', saving: false });
+    }
   }).catch(error => {
     if (turn === epoch) notify({ ...empty, error: error instanceof Error ? error.message : 'Your cart could not be restored. Try again.' });
   }).finally(() => { if (turn === epoch) loading = null; });
 }
 function persist(owner: string, revision: number, items: MarketplaceCart): Promise<void> {
   const turn = epoch;
+  const completed = [...completedOrders];
   const task = writes.then(async () => {
     if (turn !== epoch || revision !== getDeviceCacheRevision()) throw new Error('Your shopping session changed. Reopen the cart.');
-    await saveOwnedDraft(keyFor(owner), items, revision);
+    await saveOwnedDraft(keyFor(owner), {version:2,items,completedOrders:completed}, revision);
   });
   writes = task.catch(() => undefined);
   return task;
+}
+
+/** Called only after the server confirms payment. Receipt IDs and cart items
+ * share one atomic encrypted record, so a retry cannot remove items twice. */
+export async function confirmMarketplaceCartPurchase(owner: string, orderId: string, purchased: {product_id:string;quantity:number}[]) {
+  const revision = getDeviceCacheRevision();
+  activate(owner, revision);
+  if (loading) await loading;
+  if (!state.ready || revision !== getDeviceCacheRevision()) throw new Error('Your cart could not be restored. Your payment is confirmed; reopen Purchases to retry.');
+  if (completedOrders.includes(orderId)) {await persist(owner,revision,state.items);return;}
+  const items = {...state.items};
+  for (const item of purchased) {
+    const remaining = (items[item.product_id] ?? 0) - Number(item.quantity);
+    if (remaining > 0) items[item.product_id] = remaining; else delete items[item.product_id];
+  }
+  completedOrders = [...completedOrders, orderId].slice(-200);
+  notify({...state, items, saving:true});
+  await persist(owner, revision, items);
+  if (revision === getDeviceCacheRevision()) notify({...state, saving:false});
 }
 
 /** Catalogue, cart popup and checkout observe one owner-scoped cart. A covered screen cannot restore stale items. */

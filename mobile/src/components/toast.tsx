@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "@/src/theme";
 
@@ -16,9 +16,10 @@ type Notice = {
   id: number;
   message: string;
   tone: "info" | "success" | "error";
+  onOpen?: (()=>void)|undefined;
 };
 const ToastContext = createContext<
-  (message: string, tone?: Notice["tone"]) => void
+  (message: string, tone?: Notice["tone"],onOpen?:()=>void) => void
 >(() => undefined);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -27,8 +28,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const sequence = useRef(0);
   const opacity = useRef(new Animated.Value(0)).current;
-  const show = useCallback((message: string, tone: Notice["tone"] = "info") => {
-    if (message.trim()) setNotice({ id: ++sequence.current, message, tone });
+  const dismissGesture = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 12 || gesture.dy < -12,
+    onPanResponderRelease: (_, gesture) => { if (Math.abs(gesture.dx) > 32 || gesture.dy < -24) setNotice(null); },
+  })).current;
+  const show = useCallback((message: string, tone: Notice["tone"] = "info",onOpen?:()=>void) => {
+    if (message.trim()) setNotice({ id: ++sequence.current, message, tone,onOpen });
   }, []);
   useEffect(() => {
     if (!notice) return;
@@ -42,6 +47,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {notice ? (
         <View pointerEvents="box-none" style={styles.position}>
           <Animated.View
+            {...dismissGesture.panHandlers}
             accessibilityRole="alert"
             accessibilityLiveRegion="polite"
             style={[styles.toast, { opacity }]}
@@ -55,7 +61,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               color={theme.peach}
               size={22}
             />
-            <Text style={styles.message}>{notice.message}</Text>
+            <Pressable style={{flex:1,paddingVertical:8}} disabled={!notice.onOpen} accessibilityRole={notice.onOpen?"button":"text"} onPress={()=>{notice.onOpen?.();setNotice(null);}}><Text numberOfLines={4} style={styles.message}>{notice.message}</Text></Pressable>
             <Pressable
               accessibilityLabel="Dismiss notification"
               accessibilityRole="button"

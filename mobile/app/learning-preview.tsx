@@ -1,3 +1,4 @@
+import {MediaImage} from "@/src/components/media-image";
 import {isPlayDistribution} from "@/src/lib/digital-billing-policy";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
@@ -17,6 +18,7 @@ type Resource = {
   title: string;
   description: string;
   publisher_name: string;
+  cover_url?:string|null;parts?:{title:string;mediaId:string}[];subject?:string;
   course_code: string;
   resource_type: string;
   preview_text: string | null;
@@ -75,20 +77,10 @@ export default function LearningPreview() {
     setBusy(true);
     try {
       if (resource.access_model === "PAID"&&!resource.can_access) {
-        router.push("/learning-library");
+        router.push({pathname:"/learning-checkout",params:{resourceId:resource.id,priceKobo:String(resource.price_kobo)}});
         return;
       }
-      if(resource.resource_type==='VIDEO'&&resource.media_object_id){router.push({pathname:'/tutorial-watch',params:{id:resource.media_object_id,title:resource.title}});return;}
-      let url = resource.file_url;
-      if (resource.media_object_id) {
-        const r = await api<{ url: string }>(
-          `/v1/media/${resource.media_object_id}/access`,
-          { method: "POST" },
-        );
-        url = r.url;
-      }
-      if (!url) throw new Error("This file is not available yet.");
-      await Linking.openURL(url);
+      router.push({pathname:'/learning-viewer',params:{id:resource.id}});
     } catch (e) {
       toast(
         e instanceof Error ? e.message : "Could not open this resource.",
@@ -134,6 +126,8 @@ export default function LearningPreview() {
         </>
       ) : resource ? (
         <View style={{ gap: 18 }}>
+          {resource.cover_url?<MediaImage uri={resource.cover_url} accessibilityLabel={`${resource.title} cover`} style={{width:"100%",aspectRatio:16/9,borderRadius:16}}/>:null}
+          <View style={{flexDirection:"row",justifyContent:"space-between",paddingVertical:10}}><Text style={{color:theme.deepBrand,fontFamily:theme.font.semibold}}>{resource.access_model==='FREE'?'Free to learn':new Intl.NumberFormat('en-NG',{style:'currency',currency:'NGN'}).format(Number(resource.price_kobo)/100)}</Text><Text style={{color:theme.textMuted,fontFamily:theme.font.body}}>{resource.parts&&resource.parts.length>1?`${resource.parts.length} parts`:resource.subject}</Text></View>
           <Text
             style={{
               color: theme.brand,
@@ -185,6 +179,7 @@ export default function LearningPreview() {
               </Text>
             </View>
           ) : null}
+          <ToolButton secondary label="Save to my profile" onPress={()=>void api('/v1/student/tutorial-resources/'+resource.id+'/save',{method:'PUT',body:JSON.stringify({saved:true})}).then(()=>toast('Saved to your learning library','success')).catch(e=>toast(e.message,'error'))}/>
           <View style={{gap:8,borderTopWidth:1,borderTopColor:theme.border,paddingTop:16}}>
             <Text style={{color:theme.text,fontFamily:theme.font.semibold}}>Study with Kira</Text>
             <Text style={{color:theme.textMuted,fontFamily:theme.font.body,fontSize:12,lineHeight:18}}>Use the visible preview or explore this topic. Attach the full file in Kira for a complete document lesson.</Text>

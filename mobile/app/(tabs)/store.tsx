@@ -63,6 +63,7 @@ export type Product = {
   pickup_enabled?: boolean;
   self_delivery_enabled?: boolean;
   pickup_location?: string;
+  pickup_locations?:string[];
   is_demo?: boolean;
 };
 
@@ -172,7 +173,12 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
     quote: CheckoutQuote;
   } | null>(null);
   const quoteRequest = useRef({ payload: "", id: "" });
+  const toast = useToast();
   const [notice, setNotice] = useState("");
+  const [singlePickup,setSinglePickup]=useState("");
+  const [bulkPickup,setBulkPickup]=useState("Engineering");
+  const [pickupHubs,setPickupHubs]=useState<{name:string}[]>([]);
+  useEffect(()=>{void api<{hubs:{name:string}[]}>('/v1/student/pickup-hubs').then(result=>{setPickupHubs(result.hubs);if(result.hubs[0])setBulkPickup(result.hubs[0].name);}).catch(()=>undefined);},[]);
   const reducedMotion = useReducedMotionPreference();
 
   useEffect(() => {
@@ -292,16 +298,17 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   );
   const selectedZone = zones.find((zone) => zone.id === selectedZoneId);
   const vendorProduct = cartItems[0]?.product;
+  const multiVendor=new Set(cartItems.map(item=>item.product.vendor_profile_id)).size>1;
   const fulfilmentModes = (
-    ["RIDER", "PICKUP", "VENDOR_DELIVERY"] as const
+    ["RIDER", "PICKUP"] as const
   ).filter((mode) =>
     mode === "RIDER"
       ? riderDeliveryEnabled
       : mode === "PICKUP"
-        ? vendorProduct?.pickup_enabled
+        ? multiVendor || vendorProduct?.pickup_enabled
         : vendorProduct?.self_delivery_enabled,
   );
-  const effectiveMode = fulfilmentModes.includes(fulfilmentMode)
+  const effectiveMode = fulfilmentModes.includes(fulfilmentMode as "RIDER"|"PICKUP")
     ? fulfilmentMode
     : fulfilmentModes[0];
   const deliveryFee =
@@ -322,6 +329,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
       ? "Enter the agreed pickup point"
       : !deliveryPlace && effectiveMode === 'RIDER' ? "Choose a delivery location" : "Select a delivery zone to continue";
   const orderPayload = JSON.stringify({
+    pickupPointName:effectiveMode==='PICKUP'?(multiVendor?bulkPickup:singlePickup||vendorProduct?.pickup_location):null,
     vendorProfileId: cartItems[0]?.product.vendor_profile_id,
     ...(discountCode?{discountCode}:{}),
     fulfilmentMode: effectiveMode,
@@ -366,15 +374,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   function add(product: Product) {
     if (!cartReady || busy) return;
     const activeVendor = cartItems[0]?.product.vendor_profile_id;
-    if (activeVendor && activeVendor !== product.vendor_profile_id) {
-      const activeSeller =
-        cartItems[0]?.product.vendor_name ?? "another seller";
-      Alert.alert(
-        "One seller per cart",
-        `${activeSeller} is already in your cart. Remove those items before adding a product from ${product.vendor_name}.`,
-      );
-      return;
-    }
     const stock = Number(product.stock_quantity);
     if (stock <= 0) return;
     if (!activeVendor) {
@@ -385,7 +384,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
       ...current,
       [product.id]: Math.min((current[product.id] ?? 0) + 1, stock, 99),
     }));
-    setNotice(`${product.name} added to your cart.`);
+    toast(`${product.name} added to cart.`, "success");
   }
 
   function changeQuantity(product: Product, delta: number) {
@@ -419,10 +418,7 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
   async function buyNow(product: Product) {
     if (checkoutLock.current || !cartReady || Number(product.stock_quantity) <= 0) return;
     const activeVendor = cartItems[0]?.product.vendor_profile_id;
-    if (activeVendor && activeVendor !== product.vendor_profile_id) {
-      Alert.alert('One seller per checkout', 'Your cart contains another seller. Finish or clear that cart before buying this product.');
-      return;
-    }
+
     checkoutLock.current = true; setBusy(true); setCheckoutError("");
     try {
       // Buy the selected product immediately; other same-seller items remain in the cart.
@@ -484,7 +480,6 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
         },
       );
       if (revision !== getDeviceCacheRevision()) return;
-      setCart(current => { const next={...current}; for(const item of cartItems){const remaining=(next[item.product.id]??0)-item.quantity;if(remaining>0)next[item.product.id]=remaining;else delete next[item.product.id];} return next; });
       setReviewedQuote(null);
       quoteRequest.current = { payload: "", id: "" };
       setCartOpen(false);
@@ -617,6 +612,8 @@ function OwnedStoreScreen({checkoutScreen=false}:{checkoutScreen?:boolean}) {
                     </View>
                   ) : null}
 
+                  {!multiVendor&&effectiveMode==='PICKUP'&&(vendorProduct?.pickup_locations?.length??0)>1?<View style={{gap:8,marginVertical:14}}><Text style={styles.sectionLabel}>Vendor pickup point</Text>{vendorProduct!.pickup_locations!.map(point=><Pressable key={point} accessibilityRole="radio" accessibilityState={{selected:(singlePickup||vendorProduct?.pickup_location)===point}} onPress={()=>setSinglePickup(point)} style={[styles.zone,(singlePickup||vendorProduct?.pickup_location)===point&&styles.zoneSelected]}><Text style={styles.zoneName}>{point}</Text></Pressable>)}</View>:null}
+                  {multiVendor && effectiveMode==='PICKUP' ? <View style={{gap:8,marginVertical:14}}><Text style={styles.sectionLabel}>KampusOne pickup point</Text>{pickupHubs.map(hub=><Pressable key={hub.name} accessibilityRole="radio" accessibilityState={{selected:bulkPickup===hub.name}} onPress={()=>setBulkPickup(hub.name)} style={[styles.zone,bulkPickup===hub.name&&styles.zoneSelected]}><Text style={styles.zoneName}>{hub.name}</Text></Pressable>)}</View> : null}
                   <Text style={styles.sectionLabel}>
                     How would you like your order?
                   </Text>

@@ -13,5 +13,5 @@ export function nativeTransport(fetcher, clock = Date, storage = {}) {
     return exports;
   };
   const deadline=load('request-deadline.ts',{'./request-policy':policy});
-  return load('api-transport.ts',{'./device-cache':{setDeviceCacheScope(){}},'./request-policy':policy,'./request-deadline':deadline,'./session-lock':{withSessionLock:fn=>fn()},'expo-constants':{default:{expoConfig:{extra:{}}}},'react-native':{Platform:{OS:'android'}},'./analytics-bridge':{emitFeatureLifecycle(){}},'./session-storage':{readRefreshToken:async()=>null,removeRefreshToken:async()=>{},saveRefreshToken:async()=>{},...storage}});
+  return load('api-transport.ts',{'./network-state':{isOffline:()=>storage.isOffline?.()??false},'./secure-snapshots.native-adapter':{secureSnapshots:{read:async()=>null,write:async()=>{},activate:()=>{}}},'./offline-session':{removeOfflineSession:async()=>{}},'./device-cache':{setDeviceCacheScope(){}},'./request-policy':policy,'./request-deadline':deadline,'./session-lock':{withSessionLock:fn=>fn()},'expo-constants':{default:{expoConfig:{extra:{}}}},'react-native':{Platform:{OS:'android'}},'./analytics-bridge':{emitFeatureLifecycle(){}},'./session-storage':{readRefreshToken:async()=>null,removeRefreshToken:async()=>{},saveRefreshToken:async()=>{},...storage}});
 }

@@ -22,6 +22,7 @@ import {
 } from "@kampusone/contracts";
 
 import { adminAccess, assertPermission, permissionForAdminRoute, resolveAdminScope, type AdminUser } from "../lib/admin-access";
+import { orderOperationsRoutes } from "./order-operations";
 import { operationsRoutes } from "./operations";
 import {adminExtensionRoutes}from'./admin-extensions';
 import { academicAdminRoutes } from "./academic-admin";
@@ -138,6 +139,7 @@ adminRoutes.use("/*", async (c, next) => {
   await next();
 });
 adminRoutes.route("/",operationsRoutes);
+adminRoutes.route("/operations/orders",orderOperationsRoutes);
 adminRoutes.route('/',adminExtensionRoutes);
 adminRoutes.route("/academic",academicAdminRoutes);
 adminRoutes.route("/broadcasts",broadcastRoutes);
@@ -1028,6 +1030,8 @@ adminRoutes.get("/operations", async (context) => {
     user,
     context.req.query("universityId"),
   );
+  const access=await adminAccess(context.env,user),financeAvailable=access.permissions.includes('finance.view');
+  const loadErrors: string[]=[];
   const [
     categories,
     products,
@@ -1036,7 +1040,7 @@ adminRoutes.get("/operations", async (context) => {
     disputes,
     payouts,
     paymentEvents,
-  ] = await Promise.all([
+  ] = await Promise.allSettled([
     database(context.env).execute(sql`
       select id, university_id, name, status, listing_rules, reviewed_at, updated_at
       from public.product_categories where ${scope}::uuid is null or university_id = ${scope}::uuid
@@ -1138,16 +1142,11 @@ adminRoutes.get("/operations", async (context) => {
         events.received_at desc limit 200
     `),
   ]);
-  return context.json({
-    categories: categories.rows,
-    products: products.rows,
-    storefronts: storefronts.rows,
-    zones: zones.rows,
-    disputes: (await adminAccess(context.env,user)).permissions.includes("finance.view") ? disputes.rows : [],
-    financeAvailable: (await adminAccess(context.env,user)).permissions.includes("finance.view"),
-    payoutRequests: (await adminAccess(context.env,user)).permissions.includes("finance.view") ? payouts.rows : [],
-    paymentEvents: (await adminAccess(context.env,user)).permissions.includes("finance.view") ? paymentEvents.rows : [],
-  });
+  const results=[categories,products,storefronts,zones,disputes,payouts,paymentEvents];
+  const names=['categories','products','storefronts','zones','disputes','withdrawals','payment events'];
+  const rows=(index:number)=>{const result=results[index]!;if(result.status==='fulfilled')return result.value.rows;loadErrors.push(names[index]!);console.warn(JSON.stringify({event:'admin.operations.read_failed',section:names[index],requestId:context.get('requestId')}));return [];};
+  const output={categories:rows(0),products:rows(1),storefronts:rows(2),zones:rows(3),disputes:rows(4),payoutRequests:financeAvailable?rows(5):[],paymentEvents:financeAvailable?rows(6):[],financeAvailable,loadErrors};
+  return context.json(output);
 });
 
 adminRoutes.post("/operations/payment-events/:id/review", async (context) => {

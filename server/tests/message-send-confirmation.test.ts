@@ -51,3 +51,17 @@ describe('durable message confirmations',()=>{
     expect((await send(id,undefined,outsider)).status).toBe(404);
   });
 });
+
+describe('agent DM contact rules',()=>{
+ it('removes a violating number, pauses the conversation for three days and permits tutor contacts',async()=>{
+  const application=crypto.randomUUID(),profile=crypto.randomUUID();
+  await db.query("insert into agent_applications(id,user_id,university_id,agent_type,display_name,phone_e164,statement)values($1,$2,$3,'VENDOR','Fixture vendor','+2348012345678','Synthetic contact-rule fixture')",[application,recipient,campus]);
+  await db.query("insert into agent_profiles(id,user_id,university_id,application_id,agent_type,display_name,verified_at)values($1,$2,$3,$4,'VENDOR','Fixture vendor',now())",[profile,recipient,campus,application]);
+  const id=crypto.randomUUID();expect((await send(id,'Pay into 0123456789')).status).toBe(403);
+  expect((await db.query('select id from direct_messages where id=$1',[id])).rows).toHaveLength(0);
+  const pause=(await db.query<{paused:boolean}>("select suspended_until>now()+interval '2 days 23 hours' paused from direct_threads where id=$1",[thread])).rows[0]!;expect(pause.paused).toBe(true);
+  expect((await send(crypto.randomUUID(),'Is this still available?')).status).toBe(403);
+  await db.query("update agent_profiles set agent_type='TUTOR'where id=$1",[profile]);
+  expect((await send(crypto.randomUUID(),'Call me on 08012345678')).status).toBe(201);
+ });
+});

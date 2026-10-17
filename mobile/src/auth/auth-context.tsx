@@ -1,4 +1,7 @@
 import { clearScreenSync } from "../lib/screen-read";
+import * as Network from 'expo-network';
+import { setNetworkOffline } from '../lib/network-state';
+import { readOfflineSession, saveOfflineSession, removeOfflineSession } from '../lib/offline-session';
 import {cacheScopeForUser} from "../lib/request-policy";
 import { checkBuildVersion } from "@/src/lib/build-version";
 import {
@@ -19,6 +22,7 @@ import {
   authApi,
   onSessionChange,
   setAccessToken,
+  restoreOfflineAccount,
   type Session,
   type SessionUser,
 } from "@/src/lib/api";
@@ -142,6 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionRestoreError("");
       setUser(session.user);
       setState("authenticated");
+      void saveOfflineSession(session).catch(() => undefined);
       void writeCache("last-session", { user: session.user }, 30 * 86400_000).catch(() => undefined);
 
       // Start the dashboard read beside the profile read instead of waiting for
@@ -172,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState("anonymous");
           clearScreenSync();
           void clearDeviceCache().catch(() => undefined);
+          void removeOfflineSession().catch(() => undefined);
           applyPreferences();
           void clearScheduledAlarms().catch(() => undefined);
         }
@@ -198,31 +204,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    let restoring = true;
     const generation = sessionVersion.current;
-    // Disk-cache reads must not delay checking the actual secure session.
-    void retrySessionRestore().finally(() => { restoring = false; });
     void (async () => {
-      const snapshot = await readCache<{ user: SessionUser }>(
-        "last-session",
-      ).catch(() => null);
-      if (snapshot && active && restoring && generation === sessionVersion.current) {
+      const network = await Network.getNetworkStateAsync().catch(() => null);
+      if (network) setNetworkOffline(network.isConnected === false || network.isInternetReachable === false);
+      const savedUser = await readOfflineSession().catch(() => null);
+      if (savedUser && active && generation === sessionVersion.current) {
+        restoreOfflineAccount(savedUser);
         const savedProfile = await readCache<Profile>(
-          `profile.${snapshot.user.id}`,
+          `profile.${savedUser.id}`,
         ).catch(() => null);
-        if (savedProfile?.onboarding_completed_at && active && restoring && generation === sessionVersion.current) {
-          sessionUserId.current = snapshot.user.id;
-          setUser(snapshot.user);
+        if (savedProfile?.onboarding_completed_at && active && generation === sessionVersion.current) {
+          sessionUserId.current = savedUser.id;
+          setUser(savedUser);
           setProfile(savedProfile);
-          // Cached profile data is only a rendering optimization. It is never
-          // proof that a cookie/session is still valid after a restart.
           setProfileState("ready");
+          setState('authenticated');
           applyPreferences(savedProfile.settings);
         }
       }
+      if (active) await retrySessionRestore();
     })();
+    const subscription = Network.addNetworkStateListener(value => {
+      setNetworkOffline(value.isConnected === false || value.isInternetReachable === false);
+      if (value.isConnected !== false && value.isInternetReachable !== false && active) void retrySessionRestore();
+    });
     return () => {
       active = false;
+      subscription.remove();
     };
   }, [retrySessionRestore]);
 
@@ -284,6 +293,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfileError("");
       setState("anonymous");
       await clearDeviceCache().catch(() => undefined);
+      await removeOfflineSession().catch(() => undefined);
       applyPreferences();
       await clearScheduledAlarms().catch(() => undefined);
       if (!serverRevoked) {
@@ -304,7 +314,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);setProfile(null);setState("anonymous");
     setProfileState("idle");setProfileError("");setSessionRestoreError("");
     applyPreferences();
-    await Promise.allSettled([removeRefreshToken(),clearDeviceCache(),clearScheduledAlarms()]);
+    await Promise.allSettled([removeRefreshToken(),removeOfflineSession(),clearDeviceCache(),clearScheduledAlarms()]);
   },[]);
 
   const value = useMemo<AuthContextValue>(

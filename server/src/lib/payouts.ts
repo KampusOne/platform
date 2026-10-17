@@ -121,6 +121,7 @@ export async function quotePayout(
       "CONFLICT",
       "Complete bank approval and the campus withdrawal policy before requesting a withdrawal.",
     );
+  if(data.amountKobo<(row.agent_type==='RIDER'?200000:500000))throw new AppError(409,'CONFLICT',row.agent_type==='RIDER'?'The minimum rider withdrawal is ₦2,000.':'The minimum agent withdrawal is ₦5,000.');
   await requireFullKyc(env, row.application_id);
   let costs;
   try {

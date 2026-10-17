@@ -1,4 +1,5 @@
 import { collectionReference, paymentReturnUrl } from '../lib/collection-provider';
+import {requireAgentRoleAccess,restoreExpiredAgentRoles} from '../lib/agent-access';
 import {cachedVersionedRead} from "../lib/cache-revision";
 import {livePublishingEnabled,publishRiderQueueReads} from '../services/live-read-publishers';
 import {mappedDeliveryPoint,currentAgentPosition,campusDeliveryRoute} from '../lib/delivery-routing';
@@ -40,7 +41,7 @@ import {
   phase3SchemaReady,
   requireFeature,
 } from "../lib/features";
-import { deriveHandoffCode, hashOtp } from "../lib/security";
+import { deriveHandoffCode, hashOtp, sha256 } from "../lib/security";
 import { ledgerPayoutsReady,payoutFeeComponentsReady,requireLedgerPayouts,quotePayout,payoutQuoteSchema,payoutRate,payoutError,reconcilePayout,payoutAvailability } from "../lib/payouts";
 import { riderFinanceReady,riderFinanceSummary,reconcileRiderCommission } from '../lib/rider-finance';
 import { initializePaystackOnce } from '../lib/payment-idempotency';
@@ -55,6 +56,12 @@ export const agentRoutes = new Hono<{
   Variables: Variables;
 }>();
 agentRoutes.use("/*", requireAuth);
+agentRoutes.use('/*',async(c,next)=>{
+  const user=currentUser(c),path=c.req.path.replace(/^\/(?:v1\/)?agents\//,'').replace(/^\//,''),write=!['GET','HEAD'].includes(c.req.method);
+  const role=/^(?:tutorial|tutorials|learning-publish)/.test(path)?'TUTOR':/^(?:products|product-categories|storefront|orders|analytics)/.test(path)?'VENDOR':/^(?:deliveries|rider-)/.test(path)?'RIDER':null;
+  if(role)await requireAgentRoleAccess(c.env,user.id,user.universityId,role,write);
+  await next();
+});
 agentRoutes.use('/*',async(c,next)=>{
   await next();
   if(!c.res.ok||!livePublishingEnabled(c.env)||!['POST','PUT','PATCH'].includes(c.req.method)||!/^\/v1\/agents\/(?:orders\/[a-f0-9-]{36}\/(?:rider-request|dispatch|handoff|status)|deliveries\/[a-f0-9-]{36}\/(?:reserve|pickup|complete)|rider-presence)$/.test(c.req.path))return;
@@ -77,7 +84,7 @@ async function approvedProfile(
     university_id: string;
   }>(sql`
     select id, university_id from public.agent_profiles
-    where user_id = ${userId}::uuid and agent_type = ${type} and status = 'ACTIVE'
+    where user_id = ${userId}::uuid and agent_type = ${type} and (status = 'ACTIVE' or status='PAUSED' and suspension_ends_at>now())
       and (${universityId === undefined} or university_id=${universityId ?? null}::uuid)
     limit 1
   `);
@@ -104,7 +111,7 @@ async function operationalVendorProfile(env: Bindings, userId: string) {
       on storefronts.vendor_profile_id = profiles.id
     where profiles.user_id = ${userId}::uuid
       and profiles.agent_type = 'VENDOR'
-      and profiles.status = 'ACTIVE'
+      and (profiles.status = 'ACTIVE' or profiles.status='PAUSED' and profiles.suspension_ends_at>now())
     limit 1
   `);
   const profile = firstRow(result);
@@ -534,6 +541,27 @@ agentRoutes.patch("/tutorials/:id/status", async (context) => {
   return context.json({ status: parsed.data.status });
 });
 
+agentRoutes.post('/learning-publish',async c=>{
+ requireFeature(c.env,'TUTORIALS_ENABLED','Learning uploads are unavailable.');
+ const user=currentUser(c),profile=await approvedProfile(c.env,user.id,'TUTOR',user.universityId);
+ const data=await input(c,z.object({requestId:z.string().uuid(),title:z.string().trim().min(3).max(180),description:z.string().trim().min(10).max(2000),courseCode:z.string().trim().min(2).max(24).default('GENERAL'),subject:z.string().trim().min(2).max(80),resourceType:z.enum(['PDF','NOTE','PAST_QUESTION','AUDIOBOOK','VIDEO']),accessModel:z.enum(['FREE','PAID']),priceKobo:z.number().int().min(0).max(100_000_000),coverUrl:z.string().url().nullable().optional(),parts:z.array(z.object({mediaId:z.string().uuid(),title:z.string().trim().min(1).max(180)}).strict()).min(1).max(30)}).strict());
+ if(data.accessModel==='FREE'&&data.priceKobo!==0 || data.accessModel==='PAID'&&data.priceKobo<=0)throw new AppError(400,'BAD_REQUEST','Set a price for paid materials, or choose Free.');
+ if(data.accessModel==='PAID')requireFeature(c.env,'PAYMENTS_ENABLED','Paid learning uploads are unavailable.');
+ const fingerprint=await sha256(JSON.stringify(data));
+ const prior=firstRow(await database(c.env).execute<{id:string;publish_fingerprint:string}>(sql`select id,publish_fingerprint from public.tutorial_resources where tutor_profile_id=${profile.id}::uuid and client_request_id=${data.requestId}::uuid`));
+ if(prior){if(prior.publish_fingerprint!==fingerprint)throw new AppError(409,'CONFLICT','Use a new publishing request after changing your material.');return c.json({id:prior.id,status:'PUBLISHED'});}
+
+ if(data.coverUrl){const photoId=new URL(data.coverUrl).pathname.match(/\/v1\/media\/([0-9a-f-]{36})$/i)?.[1];if(!photoId||!firstRow(await database(c.env).execute(sql`select id from public.media_objects where id=${photoId}::uuid and owner_user_id=${user.id}::uuid and institution_id=${user.universityId}::uuid and kind='product' and content_type like 'image/%' and deleted_at is null`)))throw new AppError(400,'BAD_REQUEST','Choose a cover photo uploaded by your own account.');}
+
+ const ids=data.parts.map(p=>p.mediaId);
+ if(new Set(ids).size!==ids.length)throw new AppError(400,'BAD_REQUEST','Choose each file once.');
+ const media=await database(c.env).execute<{id:string;content_type:string}>(sql`select id,content_type from public.media_objects where id in(${sql.join(ids.map(id=>sql`${id}::uuid`),sql`,`)}) and owner_user_id=${user.id}::uuid and institution_id=${user.universityId}::uuid and kind='resource' and deleted_at is null`);
+ if(media.rows.length!==ids.length||media.rows.some(m=>data.resourceType==='VIDEO'?!m.content_type.startsWith('video/'):data.resourceType==='AUDIOBOOK'?!m.content_type.startsWith('audio/'):!['application/pdf','image/jpeg','image/png','image/webp'].includes(m.content_type)))throw new AppError(400,'BAD_REQUEST','Wait for all files to upload, and choose files of the selected type.');
+ const result=firstRow(await database(c.env).execute<{id:string}>(sql`insert into public.tutorial_resources(id,university_id,tutor_profile_id,course_code,title,description,resource_type,access_model,price_kobo,publisher_name,publisher_verified,media_object_id,file_url,status,cover_url,subject,client_request_id,parts,publish_fingerprint,submitted_at,updated_at) select ${crypto.randomUUID()}::uuid,${profile.university_id}::uuid,id,${data.courseCode.toUpperCase()},${data.title},${data.description},${data.resourceType},${data.accessModel},${data.priceKobo},display_name,true,${ids[0]}::uuid,null,'PUBLISHED',${data.coverUrl??null},${data.subject},${data.requestId}::uuid,${JSON.stringify(data.parts)}::jsonb,${fingerprint},now(),now() from public.agent_profiles where id=${profile.id}::uuid and status='ACTIVE' on conflict(tutor_profile_id,client_request_id) where client_request_id is not null do nothing returning id`));
+ if(!result)throw new AppError(409,'CONFLICT','This publishing attempt is already saved. Refresh your dashboard.');
+ return c.json({id:result.id,status:'PUBLISHED'},201);
+});
+
 agentRoutes.post("/tutorial-resources", async (context) => {
   requireFeature(
     context.env,
@@ -901,13 +929,13 @@ agentRoutes.put("/storefront", async (context) => {
   }>(sql`
     insert into public.vendor_storefronts (
       vendor_profile_id, university_id, display_name, description,
-      contact_phone_e164, pickup_location, pickup_place_id, pickup_instructions,
+      contact_phone_e164, pickup_location, pickup_place_id, pickup_instructions,pickup_locations,
       opening_hours, default_preparation_minutes
     ) values (
       ${profile.id}::uuid, ${profile.university_id}::uuid,
       ${parsed.data.displayName}, ${parsed.data.description},
       ${parsed.data.contactPhoneE164}, ${parsed.data.pickupLocation}, ${parsed.data.pickupPlaceId??null}::uuid,
-      ${parsed.data.pickupInstructions ?? null},
+      ${parsed.data.pickupInstructions ?? null},${JSON.stringify([...new Set(parsed.data.pickupLocations??[parsed.data.pickupLocation])])}::jsonb,
       ${JSON.stringify(parsed.data.openingHours)}::jsonb,
       ${parsed.data.defaultPreparationMinutes}
     )
@@ -918,6 +946,7 @@ agentRoutes.put("/storefront", async (context) => {
       pickup_location = excluded.pickup_location,
       pickup_place_id = excluded.pickup_place_id,
       pickup_instructions = excluded.pickup_instructions,
+      pickup_locations = excluded.pickup_locations,
       opening_hours = excluded.opening_hours,
       default_preparation_minutes = excluded.default_preparation_minutes,
       updated_at = now()
@@ -1329,18 +1358,23 @@ agentRoutes.patch("/products/:id/status", async (context) => {
   return context.json({ status: targetStatus });
 });
 
+agentRoutes.get('/analytics',async c=>{
+ const u=currentUser(c),p=await approvedProfile(c.env,u.id,'VENDOR',u.universityId);
+ const trend=await database(c.env).execute(sql`with mine as(select o.id,o.created_at,o.status,coalesce(a.seller_net_kobo,o.subtotal_kobo) amount from public.orders o left join app_private.order_vendor_allocations a on a.order_id=o.id and a.vendor_profile_id=${p.id}::uuid where o.university_id=${u.universityId}::uuid and(o.vendor_profile_id=${p.id}::uuid or a.vendor_profile_id=${p.id}::uuid) and ${paidAgentOrders('o')})select day::date::text day,count(m.id)::int orders,count(m.id)filter(where m.status='DELIVERED')::int delivered,coalesce(sum(m.amount),0)::bigint net_kobo from generate_series(current_date-13,current_date,interval '1 day')day left join mine m on m.created_at>=day and m.created_at<day+interval '1 day'group by day order by day`);return c.json({trend:trend.rows});
+});
+
 agentRoutes.get("/orders", async (context) => {
   if (!phase3SchemaReady(context.env)) throw new AppError(503,"FEATURE_DISABLED","Store orders are awaiting the scheduled database update.");
   const user = currentUser(context);
   const result = await database(context.env).execute(sql`
-    select orders.id, orders.status, orders.subtotal_kobo, orders.delivery_fee_kobo,
-      orders.total_kobo, orders.created_at, orders.updated_at,
+    select orders.id, case when orders.status in('PAID','ACCEPTED') and (select count(*) from app_private.order_vendor_allocations where order_id=orders.id)>1 then coalesce((select status from app_private.order_vendor_allocations where order_id=orders.id and vendor_user_id=${user.id}::uuid),orders.status) else orders.status end as status, coalesce((select listed_items_kobo from app_private.order_vendor_allocations where order_id=orders.id and vendor_user_id=${user.id}::uuid),orders.subtotal_kobo) as subtotal_kobo, 0 as delivery_fee_kobo,
+      coalesce((select listed_items_kobo from app_private.order_vendor_allocations where order_id=orders.id and vendor_user_id=${user.id}::uuid),orders.subtotal_kobo) as total_kobo, orders.created_at, orders.updated_at,
       coalesce(to_jsonb(orders)->>'fulfilment_mode','RIDER') as fulfilment_mode,
       zones.name as zone_name, count(items.id)::int as item_count
     from public.orders orders
-    join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
+    join public.agent_profiles profiles on (profiles.id = orders.vendor_profile_id or exists(select 1 from app_private.order_vendor_allocations allocation where allocation.order_id=orders.id and allocation.vendor_profile_id=profiles.id))
     left join public.delivery_zones zones on zones.id = orders.delivery_zone_id
-    left join public.order_items items on items.order_id = orders.id
+    left join public.order_items items on items.order_id = orders.id and exists(select 1 from public.vendor_products p where p.id=items.product_id and p.vendor_profile_id=profiles.id)
     where profiles.user_id = ${user.id}::uuid and profiles.agent_type='VENDOR'
       and orders.university_id=${user.universityId}::uuid
       and ${paidAgentOrders()}
@@ -1362,8 +1396,8 @@ agentRoutes.get("/orders/:id", async (context) => {
     id: string;
     status: string;
   }>(sql`
-    select orders.id, orders.status, orders.university_id,
-      orders.subtotal_kobo, orders.delivery_fee_kobo, orders.total_kobo,
+    select orders.id, case when orders.status in('PAID','ACCEPTED') and (select count(*) from app_private.order_vendor_allocations where order_id=orders.id)>1 then coalesce((select status from app_private.order_vendor_allocations where order_id=orders.id and vendor_user_id=${user.id}::uuid),orders.status) else orders.status end as status, orders.university_id,
+      coalesce((select listed_items_kobo from app_private.order_vendor_allocations where order_id=orders.id and vendor_user_id=${user.id}::uuid),orders.subtotal_kobo) as subtotal_kobo,0 as delivery_fee_kobo,coalesce((select listed_items_kobo from app_private.order_vendor_allocations where order_id=orders.id and vendor_user_id=${user.id}::uuid),orders.subtotal_kobo) as total_kobo,
       coalesce(to_jsonb(orders)->>'fulfilment_mode','RIDER') as fulfilment_mode,
       case when orders.status in (
         'PAID', 'ACCEPTED', 'READY', 'IN_DELIVERY', 'DELIVERED', 'REFUNDED', 'DISPUTED'
@@ -1374,7 +1408,7 @@ agentRoutes.get("/orders/:id", async (context) => {
       snapshots.delivery_location, snapshots.delivery_landmark,
       snapshots.latitude, snapshots.longitude
     from public.orders orders
-    join public.agent_profiles profiles on profiles.id = orders.vendor_profile_id
+    join public.agent_profiles profiles on (profiles.id = orders.vendor_profile_id or exists(select 1 from app_private.order_vendor_allocations allocation where allocation.order_id=orders.id and allocation.vendor_profile_id=profiles.id))
     left join public.delivery_zones zones on zones.id = orders.delivery_zone_id
     left join public.order_delivery_snapshots snapshots
       on snapshots.order_id = orders.id
@@ -1397,7 +1431,7 @@ agentRoutes.get("/orders/:id", async (context) => {
         products.name, products.image_url
       from public.order_items items
       join public.vendor_products products on products.id = items.product_id
-      where items.order_id = ${order.id}::uuid
+      where items.order_id = ${order.id}::uuid and exists(select 1 from public.agent_profiles mine where mine.id=products.vendor_profile_id and mine.user_id=${user.id}::uuid)
       order by items.created_at, items.id
     `),
     database(context.env).execute(sql`
@@ -1409,7 +1443,7 @@ agentRoutes.get("/orders/:id", async (context) => {
     database(context.env).execute(sql`
       select j.status, to_jsonb(j)->>'request_posted_at' as request_posted_at,
         a.user_id as rider_user_id,a.display_name as rider_name,
-        to_jsonb(a)->'public_details'->>'phone' as rider_phone
+        case when j.status in('RESERVED','PICKED_UP','DELIVERED') then to_jsonb(a)->'public_details'->>'phone' end as rider_phone
       from public.delivery_jobs j left join public.agent_profiles a on a.id=j.rider_profile_id
       where j.order_id=${order.id}::uuid and j.university_id=${user.universityId}::uuid
     `),
@@ -1430,6 +1464,8 @@ agentRoutes.post("/orders/:id/rider-request",async context=>{
   requireFeature(context.env,"LOGISTICS_ENABLED","Rider delivery is not enabled yet.");
   await requireFulfilmentSchema(context.env);
   const user=currentUser(context),orderId=id(context.req.param("id"));
+  const multi=firstRow(await database(context.env).execute<{count:number}>(sql`select count(*)::int count from app_private.order_vendor_allocations where order_id=${orderId}::uuid`));
+  if(Number(multi?.count)>1)throw new AppError(409,'CONFLICT','KampusOne posts rider requests for combined orders.');
   let job;
   try {
     job=firstRow(await database(context.env).execute<{id:string}>(sql`select app_private.post_vendor_rider_request(${orderId}::uuid,${user.id}::uuid,${user.universityId}::uuid) as id`));
@@ -1460,6 +1496,8 @@ agentRoutes.post("/orders/:id/dispatch",async context=>{
 agentRoutes.post("/orders/:id/handoff",async context=>{
   await requireFulfilmentSchema(context.env);
   const user=currentUser(context),orderId=id(context.req.param("id")),data=await input(context,handoffCodeSchema);
+  const multi=firstRow(await database(context.env).execute<{count:number}>(sql`select count(*)::int count from app_private.order_vendor_allocations where order_id=${orderId}::uuid`));
+  if(Number(multi?.count)>1)throw new AppError(409,'CONFLICT','KampusOne verifies the buyer handoff for a combined order.');
   const result=firstRow(await database(context.env).execute<{result:string}>(sql`
     select app_private.confirm_vendor_order_handoff(${orderId}::uuid,${user.id}::uuid,${user.universityId}::uuid,${await hashOtp(context.env,data.code)}) as result
   `))?.result;
@@ -1473,6 +1511,14 @@ agentRoutes.post("/orders/:id/handoff",async context=>{
 agentRoutes.patch("/orders/:id/status", async (context) => {
   const user = currentUser(context);
   if (!phase3SchemaReady(context.env)) throw new AppError(503,"FEATURE_DISABLED","Store orders are awaiting the scheduled database update.");
+  const request=await input(context,orderStateSchema);
+  const combined=firstRow(await database(context.env).execute<{order_id:string}>(sql`select a.order_id from app_private.order_vendor_allocations a join public.orders o on o.id=a.order_id where a.order_id=${id(context.req.param('id'))}::uuid and a.vendor_user_id=${user.id}::uuid and o.university_id=${user.universityId}::uuid and o.status in('PAID','ACCEPTED') and (select count(*) from app_private.order_vendor_allocations where order_id=o.id)>1`));
+  if(combined){
+    if(!['ACCEPTED','READY'].includes(request.status))throw new AppError(409,'CONFLICT','KampusOne coordinates fulfilment for this combined order.');
+    const updated=firstRow(await database(context.env).execute(sql`update app_private.order_vendor_allocations set status=${request.status},ready_at=case when ${request.status}='READY' then now() else ready_at end where order_id=${combined.order_id}::uuid and vendor_user_id=${user.id}::uuid and (status=${request.status} or status='PAID' and ${request.status}='ACCEPTED' or status='ACCEPTED' and ${request.status}='READY') returning order_id`));
+    if(!updated)throw new AppError(409,'CONFLICT','Refresh this order before changing its preparation status.');
+    return context.json({status:request.status,coordinatedBy:'KAMPUSONE'});
+  }
   const owned = firstRow(await database(context.env).execute(sql`
     select o.id from public.orders o join public.agent_profiles a on a.id=o.vendor_profile_id
     join public.vendor_storefronts s on s.vendor_profile_id=a.id
@@ -1571,6 +1617,7 @@ agentRoutes.get("/deliveries", async (context) => {
       case when to_jsonb(jobs)->>'financial_version'='CAMPUS_FARE_V1' then (to_jsonb(jobs)->>'fare_kobo')::integer/10 end as commission_kobo,
       jobs.reserved_at, jobs.picked_up_at, jobs.delivered_at, jobs.created_at
       ,vendors.user_id as vendor_user_id,storefronts.display_name as vendor_name,
+      (select jsonb_agg(jsonb_build_object('vendor_name',v.display_name,'address',s.pickup_location,'phone',case when jobs.rider_profile_id=${profile.id}::uuid then s.contact_phone_e164 end,'whatsapp',case when jobs.rider_profile_id=${profile.id}::uuid then to_jsonb(v)->'public_details'->>'whatsapp' end,'items',(select jsonb_agg(jsonb_build_object('name',p.name,'quantity',i.quantity)) from public.order_items i join public.vendor_products p on p.id=i.product_id where i.order_id=orders.id and p.vendor_profile_id=v.id))) from app_private.order_vendor_allocations allocation join public.agent_profiles v on v.id=allocation.vendor_profile_id left join public.vendor_storefronts s on s.vendor_profile_id=v.id where allocation.order_id=orders.id) as pickups,
       storefronts.pickup_location,
       case when jobs.rider_profile_id=${profile.id}::uuid then storefronts.contact_phone_e164 end as vendor_phone,
       case when jobs.rider_profile_id=${profile.id}::uuid then to_jsonb(vendors)->'public_details'->>'whatsapp' end as vendor_whatsapp,
@@ -1584,7 +1631,7 @@ agentRoutes.get("/deliveries", async (context) => {
     left join public.order_delivery_snapshots snapshots on snapshots.order_id=orders.id
     where jobs.university_id = ${profile.university_id}::uuid
       and ${paidAgentOrders()}
-      and ((jobs.status = 'AVAILABLE' and orders.status in ('PAID','ACCEPTED','READY') and (not ${await fulfilmentSchemaReady(context.env)} or to_jsonb(jobs)->>'request_posted_at' is not null)) or jobs.rider_profile_id = ${profile.id}::uuid)
+      and ((jobs.status = 'AVAILABLE' and orders.status='READY' and (not ${await fulfilmentSchemaReady(context.env)} or to_jsonb(jobs)->>'request_posted_at' is not null)) or jobs.rider_profile_id = ${profile.id}::uuid)
     order by case when jobs.status = 'AVAILABLE' then 0 else 1 end, jobs.created_at
     limit 100
   `),
@@ -1613,7 +1660,7 @@ agentRoutes.put('/location',async c=>{
  return c.json({saved:true});
 });
 async function routeRiderToPickup(env:Bindings,profile:{id:string;university_id:string},jobId:string){
- const db=database(env),job=firstRow(await db.execute<{pickup_place_id:string|null;vendor_profile_id:string;rider_profile_id:string|null}>(sql`select s.pickup_place_id,o.vendor_profile_id,j.rider_profile_id from public.delivery_jobs j join public.orders o on o.id=j.order_id join public.vendor_storefronts s on s.vendor_profile_id=o.vendor_profile_id and s.university_id=j.university_id where j.id=${jobId}::uuid and j.university_id=${profile.university_id}::uuid and ${paidAgentOrders('o')} and ((j.status='AVAILABLE'and o.status in('PAID','ACCEPTED','READY'))or j.rider_profile_id=${profile.id}::uuid)`));
+ const db=database(env),job=firstRow(await db.execute<{pickup_place_id:string|null;vendor_profile_id:string;rider_profile_id:string|null}>(sql`select s.pickup_place_id,o.vendor_profile_id,j.rider_profile_id from public.delivery_jobs j join public.orders o on o.id=j.order_id join public.vendor_storefronts s on s.vendor_profile_id=o.vendor_profile_id and s.university_id=j.university_id where j.id=${jobId}::uuid and j.university_id=${profile.university_id}::uuid and ${paidAgentOrders('o')} and ((j.status='AVAILABLE'and o.status='READY' and j.request_posted_at is not null)or j.rider_profile_id=${profile.id}::uuid)`));
  if(!job)throw new AppError(404,'NOT_FOUND','This delivery is not available to your rider profile.');
  if(!job.pickup_place_id)throw new AppError(422,'BAD_REQUEST','The store needs its pickup point mapped before a rider route is available.');
  const position=await currentAgentPosition(env,profile.id,profile.university_id);if(!position)throw new AppError(422,'BAD_REQUEST','Share a current location accurate to 50 metres before reserving or reviewing a ride.');

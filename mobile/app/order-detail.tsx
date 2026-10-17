@@ -1,3 +1,4 @@
+import {OrderProgress} from "@/src/components/order-progress";
 import { useCallback, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -11,6 +12,7 @@ import { useToast } from "@/src/components/toast";
 type Item = {
   product_id: string;
   name: string;
+  vendor_name?:string;
   quantity: number;
   unit_price_kobo: number;
 };
@@ -158,6 +160,7 @@ export default function OrderDetail() {
             #{id.slice(0, 8)} ·{" "}
             {data.order.status.replaceAll("_", " ").toLowerCase()}
           </Text>
+          <OrderProgress status={data.order.status} pickup={data.order.fulfilment_mode==='PICKUP'}/>
           <Text
             style={{
               ...text,
@@ -252,7 +255,7 @@ export default function OrderDetail() {
               >
                 <Text style={{ ...text, fontFamily: theme.font.semibold }}>
                   {item.name}
-                </Text>
+                </Text>{item.vendor_name?<Text style={{...text,color:theme.textMuted,fontSize:12}}>From {item.vendor_name}</Text>:null}
                 <Text style={{ ...text, color: theme.textMuted }}>
                   {item.quantity} × {money(item.unit_price_kobo)}
                 </Text>
@@ -304,11 +307,11 @@ export default function OrderDetail() {
                       disabled: busy,
                     }}
                     disabled={busy}
-                    onPress={() => setRating(value)}
+                    onPress={event => setRating(Math.max(1, event.nativeEvent.locationX < 23 ? value-0.5 : value))}
                     style={{ padding: 8 }}
                   >
                     <Ionicons
-                      name={rating >= value ? "star" : "star-outline"}
+                      name={rating >= value ? "star" : rating >= value-0.5 ? "star-half" : "star-outline"}
                       size={30}
                       color={theme.brand}
                     />

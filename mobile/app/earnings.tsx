@@ -99,7 +99,7 @@ function AccountEarnings() {
       : profile?.agent_type === "TUTOR"
         ? data?.tutorials
         : data?.deliveries;
-  const minimumWithdrawalKobo = data?.withdrawalMinimums?.find((policy) => policy.agent_type === profile?.agent_type)?.minimum_withdrawal_kobo;
+  const minimumWithdrawalKobo = profile?.agent_type === 'RIDER' ? 200_000 : 500_000;
   const load = useCallback(async () => {
     const next = await api<Earnings>("/v1/agents/earnings");
     setData(next);

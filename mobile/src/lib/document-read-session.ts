@@ -1,5 +1,5 @@
 import { api } from './api';
-export type DocumentReadRequest = { id: number; name: string; url: string; type: string; query: string; maxPages: number };
+export type DocumentReadRequest = { id: number; mediaId:string; name: string; url: string; type: string; query: string; maxPages: number };
 let current: DocumentReadRequest | null = null;
 let resolveCurrent: ((value: string) => void) | null = null, rejectCurrent: ((error: Error) => void) | null = null;
 let sequence = 0;
@@ -21,13 +21,20 @@ export async function readUploadedDocument(mediaId: string, name: string, type: 
   const { url } = await api<{ url: string }>(`/v1/media/${mediaId}/access`, { method: 'POST',signal:signal??null });
   return new Promise<string>((resolve, reject) => {
     const id = ++sequence;
-    const timer = setTimeout(() => finishDocumentRead(id, undefined, 'Reading took too long. Your uploaded file is saved; retry or attach a smaller section.'), 150000);
+    const timer = setTimeout(() => finishDocumentRead(id, undefined, 'Reading took too long. Your uploaded file is saved for retry.'), 480000);
     const abort=()=>finishDocumentRead(id,undefined,'Reading stopped. Your uploaded file is kept for retry.');
     if(signal?.aborted){clearTimeout(timer);reject(new Error('Reading stopped. Your uploaded file is kept.'));return;}
     resolveCurrent = value => { clearTimeout(timer);signal?.removeEventListener('abort',abort); resolve(value); };
     rejectCurrent = error => { clearTimeout(timer);signal?.removeEventListener('abort',abort); reject(error); };
-    current = { id, name, url, type, query, maxPages: tier === 'pro' ? 300 : 150 };
+    current = { id, mediaId, name, url, type, query, maxPages: tier === 'pro' ? 300 : 150 };
     signal?.addEventListener('abort',abort,{once:true});
     listeners.forEach(listener => listener());
   });
+}
+
+export async function transcribeDocumentPage(request: DocumentReadRequest, value: {page:number;image:string}) {
+  if (current?.id !== request.id || !Number.isInteger(value.page) || value.page < 1 || value.page > request.maxPages ||
+    typeof value.image !== 'string' || !/^data:image\/jpeg;base64,/.test(value.image) || value.image.length > 2_500_000) throw new Error('This scanned page could not be read.');
+  const result = await api<{text:string}>('/v1/ai/document-pages', {method:'POST',timeoutMs:60_000,body:JSON.stringify({mediaId:request.mediaId,pageNumber:value.page,image:value.image})});
+  return result.text;
 }

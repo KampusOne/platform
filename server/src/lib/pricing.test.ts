@@ -78,7 +78,7 @@ describe("inclusive campus pricing", () => {
       paymentMethod: "IN_APP",
     });
     expect(price.customerPriceKobo).toBe(365500);
-    expect(quote.totalKobo).toBe(price.customerPriceKobo + 30000);
+    expect(quote.totalKobo).toBe(price.customerPriceKobo + 50000);
     expect(quote.payableKobo).toBe(quote.totalKobo);
     expect(quote.projectedPlatformNetKobo).toBeGreaterThanOrEqual(0);
   });
@@ -125,20 +125,26 @@ describe("inclusive campus pricing", () => {
       paymentMethod: "CASH",
     });
     expect(quote.payableKobo).toBe(price.customerPriceKobo);
-    expect(quote.cashDueKobo).toBe(30000);
-    expect(quote.totalKobo).toBe(quote.payableKobo + 30000);
-    expect(fare).toMatchObject({ commissionKobo: 0, riderNetKobo: 30000 });
+    expect(quote.cashDueKobo).toBe(50000);
+    expect(quote.totalKobo).toBe(quote.payableKobo + 50000);
+    expect(fare).toMatchObject({ commissionKobo: 0, riderNetKobo: 50000 });
   });
-  it("calculates ₦300–₦500 in campus distance bands with withdrawal-only commission", () => {
+  it("calculates ₦500–₦1,500 in campus distance bands with withdrawal-only commission", () => {
     expect(
       [0, 1000, 1001, 2000, 2001, 3001, 5000].map(
         (m) => campusFare(m).fareKobo,
       ),
-    ).toEqual([30000, 30000, 35000, 35000, 40000, 45000, 50000]);
+    ).toEqual([50000, 50000, 60000, 60000, 70000, 80000, 90000]);
     expect(campusFare(3001)).toMatchObject({
       commissionKobo: 0,
-      riderNetKobo: 45000,
+      riderNetKobo: 80000,
     });
+  });
+  it('charges more for ten slippers than one on the same route, accounts for volume and caps at ₦1,500',()=>{
+    const one=campusFare(700,{quantity:1,weightGrams:300,volumeCm3:0,pickupStops:1}),ten=campusFare(700,{quantity:10,weightGrams:3000,volumeCm3:0,pickupStops:1});
+    expect(ten.fareKobo).toBeGreaterThan(one.fareKobo);
+    expect(campusFare(700,{quantity:1,weightGrams:300,volumeCm3:100000,pickupStops:1}).fareKobo).toBeGreaterThan(one.fareKobo);
+    expect(campusFare(99000,{quantity:99,weightGrams:99000,volumeCm3:999999,pickupStops:3}).fareKobo).toBe(150000);
   });
   it("keeps Kira Pro fixed at ₦6,000; local published processing leaves an estimated ₦5,810", () => {
     expect(fixedSubscriptionPrice(policy.collection)).toMatchObject({

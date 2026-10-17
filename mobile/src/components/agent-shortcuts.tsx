@@ -1,3 +1,4 @@
+import { useLiveRefresh } from "@/src/lib/live-updates";
 import { useCallback, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
 import { View } from "react-native";
@@ -8,6 +9,9 @@ export type Capabilities = {
     id: string;
     agent_type: "VENDOR" | "TUTOR" | "RIDER";
     display_name: string;
+    status?:string;
+    suspension_ends_at?:string|null;
+    suspension_reason?:string|null;
   }[];
   communities: { id: string; name: string }[];
 };
@@ -22,6 +26,9 @@ function normalizeCapabilities(value: unknown): Capabilities {
           id: item.id,
           agent_type: item.agent_type as "VENDOR"|"TUTOR"|"RIDER",
           display_name: typeof item.display_name === "string" ? item.display_name : "Workspace",
+          status:typeof item.status==='string'?item.status:'ACTIVE',
+          suspension_ends_at:typeof item.suspension_ends_at==='string'?item.suspension_ends_at:null,
+          suspension_reason:typeof item.suspension_reason==='string'?item.suspension_reason:null,
         }];
       })
     : [];
@@ -57,6 +64,7 @@ export function useCapabilities() {
       };
     }, []),
   );
+  useLiveRefresh('/v1/account/capabilities',()=>api<Capabilities>('/v1/account/capabilities',{cache:'reload'}).then(r=>{setData(normalizeCapabilities(r));setReady(true);setError('');}),30_000);
   return {...data,ready,error};
 }
 export function AgentShortcuts() {

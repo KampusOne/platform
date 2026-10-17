@@ -1,9 +1,8 @@
-import { Linking } from 'react-native';
 import { router } from 'expo-router';
 import { getDeviceCacheRevision, isDeviceCacheOwner, readOwnedDraft, saveOwnedDraft } from './device-cache';
 import { validPaymentReference } from './payment-flow';
 
-export type PendingPayment={reference:string;createdAt:number};
+export type PendingPayment={reference:string;createdAt:number;authorizationUrl?:string};
 const key=(userId:string)=>'payment-draft.'+userId;
 export async function pendingPayment(userId:string) {
   if(!isDeviceCacheOwner(userId))return null;
@@ -20,7 +19,6 @@ export async function openHostedPayment(userId:string,payment:{reference:string;
   if(!validPaymentReference(payment.reference))throw new Error('Checkout did not return a valid payment reference. Your order is saved.');
   const url=new URL(payment.authorizationUrl);
   if(url.protocol!=='https:'||url.username||url.password)throw new Error('Checkout did not return a secure payment link.');
-  await saveOwnedDraft(key(userId),{reference:payment.reference,createdAt:Date.now()});
-  router.replace({pathname:'/payment-return',params:{reference:payment.reference}});
-  await Linking.openURL(payment.authorizationUrl);
+  await saveOwnedDraft(key(userId),{reference:payment.reference,createdAt:Date.now(),authorizationUrl:payment.authorizationUrl});
+  router.replace({pathname:'/checkout' as '/payment-return',params:{reference:payment.reference}});
 }

@@ -1,3 +1,4 @@
+import {useToast} from './toast';
 import { liveReads } from "@/src/lib/live-updates";
 import {markConversationRead} from '@/src/lib/message-read';
 import {getDeviceCacheRevision} from '@/src/lib/device-cache';
@@ -98,6 +99,7 @@ async function mutePushCategory(data: Record<string, unknown>) {
 
 export function NotificationBootstrap() {
   const { state, user } = useAuth();
+  const toast=useToast();
   const lastHandledResponse = useRef<string | null>(null);
 
   useEffect(() => {
@@ -175,6 +177,8 @@ export function NotificationBootstrap() {
         });
         receivedSubscription = Notifications.addNotificationReceivedListener(notification => {
           if (active) {
+            const content=notification.request.content;
+            if(AppState.currentState==='active' && (content.title||content.body))toast([content.title,content.body].filter(Boolean).join("\n"),"info",validAppPath(content.data?.path)?()=>router.push(content.data!.path as Href):undefined);
             const data = notification.request.content.data ?? {};
             const thread = threadIdFromPath(data.path);
             liveReads.event(["/v1/notifications/inbox", "/v1/messages/inbox", ...(thread ? ["/v1/messages/threads/" + thread] : [])]);

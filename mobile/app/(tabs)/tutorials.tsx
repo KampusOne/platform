@@ -1,3 +1,5 @@
+import { LearningFeed } from "@/src/components/learning-feed";
+import { TutorDirectory } from "@/src/components/tutor-directory";
 import { SearchLoading } from "@/src/components/search-loading";
 import { DiscountCodeField } from "@/src/components/discount-code-field";
 import { InlineLoading } from "@/src/components/skeleton";
@@ -74,6 +76,7 @@ type TutorSummary = {
 };
 
 type Resource = {
+  cover_url?:string|null;subject?:string;created_at?:string;parts?:{mediaId:string;title:string}[];
   id: string;
   listing_id: string | null;
   course_code: string;
@@ -1071,102 +1074,10 @@ export default function TutorialsScreen() {
               </Pressable>
             ) : null}
 
-            {showListings && filtered.length ? (
-              <>
-                <View style={styles.sectionHeader}>
-                  <View>
-                    <Text style={styles.sectionTitle}>Tutors</Text>
-                    <Text style={styles.sectionSubtitle}>
-                      People teaching the sessions below
-                    </Text>
-                  </View>
-                  <View style={styles.approvedKey}>
-                    <Ionicons
-                      name="people-outline"
-                      size={15}
-                      color={theme.brandPressed}
-                    />
-                    <Text
-                      accessibilityLabel={`${tutors.length} tutors`}
-                      style={styles.approvedKeyText}
-                    >
-                      {tutors.length} available
-                    </Text>
-                  </View>
-                </View>
-                <FlatList
-                  contentContainerStyle={styles.tutorRail}
-                  data={tutors}
-                  horizontal
-                  initialNumToRender={4}
-                  keyExtractor={(tutor) => tutor.id}
-                  maxToRenderPerBatch={5}
-                  renderItem={({ item: tutor }) => <TutorCard tutor={tutor} />}
-                  showsHorizontalScrollIndicator={false}
-                  windowSize={5}
-                />
+            <TutorDirectory query={searchTerm} expanded={selectedCategory==='Tutors'} />
+            {selectedCategory!=='Tutors'?<LearningFeed resources={filteredResources} category={selectedCategory} onOpen={resource=>router.push({pathname:'/learning-preview',params:{id:resource.id}})}/>:null}
+            {showListings&&filtered.length?<View style={styles.availableHeader}><Text style={styles.sectionTitle}>Book a session</Text><Text style={styles.availableCount}>{filtered.length} available</Text></View>:null}
 
-                {filteredResources.length ? (
-                  <View style={styles.resourceSection}>
-                    <View style={styles.availableHeader}>
-                      <View>
-                        <Text style={styles.sectionTitle}>Study materials</Text>
-                        <Text style={styles.sectionSubtitle}>
-                          Notes, questions, PDFs and audio
-                        </Text>
-                      </View>
-                      <Text style={styles.availableCount}>
-                        {filteredResources.length} resources
-                      </Text>
-                    </View>
-                    <View style={styles.resourceList}>
-                      {filteredResources.map((resource) => (
-                        <ResourceRow
-                          key={resource.id}
-                          onOpen={() => setPreviewResource(resource)}
-                          resource={resource}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
-
-                <View style={styles.availableHeader}>
-                  <Text style={styles.sectionTitle}>Available tutorials</Text>
-                  <Text style={styles.availableCount}>
-                    {filtered.length}{" "}
-                    {filtered.length === 1 ? "session" : "sessions"}
-                  </Text>
-                </View>
-              </>
-            ) : filteredResources.length ? (
-              <View style={styles.resourceSectionStandalone}>
-                <View style={styles.availableHeader}>
-                  <View>
-                    <Text style={styles.sectionTitle}>
-                      {selectedCategory === "All"
-                        ? "Study materials"
-                        : selectedCategory}
-                    </Text>
-                    <Text style={styles.sectionSubtitle}>
-                      Published for your university
-                    </Text>
-                  </View>
-                  <Text style={styles.availableCount}>
-                    {filteredResources.length} resources
-                  </Text>
-                </View>
-                <View style={styles.resourceList}>
-                  {filteredResources.map((resource) => (
-                    <ResourceRow
-                      key={resource.id}
-                      onOpen={() => setPreviewResource(resource)}
-                      resource={resource}
-                    />
-                  ))}
-                </View>
-              </View>
-            ) : null}
           </>
         }
         maxToRenderPerBatch={6}

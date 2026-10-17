@@ -19,7 +19,7 @@ manageRoutes.use("/*",async(c,next)=>{c.header('Cache-Control','private, no-stor
 manageRoutes.use("/*", async (c, next) => {
   const user=currentUser(c),path=c.req.path.replace('/v1/manage',''),read=c.req.method==='GET';
   const domain=path.split('/')[1],target=path.split('/')[2];
-  const permission=domain==='users'?(read?'users.view':'users.manage'):domain==='applications'?'agents.verify':domain==='support'?(read?'support.view':'support.manage'):domain==='trials'?(read?'agents.view':'product.manage'):domain==='agents'?'agents.view':domain==='universities'?(read?'universities.view':'universities.manage'):domain==='communities'?(read?'academic.view':'academic.manage'):null;
+  const permission=domain==='users'?(read?'users.view':'users.manage'):domain==='applications'?'agents.verify':domain==='support'?(read?'support.view':'support.manage'):domain==='trials'?(read?'agents.view':'product.manage'):domain==='agents'?(read?'agents.view':'agents.review'):domain==='universities'?(read?'universities.view':'universities.manage'):domain==='communities'?(read?'academic.view':'academic.manage'):null;
   if(!permission)throw new AppError(403,'FORBIDDEN','Your staff permissions do not allow this action.');
   await assertPermission(c.env,user,permission);
   const scoped:AdminUser={...user,adminPermission:permission};c.set('user',scoped);
@@ -29,6 +29,7 @@ manageRoutes.use("/*", async (c, next) => {
       domain==='applications'?sql`select university_id institution_id from public.agent_applications where id=${valid}::uuid`:
       domain==='support'?sql`select institution_id from public.support_requests where id=${valid}::uuid`:
       domain==='trials'?sql`select institution_id from public.agent_trials where id=${valid}::uuid`:
+      domain==='agents'?sql`select university_id institution_id from public.agent_profiles where id=${valid}::uuid`:
       domain==='universities'?sql`select id institution_id from public.universities where id=${valid}::uuid`:
       domain==='communities'?sql`select institution_id from public.cohort_communities where id=${valid}::uuid`:null;
     if(!query)throw new AppError(403,'FORBIDDEN','This administrative action is unavailable.');
@@ -359,7 +360,7 @@ manageRoutes.get("/agents", async (c) => {
   const scope = await resolveAdminScope(c.env,currentUser(c),c.req.query("universityId"));
   const type = c.req.query("type") ?? null;
   const r = await database(c.env).execute(
-    sql`select a.id,a.user_id,a.agent_type,a.display_name,a.status,u.email,a.university_id,a.verified_at from public.agent_profiles a join public.users u on u.id=a.user_id where (${scope}::uuid is null or a.university_id=${scope}::uuid) and (${type}::text is null or a.agent_type=${type}) order by a.verified_at desc limit 100`,
+    sql`select a.id,a.user_id,a.agent_type,a.display_name,a.status,u.email,a.university_id,a.verified_at,a.suspension_ends_at,a.suspension_reason from public.agent_profiles a join public.users u on u.id=a.user_id where (${scope}::uuid is null or a.university_id=${scope}::uuid) and (${type}::text is null or a.agent_type=${type}) order by a.verified_at desc limit 100`,
   );
   return c.json({ rows: r.rows });
 });
@@ -567,4 +568,16 @@ manageRoutes.patch("/users/:id/streak", async (c) => {
     metadata: d,
   });
   return c.json({ status: "saved" });
+});
+
+manageRoutes.post('/agents/:id/suspension',async c=>{
+ const actor=currentUser(c),profileId=id(c.req.param('id'));
+ const d=await input(c,z.object({kind:z.enum(['TEMPORARY','SUSPENDED','RESTORE']),reason:z.string().trim().min(3).max(1000),endsAt:z.string().datetime().nullable().optional()}).strict());
+ if(d.kind==='TEMPORARY'&&(!d.endsAt||Date.parse(d.endsAt)<=Date.now()))throw new AppError(400,'BAD_REQUEST','Choose a future end date.');
+ const profile=firstRow(await database(c.env).execute<{user_id:string;university_id:string;agent_type:string}>(sql`select user_id,university_id,agent_type from public.agent_profiles where id=${profileId}::uuid`));
+ if(!profile)throw new AppError(404,'NOT_FOUND','Agent profile not found.');
+ if(profile.user_id===actor.id)throw new AppError(409,'CONFLICT','Another administrator must review your agent role.');
+ await database(c.env).execute(sql`update public.agent_profiles set status=${d.kind==='RESTORE'?'ACTIVE':d.kind==='TEMPORARY'?'PAUSED':'SUSPENDED'},suspension_ends_at=${d.kind==='TEMPORARY'?d.endsAt:null}::timestamptz,suspension_reason=${d.kind==='RESTORE'?null:d.reason} where id=${profileId}::uuid`);
+ await recordAudit(c.env,{actorUserId:actor.id,universityId:profile.university_id,action:'agent.role.'+d.kind.toLowerCase(),targetType:'agent_profile',targetId:profileId,requestId:c.get('requestId'),metadata:{reason:d.reason,endsAt:d.endsAt??null,role:profile.agent_type}});
+ return c.json({saved:true});
 });

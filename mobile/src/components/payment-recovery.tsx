@@ -8,7 +8,7 @@ import { getDeviceCacheRevision } from '../lib/device-cache';
 export function PaymentRecovery() {
   const {user,state}=useAuth(),path=usePathname();
   useEffect(()=>{
-    if(state!=='authenticated'||!user||path==='/payment-return'||path==='/payment/return')return;
+    if(state!=='authenticated'||!user||path==='/checkout'||path==='/payment-return'||path==='/payment/return')return;
     let alive=true;const revision=getDeviceCacheRevision();
     const recover=async()=>{
       if(AppState.currentState!=='active')return;

@@ -28,3 +28,13 @@ export function sourceCrop(box: CropBox, scale: number, width: number, height: n
   const originX = clamp(Math.round(box.x / scale), 0, width - 1), originY = clamp(Math.round(box.y / scale), 0, height - 1);
   return { originX, originY, width: clamp(Math.round(box.width / scale), 1, width - originX), height: clamp(Math.round(box.height / scale), 1, height - originY) };
 }
+
+/** Free crop corners track the finger in preview coordinates, one-to-one. */
+export function resizeFreeCrop(box:CropBox,dx:number,dy:number,corner:Corner,width:number,height:number):CropBox {
+ const left=corner.endsWith('l'),top=corner.startsWith('t');
+ const x1=left?clamp(box.x+dx,0,box.x+box.width-Math.min(32,box.width)):box.x;
+ const y1=top?clamp(box.y+dy,0,box.y+box.height-Math.min(32,box.height)):box.y;
+ const x2=left?box.x+box.width:clamp(box.x+box.width+dx,x1+Math.min(32,box.width),width);
+ const y2=top?box.y+box.height:clamp(box.y+box.height+dy,y1+Math.min(32,box.height),height);
+ return{x:x1,y:y1,width:x2-x1,height:y2-y1};
+}

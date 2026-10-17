@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, type Href, useFocusEffect } from "expo-router";
 import { useThemeStyles, type Theme } from "@/src/lib/appearance";
 import { useReducedMotionPreference } from "@/src/components/product-ui";
+import { useOffline } from '@/src/lib/network-state';
 
 // Each destination has a distinct illustration, with reduced-motion support.
 const slides: { title: string; detail: string; action: string; route: Href; image: number; wide?: boolean }[] = [
@@ -28,6 +29,7 @@ export function DashboardCarousel() {
   const [dragging, setDragging] = useState(false);
   const [screenReader, setScreenReader] = useState(false);
   const reduced = useReducedMotionPreference();
+  const offline = useOffline();
 
   useFocusEffect(useCallback(() => {
     setFocused(true);
@@ -57,10 +59,10 @@ export function DashboardCarousel() {
   }, [cardWidth, reduced]);
 
   useEffect(() => {
-    if (!focused || !active || paused || dragging || reduced || screenReader) return;
+    if (!focused || !active || paused || dragging || reduced || screenReader || offline) return;
     const timer = setTimeout(() => go(index + 1), 3000);
     return () => clearTimeout(timer);
-  }, [focused, active, paused, dragging, reduced, screenReader, index, go]);
+  }, [focused, active, paused, dragging, reduced, screenReader, offline, index, go]);
 
   useEffect(() => {
     if (cardWidth > 0) {
@@ -81,7 +83,13 @@ export function DashboardCarousel() {
     }}
     style={styles.root}
   >
-    <ScrollView
+    {offline ? <View accessibilityLiveRegion="polite" style={[styles.card, { width: cardWidth, backgroundColor: theme.surfaceSoft }]}>
+      <View style={{ alignItems: 'center', gap: 12 }}>
+        <View style={{ width: 76, height: 76, borderRadius: 38, backgroundColor: theme.canvas, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="cloud-offline-outline" size={38} color={theme.accentText}/></View>
+        <Text style={[styles.title, { fontSize: 23, textAlign: 'center' }]}>Connection lost</Text>
+        <Text style={[styles.detail, { marginTop: 0, textAlign: 'center' }]}>Your saved day is still here. Slides resume when you reconnect.</Text>
+      </View>
+    </View> : <ScrollView
       ref={scroll}
       horizontal
       pagingEnabled
@@ -124,9 +132,9 @@ export function DashboardCarousel() {
           style={[styles.art, slide.wide && styles.wideArt]}
         />
       </View>)}
-    </ScrollView>
+    </ScrollView>}
 
-    <View style={styles.controls}>
+    {!offline ? <View style={styles.controls}>
       {slides.map((slide, i) => <Pressable
         key={slide.action}
         accessibilityRole="button"
@@ -145,7 +153,7 @@ export function DashboardCarousel() {
       >
         <Ionicons name={paused ? "play" : "pause"} color={theme.textMuted} size={13} />
       </Pressable> : null}
-    </View>
+    </View> : null}
   </View>;
 }
 

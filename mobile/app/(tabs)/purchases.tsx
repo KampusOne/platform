@@ -1237,7 +1237,7 @@ export default function PurchasesScreen() {
                     }}
                     disabled={reviewBusy}
                     key={value}
-                    onPress={() => setRating(value)}
+                    onPress={event => setRating(Math.max(1,event.nativeEvent.locationX<22?value-0.5:value))}
                     style={({ pressed }) => [
                       styles.ratingButton,
                       rating === value && styles.ratingButtonSelected,
@@ -1245,7 +1245,7 @@ export default function PurchasesScreen() {
                     ]}
                   >
                     <Ionicons
-                      name={rating >= value ? "star" : "star-outline"}
+                      name={rating >= value ? "star" : rating>=value-0.5 ? "star-half" : "star-outline"}
                       size={23}
                       color={
                         rating >= value

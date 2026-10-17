@@ -285,7 +285,7 @@ export async function purchasedMaterialAccess(
   return Boolean(
     firstRow(
       await database(env)
-        .execute(sql`select p.id from app_private.tutorial_material_purchases p join public.tutorial_resources r on r.id=p.resource_id
+        .execute(sql`select p.id from app_private.tutorial_material_purchases p join public.tutorial_resources r on r.id=p.resource_id join public.agent_profiles tutor on tutor.id=r.tutor_profile_id and tutor.status='ACTIVE'
     where p.media_object_id=${mediaId}::uuid and p.student_user_id=${user.id}::uuid and p.university_id=${user.universityId}::uuid and p.status='PAID'
       and r.status='PUBLISHED' and r.deleted_at is null and not exists(select 1 from public.user_blocks b where
         (b.blocker_id=${user.id}::uuid and b.blocked_id=p.tutor_user_id)or(b.blocker_id=p.tutor_user_id and b.blocked_id=${user.id}::uuid)) limit 1`),

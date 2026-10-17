@@ -69,6 +69,7 @@ function screen({state='authenticated',receipt=null,restoreError=''}={}) {
     '@/src/lib/appearance':{useAppearance:()=>({theme:{font:{display:'Lato',body:'Inter',semibold:'Inter'}}})},
     '@/src/auth/auth-context':{useAuth:()=>auth},
     '@/src/lib/api':{api:async(path)=>{events.push({request:path});return{payment:receipt};},invalidateApiReads(){}},
+    '@/src/lib/marketplace-cart':{confirmMarketplaceCartPurchase:async()=>{}},
     '@/src/lib/hosted-payment':{dismissPayment:async(user,ref)=>events.push({dismiss:{user,ref}})},
     '@/src/lib/payment-flow':{validPaymentReference:links.validPaymentReference,paymentContinuation:payment=>({pathname:'/order-detail',params:{id:payment.resource_id}})},
     '@/src/lib/device-cache':{getDeviceCacheRevision:()=>1},

@@ -89,9 +89,11 @@ export async function canReadMedia(env: Bindings, user: AuthenticatedUser, media
   }
   if (media.kind === "resource" && user.universityId === media.institution_id) {
     if(await purchasedMaterialAccess(env,user,media.id))return;
+    const playlist=firstRow(await database(env).execute(sql`select r.id from public.tutorial_resources r join public.agent_profiles a on a.id=r.tutor_profile_id where r.university_id=${user.universityId}::uuid and r.deleted_at is null and r.status='PUBLISHED' and a.status='ACTIVE' and not exists(select 1 from public.user_blocks b where(b.blocker_id=${user.id}::uuid and b.blocked_id=a.user_id)or(b.blocked_id=${user.id}::uuid and b.blocker_id=a.user_id)) and exists(select 1 from jsonb_array_elements(r.parts) part where part->>'mediaId'=${media.id}) and (r.access_model='FREE' or exists(select 1 from app_private.tutorial_material_purchases p where p.resource_id=r.id and p.student_user_id=${user.id}::uuid and p.status='PAID')) limit 1`));
+    if(playlist)return;
     const resource = firstRow(
       await database(env).execute(
-        sql`select r.id from public.tutorial_resources r where r.media_object_id=${media.id}::uuid and r.university_id=${user.universityId}::uuid and r.deleted_at is null and r.status='PUBLISHED' and (r.access_model='FREE' or(r.access_model='BOOKING_INCLUDED' and r.listing_id is not null and exists(select 1 from public.tutorial_bookings b where b.listing_id=r.listing_id and b.student_user_id=${user.id}::uuid and b.status in ('CONFIRMED','COMPLETED')))) limit 1`,
+        sql`select r.id from public.tutorial_resources r join public.agent_profiles a on a.id=r.tutor_profile_id and a.status='ACTIVE' where not exists(select 1 from public.user_blocks b where(b.blocker_id=${user.id}::uuid and b.blocked_id=a.user_id)or(b.blocked_id=${user.id}::uuid and b.blocker_id=a.user_id)) and r.media_object_id=${media.id}::uuid and r.university_id=${user.universityId}::uuid and r.deleted_at is null and r.status='PUBLISHED' and (r.access_model='FREE' or(r.access_model='BOOKING_INCLUDED' and r.listing_id is not null and exists(select 1 from public.tutorial_bookings b where b.listing_id=r.listing_id and b.student_user_id=${user.id}::uuid and b.status in ('CONFIRMED','COMPLETED')))) limit 1`,
       ),
     );
     if (resource) return;
@@ -197,7 +199,7 @@ mediaRoutes.post('/message-uploads',requireAuth,async c=>{
   const asset=await reserveTutorialVideo(c.env,{id:data.uploadId,user:user.id,institution:user.universityId,name:data.name,mime:data.type,size:data.size});
   if(asset.provider!=='R2')throw new AppError(409,'CONFLICT','Resume this video through its Bunny Stream upload.');
  }
- if(data.kind==='resource'&&(data.size>100*1024*1024||!['application/pdf','text/plain','image/jpeg','image/png','image/webp','audio/mpeg','audio/wav'].includes(data.type)||data.type.startsWith('image/')&&data.size>8*1024*1024))throw new AppError(413,'BAD_REQUEST','Choose a PDF or text document up to 100 MB, or an image up to 8 MB. Compress larger files first.');
+ if(data.kind==='resource'&&(data.size>100*1024*1024||!['application/pdf','text/plain','image/jpeg','image/png','image/webp','audio/mpeg','audio/wav','audio/mp4'].includes(data.type)||data.type.startsWith('image/')&&data.size>8*1024*1024))throw new AppError(413,'BAD_REQUEST','Choose a PDF or text document up to 100 MB, or an image up to 8 MB. Compress larger files first.');
  if(!c.env.PRIVATE_BUCKET)throw new AppError(503,'PROVIDER_UNAVAILABLE','Private uploads are temporarily unavailable.');
  const allowance=firstRow(await db.execute<{allowed:boolean}>(sql`select app_private.consume_request_rate_limit('MESSAGE_LARGE_UPLOAD',${user.id},12,3600,3600) allowed`));if(!allowance?.allowed)throw new AppError(429,'RATE_LIMITED','Your upload allowance is reached. Retry later; your message is saved.');
  const transport=storageEnabled(c.env)?'direct':'proxy',key=`${data.kind==='post'?'post-direct/'+transport:(transport==='direct'?'direct/':'')+data.kind}/${user.id}/${data.uploadId}`,multipart=await c.env.PRIVATE_BUCKET.createMultipartUpload(key,{httpMetadata:{contentType:data.type||'application/octet-stream'},customMetadata:{owner:user.id,uploadId:data.uploadId}});
@@ -230,7 +232,7 @@ mediaRoutes.put('/message-uploads/:id/parts/:part',requireAuth,async c=>{
  const reader=c.req.raw.body?.getReader();if(!reader)throw new AppError(400,'BAD_REQUEST','Choose the file again.');const chunks:Uint8Array[]=[];let size=0;while(true){const next=await reader.read();if(next.done)break;size+=next.value.length;if(size>expected){await reader.cancel();throw new AppError(413,'BAD_REQUEST','Upload chunk is too large.');}chunks.push(next.value);}if(size!==expected)throw new AppError(400,'BAD_REQUEST','Upload chunk is incomplete. Retry this file.');
  const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
  const mime=part===1?verifiedMessageMime(bytes,session.declared_type,session.original_name):session.content_type;if(!mime)throw new AppError(400,'BAD_REQUEST','Use a supported picture, video, voice note or document.');
- if(session.upload_kind==='resource'&&!['application/pdf','text/plain','image/jpeg','image/png','image/webp','audio/mpeg','audio/wav'].includes(mime))throw new AppError(400,'BAD_REQUEST','Choose a readable PDF, text document or image.');
+ if(session.upload_kind==='resource'&&!['application/pdf','text/plain','image/jpeg','image/png','image/webp','audio/mpeg','audio/wav','audio/mp4'].includes(mime))throw new AppError(400,'BAD_REQUEST','Choose a readable PDF, text document or image.');
  if(['tutorial','post'].includes(session.upload_kind)&&!['video/mp4','video/webm'].includes(mime))throw new AppError(400,'BAD_REQUEST','Choose an MP4 or WebM tutorial video.');
  const multipart=c.env.PRIVATE_BUCKET!.resumeMultipartUpload(session.object_key,session.multipart_id),uploaded=await multipart.uploadPart(part,bytes);
  await database(c.env).execute(sql`update app_private.media_upload_sessions set parts=parts||jsonb_build_object(${String(part)}::text,${JSON.stringify({etag:uploaded.etag,size})}::jsonb),content_type=coalesce(content_type,${mime}) where id=${session.id}::uuid and status='OPEN'`);return c.json({part,etag:uploaded.etag,size});
@@ -254,7 +256,7 @@ mediaRoutes.post('/message-uploads/:id/complete',requireAuth,async c=>{
   const object=await c.env.PRIVATE_BUCKET!.get(session.object_key,{range:{offset:0,length:512}});
   if(!object||object.size!==total)throw new AppError(409,'CONFLICT','Storage has not finished this file. Try again.');
   const bytes=new Uint8Array(await object.arrayBuffer()),mime=verifiedMessageMime(bytes,session.declared_type,session.original_name);
-  const allowed=mime&&(!(session.upload_kind==='resource')||['application/pdf','text/plain','image/jpeg','image/png','image/webp','audio/mpeg','audio/wav'].includes(mime))&&(!['tutorial','post'].includes(session.upload_kind)||['video/mp4','video/webm'].includes(mime));
+  const allowed=mime&&(!(session.upload_kind==='resource')||['application/pdf','text/plain','image/jpeg','image/png','image/webp','audio/mpeg','audio/wav','audio/mp4'].includes(mime))&&(!['tutorial','post'].includes(session.upload_kind)||['video/mp4','video/webm'].includes(mime));
   if(!allowed){await c.env.PRIVATE_BUCKET!.delete(session.object_key);await database(c.env).execute(sql`update app_private.media_upload_sessions set status='ABORTED' where id=${session.id}::uuid`);throw new AppError(400,'BAD_REQUEST','The file contents do not match a supported file type. Choose another file.');}
   session.content_type=mime;
  }
@@ -280,6 +282,7 @@ export function detectedMime(bytes: Uint8Array) {
     if (ebml.includes("webm")) return "video/webm";
   }
   // ISO Base Media container: accept MP4 brands, not arbitrary ftyp/HEIC files.
+  if (head.slice(4,8) === "ftyp" && head.slice(8,12) === "M4A ") return "audio/mp4";
   if (head.slice(4, 8) === "ftyp" && ["isom", "iso2", "mp41", "mp42", "avc1", "M4V ", "M4A "].includes(head.slice(8, 12))) return "video/mp4";
   return null;
 }
@@ -579,7 +582,7 @@ mediaRoutes.get("/:id", async (c) => {
       : "public, max-age=86400, immutable",
   );
   if (media.content_type === "application/pdf")
-    c.header("Content-Disposition", 'attachment; filename="document.pdf"');
+    c.header("Content-Disposition", 'inline; filename="document.pdf"');
   c.header("Accept-Ranges","bytes");
   if(object.httpEtag)c.header("ETag",object.httpEtag);
   if(selected) {

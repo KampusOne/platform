@@ -98,7 +98,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 43
+          "line": 45
         }
       ],
       "classification": "private-operational",
@@ -116,7 +116,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 17
+          "line": 18
         }
       ],
       "classification": "security",
@@ -134,7 +134,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 312
+          "line": 314
         }
       ],
       "classification": "private-operational",
@@ -152,7 +152,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 169
+          "line": 171
         }
       ],
       "classification": "mutation",
@@ -170,7 +170,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 163
+          "line": 165
         }
       ],
       "classification": "private-operational",
@@ -188,7 +188,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 69
+          "line": 71
         }
       ],
       "classification": "mutation",
@@ -206,7 +206,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 74
+          "line": 76
         }
       ],
       "classification": "mutation",
@@ -224,7 +224,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 175
+          "line": 177
         }
       ],
       "classification": "security",
@@ -242,7 +242,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 115
+          "line": 117
         }
       ],
       "classification": "mutation",
@@ -260,7 +260,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 109
+          "line": 111
         }
       ],
       "classification": "security",
@@ -278,7 +278,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 37
+          "line": 39
         }
       ],
       "classification": "private-operational",
@@ -296,7 +296,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 62
+          "line": 64
         }
       ],
       "classification": "mutation",
@@ -314,7 +314,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 298
+          "line": 300
         }
       ],
       "classification": "mutation",
@@ -332,7 +332,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 291
+          "line": 293
         }
       ],
       "classification": "private-operational",
@@ -350,7 +350,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 302
+          "line": 304
         }
       ],
       "classification": "mutation",
@@ -368,7 +368,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 294
+          "line": 296
         }
       ],
       "classification": "mutation",
@@ -386,7 +386,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 121
+          "line": 123
         }
       ],
       "classification": "private-operational",
@@ -404,7 +404,7 @@
       "sources": [
         {
           "file": "server/src/routes/account.ts",
-          "line": 127
+          "line": 129
         }
       ],
       "classification": "mutation",
@@ -624,7 +624,7 @@
         },
         {
           "file": "server/src/routes/admin.ts",
-          "line": 150
+          "line": 152
         }
       ],
       "classification": "security",
@@ -642,7 +642,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 330
+          "line": 332
         }
       ],
       "classification": "mutation",
@@ -696,7 +696,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 417
+          "line": 419
         }
       ],
       "classification": "mutation",
@@ -714,7 +714,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 361
+          "line": 363
         }
       ],
       "classification": "mutation",
@@ -768,7 +768,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 296
+          "line": 298
         }
       ],
       "classification": "security",
@@ -786,7 +786,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1006
+          "line": 1008
         }
       ],
       "classification": "security",
@@ -822,7 +822,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 70
+          "line": 71
         }
       ],
       "classification": "mutation",
@@ -1110,7 +1110,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 816
+          "line": 818
         }
       ],
       "classification": "security",
@@ -1128,7 +1128,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 968
+          "line": 970
         }
       ],
       "classification": "mutation",
@@ -1146,7 +1146,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 908
+          "line": 910
         }
       ],
       "classification": "mutation",
@@ -1164,7 +1164,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 880
+          "line": 882
         }
       ],
       "classification": "mutation",
@@ -1182,7 +1182,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 842
+          "line": 844
         }
       ],
       "classification": "mutation",
@@ -1200,7 +1200,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 164
+          "line": 166
         }
       ],
       "classification": "security",
@@ -1848,7 +1848,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1230
+          "line": 1229
         }
       ],
       "classification": "mutation",
@@ -1866,7 +1866,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1506
+          "line": 1505
         }
       ],
       "classification": "mutation",
@@ -1880,11 +1880,65 @@
     },
     {
       "method": "POST",
+      "path": "/v1/admin/operations/orders/:id/action",
+      "sources": [
+        {
+          "file": "server/src/routes/order-operations.ts",
+          "line": 46
+        }
+      ],
+      "classification": "mutation",
+      "backend": "fresh",
+      "authorization": "Source router auth/signature/idempotency; no response reuse",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/operations/orders/:id",
+      "sources": [
+        {
+          "file": "server/src/routes/order-operations.ts",
+          "line": 27
+        }
+      ],
+      "classification": "security",
+      "backend": "fresh",
+      "authorization": "Fresh session, tenant, role and object checks in source router",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/operations/orders",
+      "sources": [
+        {
+          "file": "server/src/routes/order-operations.ts",
+          "line": 13
+        }
+      ],
+      "classification": "security",
+      "backend": "fresh",
+      "authorization": "Fresh session, tenant, role and object checks in source router",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "POST",
       "path": "/v1/admin/operations/payment-events/:id/review",
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1153
+          "line": 1152
         }
       ],
       "classification": "mutation",
@@ -1992,7 +2046,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1578
+          "line": 1577
         }
       ],
       "classification": "mutation",
@@ -2046,7 +2100,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1357
+          "line": 1356
         }
       ],
       "classification": "mutation",
@@ -2064,7 +2118,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1656
+          "line": 1655
         }
       ],
       "classification": "mutation",
@@ -2082,7 +2136,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1269
+          "line": 1268
         }
       ],
       "classification": "mutation",
@@ -2100,7 +2154,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1445
+          "line": 1444
         }
       ],
       "classification": "mutation",
@@ -2118,7 +2172,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1023
+          "line": 1025
         }
       ],
       "classification": "security",
@@ -2172,7 +2226,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 1713
+          "line": 1712
         }
       ],
       "classification": "security",
@@ -2370,7 +2424,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 543
+          "line": 545
         }
       ],
       "classification": "mutation",
@@ -2388,7 +2442,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 535
+          "line": 537
         }
       ],
       "classification": "mutation",
@@ -2406,7 +2460,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 584
+          "line": 586
         }
       ],
       "classification": "mutation",
@@ -2424,7 +2478,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 720
+          "line": 722
         }
       ],
       "classification": "mutation",
@@ -2442,7 +2496,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 654
+          "line": 656
         }
       ],
       "classification": "mutation",
@@ -2460,7 +2514,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 778
+          "line": 780
         }
       ],
       "classification": "mutation",
@@ -2478,7 +2532,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 470
+          "line": 472
         }
       ],
       "classification": "security",
@@ -2550,7 +2604,7 @@
       "sources": [
         {
           "file": "server/src/routes/admin.ts",
-          "line": 271
+          "line": 273
         }
       ],
       "classification": "security",
@@ -2599,12 +2653,30 @@
       "portalFreshMs": 0
     },
     {
+      "method": "GET",
+      "path": "/v1/agents/analytics",
+      "sources": [
+        {
+          "file": "server/src/routes/agents.ts",
+          "line": 1361
+        }
+      ],
+      "classification": "private-operational",
+      "backend": "fresh",
+      "authorization": "Source-specific auth or capability; new routes default fresh",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
       "method": "POST",
       "path": "/v1/agents/applications",
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 316
+          "line": 323
         }
       ],
       "classification": "mutation",
@@ -2622,7 +2694,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 214
+          "line": 221
         }
       ],
       "classification": "private-operational",
@@ -2640,7 +2712,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1751
+          "line": 1798
         }
       ],
       "classification": "mutation",
@@ -2658,7 +2730,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1707
+          "line": 1754
         }
       ],
       "classification": "mutation",
@@ -2676,7 +2748,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1652
+          "line": 1699
         }
       ],
       "classification": "mutation",
@@ -2694,7 +2766,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1626
+          "line": 1673
         }
       ],
       "classification": "volatile",
@@ -2712,7 +2784,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1557
+          "line": 1603
         }
       ],
       "classification": "volatile",
@@ -2730,7 +2802,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1797
+          "line": 1844
         }
       ],
       "classification": "financial",
@@ -2743,12 +2815,30 @@
       "portalFreshMs": 0
     },
     {
+      "method": "POST",
+      "path": "/v1/agents/learning-publish",
+      "sources": [
+        {
+          "file": "server/src/routes/agents.ts",
+          "line": 544
+        }
+      ],
+      "classification": "mutation",
+      "backend": "fresh",
+      "authorization": "Source router auth/signature/idempotency; no response reuse",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
       "method": "PUT",
       "path": "/v1/agents/location",
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1606
+          "line": 1653
         }
       ],
       "classification": "mutation",
@@ -2766,7 +2856,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1444
+          "line": 1480
         }
       ],
       "classification": "mutation",
@@ -2784,7 +2874,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1460
+          "line": 1496
         }
       ],
       "classification": "mutation",
@@ -2802,7 +2892,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1536
+          "line": 1582
         }
       ],
       "classification": "financial",
@@ -2820,7 +2910,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1429
+          "line": 1463
         }
       ],
       "classification": "mutation",
@@ -2838,7 +2928,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1473
+          "line": 1511
         }
       ],
       "classification": "mutation",
@@ -2856,7 +2946,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1352
+          "line": 1386
         }
       ],
       "classification": "financial",
@@ -2874,7 +2964,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1332
+          "line": 1366
         }
       ],
       "classification": "financial",
@@ -2892,7 +2982,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1936
+          "line": 1983
         }
       ],
       "classification": "mutation",
@@ -2910,7 +3000,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1954
+          "line": 2001
         }
       ],
       "classification": "financial",
@@ -2928,7 +3018,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1940
+          "line": 1987
         }
       ],
       "classification": "mutation",
@@ -2946,7 +3036,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 999
+          "line": 1028
         }
       ],
       "classification": "tenant-reference",
@@ -2965,7 +3055,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1275
+          "line": 1304
         }
       ],
       "classification": "mutation",
@@ -2983,7 +3073,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1204
+          "line": 1233
         }
       ],
       "classification": "mutation",
@@ -3001,7 +3091,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1125
+          "line": 1154
         }
       ],
       "classification": "mutation",
@@ -3019,7 +3109,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1043
+          "line": 1072
         }
       ],
       "classification": "financial",
@@ -3037,7 +3127,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1018
+          "line": 1047
         }
       ],
       "classification": "private-operational",
@@ -3055,7 +3145,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1051
+          "line": 1080
         }
       ],
       "classification": "mutation",
@@ -3073,7 +3163,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 159
+          "line": 166
         }
       ],
       "classification": "private-operational",
@@ -3091,7 +3181,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 177
+          "line": 184
         }
       ],
       "classification": "mutation",
@@ -3109,7 +3199,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1927
+          "line": 1974
         }
       ],
       "classification": "private-operational",
@@ -3127,7 +3217,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1900
+          "line": 1947
         }
       ],
       "classification": "mutation",
@@ -3145,7 +3235,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 1628
+          "line": 1675
         }
       ],
       "classification": "mutation",
@@ -3163,7 +3253,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 863
+          "line": 891
         }
       ],
       "classification": "mutation",
@@ -3181,7 +3271,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 951
+          "line": 980
         }
       ],
       "classification": "mutation",
@@ -3199,7 +3289,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 836
+          "line": 864
         }
       ],
       "classification": "private-operational",
@@ -3217,7 +3307,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 880
+          "line": 908
         }
       ],
       "classification": "mutation",
@@ -3235,7 +3325,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 681
+          "line": 709
         }
       ],
       "classification": "private-operational",
@@ -3253,7 +3343,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 703
+          "line": 731
         }
       ],
       "classification": "mutation",
@@ -3271,7 +3361,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 744
+          "line": 772
         }
       ],
       "classification": "mutation",
@@ -3289,7 +3379,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 790
+          "line": 818
         }
       ],
       "classification": "mutation",
@@ -3307,7 +3397,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 622
+          "line": 650
         }
       ],
       "classification": "mutation",
@@ -3325,7 +3415,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 657
+          "line": 685
         }
       ],
       "classification": "mutation",
@@ -3343,7 +3433,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 537
+          "line": 565
         }
       ],
       "classification": "mutation",
@@ -3361,7 +3451,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 500
+          "line": 507
         }
       ],
       "classification": "mutation",
@@ -3379,7 +3469,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 387
+          "line": 394
         }
       ],
       "classification": "private-operational",
@@ -3397,7 +3487,7 @@
       "sources": [
         {
           "file": "server/src/routes/agents.ts",
-          "line": 443
+          "line": 450
         }
       ],
       "classification": "mutation",
@@ -3415,7 +3505,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 251
+          "line": 252
         }
       ],
       "classification": "mutation",
@@ -3433,7 +3523,25 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 328
+          "line": 329
+        }
+      ],
+      "classification": "mutation",
+      "backend": "fresh",
+      "authorization": "Source router auth/signature/idempotency; no response reuse",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "POST",
+      "path": "/v1/ai/document-pages",
+      "sources": [
+        {
+          "file": "server/src/routes/ai.ts",
+          "line": 353
         }
       ],
       "classification": "mutation",
@@ -3451,7 +3559,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 231
+          "line": 232
         }
       ],
       "classification": "mutation",
@@ -3469,7 +3577,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 343
+          "line": 344
         }
       ],
       "classification": "mutation",
@@ -3487,7 +3595,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 213
+          "line": 214
         }
       ],
       "classification": "volatile",
@@ -3505,7 +3613,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 205
+          "line": 206
         }
       ],
       "classification": "volatile",
@@ -3523,7 +3631,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 196
+          "line": 197
         }
       ],
       "classification": "volatile",
@@ -3541,7 +3649,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 66
+          "line": 67
         }
       ],
       "classification": "volatile",
@@ -3559,7 +3667,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 108
+          "line": 109
         }
       ],
       "classification": "mutation",
@@ -3577,7 +3685,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 104
+          "line": 105
         }
       ],
       "classification": "mutation",
@@ -3595,7 +3703,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 103
+          "line": 104
         }
       ],
       "classification": "financial",
@@ -3613,7 +3721,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 221
+          "line": 222
         }
       ],
       "classification": "volatile",
@@ -3631,7 +3739,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 112
+          "line": 113
         }
       ],
       "classification": "mutation",
@@ -3649,7 +3757,7 @@
       "sources": [
         {
           "file": "server/src/routes/ai.ts",
-          "line": 352
+          "line": 375
         }
       ],
       "classification": "mutation",
@@ -5462,12 +5570,30 @@
       "portalFreshMs": 0
     },
     {
+      "method": "POST",
+      "path": "/v1/manage/agents/:id/suspension",
+      "sources": [
+        {
+          "file": "server/src/routes/manage.ts",
+          "line": 573
+        }
+      ],
+      "classification": "mutation",
+      "backend": "fresh",
+      "authorization": "Source router auth/signature/idempotency; no response reuse",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
       "method": "GET",
       "path": "/v1/manage/agents",
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 358
+          "line": 359
         }
       ],
       "classification": "security",
@@ -5485,7 +5611,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 464
+          "line": 465
         }
       ],
       "classification": "security",
@@ -5503,7 +5629,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 531
+          "line": 532
         }
       ],
       "classification": "mutation",
@@ -5521,7 +5647,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 492
+          "line": 493
         }
       ],
       "classification": "mutation",
@@ -5539,7 +5665,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 482
+          "line": 483
         }
       ],
       "classification": "mutation",
@@ -5557,7 +5683,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 200
+          "line": 201
         }
       ],
       "classification": "mutation",
@@ -5575,7 +5701,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 162
+          "line": 163
         }
       ],
       "classification": "mutation",
@@ -5593,7 +5719,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 138
+          "line": 139
         }
       ],
       "classification": "mutation",
@@ -5611,7 +5737,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 228
+          "line": 229
         }
       ],
       "classification": "mutation",
@@ -5629,7 +5755,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 83
+          "line": 84
         }
       ],
       "classification": "security",
@@ -5647,7 +5773,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 116
+          "line": 117
         }
       ],
       "classification": "mutation",
@@ -5665,7 +5791,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 47
+          "line": 48
         }
       ],
       "classification": "security",
@@ -5683,7 +5809,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 54
+          "line": 55
         }
       ],
       "classification": "mutation",
@@ -5701,7 +5827,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 337
+          "line": 338
         }
       ],
       "classification": "mutation",
@@ -5719,7 +5845,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 330
+          "line": 331
         }
       ],
       "classification": "security",
@@ -5737,7 +5863,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 312
+          "line": 313
         }
       ],
       "classification": "mutation",
@@ -5755,7 +5881,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 304
+          "line": 305
         }
       ],
       "classification": "security",
@@ -5773,7 +5899,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 286
+          "line": 287
         }
       ],
       "classification": "mutation",
@@ -5791,7 +5917,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 255
+          "line": 256
         }
       ],
       "classification": "security",
@@ -5809,7 +5935,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 262
+          "line": 263
         }
       ],
       "classification": "mutation",
@@ -5827,7 +5953,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 450
+          "line": 451
         }
       ],
       "classification": "mutation",
@@ -5845,7 +5971,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 407
+          "line": 408
         }
       ],
       "classification": "mutation",
@@ -5863,7 +5989,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 550
+          "line": 551
         }
       ],
       "classification": "mutation",
@@ -5881,7 +6007,7 @@
       "sources": [
         {
           "file": "server/src/routes/manage.ts",
-          "line": 366
+          "line": 367
         }
       ],
       "classification": "security",
@@ -6173,7 +6299,7 @@
       "sources": [
         {
           "file": "server/src/routes/media.ts",
-          "line": 454
+          "line": 457
         }
       ],
       "classification": "mutation",
@@ -6191,7 +6317,7 @@
       "sources": [
         {
           "file": "server/src/routes/media.ts",
-          "line": 487
+          "line": 490
         }
       ],
       "classification": "mutation",
@@ -6209,7 +6335,7 @@
       "sources": [
         {
           "file": "server/src/routes/media.ts",
-          "line": 504
+          "line": 507
         }
       ],
       "classification": "volatile",
@@ -6227,7 +6353,7 @@
       "sources": [
         {
           "file": "server/src/routes/media.ts",
-          "line": 238
+          "line": 240
         }
       ],
       "classification": "mutation",
@@ -6245,7 +6371,7 @@
       "sources": [
         {
           "file": "server/src/routes/media.ts",
-          "line": 215
+          "line": 217
         }
       ],
       "classification": "mutation",
@@ -6263,7 +6389,7 @@
       "sources": [
         {
           "file": "server/src/routes/media.ts",
-          "line": 209
+          "line": 211
         }
       ],
       "classification": "mutation",
@@ -6281,7 +6407,7 @@
       "sources": [
         {
           "file": "server/src/routes/media.ts",
-          "line": 224
+          "line": 226
         }
       ],
       "classification": "mutation",
@@ -6299,7 +6425,7 @@
       "sources": [
         {
           "file": "server/src/routes/media.ts",
-          "line": 266
+          "line": 268
         }
       ],
       "classification": "mutation",
@@ -6317,7 +6443,7 @@
       "sources": [
         {
           "file": "server/src/routes/media.ts",
-          "line": 191
+          "line": 193
         }
       ],
       "classification": "mutation",
@@ -6335,7 +6461,7 @@
       "sources": [
         {
           "file": "server/src/routes/media.ts",
-          "line": 286
+          "line": 289
         }
       ],
       "classification": "mutation",
@@ -6353,7 +6479,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 128
+          "line": 145
         }
       ],
       "classification": "volatile",
@@ -6371,7 +6497,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 121
+          "line": 138
         }
       ],
       "classification": "volatile",
@@ -6389,7 +6515,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 419
+          "line": 436
         }
       ],
       "classification": "mutation",
@@ -6407,7 +6533,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 793
+          "line": 811
         }
       ],
       "classification": "mutation",
@@ -6425,7 +6551,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 689
+          "line": 707
         }
       ],
       "classification": "mutation",
@@ -6443,7 +6569,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 656
+          "line": 674
         }
       ],
       "classification": "mutation",
@@ -6461,7 +6587,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 763
+          "line": 781
         }
       ],
       "classification": "mutation",
@@ -6479,7 +6605,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 718
+          "line": 736
         }
       ],
       "classification": "mutation",
@@ -6497,7 +6623,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 460
+          "line": 477
         }
       ],
       "classification": "mutation",
@@ -6515,7 +6641,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 438
+          "line": 455
         }
       ],
       "classification": "mutation",
@@ -6533,7 +6659,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 326
+          "line": 343
         }
       ],
       "classification": "volatile",
@@ -6551,7 +6677,7 @@
       "sources": [
         {
           "file": "server/src/routes/messages.ts",
-          "line": 273
+          "line": 290
         }
       ],
       "classification": "mutation",
@@ -7508,7 +7634,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1388
+          "line": 1406
         }
       ],
       "classification": "private-display",
@@ -7526,7 +7652,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1799
+          "line": 1819
         }
       ],
       "classification": "mutation",
@@ -7580,7 +7706,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 613
+          "line": 649
         },
         {
           "file": "server/src/routes/student.ts",
@@ -7602,7 +7728,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 552
+          "line": 588
         }
       ],
       "classification": "mutation",
@@ -7624,7 +7750,7 @@
         },
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 445
+          "line": 481
         }
       ],
       "classification": "private-display",
@@ -7646,7 +7772,7 @@
         },
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 496
+          "line": 532
         }
       ],
       "classification": "mutation",
@@ -7718,7 +7844,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 604
+          "line": 640
         }
       ],
       "classification": "mutation",
@@ -7736,7 +7862,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 579
+          "line": 615
         }
       ],
       "classification": "mutation",
@@ -7772,7 +7898,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 426
+          "line": 462
         },
         {
           "file": "server/src/routes/feed-posts.ts",
@@ -7802,7 +7928,7 @@
         },
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 257
+          "line": 293
         },
         {
           "file": "server/src/routes/feed-posts.ts",
@@ -7825,6 +7951,10 @@
         {
           "file": "server/src/routes/student-activities.ts",
           "line": 20
+        },
+        {
+          "file": "server/src/routes/feed-social.ts",
+          "line": 27
         }
       ],
       "classification": "mutation",
@@ -7896,7 +8026,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 45
+          "line": 78
         }
       ],
       "classification": "private-display",
@@ -7932,7 +8062,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 27
+          "line": 60
         },
         {
           "file": "server/src/routes/student.ts",
@@ -7958,7 +8088,7 @@
         },
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 167
+          "line": 200
         },
         {
           "file": "server/src/routes/student.ts",
@@ -7980,7 +8110,7 @@
       "sources": [
         {
           "file": "server/src/routes/feed-social.ts",
-          "line": 263
+          "line": 299
         },
         {
           "file": "server/src/routes/student.ts",
@@ -8069,6 +8199,24 @@
       "portalFreshMs": 8000
     },
     {
+      "method": "GET",
+      "path": "/v1/student/learning-saved",
+      "sources": [
+        {
+          "file": "server/src/routes/student.ts",
+          "line": 1071
+        }
+      ],
+      "classification": "private-display",
+      "backend": "fresh",
+      "authorization": "Fresh session, tenant, role and object checks in source router",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
       "method": "PATCH",
       "path": "/v1/student/me/onboarding",
       "sources": [
@@ -8114,7 +8262,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1480
+          "line": 1500
         }
       ],
       "classification": "mutation",
@@ -8132,7 +8280,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1612
+          "line": 1632
         }
       ],
       "classification": "financial",
@@ -8150,7 +8298,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1487
+          "line": 1507
         }
       ],
       "classification": "mutation",
@@ -8163,12 +8311,30 @@
       "portalFreshMs": 0
     },
     {
+      "method": "GET",
+      "path": "/v1/student/pickup-hubs",
+      "sources": [
+        {
+          "file": "server/src/routes/student.ts",
+          "line": 1411
+        }
+      ],
+      "classification": "private-display",
+      "backend": "fresh",
+      "authorization": "Fresh session, tenant, role and object checks in source router",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
       "method": "POST",
       "path": "/v1/student/product-reviews",
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1685
+          "line": 1705
         }
       ],
       "classification": "mutation",
@@ -8348,7 +8514,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1733
+          "line": 1753
         }
       ],
       "classification": "financial",
@@ -8366,7 +8532,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1393
+          "line": 1413
         }
       ],
       "classification": "private-display",
@@ -8456,7 +8622,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1250
+          "line": 1268
         }
       ],
       "classification": "mutation",
@@ -8474,7 +8640,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1205
+          "line": 1223
         }
       ],
       "classification": "mutation",
@@ -8492,7 +8658,25 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1120
+          "line": 1138
+        }
+      ],
+      "classification": "mutation",
+      "backend": "fresh",
+      "authorization": "Source router auth/signature/idempotency; no response reuse",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/student/tutorial-resources/:id/save",
+      "sources": [
+        {
+          "file": "server/src/routes/student.ts",
+          "line": 1074
         }
       ],
       "classification": "mutation",
@@ -8510,7 +8694,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1065
+          "line": 1082
         }
       ],
       "classification": "private-display",
@@ -8528,7 +8712,7 @@
       "sources": [
         {
           "file": "server/src/routes/student.ts",
-          "line": 1347
+          "line": 1365
         }
       ],
       "classification": "mutation",
@@ -8547,6 +8731,24 @@
         {
           "file": "server/src/routes/student.ts",
           "line": 946
+        }
+      ],
+      "classification": "private-display",
+      "backend": "fresh",
+      "authorization": "Fresh session, tenant, role and object checks in source router",
+      "mobile": {
+        "freshMs": 0,
+        "retainMs": 0
+      },
+      "portalFreshMs": 0
+    },
+    {
+      "method": "GET",
+      "path": "/v1/student/tutors",
+      "sources": [
+        {
+          "file": "server/src/routes/student.ts",
+          "line": 1067
         }
       ],
       "classification": "private-display",
@@ -8582,7 +8784,7 @@
       "sources": [
         {
           "file": "server/src/routes/trusted-vendors.ts",
-          "line": 171
+          "line": 190
         }
       ],
       "classification": "mutation",
@@ -8636,7 +8838,7 @@
       "sources": [
         {
           "file": "server/src/routes/trusted-vendors.ts",
-          "line": 163
+          "line": 182
         }
       ],
       "classification": "mutation",
@@ -8654,7 +8856,7 @@
       "sources": [
         {
           "file": "server/src/routes/trusted-vendors.ts",
-          "line": 158
+          "line": 177
         }
       ],
       "classification": "security",
@@ -8726,7 +8928,7 @@
       "sources": [
         {
           "file": "server/src/routes/trusted-vendors.ts",
-          "line": 79
+          "line": 82
         }
       ],
       "classification": "mutation",

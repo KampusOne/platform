@@ -33,7 +33,7 @@ export function restoreExamDraft(value: unknown) {
 export function restoreCampusDraft(value: unknown) {
   const row = draftRecord(value), kind = row.kind;
   if (!['EVENT', 'SPORTS', 'OPPORTUNITY'].includes(String(kind))) throw draftFormatError();
-  return { kind: kind as 'EVENT' | 'SPORTS' | 'OPPORTUNITY', title: draftString(row, 'title'), description: draftString(row, 'description'), venue: draftString(row, 'venue'), date: draftString(row, 'date'), time: draftString(row, 'time'), link: draftString(row, 'link'), requestId: draftIdentifier(row, 'requestId'), images: draftRows(row, 'images', 5, value => {
+  return { opportunityType: (typeof row.opportunityType === 'string' ? row.opportunityType : 'OTHER') as 'INTERNSHIP'|'SCHOLARSHIP'|'GRANT'|'STUDENT_LOAN'|'SPONSORSHIP'|'SKILL_ACQUISITION'|'FELLOWSHIP'|'COMPETITION'|'OTHER', kind: kind as 'EVENT' | 'SPORTS' | 'OPPORTUNITY', title: draftString(row, 'title'), description: draftString(row, 'description'), venue: draftString(row, 'venue'), date: draftString(row, 'date'), time: draftString(row, 'time'), link: draftString(row, 'link'), requestId: draftIdentifier(row, 'requestId'), images: draftRows(row, 'images', 5, value => {
     const image = draftRecord(value), id = draftIdentifier(image, 'id'), url = draftString(image, 'url'), kind = draftString(image, 'kind');
     if (!id || !url || kind !== 'post' || typeof image.private !== 'boolean') throw draftFormatError();
     return { id, url, kind, private: image.private };

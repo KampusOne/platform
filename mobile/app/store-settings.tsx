@@ -26,6 +26,7 @@ function StoreForm() {
   const [pickupPlace, setPickupPlace] = useState<string | null>(null);
   const [savedPickupPlace, setSavedPickupPlace] = useState<string | null>(null);
   const [pickup, setPickup] = useState("");
+  const [pickupLocations,setPickupLocations]=useState("");
   const [vendorProfileId, setVendorProfileId] = useState<string | null>(null);
   const [locationStatus, setLocationStatus] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -44,6 +45,7 @@ function StoreForm() {
         description: string;
         contact_phone_e164: string;
         pickup_location: string;
+        pickup_locations?:string[];
         pickup_place_id?: string | null;
         pickup_instructions: string;
         opening_hours: Record<string, string>;
@@ -60,6 +62,7 @@ function StoreForm() {
           setDescription(s.description ?? "");
           setPhone(s.contact_phone_e164 ?? "");
           setPickup(s.pickup_location ?? "");
+          setPickupLocations((s.pickup_locations??[]).filter(x=>x!==s.pickup_location).join("\n"));
           setPickupPlace(s.pickup_place_id ?? null);
           setSavedPickupPlace(s.pickup_place_id ?? null);
           setInstructions(s.pickup_instructions ?? "");
@@ -95,6 +98,7 @@ function StoreForm() {
           description,
           contactPhoneE164: phone,
           pickupLocation: pickup,
+          pickupLocations:[...new Set([pickup,...pickupLocations.split("\n")].map(x=>x.trim()).filter(Boolean))],
           pickupPlaceId: pickupPlace,
           pickupInstructions: instructions,
           openingHours: { schedule: hours },
@@ -103,7 +107,7 @@ function StoreForm() {
       });
       setVendorProfileId(saved.vendor_profile_id);
       setSavedPickupPlace(pickupPlace);
-      if (fulfilmentReady) await api("/v1/agents/storefront/fulfilment", { method: "PUT", body: JSON.stringify({ pickupEnabled, selfDeliveryEnabled: selfDelivery }) });
+      if (fulfilmentReady) await api("/v1/agents/storefront/fulfilment", { method: "PUT", body: JSON.stringify({ pickupEnabled, selfDeliveryEnabled: false }) });
       if (submit)
         await api("/v1/agents/storefront/status", {
           method: "PATCH",
@@ -141,6 +145,7 @@ function StoreForm() {
         value={pickup}
         onChangeText={setPickup}
       />
+      <ToolField label="Additional buyer pickup locations (one per line)" value={pickupLocations} onChangeText={setPickupLocations} multiline placeholder="Faculty entrance\nLibrary meeting point"/>
       <CampusPlaceChoice
         label="Approved store or agreed pickup point on the campus map"
         endpoint="/v1/agents/storefront"

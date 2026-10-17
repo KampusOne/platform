@@ -52,19 +52,28 @@ function cartFixture() {
   const device={getDeviceCacheRevision:()=>revision,readOwnedDraft:async()=>stored,saveOwnedDraft:async(key,items,scope)=>{if(delay)await new Promise(resolve=>{held=resolve;});if(fail)throw Error('Storage is full');saves.push({key,items,scope});stored=items;return'device';}};
   let effectDeps=[];
   const react={useCallback:fn=>fn,useEffect:(fn,deps)=>{if(deps.some((value,i)=>value!==effectDeps[i])){effectDeps=deps;fn();}},useSyncExternalStore:(_subscribe,snapshot)=>snapshot()};
-  const {useMarketplaceCart}=load('marketplace-cart.ts',{'react':react,'./device-cache':device});
+  const {useMarketplaceCart,confirmMarketplaceCartPurchase}=load('marketplace-cart.ts',{'react':react,'./device-cache':device});
   const render=(user=owner)=>useMarketplaceCart(user),settle=async()=>{for(let i=0;i<18;i++)await Promise.resolve();};
-  return {render,settle,saves,setFail:value=>{fail=value;},setDelay:value=>{delay=value;},release:()=>held(),switchAccount:()=>revision++,setStored:value=>{stored=value;}};
+  return {render,settle,saves,confirm:confirmMarketplaceCartPurchase,setFail:value=>{fail=value;},setDelay:value=>{delay=value;},release:()=>held(),switchAccount:()=>revision++,setStored:value=>{stored=value;}};
 }
 test('catalogue and checkout share immediate quantity changes and payment removal',async()=>{
-  const f=cartFixture();f.render();await f.settle();const catalogue=f.render();catalogue.update({[product]:1});const checkout=f.render();assert.equal(checkout.items[product],1);checkout.update(current=>({...current,[product]:2}));assert.equal(f.render().items[product],2);await f.settle();await f.render().flush();assert.equal(f.saves.at(-1).items[product],2);f.render().update({});await f.settle();assert.equal(f.render().items[product],undefined);
+  const f=cartFixture();f.render();await f.settle();const catalogue=f.render();catalogue.update({[product]:1});const checkout=f.render();assert.equal(checkout.items[product],1);checkout.update(current=>({...current,[product]:2}));assert.equal(f.render().items[product],2);await f.settle();await f.render().flush();assert.equal(f.saves.at(-1).items.items[product],2);f.render().update({});await f.settle();assert.equal(f.render().items[product],undefined);
 });
 test('a genuine cart storage failure stays visible and retry proves the saved cart',async()=>{
-  const f=cartFixture();f.render();await f.settle();f.setFail(true);f.render().update({[product]:1});await f.settle();assert.match(f.render().error,/Storage is full/);assert.equal(f.render().items[product],1);await assert.rejects(f.render().flush(),/Storage is full/);f.setFail(false);await f.render().flush();assert.equal(f.render().error,'');assert.equal(f.saves.at(-1).items[product],1);
+  const f=cartFixture();f.render();await f.settle();f.setFail(true);f.render().update({[product]:1});await f.settle();assert.match(f.render().error,/Storage is full/);assert.equal(f.render().items[product],1);await assert.rejects(f.render().flush(),/Storage is full/);f.setFail(false);await f.render().flush();assert.equal(f.render().error,'');assert.equal(f.saves.at(-1).items.items[product],1);
 });
 test('failed cart restore blocks edits and retains the saved payload for recovery',async()=>{
   const f=cartFixture();f.setStored({[product]:'malformed'});f.render();await f.settle();assert.equal(f.render().ready,false);assert.match(f.render().error,/needs recovery/);f.render().update({[product]:1});assert.equal(f.saves.length,0);f.setStored({[product]:2});f.render().retry();await f.settle();assert.equal(f.render().items[product],2);
 });
 test('late save failures from the previous account cannot change another account cart',async()=>{
   const f=cartFixture();f.render();await f.settle();f.setDelay(true);f.render().update({[product]:1});await f.settle();f.switchAccount();f.setStored(null);f.render(other);await f.settle();f.setFail(true);f.release();await f.settle();assert.equal(f.render(other).error,'');assert.equal(f.render(other).items[product],undefined);
+});
+
+test('only a confirmed receipt removes purchased quantities once, including a failed device save retry',async()=>{
+ const f=cartFixture();f.setStored({[product]:4});f.render();await f.settle();
+ assert.equal(f.render().items[product],4);
+ const order='44444444-4444-4444-8444-444444444444';f.setFail(true);
+ await assert.rejects(f.confirm(owner,order,[{product_id:product,quantity:2}]),/Storage is full/);
+ assert.equal(f.render().items[product],2);f.setFail(false);await f.confirm(owner,order,[{product_id:product,quantity:2}]);
+ assert.equal(f.render().items[product],2);assert.equal(f.saves.at(-1).items.items[product],2);assert.deepEqual(Array.from(f.saves.at(-1).items.completedOrders),[order]);
 });

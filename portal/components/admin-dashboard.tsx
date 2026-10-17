@@ -133,6 +133,7 @@ type ContentContext = {
   }>;
 };
 type Operations = {
+  loadErrors?:string[];
   products: CommerceProduct[];
   storefronts: CommerceStorefront[];
   categories: Array<{
@@ -343,7 +344,7 @@ export function AdminDashboard({
       view === "audit" && can("audit.view")
         ? portalApi<{ events: AuditEvent[] }>(scopedPath("/v1/admin/audit"))
         : Promise.resolve({ events: [] }),
-      ["content", "tutorials", "operations"].includes(view)
+      ["content", "tutorials"].includes(view)
         ? portalApi<ContentContext>(scopedPath("/v1/admin/content/context"))
         : Promise.resolve({ universities: [], sources: [] }),
       (view === "tutorials"
@@ -384,6 +385,7 @@ export function AdminDashboard({
           setContext(nextContext);
           setTutorials(nextTutorials);
           setOperations(nextOperations);
+
         },
       )
       .catch((caught) => {
@@ -438,6 +440,7 @@ export function AdminDashboard({
         <section className="workspace-loading" aria-busy="true" aria-label="Loading operations"><div className="skeleton-heading" /><div className="table-skeleton">{[0,1,2,3,4].map((item) => <div key={item} />)}</div></section>
       )}
       {!loading && error && <ErrorPanel error={error} retry={load} />}
+      {!loading && view==='operations' && operations.loadErrors?.length ? <p role="alert" className="form-error">Could not load {operations.loadErrors.join(', ')}. Other sections are available. Refresh to retry.</p> : null}
       {!loading && !error && dashboard && view === "overview" && (
         <>
           <AdminMilestones />

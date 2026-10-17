@@ -305,6 +305,10 @@ beforeAll(async () => {
   // independently tested collection accounting in this finance fixture.
   const bachsCutover=readFileSync(new URL("../../database/neon/migrations/20261010140000_bachs_collection_cutover.sql",import.meta.url),"utf8");
   await pg.exec(bachsCutover.slice(bachsCutover.indexOf("create table if not exists app_private.bachs_webhook_inbox"),bachsCutover.indexOf("create function app_private.bachs_collection_ready")));
+  // This fixture intentionally retains pre-customer-surcharge Paystack collection accounting.
+  await pg.exec(`create function app_private.collection_paid_price_matches(p_ref text,p_gross bigint,p_fee bigint,p_quote bigint)returns boolean language sql as $$select p_gross=p_quote and p_fee>=0$$;create function app_private.recover_customer_processing_fee(p_ref text,p_gross bigint,p_fee bigint)returns bigint language sql as $$select p_gross$$;`);
+  await pg.exec('create view app_private.verified_collection_receipts as select provider_reference from app_private.verified_paystack_receipts');
+  for(const file of ['20261014160000_verified_store_payment_recovery.sql','20261014200000_commerce_notifications.sql','20261017120000_campus_release.sql','20261017121000_multi_vendor_checkout.sql'])await pg.exec(readFileSync(new URL('../../database/neon/migrations/'+file,import.meta.url),'utf8'));
   for (const uni of [campus, otherCampus])
     await pg.query(
       "insert into universities(id,name,slug,updated_at)values($1,'Synthetic campus '||$1::uuid::text,$1::uuid::text,now())",
@@ -1061,10 +1065,10 @@ describe("approved inclusive store checkout", () => {
     expect(first.quote.pricing).toMatchObject({
       listedItemsKobo: 365500,
       discountKobo: 0,
-      fareKobo: 30000,
+      fareKobo: 50000,
       payableKobo: 365500,
-      cashDueKobo: 30000,
-      totalKobo: 395500,
+      cashDueKobo: 50000,
+      totalKobo: 415500,
     });
     for (const hidden of [
       "sellerNetKobo",
@@ -1106,9 +1110,9 @@ describe("approved inclusive store checkout", () => {
       ).status,
     ).toBe(409);
     expect(created).toMatchObject({
-      totalKobo: 395500,
+      totalKobo: 415500,
       payableKobo: 365500,
-      cashDueKobo: 30000,
+      cashDueKobo: 50000,
     });
     expect(
       (
@@ -1205,7 +1209,7 @@ describe("approved inclusive store checkout", () => {
       ),
     );
     expect(Number(summary.payment.amount_kobo)).toBe(365500);
-    expect(Number(summary.payment.cash_due_kobo)).toBe(30000);
+    expect(Number(summary.payment.cash_due_kobo)).toBe(50000);
     fetcher.mockImplementation(async () =>
       Response.json({
         status: true,
@@ -1273,7 +1277,7 @@ describe("approved inclusive store checkout", () => {
     ).rows[0]!;
     expect(settled).toMatchObject({
       seller_net_kobo: 332500,
-      cash_fare_kobo: 30000,
+      cash_fare_kobo: 50000,
       digital_fare_kobo: 0,
       provider_fee_kobo: 15483,
     });
@@ -2989,5 +2993,49 @@ describe('Bachs bank payout approval and verified recovery',()=>{
   expect((await payoutEvent('evt_payout_fixture_failed',p.saved.provider_reference,'payout.failed')).status).toBe(200);
   expect(await balance(f.owner,'VENDOR_AVAILABLE')).toBe(1000000);
   expect((await pg.query("select status from payout_requests where id=$1",[p.saved.id])).rows[0]?.status).toBe('FAILED');
+ });
+});
+
+describe('campus combined orders and private learning playlists',()=>{
+ it('reserves two vendors once, pays each share once, coordinates pickup and releases only after the buyer code',async()=>{
+  const second=await person(crypto.randomUUID(),campus,'VENDOR'),p2=crypto.randomUUID();
+  await pg.query("insert into vendor_storefronts(vendor_profile_id,university_id,display_name,description,contact_phone_e164,pickup_location,opening_hours,status,pickup_enabled,submitted_at,reviewed_at,reviewed_by_user_id,moderated_revision)select $1,university_id,'Second fixture store',description,contact_phone_e164,'Second fixture address',opening_hours,status,true,submitted_at,reviewed_at,reviewed_by_user_id,1 from vendor_storefronts where vendor_profile_id=$2",[second.profile,vendor]);
+  await pg.query("insert into vendor_products(id,university_id,vendor_profile_id,name,description,category,category_id,price_kobo,stock_quantity,status,moderated_revision,submitted_at,reviewed_at,reviewed_by_user_id,package_weight_grams,package_length_cm,package_width_cm,package_height_cm,bicycle_delivery_eligible)select $1,university_id,$2,'Second fixture item',description,category,category_id,200000,20,status,1,submitted_at,reviewed_at,reviewed_by_user_id,300,10,10,10,true from vendor_products where id=$3",[p2,second.profile,product]);
+  await pg.query("insert into commerce_pickup_hubs(university_id,name,position)values($1,'Engineering',1)on conflict do nothing",[campus]);
+  const catalog=await json(await request('/student/store',buyer)),first=catalog.products.find((p:any)=>p.id===product),other=catalog.products.find((p:any)=>p.id===p2);
+  const input={...quoteInput('PICKUP'),pickupPointName:'Engineering',items:[{productId:product,quantity:1,expectedUnitPriceKobo:Number(first.price_kobo)},{productId:p2,quantity:2,expectedUnitPriceKobo:Number(other.price_kobo)}]};
+  const q=await json(await request('/student/order-quotes',buyer,'POST',input),201);
+  const o=await json(await request('/student/orders',buyer,'POST',{...input,quoteId:q.quote.id}),201);
+  const allocations=(await pg.query<{vendor_user_id:string;seller_net_kobo:number}>('select * from app_private.order_vendor_allocations where order_id=$1',[o.id])).rows;expect(allocations).toHaveLength(2);
+  const snapshot=(await pg.query<{seller_net_kobo:number}>('select seller_net_kobo from app_private.order_price_snapshots where order_id=$1',[o.id])).rows[0]!;
+  expect(allocations.reduce((n,a)=>n+Number(a.seller_net_kobo),0)).toBe(Number(snapshot.seller_net_kobo));
+  const ref='K1-O-'+crypto.randomUUID();await pg.query("insert into payment_attempts(id,user_id,university_id,resource_type,resource_id,provider_reference,amount_kobo,idempotency_key,status)values($1,$2,$3,'STORE_ORDER',$4,$5,$6,$1::uuid::text,'INITIALIZED')",[crypto.randomUUID(),buyer,campus,o.id,ref,o.payableKobo]);
+  const fee=q.quote.pricing.estimatedProcessingKobo??0;
+  const settled=(await pg.query<{result:string}>('select app_private.record_priced_store_receipt($1,$2,$3,now()) result',[ref,o.payableKobo,fee])).rows[0]!.result;expect(settled).toBe('PAID');
+  const pending=await balance(second,'VENDOR_PENDING'),available=await balance(second,'VENDOR_AVAILABLE');expect(pending).toBeGreaterThan(0);expect(available).toBe(0);
+  expect((await pg.query<{result:string}>('select app_private.record_priced_store_receipt($1,$2,$3,now()) result',[ref,o.payableKobo,fee])).rows[0]!.result).toBe('ALREADY_PAID');expect(await balance(second,'VENDOR_PENDING')).toBe(pending);
+  const mine=await json(await request('/agents/orders/'+o.id,second.user));expect(mine.items).toHaveLength(1);expect(mine.items[0].quantity).toBe(2);
+  const wrong=await person();expect((await request('/agents/orders/'+o.id,wrong.user)).status).toBe(403);
+  await json(await request('/agents/orders/'+o.id+'/status',second.user,'PATCH',{status:'ACCEPTED'}));await json(await request('/agents/orders/'+o.id+'/status',second.user,'PATCH',{status:'READY'}));
+  expect((await pg.query<{status:string}>('select status from orders where id=$1',[o.id])).rows[0]!.status).toBe('PAID');
+  expect((await pg.query<{result:string}>("select app_private.coordinate_campus_order($1,$2,'READY',null) result",[o.id,otherCampus])).rows[0]!.result).toBe('INVALID_STATE');
+  await pg.query("select app_private.coordinate_campus_order($1,$2,'READY',null)",[o.id,campus]);
+  expect((await pg.query<{result:string}>("select app_private.coordinate_campus_order($1,$2,'COMPLETE','wrong') result",[o.id,campus])).rows[0]!.result).toBe('INCORRECT');expect(await balance(second,'VENDOR_AVAILABLE')).toBe(0);
+  const code=await deriveHandoffCode(env,o.id,'delivery');expect((await pg.query<{result:string}>("select app_private.coordinate_campus_order($1,$2,'COMPLETE',$3) result",[o.id,campus,code.hash])).rows[0]!.result).toBe('OK');
+  expect(await balance(second,'VENDOR_PENDING')).toBe(0);expect(await balance(second,'VENDOR_AVAILABLE')).toBe(pending);
+  await pg.query("update orders set status='DELIVERED' where id=$1",[o.id]);expect(await balance(second,'VENDOR_AVAILABLE')).toBe(pending);
+  await expect(pg.query('update app_private.order_vendor_allocations set seller_net_kobo=1 where order_id=$1',[o.id])).rejects.toThrow('IMMUTABLE');
+ });
+ it('publishes a video playlist and gives every free part private, campus-scoped access',async()=>{
+  const tutor=await person(crypto.randomUUID(),campus,'TUTOR'),part1=crypto.randomUUID(),part2=crypto.randomUUID();
+  for(const id of [part1,part2])await pg.query("insert into media_objects(id,owner_user_id,institution_id,kind,object_key,content_type,size_bytes,original_name)values($1,$2,$3,'resource',$1::uuid::text,'video/mp4',100,'fixture.mp4')",[id,tutor.user,campus]);
+  const details={requestId:crypto.randomUUID(),title:'Physics playlist',description:'Two parts of synthetic physics lessons.',courseCode:'PHY102',subject:'Physics',resourceType:'VIDEO',accessModel:'FREE',priceKobo:0,parts:[{mediaId:part1,title:'Part one'},{mediaId:part2,title:'Part two'}]};
+  const published=await json(await request('/agents/learning-publish',tutor.user,'POST',details),201);expect((await request('/agents/learning-publish',tutor.user,'POST',{...details,title:'Different title'})).status).toBe(409);
+  const detail=await json(await request('/student/tutorial-resources/'+published.id,buyer));expect(detail.resource.parts).toHaveLength(2);expect(detail.resource.can_access).toBe(true);
+  const media=await json(await request('/media/'+part2+'/access',buyer,'POST',{}));expect(media).toBeTruthy();
+  const stranger=await person(crypto.randomUUID(),otherCampus);expect((await request('/media/'+part2+'/access',stranger.user,'POST',{},otherCampus)).status).toBe(403);
+  await pg.query("update agent_profiles set status='PAUSED',suspension_ends_at=now()+interval '2 days',suspension_reason='Fixture review' where id=$1",[tutor.profile]);
+  expect((await request('/agents/tutorials',tutor.user)).status).toBe(200);expect((await request('/agents/learning-publish',tutor.user,'POST',{...details,requestId:crypto.randomUUID()})).status).toBe(403);
+  expect((await request('/media/'+part2+'/access',buyer,'POST',{})).status).toBe(403);
  });
 });

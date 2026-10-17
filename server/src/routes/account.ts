@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import {restoreExpiredAgentRoles} from '../lib/agent-access';
 import { sql } from "drizzle-orm";
 import { z } from "@kampusone/contracts";
 import { database, firstRow, sqlClient } from "../lib/database";
@@ -16,8 +17,9 @@ export const accountRoutes = new Hono<{
 accountRoutes.use("/*", requireAuth);
 accountRoutes.get("/capabilities", async (c) => {
   const u = currentUser(c);
+  await restoreExpiredAgentRoles(c.env,u.id);
   const profiles = await database(c.env).execute(
-    sql`select id,agent_type,display_name from public.agent_profiles where user_id=${u.id}::uuid and status='ACTIVE'`,
+    sql`select id,agent_type,display_name,status,suspension_ends_at,suspension_reason from public.agent_profiles where user_id=${u.id}::uuid and university_id=${u.universityId}::uuid and (status='ACTIVE' or status='PAUSED' and suspension_ends_at>now())`,
   );
   const communities = await database(c.env).execute(
     sql`select id,name from public.cohort_communities where rep_user_id=${u.id}::uuid and archived_at is null`,
