@@ -12,7 +12,6 @@ import { cacheScopeForUser } from '@/src/lib/request-policy';
 import {
   ToolPage,
   ToolButton,
-  ToolRow,
   ToolField,
 } from "@/src/components/toolkit";
 import { EmptyResult } from "@/src/components/product-ui";
@@ -204,6 +203,12 @@ function AccountAgentDashboard() {
         { label: "Refresh dashboard", icon: "refresh-outline", onPress: () => void load().catch(e => setLoadError(e.message)), disabled: !profile || busy },
         { label: "Refresh delivery location", icon: "locate-outline", onPress: () => void refreshPosition(), disabled: !profile || busy },
         { label: "Campus capture missions", icon: "map-outline", onPress: () => router.push("/map-capture"), disabled: !profile },
+      ]} /> : role === 'TUTOR' ? <HeaderMenu label="Tutor dashboard options" items={[
+        { label: "Refresh dashboard", icon: "refresh-outline", onPress: () => void load().catch(e => setLoadError(e.message)), disabled: busy },
+        { label: "View tutor profile", icon: "person-circle-outline", onPress: () => router.push({ pathname: '/student-service', params: { id: profile!.id } }) },
+        { label: "Set up booking times & fee", icon: "calendar-outline", disabled: temporarilySuspended, onPress: () => router.push({ pathname: '/agent-create', params: { role: 'TUTOR' } }) },
+        { label: "Free trial", icon: "gift-outline", onPress: () => router.push('/trial') },
+        ...caps.profiles.filter(p => p.id !== profile?.id).map(p => ({ label: `Open ${p.agent_type.toLowerCase()} dashboard`, icon: 'swap-horizontal-outline' as const, onPress: () => router.setParams({ role: p.agent_type }) })),
       ]} /> : undefined}
     >
       {!caps.ready ? <ScreenSkeleton variant="list" compact /> : <>
@@ -217,7 +222,7 @@ function AccountAgentDashboard() {
       </View> : null}
       {temporarilySuspended ? <View accessibilityRole="alert" style={{padding:18,marginBottom:18,borderRadius:16,backgroundColor:theme.surfaceTint,gap:8}}><Text style={{color:theme.deepBrand,fontFamily:theme.font.semibold}}>Temporarily suspended until {new Date(profile.suspension_ends_at!).toLocaleDateString('en-NG')}</Text><Text style={{color:theme.text}}>{profile.suspension_reason} You can view your account. Uploads, changes and withdrawals resume after the suspension.</Text></View> : null}
       {profile?<View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:18}}>{[
-        {label:'Orders',icon:'receipt-outline' as const,path:role==='VENDOR'?'/vendor-orders':'/agent'},
+        {label:'Orders',icon:'receipt-outline' as const,path:role==='VENDOR'?'/vendor-orders':role==='TUTOR'?'/tutor-learners':'/agent'},
         {label:'Earnings',icon:'wallet-outline' as const,path:'/earnings'},
         {label:'Profile',icon:'person-outline' as const,path:role==='VENDOR'?'/store-settings':'/business-profile-edit'},
         {label:'Bank',icon:'card-outline' as const,path:'/bank-account'},
@@ -242,8 +247,7 @@ function AccountAgentDashboard() {
           </Text>
         </View>
       </View> : null}
-      {role === "TUTOR" && caps.profiles.length>0?<ToolButton secondary label="Campus capture missions" onPress={()=>router.push("/map-capture")}/>:null}
-      {role !== "RIDER" && caps.profiles.length > 1 && (
+      {role === "VENDOR" && caps.profiles.length > 1 && (
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
           {caps.profiles.map((p) => (
             <Pressable
@@ -277,25 +281,7 @@ function AccountAgentDashboard() {
           body="Your workspaces appear here once your agent application is approved."
         />
       )}
-      {role === "TUTOR" && profile ? (
-        <ToolRow
-          title={`View ${profile.agent_type === "VENDOR" ? "Vendor" : profile.agent_type === "TUTOR" ? "Tutor" : "Rider"} Profile`}
-          detail={profile.display_name}
-          icon="person-circle-outline"
-          onPress={() =>
-            router.push({
-              pathname: "/student-service",
-              params: { id: profile.id },
-            })
-          }
-        />
-      ) : null}
       {role==='VENDOR'?<VendorAnalytics/>:null}
-      {role === "TUTOR" ? <ToolRow
-        title="Earnings & payouts"
-        icon="wallet-outline"
-        onPress={() => router.push("/earnings")}
-      /> : null}
       {role === "RIDER" && ridesSuspended ? (
         <View style={{ paddingVertical: 16 }}>
           <Text style={{ color: theme.text, fontFamily: theme.font.semibold }}>
@@ -308,20 +294,14 @@ function AccountAgentDashboard() {
           />
         </View>
       ) : null}
-      {role === "TUTOR" ? <ToolRow
-        title="Free trial"
-        icon="gift-outline"
-        onPress={() => router.push("/trial")}
-      /> : null}
       {role && role !== "RIDER" && !temporarilySuspended ? (
         <ToolButton
-          label={role === "VENDOR" ? "Create product" : "Upload learning material"}
+          label={role === "VENDOR" ? "Create product" : "Upload"}
           onPress={() =>
             role==='TUTOR' ? router.push('/learning-publish' as '/agent-create') : router.push({ pathname: "/agent-create", params: { role } })
           }
         />
       ) : null}
-      {role==='TUTOR'&&!temporarilySuspended?<ToolButton secondary label="Set up booking times & fee" onPress={()=>router.push({pathname:'/agent-create',params:{role:'TUTOR'}})}/>:null}
       {role==='RIDER'?<Text style={{color:theme.textMuted,marginVertical:10}}>{online?'Online · available for deliveries':'Offline · go online from the rider options menu'}</Text>:null}
       {role === "RIDER" && (
         <View style={{ flexDirection: "row", gap: 12, marginVertical: 18 }}>
@@ -484,7 +464,7 @@ function AccountAgentDashboard() {
                 ) : null}
               </View>
             ) : null}
-            {role === "TUTOR" ? (
+            {role === "TUTOR" && !item.resource_type ? (
               <ToolButton
                 secondary
                 label="Manage tutorial"

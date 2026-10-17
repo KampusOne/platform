@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import {restoreExpiredAgentRoles} from '../lib/agent-access';
+import {currentAgentProfiles} from '../lib/agent-access';
 import { sql } from "drizzle-orm";
 import { z } from "@kampusone/contracts";
 import { database, firstRow, sqlClient } from "../lib/database";
@@ -17,14 +17,21 @@ export const accountRoutes = new Hono<{
 accountRoutes.use("/*", requireAuth);
 accountRoutes.get("/capabilities", async (c) => {
   const u = currentUser(c);
-  await restoreExpiredAgentRoles(c.env,u.id);
-  const profiles = await database(c.env).execute(
-    sql`select id,agent_type,display_name,status,suspension_ends_at,suspension_reason from public.agent_profiles where user_id=${u.id}::uuid and university_id=${u.universityId}::uuid and (status='ACTIVE' or status='PAUSED' and suspension_ends_at>now())`,
-  );
-  const communities = await database(c.env).execute(
-    sql`select id,name from public.cohort_communities where rep_user_id=${u.id}::uuid and archived_at is null`,
-  );
-  return c.json({ profiles: profiles.rows, communities: communities.rows });
+  const result = firstRow(await database(c.env).execute<{profiles: unknown[]; communities: unknown[]}>(sql`
+    ${currentAgentProfiles(u.id, u.universityId)}
+    select (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id',id,'agent_type',agent_type,'display_name',display_name,'status',status,
+        'suspension_ends_at',suspension_ends_at,'suspension_reason',suspension_reason
+      ) order by id),'[]'::jsonb)
+      from current_profiles where status='ACTIVE' or status='PAUSED' and suspension_ends_at>now()
+    ) as profiles, (
+      select coalesce(jsonb_agg(jsonb_build_object('id',id,'name',name) order by id),'[]'::jsonb)
+      from public.cohort_communities
+      where rep_user_id=${u.id}::uuid and institution_id=${u.universityId}::uuid and archived_at is null
+    ) as communities
+  `));
+  return c.json({ profiles: result?.profiles ?? [], communities: result?.communities ?? [] });
 });
 const settingsSchema = z
   .object({

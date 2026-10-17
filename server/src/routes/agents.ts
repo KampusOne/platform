@@ -1,5 +1,5 @@
 import { collectionReference, paymentReturnUrl } from '../lib/collection-provider';
-import {requireAgentRoleAccess,restoreExpiredAgentRoles} from '../lib/agent-access';
+import {requireAgentRoleAccess, type AgentRoleProfile} from '../lib/agent-access';
 import {cachedVersionedRead} from "../lib/cache-revision";
 import {livePublishingEnabled,publishRiderQueueReads} from '../services/live-read-publishers';
 import {mappedDeliveryPoint,currentAgentPosition,campusDeliveryRoute} from '../lib/delivery-routing';
@@ -55,11 +55,16 @@ export const agentRoutes = new Hono<{
   Bindings: Bindings;
   Variables: Variables;
 }>();
+// Reuse only the authorization performed for this exact request.
+const requestAgentProfiles = new WeakMap<Context, { userId: string; role: string; profile: AgentRoleProfile }>();
 agentRoutes.use("/*", requireAuth);
 agentRoutes.use('/*',async(c,next)=>{
   const user=currentUser(c),path=c.req.path.replace(/^\/(?:v1\/)?agents\//,'').replace(/^\//,''),write=!['GET','HEAD'].includes(c.req.method);
   const role=/^(?:tutorial|tutorials|learning-publish)/.test(path)?'TUTOR':/^(?:products|product-categories|storefront|orders|analytics)/.test(path)?'VENDOR':/^(?:deliveries|rider-)/.test(path)?'RIDER':null;
-  if(role)await requireAgentRoleAccess(c.env,user.id,user.universityId,role,write);
+  if (role) {
+    const profile = await requireAgentRoleAccess(c.env, user.id, user.universityId, role, write);
+    requestAgentProfiles.set(c, { userId: user.id, role, profile });
+  }
   await next();
 });
 agentRoutes.use('/*',async(c,next)=>{
@@ -74,12 +79,16 @@ async function body(context: { req: { json(): Promise<unknown> } }) {
 }
 
 async function approvedProfile(
-  env: Bindings,
+  context: Context<{ Bindings: Bindings; Variables: Variables }>,
   userId: string,
   type: "TUTOR" | "VENDOR" | "RIDER",
   universityId?: string | null,
 ) {
-  const result = await database(env).execute<{
+  const authorized = requestAgentProfiles.get(context);
+  if (authorized?.userId === userId && authorized.role === type &&
+      (universityId === undefined || authorized.profile.university_id === universityId))
+    return authorized.profile;
+  const result = await database(context.env).execute<{
     id: string;
     university_id: string;
   }>(sql`
@@ -471,7 +480,7 @@ agentRoutes.post("/tutorials", async (context) => {
       "Payments are not connected yet. Free tutorials are available.",
     );
   }
-  const profile = await approvedProfile(context.env, user.id, "TUTOR", user.universityId);
+  const profile = await approvedProfile(context, user.id, "TUTOR", user.universityId);
   const id = parsed.data.requestId ?? crypto.randomUUID();
   const created=firstRow(await database(context.env).execute<{id:string;status:string}>(sql`
     insert into public.tutorial_listings (
@@ -543,7 +552,7 @@ agentRoutes.patch("/tutorials/:id/status", async (context) => {
 
 agentRoutes.post('/learning-publish',async c=>{
  requireFeature(c.env,'TUTORIALS_ENABLED','Learning uploads are unavailable.');
- const user=currentUser(c),profile=await approvedProfile(c.env,user.id,'TUTOR',user.universityId);
+ const user=currentUser(c),profile=await approvedProfile(c,user.id,'TUTOR',user.universityId);
  const data=await input(c,z.object({requestId:z.string().uuid(),title:z.string().trim().min(3).max(180),description:z.string().trim().min(10).max(2000),courseCode:z.string().trim().min(2).max(24).default('GENERAL'),subject:z.string().trim().min(2).max(80),resourceType:z.enum(['PDF','NOTE','PAST_QUESTION','AUDIOBOOK','VIDEO']),accessModel:z.enum(['FREE','PAID']),priceKobo:z.number().int().min(0).max(100_000_000),coverUrl:z.string().url().nullable().optional(),parts:z.array(z.object({mediaId:z.string().uuid(),title:z.string().trim().min(1).max(180)}).strict()).min(1).max(30)}).strict());
  if(data.accessModel==='FREE'&&data.priceKobo!==0 || data.accessModel==='PAID'&&data.priceKobo<=0)throw new AppError(400,'BAD_REQUEST','Set a price for paid materials, or choose Free.');
  if(data.accessModel==='PAID')requireFeature(c.env,'PAYMENTS_ENABLED','Paid learning uploads are unavailable.');
@@ -612,7 +621,7 @@ agentRoutes.post("/tutorial-resources", async (context) => {
       "/v1/media/" +
       parsed.data.mediaId;
   }
-  const profile = await approvedProfile(context.env, user.id, "TUTOR");
+  const profile = await approvedProfile(context, user.id, "TUTOR");
   if (parsed.data.listingId) {
     const listing = await database(context.env).execute<{ id: string }>(sql`
       select id from public.tutorial_listings
@@ -868,12 +877,15 @@ agentRoutes.get("/storefront", async (context) => {
     "Store operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const profile = await approvedProfile(context.env, user.id, "VENDOR");
-  const result = await database(context.env).execute(sql`
+  const profile = await approvedProfile(context, user.id, "VENDOR");
+  const db = database(context.env);
+  const [result, pickupPoints, fulfilmentReady] = await Promise.all([
+    db.execute(sql`
     select storefronts.vendor_profile_id, storefronts.university_id,
       storefronts.display_name, storefronts.description,
       storefronts.contact_phone_e164, storefronts.pickup_location, storefronts.pickup_place_id,
       storefronts.pickup_instructions, storefronts.opening_hours,
+      storefronts.pickup_locations,
       storefronts.default_preparation_minutes, storefronts.status,
       storefronts.submitted_at, storefronts.listing_revision,
       storefronts.moderated_revision, storefronts.reviewed_at,
@@ -884,8 +896,11 @@ agentRoutes.get("/storefront", async (context) => {
     where storefronts.vendor_profile_id = ${profile.id}::uuid
       and storefronts.university_id = ${profile.university_id}::uuid
     limit 1
-  `);
-  return context.json({ storefront: firstRow(result) ?? null, pickupPoints:(await database(context.env).execute(sql`select p.id,p.name,c.name campus_name from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.status='PUBLISHED' where p.university_id=${profile.university_id}::uuid and p.status='PUBLISHED'and ((p.source_provider='OSM'and p.confidence>=.8 and p.latitude is not null and p.longitude is not null)or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null))order by c.name,p.name limit 1000`)).rows, fulfilmentReady:await fulfilmentSchemaReady(context.env) });
+  `),
+    db.execute(sql`select p.id,p.name,c.name campus_name from public.campus_places p join public.institution_campuses c on c.id=p.campus_id and c.status='PUBLISHED' where p.university_id=${profile.university_id}::uuid and p.status='PUBLISHED'and ((p.source_provider='OSM'and p.confidence>=.8 and p.latitude is not null and p.longitude is not null)or exists(select 1 from public.campus_entrances e where e.place_id=p.id and e.institution_id=p.university_id and e.preferred and e.verified_at is not null))order by c.name,p.name limit 1000`),
+    fulfilmentSchemaReady(context.env),
+  ]);
+  return context.json({ storefront: firstRow(result) ?? null, vendorProfileId: profile.id, pickupPoints: pickupPoints.rows, fulfilmentReady });
 });
 
 agentRoutes.put("/storefront/fulfilment", async context => {
@@ -912,16 +927,14 @@ agentRoutes.put("/storefront", async (context) => {
     "Store operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const parsed = vendorStorefrontSchema.safeParse(await body(context));
-  if (!parsed.success) {
-    throw new AppError(
-      400,
-      "BAD_REQUEST",
-      "Check the storefront trust details and try again.",
-    );
-  }
+  const data = await input(context, vendorStorefrontSchema, {
+    displayName: "Store name", description: "Description", contactPhoneE164: "Contact phone (+234…)",
+    pickupLocation: "Vendor pickup address", pickupLocations: "Additional pickup locations",
+    pickupPlaceId: "Campus map point", pickupInstructions: "Pickup instructions",
+    openingHours: "Opening hours", defaultPreparationMinutes: "Preparation time",
+  });
   const profile = await operationalVendorProfile(context.env, user.id);
-  if(parsed.data.pickupPlaceId)await mappedDeliveryPoint(context.env,profile.university_id,parsed.data.pickupPlaceId);
+  if(data.pickupPlaceId)await mappedDeliveryPoint(context.env,profile.university_id,data.pickupPlaceId);
   const result = await database(context.env).execute<{
     vendor_profile_id: string;
     status: string;
@@ -933,11 +946,11 @@ agentRoutes.put("/storefront", async (context) => {
       opening_hours, default_preparation_minutes
     ) values (
       ${profile.id}::uuid, ${profile.university_id}::uuid,
-      ${parsed.data.displayName}, ${parsed.data.description},
-      ${parsed.data.contactPhoneE164}, ${parsed.data.pickupLocation}, ${parsed.data.pickupPlaceId??null}::uuid,
-      ${parsed.data.pickupInstructions ?? null},${JSON.stringify([...new Set(parsed.data.pickupLocations??[parsed.data.pickupLocation])])}::jsonb,
-      ${JSON.stringify(parsed.data.openingHours)}::jsonb,
-      ${parsed.data.defaultPreparationMinutes}
+      ${data.displayName}, ${data.description},
+      ${data.contactPhoneE164}, ${data.pickupLocation}, ${data.pickupPlaceId??null}::uuid,
+      ${data.pickupInstructions ?? null},${JSON.stringify([...new Set(data.pickupLocations??[data.pickupLocation])])}::jsonb,
+      ${JSON.stringify(data.openingHours)}::jsonb,
+      ${data.defaultPreparationMinutes}
     )
     on conflict (vendor_profile_id) do update set
       display_name = excluded.display_name,
@@ -1358,9 +1371,35 @@ agentRoutes.patch("/products/:id/status", async (context) => {
   return context.json({ status: targetStatus });
 });
 
-agentRoutes.get('/analytics',async c=>{
- const u=currentUser(c),p=await approvedProfile(c.env,u.id,'VENDOR',u.universityId);
- const trend=await database(c.env).execute(sql`with mine as(select o.id,o.created_at,o.status,coalesce(a.seller_net_kobo,o.subtotal_kobo) amount from public.orders o left join app_private.order_vendor_allocations a on a.order_id=o.id and a.vendor_profile_id=${p.id}::uuid where o.university_id=${u.universityId}::uuid and(o.vendor_profile_id=${p.id}::uuid or a.vendor_profile_id=${p.id}::uuid) and ${paidAgentOrders('o')})select day::date::text day,count(m.id)::int orders,count(m.id)filter(where m.status='DELIVERED')::int delivered,coalesce(sum(m.amount),0)::bigint net_kobo from generate_series(current_date-13,current_date,interval '1 day')day left join mine m on m.created_at>=day and m.created_at<day+interval '1 day'group by day order by day`);return c.json({trend:trend.rows});
+agentRoutes.get('/analytics', async c => {
+  const u = currentUser(c), p = await approvedProfile(c, u.id, 'VENDOR', u.universityId);
+  const trend = await database(c.env).execute(sql`
+    with bounds as (
+      select (now() at time zone 'Africa/Lagos')::date as today
+    ), mine as (
+      select o.id, o.created_at, o.status, coalesce(a.seller_net_kobo, o.subtotal_kobo) as amount
+      from public.orders o
+      left join app_private.order_vendor_allocations a
+        on a.order_id=o.id and a.vendor_profile_id=${p.id}::uuid
+      cross join bounds b
+      where o.university_id=${u.universityId}::uuid
+        and (o.vendor_profile_id=${p.id}::uuid or a.vendor_profile_id=${p.id}::uuid)
+        and ${paidAgentOrders('o')}
+        and o.created_at >= ((b.today-13)::timestamp at time zone 'Africa/Lagos')
+        and o.created_at < ((b.today+1)::timestamp at time zone 'Africa/Lagos')
+    ), days as (
+      select b.today-series.offset_days as starts_on
+      from bounds b cross join generate_series(0,13) as series(offset_days)
+    )
+    select d.starts_on::text as "day", count(m.id)::int as orders,
+      count(m.id) filter(where m.status='DELIVERED')::int as delivered,
+      coalesce(sum(m.amount),0)::bigint as net_kobo
+    from days d
+    left join mine m on m.created_at >= (d.starts_on::timestamp at time zone 'Africa/Lagos')
+      and m.created_at < ((d.starts_on+1)::timestamp at time zone 'Africa/Lagos')
+    group by d.starts_on order by d.starts_on
+  `);
+  return c.json({ trend: trend.rows });
 });
 
 agentRoutes.get("/orders", async (context) => {
@@ -1607,7 +1646,7 @@ agentRoutes.get("/deliveries", async (context) => {
     "Delivery operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
+  const profile = await approvedProfile(context, user.id, "RIDER",user.universityId);
   const [result, presence] = await Promise.all([
     database(context.env).execute(sql`
     select jobs.id, jobs.order_id, zones.name as zone_name, jobs.status,
@@ -1670,7 +1709,7 @@ async function routeRiderToPickup(env:Bindings,profile:{id:string;university_id:
  let quotedDeliveryRoute:unknown=null;if(job.rider_profile_id===profile.id&&await inclusiveStoreReady(env)){quotedDeliveryRoute=firstRow(await db.execute<{route:unknown}>(sql`select q.fare->'route'route from app_private.store_checkout_quotes q join app_private.order_price_snapshots s on s.quote_id=q.id join public.delivery_jobs j on j.order_id=s.order_id where j.id=${jobId}::uuid and j.university_id=${profile.university_id}::uuid and j.rider_profile_id=${profile.id}::uuid`))?.route??null;}
  return {...route,campusId:pickup.campus_id,centre:centre?[centre.longitude,centre.latitude]:[pickup.longitude,pickup.latitude],quotedDeliveryRoute,pickupName:pickup.name,pickupLocationBasis:vendor?'CURRENT_VENDOR_POSITION':'APPROVED_STOREFRONT_PICKUP',pricingNote:'The reviewed fare covers pickup to the customer. The rider-to-pickup distance is shown separately and adds no charge.'};
 }
-agentRoutes.get('/deliveries/:id/route',async c=>{requireFeature(c.env,'LOGISTICS_ENABLED','Rider delivery is not available yet.');const p=await approvedProfile(c.env,currentUser(c).id,'RIDER',currentUser(c).universityId);return c.json({route:await routeRiderToPickup(c.env,p,id(c.req.param('id')))});});
+agentRoutes.get('/deliveries/:id/route',async c=>{requireFeature(c.env,'LOGISTICS_ENABLED','Rider delivery is not available yet.');const p=await approvedProfile(c,currentUser(c).id,'RIDER',currentUser(c).universityId);return c.json({route:await routeRiderToPickup(c.env,p,id(c.req.param('id')))});});
 
 agentRoutes.put("/rider-presence", async (context) => {
   const user = currentUser(context);
@@ -1681,7 +1720,7 @@ agentRoutes.put("/rider-presence", async (context) => {
       "BAD_REQUEST",
       "Choose a valid rider availability state.",
     );
-  const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
+  const profile = await approvedProfile(context, user.id, "RIDER",user.universityId);
   if(parsed.data.online && (await riderFinanceSummary(context.env,user.id,user.universityId))?.rides_suspended)
     throw new AppError(409,'CONFLICT','Pay your four unpaid ride commissions from Earnings before going online.');
   await database(context.env).execute(sql`
@@ -1703,7 +1742,7 @@ agentRoutes.post("/deliveries/:id/reserve", async (context) => {
     "Delivery operations are not enabled in this environment.",
   );
   const user = currentUser(context);
-  const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
+  const profile = await approvedProfile(context, user.id, "RIDER",user.universityId);
   const pickupRoute=await routeRiderToPickup(context.env,profile,id(context.req.param('id')));
   let result;
   try {
@@ -1753,7 +1792,7 @@ agentRoutes.post("/deliveries/:id/reserve", async (context) => {
 
 agentRoutes.post("/deliveries/:id/pickup", async (context) => {
   const user = currentUser(context);
-  const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
+  const profile = await approvedProfile(context, user.id, "RIDER",user.universityId);
   const parsed = handoffCodeSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(400, "BAD_REQUEST", "Enter the six-digit pickup code.");
@@ -1797,7 +1836,7 @@ agentRoutes.post("/deliveries/:id/pickup", async (context) => {
 
 agentRoutes.post("/deliveries/:id/complete", async (context) => {
   const user = currentUser(context);
-  const profile = await approvedProfile(context.env, user.id, "RIDER",user.universityId);
+  const profile = await approvedProfile(context, user.id, "RIDER",user.universityId);
   const parsed = handoffCodeSchema.safeParse(await body(context));
   if (!parsed.success)
     throw new AppError(

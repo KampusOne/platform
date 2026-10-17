@@ -1,3 +1,4 @@
+import { learningSearchTerms, learningTypeLabels } from '../../../packages/contracts/src/learning-search';
 import {acquisitionSchema} from '../lib/acquisition';
 import {isSingleCourseCode,courseCodeIdentity} from "../lib/course-code";
 import { sql } from "drizzle-orm";
@@ -953,7 +954,9 @@ studentRoutes.get("/tutorials", async (context) => {
   const universityId = requireUniversity(user);
   const paidAccessEnabled = featureEnabled(context.env, "PAYMENTS_ENABLED");
   const query = context.req.query("q")?.trim();
-  const search = query ? `%${query}%` : null;
+  const terms = learningSearchTerms(query ?? '');
+  const pattern = (term: string) => `%${term.replace(/[\\%_]/g, '\\$&')}%`;
+  const resourceLabels = sql`case resources.resource_type ${sql.join(Object.entries(learningTypeLabels).map(([type, labels]) => sql`when ${type} then ${labels}`), sql` `)} else resources.resource_type end`;
   const resourceType = context.req.query("resourceType")?.trim().toUpperCase();
   const allowedResourceTypes = new Set([
     "PAST_QUESTION",
@@ -1020,9 +1023,8 @@ studentRoutes.get("/tutorials", async (context) => {
         and (${paidAccessEnabled} or listings.price_kobo = 0)
         and profiles.status = 'ACTIVE'
         and ${tutorVisible}
-        and (${search}::text is null or listings.title ilike ${search}
-          or listings.course_code ilike ${search}
-          or coalesce(profiles.display_name, listings.publisher_name, '') ilike ${search})
+        and ${terms.length ? sql.join(terms.map(term => sql`concat_ws(' ', listings.title, listings.description, listings.course_code,
+          profiles.display_name, listings.publisher_name, 'tutor tutors tutorial tutorials') ilike ${pattern(term)}`), sql` and `) : sql`true`}
         and exists (
           select 1 from public.tutorial_availability_windows windows
           where windows.listing_id = listings.id and windows.status = 'OPEN' and windows.starts_at > now()
@@ -1038,7 +1040,7 @@ studentRoutes.get("/tutorials", async (context) => {
       select resources.id, resources.listing_id, resources.course_code, resources.title,
         resources.description, resources.resource_type, resources.access_model, resources.cover_url,resources.subject,resources.parts,resources.created_at,
         resources.price_kobo, resources.level_code, resources.batch_label,
-        resources.publisher_name, resources.publisher_verified, resources.preview_text,
+        resources.publisher_name, resource_tutor.display_name as tutor_name, resources.publisher_verified, resources.preview_text,
         resources.page_count, resources.duration_seconds, resources.download_count,
         resources.is_demo,
         ${context.env.UNIFIED_SCHEMA_READY === "true" ? sql`resources.media_object_id` : sql`null::uuid`} media_object_id,
@@ -1052,20 +1054,42 @@ studentRoutes.get("/tutorials", async (context) => {
         and resource_tutor.status='ACTIVE'
         and (${paidAccessEnabled} or resources.access_model <> 'PAID')
         and (${resourceType ?? null}::text is null or resources.resource_type = ${resourceType ?? null})
-        and (${search}::text is null or resources.title ilike ${search}
-          or resources.description ilike ${search} or resources.course_code ilike ${search}
-          or resources.publisher_name ilike ${search})
+        and ${terms.length ? sql.join(terms.map(term => sql`concat_ws(' ', resources.title, resources.description, resources.course_code,
+          resources.publisher_name, resource_tutor.display_name, resources.subject, ${resourceLabels},
+          case when jsonb_array_length(resources.parts)>1 then 'playlist playlists playbook playbooks collection collections' end,
+          (select string_agg(part->>'title',' ') from jsonb_array_elements(resources.parts) part)) ilike ${pattern(term)}`), sql` and `) : sql`true`}
       order by resources.created_at desc,resources.id desc limit 150
     `),
   ]);
-  const tutorialPricing = await inclusiveListings(context.env,universityId,'TUTORIAL',listings.rows);
-  const tutorialBillingReady=await pricedTutorialReady(context.env);
-  const materialReady=await materialCommerceReady(context.env),resourcePricing=await inclusiveListings(context.env,universityId,'TUTORIAL',resources.rows);
-  return context.json({ listings: tutorialPricing.items.map(l=>({...l,pricing_ready:Number(l.price_kobo)===0 || (l.pricing_ready && paidAccessEnabled && tutorialBillingReady)})), resources: resourcePricing.items.map(r=>({...r,pricing_ready:r.access_model!=='PAID'||(r.pricing_ready&&paidAccessEnabled&&materialReady)})) });
+  if (!listings.rows.length && !resources.rows.length)
+    return context.json({ listings: [], resources: [] });
+  // Both collections use the same campus policy. Resolve it once, alongside
+  // the independent readiness checks, rather than repeating a pricing waterfall.
+  const [pricing, tutorialBillingReady, materialReady] = await Promise.all([
+    inclusiveListings(context.env, universityId, 'TUTORIAL', [...listings.rows, ...resources.rows]),
+    pricedTutorialReady(context.env), materialCommerceReady(context.env),
+  ]);
+  return context.json({
+    listings: pricing.items.slice(0, listings.rows.length).map(l => ({ ...l, pricing_ready: Number(l.price_kobo) === 0 || (l.pricing_ready && paidAccessEnabled && tutorialBillingReady) })),
+    resources: pricing.items.slice(listings.rows.length).map(r => ({ ...r, pricing_ready: r.access_model !== 'PAID' || (r.pricing_ready && paidAccessEnabled && materialReady) })),
+  });
 });
 
-studentRoutes.get('/tutors',async c=>{
- const u=currentUser(c);const rows=await database(c.env).execute(sql`select a.id,a.user_id,a.display_name,a.biography,a.verified_at,a.public_details->'categories' specialties,coalesce(a.public_details->>'profileImageUrl',p.profile_image_url) profile_image_url from public.agent_profiles a left join public.profiles p on p.user_id=a.user_id where a.university_id=${u.universityId}::uuid and a.agent_type='TUTOR' and a.status='ACTIVE' and not exists(select 1 from public.user_blocks b where(b.blocker_id=${u.id}::uuid and b.blocked_id=a.user_id)or(b.blocked_id=${u.id}::uuid and b.blocker_id=a.user_id)) order by a.display_name limit 200`);return c.json({tutors:rows.rows});
+studentRoutes.get('/tutors', async c => {
+  requireFeature(c.env, 'TUTORIALS_ENABLED', 'Tutor discovery is not enabled in this environment.');
+  const u = currentUser(c), universityId = requireUniversity(u);
+  const terms = learningSearchTerms(c.req.query('q') ?? '');
+  const rows = await database(c.env).execute(sql`
+    select a.id, a.user_id, a.display_name, a.biography, a.verified_at,
+      a.public_details->'categories' as specialties,
+      coalesce(a.public_details->>'profileImageUrl',p.profile_image_url) as profile_image_url
+    from public.agent_profiles a left join public.profiles p on p.user_id=a.user_id
+    where a.university_id=${universityId}::uuid and a.agent_type='TUTOR' and a.status='ACTIVE'
+      and not exists(select 1 from public.user_blocks b where (b.blocker_id=${u.id}::uuid and b.blocked_id=a.user_id) or (b.blocked_id=${u.id}::uuid and b.blocker_id=a.user_id))
+      and ${terms.length ? sql.join(terms.map(term => sql`concat_ws(' ',a.display_name,a.biography,a.public_details->'categories','tutor tutors tutorial tutorials') ilike ${'%' + term.replace(/[\\%_]/g, '\\$&') + '%'}`), sql` and `) : sql`true`}
+    order by a.display_name, a.id limit 200
+  `);
+  return c.json({ tutors: rows.rows });
 });
 
 studentRoutes.get('/learning-saved',async c=>{

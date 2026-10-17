@@ -1,3 +1,4 @@
+import { matchesLearningSearch } from '../../../packages/contracts/src/learning-search';
 import { LearningFeed } from "@/src/components/learning-feed";
 import { TutorDirectory } from "@/src/components/tutor-directory";
 import { SearchLoading } from "@/src/components/search-loading";
@@ -88,6 +89,7 @@ type Resource = {
   level_code: string | null;
   batch_label: string | null;
   publisher_name: string;
+  tutor_name?: string;
   publisher_verified: boolean;
   preview_text: string | null;
   file_url: string | null;
@@ -666,13 +668,18 @@ export default function TutorialsScreen() {
     null,
   );
 
+  const readRequest = useRef<AbortController | null>(null);
   const load = useCallback(async () => {
+    readRequest.current?.abort();
+    const controller = new AbortController(); readRequest.current = controller;
     try {
+      setLoading(true);
       setLoadError("");
       const catalogue = await api<{
         listings: Listing[];
         resources?: Resource[];
-      }>("/v1/student/tutorials");
+      }>("/v1/student/tutorials" + (searchTerm ? '?q=' + encodeURIComponent(searchTerm) : ''), { signal: controller.signal });
+      if (controller.signal.aborted) return;
       const safeListings = Array.isArray(catalogue?.listings)
         ? catalogue.listings
         : [];
@@ -727,19 +734,21 @@ export default function TutorialsScreen() {
         ),
       );
     } catch (caught) {
+      if (controller.signal.aborted) return;
       setLoadError(
         caught instanceof ApiError
           ? caught.message
           : "Tutorials could not be loaded.",
       );
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, []);
+  }, [searchTerm]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
+      return () => readRequest.current?.abort();
     }, [load]),
   );
 
@@ -756,12 +765,7 @@ export default function TutorialsScreen() {
   const filtered = useMemo(
     () =>
       listings.filter((item) => {
-        const needle = searchTerm;
-        const matchesQuery =
-          !needle ||
-          `${item.course_code} ${item.title} ${item.description} ${item.tutor_name}`
-            .toLowerCase()
-            .includes(needle);
+        const matchesQuery = matchesLearningSearch(item, searchTerm);
         const matchesFormat =
           activeFormat === "All" || displayFormat(item.format) === activeFormat;
         return focusedListing
@@ -774,12 +778,7 @@ export default function TutorialsScreen() {
   const filteredResources = useMemo(
     () =>
       resources.filter((item) => {
-        const needle = searchTerm;
-        const matchesQuery =
-          !needle ||
-          `${item.course_code} ${item.title} ${item.description} ${item.publisher_name}`
-            .toLowerCase()
-            .includes(needle);
+        const matchesQuery = matchesLearningSearch(item, searchTerm);
         const matchesCategory =
           selectedCategory === "All" ||
           resourceCategory[item.resource_type] === selectedCategory;
@@ -925,7 +924,7 @@ export default function TutorialsScreen() {
         keyboardShouldPersistTaps="handled"
         keyExtractor={(listing) => listing.id}
         ListEmptyComponent={
-          canShowEmpty && !searchPending && !filteredResources.length ? (
+          canShowEmpty && !loading && !searchPending && !filteredResources.length && selectedCategory !== 'Tutors' && !searchTerm ? (
             <TutorialsEmptyState filtered={hasActiveFilter} />
           ) : null
         }
@@ -933,16 +932,16 @@ export default function TutorialsScreen() {
           <>
             <SearchField
               onChangeText={setQuery}
-              placeholder="Search a course, topic or tutor"
+              placeholder="Search tutors, materials, videos, PDFs…"
               value={query}
             />
             {query.trim()?<View accessibilityLiveRegion="polite" style={{flexDirection:"row",alignItems:"center",gap:9,paddingVertical:10}}>
               <Ionicons name="search-outline" size={17} color={theme.brand}/>
               <Text style={{fontFamily:theme.font.medium,color:theme.textMuted,fontSize:12,flex:1}}>
-                {searchPending?"Searching tutors and courses…":`${filtered.length+filteredResources.length} matching tutorials and resources`}
+                {searchPending || loading ? "Searching tutors and materials…" : `${filtered.length + filteredResources.length} matching sessions and materials`}
               </Text>
             </View>:null}
-            {searchPending?<SearchLoading label="Searching tutors and courses…" hasResults={filtered.length+filteredResources.length>0}/>:null}
+            {searchPending?<SearchLoading label="Searching tutors and materials…" hasResults={filtered.length+filteredResources.length>0}/>:null}
             <View style={styles.categories}>
               <FilterRow
                 items={learningCategories}
