@@ -17,6 +17,7 @@ import { ApiError, api, peekApiCache } from "@/src/lib/api";
 import { sharePostLink, wasPostDeleted, type FeedPostData } from "@/src/lib/feed-posts";
 import { mergeById, type FeedPage, type SocialFeedPost } from "@/src/lib/feed-social";
 import { recordPostView } from "@/src/lib/post-views";
+import { applyPostViewCounts } from "@/src/lib/feed-view-state";
 
 import {opportunityTypes,opportunityLabels} from '../../../packages/contracts/src/opportunities';
 import {ChoiceField} from '@/src/components/choice-field';
@@ -73,6 +74,7 @@ export default function FeedScreen() {
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 70, minimumViewTime: 250 }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
     const viewerId = viewer.current;
+    const viewCounts: Promise<readonly [string, number | null]>[] = [];
     let nextVideoId: string | null = null;
     for (const token of viewableItems) {
       const post = token.item as SocialFeedPost;
@@ -83,15 +85,16 @@ export default function FeedScreen() {
           : Boolean(post.image_url && (post.media_type === "video" || post.media_type?.startsWith("video/")));
       if (!nextVideoId && hasVideo) nextVideoId = post.id;
       if (viewerId) {
-        void recordPostView(post.id, viewerId).then((count) => {
-          if (count !== null && viewer.current === viewerId) {
-            setPosts((items) => items.map((item) => item.id === post.id ? { ...item, view_count: Math.max(item.view_count ?? 0, count) } : item));
-          }
-        });
+        viewCounts.push(recordPostView(post.id, viewerId).then(count => [post.id, count] as const));
       }
     }
     visibleVideoId.current = nextVideoId;
     setVideoPlayback(feedFocused.current && appActive.current ? nextVideoId : null);
+    if (viewCounts.length) void Promise.all(viewCounts).then(entries => {
+      if (viewer.current !== viewerId) return;
+      const counts = new Map(entries.filter((entry): entry is readonly [string, number] => entry[1] !== null));
+      if (counts.size) setPosts(items => applyPostViewCounts(items, counts));
+    });
   }).current;
 
   const registerVideoHandle = useCallback((postId: string, handle: MediaPlaybackHandle | null) => {

@@ -1,0 +1,11 @@
+{
+  "method": "Synthetic Node benchmark; 500 loaded posts, 20 already-confirmed visible views, 1000 callbacks; median of 7 rounds. Excludes network and native rendering.",
+  "beforeMs": 54.078963999999985,
+  "afterMs": 3.2599500000000035,
+  "speedup": 16.588893694688547,
+  "redundantListCopiesPer100Callbacks": {
+    "before": 2000,
+    "after": 0
+  },
+  "nativeDeviceTimingMeasured": false
+}

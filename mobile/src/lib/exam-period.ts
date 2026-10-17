@@ -5,6 +5,12 @@ export function countdownParts(target: number, now = Date.now()) {
   const seconds = Math.max(0, Math.floor((target-now)/1000));
   return { days:Math.floor(seconds/86400),hours:Math.floor(seconds%86400/3600),minutes:Math.floor(seconds%3600/60),seconds:seconds%60 };
 }
+export function examCountdown(period: ExamPeriod, now = Date.now()) {
+  const starts = examPeriodStart(period), ends = examPeriodEnd(period) + 1_000;
+  const phase = now >= ends ? 'completed' : now >= starts ? 'ongoing' : 'upcoming';
+  const target = phase === 'upcoming' ? starts : ends;
+  return { phase, ...countdownParts(target, now), daysRemaining: Math.max(0, Math.ceil((target - now) / 86400_000)) };
+}
 export function currentExamPeriod(periods: ExamPeriod[], now = Date.now()) {
   return periods.find(p=>examPeriodStart(p)<=now&&examPeriodEnd(p)>=now) ?? periods.find(p=>examPeriodStart(p)>now) ?? null;
 }
