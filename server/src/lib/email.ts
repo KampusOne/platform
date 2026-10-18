@@ -58,6 +58,10 @@ function transactionalEmail(input: MailInput) {
     intro: content.intro,
     ...(input.firstName !== undefined ? { firstName: input.firstName } : {}),
     ...(input.code !== undefined ? { code: input.code } : {}),
+    recipientEmail: input.to,
+    ...(input.kind === "welcome"
+      ? { actionLabel: "Open KampusOne", actionUrl: "https://kampusone.app/download" }
+      : {}),
     ...("note" in content && content.note ? { note: content.note } : {}),
   });
 }
