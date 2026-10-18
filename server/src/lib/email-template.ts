@@ -83,7 +83,7 @@ function preheader(value: string) {
 // Text stays legible when the recipient's email client blocks external imagery.
 // Lato matches the official KampusOne wordmark typography.
 function wordmark(color: string, muted: string) {
-  return `<div style="font:600 30px/1.1 Lato,Arial,sans-serif;letter-spacing:-.035em;color:${color}">KampusOne</div><div style="margin-top:7px;font:500 11px/1.4 Inter,Arial,sans-serif;letter-spacing:.07em;color:${muted}">Already Ready for School</div>`;
+  return `<div style="font:400 30px/1.1 Lato,Arial,sans-serif;letter-spacing:-.035em;color:${color}">KampusOne</div><div style="margin-top:7px;font:500 11px/1.4 Inter,Arial,sans-serif;letter-spacing:.07em;color:${muted}">Already Ready for School</div>`;
 }
 
 function baseOpen(title: string, preview: string) {
