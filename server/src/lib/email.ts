@@ -43,9 +43,9 @@ const copy = {
   },
   welcome: {
     subject: "Welcome to KampusOne",
-    label: "Welcome to KampusOne",
-    heading: "You're already ready.",
-    intro: "Your account is verified. Add your school details and KampusOne will organise the day around you.",
+    label: "Welcome aboard",
+    heading: "Welcome to KampusOne.",
+    intro: "Your account is ready. Keep track of classes, explore your campus, find study resources and stay connected—all in one place.",
   },
 } as const;
 
