@@ -11,6 +11,12 @@ export interface SnapshotIO {
 }
 const prefix = 'k1.encrypted.v1.';
 const maxRecord = 256 * 1024, maxBytes = 2 * 1024 * 1024, maxRecords = 60;
+
+/** SQLite capacity may be exhausted without exhausting the phone's free space. */
+export function isStorageCapacityError(error: unknown): boolean {
+    const message = typeof error === 'string' ? error : error && typeof error === 'object' && 'message' in error ? String(error.message) : '';
+    return /SQLITE_FULL|database (?:or disk )?is full|(?:^|\b)code\s*13(?:\b|$)/i.test(message);
+}
 export class SnapshotReadError extends Error {
     constructor() {
         super('Your saved draft could not be restored. Its saved copy has been kept. Try again before editing.');
@@ -58,6 +64,35 @@ export class SecureSnapshots {
         this.queue = task.catch(() => undefined);
         return task;
     }
+    /**
+     * Emergency recovery only: authenticate each encrypted record before removal.
+     * Unknown, damaged and protected user work is always retained.
+     */
+    private async reclaimDisposableRecords(expectedScope: { value: string; owner: string; epoch: number }): Promise<number> {
+        if (this.scope !== expectedScope) return 0;
+        let removed = 0;
+        for (const location of await this.io.keys()) {
+            if (this.scope !== expectedScope) return removed;
+            const match = /^k1\.encrypted\.v1\.([a-f0-9]{64})\.([a-f0-9]{64})$/i.exec(location);
+            if (!match) continue;
+            try {
+                const raw = await this.io.get(location);
+                if (!raw || raw.length > maxRecord * 2) continue;
+                const envelope = JSON.parse(raw) as { v?: number; sealed?: unknown };
+                if (envelope.v !== 1 || typeof envelope.sealed !== 'string') continue;
+                const plaintext = await this.io.open(match[1]!, envelope.sealed, location);
+                if (!plaintext) continue;
+                const record = JSON.parse(plaintext) as RecordValue<unknown>;
+                // Only explicitly disposable view snapshots or empty DM records.
+                if (record.version !== 1 || record.protectedDraft !== false) continue;
+                if (this.scope !== expectedScope) return removed;
+                await this.io.remove(location);
+                removed++;
+            } catch { /* A damaged or unreadable record is kept for recovery. */ }
+        }
+        return removed;
+    }
+
     private allowed(key: string, owner: string) {
         // Finances, roles, quotas, raw credentials and unknown payloads remain memory-only.
         if (key.startsWith('snapshot.'))
@@ -125,6 +160,19 @@ export class SecureSnapshots {
         if (!scope || !this.allowed(key, scope.owner) || !Number.isFinite(ttl) || ttl <= 0)
             return Promise.resolve();
         return this.serial(async () => {
+            try {
+                await this.writeScoped(scope, key, data, ttl);
+            } catch (error) {
+                if (!isStorageCapacityError(error) || this.scope !== scope) throw error;
+                const reclaimed = await this.reclaimDisposableRecords(scope);
+                if (!reclaimed || this.scope !== scope) throw error;
+                // Retry once from scratch with a fresh index after safe reclamation.
+                await this.writeScoped(scope, key, data, ttl);
+            }
+        });
+    }
+
+    private async writeScoped(scope: { value: string; owner: string; epoch: number }, key: string, data: unknown, ttl: number): Promise<void> {
             if (this.scope !== scope)
                 return;
             const scopeId = await this.io.hash(this.scopeValue(scope, key)), id = await this.io.hash(key);
@@ -161,7 +209,7 @@ export class SecureSnapshots {
                     }
                     try {
                         const entries = JSON.parse(await this.io.get(prefix + candidate + '.index') ?? 'null');
-                        if (Array.isArray(entries) && entries.every(entry => entry.keep === false || Number.isFinite(entry.expires) && entry.expires <= this.now())) {
+                        if (Array.isArray(entries) && entries.every(entry => entry.keep === false)) {
                             position = i;
                             break;
                         }
@@ -227,9 +275,9 @@ export class SecureSnapshots {
             if (this.scope !== scope)
                 return;
             for (const entry of index)
-                if (Number.isFinite(entry.expires) && entry.expires! <= this.now())
+                if (entry.keep === false && Number.isFinite(entry.expires) && entry.expires! <= this.now())
                     await this.io.remove(entry.key);
-            index = index.filter(entry => !Number.isFinite(entry.expires) || entry.expires! > this.now());
+            index = index.filter(entry => entry.keep !== false || !Number.isFinite(entry.expires) || entry.expires! > this.now());
             index = index.filter(r => r.key !== location).sort((a, b) => a.at - b.at);
             let bytes = index.reduce((sum, r) => sum + r.bytes, 0) + raw.length * 2;
             while (index.length && (bytes > maxBytes || index.length >= maxRecords)) {
@@ -245,8 +293,8 @@ export class SecureSnapshots {
             await this.io.set(location, raw);
             index.push({ key: location, bytes: raw.length * 2, at: this.now(), keep, expires: this.now() + ttl });
             await this.io.set(indexKey, JSON.stringify(index));
-        });
     }
+
     remove(key: string): Promise<void> {
         const scope = this.scope;
         if (!scope)

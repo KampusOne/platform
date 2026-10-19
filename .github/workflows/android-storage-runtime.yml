@@ -42,6 +42,9 @@ jobs:
           node scripts/native-compile-fixture.cjs
           node -e 'const fs=require("fs"),p=require("./package.json");p.main="scripts/native-storage-smoke.tsx";fs.writeFileSync("package.json",JSON.stringify(p,null,2))'
           npx expo prebuild --platform android --no-install --skip-dependency-update react-native,react
+      - name: Verify native Android AsyncStorage quota
+        working-directory: mobile
+        run: grep -q '^AsyncStorage_db_size_in_MB=16$' android/gradle.properties
       - name: Assemble isolated smoke APK with debug signing and Hermes
         working-directory: mobile/android
         run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=2 --no-daemon

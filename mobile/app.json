@@ -111,7 +111,8 @@
         {
           "locationWhenInUsePermission": "Allow KampusOne to use your location while you navigate around campus."
         }
-      ]
+      ],
+      "./plugins/with-kampus-async-storage"
     ],
     "extra": {
       "apiUrl": "https://mobile.kampusone.app/api",

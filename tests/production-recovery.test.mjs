@@ -45,13 +45,21 @@ test('snapshot disk quotas and record limits are bounded',async()=>{
  assert.ok([...f.data.keys()].filter(k=>!k.endsWith('.index')&&!k.endsWith('.scopes')).length<=60);
  await f.store.write('cart.'+account,'x'.repeat(270000),1000);assert.equal(await f.store.read('cart.'+account),null);
 });
-test('display snapshots cannot silently evict pending drafts; expired draft space can be reused',async()=>{
+test('display snapshots cannot silently evict pending drafts, even after expiration',async()=>{
  const f=fixture();f.store.activate('scope',account);
  for(let i=0;i<60;i++)await f.store.write('message-draft.'+account+'.'+i,{text:'Pending '+i},1000);
  await f.store.write('snapshot./v1/student/gpa',{gpa:4.5},1000);
  assert.equal((await f.store.read('message-draft.'+account+'.0')).data.text,'Pending 0');
  assert.equal(await f.store.read('snapshot./v1/student/gpa'),null);
- f.advance(1001);await f.store.write('cart.'+account,{items:1},1000);assert.equal((await f.store.read('cart.'+account)).data.items,1);
+ const recordCount=[...f.data.keys()].filter(k=>!k.endsWith('.index')&&!k.endsWith('.scopes')).length;
+ f.advance(1001);
+ await f.store.write('cart.'+account,{items:1},1000);
+ assert.equal(await f.store.read('cart.'+account),null);
+ assert.equal([...f.data.keys()].filter(k=>!k.endsWith('.index')&&!k.endsWith('.scopes')).length,recordCount);
+ // Removing a draft explicitly, unlike expiration, permits space reuse.
+ await f.store.remove('message-draft.'+account+'.0');
+ await f.store.write('cart.'+account,{items:1},1000);
+ assert.equal((await f.store.read('cart.'+account)).data.items,1);
 });
 test('owned work survives role changes while server snapshots remain role scoped',async()=>{
  const f=fixture(),draft='calendar-local.'+account,view='snapshot./v1/student/timetable';
@@ -62,11 +70,14 @@ test('owned work survives role changes while server snapshots remain role scoped
  f.store.activate(JSON.stringify([account,'B',['student','tutor'],[]]),account);assert.equal(await f.store.read(draft),null);
  await f.store.clear();assert.equal(f.keys.size,0);
 });
-test('scope pressure never evicts protected work to create another scope',async()=>{
+test('scope pressure retains encrypted protected work after expiry rather than wiping another account view',async()=>{
  const f=fixture();for(let i=0;i<4;i++){f.store.activate('scope'+i,account);await f.store.write('timetable-draft.'+account,{text:'Pending '+i},60000);}
  f.store.activate('scope4',account);await f.store.write('snapshot./v1/student/timetable',{entries:[]},60000);assert.equal(await f.store.read('snapshot./v1/student/timetable'),null);
  f.store.activate('scope0',account);assert.equal((await f.store.read('timetable-draft.'+account)).data.text,'Pending 0');
- f.advance(60001);f.store.activate('scope4',account);await f.store.write('snapshot./v1/student/timetable',{entries:[]},60000);assert.ok(await f.store.read('snapshot./v1/student/timetable'));
+ const keysBefore=[...f.data.keys()].sort();
+ f.advance(60001);f.store.activate('scope4',account);await f.store.write('snapshot./v1/student/timetable',{entries:[]},60000);
+ assert.equal(await f.store.read('snapshot./v1/student/timetable'),null);
+ assert.deepEqual([...f.data.keys()].sort(),keysBefore); // Expiration cannot discard unsent work.
 });
 test('telemetry is encrypted, disposable, short lived and isolated by current institution and roles',async()=>{
  const f=fixture(),key='telemetry.'+account;f.store.activate(JSON.stringify([account,'A',['STUDENT'],[]]),account);await f.store.write(key,[{screen:'private-measurement'}],48*3600000);assert.equal([...f.data.values()].join('').includes('private-measurement'),false);assert.equal((await f.store.read(key)).data[0].screen,'private-measurement');
