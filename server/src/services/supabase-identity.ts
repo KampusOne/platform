@@ -105,19 +105,60 @@ export async function supabaseAuthRequest(
   }
 }
 
-export async function configuredSocialProviders(env: Bindings) {
-  const parsed = z
-    .object({ external: z.record(z.string(), z.boolean()) })
-    .safeParse(await supabaseAuthRequest(env, "settings"));
-  if (!parsed.success)
-    throw new AppError(
-      503,
-      "PROVIDER_UNAVAILABLE",
-      "Sign-in methods could not be checked. Please try again.",
+type SocialProvider = "google" | "apple";
+type SocialProviderCache = {
+  providers: SocialProvider[];
+  expiresAt: number;
+  staleUntil: number;
+};
+// Module-local data cache only: never share a pending fetch between Worker
+// requests (workerd isolates prohibit cross-request I/O). No database reads,
+// polling, or client-side waits are added to other app screens.
+const socialProviderCache = new Map<string, SocialProviderCache>();
+const SOCIAL_PROVIDER_TTL_MS = 5 * 60_000;
+const SOCIAL_PROVIDER_STALE_MS = 15 * 60_000;
+
+export async function configuredSocialProviders(env: Bindings): Promise<SocialProvider[]> {
+  const { url, key } = supabaseConfiguration(env);
+  const cacheKey = `${url}:${key}`;
+  const existing = socialProviderCache.get(cacheKey);
+  if (existing && Date.now() < existing.expiresAt)
+    return [...existing.providers];
+
+  try {
+    const parsed = z
+      .object({ external: z.record(z.string(), z.boolean()) })
+      .safeParse(await supabaseAuthRequest(env, "settings"));
+    if (!parsed.success)
+      throw new AppError(
+        503,
+        "PROVIDER_UNAVAILABLE",
+        "Sign-in methods could not be checked. Please try again.",
+      );
+    const providers = (["google", "apple"] as const).filter(
+      (provider) => parsed.data.external[provider] === true,
     );
-  return (["google", "apple"] as const).filter(
-    (provider) => parsed.data.external[provider] === true,
-  );
+    // Bound memory in long-lived isolates even if configurations rotate.
+    if (socialProviderCache.size >= 16 && !socialProviderCache.has(cacheKey))
+      socialProviderCache.clear();
+    const now = Date.now();
+    socialProviderCache.set(cacheKey, {
+      providers: [...providers],
+      expiresAt: now + SOCIAL_PROVIDER_TTL_MS,
+      staleUntil: now + SOCIAL_PROVIDER_TTL_MS + SOCIAL_PROVIDER_STALE_MS,
+    });
+    return [...providers];
+  } catch (caught) {
+    // A temporary provider-settings outage must not hide previously confirmed
+    // Google/Apple buttons; the provider still validates each actual sign-in.
+    if (
+      existing &&
+      Date.now() < existing.staleUntil &&
+      caught instanceof AppError &&
+      caught.status >= 500
+    ) return [...existing.providers];
+    throw caught;
+  }
 }
 // Provider identity is verified with Auth; user-editable metadata never assigns a role.
 export async function resolveSupabaseIdentity(
