@@ -68,9 +68,11 @@ export class SecureSnapshots {
      * Emergency recovery only: authenticate each encrypted record before removal.
      * Unknown, damaged and protected user work is always retained.
      */
-    private async reclaimDisposableRecords(): Promise<number> {
+    private async reclaimDisposableRecords(expectedScope: { value: string; owner: string; epoch: number }): Promise<number> {
+        if (this.scope !== expectedScope) return 0;
         let removed = 0;
         for (const location of await this.io.keys()) {
+            if (this.scope !== expectedScope) return removed;
             const match = /^k1\.encrypted\.v1\.([a-f0-9]{64})\.([a-f0-9]{64})$/i.exec(location);
             if (!match) continue;
             try {
@@ -83,6 +85,7 @@ export class SecureSnapshots {
                 const record = JSON.parse(plaintext) as RecordValue<unknown>;
                 // Only explicitly disposable view snapshots or empty DM records.
                 if (record.version !== 1 || record.protectedDraft !== false) continue;
+                if (this.scope !== expectedScope) return removed;
                 await this.io.remove(location);
                 removed++;
             } catch { /* A damaged or unreadable record is kept for recovery. */ }
@@ -161,7 +164,7 @@ export class SecureSnapshots {
                 await this.writeScoped(scope, key, data, ttl);
             } catch (error) {
                 if (!isStorageCapacityError(error) || this.scope !== scope) throw error;
-                const reclaimed = await this.reclaimDisposableRecords();
+                const reclaimed = await this.reclaimDisposableRecords(scope);
                 if (!reclaimed || this.scope !== scope) throw error;
                 // Retry once from scratch with a fresh index after safe reclamation.
                 await this.writeScoped(scope, key, data, ttl);
