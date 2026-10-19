@@ -45,7 +45,7 @@ export async function uploadMessageFile(
   });
   if (session.status === 'COMPLETE' && session.mediaId) {
     onProgress(1);
-    if(kind==='message'||kind==='post')await AsyncStorage.removeItem(key);
+    await AsyncStorage.removeItem(key).catch(() => undefined);
     return session.mediaId;
   }
   if (!Number.isInteger(session.chunkBytes) || session.chunkBytes < 1 || session.chunkBytes > 5 * 1024 * 1024) {
@@ -100,7 +100,7 @@ export async function uploadMessageFile(
     }
     const result = await api<{ id: string }>(`/v1/media/message-uploads/${session.id}/complete`, { method: 'POST',signal:signal??null, timeoutMs: 60_000 });
     onProgress(1);
-    if(kind==='message'||kind==='post')await AsyncStorage.removeItem(key);
+    await AsyncStorage.removeItem(key).catch(() => undefined);
     return result.id;
   } finally {
     try { handle?.close(); } catch { /* The OS may already have closed the file. */ }
