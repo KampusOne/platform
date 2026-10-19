@@ -40,6 +40,20 @@ describe('bounded native message uploads', () => {
     expect(mock.reads).toEqual([{ offset: 10, length: 2 }]);
     expect(mock.api.mock.calls.some(([path]) => String(path).endsWith('/parts/1'))).toBe(false);
   });
+  it('removes successful resource and tutorial upload checkpoint records', async () => {
+    for (const kind of ['resource', 'tutorial'] as const) {
+      expect(await uploadMessageFile('student', file, vi.fn(), kind)).toBe('media-1');
+      expect(mock.storage.size).toBe(0);
+      mock.storage.set('k1.message-upload.legacy', 'do-not-touch');
+      mock.storage.delete('k1.message-upload.legacy');
+    }
+  });
+  it('removes already completed upload checkpoints without creating duplicates', async () => {
+    mock.session.status = 'COMPLETE';
+    mock.session.mediaId = 'media-1';
+    expect(await uploadMessageFile('student', file, vi.fn(), 'resource')).toBe('media-1');
+    expect(mock.storage.size).toBe(0);
+  });
   it('closes the native file on failure and retains a retry id', async () => {
     mock.api.mockImplementation(async (path: string) => { if (path.includes('/parts/')) throw new Error('Network unavailable'); return mock.session; });
     await expect(uploadMessageFile('student', file, vi.fn())).rejects.toThrow('Network unavailable');
