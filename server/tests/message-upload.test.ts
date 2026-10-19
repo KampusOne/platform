@@ -44,8 +44,6 @@ describe('bounded native message uploads', () => {
     for (const kind of ['resource', 'tutorial'] as const) {
       expect(await uploadMessageFile('student', file, vi.fn(), kind)).toBe('media-1');
       expect(mock.storage.size).toBe(0);
-      mock.storage.set('k1.message-upload.legacy', 'do-not-touch');
-      mock.storage.delete('k1.message-upload.legacy');
     }
   });
   it('removes already completed upload checkpoints without creating duplicates', async () => {
