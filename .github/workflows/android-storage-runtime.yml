@@ -42,6 +42,35 @@ jobs:
           node scripts/native-compile-fixture.cjs
           node -e 'const fs=require("fs"),p=require("./package.json");p.main="scripts/native-storage-smoke.tsx";fs.writeFileSync("package.json",JSON.stringify(p,null,2))'
           npx expo prebuild --platform android --no-install --skip-dependency-update react-native,react
+      - name: Verify native Android AsyncStorage quota
+        working-directory: mobile
+        run: grep -q '^AsyncStorage_db_size_in_MB=16
+        working-directory: mobile/android
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=2 --no-daemon
+      - name: Enable hardware acceleration for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Exercise storage on Android 35 through the real JS and native bridges
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -cores 2 -memory 2048
+          disable-animations: true
+          working-directory: mobile
+          script: bash scripts/run-native-storage-smoke.sh
+      - name: Upload synthetic runtime verification only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-draft-storage-runtime-proof
+          path: mobile/native-storage-proof/
+          retention-days: 7
+          if-no-files-found: warn
+ android/gradle.properties
       - name: Assemble isolated smoke APK with debug signing and Hermes
         working-directory: mobile/android
         run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=2 --no-daemon
