@@ -15,7 +15,7 @@ const maxRecord = 256 * 1024, maxBytes = 2 * 1024 * 1024, maxRecords = 60;
 /** SQLite capacity may be exhausted without exhausting the phone's free space. */
 export function isStorageCapacityError(error: unknown): boolean {
     const message = typeof error === 'string' ? error : error && typeof error === 'object' && 'message' in error ? String(error.message) : '';
-    return /SQLITE_FULL|database (?:or disk )?is full|(?:^|\\b)code\\s*13(?:\\b|$)/i.test(message);
+    return /SQLITE_FULL|database (?:or disk )?is full|(?:^|\b)code\s*13(?:\b|$)/i.test(message);
 }
 export class SnapshotReadError extends Error {
     constructor() {
@@ -71,7 +71,7 @@ export class SecureSnapshots {
     private async reclaimDisposableRecords(): Promise<number> {
         let removed = 0;
         for (const location of await this.io.keys()) {
-            const match = /^k1\\.encrypted\\.v1\\.([a-f0-9]{64})\\.([a-f0-9]{64})$/i.exec(location);
+            const match = /^k1\.encrypted\.v1\.([a-f0-9]{64})\.([a-f0-9]{64})$/i.exec(location);
             if (!match) continue;
             try {
                 const raw = await this.io.get(location);
