@@ -104,7 +104,7 @@ test('typing 60 characters keeps the conversation cell renderer and message arra
     '@/src/lib/live-updates': { useLiveRefresh() {} }, '@/src/lib/message-read': { markConversationRead: async () => {} },
     '@/src/lib/screen-read': { refreshScreenRead: async (_path, publish) => { publish(data); return data; } },
     '@/src/lib/message-drafts': { readConversationDraft: async () => null, onPendingTextChange: () => () => {}, onTextDelivered: () => () => {}, saveConversationDraft: async () => {} },
-    '@/src/lib/request-policy': { cacheScopeForUser: () => 'scope' }, '@/src/lib/device-cache': { getDeviceCacheRevision: () => 0 },
+    '@/src/lib/request-policy': { cacheScopeForUser: () => 'scope' }, '@/src/lib/device-cache': { getDeviceCacheRevision: () => 0 }, '@/src/lib/secure-snapshots': { isStorageCapacityError: () => false },
     '@/src/lib/message-links': {}, '@/src/lib/share-content': {}, '@/src/lib/message-upload': {}, '@/src/lib/private-media-download': {}, '@/src/lib/text-retry-coordinator': {}, '@/src/lib/text-transfer': {}, '@/src/lib/api': {},
     'expo-crypto': {}, 'expo-document-picker': {}, 'expo-image-picker': {}, 'expo-image-manipulator': {},
   };
