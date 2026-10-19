@@ -449,7 +449,7 @@ authRoutes.post("/register", async (context) => {
   requireEmailProvider(context.env);
   await consumeAuthRateLimit(context, "REGISTER", parsed.data.email, 5, 900);
 
-  const existing = await findUserByEmail(context.env, parsed.data.email);
+  const existing = await findRegistrationAccount(context.env, parsed.data.email);
   if (existing) {
     if (!existing.email_verified_at) {
       try {
@@ -1097,3 +1097,25 @@ authRoutes.post("/reset-password", async (context) => {
   clearSessionCookies(context, context.env);
   return context.json({ status: "password_updated" });
 });
+
+// Registration needs only the identity and verification state. Avoid the
+// sign-in lookup's operator-role aggregation on every new student sign-up.
+async function findRegistrationAccount(env: Bindings, email: string) {
+  const result = await database(env).execute<{
+    id: string;
+    email: string;
+    email_verified_at: string | null;
+    first_name: string | null;
+  }>(sql`
+    select users.id, users.email, users.email_verified_at::text,
+           profiles.first_name
+    from public.users users
+    left join public.profiles profiles
+      on profiles.user_id = users.id and profiles.deleted_at is null
+    where users.email = ${email}
+      and users.deleted_at is null
+      and users.status::text = 'ACTIVE'
+    limit 1
+  `);
+  return firstRow(result);
+}
