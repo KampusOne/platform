@@ -56,6 +56,10 @@ import { RetryIconButton } from '@/src/components/retry-icon-button';
 import {cacheScopeForUser} from '@/src/lib/request-policy';
 import {transferTextOnce} from '@/src/lib/text-transfer';
 import {getDeviceCacheRevision} from '@/src/lib/device-cache';
+import {isStorageCapacityError} from '@/src/lib/secure-snapshots';
+
+// An Android AsyncStorage SQLite quota can be full even with free device space.
+const storagePressureNotice = "KampusOne cannot save this draft on this phone right now. Keep this conversation open, free up storage if needed, and tap Retry saving. Please do not clear app data.";
 
 type ReactionSummary = { reaction: MessageReaction; count: number };
 
@@ -682,7 +686,7 @@ export default function ConversationScreen() {
   }, [scope, user?.id, id, draftChannel, draftRetry]);
   useEffect(() => {
     if (!draftReady || !draftChannel.ready || !user?.id || !id) return;
-    const timer=setTimeout(()=>{void saveScopedConversationDraft(user.id, id, draftChannel.value).then(() => { if (activeScope.current === scope) setDraftWarning(""); }).catch(() => { if (activeScope.current === scope) setDraftWarning("This draft could not be saved on your device. Keep this screen open and try again."); });},300);
+    const timer=setTimeout(()=>{void saveScopedConversationDraft(user.id, id, draftChannel.value).then(() => { if (activeScope.current === scope) setDraftWarning(""); }).catch((caught) => { if (activeScope.current === scope) setDraftWarning(isStorageCapacityError(caught) ? storagePressureNotice : "This draft could not be saved on your device. Keep this screen open and try again."); });},300);
     return()=>clearTimeout(timer);
   }, [draftReady, draft, selectedMedia, replyingTo, voiceDraft, pendingMedia, sending, scope, user?.id, id, draftChannel]);
   useEffect(()=>{
@@ -737,7 +741,7 @@ export default function ConversationScreen() {
         if(lastSeen)void markConversationRead(id,lastSeen.id).catch(()=>undefined);
       }
     } catch (caught) {
-      if (activeScope.current === scope) setError(caught instanceof Error ? caught.message : "Conversation could not load.");
+      if (activeScope.current === scope) setError(isStorageCapacityError(caught) ? storagePressureNotice : caught instanceof Error ? caught.message : "Conversation could not load.");
     }
   }, [id, scope,user?.id]);
 
@@ -1096,9 +1100,8 @@ export default function ConversationScreen() {
       setDraft((current) => current || caption);
       setReplyingTo((current) => current ?? replySnapshot);
       setError(
-        caught instanceof Error
-          ? caught.message
-          : "Message not sent. Your draft is kept.",
+        isStorageCapacityError(caught) ? storagePressureNotice :
+        caught instanceof Error ? caught.message : "Message not sent. Your draft is kept.",
       );
     } finally {
       if(activeDraftChannel.current===draftChannel&&activeScope.current===scope)setSending(false);
@@ -1569,6 +1572,15 @@ export default function ConversationScreen() {
               {data.thread.contactPolicy?.restricted?<Text accessibilityLiveRegion="polite" style={{color:theme.textMuted,fontFamily:theme.font.body,fontSize:11,padding:8}}>This is an agent conversation. Do not share phone numbers or account details. A violation removes the message and pauses this chat for 3 days.</Text>:null}
               {draftWarning ? <Text accessibilityRole="alert" style={{ color: theme.error, fontFamily: theme.font.body, fontSize: 12, padding: 10 }}>{draftWarning}</Text> : null}
               {!draftReady && draftWarning ? <Pressable accessibilityRole="button" onPress={() => setDraftRetry(value => value + 1)} style={{ padding: 12 }}><Text style={{ color: theme.accentText }}>Retry draft recovery</Text></Pressable> : null}
+              {draftReady && draftWarning === storagePressureNotice && user?.id && id ? (
+                <Pressable accessibilityRole="button" onPress={() => {
+                  void saveScopedConversationDraft(user.id, id, draftChannel.value)
+                    .then(() => { if (activeScope.current === scope) setDraftWarning(""); })
+                    .catch(caught => { if (activeScope.current === scope) setDraftWarning(isStorageCapacityError(caught) ? storagePressureNotice : "This draft could not be saved securely. Keep this conversation open and try again."); });
+                }} style={{ padding: 12 }}>
+                  <Text style={{ color: theme.accentText, fontFamily: theme.font.semibold }}>Retry saving draft</Text>
+                </Pressable>
+              ) : null}
               {replyingTo ? (
                 <View style={styles.replyDraft}>
                   <View style={styles.replyDraftAccent} />
